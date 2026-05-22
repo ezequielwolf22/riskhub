@@ -1,11 +1,26 @@
-version: '3.8'
 services:
-  api:
+  riskhub:
     build: .
+    image: riskhub:latest
+    container_name: riskhub
+    restart: unless-stopped
     ports:
-      - "80:8000"
-    env_file:
-      - .env
-    restart: always
+      - "${RISKHUB_PORT_HOST:-80}:8000"
+    environment:
+      - RISKHUB_SECRET_KEY=${RISKHUB_SECRET_KEY:?Define RISKHUB_SECRET_KEY en .env}
+      - RISKHUB_ADMIN_EMAIL=${RISKHUB_ADMIN_EMAIL:-admin@company.internal}
+      - RISKHUB_ADMIN_PASSWORD=${RISKHUB_ADMIN_PASSWORD:?Define RISKHUB_ADMIN_PASSWORD en .env}
+      - RISKHUB_DB_PATH=/srv/data/riskhub.db
+      - RISKHUB_ENV=production
     volumes:
-      - .:/app
+      - riskhub-data:/srv/data
+    networks:
+      - internal
+
+volumes:
+  riskhub-data:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge

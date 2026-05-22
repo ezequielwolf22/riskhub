@@ -1,15 +1,82 @@
+"""Entrypoint FastAPI - monta routers REST + frontend estatico."""
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
-app = FastAPI(title="RiskHub")
+from app import __version__
+from app.config import settings
+from app.routers import (
+    assets, auth, catalogues, context, controls, reports, risks, users,
+)
+from app.seed import init_db
 
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+STATIC_DIR = Path(__file__).parent / "static"
 
-@app.get("/")
-async def root():
-    return FileResponse("frontend/index.html")
+app = FastAPI(
+    title="RiskHub",
+    description="Plataforma de gestion de riesgos - ISO/IEC 27005:2018",
+    version=__version__,
+)
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+# CORS solo en dev; en produccion la app se sirve junto al frontend
+if settings.env != "production":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+@app.on_event("startup")
+def startup():
+    init_db()
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "version": __version__, "env": settings.env}
+
+
+# Routers REST
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(context.router)
+app.include_router(assets.router)
+app.include_router(catalogues.threats_router)
+app.include_router(catalogues.vulns_router)
+app.include_router(controls.catalog_router)
+app.include_router(controls.impl_router)
+app.include_router(risks.router)
+app.include_router(reports.router)
+
+
+# Frontend estatico
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets" if (STATIC_DIR / "assets").exists() else STATIC_DIR), name="assets")
+    app.mount("/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
+    app.mount("/js", StaticFiles(directory=STATIC_DIR / "js"), name="js")
+    app.mount("/img", StaticFiles(directory=STATIC_DIR / "img"), name="img") if (STATIC_DIR / "img").exists() else None
+    app.mount("/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
+
+    @app.get("/")
+    def index():
+        return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/login")
+    def login_page():
+        return FileResponse(STATIC_DIR / "login.html")
+
+    # SPA fallback
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        if full_path.startswith("api/"):
+            return JSONResponse({"detail": "Not found"}, status_code=404)
+        target = STATIC_DIR / full_path
+        if target.is_file():
+            return FileResponse(target)
+        return FileResponse(STATIC_DIR / "index.html")

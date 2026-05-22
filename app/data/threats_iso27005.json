@@ -1,0 +1,59 @@
+[
+  {"code":"T.PHY.01","name":"Fuego","category":"Physical damage","origin":"A","typical_assets":["support_hardware","support_site"],"affects":["A"],"description":"Dano por fuego. Puede ser accidental (cortocircuito), deliberado (incendio provocado) o ambiental (incendio forestal)."},
+  {"code":"T.PHY.02","name":"Dano por agua","category":"Physical damage","origin":"A","typical_assets":["support_hardware","support_site"],"affects":["A"],"description":"Inundacion, fuga de tuberias, condensacion, sprinkler."},
+  {"code":"T.PHY.03","name":"Contaminacion","category":"Physical damage","origin":"E","typical_assets":["support_hardware","support_site"],"affects":["A"],"description":"Polvo, productos quimicos, gases corrosivos."},
+  {"code":"T.PHY.04","name":"Accidente mayor","category":"Physical damage","origin":"A","typical_assets":["support_hardware","support_site"],"affects":["A"],"description":"Colision, explosion, derrumbe estructural."},
+  {"code":"T.PHY.05","name":"Destruccion de equipamiento o soportes","category":"Physical damage","origin":"D","typical_assets":["support_hardware"],"affects":["A","I"],"description":"Destruccion deliberada o accidental de hardware o soportes de informacion."},
+  {"code":"T.PHY.06","name":"Polvo, corrosion, congelacion","category":"Physical damage","origin":"E","typical_assets":["support_hardware"],"affects":["A"],"description":"Condiciones ambientales degradadas."},
+
+  {"code":"T.NAT.01","name":"Fenomeno climatico","category":"Natural events","origin":"E","typical_assets":["support_site"],"affects":["A"],"description":"Temperatura extrema, humedad excesiva."},
+  {"code":"T.NAT.02","name":"Fenomeno sismico","category":"Natural events","origin":"E","typical_assets":["support_site"],"affects":["A"],"description":"Terremotos."},
+  {"code":"T.NAT.03","name":"Fenomeno volcanico","category":"Natural events","origin":"E","typical_assets":["support_site"],"affects":["A"],"description":"Erupciones volcanicas, cenizas."},
+  {"code":"T.NAT.04","name":"Fenomeno meteorologico","category":"Natural events","origin":"E","typical_assets":["support_site"],"affects":["A"],"description":"Tormentas, huracanes, granizo, rayos."},
+  {"code":"T.NAT.05","name":"Inundacion","category":"Natural events","origin":"E","typical_assets":["support_site","support_hardware"],"affects":["A"],"description":"Inundacion por desbordamiento o lluvias torrenciales."},
+
+  {"code":"T.LES.01","name":"Fallo del sistema de climatizacion o suministro de agua","category":"Loss of essential services","origin":"A","typical_assets":["support_site","support_hardware"],"affects":["A"],"description":"Averia en HVAC o suministro hidraulico."},
+  {"code":"T.LES.02","name":"Perdida del suministro electrico","category":"Loss of essential services","origin":"A","typical_assets":["support_hardware"],"affects":["A"],"description":"Corte de luz, fallo del UPS o generador."},
+  {"code":"T.LES.03","name":"Fallo de equipos de telecomunicaciones","category":"Loss of essential services","origin":"A","typical_assets":["support_network"],"affects":["A"],"description":"Caida de operador telecom, fallo de routers."},
+
+  {"code":"T.RAD.01","name":"Radiacion electromagnetica","category":"Disturbance due to radiation","origin":"A","typical_assets":["support_hardware"],"affects":["A","I"],"description":"Interferencia electromagnetica."},
+  {"code":"T.RAD.02","name":"Radiacion termica","category":"Disturbance due to radiation","origin":"E","typical_assets":["support_hardware"],"affects":["A"],"description":"Calor excesivo de fuente externa."},
+  {"code":"T.RAD.03","name":"Pulsos electromagneticos","category":"Disturbance due to radiation","origin":"D","typical_assets":["support_hardware"],"affects":["A"],"description":"EMP intencionado o accidental."},
+
+  {"code":"T.COM.01","name":"Interceptacion de senales comprometedoras","category":"Compromise of information","origin":"D","typical_assets":["support_hardware","support_network"],"affects":["C"],"description":"TEMPEST, captura de emisiones electromagneticas."},
+  {"code":"T.COM.02","name":"Espionaje remoto","category":"Compromise of information","origin":"D","typical_assets":["primary_information","support_software"],"affects":["C"],"description":"Acceso remoto no autorizado para obtener informacion."},
+  {"code":"T.COM.03","name":"Escuchas (eavesdropping)","category":"Compromise of information","origin":"D","typical_assets":["support_network"],"affects":["C"],"description":"Captura pasiva de comunicaciones."},
+  {"code":"T.COM.04","name":"Robo de soportes o documentos","category":"Compromise of information","origin":"D","typical_assets":["primary_information","support_hardware"],"affects":["C","A"],"description":"Sustraccion fisica de documentos o medios."},
+  {"code":"T.COM.05","name":"Robo de equipamiento","category":"Compromise of information","origin":"D","typical_assets":["support_hardware"],"affects":["A","C"],"description":"Robo de portatiles, servidores, moviles."},
+  {"code":"T.COM.06","name":"Recuperacion de soportes desechados","category":"Compromise of information","origin":"D","typical_assets":["primary_information","support_hardware"],"affects":["C"],"description":"Dumpster diving, recuperacion de discos descartados."},
+  {"code":"T.COM.07","name":"Divulgacion","category":"Compromise of information","origin":"A","typical_assets":["primary_information"],"affects":["C"],"description":"Revelacion accidental o deliberada de informacion."},
+  {"code":"T.COM.08","name":"Datos procedentes de fuentes no confiables","category":"Compromise of information","origin":"A","typical_assets":["primary_information","support_software"],"affects":["I"],"description":"Uso de datos manipulados o erroneos sin verificar origen."},
+  {"code":"T.COM.09","name":"Manipulacion de hardware","category":"Compromise of information","origin":"D","typical_assets":["support_hardware"],"affects":["I","C","A"],"description":"Modificacion no autorizada de equipamiento (implants, supply chain)."},
+  {"code":"T.COM.10","name":"Manipulacion de software","category":"Compromise of information","origin":"D","typical_assets":["support_software"],"affects":["I","C","A"],"description":"Modificacion no autorizada de codigo o configuracion."},
+  {"code":"T.COM.11","name":"Deteccion de posicion","category":"Compromise of information","origin":"D","typical_assets":["support_hardware","support_personnel"],"affects":["C"],"description":"Geolocalizacion no autorizada de personas o equipos."},
+
+  {"code":"T.TEC.01","name":"Fallo de equipamiento","category":"Technical failures","origin":"A","typical_assets":["support_hardware"],"affects":["A"],"description":"Averia de componente hardware."},
+  {"code":"T.TEC.02","name":"Mal funcionamiento del equipamiento","category":"Technical failures","origin":"A","typical_assets":["support_hardware"],"affects":["A","I"],"description":"Equipo opera con errores intermitentes."},
+  {"code":"T.TEC.03","name":"Saturacion del sistema de informacion","category":"Technical failures","origin":"A","typical_assets":["support_software","support_network"],"affects":["A"],"description":"Sobrecarga por uso legitimo o DoS."},
+  {"code":"T.TEC.04","name":"Mal funcionamiento del software","category":"Technical failures","origin":"A","typical_assets":["support_software"],"affects":["A","I"],"description":"Bugs, fallos no maliciosos."},
+  {"code":"T.TEC.05","name":"Fallo de mantenibilidad del sistema","category":"Technical failures","origin":"A","typical_assets":["support_software","support_hardware"],"affects":["A"],"description":"Imposibilidad de mantener el sistema (obsolescencia, EOL)."},
+
+  {"code":"T.UNA.01","name":"Uso no autorizado de equipamiento","category":"Unauthorized actions","origin":"D","typical_assets":["support_hardware","support_software"],"affects":["C","I","A"],"description":"Uso de recursos para fines no aprobados."},
+  {"code":"T.UNA.02","name":"Copia fraudulenta de software","category":"Unauthorized actions","origin":"D","typical_assets":["support_software"],"affects":["C"],"description":"Copia ilegal de software propietario."},
+  {"code":"T.UNA.03","name":"Uso de software falsificado o copiado","category":"Unauthorized actions","origin":"A","typical_assets":["support_software"],"affects":["I","A"],"description":"Software sin licencia o malicioso."},
+  {"code":"T.UNA.04","name":"Corrupcion de datos","category":"Unauthorized actions","origin":"D","typical_assets":["primary_information"],"affects":["I"],"description":"Modificacion no autorizada de datos."},
+  {"code":"T.UNA.05","name":"Procesamiento ilegal de datos","category":"Unauthorized actions","origin":"D","typical_assets":["primary_information"],"affects":["C","I"],"description":"Tratamiento de datos personales sin base legal (GDPR)."},
+
+  {"code":"T.FUN.01","name":"Error en uso","category":"Compromise of functions","origin":"A","typical_assets":["support_personnel","support_software"],"affects":["I","A"],"description":"Error humano en operacion."},
+  {"code":"T.FUN.02","name":"Abuso de privilegios","category":"Compromise of functions","origin":"D","typical_assets":["support_personnel","support_software"],"affects":["C","I","A"],"description":"Usuario con permisos legitimos los usa indebidamente."},
+  {"code":"T.FUN.03","name":"Falsificacion de privilegios","category":"Compromise of functions","origin":"D","typical_assets":["support_personnel","support_software"],"affects":["C","I","A"],"description":"Escalado de privilegios no autorizado."},
+  {"code":"T.FUN.04","name":"Negacion de acciones","category":"Compromise of functions","origin":"D","typical_assets":["support_software","primary_information"],"affects":["I"],"description":"Repudio - usuario niega haber realizado una accion."},
+  {"code":"T.FUN.05","name":"Indisponibilidad de personal","category":"Compromise of functions","origin":"A","typical_assets":["support_personnel"],"affects":["A"],"description":"Ausencia, enfermedad, huelga, perdida de personal clave."},
+
+  {"code":"T.CYB.01","name":"Hacking / intrusion","category":"Compromise of information","origin":"D","typical_assets":["support_software","support_network"],"affects":["C","I","A"],"description":"Acceso no autorizado a sistemas via tecnicas de hacking."},
+  {"code":"T.CYB.02","name":"Phishing / ingenieria social","category":"Compromise of functions","origin":"D","typical_assets":["support_personnel"],"affects":["C","I","A"],"description":"Engano a usuarios para obtener credenciales o accesos."},
+  {"code":"T.CYB.03","name":"Malware (virus, troyano, ransomware)","category":"Compromise of information","origin":"D","typical_assets":["support_software"],"affects":["C","I","A"],"description":"Software malicioso. Ransomware destaca para activos de alta disponibilidad."},
+  {"code":"T.CYB.04","name":"DDoS","category":"Technical failures","origin":"D","typical_assets":["support_network","support_software"],"affects":["A"],"description":"Denegacion de servicio distribuida."},
+  {"code":"T.CYB.05","name":"Ataque a la cadena de suministro","category":"Compromise of information","origin":"D","typical_assets":["support_software","support_hardware"],"affects":["C","I","A"],"description":"Compromiso de un proveedor que afecta al cliente final."},
+  {"code":"T.CYB.06","name":"Insider malicioso","category":"Compromise of functions","origin":"D","typical_assets":["support_personnel"],"affects":["C","I","A"],"description":"Empleado o ex-empleado actua contra la organizacion."}
+]

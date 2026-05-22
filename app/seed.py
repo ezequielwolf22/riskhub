@@ -1,0 +1,117 @@
+"""Carga inicial de datos: admin, catalogos ISO 27005/27002, contexto."""
+import json
+from pathlib import Path
+
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.database import Base, SessionLocal, engine
+from app.models import (
+    Control, RiskContext, Threat, ThreatOrigin, User, UserRole, Vulnerability,
+)
+from app.security import hash_password
+from app.services.risk_engine import (
+    default_acceptance_criteria, default_impact_criteria,
+    default_likelihood_criteria, default_matrix,
+)
+
+DATA_DIR = Path(__file__).parent / "data"
+
+
+def load_json(name: str):
+    with open(DATA_DIR / name, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def seed_admin(db: Session) -> None:
+    if db.query(User).count() > 0:
+        return
+    admin = User(
+        email=settings.admin_email,
+        full_name="Administrator",
+        hashed_password=hash_password(settings.admin_password),
+        role=UserRole.ADMIN,
+        is_active=True,
+    )
+    db.add(admin)
+    db.commit()
+
+
+def seed_context(db: Session) -> None:
+    if db.query(RiskContext).count() > 0:
+        return
+    ctx = RiskContext(
+        organization_name="Organization",
+        scope="Sistemas de informacion corporativos.",
+        boundaries="Activos gestionados por el equipo de TI.",
+        impact_criteria=default_impact_criteria(),
+        likelihood_criteria=default_likelihood_criteria(),
+        risk_acceptance_criteria=default_acceptance_criteria(),
+        risk_matrix=default_matrix(),
+        risk_appetite=3,
+    )
+    db.add(ctx)
+    db.commit()
+
+
+def seed_threats(db: Session) -> None:
+    if db.query(Threat).count() > 0:
+        return
+    for t in load_json("threats_iso27005.json"):
+        db.add(Threat(
+            code=t["code"], name=t["name"], description=t.get("description"),
+            category=t.get("category"),
+            origin=ThreatOrigin(t["origin"]),
+            typical_assets=t.get("typical_assets", []),
+            affects=t.get("affects", []),
+            is_custom=False,
+        ))
+    db.commit()
+
+
+def seed_vulnerabilities(db: Session) -> None:
+    if db.query(Vulnerability).count() > 0:
+        return
+    for v in load_json("vulnerabilities_iso27005.json"):
+        db.add(Vulnerability(
+            code=v["code"], name=v["name"], description=v.get("description"),
+            category=v.get("category"),
+            related_threats=v.get("related_threats", []),
+            is_custom=False,
+        ))
+    db.commit()
+
+
+def seed_controls(db: Session) -> None:
+    if db.query(Control).count() > 0:
+        return
+    for c in load_json("controls_iso27002_2022.json"):
+        db.add(Control(
+            code=c["code"], name=c["name"], description=c.get("description"),
+            theme=c.get("theme"),
+            control_type=c.get("control_type", []),
+            properties=c.get("properties", []),
+            cybersec_concepts=c.get("cybersec_concepts", []),
+            operational=c.get("operational", []),
+            is_custom=False,
+        ))
+    db.commit()
+
+
+def init_db() -> None:
+    """Crear tablas y cargar seed inicial."""
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    try:
+        seed_admin(db)
+        seed_context(db)
+        seed_threats(db)
+        seed_vulnerabilities(db)
+        seed_controls(db)
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    init_db()
+    print("Base de datos inicializada.")

@@ -1,0 +1,81 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RiskHub · Iniciar sesion</title>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="icon" type="image/svg+xml" href="/img/logo.svg">
+</head>
+<body>
+<div class="brand-bar"></div>
+<div class="login-page">
+  <div class="login-hero">
+    <div>
+      <img src="/img/logo.svg" alt="RiskHub" style="height: 56px; filter: brightness(0) invert(1); margin-bottom: 32px;">
+      <span class="iso-badge">ISO/IEC 27005:2018</span>
+      <h1>Gestion del riesgo de seguridad de la informacion</h1>
+      <p>Plataforma corporativa para identificar, analizar, tratar y monitorizar los riesgos de seguridad de la informacion conforme al estandar ISO/IEC 27005:2018 y al catalogo de controles ISO/IEC 27002:2022.</p>
+    </div>
+    <div style="font-size: 11px; opacity: 0.7; font-family: var(--font-mono); letter-spacing: 0.05em;">
+      USO INTERNO &middot; CONFIDENCIAL
+    </div>
+  </div>
+  <div class="login-form-wrap">
+    <form class="login-form" id="login-form">
+      <h2 style="margin-bottom: 4px;">Iniciar sesion</h2>
+      <p style="color: var(--text-muted); margin-bottom: 20px;">
+        Usa tus credenciales corporativas.
+      </p>
+      <div id="login-error" class="login-error" style="display: none;"></div>
+      <div class="form-block">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autocomplete="username" autofocus>
+      </div>
+      <div class="form-block">
+        <label for="password">Contrasena</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width: 100%; justify-content: center; padding: 10px;">
+        Acceder
+      </button>
+      <p style="font-size: 11px; color: var(--text-subtle); margin-top: 24px; text-align: center;">
+        Si no tienes acceso, contacta con el responsable de seguridad de tu unidad.
+      </p>
+    </form>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById('login-form');
+const errBox = document.getElementById('login-error');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errBox.style.display = 'none';
+  const fd = new URLSearchParams();
+  fd.append('username', document.getElementById('email').value);
+  fd.append('password', document.getElementById('password').value);
+
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: fd.toString(),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || 'Credenciales no validas');
+    }
+    const data = await resp.json();
+    localStorage.setItem('riskhub_token', data.access_token);
+    localStorage.setItem('riskhub_user', JSON.stringify(data.user));
+    window.location.href = '/';
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+  }
+});
+</script>
+</body>
+</html>
