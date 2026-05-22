@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     admin_email: str = "admin@company.internal"
     admin_password: str = "ChangeMe123!"
 
+    # IA (Claude API - opcional)
+    anthropic_api_key: str | None = None
+
     @property
     def db_url(self) -> str:
         if self.database_url:

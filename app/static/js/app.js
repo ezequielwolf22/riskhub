@@ -3,6 +3,7 @@
 const Routes = {
   dashboard: ViewDashboard,
   heatmap: ViewHeatmap,
+  questionnaire: ViewQuestionnaire,
   assets: ViewAssets,
   threats: ViewThreats,
   vulnerabilities: ViewVulns,
@@ -53,6 +54,9 @@ function init() {
   if (!Auth.isAdmin()) {
     document.querySelectorAll('[data-admin]').forEach(el => el.style.display = 'none');
   }
+
+  // Exponer navigate global para uso desde vistas
+  window.App = { navigate: (route) => { location.hash = '/' + route; } };
 
   window.addEventListener('hashchange', navigate);
   navigate();
