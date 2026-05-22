@@ -66,15 +66,15 @@ const ViewQuestionnaire = {
             ${q.options.map(o => `<option value="${UI.esc(o)}">${UI.esc(o)}</option>`).join('')}
           </select>`;
         } else if (q.type === 'multiselect') {
-          html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:6px;">
+          html += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px;">
             ${q.options.map(o => `
-              <label class="ms-opt" style="display:flex;align-items:flex-start;gap:10px;
-                     font-weight:normal;cursor:pointer;background:var(--bg-2);
+              <label class="ms-opt" style="display:block;cursor:pointer;background:var(--bg-2);
                      border:1px solid var(--border);border-radius:8px;
-                     padding:10px 12px;font-size:13px;line-height:1.4;transition:background .15s,border-color .15s;">
+                     padding:10px 12px;font-size:13px;line-height:1.5;
+                     transition:background .15s,border-color .15s;">
                 <input type="checkbox" data-q="${q.id}" value="${UI.esc(o)}"
-                       style="accent-color:var(--brand-purple);margin-top:2px;flex-shrink:0;">
-                <span>${UI.esc(o)}</span>
+                       style="accent-color:var(--brand-purple);margin-right:8px;vertical-align:middle;flex-shrink:0;">
+                <span style="vertical-align:middle;">${UI.esc(o)}</span>
               </label>`).join('')}
           </div>`;
         } else if (q.type === 'textarea') {
