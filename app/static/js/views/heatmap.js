@@ -5,7 +5,7 @@ const ViewHeatmap = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
       'Mapa de calor',
-      'Distribucion de riesgos en la matriz Impacto x Probabilidad (ISO 27005 Annex E.2)',
+      'Distribución de riesgos en la matriz Impacto x Probabilidad (ISO 27005 Annex E.2)',
       `<button class="btn" data-mode="inherent">Inherente</button>
        <button class="btn btn-primary" data-mode="residual">Residual</button>`
     );
@@ -48,7 +48,7 @@ const ViewHeatmap = {
               segun la Tabla E.2 de ISO/IEC 27005:2018.
             </p>
             <ul style="font-size:12px;color:var(--text-muted);padding-left:18px;">
-              <li><strong style="color:var(--risk-low);">Bajo (0-2):</strong> retencion sin tratamiento adicional.</li>
+              <li><strong style="color:var(--risk-low);">Bajo (0-2):</strong> retención sin tratamiento adicional.</li>
               <li><strong style="color:var(--risk-medium);">Medio (3-5):</strong> tratamiento recomendado.</li>
               <li><strong style="color:var(--risk-high);">Alto (6-8):</strong> tratamiento obligatorio.</li>
             </ul>

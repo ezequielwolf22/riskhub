@@ -3,7 +3,7 @@ const ViewUsers = {
   async render(main) {
     if (!Auth.isAdmin()) {
       main.innerHTML = UI.sectionHeader('Acceso restringido', 'Solo administradores');
-      main.innerHTML += UI.notice('Esta seccion requiere rol de administrador.', 'warn');
+      main.innerHTML += UI.notice('Esta sección requiere rol de administrador.', 'warn');
       return;
     }
     main.innerHTML = UI.sectionHeader(
@@ -65,7 +65,7 @@ const ViewUsers = {
           <option value="false" ${!u.is_active?'selected':''}>Inactivo</option>
         </select>
       </div>
-      <div class="span2"><label>Contrasena ${id?'(dejar vacio para no cambiar)':'(minimo 8 caracteres)'}</label>
+      <div class="span2"><label>Contrasena ${id?'(dejar vacio para no cambiar)':'(mínimo 8 caracteres)'}</label>
         <input type="password" id="f-pass" autocomplete="new-password"></div>
     `, {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>

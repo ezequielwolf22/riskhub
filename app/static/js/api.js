@@ -1,4 +1,4 @@
-/* Cliente HTTP centralizado para la API REST de RiskHub. */
+﻿/* Cliente HTTP centralizado para la API REST de RiskHub. */
 const Api = {
   token() { return localStorage.getItem('riskhub_token'); },
 
@@ -52,7 +52,7 @@ const Api = {
       });
   },
 
-  // Endpoints especificos
+  // Endpoints específicos
   me: () => Api.get('/api/auth/me'),
   context: {
     get: () => Api.get('/api/context/'),

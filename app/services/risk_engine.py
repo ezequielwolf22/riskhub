@@ -138,11 +138,11 @@ def default_impact_criteria() -> dict:
 
 def default_likelihood_criteria() -> dict:
     return {
-        0: "Muy improbable - menos de 1 vez cada 10 anios",
-        1: "Improbable - 1 vez cada 5-10 anios",
-        2: "Posible - 1 vez al anio",
-        3: "Probable - varias veces al anio",
-        4: "Muy probable - mensual o mas frecuente",
+        0: "Muy improbable - menos de 1 vez cada 10 años",
+        1: "Improbable - 1 vez cada 5-10 años",
+        2: "Posible - 1 vez al año",
+        3: "Probable - varias veces al año",
+        4: "Muy probable - mensual o más frecuente",
     }
 
 

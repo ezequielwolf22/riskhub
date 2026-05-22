@@ -1,4 +1,4 @@
-/* Utilidades de UI compartidas. */
+﻿/* Utilidades de UI compartidas. */
 const UI = {
   esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -81,13 +81,13 @@ const UI = {
   assetTypeLabel(t) {
     return ({
       primary_process: 'Proceso',
-      primary_information: 'Informacion',
+      primary_information: 'Información',
       support_hardware: 'Hardware',
       support_software: 'Software',
       support_network: 'Red',
       support_personnel: 'Personal',
-      support_site: 'Instalacion',
-      support_organization: 'Organizacion',
+      support_site: 'Instalación',
+      support_organization: 'Organización',
     })[t] || t;
   },
 

@@ -20,13 +20,13 @@ const ViewAssets = {
         <select id="asset-type-filter">
           <option value="">Todos los tipos</option>
           <option value="primary_process">Proceso</option>
-          <option value="primary_information">Informacion</option>
+          <option value="primary_information">Información</option>
           <option value="support_hardware">Hardware</option>
           <option value="support_software">Software</option>
           <option value="support_network">Red</option>
           <option value="support_personnel">Personal</option>
-          <option value="support_site">Instalacion</option>
-          <option value="support_organization">Organizacion</option>
+          <option value="support_site">Instalación</option>
+          <option value="support_organization">Organización</option>
         </select>
         <span class="spacer"></span>
         <span id="asset-count" style="color:var(--text-subtle);font-size:12px;"></span>
@@ -47,7 +47,7 @@ const ViewAssets = {
         const f = e.target.files[0]; if (!f) return;
         try {
           const r = await Api.assets.import(f);
-          UI.toast(`Importacion: ${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos`,
+          UI.toast(`Importación: ${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos`,
                    r.errors.length ? 'error' : 'success');
           ViewAssets._reload();
         } catch (err) { UI.toast(err.message, 'error'); }
@@ -137,11 +137,11 @@ const ViewAssets = {
         <input id="f-cat" value="${UI.esc(a.category||'')}">
       </div>
       <div class="span2">
-        <label>Descripcion</label>
+        <label>Descripción</label>
         <textarea id="f-desc" rows="2">${UI.esc(a.description||'')}</textarea>
       </div>
       <div>
-        <label>Localizacion</label>
+        <label>Localización</label>
         <input id="f-loc" value="${UI.esc(a.location||'')}">
       </div>
       <div>
@@ -149,13 +149,13 @@ const ViewAssets = {
         <input id="f-proc" value="${UI.esc(a.business_process||'')}">
       </div>
       <div>
-        <label>Clasificacion</label>
+        <label>Clasificación</label>
         <select id="f-class">
           ${['','Publico','Interno','Confidencial','Secreto'].map(c =>
             `<option value="${c}" ${a.classification===c?'selected':''}>${c||'-'}</option>`).join('')}
         </select>
       </div>
-      <div class="span2"><label>Valoracion (0-4)</label></div>
+      <div class="span2"><label>Valoración (0-4)</label></div>
       ${['confidentiality','integrity','availability','authenticity','accountability'].map(d =>
         `<div>
            <label>${({confidentiality:'Confidencialidad',integrity:'Integridad',availability:'Disponibilidad',authenticity:'Autenticidad',accountability:'Trazabilidad'})[d]}</label>

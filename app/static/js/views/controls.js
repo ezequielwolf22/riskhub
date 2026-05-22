@@ -1,4 +1,4 @@
-﻿/* Vista Controles - catalogo ISO 27002:2022 + implementaciones. */
+﻿/* Vista Controles - catálogo ISO 27002:2022 + implementaciónes. */
 const ViewControls = {
   _tab: 'impls', _catalog: [],
 
@@ -7,19 +7,19 @@ const ViewControls = {
     main.innerHTML = UI.sectionHeader(
       'Controles de seguridad',
       'ISO/IEC 27002:2022 (93 controles del Anexo A)',
-      canEdit ? '<button class="btn btn-primary" id="btn-new-impl">+ Nueva implementacion</button>' : ''
+      canEdit ? '<button class="btn btn-primary" id="btn-new-impl">+ Nueva implementación</button>' : ''
     ) + `
       <div class="toolbar">
-        <button class="btn ${ViewControls._tab==='impls'?'btn-primary':''}" data-tab="impls">Implementaciones</button>
-        <button class="btn ${ViewControls._tab==='catalog'?'btn-primary':''}" data-tab="catalog">Catalogo ISO 27002:2022</button>
+        <button class="btn ${ViewControls._tab==='impls'?'btn-primary':''}" data-tab="impls">Implementaciónes</button>
+        <button class="btn ${ViewControls._tab==='catalog'?'btn-primary':''}" data-tab="catalog">Catálogo ISO 27002:2022</button>
         <span class="spacer"></span>
         <input type="search" id="c-search" placeholder="Buscar...">
         <select id="c-theme">
           <option value="">Todos los temas</option>
-          <option value="organizational">Organizacional</option>
+          <option value="organizational">Organizaciónal</option>
           <option value="people">Personas</option>
           <option value="physical">Fisico</option>
-          <option value="technological">Tecnologico</option>
+          <option value="technological">Tecnológico</option>
         </select>
       </div>
       <div id="c-list"></div>
@@ -80,13 +80,13 @@ const ViewControls = {
     const data = await Api.impls.list();
     if (!data.length) {
       list.innerHTML = UI.emptyState(
-        'Sin implementaciones',
-        'Crea implementaciones concretas de los controles para poder asociarlos a riesgos.'
+        'Sin implementaciónes',
+        'Crea implementaciónes concretas de los controles para poder asociarlos a riesgos.'
       );
       return;
     }
     list.innerHTML = `<div class="table-wrap"><table class="data">
-      <thead><tr><th>Control</th><th>Implementacion</th><th>Estado</th><th>Madurez</th><th>Proxima revision</th><th></th></tr></thead>
+      <thead><tr><th>Control</th><th>Implementación</th><th>Estado</th><th>Madurez</th><th>Proxima revisión</th><th></th></tr></thead>
       <tbody>
         ${data.map(i => `
           <tr data-id="${i.id}" style="cursor:pointer;">
@@ -121,7 +121,7 @@ const ViewControls = {
       data = all.find(x => x.id === id) || data;
       data.control_id = data.control?.id || data.control_id;
     }
-    UI.modal(id ? `Editar implementacion ${id}` : 'Nueva implementacion', `
+    UI.modal(id ? `Editar implementación ${id}` : 'Nueva implementación', `
       <div class="span2">
         <label>Control de referencia *</label>
         <select id="f-control">
@@ -129,9 +129,9 @@ const ViewControls = {
             `<option value="${c.id}" ${data.control_id===c.id?'selected':''}>${UI.esc(c.code)} - ${UI.esc(c.name)}</option>`).join('')}
         </select>
       </div>
-      <div class="span2"><label>Nombre de la implementacion *</label>
+      <div class="span2"><label>Nombre de la implementación *</label>
         <input id="f-name" value="${UI.esc(data.name)}" placeholder="ej. EDR CrowdStrike en endpoints corporativos"></div>
-      <div class="span2"><label>Descripcion</label>
+      <div class="span2"><label>Descripción</label>
         <textarea id="f-desc" rows="2">${UI.esc(data.description||'')}</textarea></div>
       <div><label>Estado</label>
         <select id="f-status">
@@ -152,7 +152,7 @@ const ViewControls = {
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     if (id) document.getElementById('m-del').onclick = async () => {
-      if (!await UI.confirm('Eliminar esta implementacion?')) return;
+      if (!await UI.confirm('Eliminar esta implementación?')) return;
       try { await Api.impls.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewControls._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };

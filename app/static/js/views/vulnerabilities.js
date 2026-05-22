@@ -1,9 +1,9 @@
-﻿/* Vista Vulnerabilidades - catalogo ISO 27005 Annex D. */
+﻿/* Vista Vulnerabilidades - catálogo ISO 27005 Annex D. */
 const ViewVulns = {
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
-      'Catalogo de vulnerabilidades',
+      'Catálogo de vulnerabilidades',
       'ISO/IEC 27005:2018 Annex D + vulnerabilidades personalizadas',
       canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nueva vulnerabilidad</button>' : ''
     ) + `
@@ -15,8 +15,8 @@ const ViewVulns = {
           <option value="software">Software</option>
           <option value="network">Red</option>
           <option value="personnel">Personal</option>
-          <option value="site">Instalaciones</option>
-          <option value="organization">Organizacion</option>
+          <option value="site">Instalaciónes</option>
+          <option value="organization">Organización</option>
         </select>
       </div>
       <div id="v-list"></div>
@@ -42,7 +42,7 @@ const ViewVulns = {
         return;
       }
       list.innerHTML = `<div class="table-wrap"><table class="data">
-        <thead><tr><th>Codigo</th><th>Nombre</th><th>Categoria</th><th>Amenazas relacionadas</th><th></th></tr></thead>
+        <thead><tr><th>Codigo</th><th>Nombre</th><th>Categoria</th><th>Amenazas relaciónadas</th><th></th></tr></thead>
         <tbody>
           ${data.map(v => `
             <tr>
@@ -69,13 +69,13 @@ const ViewVulns = {
           <option value="software">Software</option>
           <option value="network">Red</option>
           <option value="personnel">Personal</option>
-          <option value="site">Instalaciones</option>
-          <option value="organization">Organizacion</option>
+          <option value="site">Instalaciónes</option>
+          <option value="organization">Organización</option>
         </select>
       </div>
       <div class="span2"><label>Nombre *</label><input id="f-name"></div>
-      <div class="span2"><label>Descripcion</label><textarea id="f-desc" rows="2"></textarea></div>
-      <div class="span2"><label>Amenazas relacionadas (codigos separados por coma)</label>
+      <div class="span2"><label>Descripción</label><textarea id="f-desc" rows="2"></textarea></div>
+      <div class="span2"><label>Amenazas relaciónadas (codigos separados por coma)</label>
         <input id="f-rel" placeholder="T.CYB.01, T.UNA.04"></div>
     `, {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>

@@ -3,7 +3,7 @@ const ViewDashboard = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
       'Vision global del riesgo',
-      'Resumen del estado actual de los riesgos de seguridad de la informacion'
+      'Resumen del estado actual de los riesgos de seguridad de la información'
     ) + '<div id="dash-content">' + UI.notice('Cargando datos...') + '</div>';
 
     try {
@@ -22,18 +22,18 @@ const ViewDashboard = {
           <div class="kpi">
             <div class="label">Controles implantados</div>
             <div class="value">${s.total_controls}</div>
-            <div class="hint">de ${s.total_threats} amenazas y ${s.total_vulnerabilities} vulnerabilidades en catalogo</div>
+            <div class="hint">de ${s.total_threats} amenazas y ${s.total_vulnerabilities} vulnerabilidades en catálogo</div>
           </div>
           <div class="kpi" style="background: linear-gradient(45deg, #FFE6CE 0%, #EDD1FF 100%);">
             <div class="label">Riesgos altos sin tratar</div>
             <div class="value">${s.by_band.high}</div>
-            <div class="hint">requieren atencion inmediata</div>
+            <div class="hint">requieren atención inmediata</div>
           </div>
         </div>
 
         <div class="card-row">
           <div class="card">
-            <h3>Distribucion por nivel residual</h3>
+            <h3>Distribución por nivel residual</h3>
             <div style="display:flex;gap:24px;margin-top:12px;">
               <div style="flex:1;text-align:center;">
                 <div style="font-size:28px;font-weight:700;color:var(--risk-low);">${s.by_band.low}</div>

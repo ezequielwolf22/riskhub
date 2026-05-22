@@ -3,7 +3,7 @@ const ViewReports = {
   render(main) {
     main.innerHTML = UI.sectionHeader(
       'Informes',
-      'Generacion de documentos para auditoria, comites y direccion'
+      'Generación de documentos para auditoría, comités y dirección'
     ) + `
       <div class="card-row">
         <div class="card">
@@ -18,9 +18,9 @@ const ViewReports = {
         <div class="card">
           <h3>Statement of Applicability (SoA)</h3>
           <p style="color:var(--text-muted);font-size:13px;">
-            Declaracion de aplicabilidad de los 93 controles del Anexo A de
-            ISO/IEC 27002:2022, con estado y madurez de cada implementacion.
-            Documento obligatorio para certificacion ISO/IEC 27001.
+            Declaración de aplicabilidad de los 93 controles del Anexo A de
+            ISO/IEC 27002:2022, con estado y madurez de cada implementación.
+            Documento obligatorio para certificación ISO/IEC 27001.
           </p>
           <button class="btn btn-primary" id="btn-soa">Descargar PDF</button>
         </div>

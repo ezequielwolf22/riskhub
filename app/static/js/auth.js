@@ -1,4 +1,4 @@
-/* Gestion de sesion (token + usuario actual). */
+﻿/* Gestión de sesión (token + usuario actual). */
 const Auth = {
   user() {
     try { return JSON.parse(localStorage.getItem('riskhub_user') || 'null'); }

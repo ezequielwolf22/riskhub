@@ -1,9 +1,9 @@
-﻿/* Vista Amenazas - catalogo ISO 27005 Annex C. */
+﻿/* Vista Amenazas - catálogo ISO 27005 Annex C. */
 const ViewThreats = {
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
-      'Catalogo de amenazas',
+      'Catálogo de amenazas',
       'ISO/IEC 27005:2018 Annex C + amenazas personalizadas',
       canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nueva amenaza</button>' : ''
     ) + `
@@ -77,7 +77,7 @@ const ViewThreats = {
         </select>
       </div>
       <div class="span2"><label>Nombre *</label><input id="f-name"></div>
-      <div class="span2"><label>Descripcion</label><textarea id="f-desc" rows="2"></textarea></div>
+      <div class="span2"><label>Descripción</label><textarea id="f-desc" rows="2"></textarea></div>
       <div><label>Categoria</label><input id="f-cat" placeholder="Compromise of information"></div>
       <div><label>Afecta a (separado por coma)</label><input id="f-affects" placeholder="C, I, A"></div>
     `, {

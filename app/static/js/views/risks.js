@@ -1,4 +1,4 @@
-﻿/* Vista Riesgos - identificacion, analisis, evaluacion, tratamiento. */
+﻿/* Vista Riesgos - identificación, analisis, evaluación, tratamiento. */
 const ViewRisks = {
   _assets: [], _threats: [], _vulns: [], _impls: [],
 
@@ -6,7 +6,7 @@ const ViewRisks = {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
       'Registro de riesgos',
-      'ISO/IEC 27005:2018 cl. 8-9 - identificacion, analisis, tratamiento',
+      'ISO/IEC 27005:2018 cl. 8-9 - identificación, analisis, tratamiento',
       canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nuevo riesgo</button>' : ''
     ) + `
       <div class="toolbar">
@@ -32,7 +32,7 @@ const ViewRisks = {
     document.getElementById('r-status').onchange = () => ViewRisks._reload();
     document.getElementById('r-band').onchange = () => ViewRisks._reload();
 
-    // Precargar catalogos en memoria
+    // Precargar catálogos en memoria
     await ViewRisks._loadCatalogs();
     await ViewRisks._reload();
 
@@ -131,7 +131,7 @@ const ViewRisks = {
 
     UI.modal(id ? `${r.code} - ${r.asset?.name || ''}` : 'Nuevo riesgo', `
       <div class="span2 notice">
-        Riesgo = combinacion de un Activo y una Amenaza. El nivel se calcula como
+        Riesgo = combinación de un Activo y una Amenaza. El nivel se calcula como
         Consecuencia x Probabilidad (matriz 5x5 ISO 27005 Annex E.2).
       </div>
       <div>
@@ -147,7 +147,7 @@ const ViewRisks = {
         </select>
       </div>
       <div class="span2">
-        <label>Descripcion del escenario</label>
+        <label>Descripción del escenario</label>
         <textarea id="f-desc" rows="2">${UI.esc(r.description||'')}</textarea>
       </div>
       <div class="span2">
@@ -163,13 +163,13 @@ const ViewRisks = {
         <input type="number" min="0" max="4" id="f-ic" value="${r.inherent_consequence}">
       </div>
       <div class="span2">
-        <label>Vulnerabilidades asociadas (multi-seleccion)</label>
+        <label>Vulnerabilidades asociadas (multi-selección)</label>
         <select id="f-vulns" multiple size="5" style="height:auto;">
           ${ViewRisks._vulns.map(v => `<option value="${v.id}" ${r.vulnerability_ids?.includes(v.id)?'selected':''}>${UI.esc(v.code)} - ${UI.esc(v.name)}</option>`).join('')}
         </select>
       </div>
       <div class="span2">
-        <label>Controles implementados que mitigan (multi-seleccion)</label>
+        <label>Controles implementados que mitigan (multi-selección)</label>
         <select id="f-impls" multiple size="5" style="height:auto;">
           ${ViewRisks._impls.map(c => `<option value="${c.id}" ${r.control_implementation_ids?.includes(c.id)?'selected':''}>${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`).join('')}
         </select>
@@ -194,7 +194,7 @@ const ViewRisks = {
         <textarea id="f-plan" rows="2">${UI.esc(r.treatment_plan||'')}</textarea>
       </div>
       <div class="span2">
-        <label>Justificacion de aceptacion (si aplica)</label>
+        <label>Justificación de aceptación (si aplica)</label>
         <textarea id="f-just" rows="2">${UI.esc(r.acceptance_justification||'')}</textarea>
       </div>
       ${id ? `
