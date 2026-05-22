@@ -12,6 +12,7 @@ services:
       - RISKHUB_ADMIN_PASSWORD=${RISKHUB_ADMIN_PASSWORD:?Define RISKHUB_ADMIN_PASSWORD en .env}
       - RISKHUB_DB_PATH=/srv/data/riskhub.db
       - RISKHUB_ENV=production
+      - RISKHUB_ANTHROPIC_API_KEY=${RISKHUB_ANTHROPIC_API_KEY:-}
     volumes:
       - riskhub-data:/srv/data
     networks:
