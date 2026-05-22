@@ -60,8 +60,10 @@ if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets" if (STATIC_DIR / "assets").exists() else STATIC_DIR), name="assets")
     app.mount("/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
     app.mount("/js", StaticFiles(directory=STATIC_DIR / "js"), name="js")
-    app.mount("/img", StaticFiles(directory=STATIC_DIR / "img"), name="img") if (STATIC_DIR / "img").exists() else None
-    app.mount("/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
+    if (STATIC_DIR / "img").exists():
+        app.mount("/img", StaticFiles(directory=STATIC_DIR / "img"), name="img")
+    if (STATIC_DIR / "vendor").exists():
+        app.mount("/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
 
     @app.get("/")
     def index():
