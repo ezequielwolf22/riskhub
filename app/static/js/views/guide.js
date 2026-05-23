@@ -502,6 +502,16 @@ const ViewGuide = {
     ${this._h('Cambio de contrasena (todos los roles)')}
     ${this._p('Cualquier usuario autenticado puede cambiar su propia contrasena. Haz clic en el <strong>chip de usuario</strong> (esquina superior derecha, con tu nombre y rol) para abrir el formulario de cambio de contrasena. Se requiere introducir la contrasena actual para confirmar la identidad.')}
     ${this._tip('<strong>Seguridad:</strong> Cambia tu contrasena regularmente y usa una combinacion de letras, numeros y simbolos. La nueva contrasena debe tener al menos 8 caracteres.')}
+    ${this._h('Copia de seguridad de la base de datos')}
+    ${this._p('La seccion <strong>Usuarios</strong> incluye un panel de <em>Informacion del sistema</em> visible solo para administradores. Desde ahi puedes descargar una copia de la base de datos SQLite con un solo clic.')}
+    ${this._steps([
+      'Ve al menu <strong>Usuarios</strong>.',
+      'Desplazate hasta el panel <em>Informacion del sistema</em>, al final de la pagina.',
+      'Haz clic en <strong>Descargar backup DB</strong>.',
+      'Se descarga un archivo <code>.db</code> con la fecha y hora actuales en el nombre.',
+      'Guarda el archivo en un lugar seguro fuera del servidor.',
+    ])}
+    ${this._tip('El panel tambien muestra la version de RiskHub, el motor de base de datos, el tamano del archivo y un resumen del numero de entidades registradas. El evento de descarga queda registrado en el log de auditoria.')}
     ${this._h('Log de auditoria')}
     ${this._p('Ve al menu <strong>Auditoria</strong> para consultar el registro completo de operaciones. Cada accion sobre riesgos, activos, controles y usuarios queda anotada con timestamp, usuario responsable y detalle. Consulta la seccion <em>Log de Auditoria</em> de esta guia para mas informacion.')}
     ${this._h('Roles y permisos detallados')}
@@ -521,6 +531,7 @@ const ViewGuide = {
           ['Configurar SMTP','1','0','0'],
           ['Crear reglas de alerta','1','1','0'],
           ['Gestionar usuarios','1','0','0'],
+          ['Descargar backup de la BD','1','0','0'],
           ['Consultar log de auditoria','1','0','0'],
         ].map((r, i) => '<tr '+(i%2?'style="background:var(--bg-2);"':'')+'>'+
           '<td style="padding:8px 12px;">'+r[0]+'</td>'+
@@ -535,7 +546,7 @@ const ViewGuide = {
       <li>Cambia la contrasena del admin inicial en el primer acceso.</li>
       <li>Genera un RISKHUB_SECRET_KEY fuerte (minimo 64 caracteres aleatorios).</li>
       <li>No expongas el puerto de RiskHub directamente a internet. Usa un proxy inverso (nginx) con HTTPS.</li>
-      <li>Realiza copias de seguridad periodicas del volumen Docker <code>riskhub-data</code>.</li>
+      <li>Realiza copias de seguridad periodicas usando el boton <em>Descargar backup DB</em> o volcando el volumen Docker <code>riskhub-data</code>.</li>
       <li>Revisa los logs del contenedor: <code>docker logs riskhub</code>.</li>
     </ul>
     ${this._h('Actualizacion de RiskHub')}

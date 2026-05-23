@@ -3,16 +3,17 @@ const ViewUsers = {
   async render(main) {
     if (!Auth.isAdmin()) {
       main.innerHTML = UI.sectionHeader('Acceso restringido', 'Solo administradores');
-      main.innerHTML += UI.notice('Esta sección requiere rol de administrador.', 'warn');
+      main.innerHTML += UI.notice('Esta seccion requiere rol de administrador.', 'warn');
       return;
     }
     main.innerHTML = UI.sectionHeader(
       'Usuarios',
       'Cuentas con acceso a RiskHub',
       '<button class="btn btn-primary" id="btn-new">+ Nuevo usuario</button>'
-    ) + '<div id="u-list"></div>';
+    ) + '<div id="u-list"></div><div id="u-sysinfo"></div>';
     document.getElementById('btn-new').onclick = () => ViewUsers._edit();
     ViewUsers._reload();
+    ViewUsers._loadSysInfo();
   },
 
   async _reload() {
@@ -101,5 +102,58 @@ const ViewUsers = {
         UI.closeModal(); UI.toast('Guardado','success'); ViewUsers._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
+  },
+
+  async _loadSysInfo() {
+    const panel = document.getElementById('u-sysinfo');
+    if (!panel) return;
+    try {
+      const s = await Api.admin.systemInfo();
+      const dbSize = s.db_size_bytes != null
+        ? (s.db_size_bytes < 1024 * 1024
+            ? (s.db_size_bytes / 1024).toFixed(1) + ' KB'
+            : (s.db_size_bytes / 1024 / 1024).toFixed(2) + ' MB')
+        : 'N/A';
+      panel.innerHTML = `
+        <div class="card" style="margin-top:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <h3 style="margin:0;">Informacion del sistema</h3>
+            <button class="btn btn-ghost" id="btn-backup" title="Descargar copia de seguridad de la base de datos">
+              Descargar backup DB
+            </button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
+            ${ViewUsers._infoChip('Version', s.version)}
+            ${ViewUsers._infoChip('Entorno', s.env)}
+            ${ViewUsers._infoChip('Motor BD', s.db_engine.toUpperCase())}
+            ${ViewUsers._infoChip('Tamano BD', dbSize)}
+            ${ViewUsers._infoChip('Usuarios', s.total_users)}
+            ${ViewUsers._infoChip('Activos', s.total_assets)}
+            ${ViewUsers._infoChip('Riesgos', s.total_risks)}
+            ${ViewUsers._infoChip('Controles', s.total_controls)}
+          </div>
+        </div>`;
+      document.getElementById('btn-backup').onclick = async () => {
+        const btn = document.getElementById('btn-backup');
+        btn.disabled = true; btn.textContent = 'Descargando...';
+        try {
+          await Api.admin.backupDb();
+          UI.toast('Backup descargado correctamente', 'success');
+        } catch (e) {
+          UI.toast('Error al descargar backup: ' + e.message, 'error');
+        } finally {
+          btn.disabled = false; btn.textContent = 'Descargar backup DB';
+        }
+      };
+    } catch (e) {
+      panel.innerHTML = `<div class="notice" style="margin-top:16px;">No se pudo cargar la informacion del sistema: ${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _infoChip(label, value) {
+    return `<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;">
+      <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">${UI.esc(String(label))}</div>
+      <div style="font-weight:600;font-size:15px;">${UI.esc(String(value))}</div>
+    </div>`;
   },
 };

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.config import settings
 from app.routers import (
-    ai, alerts, assets, audit, auth, catalogues, context, controls, reports, risks, users,
+    admin, ai, alerts, assets, audit, auth, catalogues, context, controls, reports, risks, users,
 )
 from app.seed import init_db
 
@@ -45,6 +45,7 @@ def health():
 # Routers REST
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(admin.router)
 app.include_router(context.router)
 app.include_router(assets.router)
 app.include_router(catalogues.threats_router)
