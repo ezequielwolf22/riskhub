@@ -1,9 +1,15 @@
 ﻿/* Vista Riesgos - identificación, analisis, evaluación, tratamiento. */
 const ViewRisks = {
   _assets: [], _threats: [], _vulns: [], _impls: [],
+  _assetFilter: null, // { id, name } cuando se filtra por activo desde la vista de activos
 
   async render(main) {
     const canEdit = Auth.canEdit();
+
+    // Leer asset_id de la URL si viene de la vista de activos
+    const assetMatch = location.hash.match(/[?&]asset_id=(\d+)/);
+    ViewRisks._assetFilter = null;
+
     main.innerHTML = UI.sectionHeader(
       'Registro de riesgos',
       'ISO/IEC 27005:2018 cl. 8-9 — identificación, análisis, tratamiento',
@@ -25,6 +31,7 @@ const ViewRisks = {
           <option value="3">Medios y altos (3+)</option>
         </select>
       </div>
+      <div id="r-asset-filter" style="display:none;margin-bottom:8px;"></div>
       <div id="r-list"></div>
     `;
     if (canEdit) document.getElementById('btn-new').onclick = () => ViewRisks._edit();
@@ -34,11 +41,36 @@ const ViewRisks = {
 
     // Precargar catálogos en memoria
     await ViewRisks._loadCatalogs();
+
+    // Aplicar filtro de activo si viene de URL
+    if (assetMatch) {
+      const assetId = parseInt(assetMatch[1]);
+      const asset = ViewRisks._assets.find(a => a.id === assetId);
+      if (asset) {
+        ViewRisks._assetFilter = { id: assetId, name: asset.name };
+        const filterDiv = document.getElementById('r-asset-filter');
+        filterDiv.style.display = 'block';
+        filterDiv.innerHTML = `<div style="background:var(--brand-purple-4);border-left:3px solid var(--brand-purple);
+                                            border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
+                                            display:flex;justify-content:space-between;align-items:center;">
+          <span>Mostrando riesgos del activo: <strong>${UI.esc(asset.name)}</strong></span>
+          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+        </div>`;
+      }
+    }
+
     await ViewRisks._reload();
 
     // Atajo desde heatmap: ?id=X
     const m = location.hash.match(/[?&]id=(\d+)/);
     if (m) ViewRisks._edit(parseInt(m[1]));
+  },
+
+  _clearAssetFilter() {
+    ViewRisks._assetFilter = null;
+    document.getElementById('r-asset-filter').style.display = 'none';
+    location.hash = '#/risks';
+    ViewRisks._reload();
   },
 
   async _loadCatalogs() {
@@ -64,6 +96,7 @@ const ViewRisks = {
       const params = {};
       if (status) params.status = status;
       if (band) params.min_level = band;
+      if (ViewRisks._assetFilter) params.asset_id = ViewRisks._assetFilter.id;
       let data = await Api.risks.list(params);
       if (search) {
         data = data.filter(r =>

@@ -98,7 +98,11 @@ const ViewAssets = {
               <td>${a.value_accountability}</td>
               <td>${UI.riskPill(a.value_max * 2)}</td>
               <td>${UI.esc(a.category || '-')}</td>
-              <td>${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}</td>
+              <td style="white-space:nowrap;">
+                <button class="btn btn-sm btn-ghost" style="margin-right:4px;"
+                  onclick="location.hash='#/risks?asset_id=${a.id}'">Riesgos</button>
+                ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}
+              </td>
             </tr>`).join('')}
         </tbody>
       </table></div>`;
