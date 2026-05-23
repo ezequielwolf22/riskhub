@@ -47,7 +47,9 @@ def list_risks(
     asset_id: Optional[int] = None,
     status: Optional[RiskStatus] = None,
     min_level: Optional[int] = Query(None, ge=0, le=8),
+    overdue: Optional[bool] = None,
 ):
+    now = datetime.now(timezone.utc)
     q = db.query(Risk)
     if asset_id:
         q = q.filter(Risk.asset_id == asset_id)
@@ -55,6 +57,13 @@ def list_risks(
         q = q.filter(Risk.status == status)
     if min_level is not None:
         q = q.filter(Risk.residual_level >= min_level)
+    if overdue:
+        active = [RiskStatus.IDENTIFIED, RiskStatus.ASSESSED]
+        q = q.filter(
+            Risk.status.in_(active),
+            Risk.treatment_due_date.isnot(None),
+            Risk.treatment_due_date < now,
+        )
     return q.order_by(Risk.residual_level.desc(), Risk.code).all()
 
 

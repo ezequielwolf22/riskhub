@@ -32,10 +32,11 @@ const ViewDashboard = {
         </div>
 
         <div class="card-row" style="margin-bottom:20px;">
-          <div class="kpi" style="${s.overdue_treatments > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}">
+          <div class="kpi" style="cursor:pointer;${s.overdue_treatments > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
+               onclick="location.hash='#/risks?overdue=1'" title="Ver riesgos con tratamiento vencido">
             <div class="label">Tratamientos vencidos</div>
             <div class="value" style="${s.overdue_treatments > 0 ? 'color:#991B1B;' : ''}">${s.overdue_treatments}</div>
-            <div class="hint">con fecha limite superada</div>
+            <div class="hint">clic para ver detalle</div>
           </div>
           <div class="kpi" style="${s.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}">
             <div class="label">Altos sin plan definido</div>

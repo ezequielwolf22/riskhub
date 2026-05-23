@@ -100,6 +100,7 @@ const Api = {
   },
   risks: {
     list: (q) => Api.get('/api/risks/', q),
+    listOverdue: () => Api.get('/api/risks/', { overdue: true }),
     get: (id) => Api.get('/api/risks/' + id),
     create: (d) => Api.post('/api/risks/', d),
     update: (id, d) => Api.patch('/api/risks/' + id, d),

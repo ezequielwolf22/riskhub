@@ -6,8 +6,9 @@ const ViewRisks = {
   async render(main) {
     const canEdit = Auth.canEdit();
 
-    // Leer asset_id de la URL si viene de la vista de activos
+    // Leer parametros de URL
     const assetMatch = location.hash.match(/[?&]asset_id=(\d+)/);
+    const overdueParam = /[?&]overdue=1/.test(location.hash);
     ViewRisks._assetFilter = null;
 
     main.innerHTML = UI.sectionHeader(
@@ -30,6 +31,9 @@ const ViewRisks = {
           <option value="6">Solo altos (6+)</option>
           <option value="3">Medios y altos (3+)</option>
         </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
+          <input type="checkbox" id="r-overdue"> Solo vencidos
+        </label>
       </div>
       <div id="r-asset-filter" style="display:none;margin-bottom:8px;"></div>
       <div id="r-list"></div>
@@ -38,6 +42,7 @@ const ViewRisks = {
     document.getElementById('r-search').oninput = () => ViewRisks._reload();
     document.getElementById('r-status').onchange = () => ViewRisks._reload();
     document.getElementById('r-band').onchange = () => ViewRisks._reload();
+    document.getElementById('r-overdue').onchange = () => ViewRisks._reload();
 
     // Precargar catálogos en memoria
     await ViewRisks._loadCatalogs();
@@ -57,6 +62,12 @@ const ViewRisks = {
           <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
         </div>`;
       }
+    }
+
+    // Pre-marcar checkbox de vencidos si viene de la URL
+    if (overdueParam) {
+      const cb = document.getElementById('r-overdue');
+      if (cb) cb.checked = true;
     }
 
     await ViewRisks._reload();
@@ -93,10 +104,12 @@ const ViewRisks = {
     const list = document.getElementById('r-list');
     list.innerHTML = '<div class="notice">Cargando...</div>';
     try {
+      const overdue = document.getElementById('r-overdue')?.checked;
       const params = {};
       if (status) params.status = status;
       if (band) params.min_level = band;
       if (ViewRisks._assetFilter) params.asset_id = ViewRisks._assetFilter.id;
+      if (overdue) params.overdue = true;
       let data = await Api.risks.list(params);
       if (search) {
         data = data.filter(r =>
