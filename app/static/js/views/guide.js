@@ -211,6 +211,8 @@ const ViewGuide = {
     ${this._tip('<strong>Consejo:</strong> Empieza importando los activos críticos (aquellos que, si fallan, impactan directamente al negocio). Luego añade los de soporte. Usa el campo "proceso de negocio" para agrupar activos por área funcional.')}
     ${this._h('Jerarquia de activos')}
     ${this._p('Puedes definir un activo padre para cada activo. Esto es útil para representar dependencias: un proceso de negocio depende de varias aplicaciones, que a su vez dependen de servidores. La jerarquía ayuda a entender la propagación del impacto.')}
+    ${this._h('Ver riesgos de un activo')}
+    ${this._p('En la tabla de activos, cada fila incluye un boton <strong>Riesgos</strong> que filtra automáticamente la vista de Riesgos para mostrar solo los escenarios asociados a ese activo. Un banner contextual indica el filtro activo y permite eliminarlo con un clic.')}
   `;},
 
   get _cThreats() { return `
@@ -288,7 +290,9 @@ const ViewGuide = {
     ${this._h('Estados del riesgo')}
     ${this._p('Identified → Assessed → Treated → Accepted → Closed. El flujo asegura que todos los riesgos siguen el proceso completo antes de cerrarse.')}
     ${this._h('Heatmap de riesgos')}
-    ${this._p('El Heatmap (menú Heatmap) visualiza todos los riesgos en la matriz 5×5 de probabilidad × impacto, diferenciando el nivel inherente del residual. Es el artefacto principal para la comunicación a dirección.')}
+    ${this._p('El Heatmap (menú Heatmap) visualiza todos los riesgos en la matriz 5×5 de probabilidad × impacto, diferenciando el nivel inherente del residual. Es el artefacto principal para la comunicación a dirección. Haz clic en cualquier celda del heatmap para ver la lista de riesgos en esa posicion.')}
+    ${this._h('Historial de cambios de un riesgo')}
+    ${this._p('Al abrir un riesgo existente, al final del formulario aparece la sección <strong>Historial de cambios</strong>. Haz clic para expandirla y ver todas las modificaciones realizadas sobre ese riesgo: timestamp, usuario responsable, acción (crear/actualizar/eliminar) y campos modificados. Útil para auditorías y para justificar decisiones ante comités de seguridad.')}
   `;},
 
   get _cControls() { return `
