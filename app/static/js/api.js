@@ -71,10 +71,20 @@ const Api = {
   threats: {
     list: (q) => Api.get('/api/threats/', q),
     create: (d) => Api.post('/api/threats/', d),
+    update: (id, d) => Api.put('/api/threats/' + id, d),
+    del: (id) => Api.del('/api/threats/' + id),
   },
   vulns: {
     list: (q) => Api.get('/api/vulnerabilities/', q),
     create: (d) => Api.post('/api/vulnerabilities/', d),
+    update: (id, d) => Api.put('/api/vulnerabilities/' + id, d),
+    del: (id) => Api.del('/api/vulnerabilities/' + id),
+  },
+  audit: {
+    list: (q) => Api.get('/api/audit/', q),
+    entityTypes: () => Api.get('/api/audit/entity-types'),
+    actions: () => Api.get('/api/audit/actions'),
+    exportCsv: () => Api.download('/api/audit/export/csv', 'audit_log.csv'),
   },
   controls: {
     list: (q) => Api.get('/api/controls/', q),
@@ -104,5 +114,18 @@ const Api = {
   reports: {
     riskRegister: () => Api.download('/api/reports/risk-register', 'risk_register.pdf'),
     soa: () => Api.download('/api/reports/soa', 'statement_of_applicability.pdf'),
+    riskRegisterExcel: () => Api.download('/api/reports/risk-register-excel', 'risk_register.xlsx'),
+    aiGenerate: (d) => Api.post('/api/reports/ai-generate', d),
+  },
+  alerts: {
+    getSettings: () => Api.get('/api/alerts/settings'),
+    saveSettings: (d) => Api.put('/api/alerts/settings', d),
+    test: () => Api.post('/api/alerts/test', {}),
+    rules: () => Api.get('/api/alerts/rules'),
+    createRule: (d) => Api.post('/api/alerts/rules', d),
+    deleteRule: (id) => Api.del('/api/alerts/rules/' + id),
+    toggleRule: (id) => Api.patch('/api/alerts/rules/' + id + '/toggle', {}),
+    checkRules: () => Api.post('/api/alerts/check-rules', {}),
+    sendRisk: (id, d) => Api.post('/api/alerts/send-risk/' + id, d),
   },
 };

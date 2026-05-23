@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import AlertRule, EmailSettings, Risk, UserRole
 from app.security import get_current_user
 from app.services import email_service
+from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
@@ -91,6 +92,8 @@ def save_settings(body: EmailSettingsIn, db: Session = Depends(get_db),
         cfg.smtp_password = body.smtp_password
     cfg.smtp_from = body.smtp_from
     cfg.smtp_use_tls = body.smtp_use_tls
+    log_action(db, current_user.id, "update", "email_settings", "1",
+               {"smtp_host": cfg.smtp_host, "smtp_user": cfg.smtp_user})
     db.commit()
     db.refresh(cfg)
     return EmailSettingsOut(
@@ -146,6 +149,9 @@ def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
         raise HTTPException(422, f"event_type debe ser uno de: {', '.join(valid_types)}")
     rule = AlertRule(**body.model_dump())
     db.add(rule)
+    log_action(db, current_user.id, "create", "alert_rule", None,
+               {"name": body.name, "event_type": body.event_type,
+                "recipient": body.recipient_email})
     db.commit()
     db.refresh(rule)
     return AlertRuleOut(
@@ -164,6 +170,8 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db),
     rule = db.get(AlertRule, rule_id)
     if not rule:
         raise HTTPException(404, "Regla no encontrada")
+    log_action(db, current_user.id, "delete", "alert_rule", str(rule_id),
+               {"name": rule.name, "event_type": rule.event_type})
     db.delete(rule)
     db.commit()
 
@@ -177,6 +185,8 @@ def toggle_rule(rule_id: int, db: Session = Depends(get_db),
     if not rule:
         raise HTTPException(404, "Regla no encontrada")
     rule.is_active = not rule.is_active
+    log_action(db, current_user.id, "update", "alert_rule", str(rule_id),
+               {"name": rule.name, "is_active": rule.is_active})
     db.commit()
     db.refresh(rule)
     return AlertRuleOut(

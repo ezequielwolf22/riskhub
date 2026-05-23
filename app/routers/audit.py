@@ -1,8 +1,11 @@
 """Consulta del log de auditoria (solo administradores)."""
+import csv
+import io
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -87,3 +90,42 @@ def actions(
     """Devuelve las acciones distintas registradas en el log."""
     acts = db.query(AuditLog.action).distinct().all()
     return sorted([a[0] for a in acts])
+
+
+@router.get("/export/csv")
+def export_csv(
+    entity_type: Optional[str] = None,
+    action: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: object = Depends(_require_admin),
+):
+    """Exporta el log completo (o filtrado) a CSV."""
+    q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
+    if entity_type:
+        q = q.filter(AuditLog.entity_type == entity_type)
+    if action:
+        q = q.filter(AuditLog.action == action)
+    entries = q.all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["id", "timestamp", "user_email", "user_name",
+                     "action", "entity_type", "entity_id", "detail"])
+    for e in entries:
+        writer.writerow([
+            e.id,
+            e.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            e.user.email if e.user else "",
+            e.user.full_name if e.user else "",
+            e.action,
+            e.entity_type,
+            e.entity_id or "",
+            str(e.detail or {}),
+        ])
+
+    fname = f"audit_log_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )

@@ -231,7 +231,15 @@ const ViewGuide = {
       'Ve al menú Amenazas o Vulnerabilidades.',
       'Haz clic en "Nueva amenaza" / "Nueva vulnerabilidad".',
       'Completa el formulario: código personalizado, nombre, descripción, categoría, origen.',
-      'Las amenazas y vulnerabilidades personalizadas se marcan como is_custom=true para diferenciarlas del catálogo estándar.',
+      'Las entradas personalizadas se marcan con la etiqueta <strong>Custom</strong> en la tabla para diferenciarlas del catálogo ISO estándar.',
+    ])}
+    ${this._h('Edicion y eliminacion de entradas personalizadas')}
+    ${this._p('Los usuarios con rol <strong>analyst</strong> o <strong>admin</strong> pueden editar o eliminar las entradas personalizadas. Las entradas del catálogo ISO oficial (marcadas <strong>ISO</strong>) son de solo lectura y no se pueden modificar ni borrar.')}
+    ${this._steps([
+      'En la tabla de amenazas o vulnerabilidades, localiza la entrada personalizada (etiqueta <strong>Custom</strong>).',
+      'Haz clic en <strong>Editar</strong> para modificar cualquier campo del formulario.',
+      'Haz clic en <strong>Eliminar</strong> para borrar la entrada. Se pedirá confirmación.',
+      'Todas las operaciones quedan registradas en el <strong>Log de Auditoría</strong>.',
     ])}
     ${this._tip('<strong>Tip:</strong> Antes de crear una amenaza personalizada, busca en el catálogo ISO 27005 precargado. Es probable que ya exista una amenaza equivalente. Las amenazas personalizadas son útiles para sectores específicos (ej. amenazas de salud, aviación, energía).')}
   `;},
@@ -430,7 +438,8 @@ const ViewGuide = {
         ['Activos','Creación, modificación y eliminación de activos con tipo y código.'],
         ['Controles','Altas, actualizaciones y bajas de implementaciones de controles.'],
         ['Usuarios','Creación, modificación de rol/estado y eliminación de cuentas.'],
-        ['Operaciones futuras','La infraestructura es extensible a cualquier router del sistema.'],
+        ['Catálogos','Amenazas y vulnerabilidades personalizadas: creación, edición y eliminación.'],
+        ['Configuración','Cambios en contexto organizacional, SMTP y reglas de alerta.'],
       ].map(([t, d]) => `
         <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
           <div style="font-weight:600;margin-bottom:4px;color:var(--brand-purple);">${t}</div>
@@ -460,8 +469,9 @@ const ViewGuide = {
     ${this._h('Como consultar el log')}
     ${this._steps([
       'Accede al menú <strong>Auditoría</strong> en la barra lateral (visible solo para admin).',
-      'Usa el filtro <strong>Tipo de entidad</strong> para ver solo riesgos, activos, controles o usuarios.',
-      'Usa el filtro <strong>Acción</strong> para ver solo creaciones, modificaciones o eliminaciones.',
+      'Usa el filtro <strong>Tipo de entidad</strong> para ver riesgos, activos, controles, usuarios, amenazas, vulnerabilidades, configuración SMTP o reglas de alerta.',
+      'Usa el filtro <strong>Acción</strong> para ver solo creaciones, modificaciones, eliminaciones o inicios de sesión.',
+      'Haz clic en <strong>Exportar CSV</strong> para descargar el log completo (con los filtros activos) en formato CSV para análisis externo.',
       'Los resultados se muestran de más reciente a más antiguo, 100 entradas por página.',
       'Usa los botones Anterior/Siguiente para navegar entre páginas de resultados.',
     ])}

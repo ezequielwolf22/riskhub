@@ -29,7 +29,13 @@ const ViewAudit = {
               <option value="risk">Riesgo</option>
               <option value="asset">Activo</option>
               <option value="control">Control</option>
+              <option value="control_impl">Control impl.</option>
               <option value="user">Usuario</option>
+              <option value="threat">Amenaza</option>
+              <option value="vulnerability">Vulnerabilidad</option>
+              <option value="context">Contexto</option>
+              <option value="alert_rule">Regla de alerta</option>
+              <option value="email_settings">Config. SMTP</option>
             </select>
           </div>
           <div style="flex:1;min-width:160px;">
@@ -46,6 +52,10 @@ const ViewAudit = {
           </div>
           <button class="btn btn-primary" onclick="ViewAudit._search()">Filtrar</button>
           <button class="btn" onclick="ViewAudit._reset()">Limpiar</button>
+          <button class="btn" onclick="ViewAudit._exportCsv()"
+            style="margin-left:auto;" title="Descargar log completo (filtrado) en CSV">
+            Exportar CSV
+          </button>
         </div>
       </div>
       <div id="audit-content"></div>
@@ -88,12 +98,30 @@ const ViewAudit = {
     if (this._filterAction) params.action = this._filterAction;
 
     try {
-      const data = await Api.get('/api/audit/', params);
+      const data = await Api.audit.list(params);
       this._total = data.total;
       this._render(c, data);
     } catch (e) {
       c.innerHTML = UI.notice('Error al cargar el log: ' + UI.esc(e.message), 'warn');
     }
+  },
+
+  async _exportCsv() {
+    try {
+      const q = {};
+      if (this._filterEntity) q.entity_type = this._filterEntity;
+      if (this._filterAction) q.action = this._filterAction;
+      const url = '/api/audit/export/csv' + (Object.keys(q).length ? '?' + new URLSearchParams(q) : '');
+      const tok = localStorage.getItem('riskhub_token');
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
+      if (!r.ok) throw new Error('Error al exportar');
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'audit_log.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { UI.toast(e.message, 'error'); }
   },
 
   _render(container, data) {
@@ -122,7 +150,13 @@ const ViewAudit = {
       risk: 'Riesgo',
       asset: 'Activo',
       control: 'Control',
+      control_impl: 'Control impl.',
       user: 'Usuario',
+      threat: 'Amenaza',
+      vulnerability: 'Vulnerabilidad',
+      context: 'Contexto',
+      alert_rule: 'Regla alerta',
+      email_settings: 'Config. SMTP',
     })[t] || t;
 
     if (items.length === 0) {
