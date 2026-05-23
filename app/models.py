@@ -322,3 +322,33 @@ class QuestionnaireResponse(Base):
     questionnaire = relationship("Questionnaire")
     asset = relationship("Asset")
     respondent = relationship("User")
+
+
+# ---------- ALERTAS Y EMAIL ----------
+
+class EmailSettings(Base):
+    """Configuracion SMTP para envio de alertas por correo."""
+    __tablename__ = "email_settings"
+    id = Column(Integer, primary_key=True)
+    smtp_host = Column(String(255), default="")
+    smtp_port = Column(Integer, default=587)
+    smtp_user = Column(String(255), default="")
+    smtp_password = Column(String(255), default="")
+    smtp_from = Column(String(255), default="")
+    smtp_use_tls = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AlertRule(Base):
+    """Regla de alerta: cuando se cumple el criterio, envia email al destinatario."""
+    __tablename__ = "alert_rules"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    # Tipos: risk_high, risk_critical, treatment_overdue, risk_no_treatment
+    event_type = Column(String(64), nullable=False)
+    recipient_email = Column(String(255), nullable=False)
+    threshold_level = Column(Integer, default=5)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_triggered_at = Column(DateTime, nullable=True)

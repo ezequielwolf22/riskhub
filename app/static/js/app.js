@@ -10,6 +10,9 @@ const Routes = {
   risks: ViewRisks,
   controls: ViewControls,
   reports: ViewReports,
+  alerts: ViewAlerts,
+  integrations: ViewIntegrations,
+  guide: ViewGuide,
   context: ViewContext,
   users: ViewUsers,
 };
