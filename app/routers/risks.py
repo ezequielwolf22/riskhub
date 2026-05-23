@@ -12,6 +12,7 @@ from app.models import (
 )
 from app.schemas import RiskIn, RiskOut, RiskUpdate
 from app.security import get_current_user, require_analyst
+from app.services.audit_service import log_action
 from app.services.risk_engine import calc_level, calc_residual
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
@@ -66,9 +67,9 @@ def get_risk(risk_id: int, db: Session = Depends(get_db),
     return r
 
 
-@router.post("/", response_model=RiskOut, status_code=201,
-             dependencies=[Depends(require_analyst)])
-def create_risk(data: RiskIn, db: Session = Depends(get_db)):
+@router.post("/", response_model=RiskOut, status_code=201)
+def create_risk(data: RiskIn, db: Session = Depends(get_db),
+                current_user: User = Depends(require_analyst)):
     if not db.get(Asset, data.asset_id):
         raise HTTPException(400, "asset_id no existe")
     if not db.get(Threat, data.threat_id):
@@ -98,14 +99,16 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db)):
         r.controls = db.query(ControlImplementation).filter(
             ControlImplementation.id.in_(data.control_implementation_ids)).all()
     _recalc(db, r)
-    db.add(r); db.commit(); db.refresh(r)
+    db.add(r)
+    log_action(db, current_user.id, "create", "risk", None,
+               {"asset_id": data.asset_id, "threat_id": data.threat_id})
+    db.commit(); db.refresh(r)
     return r
 
 
-@router.patch("/{risk_id}", response_model=RiskOut,
-              dependencies=[Depends(require_analyst)])
+@router.patch("/{risk_id}", response_model=RiskOut)
 def update_risk(risk_id: int, data: RiskUpdate, db: Session = Depends(get_db),
-                user: User = Depends(get_current_user)):
+                user: User = Depends(require_analyst)):
     r = db.get(Risk, risk_id)
     if not r:
         raise HTTPException(404, "Riesgo no encontrado")
@@ -128,17 +131,22 @@ def update_risk(risk_id: int, data: RiskUpdate, db: Session = Depends(get_db),
     for k, v in update_data.items():
         setattr(r, k, v)
     _recalc(db, r)
+    log_action(db, user.id, "update", "risk", str(risk_id),
+               {"code": r.code, "status": str(r.status), "residual_level": r.residual_level})
     db.commit(); db.refresh(r)
     return r
 
 
-@router.delete("/{risk_id}", status_code=204,
-               dependencies=[Depends(require_analyst)])
-def delete_risk(risk_id: int, db: Session = Depends(get_db)):
+@router.delete("/{risk_id}", status_code=204)
+def delete_risk(risk_id: int, db: Session = Depends(get_db),
+                current_user: User = Depends(require_analyst)):
     r = db.get(Risk, risk_id)
     if not r:
         raise HTTPException(404, "Riesgo no encontrado")
-    db.delete(r); db.commit()
+    code = r.code
+    db.delete(r)
+    log_action(db, current_user.id, "delete", "risk", str(risk_id), {"code": code})
+    db.commit()
 
 
 @router.get("/heatmap/data")

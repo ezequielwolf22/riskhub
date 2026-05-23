@@ -61,7 +61,7 @@ const ViewAlerts = {
           <div><label>Usuario SMTP</label>
             <input id="smtp-user" type="text" value="${UI.esc(s.smtp_user || '')}"
                    placeholder="noreply@company.com" style="width:100%;"></div>
-          <div><label>Contrasena SMTP</label>
+          <div><label>Contraseña SMTP</label>
             <input id="smtp-pass" type="password" placeholder="Dejar vacio para no cambiar" style="width:100%;"></div>
           <div><label>Remitente (From)</label>
             <input id="smtp-from" type="email" value="${UI.esc(s.smtp_from || '')}"
@@ -132,7 +132,7 @@ const ViewAlerts = {
   _ruleRow(r) {
     const eventLabels = {
       risk_high: 'Riesgo alto',
-      risk_critical: 'Riesgo critico',
+      risk_critical: 'Riesgo crítico',
       treatment_overdue: 'Tratamiento vencido',
       risk_no_treatment: 'Sin plan de tratamiento',
     };
@@ -202,7 +202,7 @@ const ViewAlerts = {
           <input id="r-name" type="text" placeholder="Ej: Alerta riesgos criticos CISO" style="width:100%;"></div>
         <div><label>Tipo de evento <span style="color:var(--brand-orange)">*</span></label>
           <select id="r-type" style="width:100%;">
-            <option value="risk_critical">Riesgo critico (nivel >= umbral)</option>
+            <option value="risk_critical">Riesgo crítico (nivel >= umbral)</option>
             <option value="risk_high">Riesgo alto (nivel >= umbral)</option>
             <option value="treatment_overdue">Plan de tratamiento vencido</option>
             <option value="risk_no_treatment">Riesgo sin plan de tratamiento</option>

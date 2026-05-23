@@ -6,7 +6,7 @@ const ViewRisks = {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
       'Registro de riesgos',
-      'ISO/IEC 27005:2018 cl. 8-9 - identificación, analisis, tratamiento',
+      'ISO/IEC 27005:2018 cl. 8-9 — identificación, análisis, tratamiento',
       canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nuevo riesgo</button>' : ''
     ) + `
       <div class="toolbar">
@@ -182,7 +182,7 @@ const ViewRisks = {
         </select>
       </div>
       <div>
-        <label>Decision de tratamiento</label>
+        <label>Decisión de tratamiento</label>
         <select id="f-treat">
           <option value="">-</option>
           ${['modification','retention','avoidance','sharing'].map(t =>

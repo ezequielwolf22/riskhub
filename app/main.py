@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.config import settings
 from app.routers import (
-    ai, alerts, assets, auth, catalogues, context, controls, reports, risks, users,
+    ai, alerts, assets, audit, auth, catalogues, context, controls, reports, risks, users,
 )
 from app.seed import init_db
 
@@ -54,6 +54,7 @@ app.include_router(controls.impl_router)
 app.include_router(risks.router)
 app.include_router(reports.router)
 app.include_router(alerts.router)
+app.include_router(audit.router)
 app.include_router(ai.router)
 
 

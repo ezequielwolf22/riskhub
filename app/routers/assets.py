@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import Asset, AssetType, User
 from app.schemas import AssetIn, AssetOut, ImportResult
 from app.security import get_current_user, require_analyst
+from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -54,38 +55,47 @@ def get_asset(asset_id: int, db: Session = Depends(get_db),
     return _to_out(a)
 
 
-@router.post("/", response_model=AssetOut, status_code=201,
-             dependencies=[Depends(require_analyst)])
-def create_asset(data: AssetIn, db: Session = Depends(get_db)):
+@router.post("/", response_model=AssetOut, status_code=201)
+def create_asset(data: AssetIn, db: Session = Depends(get_db),
+                 current_user: User = Depends(require_analyst)):
     code = data.code or _next_code(db)
     if db.query(Asset).filter(Asset.code == code).first():
         raise HTTPException(400, f"Ya existe activo con codigo {code}")
     payload = data.model_dump(exclude={"owner_ids"})
     payload["code"] = code
     a = Asset(**payload)
-    db.add(a); db.commit(); db.refresh(a)
+    db.add(a)
+    log_action(db, current_user.id, "create", "asset", None,
+               {"code": code, "name": data.name, "asset_type": str(data.asset_type)})
+    db.commit(); db.refresh(a)
     return _to_out(a)
 
 
-@router.put("/{asset_id}", response_model=AssetOut,
-            dependencies=[Depends(require_analyst)])
-def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db)):
+@router.put("/{asset_id}", response_model=AssetOut)
+def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
+                 current_user: User = Depends(require_analyst)):
     a = db.get(Asset, asset_id)
     if not a:
         raise HTTPException(404, "Activo no encontrado")
     for k, v in data.model_dump(exclude={"owner_ids", "code"}).items():
         setattr(a, k, v)
+    log_action(db, current_user.id, "update", "asset", str(asset_id),
+               {"code": a.code, "name": a.name})
     db.commit(); db.refresh(a)
     return _to_out(a)
 
 
-@router.delete("/{asset_id}", status_code=204,
-               dependencies=[Depends(require_analyst)])
-def delete_asset(asset_id: int, db: Session = Depends(get_db)):
+@router.delete("/{asset_id}", status_code=204)
+def delete_asset(asset_id: int, db: Session = Depends(get_db),
+                 current_user: User = Depends(require_analyst)):
     a = db.get(Asset, asset_id)
     if not a:
         raise HTTPException(404, "Activo no encontrado")
-    db.delete(a); db.commit()
+    code, name = a.code, a.name
+    db.delete(a)
+    log_action(db, current_user.id, "delete", "asset", str(asset_id),
+               {"code": code, "name": name})
+    db.commit()
 
 
 # -------- IMPORT/EXPORT --------

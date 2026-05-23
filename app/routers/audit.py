@@ -1,0 +1,89 @@
+"""Consulta del log de auditoria (solo administradores)."""
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import AuditLog, UserRole
+from app.security import get_current_user
+
+router = APIRouter(prefix="/api/audit", tags=["audit"])
+
+
+class AuditEntryOut(BaseModel):
+    id: int
+    timestamp: datetime
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
+    action: str
+    entity_type: str
+    entity_id: Optional[str] = None
+    detail: Optional[dict] = None
+
+
+class AuditPage(BaseModel):
+    total: int
+    items: List[AuditEntryOut]
+
+
+def _require_admin(current_user=Depends(get_current_user)):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(403, "Solo administradores pueden consultar el log de auditoria")
+    return current_user
+
+
+@router.get("/", response_model=AuditPage)
+def list_audit(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, le=500),
+    entity_type: Optional[str] = None,
+    action: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: object = Depends(_require_admin),
+):
+    q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
+    if entity_type:
+        q = q.filter(AuditLog.entity_type == entity_type)
+    if action:
+        q = q.filter(AuditLog.action == action)
+    total = q.count()
+    entries = q.offset(skip).limit(limit).all()
+    return AuditPage(
+        total=total,
+        items=[
+            AuditEntryOut(
+                id=e.id,
+                timestamp=e.timestamp,
+                user_email=e.user.email if e.user else None,
+                user_name=e.user.full_name if e.user else None,
+                action=e.action,
+                entity_type=e.entity_type,
+                entity_id=e.entity_id,
+                detail=e.detail,
+            )
+            for e in entries
+        ],
+    )
+
+
+@router.get("/entity-types")
+def entity_types(
+    db: Session = Depends(get_db),
+    _: object = Depends(_require_admin),
+):
+    """Devuelve los tipos de entidad distintos registrados en el log."""
+    types = db.query(AuditLog.entity_type).distinct().all()
+    return sorted([t[0] for t in types])
+
+
+@router.get("/actions")
+def actions(
+    db: Session = Depends(get_db),
+    _: object = Depends(_require_admin),
+):
+    """Devuelve las acciones distintas registradas en el log."""
+    acts = db.query(AuditLog.action).distinct().all()
+    return sorted([a[0] for a in acts])

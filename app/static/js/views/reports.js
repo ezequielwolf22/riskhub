@@ -4,7 +4,7 @@ const ViewReports = {
   render(main) {
     main.innerHTML = UI.sectionHeader(
       'Informes',
-      'Documentos para auditoria, comites y direccion — PDF y Excel'
+      'Documentos para auditoría, comités y dirección — PDF y Excel'
     ) + `
       <div id="reports-content">
 
@@ -12,7 +12,7 @@ const ViewReports = {
         <div class="card" style="margin-bottom:16px;">
           <h3 style="margin-bottom:4px;">Informes del registro</h3>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-            Generados directamente desde el registro de riesgos. Sin IA, descarga instantanea.
+            Generados directamente desde el registro de riesgos. Sin IA, descarga instantánea.
           </p>
           <div class="card-row">
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
@@ -33,8 +33,8 @@ const ViewReports = {
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
               <h4 style="margin:0 0 6px;">Statement of Applicability</h4>
               <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
-                Declaracion de aplicabilidad de los 93 controles ISO 27002:2022, con estado
-                y madurez de cada implementacion. Obligatorio para certificacion ISO 27001.
+                Declaración de aplicabilidad de los 93 controles ISO 27002:2022, con estado
+                y madurez de cada implementación. Obligatorio para certificación ISO 27001.
               </p>
               <div style="display:flex;gap:8px;">
                 <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('soa')">
@@ -61,28 +61,28 @@ const ViewReports = {
               {
                 id: 'treatment_plan',
                 title: 'Plan de Tratamiento de Riesgos',
-                desc: 'Narrativa detallada por riesgo: acciones concretas, prioridades (inmediato/corto/medio/largo plazo), metricas de exito y hoja de ruta de implementacion en 3 fases.',
+                desc: 'Narrativa detallada por riesgo: acciones concretas, prioridades (inmediato/corto/medio/largo plazo), métricas de éxito y hoja de ruta de implementación en 3 fases.',
                 icon: '📋',
                 excel: true,
               },
               {
                 id: 'executive_dashboard',
                 title: 'Dashboard Ejecutivo',
-                desc: 'Postura de riesgo para la Direccion: hallazgos clave, acciones criticas, analisis de KPIs, efectividad de controles y estado de cumplimiento ISO 27001.',
+                desc: 'Postura de riesgo para la Dirección: hallazgos clave, acciones críticas, análisis de KPIs, efectividad de controles y estado de cumplimiento ISO 27001.',
                 icon: '📊',
                 excel: true,
               },
               {
                 id: 'committee_minutes',
                 title: 'Acta de Comite de Seguridad',
-                desc: 'Acta formal con orden del dia, riesgos aceptados con justificacion, decisiones adoptadas y acciones acordadas. Lista para que el Comite la firme.',
+                desc: 'Acta formal con orden del día, riesgos aceptados con justificación, decisiones adoptadas y acciones acordadas. Lista para que el Comité la firme.',
                 icon: '🏛️',
                 excel: true,
               },
               {
                 id: 'followup_report',
                 title: 'Informe de Seguimiento ISO 27005',
-                desc: 'Evaluacion del proceso segun ISO 27005 clausula 12: monitorizacion, revision, mejora continua, tendencias, fortalezas/debilidades y recomendaciones.',
+                desc: 'Evaluación del proceso según ISO 27005 cláusula 12: monitorización, revisión, mejora continua, tendencias, fortalezas/debilidades y recomendaciones.',
                 icon: '📈',
                 excel: true,
               },
@@ -108,7 +108,7 @@ const ViewReports = {
           </div>
           <div style="margin-top:12px;background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-muted);">
             Los informes de IA toman en cuenta: activos, amenazas, riesgos, controles, planes de tratamiento,
-            estadisticas del registro y el contexto organizacional configurado.
+            estadísticas del registro y el contexto organizacional configurado.
           </div>
         </div>
 

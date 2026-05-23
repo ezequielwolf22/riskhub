@@ -15,6 +15,7 @@ const Routes = {
   guide: ViewGuide,
   context: ViewContext,
   users: ViewUsers,
+  audit: ViewAudit,
 };
 
 function currentRoute() {

@@ -2,7 +2,7 @@
 const ViewDashboard = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Vision global del riesgo',
+      'Visión global del riesgo',
       'Resumen del estado actual de los riesgos de seguridad de la información'
     ) + '<div id="dash-content">' + UI.notice('Cargando datos...') + '</div>';
 
@@ -85,7 +85,7 @@ const ViewDashboard = {
         <div class="card" style="margin-top:16px;">
           <h3>Top 10 riesgos por nivel residual</h3>
           ${s.top_risks.length === 0
-            ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavia. Comienza creando activos y asociandoles amenazas.</p>'
+            ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavía. Comienza creando activos y asociándoles amenazas.</p>'
             : `<div class="table-wrap"><table class="data">
                 <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th></tr></thead>
                 <tbody>
