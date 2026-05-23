@@ -55,30 +55,43 @@ def seed_context(db: Session) -> None:
 
 
 def seed_threats(db: Session) -> None:
-    if db.query(Threat).count() > 0:
-        return
+    # Upsert: actualiza nombre/descripcion de amenazas del catalogo oficial.
     for t in load_json("threats_iso27005.json"):
-        db.add(Threat(
-            code=t["code"], name=t["name"], description=t.get("description"),
-            category=t.get("category"),
-            origin=ThreatOrigin(t["origin"]),
-            typical_assets=t.get("typical_assets", []),
-            affects=t.get("affects", []),
-            is_custom=False,
-        ))
+        existing = db.query(Threat).filter_by(code=t["code"]).first()
+        if existing:
+            existing.name = t["name"]
+            existing.description = t.get("description")
+            existing.category = t.get("category")
+            existing.typical_assets = t.get("typical_assets", [])
+            existing.affects = t.get("affects", [])
+        else:
+            db.add(Threat(
+                code=t["code"], name=t["name"], description=t.get("description"),
+                category=t.get("category"),
+                origin=ThreatOrigin(t["origin"]),
+                typical_assets=t.get("typical_assets", []),
+                affects=t.get("affects", []),
+                is_custom=False,
+            ))
     db.commit()
 
 
 def seed_vulnerabilities(db: Session) -> None:
-    if db.query(Vulnerability).count() > 0:
-        return
+    # Upsert: actualiza nombre/descripcion de vulnerabilidades del catalogo oficial.
     for v in load_json("vulnerabilities_iso27005.json"):
-        db.add(Vulnerability(
-            code=v["code"], name=v["name"], description=v.get("description"),
-            category=v.get("category"),
-            related_threats=v.get("related_threats", []),
-            is_custom=False,
-        ))
+        existing = db.query(Vulnerability).filter_by(code=v["code"]).first()
+        if existing:
+            existing.name = v["name"]
+            existing.description = v.get("description")
+            existing.category = v.get("category")
+            existing.related_threats = v.get("related_threats", [])
+        else:
+            db.add(Vulnerability(
+                code=v["code"], name=v["name"], description=v.get("description"),
+                category=v.get("category"),
+                related_threats=v.get("related_threats", []),
+                is_custom=False,
+            ))
     db.commit()
 
 

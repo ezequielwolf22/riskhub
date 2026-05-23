@@ -341,9 +341,9 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
    Heatmap - matriz 5x5
    ============================================================ */
 .heatmap {
-  display: grid; grid-template-columns: 50px repeat(5, 1fr);
+  display: grid; grid-template-columns: 104px repeat(5, 1fr);
   grid-template-rows: repeat(5, 1fr) 32px;
-  gap: 4px; max-width: 600px;
+  gap: 4px; max-width: 660px;
 }
 .heatmap .corner { grid-column: 1; grid-row: 6; }
 .heatmap .col-label {
