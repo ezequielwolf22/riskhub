@@ -86,6 +86,7 @@ const Api = {
     entityTypes: () => Api.get('/api/audit/entity-types'),
     actions: () => Api.get('/api/audit/actions'),
     exportCsv: () => Api.download('/api/audit/export/csv', 'audit_log.csv'),
+    history: (type, id) => Api.get(`/api/audit/history/${type}/${id}`),
   },
   controls: {
     list: (q) => Api.get('/api/controls/', q),

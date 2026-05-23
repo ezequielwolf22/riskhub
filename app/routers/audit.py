@@ -43,6 +43,7 @@ def list_audit(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, le=500),
     entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
     action: Optional[str] = None,
     db: Session = Depends(get_db),
     _: object = Depends(_require_admin),
@@ -50,6 +51,8 @@ def list_audit(
     q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
     if entity_type:
         q = q.filter(AuditLog.entity_type == entity_type)
+    if entity_id:
+        q = q.filter(AuditLog.entity_id == entity_id)
     if action:
         q = q.filter(AuditLog.action == action)
     total = q.count()
@@ -70,6 +73,37 @@ def list_audit(
             for e in entries
         ],
     )
+
+
+@router.get("/history/{entity_type}/{entity_id}", response_model=List[AuditEntryOut])
+def entity_history(
+    entity_type: str,
+    entity_id: str,
+    limit: int = Query(20, le=100),
+    db: Session = Depends(get_db),
+    _: object = Depends(get_current_user),
+):
+    """Historial de cambios de una entidad especifica. Accesible por cualquier usuario autenticado."""
+    entries = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_type == entity_type, AuditLog.entity_id == entity_id)
+        .order_by(AuditLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        AuditEntryOut(
+            id=e.id,
+            timestamp=e.timestamp,
+            user_email=e.user.email if e.user else None,
+            user_name=e.user.full_name if e.user else None,
+            action=e.action,
+            entity_type=e.entity_type,
+            entity_id=e.entity_id,
+            detail=e.detail,
+        )
+        for e in entries
+    ]
 
 
 @router.get("/entity-types")

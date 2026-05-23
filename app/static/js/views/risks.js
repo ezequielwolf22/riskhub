@@ -202,6 +202,17 @@ const ViewRisks = {
         Nivel inherente actual: <strong>${r.inherent_level}</strong> -
         Nivel residual actual: <strong>${r.residual_level}</strong>
         ${r.accepted_at ? `<br>Aceptado el ${r.accepted_at}` : ''}
+      </div>
+      <div class="span2">
+        <details id="risk-history">
+          <summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;
+                          list-style:none;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:10px;">&#9654;</span> Historial de cambios
+          </summary>
+          <div id="risk-history-body" style="margin-top:8px;">
+            <div class="notice">Cargando historial...</div>
+          </div>
+        </details>
       </div>` : ''}
     `, {
       actions: canEdit ? `
@@ -212,6 +223,47 @@ const ViewRisks = {
     });
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
+
+    // Cargar historial de cambios al expandir el <details>
+    if (id) {
+      const details = document.getElementById('risk-history');
+      if (details) {
+        details.addEventListener('toggle', async () => {
+          if (!details.open) return;
+          const body = document.getElementById('risk-history-body');
+          try {
+            const entries = await Api.audit.history('risk', id);
+            if (!entries.length) {
+              body.innerHTML = '<p style="font-size:12px;color:var(--text-subtle);">Sin registros de cambio todavia.</p>';
+              return;
+            }
+            const actionColors = {
+              create:'background:#D1FAE5;color:#065F46',
+              update:'background:#DBEAFE;color:#1E40AF',
+              delete:'background:#FEE2E2;color:#991B1B',
+            };
+            body.innerHTML = entries.map(e => {
+              const ts = new Date(e.timestamp).toLocaleString('es-ES', {
+                day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+              const style = actionColors[e.action] || 'background:var(--bg-3);color:var(--text-muted)';
+              const detail = e.detail && Object.keys(e.detail).length
+                ? Object.entries(e.detail).map(([k,v]) => `${UI.esc(k)}: ${UI.esc(String(v))}`).join(' · ')
+                : '';
+              return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;
+                                  border-bottom:1px solid var(--border);font-size:12px;">
+                <span style="color:var(--text-subtle);white-space:nowrap;min-width:110px;">${ts}</span>
+                <span class="badge badge-muted" style="${style};font-size:10px;">${UI.esc(e.action)}</span>
+                <span style="color:var(--text-muted);">${UI.esc(e.user_name||e.user_email||'')}</span>
+                ${detail ? `<span style="color:var(--text-subtle);">${detail}</span>` : ''}
+              </div>`;
+            }).join('');
+          } catch (_) {
+            body.innerHTML = '<p style="font-size:12px;color:var(--text-subtle);">No disponible.</p>';
+          }
+        }, { once: true });
+      }
+    }
+
     if (id && canEdit) document.getElementById('m-del').onclick = async () => {
       if (!await UI.confirm('Eliminar este riesgo?')) return;
       try { await Api.risks.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewRisks._reload(); }
