@@ -11,6 +11,7 @@ from app.schemas import TokenOut, UserOut
 from app.security import (
     create_access_token, get_current_user, verify_password,
 )
+from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -32,6 +33,8 @@ def login(
             detail="Usuario desactivado",
         )
     user.last_login_at = datetime.now(timezone.utc)
+    log_action(db, user.id, "login", "user", str(user.id),
+               {"email": user.email, "role": user.role.value})
     db.commit()
     token = create_access_token(subject=user.email, role=user.role.value)
     return TokenOut(access_token=token, user=UserOut.model_validate(user))

@@ -1,4 +1,4 @@
-/* Vista Guia — Documentacion completa de uso de RiskHub. */
+﻿/* Vista Guia — Documentacion completa de uso de RiskHub. */
 const ViewGuide = {
 
   _sections: [
@@ -12,6 +12,7 @@ const ViewGuide = {
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔗' },
+    { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'methodology', title: 'Metodologia ISO 27005', icon: '📐' },
   ],
@@ -82,6 +83,7 @@ const ViewGuide = {
       reports: this._cReports,
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
+      audit: this._cAudit,
       admin: this._cAdmin,
       methodology: this._cMethodology,
     })[id] || '<p>Seccion en construccion.</p>';
@@ -417,37 +419,116 @@ const ViewGuide = {
     ${this._tip('<strong>v1.2 (roadmap):</strong> Las integraciones automatizadas permitirán configurar la URL y API key de cada herramienta directamente en RiskHub, con sincronización programada y asociación automática por IA. Las guías actuales te preparan para esta automatización futura.')}
   `;},
 
+  get _cAudit() { return `
+    ${this._p('El log de auditoría registra de forma automática e inmutable todas las operaciones de creación, modificación y eliminación realizadas en RiskHub. Proporciona trazabilidad completa para cumplimiento normativo y análisis forense.')}
+    ${this._warn('<strong>Acceso restringido:</strong> Solo los usuarios con rol <strong>admin</strong> pueden consultar el log de auditoría.')}
+    ${this._h('Eventos registrados automáticamente')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      ${[
+        ['Inicio de sesión','Cada acceso exitoso: usuario, rol y timestamp.'],
+        ['Riesgos','Creación, modificación y eliminación de riesgos con nivel y estado.'],
+        ['Activos','Creación, modificación y eliminación de activos con tipo y código.'],
+        ['Controles','Altas, actualizaciones y bajas de implementaciones de controles.'],
+        ['Usuarios','Creación, modificación de rol/estado y eliminación de cuentas.'],
+        ['Operaciones futuras','La infraestructura es extensible a cualquier router del sistema.'],
+      ].map(([t, d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
+          <div style="font-weight:600;margin-bottom:4px;color:var(--brand-purple);">${t}</div>
+          <div style="color:var(--text-muted);">${d}</div>
+        </div>`).join('')}
+    </div>
+    ${this._h('Informacion de cada entrada')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;text-align:left;">Campo</th>
+        <th style="padding:8px;text-align:left;">Descripcion</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Fecha y hora','Timestamp UTC preciso al segundo de cuando ocurrió la acción.'],
+          ['Usuario','Nombre completo y email del usuario que realizó la operación.'],
+          ['Accion','create / update / delete / login — codificado y filtrable.'],
+          ['Entidad','Tipo de objeto afectado: risk, asset, control_impl, user.'],
+          ['ID','Identificador interno del objeto afectado (si existe).'],
+          ['Detalle','JSON con los campos más relevantes: código, nombre, estado, rol, etc.'],
+        ].map((r, i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          <td style="padding:8px;font-weight:600;font-family:monospace;font-size:12px;">${r[0]}</td>
+          <td style="padding:8px;">${r[1]}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Como consultar el log')}
+    ${this._steps([
+      'Accede al menú <strong>Auditoría</strong> en la barra lateral (visible solo para admin).',
+      'Usa el filtro <strong>Tipo de entidad</strong> para ver solo riesgos, activos, controles o usuarios.',
+      'Usa el filtro <strong>Acción</strong> para ver solo creaciones, modificaciones o eliminaciones.',
+      'Los resultados se muestran de más reciente a más antiguo, 100 entradas por página.',
+      'Usa los botones Anterior/Siguiente para navegar entre páginas de resultados.',
+    ])}
+    ${this._h('Casos de uso tipicos')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Preparación de auditoría ISO 27001:</strong> demuestra que los cambios en el SGSI son trazables y atribuibles a usuarios identificados.</li>
+      <li><strong>Investigación de incidentes:</strong> identifica quién modificó un riesgo o eliminó un activo antes de un incidente.</li>
+      <li><strong>Control de cambios:</strong> verifica que los cambios en riesgos críticos fueron realizados por usuarios autorizados.</li>
+      <li><strong>Cumplimiento GDPR:</strong> acredita quién tuvo acceso y modificó activos de información personal.</li>
+    </ul>
+    ${this._tip('<strong>Buena práctica:</strong> Revisa el log de auditoría mensualmente como parte del proceso de monitorización y revisión del SGSI (ISO 27005 cl. 12). Exporta las entradas relevantes junto con los informes de seguimiento periódico.')}
+  `;},
+
   get _cAdmin() { return `
-    ${this._p('La administración de RiskHub está disponible solo para usuarios con rol <strong>admin</strong>.')}
+    ${this._p('La seccion de administracion de RiskHub agrupa las funciones exclusivas del rol <strong>admin</strong>: gestion de usuarios, log de auditoria, configuracion SMTP y mantenimiento del sistema.')}
     ${this._h('Gestion de usuarios')}
     ${this._steps([
-      'Ve al menú Usuarios (solo visible para admin).',
-      'Crea nuevos usuarios con email, nombre completo, rol y contraseña inicial.',
-      'Cambia el rol de cualquier usuario (admin/analyst/viewer).',
-      'Activa o desactiva cuentas sin eliminarlas (conserva el historial).',
-      'Elimina usuarios que ya no deban acceder al sistema.',
+      'Ve al menu <strong>Usuarios</strong> (solo visible para admin).',
+      'Crea nuevos usuarios con email, nombre completo, rol y contrasena inicial.',
+      'Cambia el rol de cualquier usuario (admin / analyst / viewer).',
+      'Activa o desactiva cuentas sin eliminarlas: el historial de auditoria se conserva.',
+      'Elimina usuarios que ya no deban acceder. La accion queda registrada en el log.',
     ])}
-    ${this._h('Roles y permisos')}
-    ${this._p('Asigna el rol mínimo necesario para cada usuario (principio de mínimo privilegio). Los analistas pueden crear y modificar datos pero no gestionar usuarios ni la configuración SMTP. Los viewers solo pueden consultar datos y descargar informes.')}
+    ${this._h('Log de auditoria')}
+    ${this._p('Ve al menu <strong>Auditoria</strong> para consultar el registro completo de operaciones. Cada accion sobre riesgos, activos, controles y usuarios queda anotada con timestamp, usuario responsable y detalle. Consulta la seccion <em>Log de Auditoria</em> de esta guia para mas informacion.')}
+    ${this._h('Roles y permisos detallados')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--brand-purple);color:#fff;">
+        <th style="padding:8px 12px;text-align:left;">Funcion</th>
+        <th style="padding:8px 12px;text-align:center;">Admin</th>
+        <th style="padding:8px 12px;text-align:center;">Analyst</th>
+        <th style="padding:8px 12px;text-align:center;">Viewer</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Ver riesgos, activos, controles','1','1','1'],
+          ['Crear / editar riesgos y activos','1','1','0'],
+          ['Usar el Agente IA','1','1','0'],
+          ['Generar informes PDF/Excel','1','1','1'],
+          ['Configurar SMTP','1','0','0'],
+          ['Crear reglas de alerta','1','1','0'],
+          ['Gestionar usuarios','1','0','0'],
+          ['Consultar log de auditoria','1','0','0'],
+        ].map((r, i) => '<tr '+(i%2?'style="background:var(--bg-2);"':'')+'>'+
+          '<td style="padding:8px 12px;">'+r[0]+'</td>'+
+          '<td style="padding:8px 12px;text-align:center;color:'+(r[1]==='1'?'var(--brand-purple)':'var(--text-subtle)')+';"><b>'+(r[1]==='1'?'Si':'No')+'</b></td>'+
+          '<td style="padding:8px 12px;text-align:center;color:'+(r[2]==='1'?'var(--brand-purple)':'var(--text-subtle)')+';"><b>'+(r[2]==='1'?'Si':'No')+'</b></td>'+
+          '<td style="padding:8px 12px;text-align:center;color:'+(r[3]==='1'?'var(--brand-purple)':'var(--text-subtle)')+';"><b>'+(r[3]==='1'?'Si':'No')+'</b></td>'+
+          '</tr>').join('')}
+      </tbody>
+    </table>
     ${this._h('Seguridad de la instalacion')}
-    ${this._p('RiskHub está diseñado para uso interno (on-premise). Recomendaciones de seguridad:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li>Cambia la contraseña del admin inicial en el primer acceso.</li>
-      <li>Genera un RISKHUB_SECRET_KEY fuerte (mínimo 64 caracteres aleatorios).</li>
+      <li>Cambia la contrasena del admin inicial en el primer acceso.</li>
+      <li>Genera un RISKHUB_SECRET_KEY fuerte (minimo 64 caracteres aleatorios).</li>
       <li>No expongas el puerto de RiskHub directamente a internet. Usa un proxy inverso (nginx) con HTTPS.</li>
-      <li>Realiza copias de seguridad periódicas del volumen Docker riskhub-data (contiene la base de datos).</li>
-      <li>Revisa los logs del contenedor: docker logs riskhub.</li>
+      <li>Realiza copias de seguridad periodicas del volumen Docker <code>riskhub-data</code>.</li>
+      <li>Revisa los logs del contenedor: <code>docker logs riskhub</code>.</li>
     </ul>
     ${this._h('Actualizacion de RiskHub')}
     ${this._steps([
-      'En el servidor: bash /opt/riskhub/deploy.sh',
-      'El script ejecuta: git pull, docker build (sin cache) y docker compose up -d.',
+      'En el servidor ejecuta: <code>bash /opt/riskhub/deploy.sh</code>',
+      'El script realiza: git pull, docker build (sin cache) y docker compose up -d.',
       'La base de datos se preserva en el volumen Docker. No se pierden datos.',
-      'Si hay cambios de modelo de BD, el sistema los aplica automáticamente en el arranque.',
+      'Los catalogos de amenazas y vulnerabilidades se actualizan automaticamente.',
     ])}
-  `;},
-
-  get _cMethodology() { return `
+  `;};\n\n  get _cMethodology() { return `
     ${this._p('RiskHub implementa la metodología de gestión del riesgo de seguridad de la información de <strong>ISO/IEC 27005:2018</strong> con elementos cuantitativos de <strong>MAGERIT v3</strong> del MPTFP español.')}
     ${this._h('ISO/IEC 27005:2018 — Proceso de gestion del riesgo')}
     <div style="position:relative;padding:16px;background:var(--bg-2);border-radius:8px;margin-bottom:16px;">
