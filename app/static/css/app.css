@@ -284,6 +284,7 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
 .btn-ghost:hover { color: var(--brand-purple); background: var(--bg-3); }
 .btn-danger { background: var(--brand-white); border-color: #f0c4c4; color: #a83232; }
 .btn-danger:hover { background: #fbe2e2; }
+.btn-sm { padding: 3px 8px; font-size: 12px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ============================================================

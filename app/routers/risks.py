@@ -174,6 +174,7 @@ def heatmap(db: Session = Depends(get_db),
 @router.get("/stats/summary")
 def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     """Resumen para el dashboard."""
+    now = datetime.now(timezone.utc)
     risks = db.query(Risk).all()
     by_band = {"low": 0, "medium": 0, "high": 0}
     for r in risks:
@@ -187,6 +188,22 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     for r in risks:
         if r.treatment_option:
             by_treatment[r.treatment_option.value] += 1
+
+    # Metricas adicionales
+    active_statuses = {RiskStatus.IDENTIFIED, RiskStatus.ANALYZED, RiskStatus.EVALUATED}
+    active_risks = [r for r in risks if r.status in active_statuses]
+    overdue = sum(
+        1 for r in active_risks
+        if r.treatment_due_date and r.treatment_due_date.replace(tzinfo=timezone.utc) < now
+    )
+    no_treatment_high = sum(
+        1 for r in active_risks
+        if r.residual_level >= 5 and not r.treatment_option
+    )
+    total_inh = sum(r.inherent_level for r in risks)
+    total_res = sum(r.residual_level for r in risks)
+    reduction_pct = round((1 - total_res / total_inh) * 100) if total_inh else 0
+
     return {
         "total_risks": len(risks),
         "total_assets": db.query(Asset).count(),
@@ -196,10 +213,13 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
         "by_band": by_band,
         "by_status": by_status,
         "by_treatment": by_treatment,
+        "overdue_treatments": overdue,
+        "no_treatment_high": no_treatment_high,
+        "risk_reduction_pct": reduction_pct,
         "top_risks": [
             {"code": r.code, "asset": r.asset.name if r.asset else "",
              "threat": r.threat.name if r.threat else "",
-             "level": r.residual_level}
+             "level": r.residual_level, "id": r.id}
             for r in sorted(risks, key=lambda x: -x.residual_level)[:10]
         ],
     }

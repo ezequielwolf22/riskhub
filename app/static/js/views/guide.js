@@ -495,6 +495,9 @@ const ViewGuide = {
       'Activa o desactiva cuentas sin eliminarlas: el historial de auditoria se conserva.',
       'Elimina usuarios que ya no deban acceder. La accion queda registrada en el log.',
     ])}
+    ${this._h('Cambio de contrasena (todos los roles)')}
+    ${this._p('Cualquier usuario autenticado puede cambiar su propia contrasena. Haz clic en el <strong>chip de usuario</strong> (esquina superior derecha, con tu nombre y rol) para abrir el formulario de cambio de contrasena. Se requiere introducir la contrasena actual para confirmar la identidad.')}
+    ${this._tip('<strong>Seguridad:</strong> Cambia tu contrasena regularmente y usa una combinacion de letras, numeros y simbolos. La nueva contrasena debe tener al menos 8 caracteres.')}
     ${this._h('Log de auditoria')}
     ${this._p('Ve al menu <strong>Auditoria</strong> para consultar el registro completo de operaciones. Cada accion sobre riesgos, activos, controles y usuarios queda anotada con timestamp, usuario responsable y detalle. Consulta la seccion <em>Log de Auditoria</em> de esta guia para mas informacion.')}
     ${this._h('Roles y permisos detallados')}

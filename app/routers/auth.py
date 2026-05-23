@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
 from app.schemas import TokenOut, UserOut
 from app.security import (
-    create_access_token, get_current_user, verify_password,
+    create_access_token, get_current_user, hash_password, verify_password,
 )
 from app.services.audit_service import log_action
 
@@ -43,3 +44,25 @@ def login(
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return UserOut.model_validate(user)
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.patch("/me/password")
+def change_my_password(
+    body: PasswordChangeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Permite al usuario autenticado cambiar su propia contrasena."""
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="La contrasena actual no es correcta")
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="La nueva contrasena debe tener al menos 8 caracteres")
+    user.hashed_password = hash_password(body.new_password)
+    log_action(db, user.id, "update", "user", str(user.id), {"email": user.email, "action": "password_change"})
+    db.commit()
+    return {"ok": True, "message": "Contrasena actualizada correctamente"}

@@ -54,6 +54,7 @@ const Api = {
 
   // Endpoints específicos
   me: () => Api.get('/api/auth/me'),
+  changePassword: (d) => Api.patch('/api/auth/me/password', d),
   context: {
     get: () => Api.get('/api/context/'),
     update: (d) => Api.put('/api/context/', d),
