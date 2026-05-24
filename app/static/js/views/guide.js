@@ -254,7 +254,7 @@ const ViewGuide = {
     ${this._h('Jerarquia de activos')}
     ${this._p('Puedes definir un activo padre para cada activo. Esto es útil para representar dependencias: un proceso de negocio depende de varias aplicaciones, que a su vez dependen de servidores. La jerarquía ayuda a entender la propagación del impacto.')}
     ${this._h('Ver riesgos de un activo')}
-    ${this._p('En la tabla de activos, cada fila incluye un boton <strong>Riesgos</strong> que filtra automáticamente la vista de Riesgos para mostrar solo los escenarios asociados a ese activo. Un banner contextual indica el filtro activo y permite eliminarlo con un clic.')}
+    ${this._p('La tabla de activos muestra una columna <strong>Riesgos</strong> con el número de escenarios de riesgo asociados a cada activo. El número es un enlace que filtra directamente la vista de Riesgos. El color indica la exposición: rojo si el activo tiene 5 o más riesgos, púrpura si tiene alguno, gris si no tiene ninguno.')}
   `;},
 
   get _cThreats() { return `
@@ -285,6 +285,8 @@ const ViewGuide = {
       'Haz clic en <strong>Eliminar</strong> para borrar la entrada. Se pedirá confirmación.',
       'Todas las operaciones quedan registradas en el <strong>Log de Auditoría</strong>.',
     ])}
+    ${this._h('Exposicion en el catalogo')}
+    ${this._p('La tabla de amenazas y la de vulnerabilidades muestran una columna <strong>Riesgos</strong> con el número de escenarios de riesgo vinculados a cada entrada. Esto permite identificar qué amenazas o vulnerabilidades generan mayor exposición sin necesidad de ir al registro de riesgos.')}
     ${this._tip('<strong>Tip:</strong> Antes de crear una amenaza personalizada, busca en el catálogo ISO 27005 precargado. Es probable que ya exista una amenaza equivalente. Las amenazas personalizadas son útiles para sectores específicos (ej. amenazas de salud, aviación, energía).')}
   `;},
 
@@ -347,6 +349,14 @@ const ViewGuide = {
       'Haz clic en <strong>Aplicar</strong>. Los cambios se ejecutan en paralelo y la tabla se recarga automaticamente.',
     ])}
     ${this._tip('Las acciones masivas son utiles para cerrar un grupo de riesgos al final de un ciclo de revision, o para asignar la misma decision de tratamiento a varios riesgos relacionados.')}
+    ${this._h('Filtro por responsable')}
+    ${this._p('La barra de herramientas de Riesgos incluye un selector <strong>Cualquier responsable</strong> que permite filtrar el registro por el propietario asignado a cada riesgo.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Selecciona un usuario de la lista desplegable para ver solo los riesgos asignados a esa persona.</li>
+      <li>La opcion <strong>Sin responsable</strong> muestra los riesgos que aun no tienen propietario asignado — util para detectar riesgos huerfanos que necesitan asignacion.</li>
+      <li>El filtro se combina con el resto de filtros activos (busqueda por texto, estado, nivel).</li>
+    </ul>
+    ${this._tip('Usa el filtro por responsable junto con el filtro de estado <em>Identified</em> para encontrar rapidamente todos los riesgos nuevos sin propietario ni plan de tratamiento asignados.')}
     ${this._h('Historial de cambios de un riesgo')}
     ${this._p('Al abrir un riesgo existente, al final del formulario aparece la sección <strong>Historial de cambios</strong>. Haz clic para expandirla y ver todas las modificaciones realizadas sobre ese riesgo: timestamp, usuario responsable, acción (crear/actualizar/eliminar) y campos modificados. Útil para auditorías y para justificar decisiones ante comités de seguridad.')}
   `;},
@@ -399,6 +409,14 @@ const ViewGuide = {
     ${this._p('Desde el detalle de un riesgo, puedes asociar controles implementados. El sistema calculará el nivel residual teniendo en cuenta la contribución de cada control (factor de reducción 0-1). Un control implementado al 100% con contribución 1.0 reduce el riesgo al nivel mínimo de la matriz para esa combinación.')}
     ${this._h('Fechas de revision de controles')}
     ${this._p('Al editar una implementacion puedes establecer la <strong>Ultima revision</strong> y la <strong>Proxima revision</strong>. Cuando la proxima revision vence, la fila aparece resaltada en amarillo con el badge <em>REVISION</em> y un aviso aparece al inicio de la lista. Esto ayuda a planificar las revisiones periodicas del SGSI.')}
+    ${this._h('Riesgos mitigados por control')}
+    ${this._p('La tabla de implementaciones muestra una columna <strong>Riesgos</strong> con el numero de escenarios de riesgo que cada control mitiga actualmente. El numero se actualiza en tiempo real cada vez que se asocia o desasocia un control a un riesgo.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Un valor <strong>0</strong> (en gris) indica que el control esta implementado pero no se ha vinculado a ningun riesgo todavia. Considera revisarlo.</li>
+      <li>Un valor <strong>1-2</strong> (en gris oscuro) indica cobertura normal.</li>
+      <li>Un valor <strong>3 o mas</strong> (en verde) indica que el control es un mitigador clave: su degradacion o eliminacion afectaria a multiples riesgos.</li>
+    </ul>
+    ${this._tip('Usa esta columna para identificar los controles mas criticos de tu SGSI. Un control que mitiga 5 o mas riesgos es un punto unico de fallo: asegurate de que su nivel de madurez sea alto y sus revisiones esten al dia.')}
     ${this._h('Statement of Applicability (SoA)')}
     ${this._p('El informe SoA (ISO 27001 §6.1.3.d) lista todos los controles de ISO 27002 con su estado de aplicabilidad.')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
@@ -577,7 +595,8 @@ const ViewGuide = {
       'Accede al menú <strong>Auditoría</strong> en la barra lateral (visible solo para admin).',
       'Usa el filtro <strong>Tipo de entidad</strong> para ver riesgos, activos, controles, usuarios, amenazas, vulnerabilidades, configuración SMTP o reglas de alerta.',
       'Usa el filtro <strong>Acción</strong> para ver solo creaciones, modificaciones, eliminaciones o inicios de sesión.',
-      'Haz clic en <strong>Exportar CSV</strong> para descargar el log completo (con los filtros activos) en formato CSV para análisis externo.',
+      'Usa los campos <strong>Desde</strong> y <strong>Hasta</strong> para acotar el log a un rango de fechas especifico. Puedes combinarlos con los otros filtros.',
+      'Haz clic en <strong>Exportar CSV</strong> para descargar el log completo (con los filtros activos, incluido el rango de fechas) en formato CSV para análisis externo.',
       'Los resultados se muestran de más reciente a más antiguo, 100 entradas por página.',
       'Usa los botones Anterior/Siguiente para navegar entre páginas de resultados.',
     ])}
