@@ -130,11 +130,21 @@ const ViewGuide = {
     ${this._p('RiskHub es una plataforma de <strong>Gobernanza, Riesgo y Cumplimiento (GRC)</strong> diseñada para implementar el proceso de gestión del riesgo de seguridad de la información según <strong>ISO/IEC 27005:2018</strong> con el catálogo de controles de <strong>ISO/IEC 27002:2022</strong>.')}
     ${this._h('Para qué sirve RiskHub')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-      ${['Identificar y catalogar activos de información','Asociar amenazas y vulnerabilidades a cada activo','Calcular niveles de riesgo inherente y residual','Definir planes de tratamiento por riesgo','Gestionar controles ISO 27002:2022','Generar informes para auditoría y dirección','Usar IA para análisis de riesgo automatizado','Enviar alertas por email a los responsables'].map(f =>
+      ${['Identificar y catalogar activos de información','Asociar amenazas y vulnerabilidades a cada activo','Calcular niveles de riesgo inherente y residual','Definir planes de tratamiento por riesgo','Gestionar controles ISO 27002:2022','Generar informes para auditoría y dirección','Usar IA para análisis de riesgo automatizado','Enviar alertas por email a los responsables','Busqueda global por codigo, nombre o descripcion','Calendario de vencimientos de tratamiento','Exportar datos a CSV y PDF'].map(f =>
         `<div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
           <span style="color:var(--brand-purple);font-weight:700;">✓</span> ${f}
         </div>`).join('')}
     </div>
+    ${this._h('Dashboard — vision ejecutiva')}
+    ${this._p('La pantalla principal (Dashboard) ofrece una vision global en tiempo real:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>KPIs:</strong> activos, riesgos, controles, tratamientos vencidos, altos sin plan, reduccion media del riesgo.</li>
+      <li><strong>Distribucion por nivel residual:</strong> barra de proporcion alto/medio/bajo.</li>
+      <li><strong>Por estado y por decision:</strong> tablas de conteo del ciclo de vida.</li>
+      <li><strong>Acciones rapidas:</strong> accesos directos a tratamientos vencidos, riesgos sin plan, calendario y heatmap.</li>
+      <li><strong>Proximos vencimientos (30 dias):</strong> lista de riesgos con fecha limite proxima, con countdown en dias.</li>
+      <li><strong>Top 10 riesgos:</strong> riesgos mas criticos con porcentaje de reduccion. Haz clic para abrir el detalle.</li>
+    </ul>
     ${this._h('Flujo de trabajo recomendado')}
     ${this._steps([
       '<strong>Configura el contexto organizacional</strong> (menú Contexto): nombre de la organización, alcance del SGSI, criterios de probabilidad e impacto.',
@@ -318,6 +328,12 @@ const ViewGuide = {
     ${this._p('Identified → Assessed → Treated → Accepted → Closed. El flujo asegura que todos los riesgos siguen el proceso completo antes de cerrarse.')}
     ${this._h('Heatmap de riesgos')}
     ${this._p('El Heatmap (menú Heatmap) visualiza todos los riesgos en la matriz 5×5 de probabilidad × impacto, diferenciando el nivel inherente del residual. Es el artefacto principal para la comunicación a dirección. Haz clic en cualquier celda del heatmap para ver la lista de riesgos en esa posicion.')}
+    ${this._h('Tabla de riesgos — columnas informativas')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Red.:</strong> porcentaje de reduccion del riesgo (inherente → residual). Verde = reduccion, rojo = riesgo residual mayor que el inherente.</li>
+      <li><strong>VENCIDO:</strong> badge naranja en la columna Estado cuando la fecha limite de tratamiento ha pasado y el riesgo no esta cerrado ni aceptado. Las filas vencidas aparecen en rojo claro.</li>
+      <li><strong>Exportar CSV:</strong> boton en la barra de herramientas para descargar todos los riesgos con campos ISO 27005 (niveles inherentes, residuales, estado, tratamiento, fechas).</li>
+    </ul>
     ${this._h('Historial de cambios de un riesgo')}
     ${this._p('Al abrir un riesgo existente, al final del formulario aparece la sección <strong>Historial de cambios</strong>. Haz clic para expandirla y ver todas las modificaciones realizadas sobre ese riesgo: timestamp, usuario responsable, acción (crear/actualizar/eliminar) y campos modificados. Útil para auditorías y para justificar decisiones ante comités de seguridad.')}
   `;},
@@ -360,8 +376,14 @@ const ViewGuide = {
     ])}
     ${this._h('Vinculacion de controles a riesgos')}
     ${this._p('Desde el detalle de un riesgo, puedes asociar controles implementados. El sistema calculará el nivel residual teniendo en cuenta la contribución de cada control (factor de reducción 0-1). Un control implementado al 100% con contribución 1.0 reduce el riesgo al nivel mínimo de la matriz para esa combinación.')}
+    ${this._h('Fechas de revision de controles')}
+    ${this._p('Al editar una implementacion puedes establecer la <strong>Ultima revision</strong> y la <strong>Proxima revision</strong>. Cuando la proxima revision vence, la fila aparece resaltada en amarillo con el badge <em>REVISION</em> y un aviso aparece al inicio de la lista. Esto ayuda a planificar las revisiones periodicas del SGSI.')}
     ${this._h('Statement of Applicability (SoA)')}
-    ${this._p('El informe SoA (ISO 27001 §6.1.3.d) lista todos los controles de ISO 27002 con su estado de aplicabilidad. Se genera automáticamente desde el menú Informes → Statement of Applicability.')}
+    ${this._p('El informe SoA (ISO 27001 §6.1.3.d) lista todos los controles de ISO 27002 con su estado de aplicabilidad.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>PDF:</strong> Informes → Statement of Applicability — informe completo con justificaciones.</li>
+      <li><strong>CSV:</strong> Controles → boton <em>SoA CSV</em> — exporta los 93 controles con estado de aplicabilidad, nivel de madurez y proxima revision. Compatible con Excel.</li>
+    </ul>
     ${this._tip('<strong>Para certificación ISO 27001:</strong> todos los controles del Anexo A deben estar justificados (aplicables o excluidos con justificación). Usa el campo descripción de la implementación para documentar la justificación.')}
   `;},
 
