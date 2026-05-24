@@ -477,6 +477,7 @@ const ViewGuide = {
       <li><strong>risk_high:</strong> riesgos con nivel residual ≥ umbral configurado (ej. ≥5).</li>
       <li><strong>treatment_overdue:</strong> riesgos con fecha límite de tratamiento vencida.</li>
       <li><strong>risk_no_treatment:</strong> riesgos de alto nivel sin plan de tratamiento definido.</li>
+      <li><strong>daily_digest:</strong> resumen diario con estadisticas globales, tratamientos vencidos y proximos vencimientos en 7 dias. Se envia una vez al dia (cooldown de 20 horas).</li>
     </ul>
     ${this._h('Evaluacion de reglas')}
     ${this._p('Las reglas se evaluan de <strong>dos formas</strong>:')}

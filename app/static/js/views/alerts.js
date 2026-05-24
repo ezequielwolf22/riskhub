@@ -132,9 +132,10 @@ const ViewAlerts = {
   _ruleRow(r) {
     const eventLabels = {
       risk_high: 'Riesgo alto',
-      risk_critical: 'Riesgo crítico',
+      risk_critical: 'Riesgo critico',
       treatment_overdue: 'Tratamiento vencido',
       risk_no_treatment: 'Sin plan de tratamiento',
+      daily_digest: 'Resumen diario',
     };
     const lastTrig = r.last_triggered_at
       ? new Date(r.last_triggered_at).toLocaleDateString('es-ES')
@@ -202,10 +203,11 @@ const ViewAlerts = {
           <input id="r-name" type="text" placeholder="Ej: Alerta riesgos criticos CISO" style="width:100%;"></div>
         <div><label>Tipo de evento <span style="color:var(--brand-orange)">*</span></label>
           <select id="r-type" style="width:100%;">
-            <option value="risk_critical">Riesgo crítico (nivel >= umbral)</option>
+            <option value="risk_critical">Riesgo critico (nivel >= umbral)</option>
             <option value="risk_high">Riesgo alto (nivel >= umbral)</option>
             <option value="treatment_overdue">Plan de tratamiento vencido</option>
             <option value="risk_no_treatment">Riesgo sin plan de tratamiento</option>
+            <option value="daily_digest">Resumen diario del registro de riesgos</option>
           </select></div>
         <div><label>Umbral de nivel</label>
           <input id="r-threshold" type="number" value="5" min="1" max="8" style="width:100%;"></div>
