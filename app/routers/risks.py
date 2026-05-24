@@ -4,7 +4,7 @@ import io
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -198,6 +198,145 @@ def export_risks_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )
+
+
+@router.get("/import/template")
+def risks_import_template(_: User = Depends(get_current_user)):
+    """Devuelve una plantilla CSV para importacion masiva de riesgos."""
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Activo_Codigo", "Amenaza_Codigo", "Descripcion",
+        "Prob_Inherente", "Cons_Inherente",
+        "Prob_Residual", "Cons_Residual",
+        "Estado", "Tratamiento", "Plan_Tratamiento",
+        "Fecha_Vencimiento",
+    ])
+    writer.writerow([
+        "AST-0001", "T-CYB-01", "Acceso no autorizado al servidor de produccion",
+        "3", "3", "1", "2",
+        "identified", "modification", "Implantar MFA y revisar politica de acceso",
+        "2025-12-31",
+    ])
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="risks_template.csv"'},
+    )
+
+
+@router.post("/import")
+async def import_risks_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Importa riesgos desde un CSV. Busca activo por codigo y amenaza por codigo."""
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")  # soporta BOM de Excel
+        reader = csv.DictReader(io.StringIO(text))
+    except Exception as exc:
+        raise HTTPException(400, f"Error al leer el CSV: {exc}") from exc
+
+    # Cache de activos y amenazas para lookups rapidos
+    assets_by_code = {a.code: a for a in db.query(Asset).all()}
+    assets_by_name = {a.name.lower(): a for a in db.query(Asset).all()}
+    threats_by_code = {t.code: t for t in db.query(Threat).all()}
+    threats_by_name = {t.name.lower(): t for t in db.query(Threat).all()}
+
+    def _parse_int(val: str, default: int = 0, lo: int = 0, hi: int = 4) -> int:
+        try:
+            return max(lo, min(hi, int(str(val).strip())))
+        except (ValueError, TypeError):
+            return default
+
+    created, skipped = [], []
+
+    for row in reader:
+        asset_key = (row.get("Activo_Codigo") or "").strip()
+        threat_key = (row.get("Amenaza_Codigo") or "").strip()
+
+        asset = assets_by_code.get(asset_key) or assets_by_name.get(asset_key.lower())
+        threat = threats_by_code.get(threat_key) or threats_by_name.get(threat_key.lower())
+
+        if not asset:
+            skipped.append(f"Activo no encontrado: '{asset_key}'")
+            continue
+        if not threat:
+            skipped.append(f"Amenaza no encontrada: '{threat_key}'")
+            continue
+
+        # Detectar duplicados
+        dup = db.query(Risk).filter(
+            Risk.asset_id == asset.id, Risk.threat_id == threat.id
+        ).first()
+        if dup:
+            skipped.append(f"{asset.code} x {threat.code} (duplicado: {dup.code})")
+            continue
+
+        il = _parse_int(row.get("Prob_Inherente", "2"), 2)
+        ic = _parse_int(row.get("Cons_Inherente", "2"), 2)
+        rl = _parse_int(row.get("Prob_Residual", "1"), 1)
+        rc = _parse_int(row.get("Cons_Residual", "1"), 1)
+
+        status_val = (row.get("Estado") or "identified").strip().lower()
+        try:
+            status = RiskStatus(status_val)
+        except ValueError:
+            status = RiskStatus.IDENTIFIED
+
+        treat_val = (row.get("Tratamiento") or "").strip().lower()
+        try:
+            treatment = TreatmentOption(treat_val) if treat_val else None
+        except ValueError:
+            treatment = None
+
+        due_str = (row.get("Fecha_Vencimiento") or "").strip()
+        due_date = None
+        if due_str:
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    due_date = datetime.strptime(due_str, fmt)
+                    break
+                except ValueError:
+                    continue
+
+        n = db.query(Risk).count() + len(created) + 1
+        code = f"RSK-{n:04d}"
+
+        risk = Risk(
+            code=code,
+            asset_id=asset.id,
+            threat_id=threat.id,
+            description=(row.get("Descripcion") or "").strip(),
+            inherent_likelihood=il,
+            inherent_consequence=ic,
+            inherent_level=calc_level(ic, il),
+            residual_likelihood=rl,
+            residual_consequence=rc,
+            residual_level=calc_residual(ic, il, rc, rl),
+            status=status,
+            treatment_option=treatment,
+            treatment_plan=(row.get("Plan_Tratamiento") or "").strip(),
+            treatment_due_date=due_date,
+            owner_id=current_user.id,
+        )
+        db.add(risk)
+        created.append(code)
+
+    if created:
+        db.commit()
+        log_action(db, current_user.id, "import", "risk", None,
+                   {"count": len(created), "source": "csv"})
+        db.commit()
+
+    return {
+        "created": len(created),
+        "skipped": len(skipped),
+        "detail_created": created,
+        "detail_skipped": skipped,
+    }
 
 
 @router.get("/heatmap/data")

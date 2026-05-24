@@ -35,6 +35,12 @@ const ViewRisks = {
           <input type="checkbox" id="r-overdue"> Solo vencidos
         </label>
         <button class="btn btn-ghost" id="r-export-csv" title="Exportar tabla como CSV" style="margin-left:auto;">Exportar CSV</button>
+        ${canEdit ? `
+        <button class="btn btn-ghost" id="r-import-tpl" title="Descargar plantilla CSV de importacion">Plantilla</button>
+        <label class="btn btn-ghost" style="cursor:pointer;margin:0;" title="Importar riesgos desde CSV">
+          Importar CSV
+          <input type="file" id="r-import-file" accept=".csv" style="display:none;">
+        </label>` : ''}
       </div>
       <div id="r-asset-filter" style="display:none;margin-bottom:8px;"></div>
       <div id="r-list"></div>
@@ -48,6 +54,27 @@ const ViewRisks = {
       try { await Api.risks.exportCsv(); UI.toast('CSV descargado', 'success'); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
+    if (canEdit) {
+      document.getElementById('r-import-tpl').onclick = () => Api.risks.importTemplate();
+      document.getElementById('r-import-file').onchange = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          UI.toast('Importando riesgos...', 'info');
+          const result = await Api.risks.importCsv(file);
+          UI.toast(
+            `${result.created} riesgo${result.created !== 1 ? 's' : ''} importado${result.created !== 1 ? 's' : ''}` +
+            (result.skipped > 0 ? ` · ${result.skipped} omitido${result.skipped !== 1 ? 's' : ''}` : ''),
+            result.created > 0 ? 'success' : 'warn'
+          );
+          if (result.detail_skipped?.length > 0) {
+            console.warn('Filas omitidas:', result.detail_skipped);
+          }
+          ViewRisks._reload();
+        } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+        e.target.value = '';
+      };
+    }
 
     // Precargar catálogos en memoria
     await ViewRisks._loadCatalogs();

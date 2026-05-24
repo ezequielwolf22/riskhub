@@ -110,6 +110,8 @@ const Api = {
     summary: () => Api.get('/api/risks/stats/summary'),
     heatmap: (mode = 'residual') => Api.get('/api/risks/heatmap/data?mode=' + mode),
     exportCsv: () => Api.download('/api/risks/export/csv', `riesgos_${new Date().toISOString().slice(0,10)}.csv`),
+    importTemplate: () => Api.download('/api/risks/import/template', 'risks_template.csv'),
+    importCsv: (file) => Api.postFile('/api/risks/import', file),
   },
   users: {
     list: () => Api.get('/api/users/'),

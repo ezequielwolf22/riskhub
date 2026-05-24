@@ -368,6 +368,14 @@ const ViewGuide = {
     </ul>
     ${this._h('Exportar riesgos a CSV')}
     ${this._p('En la vista <strong>Riesgos</strong>, el boton <em>Exportar CSV</em> (barra de herramientas, derecha) descarga todos los riesgos en formato CSV con niveles inherentes, residuales, estado, plan de tratamiento y fecha limite. Compatible con Excel y cualquier hoja de calculo.')}
+    ${this._h('Importar riesgos desde CSV')}
+    ${this._steps([
+      'Descarga la <strong>Plantilla</strong> (boton en la barra de herramientas) para ver el formato exacto esperado.',
+      'Rellena el CSV: columnas <em>Activo_Codigo</em> (ej. AST-0001) y <em>Amenaza_Codigo</em> (ej. T-CYB-01) son obligatorias.',
+      'Probabilidad y consecuencia (0-4 cada una) se calculan automaticamente para obtener el nivel.',
+      'Haz clic en <em>Importar CSV</em> y selecciona el fichero. Los duplicados (mismo activo + amenaza) se omiten.',
+      'Revisa el toast de resultado: indica cuantos riesgos se crearon y cuantos se omitieron con el motivo.',
+    ])}
     ${this._tip('Si un riesgo no aparece en el calendario, es porque no tiene fecha limite de tratamiento definida. Edita el riesgo y establece el campo <em>Fecha limite del plan</em> para que aparezca en el calendario.')}
   `;},
 
