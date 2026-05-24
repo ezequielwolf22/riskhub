@@ -198,6 +198,8 @@ const ViewGuide = {
     ${this._tip('La busqueda filtra por nombre, descripcion y codigo. Por ejemplo: escribe "RSK-0012" para ir directamente a ese riesgo, o "servidor" para encontrar todos los activos de tipo servidor.')}
     ${this._h('Modo oscuro')}
     ${this._p('RiskHub incluye un tema oscuro completo. Puedes activarlo o desactivarlo con el boton de la <strong>luna/sol</strong> en la cabecera, o usando el atajo <kbd>Shift</kbd> + <kbd>D</kbd>. La preferencia se guarda en el navegador y persiste entre sesiones.')}
+    ${this._h('Barra lateral colapsable')}
+    ${this._p('La barra de navegacion lateral se puede contraer para ganar espacio horizontal en la zona de contenido. Haz clic en el <strong>boton de flecha</strong> situado en la parte inferior del menu lateral, o usa el atajo <kbd>Shift</kbd> + <kbd>B</kbd>. En modo contraido solo se muestran los iconos de cada seccion. La preferencia se guarda automaticamente en el navegador.')}
   `;},
 
   get _cContext() { return `

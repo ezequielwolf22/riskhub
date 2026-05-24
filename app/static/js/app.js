@@ -62,9 +62,27 @@ function _updateThemeIcon(theme) {
   document.getElementById('theme-icon-light').style.display = theme === 'dark' ? '' : 'none';
 }
 
+function _updateSidebarIcons(collapsed) {
+  const ic = document.getElementById('sidebar-icon-collapse');
+  const ie = document.getElementById('sidebar-icon-expand');
+  if (ic) ic.style.display = collapsed ? 'none' : '';
+  if (ie) ie.style.display = collapsed ? '' : 'none';
+}
+
 function init() {
   if (!Auth.requireAuth()) return;
   _initTheme();
+
+  // Sidebar collapse toggle
+  const sidebar = document.getElementById('sidebar');
+  const savedCollapsed = localStorage.getItem('riskhub_sidebar') === 'collapsed';
+  if (savedCollapsed) sidebar.classList.add('collapsed');
+  _updateSidebarIcons(savedCollapsed);
+  document.getElementById('btn-sidebar-toggle').onclick = () => {
+    const isNowCollapsed = sidebar.classList.toggle('collapsed');
+    localStorage.setItem('riskhub_sidebar', isNowCollapsed ? 'collapsed' : 'expanded');
+    _updateSidebarIcons(isNowCollapsed);
+  };
 
   // Header user info
   const u = Auth.user();
@@ -133,6 +151,10 @@ function init() {
       e.preventDefault();
       document.getElementById('btn-theme').click();
     }
+    if (e.key === 'B' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      document.getElementById('btn-sidebar-toggle').click();
+    }
     if (e.key === 'g') {
       // Prefijo g + tecla para navegar (como Gmail)
       window._gPressed = true;
@@ -173,6 +195,7 @@ function _showShortcutsHelp() {
         <tr style="background:var(--bg-2);"><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Navegar resultados de busqueda</td></tr>
         <tr><td><kbd>Enter</kbd></td><td>Abrir resultado seleccionado</td></tr>
         <tr style="background:var(--bg-2);"><td><kbd>Shift</kbd> + <kbd>D</kbd></td><td>Alternar modo oscuro / claro</td></tr>
+        <tr><td><kbd>Shift</kbd> + <kbd>B</kbd></td><td>Contraer / expandir barra lateral</td></tr>
       </tbody>
     </table>
     <p style="font-size:12px;color:var(--text-muted);margin-top:12px;">Los atajos de navegacion (g+...) solo funcionan cuando el foco no esta en un campo de texto.</p>
