@@ -289,6 +289,8 @@ const ViewGuide = {
       'Haz clic en <strong>Eliminar</strong> para borrar la entrada. Se pedirá confirmación.',
       'Todas las operaciones quedan registradas en el <strong>Log de Auditoría</strong>.',
     ])}
+    ${this._h('Ordenar los catalogos')}
+    ${this._p('Las tablas de amenazas y vulnerabilidades tienen cabeceras de columna clickeables para ordenar. En amenazas puedes ordenar por codigo, nombre, origen, categoria o numero de riesgos. En vulnerabilidades por codigo, nombre, categoria o riesgos. Un segundo clic invierte el orden.')}
     ${this._h('Exposicion en el catalogo')}
     ${this._p('La tabla de amenazas y la de vulnerabilidades muestran una columna <strong>Riesgos</strong> con el número de escenarios de riesgo vinculados a cada entrada. Esto permite identificar qué amenazas o vulnerabilidades generan mayor exposición sin necesidad de ir al registro de riesgos.')}
     ${this._tip('<strong>Tip:</strong> Antes de crear una amenaza personalizada, busca en el catálogo ISO 27005 precargado. Es probable que ya exista una amenaza equivalente. Las amenazas personalizadas son útiles para sectores específicos (ej. amenazas de salud, aviación, energía).')}
@@ -342,6 +344,7 @@ const ViewGuide = {
     ${this._h('Tabla de riesgos — columnas informativas')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>Red.:</strong> porcentaje de reduccion del riesgo (inherente → residual). Verde = reduccion, rojo = riesgo residual mayor que el inherente.</li>
+      <li><strong>Responsable:</strong> primer nombre del usuario propietario del riesgo. Si no hay propietario asignado, muestra un guion.</li>
       <li><strong>VENCIDO:</strong> badge naranja en la columna Estado cuando la fecha limite de tratamiento ha pasado y el riesgo no esta cerrado ni aceptado. Las filas vencidas aparecen en rojo claro.</li>
       <li><strong>Exportar CSV:</strong> boton en la barra de herramientas para descargar todos los riesgos con campos ISO 27005 (niveles inherentes, residuales, estado, tratamiento, fechas).</li>
     </ul>
@@ -430,6 +433,13 @@ const ViewGuide = {
     ${this._p('Desde el detalle de un riesgo, puedes asociar controles implementados. El sistema calculará el nivel residual teniendo en cuenta la contribución de cada control (factor de reducción 0-1). Un control implementado al 100% con contribución 1.0 reduce el riesgo al nivel mínimo de la matriz para esa combinación.')}
     ${this._h('Fechas de revision de controles')}
     ${this._p('Al editar una implementacion puedes establecer la <strong>Ultima revision</strong> y la <strong>Proxima revision</strong>. Cuando la proxima revision vence, la fila aparece resaltada en amarillo con el badge <em>REVISION</em> y un aviso aparece al inicio de la lista. Esto ayuda a planificar las revisiones periodicas del SGSI.')}
+    ${this._h('Ordenar y filtrar implementaciones')}
+    ${this._p('En la pestana <strong>Implementaciones</strong> puedes:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Filtrar por estado:</strong> usa el selector de estado (Implementado / Parcial / Planificado / No implementado) para ver solo los controles en una fase concreta del ciclo de vida.</li>
+      <li><strong>Ordenar columnas:</strong> haz clic en Control, Implementacion, Estado, Madurez, Riesgos o Proxima revision para ordenar la tabla. Un segundo clic invierte el orden.</li>
+    </ul>
+    ${this._tip('Filtra por estado <em>Parcial</em> y ordena por <em>Madurez</em> descendente para identificar los controles mas avanzados que necesitan un ultimo esfuerzo para alcanzar el estado <em>Implementado</em>.')}
     ${this._h('Badge de revisiones vencidas')}
     ${this._p('El enlace <strong>Controles</strong> en la barra lateral muestra un badge naranja con el numero de implementaciones que tienen la fecha de proxima revision vencida (y cuyo estado no es "No implementado"). Esto permite detectar controles que necesitan atencion sin entrar a la vista de Controles.')}
     ${this._tip('Si el badge naranja de Controles muestra un numero, abre la vista de Controles y filtra o revisa las filas resaltadas en amarillo con el badge <em>REVISION</em>.')}
