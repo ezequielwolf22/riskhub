@@ -160,6 +160,16 @@ const ViewDashboard = {
             <h3>Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
             <div id="dash-upcoming" style="margin-top:8px;"></div>
           </div>
+
+          <div class="card" style="flex:2;" id="dash-activity-card" style="display:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <h3 style="margin:0;">Actividad reciente</h3>
+              <a href="#/audit" style="font-size:12px;color:var(--brand-purple);">Ver todo →</a>
+            </div>
+            <div id="dash-activity-body">
+              <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
+            </div>
+          </div>
         </div>
 
         <div class="card" style="margin-top:16px;" id="dash-controls-card">
@@ -172,11 +182,55 @@ const ViewDashboard = {
           </div>
         </div>
       `;
-      // Cargar proximos vencimientos y cobertura de controles
+      // Cargar proximos vencimientos, cobertura de controles y actividad reciente
       ViewDashboard._loadUpcoming();
       ViewDashboard._loadControlsCoverage();
+      ViewDashboard._loadRecentActivity();
     } catch (e) {
       main.innerHTML += `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _loadRecentActivity() {
+    // Solo visible para admins (endpoint de auditoria requiere admin)
+    const u = Auth.user();
+    const card = document.getElementById('dash-activity-card');
+    if (!card) return;
+    if (!u || u.role !== 'admin') { card.style.display = 'none'; return; }
+    card.style.display = '';
+    const el = document.getElementById('dash-activity-body');
+    try {
+      const data = await Api.audit.list({ limit: 8 });
+      const items = data.items || [];
+      if (!items.length) {
+        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin actividad registrada.</p>';
+        return;
+      }
+      const actionColors = {
+        create: '#065F46', update: '#1E40AF', delete: '#991B1B', login: '#5B21B6',
+      };
+      const entityLabel = {
+        risk: 'Riesgo', asset: 'Activo', control: 'Control', user: 'Usuario',
+        threat: 'Amenaza', vulnerability: 'Vuln.', context: 'Contexto',
+        alert_rule: 'Alerta', email_settings: 'SMTP', control_impl: 'Control impl.',
+      };
+      el.innerHTML = items.map(e => {
+        const ts = new Date(e.timestamp).toLocaleString('es-ES', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+        });
+        const actionColor = actionColors[e.action] || '#6B7280';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;
+                             border-bottom:1px solid var(--border);font-size:12px;">
+          <span style="color:var(--text-subtle);min-width:88px;font-family:var(--font-mono);">${ts}</span>
+          <span style="width:6px;height:6px;border-radius:50%;background:${actionColor};flex-shrink:0;"></span>
+          <span style="color:var(--text-muted);min-width:60px;">${UI.esc(entityLabel[e.entity_type] || e.entity_type)}</span>
+          <span style="color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            ${UI.esc(e.user_name || e.user_email || 'Sistema')}
+          </span>
+        </div>`;
+      }).join('');
+    } catch (_) {
+      if (card) card.style.display = 'none';
     }
   },
 

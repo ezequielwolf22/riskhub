@@ -213,6 +213,7 @@ class ControlImplOut(ORMBase):
     next_review: Optional[datetime]
     notes: Optional[str]
     control: ControlOut
+    risk_count: int = 0
 
 
 # ---------- RISKS ----------

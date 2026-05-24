@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Control, ControlImplementation, User
+from app.models import Control, ControlImplementation, User, risk_control_table
 from app.schemas import (
     ControlImplIn, ControlImplOut, ControlIn, ControlOut,
 )
@@ -107,8 +107,27 @@ def _next_custom_code(db: Session) -> str:
 @impl_router.get("/", response_model=list[ControlImplOut])
 def list_impls(db: Session = Depends(get_db),
                _: User = Depends(get_current_user)):
-    return db.query(ControlImplementation).order_by(
+    impls = db.query(ControlImplementation).order_by(
         ControlImplementation.id.desc()).all()
+
+    # Compute how many risks each control implementation mitigates
+    counts_q = (
+        db.query(
+            risk_control_table.c.control_implementation_id,
+            func.count(risk_control_table.c.risk_id),
+        )
+        .filter(risk_control_table.c.control_implementation_id.in_([i.id for i in impls]))
+        .group_by(risk_control_table.c.control_implementation_id)
+        .all()
+    )
+    risk_counts = {cid: cnt for cid, cnt in counts_q}
+
+    result = []
+    for impl in impls:
+        item = ControlImplOut.model_validate(impl)
+        # model_validate returns a Pydantic model which supports field assignment
+        result.append(item.model_copy(update={"risk_count": risk_counts.get(impl.id, 0)}))
+    return result
 
 
 @impl_router.post("/", response_model=ControlImplOut, status_code=201)

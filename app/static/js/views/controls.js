@@ -98,16 +98,21 @@ const ViewControls = {
         <strong>${overdueCount} control${overdueCount>1?'es':''}</strong> con revision pendiente (fecha proxima revision vencida).
       </div>` : ''}
       <div class="table-wrap"><table class="data">
-      <thead><tr><th>Control</th><th>Implementación</th><th>Estado</th><th>Madurez</th><th>Proxima revisión</th><th></th></tr></thead>
+      <thead><tr><th>Control</th><th>Implementación</th><th>Estado</th><th>Madurez</th>
+        <th style="width:70px;text-align:center;" title="Numero de riesgos que este control mitiga">Riesgos</th>
+        <th>Proxima revisión</th><th></th></tr></thead>
       <tbody>
         ${data.map(i => {
           const reviewOverdue = i.next_review && new Date(i.next_review) < now
             && i.status !== 'not_implemented';
+          const rc = i.risk_count || 0;
+          const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 3 ? 'var(--risk-low)' : 'var(--text-muted)';
           return `<tr data-id="${i.id}" style="cursor:pointer;${reviewOverdue?'background:rgba(254,249,195,0.5);':''}">
             <td>${UI.codePill(i.control.code)} <span style="font-size:11px;color:var(--text-subtle);">${UI.esc(i.control.name).slice(0,40)}</span></td>
             <td><strong>${UI.esc(i.name)}</strong></td>
             <td>${UI.controlStatusLabel(i.status)}</td>
             <td>${ViewControls._maturityBar(i.maturity)}</td>
+            <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};" title="${rc} riesgo${rc!==1?'s':''} mitigado${rc!==1?'s':''}">${rc}</td>
             <td style="font-size:12px;">${i.next_review
               ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISION</span>':''}`
               : '-'}</td>
