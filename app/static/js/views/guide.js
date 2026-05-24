@@ -735,7 +735,9 @@ const ViewGuide = {
       'La base de datos se preserva en el volumen Docker. No se pierden datos.',
       'Los catalogos de amenazas y vulnerabilidades se actualizan automaticamente.',
     ])}
-  `;};\n\n  get _cMethodology() { return `
+  `; },
+
+  get _cMethodology() { return `
     ${this._p('RiskHub implementa la metodología de gestión del riesgo de seguridad de la información de <strong>ISO/IEC 27005:2018</strong> con elementos cuantitativos de <strong>MAGERIT v3</strong> del MPTFP español.')}
     ${this._h('ISO/IEC 27005:2018 — Proceso de gestion del riesgo')}
     <div style="position:relative;padding:16px;background:var(--bg-2);border-radius:8px;margin-bottom:16px;">
