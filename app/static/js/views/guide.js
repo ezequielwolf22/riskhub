@@ -292,7 +292,7 @@ const ViewGuide = {
     ${this._h('Ordenar los catalogos')}
     ${this._p('Las tablas de amenazas y vulnerabilidades tienen cabeceras de columna clickeables para ordenar. En amenazas puedes ordenar por codigo, nombre, origen, categoria o numero de riesgos. En vulnerabilidades por codigo, nombre, categoria o riesgos. Un segundo clic invierte el orden.')}
     ${this._h('Exposicion en el catalogo')}
-    ${this._p('La tabla de amenazas y la de vulnerabilidades muestran una columna <strong>Riesgos</strong> con el número de escenarios de riesgo vinculados a cada entrada. Esto permite identificar qué amenazas o vulnerabilidades generan mayor exposición sin necesidad de ir al registro de riesgos.')}
+    ${this._p('La tabla de amenazas y la de vulnerabilidades muestran una columna <strong>Riesgos</strong> con el número de escenarios de riesgo vinculados a cada entrada. Haz clic en el número para abrir el registro de riesgos filtrado por esa amenaza o vulnerabilidad específica, con un banner indicando el filtro activo y un boton para quitarlo.')}
     ${this._tip('<strong>Tip:</strong> Antes de crear una amenaza personalizada, busca en el catálogo ISO 27005 precargado. Es probable que ya exista una amenaza equivalente. Las amenazas personalizadas son útiles para sectores específicos (ej. amenazas de salud, aviación, energía).')}
   `;},
 
