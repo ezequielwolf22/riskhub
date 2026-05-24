@@ -2,10 +2,11 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Threat, Vulnerability, User
+from app.models import Risk, Threat, Vulnerability, User
 from app.schemas import ThreatIn, ThreatOut, VulnerabilityIn, VulnerabilityOut
 from app.security import get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -29,7 +30,24 @@ def list_threats(
         query = query.filter((Threat.name.ilike(like)) | (Threat.code.ilike(like)))
     if category:
         query = query.filter(Threat.category == category)
-    return query.order_by(Threat.code).all()
+    threats = query.order_by(Threat.code).all()
+
+    # Compute risk counts in a single query
+    counts_q = (
+        db.query(Risk.threat_id, func.count(Risk.id))
+        .filter(Risk.threat_id.in_([t.id for t in threats]))
+        .group_by(Risk.threat_id)
+        .all()
+    )
+    risk_counts = {tid: cnt for tid, cnt in counts_q}
+
+    # Inject risk_count by building dicts (ThreatOut is ORM model)
+    result = []
+    for t in threats:
+        d = {c.key: getattr(t, c.key) for c in t.__table__.columns}
+        d["risk_count"] = risk_counts.get(t.id, 0)
+        result.append(ThreatOut.model_validate(d))
+    return result
 
 
 @threats_router.post("/", response_model=ThreatOut, status_code=201)

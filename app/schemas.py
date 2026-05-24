@@ -139,6 +139,7 @@ class ThreatOut(ORMBase):
     typical_assets: Optional[list[str]]
     affects: Optional[list[str]]
     is_custom: bool
+    risk_count: int = 0
 
 
 # ---------- VULNERABILITIES ----------

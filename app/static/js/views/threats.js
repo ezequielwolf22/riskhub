@@ -47,10 +47,14 @@ const ViewThreats = {
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
           <th>Codigo</th><th>Nombre</th><th>Origen</th>
-          <th>Categoria</th><th>Afecta</th><th>Aplica a</th><th></th>
+          <th>Categoria</th><th>Afecta</th><th>Aplica a</th>
+          <th style="width:70px;text-align:center;">Riesgos</th><th></th>
         </tr></thead>
         <tbody>
-          ${data.map(t => `
+          ${data.map(t => {
+            const rc = t.risk_count || 0;
+            const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+            return `
             <tr>
               <td>${UI.codePill(t.code)}</td>
               <td>
@@ -61,6 +65,7 @@ const ViewThreats = {
               <td>${UI.esc(t.category||'-')}</td>
               <td>${(t.affects||[]).join(', ')||'-'}</td>
               <td style="font-size:11px;color:var(--text-subtle);">${(t.typical_assets||[]).map(UI.assetTypeLabel).join(', ')||'-'}</td>
+              <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};">${rc}</td>
               <td style="white-space:nowrap;">
                 ${t.is_custom
                   ? `<span class="badge badge-muted">Custom</span>
