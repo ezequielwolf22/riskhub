@@ -225,6 +225,7 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
   padding: 16px 0;
   transition: width 0.2s ease, padding 0.2s ease;
   overflow: hidden;
+  display: flex; flex-direction: column;
 }
 .sidebar.collapsed { width: 48px; padding: 16px 0; }
 .sidebar.collapsed .group { display: none; }
@@ -233,8 +234,7 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
 .sidebar.collapsed a svg { width: 20px; height: 20px; }
 .sidebar.collapsed a.active { border-left-color: var(--brand-orange); }
 #btn-sidebar-toggle {
-  position: absolute; bottom: 12px; left: 0;
-  width: 100%; display: flex; justify-content: center;
+  display: flex; justify-content: center;
 }
 .sidebar .group { padding: 10px 16px 4px; font-size: 10px;
                   text-transform: uppercase; letter-spacing: 0.08em;
