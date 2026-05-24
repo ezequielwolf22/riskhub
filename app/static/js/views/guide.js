@@ -657,6 +657,16 @@ const ViewGuide = {
       'Activa o desactiva cuentas sin eliminarlas: el historial de auditoria se conserva.',
       'Elimina usuarios que ya no deban acceder. La accion queda registrada en el log.',
     ])}
+    ${this._h('Riesgos por usuario')}
+    ${this._p('La tabla de usuarios incluye una columna <strong>Riesgos</strong> que muestra cuantos riesgos tiene asignados cada cuenta. Haz clic en el numero para navegar directamente a la vista de riesgos filtrada por ese responsable.')}
+    ${this._steps([
+      'Un numero en <strong>color morado</strong> indica que el usuario tiene riesgos asignados.',
+      'Un numero en <strong>color rojo</strong> indica 5 o mas riesgos asignados (carga elevada).',
+      'Un <strong>0 gris</strong> indica que el usuario no es responsable de ningun riesgo activo.',
+      'Haz clic en el numero para ir a <em>Riesgos</em> filtrados por ese responsable.',
+    ])}
+    ${this._h('Ordenar la tabla de usuarios')}
+    ${this._p('Haz clic en cualquier encabezado de columna para ordenar la tabla: <strong>Email</strong>, <strong>Nombre</strong>, <strong>Rol</strong>, <strong>Ultimo acceso</strong> o <strong>Riesgos</strong>. Un segundo clic invierte el orden. La columna activa se marca en morado con una flecha ▲ / ▼.')}
     ${this._h('Cambio de contrasena (todos los roles)')}
     ${this._p('Cualquier usuario autenticado puede cambiar su propia contrasena. Haz clic en el <strong>chip de usuario</strong> (esquina superior derecha, con tu nombre y rol) para abrir el formulario de cambio de contrasena. Se requiere introducir la contrasena actual para confirmar la identidad.')}
     ${this._tip('<strong>Seguridad:</strong> Cambia tu contrasena regularmente y usa una combinacion de letras, numeros y simbolos. La nueva contrasena debe tener al menos 8 caracteres.')}

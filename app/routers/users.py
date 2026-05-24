@@ -1,9 +1,10 @@
 """Gestion de usuarios - solo administradores."""
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import Risk, User
 from app.schemas import UserIn, UserOut, UserUpdate
 from app.security import get_current_user, hash_password, require_admin
 from app.services.audit_service import log_action
@@ -13,7 +14,14 @@ router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(re
 
 @router.get("/", response_model=list[UserOut])
 def list_users(db: Session = Depends(get_db)):
-    return db.query(User).order_by(User.created_at.desc()).all()
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    counts_q = db.query(Risk.owner_id, func.count(Risk.id)).group_by(Risk.owner_id).all()
+    risk_counts = {uid: cnt for uid, cnt in counts_q if uid}
+    result = []
+    for u in users:
+        item = UserOut.model_validate(u)
+        result.append(item.model_copy(update={"risk_count": risk_counts.get(u.id, 0)}))
+    return result
 
 
 @router.post("/", response_model=UserOut, status_code=201)

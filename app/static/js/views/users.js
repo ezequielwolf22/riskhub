@@ -1,5 +1,7 @@
 ﻿/* Vista Usuarios - admin-only. */
 const ViewUsers = {
+  _sortCol: 'created_at', _sortAsc: false,
+
   async render(main) {
     if (!Auth.isAdmin()) {
       main.innerHTML = UI.sectionHeader('Acceso restringido', 'Solo administradores');
@@ -20,21 +22,61 @@ const ViewUsers = {
     const list = document.getElementById('u-list');
     list.innerHTML = '<div class="notice">Cargando...</div>';
     try {
-      const data = await Api.users.list();
+      let data = await Api.users.list();
+      // Client-side sort
+      const _sv = u => {
+        const k = ViewUsers._sortCol;
+        if (k === 'email') return (u.email || '').toLowerCase();
+        if (k === 'full_name') return (u.full_name || '').toLowerCase();
+        if (k === 'role') return u.role || '';
+        if (k === 'last_login_at') return u.last_login_at || 'zzz';
+        if (k === 'risk_count') return u.risk_count || 0;
+        return u.created_at || '';
+      };
+      data.sort((a, b) => {
+        const va = _sv(a), vb = _sv(b);
+        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        return ViewUsers._sortAsc ? cmp : -cmp;
+      });
+      const _th = (col, label) => {
+        const active = ViewUsers._sortCol === col;
+        const arrow = active ? (ViewUsers._sortAsc ? ' ▲' : ' ▼') : '';
+        return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${active?'color:var(--brand-purple);':''}" data-sort="${col}">${label}${arrow}</th>`;
+      };
       list.innerHTML = `<div class="table-wrap"><table class="data">
-        <thead><tr><th>Email</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Ultimo acceso</th><th></th></tr></thead>
+        <thead><tr>
+          ${_th('email','Email')}${_th('full_name','Nombre')}${_th('role','Rol')}
+          <th>Estado</th>${_th('last_login_at','Ultimo acceso')}
+          ${_th('risk_count','Riesgos')}<th></th>
+        </tr></thead>
         <tbody>
-          ${data.map(u => `
-            <tr>
+          ${data.map(u => {
+            const rc = u.risk_count || 0;
+            const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+            return `<tr>
               <td><strong>${UI.esc(u.email)}</strong></td>
               <td>${UI.esc(u.full_name)}</td>
               <td><span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">${u.role}</span></td>
               <td>${u.is_active ? '<span class="badge badge-low">Activo</span>' : '<span class="badge badge-high">Inactivo</span>'}</td>
               <td style="font-size:12px;">${u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '-'}</td>
+              <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;">
+                ${rc > 0
+                  ? `<a href="#/risks?owner=${u.id}" style="color:${rcColor};text-decoration:none;" title="Ver riesgos de ${UI.esc(u.full_name)}">${rc}</a>`
+                  : `<span style="color:${rcColor};">0</span>`}
+              </td>
               <td><button class="btn btn-ghost" data-edit="${u.id}">Editar</button></td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table></div>`;
+      list.querySelectorAll('th[data-sort]').forEach(th => {
+        th.onclick = () => {
+          const col = th.dataset.sort;
+          if (ViewUsers._sortCol === col) ViewUsers._sortAsc = !ViewUsers._sortAsc;
+          else { ViewUsers._sortCol = col; ViewUsers._sortAsc = col !== 'risk_count'; }
+          ViewUsers._reload();
+        };
+      });
       list.querySelectorAll('[data-edit]').forEach(b =>
         b.onclick = () => ViewUsers._edit(parseInt(b.dataset.edit)));
     } catch (e) {
