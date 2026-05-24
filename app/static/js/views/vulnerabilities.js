@@ -83,7 +83,11 @@ const ViewVulns = {
                   ${v.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(v.description)}</div>` : ''}</td>
               <td>${UI.esc(v.category||'-')}</td>
               <td style="font-size:11px;font-family:var(--font-mono);">${(v.related_threats||[]).join(', ')||'-'}</td>
-              <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};">${rc}</td>
+              <td style="text-align:center;">
+                <a href="#/risks?vulnerability_id=${v.id}" title="Ver riesgos con esta vulnerabilidad"
+                   style="font-weight:700;font-family:var(--font-mono);font-size:13px;
+                          color:${rcColor};text-decoration:none;">${rc}</a>
+              </td>
               <td style="white-space:nowrap;">
                 ${v.is_custom
                   ? `<span class="badge badge-muted">Custom</span>

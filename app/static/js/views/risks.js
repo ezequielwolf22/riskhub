@@ -10,9 +10,11 @@ const ViewRisks = {
     // Leer parametros de URL
     const assetMatch = location.hash.match(/[?&]asset_id=(\d+)/);
     const threatMatch = location.hash.match(/[?&]threat_id=(\d+)/);
+    const vulnMatch = location.hash.match(/[?&]vulnerability_id=(\d+)/);
     const overdueParam = /[?&]overdue=1/.test(location.hash);
     ViewRisks._assetFilter = null;
     ViewRisks._threatFilter = null;
+    ViewRisks._vulnFilter = null;
 
     main.innerHTML = UI.sectionHeader(
       'Registro de riesgos',
@@ -120,6 +122,23 @@ const ViewRisks = {
       }
     }
 
+    // Aplicar filtro de vulnerabilidad si viene de URL
+    if (vulnMatch) {
+      const vulnId = parseInt(vulnMatch[1]);
+      const vuln = ViewRisks._vulns.find(v => v.id === vulnId);
+      if (vuln) {
+        ViewRisks._vulnFilter = { id: vulnId, name: vuln.name };
+        const filterDiv = document.getElementById('r-asset-filter');
+        filterDiv.style.display = 'block';
+        filterDiv.innerHTML = `<div style="background:var(--brand-orange-4);border-left:3px solid var(--brand-orange);
+                                            border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
+                                            display:flex;justify-content:space-between;align-items:center;">
+          <span>Mostrando riesgos con vulnerabilidad: <strong>${UI.esc(vuln.code)} — ${UI.esc(vuln.name)}</strong></span>
+          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+        </div>`;
+      }
+    }
+
     // Pre-marcar checkbox de vencidos si viene de la URL
     if (overdueParam) {
       const cb = document.getElementById('r-overdue');
@@ -136,12 +155,13 @@ const ViewRisks = {
   _clearAssetFilter() {
     ViewRisks._assetFilter = null;
     ViewRisks._threatFilter = null;
+    ViewRisks._vulnFilter = null;
     document.getElementById('r-asset-filter').style.display = 'none';
     location.hash = '#/risks';
     ViewRisks._reload();
   },
 
-  _users: [], _threatFilter: null,
+  _users: [], _threatFilter: null, _vulnFilter: null,
   _selected: new Set(),
 
   async _loadCatalogs() {
@@ -188,6 +208,7 @@ const ViewRisks = {
       if (band) params.min_level = band;
       if (ViewRisks._assetFilter) params.asset_id = ViewRisks._assetFilter.id;
       if (ViewRisks._threatFilter) params.threat_id = ViewRisks._threatFilter.id;
+      if (ViewRisks._vulnFilter) params.vulnerability_id = ViewRisks._vulnFilter.id;
       if (overdue) params.overdue = true;
       if (ownerVal && ownerVal !== '__unassigned__') params.owner_id = ownerVal;
       let data = await Api.risks.list(params);

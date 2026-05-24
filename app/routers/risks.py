@@ -49,6 +49,7 @@ def list_risks(
     _: User = Depends(get_current_user),
     asset_id: Optional[int] = None,
     threat_id: Optional[int] = None,
+    vulnerability_id: Optional[int] = None,
     status: Optional[RiskStatus] = None,
     min_level: Optional[int] = Query(None, ge=0, le=8),
     overdue: Optional[bool] = None,
@@ -61,6 +62,12 @@ def list_risks(
         q = q.filter(Risk.asset_id == asset_id)
     if threat_id:
         q = q.filter(Risk.threat_id == threat_id)
+    if vulnerability_id:
+        from app.models import risk_vulnerability_table
+        vuln_risk_ids = db.query(risk_vulnerability_table.c.risk_id).filter(
+            risk_vulnerability_table.c.vulnerability_id == vulnerability_id
+        ).subquery()
+        q = q.filter(Risk.id.in_(vuln_risk_ids))
     if status:
         q = q.filter(Risk.status == status)
     if min_level is not None:
