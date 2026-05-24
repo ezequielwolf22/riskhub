@@ -90,7 +90,11 @@ const ViewThreats = {
               <td>${UI.esc(t.category||'-')}</td>
               <td>${(t.affects||[]).join(', ')||'-'}</td>
               <td style="font-size:11px;color:var(--text-subtle);">${(t.typical_assets||[]).map(UI.assetTypeLabel).join(', ')||'-'}</td>
-              <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};">${rc}</td>
+              <td style="text-align:center;">
+                <a href="#/risks?threat_id=${t.id}" title="Ver riesgos de esta amenaza"
+                   style="font-weight:700;font-family:var(--font-mono);font-size:13px;
+                          color:${rcColor};text-decoration:none;">${rc}</a>
+              </td>
               <td style="white-space:nowrap;">
                 ${t.is_custom
                   ? `<span class="badge badge-muted">Custom</span>

@@ -48,6 +48,7 @@ def list_risks(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
     asset_id: Optional[int] = None,
+    threat_id: Optional[int] = None,
     status: Optional[RiskStatus] = None,
     min_level: Optional[int] = Query(None, ge=0, le=8),
     overdue: Optional[bool] = None,
@@ -58,6 +59,8 @@ def list_risks(
     q = db.query(Risk)
     if asset_id:
         q = q.filter(Risk.asset_id == asset_id)
+    if threat_id:
+        q = q.filter(Risk.threat_id == threat_id)
     if status:
         q = q.filter(Risk.status == status)
     if min_level is not None:

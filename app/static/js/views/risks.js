@@ -9,8 +9,10 @@ const ViewRisks = {
 
     // Leer parametros de URL
     const assetMatch = location.hash.match(/[?&]asset_id=(\d+)/);
+    const threatMatch = location.hash.match(/[?&]threat_id=(\d+)/);
     const overdueParam = /[?&]overdue=1/.test(location.hash);
     ViewRisks._assetFilter = null;
+    ViewRisks._threatFilter = null;
 
     main.innerHTML = UI.sectionHeader(
       'Registro de riesgos',
@@ -101,6 +103,23 @@ const ViewRisks = {
       }
     }
 
+    // Aplicar filtro de amenaza si viene de URL
+    if (threatMatch) {
+      const threatId = parseInt(threatMatch[1]);
+      const threat = ViewRisks._threats.find(t => t.id === threatId);
+      if (threat) {
+        ViewRisks._threatFilter = { id: threatId, name: threat.name };
+        const filterDiv = document.getElementById('r-asset-filter');
+        filterDiv.style.display = 'block';
+        filterDiv.innerHTML = `<div style="background:var(--brand-orange-4);border-left:3px solid var(--brand-orange);
+                                            border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
+                                            display:flex;justify-content:space-between;align-items:center;">
+          <span>Mostrando riesgos de la amenaza: <strong>${UI.esc(threat.code)} — ${UI.esc(threat.name)}</strong></span>
+          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+        </div>`;
+      }
+    }
+
     // Pre-marcar checkbox de vencidos si viene de la URL
     if (overdueParam) {
       const cb = document.getElementById('r-overdue');
@@ -116,12 +135,13 @@ const ViewRisks = {
 
   _clearAssetFilter() {
     ViewRisks._assetFilter = null;
+    ViewRisks._threatFilter = null;
     document.getElementById('r-asset-filter').style.display = 'none';
     location.hash = '#/risks';
     ViewRisks._reload();
   },
 
-  _users: [],
+  _users: [], _threatFilter: null,
   _selected: new Set(),
 
   async _loadCatalogs() {
@@ -167,6 +187,7 @@ const ViewRisks = {
       if (status) params.status = status;
       if (band) params.min_level = band;
       if (ViewRisks._assetFilter) params.asset_id = ViewRisks._assetFilter.id;
+      if (ViewRisks._threatFilter) params.threat_id = ViewRisks._threatFilter.id;
       if (overdue) params.overdue = true;
       if (ownerVal && ownerVal !== '__unassigned__') params.owner_id = ownerVal;
       let data = await Api.risks.list(params);
