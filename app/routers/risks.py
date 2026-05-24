@@ -270,7 +270,7 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
         "top_risks": [
             {"code": r.code, "asset": r.asset.name if r.asset else "",
              "threat": r.threat.name if r.threat else "",
-             "level": r.residual_level, "id": r.id}
+             "level": r.residual_level, "inherent_level": r.inherent_level, "id": r.id}
             for r in sorted(risks, key=lambda x: -x.residual_level)[:10]
         ],
     }

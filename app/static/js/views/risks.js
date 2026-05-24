@@ -128,27 +128,35 @@ const ViewRisks = {
           'Crea uno asociando un activo con una amenaza, o ajusta los filtros.');
         return;
       }
+      const now = new Date();
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead>
           <tr>
             <th>Codigo</th><th>Activo</th><th>Amenaza</th>
-            <th>Inh.</th><th>Res.</th><th>Banda</th>
+            <th>Inh.</th><th>Res.</th><th title="Reduccion inherente → residual">Red.</th>
             <th>Estado</th><th>Tratamiento</th><th></th>
           </tr>
         </thead>
         <tbody>
-          ${data.map(r => `
-            <tr data-id="${r.id}" style="cursor:pointer;">
+          ${data.map(r => {
+            const red = r.inherent_level > 0
+              ? Math.round((1 - r.residual_level / r.inherent_level) * 100) : 0;
+            const redColor = red > 0 ? 'var(--risk-low)' : red < 0 ? 'var(--risk-high)' : 'var(--text-muted)';
+            const isOverdue = r.treatment_due_date
+              && new Date(r.treatment_due_date) < now
+              && r.status !== 'treated' && r.status !== 'accepted' && r.status !== 'closed';
+            return `<tr data-id="${r.id}" style="cursor:pointer;${isOverdue?'background:rgba(254,226,226,0.4);':''}">
               <td>${UI.codePill(r.code)}</td>
               <td><strong>${UI.esc(r.asset?.name||'-')}</strong></td>
               <td>${UI.esc(r.threat?.name||'-')}</td>
               <td>${UI.riskPill(r.inherent_level)}</td>
               <td>${UI.riskPill(r.residual_level)}</td>
-              <td>${UI.riskBand(r.residual_level)}</td>
-              <td>${UI.statusLabel(r.status)}</td>
+              <td style="font-size:12px;font-weight:700;color:${redColor};white-space:nowrap;">${red > 0 ? '-' : red < 0 ? '+' : ''}${Math.abs(red)}%</td>
+              <td>${UI.statusLabel(r.status)}${isOverdue ? ' <span title="Fecha de tratamiento vencida" style="font-size:10px;font-weight:700;color:var(--risk-high);background:#FEE2E2;border-radius:3px;padding:1px 4px;margin-left:4px;">VENCIDO</span>' : ''}</td>
               <td>${UI.treatmentLabel(r.treatment_option)}</td>
               <td><button class="btn btn-ghost" data-edit="${r.id}">Ver</button></td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table></div>`;
       list.querySelectorAll('[data-edit]').forEach(b =>

@@ -106,22 +106,88 @@ const ViewDashboard = {
           ${s.top_risks.length === 0
             ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavia. Comienza creando activos y asociandoles amenazas.</p>'
             : `<div class="table-wrap"><table class="data">
-                <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th></tr></thead>
+                <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th><th>Reduccion</th></tr></thead>
                 <tbody>
-                  ${s.top_risks.map(r => `
-                    <tr style="cursor:pointer;" onclick="location.hash='#/risks'">
+                  ${s.top_risks.map(r => {
+                    const red = r.inherent_level > 0
+                      ? Math.round((1 - r.level / r.inherent_level) * 100) : 0;
+                    return `<tr style="cursor:pointer;" onclick="location.hash='#/risks?id=${r.id}'">
                       <td>${UI.codePill(r.code)}</td>
                       <td>${UI.esc(r.asset)}</td>
                       <td>${UI.esc(r.threat)}</td>
                       <td>${UI.riskPill(r.level)}</td>
-                    </tr>`).join('')}
+                      <td><span style="font-size:12px;font-weight:600;color:${red>0?'var(--risk-low)':red<0?'var(--risk-high)':'var(--text-muted)'};">${red > 0 ? '-' : red < 0 ? '+' : ''}${Math.abs(red)}%</span></td>
+                    </tr>`;}).join('')}
                 </tbody>
               </table></div>`}
         </div>
+
+        <div class="card-row" style="margin-top:16px;">
+          <div class="card">
+            <h3>Acciones rapidas</h3>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+              <a href="#/risks?overdue=1" class="quick-action-btn ${s.overdue_treatments > 0 ? 'urgent' : ''}">
+                <span>Tratamientos vencidos</span>
+                <span class="qa-count">${s.overdue_treatments}</span>
+              </a>
+              <a href="#/risks" class="quick-action-btn ${s.no_treatment_high > 0 ? 'warn' : ''}">
+                <span>Altos sin plan</span>
+                <span class="qa-count">${s.no_treatment_high}</span>
+              </a>
+              <a href="#/calendar" class="quick-action-btn">
+                <span>Ver calendario</span>
+                <span style="font-size:12px;color:var(--text-muted);">→</span>
+              </a>
+              <a href="#/heatmap" class="quick-action-btn">
+                <span>Mapa de calor</span>
+                <span style="font-size:12px;color:var(--text-muted);">→</span>
+              </a>
+            </div>
+          </div>
+
+          <div class="card" style="flex:2;">
+            <h3>Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
+            <div id="dash-upcoming" style="margin-top:8px;"></div>
+          </div>
+        </div>
       `;
+      // Cargar proximos vencimientos
+      ViewDashboard._loadUpcoming();
     } catch (e) {
       main.innerHTML += `<div class="notice">${UI.esc(e.message)}</div>`;
     }
+  },
+
+  async _loadUpcoming() {
+    const el = document.getElementById('dash-upcoming');
+    if (!el) return;
+    try {
+      const all = await Api.risks.list();
+      const now = new Date();
+      const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const upcoming = all
+        .filter(r => r.treatment_due_date && r.status !== 'accepted' && r.status !== 'closed')
+        .map(r => ({ ...r, _due: new Date(r.treatment_due_date) }))
+        .filter(r => r._due >= now && r._due <= in30)
+        .sort((a, b) => a._due - b._due)
+        .slice(0, 8);
+
+      if (!upcoming.length) {
+        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin vencimientos en los proximos 30 dias.</p>';
+        return;
+      }
+      el.innerHTML = upcoming.map(r => {
+        const days = Math.ceil((r._due - now) / (1000 * 60 * 60 * 24));
+        const urgency = days <= 7 ? 'var(--risk-high)' : days <= 14 ? 'var(--risk-medium)' : 'var(--risk-low)';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
+          ${UI.codePill(r.code)}
+          <span style="flex:1;font-size:13px;">${UI.esc(r.asset?.name||'-')}</span>
+          <span style="font-size:12px;font-weight:600;color:${urgency};white-space:nowrap;">
+            ${days === 0 ? 'Hoy' : days === 1 ? 'Manana' : 'en ' + days + ' dias'}
+          </span>
+        </div>`;
+      }).join('');
+    } catch (_) { /* silencioso */ }
   },
 
   _bar(v, total, color) {

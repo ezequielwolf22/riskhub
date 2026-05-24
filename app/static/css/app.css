@@ -476,6 +476,45 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
                color: #6b2400; }
 
 /* ============================================================
+   Dashboard quick actions
+   ============================================================ */
+.quick-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  text-decoration: none;
+  color: var(--text-base);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background .15s, border-color .15s;
+}
+.quick-action-btn:hover {
+  background: var(--brand-purple-4);
+  border-color: var(--brand-purple-3);
+  color: var(--brand-purple);
+}
+.quick-action-btn.urgent {
+  background: #FEE2E2;
+  border-color: #FECACA;
+  color: #991B1B;
+}
+.quick-action-btn.urgent:hover { background: #FECACA; }
+.quick-action-btn.warn {
+  background: #FEF9C3;
+  border-color: #FDE68A;
+  color: #92400E;
+}
+.quick-action-btn.warn:hover { background: #FDE68A; }
+.qa-count {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* ============================================================
    Calendario de tratamiento
    ============================================================ */
 .cal-grid {
