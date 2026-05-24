@@ -42,6 +42,8 @@ async function navigate() {
   } catch (e) {
     main.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
   }
+  // Refresh sidebar badges after navigation (risk treatments + control reviews may have changed)
+  _loadOverdueBadge();
 }
 
 function _initTheme() {
@@ -207,12 +209,22 @@ async function _loadOverdueBadge() {
   try {
     const s = await Api.risks.summary();
     const badge = document.getElementById('badge-overdue');
-    if (!badge) return;
-    if (s.overdue_treatments > 0) {
-      badge.textContent = s.overdue_treatments;
-      badge.style.display = 'inline-block';
-    } else {
-      badge.style.display = 'none';
+    if (badge) {
+      if (s.overdue_treatments > 0) {
+        badge.textContent = s.overdue_treatments;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    const ctrlBadge = document.getElementById('badge-ctrl-review');
+    if (ctrlBadge) {
+      if (s.controls_overdue_reviews > 0) {
+        ctrlBadge.textContent = s.controls_overdue_reviews;
+        ctrlBadge.style.display = 'inline-block';
+      } else {
+        ctrlBadge.style.display = 'none';
+      }
     }
   } catch (_) { /* silencioso */ }
 }

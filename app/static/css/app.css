@@ -863,7 +863,7 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
 @media print {
   .brand-bar, .app-header, .sidebar, .section-header .actions,
   .btn, button, #modal-root, #search-wrapper, .bulk-bar,
-  #badge-overdue { display: none !important; }
+  #badge-overdue, #badge-ctrl-review { display: none !important; }
 
   .app-body { display: block; }
   .app-content { padding: 0; margin: 0; max-width: 100%; }

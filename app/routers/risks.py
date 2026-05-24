@@ -408,6 +408,12 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     impls = db.query(ControlImplementation).all()
     impl_implemented = sum(1 for c in impls if c.status == ControlStatus.IMPLEMENTED)
     avg_maturity = round(sum(c.maturity for c in impls) / len(impls), 1) if impls else 0
+    controls_overdue_reviews = sum(
+        1 for c in impls
+        if c.next_review
+        and c.next_review.replace(tzinfo=timezone.utc) < now
+        and c.status != ControlStatus.NOT_IMPLEMENTED
+    )
 
     return {
         "total_risks": len(risks),
@@ -417,6 +423,7 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
         "total_controls": len(impls),
         "controls_implemented": impl_implemented,
         "controls_avg_maturity": avg_maturity,
+        "controls_overdue_reviews": controls_overdue_reviews,
         "by_band": by_band,
         "by_status": by_status,
         "by_treatment": by_treatment,

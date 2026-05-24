@@ -2,6 +2,7 @@
 const ViewRisks = {
   _assets: [], _threats: [], _vulns: [], _impls: [],
   _assetFilter: null, // { id, name } cuando se filtra por activo desde la vista de activos
+  _sortCol: 'residual_level', _sortAsc: false, // orden por defecto: residual desc
 
   async render(main) {
     const canEdit = Auth.canEdit();
@@ -185,6 +186,34 @@ const ViewRisks = {
           'Crea uno asociando un activo con una amenaza, o ajusta los filtros.');
         return;
       }
+      // Sort data client-side
+      const sortKey = ViewRisks._sortCol;
+      const sortAsc = ViewRisks._sortAsc;
+      const sortVal = r => {
+        if (sortKey === 'code') return r.code || '';
+        if (sortKey === 'asset') return (r.asset?.name || '').toLowerCase();
+        if (sortKey === 'threat') return (r.threat?.name || '').toLowerCase();
+        if (sortKey === 'inherent_level') return r.inherent_level;
+        if (sortKey === 'residual_level') return r.residual_level;
+        if (sortKey === 'reduction') return r.inherent_level > 0
+          ? Math.round((1 - r.residual_level / r.inherent_level) * 100) : 0;
+        if (sortKey === 'status') return r.status || '';
+        if (sortKey === 'treatment') return r.treatment_option || '';
+        return 0;
+      };
+      data.sort((a, b) => {
+        const va = sortVal(a), vb = sortVal(b);
+        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        return sortAsc ? cmp : -cmp;
+      });
+
+      const _th = (col, label, title) => {
+        const active = ViewRisks._sortCol === col;
+        const arrow = active ? (ViewRisks._sortAsc ? ' ▲' : ' ▼') : '';
+        return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${active?'color:var(--brand-purple);':''}"
+                    data-sort="${col}" title="${title||label}">${label}${arrow}</th>`;
+      };
+
       ViewRisks._selected.clear();
       const now = new Date();
       const canEdit = Auth.canEdit();
@@ -192,9 +221,9 @@ const ViewRisks = {
         <thead>
           <tr>
             ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
-            <th>Codigo</th><th>Activo</th><th>Amenaza</th>
-            <th>Inh.</th><th>Res.</th><th title="Reduccion inherente → residual">Red.</th>
-            <th>Estado</th><th>Tratamiento</th><th></th>
+            ${_th('code','Codigo')}${_th('asset','Activo')}${_th('threat','Amenaza')}
+            ${_th('inherent_level','Inh.','Nivel inherente')}${_th('residual_level','Res.','Nivel residual')}${_th('reduction','Red.','Reduccion inherente → residual')}
+            ${_th('status','Estado')}${_th('treatment','Tratamiento')}<th></th>
           </tr>
         </thead>
         <tbody>
@@ -237,9 +266,28 @@ const ViewRisks = {
           <option value="avoidance">Evitacion</option>
           <option value="sharing">Transferencia</option>
         </select>
+        <select id="r-bulk-owner" style="font-size:13px;">
+          <option value="">Asignar responsable...</option>
+          <option value="__none__">Sin responsable</option>
+          ${ViewRisks._users.map(u => `<option value="${u.id}">${UI.esc(u.full_name || u.email)}</option>`).join('')}
+        </select>
         <button class="btn btn-primary" id="r-bulk-apply">Aplicar</button>
         <button class="btn btn-ghost" id="r-bulk-clear">Limpiar seleccion</button>
       </div>`;
+
+      // Sort header click handlers
+      list.querySelectorAll('th[data-sort]').forEach(th => {
+        th.onclick = () => {
+          const col = th.dataset.sort;
+          if (ViewRisks._sortCol === col) {
+            ViewRisks._sortAsc = !ViewRisks._sortAsc;
+          } else {
+            ViewRisks._sortCol = col;
+            ViewRisks._sortAsc = col === 'code' || col === 'asset' || col === 'threat';
+          }
+          ViewRisks._reload();
+        };
+      });
 
       // Checkbox logic
       if (canEdit) {
@@ -297,13 +345,16 @@ const ViewRisks = {
     if (!ids.length) return;
     const newStatus = document.getElementById('r-bulk-status').value;
     const newTreat = document.getElementById('r-bulk-treat').value;
-    if (!newStatus && !newTreat) {
-      UI.toast('Selecciona al menos un cambio (estado o tratamiento)', 'error');
+    const newOwner = document.getElementById('r-bulk-owner')?.value || '';
+    if (!newStatus && !newTreat && !newOwner) {
+      UI.toast('Selecciona al menos un cambio (estado, tratamiento o responsable)', 'error');
       return;
     }
     const body = {};
     if (newStatus) body.status = newStatus;
     if (newTreat) body.treatment_option = newTreat;
+    if (newOwner === '__none__') body.owner_id = null;
+    else if (newOwner) body.owner_id = parseInt(newOwner);
     const btn = document.getElementById('r-bulk-apply');
     btn.disabled = true; btn.textContent = 'Aplicando...';
     try {
