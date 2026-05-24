@@ -1,5 +1,7 @@
 /* Vista Vulnerabilidades - catalogo ISO 27005 Annex D. */
 const ViewVulns = {
+  _sortCol: 'code', _sortAsc: true,
+
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
@@ -42,11 +44,33 @@ const ViewVulns = {
         list.innerHTML = UI.emptyState('Sin resultados', 'Ajusta los filtros.');
         return;
       }
+
+      // Client-side sort
+      const _sv = v => {
+        const k = ViewVulns._sortCol;
+        if (k === 'code') return v.code || '';
+        if (k === 'name') return (v.name || '').toLowerCase();
+        if (k === 'category') return (v.category || '').toLowerCase();
+        if (k === 'risks') return v.risk_count || 0;
+        return '';
+      };
+      data.sort((a, b) => {
+        const va = _sv(a), vb = _sv(b);
+        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        return ViewVulns._sortAsc ? cmp : -cmp;
+      });
+      const _th = (col, label, style) => {
+        const active = ViewVulns._sortCol === col;
+        const arrow = active ? (ViewVulns._sortAsc ? ' ▲' : ' ▼') : '';
+        return `<th style="cursor:pointer;user-select:none;${active?'color:var(--brand-purple);':''}${style||''}"
+                    data-sort="${col}">${label}${arrow}</th>`;
+      };
+
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>Codigo</th><th>Nombre</th><th>Categoria</th>
+          ${_th('code','Codigo')}${_th('name','Nombre')}${_th('category','Categoria')}
           <th>Amenazas relacionadas</th>
-          <th style="width:70px;text-align:center;">Riesgos</th><th></th>
+          ${_th('risks','Riesgos','width:70px;text-align:center;')}<th></th>
         </tr></thead>
         <tbody>
           ${data.map(v => {
@@ -76,6 +100,14 @@ const ViewVulns = {
             </tr>`;}).join('')}
         </tbody>
       </table></div>`;
+      list.querySelectorAll('th[data-sort]').forEach(th => {
+        th.onclick = () => {
+          const col = th.dataset.sort;
+          if (ViewVulns._sortCol === col) ViewVulns._sortAsc = !ViewVulns._sortAsc;
+          else { ViewVulns._sortCol = col; ViewVulns._sortAsc = col !== 'risks'; }
+          ViewVulns._reload();
+        };
+      });
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }

@@ -1,6 +1,6 @@
 ﻿/* Vista Controles - catálogo ISO 27002:2022 + implementaciónes. */
 const ViewControls = {
-  _tab: 'impls', _catalog: [],
+  _tab: 'impls', _catalog: [], _sortCol: 'id', _sortAsc: false,
 
   async render(main) {
     const canEdit = Auth.canEdit();
@@ -21,6 +21,13 @@ const ViewControls = {
           <option value="physical">Fisico</option>
           <option value="technological">Tecnológico</option>
         </select>
+        <select id="c-status" style="${ViewControls._tab==='impls'?'':'display:none;'}">
+          <option value="">Cualquier estado</option>
+          <option value="implemented">Implementado</option>
+          <option value="partial">Parcial</option>
+          <option value="planned">Planificado</option>
+          <option value="not_implemented">No implementado</option>
+        </select>
         <button class="btn btn-ghost" id="btn-soa-csv" title="Exportar SoA como CSV">SoA CSV</button>
       </div>
       <div id="c-list"></div>
@@ -32,6 +39,7 @@ const ViewControls = {
     });
     document.getElementById('c-search').oninput = () => ViewControls._reload();
     document.getElementById('c-theme').onchange = () => ViewControls._reload();
+    document.getElementById('c-status').onchange = () => ViewControls._reload();
     if (canEdit) document.getElementById('btn-new-impl').onclick = () => ViewControls._editImpl();
     document.getElementById('btn-soa-csv').onclick = async () => {
       try { await Api.controls.exportSoaCsv(); UI.toast('SoA CSV descargado', 'success'); }
@@ -82,7 +90,14 @@ const ViewControls = {
 
   async _renderImpls() {
     const list = document.getElementById('c-list');
-    const data = await Api.impls.list();
+    let data = await Api.impls.list();
+    // Apply search/status/theme filters client-side
+    const q = (document.getElementById('c-search')?.value || '').toLowerCase();
+    const statusF = document.getElementById('c-status')?.value || '';
+    const themeF = document.getElementById('c-theme')?.value || '';
+    if (q) data = data.filter(i => i.name.toLowerCase().includes(q) || i.control?.code?.toLowerCase().includes(q) || i.control?.name?.toLowerCase().includes(q));
+    if (statusF) data = data.filter(i => i.status === statusF);
+    if (themeF) data = data.filter(i => i.control?.theme === themeF);
     if (!data.length) {
       list.innerHTML = UI.emptyState(
         'Sin implementaciónes',
@@ -90,6 +105,29 @@ const ViewControls = {
       );
       return;
     }
+    // Client-side sort
+    const _sv = i => {
+      const k = ViewControls._sortCol;
+      if (k === 'control') return i.control?.code || '';
+      if (k === 'name') return (i.name || '').toLowerCase();
+      if (k === 'status') return i.status || '';
+      if (k === 'maturity') return i.maturity || 0;
+      if (k === 'risks') return i.risk_count || 0;
+      if (k === 'next_review') return i.next_review || 'zzz';
+      return i.id;
+    };
+    data.sort((a, b) => {
+      const va = _sv(a), vb = _sv(b);
+      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      return ViewControls._sortAsc ? cmp : -cmp;
+    });
+    const _th = (col, label, style) => {
+      const active = ViewControls._sortCol === col;
+      const arrow = active ? (ViewControls._sortAsc ? ' ▲' : ' ▼') : '';
+      return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${active?'color:var(--brand-purple);':''}${style||''}"
+                  data-sort="${col}">${label}${arrow}</th>`;
+    };
+
     const now = new Date();
     const overdueCount = data.filter(i =>
       i.next_review && new Date(i.next_review) < now && i.status !== 'not_implemented').length;
@@ -98,9 +136,11 @@ const ViewControls = {
         <strong>${overdueCount} control${overdueCount>1?'es':''}</strong> con revision pendiente (fecha proxima revision vencida).
       </div>` : ''}
       <div class="table-wrap"><table class="data">
-      <thead><tr><th>Control</th><th>Implementación</th><th>Estado</th><th>Madurez</th>
-        <th style="width:70px;text-align:center;" title="Numero de riesgos que este control mitiga">Riesgos</th>
-        <th>Proxima revisión</th><th></th></tr></thead>
+      <thead><tr>
+        ${_th('control','Control')}${_th('name','Implementación')}${_th('status','Estado')}${_th('maturity','Madurez')}
+        ${_th('risks','Riesgos','width:70px;text-align:center;')}
+        ${_th('next_review','Proxima revisión')}<th></th>
+      </tr></thead>
       <tbody>
         ${data.map(i => {
           const reviewOverdue = i.next_review && new Date(i.next_review) < now
@@ -121,6 +161,14 @@ const ViewControls = {
         }).join('')}
       </tbody>
     </table></div>`;
+    list.querySelectorAll('th[data-sort]').forEach(th => {
+      th.onclick = () => {
+        const col = th.dataset.sort;
+        if (ViewControls._sortCol === col) ViewControls._sortAsc = !ViewControls._sortAsc;
+        else { ViewControls._sortCol = col; ViewControls._sortAsc = col !== 'maturity' && col !== 'risks'; }
+        ViewControls._renderImpls();
+      };
+    });
     list.querySelectorAll('[data-edit]').forEach(b =>
       b.onclick = (e) => { e.stopPropagation(); ViewControls._editImpl(parseInt(b.dataset.edit)); });
     list.querySelectorAll('tr[data-id]').forEach(tr =>

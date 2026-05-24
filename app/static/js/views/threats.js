@@ -1,5 +1,7 @@
 /* Vista Amenazas - catalogo ISO 27005 Annex C. */
 const ViewThreats = {
+  _sortCol: 'code', _sortAsc: true,
+
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
@@ -44,11 +46,34 @@ const ViewThreats = {
         list.innerHTML = UI.emptyState('Sin amenazas', 'No se encontraron resultados.');
         return;
       }
+
+      // Client-side sort
+      const _sv = t => {
+        const k = ViewThreats._sortCol;
+        if (k === 'code') return t.code || '';
+        if (k === 'name') return (t.name || '').toLowerCase();
+        if (k === 'origin') return t.origin || '';
+        if (k === 'category') return (t.category || '').toLowerCase();
+        if (k === 'risks') return t.risk_count || 0;
+        return '';
+      };
+      data.sort((a, b) => {
+        const va = _sv(a), vb = _sv(b);
+        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        return ViewThreats._sortAsc ? cmp : -cmp;
+      });
+      const _th = (col, label, style) => {
+        const active = ViewThreats._sortCol === col;
+        const arrow = active ? (ViewThreats._sortAsc ? ' ▲' : ' ▼') : '';
+        return `<th style="cursor:pointer;user-select:none;${active?'color:var(--brand-purple);':''}${style||''}"
+                    data-sort="${col}">${label}${arrow}</th>`;
+      };
+
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>Codigo</th><th>Nombre</th><th>Origen</th>
-          <th>Categoria</th><th>Afecta</th><th>Aplica a</th>
-          <th style="width:70px;text-align:center;">Riesgos</th><th></th>
+          ${_th('code','Codigo')}${_th('name','Nombre')}${_th('origin','Origen')}
+          ${_th('category','Categoria')}<th>Afecta</th><th>Aplica a</th>
+          ${_th('risks','Riesgos','width:70px;text-align:center;')}<th></th>
         </tr></thead>
         <tbody>
           ${data.map(t => {
@@ -82,6 +107,14 @@ const ViewThreats = {
             </tr>`).join('')}
         </tbody>
       </table></div>`;
+      list.querySelectorAll('th[data-sort]').forEach(th => {
+        th.onclick = () => {
+          const col = th.dataset.sort;
+          if (ViewThreats._sortCol === col) ViewThreats._sortAsc = !ViewThreats._sortAsc;
+          else { ViewThreats._sortCol = col; ViewThreats._sortAsc = col !== 'risks'; }
+          ViewThreats._reload();
+        };
+      });
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }

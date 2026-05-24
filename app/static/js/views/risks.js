@@ -199,6 +199,10 @@ const ViewRisks = {
           ? Math.round((1 - r.residual_level / r.inherent_level) * 100) : 0;
         if (sortKey === 'status') return r.status || '';
         if (sortKey === 'treatment') return r.treatment_option || '';
+        if (sortKey === 'owner') {
+          const u = ViewRisks._users.find(u => u.id === r.owner_id);
+          return u ? (u.full_name || u.email).toLowerCase() : 'zzz';
+        }
         return 0;
       };
       data.sort((a, b) => {
@@ -223,7 +227,7 @@ const ViewRisks = {
             ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
             ${_th('code','Codigo')}${_th('asset','Activo')}${_th('threat','Amenaza')}
             ${_th('inherent_level','Inh.','Nivel inherente')}${_th('residual_level','Res.','Nivel residual')}${_th('reduction','Red.','Reduccion inherente → residual')}
-            ${_th('status','Estado')}${_th('treatment','Tratamiento')}<th></th>
+            ${_th('status','Estado')}${_th('treatment','Tratamiento')}${_th('owner','Responsable','width:110px;')}<th></th>
           </tr>
         </thead>
         <tbody>
@@ -244,6 +248,10 @@ const ViewRisks = {
               <td style="font-size:12px;font-weight:700;color:${redColor};white-space:nowrap;">${red > 0 ? '-' : red < 0 ? '+' : ''}${Math.abs(red)}%</td>
               <td>${UI.statusLabel(r.status)}${isOverdue ? ' <span title="Fecha de tratamiento vencida" style="font-size:10px;font-weight:700;color:var(--risk-high);background:#FEE2E2;border-radius:3px;padding:1px 4px;margin-left:4px;">VENCIDO</span>' : ''}</td>
               <td>${UI.treatmentLabel(r.treatment_option)}</td>
+              <td style="font-size:12px;color:var(--text-muted);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
+                (() => { const u = ViewRisks._users.find(u => u.id === r.owner_id);
+                         return u ? UI.esc((u.full_name || u.email).split(' ')[0]) : '-'; })()
+              }</td>
               <td><button class="btn btn-ghost" data-edit="${r.id}" onclick="event.stopPropagation()">Ver</button></td>
             </tr>`;
           }).join('')}
