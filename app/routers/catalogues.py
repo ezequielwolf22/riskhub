@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Risk, Threat, Vulnerability, User
+from app.models import Risk, Threat, Vulnerability, User, risk_vulnerability_table
 from app.schemas import ThreatIn, ThreatOut, VulnerabilityIn, VulnerabilityOut
 from app.security import get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -106,7 +106,26 @@ def list_vulns(
         query = query.filter((Vulnerability.name.ilike(like)) | (Vulnerability.code.ilike(like)))
     if category:
         query = query.filter(Vulnerability.category == category)
-    return query.order_by(Vulnerability.code).all()
+    vulns = query.order_by(Vulnerability.code).all()
+
+    # Count linked risks via the many-to-many junction table
+    counts_q = (
+        db.query(
+            risk_vulnerability_table.c.vulnerability_id,
+            func.count(risk_vulnerability_table.c.risk_id),
+        )
+        .filter(risk_vulnerability_table.c.vulnerability_id.in_([v.id for v in vulns]))
+        .group_by(risk_vulnerability_table.c.vulnerability_id)
+        .all()
+    )
+    risk_counts = {vid: cnt for vid, cnt in counts_q}
+
+    result = []
+    for v in vulns:
+        d = {c.key: getattr(v, c.key) for c in v.__table__.columns}
+        d["risk_count"] = risk_counts.get(v.id, 0)
+        result.append(VulnerabilityOut.model_validate(d))
+    return result
 
 
 @vulns_router.post("/", response_model=VulnerabilityOut, status_code=201)

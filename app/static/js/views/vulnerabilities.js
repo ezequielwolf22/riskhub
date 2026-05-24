@@ -45,16 +45,21 @@ const ViewVulns = {
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
           <th>Codigo</th><th>Nombre</th><th>Categoria</th>
-          <th>Amenazas relacionadas</th><th></th>
+          <th>Amenazas relacionadas</th>
+          <th style="width:70px;text-align:center;">Riesgos</th><th></th>
         </tr></thead>
         <tbody>
-          ${data.map(v => `
+          ${data.map(v => {
+            const rc = v.risk_count || 0;
+            const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+            return `
             <tr>
               <td>${UI.codePill(v.code)}</td>
               <td><strong>${UI.esc(v.name)}</strong>
                   ${v.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(v.description)}</div>` : ''}</td>
               <td>${UI.esc(v.category||'-')}</td>
               <td style="font-size:11px;font-family:var(--font-mono);">${(v.related_threats||[]).join(', ')||'-'}</td>
+              <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};">${rc}</td>
               <td style="white-space:nowrap;">
                 ${v.is_custom
                   ? `<span class="badge badge-muted">Custom</span>
@@ -68,7 +73,7 @@ const ViewVulns = {
                   : '<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO</span>'
                 }
               </td>
-            </tr>`).join('')}
+            </tr>`;}).join('')}
         </tbody>
       </table></div>`;
     } catch (e) {

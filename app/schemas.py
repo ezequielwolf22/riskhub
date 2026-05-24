@@ -159,6 +159,7 @@ class VulnerabilityOut(ORMBase):
     category: Optional[str]
     related_threats: Optional[list[str]]
     is_custom: bool
+    risk_count: int = 0
 
 
 # ---------- CONTROLS ----------
