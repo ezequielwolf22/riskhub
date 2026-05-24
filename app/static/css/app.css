@@ -835,3 +835,26 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
   border-color: var(--border-strong);
   color: var(--text);
 }
+
+/* ============================================================
+   Estilos de impresion (@media print)
+   ============================================================ */
+@media print {
+  .brand-bar, .app-header, .sidebar, .section-header .actions,
+  .btn, button, #modal-root, #search-wrapper, .bulk-bar,
+  #badge-overdue { display: none !important; }
+
+  .app-body { display: block; }
+  .app-content { padding: 0; margin: 0; max-width: 100%; }
+  .card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; }
+  .card-row { display: block; }
+  .card-row > * { margin-bottom: 16px; }
+  .kpi { display: inline-block; min-width: 120px; margin: 4px; }
+  .table-wrap { overflow: visible; }
+  table.data { width: 100%; font-size: 11px; }
+  table.data th, table.data td { padding: 6px 8px; }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3, h4 { page-break-after: avoid; }
+  .notice { border: 1px solid #ddd; background: #f9f9f9; }
+  body { font-size: 12px; background: #fff; color: #000; }
+}

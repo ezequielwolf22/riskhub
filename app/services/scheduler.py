@@ -180,12 +180,20 @@ def _run_alert_rules() -> None:
                 except Exception as exc:
                     logger.warning("Error enviando digest diario a %s: %s", rule.recipient_email, exc)
                 continue  # ya procesado, skip el loop for risk in matching
+            elif rule.event_type == "treatment_due_soon":
+                from datetime import timedelta
+                in_n = timedelta(days=rule.threshold_level if rule.threshold_level > 0 else 7)
+                matching = [r for r in risks
+                            if r.treatment_due_date
+                            and timedelta(0) <= r.treatment_due_date.replace(tzinfo=timezone.utc) - now <= in_n
+                            and r.status not in (RiskStatus.TREATED, RiskStatus.ACCEPTED, RiskStatus.CLOSED)]
 
             reason_map = {
                 "risk_critical": "supera el umbral critico",
                 "risk_high": "supera el umbral alto configurado",
                 "treatment_overdue": "tiene el plan de tratamiento vencido",
                 "risk_no_treatment": "no tiene plan de tratamiento definido",
+                "treatment_due_soon": "tiene el plan de tratamiento proximo a vencer",
             }
 
             for risk in matching:
