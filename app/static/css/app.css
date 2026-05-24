@@ -476,6 +476,46 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
                color: #6b2400; }
 
 /* ============================================================
+   Bulk action bar
+   ============================================================ */
+.bulk-bar {
+  position: sticky;
+  bottom: 16px;
+  margin-top: 12px;
+  background: var(--brand-purple);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(89,0,141,0.25);
+  flex-wrap: wrap;
+  z-index: 40;
+}
+.bulk-bar select {
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: none;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  cursor: pointer;
+}
+.bulk-bar select option { color: var(--text-base); background: var(--bg-1); }
+.bulk-bar .btn-primary {
+  background: #fff;
+  color: var(--brand-purple);
+  border: none;
+}
+.bulk-bar .btn-primary:hover { background: #f0e6ff; }
+.bulk-bar .btn-ghost {
+  color: rgba(255,255,255,0.8);
+  border-color: rgba(255,255,255,0.3);
+}
+.bulk-bar .btn-ghost:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+/* ============================================================
    Dashboard quick actions
    ============================================================ */
 .quick-action-btn {

@@ -102,11 +102,58 @@ function init() {
   // Badge de vencidos en sidebar
   _loadOverdueBadge();
 
+  // Atajos de teclado globales
+  document.addEventListener('keydown', (e) => {
+    const tag = document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      _showShortcutsHelp();
+    }
+    if (e.key === 'g') {
+      // Prefijo g + tecla para navegar (como Gmail)
+      window._gPressed = true;
+      setTimeout(() => { window._gPressed = false; }, 800);
+    }
+    if (window._gPressed && e.key !== 'g') {
+      e.preventDefault();
+      const nav = { d: 'dashboard', h: 'heatmap', a: 'assets', r: 'risks',
+                    c: 'controls', p: 'reports', l: 'alerts', u: 'users' };
+      if (nav[e.key]) location.hash = '/' + nav[e.key];
+      window._gPressed = false;
+    }
+  });
+
   // Exponer navigate global para uso desde vistas
   window.App = { navigate: (route) => { location.hash = '/' + route; } };
 
   window.addEventListener('hashchange', () => { Search.close(); navigate(); });
   navigate();
+}
+
+function _showShortcutsHelp() {
+  UI.modal('Atajos de teclado', `
+    <table class="data" style="width:100%;font-size:13px;">
+      <thead><tr><th>Atajo</th><th>Accion</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>/</kbd></td><td>Activar busqueda global</td></tr>
+        <tr style="background:var(--bg-2);"><td><kbd>?</kbd></td><td>Mostrar este dialogo de atajos</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cerrar busqueda / modal</td></tr>
+        <tr style="background:var(--bg-2);"><td><kbd>g</kbd> + <kbd>d</kbd></td><td>Ir al Dashboard</td></tr>
+        <tr><td><kbd>g</kbd> + <kbd>h</kbd></td><td>Ir al Heatmap</td></tr>
+        <tr style="background:var(--bg-2);"><td><kbd>g</kbd> + <kbd>a</kbd></td><td>Ir a Activos</td></tr>
+        <tr><td><kbd>g</kbd> + <kbd>r</kbd></td><td>Ir a Riesgos</td></tr>
+        <tr style="background:var(--bg-2);"><td><kbd>g</kbd> + <kbd>c</kbd></td><td>Ir a Controles</td></tr>
+        <tr><td><kbd>g</kbd> + <kbd>p</kbd></td><td>Ir a Informes</td></tr>
+        <tr style="background:var(--bg-2);"><td><kbd>g</kbd> + <kbd>l</kbd></td><td>Ir a Alertas</td></tr>
+        <tr><td><kbd>g</kbd> + <kbd>u</kbd></td><td>Ir a Usuarios (admin)</td></tr>
+        <tr style="background:var(--bg-2);"><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Navegar resultados de busqueda</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Abrir resultado seleccionado</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-muted);margin-top:12px;">Los atajos de navegacion (g+...) solo funcionan cuando el foco no esta en un campo de texto.</p>
+  `, { actions: '<button class="btn btn-primary" id="m-cancel">Cerrar</button>' });
+  document.getElementById('m-cancel').onclick = UI.closeModal;
 }
 
 async function _loadOverdueBadge() {

@@ -90,6 +90,7 @@ const ViewRisks = {
   },
 
   _users: [],
+  _selected: new Set(),
 
   async _loadCatalogs() {
     try {
@@ -132,10 +133,13 @@ const ViewRisks = {
           'Crea uno asociando un activo con una amenaza, o ajusta los filtros.');
         return;
       }
+      ViewRisks._selected.clear();
       const now = new Date();
-      list.innerHTML = `<div class="table-wrap"><table class="data">
+      const canEdit = Auth.canEdit();
+      list.innerHTML = `<div class="table-wrap"><table class="data" id="r-table">
         <thead>
           <tr>
+            ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
             <th>Codigo</th><th>Activo</th><th>Amenaza</th>
             <th>Inh.</th><th>Res.</th><th title="Reduccion inherente → residual">Red.</th>
             <th>Estado</th><th>Tratamiento</th><th></th>
@@ -150,6 +154,7 @@ const ViewRisks = {
               && new Date(r.treatment_due_date) < now
               && r.status !== 'treated' && r.status !== 'accepted' && r.status !== 'closed';
             return `<tr data-id="${r.id}" style="cursor:pointer;${isOverdue?'background:rgba(254,226,226,0.4);':''}">
+              ${canEdit ? `<td onclick="event.stopPropagation()"><input type="checkbox" class="r-chk" data-id="${r.id}"></td>` : ''}
               <td>${UI.codePill(r.code)}</td>
               <td><strong>${UI.esc(r.asset?.name||'-')}</strong></td>
               <td>${UI.esc(r.threat?.name||'-')}</td>
@@ -158,17 +163,105 @@ const ViewRisks = {
               <td style="font-size:12px;font-weight:700;color:${redColor};white-space:nowrap;">${red > 0 ? '-' : red < 0 ? '+' : ''}${Math.abs(red)}%</td>
               <td>${UI.statusLabel(r.status)}${isOverdue ? ' <span title="Fecha de tratamiento vencida" style="font-size:10px;font-weight:700;color:var(--risk-high);background:#FEE2E2;border-radius:3px;padding:1px 4px;margin-left:4px;">VENCIDO</span>' : ''}</td>
               <td>${UI.treatmentLabel(r.treatment_option)}</td>
-              <td><button class="btn btn-ghost" data-edit="${r.id}">Ver</button></td>
+              <td><button class="btn btn-ghost" data-edit="${r.id}" onclick="event.stopPropagation()">Ver</button></td>
             </tr>`;
           }).join('')}
         </tbody>
-      </table></div>`;
+      </table></div>
+      <div id="r-bulk-bar" class="bulk-bar" style="display:none;">
+        <span id="r-bulk-count" style="font-weight:600;"></span>
+        <select id="r-bulk-status" style="font-size:13px;">
+          <option value="">Cambiar estado a...</option>
+          <option value="identified">Identificado</option>
+          <option value="assessed">Evaluado</option>
+          <option value="treated">Tratado</option>
+          <option value="accepted">Aceptado</option>
+          <option value="closed">Cerrado</option>
+        </select>
+        <select id="r-bulk-treat" style="font-size:13px;">
+          <option value="">Cambiar tratamiento a...</option>
+          <option value="modification">Modificacion</option>
+          <option value="retention">Retencion</option>
+          <option value="avoidance">Evitacion</option>
+          <option value="sharing">Transferencia</option>
+        </select>
+        <button class="btn btn-primary" id="r-bulk-apply">Aplicar</button>
+        <button class="btn btn-ghost" id="r-bulk-clear">Limpiar seleccion</button>
+      </div>`;
+
+      // Checkbox logic
+      if (canEdit) {
+        const chkAll = document.getElementById('r-chk-all');
+        chkAll.onchange = () => {
+          document.querySelectorAll('.r-chk').forEach(c => {
+            c.checked = chkAll.checked;
+            const id = parseInt(c.dataset.id);
+            if (chkAll.checked) ViewRisks._selected.add(id);
+            else ViewRisks._selected.delete(id);
+          });
+          ViewRisks._updateBulkBar();
+        };
+        document.querySelectorAll('.r-chk').forEach(c => {
+          c.onchange = () => {
+            const id = parseInt(c.dataset.id);
+            if (c.checked) ViewRisks._selected.add(id);
+            else ViewRisks._selected.delete(id);
+            ViewRisks._updateBulkBar();
+          };
+        });
+        document.getElementById('r-bulk-clear').onclick = () => {
+          ViewRisks._selected.clear();
+          document.querySelectorAll('.r-chk').forEach(c => c.checked = false);
+          if (chkAll) chkAll.checked = false;
+          ViewRisks._updateBulkBar();
+        };
+        document.getElementById('r-bulk-apply').onclick = () => ViewRisks._bulkApply();
+      }
+
       list.querySelectorAll('[data-edit]').forEach(b =>
         b.onclick = (e) => { e.stopPropagation(); ViewRisks._edit(parseInt(b.dataset.edit)); });
       list.querySelectorAll('tr[data-id]').forEach(tr =>
         tr.onclick = () => ViewRisks._edit(parseInt(tr.dataset.id)));
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _updateBulkBar() {
+    const bar = document.getElementById('r-bulk-bar');
+    const count = document.getElementById('r-bulk-count');
+    if (!bar) return;
+    const n = ViewRisks._selected.size;
+    if (n === 0) {
+      bar.style.display = 'none';
+    } else {
+      bar.style.display = 'flex';
+      count.textContent = `${n} riesgo${n > 1 ? 's' : ''} seleccionado${n > 1 ? 's' : ''}`;
+    }
+  },
+
+  async _bulkApply() {
+    const ids = [...ViewRisks._selected];
+    if (!ids.length) return;
+    const newStatus = document.getElementById('r-bulk-status').value;
+    const newTreat = document.getElementById('r-bulk-treat').value;
+    if (!newStatus && !newTreat) {
+      UI.toast('Selecciona al menos un cambio (estado o tratamiento)', 'error');
+      return;
+    }
+    const body = {};
+    if (newStatus) body.status = newStatus;
+    if (newTreat) body.treatment_option = newTreat;
+    const btn = document.getElementById('r-bulk-apply');
+    btn.disabled = true; btn.textContent = 'Aplicando...';
+    try {
+      await Promise.all(ids.map(id => Api.risks.update(id, body)));
+      UI.toast(`${ids.length} riesgo${ids.length > 1 ? 's' : ''} actualizados`, 'success');
+      ViewRisks._selected.clear();
+      ViewRisks._reload();
+    } catch (e) {
+      UI.toast('Error al actualizar: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = 'Aplicar';
     }
   },
 

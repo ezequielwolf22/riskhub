@@ -334,6 +334,14 @@ const ViewGuide = {
       <li><strong>VENCIDO:</strong> badge naranja en la columna Estado cuando la fecha limite de tratamiento ha pasado y el riesgo no esta cerrado ni aceptado. Las filas vencidas aparecen en rojo claro.</li>
       <li><strong>Exportar CSV:</strong> boton en la barra de herramientas para descargar todos los riesgos con campos ISO 27005 (niveles inherentes, residuales, estado, tratamiento, fechas).</li>
     </ul>
+    ${this._h('Acciones masivas (bulk actions)')}
+    ${this._p('Analistas y administradores pueden seleccionar multiples riesgos a la vez usando los <strong>checkboxes</strong> de la primera columna y aplicar cambios en bloque desde la barra morada que aparece en la parte inferior.')}
+    ${this._steps([
+      'Marca los checkboxes de los riesgos que quieras actualizar, o usa el checkbox de la cabecera para seleccionar todos.',
+      'En la barra de acciones masivas (purple, en la parte inferior), elige el nuevo estado o la decision de tratamiento.',
+      'Haz clic en <strong>Aplicar</strong>. Los cambios se ejecutan en paralelo y la tabla se recarga automaticamente.',
+    ])}
+    ${this._tip('Las acciones masivas son utiles para cerrar un grupo de riesgos al final de un ciclo de revision, o para asignar la misma decision de tratamiento a varios riesgos relacionados.')}
     ${this._h('Historial de cambios de un riesgo')}
     ${this._p('Al abrir un riesgo existente, al final del formulario aparece la sección <strong>Historial de cambios</strong>. Haz clic para expandirla y ver todas las modificaciones realizadas sobre ese riesgo: timestamp, usuario responsable, acción (crear/actualizar/eliminar) y campos modificados. Útil para auditorías y para justificar decisiones ante comités de seguridad.')}
   `;},
