@@ -196,6 +196,8 @@ const ViewGuide = {
       <li><kbd>Esc</kbd> — cierra el desplegable y devuelve el foco al campo de busqueda.</li>
     </ul>
     ${this._tip('La busqueda filtra por nombre, descripcion y codigo. Por ejemplo: escribe "RSK-0012" para ir directamente a ese riesgo, o "servidor" para encontrar todos los activos de tipo servidor.')}
+    ${this._h('Modo oscuro')}
+    ${this._p('RiskHub incluye un tema oscuro completo. Puedes activarlo o desactivarlo con el boton de la <strong>luna/sol</strong> en la cabecera, o usando el atajo <kbd>Shift</kbd> + <kbd>D</kbd>. La preferencia se guarda en el navegador y persiste entre sesiones.')}
   `;},
 
   get _cContext() { return `

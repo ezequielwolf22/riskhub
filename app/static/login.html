@@ -6,6 +6,12 @@
 <title>RiskHub · Iniciar sesión</title>
 <link rel="stylesheet" href="/css/app.css">
 <link rel="icon" type="image/svg+xml" href="/img/logo.svg">
+<script>
+  (function() {
+    var t = localStorage.getItem('riskhub_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 </head>
 <body>
 <div class="brand-bar"></div>

@@ -44,8 +44,27 @@ async function navigate() {
   }
 }
 
+function _initTheme() {
+  const saved = localStorage.getItem('riskhub_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+  _updateThemeIcon(saved);
+  document.getElementById('btn-theme').onclick = () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('riskhub_theme', next);
+    _updateThemeIcon(next);
+  };
+}
+
+function _updateThemeIcon(theme) {
+  document.getElementById('theme-icon-dark').style.display = theme === 'light' ? '' : 'none';
+  document.getElementById('theme-icon-light').style.display = theme === 'dark' ? '' : 'none';
+}
+
 function init() {
   if (!Auth.requireAuth()) return;
+  _initTheme();
 
   // Header user info
   const u = Auth.user();
@@ -110,6 +129,10 @@ function init() {
       e.preventDefault();
       _showShortcutsHelp();
     }
+    if (e.key === 'D' && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      document.getElementById('btn-theme').click();
+    }
     if (e.key === 'g') {
       // Prefijo g + tecla para navegar (como Gmail)
       window._gPressed = true;
@@ -149,6 +172,7 @@ function _showShortcutsHelp() {
         <tr><td><kbd>g</kbd> + <kbd>u</kbd></td><td>Ir a Usuarios (admin)</td></tr>
         <tr style="background:var(--bg-2);"><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Navegar resultados de busqueda</td></tr>
         <tr><td><kbd>Enter</kbd></td><td>Abrir resultado seleccionado</td></tr>
+        <tr style="background:var(--bg-2);"><td><kbd>Shift</kbd> + <kbd>D</kbd></td><td>Alternar modo oscuro / claro</td></tr>
       </tbody>
     </table>
     <p style="font-size:12px;color:var(--text-muted);margin-top:12px;">Los atajos de navegacion (g+...) solo funcionan cuando el foco no esta en un campo de texto.</p>
