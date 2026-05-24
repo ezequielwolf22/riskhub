@@ -51,6 +51,8 @@ def list_risks(
     status: Optional[RiskStatus] = None,
     min_level: Optional[int] = Query(None, ge=0, le=8),
     overdue: Optional[bool] = None,
+    owner_id: Optional[int] = None,
+    treatment: Optional[str] = None,
 ):
     now = datetime.now(timezone.utc)
     q = db.query(Risk)
@@ -67,6 +69,13 @@ def list_risks(
             Risk.treatment_due_date.isnot(None),
             Risk.treatment_due_date < now,
         )
+    if owner_id is not None:
+        q = q.filter(Risk.owner_id == owner_id)
+    if treatment:
+        if treatment == "__none__":
+            q = q.filter(Risk.treatment_option.is_(None))
+        else:
+            q = q.filter(Risk.treatment_option == treatment)
     return q.order_by(Risk.residual_level.desc(), Risk.code).all()
 
 

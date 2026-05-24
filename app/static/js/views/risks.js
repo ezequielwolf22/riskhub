@@ -31,6 +31,9 @@ const ViewRisks = {
           <option value="6">Solo altos (6+)</option>
           <option value="3">Medios y altos (3+)</option>
         </select>
+        <select id="r-owner">
+          <option value="">Cualquier responsable</option>
+        </select>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
           <input type="checkbox" id="r-overdue"> Solo vencidos
         </label>
@@ -49,6 +52,7 @@ const ViewRisks = {
     document.getElementById('r-search').oninput = () => ViewRisks._reload();
     document.getElementById('r-status').onchange = () => ViewRisks._reload();
     document.getElementById('r-band').onchange = () => ViewRisks._reload();
+    document.getElementById('r-owner').onchange = () => ViewRisks._reload();
     document.getElementById('r-overdue').onchange = () => ViewRisks._reload();
     document.getElementById('r-export-csv').onclick = async () => {
       try { await Api.risks.exportCsv(); UI.toast('CSV descargado', 'success'); }
@@ -131,6 +135,21 @@ const ViewRisks = {
       ViewRisks._vulns = v;
       ViewRisks._impls = i;
       ViewRisks._users = u;
+      // Populate owner filter dropdown
+      const ownerSel = document.getElementById('r-owner');
+      if (ownerSel && u.length) {
+        u.forEach(user => {
+          const opt = document.createElement('option');
+          opt.value = user.id;
+          opt.textContent = user.full_name || user.email;
+          ownerSel.appendChild(opt);
+        });
+        // Add "unassigned" option
+        const unassigned = document.createElement('option');
+        unassigned.value = '__unassigned__';
+        unassigned.textContent = 'Sin responsable';
+        ownerSel.appendChild(unassigned);
+      }
     } catch (e) { UI.toast(e.message, 'error'); }
   },
 
@@ -142,12 +161,18 @@ const ViewRisks = {
     list.innerHTML = '<div class="notice">Cargando...</div>';
     try {
       const overdue = document.getElementById('r-overdue')?.checked;
+      const ownerVal = document.getElementById('r-owner')?.value || '';
       const params = {};
       if (status) params.status = status;
       if (band) params.min_level = band;
       if (ViewRisks._assetFilter) params.asset_id = ViewRisks._assetFilter.id;
       if (overdue) params.overdue = true;
+      if (ownerVal && ownerVal !== '__unassigned__') params.owner_id = ownerVal;
       let data = await Api.risks.list(params);
+      // Client-side filter for unassigned
+      if (ownerVal === '__unassigned__') {
+        data = data.filter(r => !r.owner_id);
+      }
       if (search) {
         data = data.filter(r =>
           (r.asset && r.asset.name.toLowerCase().includes(search)) ||
