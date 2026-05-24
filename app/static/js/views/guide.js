@@ -145,6 +145,8 @@ const ViewGuide = {
       <li><strong>Proximos vencimientos (30 dias):</strong> lista de riesgos con fecha limite proxima, con countdown en dias.</li>
       <li><strong>Top 10 riesgos:</strong> riesgos mas criticos con porcentaje de reduccion. Haz clic para abrir el detalle.</li>
       <li><strong>Cobertura de controles por tema ISO 27002:</strong> tarjetas con madurez media e implementados/total para Organizacional, Personas, Fisico y Tecnologico.</li>
+      <li><strong>Revisiones de controles (30 dias):</strong> controles ISO 27002 con fecha de proxima revision en los proximos 30 dias o ya vencida. Cada fila muestra codigo, nombre y urgencia (dias restantes o vencidos).</li>
+      <li><strong>Acciones rapidas:</strong> boton adicional de <em>Revisiones controles vencidas</em> con contador, junto a los de tratamientos vencidos y altos sin plan.</li>
     </ul>
     ${this._h('Flujo de trabajo recomendado')}
     ${this._steps([
@@ -253,6 +255,8 @@ const ViewGuide = {
     ${this._tip('<strong>Consejo:</strong> Empieza importando los activos críticos (aquellos que, si fallan, impactan directamente al negocio). Luego añade los de soporte. Usa el campo "proceso de negocio" para agrupar activos por área funcional.')}
     ${this._h('Jerarquia de activos')}
     ${this._p('Puedes definir un activo padre para cada activo. Esto es útil para representar dependencias: un proceso de negocio depende de varias aplicaciones, que a su vez dependen de servidores. La jerarquía ayuda a entender la propagación del impacto.')}
+    ${this._h('Ordenar la tabla de activos')}
+    ${this._p('Haz clic en las cabeceras <strong>Codigo</strong>, <strong>Nombre</strong>, <strong>Tipo</strong>, <strong>Max</strong>, <strong>Riesgos</strong> o <strong>Categoria</strong> para ordenar la tabla por ese campo. Un segundo clic invierte el orden. La columna activa se resalta en purpura con una flecha ▲ o ▼.')}
     ${this._h('Ver riesgos de un activo')}
     ${this._p('La tabla de activos muestra una columna <strong>Riesgos</strong> con el número de escenarios de riesgo asociados a cada activo. El número es un enlace que filtra directamente la vista de Riesgos. El color indica la exposición: rojo si el activo tiene 5 o más riesgos, púrpura si tiene alguno, gris si no tiene ninguno.')}
   `;},
