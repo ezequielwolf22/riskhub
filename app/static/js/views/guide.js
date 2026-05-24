@@ -348,7 +348,24 @@ const ViewGuide = {
       'En la barra de acciones masivas (purple, en la parte inferior), elige el nuevo estado o la decision de tratamiento.',
       'Haz clic en <strong>Aplicar</strong>. Los cambios se ejecutan en paralelo y la tabla se recarga automaticamente.',
     ])}
-    ${this._tip('Las acciones masivas son utiles para cerrar un grupo de riesgos al final de un ciclo de revision, o para asignar la misma decision de tratamiento a varios riesgos relacionados.')}
+    ${this._h('Ordenar la tabla de riesgos')}
+    ${this._p('Haz clic en cualquier cabecera de columna de la tabla de riesgos para ordenar por ese campo. Un segundo clic invierte el orden. La columna activa muestra una flecha <strong>▲</strong> (ascendente) o <strong>▼</strong> (descendente) y su titulo se resalta en purpura.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Codigo:</strong> orden alfanumerico por RSK-XXXX.</li>
+      <li><strong>Activo / Amenaza:</strong> orden alfabetico por nombre.</li>
+      <li><strong>Inh. / Res.:</strong> orden numerico por nivel inherente o residual.</li>
+      <li><strong>Red.:</strong> orden por porcentaje de reduccion de riesgo.</li>
+      <li><strong>Estado / Tratamiento:</strong> orden alfabetico por valor del campo.</li>
+    </ul>
+    ${this._tip('Por defecto la tabla muestra los riesgos ordenados por nivel residual descendente (los mas criticos primero). El orden se resetea cada vez que se cambia un filtro.')}
+    ${this._h('Acciones masivas (bulk actions)')}
+    ${this._p('Analistas y administradores pueden seleccionar multiples riesgos a la vez usando los <strong>checkboxes</strong> de la primera columna y aplicar cambios en bloque desde la barra morada que aparece en la parte inferior.')}
+    ${this._steps([
+      'Marca los checkboxes de los riesgos que quieras actualizar, o usa el checkbox de la cabecera para seleccionar todos.',
+      'En la barra de acciones masivas (purple, en la parte inferior), elige el nuevo estado, la decision de tratamiento, o asigna un responsable.',
+      'Haz clic en <strong>Aplicar</strong>. Los cambios se ejecutan en paralelo y la tabla se recarga automaticamente.',
+    ])}
+    ${this._tip('Las acciones masivas son utiles para cerrar un grupo de riesgos al final de un ciclo de revision, asignar la misma decision de tratamiento a varios riesgos relacionados, o asignar un responsable a todos los riesgos de un activo a la vez. El selector <em>Sin responsable</em> elimina el propietario de todos los riesgos seleccionados.')}
     ${this._h('Filtro por responsable')}
     ${this._p('La barra de herramientas de Riesgos incluye un selector <strong>Cualquier responsable</strong> que permite filtrar el registro por el propietario asignado a cada riesgo.')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
@@ -409,6 +426,9 @@ const ViewGuide = {
     ${this._p('Desde el detalle de un riesgo, puedes asociar controles implementados. El sistema calculará el nivel residual teniendo en cuenta la contribución de cada control (factor de reducción 0-1). Un control implementado al 100% con contribución 1.0 reduce el riesgo al nivel mínimo de la matriz para esa combinación.')}
     ${this._h('Fechas de revision de controles')}
     ${this._p('Al editar una implementacion puedes establecer la <strong>Ultima revision</strong> y la <strong>Proxima revision</strong>. Cuando la proxima revision vence, la fila aparece resaltada en amarillo con el badge <em>REVISION</em> y un aviso aparece al inicio de la lista. Esto ayuda a planificar las revisiones periodicas del SGSI.')}
+    ${this._h('Badge de revisiones vencidas')}
+    ${this._p('El enlace <strong>Controles</strong> en la barra lateral muestra un badge naranja con el numero de implementaciones que tienen la fecha de proxima revision vencida (y cuyo estado no es "No implementado"). Esto permite detectar controles que necesitan atencion sin entrar a la vista de Controles.')}
+    ${this._tip('Si el badge naranja de Controles muestra un numero, abre la vista de Controles y filtra o revisa las filas resaltadas en amarillo con el badge <em>REVISION</em>.')}
     ${this._h('Riesgos mitigados por control')}
     ${this._p('La tabla de implementaciones muestra una columna <strong>Riesgos</strong> con el numero de escenarios de riesgo que cada control mitiga actualmente. El numero se actualiza en tiempo real cada vez que se asocia o desasocia un control a un riesgo.')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
