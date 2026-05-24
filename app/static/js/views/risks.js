@@ -34,6 +34,7 @@ const ViewRisks = {
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
           <input type="checkbox" id="r-overdue"> Solo vencidos
         </label>
+        <button class="btn btn-ghost" id="r-export-csv" title="Exportar tabla como CSV" style="margin-left:auto;">Exportar CSV</button>
       </div>
       <div id="r-asset-filter" style="display:none;margin-bottom:8px;"></div>
       <div id="r-list"></div>
@@ -43,6 +44,10 @@ const ViewRisks = {
     document.getElementById('r-status').onchange = () => ViewRisks._reload();
     document.getElementById('r-band').onchange = () => ViewRisks._reload();
     document.getElementById('r-overdue').onchange = () => ViewRisks._reload();
+    document.getElementById('r-export-csv').onclick = async () => {
+      try { await Api.risks.exportCsv(); UI.toast('CSV descargado', 'success'); }
+      catch (e) { UI.toast(e.message, 'error'); }
+    };
 
     // Precargar catálogos en memoria
     await ViewRisks._loadCatalogs();

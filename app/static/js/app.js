@@ -8,6 +8,7 @@ const Routes = {
   threats: ViewThreats,
   vulnerabilities: ViewVulns,
   risks: ViewRisks,
+  calendar: ViewCalendar,
   controls: ViewControls,
   reports: ViewReports,
   alerts: ViewAlerts,
@@ -98,11 +99,28 @@ function init() {
   // Busqueda global
   Search.init();
 
+  // Badge de vencidos en sidebar
+  _loadOverdueBadge();
+
   // Exponer navigate global para uso desde vistas
   window.App = { navigate: (route) => { location.hash = '/' + route; } };
 
   window.addEventListener('hashchange', () => { Search.close(); navigate(); });
   navigate();
+}
+
+async function _loadOverdueBadge() {
+  try {
+    const s = await Api.risks.summary();
+    const badge = document.getElementById('badge-overdue');
+    if (!badge) return;
+    if (s.overdue_treatments > 0) {
+      badge.textContent = s.overdue_treatments;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (_) { /* silencioso */ }
 }
 
 init();

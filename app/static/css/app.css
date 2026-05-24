@@ -476,6 +476,78 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
                color: #6b2400; }
 
 /* ============================================================
+   Calendario de tratamiento
+   ============================================================ */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.cal-header-cell {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+  padding: 6px 0;
+}
+.cal-cell {
+  min-height: 88px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px;
+  background: var(--bg-1);
+  vertical-align: top;
+  transition: background .1s;
+}
+.cal-cell.cal-empty {
+  background: var(--bg-2);
+  border-color: transparent;
+}
+.cal-cell.cal-today {
+  border-color: var(--brand-purple);
+  background: var(--brand-purple-4);
+}
+.cal-cell.cal-overdue {
+  background: #FEF2F2;
+  border-color: #FECACA;
+}
+.cal-day-num {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.cal-today .cal-day-num {
+  color: var(--brand-purple);
+  font-weight: 800;
+}
+.cal-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cal-pill {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: opacity .1s;
+}
+.cal-pill:hover { opacity: .85; }
+.cal-pill-more {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 1px 4px;
+}
+
+/* ============================================================
    Busqueda global
    ============================================================ */
 .search-wrapper {

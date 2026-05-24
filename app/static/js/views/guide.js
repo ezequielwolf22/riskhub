@@ -8,6 +8,7 @@ const ViewGuide = {
     { id: 'assets', title: 'Inventario de activos', icon: '🗄️' },
     { id: 'threats', title: 'Amenazas y vulnerabilidades', icon: '🔍' },
     { id: 'risks', title: 'Gestion de riesgos', icon: '📊' },
+    { id: 'calendar', title: 'Calendario', icon: '📅' },
     { id: 'controls', title: 'Controles ISO 27002', icon: '🛡️' },
     { id: 'ai', title: 'Agente IA', icon: '🤖' },
     { id: 'reports', title: 'Informes', icon: '📄' },
@@ -80,6 +81,7 @@ const ViewGuide = {
       assets: this._cAssets,
       threats: this._cThreats,
       risks: this._cRisks,
+      calendar: this._cCalendar,
       controls: this._cControls,
       ai: this._cAI,
       reports: this._cReports,
@@ -318,6 +320,29 @@ const ViewGuide = {
     ${this._p('El Heatmap (menú Heatmap) visualiza todos los riesgos en la matriz 5×5 de probabilidad × impacto, diferenciando el nivel inherente del residual. Es el artefacto principal para la comunicación a dirección. Haz clic en cualquier celda del heatmap para ver la lista de riesgos en esa posicion.')}
     ${this._h('Historial de cambios de un riesgo')}
     ${this._p('Al abrir un riesgo existente, al final del formulario aparece la sección <strong>Historial de cambios</strong>. Haz clic para expandirla y ver todas las modificaciones realizadas sobre ese riesgo: timestamp, usuario responsable, acción (crear/actualizar/eliminar) y campos modificados. Útil para auditorías y para justificar decisiones ante comités de seguridad.')}
+  `;},
+
+  get _cCalendar() { return `
+    ${this._p('La vista <strong>Calendario</strong> muestra todos los riesgos con fecha limite de tratamiento definida en una cuadricula mensual. Es la forma mas rapida de detectar vencimientos proximos y planificar revisiones.')}
+    ${this._h('Como usar el calendario')}
+    ${this._steps([
+      'Ve al menu <strong>Calendario</strong> (bajo "Analisis y tratamiento").',
+      'El calendario muestra el mes actual. Usa los botones ← / → para cambiar de mes, o <em>Hoy</em> para volver al mes en curso.',
+      'Cada pastilla de color representa un riesgo: rojo = alto (≥6), naranja = medio (4–5), verde = bajo (&lt;4).',
+      'Pasa el cursor sobre una pastilla para ver el codigo del riesgo, activo y nivel.',
+      'Haz clic en una pastilla para ir a la vista de Riesgos y consultar el detalle.',
+      'Si hay mas de 3 riesgos en un dia, se muestra "+ N mas" para no saturar la celda.',
+    ])}
+    ${this._h('Indicadores visuales')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Celda hoy:</strong> borde purple y fondo lila — identifica rapidamente el dia actual.</li>
+      <li><strong>Celda en rojo claro:</strong> fecha ya vencida con riesgos pendientes de tratamiento.</li>
+      <li><strong>Contador de vencidos:</strong> encima del calendario, muestra cuantos riesgos tienen fecha vencida en el mes visible.</li>
+      <li><strong>Badge en sidebar:</strong> el numero en rojo junto a "Riesgos" indica tratamientos globalmente vencidos.</li>
+    </ul>
+    ${this._h('Exportar riesgos a CSV')}
+    ${this._p('En la vista <strong>Riesgos</strong>, el boton <em>Exportar CSV</em> (barra de herramientas, derecha) descarga todos los riesgos en formato CSV con niveles inherentes, residuales, estado, plan de tratamiento y fecha limite. Compatible con Excel y cualquier hoja de calculo.')}
+    ${this._tip('Si un riesgo no aparece en el calendario, es porque no tiene fecha limite de tratamiento definida. Edita el riesgo y establece el campo <em>Fecha limite del plan</em> para que aparezca en el calendario.')}
   `;},
 
   get _cControls() { return `

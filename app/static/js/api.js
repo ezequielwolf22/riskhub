@@ -107,6 +107,7 @@ const Api = {
     del: (id) => Api.del('/api/risks/' + id),
     summary: () => Api.get('/api/risks/stats/summary'),
     heatmap: (mode = 'residual') => Api.get('/api/risks/heatmap/data?mode=' + mode),
+    exportCsv: () => Api.download('/api/risks/export/csv', `riesgos_${new Date().toISOString().slice(0,10)}.csv`),
   },
   users: {
     list: () => Api.get('/api/users/'),

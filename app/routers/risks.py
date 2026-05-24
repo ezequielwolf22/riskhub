@@ -1,8 +1,11 @@
 """CRUD de riesgos + calculo automatico inherente/residual + tratamiento."""
+import csv
+import io
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -156,6 +159,45 @@ def delete_risk(risk_id: int, db: Session = Depends(get_db),
     db.delete(r)
     log_action(db, current_user.id, "delete", "risk", str(risk_id), {"code": code})
     db.commit()
+
+
+@router.get("/export/csv")
+def export_risks_csv(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Exporta todos los riesgos como CSV."""
+    risks = db.query(Risk).order_by(Risk.residual_level.desc(), Risk.code).all()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Codigo", "Activo", "Amenaza", "Descripcion",
+        "Nivel_Inherente", "Prob_Inherente", "Cons_Inherente",
+        "Nivel_Residual", "Prob_Residual", "Cons_Residual",
+        "Estado", "Tratamiento", "Plan_Tratamiento",
+        "Fecha_Vencimiento", "Creado",
+    ])
+    for r in risks:
+        writer.writerow([
+            r.code,
+            r.asset.name if r.asset else "",
+            r.threat.name if r.threat else "",
+            r.description or "",
+            r.inherent_level, r.inherent_likelihood, r.inherent_consequence,
+            r.residual_level, r.residual_likelihood, r.residual_consequence,
+            r.status.value if r.status else "",
+            r.treatment_option.value if r.treatment_option else "",
+            r.treatment_plan or "",
+            r.treatment_due_date.strftime("%Y-%m-%d") if r.treatment_due_date else "",
+            r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+        ])
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    fname = f"riesgos_{ts}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @router.get("/heatmap/data")
