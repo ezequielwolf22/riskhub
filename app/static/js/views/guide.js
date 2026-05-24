@@ -388,22 +388,33 @@ const ViewGuide = {
   `;},
 
   get _cCalendar() { return `
-    ${this._p('La vista <strong>Calendario</strong> muestra todos los riesgos con fecha limite de tratamiento definida en una cuadricula mensual. Es la forma mas rapida de detectar vencimientos proximos y planificar revisiones.')}
+    ${this._p('La vista <strong>Calendario</strong> muestra en una cuadricula mensual dos tipos de eventos: las <strong>fechas limite de tratamiento</strong> de los riesgos y las <strong>fechas de proxima revision</strong> de los controles ISO 27002. Es la herramienta central para planificar revisiones y detectar vencimientos de forma visual.')}
     ${this._h('Como usar el calendario')}
     ${this._steps([
       'Ve al menu <strong>Calendario</strong> (bajo "Analisis y tratamiento").',
-      'El calendario muestra el mes actual. Usa los botones ← / → para cambiar de mes, o <em>Hoy</em> para volver al mes en curso.',
-      'Cada pastilla de color representa un riesgo: rojo = alto (≥6), naranja = medio (4–5), verde = bajo (&lt;4).',
-      'Pasa el cursor sobre una pastilla para ver el codigo del riesgo, activo y nivel.',
-      'Haz clic en una pastilla para ir a la vista de Riesgos y consultar el detalle.',
-      'Si hay mas de 3 riesgos en un dia, se muestra "+ N mas" para no saturar la celda.',
+      'El calendario muestra el mes actual. Usa los botones <- / -> para cambiar de mes, o <em>Hoy</em> para volver al mes en curso.',
+      'Usa los botones <strong>Todos / Solo riesgos / Solo controles</strong> para filtrar que tipo de eventos se muestran.',
+      'Pasa el cursor sobre una pastilla para ver el codigo, nombre y nivel del elemento.',
+      'Haz clic en una pastilla de riesgo para abrir el detalle del riesgo directamente.',
+      'Haz clic en una pastilla de control para ir a la vista de Controles.',
+      'Si hay mas eventos de los que caben en una celda, se muestra "+N mas" para no saturar.',
     ])}
+    ${this._h('Filtrar por tipo de evento')}
+    ${this._p('Los botones <strong>Todos / Solo riesgos / Solo controles</strong> en la barra superior permiten centrarse en un solo tipo de evento sin cambiar de mes.')}
+    ${this._h('Codigo de colores')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong style="color:var(--risk-high);">Rojo:</strong> riesgo con nivel residual alto (>=6).</li>
+      <li><strong style="color:var(--risk-medium);">Naranja/amarillo:</strong> riesgo con nivel residual medio (4-5).</li>
+      <li><strong style="color:var(--risk-low);">Verde:</strong> riesgo con nivel residual bajo (&lt;4).</li>
+      <li><strong style="color:var(--brand-purple);">Morado:</strong> revision de control programada (pendiente).</li>
+      <li><strong style="color:var(--brand-orange);">Naranja oscuro:</strong> revision de control vencida.</li>
+    </ul>
     ${this._h('Indicadores visuales')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li><strong>Celda hoy:</strong> borde purple y fondo lila — identifica rapidamente el dia actual.</li>
-      <li><strong>Celda en rojo claro:</strong> fecha ya vencida con riesgos pendientes de tratamiento.</li>
-      <li><strong>Contador de vencidos:</strong> encima del calendario, muestra cuantos riesgos tienen fecha vencida en el mes visible.</li>
-      <li><strong>Badge en sidebar:</strong> el numero en rojo junto a "Riesgos" indica tratamientos globalmente vencidos.</li>
+      <li><strong>Celda hoy:</strong> borde purple y fondo lila.</li>
+      <li><strong>Celda en rojo claro:</strong> fecha ya vencida con elementos pendientes.</li>
+      <li><strong>Contadores superiores:</strong> total de vencimientos y revisiones en el mes visible, con cuantos estan ya vencidos.</li>
+      <li><strong>Badge en sidebar:</strong> el numero rojo en "Riesgos" indica tratamientos vencidos; el naranja en "Controles" indica revisiones vencidas.</li>
     </ul>
     ${this._h('Exportar riesgos a CSV')}
     ${this._p('En la vista <strong>Riesgos</strong>, el boton <em>Exportar CSV</em> (barra de herramientas, derecha) descarga todos los riesgos en formato CSV con niveles inherentes, residuales, estado, plan de tratamiento y fecha limite. Compatible con Excel y cualquier hoja de calculo.')}
@@ -415,7 +426,7 @@ const ViewGuide = {
       'Haz clic en <em>Importar CSV</em> y selecciona el fichero. Los duplicados (mismo activo + amenaza) se omiten.',
       'Revisa el toast de resultado: indica cuantos riesgos se crearon y cuantos se omitieron con el motivo.',
     ])}
-    ${this._tip('Si un riesgo no aparece en el calendario, es porque no tiene fecha limite de tratamiento definida. Edita el riesgo y establece el campo <em>Fecha limite del plan</em> para que aparezca en el calendario.')}
+    ${this._tip('Si un riesgo no aparece en el calendario, edita el riesgo y establece el campo <em>Fecha limite del plan</em>. Para controles, establece la <em>Proxima revision</em> en la implementacion del control.')}
   `;},
 
   get _cControls() { return `
