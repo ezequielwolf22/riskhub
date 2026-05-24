@@ -54,6 +54,11 @@ def import_risks(
     created = []
     skipped = []
 
+    # Función auxiliar para generar código de activo
+    def _next_asset_code() -> str:
+        n = db.query(Asset).count() + 1
+        return f"AST-{n:04d}"
+
     # Cache de amenazas por código
     threat_by_code = {t.code: t for t in db.query(Threat).all()}
     threat_by_name = {t.name.lower(): t for t in db.query(Threat).all()}
@@ -76,10 +81,10 @@ def import_risks(
                 except ValueError:
                     atype = AssetType.SUPPORT_HARDWARE
                 asset = Asset(
+                    code=_next_asset_code(),
                     name=sc["asset_suggestion"],
                     asset_type=atype,
-                    description=f"Activo generado por análisis IA",
-                    owner=current_user.full_name or current_user.email,
+                    description="Activo generado por analisis IA",
                 )
                 db.add(asset)
                 db.flush()
@@ -125,7 +130,7 @@ def import_risks(
             status=RiskStatus.IDENTIFIED,
             treatment_option=TreatmentOption.MODIFICATION,
             description=sc.get("rationale", ""),
-            owner=current_user.full_name or current_user.email,
+            owner_id=current_user.id,
         )
         db.add(risk)
         created.append(f"{asset.name} × {threat.name}")

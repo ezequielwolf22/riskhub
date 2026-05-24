@@ -256,8 +256,8 @@ def run_analysis(answers: dict, db: Session) -> dict[str, Any]:
     # Leer catálogos de la BD
     assets = [
         {"id": a.id, "name": a.name, "type": a.asset_type.value if a.asset_type else "",
-         "confidentiality": a.confidentiality, "integrity": a.integrity,
-         "availability": a.availability}
+         "confidentiality": a.value_confidentiality, "integrity": a.value_integrity,
+         "availability": a.value_availability}
         for a in db.query(Asset).limit(50).all()
     ]
     threats = [
