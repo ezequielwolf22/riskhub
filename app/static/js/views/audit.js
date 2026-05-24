@@ -4,6 +4,8 @@ const ViewAudit = {
   _limit: 100,
   _filterEntity: '',
   _filterAction: '',
+  _filterDateFrom: '',
+  _filterDateTo: '',
   _total: 0,
 
   async render(main) {
@@ -50,6 +52,18 @@ const ViewAudit = {
               <option value="login">Inicio de sesion</option>
             </select>
           </div>
+          <div style="flex:1;min-width:130px;">
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">
+              Desde
+            </label>
+            <input id="audit-date-from" type="date" style="width:100%;">
+          </div>
+          <div style="flex:1;min-width:130px;">
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">
+              Hasta
+            </label>
+            <input id="audit-date-to" type="date" style="width:100%;">
+          </div>
           <button class="btn btn-primary" onclick="ViewAudit._search()">Filtrar</button>
           <button class="btn" onclick="ViewAudit._reset()">Limpiar</button>
           <button class="btn" onclick="ViewAudit._exportCsv()"
@@ -67,14 +81,20 @@ const ViewAudit = {
     this._page = 0;
     this._filterEntity = '';
     this._filterAction = '';
+    this._filterDateFrom = '';
+    this._filterDateTo = '';
     await this._load();
   },
 
   _reset() {
     document.getElementById('audit-entity').value = '';
     document.getElementById('audit-action').value = '';
+    document.getElementById('audit-date-from').value = '';
+    document.getElementById('audit-date-to').value = '';
     this._filterEntity = '';
     this._filterAction = '';
+    this._filterDateFrom = '';
+    this._filterDateTo = '';
     this._page = 0;
     this._load();
   },
@@ -82,6 +102,8 @@ const ViewAudit = {
   _search() {
     this._filterEntity = document.getElementById('audit-entity').value;
     this._filterAction = document.getElementById('audit-action').value;
+    this._filterDateFrom = document.getElementById('audit-date-from').value;
+    this._filterDateTo = document.getElementById('audit-date-to').value;
     this._page = 0;
     this._load();
   },
@@ -96,6 +118,8 @@ const ViewAudit = {
     };
     if (this._filterEntity) params.entity_type = this._filterEntity;
     if (this._filterAction) params.action = this._filterAction;
+    if (this._filterDateFrom) params.date_from = this._filterDateFrom;
+    if (this._filterDateTo) params.date_to = this._filterDateTo;
 
     try {
       const data = await Api.audit.list(params);
@@ -111,6 +135,8 @@ const ViewAudit = {
       const q = {};
       if (this._filterEntity) q.entity_type = this._filterEntity;
       if (this._filterAction) q.action = this._filterAction;
+      if (this._filterDateFrom) q.date_from = this._filterDateFrom;
+      if (this._filterDateTo) q.date_to = this._filterDateTo;
       const url = '/api/audit/export/csv' + (Object.keys(q).length ? '?' + new URLSearchParams(q) : '');
       const tok = localStorage.getItem('riskhub_token');
       const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });

@@ -45,9 +45,12 @@ def list_audit(
     entity_type: Optional[str] = None,
     entity_id: Optional[str] = None,
     action: Optional[str] = None,
+    date_from: Optional[str] = Query(None, description="ISO date string YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="ISO date string YYYY-MM-DD"),
     db: Session = Depends(get_db),
     _: object = Depends(_require_admin),
 ):
+    from datetime import timezone, timedelta
     q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
     if entity_type:
         q = q.filter(AuditLog.entity_type == entity_type)
@@ -55,6 +58,20 @@ def list_audit(
         q = q.filter(AuditLog.entity_id == entity_id)
     if action:
         q = q.filter(AuditLog.action == action)
+    if date_from:
+        try:
+            from datetime import datetime as _dt
+            dt_from = _dt.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            q = q.filter(AuditLog.timestamp >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            from datetime import datetime as _dt
+            dt_to = _dt.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+            q = q.filter(AuditLog.timestamp < dt_to)
+        except ValueError:
+            pass
     total = q.count()
     entries = q.offset(skip).limit(limit).all()
     return AuditPage(
@@ -130,15 +147,32 @@ def actions(
 def export_csv(
     entity_type: Optional[str] = None,
     action: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
     _: object = Depends(_require_admin),
 ):
     """Exporta el log completo (o filtrado) a CSV."""
+    from datetime import timezone, timedelta
     q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
     if entity_type:
         q = q.filter(AuditLog.entity_type == entity_type)
     if action:
         q = q.filter(AuditLog.action == action)
+    if date_from:
+        try:
+            from datetime import datetime as _dt
+            dt_from = _dt.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            q = q.filter(AuditLog.timestamp >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            from datetime import datetime as _dt
+            dt_to = _dt.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+            q = q.filter(AuditLog.timestamp < dt_to)
+        except ValueError:
+            pass
     entries = q.all()
 
     buf = io.StringIO()
