@@ -139,11 +139,12 @@ const ViewGuide = {
     ${this._p('La pantalla principal (Dashboard) ofrece una vision global en tiempo real:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>KPIs:</strong> activos, riesgos, controles, tratamientos vencidos, altos sin plan, reduccion media del riesgo.</li>
-      <li><strong>Distribucion por nivel residual:</strong> barra de proporcion alto/medio/bajo.</li>
-      <li><strong>Por estado y por decision:</strong> tablas de conteo del ciclo de vida.</li>
+      <li><strong>Distribucion por nivel residual:</strong> grafico donut SVG con proporcion alto/medio/bajo y barras de porcentaje.</li>
+      <li><strong>Por estado y por decision:</strong> barras mini con porcentaje del ciclo de vida y opciones de tratamiento.</li>
       <li><strong>Acciones rapidas:</strong> accesos directos a tratamientos vencidos, riesgos sin plan, calendario y heatmap.</li>
       <li><strong>Proximos vencimientos (30 dias):</strong> lista de riesgos con fecha limite proxima, con countdown en dias.</li>
       <li><strong>Top 10 riesgos:</strong> riesgos mas criticos con porcentaje de reduccion. Haz clic para abrir el detalle.</li>
+      <li><strong>Cobertura de controles por tema ISO 27002:</strong> tarjetas con madurez media e implementados/total para Organizacional, Personas, Fisico y Tecnologico.</li>
     </ul>
     ${this._h('Flujo de trabajo recomendado')}
     ${this._steps([

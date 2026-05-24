@@ -149,3 +149,53 @@ def delete_impl(impl_id: int, db: Session = Depends(get_db),
     db.delete(impl)
     log_action(db, current_user.id, "delete", "control_impl", str(impl_id), {"name": name})
     db.commit()
+
+
+@catalog_router.get("/stats/by-theme")
+def controls_by_theme(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Devuelve el resumen de implementaciones por tema ISO 27002 (para el dashboard)."""
+    from app.models import ControlStatus
+    impls = db.query(ControlImplementation).all()
+    theme_order = ["organizational", "people", "physical", "technological"]
+    theme_labels = {
+        "organizational": "Organizacional",
+        "people": "Personas",
+        "physical": "Fisico",
+        "technological": "Tecnologico",
+    }
+    by_theme: dict = {}
+    for impl in impls:
+        theme = (impl.control.theme if impl.control else None) or "other"
+        if theme not in by_theme:
+            by_theme[theme] = {"count": 0, "maturity_sum": 0, "implemented": 0}
+        by_theme[theme]["count"] += 1
+        by_theme[theme]["maturity_sum"] += impl.maturity
+        if impl.status == ControlStatus.IMPLEMENTED:
+            by_theme[theme]["implemented"] += 1
+
+    result = []
+    for theme in theme_order:
+        if theme not in by_theme:
+            continue
+        d = by_theme[theme]
+        result.append({
+            "theme": theme,
+            "label": theme_labels.get(theme, theme.capitalize()),
+            "count": d["count"],
+            "implemented": d["implemented"],
+            "avg_maturity": round(d["maturity_sum"] / d["count"], 1) if d["count"] else 0,
+        })
+    # Incluir temas no estandar si existen
+    for theme, d in by_theme.items():
+        if theme not in theme_order:
+            result.append({
+                "theme": theme,
+                "label": theme.capitalize(),
+                "count": d["count"],
+                "implemented": d["implemented"],
+                "avg_maturity": round(d["maturity_sum"] / d["count"], 1) if d["count"] else 0,
+            })
+    return result

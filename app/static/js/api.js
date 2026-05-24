@@ -93,6 +93,7 @@ const Api = {
     list: (q) => Api.get('/api/controls/', q),
     create: (d) => Api.post('/api/controls/', d),
     exportSoaCsv: () => Api.download('/api/controls/export-soa-csv', `soa_${new Date().toISOString().slice(0,10)}.csv`),
+    statsByTheme: () => Api.get('/api/controls/stats/by-theme'),
   },
   impls: {
     list: () => Api.get('/api/control-implementations/'),

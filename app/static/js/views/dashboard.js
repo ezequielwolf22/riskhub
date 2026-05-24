@@ -161,11 +161,75 @@ const ViewDashboard = {
             <div id="dash-upcoming" style="margin-top:8px;"></div>
           </div>
         </div>
+
+        <div class="card" style="margin-top:16px;" id="dash-controls-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <h3 style="margin:0;">Cobertura de controles ISO 27002 por tema</h3>
+            <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos →</a>
+          </div>
+          <div id="dash-controls-body">
+            <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
+          </div>
+        </div>
       `;
-      // Cargar proximos vencimientos
+      // Cargar proximos vencimientos y cobertura de controles
       ViewDashboard._loadUpcoming();
+      ViewDashboard._loadControlsCoverage();
     } catch (e) {
       main.innerHTML += `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _loadControlsCoverage() {
+    const el = document.getElementById('dash-controls-body');
+    if (!el) return;
+    try {
+      const themes = await Api.controls.statsByTheme();
+      if (!themes.length) {
+        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin controles implementados todavia. Accede a Controles para empezar.</p>';
+        return;
+      }
+      const themeColors = {
+        organizational: 'var(--brand-purple)',
+        people: 'var(--brand-orange)',
+        physical: '#2563EB',
+        technological: '#059669',
+      };
+      el.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+          ${themes.map(t => {
+            const matPct = Math.round((t.avg_maturity / 5) * 100);
+            const implPct = t.count ? Math.round((t.implemented / t.count) * 100) : 0;
+            const color = themeColors[t.theme] || 'var(--brand-purple)';
+            return `
+              <div style="padding:14px;border-radius:8px;background:var(--bg-2);border:1px solid var(--border);">
+                <div style="font-size:13px;font-weight:600;color:${color};margin-bottom:10px;">
+                  ${UI.esc(t.label)}
+                </div>
+                <div style="margin-bottom:8px;">
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;">
+                    <span>Madurez media</span>
+                    <span style="font-weight:700;color:var(--text);">${t.avg_maturity}/5</span>
+                  </div>
+                  <div style="height:6px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
+                    <div style="height:100%;width:${matPct}%;background:${color};border-radius:3px;transition:width .5s;"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;">
+                    <span>Implementados</span>
+                    <span style="font-weight:700;color:var(--text);">${t.implemented}/${t.count}</span>
+                  </div>
+                  <div style="height:6px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
+                    <div style="height:100%;width:${implPct}%;background:${color};opacity:0.5;border-radius:3px;transition:width .5s;"></div>
+                  </div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`;
+    } catch (_) {
+      const el2 = document.getElementById('dash-controls-body');
+      if (el2) el2.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">No disponible.</p>';
     }
   },
 
