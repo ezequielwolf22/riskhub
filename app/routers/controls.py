@@ -1,7 +1,11 @@
 """Catalogo ISO 27002:2022 + implementaciones especificas de la organizacion."""
+import csv
+import io
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -33,6 +37,50 @@ def list_controls(
     if theme:
         query = query.filter(Control.theme == theme)
     return query.order_by(Control.code).all()
+
+
+@catalog_router.get("/export-soa-csv")
+def export_soa_csv(db: Session = Depends(get_db),
+                   _: User = Depends(get_current_user)):
+    """Exporta el Statement of Applicability (SoA) como CSV."""
+    controls = db.query(Control).order_by(Control.code).all()
+    impls = db.query(ControlImplementation).all()
+    impl_by_ctrl = {}
+    for i in impls:
+        impl_by_ctrl.setdefault(i.control_id, []).append(i)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "Codigo", "Nombre", "Tema", "Tipo",
+        "Aplicable", "Implementaciones", "Estado_Mejor", "Madurez_Max",
+        "Proxima_Revision",
+    ])
+    for c in controls:
+        ci_list = impl_by_ctrl.get(c.id, [])
+        applicable = "Si" if ci_list else "No"
+        statuses = [i.status.value for i in ci_list] if ci_list else []
+        best_status = (
+            "implemented" if "implemented" in statuses else
+            "partial" if "partial" in statuses else
+            "planned" if "planned" in statuses else
+            "not_implemented" if statuses else ""
+        )
+        max_mat = max((i.maturity for i in ci_list), default=0)
+        next_revs = [i.next_review for i in ci_list if i.next_review]
+        next_rev_str = min(next_revs).strftime("%Y-%m-%d") if next_revs else ""
+        writer.writerow([
+            c.code, c.name, c.theme or "", ",".join(c.control_type or []),
+            applicable, len(ci_list), best_status, max_mat, next_rev_str,
+        ])
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    fname = f"soa_{ts}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 @catalog_router.post("/", response_model=ControlOut, status_code=201)

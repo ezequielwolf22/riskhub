@@ -21,6 +21,7 @@ const ViewControls = {
           <option value="physical">Fisico</option>
           <option value="technological">Tecnológico</option>
         </select>
+        <button class="btn btn-ghost" id="btn-soa-csv" title="Exportar SoA como CSV">SoA CSV</button>
       </div>
       <div id="c-list"></div>
     `;
@@ -32,6 +33,10 @@ const ViewControls = {
     document.getElementById('c-search').oninput = () => ViewControls._reload();
     document.getElementById('c-theme').onchange = () => ViewControls._reload();
     if (canEdit) document.getElementById('btn-new-impl').onclick = () => ViewControls._editImpl();
+    document.getElementById('btn-soa-csv').onclick = async () => {
+      try { await Api.controls.exportSoaCsv(); UI.toast('SoA CSV descargado', 'success'); }
+      catch (e) { UI.toast(e.message, 'error'); }
+    };
 
     ViewControls._catalog = await Api.controls.list({});
     ViewControls._reload();
@@ -85,18 +90,30 @@ const ViewControls = {
       );
       return;
     }
-    list.innerHTML = `<div class="table-wrap"><table class="data">
+    const now = new Date();
+    const overdueCount = data.filter(i =>
+      i.next_review && new Date(i.next_review) < now && i.status !== 'not_implemented').length;
+    list.innerHTML = `
+      ${overdueCount ? `<div style="background:#FEF9C3;border:1px solid #FDE68A;border-radius:6px;padding:10px 14px;font-size:13px;color:#92400E;margin-bottom:12px;">
+        <strong>${overdueCount} control${overdueCount>1?'es':''}</strong> con revision pendiente (fecha proxima revision vencida).
+      </div>` : ''}
+      <div class="table-wrap"><table class="data">
       <thead><tr><th>Control</th><th>Implementación</th><th>Estado</th><th>Madurez</th><th>Proxima revisión</th><th></th></tr></thead>
       <tbody>
-        ${data.map(i => `
-          <tr data-id="${i.id}" style="cursor:pointer;">
+        ${data.map(i => {
+          const reviewOverdue = i.next_review && new Date(i.next_review) < now
+            && i.status !== 'not_implemented';
+          return `<tr data-id="${i.id}" style="cursor:pointer;${reviewOverdue?'background:rgba(254,249,195,0.5);':''}">
             <td>${UI.codePill(i.control.code)} <span style="font-size:11px;color:var(--text-subtle);">${UI.esc(i.control.name).slice(0,40)}</span></td>
             <td><strong>${UI.esc(i.name)}</strong></td>
             <td>${UI.controlStatusLabel(i.status)}</td>
             <td>${ViewControls._maturityBar(i.maturity)}</td>
-            <td style="font-size:12px;">${i.next_review ? new Date(i.next_review).toLocaleDateString() : '-'}</td>
+            <td style="font-size:12px;">${i.next_review
+              ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISION</span>':''}`
+              : '-'}</td>
             <td>${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${i.id}">Editar</button>` : ''}</td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table></div>`;
     list.querySelectorAll('[data-edit]').forEach(b =>
@@ -141,6 +158,10 @@ const ViewControls = {
       </div>
       <div><label>Madurez (0-5)</label>
         <input type="number" min="0" max="5" id="f-mat" value="${data.maturity||0}"></div>
+      <div><label>Ultima revision</label>
+        <input type="date" id="f-last-rev" value="${data.last_review ? data.last_review.slice(0,10) : ''}"></div>
+      <div><label>Proxima revision</label>
+        <input type="date" id="f-next-rev" value="${data.next_review ? data.next_review.slice(0,10) : ''}"></div>
       <div class="span2"><label>Evidencia / referencia documental</label>
         <textarea id="f-evi" rows="2">${UI.esc(data.evidence||'')}</textarea></div>
       <div class="span2"><label>Notas</label>
@@ -157,12 +178,16 @@ const ViewControls = {
       catch (e) { UI.toast(e.message, 'error'); }
     };
     document.getElementById('m-save').onclick = async () => {
+      const lastRev = document.getElementById('f-last-rev').value;
+      const nextRev = document.getElementById('f-next-rev').value;
       const body = {
         control_id: parseInt(document.getElementById('f-control').value),
         name: document.getElementById('f-name').value,
         description: document.getElementById('f-desc').value,
         status: document.getElementById('f-status').value,
         maturity: parseInt(document.getElementById('f-mat').value)||0,
+        last_review: lastRev || null,
+        next_review: nextRev || null,
         evidence: document.getElementById('f-evi').value,
         notes: document.getElementById('f-notes').value,
       };
