@@ -1,5 +1,7 @@
 ﻿/* Vista Activos: CRUD + import/export CSV. */
 const ViewAssets = {
+  _sortCol: 'code', _sortAsc: true,
+
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
@@ -76,12 +78,36 @@ const ViewAssets = {
         );
         return;
       }
+      // Client-side sort
+      const _sortVal = a => {
+        const k = ViewAssets._sortCol;
+        if (k === 'code') return a.code || '';
+        if (k === 'name') return (a.name || '').toLowerCase();
+        if (k === 'type') return a.asset_type || '';
+        if (k === 'value_max') return a.value_max || 0;
+        if (k === 'risks') return a.risk_count || 0;
+        if (k === 'category') return (a.category || '').toLowerCase();
+        return '';
+      };
+      data.sort((a, b) => {
+        const va = _sortVal(a), vb = _sortVal(b);
+        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        return ViewAssets._sortAsc ? cmp : -cmp;
+      });
+
+      const _th = (col, label, title, style) => {
+        const active = ViewAssets._sortCol === col;
+        const arrow = active ? (ViewAssets._sortAsc ? ' ▲' : ' ▼') : '';
+        return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${active?'color:var(--brand-purple);':''}${style||''}"
+                    data-sort="${col}" title="${title||label}">${label}${arrow}</th>`;
+      };
+
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead>
           <tr>
-            <th>Codigo</th><th>Nombre</th><th>Tipo</th>
-            <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th><th>Max</th>
-            <th>Categoria</th><th style="width:80px;text-align:center;">Riesgos</th><th></th>
+            ${_th('code','Codigo')}${_th('name','Nombre')}${_th('type','Tipo')}
+            <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th>${_th('value_max','Max','Valor maximo CIA')}
+            ${_th('category','Categoria')}${_th('risks','Riesgos','Numero de riesgos asociados','width:80px;text-align:center;')}<th></th>
           </tr>
         </thead>
         <tbody>
@@ -113,6 +139,14 @@ const ViewAssets = {
         </tbody>
       </table></div>`;
 
+      list.querySelectorAll('th[data-sort]').forEach(th => {
+        th.onclick = () => {
+          const col = th.dataset.sort;
+          if (ViewAssets._sortCol === col) ViewAssets._sortAsc = !ViewAssets._sortAsc;
+          else { ViewAssets._sortCol = col; ViewAssets._sortAsc = col !== 'value_max' && col !== 'risks'; }
+          ViewAssets._reload();
+        };
+      });
       list.querySelectorAll('[data-edit]').forEach(b =>
         b.onclick = () => ViewAssets._edit(parseInt(b.dataset.edit)));
     } catch (e) {

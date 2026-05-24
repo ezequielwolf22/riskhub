@@ -145,6 +145,10 @@ const ViewDashboard = {
                 <span>Altos sin plan</span>
                 <span class="qa-count">${s.no_treatment_high}</span>
               </a>
+              <a href="#/controls" class="quick-action-btn ${s.controls_overdue_reviews > 0 ? 'urgent' : ''}">
+                <span>Revisiones controles vencidas</span>
+                <span class="qa-count">${s.controls_overdue_reviews}</span>
+              </a>
               <a href="#/calendar" class="quick-action-btn">
                 <span>Ver calendario</span>
                 <span style="font-size:12px;color:var(--text-muted);">→</span>
@@ -157,8 +161,19 @@ const ViewDashboard = {
           </div>
 
           <div class="card" style="flex:2;">
-            <h3>Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
-            <div id="dash-upcoming" style="margin-top:8px;"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <h3 style="margin:0;">Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
+              <a href="#/calendar" style="font-size:12px;color:var(--brand-purple);">Calendario →</a>
+            </div>
+            <div id="dash-upcoming"></div>
+          </div>
+
+          <div class="card" style="flex:2;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <h3 style="margin:0;">Revisiones de controles <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
+              <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos →</a>
+            </div>
+            <div id="dash-ctrl-upcoming"></div>
           </div>
 
           <div class="card" style="flex:2;" id="dash-activity-card" style="display:none;">
@@ -182,8 +197,9 @@ const ViewDashboard = {
           </div>
         </div>
       `;
-      // Cargar proximos vencimientos, cobertura de controles y actividad reciente
+      // Cargar proximos vencimientos, cobertura de controles, actividad reciente y revisiones controles
       ViewDashboard._loadUpcoming();
+      ViewDashboard._loadUpcomingControlReviews();
       ViewDashboard._loadControlsCoverage();
       ViewDashboard._loadRecentActivity();
     } catch (e) {
@@ -285,6 +301,42 @@ const ViewDashboard = {
       const el2 = document.getElementById('dash-controls-body');
       if (el2) el2.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">No disponible.</p>';
     }
+  },
+
+  async _loadUpcomingControlReviews() {
+    const el = document.getElementById('dash-ctrl-upcoming');
+    if (!el) return;
+    try {
+      const all = await Api.impls.list();
+      const now = new Date();
+      const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      // Include overdue and upcoming reviews (exclude not_implemented)
+      const reviews = all
+        .filter(c => c.next_review && c.status !== 'not_implemented')
+        .map(c => ({ ...c, _due: new Date(c.next_review) }))
+        .filter(c => c._due <= in30)
+        .sort((a, b) => a._due - b._due)
+        .slice(0, 8);
+
+      if (!reviews.length) {
+        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin revisiones programadas en los proximos 30 dias.</p>';
+        return;
+      }
+      el.innerHTML = reviews.map(c => {
+        const days = Math.ceil((c._due - now) / (1000 * 60 * 60 * 24));
+        const overdue = days < 0;
+        const urgency = overdue ? 'var(--risk-high)' : days <= 7 ? 'var(--risk-medium)' : 'var(--text-muted)';
+        const label = overdue
+          ? `${Math.abs(days)} dias vencido`
+          : days === 0 ? 'Hoy' : days === 1 ? 'Manana' : `en ${days} dias`;
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
+          ${UI.codePill(c.control?.code || '-')}
+          <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                title="${UI.esc(c.name)}">${UI.esc(c.name)}</span>
+          <span style="font-size:11px;font-weight:600;color:${urgency};white-space:nowrap;">${label}</span>
+        </div>`;
+      }).join('');
+    } catch (_) { /* silencioso */ }
   },
 
   async _loadUpcoming() {
