@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app import __version__
@@ -78,13 +78,15 @@ if STATIC_DIR.exists():
     if (STATIC_DIR / "vendor").exists():
         app.mount("/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
 
+    _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
     @app.get("/")
     def index():
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(STATIC_DIR / "index.html", headers=_NO_CACHE)
 
     @app.get("/login")
     def login_page():
-        return FileResponse(STATIC_DIR / "login.html")
+        return FileResponse(STATIC_DIR / "login.html", headers=_NO_CACHE)
 
     # SPA fallback
     @app.get("/{full_path:path}")
@@ -94,4 +96,4 @@ if STATIC_DIR.exists():
         target = STATIC_DIR / full_path
         if target.is_file():
             return FileResponse(target)
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(STATIC_DIR / "index.html", headers=_NO_CACHE)
