@@ -137,6 +137,7 @@ const ViewAlerts = {
       risk_no_treatment: 'Sin plan de tratamiento',
       daily_digest: 'Resumen diario',
       treatment_due_soon: 'Vence en 7 dias',
+      control_review_overdue: 'Revision control vencida',
     };
     const lastTrig = r.last_triggered_at
       ? new Date(r.last_triggered_at).toLocaleDateString('es-ES')
@@ -210,6 +211,7 @@ const ViewAlerts = {
             <option value="risk_no_treatment">Riesgo sin plan de tratamiento</option>
             <option value="daily_digest">Resumen diario del registro de riesgos</option>
             <option value="treatment_due_soon">Tratamiento proximo a vencer (7 dias)</option>
+            <option value="control_review_overdue">Revision de control ISO 27002 vencida</option>
           </select></div>
         <div><label>Umbral de nivel</label>
           <input id="r-threshold" type="number" value="5" min="1" max="8" style="width:100%;"></div>
