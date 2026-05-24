@@ -81,11 +81,14 @@ const ViewAssets = {
           <tr>
             <th>Codigo</th><th>Nombre</th><th>Tipo</th>
             <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th><th>Max</th>
-            <th>Categoria</th><th></th>
+            <th>Categoria</th><th style="width:80px;text-align:center;">Riesgos</th><th></th>
           </tr>
         </thead>
         <tbody>
-          ${data.map(a => `
+          ${data.map(a => {
+            const rc = a.risk_count || 0;
+            const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+            return `
             <tr data-id="${a.id}">
               <td>${UI.codePill(a.code)}</td>
               <td><strong>${UI.esc(a.name)}</strong>
@@ -98,12 +101,15 @@ const ViewAssets = {
               <td>${a.value_accountability}</td>
               <td>${UI.riskPill(a.value_max * 2)}</td>
               <td>${UI.esc(a.category || '-')}</td>
+              <td style="text-align:center;">
+                <a href="#/risks?asset_id=${a.id}" title="Ver riesgos de este activo"
+                   style="font-weight:700;font-family:var(--font-mono);font-size:13px;
+                          color:${rcColor};text-decoration:none;">${rc}</a>
+              </td>
               <td style="white-space:nowrap;">
-                <button class="btn btn-sm btn-ghost" style="margin-right:4px;"
-                  onclick="location.hash='#/risks?asset_id=${a.id}'">Riesgos</button>
                 ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}
               </td>
-            </tr>`).join('')}
+            </tr>`;}).join('')}
         </tbody>
       </table></div>`;
 

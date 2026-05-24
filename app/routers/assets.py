@@ -8,7 +8,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Asset, AssetType, User
+from sqlalchemy import func
+from app.models import Asset, AssetType, Risk, User
 from app.schemas import AssetIn, AssetOut, ImportResult
 from app.security import get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -21,10 +22,11 @@ def _next_code(db: Session) -> str:
     return f"AST-{n:04d}"
 
 
-def _to_out(a: Asset) -> AssetOut:
+def _to_out(a: Asset, risk_count: int = 0) -> AssetOut:
     return AssetOut.model_validate({
-        **{k: getattr(a, k) for k in AssetOut.model_fields if k != "value_max"},
+        **{k: getattr(a, k) for k in AssetOut.model_fields if k not in ("value_max", "risk_count")},
         "value_max": a.value_max,
+        "risk_count": risk_count,
     })
 
 
@@ -43,7 +45,17 @@ def list_assets(
                              | (Asset.description.ilike(like)))
     if asset_type:
         query = query.filter(Asset.asset_type == asset_type)
-    return [_to_out(a) for a in query.order_by(Asset.code).limit(limit).all()]
+    assets = query.order_by(Asset.code).limit(limit).all()
+
+    # Compute risk counts in a single query
+    counts_q = (
+        db.query(Risk.asset_id, func.count(Risk.id))
+        .filter(Risk.asset_id.in_([a.id for a in assets]))
+        .group_by(Risk.asset_id)
+        .all()
+    )
+    risk_counts = {asset_id: cnt for asset_id, cnt in counts_q}
+    return [_to_out(a, risk_counts.get(a.id, 0)) for a in assets]
 
 
 @router.get("/{asset_id}", response_model=AssetOut)

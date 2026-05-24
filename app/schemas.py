@@ -115,6 +115,7 @@ class AssetOut(ORMBase):
     extra: Optional[dict]
     created_at: datetime
     updated_at: datetime
+    risk_count: int = 0
 
 
 # ---------- THREATS ----------
