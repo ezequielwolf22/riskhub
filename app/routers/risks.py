@@ -399,7 +399,7 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
             by_treatment[r.treatment_option.value] += 1
 
     # Metricas adicionales
-    active_statuses = {RiskStatus.IDENTIFIED, RiskStatus.ANALYZED, RiskStatus.EVALUATED}
+    active_statuses = {RiskStatus.IDENTIFIED, RiskStatus.ASSESSED}
     active_risks = [r for r in risks if r.status in active_statuses]
     overdue = sum(
         1 for r in active_risks
