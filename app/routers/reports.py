@@ -99,8 +99,9 @@ def risk_register(db: Session = Depends(get_db),
         el.append(Spacer(1, 12))
 
     risks = db.query(Risk).order_by(Risk.residual_level.desc()).all()
-    data = [["Codigo", "Activo", "Amenaza", "Inh.", "Res.", "Estado", "Tratamiento"]]
+    data = [["Codigo", "Activo", "Amenaza", "Inh.", "Res.", "Estado", "Tratamiento", "Propietario"]]
     for r in risks:
+        owner_name = r.owner.full_name if r.owner else "-"
         data.append([
             r.code,
             r.asset.name if r.asset else "-",
@@ -109,21 +110,78 @@ def risk_register(db: Session = Depends(get_db),
             str(r.residual_level),
             r.status.value if r.status else "-",
             r.treatment_option.value if r.treatment_option else "-",
+            owner_name,
         ])
     if len(data) > 1:
-        t = Table(data, repeatRows=1, colWidths=[20*mm, 40*mm, 50*mm, 12*mm, 12*mm, 20*mm, 22*mm])
+        t = Table(data, repeatRows=1, colWidths=[18*mm, 36*mm, 44*mm, 10*mm, 10*mm, 18*mm, 20*mm, 24*mm])
         t.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), BRAND_PURPLE),
-            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 8),
-            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, BRAND_GRAY5]),
-            ("GRID", (0,0), (-1,-1), 0.25, BRAND_GRAY3),
-            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ]))
         el.append(t)
     else:
         el.append(Paragraph("No hay riesgos registrados.", s["BodyBrand"]))
+
+    # Pagina de metodologia
+    el.append(PageBreak())
+    el.append(Paragraph("Metodologia de evaluacion de riesgos", s["H2Brand"]))
+    el.append(Spacer(1, 4))
+    el.append(Paragraph(
+        "Este registro de riesgos ha sido elaborado conforme a la norma <b>ISO/IEC 27005:2018</b> "
+        "y el marco de controles <b>ISO/IEC 27002:2022</b>. La evaluacion cualitativa utiliza "
+        "una matriz 5x5 (Consecuencia x Probabilidad) basada en el Anexo E.2 de ISO 27005.",
+        s["BodyBrand"]))
+    el.append(Spacer(1, 8))
+    el.append(Paragraph("Escala de niveles de riesgo", s["H2Brand"]))
+    level_data = [
+        ["Nivel", "Rango", "Descripcion", "Accion requerida"],
+        ["Critico", "7-8", "Riesgo inaceptable. Amenaza grave.", "Tratamiento inmediato"],
+        ["Alto", "5-6", "Riesgo elevado. Atencion prioritaria.", "Plan en < 30 dias"],
+        ["Medio", "3-4", "Riesgo moderado. Monitoreo activo.", "Plan en < 90 dias"],
+        ["Bajo", "1-2", "Riesgo aceptable. Vigilancia periodica.", "Revision anual"],
+        ["Insignificante", "0", "Riesgo residual minimo.", "Aceptar o monitorear"],
+    ]
+    level_colors = [BRAND_GRAY5, colors.HexColor("#FCA5A5"), colors.HexColor("#FED7AA"),
+                    colors.HexColor("#FEF9C3"), colors.HexColor("#DCFCE7"), colors.white]
+    t2 = Table(level_data, repeatRows=1, colWidths=[25*mm, 18*mm, 80*mm, 47*mm])
+    t2_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]
+    for idx, bg in enumerate(level_colors[1:], 1):
+        t2_style.append(("BACKGROUND", (0, idx), (-1, idx), bg))
+    t2.setStyle(TableStyle(t2_style))
+    el.append(t2)
+    el.append(Spacer(1, 8))
+    el.append(Paragraph("Opciones de tratamiento (ISO 27005 cl. 8.4)", s["H2Brand"]))
+    treat_data = [
+        ["Opcion", "Descripcion"],
+        ["Modificacion", "Implementar controles para reducir la probabilidad o el impacto."],
+        ["Retencion", "Aceptar el riesgo de forma consciente e informada."],
+        ["Transferencia", "Compartir el riesgo con terceros (seguros, outsourcing)."],
+        ["Evitacion", "Eliminar la actividad que genera el riesgo."],
+        ["Comparticion", "Distribuir el riesgo entre varias partes interesadas."],
+    ]
+    t3 = Table(treat_data, repeatRows=1, colWidths=[35*mm, 135*mm])
+    t3.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_ORANGE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+        ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    el.append(t3)
 
     return _pdf_response(el, "risk_register.pdf")
 
@@ -145,26 +203,60 @@ def statement_of_applicability(db: Session = Depends(get_db),
 
     from app.models import Control
     controls = db.query(Control).order_by(Control.code).all()
-    data = [["Control", "Nombre", "Aplicable", "Estado", "Madurez"]]
+
+    # Estadisticas resumen
+    total_c = len(controls)
+    total_impl = sum(1 for c in controls if by_control.get(c.id))
+    implemented_count = sum(
+        1 for imp in impls
+        if imp.status and imp.status.value == "implemented"
+    )
+    el.append(Paragraph(
+        f"Controles catalogados: <b>{total_c}</b>  |  "
+        f"Implementaciones activas: <b>{total_impl}</b>  |  "
+        f"Estado Implementado: <b>{implemented_count}</b>",
+        s["BodyBrand"]))
+    el.append(Spacer(1, 8))
+
+    data = [["Control", "Nombre", "Aplic.", "Estado", "Mat.", "Razon inclusion", "Evidencia"]]
     for c in controls:
         ims = by_control.get(c.id, [])
         if ims:
             for imp in ims:
-                data.append([c.code, c.name[:60], "Si", imp.status.value, f"{imp.maturity}/5"])
+                reason = (imp.inclusion_reason or "-")[:30]
+                evidence = ""
+                if imp.evidence_refs:
+                    refs = imp.evidence_refs if isinstance(imp.evidence_refs, list) else []
+                    evidence = "; ".join(str(r)[:20] for r in refs[:2])
+                data.append([
+                    c.code, c.name[:45], "Si",
+                    imp.status.value if imp.status else "-",
+                    f"{imp.maturity}/5",
+                    reason, evidence or "-",
+                ])
         else:
-            data.append([c.code, c.name[:60], "No", "-", "-"])
+            data.append([c.code, c.name[:45], "No", "-", "-", "-", "-"])
 
-    t = Table(data, repeatRows=1, colWidths=[18*mm, 80*mm, 18*mm, 30*mm, 20*mm])
+    t = Table(data, repeatRows=1, colWidths=[16*mm, 54*mm, 12*mm, 22*mm, 12*mm, 32*mm, 32*mm])
     t.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), BRAND_PURPLE),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,-1), 7.5),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, BRAND_GRAY5]),
-        ("GRID", (0,0), (-1,-1), 0.25, BRAND_GRAY3),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+        ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     el.append(t)
+
+    # Nota pie SOA
+    el.append(Spacer(1, 8))
+    el.append(Paragraph(
+        "<i>Este documento constituye la Declaracion de Aplicabilidad (SOA) requerida por "
+        "ISO/IEC 27001:2022 clausula 6.1.3. Incluye todos los controles del Anexo A "
+        "(ISO/IEC 27002:2022), indicando aplicabilidad, estado, razon de inclusion y evidencias.</i>",
+        s["BodyBrand"]))
+
     return _pdf_response(el, "soa.pdf")
 
 

@@ -126,6 +126,36 @@ const Api = {
     riskRegisterExcel: () => Api.download('/api/reports/risk-register-excel', 'risk_register.xlsx'),
     aiGenerate: (d) => Api.post('/api/reports/ai-generate', d),
   },
+  incidents: {
+    list: (q) => Api.get('/api/incidents/', q),
+    get: (id) => Api.get('/api/incidents/' + id),
+    create: (d) => Api.post('/api/incidents/', d),
+    update: (id, d) => Api.patch('/api/incidents/' + id, d),
+    del: (id) => Api.del('/api/incidents/' + id),
+    summary: () => Api.get('/api/incidents/stats/summary'),
+  },
+  suppliers: {
+    list: (q) => Api.get('/api/suppliers/', q),
+    get: (id) => Api.get('/api/suppliers/' + id),
+    create: (d) => Api.post('/api/suppliers/', d),
+    update: (id, d) => Api.patch('/api/suppliers/' + id, d),
+    del: (id) => Api.del('/api/suppliers/' + id),
+    summary: () => Api.get('/api/suppliers/stats/summary'),
+  },
+  nonconformities: {
+    list: (q) => Api.get('/api/nonconformities/', q),
+    get: (id) => Api.get('/api/nonconformities/' + id),
+    create: (d) => Api.post('/api/nonconformities/', d),
+    update: (id, d) => Api.patch('/api/nonconformities/' + id, d),
+    del: (id) => Api.del('/api/nonconformities/' + id),
+    summary: () => Api.get('/api/nonconformities/stats/summary'),
+  },
+  compliance: {
+    summary: () => Api.get('/api/ai/compliance/summary'),
+  },
+  ai: {
+    riskSuggest: (d) => Api.post('/api/ai/risk-suggest', d),
+  },
   search: (q) => Api.get('/api/search/', { q }),
   admin: {
     systemInfo: () => Api.get('/api/admin/system-info'),

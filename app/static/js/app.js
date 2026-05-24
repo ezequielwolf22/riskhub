@@ -17,6 +17,10 @@ const Routes = {
   context: ViewContext,
   users: ViewUsers,
   audit: ViewAudit,
+  incidents: ViewIncidents,
+  suppliers: ViewSuppliers,
+  nonconformities: ViewNonConformities,
+  compliance: ViewCompliance,
 };
 
 function currentRoute() {

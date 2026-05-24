@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models import (
     AssetType, ThreatOrigin, TreatmentOption,
     RiskStatus, ControlStatus, UserRole,
+    IncidentSeverity, IncidentStatus, SupplierRisk,
+    NCSeverity, NCStatus,
 )
 
 
@@ -91,6 +93,7 @@ class AssetIn(BaseModel):
     value_availability: int = 0
     value_authenticity: int = 0
     value_accountability: int = 0
+    monetary_value: Optional[float] = None
     parent_id: Optional[int] = None
     owner_ids: list[int] = []
     extra: Optional[dict] = None
@@ -111,6 +114,7 @@ class AssetOut(ORMBase):
     value_availability: int
     value_authenticity: int
     value_accountability: int
+    monetary_value: Optional[float]
     value_max: int
     parent_id: Optional[int]
     extra: Optional[dict]
@@ -199,6 +203,9 @@ class ControlImplIn(BaseModel):
     last_review: Optional[datetime] = None
     next_review: Optional[datetime] = None
     notes: Optional[str] = None
+    inclusion_reason: Optional[str] = None
+    exclusion_justification: Optional[str] = None
+    evidence_refs: Optional[list[dict]] = None
 
 
 class ControlImplOut(ORMBase):
@@ -213,6 +220,11 @@ class ControlImplOut(ORMBase):
     last_review: Optional[datetime]
     next_review: Optional[datetime]
     notes: Optional[str]
+    inclusion_reason: Optional[str]
+    exclusion_justification: Optional[str]
+    evidence_refs: Optional[list[dict]]
+    soa_reviewed_at: Optional[datetime]
+    soa_reviewed_by_id: Optional[int]
     control: ControlOut
     risk_count: int = 0
 
@@ -330,6 +342,187 @@ class QuestionnaireResponseOut(ORMBase):
     answers: dict
     generated_risks: Optional[list[str]]
     submitted_at: datetime
+
+
+# ---------- INCIDENTS ----------
+class IncidentIn(BaseModel):
+    title: str
+    description: Optional[str] = None
+    severity: IncidentSeverity = IncidentSeverity.P3
+    status: IncidentStatus = IncidentStatus.OPEN
+    detected_at: Optional[datetime] = None
+    nis2_notification_required: bool = False
+    nis2_notification_sent_at: Optional[datetime] = None
+    gdpr_notification_required: bool = False
+    affected_systems: list[str] = []
+    affected_asset_ids: list[int] = []
+    related_risk_ids: list[int] = []
+    root_cause: Optional[str] = None
+    response_actions: Optional[str] = None
+    lessons_learned: Optional[str] = None
+    owner_id: Optional[int] = None
+
+
+class IncidentUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[IncidentSeverity] = None
+    status: Optional[IncidentStatus] = None
+    detected_at: Optional[datetime] = None
+    contained_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    nis2_notification_required: Optional[bool] = None
+    nis2_notification_sent_at: Optional[datetime] = None
+    gdpr_notification_required: Optional[bool] = None
+    affected_systems: Optional[list[str]] = None
+    affected_asset_ids: Optional[list[int]] = None
+    related_risk_ids: Optional[list[int]] = None
+    root_cause: Optional[str] = None
+    response_actions: Optional[str] = None
+    lessons_learned: Optional[str] = None
+    owner_id: Optional[int] = None
+
+
+class IncidentOut(ORMBase):
+    id: int
+    code: str
+    title: str
+    description: Optional[str]
+    severity: IncidentSeverity
+    status: IncidentStatus
+    detected_at: Optional[datetime]
+    contained_at: Optional[datetime]
+    resolved_at: Optional[datetime]
+    nis2_notification_required: bool
+    nis2_notification_sent_at: Optional[datetime]
+    gdpr_notification_required: bool
+    affected_systems: Optional[list[str]]
+    affected_asset_ids: Optional[list[int]]
+    related_risk_ids: Optional[list[int]]
+    root_cause: Optional[str]
+    response_actions: Optional[str]
+    lessons_learned: Optional[str]
+    owner_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------- SUPPLIERS ----------
+class SupplierIn(BaseModel):
+    name: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    services: Optional[str] = None
+    risk_level: SupplierRisk = SupplierRisk.MEDIUM
+    is_critical: bool = False
+    certifications: list[str] = []
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contract_ref: Optional[str] = None
+    contract_expiry: Optional[datetime] = None
+    last_assessment_at: Optional[datetime] = None
+    next_assessment_at: Optional[datetime] = None
+    score: int = 50
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None
+
+
+class SupplierUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    services: Optional[str] = None
+    risk_level: Optional[SupplierRisk] = None
+    is_critical: Optional[bool] = None
+    certifications: Optional[list[str]] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contract_ref: Optional[str] = None
+    contract_expiry: Optional[datetime] = None
+    last_assessment_at: Optional[datetime] = None
+    next_assessment_at: Optional[datetime] = None
+    score: Optional[int] = None
+    notes: Optional[str] = None
+    owner_id: Optional[int] = None
+
+
+class SupplierOut(ORMBase):
+    id: int
+    code: str
+    name: str
+    category: Optional[str]
+    description: Optional[str]
+    services: Optional[str]
+    risk_level: SupplierRisk
+    is_critical: bool
+    certifications: Optional[list[str]]
+    contact_name: Optional[str]
+    contact_email: Optional[str]
+    contract_ref: Optional[str]
+    contract_expiry: Optional[datetime]
+    last_assessment_at: Optional[datetime]
+    next_assessment_at: Optional[datetime]
+    score: int
+    notes: Optional[str]
+    owner_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------- NON-CONFORMITIES ----------
+class NonConformityIn(BaseModel):
+    title: str
+    description: Optional[str] = None
+    source: Optional[str] = None
+    severity: NCSeverity = NCSeverity.MINOR
+    iso_clause: Optional[str] = None
+    root_cause: Optional[str] = None
+    corrective_action: Optional[str] = None
+    due_date: Optional[datetime] = None
+    evidence: Optional[str] = None
+    owner_id: Optional[int] = None
+    related_control_id: Optional[int] = None
+    related_risk_id: Optional[int] = None
+
+
+class NonConformityUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    source: Optional[str] = None
+    severity: Optional[NCSeverity] = None
+    status: Optional[NCStatus] = None
+    iso_clause: Optional[str] = None
+    root_cause: Optional[str] = None
+    corrective_action: Optional[str] = None
+    due_date: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
+    evidence: Optional[str] = None
+    owner_id: Optional[int] = None
+    verifier_id: Optional[int] = None
+    related_control_id: Optional[int] = None
+    related_risk_id: Optional[int] = None
+
+
+class NonConformityOut(ORMBase):
+    id: int
+    code: str
+    title: str
+    description: Optional[str]
+    source: Optional[str]
+    severity: NCSeverity
+    status: NCStatus
+    iso_clause: Optional[str]
+    root_cause: Optional[str]
+    corrective_action: Optional[str]
+    due_date: Optional[datetime]
+    closed_at: Optional[datetime]
+    evidence: Optional[str]
+    owner_id: Optional[int]
+    verifier_id: Optional[int]
+    related_control_id: Optional[int]
+    related_risk_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
 
 
 TokenOut.model_rebuild()

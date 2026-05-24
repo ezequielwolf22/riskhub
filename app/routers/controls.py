@@ -55,7 +55,7 @@ def export_soa_csv(db: Session = Depends(get_db),
     writer.writerow([
         "Codigo", "Nombre", "Tema", "Tipo",
         "Aplicable", "Implementaciones", "Estado_Mejor", "Madurez_Max",
-        "Proxima_Revision",
+        "Proxima_Revision", "Razon_Inclusion", "Justificacion_Exclusion", "Evidencias",
     ])
     for c in controls:
         ci_list = impl_by_ctrl.get(c.id, [])
@@ -70,9 +70,18 @@ def export_soa_csv(db: Session = Depends(get_db),
         max_mat = max((i.maturity for i in ci_list), default=0)
         next_revs = [i.next_review for i in ci_list if i.next_review]
         next_rev_str = min(next_revs).strftime("%Y-%m-%d") if next_revs else ""
+        # SOA ISO 27001:2022 fields (first impl if multiple)
+        first_impl = ci_list[0] if ci_list else None
+        inclusion_reason = (first_impl.inclusion_reason or "") if first_impl else ""
+        excl_just = (first_impl.exclusion_justification or "") if first_impl else ""
+        evidence = ""
+        if first_impl and first_impl.evidence_refs:
+            refs = first_impl.evidence_refs if isinstance(first_impl.evidence_refs, list) else []
+            evidence = "; ".join(str(r) for r in refs)
         writer.writerow([
             c.code, c.name, c.theme or "", ",".join(c.control_type or []),
             applicable, len(ci_list), best_status, max_mat, next_rev_str,
+            inclusion_reason, excl_just, evidence,
         ])
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")

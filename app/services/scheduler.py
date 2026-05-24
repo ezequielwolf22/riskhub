@@ -275,6 +275,73 @@ def _run_alert_rules() -> None:
         db.close()
 
 
+def _run_risk_reviews() -> None:
+    """Envia recordatorios de revision periodica de riesgos a los risk owners."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import Risk, RiskStatus, User
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        cfg = email_service.get_settings(db)
+        if not cfg or not cfg.smtp_host:
+            return
+
+        from app.models import RiskContext
+        ctx = db.query(RiskContext).first()
+        org = ctx.organization_name if ctx else "Organizacion"
+
+        now = datetime.now(timezone.utc)
+        thresholds = [
+            (timedelta(days=30), "en 30 dias"),
+            (timedelta(days=7), "en 7 dias"),
+            (timedelta(days=1), "MANANA"),
+        ]
+
+        active_risks = db.query(Risk).filter(
+            Risk.next_review.isnot(None),
+            Risk.status.not_in([RiskStatus.CLOSED]),
+            Risk.owner_id.isnot(None),
+        ).all()
+
+        for risk in active_risks:
+            review_dt = risk.next_review.replace(tzinfo=timezone.utc)
+            if review_dt < now:
+                # Vencida
+                days_overdue = (now - review_dt).days
+                if days_overdue in (0, 1, 7):
+                    owner = db.query(User).filter(User.id == risk.owner_id).first()
+                    if owner and owner.email:
+                        subject = f"RiskHub — Revision vencida: {risk.code} ({org})"
+                        body = f"La revision del riesgo <b>{risk.code}</b> estaba programada para {risk.next_review.strftime('%d/%m/%Y')} y no ha sido completada."
+                        try:
+                            email_service.send_email(cfg, owner.email, subject,
+                                email_service._wrap_html(subject, body, org))
+                        except Exception:
+                            pass
+                continue
+            time_until = review_dt - now
+            for threshold, label in thresholds:
+                if timedelta(0) <= time_until <= threshold:
+                    # Enviar solo si es la primera vez que cae en este bucket (+-12h)
+                    owner = db.query(User).filter(User.id == risk.owner_id).first()
+                    if owner and owner.email:
+                        subject = f"RiskHub — Revision de riesgo {label}: {risk.code} ({org})"
+                        body = (f"El riesgo <b>{risk.code}</b> ({risk.asset.name if risk.asset else '-'}) "
+                                f"tiene programada su revision para el {risk.next_review.strftime('%d/%m/%Y')} ({label}).")
+                        try:
+                            email_service.send_email(cfg, owner.email, subject,
+                                email_service._wrap_html(subject, body, org))
+                        except Exception:
+                            pass
+                    break
+    except Exception as exc:
+        logger.exception("Error en revision de riesgos: %s", exc)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -285,7 +352,15 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         id="check_alert_rules",
         name="Evaluacion periodica de reglas de alerta",
         replace_existing=True,
-        misfire_grace_time=300,  # 5 min de gracia si el job se retrasa
+        misfire_grace_time=300,
+    )
+    _scheduler.add_job(
+        func=_run_risk_reviews,
+        trigger=IntervalTrigger(hours=24),
+        id="check_risk_reviews",
+        name="Recordatorios de revision periodica de riesgos",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

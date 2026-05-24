@@ -111,9 +111,44 @@ def seed_controls(db: Session) -> None:
     db.commit()
 
 
+def _migrate_columns() -> None:
+    """Agrega columnas nuevas a tablas existentes (SQLite no soporta ALTER TABLE con IF NOT EXISTS en todas las versiones)."""
+    migrations = [
+        # assets: valor monetario para FAIR
+        ("ALTER TABLE assets ADD COLUMN monetary_value REAL", "assets", "monetary_value"),
+        # control_implementations: campos SOA ISO 27001:2022
+        ("ALTER TABLE control_implementations ADD COLUMN inclusion_reason VARCHAR(64)", "control_implementations", "inclusion_reason"),
+        ("ALTER TABLE control_implementations ADD COLUMN exclusion_justification TEXT", "control_implementations", "exclusion_justification"),
+        ("ALTER TABLE control_implementations ADD COLUMN evidence_refs JSON", "control_implementations", "evidence_refs"),
+        ("ALTER TABLE control_implementations ADD COLUMN soa_reviewed_at DATETIME", "control_implementations", "soa_reviewed_at"),
+        ("ALTER TABLE control_implementations ADD COLUMN soa_reviewed_by_id INTEGER REFERENCES users(id)", "control_implementations", "soa_reviewed_by_id"),
+        # incidents: nuevos campos v1.1
+        ("ALTER TABLE incidents ADD COLUMN affected_systems JSON", "incidents", "affected_systems"),
+        ("ALTER TABLE incidents ADD COLUMN response_actions TEXT", "incidents", "response_actions"),
+        # suppliers: nuevos campos v1.1
+        ("ALTER TABLE suppliers ADD COLUMN category VARCHAR(128)", "suppliers", "category"),
+        ("ALTER TABLE suppliers ADD COLUMN is_critical BOOLEAN DEFAULT 0", "suppliers", "is_critical"),
+        ("ALTER TABLE suppliers ADD COLUMN contract_ref VARCHAR(255)", "suppliers", "contract_ref"),
+    ]
+    with engine.connect() as conn:
+        for sql, table, col in migrations:
+            try:
+                # Comprobar si la columna ya existe
+                result = conn.execute(
+                    __import__("sqlalchemy").text(f"PRAGMA table_info({table})")
+                )
+                existing_cols = [row[1] for row in result]
+                if col not in existing_cols:
+                    conn.execute(__import__("sqlalchemy").text(sql))
+                    conn.commit()
+            except Exception:
+                pass  # columna ya existe o tabla no existe aun
+
+
 def init_db() -> None:
     """Crear tablas y cargar seed inicial."""
     Base.metadata.create_all(bind=engine)
+    _migrate_columns()
     db = SessionLocal()
     try:
         seed_admin(db)

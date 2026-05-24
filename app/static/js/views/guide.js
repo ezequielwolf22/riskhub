@@ -10,10 +10,14 @@ const ViewGuide = {
     { id: 'risks', title: 'Gestion de riesgos', icon: '📊' },
     { id: 'calendar', title: 'Calendario', icon: '📅' },
     { id: 'controls', title: 'Controles ISO 27002', icon: '🛡️' },
+    { id: 'compliance', title: 'Cumplimiento multi-framework', icon: '✅' },
+    { id: 'incidents', title: 'Incidentes (NIS2)', icon: '🚨' },
+    { id: 'suppliers', title: 'Proveedores (supply chain)', icon: '🔗' },
+    { id: 'nonconformities', title: 'No conformidades', icon: '⚠️' },
     { id: 'ai', title: 'Agente IA', icon: '🤖' },
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
-    { id: 'integrations', title: 'Integraciones', icon: '🔗' },
+    { id: 'integrations', title: 'Integraciones', icon: '🔌' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'methodology', title: 'Metodologia ISO 27005', icon: '📐' },
@@ -83,6 +87,10 @@ const ViewGuide = {
       risks: this._cRisks,
       calendar: this._cCalendar,
       controls: this._cControls,
+      compliance: this._cCompliance,
+      incidents: this._cIncidents,
+      suppliers: this._cSuppliers,
+      nonconformities: this._cNonConformities,
       ai: this._cAI,
       reports: this._cReports,
       alerts: this._cAlerts,
@@ -736,6 +744,153 @@ const ViewGuide = {
       'Los catalogos de amenazas y vulnerabilidades se actualizan automaticamente.',
     ])}
   `; },
+
+  get _cCompliance() { return `
+    ${this._p('El <strong>Dashboard de Cumplimiento</strong> calcula automaticamente tu nivel de cumplimiento para cuatro marcos normativos en base a los datos registrados en RiskHub: controles implementados, riesgos tratados, incidentes gestionados y no conformidades abiertas.')}
+    ${this._h('Marcos normativos cubiertos')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      ${[
+        ['ISO/IEC 27001:2022','Basado en: cobertura de controles SOA (cl. 6.1.3), tratamiento de riesgos (cl. 6.1.2), propietarios asignados (cl. 6.1.2), estado de riesgos (cl. 8.3) y no conformidades mayores abiertas (cl. 10.1).'],
+        ['NIS2 — Directiva EU 2022/2555','Basado en: medidas tecnicas (controles), notificacion de incidentes en 72h (Art. 23), evaluacion de proveedores (Art. 21.2.d) y gestion de riesgos con tratamiento.'],
+        ['NIST CSF 2.0','Seis funciones: GOVERN (propietarios y controles), IDENTIFY (riesgos por activo), PROTECT (controles implementados), DETECT (incidentes registrados), RESPOND (incidentes resueltos), RECOVER (lecciones aprendidas documentadas).'],
+        ['ENS RD 311/2022','Esquema Nacional de Seguridad espanol. Basado en: implementacion de controles (Anexo II), responsables asignados y mejora continua (no conformidades abiertas).'],
+      ].map(([t,d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;font-size:13px;">
+          <div style="font-weight:700;color:var(--brand-purple);margin-bottom:6px;">${t}</div>
+          <div style="color:var(--text-muted);line-height:1.5;">${d}</div>
+        </div>`).join('')}
+    </div>
+    ${this._h('Como interpretar la puntuacion')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--brand-purple);color:#fff;">
+        <th style="padding:8px;">Rango</th><th style="padding:8px;">Etiqueta</th><th style="padding:8px;">Interpretacion</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['75-100','Conforme','Nivel de cumplimiento aceptable para auditoria.','#22C55E'],
+          ['50-74','Parcial','Brechas identificadas. Plan de mejora recomendado.','#F59E0B'],
+          ['25-49','Deficiente','Brechas significativas. Requiere accion prioritaria.','#EF4444'],
+          ['0-24','Critico','Incumplimiento grave. Riesgo regulatorio alto.','#7C3AED'],
+        ].map(([r,l,d,c],i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          <td style="padding:8px;font-weight:700;color:${c};">${r}</td>
+          <td style="padding:8px;font-weight:600;">${l}</td>
+          <td style="padding:8px;color:var(--text-muted);">${d}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Brechas identificadas')}
+    ${this._p('El dashboard muestra las brechas especificas para cada marco con referencia al articulo o clausula normativa afectada. Cada brecha indica que dato falta o que proceso esta incompleto. Usa estas brechas como checklist de mejora.')}
+    ${this._tip('<strong>Nota:</strong> Las puntuaciones son estimaciones basadas en los datos registrados. Una auditoria formal puede revelar brechas adicionales no reflejadas en RiskHub.')}
+  `;},
+
+  get _cIncidents() { return `
+    ${this._p('El modulo de <strong>Incidentes de Seguridad</strong> permite gestionar el ciclo de vida completo de un incidente, desde la deteccion hasta el cierre, incluyendo el flujo de notificacion obligatorio de la directiva <strong>NIS2</strong>.')}
+    ${this._h('Ciclo de vida de un incidente')}
+    ${this._steps([
+      '<strong>Abierto (Open):</strong> incidente detectado, pendiente de investigacion.',
+      '<strong>En investigacion (Investigating):</strong> equipo de respuesta activo.',
+      '<strong>Contenido (Contained):</strong> propagacion detenida, impacto limitado.',
+      '<strong>Resuelto (Resolved):</strong> causa raiz eliminada, sistemas restaurados.',
+      '<strong>Cerrado (Closed):</strong> documentado, lecciones aprendidas registradas.',
+    ])}
+    ${this._h('Clasificacion por severidad')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Severidad</th><th style="padding:8px;">Descripcion</th><th style="padding:8px;">Ejemplo</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['P1 - Critico','Impacto critico en sistemas esenciales. Escalado inmediato a direccion.','Ransomware, brecha masiva de datos, caida de servicios esenciales.'],
+          ['P2 - Alto','Impacto significativo. Plan de respuesta activado en < 4h.','Compromiso de cuentas privilegiadas, exfiltracion de datos confidenciales.'],
+          ['P3 - Medio','Impacto moderado. Resolucion en < 24h.','Malware en equipo aislado, acceso no autorizado a informacion no critica.'],
+          ['P4 - Bajo','Impacto minimo. Tratamiento planificado.','Politica de contrasenas no seguida, acceso fisico no autorizado a zona de bajo riesgo.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Flujo de notificacion NIS2 (Art. 23)')}
+    ${this._p('Para entidades esenciales e importantes bajo la directiva NIS2, los incidentes significativos deben notificarse al CSIRT o autoridad competente nacional:')}
+    ${this._steps([
+      '<strong>Alerta inicial (24h):</strong> notificacion sin demora injustificada, dentro de las 24 horas desde la deteccion.',
+      '<strong>Notificacion intermedia (72h):</strong> evaluacion de impacto y primeras medidas adoptadas.',
+      '<strong>Informe final (1 mes):</strong> analisis completo de causa raiz, impacto y medidas de mitigacion.',
+    ])}
+    ${this._p('Marca el checkbox <em>"Requiere notificacion NIS2"</em> al crear el incidente. Una vez enviada la notificacion, registra la fecha en el campo correspondiente. El dashboard de cumplimiento refleja los incidentes pendientes de notificacion como brecha NIS2.')}
+    ${this._h('Lecciones aprendidas')}
+    ${this._p('Al cerrar un incidente, documenta siempre las lecciones aprendidas. Estas contribuyen a mejorar el SGSI y son consideradas en el calculo del indicador RECOVER del NIST CSF 2.0.')}
+    ${this._tip('<strong>NIS2:</strong> Solo las entidades esenciales e importantes en sectores como energia, transporte, banca, agua, infraestructura digital, administracion publica y salud estan sujetas al Art. 23 de la directiva.')}
+  `;},
+
+  get _cSuppliers() { return `
+    ${this._p('El modulo de <strong>Proveedores y Cadena de Suministro</strong> permite gestionar el riesgo de terceros conforme a la directiva <strong>NIS2 Art. 21.2.d</strong> e <strong>ISO 27001 A.15 / ISO 27002 cl. 5.19-5.22</strong>.')}
+    ${this._h('Por que gestionar el riesgo de proveedores')}
+    ${this._p('La mayoria de los ataques modernos llegan a traves de la cadena de suministro (SolarWinds, Log4j, ataques a proveedores de servicios gestionados). La directiva NIS2 impone a las entidades reguladas la obligacion de evaluar y gestionar el riesgo de sus proveedores criticos.')}
+    ${this._h('Clasificacion por nivel de riesgo')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Nivel</th><th style="padding:8px;">Descripcion</th><th style="padding:8px;">Accion</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Critico','Acceso a sistemas criticos, datos sensibles o infraestructura esencial.','Evaluacion anual obligatoria. Clausulas contractuales de ciberseguridad.'],
+          ['Alto','Acceso a sistemas importantes o datos confidenciales.','Evaluacion anual. Cuestionario de seguridad.'],
+          ['Medio','Acceso limitado a sistemas no criticos.','Evaluacion bienal. Cuestionario simplificado.'],
+          ['Bajo','Sin acceso a sistemas o datos. Proveedor de bajo impacto.','Revision periodica segun politica interna.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Proveedor critico NIS2')}
+    ${this._p('Marca el flag <em>"Proveedor critico NIS2"</em> para los proveedores cuya interrupcion o compromiso podria afectar a la continuidad de los servicios esenciales de tu organizacion. Estos proveedores tienen prioridad en las evaluaciones y deben incluirse en el plan de gestion de incidentes.')}
+    ${this._h('Seguimiento de evaluaciones')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Ultima evaluacion:</strong> registra la fecha de la ultima evaluacion de seguridad del proveedor.</li>
+      <li><strong>Proxima evaluacion:</strong> planifica cuando debe realizarse la siguiente evaluacion.</li>
+      <li><strong>Badge vencida:</strong> el dashboard de cumplimiento muestra los proveedores sin evaluacion como brecha NIS2.</li>
+    </ul>
+    ${this._tip('<strong>Buena practica:</strong> Incluye clausulas contractuales de ciberseguridad en todos los contratos con proveedores criticos: derecho de auditoria, notificacion de incidentes en 24h, cifrado de datos y planes de continuidad.')}
+  `;},
+
+  get _cNonConformities() { return `
+    ${this._p('El modulo de <strong>No Conformidades y Acciones Correctivas (CAR)</strong> implementa el proceso de mejora continua requerido por <strong>ISO 27001:2022 clausula 10.1</strong>.')}
+    ${this._h('Que es una no conformidad')}
+    ${this._p('Una no conformidad (NC) es el incumplimiento de un requisito del SGSI. Puede surgir de una auditoria interna, auditoria externa (de certificacion), revision por la direccion, incidente de seguridad o inspeccion regulatoria.')}
+    ${this._h('Tipos de no conformidad')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Tipo</th><th style="padding:8px;">Descripcion</th><th style="padding:8px;">Impacto en auditoria</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Mayor','Incumplimiento grave de un requisito normativo. El sistema no cumple su proposito.','Puede bloquear la certificacion ISO 27001.'],
+          ['Menor','Incumplimiento puntual que no afecta al sistema global.','No bloquea la certificacion pero debe cerrarse.'],
+          ['Observacion','Area de mejora identificada, no es incumplimiento formal.','Informativa. No requiere accion correctiva formal.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Ciclo de vida de una NC')}
+    ${this._steps([
+      '<strong>Abierta (Open):</strong> NC identificada y documentada con causa raiz y accion correctiva propuesta.',
+      '<strong>En proceso (In progress):</strong> accion correctiva en ejecucion. Responsable asignado.',
+      '<strong>Pendiente verificacion (Pending):</strong> accion completada, pendiente de verificar su eficacia.',
+      '<strong>Cerrada (Closed):</strong> NC resuelta y eficacia verificada. Fecha de cierre registrada.',
+    ])}
+    ${this._h('Campos clave de una NC')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Clausula ISO:</strong> referencia exacta del requisito incumplido (ej. 6.1.2, 9.2, A.8.2).</li>
+      <li><strong>Causa raiz:</strong> analisis de por que se produjo la no conformidad (5 por ques, diagrama de Ishikawa, etc.).</li>
+      <li><strong>Accion correctiva:</strong> medidas concretas para eliminar la causa raiz (no solo el sintoma).</li>
+      <li><strong>Fecha limite:</strong> plazo maximo para resolver la NC. Las NC vencidas se resaltan en rojo.</li>
+      <li><strong>Evidencias:</strong> referencia a los documentos o registros que demuestran la resolucion.</li>
+    </ul>
+    ${this._h('Impacto en el dashboard de cumplimiento')}
+    ${this._p('El numero de no conformidades mayores abiertas penaliza directamente el indicador ISO 27001 del dashboard de cumplimiento. Cada NC mayor abierta reduce la puntuacion en 20 puntos. Cierra las NCs mayores para mejorar tu puntuacion de cumplimiento.')}
+    ${this._tip('<strong>Para auditoria ISO 27001:</strong> todas las NCs detectadas en la auditoria de certificacion deben estar cerradas (con evidencia) antes de la auditoria de seguimiento o renovacion.')}
+  `;},
 
   get _cMethodology() { return `
     ${this._p('RiskHub implementa la metodología de gestión del riesgo de seguridad de la información de <strong>ISO/IEC 27005:2018</strong> con elementos cuantitativos de <strong>MAGERIT v3</strong> del MPTFP español.')}

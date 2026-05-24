@@ -135,6 +135,7 @@ class Asset(Base):
     location = Column(String(255))
     business_process = Column(String(255))
     classification = Column(String(64))       # publico/interno/confidencial/secreto
+    monetary_value = Column(Float, nullable=True)  # EUR — para calculo FAIR/ALE
 
     # Valoracion CIA (ISO 27005 B.2 - escala 0..4)
     value_confidentiality = Column(Integer, default=0)
@@ -225,9 +226,16 @@ class ControlImplementation(Base):
     last_review = Column(DateTime, nullable=True)
     next_review = Column(DateTime, nullable=True)
     notes = Column(Text)
+    # Campos SOA ISO 27001:2022 cl. 6.1.3
+    inclusion_reason = Column(String(64), nullable=True)   # legal|contractual|risk|best_practice
+    exclusion_justification = Column(Text, nullable=True)  # si el control no aplica
+    evidence_refs = Column(JSON, nullable=True)            # [{title, url}]
+    soa_reviewed_at = Column(DateTime, nullable=True)
+    soa_reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     control = relationship("Control")
-    owner = relationship("User")
+    owner = relationship("User", foreign_keys=[owner_id])
+    soa_reviewed_by = relationship("User", foreign_keys=[soa_reviewed_by_id])
 
 
 # ---------- RIESGOS ----------
@@ -352,3 +360,128 @@ class AlertRule(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_triggered_at = Column(DateTime, nullable=True)
+
+
+# ---------- INCIDENTES DE SEGURIDAD (NIS2 Art. 23) ----------
+
+class IncidentSeverity(str, PyEnum):
+    P1 = "p1"   # Critico
+    P2 = "p2"   # Alto
+    P3 = "p3"   # Medio
+    P4 = "p4"   # Bajo
+
+
+class IncidentStatus(str, PyEnum):
+    OPEN = "open"
+    INVESTIGATING = "investigating"
+    CONTAINED = "contained"
+    RESOLVED = "resolved"
+    CLOSED = "closed"
+
+
+class Incident(Base):
+    """Incidente de seguridad con flujo NIS2 Art. 23 (24h/72h/1 mes)."""
+    __tablename__ = "incidents"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    severity = Column(Enum(IncidentSeverity), nullable=False, default=IncidentSeverity.P3)
+    status = Column(Enum(IncidentStatus), default=IncidentStatus.OPEN)
+    detected_at = Column(DateTime, nullable=True)
+    contained_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    nis2_notification_required = Column(Boolean, default=False)
+    nis2_notification_sent_at = Column(DateTime, nullable=True)
+    gdpr_notification_required = Column(Boolean, default=False)
+    affected_asset_ids = Column(JSON)      # [asset_id, ...]
+    affected_systems = Column(JSON)        # [system_name, ...]
+    related_risk_ids = Column(JSON)        # [risk_id, ...]
+    root_cause = Column(Text)
+    response_actions = Column(Text)
+    lessons_learned = Column(Text)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    owner = relationship("User")
+
+
+# ---------- PROVEEDORES / SUPPLY CHAIN (NIS2 Art. 21.2.d) ----------
+
+class SupplierRisk(str, PyEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class Supplier(Base):
+    """Proveedor / tercero con evaluacion de riesgo de cadena de suministro."""
+    __tablename__ = "suppliers"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    services = Column(Text)               # servicios que presta
+    category = Column(String(128), nullable=True)
+    is_critical = Column(Boolean, default=False)
+    risk_level = Column(Enum(SupplierRisk), default=SupplierRisk.MEDIUM)
+    certifications = Column(JSON)         # ["ISO27001","SOC2",...]
+    contact_name = Column(String(255))
+    contact_email = Column(String(255))
+    contract_ref = Column(String(255), nullable=True)
+    contract_expiry = Column(DateTime, nullable=True)
+    last_assessment_at = Column(DateTime, nullable=True)
+    next_assessment_at = Column(DateTime, nullable=True)
+    score = Column(Integer, default=50)   # 0-100
+    notes = Column(Text)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    owner = relationship("User")
+
+
+# ---------- NO CONFORMIDADES / ACCIONES CORRECTIVAS (ISO 27001 cl. 10.1) ----------
+
+class NCSeverity(str, PyEnum):
+    OBSERVATION = "observation"
+    MINOR = "minor"
+    MAJOR = "major"
+
+
+class NCStatus(str, PyEnum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    PENDING_VERIFICATION = "pending_verification"
+    CLOSED = "closed"
+
+
+class NonConformity(Base):
+    """No conformidad / accion correctiva — ISO 27001 cl. 10.1."""
+    __tablename__ = "nonconformities"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    source = Column(String(64))           # internal_audit|external_audit|incident|self_assessment
+    severity = Column(Enum(NCSeverity), default=NCSeverity.MINOR)
+    status = Column(Enum(NCStatus), default=NCStatus.OPEN)
+    iso_clause = Column(String(64))       # ej. "6.1.2", "9.1"
+    root_cause = Column(Text)
+    corrective_action = Column(Text)
+    due_date = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    evidence = Column(Text)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    verifier_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    related_control_id = Column(Integer, ForeignKey("controls.id"), nullable=True)
+    related_risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    owner = relationship("User", foreign_keys=[owner_id])
+    verifier = relationship("User", foreign_keys=[verifier_id])
+    related_control = relationship("Control", foreign_keys=[related_control_id])
+    related_risk = relationship("Risk", foreign_keys=[related_risk_id])
