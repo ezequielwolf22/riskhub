@@ -146,7 +146,8 @@ const ViewGuide = {
       <li><strong>Top 10 riesgos:</strong> riesgos mas criticos con porcentaje de reduccion. Haz clic para abrir el detalle.</li>
       <li><strong>Cobertura de controles por tema ISO 27002:</strong> tarjetas con madurez media e implementados/total para Organizacional, Personas, Fisico y Tecnologico.</li>
       <li><strong>Revisiones de controles (30 dias):</strong> controles ISO 27002 con fecha de proxima revision en los proximos 30 dias o ya vencida. Cada fila muestra codigo, nombre y urgencia (dias restantes o vencidos).</li>
-      <li><strong>Acciones rapidas:</strong> boton adicional de <em>Revisiones controles vencidas</em> con contador, junto a los de tratamientos vencidos y altos sin plan.</li>
+      <li><strong>KPI Sin responsable:</strong> numero de riesgos activos sin propietario asignado. En purpura si hay alguno, para incitar a asignar responsables.</li>
+      <li><strong>Acciones rapidas:</strong> botones adicionales para <em>Revisiones controles vencidas</em> y <em>Sin responsable</em>. Haz clic en cualquiera para ir directamente al listado filtrado.</li>
     </ul>
     ${this._h('Flujo de trabajo recomendado')}
     ${this._steps([
@@ -344,7 +345,8 @@ const ViewGuide = {
     ${this._h('Tabla de riesgos — columnas informativas')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>Red.:</strong> porcentaje de reduccion del riesgo (inherente → residual). Verde = reduccion, rojo = riesgo residual mayor que el inherente.</li>
-      <li><strong>Responsable:</strong> primer nombre del usuario propietario del riesgo. Si no hay propietario asignado, muestra un guion.</li>
+      <li><strong>Responsable:</strong> primer nombre del usuario propietario del riesgo. Si no hay propietario asignado, muestra un guion. La columna es ordenable.</li>
+      <li><strong>Duplicar:</strong> el boton <em>Duplicar</em> en el modal de edicion crea una copia del riesgo con los mismos datos (activo, amenaza, descripcion, controles, etc.). El nuevo riesgo se crea en estado Identificado con los selectores de activo y amenaza desbloqueados para que puedas cambiarlos.</li>
       <li><strong>VENCIDO:</strong> badge naranja en la columna Estado cuando la fecha limite de tratamiento ha pasado y el riesgo no esta cerrado ni aceptado. Las filas vencidas aparecen en rojo claro.</li>
       <li><strong>Exportar CSV:</strong> boton en la barra de herramientas para descargar todos los riesgos con campos ISO 27005 (niveles inherentes, residuales, estado, tratamiento, fechas).</li>
     </ul>
@@ -437,6 +439,7 @@ const ViewGuide = {
     ${this._p('En la pestana <strong>Implementaciones</strong> puedes:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>Filtrar por estado:</strong> usa el selector de estado (Implementado / Parcial / Planificado / No implementado) para ver solo los controles en una fase concreta del ciclo de vida.</li>
+      <li><strong>Solo revision vencida:</strong> marca el checkbox para ver exclusivamente los controles cuya fecha de proxima revision ha pasado y estan activos (no No implementado).</li>
       <li><strong>Ordenar columnas:</strong> haz clic en Control, Implementacion, Estado, Madurez, Riesgos o Proxima revision para ordenar la tabla. Un segundo clic invierte el orden.</li>
     </ul>
     ${this._tip('Filtra por estado <em>Parcial</em> y ordena por <em>Madurez</em> descendente para identificar los controles mas avanzados que necesitan un ultimo esfuerzo para alcanzar el estado <em>Implementado</em>.')}
