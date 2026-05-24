@@ -231,12 +231,56 @@ const ViewControls = {
         <textarea id="f-evi" rows="2">${UI.esc(data.evidence||'')}</textarea></div>
       <div class="span2"><label>Notas</label>
         <textarea id="f-notes" rows="2">${UI.esc(data.notes||'')}</textarea></div>
+      ${id ? `
+      <div class="span2">
+        <details id="impl-history">
+          <summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;
+                          list-style:none;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:10px;">&#9654;</span> Historial de cambios
+          </summary>
+          <div id="impl-history-body" style="margin-top:8px;">
+            <div class="notice">Cargando...</div>
+          </div>
+        </details>
+      </div>` : ''}
     `, {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 ${id ? '<button class="btn btn-danger" id="m-del">Eliminar</button>' : ''}
                 <button class="btn btn-primary" id="m-save">Guardar</button>`
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
+
+    // Historial de cambios (lazy-load al expandir)
+    if (id) {
+      const det = document.getElementById('impl-history');
+      if (det) {
+        det.addEventListener('toggle', async () => {
+          if (!det.open) return;
+          const body = document.getElementById('impl-history-body');
+          try {
+            const entries = await Api.audit.history('control_impl', id);
+            if (!entries.length) {
+              body.innerHTML = '<p style="font-size:12px;color:var(--text-subtle);">Sin registros de cambio todavia.</p>';
+              return;
+            }
+            const actionColors = { create:'background:#D1FAE5;color:#065F46', update:'background:#DBEAFE;color:#1E40AF', delete:'background:#FEE2E2;color:#991B1B' };
+            body.innerHTML = entries.map(e => {
+              const ts = new Date(e.timestamp).toLocaleString('es-ES', { day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
+              const style = actionColors[e.action] || 'background:var(--bg-3);color:var(--text-muted)';
+              const detail = e.detail && Object.keys(e.detail).length
+                ? Object.entries(e.detail).map(([k,v]) => `${UI.esc(k)}: ${UI.esc(String(v))}`).join(' · ') : '';
+              return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                <span style="color:var(--text-subtle);white-space:nowrap;min-width:110px;">${ts}</span>
+                <span class="badge badge-muted" style="${style};font-size:10px;">${UI.esc(e.action)}</span>
+                <span style="color:var(--text-muted);">${UI.esc(e.user_name||e.user_email||'')}</span>
+                ${detail ? `<span style="color:var(--text-subtle);">${detail}</span>` : ''}
+              </div>`;
+            }).join('');
+          } catch (_) { body.innerHTML = '<p style="font-size:12px;color:var(--text-subtle);">No disponible.</p>'; }
+        }, { once: true });
+      }
+    }
+
     if (id) document.getElementById('m-del').onclick = async () => {
       if (!await UI.confirm('Eliminar esta implementación?')) return;
       try { await Api.impls.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewControls._reload(); }

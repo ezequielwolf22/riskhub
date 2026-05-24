@@ -115,7 +115,7 @@ const ViewAssets = {
             const rc = a.risk_count || 0;
             const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
             return `
-            <tr data-id="${a.id}">
+            <tr data-id="${a.id}" style="cursor:pointer;">
               <td>${UI.codePill(a.code)}</td>
               <td><strong>${UI.esc(a.name)}</strong>
                   ${a.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(a.description).slice(0,80)}</div>` : ''}</td>
@@ -132,7 +132,7 @@ const ViewAssets = {
                    style="font-weight:700;font-family:var(--font-mono);font-size:13px;
                           color:${rcColor};text-decoration:none;">${rc}</a>
               </td>
-              <td style="white-space:nowrap;">
+              <td style="white-space:nowrap;" onclick="event.stopPropagation()">
                 ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}
               </td>
             </tr>`;}).join('')}
@@ -148,7 +148,9 @@ const ViewAssets = {
         };
       });
       list.querySelectorAll('[data-edit]').forEach(b =>
-        b.onclick = () => ViewAssets._edit(parseInt(b.dataset.edit)));
+        b.onclick = (e) => { e.stopPropagation(); ViewAssets._edit(parseInt(b.dataset.edit)); });
+      list.querySelectorAll('tr[data-id]').forEach(tr =>
+        tr.onclick = () => ViewAssets._edit(parseInt(tr.dataset.id)));
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
@@ -205,6 +207,18 @@ const ViewAssets = {
            <label>${({confidentiality:'Confidencialidad',integrity:'Integridad',availability:'Disponibilidad',authenticity:'Autenticidad',accountability:'Trazabilidad'})[d]}</label>
            <input type="number" min="0" max="4" id="f-${d}" value="${a['value_'+d]||0}">
          </div>`).join('')}
+      ${id ? `
+      <div class="span2">
+        <details id="asset-history">
+          <summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;
+                          list-style:none;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:10px;">&#9654;</span> Historial de cambios
+          </summary>
+          <div id="asset-history-body" style="margin-top:8px;">
+            <div class="notice">Cargando...</div>
+          </div>
+        </details>
+      </div>` : ''}
     `, {
       actions: `
         <button class="btn" id="m-cancel">Cancelar</button>
@@ -213,6 +227,38 @@ const ViewAssets = {
     });
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
+
+    // Historial de cambios (lazy-load al expandir)
+    if (id) {
+      const det = document.getElementById('asset-history');
+      if (det) {
+        det.addEventListener('toggle', async () => {
+          if (!det.open) return;
+          const body = document.getElementById('asset-history-body');
+          try {
+            const entries = await Api.audit.history('asset', id);
+            if (!entries.length) {
+              body.innerHTML = '<p style="font-size:12px;color:var(--text-subtle);">Sin registros de cambio todavia.</p>';
+              return;
+            }
+            const actionColors = { create:'background:#D1FAE5;color:#065F46', update:'background:#DBEAFE;color:#1E40AF', delete:'background:#FEE2E2;color:#991B1B' };
+            body.innerHTML = entries.map(e => {
+              const ts = new Date(e.timestamp).toLocaleString('es-ES', { day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
+              const style = actionColors[e.action] || 'background:var(--bg-3);color:var(--text-muted)';
+              const detail = e.detail && Object.keys(e.detail).length
+                ? Object.entries(e.detail).map(([k,v]) => `${UI.esc(k)}: ${UI.esc(String(v))}`).join(' · ') : '';
+              return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                <span style="color:var(--text-subtle);white-space:nowrap;min-width:110px;">${ts}</span>
+                <span class="badge badge-muted" style="${style};font-size:10px;">${UI.esc(e.action)}</span>
+                <span style="color:var(--text-muted);">${UI.esc(e.user_name||e.user_email||'')}</span>
+                ${detail ? `<span style="color:var(--text-subtle);">${detail}</span>` : ''}
+              </div>`;
+            }).join('');
+          } catch (_) { body.innerHTML = '<p style="font-size:12px;color:var(--text-subtle);">No disponible.</p>'; }
+        }, { once: true });
+      }
+    }
+
     if (id) document.getElementById('m-del').onclick = async () => {
       if (!await UI.confirm('Eliminar este activo?')) return;
       try { await Api.assets.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewAssets._reload(); }
