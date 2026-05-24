@@ -11,6 +11,7 @@ const ViewRisks = {
     const assetMatch = location.hash.match(/[?&]asset_id=(\d+)/);
     const threatMatch = location.hash.match(/[?&]threat_id=(\d+)/);
     const vulnMatch = location.hash.match(/[?&]vulnerability_id=(\d+)/);
+    const ownerParam = (location.hash.match(/[?&]owner=([^&]+)/) || [])[1] || null;
     const overdueParam = /[?&]overdue=1/.test(location.hash);
     ViewRisks._assetFilter = null;
     ViewRisks._threatFilter = null;
@@ -137,6 +138,12 @@ const ViewRisks = {
           <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
         </div>`;
       }
+    }
+
+    // Pre-seleccionar filtro de responsable si viene de la URL
+    if (ownerParam) {
+      const ownerSel = document.getElementById('r-owner');
+      if (ownerSel) ownerSel.value = ownerParam;
     }
 
     // Pre-marcar checkbox de vencidos si viene de la URL
@@ -418,7 +425,7 @@ const ViewRisks = {
     }
   },
 
-  async _edit(id) {
+  async _edit(id, cloneData) {
     let r = {
       asset_id: ViewRisks._assets[0]?.id, threat_id: ViewRisks._threats[0]?.id,
       description: '', consequence_description: '',
@@ -434,6 +441,8 @@ const ViewRisks = {
         r.vulnerability_ids = (r.vulnerabilities || []).map(v => v.id);
         r.control_implementation_ids = (r.controls || []).map(c => c.id);
       } catch (e) { UI.toast(e.message, 'error'); return; }
+    } else if (cloneData) {
+      r = { ...cloneData };
     }
 
     const canEdit = Auth.canEdit();
@@ -541,12 +550,37 @@ const ViewRisks = {
     `, {
       actions: canEdit ? `
         <button class="btn" id="m-cancel">Cerrar</button>
+        ${id ? '<button class="btn btn-ghost" id="m-clone" title="Crear una copia de este riesgo">Duplicar</button>' : ''}
         ${id ? '<button class="btn btn-danger" id="m-del">Eliminar</button>' : ''}
         <button class="btn btn-primary" id="m-save">Guardar</button>
       ` : '<button class="btn" id="m-cancel">Cerrar</button>'
     });
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
+
+    // Duplicar riesgo (clonar)
+    if (id && canEdit) {
+      const cloneBtn = document.getElementById('m-clone');
+      if (cloneBtn) cloneBtn.onclick = () => {
+        const cloneData = {
+          asset_id: r.asset?.id || r.asset_id,
+          threat_id: r.threat?.id || r.threat_id,
+          description: r.description || '',
+          consequence_description: r.consequence_description || '',
+          inherent_likelihood: r.inherent_likelihood,
+          inherent_consequence: r.inherent_consequence,
+          vulnerability_ids: r.vulnerability_ids || (r.vulnerabilities||[]).map(v=>v.id),
+          control_implementation_ids: r.control_implementation_ids || (r.controls||[]).map(c=>c.id),
+          status: 'identified',
+          treatment_option: r.treatment_option || '',
+          treatment_plan: r.treatment_plan || '',
+          acceptance_justification: '',
+          owner_id: r.owner_id || null,
+        };
+        UI.closeModal();
+        ViewRisks._edit(null, cloneData);
+      };
+    }
 
     // Cargar historial de cambios al expandir el <details>
     if (id) {

@@ -409,6 +409,8 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
         1 for r in active_risks
         if r.residual_level >= 5 and not r.treatment_option
     )
+    no_owner = sum(1 for r in risks if r.owner_id is None
+                   and r.status not in {RiskStatus.ACCEPTED, RiskStatus.CLOSED})
     total_inh = sum(r.inherent_level for r in risks)
     total_res = sum(r.residual_level for r in risks)
     reduction_pct = round((1 - total_res / total_inh) * 100) if total_inh else 0
@@ -439,6 +441,7 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
         "by_treatment": by_treatment,
         "overdue_treatments": overdue,
         "no_treatment_high": no_treatment_high,
+        "no_owner": no_owner,
         "risk_reduction_pct": reduction_pct,
         "top_risks": [
             {"code": r.code, "asset": r.asset.name if r.asset else "",

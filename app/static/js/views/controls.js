@@ -1,6 +1,6 @@
 ﻿/* Vista Controles - catálogo ISO 27002:2022 + implementaciónes. */
 const ViewControls = {
-  _tab: 'impls', _catalog: [], _sortCol: 'id', _sortAsc: false,
+  _tab: 'impls', _catalog: [], _sortCol: 'id', _sortAsc: false, _overdueOnly: false,
 
   async render(main) {
     const canEdit = Auth.canEdit();
@@ -28,6 +28,9 @@ const ViewControls = {
           <option value="planned">Planificado</option>
           <option value="not_implemented">No implementado</option>
         </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;${ViewControls._tab==='impls'?'':'display:none;'}">
+          <input type="checkbox" id="c-overdue" ${ViewControls._overdueOnly?'checked':''}> Solo revision vencida
+        </label>
         <button class="btn btn-ghost" id="btn-soa-csv" title="Exportar SoA como CSV">SoA CSV</button>
       </div>
       <div id="c-list"></div>
@@ -40,6 +43,11 @@ const ViewControls = {
     document.getElementById('c-search').oninput = () => ViewControls._reload();
     document.getElementById('c-theme').onchange = () => ViewControls._reload();
     document.getElementById('c-status').onchange = () => ViewControls._reload();
+    const overdueChk = document.getElementById('c-overdue');
+    if (overdueChk) overdueChk.onchange = () => {
+      ViewControls._overdueOnly = overdueChk.checked;
+      ViewControls._reload();
+    };
     if (canEdit) document.getElementById('btn-new-impl').onclick = () => ViewControls._editImpl();
     document.getElementById('btn-soa-csv').onclick = async () => {
       try { await Api.controls.exportSoaCsv(); UI.toast('SoA CSV descargado', 'success'); }
@@ -98,6 +106,10 @@ const ViewControls = {
     if (q) data = data.filter(i => i.name.toLowerCase().includes(q) || i.control?.code?.toLowerCase().includes(q) || i.control?.name?.toLowerCase().includes(q));
     if (statusF) data = data.filter(i => i.status === statusF);
     if (themeF) data = data.filter(i => i.control?.theme === themeF);
+    if (ViewControls._overdueOnly) {
+      const now2 = new Date();
+      data = data.filter(i => i.next_review && new Date(i.next_review) < now2 && i.status !== 'not_implemented');
+    }
     if (!data.length) {
       list.innerHTML = UI.emptyState(
         'Sin implementaciónes',

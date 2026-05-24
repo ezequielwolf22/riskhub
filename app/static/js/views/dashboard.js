@@ -29,6 +29,11 @@ const ViewDashboard = {
             <div class="value">${s.by_band.high}</div>
             <div class="hint">requieren atencion inmediata</div>
           </div>
+          <div class="kpi" style="${s.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}">
+            <div class="label">Sin responsable asignado</div>
+            <div class="value" style="${s.no_owner > 0 ? 'color:#6D28D9;' : ''}">${s.no_owner}</div>
+            <div class="hint">riesgos activos sin propietario</div>
+          </div>
         </div>
 
         <div class="card-row" style="margin-bottom:20px;">
@@ -148,6 +153,10 @@ const ViewDashboard = {
               <a href="#/controls" class="quick-action-btn ${s.controls_overdue_reviews > 0 ? 'urgent' : ''}">
                 <span>Revisiones controles vencidas</span>
                 <span class="qa-count">${s.controls_overdue_reviews}</span>
+              </a>
+              <a href="#/risks?owner=__unassigned__" class="quick-action-btn ${s.no_owner > 0 ? 'warn' : ''}">
+                <span>Sin responsable</span>
+                <span class="qa-count">${s.no_owner}</span>
               </a>
               <a href="#/calendar" class="quick-action-btn">
                 <span>Ver calendario</span>
