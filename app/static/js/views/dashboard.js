@@ -21,8 +21,8 @@ const ViewDashboard = {
           </div>
           <div class="kpi">
             <div class="label">Controles implantados</div>
-            <div class="value">${s.total_controls}</div>
-            <div class="hint">de ${s.total_threats} amenazas y ${s.total_vulnerabilities} vulnerabilidades en catalogo</div>
+            <div class="value">${s.controls_implemented}<span style="font-size:16px;color:var(--text-muted);">/${s.total_controls}</span></div>
+            <div class="hint">madurez media: ${s.controls_avg_maturity}/5 · ${s.total_threats} amenazas · ${s.total_vulnerabilities} vuln.</div>
           </div>
           <div class="kpi" style="background: linear-gradient(45deg, #FFE6CE 0%, #EDD1FF 100%);">
             <div class="label">Riesgos altos sin tratar</div>

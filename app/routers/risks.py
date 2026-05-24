@@ -255,12 +255,20 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
     total_res = sum(r.residual_level for r in risks)
     reduction_pct = round((1 - total_res / total_inh) * 100) if total_inh else 0
 
+    # Control maturity stats
+    from app.models import ControlStatus
+    impls = db.query(ControlImplementation).all()
+    impl_implemented = sum(1 for c in impls if c.status == ControlStatus.IMPLEMENTED)
+    avg_maturity = round(sum(c.maturity for c in impls) / len(impls), 1) if impls else 0
+
     return {
         "total_risks": len(risks),
         "total_assets": db.query(Asset).count(),
         "total_threats": db.query(Threat).count(),
         "total_vulnerabilities": db.query(Vulnerability).count(),
-        "total_controls": db.query(ControlImplementation).count(),
+        "total_controls": len(impls),
+        "controls_implemented": impl_implemented,
+        "controls_avg_maturity": avg_maturity,
         "by_band": by_band,
         "by_status": by_status,
         "by_treatment": by_treatment,

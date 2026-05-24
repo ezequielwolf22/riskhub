@@ -46,6 +46,22 @@ def me(user: User = Depends(get_current_user)):
     return UserOut.model_validate(user)
 
 
+class UserBasic(BaseModel):
+    id: int
+    email: str
+    full_name: str
+
+
+@router.get("/users", response_model=list[UserBasic])
+def list_users_basic(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Lista simplificada de usuarios activos — accesible a cualquier usuario autenticado."""
+    users = db.query(User).filter(User.is_active.is_(True)).order_by(User.full_name).all()
+    return [UserBasic(id=u.id, email=u.email, full_name=u.full_name or u.email) for u in users]
+
+
 class PasswordChangeIn(BaseModel):
     current_password: str
     new_password: str

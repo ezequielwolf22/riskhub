@@ -89,16 +89,20 @@ const ViewRisks = {
     ViewRisks._reload();
   },
 
+  _users: [],
+
   async _loadCatalogs() {
     try {
-      const [a, t, v, i] = await Promise.all([
+      const [a, t, v, i, u] = await Promise.all([
         Api.assets.list({}), Api.threats.list({}),
         Api.vulns.list({}), Api.impls.list(),
+        Api.listUsers().catch(() => []),
       ]);
       ViewRisks._assets = a;
       ViewRisks._threats = t;
       ViewRisks._vulns = v;
       ViewRisks._impls = i;
+      ViewRisks._users = u;
     } catch (e) { UI.toast(e.message, 'error'); }
   },
 
@@ -252,15 +256,30 @@ const ViewRisks = {
         <label>Plan de tratamiento</label>
         <textarea id="f-plan" rows="2">${UI.esc(r.treatment_plan||'')}</textarea>
       </div>
-      <div class="span2">
-        <label>Justificación de aceptación (si aplica)</label>
+      <div>
+        <label>Responsable del riesgo</label>
+        <select id="f-owner">
+          <option value="">- Sin asignar -</option>
+          ${ViewRisks._users.map(u =>
+            `<option value="${u.id}" ${r.owner_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div>
+        <label>Fecha limite del plan</label>
+        <input type="date" id="f-due" value="${r.treatment_due_date ? r.treatment_due_date.slice(0,10) : ''}">
+      </div>
+      <div class="span2" id="f-just-wrap" style="${r.status==='accepted'?'':'opacity:0.6;'}">
+        <label>Justificación de aceptación ${r.status==='accepted'?'<span style="color:var(--risk-high);">*</span>':'(si aplica)'}</label>
         <textarea id="f-just" rows="2">${UI.esc(r.acceptance_justification||'')}</textarea>
       </div>
       ${id ? `
       <div class="span2 notice ${r.residual_level <= 2 ? '' : 'notice-warn'}">
-        Nivel inherente actual: <strong>${r.inherent_level}</strong> -
+        Nivel inherente actual: <strong>${r.inherent_level}</strong> &nbsp;→&nbsp;
         Nivel residual actual: <strong>${r.residual_level}</strong>
-        ${r.accepted_at ? `<br>Aceptado el ${r.accepted_at}` : ''}
+        ${r.inherent_level > 0 ? `&nbsp;<span style="font-size:12px;color:var(--risk-low);">(-${Math.round((1-r.residual_level/r.inherent_level)*100)}% reduccion)</span>` : ''}
+        ${r.accepted_at ? `<br><span style="font-size:12px;">Aceptado el ${new Date(r.accepted_at).toLocaleString('es-ES')}</span>` : ''}
+        ${r.treatment_due_date ? `<br><span style="font-size:12px;">Fecha limite: <strong>${new Date(r.treatment_due_date).toLocaleDateString('es-ES')}</strong></span>` : ''}
       </div>
       <div class="span2">
         <details id="risk-history">
@@ -328,8 +347,32 @@ const ViewRisks = {
       try { await Api.risks.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewRisks._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
+    // Resaltar campo justificacion cuando se selecciona "accepted"
+    const statusSel = document.getElementById('f-status');
+    if (statusSel) statusSel.addEventListener('change', () => {
+      const wrap = document.getElementById('f-just-wrap');
+      const lbl = wrap?.querySelector('label');
+      if (statusSel.value === 'accepted') {
+        if (wrap) wrap.style.opacity = '1';
+        if (lbl) lbl.innerHTML = 'Justificación de aceptación <span style="color:var(--risk-high);">*</span>';
+      } else {
+        if (wrap) wrap.style.opacity = '0.6';
+        if (lbl) lbl.textContent = 'Justificación de aceptación (si aplica)';
+      }
+    });
+
     if (canEdit) document.getElementById('m-save').onclick = async () => {
       const getMulti = el => Array.from(el.selectedOptions).map(o => parseInt(o.value));
+      const status = document.getElementById('f-status').value;
+      const just = document.getElementById('f-just').value.trim();
+      // Validar justificacion obligatoria al aceptar
+      if (status === 'accepted' && !just) {
+        UI.toast('La justificacion de aceptacion es obligatoria al aceptar un riesgo', 'error');
+        document.getElementById('f-just').focus();
+        return;
+      }
+      const dueVal = document.getElementById('f-due').value;
+      const ownerVal = document.getElementById('f-owner').value;
       const body = {
         description: document.getElementById('f-desc').value,
         consequence_description: document.getElementById('f-cons').value,
@@ -337,10 +380,12 @@ const ViewRisks = {
         inherent_consequence: parseInt(document.getElementById('f-ic').value)||0,
         vulnerability_ids: getMulti(document.getElementById('f-vulns')),
         control_implementation_ids: getMulti(document.getElementById('f-impls')),
-        status: document.getElementById('f-status').value,
+        status,
         treatment_option: document.getElementById('f-treat').value || null,
         treatment_plan: document.getElementById('f-plan').value,
-        acceptance_justification: document.getElementById('f-just').value,
+        owner_id: ownerVal ? parseInt(ownerVal) : null,
+        treatment_due_date: dueVal || null,
+        acceptance_justification: just || null,
       };
       try {
         if (id) await Api.risks.update(id, body);
