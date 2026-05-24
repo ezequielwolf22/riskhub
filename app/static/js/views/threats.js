@@ -108,7 +108,7 @@ const ViewThreats = {
                   : '<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO</span>'
                 }
               </td>
-            </tr>`).join('')}
+            </tr>`; }).join('')}
         </tbody>
       </table></div>`;
       list.querySelectorAll('th[data-sort]').forEach(th => {
