@@ -131,6 +131,7 @@ const ViewUsers = {
             ${ViewUsers._infoChip('Activos', s.total_assets)}
             ${ViewUsers._infoChip('Riesgos', s.total_risks)}
             ${ViewUsers._infoChip('Controles', s.total_controls)}
+            ${s.next_alert_check ? ViewUsers._infoChip('Prox. alerta', new Date(s.next_alert_check).toLocaleTimeString()) : ''}
           </div>
         </div>`;
       document.getElementById('btn-backup').onclick = async () => {

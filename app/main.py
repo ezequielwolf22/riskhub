@@ -9,9 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.config import settings
 from app.routers import (
-    admin, ai, alerts, assets, audit, auth, catalogues, context, controls, reports, risks, users,
+    admin, ai, alerts, assets, audit, auth, catalogues, context, controls,
+    reports, risks, search, users,
 )
 from app.seed import init_db
+from app.services import scheduler as sched
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -35,6 +37,12 @@ if settings.env != "production":
 @app.on_event("startup")
 def startup():
     init_db()
+    sched.start(interval_hours=1)
+
+
+@app.on_event("shutdown")
+def shutdown():
+    sched.stop()
 
 
 @app.get("/api/health")
@@ -57,6 +65,7 @@ app.include_router(reports.router)
 app.include_router(alerts.router)
 app.include_router(audit.router)
 app.include_router(ai.router)
+app.include_router(search.router)
 
 
 # Frontend estatico

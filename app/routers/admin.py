@@ -82,6 +82,7 @@ def system_info(
         "total_threats": db.query(Threat).count(),
         "total_vulnerabilities": db.query(Vulnerability).count(),
         "total_controls": db.query(ControlImplementation).count(),
+        "next_alert_check": _next_alert_run(),
     }
 
 
@@ -91,3 +92,11 @@ def _get_version() -> str:
         return __version__
     except Exception:
         return "unknown"
+
+
+def _next_alert_run() -> str | None:
+    try:
+        from app.services import scheduler as sched
+        return sched.next_run()
+    except Exception:
+        return None

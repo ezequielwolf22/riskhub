@@ -120,6 +120,7 @@ const Api = {
     riskRegisterExcel: () => Api.download('/api/reports/risk-register-excel', 'risk_register.xlsx'),
     aiGenerate: (d) => Api.post('/api/reports/ai-generate', d),
   },
+  search: (q) => Api.get('/api/search/', { q }),
   admin: {
     systemInfo: () => Api.get('/api/admin/system-info'),
     backupDb: () => Api.download('/api/admin/backup-db', `riskhub_backup_${new Date().toISOString().slice(0,10)}.db`),

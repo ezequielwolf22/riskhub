@@ -95,10 +95,13 @@ function init() {
     document.querySelectorAll('[data-admin]').forEach(el => el.style.display = 'none');
   }
 
+  // Busqueda global
+  Search.init();
+
   // Exponer navigate global para uso desde vistas
   window.App = { navigate: (route) => { location.hash = '/' + route; } };
 
-  window.addEventListener('hashchange', navigate);
+  window.addEventListener('hashchange', () => { Search.close(); navigate(); });
   navigate();
 }
 

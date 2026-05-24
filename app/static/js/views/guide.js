@@ -3,6 +3,7 @@ const ViewGuide = {
 
   _sections: [
     { id: 'intro', title: 'Introduccion', icon: '📖' },
+    { id: 'search', title: 'Busqueda global', icon: '🔎' },
     { id: 'context', title: 'Configuracion inicial', icon: '⚙️' },
     { id: 'assets', title: 'Inventario de activos', icon: '🗄️' },
     { id: 'threats', title: 'Amenazas y vulnerabilidades', icon: '🔍' },
@@ -74,6 +75,7 @@ const ViewGuide = {
   _getContent(id) {
     return ({
       intro: this._cIntro,
+      search: this._cSearch,
       context: this._cContext,
       assets: this._cAssets,
       threats: this._cThreats,
@@ -159,6 +161,29 @@ const ViewGuide = {
             <td style="padding:8px 12px;">Solo lectura. Puede ver todos los datos y descargar informes pero no modificar nada.</td></tr>
       </tbody>
     </table>
+  `;},
+
+  get _cSearch() { return `
+    ${this._p('RiskHub incluye una barra de <strong>busqueda global</strong> en la cabecera de la aplicacion. Desde un unico campo puedes localizar activos, riesgos, amenazas, vulnerabilidades y controles sin tener que navegar por cada seccion.')}
+    ${this._h('Como usar la busqueda')}
+    ${this._steps([
+      'Haz clic en el campo <em>"Buscar activos, riesgos, amenazas..."</em> en la parte superior de la pantalla.',
+      'Escribe al menos 2 caracteres. Los resultados aparecen en un desplegable en tiempo real (con debounce de 280 ms).',
+      'Los resultados se agrupan por tipo: Activos, Riesgos, Amenazas, Vulnerabilidades y Controles.',
+      'Haz clic en cualquier resultado para navegar directamente a la seccion correspondiente.',
+      'Pulsa <kbd>Esc</kbd> para cerrar el desplegable sin navegar.',
+    ])}
+    ${this._h('Atajo de teclado')}
+    ${this._p('Pulsa <kbd>/</kbd> desde cualquier pagina (sin que el foco este en un campo de texto) para activar la busqueda automaticamente. Este atajo agiliza la navegacion sin usar el raton.')}
+    ${this._h('Navegacion con teclado')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><kbd>/</kbd> — focaliza la busqueda desde cualquier pagina.</li>
+      <li><kbd>↓</kbd> — mueve el foco al primer resultado del desplegable.</li>
+      <li><kbd>↑</kbd> / <kbd>↓</kbd> — navega entre los resultados.</li>
+      <li><kbd>Enter</kbd> — abre el resultado seleccionado.</li>
+      <li><kbd>Esc</kbd> — cierra el desplegable y devuelve el foco al campo de busqueda.</li>
+    </ul>
+    ${this._tip('La busqueda filtra por nombre, descripcion y codigo. Por ejemplo: escribe "RSK-0012" para ir directamente a ese riesgo, o "servidor" para encontrar todos los activos de tipo servidor.')}
   `;},
 
   get _cContext() { return `
@@ -397,12 +422,18 @@ const ViewGuide = {
       <li><strong>risk_no_treatment:</strong> riesgos de alto nivel sin plan de tratamiento definido.</li>
     </ul>
     ${this._h('Evaluacion de reglas')}
+    ${this._p('Las reglas se evaluan de <strong>dos formas</strong>:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 12px;">
+      <li><strong>Automaticamente:</strong> RiskHub evalua todas las reglas activas <strong>cada hora</strong> en segundo plano. No es necesario hacer nada; los emails se envian solos cuando se cumplen los criterios.</li>
+      <li><strong>Manualmente:</strong> desde Alertas → <em>Evaluar reglas ahora</em> puedes forzar una evaluacion inmediata sin esperar al ciclo automatico.</li>
+    </ul>
     ${this._steps([
-      'Las reglas se pueden evaluar manualmente desde Alertas → Evaluar reglas ahora.',
       'El sistema comprueba todos los riesgos activos contra cada regla activada.',
       'Si un riesgo cumple el criterio, se envía un email con el detalle del riesgo al destinatario configurado.',
       'Se registra la fecha de último envío por regla para trazabilidad.',
+      'El panel de Informacion del sistema (Usuarios → scroll abajo) muestra la hora de la proxima evaluacion automatica.',
     ])}
+    ${this._tip('Si el servidor SMTP no esta configurado, la evaluacion automatica se omite silenciosamente hasta que se configure una cuenta de correo valida.')}
     ${this._h('Alertas manuales')}
     ${this._p('Desde el detalle de cualquier riesgo (menú Riesgos), puedes enviar una alerta manual a cualquier email. Útil para notificar al propietario del riesgo de una actualización importante.')}
   `;},
