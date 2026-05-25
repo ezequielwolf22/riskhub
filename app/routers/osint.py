@@ -1,7 +1,7 @@
 """Endpoints OSINT - Integración de huella-digital en RiskHub."""
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -21,13 +21,12 @@ router = APIRouter(prefix="/api/v1/osint", tags=["osint"])
 
 @router.post("/scans/email", response_model=OSINTScanResponse, status_code=202)
 async def scan_email(
+    background_tasks: BackgroundTasks,
     email: str = Query(..., min_length=5, max_length=255),
-    background_tasks: BackgroundTasks = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['analyst', 'admin', 'superadmin']))
 ):
     """Iniciar escaneo OSINT de email."""
-    # Validar que no haya escaneo en progreso para este email
     in_progress = db.query(OSINTScan).filter(
         OSINTScan.user_id == current_user.id,
         OSINTScan.target == email,
@@ -40,7 +39,6 @@ async def scan_email(
             detail="Ya hay un escaneo en progreso para este email"
         )
 
-    # Crear scan y ejecutar en background
     scan = OSINTScan(
         scan_type=OSINTScanType.EMAIL,
         target=email,
@@ -51,16 +49,15 @@ async def scan_email(
     db.commit()
     db.refresh(scan)
 
-    # Ejecutar en background
-    background_tasks.add_task(osint_engine.scan_email, email, current_user.id, db)
+    background_tasks.add_task(osint_engine.run_email_scan, scan.id, email, current_user.id)
 
     return scan
 
 
 @router.post("/scans/url", response_model=OSINTScanResponse, status_code=202)
 async def scan_url(
+    background_tasks: BackgroundTasks,
     url: str = Query(..., min_length=10, max_length=500),
-    background_tasks: BackgroundTasks = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['analyst', 'admin', 'superadmin']))
 ):
@@ -75,15 +72,15 @@ async def scan_url(
     db.commit()
     db.refresh(scan)
 
-    background_tasks.add_task(osint_engine.scan_url, url, current_user.id, db)
+    background_tasks.add_task(osint_engine.run_url_scan, scan.id, url, current_user.id)
 
     return scan
 
 
 @router.post("/scans/username", response_model=OSINTScanResponse, status_code=202)
 async def scan_username(
+    background_tasks: BackgroundTasks,
     username: str = Query(..., min_length=2, max_length=255),
-    background_tasks: BackgroundTasks = Depends(),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['analyst', 'admin', 'superadmin']))
 ):
@@ -98,7 +95,7 @@ async def scan_username(
     db.commit()
     db.refresh(scan)
 
-    background_tasks.add_task(osint_engine.scan_username, username, current_user.id, db)
+    background_tasks.add_task(osint_engine.run_username_scan, scan.id, username, current_user.id)
 
     return scan
 
