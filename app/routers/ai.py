@@ -1,4 +1,4 @@
-"""Endpoints del agente IA: cuestionario + análisis de riesgos + sugerencias."""
+"""Endpoints del agente IA: cuestionario + análisis de riesgos + chat + feedback."""
 from collections import defaultdict
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,14 +6,18 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Any, Optional
 
+from app.config import settings
 from app.database import get_db
 from app.models import (
+    AiAnonymizationLevel, AiCallLog, AiConfig, AiFeedback,
     Asset, AssetType, ControlImplementation, ControlStatus,
     Incident, IncidentStatus, NonConformity, NCStatus,
     Risk, RiskStatus, Supplier, SupplierRisk, Threat, TreatmentOption, User,
 )
 from app.security import get_current_user, require_role
 from app.services.ai_service import QUESTIONNAIRE, run_analysis
+from app.services.anonymizer import anonymize
+from app.services.context_builder import build_context
 from app.services.risk_engine import calc_level
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
@@ -502,3 +506,155 @@ def control_gap_analysis(
         },
         "recommendations": recommendations,
     }
+
+
+# ============================================================
+# Chat conversacional con contexto enriquecido
+# ============================================================
+
+def _resolve_api_key(cfg: AiConfig | None) -> str | None:
+    """Resuelve la API key activa: per-tenant primero, luego global."""
+    if cfg and cfg.api_key_encrypted:
+        import base64
+        import hashlib
+        try:
+            from cryptography.fernet import Fernet
+            key = base64.urlsafe_b64encode(
+                hashlib.sha256(settings.secret_key.encode()).digest()
+            )
+            return Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+        except Exception:
+            return None
+    return settings.anthropic_api_key
+
+
+class ChatMessage(BaseModel):
+    role: str     # "user" | "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
+    max_tokens: int = 2048
+
+
+class FeedbackIn(BaseModel):
+    call_log_id: Optional[int] = None
+    rating: int   # 1..5
+    comment: Optional[str] = None
+    call_type: Optional[str] = None
+
+
+@router.post("/chat")
+def chat(
+    req: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Chat conversacional con el agente IA enriquecido con el contexto de la organizacion."""
+    cfg = db.query(AiConfig).first()
+    api_key = _resolve_api_key(cfg)
+    if not api_key:
+        raise HTTPException(
+            400,
+            "API key no configurada. Ve a Configuracion > Agente IA para añadir una clave."
+        )
+
+    model = (cfg.model if cfg else None) or "claude-haiku-4-5"
+    anon_level_val = (
+        cfg.anonymization_level.value if cfg and cfg.anonymization_level else "medium"
+    )
+
+    # Extraer ultima consulta del usuario para RAG
+    last_query = next(
+        (m.content for m in reversed(req.messages) if m.role == "user"), ""
+    )
+
+    # Construir y opcionalmente anonimizar el contexto
+    context = build_context(db, query=last_query)
+    if anon_level_val != "low":
+        context = anonymize(context, anon_level_val)
+
+    system_prompt = (
+        "Eres el agente de seguridad de RiskHub, especializado en ISO/IEC 27005:2018, "
+        "ISO/IEC 27002:2022, NIS2, MAGERIT v3 y proteccion de datos (GDPR). "
+        "Responde SIEMPRE en castellano, de forma concisa y orientada a la accion. "
+        "Si te preguntan sobre riesgos, controles, activos, incidentes o proveedores, "
+        "usa el contexto de la organizacion que se proporciona. "
+        "No inventes datos que no esten en el contexto.\n\n"
+        f"CONTEXTO DE LA ORGANIZACION:\n{context}"
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        messages_payload = [{"role": m.role, "content": m.content} for m in req.messages]
+        response = client.messages.create(
+            model=model,
+            max_tokens=req.max_tokens,
+            system=system_prompt,
+            messages=messages_payload,
+        )
+        response_text = response.content[0].text if response.content else ""
+        tokens_in = response.usage.input_tokens if response.usage else 0
+        tokens_out = response.usage.output_tokens if response.usage else 0
+    except Exception as e:
+        raise HTTPException(500, f"Error llamando al agente IA: {e}")
+
+    call_log = AiCallLog(
+        user_id=current_user.id,
+        call_type="chat",
+        prompt_tokens=tokens_in,
+        completion_tokens=tokens_out,
+        model=model,
+        anonymized=(anon_level_val != "low"),
+        response_summary=response_text[:200],
+    )
+    db.add(call_log)
+    db.commit()
+    db.refresh(call_log)
+
+    return {
+        "response": response_text,
+        "call_log_id": call_log.id,
+        "tokens": {"input": tokens_in, "output": tokens_out},
+    }
+
+
+@router.post("/feedback")
+def submit_feedback(
+    req: FeedbackIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Registra la valoracion del usuario sobre una respuesta del agente."""
+    if not 1 <= req.rating <= 5:
+        raise HTTPException(400, "El rating debe ser un numero entre 1 y 5.")
+    fb = AiFeedback(
+        call_log_id=req.call_log_id,
+        user_id=current_user.id,
+        rating=req.rating,
+        comment=req.comment,
+        call_type=req.call_type,
+    )
+    db.add(fb)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/feedback/summary")
+def feedback_summary(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Resumen agregado de las valoraciones del agente."""
+    feedbacks = db.query(AiFeedback).all()
+    if not feedbacks:
+        return {"total": 0, "avg_rating": None, "ratings": {}}
+    total = len(feedbacks)
+    avg = sum(f.rating for f in feedbacks) / total
+    rating_counts: dict[str, int] = {}
+    for f in feedbacks:
+        k = str(f.rating)
+        rating_counts[k] = rating_counts.get(k, 0) + 1
+    return {"total": total, "avg_rating": round(avg, 2), "ratings": rating_counts}

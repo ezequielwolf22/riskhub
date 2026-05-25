@@ -725,3 +725,108 @@ class DPIA(Base):
     activity = relationship("ProcessingActivity", back_populates="dpias")
     owner = relationship("User", foreign_keys=[owner_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+
+# ---------- AGENTE IA (v1.3) ----------
+
+class AiDocumentCategory(str, PyEnum):
+    ARCHITECTURE = "architecture"
+    NORMATIVE = "normative"
+    POLICIES = "policies"
+    ASSETS_INVENTORY = "assets_inventory"
+    RISK_ASSESSMENTS = "risk_assessments"
+    CRITICAL_SUPPLIERS = "critical_suppliers"
+    INCIDENTS_LESSONS = "incidents_lessons"
+    OTHER = "other"
+
+
+class AiDocumentStatus(str, PyEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    INDEXED = "indexed"
+    ERROR = "error"
+
+
+class AiAnonymizationLevel(str, PyEnum):
+    LOW = "low"       # IPs + emails
+    MEDIUM = "medium"  # + dominios
+    HIGH = "high"     # + nombres + org
+
+
+class AiConfig(Base):
+    """Configuracion del agente IA — una fila por organizacion."""
+    __tablename__ = "ai_config"
+    id = Column(Integer, primary_key=True)
+    api_key_encrypted = Column(Text, nullable=True)   # Fernet-encrypted
+    model = Column(String(64), default="claude-opus-4-5")
+    anonymization_level = Column(Enum(AiAnonymizationLevel), default=AiAnonymizationLevel.MEDIUM)
+    setup_completed = Column(Boolean, default=False)
+    org_sector = Column(String(128), nullable=True)
+    org_size = Column(String(64), nullable=True)
+    org_critical_processes = Column(Text, nullable=True)
+    org_tech_stack = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AiDocument(Base):
+    """Documento subido para alimentar el agente IA."""
+    __tablename__ = "ai_documents"
+    id = Column(Integer, primary_key=True)
+    filename = Column(String(255), nullable=False)
+    original_name = Column(String(255), nullable=False)
+    category = Column(Enum(AiDocumentCategory), nullable=False)
+    status = Column(Enum(AiDocumentStatus), default=AiDocumentStatus.PENDING)
+    file_size = Column(Integer, nullable=True)
+    mime_type = Column(String(128), nullable=True)
+    chunk_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    processed_at = Column(DateTime, nullable=True)
+
+    uploaded_by = relationship("User")
+    chunks = relationship("AiDocumentChunk", back_populates="document",
+                          cascade="all, delete-orphan")
+
+
+class AiDocumentChunk(Base):
+    """Fragmento de texto indexado en FTS5."""
+    __tablename__ = "ai_document_chunks"
+    id = Column(Integer, primary_key=True)
+    document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+
+    document = relationship("AiDocument", back_populates="chunks")
+
+
+class AiCallLog(Base):
+    """Log de llamadas a la API de IA."""
+    __tablename__ = "ai_call_logs"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    call_type = Column(String(64), nullable=False)   # risk_suggest|control_gap|chat
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    model = Column(String(64), nullable=True)
+    anonymized = Column(Boolean, default=False)
+    response_summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User")
+
+
+class AiFeedback(Base):
+    """Valoracion del usuario sobre una respuesta del agente."""
+    __tablename__ = "ai_feedback"
+    id = Column(Integer, primary_key=True)
+    call_log_id = Column(Integer, ForeignKey("ai_call_logs.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    rating = Column(Integer, nullable=False)   # 1..5
+    comment = Column(Text, nullable=True)
+    call_type = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    call_log = relationship("AiCallLog")
+    user = relationship("User")

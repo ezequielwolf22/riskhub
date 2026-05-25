@@ -25,6 +25,9 @@ const Routes = {
   policies: ViewPolicies,
   'internal-audits': ViewAudits,
   gdpr: ViewGdpr,
+  onboarding: ViewOnboarding,
+  'ai-chat': ViewAiChat,
+  'ai-documents': ViewAiDocuments,
 };
 
 function currentRoute() {
@@ -183,6 +186,22 @@ function init() {
   window.App = { navigate: (route) => { location.hash = '/' + route; } };
 
   window.addEventListener('hashchange', () => { Search.close(); navigate(); });
+
+  // Redireccion al onboarding en la primera visita (si no se ha omitido y no hay ruta explícita)
+  const currentHash = location.hash.replace(/^#\/?/, '').split('?')[0];
+  const skipped = localStorage.getItem('riskhub_onboarding_skipped');
+  const onboardingDone = localStorage.getItem('riskhub_onboarding_done');
+  if (!skipped && !onboardingDone && (!currentHash || currentHash === 'dashboard')) {
+    // Verificar si ya tiene configuracion completada via API
+    Api.aiConfig.get().then(cfg => {
+      if (!cfg.setup_completed) {
+        location.hash = '/onboarding';
+        return;
+      }
+      localStorage.setItem('riskhub_onboarding_done', '1');
+    }).catch(() => { /* silencioso: no bloquear si la API falla */ });
+  }
+
   navigate();
 }
 

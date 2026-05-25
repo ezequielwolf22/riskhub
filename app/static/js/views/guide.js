@@ -20,7 +20,10 @@ const ViewGuide = {
     { id: 'gdpr', title: 'RGPD / Privacidad', icon: '🔒' },
     { id: 'bowtie', title: 'Diagrama Bow-Tie', icon: '🎀' },
     { id: 'ai-gap', title: 'Analisis de brechas IA', icon: '🧠' },
-    { id: 'ai', title: 'Agente IA', icon: '🤖' },
+    { id: 'ai', title: 'Agente IA (cuestionario)', icon: '🤖' },
+    { id: 'ai-chat', title: 'Chat con el Agente IA', icon: '💬' },
+    { id: 'ai-documents', title: 'Documentos del Agente', icon: '📂' },
+    { id: 'onboarding', title: 'Configuracion del Agente', icon: '⚙️' },
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
@@ -104,6 +107,9 @@ const ViewGuide = {
       bowtie: this._cBowtie,
       'ai-gap': this._cAiGap,
       ai: this._cAI,
+      'ai-chat': this._cAiChat,
+      'ai-documents': this._cAiDocuments,
+      onboarding: this._cOnboarding,
       reports: this._cReports,
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
@@ -1183,5 +1189,97 @@ const ViewGuide = {
       <li>NIST SP 800-30 r1 — Guide for Conducting Risk Assessments</li>
       <li>MITRE ATT&CK — Adversarial Tactics, Techniques and Common Knowledge</li>
     </ul>
+  `;},
+
+  get _cAiChat() { return `
+    ${this._p('El <strong>Chat con el Agente IA</strong> permite consultar en lenguaje natural el estado de seguridad de tu organizacion. El agente combina el contexto enriquecido de RiskHub (activos, riesgos, controles, incidentes) con los documentos que hayas subido.')}
+    ${this._h('Como funciona')}
+    ${this._steps([
+      'El agente recibe automaticamente el contexto de tu organizacion: activos, riesgos activos, incidentes recientes, controles con baja madurez y proveedores criticos.',
+      'Si has subido documentacion (arquitectura, normativa, politicas...), el agente tambien realiza una busqueda por similitud en esos documentos y los incluye en su contexto.',
+      'Escribe tu consulta en el campo de texto y pulsa Enter o Enviar.',
+      'El agente responde siempre en castellano, con recomendaciones orientadas a la accion.',
+      'Puedes valorar cada respuesta (1-5 estrellas) para que el sistema registre la calidad.',
+    ])}
+    ${this._h('Ejemplos de consultas')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Dame un resumen ejecutivo del estado de riesgos criticos.</li>
+      <li>Que controles tienen madurez inferior a 2? Que deberia priorizar?</li>
+      <li>Tenemos un incidente de ransomware. Que pasos debo seguir segun NIS2?</li>
+      <li>Cuales son las principales brechas en nuestra implementacion de ISO 27002?</li>
+      <li>Hay proveedores criticos sin evaluacion reciente?</li>
+    </ul>
+    ${this._warn('<strong>Importante:</strong> El agente usa la API de Claude (Anthropic). Configura tu API key en <em>Config. Agente</em> antes de usar el chat. La informacion enviada se anonimiza segun el nivel configurado.')}
+    ${this._tip('Usa las <em>Preguntas rapidas</em> del panel lateral para consultas frecuentes sin tener que escribirlas.')}
+  `;},
+
+  get _cAiDocuments() { return `
+    ${this._p('La <strong>Biblioteca de documentos</strong> almacena y procesa los archivos que alimentan el contexto del agente IA. Cada documento se divide en fragmentos (chunks) que se indexan en un motor de busqueda de texto completo (FTS5), permitiendo al agente recuperar la informacion mas relevante para cada consulta.')}
+    ${this._h('Categorias de documentos')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Categoria</th><th style="padding:8px;">Tipo de documentos</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Arquitectura y sistemas','Diagramas de red, inventarios de sistemas, arquitecturas cloud/on-premise.'],
+          ['Normativa y compliance','Normas aplicables: ISO 27001, ENS, NIS2, GDPR, PCI-DSS.'],
+          ['Politicas y procedimientos','Politica de seguridad, gestion de accesos, backups, continuidad.'],
+          ['Inventario de activos','Listado de activos TI, valoracion CIA, clasificacion por criticidad.'],
+          ['Evaluaciones de riesgo','Informes de analisis de riesgos anteriores, DPIA, auditorias.'],
+          ['Proveedores criticos','Contratos, evaluaciones de terceros, SLA, acuerdos DPA.'],
+          ['Incidentes y lecciones','Informes post-incidente, root cause analysis, planes de mejora.'],
+          ['Otros','Cualquier documentacion adicional relevante para el contexto.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>${r.map(c=>`<td style="padding:8px;">${c}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Formatos soportados')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>PDF:</strong> documentos escaneados o generados digitalmente (texto extraido por PyPDF).</li>
+      <li><strong>DOCX:</strong> documentos Word (texto extraido por python-docx).</li>
+      <li><strong>TXT / CSV:</strong> texto plano, logs, exportaciones.</li>
+      <li>Tamano maximo: 20 MB por archivo.</li>
+    </ul>
+    ${this._h('Estados de procesamiento')}
+    ${this._steps([
+      '<strong>Pendiente:</strong> archivo recibido, procesamiento no iniciado.',
+      '<strong>Procesando:</strong> extrayendo texto y generando fragmentos.',
+      '<strong>Indexado:</strong> documento disponible para consultas del agente.',
+      '<strong>Error:</strong> fallo durante el procesamiento. Usa Reprocesar para reintentar.',
+    ])}
+    ${this._tip('Cuantos mas documentos indexados, mas preciso es el agente. Empieza por los documentos de arquitectura y politicas, que suelen contener la informacion de mas valor para el analisis de riesgos.')}
+  `;},
+
+  get _cOnboarding() { return `
+    ${this._p('La <strong>Configuracion del Agente IA</strong> centraliza todo lo necesario para que el agente tenga el contexto de tu organizacion. Se divide en dos partes: <em>perfil organizacional</em> (datos cuantitativos y cualitativos) y <em>documentacion</em> (archivos que el agente usara como base de conocimiento).')}
+    ${this._h('Perfil de la organizacion')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Sector de actividad:</strong> permite al agente priorizar amenazas tipicas del sector (banca, salud, industrial...).</li>
+      <li><strong>Tamano:</strong> condiciona el nivel de madurez esperado y los marcos regulatorios aplicables.</li>
+      <li><strong>Procesos criticos:</strong> el agente los usa para evaluar impacto de riesgos sobre el negocio.</li>
+      <li><strong>Stack tecnologico:</strong> permite identificar vulnerabilidades especificas de las tecnologias en uso.</li>
+    </ul>
+    ${this._h('Configuracion de la API')}
+    ${this._steps([
+      'Obten tu API key en <a href="https://console.anthropic.com/" target="_blank" style="color:var(--brand-purple);">console.anthropic.com</a>.',
+      'Pega la clave en el campo API Key. Se almacena cifrada (Fernet AES-256).',
+      'Selecciona el modelo: Opus (mas potente), Sonnet (equilibrado) o Haiku (mas rapido y economico).',
+      'Configura el nivel de anonimizacion: que informacion se enmascara antes de enviar a la API.',
+      'Pulsa "Probar conexion" para verificar que la clave es valida.',
+    ])}
+    ${this._h('Niveles de anonimizacion')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Nivel</th><th style="padding:8px;">Que se enmascara</th><th style="padding:8px;">Recomendado para</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Bajo','IPs y direcciones de email','Entornos de prueba o con datos no sensibles'],
+          ['Medio (recomendado)','IPs, emails y nombres de dominio','La mayoria de organizaciones'],
+          ['Alto','IPs, emails, dominios y nombres propios','Sectores altamente regulados (banca, salud)'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>${r.map(c=>`<td style="padding:8px;">${c}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._warn('La primera vez que accedes a RiskHub, el sistema detectara automaticamente si el agente no esta configurado y te redirigira a esta pantalla. Puedes omitir esta configuracion con el boton "Omitir por ahora" y volver cuando estés listo.')}
   `;},
 };

@@ -111,6 +111,28 @@ def seed_controls(db: Session) -> None:
     db.commit()
 
 
+def _create_fts5_table() -> None:
+    """Crea la tabla FTS5 para busqueda de chunks de documentos IA."""
+    with engine.connect() as conn:
+        try:
+            conn.execute(__import__("sqlalchemy").text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS ai_chunks_fts "
+                "USING fts5(content, tokenize='unicode61 remove_diacritics 1')"
+            ))
+            conn.commit()
+        except Exception:
+            pass  # SQLite sin soporte FTS5 (entorno de test)
+
+
+def _ensure_doc_dir() -> None:
+    """Crea el directorio de almacenamiento de documentos si no existe."""
+    from pathlib import Path
+    doc_root = Path("/srv/data/documents")
+    if not doc_root.exists():
+        doc_root = Path(__file__).parent.parent / "data" / "documents"
+    doc_root.mkdir(parents=True, exist_ok=True)
+
+
 def _migrate_columns() -> None:
     """Agrega columnas nuevas a tablas existentes (SQLite no soporta ALTER TABLE con IF NOT EXISTS en todas las versiones)."""
     migrations = [
@@ -151,6 +173,8 @@ def init_db() -> None:
     """Crear tablas y cargar seed inicial."""
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
+    _create_fts5_table()
+    _ensure_doc_dir()
     db = SessionLocal()
     try:
         seed_admin(db)

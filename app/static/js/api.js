@@ -156,6 +156,25 @@ const Api = {
   ai: {
     riskSuggest: (d) => Api.post('/api/ai/risk-suggest', d),
     controlGap: (d) => Api.post('/api/ai/control-gap', d),
+    chat: (d) => Api.post('/api/ai/chat', d),
+    feedback: (d) => Api.post('/api/ai/feedback', d),
+    feedbackSummary: () => Api.get('/api/ai/feedback/summary'),
+  },
+  aiConfig: {
+    get: () => Api.get('/api/ai/config/'),
+    update: (d) => Api.put('/api/ai/config/', d),
+    test: () => Api.post('/api/ai/config/test', {}),
+  },
+  aiDocuments: {
+    list: () => Api.get('/api/ai/documents/'),
+    upload: (file, category) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('category', category);
+      return Api.req('/api/ai/documents/', { method: 'POST', body: fd });
+    },
+    del: (id) => Api.del('/api/ai/documents/' + id),
+    reprocess: (id) => Api.post('/api/ai/documents/' + id + '/reprocess', {}),
   },
   tasks: {
     list: (q) => Api.get('/api/tasks/', q),
