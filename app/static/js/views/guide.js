@@ -27,6 +27,7 @@ const ViewGuide = {
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
+    { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'methodology', title: 'Metodologia ISO 27005', icon: '📐' },
@@ -113,6 +114,7 @@ const ViewGuide = {
       reports: this._cReports,
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
+      cve: this._cCve,
       audit: this._cAudit,
       admin: this._cAdmin,
       methodology: this._cMethodology,
@@ -655,6 +657,7 @@ const ViewGuide = {
     ${this._h('Catalogo de guias de integracion manual')}
     ${this._p('La pestana <strong>Catalogo de guias</strong> incluye 25 herramientas del mercado con instrucciones detalladas para integrar sus datos con RiskHub manualmente.')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>ERP / Gestión de proveedores:</strong> SAP ERP / S/4HANA (OData), SAP Fieldglass / Jagger (VMS), importacion CSV universal desde cualquier ERP.</li>
       <li><strong>Gestión de activos:</strong> LeanIX, ServiceNow CMDB, Axonius, Lansweeper.</li>
       <li><strong>Gestión de vulnerabilidades:</strong> Qualys VMDR, Tenable.io/Nessus, Rapid7 InsightVM, OpenVAS, Wiz, Snyk.</li>
       <li><strong>Gestión de riesgos de terceros:</strong> Sphera, Archer RSA, ServiceNow GRC, Vanta, Drata, OneTrust.</li>
@@ -671,6 +674,69 @@ const ViewGuide = {
       'Para vulnerabilidades, crea entradas manuales en el catálogo de Vulnerabilidades.',
       'Usa el Agente IA para asociar automáticamente las vulnerabilidades importadas al escenario de riesgo más relevante.',
     ])}
+  `;},
+
+  get _cCve() { return `
+    ${this._p('El <strong>CVE Monitor</strong> conecta RiskHub con la base de datos de vulnerabilidades NVD (NIST) en tiempo real. El agente IA analiza cada CVE contra tu inventario de activos y genera un analisis de riesgo completo: riesgo inherente, cobertura de controles, riesgo residual y acciones de mitigacion.')}
+    ${this._h('Fuente de datos')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>NVD (National Vulnerability Database):</strong> base de datos oficial del NIST con mas de 250.000 CVEs. Actualizada en tiempo real con CVSS scores, vectores de ataque y listas de productos afectados (CPE).</li>
+      <li><strong>Sin API key:</strong> funciona con limite de 5 peticiones/30s (suficiente para uso normal).</li>
+      <li><strong>Con API key gratuita:</strong> aumenta a 50 peticiones/30s. Solicita en <em>nvd.nist.gov/developers/request-an-api-key</em>.</li>
+    </ul>
+    ${this._h('Configuracion inicial')}
+    ${this._steps([
+      'Ve a <strong>CVE Monitor → pestana Configuracion</strong>.',
+      'Introduce tu API key de NVD (opcional pero recomendada para un uso intensivo).',
+      'Configura la ventana de tiempo por defecto (7 dias es un buen punto de partida).',
+      'Selecciona la severidad minima: CRITICAL muestra solo las mas urgentes; HIGH incluye las importantes.',
+      'Activa el <strong>escaneo automatico diario</strong> si quieres que el scheduler compruebe CVEs nuevas cada 24h.',
+      'Haz clic en Guardar configuracion.',
+    ])}
+    ${this._h('Buscar y monitorear CVEs')}
+    ${this._steps([
+      'Ve a la pestana <strong>Monitor CVEs</strong>.',
+      'Ajusta los filtros: dias, severidad minima y keyword (ej: "apache", "windows", "openssl").',
+      'Haz clic en <strong>Buscar CVEs</strong> — los resultados se obtienen de NVD en tiempo real.',
+      'La tabla muestra: CVE ID (con enlace a NVD), score CVSS, descripcion, productos afectados, fecha y vector de ataque.',
+      'Marca las casillas de las CVEs que quieres analizar contra tus activos.',
+      'Haz clic en <strong>Analizar seleccionadas con IA</strong> para pasar a la pestana de analisis.',
+    ])}
+    ${this._h('Analisis de riesgo con IA (flujo principal)')}
+    ${this._steps([
+      'En la pestana <strong>Analisis IA</strong>, las CVEs seleccionadas aparecen precargadas.',
+      'Selecciona los activos de tu inventario a evaluar (o deja todos para analizar el inventario completo).',
+      'El sistema aplica primero un filtro heuristico (coincidencia CPE vs nombre/descripcion del activo) para evitar pares irrelevantes.',
+      'Activa <em>Analizar todos los pares</em> si quieres un analisis exhaustivo sin filtro previo.',
+      'Haz clic en <strong>Ejecutar analisis IA</strong> y espera la respuesta del agente (puede tardar 10-30 segundos segun el numero de pares).',
+      'Para cada par CVE-Activo el agente evalua: si afecta al activo, riesgo inherente, cobertura de controles existentes, riesgo residual y acciones de mitigacion prioritarias.',
+      'Los resultados se ordenan por riesgo residual de mayor a menor.',
+    ])}
+    ${this._h('Resultado del analisis por par CVE-Activo')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      ${[
+        ['Afecta al activo','Juicio de la IA (si/no/quizas) con justificacion y nivel de confianza.'],
+        ['Riesgo inherente (1-5)','Nivel sin controles, calculado desde CVSS y contexto del activo.'],
+        ['Cobertura de controles','Ninguna / Parcial / Suficiente — basado en tus implementaciones ISO 27002.'],
+        ['Riesgo residual (1-5)','Nivel real tras descontar la cobertura de los controles activos.'],
+        ['Acciones de mitigacion','Lista priorizada con control ISO 27002 asociado y urgencia.'],
+        ['Crear riesgo','Boton para registrar el riesgo directamente en el registro de RiskHub.'],
+      ].map(([t,d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
+          <div style="font-weight:600;margin-bottom:4px;color:var(--brand-purple);">${t}</div>
+          <div style="color:var(--text-muted);">${d}</div>
+        </div>`).join('')}
+    </div>
+    ${this._h('Crear riesgo desde una CVE')}
+    ${this._p('Al hacer clic en <strong>Crear riesgo en RiskHub</strong> en cualquier resultado, el sistema registra automaticamente:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>El activo afectado vinculado al nuevo riesgo.</li>
+      <li>La vulnerabilidad CVE creada en el catalogo (si no existia).</li>
+      <li>Los niveles de probabilidad e impacto calculados desde el analisis.</li>
+      <li>Las notas con el CVE ID, CVSS score, vector y las acciones de mitigacion propuestas.</li>
+    </ul>
+    ${this._warn('<strong>Contexto RAG:</strong> El agente IA utiliza los documentos SGSI que hayas subido (politicas, procedimientos, SOA) para enriquecer el analisis de cobertura de controles. Cuantos mas documentos tengas indexados, mas preciso sera el analisis residual.')}
+    ${this._tip('<strong>Buena practica:</strong> Ejecuta el analisis CVE semanalmente para las CVEs CRITICAL y HIGH. Filtra por los productos de tu inventario usando el campo keyword (ej: el nombre de tu servidor web, sistema operativo o base de datos). Los resultados se pueden convertir en riesgos con un solo clic.')}
   `;},
 
   get _cAudit() { return `

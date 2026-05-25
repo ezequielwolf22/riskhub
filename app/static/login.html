@@ -45,6 +45,23 @@
       <button class="btn btn-primary" type="submit" style="width: 100%; justify-content: center; padding: 10px;">
         Acceder
       </button>
+
+      <!-- Boton SSO — se muestra solo si SSO esta configurado -->
+      <div id="sso-section" style="display:none; margin-top:16px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="flex:1;height:1px;background:var(--border);"></div>
+          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">o continua con</span>
+          <div style="flex:1;height:1px;background:var(--border);"></div>
+        </div>
+        <a href="/api/sso/login" class="btn" style="width:100%;justify-content:center;padding:10px;display:flex;gap:8px;align-items:center;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/>
+            <rect x="13" y="13" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/>
+          </svg>
+          Iniciar sesion con SSO
+        </a>
+      </div>
+
       <p style="font-size: 11px; color: var(--text-subtle); margin-top: 24px; text-align: center;">
         Si no tienes acceso, contacta con el responsable de seguridad de tu unidad.
       </p>
@@ -55,6 +72,31 @@
 <script>
 const form = document.getElementById('login-form');
 const errBox = document.getElementById('login-error');
+
+// Mostrar error SSO si viene en el query param
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const ssoErr = params.get('sso_error');
+  if (ssoErr) {
+    const msgs = {
+      user_not_found: 'Tu cuenta no existe en RiskHub. Contacta con el administrador.',
+      account_disabled: 'Tu cuenta esta desactivada. Contacta con el administrador.',
+      domain_not_allowed: 'Tu dominio de correo no esta autorizado para acceder via SSO.',
+      invalid_or_expired_state: 'La sesion de SSO ha expirado. Intenta de nuevo.',
+      sso_not_configured: 'SSO no esta configurado.',
+      no_email_in_userinfo: 'El proveedor de identidad no devolvio un email valido.',
+      missing_params: 'Respuesta incompleta del proveedor de identidad.',
+    };
+    errBox.textContent = msgs[ssoErr] || decodeURIComponent(ssoErr);
+    errBox.style.display = 'block';
+    window.history.replaceState({}, '', '/login');
+  }
+})();
+
+// Comprobar si SSO esta habilitado para mostrar el boton
+fetch('/api/sso/status').then(r => r.json()).then(d => {
+  if (d.enabled) document.getElementById('sso-section').style.display = '';
+}).catch(() => {});
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();

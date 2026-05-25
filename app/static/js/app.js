@@ -29,6 +29,7 @@ const Routes = {
   'ai-chat': ViewAiChat,
   'ai-documents': ViewAiDocuments,
   'feature-flags': ViewFeatureFlags,
+  cve: ViewCve,
 };
 
 function currentRoute() {
@@ -84,6 +85,23 @@ function _updateSidebarIcons(collapsed) {
 }
 
 function init() {
+  // Manejar SSO callback — el token llega en el query param sso_token tras el redirect
+  const _ssoParams = new URLSearchParams(window.location.search);
+  const _ssoToken = _ssoParams.get('sso_token');
+  if (_ssoToken) {
+    // Limpiar el token de la URL antes de procesar (no debe quedar en historial ni en logs del servidor)
+    window.history.replaceState({}, '', '/');
+    fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + _ssoToken } })
+      .then(r => r.ok ? r.json() : Promise.reject('invalid'))
+      .then(user => {
+        localStorage.setItem('riskhub_token', _ssoToken);
+        localStorage.setItem('riskhub_user', JSON.stringify(user));
+        window.location.reload();
+      })
+      .catch(() => { window.location.href = '/login?sso_error=token_invalid'; });
+    return;   // detener init hasta que el reload complete
+  }
+
   if (!Auth.requireAuth()) return;
   _initTheme();
 

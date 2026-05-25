@@ -94,6 +94,11 @@ _DEFAULT_FLAGS = [
         "label": "Alertas por Email",
         "description": "Notificaciones automaticas por email.",
     },
+    {
+        "name": "module_cve",
+        "label": "CVE Monitor",
+        "description": "Monitoreo de vulnerabilidades CVE en tiempo real con analisis de riesgo por IA.",
+    },
 ]
 
 

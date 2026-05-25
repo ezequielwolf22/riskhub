@@ -12,8 +12,8 @@ from app.config import settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
     admin, ai, ai_config, alerts, assets, audit, audits, auth, catalogues, context,
-    controls, documents, feature_flags, gdpr, incidents, nonconformities, policies,
-    reports, risks, search, sharepoint, supplier_questionnaires, suppliers, tasks, users,
+    controls, cve, documents, feature_flags, gdpr, incidents, nonconformities, policies,
+    reports, risks, search, sharepoint, sso, supplier_questionnaires, suppliers, tasks, users,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -100,6 +100,8 @@ app.include_router(documents.router)
 app.include_router(ai_config.router)
 app.include_router(feature_flags.router)
 app.include_router(sharepoint.router)
+app.include_router(sso.router)
+app.include_router(cve.router)
 
 
 # Frontend estatico

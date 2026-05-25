@@ -246,6 +246,20 @@ const Api = {
       item_id && item_id !== 'root' ? { drive_id, item_id } : { drive_id }),
     importFiles: (items, category) => Api.post('/api/integrations/sharepoint/import', { items, category }),
   },
+  cve: {
+    getConfig: () => Api.get('/api/cve/config'),
+    saveConfig: (d) => Api.put('/api/cve/config', d),
+    search: (q) => Api.get('/api/cve/search', q),
+    analyze: (d) => Api.post('/api/cve/analyze', d),
+    createRisk: (d) => Api.post('/api/cve/create-risk', d),
+  },
+  sso: {
+    status: () => Api.get('/api/sso/status'),
+    getConfig: () => Api.get('/api/sso/config'),
+    saveConfig: (d) => Api.put('/api/sso/config', d),
+    deleteConfig: () => Api.del('/api/sso/config'),
+    test: () => Api.post('/api/sso/test', {}),
+  },
   search: (q) => Api.get('/api/search/', { q }),
   admin: {
     systemInfo: () => Api.get('/api/admin/system-info'),

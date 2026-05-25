@@ -206,6 +206,72 @@ const ViewIntegrations = {
       iso_mapping: "ISO 27005 Annex D.2 — Application and software vulnerabilities.",
     },
 
+    // ---- ERP / Gestion de proveedores ----
+    {
+      id: "sap_erp", category: "ERP / Gestión de proveedores",
+      name: "SAP ERP / SAP S/4HANA",
+      description: "Sistema ERP de referencia en grandes organizaciones. Contiene el maestro de proveedores, contratos de aprovisionamiento y datos de proceso críticos que son activos primarios del SGSI.",
+      data: "Maestro de proveedores (LFA1/LFB1), contratos (EKKO/EKPO), procesos críticos → Proveedores y Activos RiskHub",
+      api: "SAP OData (NetWeaver Gateway) o RFC/BAPI via SAP Integration Suite",
+      auth: "Basic Auth o OAuth 2.0 (SAP BTP / SAP Identity Authentication Service)",
+      status: "guia",
+      steps: [
+        "Coordina con el equipo SAP Basis para habilitar el servicio OData del maestro de proveedores: /sap/opu/odata/sap/API_BUSINESS_PARTNER/",
+        "Autentícate con usuario de solo lectura (rol: SAP_BC_ODATA_ACCESS): GET /sap/opu/odata/sap/API_BUSINESS_PARTNER/A_Supplier",
+        "Exporta los proveedores críticos con campos: Supplier, SupplierName, Country, BlockedForPosting, PurchasingBlockStatus.",
+        "Para cada proveedor crítico (contratos activos), crea un Proveedor en RiskHub con nombre, país y categoría.",
+        "Exporta los procesos de negocio clave desde SAP (t.code SE16 → tabla JEST o AUFK) para identificar activos primarios.",
+        "Alternativamente, exporta desde SAP en formato CSV (t.code SE16N → Lista → Exportar) y usa la importación CSV de Proveedores de RiskHub.",
+        "Clasifica los proveedores según el nivel de acceso a datos sensibles: alto (acceso a datos personales o sistemas críticos) / medio / bajo.",
+        "Asocia a cada proveedor de alto riesgo la amenaza 'Acceso no autorizado por terceros' y los controles ISO 27002 cl. 5.19-5.22.",
+        "Actualiza el nivel de riesgo inherente si el proveedor tiene acceso a activos clasificados como confidenciales o críticos.",
+      ],
+      iso_mapping: "ISO 27005 Annex B — Primary assets (business processes). ISO 27002:2022 cl. 5.19 (Seguridad de la información en relaciones con proveedores).",
+    },
+    {
+      id: "sap_fieldglass", category: "ERP / Gestión de proveedores",
+      name: "SAP Fieldglass (Jagger / VMS)",
+      description: "Plataforma de gestión de fuerza de trabajo externa (Vendor Management System). Gestiona contratos con proveedores de servicios, consultores externos y trabajadores contingentes que pueden acceder a activos de información.",
+      data: "Trabajadores contingentes, proveedores de servicios, contratos activos → Proveedores y Riesgos RiskHub",
+      api: "SAP Fieldglass REST API v1",
+      auth: "OAuth 2.0 (SAP Fieldglass Admin → API Credentials)",
+      status: "guia",
+      steps: [
+        "En SAP Fieldglass, accede como Administrador y ve a Configuration → Web Services → API Credentials.",
+        "Genera credenciales OAuth 2.0 (client_id + client_secret) con permiso de lectura.",
+        "Token endpoint: POST https://www.fieldglass.net/api/oauth2/v2.0/token",
+        "Endpoint proveedores: GET https://www.fieldglass.net/api/v1/suppliers?status=active",
+        "Endpoint trabajadores: GET https://www.fieldglass.net/api/v1/workers?status=active para trabajadores con acceso a sistemas.",
+        "Identifica proveedores con acceso a sistemas críticos: filtra workers con site=datacenter o department=IT.",
+        "Para cada proveedor con acceso a datos sensibles, crea un Proveedor en RiskHub con categoría 'Servicios TI' o 'Consultoría'.",
+        "Evalúa el riesgo de cada proveedor usando el cuestionario de proveedores de RiskHub (Proveedores → Cuestionarios).",
+        "Asocia los controles ISO 27002 cl. 6.6 (Acuerdos de confidencialidad) y 5.20 (Requisitos de seguridad en contratos) a cada proveedor de riesgo alto.",
+        "Configura una alerta en RiskHub para notificar cuando expire el contrato de un proveedor con acceso a activos críticos.",
+      ],
+      iso_mapping: "ISO 27005 — Third-party and supply chain risks. ISO 27002:2022 cl. 5.19, 5.20, 6.6.",
+    },
+    {
+      id: "csv_erp_import", category: "ERP / Gestión de proveedores",
+      name: "Importacion CSV desde cualquier ERP",
+      description: "Metodo universal para importar proveedores desde cualquier sistema ERP (SAP, Oracle, Microsoft Dynamics, Sage, Holded, etc.) mediante exportacion a CSV.",
+      data: "Listado de proveedores exportado del ERP → Proveedores de RiskHub",
+      api: "Exportacion nativa a CSV/Excel de cualquier ERP",
+      auth: "No requiere — proceso offline de transformacion y carga",
+      status: "guia",
+      steps: [
+        "En tu ERP, exporta el maestro de proveedores activos en formato CSV o Excel.",
+        "El fichero debe incluir al menos: nombre, CIF/NIF, pais, categoria de servicio, persona de contacto y email.",
+        "Abre el fichero en Excel u hoja de calculo y adapta las columnas al formato de RiskHub.",
+        "En RiskHub, ve a Proveedores → boton de importacion (si disponible) o crea los proveedores manualmente para los criticos.",
+        "Prioriza los proveedores que: tienen acceso remoto a sistemas, procesan datos personales, o son criticos para la operacion.",
+        "Para cada proveedor critico importado, completa: nivel de riesgo inherente, categoria (TI/nube/servicios profesionales/instalaciones), SLA y fecha de revision.",
+        "Adjunta el contrato o acuerdo de confidencialidad escaneado en el campo de documentacion del proveedor.",
+        "Usa el cuestionario de seguridad de proveedores de RiskHub para evaluar y documentar el nivel de madurez de seguridad de cada proveedor.",
+        "Programa una revision periodica en el calendario de RiskHub para los proveedores de nivel de riesgo alto o critico.",
+      ],
+      iso_mapping: "ISO 27005 Annex B — Supporting assets: suppliers and partners. ISO 27002:2022 cl. 5.19.",
+    },
+
     // ---- Riesgo de terceros ----
     {
       id: "sphera", category: "Gestión de riesgos de terceros",
@@ -525,6 +591,24 @@ const ViewIntegrations = {
           </div>
         </div>
 
+        <!-- SSO -->
+        <div class="card" id="sso-card">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/>
+              <rect x="13" y="13" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/>
+            </svg>
+            <div>
+              <b style="font-size:15px;">SSO — Inicio de sesion corporativo</b>
+              <div style="font-size:11px;color:var(--text-muted);">OIDC / OAuth2 — Microsoft Entra ID, Google Workspace, Okta y otros</div>
+            </div>
+            <span id="sso-status-badge" style="margin-left:auto;"></span>
+          </div>
+          <div id="sso-body">
+            <p class="text-muted" style="font-size:13px;">Cargando configuracion...</p>
+          </div>
+        </div>
+
         <!-- SAP / Jagger / Sphera — proximas -->
         <div class="card" style="opacity:.7;">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
@@ -538,13 +622,13 @@ const ViewIntegrations = {
           <p style="font-size:12px;color:var(--text-muted);margin:0;">
             Importacion de proveedores desde SAP (RFC/OData), sincronizacion de evaluaciones de riesgo
             desde Jagger y exportacion/importacion bidireccional con Sphera. Disponible en v1.4.
-            Por ahora puedes usar la importacion CSV en la seccion Proveedores.
+            Por ahora puedes usar la importacion CSV en la seccion Proveedores y el catalogo de guias.
           </p>
         </div>
 
       </div>
     `;
-    await this._initSharePoint();
+    await Promise.all([this._initSharePoint(), this._initSso()]);
   },
 
   async _initSharePoint() {
@@ -672,6 +756,153 @@ const ViewIntegrations = {
     try {
       const r = await Api.sharepoint.test();
       UI.toast(r.message, 'success');
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  // ---- SSO ----
+
+  async _initSso() {
+    try {
+      const cfg = await Api.sso.getConfig();
+      this._renderSsoBody(cfg);
+    } catch (e) {
+      const body = document.getElementById('sso-body');
+      if (body) body.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderSsoBody(cfg) {
+    const body = document.getElementById('sso-body');
+    const badge = document.getElementById('sso-status-badge');
+    if (!body) return;
+
+    if (cfg && cfg.configured) {
+      badge.innerHTML = `<span class="badge" style="background:var(--risk-low);color:#fff;">Activo</span>`;
+      body.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;font-size:13px;">
+          <div><span class="text-muted">Issuer:</span><br><code style="font-size:11px;">${UI.esc(cfg.issuer_url||'')}</code></div>
+          <div><span class="text-muted">Client ID:</span><br><code style="font-size:11px;">${UI.esc(cfg.client_id||'')}</code></div>
+          <div><span class="text-muted">Rol por defecto:</span><br>
+            <span class="badge badge-muted">${UI.esc(cfg.default_role||'viewer')}</span>
+            ${cfg.auto_provision ? '<span class="badge" style="background:var(--brand-purple);color:#fff;margin-left:4px;">Auto-provision</span>' : ''}
+          </div>
+        </div>
+        ${cfg.allowed_domains ? `<div style="font-size:12px;margin-bottom:12px;"><span class="text-muted">Dominios permitidos:</span> <code>${UI.esc(cfg.allowed_domains)}</code></div>` : ''}
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <button class="btn btn-sm" onclick="ViewIntegrations._editSsoConfig()">Editar configuracion</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._testSso()">Probar conexion OIDC</button>
+          <button class="btn btn-sm btn-danger" onclick="ViewIntegrations._deleteSsoConfig()">Desactivar SSO</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">
+          URL de callback a configurar en tu proveedor de identidad:
+          <code style="font-size:11px;">${UI.esc(cfg.redirect_uri||'')}</code>
+        </div>
+      `;
+    } else {
+      badge.innerHTML = `<span class="badge badge-muted">No configurado</span>`;
+      body.innerHTML = this._ssoConfigForm();
+    }
+  },
+
+  _ssoConfigForm(prefill) {
+    const p = prefill || {};
+    const isEdit = !!prefill;
+    return `
+      <div class="form-grid" style="margin-bottom:12px;">
+        <div class="span2" style="font-size:12px;color:var(--text-muted);">
+          Introduce los datos del <strong>App Registration / OAuth2 Client</strong> de tu proveedor de identidad
+          (Microsoft Entra ID, Google Workspace, Okta, etc.).<br>
+          La URL de callback que debes registrar en el proveedor es:
+          <code style="font-size:11px;">${window.location.origin}/api/sso/callback</code>
+        </div>
+        <div class="span2"><label style="font-size:12px;">Issuer URL *</label>
+          <input id="sso-issuer" class="input"
+            placeholder="https://login.microsoftonline.com/{tenant-id}/v2.0"
+            value="${UI.esc(p.issuer_url||'')}">
+        </div>
+        <div><label style="font-size:12px;">Client ID *</label>
+          <input id="sso-cid" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${UI.esc(p.client_id||'')}">
+        </div>
+        <div><label style="font-size:12px;">Client Secret *</label>
+          <input type="password" id="sso-secret" class="input" placeholder="${isEdit ? 'Dejar en blanco para no cambiar' : 'Secreto del cliente OAuth2'}">
+        </div>
+        <div class="span2"><label style="font-size:12px;">Redirect URI (callback) *</label>
+          <input id="sso-redirect" class="input"
+            value="${UI.esc(p.redirect_uri || (window.location.origin + '/api/sso/callback'))}">
+        </div>
+        <div><label style="font-size:12px;">Dominios permitidos</label>
+          <input id="sso-domains" class="input" placeholder="corp.com,empresa.es  (vacio = sin restriccion)" value="${UI.esc(p.allowed_domains||'')}">
+        </div>
+        <div><label style="font-size:12px;">Rol por defecto para nuevos usuarios</label>
+          <select id="sso-role" class="input">
+            ${['viewer','analyst','admin'].map(r =>
+              `<option value="${r}" ${(p.default_role||'viewer')===r?'selected':''}>${r}</option>`).join('')}
+          </select>
+        </div>
+        <div class="span2" style="display:flex;align-items:center;gap:10px;">
+          <label class="toggle-switch">
+            <input type="checkbox" id="sso-provision" ${p.auto_provision?'checked':''}>
+            <span class="toggle-slider"></span>
+          </label>
+          <div>
+            <div style="font-size:13px;font-weight:600;">Crear usuarios automaticamente (auto-provision)</div>
+            <div style="font-size:11px;color:var(--text-muted);">
+              Si esta activado, los usuarios que se autentiquen por SSO y no existan en RiskHub
+              seran creados automaticamente con el rol por defecto.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="ViewIntegrations._saveSsoConfig()">Guardar configuracion</button>
+        ${isEdit ? '<button class="btn" onclick="ViewIntegrations._initSso()">Cancelar</button>' : ''}
+      </div>
+    `;
+  },
+
+  _editSsoConfig() {
+    Api.sso.getConfig().then(cfg => {
+      const body = document.getElementById('sso-body');
+      if (body) body.innerHTML = this._ssoConfigForm(cfg);
+    });
+  },
+
+  async _saveSsoConfig() {
+    const issuer = document.getElementById('sso-issuer')?.value.trim();
+    const cid = document.getElementById('sso-cid')?.value.trim();
+    const secret = document.getElementById('sso-secret')?.value.trim();
+    const redirect = document.getElementById('sso-redirect')?.value.trim();
+    const domains = document.getElementById('sso-domains')?.value.trim();
+    const role = document.getElementById('sso-role')?.value;
+    const provision = document.getElementById('sso-provision')?.checked || false;
+    if (!issuer || !cid || !secret || !redirect) {
+      UI.toast('Issuer URL, Client ID, Client Secret y Redirect URI son obligatorios', 'error'); return;
+    }
+    try {
+      const r = await Api.sso.saveConfig({
+        issuer_url: issuer, client_id: cid, client_secret: secret,
+        redirect_uri: redirect, allowed_domains: domains || null,
+        default_role: role, auto_provision: provision,
+      });
+      UI.toast(r.message, 'success');
+      await this._initSso();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _testSso() {
+    UI.toast('Probando conexion OIDC...', 'info');
+    try {
+      const r = await Api.sso.test();
+      UI.toast(`${r.message} — Issuer: ${r.issuer || '?'}`, 'success');
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _deleteSsoConfig() {
+    if (!confirm('Desactivar SSO eliminara la configuracion. Los usuarios que solo usan SSO no podran acceder. ¿Continuar?')) return;
+    try {
+      await Api.sso.deleteConfig();
+      UI.toast('SSO desactivado correctamente', 'success');
+      await this._initSso();
     } catch (e) { UI.toast(e.message, 'error'); }
   },
 

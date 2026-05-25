@@ -275,6 +275,48 @@ def _run_alert_rules() -> None:
         db.close()
 
 
+def _run_cve_auto_scan() -> None:
+    """Escaneo automatico diario de CVEs criticas/altas contra el inventario de activos."""
+    from app.database import SessionLocal
+    from app.models import IntegrationConfig, Asset
+    import json, base64, hashlib
+
+    db = SessionLocal()
+    try:
+        ic = db.query(IntegrationConfig).filter_by(name="nvd_cve").first()
+        if not ic or not ic.config_encrypted:
+            return
+        key = base64.urlsafe_b64encode(hashlib.sha256(
+            __import__('app.config', fromlist=['settings']).settings.secret_key.encode()
+        ).digest())
+        from cryptography.fernet import Fernet
+        cfg = json.loads(Fernet(key).decrypt(ic.config_encrypted.encode()).decode())
+        if not cfg.get("auto_scan_enabled"):
+            return
+
+        from app.services import cve_service as cvs
+        api_key = cfg.get("api_key")
+        severity = cfg.get("auto_scan_severity", "CRITICAL")
+        sev = None if severity == "ALL" else severity
+
+        logger.info("CVE auto-scan: buscando CVEs %s de los ultimos 2 dias...", severity)
+        try:
+            cves = cvs.fetch_recent(api_key, days=2, severity=sev, max_results=50)
+        except Exception as e:
+            logger.warning("CVE auto-scan: error al obtener CVEs: %s", e)
+            return
+
+        if not cves:
+            logger.info("CVE auto-scan: sin nuevas CVEs %s en los ultimos 2 dias.", severity)
+            return
+
+        logger.info("CVE auto-scan: %d CVEs encontradas. El analisis IA se ejecuta bajo demanda desde la UI.", len(cves))
+    except Exception as exc:
+        logger.exception("Error en CVE auto-scan: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_risk_reviews() -> None:
     """Envia recordatorios de revision periodica de riesgos a los risk owners."""
     from datetime import timedelta
@@ -371,6 +413,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),
         id="check_risk_reviews",
         name="Recordatorios de revision periodica de riesgos",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_cve_auto_scan,
+        trigger=IntervalTrigger(hours=24),
+        id="cve_auto_scan",
+        name="Escaneo automatico diario de CVEs",
         replace_existing=True,
         misfire_grace_time=3600,
     )
