@@ -936,7 +936,7 @@ class OSINTFinding(Base):
     risk_score = Column(Float, default=0.0)  # 0..100
     is_remediated = Column(Boolean, default=False)
     remediated_at = Column(DateTime, nullable=True)
-    metadata = Column(JSON, nullable=True)  # información adicional de la fuente
+    extra_data = Column(JSON, nullable=True)  # información adicional de la fuente
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

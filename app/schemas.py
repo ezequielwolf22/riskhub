@@ -850,7 +850,7 @@ class OSINTFindingResponse(ORMBase):
     risk_score: float
     is_remediated: bool
     remediated_at: Optional[datetime]
-    metadata: Optional[dict]
+    extra_data: Optional[dict]
     created_at: datetime
     updated_at: datetime
 

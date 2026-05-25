@@ -188,7 +188,7 @@ class OSINTEngine:
                 description=finding_data.get('description'),
                 risk_level=finding_data.get('risk_level', 'medium'),
                 risk_score=float(finding_data.get('risk_score', 0)),
-                metadata=finding_data.get('metadata')
+                extra_data=finding_data.get('metadata')
             )
             db.add(finding)
 
