@@ -84,7 +84,6 @@ const ViewSuppliers = (() => {
     document.getElementById('f-q').oninput = () => { clearTimeout(debounce); debounce = setTimeout(_refresh, 300); };
     await _refresh();
   }
-  }
 
   async function _loadStats() {
     try {
