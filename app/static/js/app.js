@@ -22,6 +22,8 @@ const Routes = {
   nonconformities: ViewNonConformities,
   compliance: ViewCompliance,
   tasks: ViewTasks,
+  policies: ViewPolicies,
+  'internal-audits': ViewAudits,
 };
 
 function currentRoute() {

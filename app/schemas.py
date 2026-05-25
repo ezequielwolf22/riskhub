@@ -9,6 +9,7 @@ from app.models import (
     IncidentSeverity, IncidentStatus, SupplierRisk,
     NCSeverity, NCStatus,
     TaskStatus, TaskPriority,
+    PolicyStatus, AuditType, AuditStatus, AuditFindingType,
 )
 
 
@@ -524,6 +525,128 @@ class NonConformityOut(ORMBase):
     related_risk_id: Optional[int]
     created_at: datetime
     updated_at: datetime
+
+
+# ---------- POLICIES ----------
+class PolicyIn(BaseModel):
+    title: str
+    version: str = "1.0"
+    category: Optional[str] = None
+    status: PolicyStatus = PolicyStatus.DRAFT
+    scope: Optional[str] = None
+    content: Optional[str] = None
+    iso_clauses: list[str] = []
+    review_date: Optional[datetime] = None
+    owner_id: Optional[int] = None
+
+
+class PolicyUpdate(BaseModel):
+    title: Optional[str] = None
+    version: Optional[str] = None
+    category: Optional[str] = None
+    status: Optional[PolicyStatus] = None
+    scope: Optional[str] = None
+    content: Optional[str] = None
+    iso_clauses: Optional[list[str]] = None
+    review_date: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    owner_id: Optional[int] = None
+    approved_by_id: Optional[int] = None
+
+
+class PolicyOut(ORMBase):
+    id: int
+    code: str
+    title: str
+    version: str
+    category: Optional[str]
+    status: PolicyStatus
+    scope: Optional[str]
+    content: Optional[str]
+    iso_clauses: Optional[list[str]]
+    review_date: Optional[datetime]
+    approved_at: Optional[datetime]
+    owner_id: Optional[int]
+    approved_by_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------- AUDIT FINDINGS ----------
+class AuditFindingIn(BaseModel):
+    finding_type: AuditFindingType = AuditFindingType.MINOR_NC
+    title: str
+    description: Optional[str] = None
+    evidence: Optional[str] = None
+    iso_clause: Optional[str] = None
+    recommendation: Optional[str] = None
+    nonconformity_id: Optional[int] = None
+
+
+class AuditFindingOut(ORMBase):
+    id: int
+    audit_id: int
+    finding_type: AuditFindingType
+    title: str
+    description: Optional[str]
+    evidence: Optional[str]
+    iso_clause: Optional[str]
+    recommendation: Optional[str]
+    nonconformity_id: Optional[int]
+    created_at: datetime
+
+
+# ---------- AUDIT PROGRAMS ----------
+class AuditProgramIn(BaseModel):
+    title: str
+    audit_type: AuditType = AuditType.INTERNAL
+    scope: Optional[str] = None
+    objectives: Optional[str] = None
+    criteria: Optional[str] = None
+    auditor_lead: Optional[str] = None
+    auditor_team: list[str] = []
+    planned_start: Optional[datetime] = None
+    planned_end: Optional[datetime] = None
+    owner_id: Optional[int] = None
+
+
+class AuditProgramUpdate(BaseModel):
+    title: Optional[str] = None
+    audit_type: Optional[AuditType] = None
+    status: Optional[AuditStatus] = None
+    scope: Optional[str] = None
+    objectives: Optional[str] = None
+    criteria: Optional[str] = None
+    auditor_lead: Optional[str] = None
+    auditor_team: Optional[list[str]] = None
+    planned_start: Optional[datetime] = None
+    planned_end: Optional[datetime] = None
+    actual_start: Optional[datetime] = None
+    actual_end: Optional[datetime] = None
+    conclusion: Optional[str] = None
+    owner_id: Optional[int] = None
+
+
+class AuditProgramOut(ORMBase):
+    id: int
+    code: str
+    title: str
+    audit_type: AuditType
+    status: AuditStatus
+    scope: Optional[str]
+    objectives: Optional[str]
+    criteria: Optional[str]
+    auditor_lead: Optional[str]
+    auditor_team: Optional[list[str]]
+    planned_start: Optional[datetime]
+    planned_end: Optional[datetime]
+    actual_start: Optional[datetime]
+    actual_end: Optional[datetime]
+    conclusion: Optional[str]
+    owner_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+    findings: list[AuditFindingOut] = []
 
 
 # ---------- TREATMENT TASKS ----------

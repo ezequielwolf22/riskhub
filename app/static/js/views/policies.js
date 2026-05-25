@@ -1,0 +1,200 @@
+/* Vista Politicas de Seguridad — ISO 27001 cl. 5.2. */
+const ViewPolicies = (() => {
+
+  const STATUS_LABELS = {
+    draft: 'Borrador', review: 'En revision', approved: 'Aprobada',
+    published: 'Publicada', obsolete: 'Obsoleta',
+  };
+  const STATUS_COLORS = {
+    draft: 'var(--text-muted)', review: 'var(--brand-orange)',
+    approved: 'var(--brand-purple)', published: 'var(--risk-low)', obsolete: '#aaa',
+  };
+
+  let _users = [];
+
+  function _badge(label, color) {
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
+  }
+
+  async function render(el) {
+    el.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Politicas de Seguridad</h1>
+          <p class="page-sub">Gestion del ciclo de vida de politicas — ISO 27001 cl. 5.2</p>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" id="btn-new-pol">+ Nueva politica</button>
+        </div>
+      </div>
+
+      <div class="stats-row" id="pol-stats" style="margin-bottom:16px;"></div>
+
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <input type="search" id="pol-search" class="input" style="width:220px;" placeholder="Buscar por titulo...">
+        <select id="pol-status" class="input" style="width:160px;">
+          <option value="">Todos los estados</option>
+          ${Object.entries(STATUS_LABELS).map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}
+        </select>
+      </div>
+
+      <div id="pol-table-wrap"></div>
+    `;
+
+    document.getElementById('btn-new-pol').onclick = () => _openForm(null);
+    document.getElementById('pol-search').oninput = _refresh;
+    document.getElementById('pol-status').onchange = _refresh;
+
+    try { _users = await Api.listUsers(); } catch (_) { _users = []; }
+    await _loadStats();
+    await _refresh();
+  }
+
+  async function _loadStats() {
+    try {
+      const s = await Api.policies.summary();
+      const wrap = document.getElementById('pol-stats');
+      if (!wrap) return;
+      wrap.innerHTML = `
+        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.by_status.published||0}</div><div class="stat-label">Publicadas</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.by_status.review||0}</div><div class="stat-label">En revision</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.overdue_review}</div><div class="stat-label">Revision vencida</div></div>
+      `;
+    } catch (_) {}
+  }
+
+  async function _refresh() {
+    const q = document.getElementById('pol-search')?.value || '';
+    const status = document.getElementById('pol-status')?.value || '';
+    const wrap = document.getElementById('pol-table-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = '<p class="text-muted">Cargando...</p>';
+    try {
+      const params = {};
+      if (q) params.q = q;
+      if (status) params.status = status;
+      const data = await Api.policies.list(params);
+      _renderTable(wrap, data);
+    } catch (e) {
+      wrap.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  }
+
+  function _renderTable(wrap, data) {
+    if (!data.length) {
+      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No se encontraron politicas.</p>';
+      return;
+    }
+    const now = new Date();
+    const rows = data.map(p => {
+      const reviewOverdue = p.review_date && p.status !== 'obsolete'
+        && new Date(p.review_date) < now;
+      const owner = _users.find(u => u.id === p.owner_id);
+      return `
+        <tr style="cursor:pointer;${reviewOverdue?'background:rgba(254,226,226,0.3);':''}" data-id="${p.id}">
+          <td>${UI.codePill(p.code)}</td>
+          <td><b>${UI.esc(p.title)}</b>
+            ${p.category ? `<div style="font-size:11px;color:var(--text-muted);">${UI.esc(p.category)}</div>` : ''}
+          </td>
+          <td style="font-size:12px;font-family:var(--font-mono);">v${UI.esc(p.version)}</td>
+          <td>${_badge(STATUS_LABELS[p.status]||p.status, STATUS_COLORS[p.status]||'#888')}</td>
+          <td>${p.review_date ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${p.review_date.slice(0,10)}${reviewOverdue?' (VENCIDA)':''}</span>` : '-'}</td>
+          <td style="font-size:12px;">${owner ? UI.esc(owner.full_name||owner.email) : '-'}</td>
+          <td onclick="event.stopPropagation()">
+            <button class="btn btn-sm" data-id="${p.id}" data-action="edit">Editar</button>
+            <button class="btn btn-sm btn-danger" data-id="${p.id}" data-action="del">Eliminar</button>
+          </td>
+        </tr>`;
+    }).join('');
+    wrap.innerHTML = `
+      <table class="data">
+        <thead>
+          <tr><th>Codigo</th><th>Titulo</th><th>Version</th><th>Estado</th><th>Revision</th><th>Responsable</th><th>Acciones</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    wrap.querySelectorAll('tr[data-id]').forEach(tr =>
+      tr.onclick = () => { const p = data.find(x => x.id == tr.dataset.id); if (p) _openForm(p); });
+    wrap.querySelectorAll('[data-action="edit"]').forEach(btn =>
+      btn.onclick = (e) => { e.stopPropagation(); const p = data.find(x => x.id == btn.dataset.id); if (p) _openForm(p); });
+    wrap.querySelectorAll('[data-action="del"]').forEach(btn =>
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('Eliminar politica?')) return;
+        try {
+          await Api.policies.del(btn.dataset.id);
+          UI.toast('Politica eliminada', 'success');
+          await _loadStats(); await _refresh();
+        } catch (e2) { UI.toast(e2.message, 'error'); }
+      });
+  }
+
+  function _formHtml(p) {
+    const v = p || {};
+    return `
+      <div class="form-grid">
+        <div class="span2"><label>Titulo *</label><input id="f-title" class="input" value="${UI.esc(v.title||'')}"></div>
+        <div>
+          <label>Estado</label>
+          <select id="f-status" class="input">
+            ${Object.entries(STATUS_LABELS).map(([k,l]) => `<option value="${k}" ${(v.status||'draft')===k?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Version</label><input id="f-version" class="input" value="${UI.esc(v.version||'1.0')}"></div>
+        <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(v.category||'')}"></div>
+        <div>
+          <label>Responsable</label>
+          <select id="f-owner" class="input">
+            <option value="">— Sin asignar —</option>
+            ${_users.map(u => `<option value="${u.id}" ${v.owner_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Fecha de revision</label><input type="date" id="f-review" class="input" value="${v.review_date ? v.review_date.slice(0,10) : ''}"></div>
+        <div><label>Clausulas ISO (separadas por coma)</label><input id="f-clauses" class="input" value="${UI.esc((v.iso_clauses||[]).join(', '))}"></div>
+        <div class="span2"><label>Alcance</label><textarea id="f-scope" class="input" rows="2">${UI.esc(v.scope||'')}</textarea></div>
+        <div class="span2"><label>Contenido / resumen</label><textarea id="f-content" class="input" rows="5">${UI.esc(v.content||'')}</textarea></div>
+      </div>`;
+  }
+
+  function _openForm(p) {
+    UI.modal(p ? `Editar ${p.code}` : 'Nueva politica', _formHtml(p), {
+      actions: `<button class="btn" id="m-cancel">Cancelar</button>
+                <button class="btn btn-primary" id="m-save">Guardar</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = () => _save(p);
+  }
+
+  async function _save(p) {
+    const title = document.getElementById('f-title').value.trim();
+    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+    const clausesRaw = document.getElementById('f-clauses').value.trim();
+    const ownerVal = document.getElementById('f-owner').value;
+    const payload = {
+      title,
+      version: document.getElementById('f-version').value.trim() || '1.0',
+      category: document.getElementById('f-cat').value.trim() || null,
+      status: document.getElementById('f-status').value,
+      review_date: document.getElementById('f-review').value || null,
+      iso_clauses: clausesRaw ? clausesRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
+      scope: document.getElementById('f-scope').value.trim(),
+      content: document.getElementById('f-content').value.trim(),
+      owner_id: ownerVal ? parseInt(ownerVal) : null,
+    };
+    try {
+      if (p) {
+        await Api.policies.update(p.id, payload);
+        UI.toast('Politica actualizada', 'success');
+      } else {
+        await Api.policies.create(payload);
+        UI.toast('Politica creada', 'success');
+      }
+      UI.closeModal();
+      await _loadStats(); await _refresh();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  }
+
+  return { render };
+})();

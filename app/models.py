@@ -525,3 +525,106 @@ class TreatmentTask(Base):
     risk = relationship("Risk")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+# ---------- POLITICAS (M2) ----------
+
+class PolicyStatus(str, PyEnum):
+    DRAFT = "draft"
+    REVIEW = "review"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+    OBSOLETE = "obsolete"
+
+
+class Policy(Base):
+    """Politica de seguridad de la informacion — ISO 27001 cl. 5.2."""
+    __tablename__ = "policies"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)   # POL-0001
+    title = Column(String(255), nullable=False)
+    version = Column(String(32), default="1.0")
+    category = Column(String(128))              # Seguridad fisica, Uso aceptable, Gestion incidentes...
+    status = Column(Enum(PolicyStatus), default=PolicyStatus.DRAFT)
+    scope = Column(Text)
+    content = Column(Text)
+    iso_clauses = Column(JSON)                  # ["5.2","6.1","A.5.1"]
+    review_date = Column(DateTime, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+
+# ---------- AUDITORIA INTERNA (M5) ----------
+
+class AuditType(str, PyEnum):
+    INTERNAL = "internal"
+    EXTERNAL = "external"
+    SURVEILLANCE = "surveillance"
+    RECERTIFICATION = "recertification"
+
+
+class AuditStatus(str, PyEnum):
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class AuditFindingType(str, PyEnum):
+    MAJOR_NC = "major_nc"
+    MINOR_NC = "minor_nc"
+    OBSERVATION = "observation"
+    OPPORTUNITY = "opportunity"
+    CONFORMITY = "conformity"
+
+
+class AuditProgram(Base):
+    """Programa de auditoria interna — ISO 27001 cl. 9.2."""
+    __tablename__ = "audit_programs"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)   # AUD-0001
+    title = Column(String(255), nullable=False)
+    audit_type = Column(Enum(AuditType), default=AuditType.INTERNAL)
+    status = Column(Enum(AuditStatus), default=AuditStatus.PLANNED)
+    scope = Column(Text)
+    objectives = Column(Text)
+    criteria = Column(Text)                     # normas o requisitos auditados
+    auditor_lead = Column(String(255))
+    auditor_team = Column(JSON)                 # [nombre, ...]
+    planned_start = Column(DateTime, nullable=True)
+    planned_end = Column(DateTime, nullable=True)
+    actual_start = Column(DateTime, nullable=True)
+    actual_end = Column(DateTime, nullable=True)
+    conclusion = Column(Text)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    owner = relationship("User")
+    findings = relationship("AuditFinding", back_populates="audit", cascade="all, delete-orphan")
+
+
+class AuditFinding(Base):
+    """Hallazgo de auditoria — puede generar una NonConformity."""
+    __tablename__ = "audit_findings"
+    id = Column(Integer, primary_key=True)
+    audit_id = Column(Integer, ForeignKey("audit_programs.id"), nullable=False)
+    finding_type = Column(Enum(AuditFindingType), default=AuditFindingType.MINOR_NC)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    evidence = Column(Text)
+    iso_clause = Column(String(64))             # clausula o control auditado
+    recommendation = Column(Text)
+    nonconformity_id = Column(Integer, ForeignKey("nonconformities.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    audit = relationship("AuditProgram", back_populates="findings")
+    nonconformity = relationship("NonConformity")

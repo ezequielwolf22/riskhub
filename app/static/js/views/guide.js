@@ -10,6 +10,8 @@ const ViewGuide = {
     { id: 'risks', title: 'Gestion de riesgos', icon: '📊' },
     { id: 'calendar', title: 'Calendario', icon: '📅' },
     { id: 'controls', title: 'Controles ISO 27002', icon: '🛡️' },
+    { id: 'policies', title: 'Politicas de seguridad', icon: '📜' },
+    { id: 'internal-audits', title: 'Auditoria interna', icon: '🔍' },
     { id: 'compliance', title: 'Cumplimiento multi-framework', icon: '✅' },
     { id: 'incidents', title: 'Incidentes (NIS2)', icon: '🚨' },
     { id: 'suppliers', title: 'Proveedores (supply chain)', icon: '🔗' },
@@ -88,6 +90,8 @@ const ViewGuide = {
       risks: this._cRisks,
       calendar: this._cCalendar,
       controls: this._cControls,
+      policies: this._cPolicies,
+      'internal-audits': this._cInternalAudits,
       compliance: this._cCompliance,
       incidents: this._cIncidents,
       suppliers: this._cSuppliers,
@@ -759,6 +763,68 @@ const ViewGuide = {
       'Los catalogos de amenazas y vulnerabilidades se actualizan automaticamente.',
     ])}
   `; },
+
+  get _cPolicies() { return `
+    ${this._p('El modulo de <strong>Politicas de Seguridad</strong> gestiona el ciclo de vida completo de los documentos del SGSI, cumpliendo <strong>ISO 27001:2022 clausula 5.2</strong> (Politica de seguridad de la informacion) y <strong>clausula 7.5</strong> (Informacion documentada).')}
+    ${this._h('Estados del ciclo de vida')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);"><th style="padding:8px;">Estado</th><th style="padding:8px;">Descripcion</th><th style="padding:8px;">Accion tipica</th></tr></thead>
+      <tbody>
+        ${[
+          ['Borrador','Politica en redaccion inicial.','Asignar responsable y establecer alcance.'],
+          ['En revision','Revisada por stakeholders, pendiente aprobacion.','Recabar comentarios del comite de seguridad.'],
+          ['Aprobada','Aprobada formalmente. Fecha de aprobacion registrada.','Comunicar a las partes afectadas.'],
+          ['Publicada','Disponible y vigente para toda la organizacion.','Realizar revision periodica (recomendado: anual).'],
+          ['Obsoleta','Retirada o sustituida por version mas reciente.','Archivar y crear nueva politica o nueva version.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Campos clave')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Version:</strong> controla la evolucion del documento (ej. 1.0, 1.1, 2.0). Incrementa cuando cambia contenido significativo.</li>
+      <li><strong>Clausulas ISO:</strong> referencia directa a las clausulas o controles de ISO 27001/27002 que implementa esta politica.</li>
+      <li><strong>Fecha de revision:</strong> cuando vence, la fila se resalta en rojo y el contador de revision vencida aumenta. Tipicamente anual.</li>
+      <li><strong>Responsable:</strong> persona encargada de mantener la politica actualizada. Deberia ser el mismo que el owner del proceso descrito.</li>
+    </ul>
+    ${this._tip('<strong>Para auditoria ISO 27001:</strong> el auditor verificara que existe al menos una politica de seguridad aprobada por la alta direccion (cl. 5.2.a), que tiene un alcance definido y que se ha comunicado a las partes interesadas relevantes (cl. 5.2.e).')}
+  `;},
+
+  get _cInternalAudits() { return `
+    ${this._p('El modulo de <strong>Auditoria Interna</strong> implementa el proceso de auditoria del SGSI requerido por <strong>ISO 27001:2022 clausula 9.2</strong>. Permite planificar programas de auditoria, registrar hallazgos y vincularlos con no conformidades para el seguimiento de acciones correctivas.')}
+    ${this._h('Tipos de auditoria')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);"><th style="padding:8px;">Tipo</th><th style="padding:8px;">Descripcion</th></tr></thead>
+      <tbody>
+        ${[
+          ['Interna','Auditoria realizada por auditores internos de la organizacion.'],
+          ['Externa','Auditoria realizada por una entidad de certificacion o cliente.'],
+          ['Seguimiento','Auditoria de vigilancia para verificar el mantenimiento de la certificacion.'],
+          ['Recertificacion','Auditoria de renovacion del certificado ISO 27001 (cada 3 anos).'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Tipos de hallazgo')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>NC Mayor:</strong> incumplimiento grave. Puede impedir la certificacion si no se resuelve antes de la auditoria de seguimiento.</li>
+      <li><strong>NC Menor:</strong> incumplimiento puntual. Debe cerrarse con accion correctiva en el plazo acordado.</li>
+      <li><strong>Observacion:</strong> area de mejora identificada. No requiere accion correctiva formal.</li>
+      <li><strong>Oportunidad:</strong> sugerencia de mejora del auditor sin relacion con incumplimiento.</li>
+      <li><strong>Conformidad:</strong> evidencia positiva de cumplimiento de un requisito.</li>
+    </ul>
+    ${this._h('Flujo recomendado')}
+    ${this._steps([
+      'Crea un programa de auditoria con alcance, objetivos y criterios definidos.',
+      'Actualiza el estado a <strong>En curso</strong> al comenzar la auditoria.',
+      'Registra los hallazgos durante o despues de la auditoria.',
+      'Para las NCs Mayor y Menor, vincula el hallazgo a una <strong>No Conformidad</strong> existente o crea una nueva en el modulo correspondiente.',
+      'Cuando todas las NCs esten cerradas y verificadas, actualiza el estado de la auditoria a <strong>Completada</strong> y escribe la conclusion.',
+    ])}
+    ${this._tip('<strong>Trazabilidad completa:</strong> ISO 27001 exige que los hallazgos de auditoria generen acciones correctivas documentadas (cl. 10.1). La vinculacion Hallazgo → No Conformidad garantiza esta trazabilidad para el auditor.')}
+  `;},
 
   get _cCompliance() { return `
     ${this._p('El <strong>Dashboard de Cumplimiento</strong> calcula automaticamente tu nivel de cumplimiento para cuatro marcos normativos en base a los datos registrados en RiskHub: controles implementados, riesgos tratados, incidentes gestionados y no conformidades abiertas.')}

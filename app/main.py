@@ -9,8 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.config import settings
 from app.routers import (
-    admin, ai, alerts, assets, audit, auth, catalogues, context, controls,
-    incidents, nonconformities, reports, risks, search, suppliers, tasks, users,
+    admin, ai, alerts, assets, audit, audits, auth, catalogues, context, controls,
+    incidents, nonconformities, policies, reports, risks, search, suppliers, tasks, users,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -70,6 +70,8 @@ app.include_router(incidents.router)
 app.include_router(suppliers.router)
 app.include_router(nonconformities.router)
 app.include_router(tasks.router)
+app.include_router(policies.router)
+app.include_router(audits.router)
 
 
 # Frontend estatico
