@@ -10,7 +10,8 @@ from app import __version__
 from app.config import settings
 from app.routers import (
     admin, ai, alerts, assets, audit, audits, auth, catalogues, context, controls,
-    incidents, nonconformities, policies, reports, risks, search, suppliers, tasks, users,
+    gdpr, incidents, nonconformities, policies, reports, risks, search,
+    supplier_questionnaires, suppliers, tasks, users,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -72,6 +73,8 @@ app.include_router(nonconformities.router)
 app.include_router(tasks.router)
 app.include_router(policies.router)
 app.include_router(audits.router)
+app.include_router(supplier_questionnaires.router)
+app.include_router(gdpr.router)
 
 
 # Frontend estatico
@@ -93,6 +96,10 @@ if STATIC_DIR.exists():
     @app.get("/login")
     def login_page():
         return FileResponse(STATIC_DIR / "login.html", headers=_NO_CACHE)
+
+    @app.get("/supplier-q")
+    def supplier_questionnaire_page():
+        return FileResponse(STATIC_DIR / "supplier-q.html", headers=_NO_CACHE)
 
     # SPA fallback
     @app.get("/{full_path:path}")

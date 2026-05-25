@@ -24,6 +24,7 @@ const Routes = {
   tasks: ViewTasks,
   policies: ViewPolicies,
   'internal-audits': ViewAudits,
+  gdpr: ViewGdpr,
 };
 
 function currentRoute() {

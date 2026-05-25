@@ -155,6 +155,7 @@ const Api = {
   },
   ai: {
     riskSuggest: (d) => Api.post('/api/ai/risk-suggest', d),
+    controlGap: (d) => Api.post('/api/ai/control-gap', d),
   },
   tasks: {
     list: (q) => Api.get('/api/tasks/', q),
@@ -183,6 +184,29 @@ const Api = {
     createFinding: (id, d) => Api.post('/api/audits/' + id + '/findings', d),
     updateFinding: (id, fid, d) => Api.patch('/api/audits/' + id + '/findings/' + fid, d),
     delFinding: (id, fid) => Api.del('/api/audits/' + id + '/findings/' + fid),
+  },
+  supplier_questionnaires: {
+    list: (q) => Api.get('/api/supplier-questionnaires/', q),
+    get: (id) => Api.get('/api/supplier-questionnaires/' + id),
+    create: (d) => Api.post('/api/supplier-questionnaires/', d),
+    del: (id) => Api.del('/api/supplier-questionnaires/' + id),
+  },
+  gdpr: {
+    activities: {
+      list: (q) => Api.get('/api/gdpr/activities/', q),
+      get: (id) => Api.get('/api/gdpr/activities/' + id),
+      create: (d) => Api.post('/api/gdpr/activities/', d),
+      update: (id, d) => Api.patch('/api/gdpr/activities/' + id, d),
+      del: (id) => Api.del('/api/gdpr/activities/' + id),
+    },
+    dpias: {
+      list: (q) => Api.get('/api/gdpr/dpias/', q),
+      get: (id) => Api.get('/api/gdpr/dpias/' + id),
+      create: (d) => Api.post('/api/gdpr/dpias/', d),
+      update: (id, d) => Api.patch('/api/gdpr/dpias/' + id, d),
+      del: (id) => Api.del('/api/gdpr/dpias/' + id),
+    },
+    summary: () => Api.get('/api/gdpr/stats/summary'),
   },
   search: (q) => Api.get('/api/search/', { q }),
   admin: {

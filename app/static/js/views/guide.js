@@ -17,6 +17,9 @@ const ViewGuide = {
     { id: 'suppliers', title: 'Proveedores (supply chain)', icon: '🔗' },
     { id: 'nonconformities', title: 'No conformidades', icon: '⚠️' },
     { id: 'tasks', title: 'Tareas de tratamiento', icon: '📌' },
+    { id: 'gdpr', title: 'RGPD / Privacidad', icon: '🔒' },
+    { id: 'bowtie', title: 'Diagrama Bow-Tie', icon: '🎀' },
+    { id: 'ai-gap', title: 'Analisis de brechas IA', icon: '🧠' },
     { id: 'ai', title: 'Agente IA', icon: '🤖' },
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
@@ -97,6 +100,9 @@ const ViewGuide = {
       suppliers: this._cSuppliers,
       nonconformities: this._cNonConformities,
       tasks: this._cTasks,
+      gdpr: this._cGdpr,
+      bowtie: this._cBowtie,
+      'ai-gap': this._cAiGap,
       ai: this._cAI,
       reports: this._cReports,
       alerts: this._cAlerts,
@@ -931,6 +937,15 @@ const ViewGuide = {
       <li><strong>Proxima evaluacion:</strong> planifica cuando debe realizarse la siguiente evaluacion.</li>
       <li><strong>Badge vencida:</strong> el dashboard de cumplimiento muestra los proveedores sin evaluacion como brecha NIS2.</li>
     </ul>
+    ${this._h('Cuestionarios de seguridad (NIS2 Art. 21.2.d)')}
+    ${this._p('Desde la pestana <strong>Cuestionarios de seguridad</strong> dentro de Proveedores puedes enviar evaluaciones automatizadas a tus proveedores sin que necesiten cuenta en RiskHub:')}
+    ${this._steps([
+      'Pulsa <strong>+ Nuevo cuestionario</strong> y selecciona el proveedor.',
+      'Se genera un enlace publico con token seguro. Copialo y enviaselo al contacto del proveedor por email.',
+      'El proveedor responde 10 preguntas NIS2+ISO 27001 (Si/No/Parcialmente) desde su navegador.',
+      'Al enviar, se calcula la puntuacion (0-100) y se actualiza el score del proveedor automaticamente.',
+      'Revisa puntuaciones y respuestas desde la tabla de cuestionarios.',
+    ])}
     ${this._tip('<strong>Buena practica:</strong> Incluye clausulas contractuales de ciberseguridad en todos los contratos con proveedores criticos: derecho de auditoria, notificacion de incidentes en 24h, cifrado de datos y planes de continuidad.')}
   `;},
 
@@ -1009,6 +1024,112 @@ const ViewGuide = {
     ${this._h('Indicadores del tablero')}
     ${this._p('La barra de estadisticas superior muestra: total de tareas, tareas en progreso, tareas bloqueadas y tareas vencidas (fecha limite pasada y no completadas). El badge naranja en el sidebar del menu lateral indica el numero de tareas vencidas activas.')}
     ${this._tip('<strong>Consejo:</strong> vincula cada tarea al riesgo correspondiente para poder tener trazabilidad completa desde el riesgo hasta la accion ejecutada. Esta trazabilidad es requerida en auditorias ISO 27001.')}
+  `;},
+
+  get _cGdpr() { return `
+    ${this._p('El modulo <strong>RGPD / Privacidad</strong> implementa las dos obligaciones documentales clave del <strong>Reglamento General de Proteccion de Datos (RGPD/GDPR)</strong>: el Registro de Actividades de Tratamiento (Art. 30) y las Evaluaciones de Impacto sobre la Proteccion de Datos — DPIA (Art. 35).')}
+    ${this._h('Registro de actividades de tratamiento (Art. 30)')}
+    ${this._p('Toda organizacion con 250+ empleados o que realice tratamientos de alto riesgo debe mantener este registro. Cada actividad documenta:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Finalidades:</strong> para que se tratan los datos.</li>
+      <li><strong>Categorias de datos:</strong> tipos de datos personales (nombre, email, datos de salud, etc.).</li>
+      <li><strong>Base legal:</strong> consentimiento, contrato, obligacion legal, intereses legitimos...</li>
+      <li><strong>Categorias de interesados:</strong> clientes, empleados, proveedores...</li>
+      <li><strong>Periodo de retencion:</strong> cuanto tiempo se conservan los datos.</li>
+      <li><strong>Destinatarios:</strong> a quien se comunican o ceden los datos.</li>
+      <li><strong>Transferencias internacionales:</strong> si se envian datos fuera de la UE y con que garantias.</li>
+    </ul>
+    ${this._h('DPIA — Evaluacion de impacto (Art. 35)')}
+    ${this._p('Obligatoria cuando el tratamiento es susceptible de entrañar un alto riesgo para los derechos y libertades de las personas: uso de nuevas tecnologias, tratamiento a gran escala de categorias especiales, videovigilancia sistematica, perfilado, etc.')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--brand-purple);color:#fff;">
+        <th style="padding:8px;">Estado</th><th style="padding:8px;">Descripcion</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Pendiente','DPIA identificada como necesaria, pendiente de realizar.'],
+          ['En curso','DPIA en proceso de elaboracion. Equipo asignado.'],
+          ['Aprobada','DPIA completada y aprobada. Nivel de riesgo residual aceptable. Fecha de aprobacion registrada automaticamente.'],
+          ['Rechazada','Los riesgos identificados son inaceptables. Requiere redisenar el tratamiento o abandonarlo.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Cuestionarios de seguridad a proveedores')}
+    ${this._p('Desde la pestana <strong>Cuestionarios de seguridad</strong> dentro de Proveedores, puedes enviar un cuestionario automatizado de 10 preguntas NIS2+ISO 27001 a tus proveedores:')}
+    ${this._steps([
+      'Crea un cuestionario asociado a un proveedor y establece fecha de expiracion (30 dias por defecto).',
+      'Copia el enlace publico generado y enviaselo por email al contacto del proveedor.',
+      'El proveedor accede al enlace sin necesidad de cuenta en RiskHub y responde las preguntas (Si/No/Parcialmente).',
+      'Al enviar, se calcula automaticamente la puntuacion (0-100) y se actualiza el score del proveedor.',
+      'Revisa los resultados en la tabla de cuestionarios.',
+    ])}
+    ${this._tip('<strong>Privacidad by design (Art. 25):</strong> La vinculacion entre el Registro Art. 30 y las DPIAs Art. 35 facilita demostrar el cumplimiento del principio de privacidad desde el diseno, exigido expresamente por el RGPD.')}
+  `;},
+
+  get _cBowtie() { return `
+    ${this._p('El <strong>Diagrama Bow-Tie</strong> es una tecnica de visualizacion de riesgos originada en la industria de petroleo y gas (Shell) y adoptada ampliamente en gestion de riesgos de seguridad. Representa graficamente la relacion entre causas, el evento de riesgo central y sus consecuencias.')}
+    ${this._h('Como leer un Bow-Tie')}
+    <div style="background:var(--bg-2);border-radius:8px;padding:16px;margin-bottom:16px;font-size:13px;">
+      <div style="display:grid;grid-template-columns:1fr 80px 1fr;gap:16px;align-items:center;text-align:center;">
+        <div style="background:var(--brand-purple-4);border:1px solid var(--brand-purple);border-radius:8px;padding:12px;">
+          <div style="font-weight:700;color:var(--brand-purple);margin-bottom:4px;">CAUSAS (izquierda)</div>
+          <div style="font-size:12px;color:var(--text-muted);">Amenaza principal + Vulnerabilidades que la facilitan</div>
+        </div>
+        <div style="background:var(--risk-high);border-radius:50%;width:64px;height:64px;margin:0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;">RIESGO</div>
+        <div style="background:var(--brand-orange-4);border:1px solid var(--brand-orange);border-radius:8px;padding:12px;">
+          <div style="font-weight:700;color:var(--brand-orange);margin-bottom:4px;">CONSECUENCIAS (derecha)</div>
+          <div style="font-size:12px;color:var(--text-muted);">Impactos potenciales + Controles que los mitigan</div>
+        </div>
+      </div>
+    </div>
+    ${this._h('Como acceder al Bow-Tie en RiskHub')}
+    ${this._steps([
+      'Navega a la vista <strong>Riesgos</strong> y abre cualquier riesgo existente pulsando "Ver".',
+      'En la barra de acciones del modal, pulsa el boton <strong>Bow-Tie</strong>.',
+      'El diagrama SVG muestra la amenaza y las vulnerabilidades asociadas a la izquierda, el circulo central con el codigo del riesgo y nivel residual, y los controles implementados a la derecha.',
+      'Usa el boton "Volver al riesgo" para regresar al formulario de edicion sin cerrar el flujo.',
+    ])}
+    ${this._h('Interpretacion del color central')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><span style="color:#22C55E;font-weight:700;">Verde</span> — nivel residual bajo (0-2): riesgo aceptable.</li>
+      <li><span style="color:#F59E0B;font-weight:700;">Amarillo</span> — nivel residual medio (3-4): monitorizar.</li>
+      <li><span style="color:#F97316;font-weight:700;">Naranja</span> — nivel residual moderado-alto (5-6): plan de tratamiento activo.</li>
+      <li><span style="color:#EF4444;font-weight:700;">Rojo</span> — nivel residual alto (7-8): accion inmediata requerida.</li>
+    </ul>
+    ${this._tip('<strong>Para auditorias:</strong> El diagrama Bow-Tie es una herramienta de comunicacion muy valorada en auditorias ISO 27001 para demostrar la comprension de los escenarios de riesgo y la adecuacion de los controles seleccionados.')}
+  `;},
+
+  get _cAiGap() { return `
+    ${this._p('El <strong>Analisis de brechas IA (M9)</strong> examina el estado de implementacion de tus controles ISO 27002 y genera un informe de brechas adaptado al framework normativo seleccionado: ISO 27001, NIS2, NIST CSF 2.0 o ENS.')}
+    ${this._h('Donde encontrarlo')}
+    ${this._p('En la vista <strong>Cumplimiento</strong>, al final de la pagina aparece el panel "Analisis de brechas de controles". Selecciona el framework y pulsa <strong>Analizar brechas</strong>.')}
+    ${this._h('Que analiza')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Cobertura efectiva:</strong> porcentaje de controles implementados + parciales ponderados (implementado=1, parcial=0.5).</li>
+      <li><strong>Temas con menor cobertura:</strong> identifica los temas ISO 27002 (Seguridad fisica, Gestion de accesos, etc.) con menor porcentaje de controles implementados (&lt;40%).</li>
+      <li><strong>Problemas SOA (cl. 6.1.3):</strong> controles sin razon de inclusion, sin evidencias adjuntas y con revisiones vencidas.</li>
+      <li><strong>Controles criticos sin implementar:</strong> controles no implementados que no tienen justificacion de exclusion documentada.</li>
+      <li><strong>Recomendaciones:</strong> lista priorizada de acciones segun el framework seleccionado.</li>
+    </ul>
+    ${this._h('Recomendaciones por framework')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Framework</th><th style="padding:8px;">Enfoque del analisis</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['ISO 27001','SOA completo: razon de inclusion, evidencias y exclusiones justificadas (cl. 6.1.3).'],
+          ['NIS2','Controles de gestion de incidentes (Art. 21.2.b) y cadena de suministro (Art. 21.2.d).'],
+          ['NIST CSF','Funcion PROTECT (controles tecnicos) y DETECT (monitorizacion).'],
+          ['ENS','Implementacion del Anexo II y asignacion de responsables.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._tip('<strong>Uso recomendado:</strong> ejecuta el analisis una vez al mes o antes de una auditoria para detectar y corregir brechas documentales. Complementa las puntuaciones del dashboard de cumplimiento con acciones concretas.')}
   `;},
 
   get _cMethodology() { return `

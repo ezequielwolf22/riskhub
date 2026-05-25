@@ -628,3 +628,100 @@ class AuditFinding(Base):
 
     audit = relationship("AuditProgram", back_populates="findings")
     nonconformity = relationship("NonConformity")
+
+
+# ---------- EVALUACION DE PROVEEDORES - CUESTIONARIO (M4) ----------
+
+class SupplierQuestionnaire(Base):
+    """Cuestionario de evaluacion de seguridad enviado al proveedor."""
+    __tablename__ = "supplier_questionnaires"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)   # SEQ-0001
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    token = Column(String(64), unique=True, nullable=False)  # acceso publico
+    questions = Column(JSON)                 # [{id, text, type}]
+    answers = Column(JSON, nullable=True)    # {question_id: answer}
+    score = Column(Integer, nullable=True)   # 0-100
+    submitted_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    notes = Column(Text)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    supplier = relationship("Supplier")
+    created_by = relationship("User")
+
+    @property
+    def supplier_name(self) -> str:
+        return self.supplier.name if self.supplier else ""
+
+
+# ---------- GDPR / DPIA (M6) ----------
+
+class ProcessingLegalBasis(str, PyEnum):
+    CONSENT = "consent"
+    CONTRACT = "contract"
+    LEGAL_OBLIGATION = "legal_obligation"
+    VITAL_INTERESTS = "vital_interests"
+    PUBLIC_TASK = "public_task"
+    LEGITIMATE_INTERESTS = "legitimate_interests"
+
+
+class DPIAStatus(str, PyEnum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    APPROVED = "approved"
+
+
+class ProcessingActivity(Base):
+    """Registro de actividades de tratamiento — GDPR Art. 30."""
+    __tablename__ = "processing_activities"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)   # PAR-0001
+    title = Column(String(255), nullable=False)
+    purposes = Column(Text)                                  # finalidades del tratamiento
+    legal_basis = Column(Enum(ProcessingLegalBasis), default=ProcessingLegalBasis.LEGITIMATE_INTERESTS)
+    data_categories = Column(JSON)                           # ["nombre","email","datos_salud",...]
+    data_subjects = Column(JSON)                             # ["empleados","clientes",...]
+    recipients = Column(JSON)                                # ["nombre del destinatario",...]
+    transfers_outside_eu = Column(Boolean, default=False)
+    transfer_safeguards = Column(Text)
+    retention_period = Column(String(255))
+    security_measures = Column(Text)
+    controller_name = Column(String(255))
+    dpo_contact = Column(String(255))
+    requires_dpia = Column(Boolean, default=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    owner = relationship("User")
+    dpias = relationship("DPIA", back_populates="activity", cascade="all, delete-orphan")
+
+
+class DPIA(Base):
+    """Evaluacion de Impacto en la Proteccion de Datos — GDPR Art. 35."""
+    __tablename__ = "dpias"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)   # DPI-0001
+    activity_id = Column(Integer, ForeignKey("processing_activities.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    status = Column(Enum(DPIAStatus), default=DPIAStatus.PENDING)
+    necessity_assessment = Column(Text)                      # necesidad y proporcionalidad
+    risks_identified = Column(Text)                          # riesgos identificados
+    risk_measures = Column(Text)                             # medidas para mitigarlos
+    residual_risk_level = Column(Integer, default=0)         # 0..8
+    dpo_opinion = Column(Text)
+    reviewed_at = Column(DateTime, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    activity = relationship("ProcessingActivity", back_populates="dpias")
+    owner = relationship("User", foreign_keys=[owner_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])

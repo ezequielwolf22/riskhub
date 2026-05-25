@@ -10,6 +10,7 @@ from app.models import (
     NCSeverity, NCStatus,
     TaskStatus, TaskPriority,
     PolicyStatus, AuditType, AuditStatus, AuditFindingType,
+    ProcessingLegalBasis, DPIAStatus,
 )
 
 
@@ -688,6 +689,129 @@ class TaskOut(ORMBase):
     updated_at: datetime
     risk: Optional["RiskOut"] = None
     assigned_to: Optional["UserOut"] = None
+
+
+# ---------- SUPPLIER QUESTIONNAIRES (M4) ----------
+class SupplierQuestionnaireCreate(BaseModel):
+    supplier_id: int
+    title: str
+    notes: Optional[str] = None
+    expires_at: Optional[datetime] = None
+
+
+class SupplierQuestionnaireOut(ORMBase):
+    id: int
+    code: str
+    supplier_id: int
+    supplier_name: Optional[str] = None
+    title: str
+    token: str
+    questions: Optional[list[dict]]
+    answers: Optional[dict]
+    score: Optional[int]
+    submitted_at: Optional[datetime]
+    expires_at: Optional[datetime]
+    notes: Optional[str]
+    created_at: datetime
+
+
+# ---------- GDPR / DPIA (M6) ----------
+class ProcessingActivityIn(BaseModel):
+    title: str
+    purposes: Optional[str] = None
+    legal_basis: ProcessingLegalBasis = ProcessingLegalBasis.LEGITIMATE_INTERESTS
+    data_categories: Optional[str] = None
+    data_subjects: Optional[str] = None
+    recipients: Optional[str] = None
+    transfers_outside_eu: bool = False
+    transfer_safeguards: Optional[str] = None
+    retention_period: Optional[str] = None
+    security_measures: Optional[str] = None
+    controller_name: Optional[str] = None
+    dpo_contact: Optional[str] = None
+    requires_dpia: bool = False
+    owner_id: Optional[int] = None
+
+
+class ProcessingActivityUpdate(BaseModel):
+    title: Optional[str] = None
+    purposes: Optional[str] = None
+    legal_basis: Optional[ProcessingLegalBasis] = None
+    data_categories: Optional[str] = None
+    data_subjects: Optional[str] = None
+    recipients: Optional[str] = None
+    transfers_outside_eu: Optional[bool] = None
+    transfer_safeguards: Optional[str] = None
+    retention_period: Optional[str] = None
+    security_measures: Optional[str] = None
+    controller_name: Optional[str] = None
+    dpo_contact: Optional[str] = None
+    requires_dpia: Optional[bool] = None
+    owner_id: Optional[int] = None
+
+
+class ProcessingActivityOut(ORMBase):
+    id: int
+    code: str
+    title: str
+    purposes: Optional[str]
+    legal_basis: ProcessingLegalBasis
+    data_categories: Optional[Any]
+    data_subjects: Optional[Any]
+    recipients: Optional[Any]
+    transfers_outside_eu: bool
+    transfer_safeguards: Optional[str]
+    retention_period: Optional[str]
+    security_measures: Optional[str]
+    controller_name: Optional[str]
+    dpo_contact: Optional[str]
+    requires_dpia: bool
+    owner_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+    dpias: list["DPIAOut"] = []
+
+
+class DPIAIn(BaseModel):
+    activity_id: int
+    title: str
+    necessity_assessment: Optional[str] = None
+    risks_identified: Optional[str] = None
+    risk_measures: Optional[str] = None
+    residual_risk_level: Optional[int] = None
+    dpo_opinion: Optional[str] = None
+    owner_id: Optional[int] = None
+
+
+class DPIAUpdate(BaseModel):
+    title: Optional[str] = None
+    status: Optional[DPIAStatus] = None
+    necessity_assessment: Optional[str] = None
+    risks_identified: Optional[str] = None
+    risk_measures: Optional[str] = None
+    residual_risk_level: Optional[int] = None
+    dpo_opinion: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    approved_by_id: Optional[int] = None
+    owner_id: Optional[int] = None
+
+
+class DPIAOut(ORMBase):
+    id: int
+    code: str
+    activity_id: int
+    title: str
+    status: DPIAStatus
+    necessity_assessment: Optional[str]
+    risks_identified: Optional[str]
+    risk_measures: Optional[str]
+    residual_risk_level: Optional[int]
+    dpo_opinion: Optional[str]
+    reviewed_at: Optional[datetime]
+    approved_by_id: Optional[int]
+    owner_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
 
 
 TokenOut.model_rebuild()

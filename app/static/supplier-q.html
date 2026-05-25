@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cuestionario de Seguridad - RiskHub</title>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="icon" type="image/svg+xml" href="/img/logo.svg">
+<style>
+  body { background: var(--bg-1); color: var(--text-base); font-family: Inter, system-ui, sans-serif; margin: 0; padding: 0; }
+  .sq-shell { max-width: 680px; margin: 40px auto; padding: 0 16px 60px; }
+  .sq-header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+  .sq-logo { width: 36px; height: 36px; }
+  .sq-brand { font-size: 20px; font-weight: 700; color: var(--brand-purple); }
+  .sq-card { background: var(--bg-0); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 20px; }
+  .sq-title { font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+  .sq-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 20px; }
+  .sq-question { padding: 16px 0; border-bottom: 1px solid var(--border); }
+  .sq-question:last-child { border-bottom: none; padding-bottom: 0; }
+  .sq-q-text { font-size: 14px; font-weight: 500; margin: 0 0 10px; line-height: 1.5; }
+  .sq-q-num { display: inline-block; background: var(--brand-purple); color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 11px; font-weight: 700; margin-right: 8px; flex-shrink: 0; }
+  .sq-radios { display: flex; gap: 24px; }
+  .sq-radios label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); transition: background .15s, border-color .15s; }
+  .sq-radios label:hover { background: var(--brand-purple-4); border-color: var(--brand-purple); }
+  .sq-radios input[type=radio]:checked + span { color: var(--brand-purple); font-weight: 600; }
+  .sq-radios label:has(input[type=radio]:checked) { background: var(--brand-purple-4); border-color: var(--brand-purple); }
+  .sq-submit { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; background: var(--brand-purple); color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: opacity .2s; margin-top: 8px; }
+  .sq-submit:disabled { opacity: .5; cursor: not-allowed; }
+  .sq-progress { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 20px; overflow: hidden; }
+  .sq-progress-bar { height: 100%; background: var(--brand-purple); transition: width .3s; }
+  .sq-msg { text-align: center; padding: 40px 20px; }
+  .sq-msg-icon { font-size: 48px; margin-bottom: 16px; }
+  .sq-msg-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .sq-msg-sub { font-size: 15px; color: var(--text-muted); }
+  .sq-score-badge { display: inline-block; padding: 8px 24px; border-radius: 8px; font-size: 28px; font-weight: 800; color: #fff; margin: 16px 0; }
+  .sq-expires { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="sq-shell">
+  <div class="sq-header">
+    <img src="/img/logo.svg" alt="RiskHub" class="sq-logo">
+    <span class="sq-brand">RiskHub</span>
+    <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">Cuestionario de evaluacion de seguridad</span>
+  </div>
+  <div id="sq-root"></div>
+</div>
+
+<script>
+(function() {
+  const root = document.getElementById('sq-root');
+
+  function getToken() {
+    const params = new URLSearchParams(location.search);
+    return params.get('token') || '';
+  }
+
+  function scoreColor(s) {
+    if (s >= 80) return '#22C55E';
+    if (s >= 60) return '#F59E0B';
+    if (s >= 40) return '#EF4444';
+    return '#7C3AED';
+  }
+
+  function showError(title, msg) {
+    root.innerHTML = `
+      <div class="sq-card sq-msg">
+        <div class="sq-msg-icon">⚠️</div>
+        <div class="sq-msg-title">${title}</div>
+        <div class="sq-msg-sub">${msg}</div>
+      </div>`;
+  }
+
+  function showSuccess(score) {
+    root.innerHTML = `
+      <div class="sq-card sq-msg">
+        <div class="sq-msg-icon">✅</div>
+        <div class="sq-msg-title">Cuestionario enviado</div>
+        <div class="sq-msg-sub">Gracias por completar la evaluacion de seguridad.</div>
+        <div class="sq-score-badge" style="background:${scoreColor(score)};">${score}/100</div>
+        <div class="sq-msg-sub">Esta puntuacion refleja el nivel de madurez de seguridad reportado.<br>El equipo de seguridad revisara sus respuestas.</div>
+      </div>`;
+  }
+
+  async function loadQuestionnaire(token) {
+    root.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando cuestionario...</div>';
+    let data;
+    try {
+      const resp = await fetch('/api/supplier-questionnaires/public/' + encodeURIComponent(token));
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        if (resp.status === 404) { showError('Enlace no valido', 'Este enlace de cuestionario no existe o ha sido eliminado.'); return; }
+        if (resp.status === 410) { showError('Enlace expirado', 'Este cuestionario ha expirado. Contacta con tu evaluador para obtener un nuevo enlace.'); return; }
+        if (resp.status === 409) { showError('Ya respondido', 'Este cuestionario ya fue completado anteriormente. No es posible responderlo de nuevo.'); return; }
+        showError('Error', err.detail || 'Error al cargar el cuestionario.');
+        return;
+      }
+      data = await resp.json();
+    } catch (e) {
+      showError('Error de conexion', 'No fue posible conectar con el servidor. Verifica tu conexion e intenta de nuevo.');
+      return;
+    }
+
+    const questions = data.questions || [];
+    const expires = data.expires_at ? new Date(data.expires_at).toLocaleDateString('es-ES', {day:'2-digit',month:'long',year:'numeric'}) : null;
+
+    function answered() {
+      return questions.filter((_, i) => document.querySelector(`input[name="q${i}"]:checked`)).length;
+    }
+
+    function updateProgress() {
+      const pct = Math.round(answered() / questions.length * 100);
+      const bar = document.getElementById('sq-pbar');
+      if (bar) { bar.style.width = pct + '%'; }
+      const btn = document.getElementById('sq-btn');
+      if (btn) { btn.disabled = answered() < questions.length; }
+    }
+
+    root.innerHTML = `
+      <div class="sq-card">
+        <div class="sq-title">${data.title || 'Cuestionario de seguridad'}</div>
+        <div class="sq-sub">
+          Organizacion evaluada: <strong>${data.supplier_name || '-'}</strong>
+          ${expires ? ` &nbsp;|&nbsp; <span class="sq-expires">Expira el ${expires}</span>` : ''}
+        </div>
+        <div class="sq-progress"><div class="sq-progress-bar" id="sq-pbar" style="width:0%;"></div></div>
+        <div id="sq-questions">
+          ${questions.map((q, i) => `
+            <div class="sq-question" id="qblock-${i}">
+              <div class="sq-q-text"><span class="sq-q-num">${i+1}</span>${q.text || q.id}</div>
+              <div class="sq-radios">
+                <label><input type="radio" name="q${i}" value="yes" onchange="sqProgress()"><span>Si</span></label>
+                <label><input type="radio" name="q${i}" value="no" onchange="sqProgress()"><span>No</span></label>
+                <label><input type="radio" name="q${i}" value="partial" onchange="sqProgress()"><span>Parcialmente</span></label>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="sq-card">
+        <button class="sq-submit" id="sq-btn" disabled onclick="sqSubmit()">Enviar respuestas</button>
+        <p style="font-size:11px;color:var(--text-muted);text-align:center;margin:10px 0 0;">
+          Responde todas las preguntas antes de enviar. Esta accion no se puede deshacer.
+        </p>
+      </div>`;
+
+    window.sqProgress = updateProgress;
+
+    window.sqSubmit = async function() {
+      if (answered() < questions.length) {
+        alert('Por favor responde todas las preguntas antes de enviar.');
+        return;
+      }
+      const answers = {};
+      questions.forEach((q, i) => {
+        const val = document.querySelector(`input[name="q${i}"]:checked`)?.value;
+        answers[q.id] = val === 'yes' ? true : val === 'partial' ? 'partial' : false;
+      });
+      const btn = document.getElementById('sq-btn');
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      try {
+        const resp = await fetch('/api/supplier-questionnaires/public/' + encodeURIComponent(token) + '/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          alert(err.detail || 'Error al enviar. Intenta de nuevo.');
+          btn.disabled = false;
+          btn.textContent = 'Enviar respuestas';
+          return;
+        }
+        const result = await resp.json();
+        showSuccess(result.score || 0);
+      } catch (e) {
+        alert('Error de conexion al enviar. Verifica tu conexion e intenta de nuevo.');
+        btn.disabled = false;
+        btn.textContent = 'Enviar respuestas';
+      }
+    };
+  }
+
+  const token = getToken();
+  if (!token) {
+    showError('Enlace incompleto', 'Este enlace no contiene un token valido. Solicita al evaluador un enlace correcto.');
+  } else {
+    loadQuestionnaire(token);
+  }
+})();
+</script>
+</body>
+</html>

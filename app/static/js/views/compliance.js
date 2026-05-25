@@ -97,6 +97,9 @@ const ViewCompliance = (() => {
     try {
       const data = await Api.compliance.summary();
       _render(content, data);
+      // Wire AI gap button (rendered inside _render)
+      const gapBtn = document.getElementById('btn-gap-analysis');
+      if (gapBtn) gapBtn.onclick = _runGapAnalysis;
     } catch (e) {
       content.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
@@ -178,7 +181,97 @@ const ViewCompliance = (() => {
       <p style="font-size:11px;color:var(--text-muted);margin-top:16px;text-align:center;">
         Puntuaciones calculadas a partir de los datos registrados en RiskHub. Actualizar regularmente para reflejar el estado real del SGSI.
       </p>
+
+      <!-- AI Gap Analysis section -->
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-top:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">Analisis de brechas de controles (M9)</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0;">Detecta controles sin implementar, temas debiles y problemas SOA por framework</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="gap-framework" style="font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-1);">
+              <option value="iso27001">ISO 27001</option>
+              <option value="nis2">NIS2</option>
+              <option value="nist_csf">NIST CSF</option>
+              <option value="ens">ENS</option>
+            </select>
+            <button class="btn btn-primary" id="btn-gap-analysis">Analizar brechas</button>
+          </div>
+        </div>
+        <div id="gap-results" style="display:none;"></div>
+      </div>
     `;
+  }
+
+  async function _runGapAnalysis() {
+    const framework = document.getElementById('gap-framework')?.value || 'iso27001';
+    const btn = document.getElementById('btn-gap-analysis');
+    const resultsDiv = document.getElementById('gap-results');
+    if (!resultsDiv) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Analizando...'; }
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Analizando controles...</p>';
+    try {
+      const d = await Api.ai.controlGap({ framework });
+      const s = d.summary || {};
+      const pct = s.pct_implemented || 0;
+      const pctColor = pct >= 75 ? 'var(--risk-low)' : pct >= 50 ? 'var(--risk-medium)' : pct >= 25 ? 'var(--risk-high)' : 'var(--risk-critical)';
+      resultsDiv.innerHTML = `
+        <hr style="border:none;border-top:1px solid var(--border);margin:0 0 16px;">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+          <div class="stat-card"><div class="stat-value">${s.total||0}</div><div class="stat-label">Controles totales</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.implemented||0}</div><div class="stat-label">Implementados</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--risk-medium);">${s.partial||0}</div><div class="stat-label">Parciales</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.not_implemented||0}</div><div class="stat-label">Sin implementar</div></div>
+          <div class="stat-card">
+            <div class="stat-value" style="color:${pctColor};">${pct}%</div>
+            <div class="stat-label">Cobertura efectiva</div>
+          </div>
+        </div>
+        ${d.weak_themes?.length ? `
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">Temas con menor cobertura</h4>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+            ${d.weak_themes.map(t => `
+              <div style="background:var(--bg-2);border-radius:8px;padding:8px 12px;font-size:12px;min-width:140px;">
+                <div style="font-weight:700;color:var(--risk-high);font-size:16px;">${t.score}%</div>
+                <div style="font-weight:600;margin:2px 0;">${UI.esc(t.theme)}</div>
+                <div style="color:var(--text-muted);">${t.not_implemented} sin implementar de ${t.total}</div>
+              </div>`).join('')}
+          </div>` : ''}
+        ${d.soa_issues ? `
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">Problemas SOA (cl. 6.1.3)</h4>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+            ${d.soa_issues.missing_inclusion_reason > 0 ? `<span style="background:#FEF9C3;color:#854D0E;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${d.soa_issues.missing_inclusion_reason} sin razon de inclusion</span>` : ''}
+            ${d.soa_issues.missing_evidence > 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${d.soa_issues.missing_evidence} sin evidencia</span>` : ''}
+            ${d.soa_issues.overdue_reviews > 0 ? `<span style="background:#FFF7ED;color:#9A3412;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${d.soa_issues.overdue_reviews} revisiones vencidas</span>` : ''}
+            ${(!d.soa_issues.missing_inclusion_reason && !d.soa_issues.missing_evidence && !d.soa_issues.overdue_reviews) ? '<span style="color:var(--risk-low);font-size:13px;">Sin problemas SOA detectados.</span>' : ''}
+          </div>` : ''}
+        ${d.recommendations?.length ? `
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">Recomendaciones</h4>
+          <ul style="margin:0 0 12px;padding-left:20px;">
+            ${d.recommendations.map(r => `<li style="font-size:13px;margin-bottom:4px;color:var(--text-base);">${UI.esc(r)}</li>`).join('')}
+          </ul>` : ''}
+        ${d.critical_gaps?.length ? `
+          <details style="margin-top:8px;">
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);">
+              ${d.critical_gaps.length} controles sin implementar (sin justificacion de exclusion)
+            </summary>
+            <div style="margin-top:8px;">
+              ${d.critical_gaps.map(g => `
+                <div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;">
+                  <span style="color:var(--text-muted);min-width:80px;">${UI.esc(g.theme||'-')}</span>
+                  <span style="font-weight:600;">${UI.esc(g.control_name)}</span>
+                  <span style="color:var(--text-muted);">madurez ${g.maturity}/5</span>
+                </div>`).join('')}
+            </div>
+          </details>` : ''}
+      `;
+    } catch (e) {
+      resultsDiv.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Analizar brechas'; }
+    }
   }
 
   return { render };

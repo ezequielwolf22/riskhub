@@ -555,13 +555,21 @@ const ViewRisks = {
     `, {
       actions: canEdit ? `
         <button class="btn" id="m-cancel">Cerrar</button>
+        ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie de causas y consecuencias">Bow-Tie</button>' : ''}
         ${id ? '<button class="btn btn-ghost" id="m-clone" title="Crear una copia de este riesgo">Duplicar</button>' : ''}
         ${id ? '<button class="btn btn-danger" id="m-del">Eliminar</button>' : ''}
         <button class="btn btn-primary" id="m-save">Guardar</button>
-      ` : '<button class="btn" id="m-cancel">Cerrar</button>'
+      ` : `<button class="btn" id="m-cancel">Cerrar</button>
+        ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie">Bow-Tie</button>' : ''}`
     });
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
+
+    // Bowtie diagram
+    if (id) {
+      const btBtn = document.getElementById('m-bowtie');
+      if (btBtn) btBtn.onclick = () => { UI.closeModal(); ViewRisks._bowtie(r); };
+    }
 
     // Duplicar riesgo (clonar)
     if (id && canEdit) {
@@ -682,5 +690,129 @@ const ViewRisks = {
         UI.closeModal(); UI.toast('Guardado','success'); ViewRisks._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
+  },
+
+  _bowtie(r) {
+    const threatName   = r.threat?.name || 'Amenaza';
+    const assetName    = r.asset?.name  || 'Activo';
+    const vulns        = r.vulnerabilities || [];
+    const controls     = r.controls || [];
+    const consequence  = r.consequence_description || r.description || 'Consecuencia potencial';
+    const riskCode     = r.code || '';
+
+    // Layout constants
+    const W = 860, H = 360;
+    const CX = W / 2, CY = H / 2;
+    const R  = 44;           // radio del circulo central
+    const COL_L = 140;       // x del bloque izquierdo
+    const COL_R = W - 140;   // x del bloque derecho
+
+    // Causas (left): amenaza + vulnerabilidades
+    const leftItems = [threatName, ...vulns.map(v => v.name || v.code)];
+    // Efectos (right): consecuencias + controles
+    const rightItems = controls.length
+      ? controls.map(c => c.name || c.code)
+      : [consequence.length > 60 ? consequence.slice(0,57)+'...' : consequence];
+
+    function _color(i, side) {
+      const palette = side === 'L'
+        ? ['#EF4444','#F97316','#F59E0B','#EAB308','#84CC16']
+        : ['#22C55E','#10B981','#0EA5E9','#3B82F6','#6366F1'];
+      return palette[i % palette.length];
+    }
+
+    function _truncate(s, n) { return s.length > n ? s.slice(0,n-1)+'…' : s; }
+
+    function _nodeGroup(items, side) {
+      const total = items.length;
+      const spacing = Math.min(64, (H - 60) / Math.max(total, 1));
+      const startY  = CY - ((total - 1) * spacing) / 2;
+      return items.map((label, i) => {
+        const ny   = startY + i * spacing;
+        const nx   = side === 'L' ? COL_L : COL_R;
+        const color = _color(i, side);
+        // Arrow line: node edge → risk circle tangent
+        const lineX1 = side === 'L' ? nx + 68 : nx - 68;
+        const lineX2 = side === 'L' ? CX - R - 4 : CX + R + 4;
+        const arrowD = side === 'L'
+          ? `M${lineX2},${CY} l-8,-5 l0,10 z`
+          : `M${lineX2},${CY} l8,-5 l0,10 z`;
+        return `
+          <line x1="${lineX1}" y1="${ny}" x2="${lineX2}" y2="${CY}"
+                stroke="${color}" stroke-width="1.5" stroke-dasharray="${side==='R'?'4 3':''}" opacity=".7"/>
+          <polygon points="${arrowD.match(/[\d.,\s]+/g)?.join('')||''}"
+                   fill="${color}" opacity=".7"/>
+          <rect x="${nx - 68}" y="${ny - 16}" width="136" height="32" rx="6"
+                fill="${color}22" stroke="${color}" stroke-width="1.5"/>
+          <text x="${nx}" y="${ny + 5}" text-anchor="middle"
+                font-size="11" font-family="Inter,system-ui,sans-serif"
+                fill="${color}" font-weight="600">${_truncate(label, 20)}</text>`;
+      }).join('');
+    }
+
+    const levelColor = r.residual_level >= 7 ? '#EF4444'
+                     : r.residual_level >= 5 ? '#F97316'
+                     : r.residual_level >= 3 ? '#F59E0B'
+                     : '#22C55E';
+
+    const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}"
+         style="width:100%;max-height:380px;display:block;">
+      <!-- background -->
+      <rect width="${W}" height="${H}" fill="var(--bg-1)" rx="10"/>
+
+      <!-- left label -->
+      <text x="${COL_L}" y="22" text-anchor="middle" font-size="11"
+            font-family="Inter,system-ui,sans-serif" fill="var(--text-muted)" font-weight="600"
+            text-transform="uppercase">CAUSAS (amenaza + vulnerabilidades)</text>
+
+      <!-- right label -->
+      <text x="${COL_R}" y="22" text-anchor="middle" font-size="11"
+            font-family="Inter,system-ui,sans-serif" fill="var(--text-muted)" font-weight="600">CONSECUENCIAS y CONTROLES</text>
+
+      <!-- node groups -->
+      ${_nodeGroup(leftItems, 'L')}
+      ${_nodeGroup(rightItems, 'R')}
+
+      <!-- central risk circle -->
+      <circle cx="${CX}" cy="${CY}" r="${R}" fill="${levelColor}22" stroke="${levelColor}" stroke-width="2.5"/>
+      <text x="${CX}" y="${CY - 8}" text-anchor="middle" font-size="10"
+            font-family="Inter,system-ui,sans-serif" fill="${levelColor}" font-weight="700">${riskCode}</text>
+      <text x="${CX}" y="${CY + 6}" text-anchor="middle" font-size="10"
+            font-family="Inter,system-ui,sans-serif" fill="${levelColor}" font-weight="700">R=${r.residual_level}</text>
+      <text x="${CX}" y="${CY + 20}" text-anchor="middle" font-size="9"
+            font-family="Inter,system-ui,sans-serif" fill="var(--text-muted)">${_truncate(assetName, 16)}</text>
+    </svg>`;
+
+    UI.modal(`Diagrama Bow-Tie — ${riskCode}`, `
+      <div class="span2" style="margin-bottom:12px;">
+        ${svg}
+      </div>
+      <div class="span2">
+        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+          <tr style="background:var(--bg-2);">
+            <td style="padding:6px 10px;font-weight:600;color:var(--text-muted);width:120px;">Activo</td>
+            <td style="padding:6px 10px;">${UI.esc(assetName)}</td>
+            <td style="padding:6px 10px;font-weight:600;color:var(--text-muted);width:120px;">Amenaza</td>
+            <td style="padding:6px 10px;">${UI.esc(threatName)}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 10px;font-weight:600;color:var(--text-muted);">Nivel residual</td>
+            <td style="padding:6px 10px;">${UI.riskPill(r.residual_level)}</td>
+            <td style="padding:6px 10px;font-weight:600;color:var(--text-muted);">Tratamiento</td>
+            <td style="padding:6px 10px;">${UI.treatmentLabel(r.treatment_option)}</td>
+          </tr>
+          ${vulns.length ? `<tr style="background:var(--bg-2);"><td style="padding:6px 10px;font-weight:600;color:var(--text-muted);">Vulnerabilidades</td>
+            <td colspan="3" style="padding:6px 10px;">${vulns.map(v=>UI.esc(v.name||v.code)).join(', ')}</td></tr>` : ''}
+          ${controls.length ? `<tr><td style="padding:6px 10px;font-weight:600;color:var(--text-muted);">Controles</td>
+            <td colspan="3" style="padding:6px 10px;">${controls.map(c=>UI.esc(c.name||c.code)).join(', ')}</td></tr>` : ''}
+        </table>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">Cerrar</button>
+                <button class="btn btn-ghost" id="m-back">Volver al riesgo</button>`
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-back').onclick = () => { UI.closeModal(); ViewRisks._edit(r.id); };
   },
 };

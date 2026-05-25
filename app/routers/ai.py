@@ -1,4 +1,6 @@
 """Endpoints del agente IA: cuestionario + análisis de riesgos + sugerencias."""
+from collections import defaultdict
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from app.models import (
 )
 from app.security import get_current_user, require_role
 from app.services.ai_service import QUESTIONNAIRE, run_analysis
+from app.services.risk_engine import calc_level
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -344,7 +347,6 @@ def risk_suggest(
         # Consecuencia basada en que dimensiones afecta y valor del activo
         affected_dims = len(threat.affects or [])
         cons = min(4, max(1, asset_value - 1 + (1 if affected_dims >= 3 else 0)))
-        from app.services.risk_engine import calc_level
         level = calc_level(cons, lik)
         suggestions.append({
             "threat_id": threat.id,
@@ -372,4 +374,131 @@ def risk_suggest(
         "asset_type": asset_type_val,
         "suggestions": suggestions[:10],
         "note": "Sugerencias basadas en catalogo ISO 27005 Annex C. Revisar y ajustar segun contexto especifico.",
+    }
+
+
+# ============================================================
+# M9 — AI Control Gap Analysis
+# ============================================================
+
+class GapAnalysisRequest(BaseModel):
+    framework: str = "iso27001"   # iso27001 | nis2 | nist_csf | ens
+    theme_filter: Optional[str] = None  # filtra por tema de control (opcional)
+
+
+@router.post("/control-gap")
+def control_gap_analysis(
+    req: GapAnalysisRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Analiza brechas en la implementacion de controles para el framework solicitado."""
+    impls = db.query(ControlImplementation).all()
+    risks = db.query(Risk).filter(Risk.status != RiskStatus.CLOSED).all()
+
+    def _theme(impl) -> str:
+        return (impl.control.theme if impl.control else None) or "Sin tema"
+
+    if req.theme_filter:
+        impls = [i for i in impls if _theme(i) == req.theme_filter]
+
+    total = len(impls)
+    implemented = [i for i in impls if i.status == ControlStatus.IMPLEMENTED]
+    partial = [i for i in impls if i.status == ControlStatus.PARTIAL]
+    not_impl = [i for i in impls if i.status == ControlStatus.NOT_IMPLEMENTED]
+    planned = [i for i in impls if i.status == ControlStatus.PLANNED]
+
+    # Agrupar por tema para detectar temas debiles
+    theme_stats: dict = defaultdict(lambda: {"total": 0, "implemented": 0, "partial": 0, "not_implemented": 0})
+    for i in impls:
+        t = _theme(i)
+        theme_stats[t]["total"] += 1
+        if i.status == ControlStatus.IMPLEMENTED:
+            theme_stats[t]["implemented"] += 1
+        elif i.status == ControlStatus.PARTIAL:
+            theme_stats[t]["partial"] += 1
+        elif i.status == ControlStatus.NOT_IMPLEMENTED:
+            theme_stats[t]["not_implemented"] += 1
+
+    # Temas debiles: <40% implementados
+    weak_themes = []
+    for theme, s in theme_stats.items():
+        score = (s["implemented"] + s["partial"] * 0.5) / s["total"] * 100 if s["total"] else 0
+        if score < 40:
+            weak_themes.append({"theme": theme, "score": round(score), "total": s["total"],
+                                 "not_implemented": s["not_implemented"]})
+    weak_themes.sort(key=lambda x: x["score"])
+
+    # Controles criticos sin implementar: sin exclusion y asociados a riesgos con nivel residual >= 5
+    high_risk_asset_ids = {r.asset_id for r in risks if r.residual_level >= 5}
+    critical_gaps = []
+    for i in not_impl:
+        if i.exclusion_justification:
+            continue  # excluido con justificacion
+        critical_gaps.append({
+            "control_id": i.id,
+            "control_name": i.name,
+            "theme": _theme(i),
+            "maturity": i.maturity,
+            "next_review": i.next_review.isoformat() if i.next_review else None,
+        })
+
+    # SOA gaps
+    soa_no_reason = [i for i in impls if not i.inclusion_reason and not i.exclusion_justification]
+    soa_no_evidence = [i for i in impls if i.status == ControlStatus.IMPLEMENTED and not i.evidence_refs]
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    overdue_reviews = [i for i in impls if i.next_review and i.next_review < now_utc]
+
+    # Recomendaciones por framework
+    recommendations = []
+    if req.framework in ("iso27001", "ens"):
+        if not_impl:
+            recommendations.append(
+                f"Implementar o justificar exclusion de {len(not_impl)} controles pendientes (cl. 6.1.3 SOA)."
+            )
+        if soa_no_reason:
+            recommendations.append(
+                f"Documentar razon de inclusion en {len(soa_no_reason)} controles sin justificacion SOA."
+            )
+        if soa_no_evidence:
+            recommendations.append(
+                f"Adjuntar evidencias en {len(soa_no_evidence)} controles implementados sin referencia de evidencia."
+            )
+        if overdue_reviews:
+            recommendations.append(
+                f"Revisar {len(overdue_reviews)} controles con fecha de revision vencida."
+            )
+    if req.framework == "nis2":
+        recommendations.append(
+            "Priorizar controles de gestion de incidentes (Art. 21.2.b) y cadena de suministro (Art. 21.2.d)."
+        )
+    if req.framework == "nist_csf":
+        recommendations.append(
+            "Reforzar funcion PROTECT con controles de acceso y cifrado; DETECT con monitorizacion continua."
+        )
+
+    if not recommendations:
+        recommendations.append("Cobertura de controles adecuada para el framework seleccionado. Mantener ciclos de revision.")
+
+    pct_implemented = round((len(implemented) + len(partial) * 0.5) / total * 100) if total else 0
+
+    return {
+        "framework": req.framework,
+        "theme_filter": req.theme_filter,
+        "summary": {
+            "total": total,
+            "implemented": len(implemented),
+            "partial": len(partial),
+            "not_implemented": len(not_impl),
+            "planned": len(planned),
+            "pct_implemented": pct_implemented,
+        },
+        "weak_themes": weak_themes[:8],
+        "critical_gaps": critical_gaps[:20],
+        "soa_issues": {
+            "missing_inclusion_reason": len(soa_no_reason),
+            "missing_evidence": len(soa_no_evidence),
+            "overdue_reviews": len(overdue_reviews),
+        },
+        "recommendations": recommendations,
     }
