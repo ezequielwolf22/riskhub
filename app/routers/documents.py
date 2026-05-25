@@ -19,6 +19,12 @@ ALLOWED_MIME = {
 }
 MAX_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
+# Firmas magicas (magic bytes) para validar contenido real del archivo (OWASP A08)
+_MAGIC_BYTES: dict[str, bytes] = {
+    "application/pdf": b"%PDF",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": b"PK\x03\x04",
+}
+
 
 def _infer_mime(filename: str, content_type: str) -> str:
     ext = (filename or "").lower().rsplit(".", 1)[-1]
@@ -29,6 +35,19 @@ def _infer_mime(filename: str, content_type: str) -> str:
     if ext in ("txt", "csv", "md"):
         return "text/plain"
     return content_type or "application/octet-stream"
+
+
+def _validate_magic(mime: str, data: bytes) -> bool:
+    """Comprueba que los magic bytes del archivo corresponden al MIME declarado."""
+    expected = _MAGIC_BYTES.get(mime)
+    if expected is None:
+        # TXT/CSV: no hay magic bytes; aceptar si es decodificable como UTF-8
+        try:
+            data[:512].decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            return False
+        return True
+    return data[:len(expected)] == expected
 
 
 def _doc_out(d: AiDocument) -> dict:
@@ -69,6 +88,10 @@ def upload_document(
     mime = _infer_mime(file.filename or "", file.content_type or "")
     if mime not in ALLOWED_MIME and not any(k in mime for k in ("pdf", "docx", "plain", "csv")):
         raise HTTPException(400, "Tipo de archivo no soportado. Usa PDF, DOCX o TXT.")
+
+    # OWASP A08 — validar contenido real mediante magic bytes
+    if not _validate_magic(mime, data):
+        raise HTTPException(400, "El contenido del archivo no coincide con la extension declarada.")
 
     try:
         cat = AiDocumentCategory(category)

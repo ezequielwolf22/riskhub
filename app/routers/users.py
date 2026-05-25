@@ -24,11 +24,19 @@ def list_users(db: Session = Depends(get_db)):
     return result
 
 
+_MIN_PASSWORD_LEN = 8
+
+
 @router.post("/", response_model=UserOut, status_code=201)
 def create_user(data: UserIn, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(400, "Ya existe un usuario con ese email")
+    if len(data.password) < _MIN_PASSWORD_LEN:
+        raise HTTPException(
+            400,
+            f"La contrasena debe tener al menos {_MIN_PASSWORD_LEN} caracteres",
+        )
     u = User(
         email=data.email, full_name=data.full_name, role=data.role,
         hashed_password=hash_password(data.password), is_active=True,
@@ -59,6 +67,9 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
 @router.delete("/{user_id}", status_code=204)
 def delete_user(user_id: int, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
+    # OWASP A01 — impedir autoeliminacion
+    if user_id == current_user.id:
+        raise HTTPException(400, "No puedes eliminar tu propia cuenta de administrador")
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(404, "Usuario no encontrado")

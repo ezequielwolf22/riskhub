@@ -528,6 +528,10 @@ def _resolve_api_key(cfg: AiConfig | None) -> str | None:
     return settings.anthropic_api_key
 
 
+_MAX_TOKENS_CAP = 4096   # tope servidor para evitar abuso de coste de API
+_MAX_MESSAGES = 40       # evitar payloads gigantes
+
+
 class ChatMessage(BaseModel):
     role: str     # "user" | "assistant"
     content: str
@@ -552,6 +556,11 @@ def chat(
     current_user: User = Depends(get_current_user),
 ):
     """Chat conversacional con el agente IA enriquecido con el contexto de la organizacion."""
+    # Aplicar topes de seguridad del lado del servidor
+    capped_max_tokens = min(req.max_tokens, _MAX_TOKENS_CAP)
+    if len(req.messages) > _MAX_MESSAGES:
+        raise HTTPException(400, f"Demasiados mensajes en el historial (maximo {_MAX_MESSAGES}).")
+
     cfg = db.query(AiConfig).first()
     api_key = _resolve_api_key(cfg)
     if not api_key:
@@ -591,7 +600,7 @@ def chat(
         messages_payload = [{"role": m.role, "content": m.content} for m in req.messages]
         response = client.messages.create(
             model=model,
-            max_tokens=req.max_tokens,
+            max_tokens=capped_max_tokens,
             system=system_prompt,
             messages=messages_payload,
         )

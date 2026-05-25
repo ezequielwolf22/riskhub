@@ -1,4 +1,5 @@
 """Entrypoint FastAPI - monta routers REST + frontend estatico."""
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -8,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.config import settings
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
     admin, ai, ai_config, alerts, assets, audit, audits, auth, catalogues, context,
     controls, documents, gdpr, incidents, nonconformities, policies, reports, risks,
@@ -16,13 +18,25 @@ from app.routers import (
 from app.seed import init_db
 from app.services import scheduler as sched
 
+logger = logging.getLogger(__name__)
+
+_WEAK_KEY = "change-me-in-production-very-long-random-string"
+_MIN_KEY_LEN = 32
+
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(
     title="RiskHub",
     description="Plataforma de gestion de riesgos - ISO/IEC 27005:2018",
     version=__version__,
+    # Deshabilitar documentacion automatica en produccion
+    docs_url=None if settings.env == "production" else "/docs",
+    redoc_url=None if settings.env == "production" else "/redoc",
+    openapi_url=None if settings.env == "production" else "/openapi.json",
 )
+
+# Cabeceras de seguridad HTTP — se aplican a todas las respuestas (OWASP A05)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # CORS solo en dev; en produccion la app se sirve junto al frontend
 if settings.env != "production":
@@ -37,6 +51,13 @@ if settings.env != "production":
 
 @app.on_event("startup")
 def startup():
+    # OWASP A02 — advertir si la clave secreta es debil
+    key = settings.secret_key
+    if key == _WEAK_KEY or len(key) < _MIN_KEY_LEN:
+        logger.warning(
+            "SEGURIDAD: RISKHUB_SECRET_KEY es debil o usa el valor por defecto. "
+            "Genera una clave segura: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+        )
     init_db()
     sched.start(interval_hours=1)
 

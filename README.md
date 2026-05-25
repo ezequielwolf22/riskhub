@@ -1,11 +1,11 @@
-# RiskHub TKE
+# RiskHub
 
-Plataforma corporativa de **gestion del riesgo de seguridad de la informacion**
+Plataforma de **gestion del riesgo de seguridad de la informacion**
 basada en **ISO/IEC 27005:2018**, con catalogo de controles **ISO/IEC 27002:2022**
-y branding **TK Elevator**.
+y agente de IA integrado.
 
-Construida para correr **on-premise**, no expuesta a internet, en un servidor
-interno del cliente.
+Disenada para correr **on-premise**, sin dependencias de internet, en un servidor
+interno. Multi-usuario con roles diferenciados.
 
 ---
 
@@ -25,9 +25,11 @@ interno del cliente.
 - **Tratamiento** ISO 27005 cl. 9: modificacion / retencion / evitacion / transferencia.
 - **Aceptacion** formal con trazabilidad (quien y cuando).
 - **Multi-usuario** con tres roles: `admin`, `analyst`, `viewer`.
-- **Informes PDF** corporativos con branding TKE: Risk Register, Statement of Applicability.
-- **Branding TK Elevator** completo: colores oficiales web, gradiente Sunrise,
-  brackets, brand bar, placeholder de logo listo para sustituir.
+- **Informes PDF** con branding personalizable: Risk Register, Statement of Applicability.
+- **Agente IA** (Claude API): chat conversacional, sugerencias de riesgos y controles,
+  RAG sobre documentacion interna del SGSI, anonimizacion configurable.
+- **Gestion de proveedores, no conformidades, incidentes, tareas, politicas** y mas.
+- **Branding**: paleta purple `#59008D` / orange `#D65200`. Tipografia Inter (local, sin CDN).
 
 ---
 
@@ -41,9 +43,11 @@ interno del cliente.
 | PDF | ReportLab |
 | Importacion | pandas + openpyxl |
 | Auth | JWT (HS256) + bcrypt |
+| IA | Claude API (Anthropic) + RAG FTS5 |
 | Despliegue | Docker + docker compose |
 
-Todo el stack es libre y autocontenido. Cero dependencias externas en runtime.
+Todo el stack es libre y autocontenido. Cero dependencias externas en runtime
+(salvo la API de IA, que es opcional).
 
 ---
 
@@ -52,9 +56,8 @@ Todo el stack es libre y autocontenido. Cero dependencias externas en runtime.
 Requisitos: **Docker 20.10+** y **docker compose**.
 
 ```bash
-# 1. Clonar / copiar el proyecto al servidor
-cd /opt
-unzip riskhub-tke.zip -d riskhub
+# 1. Clonar el repositorio
+git clone https://github.com/ezequielwolf22/riskhub.git
 cd riskhub
 
 # 2. Crear el archivo .env
@@ -68,24 +71,28 @@ python3 -c "import secrets; print(secrets.token_urlsafe(64))"
 docker compose up -d
 
 # 4. Verificar
-curl http://localhost:8080/api/health
+curl http://localhost/api/health
 ```
 
-La aplicacion estara disponible en `http://localhost:8080` (puerto configurable
+La aplicacion estara disponible en `http://localhost` (puerto configurable
 en `.env` con `RISKHUB_PORT_HOST`).
 
-**Login inicial**: el email/password de `.env`. **Cambia la contrasena en el
+**Login inicial**: el email/password configurados en `.env`. **Cambia la contrasena en el
 primer inicio de sesion**.
 
 ### Datos persistentes
 
 Los datos se guardan en el volumen Docker `riskhub-data` (`/srv/data` dentro
-del contenedor). Backup recomendado: `docker run --rm -v riskhub-data:/data
--v $(pwd):/backup ubuntu tar czf /backup/riskhub-$(date +%F).tar.gz /data`.
+del contenedor). Backup recomendado:
+
+```bash
+docker run --rm -v riskhub-data:/data -v $(pwd):/backup \
+  ubuntu tar czf /backup/riskhub-$(date +%F).tar.gz /data
+```
 
 ---
 
-## Despliegue sin Docker (desarrollo o servidores sin Docker)
+## Despliegue sin Docker (desarrollo)
 
 Requisitos: **Python 3.11+**.
 
@@ -97,7 +104,7 @@ source .venv/bin/activate      # Linux/Mac
 pip install -r requirements.txt
 
 export RISKHUB_SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(64))")
-export RISKHUB_ADMIN_EMAIL=admin@tkelevator.com
+export RISKHUB_ADMIN_EMAIL=admin@company.internal
 export RISKHUB_ADMIN_PASSWORD=ChangeMe123!
 
 uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -110,36 +117,31 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | Variable | Default | Descripcion |
 |----------|---------|-------------|
 | `RISKHUB_SECRET_KEY` | (obligatoria) | Clave para firmar JWT. Min 32 caracteres. |
-| `RISKHUB_ADMIN_EMAIL` | `admin@tkelevator.com` | Email del admin inicial. |
+| `RISKHUB_ADMIN_EMAIL` | `admin@company.internal` | Email del admin inicial. |
 | `RISKHUB_ADMIN_PASSWORD` | (obligatoria) | Contrasena del admin inicial. |
 | `RISKHUB_DB_PATH` | `./riskhub.db` | Ruta de la BD SQLite. |
 | `RISKHUB_DATABASE_URL` | (vacio) | Si se especifica, se ignora `DB_PATH`. Ej: `postgresql://user:pass@host/db`. |
 | `RISKHUB_JWT_EXPIRES_MINUTES` | 480 | Duracion del token (8h). |
 | `RISKHUB_ENV` | `development` | `production` desactiva CORS abierto. |
+| `RISKHUB_ANTHROPIC_API_KEY` | (opcional) | Clave API de Claude para el agente IA. |
 
 ---
 
-## Branding: sustitucion del logo y fuentes oficiales
+## Logo
 
-### Logo
+Coloca tu logo en `app/static/img/logo.svg`. El archivo actual es el logo
+por defecto de RiskHub. Para usar tu logo corporativo:
 
-El proyecto incluye un **placeholder** en `app/static/img/tke-logo.svg`.
-Para usar el logo oficial:
+1. Sustituye `app/static/img/logo.svg` por tu SVG (mantén el nombre del archivo).
+2. Reinicia el contenedor: `docker compose restart`.
 
-1. Entra al Brand Hub: <https://www.brandhub.tkelevator.com/en>
-2. Descarga `tke_logo_standard_rgb_gradient_black_white.zip`
-3. Sustituye `app/static/img/tke-logo.svg` por el SVG oficial (mantén el
-   nombre del archivo).
-4. Opcionalmente añade variantes: `tke-logo-white.svg` para fondos oscuros y
-   `tke-logo-black.svg` para impresion.
-5. Reinicia el contenedor: `docker compose restart`.
+---
 
-### Tipografia
+## Tipografia
 
-El producto usa **Inter** como sustituto cercano a la tipografia
-propietaria **TKE Type**. Las fuentes deben servirse en local (sin CDN).
+El producto usa **Inter** como tipografia principal. Las fuentes deben servirse
+en local (sin CDN).
 
-Opcion A — usar Inter (gratis):
 ```bash
 mkdir -p app/static/vendor/fonts && cd app/static/vendor/fonts
 # Descarga las fuentes Inter desde https://rsms.me/inter/
@@ -147,13 +149,6 @@ mkdir -p app/static/vendor/fonts && cd app/static/vendor/fonts
 #   Inter-Regular.woff2  Inter-Medium.woff2  Inter-Bold.woff2
 #   JetBrainsMono-Regular.woff2
 ```
-
-Opcion B — usar TKE Type oficial (recomendado para entornos productivos
-con licencia activa):
-1. Descarga los `.woff2` de TKE Type desde el Brand Hub.
-2. Copia los archivos a `app/static/vendor/fonts/`.
-3. Edita `app/static/css/app.css` y sustituye los `@font-face` de Inter
-   por los nombres y `src` de TKE Type. Cambia `--font-sans` a `'TKE Type'`.
 
 Si no se sirven fuentes locales, el navegador hace fallback al stack del
 sistema (San Francisco / Segoe UI / Arial). La app sigue funcionando.
@@ -168,7 +163,7 @@ sistema (San Francisco / Segoe UI / Arial). La app sigue funcionando.
 | `analyst` | viewer + CRUD de activos, riesgos, controles, amenazas/vulns custom. |
 | `admin` | analyst + gestion de usuarios y contexto del SGSI. |
 
-Para crear usuarios, entra como admin y ve a `/users`.
+Para crear usuarios, entra como admin y ve a `#/users`.
 
 ---
 
@@ -198,18 +193,25 @@ riskhub/
     │   ├── controls.py             # ISO 27002 + implementaciones
     │   ├── risks.py                # Riesgos + heatmap + stats
     │   ├── context.py              # Contexto SGSI
-    │   ├── reports.py              # PDFs con branding TKE
+    │   ├── reports.py              # PDFs
+    │   ├── ai.py                   # Agente IA + chat + RAG
+    │   ├── ai_config.py            # Configuracion agente IA
+    │   └── documents.py            # Documentos RAG del agente
     ├── services/
-    │   └── risk_engine.py          # Matriz 5x5, calc inherent/residual
+    │   ├── risk_engine.py          # Matriz 5x5, calc inherent/residual
+    │   ├── context_builder.py      # Contexto para llamadas IA
+    │   ├── rag_service.py          # Busqueda semantica FTS5
+    │   ├── document_service.py     # Extraccion + chunking de documentos
+    │   └── anonymizer.py          # Anonimizacion PII antes de llamadas IA
     ├── data/
     │   ├── threats_iso27005.json   # 49 amenazas
     │   ├── vulnerabilities_iso27005.json  # 67 vulns
-    │   ├── controls_iso27002_2022.json    # 93 controles
+    │   └── controls_iso27002_2022.json    # 93 controles
     └── static/
         ├── login.html
         ├── index.html              # SPA principal
-        ├── css/app.css             # Branding TKE
-        ├── img/tke-logo.svg        # PLACEHOLDER
+        ├── css/app.css
+        ├── img/logo.svg
         ├── vendor/fonts/           # Inter + JetBrains Mono
         └── js/
             ├── api.js              # Cliente HTTP
@@ -221,52 +223,48 @@ riskhub/
 
 ---
 
-## Despliegue en servidor cloud (produccion)
+## Despliegue en produccion (hardening)
 
-Ver `docs/PRODUCTION.md` para los pasos de hardening, configuracion de
-reverse proxy (nginx/Caddy), TLS interno con certificados corporativos,
-backups automaticos y monitorizacion.
-
-Resumen:
+Resumen de buenas practicas para entornos productivos:
 
 1. VM Ubuntu 24.04 LTS, 2 vCPU / 4 GB RAM / 40 GB disco.
-2. SSH solo con clave (no password), root deshabilitado.
-3. Firewall: solo 22 (SSH desde IPs corporativas) y 443 (HTTPS interno).
+2. SSH solo con clave (no password).
+3. Firewall: solo 22 (SSH) y 443/80 (HTTPS/HTTP).
 4. Docker + docker compose instalados.
-5. Reverse proxy (Caddy o nginx) con certificado interno corporativo.
-6. Backup nocturno del volumen `riskhub-data` a almacenamiento corporativo.
+5. Reverse proxy (Caddy o nginx) con TLS.
+6. `RISKHUB_ENV=production` en `.env`.
+7. Backup nocturno del volumen `riskhub-data`.
 
 ---
 
 ## Comparativa con productos comerciales
 
-| Capacidad | RiskHub TKE | SAI360 | PILAR (CCN-CERT) | OneTrust |
-|-----------|:-----------:|:------:|:----------------:|:--------:|
-| ISO 27005 nativo | ✓ | ✓ | ✓ (MAGERIT) | parcial |
-| Catalogos precargados | ✓ | ✓ | ✓ | ✓ |
-| Heatmap interactivo | ✓ | ✓ | ✓ | ✓ |
-| On-premise | ✓ | parcial | ✓ | no |
-| Codigo abierto / auditable | ✓ | no | no | no |
+| Capacidad | RiskHub | SAI360 | PILAR (CCN-CERT) | OneTrust |
+|-----------|:-------:|:------:|:----------------:|:--------:|
+| ISO 27005 nativo | si | si | si (MAGERIT) | parcial |
+| Catalogos precargados | si | si | si | si |
+| Heatmap interactivo | si | si | si | si |
+| On-premise | si | parcial | si | no |
+| Codigo abierto / auditable | si | no | no | no |
+| Agente IA integrado | si | parcial | no | parcial |
 | Coste de licencia | 0 | alto | gratis (sector publico ES) | alto |
-| Branding personalizado | ✓ | limitado | no | si |
-| Multi-cliente | no | si | si | si |
+| Branding personalizado | si | limitado | no | si |
 
 ---
 
 ## Roadmap
 
-Funcionalidades previstas para v1.1:
-- **Cuestionarios** semiautomatizados para generar cruces activo x amenaza.
-- **Agente IA** opcional para sugerir amenazas/controles relevantes
-  (deshabilitable por politica).
-- **Auditoria** detallada de cambios (audit log visible en UI).
-- **Workflow** de aprobacion de tratamientos con doble firma.
-- **LDAP/SAML** para SSO corporativo.
-- **Multi-idioma** (en/es/de/fr).
+- [ ] SuperAdmin con control de licenciamiento y activacion de modulos.
+- [ ] OIDC/SAML SSO (Microsoft Entra, Google Workspace).
+- [ ] Integracion SharePoint para importar documentacion SGSI en masa.
+- [ ] Integraciones SAP / Jagger / Sphera.
+- [ ] Extraccion automatica de clausulas ISO desde documentos de politicas.
+- [ ] Multi-idioma (en/es/de/fr).
+- [ ] Workflow de aprobacion de tratamientos con doble firma.
 
 ---
 
 ## Licencia y soporte
 
-Uso interno TK Elevator. Para incidencias o nuevas funcionalidades, contacta
-con el equipo de Seguridad de la Informacion.
+Uso interno. Para incidencias o nuevas funcionalidades, contacta con el
+equipo responsable del SGSI.

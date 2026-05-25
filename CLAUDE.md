@@ -24,44 +24,46 @@ Multi-usuario con roles.
 - **Autenticacion**: JWT (HS256) + bcrypt. Tres roles: `admin`, `analyst`, `viewer`.
 - **PDF**: ReportLab con paleta purple/orange.
 - **Despliegue**: Docker + docker compose. Volumen `riskhub-data` para BD persistente.
-- **IA**: No incluida en v1.0. Se anadira en v1.1 con Ollama local.
+- **IA**: Claude API (Anthropic). RAG con SQLite FTS5. Anonimizacion regex configurable.
 - **Branding**: Paleta purple `#59008D` / orange `#D65200`. Variables CSS: `--brand-purple`, `--brand-orange`. Tipografia: Inter.
+- **Seguridad**: Rate limiting en memoria, security headers middleware, magic bytes validation, API docs deshabilitados en produccion.
 
-## Estado actual (v1.0)
+## Estado actual (v1.3.1)
 
 ### Backend
 
 - [x] Modelos ISO 27005 (`app/models.py`)
 - [x] Esquemas Pydantic (`app/schemas.py`)
 - [x] Motor de calculo (`app/services/risk_engine.py`): matriz 5x5 ISO 27005 Annex E.2
-- [x] 27 endpoints REST en `app/routers/`
+- [x] Endpoints REST en `app/routers/` (auth, users, assets, risks, controls, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, reports, ai, ai_config, documents, admin, audit, alerts, search, context, catalogues)
 - [x] Catalogos precargados: 49 amenazas, 67 vulnerabilidades, 93 controles ISO 27002
 - [x] Seed inicial: admin + contexto + catalogos
+- [x] Agente IA: chat conversacional, RAG FTS5, anonimizacion, feedback loop
+- [x] Cifrado Fernet para API key del agente IA
+- [x] Hardening OWASP: rate limiting login, security headers, magic bytes upload, autodocs off en produccion
 
 ### Frontend
 
 - [x] SPA hash-based (`app/static/`)
-- [x] Vistas: dashboard, heatmap, assets, threats, vulnerabilities, risks, controls, reports, context, users
+- [x] Vistas: dashboard, heatmap, assets, threats, vulnerabilities, risks, controls, reports, context, users, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, compliance, alerts, integrations, audit, ai-chat, ai-documents, onboarding, guide
 
 ### Despliegue
 
 - [x] Dockerfile (python 3.11-slim, healthcheck, usuario no root)
-- [x] docker-compose.yml (volumen persistente, red interna, puerto 80)
+- [x] docker-compose.yml (volumen persistente, red interna, puerto 80, RISKHUB_ENV=production)
 - [x] deploy.sh para actualizaciones desde GitHub
 
 ## Pendiente
 
-### v1.0 (cierre)
+### Proximas funcionalidades
+- [ ] SuperAdmin con control de licenciamiento y activacion de modulos por feature flag
+- [ ] SSO OIDC/SAML (Microsoft Entra, Google Workspace)
+- [ ] Integracion SharePoint (Microsoft Graph API) para importar documentacion SGSI en masa
+- [ ] Integraciones SAP / Jagger / Sphera
+- [ ] Extraccion automatica de clausulas ISO desde documentos de politicas (IA)
+- [ ] Multi-idioma (en/es/de/fr) — diferido indefinidamente
 - [ ] Descargar fuentes Inter a `app/static/vendor/fonts/`
-- [ ] Pruebas end-to-end manuales en produccion
-
-### v1.1
-- [ ] **Cuestionarios** para generar cruces activo x amenaza
-- [ ] **Agente IA** (Ollama local + Claude API opcional)
-- [ ] **Auditoria** visible (modelo `AuditLog` ya existe, falta UI)
-- [ ] LDAP/SAML SSO
-- [ ] Multi-idioma (en/es/de/fr)
-- [ ] Risk Treatment Plan PDF detallado
+- [ ] Pruebas end-to-end manuales
 
 ## Convenciones
 
@@ -71,6 +73,8 @@ Multi-usuario con roles.
 - **JS**: vanilla JS moderno, sin build step.
 - **Sin emojis** en codigo fuente.
 - **Comentarios**: castellano para logica ISO; ingles para tecnicismos.
+- **Seguridad**: revisar OWASP antes de añadir funcionalidad que maneje datos del usuario.
+- **Vistas nuevas**: siempre actualizar `app/static/js/views/guide.js` con documentacion de la nueva seccion.
 
 ## Estructura
 
@@ -82,23 +86,31 @@ riskhub/
 ├── .env.example
 ├── requirements.txt
 └── app/
-    ├── main.py
+    ├── main.py              # Entrypoint + middleware de seguridad
     ├── config.py
     ├── database.py
     ├── models.py
     ├── schemas.py
-    ├── security.py
+    ├── security.py          # JWT + bcrypt + require_role
     ├── seed.py
-    ├── routers/       # auth, users, assets, catalogues, controls, risks, context, reports
+    ├── middleware/
+    │   └── security_headers.py   # X-Content-Type-Options, CSP, etc.
+    ├── routers/             # Todos los endpoints REST
     ├── services/
-    │   └── risk_engine.py
-    ├── data/          # JSON catalogos ISO 27005 / ISO 27002
+    │   ├── risk_engine.py
+    │   ├── audit_service.py
+    │   ├── rate_limiter.py  # Brute-force protection en login
+    │   ├── rag_service.py
+    │   ├── document_service.py
+    │   ├── context_builder.py
+    │   └── anonymizer.py
+    ├── data/                # JSON catalogos ISO 27005 / ISO 27002
     └── static/
         ├── login.html
         ├── index.html
         ├── css/app.css
         ├── img/logo.svg
-        └── js/        # api.js, auth.js, ui.js, app.js, views/
+        └── js/              # api.js, auth.js, ui.js, app.js, views/
 ```
 
 ## Como continuar
