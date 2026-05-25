@@ -8,6 +8,10 @@ Cabeceras aplicadas a todas las respuestas:
 - Permissions-Policy: deshabilita APIs del navegador no usadas
 - Content-Security-Policy: restringe origenes de recursos (SPA sin CDN)
 - Strict-Transport-Security: solo relevante cuando hay TLS (se incluye siempre)
+- Cache-Control: no-store para endpoints /api/* (datos confidenciales)
+- X-Permitted-Cross-Domain-Policies: bloquea Adobe Flash/PDF cross-domain
+- Cross-Origin-Opener-Policy: aislamiento de origen para proteger de XS-Leaks
+- Cross-Origin-Resource-Policy: bloquea carga cross-origin de recursos internos
 """
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -32,7 +36,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # Deshabilitar APIs del navegador no utilizadas
         response.headers["Permissions-Policy"] = (
-            "geolocation=(), microphone=(), camera=(), payment=(), usb=()"
+            "geolocation=(), microphone=(), camera=(), payment=(), usb=(), "
+            "interest-cohort=()"
         )
 
         # CSP restrictivo: todo desde 'self', sin CDNs
@@ -53,7 +58,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         # HSTS: se activa si la app esta detras de TLS (no hace dano en HTTP)
         response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
+            "max-age=31536000; includeSubDomains; preload"
         )
+
+        # Bloquear carga cross-domain de recursos internos (Adobe Flash / PDF legacy)
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
+
+        # Aislamiento de contexto de navegacion — protege de XS-Leaks
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+
+        # Bloquear que otros origenes carguen recursos de esta app
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+
+        # Cache-Control: los endpoints de API devuelven datos confidenciales;
+        # no deben ser almacenados en cache del navegador, proxies ni CDNs.
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
 
         return response

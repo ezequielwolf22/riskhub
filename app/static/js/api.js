@@ -264,6 +264,7 @@ const Api = {
   admin: {
     systemInfo: () => Api.get('/api/admin/system-info'),
     backupDb: () => Api.download('/api/admin/backup-db', `riskhub_backup_${new Date().toISOString().slice(0,10)}.db`),
+    securityStatus: () => Api.get('/api/admin/security-status'),
   },
   alerts: {
     getSettings: () => Api.get('/api/alerts/settings'),

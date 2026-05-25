@@ -30,6 +30,7 @@ const ViewGuide = {
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
+    { id: 'security', title: 'Seguridad y privacidad', icon: '🔐' },
     { id: 'methodology', title: 'Metodologia ISO 27005', icon: '📐' },
   ],
 
@@ -117,6 +118,7 @@ const ViewGuide = {
       cve: this._cCve,
       audit: this._cAudit,
       admin: this._cAdmin,
+      security: this._cSecurity,
       methodology: this._cMethodology,
     })[id] || '<p>Seccion en construccion.</p>';
   },
@@ -1292,6 +1294,91 @@ const ViewGuide = {
       </tbody>
     </table>
     ${this._tip('<strong>Uso recomendado:</strong> ejecuta el analisis una vez al mes o antes de una auditoria para detectar y corregir brechas documentales. Complementa las puntuaciones del dashboard de cumplimiento con acciones concretas.')}
+  `;},
+
+  get _cSecurity() { return `
+    ${this._p('RiskHub esta disenado para procesar informacion <strong>confidencial de seguridad corporativa</strong>. Esta pagina describe todas las capas de proteccion activas y las acciones adicionales recomendadas para despliegues con datos de alta clasificacion.')}
+    ${this._warn('<strong>Puedes (y debes) subir documentacion real:</strong> politicas, procedimientos, evaluaciones de riesgo, evidencias de auditoria, SOA, contratos con proveedores. La plataforma esta preparada para ello.')}
+
+    ${this._h('Capas de cifrado activas')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      ${[
+        ['Documentos en disco', 'Fernet (AES-128-CBC + HMAC-SHA256): los archivos se cifran con la clave del servidor antes de escribirse en disco. Un atacante con acceso al sistema de archivos no puede leer los documentos sin el SECRET_KEY.'],
+        ['API keys e integraciones', 'Todas las claves de API (agente IA, SharePoint, CVE, SSO client_secret) se cifran con Fernet antes de guardarse en la base de datos.'],
+        ['Contrasenas de usuario', 'bcrypt con factor de coste 12. Nunca se almacena la contrasena en claro.'],
+        ['Tokens de sesion', 'JWT HS256 firmados con el SECRET_KEY. Expiran a las 8 horas.'],
+        ['Cifrado en transito', 'HSTS activado (max-age=31536000 + preload). Requiere nginx + TLS delante de la app (ver seccion de instalacion).'],
+        ['Anonimizacion IA', 'IPs, emails, dominios, telefonos, DNI/NIF y datos bancarios (IBAN) se reemplazan por tokens antes de enviar contexto al agente IA externo.'],
+      ].map(([t,d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
+          <div style="font-weight:600;margin-bottom:4px;color:var(--brand-purple);">${t}</div>
+          <div style="color:var(--text-muted);">${d}</div>
+        </div>`).join('')}
+    </div>
+
+    ${this._h('Cabeceras de seguridad HTTP (OWASP A05)')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px 12px;text-align:left;border:1px solid var(--border);">Cabecera</th>
+        <th style="padding:8px 12px;text-align:left;border:1px solid var(--border);">Proteccion</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Content-Security-Policy', 'Bloquea scripts, estilos e iframes de origenes externos. Sin CDNs.'],
+          ['X-Content-Type-Options: nosniff', 'Evita MIME-sniffing en uploads (OWASP A08).'],
+          ['X-Frame-Options: DENY', 'Bloquea clickjacking via iframes.'],
+          ['Strict-Transport-Security', 'Fuerza HTTPS en todos los navegadores que hayan visitado la app.'],
+          ['Cache-Control: no-store', 'Todos los endpoints /api/* impiden que el navegador o proxies cacheen datos confidenciales.'],
+          ['Cross-Origin-Opener-Policy', 'Aislamiento de contexto — protege contra XS-Leaks.'],
+          ['Cross-Origin-Resource-Policy', 'Bloquea que otros origenes carguen recursos internos.'],
+          ['Permissions-Policy', 'Deshabilita GPS, microfono, camara, pagos y USB desde la app.'],
+        ].map(([h,d],i) => `<tr style="${i%2===1?'background:var(--bg-2);':''}">
+          <td style="padding:7px 12px;border:1px solid var(--border);font-family:monospace;font-size:12px;">${h}</td>
+          <td style="padding:7px 12px;border:1px solid var(--border);">${d}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    ${this._h('Control de acceso y autenticacion')}
+    ${this._p('RiskHub usa un modelo de roles jerarquico. Cada rol hereda los permisos del anterior:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>viewer:</strong> lectura de activos, riesgos y controles. Sin edicion.</li>
+      <li><strong>analyst:</strong> creacion y edicion de riesgos, activos, controles, incidentes. Sin gestion de usuarios.</li>
+      <li><strong>admin:</strong> todo lo anterior + gestion de usuarios, configuracion SMTP, backups, log de auditoria.</li>
+      <li><strong>superadmin:</strong> todo lo anterior + feature flags, licenciamiento, acceso a todos los tenants.</li>
+    </ul>
+
+    ${this._h('Anonimizacion configurable del Agente IA')}
+    ${this._p('El agente IA procesa datos del contexto de tu organizacion. Para proteger la privacidad ante la API externa (Claude), RiskHub aplica anonimizacion antes de enviar cualquier dato:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Nivel bajo (low):</strong> anonimiza direcciones IP y emails.</li>
+      <li><strong>Nivel medio (medium):</strong> lo anterior + nombres de dominio + numeros de telefono.</li>
+      <li><strong>Nivel alto (high):</strong> lo anterior + DNI/NIF/CIF + IBAN + tarjetas de credito + mensajes del propio usuario.</li>
+    </ul>
+    ${this._p('Los tokens son consistentes: el mismo valor siempre produce el mismo token (<code>[IP_1]</code>, <code>[EMAIL_2]</code>, etc.) para que el agente pueda razonar sin exponer el dato real. Configura el nivel en <strong>Onboarding → Configuracion del Agente</strong>.')}
+
+    ${this._h('Acciones de refuerzo recomendadas')}
+    ${this._steps([
+      '<strong>Activa HTTPS:</strong> instala nginx como reverse proxy delante de RiskHub con un certificado TLS de Let\'s Encrypt (gratuito). Sin TLS, los datos viajan en claro por la red.',
+      '<strong>Genera un SECRET_KEY seguro:</strong> ejecuta <code>python -c "import secrets; print(secrets.token_urlsafe(64))"</code> y configura el resultado como <code>RISKHUB_SECRET_KEY</code> en el entorno de Docker. Este secreto protege todos los cifrados Fernet y los JWT.',
+      '<strong>Cifra los backups:</strong> el backup de la BD SQLite (disponible en Administracion) contiene los datos en claro (solo el disco de documentos esta cifrado). Cifra los backups con GPG antes de transferirlos: <code>gpg --symmetric --cipher-algo AES256 riskhub_backup.db</code>.',
+      '<strong>Limita el acceso de red:</strong> configura el firewall del servidor para que el puerto 80/443 solo sea accesible desde la red corporativa (VPN o IP range). El puerto de la app (8000) no debe estar expuesto directamente a internet.',
+      '<strong>Rota el SECRET_KEY periodicamente:</strong> al cambiar el SECRET_KEY, los documentos cifrados con la clave anterior requieren ser resubidos (los Fernet tokens anteriores no se podran descifrar con la nueva clave).',
+      '<strong>PostgreSQL para datos de alta clasificacion:</strong> si necesitas cifrado a nivel de base de datos (campo a campo o TDE), migra de SQLite a PostgreSQL con pg_crypto o usa PostgreSQL 16+ con Transparent Data Encryption.',
+      '<strong>Revisa el posture de seguridad:</strong> ve a Administracion → Sistema y usa el panel de seguridad para verificar todas las capas activas.',
+    ])}
+
+    ${this._h('Privacidad y GDPR')}
+    ${this._p('Si tu organizacion esta sujeta al RGPD (Reglamento General de Proteccion de Datos):')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Responsable del tratamiento:</strong> tu organizacion (opera la instancia on-premise).</li>
+      <li><strong>Encargado del tratamiento:</strong> Anthropic (Claude API) — solo si usas el Agente IA con datos personales.</li>
+      <li><strong>Minimizacion:</strong> configura el nivel de anonimizacion en "alto" para minimizar la PII enviada a la API externa.</li>
+      <li><strong>Portabilidad:</strong> usa la funcion de backup de BD + exportacion de informes PDF para cumplir con el derecho de portabilidad.</li>
+      <li><strong>Supresion:</strong> la eliminacion de activos/riesgos/usuarios es definitiva (no hay papelera). El log de auditoria mantiene el registro de que existio el registro pero sin contenido personal.</li>
+      <li><strong>DPA con Anthropic:</strong> si cargas datos personales en el Agente IA, verifica que Anthropic figure como encargado en tu Registro de Actividades de Tratamiento (RAT).</li>
+    </ul>
+    ${this._tip('Para despliegues en sectores regulados (banca, salud, infraestructuras criticas): activa el nivel de anonimizacion "alto", configura el agente IA con un modelo self-hosted (Ollama + Llama 3) para eliminar completamente las llamadas a APIs externas, y documenta el tratamiento en el modulo GDPR de RiskHub.')}
   `;},
 
   get _cMethodology() { return `

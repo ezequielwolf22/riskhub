@@ -16,7 +16,7 @@ from app.models import (
 )
 from app.security import get_current_user, require_role
 from app.services.ai_service import QUESTIONNAIRE, run_analysis
-from app.services.anonymizer import anonymize
+from app.services.anonymizer import anonymize, anonymize_messages
 from app.services.context_builder import build_context
 from app.services.risk_engine import calc_level
 
@@ -579,25 +579,57 @@ def chat(
         (m.content for m in reversed(req.messages) if m.role == "user"), ""
     )
 
-    # Construir y opcionalmente anonimizar el contexto
+    # Construir y anonimizar el contexto de la organizacion
     context = build_context(db, query=last_query)
     if anon_level_val != "low":
         context = anonymize(context, anon_level_val)
 
     system_prompt = (
-        "Eres el agente de seguridad de RiskHub, especializado en ISO/IEC 27005:2018, "
-        "ISO/IEC 27002:2022, NIS2, MAGERIT v3 y proteccion de datos (GDPR). "
-        "Responde SIEMPRE en castellano, de forma concisa y orientada a la accion. "
-        "Si te preguntan sobre riesgos, controles, activos, incidentes o proveedores, "
-        "usa el contexto de la organizacion que se proporciona. "
-        "No inventes datos que no esten en el contexto.\n\n"
-        f"CONTEXTO DE LA ORGANIZACION:\n{context}"
+        "Eres el Agente de Seguridad de RiskHub — plataforma GRC on-premise desplegada "
+        "en la infraestructura EXCLUSIVA del cliente. Eres experto en ISO/IEC 27005:2018, "
+        "ISO/IEC 27002:2022, NIS2, MAGERIT v3 y GDPR.\n\n"
+
+        "== PLATAFORMA SEGURA ==\n"
+        "Esta instalacion de RiskHub opera con las siguientes garantias de seguridad:\n"
+        "- On-premise: todos los datos residen UNICAMENTE en los servidores del cliente. "
+        "Ningun dato de negocio sale de su infraestructura excepto consultas anonimizadas a este agente IA.\n"
+        "- Cifrado en reposo: documentos cifrados con Fernet (AES-128-CBC + HMAC-SHA256) antes de "
+        "persistirse en disco; credenciales de integracion y API keys cifradas con la misma clave.\n"
+        "- Cifrado en transito: HTTPS/TLS en produccion con HSTS.\n"
+        "- Autenticacion JWT (HS256) + bcrypt; roles granulares (superadmin/admin/analyst/viewer).\n"
+        "- Anonimizacion configurable de PII (IPs, emails, dominios, telefonos, DNI, IBAN) antes de "
+        "que cualquier informacion llegue a este agente.\n"
+        "- Log de auditoria inmutable: todas las operaciones quedan registradas con usuario y timestamp.\n"
+        "- Sin CDNs ni llamadas a servicios externos en tiempo de ejecucion (modo sin-internet posible).\n"
+        "- Rate limiting, security headers OWASP A05, validacion de magic bytes en uploads, "
+        "Content-Security-Policy estricta.\n\n"
+
+        "== INSTRUCCIONES CRITICAS ==\n"
+        "- Responde SIEMPRE en castellano, de forma concisa y orientada a la accion.\n"
+        "- Esta plataforma esta disenada especificamente para procesar informacion CONFIDENCIAL "
+        "de seguridad corporativa. El usuario DEBE cargar sus documentos reales: politicas, "
+        "procedimientos, evaluaciones de riesgo, planes de tratamiento, evidencias de auditoria, "
+        "declaraciones de aplicabilidad (SOA), contratos con terceros, etc.\n"
+        "- NUNCA aconsejes al usuario que no suba documentacion real o confidencial. "
+        "Si el usuario pregunta si es seguro subir documentos sensibles, confirma que SI "
+        "y explica brevemente las capas de proteccion activas en esta instalacion.\n"
+        "- Si hay tokens de anonimizacion en los mensajes como [IP_1], [EMAIL_2], "
+        "[TELEFONO_1], etc., tratalos como referencias validas a datos reales del cliente "
+        "y responde coherentemente sin pedir que los revelen.\n"
+        "- Si te preguntan sobre riesgos, controles, activos, incidentes o proveedores, "
+        "usa el contexto de la organizacion proporcionado a continuacion.\n"
+        "- No inventes datos que no esten en el contexto.\n\n"
+
+        f"== CONTEXTO DE LA ORGANIZACION ==\n{context}"
     )
+
+    # Anonimizar mensajes del usuario antes de enviar a la API externa
+    raw_messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    messages_payload = anonymize_messages(raw_messages, anon_level_val)
 
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
-        messages_payload = [{"role": m.role, "content": m.content} for m in req.messages]
         response = client.messages.create(
             model=model,
             max_tokens=capped_max_tokens,

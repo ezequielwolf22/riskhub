@@ -51,13 +51,30 @@ if settings.env != "production":
 
 @app.on_event("startup")
 def startup():
-    # OWASP A02 — advertir si la clave secreta es debil
+    # OWASP A02 — verificar la solidez de la clave secreta
     key = settings.secret_key
-    if key == _WEAK_KEY or len(key) < _MIN_KEY_LEN:
+    is_weak = key == _WEAK_KEY or len(key) < _MIN_KEY_LEN
+
+    if is_weak and settings.env == "production":
+        # En produccion, una clave debil es un fallo critico de seguridad:
+        # todos los JWT, tokens Fernet y cifrados de documentos dependen de ella.
+        import sys
+        logger.critical(
+            "SEGURIDAD CRITICA: RISKHUB_SECRET_KEY usa el valor por defecto o tiene menos "
+            "de %d caracteres. En produccion esto es un fallo de seguridad grave. "
+            "Genera una clave segura: python -c \"import secrets; print(secrets.token_urlsafe(64))\" "
+            "y configurala como variable de entorno RISKHUB_SECRET_KEY. "
+            "El servidor se detiene para proteger los datos del tenant.",
+            _MIN_KEY_LEN,
+        )
+        sys.exit(1)
+
+    if is_weak:
         logger.warning(
             "SEGURIDAD: RISKHUB_SECRET_KEY es debil o usa el valor por defecto. "
             "Genera una clave segura: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
         )
+
     init_db()
     sched.start(interval_hours=1)
 

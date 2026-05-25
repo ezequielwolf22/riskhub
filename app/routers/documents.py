@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import AiDocument, AiDocumentCategory, AiDocumentStatus, User
 from app.security import get_current_user, require_role
-from app.services.document_service import delete_document, doc_path, process_document
+from app.services.document_service import (
+    delete_document, doc_path, process_document, save_document_file,
+)
 
 router = APIRouter(prefix="/api/ai/documents", tags=["ai-documents"])
 
@@ -99,9 +101,8 @@ def upload_document(
         raise HTTPException(400, f"Categoria invalida: {category}")
 
     unique_name = f"{uuid.uuid4().hex}_{file.filename}"
-    dest = doc_path(unique_name)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(data)
+    # Cifrar el archivo antes de escribir en disco (Fernet / AES-128-CBC)
+    save_document_file(data, unique_name)
 
     doc = AiDocument(
         filename=unique_name,

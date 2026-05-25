@@ -1,4 +1,13 @@
-"""Extraccion de texto, chunking y gestion de documentos IA."""
+"""Extraccion de texto, chunking y gestion de documentos IA.
+
+Seguridad en reposo:
+  Los archivos subidos se cifran con Fernet (AES-128-CBC + HMAC-SHA256) antes
+  de escribirse en disco. La clave se deriva del SECRET_KEY del servidor usando
+  SHA-256 -> base64url. Los archivos anteriores a esta version (no cifrados) se
+  leen correctamente por compatibilidad hacia atras (InvalidToken -> raw bytes).
+"""
+import base64
+import hashlib
 import io
 import re
 from datetime import datetime, timezone
@@ -7,6 +16,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from app.config import settings
 from app.models import AiDocument, AiDocumentChunk, AiDocumentStatus
 
 # Directorio de almacenamiento de documentos
@@ -18,6 +28,44 @@ _DOC_ROOT.mkdir(parents=True, exist_ok=True)
 CHUNK_SIZE = 600
 CHUNK_OVERLAP = 100
 
+
+# ---------- Cifrado en reposo ----------
+
+def _fernet_key() -> bytes:
+    """Deriva clave Fernet de 32 bytes a partir del SECRET_KEY de la app."""
+    return base64.urlsafe_b64encode(
+        hashlib.sha256(settings.secret_key.encode()).digest()
+    )
+
+
+def encrypt_doc(data: bytes) -> bytes:
+    """Cifra los bytes de un documento con Fernet antes de escribir en disco."""
+    from cryptography.fernet import Fernet
+    return Fernet(_fernet_key()).encrypt(data)
+
+
+def decrypt_doc(data: bytes) -> bytes:
+    """Descifra los bytes de un documento leido del disco.
+
+    Si el archivo no esta cifrado (version anterior), devuelve los bytes sin
+    modificar para mantener compatibilidad con documentos pre-cifrado.
+    """
+    from cryptography.fernet import Fernet, InvalidToken
+    try:
+        return Fernet(_fernet_key()).decrypt(data)
+    except (InvalidToken, ValueError, Exception):
+        # Archivo pre-cifrado: devolver raw para compatibilidad hacia atras
+        return data
+
+
+def save_document_file(data: bytes, filename: str) -> None:
+    """Escribe los bytes del documento en disco cifrados con Fernet."""
+    dest = _DOC_ROOT / filename
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(encrypt_doc(data))
+
+
+# ---------- helpers ----------
 
 def doc_path(filename: str) -> Path:
     return _DOC_ROOT / filename
@@ -97,7 +145,8 @@ def process_document(db: Session, doc_id: int) -> None:
     db.commit()
 
     try:
-        file_data = doc_path(doc.filename).read_bytes()
+        # decrypt_doc soporta tanto archivos cifrados (nuevos) como no cifrados (legacy)
+        file_data = decrypt_doc(doc_path(doc.filename).read_bytes())
         raw_text = extract_text(file_data, doc.mime_type or "text/plain")
         chunks = chunk_text(raw_text)
 
