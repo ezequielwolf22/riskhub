@@ -60,8 +60,19 @@ def get_current_user(
 
 
 def require_role(*roles: UserRole):
+    """Comprueba que el usuario tiene uno de los roles especificados.
+
+    Superadmin siempre pasa (esta por encima de todos los roles).
+    Admin pasa en cualquier comprobacion que no sea especificamente superadmin.
+    """
     def dependency(user: User = Depends(get_current_user)) -> User:
-        if user.role not in roles and user.role != UserRole.ADMIN:
+        # Superadmin tiene acceso total
+        if user.role == UserRole.SUPERADMIN:
+            return user
+        # Admin tiene acceso a todo excepto rutas exclusivas de superadmin
+        if user.role == UserRole.ADMIN and UserRole.SUPERADMIN not in roles:
+            return user
+        if user.role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Operacion restringida a roles: {[r.value for r in roles]}",
@@ -70,5 +81,6 @@ def require_role(*roles: UserRole):
     return dependency
 
 
+require_superadmin = require_role(UserRole.SUPERADMIN)
 require_admin = require_role(UserRole.ADMIN)
 require_analyst = require_role(UserRole.ANALYST, UserRole.ADMIN)

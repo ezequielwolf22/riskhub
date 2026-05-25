@@ -232,6 +232,10 @@ const Api = {
     },
     summary: () => Api.get('/api/gdpr/stats/summary'),
   },
+  featureFlags: {
+    list: () => Api.get('/api/feature-flags/'),
+    update: (name, enabled) => Api.patch('/api/feature-flags/' + name, { enabled }),
+  },
   search: (q) => Api.get('/api/search/', { q }),
   admin: {
     systemInfo: () => Api.get('/api/admin/system-info'),

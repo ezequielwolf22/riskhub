@@ -23,6 +23,7 @@ from app.database import Base
 # ---------- ENUMERACIONES ----------
 
 class UserRole(str, PyEnum):
+    SUPERADMIN = "superadmin"   # por encima de admin — gestiona licencias y feature flags
     ADMIN = "admin"
     ANALYST = "analyst"
     VIEWER = "viewer"
@@ -94,6 +95,20 @@ class AuditLog(Base):
     entity_id = Column(String(64), nullable=True)
     detail = Column(JSON, nullable=True)
     user = relationship("User")
+
+
+class FeatureFlag(Base):
+    """Control de modulos por licencia — gestionado exclusivamente por superadmin."""
+    __tablename__ = "feature_flags"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), unique=True, nullable=False, index=True)
+    label = Column(String(128), nullable=False)
+    description = Column(Text, nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = relationship("User")
 
 
 # ---------- CONTEXTO ----------

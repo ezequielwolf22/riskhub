@@ -28,6 +28,7 @@ const Routes = {
   onboarding: ViewOnboarding,
   'ai-chat': ViewAiChat,
   'ai-documents': ViewAiDocuments,
+  'feature-flags': ViewFeatureFlags,
 };
 
 function currentRoute() {
@@ -145,6 +146,14 @@ function init() {
   if (!Auth.isAdmin()) {
     document.querySelectorAll('[data-admin]').forEach(el => el.style.display = 'none');
   }
+
+  // Ocultar enlaces superadmin si no es superadmin
+  if (!Auth.isSuperAdmin()) {
+    document.querySelectorAll('[data-superadmin]').forEach(el => el.style.display = 'none');
+  }
+
+  // Aplicar feature flags al sidebar (ocultar modulos deshabilitados)
+  ViewFeatureFlags.applyFlagsToSidebar();
 
   // Busqueda global
   Search.init();

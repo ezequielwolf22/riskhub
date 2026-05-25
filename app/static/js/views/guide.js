@@ -736,29 +736,40 @@ const ViewGuide = {
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
       <thead><tr style="background:var(--brand-purple);color:#fff;">
         <th style="padding:8px 12px;text-align:left;">Funcion</th>
+        <th style="padding:8px 12px;text-align:center;">SuperAdmin</th>
         <th style="padding:8px 12px;text-align:center;">Admin</th>
         <th style="padding:8px 12px;text-align:center;">Analyst</th>
         <th style="padding:8px 12px;text-align:center;">Viewer</th>
       </tr></thead>
       <tbody>
         ${[
-          ['Ver riesgos, activos, controles','1','1','1'],
-          ['Crear / editar riesgos y activos','1','1','0'],
-          ['Usar el Agente IA','1','1','0'],
-          ['Generar informes PDF/Excel','1','1','1'],
-          ['Configurar SMTP','1','0','0'],
-          ['Crear reglas de alerta','1','1','0'],
-          ['Gestionar usuarios','1','0','0'],
-          ['Descargar backup de la BD','1','0','0'],
-          ['Consultar log de auditoria','1','0','0'],
+          ['Ver riesgos, activos, controles','1','1','1','1'],
+          ['Crear / editar riesgos y activos','1','1','1','0'],
+          ['Usar el Agente IA','1','1','1','0'],
+          ['Generar informes PDF/Excel','1','1','1','1'],
+          ['Configurar SMTP','1','1','0','0'],
+          ['Crear reglas de alerta','1','1','1','0'],
+          ['Gestionar usuarios','1','1','0','0'],
+          ['Descargar backup de la BD','1','1','0','0'],
+          ['Consultar log de auditoria','1','1','0','0'],
+          ['Control de modulos (feature flags)','1','0','0','0'],
+          ['Crear usuarios SuperAdmin','1','0','0','0'],
         ].map((r, i) => '<tr '+(i%2?'style="background:var(--bg-2);"':'')+'>'+
           '<td style="padding:8px 12px;">'+r[0]+'</td>'+
-          '<td style="padding:8px 12px;text-align:center;color:'+(r[1]==='1'?'var(--brand-purple)':'var(--text-subtle)')+';"><b>'+(r[1]==='1'?'Si':'No')+'</b></td>'+
+          '<td style="padding:8px 12px;text-align:center;color:'+(r[1]==='1'?'var(--brand-orange)':'var(--text-subtle)')+';"><b>'+(r[1]==='1'?'Si':'No')+'</b></td>'+
           '<td style="padding:8px 12px;text-align:center;color:'+(r[2]==='1'?'var(--brand-purple)':'var(--text-subtle)')+';"><b>'+(r[2]==='1'?'Si':'No')+'</b></td>'+
           '<td style="padding:8px 12px;text-align:center;color:'+(r[3]==='1'?'var(--brand-purple)':'var(--text-subtle)')+';"><b>'+(r[3]==='1'?'Si':'No')+'</b></td>'+
+          '<td style="padding:8px 12px;text-align:center;color:'+(r[4]==='1'?'var(--brand-purple)':'var(--text-subtle)')+';"><b>'+(r[4]==='1'?'Si':'No')+'</b></td>'+
           '</tr>').join('')}
       </tbody>
     </table>
+    ${this._h('Control de Modulos (SuperAdmin)')}
+    ${this._p('El rol <strong>SuperAdmin</strong> tiene acceso a la seccion <strong>Control de Modulos</strong> (icono de bandera en el menu lateral, solo visible para superadmin). Desde ahi puede activar o desactivar modulos completos de la aplicacion para todos los usuarios:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Los cambios son inmediatos y se aplican en la proxima recarga de pagina de cada usuario.</li>
+      <li>Los modulos desactivados desaparecen del menu lateral. Los datos no se eliminan.</li>
+      <li>Util para modelos de licenciamiento: activar solo los modulos contratados.</li>
+    </ul>
     ${this._h('Seguridad de la instalacion')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li>Cambia la contrasena del admin inicial en el primer acceso.</li>

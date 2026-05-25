@@ -100,6 +100,7 @@ const ViewUsers = {
           <option value="viewer" ${u.role==='viewer'?'selected':''}>Viewer (solo lectura)</option>
           <option value="analyst" ${u.role==='analyst'?'selected':''}>Analyst (edicion)</option>
           <option value="admin" ${u.role==='admin'?'selected':''}>Admin (todo)</option>
+          <option value="superadmin" ${u.role==='superadmin'?'selected':''}>SuperAdmin (licencias)</option>
         </select>
       </div>
       <div><label>Estado</label>

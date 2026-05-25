@@ -182,8 +182,18 @@ def init_db() -> None:
         seed_threats(db)
         seed_vulnerabilities(db)
         seed_controls(db)
+        _seed_feature_flags(db)
     finally:
         db.close()
+
+
+def _seed_feature_flags(db: Session) -> None:
+    """Crea los feature flags por defecto si no existen."""
+    try:
+        from app.routers.feature_flags import seed_default_flags
+        seed_default_flags(db)
+    except Exception:
+        pass  # silencioso si la tabla aun no existe
 
 
 if __name__ == "__main__":

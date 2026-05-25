@@ -6,8 +6,9 @@ const Auth = {
   },
   token() { return localStorage.getItem('riskhub_token'); },
   isAuthenticated() { return !!Auth.token(); },
-  isAdmin() { const u = Auth.user(); return u && u.role === 'admin'; },
-  canEdit() { const u = Auth.user(); return u && (u.role === 'admin' || u.role === 'analyst'); },
+  isAdmin() { const u = Auth.user(); return u && (u.role === 'admin' || u.role === 'superadmin'); },
+  isSuperAdmin() { const u = Auth.user(); return u && u.role === 'superadmin'; },
+  canEdit() { const u = Auth.user(); return u && (u.role === 'admin' || u.role === 'analyst' || u.role === 'superadmin'); },
   logout() {
     localStorage.removeItem('riskhub_token');
     localStorage.removeItem('riskhub_user');
