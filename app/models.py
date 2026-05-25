@@ -97,6 +97,18 @@ class AuditLog(Base):
     user = relationship("User")
 
 
+class IntegrationConfig(Base):
+    """Configuracion de integraciones externas (credenciales cifradas)."""
+    __tablename__ = "integration_configs"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), unique=True, nullable=False, index=True)  # ej: "sharepoint", "sap"
+    config_encrypted = Column(Text, nullable=True)   # JSON cifrado con Fernet
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = relationship("User")
+
+
 class FeatureFlag(Base):
     """Control de modulos por licencia — gestionado exclusivamente por superadmin."""
     __tablename__ = "feature_flags"

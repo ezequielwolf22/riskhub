@@ -483,9 +483,389 @@ const ViewIntegrations = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
       'Integraciones',
-      'Catálogo de herramientas y guías de conexión con RiskHub'
-    ) + '<div id="int-content"></div>';
-    this._renderCatalog();
+      'Integraciones en vivo y catalogo de herramientas GRC'
+    ) + `
+      <div style="display:flex;gap:8px;margin-bottom:20px;">
+        <button class="btn btn-primary" id="int-tab-live" onclick="ViewIntegrations._showTab('live')">Live</button>
+        <button class="btn" id="int-tab-catalog" onclick="ViewIntegrations._showTab('catalog')">Catalogo de guias</button>
+      </div>
+      <div id="int-live"></div>
+      <div id="int-content" style="display:none;"></div>
+    `;
+    this._showTab('live');
+  },
+
+  _showTab(tab) {
+    document.getElementById('int-live').style.display = tab === 'live' ? '' : 'none';
+    document.getElementById('int-content').style.display = tab === 'catalog' ? '' : 'none';
+    document.getElementById('int-tab-live').className = tab === 'live' ? 'btn btn-primary' : 'btn';
+    document.getElementById('int-tab-catalog').className = tab === 'catalog' ? 'btn btn-primary' : 'btn';
+    if (tab === 'live') this._renderLive();
+    else this._renderCatalog();
+  },
+
+  async _renderLive() {
+    const wrap = document.getElementById('int-live');
+    if (!wrap) return;
+    wrap.innerHTML = `
+      <div style="display:grid;gap:20px;">
+
+        <!-- SharePoint -->
+        <div class="card" id="sp-card">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            <div>
+              <b style="font-size:15px;">Microsoft SharePoint</b>
+              <div style="font-size:11px;color:var(--text-muted);">Importacion masiva de documentos ISMS via Microsoft Graph API</div>
+            </div>
+            <span id="sp-status-badge" style="margin-left:auto;"></span>
+          </div>
+          <div id="sp-body">
+            <p class="text-muted" style="font-size:13px;">Cargando configuracion...</p>
+          </div>
+        </div>
+
+        <!-- SAP / Jagger / Sphera — proximas -->
+        <div class="card" style="opacity:.7;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            <div>
+              <b style="font-size:15px;">SAP / Jagger / Sphera</b>
+              <div style="font-size:11px;color:var(--text-muted);">Importacion de proveedores y riesgos desde sistemas ERP y GRC</div>
+            </div>
+            <span class="badge badge-muted" style="margin-left:auto;">Proximo</span>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0;">
+            Importacion de proveedores desde SAP (RFC/OData), sincronizacion de evaluaciones de riesgo
+            desde Jagger y exportacion/importacion bidireccional con Sphera. Disponible en v1.4.
+            Por ahora puedes usar la importacion CSV en la seccion Proveedores.
+          </p>
+        </div>
+
+      </div>
+    `;
+    await this._initSharePoint();
+  },
+
+  async _initSharePoint() {
+    try {
+      const cfg = await Api.sharepoint.getConfig();
+      this._renderSharePointBody(cfg);
+    } catch (e) {
+      document.getElementById('sp-body').innerHTML =
+        `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderSharePointBody(cfg) {
+    const body = document.getElementById('sp-body');
+    const badge = document.getElementById('sp-status-badge');
+    if (!body) return;
+
+    if (cfg && cfg.configured) {
+      badge.innerHTML = `<span class="badge" style="background:var(--risk-low);color:#fff;">Conectado</span>`;
+      body.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:13px;">
+          <div><span class="text-muted">Tenant ID:</span> <code>${UI.esc(cfg.tenant_id||'')}</code></div>
+          <div><span class="text-muted">Client ID:</span> <code>${UI.esc(cfg.client_id||'')}</code></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <button class="btn btn-sm" onclick="ViewIntegrations._editSpConfig()">Editar credenciales</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._testSp()">Probar conexion</button>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:0 0 16px;">
+        <b style="font-size:13px;">Importar documentos desde SharePoint</b>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px;">
+          Selecciona un sitio, una biblioteca y la carpeta que contiene tus documentos ISMS.
+          Los archivos PDF, DOCX y TXT se indexaran automaticamente en el agente IA.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <label style="font-size:12px;">Sitio</label>
+            <select id="sp-site" class="input" style="width:100%;" onchange="ViewIntegrations._loadDrives()">
+              <option value="">Cargando sitios...</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;">Biblioteca</label>
+            <select id="sp-drive" class="input" style="width:100%;" onchange="ViewIntegrations._loadFiles('root')">
+              <option value="">Selecciona un sitio primero</option>
+            </select>
+          </div>
+        </div>
+        <div id="sp-breadcrumb" style="font-size:12px;color:var(--text-muted);margin-bottom:6px;"></div>
+        <div id="sp-files" style="min-height:80px;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg-2);"></div>
+        <div id="sp-selection" style="margin-top:8px;display:none;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span id="sp-sel-count" style="font-size:13px;"></span>
+          <select id="sp-cat" class="input" style="width:180px;">
+            <option value="other">Categoria: Otro</option>
+            <option value="policies">Politicas</option>
+            <option value="normative">Normativa</option>
+            <option value="risk_assessments">Evaluaciones de riesgo</option>
+            <option value="architecture">Arquitectura</option>
+            <option value="assets_inventory">Inventario de activos</option>
+            <option value="critical_suppliers">Proveedores criticos</option>
+            <option value="incidents_lessons">Lecciones de incidentes</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="ViewIntegrations._importSelected()">
+            Importar seleccionados
+          </button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._clearSelection()">Limpiar</button>
+        </div>
+      `;
+      this._spSelected = [];
+      this._spNavStack = [];
+      this._loadSites();
+    } else {
+      badge.innerHTML = `<span class="badge badge-muted">No configurado</span>`;
+      body.innerHTML = this._spConfigForm();
+    }
+  },
+
+  _spConfigForm(prefill) {
+    const p = prefill || {};
+    return `
+      <div class="form-grid" style="margin-bottom:12px;">
+        <div class="span2" style="font-size:12px;color:var(--text-muted);">
+          Crea un <strong>App Registration</strong> en Azure Portal con permisos de aplicacion
+          <code>Sites.Read.All</code> y <code>Files.Read.All</code>,
+          luego rellena los campos siguientes.
+        </div>
+        <div><label style="font-size:12px;">Tenant ID *</label>
+          <input id="sp-tenant" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${UI.esc(p.tenant_id||'')}">
+        </div>
+        <div><label style="font-size:12px;">Client ID *</label>
+          <input id="sp-client" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${UI.esc(p.client_id||'')}">
+        </div>
+        <div class="span2"><label style="font-size:12px;">Client Secret *</label>
+          <input type="password" id="sp-secret" class="input" placeholder="El secreto del cliente Azure AD">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="ViewIntegrations._saveSpConfig()">Guardar y conectar</button>
+        ${prefill ? '<button class="btn" onclick="ViewIntegrations._initSharePoint()">Cancelar</button>' : ''}
+      </div>
+    `;
+  },
+
+  _editSpConfig() {
+    const body = document.getElementById('sp-body');
+    if (body) body.innerHTML = this._spConfigForm({ tenant_id: '(existente)', client_id: '(existente)' });
+  },
+
+  async _saveSpConfig() {
+    const tenant = document.getElementById('sp-tenant')?.value.trim();
+    const client = document.getElementById('sp-client')?.value.trim();
+    const secret = document.getElementById('sp-secret')?.value.trim();
+    if (!tenant || !client || !secret) {
+      UI.toast('Todos los campos son obligatorios', 'error'); return;
+    }
+    try {
+      await Api.sharepoint.saveConfig({ tenant_id: tenant, client_id: client, client_secret: secret });
+      UI.toast('Configuracion guardada', 'success');
+      await this._initSharePoint();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _testSp() {
+    UI.toast('Probando conexion...', 'info');
+    try {
+      const r = await Api.sharepoint.test();
+      UI.toast(r.message, 'success');
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _loadSites() {
+    const sel = document.getElementById('sp-site');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Cargando...</option>';
+    try {
+      const r = await Api.sharepoint.sites();
+      sel.innerHTML = '<option value="">Selecciona un sitio</option>' +
+        r.sites.map(s => `<option value="${UI.esc(s.id)}">${UI.esc(s.name)}</option>`).join('');
+    } catch (e) { sel.innerHTML = `<option value="">Error: ${UI.esc(e.message)}</option>`; }
+  },
+
+  async _loadDrives() {
+    const siteId = document.getElementById('sp-site')?.value;
+    const driveSel = document.getElementById('sp-drive');
+    if (!siteId || !driveSel) return;
+    driveSel.innerHTML = '<option value="">Cargando...</option>';
+    document.getElementById('sp-files').innerHTML = '';
+    try {
+      const r = await Api.sharepoint.drives(siteId);
+      driveSel.innerHTML = '<option value="">Selecciona una biblioteca</option>' +
+        r.drives.map(d => `<option value="${UI.esc(d.id)}">${UI.esc(d.name)}</option>`).join('');
+    } catch (e) { driveSel.innerHTML = `<option value="">Error: ${UI.esc(e.message)}</option>`; }
+  },
+
+  _spNavStack: [],
+  _spSelected: [],
+
+  async _loadFiles(itemId, name) {
+    const driveId = document.getElementById('sp-drive')?.value;
+    if (!driveId) return;
+
+    // Gestionar breadcrumb
+    if (itemId === 'root') {
+      this._spNavStack = [];
+    } else {
+      // Comprobar si ya esta en el stack (navegacion hacia atras)
+      const idx = this._spNavStack.findIndex(n => n.id === itemId);
+      if (idx >= 0) {
+        this._spNavStack = this._spNavStack.slice(0, idx + 1);
+      } else {
+        this._spNavStack.push({ id: itemId, name: name || itemId });
+      }
+    }
+    this._renderBreadcrumb(driveId);
+
+    const filesDiv = document.getElementById('sp-files');
+    filesDiv.innerHTML = '<p class="text-muted" style="padding:8px;">Cargando...</p>';
+    try {
+      const r = await Api.sharepoint.files(driveId, itemId === 'root' ? null : itemId);
+      this._renderFileList(filesDiv, r.items, driveId);
+    } catch (e) {
+      filesDiv.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderBreadcrumb(driveId) {
+    const bc = document.getElementById('sp-breadcrumb');
+    if (!bc) return;
+    const parts = [{ id: 'root', name: 'Raiz' }, ...this._spNavStack];
+    bc.innerHTML = parts.map((p, i) =>
+      i < parts.length - 1
+        ? `<a href="#" style="color:var(--brand-purple);" onclick="ViewIntegrations._loadFiles('${UI.esc(p.id)}','${UI.esc(p.name)}');return false;">${UI.esc(p.name)}</a> /`
+        : `<span>${UI.esc(p.name)}</span>`
+    ).join(' ');
+  },
+
+  _renderFileList(container, items, driveId) {
+    if (!items.length) {
+      container.innerHTML = '<p class="text-muted" style="padding:8px;">Carpeta vacia.</p>';
+      return;
+    }
+    const importable = ['pdf', 'docx', 'txt', 'csv'];
+    const rows = items.map(it => {
+      const isFile = it.kind === 'file';
+      const ext = it.name.split('.').pop().toLowerCase();
+      const canImport = isFile && importable.includes(ext);
+      const isSelected = this._spSelected.some(s => s.item_id === it.id);
+      const sizeStr = isFile ? (it.size > 1048576
+        ? (it.size / 1048576).toFixed(1) + ' MB'
+        : Math.round(it.size / 1024) + ' KB') : '';
+
+      if (isFile) {
+        return `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 4px;
+                      border-bottom:1px solid var(--border);font-size:13px;">
+            ${canImport
+              ? `<input type="checkbox" ${isSelected ? 'checked' : ''}
+                   onchange="ViewIntegrations._toggleFile(this,'${UI.esc(it.id)}','${UI.esc(it.name)}','${UI.esc(driveId)}','${UI.esc(it.mime||'')}')">`
+              : `<span style="width:16px;"></span>`}
+            <span style="color:var(--text-muted);">
+              ${canImport ? ext.toUpperCase() : '—'}
+            </span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="${UI.esc(it.name)}">${UI.esc(it.name)}</span>
+            <span style="color:var(--text-muted);font-size:11px;flex-shrink:0;">${sizeStr}</span>
+            ${!canImport ? `<span style="font-size:11px;color:var(--text-subtle);">(no soportado)</span>` : ''}
+          </div>`;
+      } else {
+        return `
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 4px;
+                      border-bottom:1px solid var(--border);font-size:13px;cursor:pointer;"
+               onclick="ViewIntegrations._loadFiles('${UI.esc(it.id)}','${UI.esc(it.name)}')">
+            <span style="color:var(--brand-purple);">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </span>
+            <span style="flex:1;">${UI.esc(it.name)}</span>
+            <span style="font-size:11px;color:var(--text-muted);">${it.child_count} elementos</span>
+            <span style="font-size:11px;color:var(--brand-purple);">Abrir</span>
+          </div>`;
+      }
+    }).join('');
+
+    const totalImportable = items.filter(it => {
+      const ext = it.name.split('.').pop().toLowerCase();
+      return it.kind === 'file' && ['pdf','docx','txt','csv'].includes(ext);
+    }).length;
+
+    container.innerHTML = `
+      <div style="padding:4px 4px 6px;display:flex;gap:8px;align-items:center;font-size:12px;color:var(--text-muted);">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="checkbox" id="sp-check-all"
+            onchange="ViewIntegrations._toggleAll(this,'${UI.esc(driveId)}',${JSON.stringify(
+              items.filter(it => ['pdf','docx','txt','csv'].includes(it.name.split('.').pop().toLowerCase()) && it.kind==='file')
+                   .map(it => ({item_id: it.id, name: it.name, drive_id: driveId, mime: it.mime||''}))
+            ).replace(/"/g,'&quot;')})">
+          Seleccionar todos importables (${totalImportable})
+        </label>
+      </div>
+      ${rows}
+    `;
+  },
+
+  _toggleFile(chk, itemId, name, driveId, mime) {
+    if (chk.checked) {
+      if (!this._spSelected.some(s => s.item_id === itemId))
+        this._spSelected.push({ item_id: itemId, name, drive_id: driveId, mime });
+    } else {
+      this._spSelected = this._spSelected.filter(s => s.item_id !== itemId);
+    }
+    this._updateSelectionBar();
+  },
+
+  _toggleAll(chk, driveId, items) {
+    if (chk.checked) {
+      items.forEach(it => {
+        if (!this._spSelected.some(s => s.item_id === it.item_id))
+          this._spSelected.push(it);
+      });
+    } else {
+      const ids = new Set(items.map(i => i.item_id));
+      this._spSelected = this._spSelected.filter(s => !ids.has(s.item_id));
+    }
+    this._updateSelectionBar();
+  },
+
+  _updateSelectionBar() {
+    const bar = document.getElementById('sp-selection');
+    const cnt = document.getElementById('sp-sel-count');
+    if (!bar || !cnt) return;
+    if (this._spSelected.length > 0) {
+      bar.style.display = 'flex';
+      cnt.textContent = `${this._spSelected.length} archivo(s) seleccionado(s)`;
+    } else {
+      bar.style.display = 'none';
+    }
+  },
+
+  _clearSelection() {
+    this._spSelected = [];
+    this._updateSelectionBar();
+    document.querySelectorAll('#sp-files input[type=checkbox]').forEach(c => c.checked = false);
+    const all = document.getElementById('sp-check-all');
+    if (all) all.checked = false;
+  },
+
+  async _importSelected() {
+    if (!this._spSelected.length) { UI.toast('Selecciona al menos un archivo', 'error'); return; }
+    const cat = document.getElementById('sp-cat')?.value || 'other';
+    const btn = document.querySelector('#sp-selection .btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Importando...'; }
+    try {
+      const r = await Api.sharepoint.importFiles(this._spSelected, cat);
+      UI.toast(`Importados: ${r.imported.length} | Omitidos: ${r.skipped.length} | Errores: ${r.errors.length}`, 'success');
+      this._clearSelection();
+    } catch (e) {
+      UI.toast(e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Importar seleccionados'; }
+    }
   },
 
   _renderCatalog() {

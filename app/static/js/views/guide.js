@@ -615,8 +615,45 @@ const ViewGuide = {
   `;},
 
   get _cIntegrations() { return `
-    ${this._p('RiskHub incluye un catálogo de <strong>25 herramientas del mercado</strong> de seguridad y GRC con guías detalladas de integración. Las integraciones automatizadas están en el roadmap de v1.2.')}
-    ${this._h('Categorias disponibles')}
+    ${this._p('La sección Integraciones tiene dos pestanas: <strong>Live</strong> (integraciones operativas con conexion real) y <strong>Catalogo de guias</strong> (25 herramientas con guias paso a paso para integración manual).')}
+
+    ${this._h('SharePoint (Live — Microsoft Graph API)')}
+    ${this._p('Permite importar carpetas completas de documentación SGSI desde SharePoint directamente al Agente IA de RiskHub, sin necesidad de subir archivos uno a uno. Requiere una Azure AD App Registration.')}
+    ${this._h('Requisitos previos en Azure')}
+    ${this._steps([
+      'En Azure Portal, accede a <strong>Azure Active Directory → Registros de aplicaciones → Nueva registro</strong>.',
+      'Nombra la app (ej. "RiskHub SharePoint Reader") y selecciona tipo <em>Cuentas solo de este directorio organizativo</em>.',
+      'Ve a <strong>Permisos de API → Agregar permiso → Microsoft Graph → Permisos de aplicación</strong>.',
+      'Añade los permisos: <code>Sites.Read.All</code> y <code>Files.Read.All</code>.',
+      'Haz clic en <strong>Conceder consentimiento de administrador</strong> (requiere rol Global Admin en Azure).',
+      'Ve a <strong>Certificados y secretos → Nuevo secreto de cliente</strong> y copia el valor del secreto.',
+      'Copia el <strong>ID de inquilino (Tenant ID)</strong> y el <strong>ID de aplicación (Client ID)</strong> desde la página principal de la app.',
+    ])}
+    ${this._h('Configurar en RiskHub')}
+    ${this._steps([
+      'Ve a <strong>Integraciones → pestaña Live</strong>.',
+      'En la tarjeta SharePoint, haz clic en <strong>Configurar</strong>.',
+      'Introduce el Tenant ID, Client ID y Client Secret obtenidos en Azure.',
+      'Haz clic en <strong>Guardar</strong> — las credenciales se cifran con Fernet antes de almacenarse.',
+      'Usa el boton <strong>Probar conexion</strong> para verificar que RiskHub puede autenticarse con Microsoft Graph.',
+    ])}
+    ${this._h('Importar documentos desde SharePoint')}
+    ${this._steps([
+      'Tras configurar la conexion, el navegador de SharePoint se cargara automaticamente.',
+      'Selecciona el <strong>Sitio</strong> de SharePoint que contiene la documentacion SGSI.',
+      'Selecciona la <strong>Biblioteca de documentos</strong> (Document Library).',
+      'Navega por las carpetas haciendo clic en su nombre. El icono de carpeta muestra el numero de elementos.',
+      'Marca la casilla junto a cada archivo que deseas importar (PDF, DOCX, TXT, CSV).',
+      'Usa <strong>Seleccionar todos los importables</strong> para marcar todos los archivos soportados de la carpeta actual.',
+      'Selecciona la <strong>categoria del documento</strong> (politica, procedimiento, marco normativo, etc.).',
+      'Haz clic en <strong>Importar seleccionados</strong>. Se importan hasta 20 archivos por lote (max. 20 MB cada uno).',
+      'Los archivos se procesan automaticamente y quedan disponibles para el Agente IA en la seccion <em>Documentos del Agente</em>.',
+    ])}
+    ${this._warn('<strong>Formatos soportados:</strong> PDF, DOCX, TXT y CSV. Los archivos de otros formatos se omiten automaticamente. Tamano maximo por archivo: 20 MB.')}
+    ${this._tip('<strong>Buena practica:</strong> Organiza la documentacion SGSI en SharePoint por carpetas tematicas (politicas, procedimientos, registros, evidencias) e importa cada carpeta con la categoria correspondiente en RiskHub. Esto mejora la precision del Agente IA en las consultas.')}
+
+    ${this._h('Catalogo de guias de integracion manual')}
+    ${this._p('La pestana <strong>Catalogo de guias</strong> incluye 25 herramientas del mercado con instrucciones detalladas para integrar sus datos con RiskHub manualmente.')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>Gestión de activos:</strong> LeanIX, ServiceNow CMDB, Axonius, Lansweeper.</li>
       <li><strong>Gestión de vulnerabilidades:</strong> Qualys VMDR, Tenable.io/Nessus, Rapid7 InsightVM, OpenVAS, Wiz, Snyk.</li>
@@ -625,17 +662,15 @@ const ViewGuide = {
       <li><strong>Identidad y acceso:</strong> Microsoft Entra ID, Okta.</li>
       <li><strong>Seguridad cloud:</strong> AWS Security Hub, Microsoft Defender for Cloud, Google Security Command Center.</li>
     </ul>
-    ${this._h('Flujo de integracion manual (actual)')}
+    ${this._h('Flujo de integracion manual')}
     ${this._steps([
-      'Accede al menú Integraciones y selecciona la herramienta.',
+      'Accede al menú Integraciones → Catalogo de guias y selecciona la herramienta.',
       'Lee la guía paso a paso: cómo obtener credenciales API, qué endpoints usar y qué datos exportar.',
       'Exporta los datos desde la herramienta externa (JSON, CSV o XML según la herramienta).',
       'Importa activos a RiskHub mediante el importador CSV de Activos.',
       'Para vulnerabilidades, crea entradas manuales en el catálogo de Vulnerabilidades.',
       'Usa el Agente IA para asociar automáticamente las vulnerabilidades importadas al escenario de riesgo más relevante.',
-      'Configura una alerta por email para notificar al responsable del riesgo.',
     ])}
-    ${this._tip('<strong>v1.2 (roadmap):</strong> Las integraciones automatizadas permitirán configurar la URL y API key de cada herramienta directamente en RiskHub, con sincronización programada y asociación automática por IA. Las guías actuales te preparan para esta automatización futura.')}
   `;},
 
   get _cAudit() { return `
