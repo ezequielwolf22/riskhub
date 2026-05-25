@@ -1,0 +1,210 @@
+================================================================================
+                    OSINT INTEGRATION COMPLETED
+                 huella-digital → RiskHub (Unified Product)
+================================================================================
+
+MIGRATION SUMMARY
+─────────────────────────────────────────────────────────────────────────────
+
+FROM: Node.js + React Native + Supabase
+TO:   Python/FastAPI + Vanilla JS + SQLite
+
+Result: One unified product with full OSINT capabilities integrated.
+
+
+FILES CREATED (9)
+─────────────────────────────────────────────────────────────────────────────
+✓ app/services/osint_hibp.py              (Email breach scanning)
+✓ app/services/osint_virustotal.py        (URL malware analysis)
+✓ app/services/osint_leakcheck.py         (Data leak detection)
+✓ app/services/osint_intelx.py            (Intelligence X search)
+✓ app/services/osint_github.py            (GitHub recon + secrets)
+✓ app/services/osint_engine.py            (Orchestrator/coordinator)
+✓ app/routers/osint.py                    (REST API endpoints)
+✓ app/static/js/views/osint.js            (Frontend UI - Vanilla JS)
+✓ OSINT_INTEGRATION.md                    (Full documentation)
+
+
+FILES MODIFIED (7)
+─────────────────────────────────────────────────────────────────────────────
+✓ app/models.py                    (+120 lines: SQLAlchemy models)
+✓ app/schemas.py                   (+50 lines: Pydantic schemas)
+✓ app/config.py                    (+5 vars: API key configuration)
+✓ app/main.py                      (import + router registration)
+✓ app/static/js/app.js             (route registration)
+✓ app/static/index.html            (menu item + script tag)
+✓ .env.example                     (+25 lines: configuration template)
+
+Total new code: ~1,800 lines
+
+
+API ENDPOINTS (11 ENDPOINTS)
+─────────────────────────────────────────────────────────────────────────────
+POST   /api/v1/osint/scans/email        Scan email for breaches
+POST   /api/v1/osint/scans/url          Analyze URL for malware
+POST   /api/v1/osint/scans/username     Recon GitHub/social media
+GET    /api/v1/osint/scans              List all scans
+GET    /api/v1/osint/scans/{id}         Get scan details
+GET    /api/v1/osint/findings           List all findings
+GET    /api/v1/osint/findings/{id}      Get finding details
+PATCH  /api/v1/osint/findings/{id}/remediate     Mark as remediated
+PATCH  /api/v1/osint/findings/{id}/unremediate   Unmark remediation
+GET    /api/v1/osint/identifiers        List monitored identifiers
+GET    /api/v1/osint/stats              Get OSINT statistics
+
+
+DATABASE TABLES (5 NEW TABLES)
+─────────────────────────────────────────────────────────────────────────────
+osint_scans                 Scan execution records
+osint_findings              Discovered vulnerabilities/exposures
+osint_identifiers           Monitored emails/usernames/domains
+osint_api_keys              Encrypted API credentials
+osint_vulnerability_links   Future mapping to RiskHub vulnerabilities
+
+
+FRONTEND FEATURES
+─────────────────────────────────────────────────────────────────────────────
+✓ Tab-based UI (4 sections)
+  - Escaneos: Start scans, monitor progress
+  - Hallazgos: View & remediate findings
+  - Identificadores: Manage monitored targets
+  - Estadísticas: Dashboard with KPIs
+
+✓ Background execution (non-blocking)
+✓ Auto-polling every 3 seconds
+✓ Risk badges (critical/high/medium/low/info)
+✓ Real-time statistics
+✓ Remediation tracking
+
+
+SERVICES INTEGRATED
+─────────────────────────────────────────────────────────────────────────────
+✓ Have I Been Pwned (HIBP)         Email breach detection
+✓ VirusTotal                       URL & file malware analysis
+✓ LeakCheck                        Data exposure search
+✓ Intelligence X                   Dump/paste/leak discovery
+✓ GitHub                           Repository & secrets recon
+✓ OSINT Engine                     Coordination & orchestration
+
+
+RATE LIMITING (Respected)
+─────────────────────────────────────────────────────────────────────────────
+HIBP               1.5 seconds between requests
+VirusTotal         15 seconds (60/min)
+LeakCheck          No limit (free API)
+Intelligence X     10 seconds
+GitHub             60 requests/hour (without token)
+
+
+CONFIGURATION (.env variables)
+─────────────────────────────────────────────────────────────────────────────
+RISKHUB_HIBP_API_KEY              Have I Been Pwned API key
+RISKHUB_VIRUSTOTAL_API_KEY        VirusTotal API key
+RISKHUB_LEAKCHECK_API_KEY         LeakCheck API key
+RISKHUB_INTELX_API_KEY            Intelligence X API key
+RISKHUB_GITHUB_API_TOKEN          GitHub personal access token
+
+Note: Without keys, UI is available but scans won't execute.
+
+
+GETTING STARTED
+─────────────────────────────────────────────────────────────────────────────
+
+1. Get API Keys (optional but recommended):
+   - HIBP: https://haveibeenpwned.com/API/v3 (free)
+   - VirusTotal: https://www.virustotal.com (free)
+   - Others: Intelligence X, LeakCheck, GitHub (optional)
+
+2. Configure .env:
+   RISKHUB_HIBP_API_KEY=your-key-here
+   RISKHUB_VIRUSTOTAL_API_KEY=your-key-here
+
+3. Restart application:
+   uvicorn app.main:app --reload  (dev)
+   bash /opt/riskhub/deploy.sh     (prod)
+
+4. Access OSINT:
+   http://localhost:8000/#/osint
+
+5. Start scanning:
+   - Click "OSINT" in sidebar
+   - Select scan type (email/URL/username)
+   - Enter target
+   - Click "Iniciar escaneo"
+   - Monitor progress and results
+
+
+TESTING CHECKLIST
+─────────────────────────────────────────────────────────────────────────────
+[ ] Tables created: sqlite3 riskhub.db ".tables" | grep osint
+[ ] API responds: curl http://localhost:8000/api/v1/osint/stats
+[ ] Menu item visible in sidebar
+[ ] Route accessible: http://localhost:8000/#/osint
+[ ] Can start scan without API keys (shows graceful error)
+[ ] Configure HIBP key and test with real email
+[ ] Findings display correctly with risk badges
+[ ] Can mark findings as remediated
+[ ] Statistics tab updates in real-time
+
+
+ARCHITECTURE
+─────────────────────────────────────────────────────────────────────────────
+
+RiskHub is now ONE UNIFIED PRODUCT:
+
+✓ ISO 27005 Risk Management
+✓ Asset Inventory & Threats
+✓ Control Implementation
+✓ GDPR Compliance
+✓ Incidents & Nonconformities
+✓ Internal Audits
+✓ CVE Monitoring
+✓ OSINT Intelligence (NEW) ← Fully integrated
+
+
+LIMITATIONS & FUTURE
+─────────────────────────────────────────────────────────────────────────────
+
+Known Limitations:
+- GitHub secrets detection uses metadata analysis, not code scanning
+- HIBP requires API key (free but signup required)
+- VirusTotal has strict rate limiting
+- No continuous monitoring (on-demand scans only)
+- API keys are global (not per-tenant/user)
+
+Future Roadmap:
+[ ] Automatic re-scan scheduling
+[ ] Slack/Teams webhook notifications
+[ ] Risk pattern analysis
+[ ] Auto-link to RiskHub vulnerabilities
+[ ] Multi-tenant API key management
+[ ] Custom OSINT data sources
+[ ] PDF export of OSINT reports
+[ ] Trend analysis (3-month improvements)
+
+
+FILES DOCUMENTATION
+─────────────────────────────────────────────────────────────────────────────
+See OSINT_INTEGRATION.md for:
+  - Detailed component descriptions
+  - Step-by-step usage flows
+  - Troubleshooting guides
+  - Security considerations
+  - Technical specifications
+
+
+SUPPORT
+─────────────────────────────────────────────────────────────────────────────
+
+Debugging:
+1. Check logs: docker logs riskhub -f
+2. Verify DB: sqlite3 riskhub.db "SELECT COUNT(*) FROM osint_scans;"
+3. Test API: curl -H "Authorization: Bearer <token>" \
+             http://localhost:8000/api/v1/osint/stats
+4. Restart: bash /opt/riskhub/deploy.sh
+
+
+================================================================================
+                    ✅ INTEGRATION COMPLETE
+         All code merged. Ready for testing and deployment.
+================================================================================

@@ -30,6 +30,7 @@ const Routes = {
   'ai-documents': ViewAiDocuments,
   'feature-flags': ViewFeatureFlags,
   cve: ViewCve,
+  osint: ViewOsint,
 };
 
 function currentRoute() {

@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # IA (Claude API - opcional)
     anthropic_api_key: str | None = None
 
+    # OSINT APIs (huella-digital integration)
+    hibp_api_key: str | None = None                    # Have I Been Pwned
+    virustotal_api_key: str | None = None             # VirusTotal
+    leakcheck_api_key: str | None = None              # LeakCheck
+    intelx_api_key: str | None = None                 # Intelligence X
+    github_api_token: str | None = None               # GitHub
+
     @property
     def db_url(self) -> str:
         if self.database_url:

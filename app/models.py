@@ -857,3 +857,113 @@ class AiFeedback(Base):
 
     call_log = relationship("AiCallLog")
     user = relationship("User")
+
+
+# ---------- OSINT (huella-digital integration) ----------
+
+class OSINTScanType(str, PyEnum):
+    EMAIL = "email"
+    DOMAIN = "domain"
+    URL = "url"
+    USERNAME = "username"
+    IP = "ip"
+
+
+class OSINTSourceType(str, PyEnum):
+    HIBP = "hibp"                    # Have I Been Pwned
+    VIRUSTOTAL = "virustotal"        # VirusTotal
+    LEAKCHECK = "leakcheck"          # LeakCheck
+    INTELX = "intelx"                # Intelligence X
+    GITHUB = "github"                # GitHub Recon
+    SOCIAL = "social"                # Social Media Scraping
+
+
+class OSINTFindingRiskLevel(str, PyEnum):
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class OSINTScan(Base):
+    """Escaneo OSINT iniciado por un usuario."""
+    __tablename__ = "osint_scans"
+    id = Column(Integer, primary_key=True)
+    scan_type = Column(Enum(OSINTScanType), nullable=False)
+    target = Column(String(255), nullable=False)  # email, domain, URL, username
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(32), default="pending")  # pending, in_progress, completed, failed
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime, nullable=True)
+    error_message = Column(Text, nullable=True)
+    findings_count = Column(Integer, default=0)
+    risk_score = Column(Float, default=0.0)  # agregado de todos los hallazgos
+
+    user = relationship("User")
+    findings = relationship("OSINTFinding", back_populates="scan", cascade="all, delete-orphan")
+
+
+class OSINTIdentifier(Base):
+    """Identificador OSINT monitorizado (email, username, etc.)."""
+    __tablename__ = "osint_identifiers"
+    id = Column(Integer, primary_key=True)
+    identifier_type = Column(Enum(OSINTScanType), nullable=False)
+    value = Column(String(255), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    is_monitored = Column(Boolean, default=True)
+    last_scanned_at = Column(DateTime, nullable=True)
+    risk_level = Column(Enum(OSINTFindingRiskLevel), default=OSINTFindingRiskLevel.INFO)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User")
+    __table_args__ = (UniqueConstraint('user_id', 'identifier_type', 'value'),)
+
+
+class OSINTFinding(Base):
+    """Hallazgo OSINT — resultado del escaneo."""
+    __tablename__ = "osint_findings"
+    id = Column(Integer, primary_key=True)
+    scan_id = Column(Integer, ForeignKey("osint_scans.id"), nullable=False)
+    identifier_id = Column(Integer, ForeignKey("osint_identifiers.id"), nullable=True)
+    source = Column(Enum(OSINTSourceType), nullable=False)
+    finding_type = Column(String(64), nullable=False)  # data_breach, exposed_password, url_malware, etc.
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    risk_level = Column(Enum(OSINTFindingRiskLevel), default=OSINTFindingRiskLevel.MEDIUM)
+    risk_score = Column(Float, default=0.0)  # 0..100
+    is_remediated = Column(Boolean, default=False)
+    remediated_at = Column(DateTime, nullable=True)
+    metadata = Column(JSON, nullable=True)  # información adicional de la fuente
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    scan = relationship("OSINTScan", back_populates="findings")
+    identifier = relationship("OSINTIdentifier")
+    linked_vulnerabilities = relationship("Vulnerability",
+                                          secondary="osint_vulnerability_links",
+                                          viewonly=True)
+
+
+osint_vulnerability_links = Table(
+    'osint_vulnerability_links',
+    Base.metadata,
+    Column('osint_finding_id', Integer, ForeignKey('osint_findings.id'), primary_key=True),
+    Column('vulnerability_id', Integer, ForeignKey('vulnerabilities.id'), primary_key=True)
+)
+
+
+class OSINTAPIKey(Base):
+    """Claves de API para servicios OSINT."""
+    __tablename__ = "osint_api_keys"
+    id = Column(Integer, primary_key=True)
+    service = Column(Enum(OSINTSourceType), unique=True, nullable=False)
+    api_key_encrypted = Column(Text, nullable=False)  # Fernet-encrypted
+    is_valid = Column(Boolean, default=False)
+    last_check_at = Column(DateTime, nullable=True)
+    rate_limit_remaining = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))

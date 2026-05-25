@@ -11,6 +11,7 @@ from app.models import (
     TaskStatus, TaskPriority,
     PolicyStatus, AuditType, AuditStatus, AuditFindingType,
     ProcessingLegalBasis, DPIAStatus,
+    OSINTScanType, OSINTSourceType, OSINTFindingRiskLevel,
 )
 
 
@@ -815,3 +816,59 @@ class DPIAOut(ORMBase):
 
 
 TokenOut.model_rebuild()
+
+
+# ---------- OSINT ----------
+
+class OSINTScanCreate(BaseModel):
+    scan_type: OSINTScanType
+    target: str
+
+
+class OSINTScanResponse(ORMBase):
+    id: int
+    scan_type: OSINTScanType
+    target: str
+    user_id: int
+    status: str
+    started_at: datetime
+    completed_at: Optional[datetime]
+    error_message: Optional[str]
+    findings_count: int
+    risk_score: float
+
+
+class OSINTFindingResponse(ORMBase):
+    id: int
+    scan_id: int
+    identifier_id: Optional[int]
+    source: OSINTSourceType
+    finding_type: str
+    title: str
+    description: Optional[str]
+    risk_level: OSINTFindingRiskLevel
+    risk_score: float
+    is_remediated: bool
+    remediated_at: Optional[datetime]
+    metadata: Optional[dict]
+    created_at: datetime
+    updated_at: datetime
+
+
+class OSINTIdentifierResponse(ORMBase):
+    id: int
+    identifier_type: OSINTScanType
+    value: str
+    user_id: int
+    is_monitored: bool
+    last_scanned_at: Optional[datetime]
+    risk_level: OSINTFindingRiskLevel
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaginatedResponse(BaseModel):
+    total: int
+    skip: int
+    limit: int
+    items: list
