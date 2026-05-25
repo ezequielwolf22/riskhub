@@ -23,7 +23,11 @@ const ViewPolicies = (() => {
           <h1 class="page-title">Politicas de Seguridad</h1>
           <p class="page-sub">Gestion del ciclo de vida de politicas — ISO 27001 cl. 5.2</p>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="file" id="pol-ai-input" accept=".pdf,.docx,.txt" style="display:none;">
+          <button class="btn" id="btn-ai-extract" title="Cargar un documento PDF/DOCX y extraer los campos con IA">
+            Extraer con IA
+          </button>
           <button class="btn btn-primary" id="btn-new-pol">+ Nueva politica</button>
         </div>
       </div>
@@ -44,6 +48,28 @@ const ViewPolicies = (() => {
     document.getElementById('btn-new-pol').onclick = () => _openForm(null);
     document.getElementById('pol-search').oninput = _refresh;
     document.getElementById('pol-status').onchange = _refresh;
+
+    // Extraccion IA
+    const aiBtn = document.getElementById('btn-ai-extract');
+    const aiInput = document.getElementById('pol-ai-input');
+    aiBtn.onclick = () => aiInput.click();
+    aiInput.onchange = async () => {
+      const file = aiInput.files[0];
+      if (!file) return;
+      aiInput.value = '';
+      aiBtn.disabled = true;
+      aiBtn.textContent = 'Extrayendo...';
+      try {
+        const extracted = await Api.policies.aiExtract(file);
+        UI.toast('Extraccion completada. Revisa los campos extraidos.', 'success');
+        _openForm(null, extracted);
+      } catch (e) {
+        UI.toast('Error al extraer: ' + e.message, 'error');
+      } finally {
+        aiBtn.disabled = false;
+        aiBtn.textContent = 'Extraer con IA';
+      }
+    };
 
     try { _users = await Api.listUsers(); } catch (_) { _users = []; }
     await _loadStats();
@@ -131,19 +157,30 @@ const ViewPolicies = (() => {
       });
   }
 
-  function _formHtml(p) {
+  function _formHtml(p, extracted) {
+    // Valores: primero los extraidos por IA, luego los del objeto existente, luego defecto
     const v = p || {};
+    const e = extracted || {};
+    const title = e.title || v.title || '';
+    const version = e.version || v.version || '1.0';
+    const category = e.category || v.category || '';
+    const scope = e.scope || v.scope || '';
+    const content = e.content || v.content || '';
+    const review = e.review_date || (v.review_date ? v.review_date.slice(0,10) : '');
+    const clauses = e.iso_clauses ? e.iso_clauses.join(', ') : (v.iso_clauses||[]).join(', ');
+    const notes = e.confidence_notes || '';
     return `
       <div class="form-grid">
-        <div class="span2"><label>Titulo *</label><input id="f-title" class="input" value="${UI.esc(v.title||'')}"></div>
+        ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">Nota IA: ${UI.esc(notes)}</div></div>` : ''}
+        <div class="span2"><label>Titulo *</label><input id="f-title" class="input" value="${UI.esc(title)}"></div>
         <div>
           <label>Estado</label>
           <select id="f-status" class="input">
             ${Object.entries(STATUS_LABELS).map(([k,l]) => `<option value="${k}" ${(v.status||'draft')===k?'selected':''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div><label>Version</label><input id="f-version" class="input" value="${UI.esc(v.version||'1.0')}"></div>
-        <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(v.category||'')}"></div>
+        <div><label>Version</label><input id="f-version" class="input" value="${UI.esc(version)}"></div>
+        <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(category)}"></div>
         <div>
           <label>Responsable</label>
           <select id="f-owner" class="input">
@@ -151,15 +188,15 @@ const ViewPolicies = (() => {
             ${_users.map(u => `<option value="${u.id}" ${v.owner_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`).join('')}
           </select>
         </div>
-        <div><label>Fecha de revision</label><input type="date" id="f-review" class="input" value="${v.review_date ? v.review_date.slice(0,10) : ''}"></div>
-        <div><label>Clausulas ISO (separadas por coma)</label><input id="f-clauses" class="input" value="${UI.esc((v.iso_clauses||[]).join(', '))}"></div>
-        <div class="span2"><label>Alcance</label><textarea id="f-scope" class="input" rows="2">${UI.esc(v.scope||'')}</textarea></div>
-        <div class="span2"><label>Contenido / resumen</label><textarea id="f-content" class="input" rows="5">${UI.esc(v.content||'')}</textarea></div>
+        <div><label>Fecha de revision</label><input type="date" id="f-review" class="input" value="${UI.esc(review)}"></div>
+        <div><label>Clausulas ISO (separadas por coma)</label><input id="f-clauses" class="input" value="${UI.esc(clauses)}"></div>
+        <div class="span2"><label>Alcance</label><textarea id="f-scope" class="input" rows="2">${UI.esc(scope)}</textarea></div>
+        <div class="span2"><label>Contenido / resumen</label><textarea id="f-content" class="input" rows="5">${UI.esc(content)}</textarea></div>
       </div>`;
   }
 
-  function _openForm(p) {
-    UI.modal(p ? `Editar ${p.code}` : 'Nueva politica', _formHtml(p), {
+  function _openForm(p, extracted) {
+    UI.modal(p ? `Editar ${p.code}` : 'Nueva politica', _formHtml(p, extracted), {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 <button class="btn btn-primary" id="m-save">Guardar</button>`,
     });

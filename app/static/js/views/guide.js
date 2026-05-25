@@ -800,6 +800,17 @@ const ViewGuide = {
       <li><strong>Fecha de revision:</strong> cuando vence, la fila se resalta en rojo y el contador de revision vencida aumenta. Tipicamente anual.</li>
       <li><strong>Responsable:</strong> persona encargada de mantener la politica actualizada. Deberia ser el mismo que el owner del proceso descrito.</li>
     </ul>
+    ${this._h('Extraccion automatica con IA')}
+    ${this._p('El boton <strong>"Extraer con IA"</strong> permite subir un documento PDF, DOCX o TXT de una politica existente. El agente IA analiza el texto y pre-rellena automaticamente los campos del formulario:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Titulo</strong> de la politica.</li>
+      <li><strong>Categoria</strong> (Acceso, Criptografia, Backup, etc.).</li>
+      <li><strong>Version</strong> detectada en el documento.</li>
+      <li><strong>Alcance y contenido</strong> resumidos.</li>
+      <li><strong>Fecha de revision / expiracion</strong> — se puede trasladar automaticamente al Calendario.</li>
+      <li><strong>Clausulas ISO 27001/27002</strong> referenciadas en el documento — se vinculan con el modulo de Cumplimiento.</li>
+    </ul>
+    ${this._tip('Siempre revisa los campos extraidos antes de guardar. La IA puede cometer errores en documentos con formato complejo o en idiomas distintos al castellano.')}
     ${this._tip('<strong>Para auditoria ISO 27001:</strong> el auditor verificara que existe al menos una politica de seguridad aprobada por la alta direccion (cl. 5.2.a), que tiene un alcance definido y que se ha comunicado a las partes interesadas relevantes (cl. 5.2.e).')}
   `;},
 

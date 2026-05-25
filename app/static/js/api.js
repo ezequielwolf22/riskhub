@@ -191,6 +191,11 @@ const Api = {
     update: (id, d) => Api.patch('/api/policies/' + id, d),
     del: (id) => Api.del('/api/policies/' + id),
     summary: () => Api.get('/api/policies/stats/summary'),
+    aiExtract: (file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return Api.req('/api/policies/ai-extract', { method: 'POST', body: fd });
+    },
   },
   audits: {
     list: (q) => Api.get('/api/audits/', q),
