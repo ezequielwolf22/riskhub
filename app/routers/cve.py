@@ -193,7 +193,8 @@ def analyze_cves(
     current_user: User = Depends(require_analyst),
 ):
     """Ejecuta el workflow de analisis IA: CVE x Activo -> riesgo_inherente, cobertura, riesgo_residual, acciones."""
-    from app.routers.ai_config import _get_config as _ai_config
+    from app.models import AiConfig
+    from app.routers.ai_config import resolve_api_key
     from app.services.cve_analysis_service import analyze_cve_asset, get_rag_context
 
     if not body.cve_ids:
@@ -202,11 +203,10 @@ def analyze_cves(
         raise HTTPException(400, "Maximo 20 CVEs por analisis.")
 
     # Configuracion IA
-    ai_cfg = _ai_config(db)
-    if not ai_cfg or not ai_cfg.api_key_encrypted:
+    ai_cfg = db.query(AiConfig).first()
+    ai_api_key = resolve_api_key(ai_cfg)
+    if not ai_api_key:
         raise HTTPException(400, "El Agente IA no esta configurado. Ve a Onboarding para configurarlo.")
-    from app.routers.ai_config import _decrypt as ai_decrypt
-    ai_api_key = ai_decrypt(ai_cfg.api_key_encrypted)
 
     # Configuracion CVE
     api_key = _get_api_key(db)
@@ -319,7 +319,8 @@ def create_risk_from_cve(
 ):
     """Crea un Riesgo en RiskHub a partir del analisis de una CVE."""
     from app.models import Risk, RiskStatus, TreatmentOption, Threat, Vulnerability
-    from app.services.risk_engine import compute_risk
+    from app.services.risk_engine import calc_level, clamp
+    from app.routers.risks import _next_code
 
     asset = db.query(Asset).filter(Asset.id == body.asset_id).first()
     if not asset:
@@ -328,56 +329,91 @@ def create_risk_from_cve(
     analysis = body.analysis
     cve = body.cve_data
 
-    # Buscar o crear la amenaza correspondiente
-    threat_name = analysis.get("amenaza_sugerida") or "Explotacion de vulnerabilidad tecnica (CVE)"
-    threat = db.query(Threat).filter(Threat.name.ilike(f"%{threat_name[:40]}%")).first()
+    # --- Amenaza: threat_id es NOT NULL, siempre necesitamos una ---
+    threat_name = (analysis.get("amenaza_sugerida") or "").strip()
+    threat = None
+    if threat_name:
+        threat = db.query(Threat).filter(Threat.name.ilike(f"%{threat_name[:40]}%")).first()
+    if not threat:
+        # Fallback: buscar amenaza generica de explotacion de vulnerabilidades
+        threat = db.query(Threat).filter(Threat.name.ilike("%vulnerabilidad%")).first()
+    if not threat:
+        threat = db.query(Threat).first()
+    if not threat:
+        raise HTTPException(400, "No hay amenazas en el catalogo. Crea al menos una amenaza antes de continuar.")
 
-    # Buscar o crear vulnerabilidad en el catalogo
-    vuln_name = f"{body.cve_id} — {cve.get('cvss_severity', 'UNKNOWN')}"
-    vuln = db.query(Vulnerability).filter(Vulnerability.name == vuln_name).first()
+    # --- Vulnerabilidad: code es NOT NULL y UNIQUE ---
+    # Usamos el CVE ID como codigo (maximo 32 chars)
+    vuln_code = body.cve_id[:32]
+    vuln_name = f"{body.cve_id} — CVSS {cve.get('cvss_score', '?')} ({cve.get('cvss_severity', 'N/A')})"
+    vuln = db.query(Vulnerability).filter(Vulnerability.code == vuln_code).first()
     if not vuln:
-        from app.models import Vulnerability as Vuln
-        vuln = Vuln(
-            name=vuln_name,
+        vuln = Vulnerability(
+            code=vuln_code,
+            name=vuln_name[:255],
             description=cve.get("description", "")[:1000],
-            source="NVD",
+            category="software",
+            is_custom=True,
         )
         db.add(vuln)
         db.flush()
 
-    # Calcular niveles de riesgo
-    inherent = int(analysis.get("riesgo_inherente", cvs.score_to_risk_level(cve.get("cvss_score", 0))))
-    residual = int(analysis.get("riesgo_residual", inherent))
+    # --- Verificar que no existe ya un riesgo para este par (asset, threat) ---
+    existing = db.query(Risk).filter(
+        Risk.asset_id == asset.id,
+        Risk.threat_id == threat.id,
+    ).first()
+    if existing:
+        return {
+            "ok": True,
+            "risk_id": existing.id,
+            "risk_code": existing.code,
+            "message": (
+                f"Ya existe el riesgo {existing.code} para este activo y amenaza. "
+                f"Se ha vinculado el CVE {body.cve_id} al riesgo existente."
+            ),
+        }
 
-    # Construir descripcion del riesgo
-    actions_text = ""
-    for a in (analysis.get("acciones_mitigacion") or [])[:5]:
-        actions_text += f"\n- [{a.get('control_iso', '')}] {a.get('accion', '')} ({a.get('prioridad', '')})"
+    # --- Mapeo de niveles IA (escala 1-5) a escala Risk (0-4) ---
+    inherent_15 = int(analysis.get("riesgo_inherente") or cvs.score_to_risk_level(cve.get("cvss_score", 0)))
+    residual_15 = int(analysis.get("riesgo_residual") or inherent_15)
+    inh_04 = clamp(inherent_15 - 1)   # 1-5 → 0-4
+    res_04 = clamp(residual_15 - 1)
 
-    notes = (
-        f"CVE: {body.cve_id} | CVSS: {cve.get('cvss_score', '?')} ({cve.get('cvss_severity', '?')})\n"
+    # --- Descripcion del riesgo ---
+    actions_text = "\n".join(
+        f"  [{a.get('control_iso', '')}] {a.get('accion', '')} ({a.get('prioridad', '')})"
+        for a in (analysis.get("acciones_mitigacion") or [])[:5]
+    )
+    description = (
+        f"CVE: {body.cve_id} | CVSS: {cve.get('cvss_score', '?')} ({cve.get('cvss_severity', '?')}) | "
         f"Vector: {cve.get('cvss_vector', '')}\n"
-        f"Afecta al activo: {analysis.get('justificacion_afectacion', '')}\n"
+        f"Impacto en activo: {analysis.get('justificacion_afectacion', '')}\n"
         f"Cobertura de controles: {analysis.get('cobertura_controles', '')}\n"
-        f"\nAcciones de mitigacion propuestas:{actions_text}"
+        f"Acciones de mitigacion propuestas:\n{actions_text}"
     )
 
+    # --- Crear el riesgo ---
     risk = Risk(
+        code=_next_code(db),
         asset_id=asset.id,
-        threat_id=threat.id if threat else None,
-        vulnerability_id=vuln.id,
-        inherent_likelihood=min(5, max(1, (inherent + 1) // 2 + 1)),
-        inherent_impact=min(5, max(1, inherent)),
-        residual_likelihood=min(5, max(1, (residual + 1) // 2)),
-        residual_impact=min(5, max(1, residual)),
-        treatment_option=TreatmentOption.MODIFICATION if residual >= 3 else None,
+        threat_id=threat.id,
+        description=description[:2000],
+        inherent_likelihood=inh_04,
+        inherent_consequence=inh_04,
+        inherent_level=calc_level(inh_04, inh_04),
+        residual_likelihood=res_04,
+        residual_consequence=res_04,
+        residual_level=calc_level(res_04, res_04),
+        treatment_option=TreatmentOption.MODIFICATION if res_04 >= 2 else None,
         status=RiskStatus.IDENTIFIED,
-        notes=notes[:2000],
         owner_id=current_user.id,
     )
-    # Calcular niveles compuestos
-    compute_risk(risk)
     db.add(risk)
+    db.flush()
+
+    # M2M: vincular vulnerabilidad al riesgo
+    risk.vulnerabilities = [vuln]
 
     log_action(db, current_user.id, "create", "risk", None, {
         "source": "cve_analysis",

@@ -654,6 +654,39 @@ const ViewGuide = {
     ${this._warn('<strong>Formatos soportados:</strong> PDF, DOCX, TXT y CSV. Los archivos de otros formatos se omiten automaticamente. Tamano maximo por archivo: 20 MB.')}
     ${this._tip('<strong>Buena practica:</strong> Organiza la documentacion SGSI en SharePoint por carpetas tematicas (politicas, procedimientos, registros, evidencias) e importa cada carpeta con la categoria correspondiente en RiskHub. Esto mejora la precision del Agente IA en las consultas.')}
 
+    ${this._h('SSO — Inicio de sesion unico (OIDC)')}
+    ${this._p('RiskHub soporta autenticacion federada mediante el protocolo <strong>OpenID Connect (OIDC)</strong>, compatible con Microsoft Entra ID (Azure AD), Google Workspace, Okta y cualquier proveedor OIDC estandar. Permite a los usuarios iniciar sesion con sus credenciales corporativas sin necesidad de una cuenta RiskHub separada.')}
+    ${this._h('Configurar el proveedor de identidad (IdP)')}
+    ${this._steps([
+      '<strong>Microsoft Entra ID (Azure AD):</strong> Ve a Azure Portal → Azure Active Directory → Registros de aplicaciones → Nueva registro. Escoge tipo "Cuentas de este directorio" y anota el <em>Tenant ID</em> y <em>Client ID</em>. En Autenticacion agrega el Redirect URI: <code>[tu-dominio]/api/sso/callback</code>. En Certificados y secretos crea un nuevo secreto.',
+      '<strong>Google Workspace:</strong> Ve a Google Cloud Console → APIs y servicios → Credenciales → Crear credenciales → ID de cliente OAuth 2.0. Selecciona "Aplicacion web", configura el URI de redireccion y copia el Client ID y Secret.',
+      '<strong>Okta:</strong> Ve a Applications → Create App Integration → OIDC → Web Application. Configura el Sign-in redirect URI como <code>[tu-dominio]/api/sso/callback</code> y copia el Client ID y Client Secret.',
+      'Para cualquier otro proveedor: necesitas la <strong>Issuer URL</strong> (URL base OIDC, ej: <em>https://login.microsoftonline.com/{tenant-id}/v2.0</em>), el <strong>Client ID</strong> y el <strong>Client Secret</strong>.',
+    ])}
+    ${this._h('Configurar SSO en RiskHub')}
+    ${this._steps([
+      'Ve a <strong>Integraciones → pestaña Live → tarjeta SSO / OIDC</strong>.',
+      'Haz clic en <strong>Configurar</strong> e introduce los datos del proveedor: Issuer URL, Client ID y Client Secret.',
+      'El campo <strong>Redirect URI</strong> se completa automaticamente con la URL de tu instancia (<code>/api/sso/callback</code>). Copia este valor exacto al IdP.',
+      'Configura los <strong>dominios permitidos</strong> (ej: <em>miempresa.com</em>) para restringir el acceso a usuarios del dominio corporativo. Deja en blanco para permitir cualquier dominio validado por el IdP.',
+      'Selecciona el <strong>rol por defecto</strong> que se asignara a los usuarios nuevos aprovisionados via SSO (viewer recomendado).',
+      'Activa <strong>Aprovisionar automaticamente</strong> si quieres que los usuarios del IdP se creen en RiskHub en su primer inicio de sesion. Si esta desactivado, el admin debe crear la cuenta primero con el mismo email.',
+      'Haz clic en <strong>Guardar</strong> — las credenciales se cifran con Fernet antes de almacenarse.',
+      'Usa el boton <strong>Probar conexion</strong> para verificar que RiskHub puede descubrir la configuracion OIDC del proveedor.',
+    ])}
+    ${this._h('Flujo de inicio de sesion via SSO')}
+    ${this._steps([
+      'En la pantalla de login aparece automaticamente el boton <strong>Iniciar sesion con SSO</strong> (solo si SSO esta configurado).',
+      'El usuario hace clic y es redirigido al IdP corporativo (Microsoft, Google, Okta...).',
+      'El usuario se autentica con sus credenciales corporativas (MFA incluido si el IdP lo requiere).',
+      'El IdP redirige de vuelta a RiskHub con un codigo de autorizacion.',
+      'RiskHub valida el codigo, obtiene el perfil del usuario (email, nombre) y emite un JWT de sesion.',
+      'Si el usuario no existe y el aprovisionamiento automatico esta activo, se crea la cuenta con el rol por defecto.',
+      'El usuario accede directamente al dashboard sin necesidad de introducir una contrasena de RiskHub.',
+    ])}
+    ${this._warn('<strong>Seguridad:</strong> El flujo SSO usa <em>state tokens</em> con TTL de 10 minutos para proteccion CSRF. Las credenciales del proveedor (Client Secret) se almacenan cifradas con Fernet y nunca se exponen en la interfaz. Los usuarios SSO pueden coexistir con usuarios locales (autenticacion con usuario/contrasena RiskHub).')}
+    ${this._tip('<strong>Buena practica:</strong> Configura los dominios permitidos para evitar que usuarios externos a la organizacion puedan autenticarse via SSO aunque tengan cuenta en el IdP. Asigna el rol <em>viewer</em> por defecto y eleva los permisos manualmente segun necesidad.')}
+
     ${this._h('Catalogo de guias de integracion manual')}
     ${this._p('La pestana <strong>Catalogo de guias</strong> incluye 25 herramientas del mercado con instrucciones detalladas para integrar sus datos con RiskHub manualmente.')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
