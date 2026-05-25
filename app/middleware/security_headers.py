@@ -64,11 +64,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Bloquear carga cross-domain de recursos internos (Adobe Flash / PDF legacy)
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
 
-        # Aislamiento de contexto de navegacion — protege de XS-Leaks
-        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-
-        # Bloquear que otros origenes carguen recursos de esta app
-        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        # COOP y CORP solo son validos sobre HTTPS o localhost.
+        # En HTTP el navegador las ignora y emite un warning en consola.
+        is_secure = (
+            request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto") == "https"
+            or request.url.hostname in ("localhost", "127.0.0.1")
+        )
+        if is_secure:
+            response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+            response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
 
         # Cache-Control: los endpoints de API devuelven datos confidenciales;
         # no deben ser almacenados en cache del navegador, proxies ni CDNs.
