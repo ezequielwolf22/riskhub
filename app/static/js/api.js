@@ -156,6 +156,14 @@ const Api = {
   ai: {
     riskSuggest: (d) => Api.post('/api/ai/risk-suggest', d),
   },
+  tasks: {
+    list: (q) => Api.get('/api/tasks/', q),
+    get: (id) => Api.get('/api/tasks/' + id),
+    create: (d) => Api.post('/api/tasks/', d),
+    update: (id, d) => Api.patch('/api/tasks/' + id, d),
+    del: (id) => Api.del('/api/tasks/' + id),
+    summary: () => Api.get('/api/tasks/stats/summary'),
+  },
   search: (q) => Api.get('/api/search/', { q }),
   admin: {
     systemInfo: () => Api.get('/api/admin/system-info'),

@@ -306,7 +306,16 @@ def _run_risk_reviews() -> None:
         ).all()
 
         for risk in active_risks:
+            # Dedup: no reenviar si ya se notifico en las ultimas 20 horas
+            if risk.last_review_notified_at:
+                notified_dt = risk.last_review_notified_at
+                if not notified_dt.tzinfo:
+                    notified_dt = notified_dt.replace(tzinfo=timezone.utc)
+                if (now - notified_dt).total_seconds() < 72000:  # 20 horas
+                    continue
+
             review_dt = risk.next_review.replace(tzinfo=timezone.utc)
+            sent_this_risk = False
             if review_dt < now:
                 # Vencida
                 days_overdue = (now - review_dt).days
@@ -318,13 +327,13 @@ def _run_risk_reviews() -> None:
                         try:
                             email_service.send_email(cfg, owner.email, subject,
                                 email_service._wrap_html(subject, body, org))
+                            sent_this_risk = True
                         except Exception:
                             pass
                 continue
             time_until = review_dt - now
             for threshold, label in thresholds:
                 if timedelta(0) <= time_until <= threshold:
-                    # Enviar solo si es la primera vez que cae en este bucket (+-12h)
                     owner = db.query(User).filter(User.id == risk.owner_id).first()
                     if owner and owner.email:
                         subject = f"RiskHub — Revision de riesgo {label}: {risk.code} ({org})"
@@ -333,9 +342,12 @@ def _run_risk_reviews() -> None:
                         try:
                             email_service.send_email(cfg, owner.email, subject,
                                 email_service._wrap_html(subject, body, org))
+                            sent_this_risk = True
                         except Exception:
                             pass
                     break
+            if sent_this_risk:
+                risk.last_review_notified_at = now
     except Exception as exc:
         logger.exception("Error en revision de riesgos: %s", exc)
     finally:

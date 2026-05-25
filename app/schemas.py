@@ -8,6 +8,7 @@ from app.models import (
     RiskStatus, ControlStatus, UserRole,
     IncidentSeverity, IncidentStatus, SupplierRisk,
     NCSeverity, NCStatus,
+    TaskStatus, TaskPriority,
 )
 
 
@@ -523,6 +524,47 @@ class NonConformityOut(ORMBase):
     related_risk_id: Optional[int]
     created_at: datetime
     updated_at: datetime
+
+
+# ---------- TREATMENT TASKS ----------
+class TaskIn(BaseModel):
+    title: str
+    description: Optional[str] = None
+    risk_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
+    status: TaskStatus = TaskStatus.PENDING
+    priority: TaskPriority = TaskPriority.MEDIUM
+    due_date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    risk_id: Optional[int] = None
+    assigned_to_id: Optional[int] = None
+    status: Optional[TaskStatus] = None
+    priority: Optional[TaskPriority] = None
+    due_date: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+class TaskOut(ORMBase):
+    id: int
+    code: str
+    title: str
+    description: Optional[str]
+    risk_id: Optional[int]
+    assigned_to_id: Optional[int]
+    created_by_id: Optional[int]
+    status: TaskStatus
+    priority: TaskPriority
+    due_date: Optional[datetime]
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    risk: Optional["RiskOut"] = None
+    assigned_to: Optional["UserOut"] = None
 
 
 TokenOut.model_rebuild()

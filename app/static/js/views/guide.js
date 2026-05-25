@@ -14,6 +14,7 @@ const ViewGuide = {
     { id: 'incidents', title: 'Incidentes (NIS2)', icon: '🚨' },
     { id: 'suppliers', title: 'Proveedores (supply chain)', icon: '🔗' },
     { id: 'nonconformities', title: 'No conformidades', icon: '⚠️' },
+    { id: 'tasks', title: 'Tareas de tratamiento', icon: '📌' },
     { id: 'ai', title: 'Agente IA', icon: '🤖' },
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
@@ -91,6 +92,7 @@ const ViewGuide = {
       incidents: this._cIncidents,
       suppliers: this._cSuppliers,
       nonconformities: this._cNonConformities,
+      tasks: this._cTasks,
       ai: this._cAI,
       reports: this._cReports,
       alerts: this._cAlerts,
@@ -262,6 +264,10 @@ const ViewGuide = {
       'El sistema valida el formato y crea los activos. Los errores se reportan fila a fila.',
     ])}
     ${this._tip('<strong>Consejo:</strong> Empieza importando los activos críticos (aquellos que, si fallan, impactan directamente al negocio). Luego añade los de soporte. Usa el campo "proceso de negocio" para agrupar activos por área funcional.')}
+    ${this._h('Valor monetario y calculo FAIR/ALE')}
+    ${this._p('El campo <strong>Valor monetario (EUR)</strong> permite introducir el valor economico del activo. Si se introduce, el sistema calculara automaticamente el <strong>ALE (Annual Loss Expectancy)</strong> para cada riesgo vinculado a ese activo: <code>ALE = Valor_monetario × (Nivel_residual / 8)</code>. Este calculo es la base del modelo <strong>FAIR (Factor Analysis of Information Risk)</strong>.')}
+    ${this._h('Sugerencias de riesgo con IA')}
+    ${this._p('Al editar un activo existente, el boton <strong>IA: Sugerir riesgos</strong> consulta el catalogo ISO 27005 y propone los escenarios de riesgo mas relevantes para ese tipo de activo. Usa las sugerencias como punto de partida para crear los riesgos en el Registro de Riesgos.')}
     ${this._h('Jerarquia de activos')}
     ${this._p('Puedes definir un activo padre para cada activo. Esto es útil para representar dependencias: un proceso de negocio depende de varias aplicaciones, que a su vez dependen de servidores. La jerarquía ayuda a entender la propagación del impacto.')}
     ${this._h('Ordenar la tabla de activos')}
@@ -480,6 +486,15 @@ const ViewGuide = {
       <li><strong>CSV:</strong> Controles → boton <em>SoA CSV</em> — exporta los 93 controles con estado de aplicabilidad, nivel de madurez y proxima revision. Compatible con Excel.</li>
     </ul>
     ${this._tip('<strong>Para certificación ISO 27001:</strong> todos los controles del Anexo A deben estar justificados (aplicables o excluidos con justificación). Usa el campo descripción de la implementación para documentar la justificación.')}
+    ${this._h('Campos SOA ampliados (ISO 27001:2022 cl. 6.1.3)')}
+    ${this._p('Al editar una implementacion, la seccion <strong>Campos SOA</strong> permite registrar:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Razon de inclusion:</strong> Legal/regulatorio, Contractual, Gestion de riesgo o Buena practica.</li>
+      <li><strong>Justificacion de exclusion:</strong> texto libre si el control no aplica a tu organizacion.</li>
+      <li><strong>Referencias de evidencia:</strong> lista de documentos con titulo y URL que demuestran la implementacion del control.</li>
+      <li><strong>Ultima revision SOA:</strong> fecha en que se reviso la decision de aplicabilidad.</li>
+    </ul>
+    ${this._p('Estos campos se exportan en el CSV SoA y en el PDF Statement of Applicability para cumplir los requisitos de auditoria ISO 27001:2022.')}
   `;},
 
   get _cAI() { return `
@@ -890,6 +905,44 @@ const ViewGuide = {
     ${this._h('Impacto en el dashboard de cumplimiento')}
     ${this._p('El numero de no conformidades mayores abiertas penaliza directamente el indicador ISO 27001 del dashboard de cumplimiento. Cada NC mayor abierta reduce la puntuacion en 20 puntos. Cierra las NCs mayores para mejorar tu puntuacion de cumplimiento.')}
     ${this._tip('<strong>Para auditoria ISO 27001:</strong> todas las NCs detectadas en la auditoria de certificacion deben estar cerradas (con evidencia) antes de la auditoria de seguimiento o renovacion.')}
+  `;},
+
+  get _cTasks() { return `
+    ${this._p('El <strong>tablero Kanban de tareas</strong> convierte el plan de tratamiento de riesgos en tareas accionables, asignables a personas y con fechas limite. Cumple la exigencia de ISO 27005 cl. 9.2 (<em>Preparacion e implementacion del plan de tratamiento</em>) y permite seguimiento operativo diario.')}
+    ${this._h('Columnas del tablero')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Columna</th><th style="padding:8px;">Significado</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Pendiente','Tarea creada, aun no iniciada.'],
+          ['En progreso','Responsable trabajando activamente en la tarea.'],
+          ['Bloqueado','Progreso detenido por un impedimento externo (proveedor, presupuesto, etc.).'],
+          ['Completado','Tarea terminada y medida de mitigacion aplicada.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Prioridad de tareas')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Critica:</strong> tarea vinculada a un riesgo P1 o con fecha limite inminente.</li>
+      <li><strong>Alta:</strong> vinculada a riesgo residual >= 6.</li>
+      <li><strong>Media:</strong> riesgo residual 3-5 o tarea de mantenimiento.</li>
+      <li><strong>Baja:</strong> mejoras opcionales y de largo plazo.</li>
+    </ul>
+    ${this._h('Flujo de trabajo recomendado')}
+    ${this._steps([
+      'Al crear o revisar un riesgo con tratamiento <strong>Modificacion</strong>, crea una o varias tareas vinculadas al riesgo.',
+      'Asigna la tarea a la persona responsable de ejecutarla (puede ser diferente al owner del riesgo).',
+      'Establece una fecha limite coherente con el <em>treatment_due_date</em> del riesgo.',
+      'Mueve las tareas por las columnas usando los botones de flecha o editando su estado.',
+      'Cuando todas las tareas de un riesgo esten en <strong>Completado</strong>, revisa el nivel residual y actualiza el estado del riesgo a <strong>Tratado</strong>.',
+    ])}
+    ${this._h('Indicadores del tablero')}
+    ${this._p('La barra de estadisticas superior muestra: total de tareas, tareas en progreso, tareas bloqueadas y tareas vencidas (fecha limite pasada y no completadas). El badge naranja en el sidebar del menu lateral indica el numero de tareas vencidas activas.')}
+    ${this._tip('<strong>Consejo:</strong> vincula cada tarea al riesgo correspondiente para poder tener trazabilidad completa desde el riesgo hasta la accion ejecutada. Esta trazabilidad es requerida en auditorias ISO 27001.')}
   `;},
 
   get _cMethodology() { return `

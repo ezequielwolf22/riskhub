@@ -21,6 +21,7 @@ const Routes = {
   suppliers: ViewSuppliers,
   nonconformities: ViewNonConformities,
   compliance: ViewCompliance,
+  tasks: ViewTasks,
 };
 
 function currentRoute() {
@@ -228,6 +229,18 @@ async function _loadOverdueBadge() {
         ctrlBadge.style.display = 'inline-block';
       } else {
         ctrlBadge.style.display = 'none';
+      }
+    }
+  } catch (_) { /* silencioso */ }
+  try {
+    const ts = await Api.tasks.summary();
+    const taskBadge = document.getElementById('badge-tasks-overdue');
+    if (taskBadge) {
+      if (ts.overdue > 0) {
+        taskBadge.textContent = ts.overdue;
+        taskBadge.style.display = 'inline-block';
+      } else {
+        taskBadge.style.display = 'none';
       }
     }
   } catch (_) { /* silencioso */ }

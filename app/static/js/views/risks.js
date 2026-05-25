@@ -533,6 +533,11 @@ const ViewRisks = {
         Nivel inherente actual: <strong>${r.inherent_level}</strong> &nbsp;→&nbsp;
         Nivel residual actual: <strong>${r.residual_level}</strong>
         ${r.inherent_level > 0 ? `&nbsp;<span style="font-size:12px;color:var(--risk-low);">(-${Math.round((1-r.residual_level/r.inherent_level)*100)}% reduccion)</span>` : ''}
+        ${r.asset && r.asset.monetary_value ? (() => {
+          const ale = Math.round(r.asset.monetary_value * (r.residual_level / 8));
+          const aleFmt = ale.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 });
+          return `<br><span style="font-size:12px;">ALE estimado (FAIR): <strong>${aleFmt}</strong> <span style="color:var(--text-muted);">(valor activo × nivel residual/8)</span></span>`;
+        })() : ''}
         ${r.accepted_at ? `<br><span style="font-size:12px;">Aceptado el ${new Date(r.accepted_at).toLocaleString('es-ES')}</span>` : ''}
         ${r.treatment_due_date ? `<br><span style="font-size:12px;">Fecha limite: <strong>${new Date(r.treatment_due_date).toLocaleDateString('es-ES')}</strong></span>` : ''}
       </div>

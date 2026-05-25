@@ -10,7 +10,7 @@ from app import __version__
 from app.config import settings
 from app.routers import (
     admin, ai, alerts, assets, audit, auth, catalogues, context, controls,
-    reports, risks, search, users,
+    incidents, nonconformities, reports, risks, search, suppliers, tasks, users,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -66,6 +66,10 @@ app.include_router(alerts.router)
 app.include_router(audit.router)
 app.include_router(ai.router)
 app.include_router(search.router)
+app.include_router(incidents.router)
+app.include_router(suppliers.router)
+app.include_router(nonconformities.router)
+app.include_router(tasks.router)
 
 
 # Frontend estatico

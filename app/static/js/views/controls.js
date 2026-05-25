@@ -231,6 +231,27 @@ const ViewControls = {
         <textarea id="f-evi" rows="2">${UI.esc(data.evidence||'')}</textarea></div>
       <div class="span2"><label>Notas</label>
         <textarea id="f-notes" rows="2">${UI.esc(data.notes||'')}</textarea></div>
+      <div class="span2" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+        <p style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:0 0 8px;letter-spacing:.05em;">Campos SOA — ISO 27001:2022 cl. 6.1.3</p>
+      </div>
+      <div><label>Razon de inclusion</label>
+        <select id="f-incl-reason">
+          <option value="">— Seleccionar —</option>
+          ${[['legal','Legal / regulatorio'],['contractual','Contractual'],['risk','Gestion de riesgo'],['best_practice','Buena practica']]
+            .map(([v,l]) => `<option value="${v}" ${data.inclusion_reason===v?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div><label>Ultima revision SOA</label>
+        <input type="date" id="f-soa-rev" value="${data.soa_reviewed_at ? data.soa_reviewed_at.slice(0,10) : ''}">
+      </div>
+      <div class="span2"><label>Justificacion de exclusion (si no aplica)</label>
+        <textarea id="f-excl-just" rows="2">${UI.esc(data.exclusion_justification||'')}</textarea>
+      </div>
+      <div class="span2"><label>Referencias de evidencia (una por linea, formato: Titulo | URL)</label>
+        <textarea id="f-evid-refs" rows="3" placeholder="Politica de seguridad | https://intranet/...&#10;Evidencia CrowdStrike | /docs/evidencias/...">${
+          (data.evidence_refs || []).map(r => `${r.title || ''}${r.url ? ' | ' + r.url : ''}`).join('\n')
+        }</textarea>
+      </div>
       ${id ? `
       <div class="span2">
         <details id="impl-history">
@@ -289,6 +310,15 @@ const ViewControls = {
     document.getElementById('m-save').onclick = async () => {
       const lastRev = document.getElementById('f-last-rev').value;
       const nextRev = document.getElementById('f-next-rev').value;
+      const soaRev = document.getElementById('f-soa-rev').value;
+      // Parsear referencias de evidencia
+      const evidRefsRaw = document.getElementById('f-evid-refs').value.trim();
+      const evidence_refs = evidRefsRaw
+        ? evidRefsRaw.split('\n').map(line => {
+            const parts = line.split('|');
+            return { title: (parts[0]||'').trim(), url: (parts[1]||'').trim() };
+          }).filter(r => r.title || r.url)
+        : [];
       const body = {
         control_id: parseInt(document.getElementById('f-control').value),
         name: document.getElementById('f-name').value,
@@ -299,6 +329,10 @@ const ViewControls = {
         next_review: nextRev || null,
         evidence: document.getElementById('f-evi').value,
         notes: document.getElementById('f-notes').value,
+        inclusion_reason: document.getElementById('f-incl-reason').value || null,
+        exclusion_justification: document.getElementById('f-excl-just').value.trim() || null,
+        evidence_refs: evidence_refs.length ? evidence_refs : null,
+        soa_reviewed_at: soaRev ? new Date(soaRev).toISOString() : null,
       };
       try {
         if (id) await Api.impls.update(id, body);

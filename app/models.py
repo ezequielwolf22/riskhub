@@ -298,6 +298,7 @@ class Risk(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
     next_review = Column(DateTime, nullable=True)
+    last_review_notified_at = Column(DateTime, nullable=True)  # dedup emails de revision
 
     asset = relationship("Asset", back_populates="risks")
     threat = relationship("Threat")
@@ -485,3 +486,42 @@ class NonConformity(Base):
     verifier = relationship("User", foreign_keys=[verifier_id])
     related_control = relationship("Control", foreign_keys=[related_control_id])
     related_risk = relationship("Risk", foreign_keys=[related_risk_id])
+
+
+# ---------- PLAN DE TRATAMIENTO — TAREAS (M3) ----------
+
+class TaskStatus(str, PyEnum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    BLOCKED = "blocked"
+    DONE = "done"
+
+
+class TaskPriority(str, PyEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class TreatmentTask(Base):
+    """Tarea de plan de tratamiento asociada a un riesgo (opcional)."""
+    __tablename__ = "treatment_tasks"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(32), unique=True, nullable=False)   # TSK-0001
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)
+    assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status = Column(Enum(TaskStatus), default=TaskStatus.PENDING)
+    priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM)
+    due_date = Column(DateTime, nullable=True)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    risk = relationship("Risk")
+    assigned_to = relationship("User", foreign_keys=[assigned_to_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])

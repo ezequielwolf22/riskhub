@@ -159,8 +159,8 @@ const ViewAssets = {
   async _edit(id) {
     let a = { name: '', asset_type: 'support_hardware', description: '',
               category: '', location: '', business_process: '', classification: '',
-              value_confidentiality: 0, value_integrity: 0, value_availability: 0,
-              value_authenticity: 0, value_accountability: 0 };
+              monetary_value: '', value_confidentiality: 0, value_integrity: 0,
+              value_availability: 0, value_authenticity: 0, value_accountability: 0 };
     if (id) {
       try { a = await Api.assets.get(id); }
       catch (e) { UI.toast(e.message, 'error'); return; }
@@ -201,7 +201,11 @@ const ViewAssets = {
             `<option value="${c}" ${a.classification===c?'selected':''}>${c||'-'}</option>`).join('')}
         </select>
       </div>
-      <div class="span2"><label>Valoración (0-4)</label></div>
+      <div>
+        <label>Valor monetario (EUR, FAIR/ALE)</label>
+        <input type="number" min="0" step="1000" id="f-monetary" value="${a.monetary_value || ''}" placeholder="ej. 50000">
+      </div>
+      <div class="span2"><label>Valoración CIA (0-4)</label></div>
       ${['confidentiality','integrity','availability','authenticity','accountability'].map(d =>
         `<div>
            <label>${({confidentiality:'Confidencialidad',integrity:'Integridad',availability:'Disponibilidad',authenticity:'Autenticidad',accountability:'Trazabilidad'})[d]}</label>
@@ -223,6 +227,7 @@ const ViewAssets = {
       actions: `
         <button class="btn" id="m-cancel">Cancelar</button>
         ${id ? `<button class="btn btn-danger" id="m-del">Eliminar</button>` : ''}
+        ${id ? `<button class="btn btn-ghost" id="m-ai-suggest" title="Sugerir riesgos basados en amenazas ISO 27005">IA: Sugerir riesgos</button>` : ''}
         <button class="btn btn-primary" id="m-save">Guardar</button>`
     });
 
@@ -264,7 +269,45 @@ const ViewAssets = {
       try { await Api.assets.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewAssets._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
+
+    // Boton IA: sugerir riesgos para este activo
+    if (id) {
+      const aiBtn = document.getElementById('m-ai-suggest');
+      if (aiBtn) aiBtn.onclick = async () => {
+        aiBtn.disabled = true; aiBtn.textContent = 'Analizando...';
+        try {
+          const result = await Api.ai.riskSuggest({ asset_id: id });
+          const suggestions = result.suggestions || result.risks || result || [];
+          if (!suggestions.length) {
+            UI.toast('No se encontraron sugerencias de riesgo para este activo.', 'info');
+            aiBtn.disabled = false; aiBtn.textContent = 'IA: Sugerir riesgos';
+            return;
+          }
+          UI.modal('Sugerencias de riesgo — IA', `
+            <div class="span2">
+              <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
+                Basado en el tipo de activo y el catalogo ISO 27005, el sistema identifica los escenarios de riesgo mas probables.
+              </p>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${suggestions.map(s => `
+                  <div style="padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-2);">
+                    <div style="font-weight:600;font-size:13px;">${UI.esc(s.threat_name || s.threat || '')}</div>
+                    ${s.description ? `<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${UI.esc(s.description)}</div>` : ''}
+                    ${s.likelihood !== undefined ? `<div style="font-size:11px;margin-top:4px;color:var(--text-subtle);">Probabilidad estimada: ${s.likelihood}/4 &nbsp;|&nbsp; Impacto: ${s.consequence || s.impact || '-'}/4</div>` : ''}
+                  </div>`).join('')}
+              </div>
+            </div>
+          `, { actions: '<button class="btn btn-primary" id="m-close-ai">Cerrar</button>' });
+          document.getElementById('m-close-ai').onclick = UI.closeModal;
+        } catch (e) {
+          UI.toast('Error al consultar IA: ' + e.message, 'error');
+          aiBtn.disabled = false; aiBtn.textContent = 'IA: Sugerir riesgos';
+        }
+      };
+    }
+
     document.getElementById('m-save').onclick = async () => {
+      const monetaryRaw = document.getElementById('f-monetary').value;
       const body = {
         name: document.getElementById('f-name').value,
         asset_type: document.getElementById('f-type').value,
@@ -273,6 +316,7 @@ const ViewAssets = {
         location: document.getElementById('f-loc').value,
         business_process: document.getElementById('f-proc').value,
         classification: document.getElementById('f-class').value,
+        monetary_value: monetaryRaw ? parseFloat(monetaryRaw) : null,
       };
       ['confidentiality','integrity','availability','authenticity','accountability']
         .forEach(d => body['value_'+d] = parseInt(document.getElementById('f-'+d).value) || 0);

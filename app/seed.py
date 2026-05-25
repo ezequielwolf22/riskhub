@@ -129,6 +129,8 @@ def _migrate_columns() -> None:
         ("ALTER TABLE suppliers ADD COLUMN category VARCHAR(128)", "suppliers", "category"),
         ("ALTER TABLE suppliers ADD COLUMN is_critical BOOLEAN DEFAULT 0", "suppliers", "is_critical"),
         ("ALTER TABLE suppliers ADD COLUMN contract_ref VARCHAR(255)", "suppliers", "contract_ref"),
+        # risks: dedup de notificaciones de revision periodica (v1.2)
+        ("ALTER TABLE risks ADD COLUMN last_review_notified_at DATETIME", "risks", "last_review_notified_at"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
