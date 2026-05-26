@@ -174,7 +174,10 @@ def list_scans(
         q = q.filter(OSINTScan.status == status)
     total = q.count()
     scans = q.order_by(OSINTScan.started_at.desc()).offset(skip).limit(limit).all()
-    return {'total': total, 'skip': skip, 'limit': limit, 'items': scans}
+    return {
+        'total': total, 'skip': skip, 'limit': limit,
+        'items': [OSINTScanResponse.model_validate(s).model_dump(mode='json') for s in scans]
+    }
 
 
 @router.get("/scans/{scan_id}", response_model=OSINTScanResponse)
@@ -252,7 +255,10 @@ def list_findings(
 
     total = q.count()
     findings = q.order_by(OSINTFinding.risk_score.desc()).offset(skip).limit(limit).all()
-    return {'total': total, 'skip': skip, 'limit': limit, 'items': findings}
+    return {
+        'total': total, 'skip': skip, 'limit': limit,
+        'items': [OSINTFindingResponse.model_validate(f).model_dump(mode='json') for f in findings]
+    }
 
 
 @router.get("/findings/export/csv")
@@ -388,7 +394,10 @@ def list_identifiers(
         q = q.filter(OSINTIdentifier.identifier_type == identifier_type)
     total = q.count()
     items = q.order_by(OSINTIdentifier.created_at.desc()).offset(skip).limit(limit).all()
-    return {'total': total, 'skip': skip, 'limit': limit, 'items': items}
+    return {
+        'total': total, 'skip': skip, 'limit': limit,
+        'items': [OSINTIdentifierResponse.model_validate(i).model_dump(mode='json') for i in items]
+    }
 
 
 # ── ENTRA ID ────────────────────────────────────────────────────────────────
