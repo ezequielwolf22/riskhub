@@ -7,34 +7,42 @@ from typing import List, Optional
 from app.database import SessionLocal
 from app.models import (
     OSINTScan, OSINTFinding, OSINTIdentifier, OSINTScanType,
-    OSINTSourceType, OSINTFindingRiskLevel
+    OSINTFindingRiskLevel
 )
 from app.services.osint_hibp import hibp_service
 from app.services.osint_virustotal import virustotal_service
 from app.services.osint_leakcheck import leakcheck_service
 from app.services.osint_intelx import intelx_service
 from app.services.osint_github import github_service
+from app.services.osint_domain import domain_osint_service
+from app.services.osint_ip import ip_osint_service
 
 logger = logging.getLogger(__name__)
 
 
 class OSINTEngine:
-    """Orquestador de escaneos OSINT. Los métodos run_* se ejecutan en background tasks."""
+    """Orquestador de escaneos OSINT. run_* son wrappers sincronos para background tasks."""
+
+    # --- Wrappers sincronos (se llaman desde FastAPI BackgroundTasks) ---
 
     def run_email_scan(self, scan_id: int, email: str, user_id: int):
-        """Wrapper síncrono para ejecutar escaneo de email en background task."""
         asyncio.run(self._scan_email(scan_id, email, user_id))
 
     def run_url_scan(self, scan_id: int, url: str, user_id: int):
-        """Wrapper síncrono para ejecutar escaneo de URL en background task."""
         asyncio.run(self._scan_url(scan_id, url, user_id))
 
     def run_username_scan(self, scan_id: int, username: str, user_id: int):
-        """Wrapper síncrono para ejecutar escaneo de username en background task."""
         asyncio.run(self._scan_username(scan_id, username, user_id))
 
+    def run_domain_scan(self, scan_id: int, domain: str, user_id: int):
+        asyncio.run(self._scan_domain(scan_id, domain, user_id))
+
+    def run_ip_scan(self, scan_id: int, ip: str, user_id: int):
+        asyncio.run(self._scan_ip(scan_id, ip, user_id))
+
+    # --- Implementaciones asincronas ---
+
     async def _scan_email(self, scan_id: int, email: str, user_id: int):
-        """Escanear email en múltiples fuentes."""
         db = SessionLocal()
         try:
             scan = db.query(OSINTScan).filter(OSINTScan.id == scan_id).first()
@@ -44,48 +52,29 @@ class OSINTEngine:
             db.commit()
 
             findings_list = []
-            identifier = None
+            identifier = self._get_or_create_identifier(db, OSINTScanType.EMAIL, email, user_id)
 
             try:
-                identifier = db.query(OSINTIdentifier).filter(
-                    OSINTIdentifier.user_id == user_id,
-                    OSINTIdentifier.identifier_type == OSINTScanType.EMAIL,
-                    OSINTIdentifier.value == email
-                ).first()
-
-                if not identifier:
-                    identifier = OSINTIdentifier(
-                        identifier_type=OSINTScanType.EMAIL,
-                        value=email,
-                        user_id=user_id
-                    )
-                    db.add(identifier)
-                    db.commit()
-                    db.refresh(identifier)
-
                 # HIBP
                 breaches = await hibp_service.check_email(email)
-                hibp_findings = hibp_service.map_breaches_to_findings(
-                    email, breaches, scan.id, identifier.id
+                findings_list.extend(
+                    hibp_service.map_breaches_to_findings(email, breaches, scan.id, identifier.id)
                 )
-                findings_list.extend(hibp_findings)
 
                 # LeakCheck
-                leakcheck_sources = await leakcheck_service.check_email(email)
-                leakcheck_findings = leakcheck_service.map_sources_to_findings(
-                    email, leakcheck_sources, scan.id, identifier.id
+                sources = await leakcheck_service.check_email(email)
+                findings_list.extend(
+                    leakcheck_service.map_sources_to_findings(email, sources, scan.id, identifier.id)
                 )
-                findings_list.extend(leakcheck_findings)
 
                 # IntelX
                 intelx_results = await intelx_service.search_email(email)
-                intelx_findings = intelx_service.map_results_to_findings(
-                    intelx_results, scan.id, identifier.id
+                findings_list.extend(
+                    intelx_service.map_results_to_findings(intelx_results, scan.id, identifier.id)
                 )
-                findings_list.extend(intelx_findings)
 
             except Exception as e:
-                logger.error("Error en scan_email %s: %s", email, e)
+                logger.error("scan_email error for %s: %s", email, e)
                 scan.status = 'failed'
                 scan.error_message = str(e)[:500]
                 db.commit()
@@ -97,7 +86,6 @@ class OSINTEngine:
             db.close()
 
     async def _scan_url(self, scan_id: int, url: str, user_id: int):
-        """Escanear URL con VirusTotal."""
         db = SessionLocal()
         try:
             scan = db.query(OSINTScan).filter(OSINTScan.id == scan_id).first()
@@ -111,11 +99,25 @@ class OSINTEngine:
             try:
                 vt_result = await virustotal_service.analyze_url(url)
                 if vt_result:
-                    vt_findings = virustotal_service.map_vt_to_findings(vt_result, scan.id)
-                    findings_list.extend(vt_findings)
+                    findings_list.extend(
+                        virustotal_service.map_vt_to_findings(vt_result, scan.id)
+                    )
+                # Si VT no esta configurado, generar finding informativo
+                if not virustotal_service.api_key:
+                    findings_list.append({
+                        'scan_id': scan.id,
+                        'identifier_id': None,
+                        'source': 'virustotal',
+                        'finding_type': 'config_missing',
+                        'title': f"VirusTotal no configurado — URL: {url[:80]}",
+                        'description': 'Configura RISKHUB_VIRUSTOTAL_API_KEY para analizar URLs',
+                        'risk_level': 'info',
+                        'risk_score': 0.0,
+                        'metadata': {'url': url}
+                    })
 
             except Exception as e:
-                logger.error("Error en scan_url %s: %s", url, e)
+                logger.error("scan_url error for %s: %s", url, e)
                 scan.status = 'failed'
                 scan.error_message = str(e)[:500]
                 db.commit()
@@ -127,7 +129,6 @@ class OSINTEngine:
             db.close()
 
     async def _scan_username(self, scan_id: int, username: str, user_id: int):
-        """Escanear nombre de usuario en GitHub."""
         db = SessionLocal()
         try:
             scan = db.query(OSINTScan).filter(OSINTScan.id == scan_id).first()
@@ -137,39 +138,24 @@ class OSINTEngine:
             db.commit()
 
             findings_list = []
-            identifier = None
+            identifier = self._get_or_create_identifier(db, OSINTScanType.USERNAME, username, user_id)
 
             try:
-                identifier = db.query(OSINTIdentifier).filter(
-                    OSINTIdentifier.user_id == user_id,
-                    OSINTIdentifier.identifier_type == OSINTScanType.USERNAME,
-                    OSINTIdentifier.value == username
-                ).first()
-
-                if not identifier:
-                    identifier = OSINTIdentifier(
-                        identifier_type=OSINTScanType.USERNAME,
-                        value=username,
-                        user_id=user_id
-                    )
-                    db.add(identifier)
-                    db.commit()
-                    db.refresh(identifier)
-
                 user_info = await github_service.check_user_info(username)
                 repos = await github_service.get_user_repos(username)
                 secrets = await github_service.search_secrets_in_code(username)
 
-                github_findings = github_service.map_github_to_findings(
-                    username,
-                    {'user_info': user_info, 'repos': repos, 'secrets': secrets},
-                    scan.id,
-                    identifier.id
+                findings_list.extend(
+                    github_service.map_github_to_findings(
+                        username,
+                        {'user_info': user_info, 'repos': repos, 'secrets': secrets},
+                        scan.id,
+                        identifier.id
+                    )
                 )
-                findings_list.extend(github_findings)
 
             except Exception as e:
-                logger.error("Error en scan_username %s: %s", username, e)
+                logger.error("scan_username error for %s: %s", username, e)
                 scan.status = 'failed'
                 scan.error_message = str(e)[:500]
                 db.commit()
@@ -180,39 +166,154 @@ class OSINTEngine:
         finally:
             db.close()
 
+    async def _scan_domain(self, scan_id: int, domain: str, user_id: int):
+        db = SessionLocal()
+        try:
+            scan = db.query(OSINTScan).filter(OSINTScan.id == scan_id).first()
+            if not scan:
+                return
+            scan.status = 'in_progress'
+            db.commit()
+
+            identifier = self._get_or_create_identifier(db, OSINTScanType.DOMAIN, domain, user_id)
+
+            try:
+                dns_records, ssl_info, subdomains, rdap_info, http_headers = await asyncio.gather(
+                    domain_osint_service.get_dns_records(domain),
+                    domain_osint_service.get_ssl_info(domain),
+                    domain_osint_service.get_subdomains_crtsh(domain),
+                    domain_osint_service.get_rdap_info(domain),
+                    domain_osint_service.get_http_headers(domain),
+                    return_exceptions=True
+                )
+
+                # Normalizar excepciones a None/{}
+                if isinstance(dns_records, Exception): dns_records = {}
+                if isinstance(ssl_info, Exception): ssl_info = None
+                if isinstance(subdomains, Exception): subdomains = []
+                if isinstance(rdap_info, Exception): rdap_info = None
+                if isinstance(http_headers, Exception): http_headers = {}
+
+                # IntelX domain search
+                intelx_results = await intelx_service.search_domain(domain)
+
+                findings_list = domain_osint_service.map_to_findings(
+                    domain, dns_records, ssl_info, subdomains,
+                    rdap_info, http_headers, scan.id, identifier.id
+                )
+
+                # Agregar findings de IntelX si los hay
+                findings_list.extend(
+                    intelx_service.map_results_to_findings(intelx_results, scan.id, identifier.id)
+                )
+
+            except Exception as e:
+                logger.error("scan_domain error for %s: %s", domain, e)
+                scan.status = 'failed'
+                scan.error_message = str(e)[:500]
+                db.commit()
+                return
+
+            self._save_findings(scan, findings_list, identifier, db)
+
+        finally:
+            db.close()
+
+    async def _scan_ip(self, scan_id: int, ip: str, user_id: int):
+        db = SessionLocal()
+        try:
+            scan = db.query(OSINTScan).filter(OSINTScan.id == scan_id).first()
+            if not scan:
+                return
+            scan.status = 'in_progress'
+            db.commit()
+
+            identifier = self._get_or_create_identifier(db, OSINTScanType.IP, ip, user_id)
+
+            try:
+                ip_info, rdns, open_ports = await asyncio.gather(
+                    ip_osint_service.get_ip_info(ip),
+                    ip_osint_service.get_reverse_dns(ip),
+                    ip_osint_service.check_open_ports(ip),
+                    return_exceptions=True
+                )
+
+                if isinstance(ip_info, Exception): ip_info = None
+                if isinstance(rdns, Exception): rdns = None
+                if isinstance(open_ports, Exception): open_ports = []
+
+                findings_list = ip_osint_service.map_to_findings(
+                    ip, ip_info, rdns, open_ports, scan.id, identifier.id
+                )
+
+            except Exception as e:
+                logger.error("scan_ip error for %s: %s", ip, e)
+                scan.status = 'failed'
+                scan.error_message = str(e)[:500]
+                db.commit()
+                return
+
+            self._save_findings(scan, findings_list, identifier, db)
+
+        finally:
+            db.close()
+
+    # --- Helpers ---
+
+    def _get_or_create_identifier(self, db, itype: OSINTScanType, value: str, user_id: int):
+        obj = db.query(OSINTIdentifier).filter(
+            OSINTIdentifier.user_id == user_id,
+            OSINTIdentifier.identifier_type == itype,
+            OSINTIdentifier.value == value
+        ).first()
+        if not obj:
+            obj = OSINTIdentifier(
+                identifier_type=itype,
+                value=value,
+                user_id=user_id
+            )
+            db.add(obj)
+            db.commit()
+            db.refresh(obj)
+        return obj
+
     def _save_findings(self, scan: OSINTScan, findings_list: List[dict],
-                       identifier: Optional[OSINTIdentifier], db):
-        """Guardar findings en BD y actualizar scan."""
-        for finding_data in findings_list:
+                       identifier, db):
+        for fd in findings_list:
             finding = OSINTFinding(
                 scan_id=scan.id,
-                identifier_id=finding_data.get('identifier_id'),
-                source=finding_data.get('source'),
-                finding_type=finding_data.get('finding_type'),
-                title=finding_data.get('title'),
-                description=finding_data.get('description'),
-                risk_level=finding_data.get('risk_level', 'medium'),
-                risk_score=float(finding_data.get('risk_score', 0)),
-                extra_data=finding_data.get('metadata')
+                identifier_id=fd.get('identifier_id'),
+                source=fd.get('source'),
+                finding_type=fd.get('finding_type'),
+                title=fd.get('title'),
+                description=fd.get('description'),
+                risk_level=fd.get('risk_level', 'medium'),
+                risk_score=float(fd.get('risk_score', 0)),
+                extra_data=fd.get('metadata')
             )
             db.add(finding)
 
         scan.findings_count = len(findings_list)
-        if findings_list:
-            scan.risk_score = sum(f.get('risk_score', 0) for f in findings_list) / len(findings_list)
+        scan.risk_score = (
+            sum(f.get('risk_score', 0) for f in findings_list) / len(findings_list)
+            if findings_list else 0.0
+        )
         scan.status = 'completed'
         scan.completed_at = datetime.now(timezone.utc)
 
         if identifier:
             identifier.last_scanned_at = datetime.now(timezone.utc)
-            if scan.risk_score and scan.risk_score > 70:
+            s = scan.risk_score or 0
+            if s > 70:
                 identifier.risk_level = OSINTFindingRiskLevel.CRITICAL
-            elif scan.risk_score and scan.risk_score > 50:
+            elif s > 50:
                 identifier.risk_level = OSINTFindingRiskLevel.HIGH
-            elif scan.risk_score and scan.risk_score > 30:
+            elif s > 30:
                 identifier.risk_level = OSINTFindingRiskLevel.MEDIUM
-            elif scan.risk_score and scan.risk_score > 10:
+            elif s > 10:
                 identifier.risk_level = OSINTFindingRiskLevel.LOW
+            else:
+                identifier.risk_level = OSINTFindingRiskLevel.INFO
 
         db.commit()
 

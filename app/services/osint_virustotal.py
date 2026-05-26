@@ -11,7 +11,7 @@ class VirusTotalService:
     """Integración con API de VirusTotal."""
 
     def __init__(self):
-        self.api_key = getattr(settings, 'VIRUSTOTAL_API_KEY', None)
+        self.api_key = settings.virustotal_api_key
         self.base_url = 'https://www.virustotal.com/api/v3'
         self.last_call_time = 0
         self.rate_limit_ms = 15000  # 15 segundos entre requests (60 requests/min)

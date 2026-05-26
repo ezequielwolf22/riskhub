@@ -9,7 +9,7 @@ class GitHubService:
     """Integración con GitHub para OSINT de repositorios públicos."""
 
     def __init__(self):
-        self.api_key = getattr(settings, 'GITHUB_API_TOKEN', None)
+        self.api_key = settings.github_api_token
         self.base_url = 'https://api.github.com'
         self.secret_patterns = {
             'aws_key': r'AKIA[0-9A-Z]{16}',

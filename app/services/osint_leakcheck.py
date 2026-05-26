@@ -8,7 +8,7 @@ class LeakCheckService:
     """Integración con API de LeakCheck."""
 
     def __init__(self):
-        self.api_key = getattr(settings, 'LEAKCHECK_API_KEY', None)
+        self.api_key = settings.leakcheck_api_key
         self.base_url = 'https://leakcheck.io/api/public'
 
     async def check_email(self, email: str) -> List[dict]:

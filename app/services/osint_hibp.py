@@ -10,7 +10,7 @@ class HibpService:
     """Integración con API de Have I Been Pwned."""
 
     def __init__(self):
-        self.api_key = getattr(settings, 'HIBP_API_KEY', None)
+        self.api_key = settings.hibp_api_key
         self.base_url = 'https://haveibeenpwned.com/api/v3'
         self.last_call_time = 0
         self.rate_limit_ms = 1500  # 1 request cada 1.5s según HIBP

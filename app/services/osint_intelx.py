@@ -9,7 +9,7 @@ class IntelXService:
     """Integración con API de Intelligence X."""
 
     def __init__(self):
-        self.api_key = getattr(settings, 'INTELX_API_KEY', None)
+        self.api_key = settings.intelx_api_key
         self.base_url = 'https://free.intelx.io'
 
     async def search(self, query: str, max_results: int = 10) -> dict:
