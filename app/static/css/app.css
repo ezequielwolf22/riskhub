@@ -93,6 +93,19 @@
 
   /* Tokens de texto adicionales */
   --text-base:         var(--text);
+
+  /* Alias de compatibilidad (usados en modulos OSINT y otros) */
+  --card-bg:           var(--bg);
+  --border-color:      var(--border);
+  --bg-muted:          var(--bg-2);
+  --danger:            #DC2626;
+  --danger-soft:       rgba(220,38,38,0.08);
+  --success:           var(--risk-low);
+  --success-soft:      var(--risk-low-bg);
+  --warning:           var(--brand-orange);
+  --warning-soft:      var(--brand-orange-4);
+  --risk-critical:     #b91c1c;
+  --risk-critical-bg:  #fee2e2;
 }
 
 /* ============================================================
@@ -236,9 +249,42 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
 #btn-sidebar-toggle {
   display: flex; justify-content: center;
 }
-.sidebar .group { padding: 10px 16px 4px; font-size: 10px;
-                  text-transform: uppercase; letter-spacing: 0.08em;
-                  color: var(--text-subtle); font-weight: 600; }
+/* Collapsible nav sections */
+.sidebar .nav-section { }
+.sidebar .group {
+  padding: 10px 16px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-subtle);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none;
+}
+.sidebar .group:hover { color: var(--text-muted); }
+.sidebar .group .nav-chevron {
+  width: 12px; height: 12px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.sidebar .nav-section.ns-collapsed .nav-chevron {
+  transform: rotate(-90deg);
+}
+.sidebar .nav-section-items {
+  overflow: hidden;
+}
+/* Hide items when section is collapsed (only in expanded sidebar mode) */
+.sidebar:not(.collapsed) .nav-section.ns-collapsed .nav-section-items {
+  display: none;
+}
+/* In icon-only mode: always show items, hide group headers */
+.sidebar.collapsed .group { display: none; }
+.sidebar.collapsed .nav-section-items { display: flex; flex-direction: column; }
+
 .sidebar a {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 16px; color: var(--text);
@@ -816,10 +862,31 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
   background: var(--bg-2);
   border-color: var(--border);
 }
+[data-theme="dark"] .modal-bg { background: rgba(0,0,0,0.6); }
+[data-theme="dark"] .modal {
+  background: var(--bg-2);
+  background-image:
+    linear-gradient(var(--bg-2), var(--bg-2)),
+    var(--brand-sunrise);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+}
+/* Alias: nombres alternativos usados antes del refactor */
 [data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,0.6); }
 [data-theme="dark"] .modal-box {
-  background: #191c23;
+  background: var(--bg-2);
   border: 1px solid var(--border);
+}
+/* Alias de compatibilidad - dark mode */
+[data-theme="dark"] {
+  --card-bg:      var(--bg-2);
+  --border-color: var(--border);
+  --bg-muted:     var(--bg-3);
+  --danger-soft:  rgba(220,38,38,0.15);
+  --success:      var(--risk-low);
+  --success-soft: var(--risk-low-bg);
+  --warning-soft: var(--brand-orange-4);
 }
 [data-theme="dark"] table.data thead tr { background: var(--bg-3); }
 [data-theme="dark"] table.data tbody tr:hover { background: var(--bg-3); }

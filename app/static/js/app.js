@@ -50,6 +50,9 @@ async function navigate() {
   const route = currentRoute();
   const view = Routes[route] || Routes.dashboard;
   setActive(route);
+  // Scroll to top on every navigation
+  window.scrollTo(0, 0);
+  document.getElementById('main').scrollTop = 0;
   const main = document.getElementById('main');
   main.innerHTML = '';
   try {
@@ -84,6 +87,39 @@ function _updateSidebarIcons(collapsed) {
   const ie = document.getElementById('sidebar-icon-expand');
   if (ic) ic.style.display = collapsed ? 'none' : '';
   if (ie) ie.style.display = collapsed ? '' : 'none';
+}
+
+// ── Collapsible sidebar sections ─────────────────────────────────────────────
+
+function _initNavSections() {
+  const KEY = 'riskhub_nav_collapsed';
+  let collapsed;
+  try { collapsed = JSON.parse(localStorage.getItem(KEY) || '[]'); }
+  catch (e) { collapsed = []; }
+
+  collapsed.forEach(id => {
+    const section = document.getElementById(id);
+    if (section) section.classList.add('ns-collapsed');
+  });
+}
+
+function _toggleNavSection(sectionId) {
+  const KEY = 'riskhub_nav_collapsed';
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+
+  section.classList.toggle('ns-collapsed');
+
+  let collapsed;
+  try { collapsed = JSON.parse(localStorage.getItem(KEY) || '[]'); }
+  catch (e) { collapsed = []; }
+
+  if (section.classList.contains('ns-collapsed')) {
+    if (!collapsed.includes(sectionId)) collapsed.push(sectionId);
+  } else {
+    collapsed = collapsed.filter(id => id !== sectionId);
+  }
+  localStorage.setItem(KEY, JSON.stringify(collapsed));
 }
 
 function init() {
@@ -211,8 +247,14 @@ function init() {
     }
   });
 
+  // Inicializar secciones colapsables del sidebar
+  _initNavSections();
+
   // Exponer navigate global para uso desde vistas
-  window.App = { navigate: (route) => { location.hash = '/' + route; } };
+  window.App = {
+    navigate: (route) => { location.hash = '/' + route; },
+    toggleSection: _toggleNavSection
+  };
 
   window.addEventListener('hashchange', () => { Search.close(); navigate(); });
 

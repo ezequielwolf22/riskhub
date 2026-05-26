@@ -381,6 +381,23 @@ def delete_scan(
     db.commit()
 
 
+@router.delete("/identifiers/{identifier_id}", status_code=204)
+def delete_identifier(
+    identifier_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(['admin', 'analyst', 'superadmin']))
+):
+    """Elimina un identificador OSINT (y sus escaneos/hallazgos en cascada)."""
+    identifier = db.query(OSINTIdentifier).filter(
+        OSINTIdentifier.id == identifier_id,
+        OSINTIdentifier.user_id == current_user.id
+    ).first()
+    if not identifier:
+        raise HTTPException(404, "Identificador no encontrado")
+    db.delete(identifier)
+    db.commit()
+
+
 @router.get("/identifiers", response_model=PaginatedResponse)
 def list_identifiers(
     skip: int = Query(0, ge=0),
@@ -549,6 +566,96 @@ def create_incident_from_finding(
         'incident_id': inc.id,
         'incident_code': inc.code,
         'title': inc.title,
+        'already_existed': False
+    }
+
+
+# ── CREATE RISK FROM FINDING ─────────────────────────────────────────────────
+
+@router.post("/findings/{finding_id}/create-risk")
+def create_risk_from_osint_finding(
+    finding_id: int,
+    asset_id: int = Query(..., description="ID del activo afectado"),
+    threat_id: int = Query(..., description="ID de la amenaza relacionada"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(_ROLES))
+):
+    """Genera un riesgo en el registro de riesgos a partir de un hallazgo OSINT."""
+    from app.models import Risk, RiskStatus, Asset, Threat
+    from app.services.risk_engine import calc_level
+    from app.routers.risks import _next_code as _risk_next_code
+
+    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+        OSINTFinding.id == finding_id,
+        OSINTScan.user_id == current_user.id
+    ).first()
+    if not finding:
+        raise HTTPException(404, "Hallazgo no encontrado")
+
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(404, "Activo no encontrado")
+
+    threat = db.query(Threat).filter(Threat.id == threat_id).first()
+    if not threat:
+        raise HTTPException(404, "Amenaza no encontrada")
+
+    # Verificar si ya existe un riesgo para este par activo/amenaza
+    existing = db.query(Risk).filter(
+        Risk.asset_id == asset_id,
+        Risk.threat_id == threat_id
+    ).first()
+    if existing:
+        return {
+            'risk_id': existing.id,
+            'risk_code': existing.code,
+            'title': f"{asset.name} / {threat.name}",
+            'already_existed': True
+        }
+
+    # Mapear score OSINT (0-100) a escala ISO 27005 (0-4)
+    score = finding.risk_score or 0
+    if score >= 80:
+        lh, imp = 4, 4
+    elif score >= 60:
+        lh, imp = 3, 4
+    elif score >= 40:
+        lh, imp = 3, 3
+    elif score >= 20:
+        lh, imp = 2, 2
+    else:
+        lh, imp = 1, 1
+
+    # calc_level(consequence=impact, likelihood)
+    inherent_level = calc_level(imp, lh)
+
+    risk = Risk(
+        code=_risk_next_code(db),
+        asset_id=asset_id,
+        threat_id=threat_id,
+        description=(
+            f"Riesgo identificado via OSINT.\n"
+            f"Fuente: {finding.source} | Tipo: {finding.finding_type}\n"
+            f"Score OSINT: {finding.risk_score:.1f}/100\n\n"
+            f"{finding.description or ''}"
+        ),
+        inherent_likelihood=lh,
+        inherent_impact=imp,
+        inherent_level=inherent_level,
+        residual_likelihood=lh,
+        residual_impact=imp,
+        residual_level=inherent_level,
+        status=RiskStatus.IDENTIFIED,
+        owner_id=current_user.id
+    )
+    db.add(risk)
+    db.commit()
+    db.refresh(risk)
+
+    return {
+        'risk_id': risk.id,
+        'risk_code': risk.code,
+        'title': f"{asset.name} / {threat.name}",
         'already_existed': False
     }
 

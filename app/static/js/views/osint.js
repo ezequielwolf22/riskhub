@@ -461,7 +461,7 @@ const ViewOsint = {
           <div style="overflow-x:auto;">
             <table class="data">
               <thead><tr>
-                <th>Tipo</th><th>Valor</th><th>Ultimo escaneo</th><th>Riesgo</th><th></th>
+                <th>Tipo</th><th>Valor</th><th>Ultimo escaneo</th><th>Riesgo</th><th style="width:140px;"></th>
               </tr></thead>
               <tbody>
                 ${this._identifiers
@@ -474,10 +474,14 @@ const ViewOsint = {
                       ${i.last_scanned_at ? new Date(i.last_scanned_at).toLocaleString('es-ES') : 'Nunca'}
                     </td>
                     <td>${this._riskBadge(i.risk_level)}</td>
-                    <td style="text-align:right;">
+                    <td style="text-align:right;white-space:nowrap;">
                       <button class="btn btn-xs"
                         onclick="ViewOsint._rescan('${i.identifier_type}','${UI.esc(i.value)}')">
                         Re-escanear
+                      </button>
+                      <button class="btn btn-xs" style="margin-left:4px;color:var(--danger);"
+                        onclick="ViewOsint._deleteIdentifier(${i.id})">
+                        Eliminar
                       </button>
                     </td>
                   </tr>`).join('')}
@@ -737,7 +741,7 @@ const ViewOsint = {
         ${canEdit ? `
         <div style="border-top:1px solid var(--border-color);padding-top:14px;margin-top:16px;">
           <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Acciones</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
             ${f.is_remediated
               ? `<button class="btn btn-sm" onclick="ViewOsint._unremediate(${f.id})">
                    Desmarcar como remediado
@@ -747,13 +751,64 @@ const ViewOsint = {
                  </button>`}
             <button class="btn btn-sm" onclick="ViewOsint._createIncident(${f.id})"
               style="background:var(--brand-orange);color:white;">
-              Crear incidente de seguridad
+              Crear incidente
+            </button>
+          </div>
+          <!-- Crear riesgo desde hallazgo -->
+          <div style="background:var(--bg-muted);border-radius:6px;padding:10px 12px;">
+            <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--brand-purple);">
+              Crear riesgo en el registro
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+              <div>
+                <label style="font-size:11px;">Activo afectado</label>
+                <select id="risk-asset-${f.id}" style="font-size:12px;">
+                  <option value="">Cargando...</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;">Amenaza relacionada</label>
+                <select id="risk-threat-${f.id}" style="font-size:12px;">
+                  <option value="">Cargando...</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-sm"
+              style="background:var(--brand-purple);color:white;"
+              onclick="ViewOsint._createRisk(${f.id})">
+              Crear riesgo
             </button>
           </div>
         </div>` : ''}
       `;
+      // Populate asset and threat dropdowns asynchronously
+      if (canEdit) {
+        this._populateRiskSelectors(f.id);
+      }
     } catch (e) {
       content.innerHTML = `<p style="color:var(--danger);">Error: ${UI.esc(e.message)}</p>`;
+    }
+  },
+
+  async _populateRiskSelectors(findingId) {
+    try {
+      const [assetsResp, threatsResp] = await Promise.all([
+        Api.get('/api/assets?limit=200'),
+        Api.get('/api/threats?limit=200')
+      ]);
+      const assets = assetsResp.items || assetsResp || [];
+      const threats = threatsResp.items || threatsResp || [];
+
+      const assetSel = document.getElementById(`risk-asset-${findingId}`);
+      const threatSel = document.getElementById(`risk-threat-${findingId}`);
+      if (!assetSel || !threatSel) return;
+
+      assetSel.innerHTML = `<option value="">-- Seleccionar activo --</option>` +
+        assets.map(a => `<option value="${a.id}">${UI.esc(a.name)}</option>`).join('');
+      threatSel.innerHTML = `<option value="">-- Seleccionar amenaza --</option>` +
+        threats.map(t => `<option value="${t.id}">${UI.esc(t.name)}</option>`).join('');
+    } catch (e) {
+      // Silencioso — los selects mostrarán error si no cargan
     }
   },
 
@@ -974,6 +1029,28 @@ const ViewOsint = {
       await this._load();
       this._openScanDrawer(scanId);
     } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    finally { UI.loading(false); }
+  },
+
+  async _createRisk(findingId) {
+    const assetSel = document.getElementById(`risk-asset-${findingId}`);
+    const threatSel = document.getElementById(`risk-threat-${findingId}`);
+    const assetId = assetSel?.value;
+    const threatId = threatSel?.value;
+    if (!assetId) { UI.message('Selecciona un activo', 'error'); return; }
+    if (!threatId) { UI.message('Selecciona una amenaza', 'error'); return; }
+    try {
+      UI.loading(true);
+      const r = await Api.post(
+        `/api/v1/osint/findings/${findingId}/create-risk?asset_id=${assetId}&threat_id=${threatId}`,
+        {}
+      );
+      if (r.already_existed) {
+        UI.message(`Ya existe el riesgo ${r.risk_code} para este activo/amenaza`, 'info');
+      } else {
+        UI.message(`Riesgo ${r.risk_code} creado: ${r.title}`, 'success');
+      }
+    } catch (e) { UI.message('Error creando riesgo: ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
