@@ -18,8 +18,9 @@ const Api = {
     }
     const ctype = resp.headers.get('content-type') || '';
     let data = null;
-    if (ctype.includes('application/json')) data = await resp.json();
-    else if (resp.status !== 204) data = await resp.text();
+    if (resp.status === 204) data = null;
+    else if (ctype.includes('application/json')) data = await resp.json();
+    else data = await resp.text();
     if (!resp.ok) {
       const msg = data && data.detail ? data.detail : (data || resp.statusText);
       const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));

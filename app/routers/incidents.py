@@ -119,3 +119,4 @@ def delete_incident(incident_id: int, db: Session = Depends(get_db),
                {"code": inc.code})
     db.delete(inc)
     db.commit()
+    return

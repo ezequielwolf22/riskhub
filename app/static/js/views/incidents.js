@@ -143,14 +143,23 @@ const ViewIncidents = (() => {
       };
     });
     wrap.querySelectorAll('[data-action="del"]').forEach(btn => {
-      btn.onclick = async () => {
+      btn.onclick = async (ev) => {
+        ev.stopPropagation();
+        if (btn.disabled) return;
         if (!confirm('Eliminar incidente?')) return;
+        btn.disabled = true;
         try {
           await Api.incidents.del(btn.dataset.id);
-          UI.toast('Incidente eliminado', 'success');
-          await _loadStats();
-          await _refresh();
-        } catch (e) { UI.toast(e.message, 'error'); }
+        } catch (e) {
+          if (!e.status || e.status !== 404) {
+            btn.disabled = false;
+            UI.toast(e.message, 'error');
+            return;
+          }
+        }
+        UI.toast('Incidente eliminado', 'success');
+        await _loadStats();
+        await _refresh();
       };
     });
   }
