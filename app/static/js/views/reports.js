@@ -12,9 +12,21 @@ const ViewReports = {
         <div class="card" style="margin-bottom:16px;">
           <h3 style="margin-bottom:4px;">Informes del registro</h3>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-            Generados directamente desde el registro de riesgos. Sin IA, descarga instantánea.
+            Generados directamente desde los datos registrados. Sin IA, descarga instantanea.
           </p>
           <div class="card-row">
+            <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
+              <h4 style="margin:0 0 6px;">Estado del SGSI</h4>
+              <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
+                Informe ejecutivo multi-modulo: riesgos, controles, incidentes, tareas,
+                politicas y RGPD. Resumen de KPIs de todo el sistema en un solo documento.
+              </p>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('sgsi-status')">
+                  PDF
+                </button>
+              </div>
+            </div>
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
               <h4 style="margin:0 0 6px;">Risk Register</h4>
               <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
@@ -33,8 +45,8 @@ const ViewReports = {
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
               <h4 style="margin:0 0 6px;">Statement of Applicability</h4>
               <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
-                Declaración de aplicabilidad de los 93 controles ISO 27002:2022, con estado
-                y madurez de cada implementación. Obligatorio para certificación ISO 27001.
+                Declaracion de aplicabilidad de los 93 controles ISO 27002:2022, con estado
+                y madurez de cada implementacion. Obligatorio para certificacion ISO 27001.
               </p>
               <div style="display:flex;gap:8px;">
                 <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('soa')">
@@ -117,6 +129,12 @@ const ViewReports = {
 
   _download(type) {
     const actions = {
+      'sgsi-status': () => {
+        UI.toast('Generando Informe del Estado del SGSI...', 'info');
+        const today = new Date().toISOString().slice(0, 10);
+        Api.download('/api/reports/sgsi-status', `sgsi_status_${today}.pdf`)
+           .catch(e => UI.toast(e.message, 'error'));
+      },
       'rr-pdf': () => {
         UI.toast('Generando Risk Register PDF...', 'info');
         Api.download('/api/reports/risk-register', 'risk_register.pdf')

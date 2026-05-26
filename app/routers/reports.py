@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
-    Asset, Control, ControlImplementation, Risk, RiskContext, RiskStatus, User,
+    Asset, Control, ControlImplementation, DPIA, DPIAStatus, Incident, IncidentStatus,
+    Policy, PolicyStatus, ProcessingActivity, Risk, RiskContext, RiskStatus,
+    TreatmentTask, TaskStatus, User,
 )
 from app.security import get_current_user
 from app.services import report_ai_service
@@ -452,6 +454,246 @@ REPORT_LABEL = {
     "committee_minutes": "Acta de Comite de Seguridad",
     "followup_report": "Informe de Seguimiento ISO 27005",
 }
+
+
+# ============================================================
+# Informe del Estado del SGSI — multi-modulo, sin IA
+# ============================================================
+
+def _kpi_table(data_rows: list[tuple], s) -> "Table":
+    """Tabla de 2 columnas: etiqueta | valor."""
+    rows = [["Indicador", "Valor"]] + list(data_rows)
+    t = Table(rows, colWidths=[110 * mm, 60 * mm])
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+        ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]
+    t.setStyle(TableStyle(style))
+    return t
+
+
+@router.get("/sgsi-status")
+def sgsi_status_report(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Informe del Estado del SGSI — resumen multi-modulo sin IA. Descarga instantanea."""
+    from datetime import timezone
+    s = _styles()
+    el = []
+
+    ctx = db.query(RiskContext).first()
+    org = ctx.organization_name if ctx else "Organizacion"
+    now = datetime.now(timezone.utc)
+
+    # --- Portada ---
+    el.append(Spacer(1, 20))
+    el.append(Paragraph("Informe del Estado del SGSI", s["TitleBrand"]))
+    el.append(Paragraph("Sistema de Gestion de la Seguridad de la Informacion", s["SubBrand"]))
+    el.append(Spacer(1, 8))
+    el.append(Paragraph(f"<b>Organizacion:</b> {org}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>Fecha:</b> {now.strftime('%d/%m/%Y %H:%M UTC')}", s["BodyBrand"]))
+    if ctx:
+        el.append(Paragraph(f"<b>Alcance:</b> {ctx.scope or '-'}", s["BodyBrand"]))
+        el.append(Paragraph(f"<b>Apetito de riesgo:</b> Nivel {ctx.risk_appetite}", s["BodyBrand"]))
+    el.append(Spacer(1, 12))
+
+    # --- Seccion 1: Riesgos ---
+    risks = db.query(Risk).all()
+    total_r = len(risks)
+    high_r = sum(1 for r in risks if (r.residual_level or 0) >= 5)
+    medium_r = sum(1 for r in risks if 3 <= (r.residual_level or 0) < 5)
+    low_r = sum(1 for r in risks if (r.residual_level or 0) < 3)
+    treated_r = sum(1 for r in risks if r.treatment_option is not None)
+    overdue_r = sum(
+        1 for r in risks
+        if r.treatment_due_date and r.status not in (RiskStatus.ACCEPTED, RiskStatus.CLOSED)
+        and r.treatment_due_date.replace(tzinfo=timezone.utc) < now
+    )
+
+    el.append(Paragraph("1. Gestion de Riesgos (ISO 27005)", s["H2Brand"]))
+    el.append(_kpi_table([
+        ("Total de riesgos identificados", str(total_r)),
+        ("Riesgos altos (nivel >= 5)", str(high_r)),
+        ("Riesgos medios (nivel 3-4)", str(medium_r)),
+        ("Riesgos bajos (nivel < 3)", str(low_r)),
+        ("Con plan de tratamiento", str(treated_r)),
+        ("Tratamientos vencidos", str(overdue_r)),
+    ], s))
+    el.append(Spacer(1, 8))
+
+    # Top riesgos altos
+    top_high = sorted(
+        [r for r in risks if (r.residual_level or 0) >= 5],
+        key=lambda r: -(r.residual_level or 0)
+    )[:10]
+    if top_high:
+        el.append(Paragraph("Principales riesgos altos", s["BodyBrand"]))
+        el.append(Spacer(1, 4))
+        th_data = [["Codigo", "Activo", "Amenaza", "Nivel res.", "Tratamiento"]]
+        for r in top_high:
+            th_data.append([
+                r.code,
+                (r.asset.name[:30] if r.asset else "-"),
+                (r.threat.name[:35] if r.threat else "-"),
+                str(r.residual_level or 0),
+                (r.treatment_option.value if r.treatment_option else "Sin definir"),
+            ])
+        th = Table(th_data, repeatRows=1, colWidths=[18*mm, 42*mm, 50*mm, 18*mm, 32*mm])
+        th.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_ORANGE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#FEE2E2"), colors.HexColor("#FEF2F2")]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(th)
+    el.append(Spacer(1, 10))
+
+    # --- Seccion 2: Controles ---
+    el.append(Paragraph("2. Controles de Seguridad ISO 27002:2022", s["H2Brand"]))
+    impls = db.query(ControlImplementation).all()
+    total_impl = len(impls)
+    impl_done = sum(1 for i in impls if i.status and i.status.value == "implemented")
+    impl_partial = sum(1 for i in impls if i.status and i.status.value == "partial")
+    impl_planned = sum(1 for i in impls if i.status and i.status.value == "planned")
+    avg_mat = (sum(i.maturity or 0 for i in impls) / total_impl) if total_impl else 0
+    overdue_ctrl = sum(
+        1 for i in impls
+        if i.next_review and i.status and i.status.value != "not_implemented"
+        and i.next_review.replace(tzinfo=timezone.utc) < now
+    )
+    el.append(_kpi_table([
+        ("Controles con implementacion activa", str(total_impl)),
+        ("Estado: Implementado", str(impl_done)),
+        ("Estado: Parcial", str(impl_partial)),
+        ("Estado: Planificado", str(impl_planned)),
+        ("Madurez media (0-5)", f"{avg_mat:.1f}"),
+        ("Revisiones vencidas", str(overdue_ctrl)),
+    ], s))
+    el.append(Spacer(1, 10))
+
+    # --- Seccion 3: Incidentes ---
+    el.append(Paragraph("3. Incidentes de Seguridad (NIS2)", s["H2Brand"]))
+    incidents = db.query(Incident).all()
+    total_inc = len(incidents)
+    open_inc = sum(1 for i in incidents if i.status != IncidentStatus.CLOSED)
+    p1p2 = sum(1 for i in incidents if i.severity in ("p1", "p2") and i.status != IncidentStatus.CLOSED)
+    nis2_pending = sum(
+        1 for i in incidents
+        if i.nis2_notification_required and not i.nis2_notification_sent_at
+        and i.status != IncidentStatus.CLOSED
+    )
+    el.append(_kpi_table([
+        ("Total incidentes registrados", str(total_inc)),
+        ("Incidentes abiertos", str(open_inc)),
+        ("Incidentes P1/P2 abiertos (criticos)", str(p1p2)),
+        ("Notificaciones NIS2 pendientes", str(nis2_pending)),
+    ], s))
+    el.append(Spacer(1, 10))
+
+    # --- Seccion 4: Tareas de tratamiento ---
+    el.append(Paragraph("4. Tareas de Tratamiento", s["H2Brand"]))
+    tasks = db.query(TreatmentTask).all()
+    total_t = len(tasks)
+    done_t = sum(1 for t in tasks if t.status == TaskStatus.DONE)
+    inprog_t = sum(1 for t in tasks if t.status == TaskStatus.IN_PROGRESS)
+    pend_t = sum(1 for t in tasks if t.status == TaskStatus.PENDING)
+    overdue_t = sum(
+        1 for t in tasks
+        if t.due_date and t.status != TaskStatus.DONE
+        and t.due_date.replace(tzinfo=timezone.utc) < now
+    )
+    el.append(_kpi_table([
+        ("Total tareas", str(total_t)),
+        ("Completadas", str(done_t)),
+        ("En progreso", str(inprog_t)),
+        ("Pendientes", str(pend_t)),
+        ("Vencidas sin completar", str(overdue_t)),
+    ], s))
+    el.append(Spacer(1, 10))
+
+    # --- Seccion 5: Politicas ---
+    el.append(Paragraph("5. Politicas de Seguridad (ISO 27001 cl. 5.2)", s["H2Brand"]))
+    policies = db.query(Policy).all()
+    total_pol = len(policies)
+    pub_pol = sum(1 for p in policies if p.status == PolicyStatus.PUBLISHED)
+    rev_pol = sum(1 for p in policies if p.status == PolicyStatus.REVIEW)
+    draft_pol = sum(1 for p in policies if p.status == PolicyStatus.DRAFT)
+    overdue_pol = sum(
+        1 for p in policies
+        if p.review_date and p.status != PolicyStatus.OBSOLETE
+        and p.review_date.replace(tzinfo=timezone.utc) < now
+    )
+    el.append(_kpi_table([
+        ("Total politicas", str(total_pol)),
+        ("Publicadas", str(pub_pol)),
+        ("En revision", str(rev_pol)),
+        ("Borradores", str(draft_pol)),
+        ("Revision vencida", str(overdue_pol)),
+    ], s))
+    el.append(Spacer(1, 10))
+
+    # --- Seccion 6: RGPD ---
+    el.append(Paragraph("6. RGPD / Privacidad de Datos", s["H2Brand"]))
+    activities = db.query(ProcessingActivity).all()
+    dpias = db.query(DPIA).all()
+    total_act = len(activities)
+    req_dpia = sum(1 for a in activities if a.requires_dpia)
+    eu_transfer = sum(1 for a in activities if a.transfers_outside_eu)
+    total_dp = len(dpias)
+    pend_dp = sum(1 for d in dpias if d.status == DPIAStatus.PENDING)
+    el.append(_kpi_table([
+        ("Actividades de tratamiento registradas", str(total_act)),
+        ("Actividades que requieren DPIA", str(req_dpia)),
+        ("Transferencias fuera de la UE", str(eu_transfer)),
+        ("DPIAs totales", str(total_dp)),
+        ("DPIAs pendientes de completar", str(pend_dp)),
+    ], s))
+    el.append(Spacer(1, 10))
+
+    # --- Seccion 7: Nota metodologica ---
+    el.append(PageBreak())
+    el.append(Paragraph("7. Nota metodologica", s["H2Brand"]))
+    el.append(Paragraph(
+        "Este informe ha sido generado automaticamente por <b>RiskHub v1.5.1</b> a partir de los "
+        "datos registrados en el sistema. Los indicadores reflejan el estado en el momento de la "
+        "generacion del informe. Para una interpretacion completa, consulte los informes detallados "
+        "de cada modulo y los informes narrativos generados por IA.",
+        s["BodyBrand"],
+    ))
+    el.append(Spacer(1, 8))
+    refs = [
+        ["Norma / Marco", "Clausulas / Areas cubiertas"],
+        ["ISO/IEC 27005:2018", "Seccion 1: Riesgos — proceso completo de gestion del riesgo"],
+        ["ISO/IEC 27002:2022", "Seccion 2: Controles — 93 controles en 4 temas"],
+        ["ISO/IEC 27001:2022", "Seccion 5: Politicas — cl. 5.2 y Anexo A"],
+        ["NIS2 (Directiva UE 2022/2555)", "Seccion 3: Incidentes — Art. 21 y 23"],
+        ["RGPD / GDPR (Reglamento UE 2016/679)", "Seccion 6: RGPD — Art. 30 (RoPA), Art. 35 (DPIA)"],
+    ]
+    ref_t = Table(refs, repeatRows=1, colWidths=[70 * mm, 100 * mm])
+    ref_t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+        ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    el.append(ref_t)
+
+    filename = f"sgsi_status_{now.strftime('%Y%m%d')}.pdf"
+    return _pdf_response(el, filename)
 
 
 class AiReportIn(BaseModel):
