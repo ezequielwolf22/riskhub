@@ -1,7 +1,7 @@
 """Endpoints OSINT - Integración de huella-digital en RiskHub."""
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (
     User, OSINTScan, OSINTFinding, OSINTIdentifier, OSINTScanType,
-    OSINTFindingRiskLevel
+    OSINTFindingRiskLevel, Incident, IncidentSeverity, IncidentStatus
 )
 from app.security import require_role
 from app.schemas import (
@@ -18,6 +18,7 @@ from app.schemas import (
     OSINTIdentifierResponse, PaginatedResponse
 )
 from app.services.osint_engine import osint_engine
+from app.services.osint_entraid import entraid_service
 
 router = APIRouter(prefix="/api/v1/osint", tags=["osint"])
 
@@ -345,6 +346,209 @@ def list_identifiers(
     total = q.count()
     items = q.order_by(OSINTIdentifier.created_at.desc()).offset(skip).limit(limit).all()
     return {'total': total, 'skip': skip, 'limit': limit, 'items': items}
+
+
+# ── ENTRA ID ────────────────────────────────────────────────────────────────
+
+@router.post("/sources/entraid/test")
+async def test_entraid_connection(
+    tenant_id: str = Query(..., min_length=1),
+    client_id: str = Query(..., min_length=1),
+    client_secret: str = Query(..., min_length=1),
+    current_user: User = Depends(require_role(_ROLES))
+):
+    """Prueba la conexion con Microsoft Entra ID y devuelve info del tenant."""
+    return await entraid_service.test_connection(tenant_id, client_id, client_secret)
+
+
+@router.post("/sources/entraid/preview")
+async def preview_entraid_targets(
+    tenant_id: str = Query(..., min_length=1),
+    client_id: str = Query(..., min_length=1),
+    client_secret: str = Query(..., min_length=1),
+    current_user: User = Depends(require_role(_ROLES))
+):
+    """Lista usuarios y dominios del tenant sin iniciar escaneos."""
+    token = await entraid_service.get_access_token(tenant_id, client_id, client_secret)
+    if not token:
+        raise HTTPException(400, "No se pudo autenticar con Entra ID. Revisa tenant_id, client_id y client_secret.")
+    import asyncio
+    users, domains = await asyncio.gather(
+        entraid_service.list_users(token, limit=200),
+        entraid_service.list_domains(token)
+    )
+    return {
+        'users': users,
+        'domains': domains,
+        'users_count': len(users),
+        'domains_count': len(domains)
+    }
+
+
+@router.post("/sources/entraid/import", status_code=202)
+async def import_from_entraid(
+    background_tasks: BackgroundTasks,
+    tenant_id: str = Query(..., min_length=1),
+    client_id: str = Query(..., min_length=1),
+    client_secret: str = Query(..., min_length=1),
+    scan_users: bool = Query(True),
+    scan_domains: bool = Query(True),
+    user_limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(_ROLES))
+):
+    """Importa targets desde Entra ID e inicia escaneos OSINT en segundo plano."""
+    token = await entraid_service.get_access_token(tenant_id, client_id, client_secret)
+    if not token:
+        raise HTTPException(400, "No se pudo autenticar con Entra ID.")
+
+    users = await entraid_service.list_users(token, limit=user_limit) if scan_users else []
+    domains = await entraid_service.list_domains(token) if scan_domains else []
+
+    scans_created = []
+
+    if scan_users:
+        for user in users:
+            email = user.get('email', '')
+            if not email:
+                continue
+            if _check_in_progress(db, current_user.id, email):
+                continue
+            scan = _create_scan(db, OSINTScanType.EMAIL, email, current_user.id)
+            background_tasks.add_task(osint_engine.run_email_scan, scan.id, email, current_user.id)
+            scans_created.append({'type': 'email', 'target': email, 'scan_id': scan.id})
+
+    if scan_domains:
+        for domain in domains:
+            domain_id = domain.get('id', '')
+            if not domain_id:
+                continue
+            if _check_in_progress(db, current_user.id, domain_id):
+                continue
+            scan = _create_scan(db, OSINTScanType.DOMAIN, domain_id, current_user.id)
+            background_tasks.add_task(osint_engine.run_domain_scan, scan.id, domain_id, current_user.id)
+            scans_created.append({'type': 'domain', 'target': domain_id, 'scan_id': scan.id})
+
+    return {
+        'scans_created': len(scans_created),
+        'targets': scans_created
+    }
+
+
+# ── BULK SCAN ────────────────────────────────────────────────────────────────
+
+@router.post("/scans/bulk", status_code=202)
+async def bulk_scan(
+    background_tasks: BackgroundTasks,
+    scan_type: str = Query(..., description="email|domain|ip|url|username"),
+    targets: str = Query(..., description="Targets separados por nueva linea o coma"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(_ROLES))
+):
+    """Inicia multiples escaneos en paralelo. Targets separados por nueva linea o coma."""
+    valid_types = {'email', 'domain', 'ip', 'url', 'username'}
+    if scan_type not in valid_types:
+        raise HTTPException(400, f"Tipo invalido. Validos: {', '.join(valid_types)}")
+
+    # Parse targets
+    raw = targets.replace(',', '\n').splitlines()
+    clean = [t.strip() for t in raw if t.strip()]
+    if not clean:
+        raise HTTPException(400, "No se encontraron targets validos")
+    if len(clean) > 50:
+        raise HTTPException(400, "Maximo 50 targets por solicitud")
+
+    type_enum = OSINTScanType[scan_type.upper()]
+    run_fn_map = {
+        'email': osint_engine.run_email_scan,
+        'domain': osint_engine.run_domain_scan,
+        'ip': osint_engine.run_ip_scan,
+        'url': osint_engine.run_url_scan,
+        'username': osint_engine.run_username_scan,
+    }
+    run_fn = run_fn_map[scan_type]
+
+    created = []
+    skipped = []
+    for target in clean:
+        if _check_in_progress(db, current_user.id, target):
+            skipped.append(target)
+            continue
+        scan = _create_scan(db, type_enum, target, current_user.id)
+        background_tasks.add_task(run_fn, scan.id, target, current_user.id)
+        created.append({'target': target, 'scan_id': scan.id})
+
+    return {
+        'created': len(created),
+        'skipped': len(skipped),
+        'scans': created
+    }
+
+
+# ── CREATE INCIDENT FROM FINDING ─────────────────────────────────────────────
+
+@router.post("/findings/{finding_id}/create-incident")
+def create_incident_from_finding(
+    finding_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(_ROLES))
+):
+    """Genera un incidente de seguridad a partir de un hallazgo OSINT."""
+    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+        OSINTFinding.id == finding_id,
+        OSINTScan.user_id == current_user.id
+    ).first()
+    if not finding:
+        raise HTTPException(404, "Hallazgo no encontrado")
+
+    # Verificar si ya existe un incidente con este titulo OSINT
+    existing_title = f"[OSINT] {finding.title}"
+    existing = db.query(Incident).filter(Incident.title == existing_title).first()
+    if existing:
+        return {
+            'incident_id': existing.id,
+            'incident_code': existing.code,
+            'title': existing.title,
+            'already_existed': True
+        }
+
+    # Mapear nivel de riesgo a severidad P1-P4
+    severity_map = {
+        'critical': IncidentSeverity.P1,
+        'high': IncidentSeverity.P2,
+        'medium': IncidentSeverity.P3,
+        'low': IncidentSeverity.P4,
+        'info': IncidentSeverity.P4
+    }
+    risk_str = str(finding.risk_level).replace('OSINTFindingRiskLevel.', '').lower()
+    severity = severity_map.get(risk_str, IncidentSeverity.P3)
+
+    n = db.query(Incident).count() + 1
+    inc = Incident(
+        code=f"INC-{n:04d}",
+        title=existing_title,
+        description=(
+            f"Incidente generado automaticamente desde hallazgo OSINT.\n\n"
+            f"Fuente: {finding.source}\n"
+            f"Tipo: {finding.finding_type}\n"
+            f"Score de riesgo: {finding.risk_score}\n\n"
+            f"{finding.description or ''}"
+        ),
+        severity=severity,
+        status=IncidentStatus.OPEN,
+        detected_at=finding.created_at or datetime.now(timezone.utc),
+        owner_id=current_user.id
+    )
+    db.add(inc)
+    db.commit()
+    db.refresh(inc)
+
+    return {
+        'incident_id': inc.id,
+        'incident_code': inc.code,
+        'title': inc.title,
+        'already_existed': False
+    }
 
 
 @router.get("/stats")
