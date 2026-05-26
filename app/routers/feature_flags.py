@@ -99,6 +99,11 @@ _DEFAULT_FLAGS = [
         "label": "CVE Monitor",
         "description": "Monitoreo de vulnerabilidades CVE en tiempo real con analisis de riesgo por IA.",
     },
+    {
+        "name": "module_awareness",
+        "label": "Awareness (Infografias)",
+        "description": "Generador de infografias de concienciacion de seguridad impulsado por IA.",
+    },
 ]
 
 

@@ -967,3 +967,38 @@ class OSINTAPIKey(Base):
     rate_limit_remaining = Column(Integer, nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+
+# ---------- AWARENESS (Infografias de seguridad) ----------
+
+class AwarenessItem(Base):
+    """Infografia de concienciacion generada por IA o editada manualmente."""
+    __tablename__ = "awareness_items"
+    id = Column(Integer, primary_key=True)
+    title = Column(String(255), nullable=False)
+    template_type = Column(String(64), default="risk_alert")
+    # risk_alert | best_practices | policy | threat | phishing
+    content_json = Column(Text, nullable=False)  # JSON serializado
+    status = Column(String(32), default="draft")  # draft | published
+    tags = Column(JSON)  # lista de etiquetas
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class AwarenessBranding(Base):
+    """Configuracion de marca para las infografias de awareness."""
+    __tablename__ = "awareness_branding"
+    id = Column(Integer, primary_key=True)
+    primary_color = Column(String(7), default="#59008D")
+    secondary_color = Column(String(7), default="#D65200")
+    logo_filename = Column(String(255))   # archivo almacenado en /srv/data/branding/
+    logo_mime = Column(String(64))
+    company_name = Column(String(255))
+    updated_at = Column(DateTime)
+    updated_by_id = Column(Integer, ForeignKey("users.id"))
+
+    updated_by = relationship("User", foreign_keys=[updated_by_id])

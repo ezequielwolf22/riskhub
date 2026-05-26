@@ -31,6 +31,7 @@ const Routes = {
   'feature-flags': ViewFeatureFlags,
   cve: ViewCve,
   osint: ViewOsint,
+  awareness: ViewAwareness,
 };
 
 function currentRoute() {

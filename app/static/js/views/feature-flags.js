@@ -18,6 +18,7 @@ const ViewFeatureFlags = (() => {
     module_integrations:     'integrations',
     module_alerts:           'alerts',
     module_cve:              'cve',
+    module_awareness:        'awareness',
   };
 
   let _flags = [];

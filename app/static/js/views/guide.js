@@ -28,6 +28,7 @@ const ViewGuide = {
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
+    { id: 'awareness', title: 'Awareness (Infografias)', icon: '🎨' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'security', title: 'Seguridad y privacidad', icon: '🔐' },
@@ -116,6 +117,7 @@ const ViewGuide = {
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
       cve: this._cCve,
+      awareness: this._cAwareness,
       audit: this._cAudit,
       admin: this._cAdmin,
       security: this._cSecurity,
@@ -1294,6 +1296,77 @@ const ViewGuide = {
       </tbody>
     </table>
     ${this._tip('<strong>Uso recomendado:</strong> ejecuta el analisis una vez al mes o antes de una auditoria para detectar y corregir brechas documentales. Complementa las puntuaciones del dashboard de cumplimiento con acciones concretas.')}
+  `;},
+
+  get _cAwareness() { return `
+    ${this._p('El modulo <strong>Awareness</strong> usa el agente IA para generar infografias de concienciacion de seguridad adaptadas al contexto de tu organizacion, los riesgos activos y la industria. Las infografias se pueden editar, personalizar con tu marca y exportar en PDF listas para distribuir.')}
+
+    ${this._h('Plantillas disponibles')}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+      ${[
+        ['🚨 Alerta de Riesgo', 'Rojo/naranja. Para comunicar un riesgo activo o critico con urgencia.'],
+        ['✅ Buenas Practicas', 'Purpura. Lista de consejos y habitos de seguridad recomendados.'],
+        ['📜 Politica Corporativa', 'Azul. Recordatorio de politicas internas de seguridad.'],
+        ['⚠️ Amenaza del Mes', 'Oscuro. Descripcion de una amenaza emergente con indicadores.'],
+        ['🎣 Anti-Phishing', 'Naranja. Concienciacion sobre phishing e ingenieria social.'],
+      ].map(([t,d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
+          <div style="font-weight:600;margin-bottom:4px;">${t}</div>
+          <div style="color:var(--text-muted);">${d}</div>
+        </div>`).join('')}
+    </div>
+
+    ${this._h('Generador (chat con IA)')}
+    ${this._steps([
+      'Ve a <strong>Awareness → Generador</strong>.',
+      'Elige una plantilla sugerida o deja que la IA decida segun el contexto.',
+      'Describe la infografia que necesitas en el campo de texto. Cuanto mas especifico seas, mejor sera el resultado. Puedes usar los accesos rapidos (Anti-Phishing, Contrasenas, Teletrabajo, etc.).',
+      'Pulsa <strong>Generar infografia con IA</strong>. El agente analiza los riesgos activos, el contexto de tu organizacion y genera el contenido estructurado (10-20 segundos).',
+      'Revisa la preview en tiempo real. Si el resultado es satisfactorio, pulsa <strong>Editar y guardar</strong> para pasar al editor.',
+    ])}
+
+    ${this._h('Editor de contenido')}
+    ${this._p('El editor permite modificar todos los campos de la infografia con actualizacion de preview en tiempo real:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Plantilla y urgencia:</strong> cambia el tipo y el nivel (Critico / Alto / Medio / Bajo).</li>
+      <li><strong>Titulo y subtitulo:</strong> el titulo aparece en la cabecera, maximo 55 caracteres.</li>
+      <li><strong>Mensaje principal:</strong> texto destacado en la columna izquierda.</li>
+      <li><strong>Puntos clave:</strong> uno por linea, hasta 5 puntos.</li>
+      <li><strong>Haz esto / Evita esto:</strong> lista de acciones positivas y negativas.</li>
+      <li><strong>Estadistica destacada:</strong> un dato impactante (ej: "91%") con su descripcion.</li>
+      <li><strong>Llamada a la accion y contacto:</strong> aparecen en el pie de la infografia.</li>
+      <li><strong>Hashtags:</strong> separados por espacio, max 4.</li>
+    </ul>
+    ${this._p('Cuando termines de editar, asigna un titulo al documento, selecciona el estado (<em>Borrador</em> o <em>Publicado</em>) y pulsa <strong>Guardar</strong>. Desde la misma pantalla puedes exportar el PDF.')}
+
+    ${this._h('Exportacion PDF')}
+    ${this._p('La exportacion genera un PDF en formato A4 apaisado (landscape) optimizado para imprimir en A3/A4 o proyectar en pantalla. El PDF incluye:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Logo de tu empresa (si esta configurado en Marca).</li>
+      <li>Colores de marca personalizados aplicados a la cabecera y elementos de acento.</li>
+      <li>Nombre de la empresa en la cabecera.</li>
+      <li>Todos los campos del contenido: titulo, puntos clave, hacer/no hacer, estadistica, CTA, hashtags.</li>
+      <li>Layout de dos columnas con separador central y pie de pagina de marca.</li>
+    </ul>
+
+    ${this._h('Configuracion de marca (Branding)')}
+    ${this._steps([
+      'Ve a <strong>Awareness → Marca</strong>.',
+      'Selecciona tu color principal y secundario corporativos usando el selector de color o introduciendo el codigo hex (#RRGGBB).',
+      'Introduce el nombre de tu empresa — aparecera en la cabecera del PDF.',
+      'Sube tu logo en formato PNG, JPG o SVG (max 2 MB). Se almacena en el servidor.',
+      'La preview se actualiza en tiempo real para que veas como quedara la infografia con tu marca.',
+      'Pulsa <strong>Guardar configuracion de marca</strong>. La marca se aplica automaticamente a todos los PDF exportados.',
+    ])}
+
+    ${this._h('Biblioteca')}
+    ${this._p('La pestana <strong>Biblioteca</strong> muestra todas las infografias guardadas en formato de tarjetas con preview. Desde cada tarjeta puedes:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Abrir la infografia en el editor para modificarla.</li>
+      <li>Exportar directamente a PDF sin abrir el editor.</li>
+      <li>Ver el estado (Borrador / Publicado) y la fecha de ultima modificacion.</li>
+    </ul>
+    ${this._tip('<strong>Buena practica:</strong> Genera una infografia mensual de "Amenaza del Mes" basandote en las CVEs mas criticas detectadas por el CVE Monitor. Luego distribuyela por email o pantallas digitales. Guarda las infografias publicadas como biblioteca de conocimiento de awareness de tu organizacion.')}
   `;},
 
   get _cSecurity() { return `

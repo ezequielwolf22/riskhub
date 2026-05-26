@@ -11,7 +11,7 @@ from app import __version__
 from app.config import settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
-    admin, ai, ai_config, alerts, assets, audit, audits, auth, catalogues, context,
+    admin, ai, ai_config, alerts, assets, audit, audits, auth, awareness, catalogues, context,
     controls, cve, documents, feature_flags, gdpr, incidents, nonconformities, osint, policies,
     reports, risks, search, sharepoint, sso, supplier_questionnaires, suppliers, tasks, users,
 )
@@ -120,6 +120,7 @@ app.include_router(sharepoint.router)
 app.include_router(sso.router)
 app.include_router(cve.router)
 app.include_router(osint.router)
+app.include_router(awareness.router)
 
 
 # Frontend estatico

@@ -253,6 +253,27 @@ const Api = {
     analyze: (d) => Api.post('/api/cve/analyze', d),
     createRisk: (d) => Api.post('/api/cve/create-risk', d),
   },
+  awareness: {
+    getBranding:   ()  => Api.get('/api/awareness/branding'),
+    saveBranding:  (d) => Api.put('/api/awareness/branding', d),
+    uploadLogo:    (fd) => {
+      const token = localStorage.getItem('riskhub_token') || '';
+      return fetch('/api/awareness/branding/logo', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail))));
+    },
+    deleteLogo:    ()  => Api.del('/api/awareness/branding/logo'),
+    getLogo:       ()  => Api.get('/api/awareness/branding/logo'),
+    generate:      (d) => Api.post('/api/awareness/generate', d),
+    list:          ()  => Api.get('/api/awareness/'),
+    create:        (d) => Api.post('/api/awareness/', d),
+    get:           (id) => Api.get(`/api/awareness/${id}`),
+    update:        (id, d) => Api.put(`/api/awareness/${id}`, d),
+    delete:        (id) => Api.del(`/api/awareness/${id}`),
+    exportPdf:     (id) => `/api/awareness/${id}/export-pdf`,
+  },
   sso: {
     status: () => Api.get('/api/sso/status'),
     getConfig: () => Api.get('/api/sso/config'),
