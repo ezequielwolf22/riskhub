@@ -241,6 +241,209 @@ def _run_alert_rules() -> None:
                         logger.warning("Error enviando alerta control_review_overdue: %s", exc)
                 continue
 
+            elif rule.event_type == "incident_p1p2":
+                # Alertar sobre incidentes P1/P2 abiertos (cooldown 20h)
+                if rule.last_triggered_at:
+                    hours = (now - rule.last_triggered_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                    if hours < 20:
+                        continue
+                from app.models import Incident, IncidentStatus, IncidentSeverity
+                open_p1p2 = db.query(Incident).filter(
+                    Incident.status != IncidentStatus.CLOSED,
+                    Incident.severity.in_([IncidentSeverity.P1, IncidentSeverity.P2]),
+                ).all()
+                if open_p1p2:
+                    rows_inc = "".join(
+                        f"<tr><td style='padding:7px 12px;'>{UI.esc(i.code)}</td>"
+                        f"<td style='padding:7px 12px;'>{UI.esc(i.title[:60])}</td>"
+                        f"<td style='padding:7px 12px;font-weight:700;color:#a83232;'>{UI.esc(i.severity.value.upper())}</td></tr>"
+                        for i in open_p1p2[:15]
+                    )
+                    html_inc = f"""<!DOCTYPE html>
+<html lang='es'><body style='margin:0;padding:24px;background:#F5F5F5;font-family:Arial,sans-serif;'>
+  <div style='max-width:640px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #E9E9E9;overflow:hidden;'>
+    <div style='background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;'>
+      <h1 style='color:#fff;margin:0;font-size:18px;'>RiskHub &mdash; Incidentes P1/P2 abiertos</h1>
+      <p style='color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;'>{org}</p>
+    </div>
+    <div style='padding:24px;'>
+      <p style='font-size:13px;color:#262626;'><strong>{len(open_p1p2)}</strong> incidente(s) P1/P2 permanecen abiertos.</p>
+      <table style='width:100%;border-collapse:collapse;font-size:12px;'>
+        <thead><tr style='background:#FEE2E2;'>
+          <th style='padding:7px 12px;text-align:left;'>Codigo</th>
+          <th style='padding:7px 12px;text-align:left;'>Titulo</th>
+          <th style='padding:7px 12px;text-align:left;'>Severidad</th>
+        </tr></thead>
+        <tbody>{rows_inc}</tbody>
+      </table>
+      <p style='color:#9D9D9D;font-size:11px;margin-top:16px;'>Accede a RiskHub &rarr; Incidentes para gestionar la respuesta.</p>
+    </div>
+  </div>
+</body></html>"""
+                    try:
+                        email_service.send_email(
+                            cfg, rule.recipient_email,
+                            f"RiskHub — {len(open_p1p2)} incidente(s) P1/P2 abierto(s) ({org})",
+                            html_inc,
+                        )
+                        rule.last_triggered_at = now
+                        sent += 1
+                    except Exception as exc:
+                        logger.warning("Error enviando alerta incident_p1p2: %s", exc)
+                continue
+
+            elif rule.event_type == "nis2_pending":
+                # Alertar cuando hay notificaciones NIS2 pendientes (cooldown 20h)
+                if rule.last_triggered_at:
+                    hours = (now - rule.last_triggered_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                    if hours < 20:
+                        continue
+                from app.models import Incident, IncidentStatus
+                nis2_pending_list = db.query(Incident).filter(
+                    Incident.status != IncidentStatus.CLOSED,
+                    Incident.nis2_notification_required.is_(True),
+                    Incident.nis2_notification_sent_at.is_(None),
+                ).all()
+                if nis2_pending_list:
+                    rows_nis2 = "".join(
+                        f"<tr><td style='padding:7px 12px;'>{UI.esc(i.code)}</td>"
+                        f"<td style='padding:7px 12px;'>{UI.esc(i.title[:60])}</td></tr>"
+                        for i in nis2_pending_list[:15]
+                    )
+                    html_nis2 = f"""<!DOCTYPE html>
+<html lang='es'><body style='margin:0;padding:24px;background:#F5F5F5;font-family:Arial,sans-serif;'>
+  <div style='max-width:640px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #E9E9E9;overflow:hidden;'>
+    <div style='background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;'>
+      <h1 style='color:#fff;margin:0;font-size:18px;'>RiskHub &mdash; Notificaciones NIS2 pendientes</h1>
+      <p style='color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;'>{org}</p>
+    </div>
+    <div style='padding:24px;'>
+      <p style='font-size:13px;color:#a83232;font-weight:700;'>ATENCION: {len(nis2_pending_list)} incidente(s) requieren notificacion NIS2 al supervisor nacional.</p>
+      <p style='font-size:12px;color:#262626;'>La Directiva NIS2 (Art. 23) exige notificacion en 24h para incidentes significativos.</p>
+      <table style='width:100%;border-collapse:collapse;font-size:12px;'>
+        <thead><tr style='background:#FEE2E2;'>
+          <th style='padding:7px 12px;text-align:left;'>Codigo</th>
+          <th style='padding:7px 12px;text-align:left;'>Incidente</th>
+        </tr></thead>
+        <tbody>{rows_nis2}</tbody>
+      </table>
+    </div>
+  </div>
+</body></html>"""
+                    try:
+                        email_service.send_email(
+                            cfg, rule.recipient_email,
+                            f"RiskHub [URGENTE] — {len(nis2_pending_list)} notificacion(es) NIS2 pendiente(s) ({org})",
+                            html_nis2,
+                        )
+                        rule.last_triggered_at = now
+                        sent += 1
+                    except Exception as exc:
+                        logger.warning("Error enviando alerta nis2_pending: %s", exc)
+                continue
+
+            elif rule.event_type == "policy_review_overdue":
+                # Alertar sobre politicas con revision vencida (cooldown 20h)
+                if rule.last_triggered_at:
+                    hours = (now - rule.last_triggered_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                    if hours < 20:
+                        continue
+                from app.models import Policy, PolicyStatus
+                overdue_policies = [
+                    p for p in db.query(Policy).all()
+                    if p.review_date and p.status != PolicyStatus.OBSOLETE
+                    and p.review_date.replace(tzinfo=timezone.utc) < now
+                ]
+                if overdue_policies:
+                    rows_pol = "".join(
+                        f"<tr><td style='padding:7px 12px;'>{UI.esc(p.code)}</td>"
+                        f"<td style='padding:7px 12px;'>{UI.esc(p.title[:60])}</td>"
+                        f"<td style='padding:7px 12px;'>{p.review_date.strftime('%d/%m/%Y')}</td></tr>"
+                        for p in overdue_policies[:15]
+                    )
+                    html_pol = f"""<!DOCTYPE html>
+<html lang='es'><body style='margin:0;padding:24px;background:#F5F5F5;font-family:Arial,sans-serif;'>
+  <div style='max-width:640px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #E9E9E9;overflow:hidden;'>
+    <div style='background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;'>
+      <h1 style='color:#fff;margin:0;font-size:18px;'>RiskHub &mdash; Politicas con revision vencida</h1>
+      <p style='color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;'>{org}</p>
+    </div>
+    <div style='padding:24px;'>
+      <p style='font-size:13px;color:#262626;'><strong>{len(overdue_policies)}</strong> politica(s) tienen la fecha de revision vencida.</p>
+      <table style='width:100%;border-collapse:collapse;font-size:12px;'>
+        <thead><tr style='background:#FEF9C3;'>
+          <th style='padding:7px 12px;text-align:left;'>Codigo</th>
+          <th style='padding:7px 12px;text-align:left;'>Titulo</th>
+          <th style='padding:7px 12px;text-align:left;'>Fecha revision</th>
+        </tr></thead>
+        <tbody>{rows_pol}</tbody>
+      </table>
+    </div>
+  </div>
+</body></html>"""
+                    try:
+                        email_service.send_email(
+                            cfg, rule.recipient_email,
+                            f"RiskHub — {len(overdue_policies)} politica(s) con revision vencida ({org})",
+                            html_pol,
+                        )
+                        rule.last_triggered_at = now
+                        sent += 1
+                    except Exception as exc:
+                        logger.warning("Error enviando alerta policy_review_overdue: %s", exc)
+                continue
+
+            elif rule.event_type == "task_overdue":
+                # Alertar sobre tareas vencidas (cooldown 20h)
+                if rule.last_triggered_at:
+                    hours = (now - rule.last_triggered_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                    if hours < 20:
+                        continue
+                from app.models import TreatmentTask, TaskStatus
+                overdue_tasks = [
+                    t for t in db.query(TreatmentTask).all()
+                    if t.due_date and t.status != TaskStatus.DONE
+                    and t.due_date.replace(tzinfo=timezone.utc) < now
+                ]
+                if overdue_tasks:
+                    rows_tsk = "".join(
+                        f"<tr><td style='padding:7px 12px;'>{UI.esc(t.code)}</td>"
+                        f"<td style='padding:7px 12px;'>{UI.esc(t.title[:60])}</td>"
+                        f"<td style='padding:7px 12px;'>{t.due_date.strftime('%d/%m/%Y')}</td></tr>"
+                        for t in overdue_tasks[:15]
+                    )
+                    html_tsk = f"""<!DOCTYPE html>
+<html lang='es'><body style='margin:0;padding:24px;background:#F5F5F5;font-family:Arial,sans-serif;'>
+  <div style='max-width:640px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #E9E9E9;overflow:hidden;'>
+    <div style='background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;'>
+      <h1 style='color:#fff;margin:0;font-size:18px;'>RiskHub &mdash; Tareas de tratamiento vencidas</h1>
+      <p style='color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;'>{org}</p>
+    </div>
+    <div style='padding:24px;'>
+      <p style='font-size:13px;color:#262626;'><strong>{len(overdue_tasks)}</strong> tarea(s) de tratamiento tienen la fecha limite vencida.</p>
+      <table style='width:100%;border-collapse:collapse;font-size:12px;'>
+        <thead><tr style='background:#FFF7ED;'>
+          <th style='padding:7px 12px;text-align:left;'>Codigo</th>
+          <th style='padding:7px 12px;text-align:left;'>Titulo</th>
+          <th style='padding:7px 12px;text-align:left;'>Fecha limite</th>
+        </tr></thead>
+        <tbody>{rows_tsk}</tbody>
+      </table>
+    </div>
+  </div>
+</body></html>"""
+                    try:
+                        email_service.send_email(
+                            cfg, rule.recipient_email,
+                            f"RiskHub — {len(overdue_tasks)} tarea(s) vencida(s) ({org})",
+                            html_tsk,
+                        )
+                        rule.last_triggered_at = now
+                        sent += 1
+                    except Exception as exc:
+                        logger.warning("Error enviando alerta task_overdue: %s", exc)
+                continue
+
             reason_map = {
                 "risk_critical": "supera el umbral critico",
                 "risk_high": "supera el umbral alto configurado",

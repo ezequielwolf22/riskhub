@@ -129,6 +129,16 @@ const ViewAlerts = {
       </div>`;
   },
 
+  // Ocultar/mostrar campo de umbral segun el tipo de evento
+  _onTypeChange(sel) {
+    const noThreshold = ['daily_digest', 'treatment_overdue', 'control_review_overdue',
+                         'incident_p1p2', 'nis2_pending', 'policy_review_overdue', 'task_overdue'];
+    const thresholdWrap = document.getElementById('r-threshold-wrap');
+    if (thresholdWrap) {
+      thresholdWrap.style.display = noThreshold.includes(sel.value) ? 'none' : '';
+    }
+  },
+
   _ruleRow(r) {
     const eventLabels = {
       risk_high: 'Riesgo alto',
@@ -136,8 +146,12 @@ const ViewAlerts = {
       treatment_overdue: 'Tratamiento vencido',
       risk_no_treatment: 'Sin plan de tratamiento',
       daily_digest: 'Resumen diario',
-      treatment_due_soon: 'Vence en 7 dias',
-      control_review_overdue: 'Revision control vencida',
+      treatment_due_soon: 'Vence pronto',
+      control_review_overdue: 'Control vencido',
+      incident_p1p2: 'Incidente P1/P2',
+      nis2_pending: 'NIS2 pendiente',
+      policy_review_overdue: 'Politica vencida',
+      task_overdue: 'Tarea vencida',
     };
     const lastTrig = r.last_triggered_at
       ? new Date(r.last_triggered_at).toLocaleDateString('es-ES')
@@ -204,16 +218,28 @@ const ViewAlerts = {
         <div class="span2"><label>Nombre de la regla <span style="color:var(--brand-orange)">*</span></label>
           <input id="r-name" type="text" placeholder="Ej: Alerta riesgos criticos CISO" style="width:100%;"></div>
         <div><label>Tipo de evento <span style="color:var(--brand-orange)">*</span></label>
-          <select id="r-type" style="width:100%;">
-            <option value="risk_critical">Riesgo critico (nivel >= umbral)</option>
-            <option value="risk_high">Riesgo alto (nivel >= umbral)</option>
-            <option value="treatment_overdue">Plan de tratamiento vencido</option>
-            <option value="risk_no_treatment">Riesgo sin plan de tratamiento</option>
-            <option value="daily_digest">Resumen diario del registro de riesgos</option>
-            <option value="treatment_due_soon">Tratamiento proximo a vencer (7 dias)</option>
-            <option value="control_review_overdue">Revision de control ISO 27002 vencida</option>
+          <select id="r-type" style="width:100%;" onchange="ViewAlerts._onTypeChange(this)">
+            <optgroup label="Riesgos">
+              <option value="risk_critical">Riesgo critico (nivel >= umbral)</option>
+              <option value="risk_high">Riesgo alto (nivel >= umbral)</option>
+              <option value="treatment_overdue">Plan de tratamiento vencido</option>
+              <option value="risk_no_treatment">Riesgo sin plan de tratamiento</option>
+              <option value="treatment_due_soon">Tratamiento proximo a vencer (N dias)</option>
+              <option value="daily_digest">Resumen diario del registro de riesgos</option>
+            </optgroup>
+            <optgroup label="Controles">
+              <option value="control_review_overdue">Revision de control ISO 27002 vencida</option>
+            </optgroup>
+            <optgroup label="Incidentes">
+              <option value="incident_p1p2">Incidentes P1/P2 abiertos</option>
+              <option value="nis2_pending">Notificaciones NIS2 pendientes</option>
+            </optgroup>
+            <optgroup label="Otros modulos">
+              <option value="policy_review_overdue">Politicas con revision vencida</option>
+              <option value="task_overdue">Tareas de tratamiento vencidas</option>
+            </optgroup>
           </select></div>
-        <div><label>Umbral de nivel</label>
+        <div id="r-threshold-wrap"><label>Umbral de nivel</label>
           <input id="r-threshold" type="number" value="5" min="1" max="8" style="width:100%;"></div>
         <div class="span2"><label>Email destinatario <span style="color:var(--brand-orange)">*</span></label>
           <input id="r-email" type="email" placeholder="responsable@company.com" style="width:100%;"></div>
