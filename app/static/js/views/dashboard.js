@@ -1,69 +1,109 @@
-/* Dashboard - resumen ejecutivo. */
+/* Dashboard - resumen ejecutivo multi-modulo. */
 const ViewDashboard = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
       'Vision global del riesgo',
-      'Resumen del estado actual de los riesgos de seguridad de la informacion'
+      'Resumen ejecutivo del estado del SGSI — todos los modulos'
     ) + '<div id="dash-content">' + UI.notice('Cargando datos...') + '</div>';
 
     try {
-      const s = await Api.risks.summary();
+      // Cargar datos de todos los modulos en paralelo para minimo tiempo de carga
+      const [s, inc, tsk, pol, gdpr] = await Promise.allSettled([
+        Api.risks.summary(),
+        Api.incidents.summary(),
+        Api.tasks.summary(),
+        Api.policies.summary(),
+        Api.gdpr.summary(),
+      ]);
+
+      const risks    = s.status    === 'fulfilled' ? s.value    : null;
+      const incidents = inc.status === 'fulfilled' ? inc.value  : null;
+      const tasks    = tsk.status  === 'fulfilled' ? tsk.value  : null;
+      const policies = pol.status  === 'fulfilled' ? pol.value  : null;
+      const gdprData = gdpr.status === 'fulfilled' ? gdpr.value : null;
+
+      if (!risks) throw new Error('No se pudo cargar el resumen de riesgos.');
+
       const c = document.getElementById('dash-content');
+
+      // --- Calcular puntuacion de postura de seguridad (0-100) ---
+      const postureScore = ViewDashboard._calcPosture(risks, incidents, tasks, policies, gdprData);
+
       c.innerHTML = `
+        <!-- POSTURA DE SEGURIDAD GLOBAL -->
+        ${ViewDashboard._postureHtml(postureScore, risks, incidents, tasks, policies, gdprData)}
+
+        <!-- KPIs DE RIESGO -->
         <div class="card-row" style="margin-bottom:20px;">
           <div class="kpi">
             <div class="label">Activos inventariados</div>
-            <div class="value">${s.total_assets}</div>
+            <div class="value">${risks.total_assets}</div>
           </div>
           <div class="kpi">
             <div class="label">Riesgos identificados</div>
-            <div class="value">${s.total_risks}</div>
+            <div class="value">${risks.total_risks}</div>
           </div>
           <div class="kpi">
             <div class="label">Controles implantados</div>
-            <div class="value">${s.controls_implemented}<span style="font-size:16px;color:var(--text-muted);">/${s.total_controls}</span></div>
-            <div class="hint">madurez media: ${s.controls_avg_maturity}/5 · ${s.total_threats} amenazas · ${s.total_vulnerabilities} vuln.</div>
+            <div class="value">${risks.controls_implemented}<span style="font-size:16px;color:var(--text-muted);">/${risks.total_controls}</span></div>
+            <div class="hint">madurez media: ${risks.controls_avg_maturity}/5 · ${risks.total_threats} amenazas · ${risks.total_vulnerabilities} vuln.</div>
           </div>
           <div class="kpi" style="background: linear-gradient(45deg, #FFE6CE 0%, #EDD1FF 100%);">
             <div class="label">Riesgos altos sin tratar</div>
-            <div class="value">${s.by_band.high}</div>
+            <div class="value">${risks.by_band.high}</div>
             <div class="hint">requieren atencion inmediata</div>
           </div>
-          <div class="kpi" style="${s.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}">
+          <div class="kpi" style="${risks.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}">
             <div class="label">Sin responsable asignado</div>
-            <div class="value" style="${s.no_owner > 0 ? 'color:#6D28D9;' : ''}">${s.no_owner}</div>
+            <div class="value" style="${risks.no_owner > 0 ? 'color:#6D28D9;' : ''}">${risks.no_owner}</div>
             <div class="hint">riesgos activos sin propietario</div>
           </div>
         </div>
 
         <div class="card-row" style="margin-bottom:20px;">
-          <div class="kpi" style="cursor:pointer;${s.overdue_treatments > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
+          <div class="kpi" style="cursor:pointer;${risks.overdue_treatments > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
                onclick="location.hash='#/risks?overdue=1'" title="Ver riesgos con tratamiento vencido">
             <div class="label">Tratamientos vencidos</div>
-            <div class="value" style="${s.overdue_treatments > 0 ? 'color:#991B1B;' : ''}">${s.overdue_treatments}</div>
+            <div class="value" style="${risks.overdue_treatments > 0 ? 'color:#991B1B;' : ''}">${risks.overdue_treatments}</div>
             <div class="hint">clic para ver detalle</div>
           </div>
-          <div class="kpi" style="${s.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}">
+          <div class="kpi" style="${risks.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}">
             <div class="label">Altos sin plan definido</div>
-            <div class="value" style="${s.no_treatment_high > 0 ? 'color:#92400E;' : ''}">${s.no_treatment_high}</div>
+            <div class="value" style="${risks.no_treatment_high > 0 ? 'color:#92400E;' : ''}">${risks.no_treatment_high}</div>
             <div class="hint">riesgos >= 5 sin opcion de tratamiento</div>
           </div>
           <div class="kpi" style="background:linear-gradient(45deg,#D1FAE5,#A7F3D0);">
             <div class="label">Reduccion del riesgo</div>
-            <div class="value" style="color:#065F46;">${s.risk_reduction_pct}%</div>
-            <div class="hint">reduccion media inherente → residual</div>
+            <div class="value" style="color:#065F46;">${risks.risk_reduction_pct}%</div>
+            <div class="hint">reduccion media inherente -> residual</div>
           </div>
+          <!-- KPIs extra: Incidentes, Tareas, Politicas -->
+          ${incidents ? `
+          <div class="kpi" style="cursor:pointer;${incidents.p1_p2_open > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
+               onclick="location.hash='#/incidents'" title="Incidentes P1/P2 abiertos">
+            <div class="label">Incidentes P1/P2</div>
+            <div class="value" style="${incidents.p1_p2_open > 0 ? 'color:#991B1B;' : ''}">${incidents.p1_p2_open}</div>
+            <div class="hint">${incidents.open} abiertos en total${incidents.nis2_pending_notification > 0 ? ' · ' + incidents.nis2_pending_notification + ' NIS2 pendiente' : ''}</div>
+          </div>` : ''}
+          ${tasks ? `
+          <div class="kpi" style="cursor:pointer;${tasks.overdue > 0 ? 'background:linear-gradient(45deg,#FFF7ED,#FED7AA);border-color:#FDBA74;' : ''}"
+               onclick="location.hash='#/tasks'" title="Tareas vencidas">
+            <div class="label">Tareas vencidas</div>
+            <div class="value" style="${tasks.overdue > 0 ? 'color:#9A3412;' : ''}">${tasks.overdue}</div>
+            <div class="hint">${tasks.total} tareas totales</div>
+          </div>` : ''}
         </div>
 
+        <!-- FILA DE GRAFICOS DE RIESGO -->
         <div class="card-row">
           <div class="card">
             <h3>Distribucion por nivel residual</h3>
             <div style="display:flex;align-items:center;gap:20px;margin-top:12px;">
               ${ViewDashboard._donut([
-                { v: s.by_band.high,   color: 'var(--risk-high)',   label: 'Altos' },
-                { v: s.by_band.medium, color: 'var(--risk-medium)', label: 'Medios' },
-                { v: s.by_band.low,    color: 'var(--risk-low)',    label: 'Bajos' },
-              ], s.total_risks)}
+                { v: risks.by_band.high,   color: 'var(--risk-high)',   label: 'Altos' },
+                { v: risks.by_band.medium, color: 'var(--risk-medium)', label: 'Medios' },
+                { v: risks.by_band.low,    color: 'var(--risk-low)',    label: 'Bajos' },
+              ], risks.total_risks)}
               <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
                 ${[
                   { key:'high',   label:'Altos (>5)',    color:'var(--risk-high)' },
@@ -73,10 +113,10 @@ const ViewDashboard = {
                   <div>
                     <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
                       <span style="color:var(--text-base);">${b.label}</span>
-                      <span style="font-weight:700;color:${b.color};">${s.by_band[b.key]}</span>
+                      <span style="font-weight:700;color:${b.color};">${risks.by_band[b.key]}</span>
                     </div>
                     <div style="height:5px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
-                      <div style="height:100%;width:${s.total_risks?Math.round(s.by_band[b.key]/s.total_risks*100):0}%;background:${b.color};border-radius:3px;transition:width .4s;"></div>
+                      <div style="height:100%;width:${risks.total_risks?Math.round(risks.by_band[b.key]/risks.total_risks*100):0}%;background:${b.color};border-radius:3px;transition:width .4s;"></div>
                     </div>
                   </div>`).join('')}
               </div>
@@ -86,14 +126,14 @@ const ViewDashboard = {
           <div class="card">
             <h3>Por estado del ciclo</h3>
             <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
-              ${Object.entries(s.by_status).filter(([,v]) => v > 0).map(([k, v]) => `
+              ${Object.entries(risks.by_status).filter(([,v]) => v > 0).map(([k, v]) => `
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
                     <span>${UI.statusLabel(k)}</span>
                     <span style="font-weight:600;font-family:var(--font-mono);">${v}</span>
                   </div>
                   <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;">
-                    <div style="height:100%;width:${s.total_risks?Math.round(v/s.total_risks*100):0}%;background:var(--brand-purple);border-radius:2px;"></div>
+                    <div style="height:100%;width:${risks.total_risks?Math.round(v/risks.total_risks*100):0}%;background:var(--brand-purple);border-radius:2px;"></div>
                   </div>
                 </div>`).join('')}
             </div>
@@ -102,14 +142,14 @@ const ViewDashboard = {
           <div class="card">
             <h3>Por decision de tratamiento</h3>
             <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
-              ${Object.entries(s.by_treatment).filter(([,v]) => v > 0).map(([k, v]) => `
+              ${Object.entries(risks.by_treatment).filter(([,v]) => v > 0).map(([k, v]) => `
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
                     <span>${UI.treatmentLabel(k)}</span>
                     <span style="font-weight:600;font-family:var(--font-mono);">${v}</span>
                   </div>
                   <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;">
-                    <div style="height:100%;width:${s.total_risks?Math.round(v/s.total_risks*100):0}%;background:var(--brand-orange);border-radius:2px;"></div>
+                    <div style="height:100%;width:${risks.total_risks?Math.round(v/risks.total_risks*100):0}%;background:var(--brand-orange);border-radius:2px;"></div>
                   </div>
                 </div>`).join('')
                 || '<p style="font-size:13px;color:var(--text-subtle);margin:0;">Sin datos de tratamiento.</p>'}
@@ -117,14 +157,18 @@ const ViewDashboard = {
           </div>
         </div>
 
+        <!-- MODULOS SECUNDARIOS -->
+        ${ViewDashboard._modulesRowHtml(incidents, tasks, policies, gdprData)}
+
+        <!-- TOP 10 RIESGOS -->
         <div class="card" style="margin-top:16px;">
           <h3>Top 10 riesgos por nivel residual</h3>
-          ${s.top_risks.length === 0
+          ${risks.top_risks.length === 0
             ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavia. Comienza creando activos y asociandoles amenazas.</p>'
             : `<div class="table-wrap"><table class="data">
                 <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th><th>Reduccion</th></tr></thead>
                 <tbody>
-                  ${s.top_risks.map(r => {
+                  ${risks.top_risks.map(r => {
                     const red = r.inherent_level > 0
                       ? Math.round((1 - r.level / r.inherent_level) * 100) : 0;
                     return `<tr style="cursor:pointer;" onclick="location.hash='#/risks?id=${r.id}'">
@@ -138,33 +182,54 @@ const ViewDashboard = {
               </table></div>`}
         </div>
 
+        <!-- ACCIONES RAPIDAS + PROXIMOS VENCIMIENTOS + REVISIONES CONTROLES + ACTIVIDAD -->
         <div class="card-row" style="margin-top:16px;">
           <div class="card">
             <h3>Acciones rapidas</h3>
             <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
-              <a href="#/risks?overdue=1" class="quick-action-btn ${s.overdue_treatments > 0 ? 'urgent' : ''}">
+              <a href="#/risks?overdue=1" class="quick-action-btn ${risks.overdue_treatments > 0 ? 'urgent' : ''}">
                 <span>Tratamientos vencidos</span>
-                <span class="qa-count">${s.overdue_treatments}</span>
+                <span class="qa-count">${risks.overdue_treatments}</span>
               </a>
-              <a href="#/risks" class="quick-action-btn ${s.no_treatment_high > 0 ? 'warn' : ''}">
+              <a href="#/risks" class="quick-action-btn ${risks.no_treatment_high > 0 ? 'warn' : ''}">
                 <span>Altos sin plan</span>
-                <span class="qa-count">${s.no_treatment_high}</span>
+                <span class="qa-count">${risks.no_treatment_high}</span>
               </a>
-              <a href="#/controls" class="quick-action-btn ${s.controls_overdue_reviews > 0 ? 'urgent' : ''}">
+              <a href="#/controls" class="quick-action-btn ${risks.controls_overdue_reviews > 0 ? 'urgent' : ''}">
                 <span>Revisiones controles vencidas</span>
-                <span class="qa-count">${s.controls_overdue_reviews}</span>
+                <span class="qa-count">${risks.controls_overdue_reviews}</span>
               </a>
-              <a href="#/risks?owner=__unassigned__" class="quick-action-btn ${s.no_owner > 0 ? 'warn' : ''}">
+              <a href="#/risks?owner=__unassigned__" class="quick-action-btn ${risks.no_owner > 0 ? 'warn' : ''}">
                 <span>Sin responsable</span>
-                <span class="qa-count">${s.no_owner}</span>
+                <span class="qa-count">${risks.no_owner}</span>
               </a>
+              ${incidents && incidents.nis2_pending_notification > 0 ? `
+              <a href="#/incidents" class="quick-action-btn urgent">
+                <span>NIS2: notificacion pendiente</span>
+                <span class="qa-count">${incidents.nis2_pending_notification}</span>
+              </a>` : ''}
+              ${tasks && tasks.overdue > 0 ? `
+              <a href="#/tasks" class="quick-action-btn warn">
+                <span>Tareas vencidas</span>
+                <span class="qa-count">${tasks.overdue}</span>
+              </a>` : ''}
+              ${policies && policies.overdue_review > 0 ? `
+              <a href="#/policies" class="quick-action-btn warn">
+                <span>Politicas: revision vencida</span>
+                <span class="qa-count">${policies.overdue_review}</span>
+              </a>` : ''}
+              ${gdprData && gdprData.dpias_pending > 0 ? `
+              <a href="#/gdpr" class="quick-action-btn warn">
+                <span>DPIAs pendientes</span>
+                <span class="qa-count">${gdprData.dpias_pending}</span>
+              </a>` : ''}
               <a href="#/calendar" class="quick-action-btn">
                 <span>Ver calendario</span>
-                <span style="font-size:12px;color:var(--text-muted);">→</span>
+                <span style="font-size:12px;color:var(--text-muted);">-></span>
               </a>
               <a href="#/heatmap" class="quick-action-btn">
                 <span>Mapa de calor</span>
-                <span style="font-size:12px;color:var(--text-muted);">→</span>
+                <span style="font-size:12px;color:var(--text-muted);">-></span>
               </a>
             </div>
           </div>
@@ -172,7 +237,7 @@ const ViewDashboard = {
           <div class="card" style="flex:2;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
               <h3 style="margin:0;">Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
-              <a href="#/calendar" style="font-size:12px;color:var(--brand-purple);">Calendario →</a>
+              <a href="#/calendar" style="font-size:12px;color:var(--brand-purple);">Calendario -></a>
             </div>
             <div id="dash-upcoming"></div>
           </div>
@@ -180,7 +245,7 @@ const ViewDashboard = {
           <div class="card" style="flex:2;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
               <h3 style="margin:0;">Revisiones de controles <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
-              <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos →</a>
+              <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
             </div>
             <div id="dash-ctrl-upcoming"></div>
           </div>
@@ -188,7 +253,7 @@ const ViewDashboard = {
           <div class="card" style="flex:2;" id="dash-activity-card" style="display:none;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
               <h3 style="margin:0;">Actividad reciente</h3>
-              <a href="#/audit" style="font-size:12px;color:var(--brand-purple);">Ver todo →</a>
+              <a href="#/audit" style="font-size:12px;color:var(--brand-purple);">Ver todo -></a>
             </div>
             <div id="dash-activity-body">
               <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
@@ -196,17 +261,19 @@ const ViewDashboard = {
           </div>
         </div>
 
+        <!-- COBERTURA DE CONTROLES -->
         <div class="card" style="margin-top:16px;" id="dash-controls-card">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
             <h3 style="margin:0;">Cobertura de controles ISO 27002 por tema</h3>
-            <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos →</a>
+            <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
           </div>
           <div id="dash-controls-body">
             <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
           </div>
         </div>
       `;
-      // Cargar proximos vencimientos, cobertura de controles, actividad reciente y revisiones controles
+
+      // Cargar secciones async adicionales
       ViewDashboard._loadUpcoming();
       ViewDashboard._loadUpcomingControlReviews();
       ViewDashboard._loadControlsCoverage();
@@ -214,6 +281,225 @@ const ViewDashboard = {
     } catch (e) {
       main.innerHTML += `<div class="notice">${UI.esc(e.message)}</div>`;
     }
+  },
+
+  /* Calcula una puntuacion de postura de seguridad (0-100). */
+  _calcPosture(risks, incidents, tasks, policies, gdpr) {
+    let score = 100;
+    const r = risks || {};
+
+    // Penalizaciones por riesgos
+    const totalR = r.total_risks || 0;
+    if (totalR > 0) {
+      const highPct = (r.by_band?.high || 0) / totalR;
+      score -= Math.round(highPct * 25); // hasta -25 por % de riesgos altos
+    }
+    if ((r.overdue_treatments || 0) > 0) score -= Math.min(15, r.overdue_treatments * 3);
+    if ((r.no_treatment_high || 0) > 0) score -= Math.min(10, r.no_treatment_high * 2);
+    if ((r.no_owner || 0) > 0) score -= Math.min(5, r.no_owner);
+
+    // Bonificacion por controles implementados
+    const totalC = r.total_controls || 0;
+    if (totalC > 0) {
+      const implPct = (r.controls_implemented || 0) / totalC;
+      score += Math.round(implPct * 10); // hasta +10 por cobertura de controles
+    }
+
+    // Penalizacion por incidentes
+    if (incidents) {
+      if ((incidents.p1_p2_open || 0) > 0) score -= Math.min(10, incidents.p1_p2_open * 5);
+      if ((incidents.nis2_pending_notification || 0) > 0) score -= 5;
+    }
+
+    // Penalizacion por tareas vencidas
+    if (tasks && (tasks.overdue || 0) > 0) score -= Math.min(8, tasks.overdue * 2);
+
+    // Penalizacion por politicas sin revisar
+    if (policies && (policies.overdue_review || 0) > 0) score -= Math.min(5, policies.overdue_review);
+
+    // Penalizacion por DPIAs pendientes
+    if (gdpr && (gdpr.dpias_pending || 0) > 0) score -= Math.min(5, gdpr.dpias_pending * 2);
+
+    return Math.max(0, Math.min(100, score));
+  },
+
+  /* Banda de color segun la puntuacion. */
+  _postureColor(score) {
+    if (score >= 80) return 'var(--risk-low)';
+    if (score >= 60) return '#D97706';
+    if (score >= 40) return 'var(--risk-high)';
+    return 'var(--risk-critical)';
+  },
+  _postureLabel(score) {
+    if (score >= 80) return 'Buena';
+    if (score >= 60) return 'Aceptable';
+    if (score >= 40) return 'Deficiente';
+    return 'Critica';
+  },
+
+  /* HTML del panel de postura de seguridad. */
+  _postureHtml(score, risks, incidents, tasks, policies, gdprData) {
+    const color = ViewDashboard._postureColor(score);
+    const label = ViewDashboard._postureLabel(score);
+    const circ = 2 * Math.PI * 30;
+    const dash = (score / 100) * circ;
+
+    // Cuenta de alertas criticas para mostrar en el banner
+    const critItems = [];
+    if (risks?.overdue_treatments > 0) critItems.push(`${risks.overdue_treatments} tratamiento${risks.overdue_treatments>1?'s':''} vencido${risks.overdue_treatments>1?'s':''}`);
+    if (incidents?.p1_p2_open > 0) critItems.push(`${incidents.p1_p2_open} incidente${incidents.p1_p2_open>1?'s':''} P1/P2 abierto${incidents.p1_p2_open>1?'s':''}`);
+    if (incidents?.nis2_pending_notification > 0) critItems.push(`${incidents.nis2_pending_notification} notificacion NIS2 pendiente`);
+    if (tasks?.overdue > 0) critItems.push(`${tasks.overdue} tarea${tasks.overdue>1?'s':''} vencida${tasks.overdue>1?'s':''}`);
+    if (policies?.overdue_review > 0) critItems.push(`${policies.overdue_review} politica${policies.overdue_review>1?'s':''} con revision vencida`);
+    if (gdprData?.dpias_pending > 0) critItems.push(`${gdprData.dpias_pending} DPIA pendiente${gdprData.dpias_pending>1?'s':''}`);
+
+    return `
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+        <!-- Indicador circular de postura -->
+        <div style="flex-shrink:0;text-align:center;">
+          <svg width="90" height="90" viewBox="0 0 70 70">
+            <circle cx="35" cy="35" r="30" fill="none" stroke="var(--border)" stroke-width="7"/>
+            <circle cx="35" cy="35" r="30" fill="none" stroke="${color}" stroke-width="7"
+              stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round"
+              transform="rotate(-90 35 35)" style="transition:stroke-dasharray .6s;"/>
+            <text x="35" y="32" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="800" fill="${color}">${score}</text>
+            <text x="35" y="46" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="var(--text-muted)">/100</text>
+          </svg>
+          <div style="font-size:12px;font-weight:700;color:${color};margin-top:2px;">${label}</div>
+          <div style="font-size:10px;color:var(--text-subtle);">Postura global</div>
+        </div>
+
+        <!-- Resumen rapido por modulo -->
+        <div style="flex:1;min-width:260px;">
+          <div style="font-size:14px;font-weight:700;color:var(--text-base);margin-bottom:10px;">Estado del SGSI</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+            ${ViewDashboard._moduleChipHtml('Riesgos', risks?.total_risks ?? '-', risks?.by_band?.high > 0 ? 'warn' : 'ok', '#/risks')}
+            ${ViewDashboard._moduleChipHtml('Controles', (risks?.controls_implemented ?? '-') + '/' + (risks?.total_controls ?? '-'), 'neutral', '#/controls')}
+            ${incidents ? ViewDashboard._moduleChipHtml('Incidentes', incidents.open + ' abiertos', incidents.p1_p2_open > 0 ? 'crit' : incidents.open > 0 ? 'warn' : 'ok', '#/incidents') : ''}
+            ${tasks ? ViewDashboard._moduleChipHtml('Tareas', tasks.overdue + ' vencidas', tasks.overdue > 0 ? 'warn' : 'ok', '#/tasks') : ''}
+            ${policies ? ViewDashboard._moduleChipHtml('Politicas', policies.total + ' total', policies.overdue_review > 0 ? 'warn' : 'ok', '#/policies') : ''}
+            ${gdprData ? ViewDashboard._moduleChipHtml('RGPD', gdprData.dpias_pending + ' DPIAs', gdprData.dpias_pending > 0 ? 'warn' : 'ok', '#/gdpr') : ''}
+          </div>
+        </div>
+
+        <!-- Alertas criticas (si las hay) -->
+        ${critItems.length ? `
+        <div style="flex:1;min-width:220px;border-left:3px solid ${score < 60 ? 'var(--risk-high)' : 'var(--risk-medium)'};padding-left:16px;">
+          <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Requiere atencion</div>
+          ${critItems.slice(0, 5).map(item => `
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:12px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:${score < 60 ? 'var(--risk-high)' : 'var(--risk-medium)'};flex-shrink:0;"></span>
+              <span>${UI.esc(item)}</span>
+            </div>`).join('')}
+          ${critItems.length > 5 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">+${critItems.length - 5} alertas mas</div>` : ''}
+        </div>` : `
+        <div style="flex:1;min-width:180px;border-left:3px solid var(--risk-low);padding-left:16px;">
+          <div style="font-size:12px;font-weight:700;color:var(--risk-low);margin-bottom:4px;">Sin alertas criticas</div>
+          <div style="font-size:12px;color:var(--text-muted);">Todos los indicadores dentro de rangos aceptables.</div>
+        </div>`}
+      </div>
+    `;
+  },
+
+  /* Chip de modulo para el panel de postura. */
+  _moduleChipHtml(label, value, state, href) {
+    const colors = { ok: 'var(--risk-low)', warn: 'var(--risk-medium)', crit: 'var(--risk-high)', neutral: 'var(--brand-purple)' };
+    const bg = { ok: 'rgba(16,185,129,.08)', warn: 'rgba(245,158,11,.08)', crit: 'rgba(239,68,68,.08)', neutral: 'rgba(89,0,141,.06)' };
+    const c = colors[state] || colors.neutral;
+    const b = bg[state] || bg.neutral;
+    return `
+      <a href="${href}" style="text-decoration:none;display:block;background:${b};border:1px solid ${c}20;border-radius:8px;padding:8px 10px;transition:box-shadow .15s;" title="Ir a ${label}">
+        <div style="font-size:11px;font-weight:700;color:${c};text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;">${UI.esc(label)}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text-base);">${UI.esc(String(value))}</div>
+      </a>
+    `;
+  },
+
+  /* Fila de tarjetas de modulos secundarios (incidentes, tareas, politicas, GDPR). */
+  _modulesRowHtml(incidents, tasks, policies, gdprData) {
+    const cards = [];
+
+    if (incidents) {
+      cards.push(`
+        <div class="card" style="flex:1;min-width:200px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:14px;">Incidentes</h3>
+            <a href="#/incidents" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${ViewDashboard._moduleStatLine('Abiertos', incidents.open, incidents.open > 0 ? 'var(--risk-medium)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('P1 / P2', incidents.p1_p2_open, incidents.p1_p2_open > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('NIS2 pendiente', incidents.nis2_pending_notification, incidents.nis2_pending_notification > 0 ? 'var(--risk-critical)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('Total historico', incidents.total, 'var(--text-muted)')}
+          </div>
+        </div>`);
+    }
+
+    if (tasks) {
+      const done = tasks.by_status?.done || 0;
+      const inProgress = tasks.by_status?.in_progress || 0;
+      const pending = tasks.by_status?.pending || 0;
+      cards.push(`
+        <div class="card" style="flex:1;min-width:200px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:14px;">Tareas</h3>
+            <a href="#/tasks" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${ViewDashboard._moduleStatLine('Vencidas', tasks.overdue, tasks.overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('En progreso', inProgress, 'var(--brand-purple)')}
+            ${ViewDashboard._moduleStatLine('Pendientes', pending, 'var(--text-muted)')}
+            ${ViewDashboard._moduleStatLine('Completadas', done, 'var(--risk-low)')}
+          </div>
+        </div>`);
+    }
+
+    if (policies) {
+      const pub = policies.by_status?.published || 0;
+      const rev = policies.by_status?.review || 0;
+      const draft = policies.by_status?.draft || 0;
+      cards.push(`
+        <div class="card" style="flex:1;min-width:200px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:14px;">Politicas</h3>
+            <a href="#/policies" style="font-size:11px;color:var(--brand-purple);">Ver todas -></a>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${ViewDashboard._moduleStatLine('Revision vencida', policies.overdue_review, policies.overdue_review > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('Publicadas', pub, 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('En revision', rev, 'var(--brand-orange)')}
+            ${ViewDashboard._moduleStatLine('Borradores', draft, 'var(--text-muted)')}
+          </div>
+        </div>`);
+    }
+
+    if (gdprData) {
+      cards.push(`
+        <div class="card" style="flex:1;min-width:200px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:14px;">RGPD</h3>
+            <a href="#/gdpr" style="font-size:11px;color:var(--brand-purple);">Ver todo -></a>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${ViewDashboard._moduleStatLine('Actividades de tratamiento', gdprData.total_activities, 'var(--text-muted)')}
+            ${ViewDashboard._moduleStatLine('Requieren DPIA', gdprData.requires_dpia, gdprData.requires_dpia > 0 ? 'var(--brand-orange)' : 'var(--text-muted)')}
+            ${ViewDashboard._moduleStatLine('DPIAs pendientes', gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('Transferencias fuera UE', gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}
+          </div>
+        </div>`);
+    }
+
+    if (!cards.length) return '';
+    return `<div class="card-row" style="margin-top:16px;">${cards.join('')}</div>`;
+  },
+
+  /* Linea de stat dentro de una tarjeta de modulo. */
+  _moduleStatLine(label, value, color) {
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);">
+        <span style="color:var(--text-muted);">${UI.esc(label)}</span>
+        <span style="font-weight:700;color:${color};">${value ?? '-'}</span>
+      </div>`;
   },
 
   async _loadRecentActivity() {
@@ -238,6 +524,7 @@ const ViewDashboard = {
         risk: 'Riesgo', asset: 'Activo', control: 'Control', user: 'Usuario',
         threat: 'Amenaza', vulnerability: 'Vuln.', context: 'Contexto',
         alert_rule: 'Alerta', email_settings: 'SMTP', control_impl: 'Control impl.',
+        incident: 'Incidente', policy: 'Politica', task: 'Tarea', supplier: 'Proveedor',
       };
       el.innerHTML = items.map(e => {
         const ts = new Date(e.timestamp).toLocaleString('es-ES', {
@@ -319,7 +606,7 @@ const ViewDashboard = {
       const all = await Api.impls.list();
       const now = new Date();
       const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      // Include overdue and upcoming reviews (exclude not_implemented)
+      // Incluir vencidas y proximas revisiones (excluir not_implemented)
       const reviews = all
         .filter(c => c.next_review && c.status !== 'not_implemented')
         .map(c => ({ ...c, _due: new Date(c.next_review) }))
@@ -409,7 +696,6 @@ const ViewDashboard = {
     for (const seg of segments) {
       const frac = seg.v / total;
       const dash = frac * circ;
-      // rotate so first segment starts at top (−90 deg)
       const rotateDeg = -90 + (offset / circ) * 360;
       paths += `<circle
         cx="${cx}" cy="${cy}" r="${r}"

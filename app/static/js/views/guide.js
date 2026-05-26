@@ -3,6 +3,7 @@ const ViewGuide = {
 
   _sections: [
     { id: 'intro', title: 'Introduccion', icon: '📖' },
+    { id: 'dashboard', title: 'Dashboard ejecutivo', icon: '📊' },
     { id: 'search', title: 'Busqueda global', icon: '🔎' },
     { id: 'context', title: 'Configuracion inicial', icon: '⚙️' },
     { id: 'assets', title: 'Inventario de activos', icon: '🗄️' },
@@ -92,6 +93,7 @@ const ViewGuide = {
   _getContent(id) {
     return ({
       intro: this._cIntro,
+      dashboard: this._cDashboard,
       search: this._cSearch,
       context: this._cContext,
       assets: this._cAssets,
@@ -209,6 +211,47 @@ const ViewGuide = {
             <td style="padding:8px 12px;">Solo lectura. Puede ver todos los datos y descargar informes pero no modificar nada.</td></tr>
       </tbody>
     </table>
+  `;},
+
+  get _cDashboard() { return `
+    ${this._p('El <strong>Dashboard ejecutivo</strong> es la pantalla principal de RiskHub. Agrega en una sola vista el estado de todos los modulos: riesgos, controles, incidentes, tareas, politicas y RGPD.')}
+    ${this._h('Puntuacion de postura de seguridad')}
+    ${this._p('El indicador circular en la parte superior (0-100) calcula la postura global del SGSI en base a:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 12px;">
+      <li>Porcentaje de riesgos altos sin tratar (hasta -25 pts)</li>
+      <li>Tratamientos vencidos (hasta -15 pts)</li>
+      <li>Riesgos altos sin plan de tratamiento (hasta -10 pts)</li>
+      <li>Incidentes P1/P2 abiertos (hasta -10 pts)</li>
+      <li>Notificaciones NIS2 pendientes (-5 pts)</li>
+      <li>Tareas vencidas (hasta -8 pts)</li>
+      <li>Politicas con revision vencida (hasta -5 pts)</li>
+      <li>DPIAs pendientes (hasta -5 pts)</li>
+      <li>Cobertura de controles implementados (+10 pts bonus)</li>
+    </ul>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      ${[['80-100','Buena','var(--risk-low)'],['60-79','Aceptable','#D97706'],['40-59','Deficiente','var(--risk-high)'],['0-39','Critica','var(--risk-critical)']].map(([r,l,c])=>
+        `<div style="background:var(--bg-2);border-radius:8px;padding:8px 12px;font-size:12px;border-left:3px solid ${c};">
+          <strong style="color:${c};">${r} pts — ${l}</strong>
+        </div>`).join('')}
+    </div>
+    ${this._h('Panel de chips de modulo')}
+    ${this._p('Bajo el indicador circular aparecen chips de acceso rapido a cada modulo. El color indica el estado:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 12px;">
+      <li><strong style="color:var(--risk-low);">Verde</strong> — modulo sin alertas activas</li>
+      <li><strong style="color:var(--risk-medium);">Ambar</strong> — hay items que requieren atencion</li>
+      <li><strong style="color:var(--risk-high);">Rojo</strong> — situacion critica (P1/P2 abiertos, NIS2 pendiente)</li>
+    </ul>
+    ${this._h('Panel de alertas criticas')}
+    ${this._p('A la derecha del indicador aparece una lista consolidada de todos los items urgentes de todos los modulos. Si no hay alertas, el panel muestra confirmacion verde.')}
+    ${this._h('KPIs de riesgo')}
+    ${this._p('Las dos filas de indicadores muestran los KPIs principales: activos, riesgos, controles, reduccion de riesgo, tratamientos vencidos, incidentes P1/P2 y tareas vencidas. Los indicadores con color de fondo requieren accion inmediata.')}
+    ${this._h('Tarjetas de modulos secundarios')}
+    ${this._p('La fila de tarjetas debajo de los graficos de riesgo muestra estadisticas detalladas de incidentes, tareas, politicas y RGPD. Cada tarjeta tiene un enlace "Ver todos" para navegar al modulo.')}
+    ${this._h('Top 10 riesgos')}
+    ${this._p('La tabla muestra los 10 riesgos con mayor nivel residual, con el codigo, activo, amenaza, nivel y porcentaje de reduccion conseguido. Clic en cualquier fila para navegar directamente al riesgo.')}
+    ${this._h('Acciones rapidas')}
+    ${this._p('El panel lateral izquierdo consolida accesos directos a los items urgentes de todos los modulos. Los botones con borde rojo o naranja indican items que requieren atencion inmediata.')}
+    ${this._tip('El dashboard se carga en paralelo — todos los modulos consultan sus APIs simultaneamente para minimizar el tiempo de carga.')}
   `;},
 
   get _cSearch() { return `
