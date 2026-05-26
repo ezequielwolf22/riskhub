@@ -115,6 +115,49 @@ async def scan_ip(
     return scan
 
 
+@router.post("/scans/bulk", status_code=202)
+async def bulk_scan(
+    background_tasks: BackgroundTasks,
+    scan_type: str = Query(..., description="email|domain|ip|url|username"),
+    targets: str = Query(..., description="Targets separados por nueva linea o coma"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(_ROLES))
+):
+    """Inicia multiples escaneos. Targets separados por nueva linea o coma (max 50)."""
+    valid_types = {'email', 'domain', 'ip', 'url', 'username'}
+    if scan_type not in valid_types:
+        raise HTTPException(400, f"Tipo invalido. Validos: {', '.join(valid_types)}")
+
+    raw = targets.replace(',', '\n').splitlines()
+    clean = [t.strip() for t in raw if t.strip()]
+    if not clean:
+        raise HTTPException(400, "No se encontraron targets validos")
+    if len(clean) > 50:
+        raise HTTPException(400, "Maximo 50 targets por solicitud")
+
+    type_enum = OSINTScanType[scan_type.upper()]
+    run_fn_map = {
+        'email': osint_engine.run_email_scan,
+        'domain': osint_engine.run_domain_scan,
+        'ip': osint_engine.run_ip_scan,
+        'url': osint_engine.run_url_scan,
+        'username': osint_engine.run_username_scan,
+    }
+    run_fn = run_fn_map[scan_type]
+
+    created = []
+    skipped = []
+    for target in clean:
+        if _check_in_progress(db, current_user.id, target):
+            skipped.append(target)
+            continue
+        scan = _create_scan(db, type_enum, target, current_user.id)
+        background_tasks.add_task(run_fn, scan.id, target, current_user.id)
+        created.append({'target': target, 'scan_id': scan.id})
+
+    return {'created': len(created), 'skipped': len(skipped), 'scans': created}
+
+
 @router.get("/scans", response_model=PaginatedResponse)
 def list_scans(
     skip: int = Query(0, ge=0),
@@ -432,56 +475,6 @@ async def import_from_entraid(
     return {
         'scans_created': len(scans_created),
         'targets': scans_created
-    }
-
-
-# ── BULK SCAN ────────────────────────────────────────────────────────────────
-
-@router.post("/scans/bulk", status_code=202)
-async def bulk_scan(
-    background_tasks: BackgroundTasks,
-    scan_type: str = Query(..., description="email|domain|ip|url|username"),
-    targets: str = Query(..., description="Targets separados por nueva linea o coma"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
-):
-    """Inicia multiples escaneos en paralelo. Targets separados por nueva linea o coma."""
-    valid_types = {'email', 'domain', 'ip', 'url', 'username'}
-    if scan_type not in valid_types:
-        raise HTTPException(400, f"Tipo invalido. Validos: {', '.join(valid_types)}")
-
-    # Parse targets
-    raw = targets.replace(',', '\n').splitlines()
-    clean = [t.strip() for t in raw if t.strip()]
-    if not clean:
-        raise HTTPException(400, "No se encontraron targets validos")
-    if len(clean) > 50:
-        raise HTTPException(400, "Maximo 50 targets por solicitud")
-
-    type_enum = OSINTScanType[scan_type.upper()]
-    run_fn_map = {
-        'email': osint_engine.run_email_scan,
-        'domain': osint_engine.run_domain_scan,
-        'ip': osint_engine.run_ip_scan,
-        'url': osint_engine.run_url_scan,
-        'username': osint_engine.run_username_scan,
-    }
-    run_fn = run_fn_map[scan_type]
-
-    created = []
-    skipped = []
-    for target in clean:
-        if _check_in_progress(db, current_user.id, target):
-            skipped.append(target)
-            continue
-        scan = _create_scan(db, type_enum, target, current_user.id)
-        background_tasks.add_task(run_fn, scan.id, target, current_user.id)
-        created.append({'target': target, 'scan_id': scan.id})
-
-    return {
-        'created': len(created),
-        'skipped': len(skipped),
-        'scans': created
     }
 
 
