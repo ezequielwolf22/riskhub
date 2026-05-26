@@ -9,10 +9,11 @@ const ViewOsint = {
   _pollInterval: null,
   _filterRisk: '',
   _filterSource: '',
-  _filterStatus: '',
+  _filterStatus: 'pending',
   _filterType: '',
   _searchText: '',
   _bulkMode: false,
+  _selectedFindings: new Set(),
   _entraidPanel: false,
   _entraidData: null,
 
@@ -315,12 +316,13 @@ const ViewOsint = {
   _renderFindings(c) {
     const u = Auth.user();
     const canEdit = u && (u.role === 'admin' || u.role === 'analyst' || u.role === 'superadmin');
+    const isAdmin  = u && (u.role === 'admin' || u.role === 'superadmin');
 
     let filtered = this._findings;
-    if (this._filterRisk) filtered = filtered.filter(f => f.risk_level === this._filterRisk);
+    if (this._filterRisk)   filtered = filtered.filter(f => f.risk_level === this._filterRisk);
     if (this._filterSource) filtered = filtered.filter(f => f.source === this._filterSource);
-    if (this._filterStatus === 'pending') filtered = filtered.filter(f => !f.is_remediated);
-    if (this._filterStatus === 'remediated') filtered = filtered.filter(f => f.is_remediated);
+    if (this._filterStatus === 'pending')    filtered = filtered.filter(f => !f.is_remediated);
+    if (this._filterStatus === 'remediated') filtered = filtered.filter(f =>  f.is_remediated);
     if (this._searchText) {
       const q = this._searchText.toLowerCase();
       filtered = filtered.filter(f =>
@@ -329,56 +331,93 @@ const ViewOsint = {
       );
     }
 
-    const sources = [...new Set(this._findings.map(f => f.source))];
-    const pending = this._findings.filter(f => !f.is_remediated).length;
+    const sources  = [...new Set(this._findings.map(f => f.source))];
+    const pending  = this._findings.filter(f => !f.is_remediated).length;
+    const resolved = this._findings.filter(f =>  f.is_remediated).length;
     const critical = this._findings.filter(f => f.risk_level === 'critical' && !f.is_remediated).length;
+    const selCount = this._selectedFindings.size;
 
     c.innerHTML = `
-      <!-- Alertas de hallazgos criticos -->
+      <!-- Banner de estado -->
       ${critical > 0 ? `
       <div style="background:#FEF2F2;border-left:4px solid var(--danger);border-radius:6px;
                   padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--danger);">
-        <strong>${critical} hallazgo(s) CRITICOS sin remediar.</strong> Requieren atencion inmediata.
+        <strong>${critical} hallazgo(s) CRITICOS pendientes.</strong> Requieren atencion inmediata.
       </div>` : pending > 0 ? `
       <div style="background:var(--warning-soft);border-left:4px solid var(--warning);border-radius:6px;
-                  padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--warning-dark,#92400E);">
-        <strong>${pending} hallazgo(s) pendientes de remediar.</strong>
+                  padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--brand-orange);">
+        <strong>${pending} pendiente(s)</strong> &nbsp;·&nbsp; ${resolved} resuelto(s).
       </div>` : this._findings.length > 0 ? `
       <div style="background:var(--success-soft);border-left:4px solid var(--success);border-radius:6px;
                   padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--success);">
-        Todos los hallazgos estan remediados.
+        Todos los hallazgos estan resueltos.
       </div>` : ''}
 
-      <!-- Filtros -->
+      <!-- Filtros + tabs de estado -->
       <div class="card" style="margin-bottom:12px;padding:12px 16px;">
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <input type="text" id="finding-search" placeholder="Buscar..." style="width:180px;"
+            <input type="text" id="finding-search" placeholder="Buscar..." style="width:170px;"
               value="${UI.esc(this._searchText)}"
               oninput="ViewOsint._searchText=this.value;ViewOsint._renderFindings(document.getElementById('osint-content'));">
             <select onchange="ViewOsint._filterRisk=this.value;ViewOsint._renderFindings(document.getElementById('osint-content'));"
-              style="font-size:12px;">
+              style="font-size:12px;width:auto;">
               <option value="">Todo nivel</option>
               ${['critical','high','medium','low','info'].map(r =>
                 `<option value="${r}" ${this._filterRisk===r?'selected':''}>${r.toUpperCase()}</option>`
               ).join('')}
             </select>
             <select onchange="ViewOsint._filterSource=this.value;ViewOsint._renderFindings(document.getElementById('osint-content'));"
-              style="font-size:12px;">
+              style="font-size:12px;width:auto;">
               <option value="">Toda fuente</option>
               ${sources.map(s => `<option value="${s}" ${this._filterSource===s?'selected':''}>${s}</option>`).join('')}
             </select>
-            <select onchange="ViewOsint._filterStatus=this.value;ViewOsint._renderFindings(document.getElementById('osint-content'));"
-              style="font-size:12px;">
-              <option value="">Todos</option>
-              <option value="pending" ${this._filterStatus==='pending'?'selected':''}>Pendientes</option>
-              <option value="remediated" ${this._filterStatus==='remediated'?'selected':''}>Remediados</option>
-            </select>
+            <!-- Tabs Pendientes / Resueltos / Todos -->
+            <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--border-strong);flex-shrink:0;">
+              ${[
+                ['pending',    `Pendientes (${pending})`],
+                ['remediated', `Resueltos (${resolved})`],
+                ['',           `Todos (${this._findings.length})`],
+              ].map(([val, lbl]) => `
+                <button onclick="ViewOsint._filterStatus='${val}';ViewOsint._selectedFindings.clear();ViewOsint._renderFindings(document.getElementById('osint-content'));"
+                  style="padding:4px 12px;font-size:12px;border:none;cursor:pointer;white-space:nowrap;
+                         background:${this._filterStatus===val ? 'var(--brand-purple)' : 'var(--bg-2)'};
+                         color:${this._filterStatus===val ? '#fff' : 'var(--text-muted)'};">
+                  ${lbl}
+                </button>`).join('')}
+            </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <span style="font-size:12px;color:var(--text-muted);">${filtered.length} resultados</span>
+            <span style="font-size:12px;color:var(--text-muted);">${filtered.length} resultado(s)</span>
             <button class="btn btn-sm" onclick="ViewOsint._exportCSV()">Exportar CSV</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Barra de acciones masivas (visible solo con seleccion) -->
+      <div id="osint-bulk-bar" style="display:${selCount > 0 ? 'flex' : 'none'};
+           align-items:center;gap:10px;background:var(--brand-purple);color:#fff;
+           padding:10px 16px;border-radius:8px;margin-bottom:10px;font-size:13px;flex-wrap:wrap;">
+        <strong id="osint-bulk-count">${selCount} seleccionado(s)</strong>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+          ${canEdit ? `
+          <button class="btn btn-sm"
+            style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3);"
+            onclick="ViewOsint._bulkCreateIncidents()">+ Incidente</button>
+          <button class="btn btn-sm"
+            style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3);"
+            onclick="ViewOsint._bulkResolve()">Resolver</button>
+          ` : ''}
+          ${isAdmin ? `
+          <button class="btn btn-sm"
+            style="background:#dc2626;color:#fff;border-color:#dc2626;"
+            onclick="ViewOsint._bulkDelete()">Eliminar</button>
+          ` : ''}
+          <button class="btn btn-sm"
+            style="background:rgba(255,255,255,0.1);color:#fff;border-color:rgba(255,255,255,0.2);"
+            onclick="ViewOsint._selectedFindings.clear();ViewOsint._renderFindings(document.getElementById('osint-content'));">
+            Cancelar
+          </button>
         </div>
       </div>
 
@@ -393,17 +432,26 @@ const ViewOsint = {
           <div style="overflow-x:auto;">
             <table class="data">
               <thead><tr>
-                <th>Nivel</th><th>Titulo</th><th>Fuente</th><th>Score</th><th>Estado</th><th></th>
+                <th style="width:32px;text-align:center;">
+                  <input type="checkbox" id="bulk-select-all" title="Seleccionar todos"
+                    onclick="event.stopPropagation();ViewOsint._selectAll(this.checked);"
+                    ${selCount > 0 && selCount === filtered.length ? 'checked' : ''}>
+                </th>
+                <th>Nivel</th><th>Titulo</th><th>Fuente</th><th>Score</th><th>Estado</th>
+                ${canEdit ? '<th></th>' : ''}
               </tr></thead>
               <tbody>
                 ${filtered.map(f => `
-                <tr style="cursor:pointer;${f.is_remediated?'opacity:0.55;':''}"
+                <tr style="cursor:pointer;${f.is_remediated ? 'opacity:0.6;' : ''}"
                     onclick="ViewOsint._openFindingDrawer(${f.id})">
-                  <td>${this._riskBadge(f.risk_level)}</td>
-                  <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                      title="${UI.esc(f.title)}">
-                    ${UI.esc(f.title)}
+                  <td style="text-align:center;" onclick="event.stopPropagation();">
+                    <input type="checkbox" class="f-chk" data-id="${f.id}"
+                      ${this._selectedFindings.has(f.id) ? 'checked' : ''}
+                      onchange="ViewOsint._toggleSelect(${f.id},this);">
                   </td>
+                  <td>${this._riskBadge(f.risk_level)}</td>
+                  <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                      title="${UI.esc(f.title)}">${UI.esc(f.title)}</td>
                   <td><span class="badge badge-muted" style="font-size:11px;">${UI.esc(f.source)}</span></td>
                   <td><strong style="color:${this._scoreColor(f.risk_score)};">${f.risk_score.toFixed(1)}</strong></td>
                   <td>
@@ -411,23 +459,22 @@ const ViewOsint = {
                       ${f.is_remediated
                         ? 'background:var(--success-soft);color:var(--success);'
                         : 'background:var(--danger-soft);color:var(--danger);'}">
-                      ${f.is_remediated ? 'Remediado' : 'Pendiente'}
+                      ${f.is_remediated ? 'Resuelto' : 'Pendiente'}
                     </span>
                   </td>
-                  <td style="text-align:right;white-space:nowrap;">
-                    ${canEdit ? `
+                  ${canEdit ? `
+                  <td style="text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">
+                    ${!f.is_remediated ? `
+                      <button class="btn btn-xs" style="margin-right:4px;"
+                        onclick="ViewOsint._createIncident(${f.id})"
+                        title="Crear incidente y mover a resueltos">+ Incidente</button>
+                      <button class="btn btn-xs btn-primary"
+                        onclick="ViewOsint._remediate(${f.id})">Resolver</button>
+                    ` : `
                       <button class="btn btn-xs"
-                        onclick="event.stopPropagation();ViewOsint._createIncident(${f.id})"
-                        title="Crear incidente de seguridad"
-                        style="margin-right:4px;">
-                        + Incidente
-                      </button>
-                      ${f.is_remediated
-                        ? `<button class="btn btn-xs" onclick="event.stopPropagation();ViewOsint._unremediate(${f.id})">Desmarcar</button>`
-                        : `<button class="btn btn-xs btn-primary" onclick="event.stopPropagation();ViewOsint._remediate(${f.id})">Resolver</button>`
-                      }
-                    ` : ''}
-                  </td>
+                        onclick="ViewOsint._unremediate(${f.id})">Desmarcar</button>
+                    `}
+                  </td>` : ''}
                 </tr>`).join('')}
               </tbody>
             </table>
@@ -435,6 +482,84 @@ const ViewOsint = {
         `}
       </div>
     `;
+  },
+
+  _selectAll(checked) {
+    document.querySelectorAll('.f-chk').forEach(cb => {
+      const id = parseInt(cb.dataset.id);
+      if (checked) this._selectedFindings.add(id);
+      else this._selectedFindings.delete(id);
+      cb.checked = checked;
+    });
+    this._updateBulkBar();
+  },
+
+  _toggleSelect(id, el) {
+    if (el.checked) this._selectedFindings.add(id);
+    else this._selectedFindings.delete(id);
+    this._updateBulkBar();
+    const all = document.getElementById('bulk-select-all');
+    if (all) all.checked = this._selectedFindings.size === document.querySelectorAll('.f-chk').length;
+  },
+
+  _updateBulkBar() {
+    const bar = document.getElementById('osint-bulk-bar');
+    if (!bar) return;
+    const n = this._selectedFindings.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    const lbl = document.getElementById('osint-bulk-count');
+    if (lbl) lbl.textContent = `${n} seleccionado(s)`;
+  },
+
+  async _bulkCreateIncidents() {
+    const ids = [...this._selectedFindings];
+    if (!ids.length) return;
+    if (!confirm(`Crear incidente para ${ids.length} hallazgo(s) y marcarlos como resueltos?`)) return;
+    UI.loading(true);
+    let ok = 0, err = 0;
+    for (const id of ids) {
+      try {
+        await Api.post(`/api/v1/osint/findings/${id}/create-incident`, {});
+        await Api.patch(`/api/v1/osint/findings/${id}/remediate`, {});
+        ok++;
+      } catch { err++; }
+    }
+    UI.loading(false);
+    this._selectedFindings.clear();
+    UI.message(`${ok} incidente(s) creados${err ? `, ${err} fallaron` : ''}`, ok ? 'success' : 'error');
+    await this._load(); this._renderTab();
+  },
+
+  async _bulkResolve() {
+    const ids = [...this._selectedFindings];
+    if (!ids.length) return;
+    if (!confirm(`Marcar ${ids.length} hallazgo(s) como resueltos?`)) return;
+    UI.loading(true);
+    let ok = 0, err = 0;
+    for (const id of ids) {
+      try { await Api.patch(`/api/v1/osint/findings/${id}/remediate`, {}); ok++; }
+      catch { err++; }
+    }
+    UI.loading(false);
+    this._selectedFindings.clear();
+    UI.message(`${ok} resuelto(s)${err ? `, ${err} fallaron` : ''}`, ok ? 'success' : 'error');
+    await this._load(); this._renderTab();
+  },
+
+  async _bulkDelete() {
+    const ids = [...this._selectedFindings];
+    if (!ids.length) return;
+    if (!confirm(`Eliminar definitivamente ${ids.length} hallazgo(s)? Esta accion no se puede deshacer.`)) return;
+    UI.loading(true);
+    let ok = 0, err = 0;
+    for (const id of ids) {
+      try { await Api.del(`/api/v1/osint/findings/${id}`); ok++; }
+      catch { err++; }
+    }
+    UI.loading(false);
+    this._selectedFindings.clear();
+    UI.message(`${ok} eliminado(s)${err ? `, ${err} fallaron` : ''}`, ok ? 'success' : 'error');
+    await this._load(); this._renderTab();
   },
 
   // ── IDENTIFICADORES ───────────────────────────────────────────────────────
@@ -1070,10 +1195,19 @@ const ViewOsint = {
     try {
       UI.loading(true);
       const r = await Api.post(`/api/v1/osint/findings/${findingId}/create-incident`, {});
-      if (r.already_existed) {
-        UI.message(`Ya existe el incidente ${r.incident_code}`, 'info');
-      } else {
-        UI.message(`Incidente ${r.incident_code} creado correctamente`, 'success');
+      // Auto-remediar: el hallazgo pasa al incidente y desaparece de Pendientes
+      await Api.patch(`/api/v1/osint/findings/${findingId}/remediate`, {});
+      UI.message(
+        r.already_existed
+          ? `Incidente ${r.incident_code} ya existia. Hallazgo marcado como resuelto.`
+          : `Incidente ${r.incident_code} creado. Hallazgo movido a Resueltos.`,
+        r.already_existed ? 'info' : 'success'
+      );
+      await this._load();
+      this._renderTab();
+      // Si el drawer esta abierto, actualizarlo
+      if (document.getElementById('osint-drawer')?.style.display !== 'none') {
+        this._openFindingDrawer(findingId);
       }
     } catch (e) { UI.message('Error creando incidente: ' + e.message, 'error'); }
     finally { UI.loading(false); }
