@@ -95,6 +95,28 @@ const UI = {
 
   async confirm(msg) { return window.confirm(msg); },
 
+  /* Overlay de carga (bloquea clicks durante operaciones async) */
+  loading(show) {
+    const ID = '_ui-loading-overlay';
+    if (show) {
+      if (!document.getElementById(ID)) {
+        const el = document.createElement('div');
+        el.id = ID;
+        el.style.cssText = [
+          'position:fixed', 'inset:0', 'z-index:9997', 'cursor:wait',
+          'background:rgba(0,0,0,0.03)',
+        ].join(';');
+        document.body.appendChild(el);
+      }
+    } else {
+      const el = document.getElementById(ID);
+      if (el) el.remove();
+    }
+  },
+
+  /* Alias de UI.toast para compatibilidad con modulos que usan UI.message() */
+  message(msg, kind) { UI.toast(msg, kind); },
+
   // Decoradores helpers
   assetTypeLabel(t) {
     return ({

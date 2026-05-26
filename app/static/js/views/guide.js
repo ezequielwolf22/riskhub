@@ -29,6 +29,7 @@ const ViewGuide = {
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
+    { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
     { id: 'awareness', title: 'Awareness (Infografias)', icon: '🎨' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
@@ -119,6 +120,7 @@ const ViewGuide = {
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
       cve: this._cCve,
+      osint: this._cOsint,
       awareness: this._cAwareness,
       audit: this._cAudit,
       admin: this._cAdmin,
@@ -635,16 +637,23 @@ const ViewGuide = {
         </tr>`).join('')}
       </tbody>
     </table>
-    ${this._h('Reglas de alerta')}
-    ${this._p('Crea reglas para que RiskHub envíe emails automáticamente cuando se cumplan ciertos criterios:')}
+    ${this._h('Reglas de alerta — Riesgos')}
+    ${this._p('Crea reglas para que RiskHub envie emails automaticamente cuando se cumplan ciertos criterios:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li><strong>risk_critical:</strong> riesgos con nivel residual ≥ umbral configurado (ej. ≥7).</li>
-      <li><strong>risk_high:</strong> riesgos con nivel residual ≥ umbral configurado (ej. ≥5).</li>
-      <li><strong>treatment_overdue:</strong> riesgos con fecha límite de tratamiento vencida.</li>
-      <li><strong>risk_no_treatment:</strong> riesgos de alto nivel sin plan de tratamiento definido.</li>
-      <li><strong>daily_digest:</strong> resumen diario con estadisticas globales, tratamientos vencidos y proximos vencimientos en 7 dias. Se envia una vez al dia (cooldown de 20 horas).</li>
-      <li><strong>treatment_due_soon:</strong> avisa cuando un tratamiento vencera dentro de X dias (X = umbral configurado). Util para dar margen de reaccion.</li>
-      <li><strong>control_review_overdue:</strong> envia un resumen de todos los controles ISO 27002 con fecha de revision vencida. Util para el responsable de cumplimiento.</li>
+      <li><strong>Riesgo critico:</strong> riesgos con nivel residual >= umbral configurado (ej. >=7).</li>
+      <li><strong>Riesgo alto:</strong> riesgos con nivel residual >= umbral configurado (ej. >=5).</li>
+      <li><strong>Tratamiento vencido:</strong> riesgos con fecha limite de tratamiento vencida.</li>
+      <li><strong>Sin plan de tratamiento:</strong> riesgos de alto nivel sin plan de tratamiento definido.</li>
+      <li><strong>Resumen diario:</strong> resumen diario con estadisticas globales, tratamientos vencidos y proximos vencimientos en 7 dias. Cooldown de 20 horas.</li>
+      <li><strong>Vence pronto:</strong> avisa cuando un tratamiento vencera dentro de X dias (X = umbral). Util para dar margen de reaccion.</li>
+    </ul>
+    ${this._h('Reglas de alerta — Controles, Incidentes y mas modulos')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Control vencido:</strong> resumen de todos los controles ISO 27002 con fecha de revision vencida.</li>
+      <li><strong>Incidente P1/P2:</strong> alerta cuando hay incidentes criticos/altos sin cerrar. Cooldown 20h.</li>
+      <li><strong>NIS2 pendiente:</strong> alerta urgente cuando hay notificaciones NIS2 pendientes de enviar al supervisor nacional (plazo 24h por Art. 23 NIS2). Cooldown 20h.</li>
+      <li><strong>Politica vencida:</strong> politicas de seguridad con fecha de revision superada. Cooldown 20h.</li>
+      <li><strong>Tarea vencida:</strong> tareas de tratamiento con fecha limite superada. Cooldown 20h.</li>
     </ul>
     ${this._h('Evaluacion de reglas')}
     ${this._p('Las reglas se evaluan de <strong>dos formas</strong>:')}
@@ -817,6 +826,56 @@ const ViewGuide = {
     </ul>
     ${this._warn('<strong>Contexto RAG:</strong> El agente IA utiliza los documentos SGSI que hayas subido (politicas, procedimientos, SOA) para enriquecer el analisis de cobertura de controles. Cuantos mas documentos tengas indexados, mas preciso sera el analisis residual.')}
     ${this._tip('<strong>Buena practica:</strong> Ejecuta el analisis CVE semanalmente para las CVEs CRITICAL y HIGH. Filtra por los productos de tu inventario usando el campo keyword (ej: el nombre de tu servidor web, sistema operativo o base de datos). Los resultados se pueden convertir en riesgos con un solo clic.')}
+  `;},
+
+  get _cOsint() { return `
+    ${this._p('El modulo <strong>OSINT</strong> (Open Source Intelligence) permite escanear la huella digital de emails, dominios, URLs, nombres de usuario e IPs utilizando fuentes abiertas como HaveIBeenPwned, VirusTotal y GitHub. Detecta filtraciones de datos, credenciales expuestas y configuraciones inseguras antes de que sean explotadas.')}
+    ${this._h('Como funciona')}
+    ${this._steps([
+      'Introduce el objetivo en el campo superior (email, dominio, IP, URL o username) y pulsa <strong>Escanear</strong>.',
+      'El escaneo se ejecuta en segundo plano. Puedes ver el progreso en la pestana <strong>Escaneos</strong>.',
+      'Al terminar, los hallazgos aparecen en la pestana <strong>Hallazgos</strong> con nivel de riesgo y score.',
+      'Haz clic en cualquier hallazgo para ver el detalle completo en el panel lateral derecho.',
+    ])}
+    ${this._h('Tipos de escaneo')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      ${[
+        ['Email','Comprueba filtraciones en HIBP, LeakCheck e IntelX. Detecta credenciales comprometidas.'],
+        ['Dominio','Analiza subdominios, registros DNS, reputacion y configuraciones de seguridad (SPF, DMARC).'],
+        ['URL','Verifica la URL contra VirusTotal y listas de malware/phishing.'],
+        ['Username','Busca el nombre de usuario en GitHub y redes sociales. Detecta repos publicos con secretos expuestos.'],
+        ['IP','Comprueba reputacion en bases de datos de amenazas y detecta puertos abiertos.'],
+        ['Modo masivo','Pega hasta 50 objetivos (uno por linea) para escanearlos todos de una vez.'],
+      ].map(([t,d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
+          <div style="font-weight:600;margin-bottom:4px;color:var(--brand-purple);">${t}</div>
+          <div style="color:var(--text-muted);">${d}</div>
+        </div>`).join('')}
+    </div>
+    ${this._h('Gestion de hallazgos')}
+    ${this._p('Cada hallazgo tiene un nivel de riesgo (CRITICAL / HIGH / MEDIUM / LOW / INFO) y un score 0-100. Desde la tabla o el panel lateral puedes:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Resolver:</strong> marca el hallazgo como remediado una vez aplicada la correccion.</li>
+      <li><strong>+ Incidente:</strong> crea automaticamente un incidente de seguridad vinculado al hallazgo para seguimiento NIS2.</li>
+      <li><strong>Exportar CSV:</strong> descarga todos los hallazgos en formato Excel-compatible para auditorias.</li>
+    </ul>
+    ${this._h('Objetivos monitorizados')}
+    ${this._p('Cada objetivo escaneado queda registrado en la pestana <strong>Objetivos</strong> con su nivel de riesgo consolidado y la fecha del ultimo escaneo. Desde aqui puedes:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Re-escanear:</strong> lanza un nuevo escaneo del mismo objetivo para actualizar los resultados.</li>
+      <li><strong>Eliminar:</strong> elimina el objetivo y todos sus hallazgos asociados de la base de datos. Util para limpiar objetivos de prueba (ej: test@example.com).</li>
+    </ul>
+    ${this._h('Importar desde Microsoft Entra ID')}
+    ${this._p('Si tu organizacion usa Microsoft Entra ID (Azure AD), puedes importar automaticamente todos los usuarios y dominios del tenant para escanearlos en bloque. Necesitas un App Registration con permiso <em>User.Read.All</em>.')}
+    ${this._h('Importar de Entra ID')}
+    ${this._steps([
+      'Despliega el panel <strong>Importar de Entra ID</strong> en el lanzador de escaneos.',
+      'Introduce Tenant ID, Client ID y Client Secret del App Registration.',
+      'Haz clic en <strong>Ver objetivos</strong> para previsualizar los usuarios y dominios del tenant.',
+      'Selecciona si escanear usuarios, dominios o ambos, y define el limite de usuarios.',
+      'Haz clic en <strong>Importar e iniciar escaneos</strong> para lanzar todos los escaneos en segundo plano.',
+    ])}
+    ${this._tip('Los hallazgos CRITICAL sin remediar generan una alerta visual en rojo en la parte superior de la pestana Hallazgos. Configura una regla de alerta por email en <strong>Alertas</strong> para recibir notificaciones automaticas cuando aparezcan hallazgos de alto riesgo.')}
   `;},
 
   get _cAudit() { return `

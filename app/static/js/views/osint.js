@@ -992,6 +992,18 @@ const ViewOsint = {
     }
   },
 
+  async _deleteIdentifier(id) {
+    if (!confirm('Eliminar este objetivo OSINT y todos sus hallazgos asociados?')) return;
+    try {
+      UI.loading(true);
+      await Api.del(`/api/v1/osint/identifiers/${id}`);
+      UI.message('Objetivo eliminado', 'success');
+      await this._load();
+      this._renderTab();
+    } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    finally { UI.loading(false); }
+  },
+
   // ── ACCIONES HALLAZGOS ────────────────────────────────────────────────────
 
   async _remediate(id) {
