@@ -244,9 +244,9 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
 }
 .sidebar.collapsed { width: 48px; padding: 16px 0 0; }
 .sidebar.collapsed .group { display: none; }
-.sidebar.collapsed a { padding: 10px 12px; gap: 0; justify-content: center; }
-.sidebar.collapsed a span, .sidebar.collapsed a [style*="space-between"] { display: none; }
-.sidebar.collapsed a svg { width: 20px; height: 20px; }
+.sidebar.collapsed a { padding: 10px 0; gap: 0; justify-content: center; }
+.sidebar.collapsed a span { display: none; }
+.sidebar.collapsed a svg { width: 20px; height: 20px; flex-shrink: 0; }
 .sidebar.collapsed a.active { border-left-color: var(--brand-orange); }
 
 /* Boton toggle siempre visible al fondo del sidebar */
