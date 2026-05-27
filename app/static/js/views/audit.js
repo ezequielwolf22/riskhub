@@ -10,7 +10,7 @@ const ViewAudit = {
 
   async render(main) {
     const u = Auth.user();
-    if (!u || u.role !== 'admin') {
+    if (!u || (u.role !== 'admin' && u.role !== 'superadmin')) {
       main.innerHTML = UI.sectionHeader('Log de Auditoria', 'Trazabilidad de operaciones')
         + UI.notice('Esta seccion esta restringida a administradores.', 'warn');
       return;
