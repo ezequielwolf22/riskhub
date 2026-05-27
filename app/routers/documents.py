@@ -1,10 +1,10 @@
 """Gestion de documentos para el agente IA."""
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.models import AiDocument, AiDocumentCategory, AiDocumentStatus, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_role
 from app.services.document_service import (
@@ -53,6 +53,7 @@ def _validate_magic(mime: str, data: bytes) -> bool:
 
 
 def _doc_out(d: AiDocument) -> dict:
+    summary = d.isms_summary or {}
     return {
         "id": d.id,
         "original_name": d.original_name,
@@ -64,7 +65,25 @@ def _doc_out(d: AiDocument) -> dict:
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "processed_at": d.processed_at.isoformat() if d.processed_at else None,
         "uploaded_by": d.uploaded_by.full_name if d.uploaded_by else None,
+        # ISMS analysis fields (v1.7.4)
+        "isms_status": d.isms_status,
+        "isms_policy_id": summary.get("policy_id"),
+        "isms_controls_updated": summary.get("controls_updated", 0),
+        "isms_tasks_created": summary.get("tasks_created", 0),
+        "isms_summary_text": summary.get("summary") or summary.get("reason") or summary.get("error"),
     }
+
+
+def _run_isms_analysis_bg(doc_id: int) -> None:
+    """Wrapper de background para analisis ISMS — crea su propia sesion de BD."""
+    db = SessionLocal()
+    try:
+        from app.services.isms_analysis_service import analyze_document_for_isms
+        analyze_document_for_isms(db, doc_id)
+    except Exception:
+        pass
+    finally:
+        db.close()
 
 
 @router.get("/")
@@ -82,6 +101,7 @@ def list_documents(
 def upload_document(
     file: UploadFile = File(...),
     category: str = Form(...),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
@@ -120,12 +140,16 @@ def upload_document(
     db.commit()
     db.refresh(doc)
 
-    # Procesar de forma sincrona (BD pequeñas: aceptable)
+    # Extraccion de texto e indexado FTS5 (sincrono — rapido)
     try:
         process_document(db, doc.id)
         db.refresh(doc)
     except Exception:
         pass  # status quedo en ERROR; el cliente puede ver el mensaje
+
+    # Analisis ISMS en background para no bloquear la respuesta HTTP
+    if doc.status == AiDocumentStatus.INDEXED and background_tasks is not None:
+        background_tasks.add_task(_run_isms_analysis_bg, doc.id)
 
     return _doc_out(doc)
 
@@ -146,15 +170,40 @@ def remove_document(
 @router.post("/{doc_id}/reprocess")
 def reprocess_document(
     doc_id: int,
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_role("analyst")),
+    current_user: User = Depends(require_role("analyst")),
 ):
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
-    if not doc:
+    if not doc or not check_org_access(doc.organization_id, current_user):
         raise HTTPException(404, "Documento no encontrado")
     try:
         process_document(db, doc_id)
     except Exception:
         pass
     db.refresh(doc)
+    # Re-lanzar analisis ISMS si el reprocesado fue exitoso
+    if doc.status == AiDocumentStatus.INDEXED and background_tasks is not None:
+        background_tasks.add_task(_run_isms_analysis_bg, doc.id)
     return _doc_out(doc)
+
+
+@router.post("/{doc_id}/analyze")
+def analyze_document(
+    doc_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """Lanza (o relanza) el analisis ISMS del documento en background."""
+    doc = db.query(AiDocument).filter_by(id=doc_id).first()
+    if not doc or not check_org_access(doc.organization_id, current_user):
+        raise HTTPException(404, "Documento no encontrado")
+    if doc.status != AiDocumentStatus.INDEXED:
+        raise HTTPException(400, "El documento debe estar en estado INDEXED para ser analizado")
+    # Resetear estado para forzar reanalizis
+    doc.isms_status = None
+    doc.isms_summary = None
+    db.commit()
+    background_tasks.add_task(_run_isms_analysis_bg, doc.id)
+    return {"ok": True, "message": "Analisis ISMS iniciado en background"}

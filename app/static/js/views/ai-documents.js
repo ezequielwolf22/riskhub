@@ -27,6 +27,22 @@ const ViewAiDocuments = (() => {
     error:      'var(--risk-critical)',
   };
 
+  // ISMS analysis status (v1.7.4)
+  const ISMS_LABELS = {
+    analysing: 'Analizando...',
+    analysed:  'Analizado',
+    skipped:   'Sin IA',
+    error:     'Error IA',
+  };
+  const ISMS_COLORS = {
+    analysing: 'var(--brand-orange)',
+    analysed:  'var(--risk-low)',
+    skipped:   'var(--text-muted)',
+    error:     'var(--risk-critical)',
+  };
+  // Intervalo de polling para documentos en estado "analysing"
+  let _pollTimer = null;
+
   const ACCEPTED_EXTS = ['pdf', 'docx', 'txt', 'csv'];
 
   let _docs    = [];
@@ -40,12 +56,32 @@ const ViewAiDocuments = (() => {
   // ---------- Render principal ----------
 
   async function render(main) {
+    // Limpiar timer anterior si el usuario navega fuera y vuelve
+    _stopPoll();
     main.innerHTML = UI.sectionHeader(
       'Documentos del Agente IA',
       'Gestiona los documentos que alimentan el contexto del agente de seguridad.'
     ) + '<div id="aid-root"></div>';
     await _load();
     _renderRoot();
+    _startPollIfNeeded();
+  }
+
+  function _startPollIfNeeded() {
+    _stopPoll();
+    const analysing = _docs.filter(d => d.isms_status === 'analysing');
+    if (analysing.length === 0) return;
+    _pollTimer = setInterval(async () => {
+      await _load();
+      const tbody = document.getElementById('aid-tbody');
+      if (tbody) tbody.innerHTML = _renderRows();
+      _updateStats();
+      if (!_docs.some(d => d.isms_status === 'analysing')) _stopPoll();
+    }, 4000);
+  }
+
+  function _stopPoll() {
+    if (_pollTimer !== null) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
   async function _load() {
@@ -142,9 +178,10 @@ const ViewAiDocuments = (() => {
             <tr>
               <th>Documento</th>
               <th>Categoria</th>
-              <th>Estado</th>
+              <th>Estado indexado</th>
+              <th>Analisis ISMS</th>
+              <th>Resultado</th>
               <th>Fragmentos</th>
-              <th>Subido por</th>
               <th>Fecha</th>
               <th></th>
             </tr>
@@ -384,13 +421,15 @@ const ViewAiDocuments = (() => {
     _updateStats();
 
     if (ok > 0 && fail === 0) {
-      UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} correctamente`, 'success');
+      UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} correctamente — analisis ISMS iniciado`, 'success');
     } else if (ok > 0 && fail > 0) {
       UI.toast(`${ok} subidos, ${fail} con error`, 'error');
     } else {
       UI.toast('Error al subir los documentos', 'error');
     }
     _renderQueue();
+    // Iniciar polling si hay documentos en analisis ISMS
+    _startPollIfNeeded();
   }
 
   // Actualizar solo los contadores del stats bar sin reconstruir todo
@@ -425,15 +464,41 @@ const ViewAiDocuments = (() => {
 
   // ---------- Tabla de documentos ----------
 
+  function _ismsResultCell(d) {
+    if (!d.isms_status || d.isms_status === 'analysing') return '<td>-</td>';
+    const parts = [];
+    if (d.isms_policy_id) {
+      parts.push(`<a href="#/policies" style="font-size:11px;color:var(--brand-purple);">
+        Politica creada</a>`);
+    }
+    if (d.isms_controls_updated > 0) {
+      parts.push(`<span style="font-size:11px;color:var(--risk-low);">
+        ${d.isms_controls_updated} control${d.isms_controls_updated !== 1 ? 'es' : ''}</span>`);
+    }
+    if (d.isms_tasks_created > 0) {
+      parts.push(`<a href="#/tasks" style="font-size:11px;color:var(--brand-orange);">
+        ${d.isms_tasks_created} tarea${d.isms_tasks_created !== 1 ? 's' : ''}</a>`);
+    }
+    const tooltip = d.isms_summary_text ? UI.esc(d.isms_summary_text.slice(0, 200)) : '';
+    return `<td style="font-size:11px;line-height:1.7;" title="${tooltip}">
+      ${parts.length ? parts.join('<br>') : '<span style="color:var(--text-muted);">Sin resultados</span>'}
+    </td>`;
+  }
+
   function _renderRows() {
     const visible = _filter === 'all' ? _docs : _docs.filter(d => d.category === _filter);
     if (!visible.length) {
-      return `<tr><td colspan="7" style="text-align:center;padding:24px;
+      return `<tr><td colspan="8" style="text-align:center;padding:24px;
         color:var(--text-muted);">Sin documentos en esta categoria.</td></tr>`;
     }
-    return visible.map((d, i) => `
+    return visible.map((d, i) => {
+      const ismsColor = ISMS_COLORS[d.isms_status] || 'var(--text-muted)';
+      const ismsLabel = ISMS_LABELS[d.isms_status] || (d.status === 'indexed' ? 'Pendiente' : '-');
+      const ismsTooltip = d.isms_status === 'error' && d.isms_summary_text
+        ? ` title="${UI.esc(d.isms_summary_text)}"` : '';
+      return `
       <tr style="${i % 2 === 0 ? '' : 'background:var(--bg-2);'}">
-        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${UI.esc(d.original_name)}">${UI.esc(d.original_name)}</td>
         <td style="font-size:12px;">${CATEGORY_LABELS[d.category] || d.category}</td>
         <td>
@@ -444,10 +509,21 @@ const ViewAiDocuments = (() => {
           ${d.error_message ? `<br><span style="font-size:10px;color:var(--risk-critical);"
             title="${UI.esc(d.error_message)}">Ver error</span>` : ''}
         </td>
+        <td>
+          <span style="font-size:11px;font-weight:600;color:${ismsColor};"${ismsTooltip}>
+            ${ismsLabel}
+          </span>
+          ${d.isms_status === 'analysing'
+            ? `<span style="font-size:10px;color:var(--text-muted);margin-left:4px;">&#8635;</span>`
+            : ''}
+        </td>
+        ${_ismsResultCell(d)}
         <td style="text-align:right;">${d.chunk_count || 0}</td>
-        <td style="font-size:12px;">${UI.esc(d.uploaded_by || '-')}</td>
         <td style="font-size:12px;">${d.created_at ? d.created_at.slice(0, 10) : '-'}</td>
         <td style="white-space:nowrap;">
+          ${d.status === 'indexed' && (!d.isms_status || d.isms_status === 'error' || d.isms_status === 'skipped') ? `
+            <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
+                    onclick="ViewAiDocuments._analyze(${d.id})">Analizar</button>` : ''}
           ${d.status === 'error' || d.status === 'pending' ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
                     onclick="ViewAiDocuments._reprocess(${d.id})">Reprocesar</button>` : ''}
@@ -455,7 +531,8 @@ const ViewAiDocuments = (() => {
                   style="font-size:11px;padding:2px 8px;color:var(--risk-critical);"
                   onclick="ViewAiDocuments._delete(${d.id})">Eliminar</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   }
 
   // ---------- Acciones ----------
@@ -488,6 +565,20 @@ const ViewAiDocuments = (() => {
     }
   }
 
-  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete };
+  async function _analyze(id) {
+    try {
+      await Api.aiDocuments.analyze(id);
+      // Actualizar solo la fila de estado mientras se analiza en background
+      await _load();
+      const tbody = document.getElementById('aid-tbody');
+      if (tbody) tbody.innerHTML = _renderRows();
+      UI.toast('Analisis ISMS iniciado', 'success');
+      _startPollIfNeeded();
+    } catch (e) {
+      UI.toast('Error al iniciar analisis: ' + e.message, 'error');
+    }
+  }
+
+  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze };
 
 })();

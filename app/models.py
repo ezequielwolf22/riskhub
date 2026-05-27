@@ -615,9 +615,13 @@ class Policy(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+    # Documento origen (v1.7.4)
+    source_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
+    review_cycle_months = Column(Integer, nullable=True)   # ciclo de revision en meses
 
     owner = relationship("User", foreign_keys=[owner_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
+    source_document = relationship("AiDocument", foreign_keys=[source_document_id])
 
 
 # ---------- AUDITORIA INTERNA (M5) ----------
@@ -848,6 +852,9 @@ class AiDocument(Base):
     uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     processed_at = Column(DateTime, nullable=True)
+    # Analisis ISMS automatico (v1.7.4)
+    isms_status = Column(String(32), nullable=True)   # analysing|analysed|skipped|error
+    isms_summary = Column(JSON, nullable=True)         # {policy_id, controls_updated, tasks_created, summary}
 
     uploaded_by = relationship("User")
     chunks = relationship("AiDocumentChunk", back_populates="document",

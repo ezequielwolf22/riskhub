@@ -1700,6 +1700,21 @@ const ViewGuide = {
       '<strong>Error:</strong> fallo durante el procesamiento. Usa Reprocesar para reintentar.',
     ])}
     ${this._tip('Cuantos mas documentos indexados, mas preciso es el agente. Empieza por los documentos de arquitectura y politicas, que suelen contener la informacion de mas valor para el analisis de riesgos.')}
+    ${this._h('Subida multiple y arrastre')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Haz clic en <strong>+ Subir documentos</strong> para seleccionar varios archivos a la vez.</li>
+      <li>Arrastra archivos desde el explorador de Windows/Mac directamente a la zona de arrastre.</li>
+      <li>Asigna categoria a cada archivo antes de hacer clic en <strong>Subir N documentos</strong>.</li>
+    </ul>
+    ${this._h('Analisis ISMS automatico (v1.7.4)')}
+    ${this._p('Tras indexar un documento, el agente IA lo analiza automaticamente en background para enriquecer el SGSI. No es necesaria ninguna accion manual.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Politicas:</strong> si el documento es una politica de seguridad, se crea automaticamente un registro en la seccion Politicas con titulo, categoria, version, alcance, clausulas ISO y fecha de revision.</li>
+      <li><strong>Controles ISO 27002:</strong> los controles cubiertos por el documento se crean o actualizan en la seccion Controles (estado, madurez y referencia al documento). El estado solo mejora, nunca se degrada.</li>
+      <li><strong>Tareas de tratamiento:</strong> se crean tareas en la seccion Tareas para los riesgos activos cuyas amenazas coincidan con las categorias abordadas en el documento.</li>
+    </ul>
+    ${this._warn('El analisis ISMS requiere una API key del agente IA configurada. Sin ella, el estado aparece como "Sin IA". Configura la clave en <strong>Configuracion del Agente</strong>.')}
+    ${this._tip('Usa el boton <strong>Analizar</strong> en la tabla para relanzar el analisis de cualquier documento ya indexado (util para documentos subidos antes de v1.7.4).')}
   `;},
 
   get _cOnboarding() { return `

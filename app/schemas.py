@@ -587,6 +587,7 @@ class PolicyUpdate(BaseModel):
     approved_at: Optional[datetime] = None
     owner_id: Optional[int] = None
     approved_by_id: Optional[int] = None
+    review_cycle_months: Optional[int] = None
 
 
 class PolicyOut(ORMBase):
@@ -605,6 +606,9 @@ class PolicyOut(ORMBase):
     approved_by_id: Optional[int]
     created_at: datetime
     updated_at: datetime
+    # v1.7.4 — documento origen e ciclo de revision
+    source_document_id: Optional[int] = None
+    review_cycle_months: Optional[int] = None
 
 
 # ---------- AUDIT FINDINGS ----------

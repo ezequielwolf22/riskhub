@@ -228,6 +228,11 @@ def _migrate_columns() -> None:
         ("ALTER TABLE osint_identifiers ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "osint_identifiers", "organization_id"),
         ("ALTER TABLE awareness_items ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "awareness_items", "organization_id"),
         ("ALTER TABLE awareness_branding ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "awareness_branding", "organization_id"),
+        # v1.7.4 — analisis ISMS automatico
+        ("ALTER TABLE ai_documents ADD COLUMN isms_status VARCHAR(32)", "ai_documents", "isms_status"),
+        ("ALTER TABLE ai_documents ADD COLUMN isms_summary JSON", "ai_documents", "isms_summary"),
+        ("ALTER TABLE policies ADD COLUMN source_document_id INTEGER REFERENCES ai_documents(id)", "policies", "source_document_id"),
+        ("ALTER TABLE policies ADD COLUMN review_cycle_months INTEGER", "policies", "review_cycle_months"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
