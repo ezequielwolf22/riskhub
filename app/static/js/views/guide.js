@@ -379,8 +379,17 @@ const ViewGuide = {
       <li>Si relanzas el analisis sobre un activo, los riesgos IA existentes se actualizan (no se duplican). Los riesgos creados manualmente nunca se sobreescriben.</li>
       <li>Puedes eliminar un riesgo IA si el agente ha generado un escenario que no es aplicable a tu contexto.</li>
     </ul>
-    ${this._warn('<strong>Requiere API key:</strong> el analisis de riesgos IA necesita la clave Anthropic configurada en <strong>Configuracion del Agente</strong>. Sin ella, el boton estara disponible pero el analisis fallara.')}
-    ${this._tip('<strong>Flujo recomendado:</strong> (1) importa los activos via CSV, (2) configura el API key del agente, (3) usa "Analizar riesgos con IA" para todos los activos, (4) revisa y ajusta los riesgos generados, (5) asigna responsables y planes de tratamiento.')}
+    ${this._warn('<strong>Requiere API key:</strong> el analisis de riesgos IA necesita la clave Anthropic configurada en <strong>Configuracion del Agente</strong>. Sin ella, el analisis se omite automaticamente.')}
+    ${this._h('Automatizacion completa del ciclo de vida (v1.7.6)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Crear activo:</strong> el analisis IA arranca automaticamente sin ningun clic adicional.</li>
+      <li><strong>Editar activo:</strong> el analisis se relanza en background cuando cambias el tipo, valoracion CIA u otros datos — los riesgos IA se recalculan con los nuevos datos.</li>
+      <li><strong>Importar CSV de activos:</strong> el analisis se lanza para cada activo creado o actualizado en la importacion.</li>
+      <li><strong>Subir documento al agente:</strong> si el analisis ISMS actualiza controles ISO 27002, los riesgos residuales de todos los activos se recalculan automaticamente para reflejar la nueva cobertura.</li>
+    </ul>
+    ${this._h('Apetito de riesgo automatico')}
+    ${this._p('Tras cada analisis, el sistema compara el nivel residual de cada riesgo IA contra el <strong>apetito de riesgo</strong> configurado en la seccion Contexto. Si un riesgo supera el umbral y tenia decision "retention" (aceptar), se escala automaticamente a "modification" (mitigar) para garantizar que ningun riesgo por encima del apetito quede sin plan de accion.')}
+    ${this._tip('<strong>Flujo minimo del usuario:</strong> (1) configura el API key del agente, (2) sube tus documentos SGSI, (3) importa tus activos — el resto lo hace el sistema automaticamente.')}
   `;},
 
   get _cThreats() { return `
@@ -930,13 +939,18 @@ const ViewGuide = {
       'Selecciona si escanear usuarios, dominios o ambos, y define el limite de usuarios.',
       'Haz clic en <strong>Importar e iniciar escaneos</strong> para lanzar todos los escaneos en segundo plano.',
     ])}
-    ${this._h('Vinculacion automatica a activos y riesgos (v1.7.5)')}
-    ${this._p('Cuando un escaneo OSINT completa, el agente vincula automaticamente los hallazgos al inventario de activos. Para cada hallazgo sin riesgo previo, el sistema genera un escenario de riesgo en la seccion Riesgos con la etiqueta <strong style="background:var(--brand-purple-4);color:var(--brand-purple);padding:1px 4px;border-radius:3px;font-size:11px;">IA</strong>.')}
+    ${this._h('Pipeline automatico completo al completar un escaneo (v1.7.5 + v1.7.6)')}
+    ${this._p('Cuando un escaneo OSINT completa, el sistema ejecuta automaticamente tres acciones sin intervencion del usuario:')}
+    <ol style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Vinculacion a activos:</strong> el agente busca en el inventario por nombre, dominio o IP. Si encuentra coincidencia, vincula el hallazgo al activo correspondiente.</li>
+      <li><strong>Creacion de riesgos:</strong> para cada hallazgo sin riesgo previo, genera un escenario de riesgo en la seccion Riesgos con la etiqueta <strong style="background:var(--brand-purple-4);color:var(--brand-purple);padding:1px 4px;border-radius:3px;font-size:11px;">IA</strong>.</li>
+      <li><strong>Creacion de incidente:</strong> si hay hallazgos de nivel CRITICAL o HIGH, se crea automaticamente un incidente de seguridad (P1 si es CRITICAL, P2 si es HIGH) con los hallazgos principales en la descripcion y la bandera NIS2 activada si procede.</li>
+    </ol>
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li>El agente busca en el inventario de activos por nombre, dominio o IP para identificar el activo afectado.</li>
-      <li>Si encuentra coincidencia, crea un riesgo vinculado al activo con la amenaza mas relevante del catalogo ISO 27005.</li>
-      <li>Si no encuentra un activo concreto, el riesgo se registra igualmente con el objetivo OSINT en la descripcion para que el analista lo revise.</li>
-      <li>Los riesgos OSINT son editables: puedes ajustar niveles, añadir controles y definir el plan de tratamiento.</li>
+      <li>Los riesgos OSINT son completamente editables.</li>
+      <li>El incidente auto-creado aparece en la seccion Incidentes listo para investigar — con referencia al scan OSINT que lo originó.</li>
+      <li>Si el escaneo no produce hallazgos HIGH o CRITICAL, no se crea ningun incidente.</li>
+      <li>Re-escanear el mismo objetivo no duplica el incidente si ya existe uno para ese scan.</li>
     </ul>
     ${this._tip('Los hallazgos CRITICAL sin remediar generan una alerta visual en rojo en la parte superior de la pestana Hallazgos. Configura una regla de alerta por email en <strong>Alertas</strong> para recibir notificaciones automaticas cuando aparezcan hallazgos de alto riesgo.')}
   `;},

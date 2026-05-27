@@ -212,6 +212,11 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             doc_id, result["policy_id"], result["controls_updated"], result["tasks_created"],
         )
 
+        # Si se actualizaron controles, relanzar analisis de activos para recalcular
+        # el riesgo residual con los nuevos controles aplicados (v1.7.6)
+        if result["controls_updated"] > 0 and doc.organization_id:
+            _trigger_assets_reanalysis(doc.organization_id)
+
     except Exception as exc:
         logger.error("ISMS analysis failed doc=%d: %s", doc_id, exc)
         try:
@@ -220,6 +225,34 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             db.commit()
         except Exception:
             pass
+
+
+# ---------- Re-analisis de activos en cadena ----------
+
+def _trigger_assets_reanalysis(org_id: int) -> None:
+    """Lanza re-analisis de todos los activos de la org en un hilo daemon separado.
+
+    Se llama despues de actualizar controles para que el riesgo residual refleje
+    los nuevos controles aplicados sin bloquear el flujo principal de ISMS.
+    """
+    import threading
+    from app.database import SessionLocal
+
+    def _worker():
+        _db = SessionLocal()
+        try:
+            from app.services.asset_risk_analysis_service import analyze_all_org_assets
+            analyze_all_org_assets(_db, org_id)
+        except Exception as _exc:
+            logger.warning(
+                "Asset re-analysis after ISMS failed org=%d: %s", org_id, _exc
+            )
+        finally:
+            _db.close()
+
+    t = threading.Thread(target=_worker, daemon=True, name=f"isms-reanalysis-org{org_id}")
+    t.start()
+    logger.info("Triggered asset re-analysis for org=%d after controls update", org_id)
 
 
 # ---------- Creacion/actualizacion de politica ----------

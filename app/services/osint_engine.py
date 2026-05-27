@@ -306,13 +306,18 @@ class OSINTEngine:
             if scan.organization_id and len(findings_list) > 0:
                 from app.services.asset_risk_analysis_service import link_osint_findings_to_assets
                 result = link_osint_findings_to_assets(db, scan.organization_id, scan.id)
-                import logging
-                logging.getLogger(__name__).info(
+                logger.info(
                     "OSINT→risks scan=%d created=%d", scan.id, result.get("created", 0)
                 )
         except Exception as _e:
-            import logging
-            logging.getLogger(__name__).warning("OSINT→risks linkage failed: %s", _e)
+            logger.warning("OSINT→risks linkage failed: %s", _e)
+
+        # Auto-crear incidente para hallazgos CRITICAL o HIGH (v1.7.6)
+        try:
+            if scan.organization_id and findings_list:
+                _auto_create_incident_from_osint(db, scan, findings_list)
+        except Exception as _e:
+            logger.warning("OSINT→incident auto-create failed: %s", _e)
 
         if identifier:
             identifier.last_scanned_at = datetime.now(timezone.utc)
@@ -329,6 +334,72 @@ class OSINTEngine:
                 identifier.risk_level = OSINTFindingRiskLevel.INFO
 
         db.commit()
+
+
+def _auto_create_incident_from_osint(db, scan, findings_list: list) -> None:
+    """Crea automaticamente un incidente de seguridad cuando un escaneo OSINT
+    detecta hallazgos de nivel CRITICAL o HIGH. Solo crea uno por escaneo.
+    """
+    from app.models import Incident, IncidentSeverity, IncidentStatus
+
+    critical_findings = [
+        f for f in findings_list
+        if str(f.get("risk_level", "")).lower() in ("critical", "high")
+    ]
+    if not critical_findings:
+        return
+
+    # Determinar severidad del incidente segun el hallazgo mas grave
+    has_critical = any(str(f.get("risk_level", "")).lower() == "critical" for f in critical_findings)
+    severity = IncidentSeverity.P1 if has_critical else IncidentSeverity.P2
+
+    # Evitar duplicados: no crear incidente si ya existe uno para este escaneo
+    existing = db.query(Incident).filter(
+        Incident.organization_id == scan.organization_id,
+        Incident.description.like(f"%OSINT-SCAN-{scan.id}%"),
+    ).first()
+    if existing:
+        return
+
+    # Generar codigo secuencial INC-XXXX
+    from sqlalchemy import func
+    count = db.query(func.count(Incident.id)).filter(
+        Incident.organization_id == scan.organization_id
+    ).scalar() or 0
+    code = f"INC-{count + 1:04d}"
+    # Asegurar unicidad
+    while db.query(Incident).filter_by(code=code).first():
+        count += 1
+        code = f"INC-{count + 1:04d}"
+
+    target = scan.target or "objetivo desconocido"
+    titles = [f.get("title", "") for f in critical_findings[:3]]
+    title = f"[OSINT] Hallazgos {severity.value.upper()} en {target}"
+    description = (
+        f"El escaneo OSINT sobre '{target}' ha detectado {len(critical_findings)} "
+        f"hallazgo(s) de nivel {'CRITICAL' if has_critical else 'HIGH'}.\n\n"
+        f"Hallazgos principales:\n"
+        + "\n".join(f"- {t}" for t in titles if t)
+        + f"\n\nRef. interna: OSINT-SCAN-{scan.id}\n"
+        f"Revisa la seccion OSINT para ver el detalle completo."
+    )
+
+    incident = Incident(
+        organization_id=scan.organization_id,
+        code=code,
+        title=title,
+        description=description,
+        severity=severity,
+        status=IncidentStatus.OPEN,
+        detected_at=scan.completed_at,
+        nis2_notification_required=(severity == IncidentSeverity.P1),
+    )
+    db.add(incident)
+    db.flush()
+    logger.info(
+        "Auto-created incident %s (severity=%s) from OSINT scan=%d with %d critical findings",
+        code, severity.value, scan.id, len(critical_findings),
+    )
 
 
 osint_engine = OSINTEngine()

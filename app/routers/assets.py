@@ -68,7 +68,8 @@ def get_asset(asset_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/", response_model=AssetOut, status_code=201)
-def create_asset(data: AssetIn, db: Session = Depends(get_db),
+def create_asset(data: AssetIn, background_tasks: BackgroundTasks,
+                 db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
     code = data.code or _next_code(db)
     if db.query(Asset).filter(Asset.code == code).first():
@@ -81,20 +82,28 @@ def create_asset(data: AssetIn, db: Session = Depends(get_db),
     log_action(db, current_user.id, "create", "asset", None,
                {"code": code, "name": data.name, "asset_type": str(data.asset_type)})
     db.commit(); db.refresh(a)
+    # Auto-analisis de riesgos IA al crear el activo (v1.7.6)
+    background_tasks.add_task(_run_asset_analysis_bg, a.id)
     return _to_out(a)
 
 
 @router.put("/{asset_id}", response_model=AssetOut)
-def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
+def update_asset(asset_id: int, data: AssetIn, background_tasks: BackgroundTasks,
+                 db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
     a = db.get(Asset, asset_id)
     if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Activo no encontrado")
     for k, v in data.model_dump(exclude={"owner_ids", "code"}).items():
         setattr(a, k, v)
+    # Resetear estado IA para indicar que el analisis esta desactualizado
+    a.ai_risk_status = None
+    a.ai_risk_summary = None
     log_action(db, current_user.id, "update", "asset", str(asset_id),
                {"code": a.code, "name": a.name})
     db.commit(); db.refresh(a)
+    # Re-analizar riesgos IA cuando el activo cambia (v1.7.6)
+    background_tasks.add_task(_run_asset_analysis_bg, asset_id)
     return _to_out(a)
 
 
@@ -143,6 +152,7 @@ def download_template(_: User = Depends(require_analyst)):
 @router.post("/import", response_model=ImportResult)
 async def import_assets(
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -164,6 +174,8 @@ async def import_assets(
         raise HTTPException(400, f"Faltan columnas obligatorias: {missing}")
 
     result = ImportResult(total=len(df), created=0, updated=0, skipped=0, errors=[])
+    # Recopilar IDs de activos creados/actualizados para lanzar analisis IA (v1.7.6)
+    analyzed_ids: list[int] = []
 
     for idx, row in df.iterrows():
         try:
@@ -194,6 +206,10 @@ async def import_assets(
                 if check_org_access(existing.organization_id, current_user):
                     for k, v in payload.items():
                         setattr(existing, k, v)
+                    # Resetear estado IA para indicar re-analisis pendiente
+                    existing.ai_risk_status = None
+                    existing.ai_risk_summary = None
+                    analyzed_ids.append(existing.id)
                     result.updated += 1
                 else:
                     result.skipped += 1
@@ -201,12 +217,17 @@ async def import_assets(
             else:
                 a = Asset(code=code, organization_id=current_user.organization_id, **payload)
                 db.add(a); db.flush()
+                analyzed_ids.append(a.id)
                 result.created += 1
         except Exception as e:
             result.skipped += 1
             result.errors.append(f"Fila {idx+2}: {e}")
 
     db.commit()
+    # Auto-analisis de riesgos IA para cada activo importado (v1.7.6)
+    if background_tasks and analyzed_ids:
+        for aid in analyzed_ids:
+            background_tasks.add_task(_run_asset_analysis_bg, aid)
     return result
 
 

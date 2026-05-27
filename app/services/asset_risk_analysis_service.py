@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     AiCallLog, AiConfig, Asset,
     Control, ControlImplementation, ControlStatus,
-    Risk, RiskStatus, TreatmentOption,
+    Risk, RiskContext, RiskStatus, TreatmentOption,
     Threat, Vulnerability,
     User, UserRole,
 )
@@ -275,15 +275,24 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
             created += c
             updated += u
 
+        # 6. Aplicar apetito de riesgo: si residual > appetite y tratamiento es retention,
+        #    escalar automaticamente a modification (v1.7.6)
+        appetite_upgrades = _enforce_risk_appetite(db, asset)
+
         asset.ai_risk_status = "analysed"
         asset.ai_risk_summary = {
             "risks_created": created,
             "risks_updated": updated,
             "threats_analysed": len(threats),
-            "summary": f"{created} riesgos creados, {updated} actualizados a partir de {len(threats)} amenazas analizadas.",
+            "appetite_upgrades": appetite_upgrades,
+            "summary": (
+                f"{created} riesgos creados, {updated} actualizados a partir de {len(threats)} amenazas analizadas"
+                + (f". {appetite_upgrades} riesgos escalados por superar el apetito de riesgo." if appetite_upgrades else ".")
+            ),
         }
         db.commit()
-        logger.info("Risk analysis OK asset=%d created=%d updated=%d", asset_id, created, updated)
+        logger.info("Risk analysis OK asset=%d created=%d updated=%d appetite_upgrades=%d",
+                    asset_id, created, updated, appetite_upgrades)
 
     except Exception as exc:
         logger.error("Risk analysis failed asset=%d: %s", asset_id, exc)
@@ -452,6 +461,40 @@ def _upsert_risk(
     _sync_vulns(db, risk, item.get("vulnerability_codes", []), vulns_by_code)
     _sync_controls(db, risk, ctrl_list, impls_by_id)
     return 1, 0
+
+
+def _enforce_risk_appetite(db: Session, asset: Asset) -> int:
+    """Escala automaticamente a 'modification' los riesgos del activo cuyo nivel residual
+    supera el apetito de riesgo de la organizacion y tienen tratamiento 'retention'.
+
+    Devuelve el numero de riesgos escalados.
+    """
+    ctx = db.query(RiskContext).filter_by(
+        organization_id=asset.organization_id
+    ).first()
+    if not ctx:
+        return 0
+    appetite = ctx.risk_appetite or 3
+
+    risks = db.query(Risk).filter(
+        Risk.asset_id == asset.id,
+        Risk.ai_generated == True,  # noqa: E712 — solo riesgos IA para no pisar ediciones manuales
+        Risk.treatment_option == TreatmentOption.RETENTION,
+    ).all()
+
+    upgraded = 0
+    for r in risks:
+        if (r.residual_level or 0) > appetite:
+            r.treatment_option = TreatmentOption.MODIFICATION
+            upgraded += 1
+
+    if upgraded:
+        db.flush()
+        logger.info(
+            "Appetite enforcement: %d risks escalated to modification (appetite=%d) asset=%d",
+            upgraded, appetite, asset.id,
+        )
+    return upgraded
 
 
 def _sync_vulns(db: Session, risk: Risk, vuln_codes: list, vulns_by_code: dict) -> None:
