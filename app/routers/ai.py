@@ -12,9 +12,9 @@ from app.models import (
     AiAnonymizationLevel, AiCallLog, AiConfig, AiFeedback,
     Asset, AssetType, ControlImplementation, ControlStatus,
     Incident, IncidentStatus, NonConformity, NCStatus,
-    Risk, RiskStatus, Supplier, SupplierRisk, Threat, TreatmentOption, User,
+    Risk, RiskStatus, Supplier, SupplierRisk, Threat, TreatmentOption, User, UserRole,
 )
-from app.security import get_current_user, require_role
+from app.security import check_org_access, filter_by_org, get_current_user, require_role
 from app.services.ai_service import QUESTIONNAIRE, run_analysis
 from app.services.anonymizer import anonymize, anonymize_messages
 from app.services.context_builder import build_context
@@ -76,11 +76,15 @@ def import_risks(
         # Resolver o crear activo
         asset = None
         if sc.get("asset_id"):
-            asset = db.query(Asset).filter(Asset.id == sc["asset_id"]).first()
+            asset = filter_by_org(
+                db.query(Asset).filter(Asset.id == sc["asset_id"]),
+                Asset, current_user,
+            ).first()
 
         if not asset and sc.get("asset_suggestion"):
-            existing = db.query(Asset).filter(
-                Asset.name == sc["asset_suggestion"]
+            existing = filter_by_org(
+                db.query(Asset).filter(Asset.name == sc["asset_suggestion"]),
+                Asset, current_user,
             ).first()
             if existing:
                 asset = existing
@@ -94,6 +98,7 @@ def import_risks(
                     name=sc["asset_suggestion"],
                     asset_type=atype,
                     description="Activo generado por analisis IA",
+                    organization_id=current_user.organization_id,
                 )
                 db.add(asset)
                 db.flush()
@@ -112,17 +117,17 @@ def import_risks(
             skipped.append(f"{sc.get('asset_suggestion')} / {sc.get('threat_name')}")
             continue
 
-        # Comprobar duplicados
-        dup = db.query(Risk).filter(
-            Risk.asset_id == asset.id,
-            Risk.threat_id == threat.id,
+        # Comprobar duplicados (dentro del mismo tenant)
+        dup = filter_by_org(
+            db.query(Risk).filter(Risk.asset_id == asset.id, Risk.threat_id == threat.id),
+            Risk, current_user,
         ).first()
         if dup:
             skipped.append(f"{asset.name} × {threat.name} (duplicado)")
             continue
 
         # Calcular código
-        count = db.query(Risk).count() + len(created) + 1
+        count = filter_by_org(db.query(Risk), Risk, current_user).count() + len(created) + 1
         code = f"RSK-{count:04d}"
 
         risk = Risk(
@@ -140,6 +145,7 @@ def import_risks(
             treatment_option=TreatmentOption.MODIFICATION,
             description=sc.get("rationale", ""),
             owner_id=current_user.id,
+            organization_id=current_user.organization_id,
         )
         db.add(risk)
         created.append(f"{asset.name} × {threat.name}")
@@ -158,23 +164,26 @@ def import_risks(
 # ============================================================
 
 @router.get("/compliance/summary")
-def compliance_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def compliance_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Calcula puntuaciones de cumplimiento para ISO 27001, NIS2, NIST CSF y ENS."""
-    impls = db.query(ControlImplementation).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     total_controls = len(impls)
     implemented = sum(1 for i in impls if i.status == ControlStatus.IMPLEMENTED)
     partial = sum(1 for i in impls if i.status == ControlStatus.PARTIAL)
     effective_score = (implemented + partial * 0.5) / total_controls * 100 if total_controls else 0
 
-    risks = db.query(Risk).all()
+    risks = filter_by_org(db.query(Risk), Risk, current_user).all()
     risks_with_treatment = sum(1 for r in risks if r.treatment_option)
     risks_with_owner = sum(1 for r in risks if r.owner_id)
     risks_assessed = sum(1 for r in risks if r.status in (RiskStatus.ASSESSED, RiskStatus.TREATED, RiskStatus.ACCEPTED, RiskStatus.CLOSED))
     total_risks = len(risks)
 
-    incidents = db.query(Incident).all()
-    suppliers = db.query(Supplier).all()
-    ncs = db.query(NonConformity).all()
+    incidents = filter_by_org(db.query(Incident), Incident, current_user).all()
+    suppliers = filter_by_org(db.query(Supplier), Supplier, current_user).all()
+    ncs = filter_by_org(db.query(NonConformity), NonConformity, current_user).all()
     open_major_ncs = sum(1 for n in ncs if n.severity == "major" and n.status != NCStatus.CLOSED)
 
     # ---- ISO 27001:2022 score ----
@@ -201,7 +210,7 @@ def compliance_summary(db: Session = Depends(get_db), _: User = Depends(get_curr
     nis2_score = round(sum(nis2_components) / len(nis2_components))
 
     # ---- NIST CSF 2.0 score ----
-    identify_score = min(100, (total_risks / max(1, len(db.query(Asset).all())) * 100))
+    identify_score = min(100, (total_risks / max(1, filter_by_org(db.query(Asset), Asset, current_user).count()) * 100))
     protect_score = effective_score
     detect_score = min(100, len(incidents) * 10)  # evidencia de deteccion activa
     respond_score = min(100, sum(1 for i in incidents if i.status in (IncidentStatus.CONTAINED, IncidentStatus.RESOLVED, IncidentStatus.CLOSED)) / max(1, len(incidents)) * 100)
@@ -315,10 +324,13 @@ class RiskSuggestRequest(BaseModel):
 def risk_suggest(
     req: RiskSuggestRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Sugiere amenazas y nivel de riesgo para un activo usando el catalogo ISO 27005."""
-    asset = db.query(Asset).filter(Asset.id == req.asset_id).first()
+    asset = filter_by_org(
+        db.query(Asset).filter(Asset.id == req.asset_id),
+        Asset, current_user,
+    ).first()
     if not asset:
         raise HTTPException(404, "Activo no encontrado")
 
@@ -333,9 +345,12 @@ def risk_suggest(
     if not relevant_threats:
         relevant_threats = all_threats[:15]
 
-    # Obtener riesgos existentes para este activo (para evitar duplicados)
+    # Obtener riesgos existentes para este activo en el mismo tenant (para evitar duplicados)
     existing_threat_ids = {
-        r.threat_id for r in db.query(Risk).filter(Risk.asset_id == asset.id).all()
+        r.threat_id for r in filter_by_org(
+            db.query(Risk).filter(Risk.asset_id == asset.id),
+            Risk, current_user,
+        ).all()
     }
 
     # Estimar likelihood basado en origen de amenaza y valoracion del activo
@@ -394,11 +409,14 @@ class GapAnalysisRequest(BaseModel):
 def control_gap_analysis(
     req: GapAnalysisRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Analiza brechas en la implementacion de controles para el framework solicitado."""
-    impls = db.query(ControlImplementation).all()
-    risks = db.query(Risk).filter(Risk.status != RiskStatus.CLOSED).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
+    risks = filter_by_org(
+        db.query(Risk).filter(Risk.status != RiskStatus.CLOSED),
+        Risk, current_user,
+    ).all()
 
     def _theme(impl) -> str:
         return (impl.control.theme if impl.control else None) or "Sin tema"
@@ -561,7 +579,9 @@ def chat(
     if len(req.messages) > _MAX_MESSAGES:
         raise HTTPException(400, f"Demasiados mensajes en el historial (maximo {_MAX_MESSAGES}).")
 
-    cfg = db.query(AiConfig).first()
+    cfg = db.query(AiConfig).filter(
+        AiConfig.organization_id == current_user.organization_id
+    ).first()
     api_key = _resolve_api_key(cfg)
     if not api_key:
         raise HTTPException(
@@ -579,8 +599,8 @@ def chat(
         (m.content for m in reversed(req.messages) if m.role == "user"), ""
     )
 
-    # Construir y anonimizar el contexto de la organizacion
-    context = build_context(db, query=last_query)
+    # Construir y anonimizar el contexto — SOLO datos del tenant del usuario autenticado
+    context = build_context(db, query=last_query, organization_id=current_user.organization_id)
     if anon_level_val != "low":
         context = anonymize(context, anon_level_val)
 
@@ -644,6 +664,7 @@ def chat(
 
     call_log = AiCallLog(
         user_id=current_user.id,
+        organization_id=current_user.organization_id,
         call_type="chat",
         prompt_tokens=tokens_in,
         completion_tokens=tokens_out,
@@ -686,10 +707,19 @@ def submit_feedback(
 @router.get("/feedback/summary")
 def feedback_summary(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """Resumen agregado de las valoraciones del agente."""
-    feedbacks = db.query(AiFeedback).all()
+    """Resumen agregado de las valoraciones del agente (solo del tenant autenticado)."""
+    # AiFeedback no tiene organization_id; se filtra via el usuario que envio el feedback
+    if current_user.role == UserRole.SUPERADMIN:
+        feedbacks = db.query(AiFeedback).all()
+    else:
+        feedbacks = (
+            db.query(AiFeedback)
+            .join(User, AiFeedback.user_id == User.id, isouter=True)
+            .filter(User.organization_id == current_user.organization_id)
+            .all()
+        )
     if not feedbacks:
         return {"total": 0, "avg_rating": None, "ratings": {}}
     total = len(feedbacks)

@@ -8,13 +8,29 @@ from app.models import (
 from app.services.rag_service import search_chunks
 
 
-def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
-    """Genera el bloque de contexto completo para inyectar en el prompt."""
+def build_context(
+    db: Session,
+    query: str = "",
+    max_chunks: int = 5,
+    organization_id: int | None = None,
+) -> str:
+    """Genera el bloque de contexto completo para inyectar en el prompt.
+
+    organization_id es OBLIGATORIO para uso normal — garantiza que el contexto
+    contiene UNICAMENTE datos del tenant del usuario autenticado.
+    Solo se omite (None) en contextos de superadmin o pruebas internas.
+    """
     parts: list[str] = []
 
+    def _forg(q, model):
+        """Aplica filtro de organizacion si se proporciono organization_id."""
+        if organization_id is not None:
+            return q.filter(model.organization_id == organization_id)
+        return q
+
     # 1. Perfil de organizacion
-    ctx = db.query(RiskContext).first()
-    ai_cfg = db.query(AiConfig).first()
+    ctx = _forg(db.query(RiskContext), RiskContext).first()
+    ai_cfg = _forg(db.query(AiConfig), AiConfig).first()
 
     if ctx:
         parts.append(f"## Organizacion: {ctx.organization_name or 'Sin nombre'}")
@@ -36,7 +52,7 @@ def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
             parts.append(f"Stack tecnologico: {ai_cfg.org_tech_stack}")
 
     # 2. Inventario de activos (resumen)
-    assets = db.query(Asset).limit(50).all()
+    assets = _forg(db.query(Asset), Asset).limit(50).all()
     if assets:
         parts.append(f"\n## Activos ({len(assets)} en inventario)")
         for a in assets[:15]:
@@ -46,7 +62,12 @@ def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
             parts.append(f"  ... y {len(assets) - 15} activos adicionales.")
 
     # 3. Riesgos activos
-    risks = db.query(Risk).filter(Risk.status != RiskStatus.CLOSED).limit(30).all()
+    risks = (
+        _forg(db.query(Risk), Risk)
+        .filter(Risk.status != RiskStatus.CLOSED)
+        .limit(30)
+        .all()
+    )
     if risks:
         parts.append(f"\n## Riesgos activos ({len(risks)})")
         for r in risks[:15]:
@@ -59,7 +80,12 @@ def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
             parts.append(f"  ... y {len(risks) - 15} riesgos adicionales.")
 
     # 4. Incidentes recientes
-    incidents = db.query(Incident).order_by(Incident.created_at.desc()).limit(5).all()
+    incidents = (
+        _forg(db.query(Incident), Incident)
+        .order_by(Incident.created_at.desc())
+        .limit(5)
+        .all()
+    )
     if incidents:
         parts.append(f"\n## Incidentes recientes ({len(incidents)})")
         for i in incidents:
@@ -67,7 +93,7 @@ def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
 
     # 5. Controles con baja madurez
     weak_controls = (
-        db.query(ControlImplementation)
+        _forg(db.query(ControlImplementation), ControlImplementation)
         .filter(
             ControlImplementation.status != ControlStatus.IMPLEMENTED,
             ControlImplementation.maturity <= 2,
@@ -84,7 +110,10 @@ def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
 
     # 6. Proveedores criticos
     critical_suppliers = (
-        db.query(Supplier).filter(Supplier.is_critical.is_(True)).limit(10).all()
+        _forg(db.query(Supplier), Supplier)
+        .filter(Supplier.is_critical.is_(True))
+        .limit(10)
+        .all()
     )
     if critical_suppliers:
         parts.append(f"\n## Proveedores criticos ({len(critical_suppliers)})")
@@ -93,7 +122,7 @@ def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
 
     # 7. No conformidades abiertas
     ncs = (
-        db.query(NonConformity)
+        _forg(db.query(NonConformity), NonConformity)
         .filter(NonConformity.status.in_(["open", "in_progress"]))
         .limit(10)
         .all()
@@ -103,9 +132,9 @@ def build_context(db: Session, query: str = "", max_chunks: int = 5) -> str:
         for nc in ncs:
             parts.append(f"- {nc.code}: {nc.title} [{nc.severity.value}]")
 
-    # 8. Fragmentos RAG de documentacion interna
+    # 8. Fragmentos RAG de documentacion interna (filtrados por organizacion)
     if query:
-        chunks = search_chunks(db, query, top_k=max_chunks)
+        chunks = search_chunks(db, query, top_k=max_chunks, organization_id=organization_id)
         if chunks:
             parts.append("\n## Documentacion interna relevante")
             for chunk in chunks:
