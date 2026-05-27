@@ -7,13 +7,13 @@ const ViewOrganizations = (() => {
 
   // ---- API helpers ----
   async function fetchOrgs() {
-    const r = await API.get('/api/organizations/');
+    const r = await Api.get('/api/organizations/');
     _orgs = Array.isArray(r) ? r : [];
     return _orgs;
   }
 
   async function fetchOrgUsers(orgId) {
-    const r = await API.get(`/api/organizations/${orgId}/users`);
+    const r = await Api.get(`/api/organizations/${orgId}/users`);
     _orgUsers = Array.isArray(r) ? r : [];
     return _orgUsers;
   }
@@ -162,7 +162,7 @@ const ViewOrganizations = (() => {
         max_users: parseInt(fd.get('max_users')),
       };
       try {
-        await API.patch(`/api/organizations/${orgId}`, payload);
+        await Api.patch(`/api/organizations/${orgId}`, payload);
         UI.toast('Organizacion actualizada', 'success');
         await fetchOrgs();
         renderGrid(document.getElementById('orgs-grid'));
@@ -176,7 +176,7 @@ const ViewOrganizations = (() => {
   async function _deactivate(orgId) {
     if (!confirm('Desactivar esta organizacion. Sus usuarios no podran iniciar sesion. Continuar?')) return;
     try {
-      await API.delete(`/api/organizations/${orgId}`);
+      await Api.del(`/api/organizations/${orgId}`);
       UI.toast('Organizacion desactivada', 'success');
       await fetchOrgs();
       renderGrid(document.getElementById('orgs-grid'));
@@ -189,7 +189,7 @@ const ViewOrganizations = (() => {
 
   async function _activate(orgId) {
     try {
-      await API.patch(`/api/organizations/${orgId}`, { is_active: true });
+      await Api.patch(`/api/organizations/${orgId}`, { is_active: true });
       UI.toast('Organizacion activada', 'success');
       await fetchOrgs();
       renderGrid(document.getElementById('orgs-grid'));
@@ -207,7 +207,7 @@ const ViewOrganizations = (() => {
       return;
     }
     try {
-      await API.patch(`/api/organizations/${_selectedOrg.id}/users/${userId}/move`, { target_org_id: dest.id });
+      await Api.patch(`/api/organizations/${_selectedOrg.id}/users/${userId}/move`, { target_org_id: dest.id });
       UI.toast('Usuario movido correctamente', 'success');
       await fetchOrgUsers(_selectedOrg.id);
       _openDetail(_selectedOrg.id);
@@ -217,59 +217,50 @@ const ViewOrganizations = (() => {
   }
 
   function openNewOrgModal() {
-    const html = `
-      <div id="org-modal-overlay" class="modal-overlay">
-        <div class="modal" style="max-width:480px;">
-          <div class="modal-header">
-            <h2>Nueva organizacion</h2>
-            <button class="btn btn-ghost btn-icon" onclick="document.getElementById('org-modal-overlay').remove()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-          <form id="new-org-form">
-            <div class="form-group">
-              <label>Nombre *</label>
-              <input class="input" name="name" required placeholder="Empresa S.A.">
-            </div>
-            <div class="form-group">
-              <label>Dominio de email</label>
-              <input class="input" name="domain" placeholder="empresa.com">
-            </div>
-            <div class="form-group">
-              <label>Plan</label>
-              <select class="input" name="plan">
-                <option value="starter">starter</option>
-                <option value="professional">professional</option>
-                <option value="enterprise">enterprise</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Max. usuarios</label>
-              <input class="input" type="number" name="max_users" value="10" min="1">
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-ghost" onclick="document.getElementById('org-modal-overlay').remove()">Cancelar</button>
-              <button type="submit" class="btn btn-primary">Crear organizacion</button>
-            </div>
-          </form>
+    UI.modal('Nueva organizacion', `
+      <div class="form-grid">
+        <div class="span2">
+          <label>Nombre *</label>
+          <input class="input" id="org-name" required placeholder="Empresa S.A.">
+        </div>
+        <div>
+          <label>Dominio de email</label>
+          <input class="input" id="org-domain" placeholder="empresa.com">
+        </div>
+        <div>
+          <label>Plan</label>
+          <select class="input" id="org-plan">
+            <option value="starter">starter</option>
+            <option value="professional">professional</option>
+            <option value="enterprise">enterprise</option>
+          </select>
+        </div>
+        <div>
+          <label>Max. usuarios</label>
+          <input class="input" type="number" id="org-max-users" value="10" min="1">
         </div>
       </div>
-    `;
-    document.body.insertAdjacentHTML('beforeend', html);
-    document.getElementById('new-org-form').onsubmit = async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
+    `, {
+      actions: `
+        <button class="btn" id="m-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="m-save">Crear organizacion</button>
+      `,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const name = document.getElementById('org-name').value.trim();
+      if (!name) { UI.toast('El nombre es obligatorio', 'error'); return; }
       const payload = {
-        name: fd.get('name'),
-        domain: fd.get('domain') || null,
-        plan: fd.get('plan'),
-        max_users: parseInt(fd.get('max_users')),
+        name,
+        domain: document.getElementById('org-domain').value.trim() || null,
+        plan: document.getElementById('org-plan').value,
+        max_users: parseInt(document.getElementById('org-max-users').value) || 10,
         is_active: true,
       };
       try {
-        await API.post('/api/organizations/', payload);
+        await Api.post('/api/organizations/', payload);
         UI.toast('Organizacion creada', 'success');
-        document.getElementById('org-modal-overlay').remove();
+        UI.closeModal();
         await fetchOrgs();
         renderGrid(document.getElementById('orgs-grid'));
       } catch (err) {
