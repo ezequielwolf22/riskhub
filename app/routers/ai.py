@@ -11,8 +11,10 @@ from app.database import get_db
 from app.models import (
     AiAnonymizationLevel, AiCallLog, AiConfig, AiFeedback,
     Asset, AssetType, ControlImplementation, ControlStatus,
-    Incident, IncidentStatus, NonConformity, NCStatus,
-    Risk, RiskStatus, Supplier, SupplierRisk, Threat, TreatmentOption, User, UserRole,
+    Incident, IncidentSeverity, IncidentStatus, NonConformity, NCStatus,
+    Risk, RiskStatus, Supplier, SupplierRisk, Threat, TreatmentOption,
+    TreatmentTask, TaskStatus, TaskPriority,
+    User, UserRole,
 )
 from app.security import check_org_access, filter_by_org, get_current_user, require_role
 from app.services.ai_service import QUESTIONNAIRE, run_analysis
@@ -527,6 +529,103 @@ def control_gap_analysis(
 
 
 # ============================================================
+# Agent tools — acciones que el agente puede proponer al usuario
+# ============================================================
+
+_AGENT_TOOLS = [
+    {
+        "name": "create_treatment_task",
+        "description": (
+            "Propone crear una tarea de tratamiento concreta para un riesgo. "
+            "Usar cuando el usuario necesite registrar una accion de mejora, "
+            "asignar responsables o hacer seguimiento de un plan de tratamiento."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Titulo claro y accionable de la tarea"},
+                "description": {"type": "string", "description": "Descripcion detallada de lo que hay que hacer"},
+                "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"],
+                             "description": "Prioridad segun urgencia e impacto"},
+                "due_days": {"type": "integer", "description": "Dias desde hoy para la fecha limite (ej: 30, 60, 90)"},
+                "risk_code": {"type": "string", "description": "Codigo RSK-XXXX del riesgo asociado (si aplica)"},
+            },
+            "required": ["title", "description", "priority"],
+        },
+    },
+    {
+        "name": "update_risk_status",
+        "description": (
+            "Propone cambiar el estado de un riesgo existente. "
+            "Usar cuando el usuario indique que un riesgo ha sido tratado, aceptado o cerrado."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "risk_code": {"type": "string", "description": "Codigo del riesgo, ej: RSK-0001"},
+                "new_status": {
+                    "type": "string",
+                    "enum": ["identified", "assessed", "treated", "accepted", "closed"],
+                    "description": "Nuevo estado del riesgo",
+                },
+                "justification": {"type": "string", "description": "Justificacion del cambio de estado"},
+            },
+            "required": ["risk_code", "new_status"],
+        },
+    },
+    {
+        "name": "create_incident",
+        "description": (
+            "Propone registrar un nuevo incidente de seguridad. "
+            "Usar cuando el usuario describa un evento de seguridad que deba quedar registrado "
+            "en la plataforma (brecha, fallo, acceso no autorizado, etc.)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Titulo conciso del incidente"},
+                "description": {"type": "string", "description": "Descripcion del evento, impacto y acciones tomadas"},
+                "severity": {"type": "string", "enum": ["p1", "p2", "p3", "p4"],
+                             "description": "P1=critico, P2=alto, P3=medio, P4=bajo"},
+                "nis2_required": {"type": "boolean",
+                                  "description": "True si el incidente podria requerir notificacion NIS2 (Art. 23)"},
+            },
+            "required": ["title", "description", "severity"],
+        },
+    },
+    {
+        "name": "schedule_control_review",
+        "description": (
+            "Propone crear una tarea de revision urgente para un control ISO 27002 especifico. "
+            "Usar cuando se detecte un control critico sin evidencia, vencido o con baja madurez."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "control_name": {"type": "string", "description": "Nombre o codigo del control ISO 27002"},
+                "reason": {"type": "string", "description": "Motivo por el que se requiere revision urgente"},
+                "due_days": {"type": "integer", "description": "Dias para la fecha limite de revision"},
+            },
+            "required": ["control_name", "reason"],
+        },
+    },
+]
+
+
+def _action_label(name: str, inp: dict) -> str:
+    """Genera una etiqueta legible para mostrar al usuario antes de confirmar la accion."""
+    if name == "create_treatment_task":
+        return f"Crear tarea: \"{inp.get('title', '')}\" | Prioridad: {inp.get('priority', '').upper()}"
+    if name == "update_risk_status":
+        return f"Actualizar {inp.get('risk_code', '?')} → estado: {inp.get('new_status', '').upper()}"
+    if name == "create_incident":
+        return f"Registrar incidente [{inp.get('severity', '').upper()}]: \"{inp.get('title', '')}\""
+    if name == "schedule_control_review":
+        return f"Programar revision de control: \"{inp.get('control_name', '')}\""
+    return name
+
+
+# ============================================================
 # Chat conversacional con contexto enriquecido
 # ============================================================
 
@@ -655,8 +754,22 @@ def chat(
             max_tokens=capped_max_tokens,
             system=system_prompt,
             messages=messages_payload,
+            tools=_AGENT_TOOLS,
+            tool_choice={"type": "auto"},
         )
-        response_text = response.content[0].text if response.content else ""
+        # Separar bloques de texto y de tool_use
+        response_text = ""
+        pending_actions = []
+        for block in response.content:
+            if block.type == "text":
+                response_text += block.text
+            elif block.type == "tool_use":
+                pending_actions.append({
+                    "action_id": block.id,
+                    "action_name": block.name,
+                    "action_input": block.input,
+                    "label": _action_label(block.name, block.input),
+                })
         tokens_in = response.usage.input_tokens if response.usage else 0
         tokens_out = response.usage.output_tokens if response.usage else 0
     except Exception as e:
@@ -678,6 +791,7 @@ def chat(
 
     return {
         "response": response_text,
+        "actions": pending_actions,
         "call_log_id": call_log.id,
         "tokens": {"input": tokens_in, "output": tokens_out},
     }
@@ -702,6 +816,170 @@ def submit_feedback(
     db.add(fb)
     db.commit()
     return {"ok": True}
+
+
+# ============================================================
+# Ejecucion de acciones confirmadas por el usuario
+# ============================================================
+
+class ExecuteActionRequest(BaseModel):
+    action_name: str
+    action_input: dict
+
+
+@router.post("/execute-action")
+def execute_action(
+    req: ExecuteActionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """Ejecuta una accion propuesta por el agente IA una vez confirmada por el usuario."""
+    name = req.action_name
+    inp = req.action_input
+    org_id = current_user.organization_id
+
+    try:
+        if name == "create_treatment_task":
+            return _exec_create_task(db, inp, org_id, current_user.id)
+        if name == "update_risk_status":
+            return _exec_update_risk_status(db, inp, org_id)
+        if name == "create_incident":
+            return _exec_create_incident(db, inp, org_id, current_user.id)
+        if name == "schedule_control_review":
+            return _exec_schedule_control_review(db, inp, org_id, current_user.id)
+        raise HTTPException(400, f"Accion desconocida: {name}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(500, f"Error ejecutando la accion: {exc}")
+
+
+def _next_code(db: Session, model, prefix: str, org_id) -> str:
+    count = db.query(model).filter(getattr(model, "organization_id") == org_id).count()
+    code = f"{prefix}-{count + 1:04d}"
+    while db.query(model).filter_by(code=code).first():
+        count += 1
+        code = f"{prefix}-{count + 1:04d}"
+    return code
+
+
+def _exec_create_task(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    from datetime import timedelta
+    priority_map = {
+        "low": TaskPriority.LOW, "medium": TaskPriority.MEDIUM,
+        "high": TaskPriority.HIGH, "critical": TaskPriority.CRITICAL,
+    }
+    priority = priority_map.get(inp.get("priority", "medium"), TaskPriority.MEDIUM)
+    due_days = int(inp.get("due_days") or 30)
+    due_date = datetime.now(timezone.utc) + timedelta(days=due_days)
+
+    # Resolver risk_id si se proporcionó código
+    risk_id = None
+    if inp.get("risk_code"):
+        r = db.query(Risk).filter(
+            Risk.organization_id == org_id,
+            Risk.code == inp["risk_code"],
+        ).first()
+        if r:
+            risk_id = r.id
+
+    code = _next_code(db, TreatmentTask, "TSK", org_id)
+    task = TreatmentTask(
+        organization_id=org_id,
+        code=code,
+        title=inp["title"],
+        description=inp.get("description", ""),
+        status=TaskStatus.PENDING,
+        priority=priority,
+        due_date=due_date,
+        risk_id=risk_id,
+        assigned_to_id=user_id,
+        created_by_id=user_id,
+    )
+    db.add(task)
+    db.commit()
+    return {"ok": True, "message": f"Tarea {code} creada correctamente.", "code": code}
+
+
+def _exec_update_risk_status(db: Session, inp: dict, org_id) -> dict:
+    status_map = {
+        "identified": RiskStatus.IDENTIFIED,
+        "assessed": RiskStatus.ASSESSED,
+        "treated": RiskStatus.TREATED,
+        "accepted": RiskStatus.ACCEPTED,
+        "closed": RiskStatus.CLOSED,
+    }
+    risk = db.query(Risk).filter(
+        Risk.organization_id == org_id,
+        Risk.code == inp.get("risk_code", ""),
+    ).first()
+    if not risk:
+        raise HTTPException(404, f"Riesgo {inp.get('risk_code')} no encontrado.")
+    new_status = status_map.get(inp.get("new_status", ""), RiskStatus.ASSESSED)
+    risk.status = new_status
+    if inp.get("justification"):
+        risk.description = (risk.description or "") + f"\n\n[Agente IA] {inp['justification']}"
+    db.commit()
+    return {
+        "ok": True,
+        "message": f"Riesgo {risk.code} actualizado a estado {new_status.value}.",
+        "code": risk.code,
+    }
+
+
+def _exec_create_incident(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    severity_map = {
+        "p1": IncidentSeverity.P1, "p2": IncidentSeverity.P2,
+        "p3": IncidentSeverity.P3, "p4": IncidentSeverity.P4,
+    }
+    severity = severity_map.get(inp.get("severity", "p3"), IncidentSeverity.P3)
+    code = _next_code(db, Incident, "INC", org_id)
+    incident = Incident(
+        organization_id=org_id,
+        code=code,
+        title=inp["title"],
+        description=inp.get("description", ""),
+        severity=severity,
+        status=IncidentStatus.OPEN,
+        detected_at=datetime.now(timezone.utc),
+        nis2_notification_required=bool(inp.get("nis2_required", False)),
+    )
+    db.add(incident)
+    db.commit()
+    return {
+        "ok": True,
+        "message": f"Incidente {code} [{severity.value.upper()}] registrado correctamente.",
+        "code": code,
+    }
+
+
+def _exec_schedule_control_review(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    from datetime import timedelta
+    due_days = int(inp.get("due_days") or 14)
+    due_date = datetime.now(timezone.utc) + timedelta(days=due_days)
+    code = _next_code(db, TreatmentTask, "TSK", org_id)
+    task = TreatmentTask(
+        organization_id=org_id,
+        code=code,
+        title=f"Revision de control: {inp.get('control_name', '')}",
+        description=(
+            f"Revision urgente requerida.\n"
+            f"Control: {inp.get('control_name', '')}\n"
+            f"Motivo: {inp.get('reason', '')}"
+        ),
+        status=TaskStatus.PENDING,
+        priority=TaskPriority.HIGH,
+        due_date=due_date,
+        assigned_to_id=user_id,
+        created_by_id=user_id,
+    )
+    db.add(task)
+    db.commit()
+    return {
+        "ok": True,
+        "message": f"Tarea de revision {code} creada para el control '{inp.get('control_name')}'.",
+        "code": code,
+    }
 
 
 @router.get("/feedback/summary")

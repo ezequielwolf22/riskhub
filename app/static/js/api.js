@@ -160,6 +160,7 @@ const Api = {
     riskSuggest: (d) => Api.post('/api/ai/risk-suggest', d),
     controlGap: (d) => Api.post('/api/ai/control-gap', d),
     chat: (d) => Api.post('/api/ai/chat', d),
+    executeAction: (d) => Api.post('/api/ai/execute-action', d),
     feedback: (d) => Api.post('/api/ai/feedback', d),
     feedbackSummary: () => Api.get('/api/ai/feedback/summary'),
   },

@@ -90,6 +90,26 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
     db.add(inc)
     db.commit()
     db.refresh(inc)
+    # Auto-vincular riesgos existentes para los activos afectados (v1.7.7)
+    try:
+        asset_ids = inc.affected_asset_ids or []
+        if asset_ids:
+            from app.models import Risk, RiskStatus
+            linked_risk_ids = list(inc.related_risk_ids or [])
+            active_risks = db.query(Risk).filter(
+                Risk.asset_id.in_(asset_ids),
+                Risk.organization_id == current_user.organization_id,
+                Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+            ).order_by(Risk.residual_level.desc()).limit(20).all()
+            for r in active_risks:
+                if r.id not in linked_risk_ids:
+                    linked_risk_ids.append(r.id)
+            if linked_risk_ids != list(inc.related_risk_ids or []):
+                inc.related_risk_ids = linked_risk_ids
+                db.commit()
+    except Exception as _exc:
+        import logging
+        logging.getLogger(__name__).warning("Incident->risks auto-link failed: %s", _exc)
     log_action(db, current_user.id, "create", "incident", str(inc.id),
                {"code": inc.code, "severity": inc.severity.value})
     return inc

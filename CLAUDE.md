@@ -28,7 +28,7 @@ Multi-usuario con roles.
 - **Branding**: Paleta purple `#59008D` / orange `#D65200`. Variables CSS: `--brand-purple`, `--brand-orange`. Tipografia: Inter.
 - **Seguridad**: Rate limiting en memoria, security headers middleware, magic bytes validation, API docs deshabilitados en produccion.
 
-## Estado actual (v1.7.0)
+## Estado actual (v1.7.7)
 
 ### Backend
 
@@ -43,6 +43,13 @@ Multi-usuario con roles.
 - [x] Hardening OWASP: rate limiting login, security headers, magic bytes upload, autodocs off en produccion
 - [x] Multi-tenancy: modelo Organization, organization_id en 25+ modelos, filter_by_org helper, seed auto-migra columnas
 - [x] Router /api/organizations: CRUD completo (superadmin), move user, stats de uso de tokens
+- [x] OSINT: escaneo email/dominio/IP/URL/username; hallazgos; auto-incidente en CRITICAL/HIGH; re-scan periodico semanal
+- [x] Automatizaciones scheduler (APScheduler): escalada de tareas, revision de politicas, degradacion de controles, informe mensual
+- [x] Hooks de creacion: Incidente→auto-link risks; NC→auto-link risk; Riesgo→deteccion duplicados (HTTP 409)
+- [x] Proveedor→riesgo auto-create: cuando score <= 30, crea riesgo supply-chain ISO 27005 automaticamente
+- [x] ISMS analysis: documento→activo linkage automatico por nombre; controles actualizados trigger re-analisis activos
+- [x] OSINT→activos: link_osint_findings_to_assets; OSINT→incidente auto-create (v1.7.6)
+- [x] CVE integration: NVD API, escaneo automatico, analisis IA, link a activos
 
 ### Frontend
 

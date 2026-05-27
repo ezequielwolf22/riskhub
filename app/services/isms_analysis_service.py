@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     AiCallLog, AiConfig, AiDocument, AiDocumentStatus,
+    Asset,
     Control, ControlImplementation, ControlStatus,
     Policy, PolicyStatus,
     Risk, RiskStatus,
@@ -203,6 +204,14 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
                 _extract_and_link_csv_vulns(db, doc, text_sample)
             except Exception as _e:
                 logger.warning("CSV vuln extraction failed doc=%d: %s", doc_id, _e)
+
+        # Vincular el documento a los activos mencionados explicitamente en su texto
+        try:
+            linked_asset_ids = _link_document_to_assets(db, doc, text_sample)
+            result["linked_assets"] = linked_asset_ids
+        except Exception as _e:
+            logger.warning("Document→asset linkage failed doc=%d: %s", doc_id, _e)
+            result["linked_assets"] = []
 
         doc.isms_status = "analysed"
         doc.isms_summary = result
@@ -426,6 +435,63 @@ def _next_task_code(db: Session, org_id: int | None) -> str:
         num += 1
         code = f"TSK-{num:04d}"
     return code
+
+
+def _link_document_to_assets(
+    db: Session, doc: AiDocument, text_sample: str
+) -> list:
+    """Detecta activos de la organizacion mencionados en el texto del documento y
+    registra una referencia al documento en el campo extra de cada activo coincidente.
+
+    Devuelve la lista de IDs de activos vinculados.
+    """
+    if not doc.organization_id:
+        return []
+
+    assets = db.query(Asset).filter(Asset.organization_id == doc.organization_id).all()
+    if not assets:
+        return []
+
+    text_lower = text_sample.lower()
+    linked_ids: list = []
+    doc_ref = {
+        "document_id": doc.id,
+        "document_name": doc.original_name,
+        "linked_by": "isms_analysis",
+    }
+
+    for asset in assets:
+        # Coincidencia por nombre o codigo (case-insensitive, minimo 4 chars para evitar falsos)
+        name_lower = asset.name.lower()
+        code_lower = asset.code.lower()
+        if len(name_lower) >= 4 and name_lower in text_lower:
+            matched = True
+        elif len(code_lower) >= 4 and code_lower in text_lower:
+            matched = True
+        else:
+            matched = False
+
+        if not matched:
+            continue
+
+        # Guardar referencia en el campo extra del activo (JSON libre)
+        extra = dict(asset.extra or {})
+        doc_refs = extra.get("document_refs", [])
+        # No duplicar referencias al mismo documento
+        if not any(r.get("document_id") == doc.id for r in doc_refs):
+            doc_refs.append(doc_ref)
+            extra["document_refs"] = doc_refs
+            asset.extra = extra
+        linked_ids.append(asset.id)
+
+    if linked_ids:
+        db.commit()
+        logger.info(
+            "ISMS doc→asset: doc=%d linked to %d asset(s): %s",
+            doc.id, len(linked_ids), linked_ids,
+        )
+
+    return linked_ids
 
 
 def _extract_and_link_csv_vulns(db: Session, doc: AiDocument, text_sample: str) -> None:

@@ -18,7 +18,7 @@ const ViewAiChat = (() => {
           <div class="card" style="padding:0;overflow:hidden;">
             <!-- Historial de mensajes -->
             <div id="chat-history" style="
-              height:420px;overflow-y:auto;padding:16px;
+              height:480px;overflow-y:auto;padding:16px;
               display:flex;flex-direction:column;gap:10px;
               background:var(--bg-1);"></div>
             <!-- Input -->
@@ -49,10 +49,10 @@ const ViewAiChat = (() => {
     if (_messages.length === 0) {
       _appendAssistant(
         'Hola, soy tu agente de seguridad de RiskHub. ' +
-        'Puedo ayudarte a analizar riesgos, revisar el estado de controles, ' +
-        'interpretar incidentes y mucho mas. ' +
-        'Cuanto mas documentacion hayas subido en la configuracion, mas precisas seran mis respuestas.\n\n' +
-        '¿En que puedo ayudarte hoy?'
+        'Puedo ayudarte a analizar riesgos, revisar controles, interpretar incidentes y mucho mas. ' +
+        'Ademas, cuando lo necesites puedo proponer acciones concretas — crear tareas, registrar incidentes ' +
+        'o actualizar riesgos — que podras confirmar o rechazar antes de que se ejecuten.\n\n' +
+        'Cuanto mas documentacion hayas subido, mas precisas seran mis respuestas. ¿En que puedo ayudarte?'
       );
     }
   }
@@ -61,12 +61,12 @@ const ViewAiChat = (() => {
 
   function _renderSidePanel() {
     const suggestions = [
-      'Dame un resumen del estado de riesgos criticos',
-      'Que controles tienen baja madurez?',
-      'Resume los incidentes recientes y lecciones aprendidas',
-      'Que recomendaciones tienes para mejorar nuestra postura de seguridad?',
+      'Dame un resumen del estado de riesgos criticos y que acciones deberiamos tomar',
+      'Que controles tienen baja madurez? Propón tareas para mejorarlos',
+      'Resume los incidentes recientes y sugiere lecciones aprendidas',
       'Cuales son las brechas mas importantes en nuestros controles ISO 27002?',
-      'Hay proveedores criticos con riesgo elevado?',
+      'Hay proveedores criticos con riesgo elevado que requieran atencion?',
+      'Que riesgos deberíamos priorizar este mes?',
     ];
     return `
       <div class="card" style="margin-bottom:12px;">
@@ -126,7 +126,7 @@ const ViewAiChat = (() => {
   function _buildBubble(role, content) {
     const isUser = role === 'user';
     const el = document.createElement('div');
-    el.style.cssText = `display:flex;justify-content:${isUser?'flex-end':'flex-start'};`;
+    el.style.cssText = `display:flex;justify-content:${isUser ? 'flex-end' : 'flex-start'};`;
     el.innerHTML = `
       <div style="
         max-width:80%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;
@@ -138,6 +138,84 @@ const ViewAiChat = (() => {
     return el;
   }
 
+  // ---------- Action cards — propuestas del agente ----------
+
+  function _buildActionCard(action) {
+    const card = document.createElement('div');
+    card.dataset.actionId = action.action_id;
+    card.style.cssText = `
+      margin-left:8px;padding:12px 14px;border-radius:10px;
+      background:linear-gradient(135deg,rgba(89,0,141,.08),rgba(214,82,0,.06));
+      border:1px solid rgba(89,0,141,.25);font-size:12px;
+      display:flex;flex-direction:column;gap:8px;`;
+
+    const iconMap = {
+      create_treatment_task: '📋',
+      update_risk_status: '🔄',
+      create_incident: '⚠️',
+      schedule_control_review: '🔍',
+    };
+    const icon = iconMap[action.action_name] || '⚡';
+
+    card.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <span style="font-size:16px;line-height:1;">${icon}</span>
+        <div>
+          <div style="font-weight:600;color:var(--brand-purple);margin-bottom:2px;">
+            Accion propuesta por el agente
+          </div>
+          <div style="color:var(--text-base);line-height:1.5;">${UI.esc(action.label)}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" style="font-size:11px;padding:5px 14px;"
+                onclick="ViewAiChat._confirmAction(this, ${JSON.stringify(action).replace(/"/g, '&quot;')})">
+          Confirmar
+        </button>
+        <button class="btn btn-ghost" style="font-size:11px;padding:5px 14px;"
+                onclick="ViewAiChat._rejectAction(this)">
+          Rechazar
+        </button>
+      </div>`;
+    return card;
+  }
+
+  async function _confirmAction(btn, action) {
+    btn.disabled = true;
+    btn.textContent = 'Ejecutando...';
+    const card = btn.closest('[data-action-id]');
+    try {
+      const res = await Api.ai.executeAction({
+        action_name: action.action_name,
+        action_input: action.action_input,
+      });
+      // Reemplazar botones por mensaje de exito
+      const btns = card.querySelector('div:last-child');
+      if (btns) btns.innerHTML = `
+        <span style="color:var(--risk-low);font-weight:600;font-size:12px;">
+          Realizado: ${UI.esc(res.message || 'OK')}
+        </span>`;
+      card.style.borderColor = 'var(--risk-low)';
+      card.style.background = 'rgba(46,125,50,.06)';
+      UI.toast(res.message || 'Accion ejecutada', 'success');
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Confirmar';
+      UI.toast('Error: ' + (e.message || 'fallo al ejecutar'), 'error');
+    }
+  }
+
+  function _rejectAction(btn) {
+    const card = btn.closest('[data-action-id]');
+    if (card) {
+      card.style.opacity = '0.4';
+      card.style.pointerEvents = 'none';
+      const btns = card.querySelector('div:last-child');
+      if (btns) btns.innerHTML = `
+        <span style="color:var(--text-muted);font-size:12px;">Accion descartada</span>`;
+    }
+  }
+
   function _appendUser(text) {
     _messages.push({ role: 'user', content: text });
     const hist = document.getElementById('chat-history');
@@ -147,13 +225,23 @@ const ViewAiChat = (() => {
     }
   }
 
-  function _appendAssistant(text) {
+  function _appendAssistant(text, actions) {
     _messages.push({ role: 'assistant', content: text });
     const hist = document.getElementById('chat-history');
-    if (hist) {
-      hist.appendChild(_buildBubble('assistant', text));
-      hist.scrollTop = hist.scrollHeight;
+    if (!hist) return;
+
+    // Burbuja de texto
+    if (text) hist.appendChild(_buildBubble('assistant', text));
+
+    // Action cards debajo de la burbuja
+    if (actions && actions.length > 0) {
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'display:flex;flex-direction:column;gap:8px;padding-left:4px;';
+      actions.forEach(a => wrapper.appendChild(_buildActionCard(a)));
+      hist.appendChild(wrapper);
     }
+
+    hist.scrollTop = hist.scrollHeight;
   }
 
   function _appendThinking() {
@@ -218,10 +306,10 @@ const ViewAiChat = (() => {
       const recent = _messages.slice(-20);
       const res = await Api.ai.chat({ messages: recent, max_tokens: 2048 });
       _removeThinking();
-      _appendAssistant(res.response || '(Sin respuesta)');
+      _appendAssistant(res.response || '', res.actions || []);
       _lastCallLogId = res.call_log_id || null;
-      // Mostrar widget de feedback
-      if (fb) fb.style.display = 'block';
+      // Mostrar widget de feedback solo si hay respuesta textual
+      if (fb && res.response) fb.style.display = 'block';
     } catch (e) {
       _removeThinking();
       const errMsg = e.message || 'Error desconocido';
@@ -270,6 +358,6 @@ const ViewAiChat = (() => {
     }
   }
 
-  return { render, _suggest, _clearHistory, _sendFeedback };
+  return { render, _suggest, _clearHistory, _sendFeedback, _confirmAction, _rejectAction };
 
 })();

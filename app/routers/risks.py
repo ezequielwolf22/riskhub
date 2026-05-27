@@ -106,10 +106,20 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
         raise HTTPException(400, "asset_id no existe")
     if not db.get(Threat, data.threat_id):
         raise HTTPException(400, "threat_id no existe")
-    existing = db.query(Risk).filter(
-        Risk.asset_id == data.asset_id, Risk.threat_id == data.threat_id).first()
-    if existing:
-        raise HTTPException(400, f"Ya existe un riesgo para ese activo y amenaza ({existing.code})")
+    # Deteccion de duplicado: mismo asset + amenaza en la org (v1.7.7)
+    if hasattr(data, 'asset_id') and hasattr(data, 'threat_id') and data.asset_id and data.threat_id:
+        from app.models import Risk as _Risk
+        existing_dup = db.query(_Risk).filter(
+            _Risk.asset_id == data.asset_id,
+            _Risk.threat_id == data.threat_id,
+            _Risk.organization_id == current_user.organization_id,
+        ).first()
+        if existing_dup:
+            raise HTTPException(
+                409,
+                f"Ya existe el riesgo {existing_dup.code} para este activo y amenaza. "
+                f"Edita el riesgo existente en lugar de crear uno nuevo."
+            )
 
     r = Risk(
         code=_next_code(db),

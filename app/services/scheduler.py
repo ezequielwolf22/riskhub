@@ -599,6 +599,360 @@ def _run_risk_reviews() -> None:
         db.close()
 
 
+def _run_task_escalation() -> None:
+    """Escala automaticamente la prioridad de tareas de tratamiento con vencimiento muy vencido."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import TreatmentTask, TaskStatus, TaskPriority
+
+    _ESCALATION_MAP = {
+        TaskPriority.LOW: TaskPriority.MEDIUM,
+        TaskPriority.MEDIUM: TaskPriority.HIGH,
+        TaskPriority.HIGH: TaskPriority.CRITICAL,
+        TaskPriority.CRITICAL: TaskPriority.CRITICAL,  # tope
+    }
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(days=7)
+        tasks = db.query(TreatmentTask).filter(
+            TreatmentTask.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS]),
+            TreatmentTask.due_date.isnot(None),
+            TreatmentTask.due_date < threshold,
+        ).all()
+        escalated = 0
+        for t in tasks:
+            old_p = t.priority or TaskPriority.LOW
+            new_p = _ESCALATION_MAP.get(old_p, TaskPriority.CRITICAL)
+            if new_p != old_p:
+                t.priority = new_p
+                escalated += 1
+        if escalated:
+            db.commit()
+            logger.info("Task escalation: %d tareas escaladas.", escalated)
+    except Exception as exc:
+        logger.exception("Error en task_escalation: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_policy_review_tasks() -> None:
+    """Crea tareas de revision para politicas con review_date vencida."""
+    from app.database import SessionLocal
+    from app.models import Policy, PolicyStatus, TreatmentTask, TaskStatus, TaskPriority
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        overdue_policies = db.query(Policy).filter(
+            Policy.status != PolicyStatus.OBSOLETE,
+            Policy.review_date.isnot(None),
+            Policy.review_date < now,
+        ).all()
+
+        created = 0
+        for pol in overdue_policies:
+            # Evitar duplicados: no crear si ya existe tarea para esta politica
+            dup = db.query(TreatmentTask).filter(
+                TreatmentTask.organization_id == pol.organization_id,
+                TreatmentTask.title.like(f"%{pol.code}%"),
+                TreatmentTask.status != TaskStatus.DONE,
+            ).first()
+            if dup:
+                continue
+
+            # Generar codigo unico TSK-XXXX
+            count = db.query(TreatmentTask).filter_by(organization_id=pol.organization_id).count()
+            code = f"TSK-{count + 1:04d}"
+            while db.query(TreatmentTask).filter_by(code=code).first():
+                count += 1
+                code = f"TSK-{count + 1:04d}"
+
+            task = TreatmentTask(
+                organization_id=pol.organization_id,
+                code=code,
+                title=f"Revisar politica {pol.code}: {pol.title[:60]}",
+                description=(
+                    f"La politica {pol.code} ({pol.title}) tenia programada su revision "
+                    f"para {pol.review_date.strftime('%d/%m/%Y') if pol.review_date else 'N/A'} "
+                    f"y no ha sido actualizada. Revisar el contenido, actualizar la fecha de revision "
+                    f"y cambiar el estado a ACTIVE si sigue vigente."
+                ),
+                status=TaskStatus.PENDING,
+                priority=TaskPriority.MEDIUM,
+                assigned_to_id=pol.owner_id,
+                created_by_id=pol.owner_id,
+            )
+            db.add(task)
+            created += 1
+
+        if created:
+            db.commit()
+            logger.info("Policy review tasks: %d tareas creadas.", created)
+    except Exception as exc:
+        logger.exception("Error en policy_review_tasks: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_control_degradation() -> None:
+    """Degrada controles IMPLEMENTED sin evidencia nueva en mas de 12 meses."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import ControlImplementation, ControlStatus, TreatmentTask, TaskStatus, TaskPriority
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(days=365)
+        stale = db.query(ControlImplementation).filter(
+            ControlImplementation.status == ControlStatus.IMPLEMENTED,
+            ControlImplementation.next_review.isnot(None),
+            ControlImplementation.next_review < threshold,
+        ).all()
+
+        degraded = 0
+        for impl in stale:
+            impl.status = ControlStatus.PARTIAL
+            if impl.maturity and impl.maturity > 1:
+                impl.maturity = impl.maturity - 1
+
+            # Crear tarea de revision si no existe
+            dup = db.query(TreatmentTask).filter(
+                TreatmentTask.organization_id == impl.organization_id,
+                TreatmentTask.title.like(f"%control%{impl.name[:30]}%"),
+                TreatmentTask.status != TaskStatus.DONE,
+            ).first()
+            if not dup:
+                count = db.query(TreatmentTask).filter_by(organization_id=impl.organization_id).count()
+                code = f"TSK-{count + 1:04d}"
+                while db.query(TreatmentTask).filter_by(code=code).first():
+                    count += 1
+                    code = f"TSK-{count + 1:04d}"
+                task = TreatmentTask(
+                    organization_id=impl.organization_id,
+                    code=code,
+                    title=f"Revisar control obsoleto: {impl.name[:60]}",
+                    description=(
+                        f"El control '{impl.name}' lleva mas de 12 meses sin evidencia actualizada "
+                        f"(next_review: {impl.next_review.strftime('%d/%m/%Y') if impl.next_review else 'N/A'}). "
+                        f"Su estado ha sido degradado automaticamente a PARTIAL. "
+                        f"Actualiza la evidencia y la fecha de proxima revision."
+                    ),
+                    status=TaskStatus.PENDING,
+                    priority=TaskPriority.MEDIUM,
+                    assigned_to_id=impl.owner_id,
+                    created_by_id=impl.owner_id,
+                )
+                db.add(task)
+            degraded += 1
+
+        if degraded:
+            db.commit()
+            logger.info("Control degradation: %d controles degradados a PARTIAL.", degraded)
+    except Exception as exc:
+        logger.exception("Error en control_degradation: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_osint_periodic_scan() -> None:
+    """Re-escanea automaticamente objetivos OSINT que llevan mas de 7 dias sin escanear."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import OSINTIdentifier, OSINTScan
+    from app.services.osint_engine import osint_engine
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(days=7)
+
+        identifiers = db.query(OSINTIdentifier).filter(
+            OSINTIdentifier.last_scanned_at.isnot(None),
+            OSINTIdentifier.last_scanned_at < threshold,
+        ).all()
+
+        if not identifiers:
+            return
+
+        logger.info("OSINT periodic re-scan: %d objetivos a re-escanear.", len(identifiers))
+
+        for ident in identifiers:
+            # Crear registro de scan
+            scan = OSINTScan(
+                target=ident.value,
+                scan_type=ident.identifier_type,
+                status="pending",
+                organization_id=ident.organization_id,
+                user_id=ident.user_id,
+            )
+            db.add(scan)
+            db.flush()
+            scan_id = scan.id
+            db.commit()
+
+            # Lanzar escaneo en hilo separado segun tipo
+            import threading
+            target_val = ident.value
+            user_id_val = ident.user_id
+            stype_val = ident.identifier_type.value if hasattr(ident.identifier_type, 'value') else str(ident.identifier_type)
+
+            def _do_scan(sid=scan_id, stype=stype_val, tgt=target_val, uid=user_id_val):
+                try:
+                    if stype == "email":
+                        osint_engine.run_email_scan(sid, tgt, uid)
+                    elif stype == "domain":
+                        osint_engine.run_domain_scan(sid, tgt, uid)
+                    elif stype == "ip":
+                        osint_engine.run_ip_scan(sid, tgt, uid)
+                    elif stype == "url":
+                        osint_engine.run_url_scan(sid, tgt, uid)
+                    elif stype == "username":
+                        osint_engine.run_username_scan(sid, tgt, uid)
+                except Exception as _e:
+                    logger.warning("OSINT periodic scan failed target=%s: %s", tgt, _e)
+
+            t = threading.Thread(target=_do_scan, daemon=True)
+            t.start()
+    except Exception as exc:
+        logger.exception("Error en osint_periodic_scan: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_monthly_report() -> None:
+    """Genera y envia el informe mensual de seguridad a admins el primer dia de cada mes."""
+    from app.database import SessionLocal
+    from app.models import Risk, RiskStatus, RiskContext, TreatmentTask, TaskStatus, User, UserRole
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        # Solo ejecutar el primer dia del mes
+        if now.day != 1:
+            return
+
+        cfg = email_service.get_settings(db)
+        if not cfg or not cfg.smtp_host:
+            return
+
+        # Obtener todas las orgs con contexto
+        contexts = db.query(RiskContext).all()
+
+        for ctx in contexts:
+            org_id = ctx.organization_id
+            org_name = ctx.organization_name or "Organizacion"
+
+            # KPIs
+            risks = db.query(Risk).filter(
+                Risk.organization_id == org_id,
+                Risk.status != RiskStatus.CLOSED,
+            ).all()
+            tasks = db.query(TreatmentTask).filter(
+                TreatmentTask.organization_id == org_id,
+                TreatmentTask.status != TaskStatus.DONE,
+            ).all()
+
+            total_risks = len(risks)
+            high_risks = sum(1 for r in risks if (r.residual_level or 0) >= 6)
+            medium_risks = sum(1 for r in risks if 3 <= (r.residual_level or 0) < 6)
+            low_risks = sum(1 for r in risks if (r.residual_level or 0) < 3)
+            overdue_tasks = sum(
+                1 for t in tasks
+                if t.due_date and t.due_date.replace(tzinfo=timezone.utc) < now
+            )
+            avg_reduction = 0
+            if risks:
+                reductions = []
+                for r in risks:
+                    if r.inherent_level and r.inherent_level > 0:
+                        red = (r.inherent_level - (r.residual_level or 0)) / r.inherent_level * 100
+                        reductions.append(max(0, red))
+                avg_reduction = round(sum(reductions) / len(reductions)) if reductions else 0
+
+            month_str = now.strftime("%B %Y")
+            html = f"""<!DOCTYPE html>
+<html lang='es'>
+<body style='margin:0;padding:24px;background:#F5F5F5;font-family:Inter,Arial,sans-serif;'>
+  <div style='max-width:660px;margin:0 auto;background:#fff;border-radius:10px;border:1px solid #E9E9E9;overflow:hidden;'>
+    <div style='background:linear-gradient(90deg,#59008D,#D65200);padding:24px 28px;'>
+      <h1 style='color:#fff;margin:0;font-size:20px;'>RiskHub &mdash; Informe mensual</h1>
+      <p style='color:rgba(255,255,255,.75);margin:6px 0 0;font-size:13px;'>{org_name} &mdash; {month_str}</p>
+    </div>
+    <div style='padding:28px;'>
+      <h2 style='font-size:15px;margin:0 0 16px;color:#262626;'>Resumen ejecutivo del mes</h2>
+      <table style='width:100%;border-collapse:collapse;margin-bottom:24px;'>
+        <tr>
+          <td style='padding:14px;text-align:center;background:#F5F5F5;border-radius:8px;'>
+            <div style='font-size:32px;font-weight:700;color:#59008D;'>{total_risks}</div>
+            <div style='font-size:11px;color:#9D9D9D;text-transform:uppercase;letter-spacing:.5px;'>Riesgos activos</div>
+          </td>
+          <td style='width:12px;'></td>
+          <td style='padding:14px;text-align:center;background:#FEE2E2;border-radius:8px;'>
+            <div style='font-size:32px;font-weight:700;color:#a83232;'>{high_risks}</div>
+            <div style='font-size:11px;color:#9D9D9D;text-transform:uppercase;letter-spacing:.5px;'>Altos (&ge;6)</div>
+          </td>
+          <td style='width:12px;'></td>
+          <td style='padding:14px;text-align:center;background:#FEF0E3;border-radius:8px;'>
+            <div style='font-size:32px;font-weight:700;color:#c25a1f;'>{medium_risks}</div>
+            <div style='font-size:11px;color:#9D9D9D;text-transform:uppercase;letter-spacing:.5px;'>Medios (3-5)</div>
+          </td>
+          <td style='width:12px;'></td>
+          <td style='padding:14px;text-align:center;background:#E8F5E9;border-radius:8px;'>
+            <div style='font-size:32px;font-weight:700;color:#2e7d32;'>{low_risks}</div>
+            <div style='font-size:11px;color:#9D9D9D;text-transform:uppercase;letter-spacing:.5px;'>Bajos (&lt;3)</div>
+          </td>
+        </tr>
+      </table>
+      <table style='width:100%;border-collapse:collapse;margin-bottom:24px;'>
+        <tr>
+          <td style='padding:14px;text-align:center;background:#F5F5F5;border-radius:8px;'>
+            <div style='font-size:28px;font-weight:700;color:#59008D;'>{avg_reduction}%</div>
+            <div style='font-size:11px;color:#9D9D9D;text-transform:uppercase;'>Reduccion media</div>
+          </td>
+          <td style='width:12px;'></td>
+          <td style='padding:14px;text-align:center;background:{'#FEE2E2' if overdue_tasks > 0 else '#E8F5E9'};border-radius:8px;'>
+            <div style='font-size:28px;font-weight:700;color:{'#a83232' if overdue_tasks > 0 else '#2e7d32'};'>{overdue_tasks}</div>
+            <div style='font-size:11px;color:#9D9D9D;text-transform:uppercase;'>Tareas vencidas</div>
+          </td>
+        </tr>
+      </table>
+      <p style='color:#9D9D9D;font-size:11px;margin-top:20px;border-top:1px solid #E9E9E9;padding-top:16px;'>
+        Informe generado automaticamente por RiskHub el {now.strftime('%d/%m/%Y')}.
+        Accede al sistema para ver el detalle completo.
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+            # Enviar a todos los admins activos de la org
+            admins = db.query(User).filter(
+                User.organization_id == org_id,
+                User.role == UserRole.ADMIN,
+                User.is_active == True,  # noqa: E712
+                User.email.isnot(None),
+            ).all()
+
+            for admin in admins:
+                try:
+                    email_service.send_email(
+                        cfg, admin.email,
+                        f"RiskHub &mdash; Informe mensual {month_str} ({org_name})",
+                        html,
+                    )
+                    logger.info("Monthly report sent to %s org=%s", admin.email, org_name)
+                except Exception as exc:
+                    logger.warning("Monthly report email failed to %s: %s", admin.email, exc)
+    except Exception as exc:
+        logger.exception("Error en monthly_report: %s", exc)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -624,6 +978,46 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),
         id="cve_auto_scan",
         name="Escaneo automatico diario de CVEs",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_task_escalation,
+        trigger=IntervalTrigger(hours=24),
+        id="task_escalation",
+        name="Escalada automatica de prioridad de tareas vencidas",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_policy_review_tasks,
+        trigger=IntervalTrigger(hours=24),
+        id="policy_review_tasks",
+        name="Creacion de tareas por politicas con revision vencida",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_control_degradation,
+        trigger=IntervalTrigger(hours=168),  # semanal
+        id="control_degradation",
+        name="Degradacion de controles IMPLEMENTED sin evidencia",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_osint_periodic_scan,
+        trigger=IntervalTrigger(hours=168),  # semanal
+        id="osint_periodic_scan",
+        name="Re-escaneo periodico de objetivos OSINT",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_monthly_report,
+        trigger=IntervalTrigger(hours=24),  # se autofiltra por day==1
+        id="monthly_report",
+        name="Informe mensual de seguridad por email",
         replace_existing=True,
         misfire_grace_time=3600,
     )

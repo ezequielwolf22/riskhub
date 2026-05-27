@@ -83,6 +83,40 @@ def create_nc(body: NonConformityIn, db: Session = Depends(get_db),
     db.add(nc)
     db.commit()
     db.refresh(nc)
+    # Auto-vincular riesgo relacionado si la NC menciona un control o clausula ISO (v1.7.7)
+    try:
+        if not nc.related_risk_id:
+            from app.models import Risk, RiskStatus, ControlImplementation
+            from sqlalchemy import text as _text
+            candidate_risk = None
+
+            # Si hay control relacionado, buscar el riesgo activo de mayor nivel que lo usa
+            if nc.related_control_id:
+                impl = db.query(ControlImplementation).filter(
+                    ControlImplementation.control_id == nc.related_control_id,
+                    ControlImplementation.organization_id == current_user.organization_id,
+                ).first()
+                if impl:
+                    row = db.execute(
+                        _text("SELECT risk_id FROM risk_controls WHERE control_implementation_id = :cid LIMIT 1"),
+                        {"cid": impl.id},
+                    ).first()
+                    if row:
+                        candidate_risk = db.get(Risk, row[0])
+
+            # Fallback: buscar el riesgo activo de mayor nivel de la org
+            if not candidate_risk:
+                candidate_risk = db.query(Risk).filter(
+                    Risk.organization_id == current_user.organization_id,
+                    Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+                ).order_by(Risk.residual_level.desc()).first()
+
+            if candidate_risk:
+                nc.related_risk_id = candidate_risk.id
+                db.commit()
+    except Exception as _exc:
+        import logging
+        logging.getLogger(__name__).warning("NC->risk auto-link failed: %s", _exc)
     log_action(db, current_user.id, "create", "nonconformity", str(nc.id),
                {"code": nc.code, "severity": nc.severity.value})
     return nc
