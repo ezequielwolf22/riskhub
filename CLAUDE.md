@@ -28,7 +28,7 @@ Multi-usuario con roles.
 - **Branding**: Paleta purple `#59008D` / orange `#D65200`. Variables CSS: `--brand-purple`, `--brand-orange`. Tipografia: Inter.
 - **Seguridad**: Rate limiting en memoria, security headers middleware, magic bytes validation, API docs deshabilitados en produccion.
 
-## Estado actual (v1.3.1)
+## Estado actual (v1.7.0)
 
 ### Backend
 
@@ -41,11 +41,13 @@ Multi-usuario con roles.
 - [x] Agente IA: chat conversacional, RAG FTS5, anonimizacion, feedback loop
 - [x] Cifrado Fernet para API key del agente IA
 - [x] Hardening OWASP: rate limiting login, security headers, magic bytes upload, autodocs off en produccion
+- [x] Multi-tenancy: modelo Organization, organization_id en 25+ modelos, filter_by_org helper, seed auto-migra columnas
+- [x] Router /api/organizations: CRUD completo (superadmin), move user, stats de uso de tokens
 
 ### Frontend
 
 - [x] SPA hash-based (`app/static/`)
-- [x] Vistas: dashboard, heatmap, assets, threats, vulnerabilities, risks, controls, reports, context, users, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, compliance, alerts, integrations, audit, ai-chat, ai-documents, onboarding, guide
+- [x] Vistas: dashboard, heatmap, assets, threats, vulnerabilities, risks, controls, reports, context, users, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, compliance, alerts, integrations, audit, ai-chat, ai-documents, onboarding, guide, organizations
 
 ### Despliegue
 
