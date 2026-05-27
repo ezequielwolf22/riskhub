@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import Organization, User
 from app.schemas import TokenOut, UserOut
 from app.security import (
     create_access_token, get_current_user, hash_password, verify_password,
@@ -69,6 +69,20 @@ def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Usuario desactivado",
         )
+
+    # Bloquear login si la organizacion del usuario esta desactivada
+    if user.organization_id:
+        org = db.get(Organization, user.organization_id)
+        if org and not org.is_active:
+            log_action(
+                db, user.id, "login_failed", "user", str(user.id),
+                {"ip": ip, "reason": "organization_disabled"},
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="La organizacion esta desactivada. Contacta con el administrador.",
+            )
 
     # Login exitoso: resetear contador de intentos
     reset_login_counter(ip)

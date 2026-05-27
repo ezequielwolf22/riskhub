@@ -76,10 +76,28 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(404, "Usuario no encontrado")
+    # OWASP A01 — IDOR: non-superadmin solo puede editar usuarios de su propia org
+    if current_user.role != UserRole.SUPERADMIN and u.organization_id != current_user.organization_id:
+        raise HTTPException(403, "No autorizado")
+    # Privilege escalation: solo superadmin puede asignar rol superadmin;
+    # solo admin/superadmin puede asignar rol admin
+    if data.role is not None:
+        if data.role == UserRole.SUPERADMIN and current_user.role != UserRole.SUPERADMIN:
+            raise HTTPException(403, "Solo superadmin puede asignar el rol superadmin")
+        if data.role == UserRole.ADMIN and current_user.role not in (UserRole.SUPERADMIN, UserRole.ADMIN):
+            raise HTTPException(403, "Solo admin o superior puede asignar el rol admin")
     if data.full_name is not None: u.full_name = data.full_name
     if data.role is not None: u.role = data.role
     if data.is_active is not None: u.is_active = data.is_active
     if data.password: u.hashed_password = hash_password(data.password)
+    # Solo superadmin puede mover un usuario a otra organizacion
+    if data.organization_id is not None:
+        if current_user.role != UserRole.SUPERADMIN:
+            raise HTTPException(403, "Solo superadmin puede cambiar la organizacion de un usuario")
+        dest_org = db.get(Organization, data.organization_id)
+        if not dest_org:
+            raise HTTPException(404, "Organizacion destino no encontrada")
+        u.organization_id = data.organization_id
     log_action(db, current_user.id, "update", "user", str(user_id),
                {"email": u.email, "role": str(u.role), "is_active": u.is_active})
     db.commit(); db.refresh(u)
@@ -95,6 +113,9 @@ def delete_user(user_id: int, db: Session = Depends(get_db),
     u = db.get(User, user_id)
     if not u:
         raise HTTPException(404, "Usuario no encontrado")
+    # OWASP A01 — IDOR: non-superadmin solo puede eliminar usuarios de su propia org
+    if current_user.role != UserRole.SUPERADMIN and u.organization_id != current_user.organization_id:
+        raise HTTPException(403, "No autorizado")
     email = u.email
     db.delete(u)
     log_action(db, current_user.id, "delete", "user", str(user_id), {"email": email})

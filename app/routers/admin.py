@@ -10,8 +10,8 @@ from fastapi.responses import FileResponse
 
 from app.config import settings
 from app.database import get_db
-from app.models import Asset, ControlImplementation, Risk, Threat, User, Vulnerability
-from app.security import require_admin
+from app.models import Asset, ControlImplementation, Risk, Threat, User, UserRole, Vulnerability
+from app.security import filter_by_org, get_current_user, require_admin, require_superadmin
 from app.services.audit_service import log_action
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ def _sqlite_path() -> Path:
 
 @router.get("/backup-db")
 def backup_db(
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_superadmin),
     db: Session = Depends(get_db),
 ):
     """Descarga una copia de seguridad de la base de datos SQLite."""
@@ -67,21 +67,40 @@ def system_info(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Informacion del sistema para el panel de administracion."""
+    """Informacion del sistema para el panel de administracion.
+
+    Superadmin ve conteos globales; admin ve solo conteos de su organizacion.
+    """
     db_path = _sqlite_path() if settings.db_url.startswith("sqlite") else None
     db_size_bytes = db_path.stat().st_size if db_path and db_path.exists() else None
+
+    # Conteos filtrados por org para no-superadmin (OWASP A01 — info leak prevention)
+    if current_user.role == UserRole.SUPERADMIN:
+        total_users = db.query(User).count()
+        total_assets = db.query(Asset).count()
+        total_risks = db.query(Risk).count()
+        total_controls = db.query(ControlImplementation).count()
+    else:
+        total_users = db.query(User).filter(
+            User.organization_id == current_user.organization_id
+        ).count()
+        total_assets = filter_by_org(db.query(Asset), Asset, current_user).count()
+        total_risks = filter_by_org(db.query(Risk), Risk, current_user).count()
+        total_controls = filter_by_org(
+            db.query(ControlImplementation), ControlImplementation, current_user
+        ).count()
 
     return {
         "version": _get_version(),
         "env": settings.env,
         "db_engine": "sqlite" if settings.db_url.startswith("sqlite") else "postgresql",
-        "db_size_bytes": db_size_bytes,
-        "total_users": db.query(User).count(),
-        "total_assets": db.query(Asset).count(),
-        "total_risks": db.query(Risk).count(),
-        "total_threats": db.query(Threat).count(),
-        "total_vulnerabilities": db.query(Vulnerability).count(),
-        "total_controls": db.query(ControlImplementation).count(),
+        "db_size_bytes": db_size_bytes if current_user.role == UserRole.SUPERADMIN else None,
+        "total_users": total_users,
+        "total_assets": total_assets,
+        "total_risks": total_risks,
+        "total_threats": db.query(Threat).count(),          # catalogo global
+        "total_vulnerabilities": db.query(Vulnerability).count(),  # catalogo global
+        "total_controls": total_controls,
         "next_alert_check": _next_alert_run(),
     }
 
@@ -104,7 +123,7 @@ def _next_alert_run() -> str | None:
 
 @router.get("/security-status")
 def security_status(
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Postura de seguridad activa de la instalacion — para panel admin y auditoria."""
@@ -125,7 +144,10 @@ def security_status(
     # Verificar configuracion de integraciones con secretos cifrados
     from app.models import IntegrationConfig, AiConfig
     integrations_encrypted = db.query(IntegrationConfig).count()
-    ai_cfg = db.query(AiConfig).first()
+    # AiConfig filtrado por org del usuario autenticado — no cruzar tenants
+    ai_cfg = db.query(AiConfig).filter(
+        AiConfig.organization_id == current_user.organization_id
+    ).first()
     ai_key_encrypted = bool(ai_cfg and ai_cfg.api_key_encrypted)
 
     # Verificar SSO configurado
