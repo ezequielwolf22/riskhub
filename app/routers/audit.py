@@ -33,7 +33,7 @@ class AuditPage(BaseModel):
 
 
 def _require_admin(current_user=Depends(get_current_user)):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
         raise HTTPException(403, "Solo administradores pueden consultar el log de auditoria")
     return current_user
 
