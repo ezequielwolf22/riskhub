@@ -301,6 +301,19 @@ class OSINTEngine:
         scan.status = 'completed'
         scan.completed_at = datetime.now(timezone.utc)
 
+        # Vincular hallazgos a activos y crear riesgos automaticamente (v1.7.5)
+        try:
+            if scan.organization_id and len(findings_list) > 0:
+                from app.services.asset_risk_analysis_service import link_osint_findings_to_assets
+                result = link_osint_findings_to_assets(db, scan.organization_id, scan.id)
+                import logging
+                logging.getLogger(__name__).info(
+                    "OSINT→risks scan=%d created=%d", scan.id, result.get("created", 0)
+                )
+        except Exception as _e:
+            import logging
+            logging.getLogger(__name__).warning("OSINT→risks linkage failed: %s", _e)
+
         if identifier:
             identifier.last_scanned_at = datetime.now(timezone.utc)
             s = scan.risk_score or 0

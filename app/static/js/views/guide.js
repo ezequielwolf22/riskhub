@@ -343,6 +343,44 @@ const ViewGuide = {
     ${this._p('Haz clic en las cabeceras <strong>Codigo</strong>, <strong>Nombre</strong>, <strong>Tipo</strong>, <strong>Max</strong>, <strong>Riesgos</strong> o <strong>Categoria</strong> para ordenar la tabla por ese campo. Un segundo clic invierte el orden. La columna activa se resalta en purpura con una flecha ▲ o ▼.')}
     ${this._h('Ver riesgos de un activo')}
     ${this._p('La tabla de activos muestra una columna <strong>Riesgos</strong> con el número de escenarios de riesgo asociados a cada activo. El número es un enlace que filtra directamente la vista de Riesgos. El color indica la exposición: rojo si el activo tiene 5 o más riesgos, púrpura si tiene alguno, gris si no tiene ninguno.')}
+    ${this._h('Analisis de riesgos automatico con IA (v1.7.5)')}
+    ${this._p('El agente IA puede analizar automáticamente cada activo del inventario y generar un análisis de riesgos completo aplicando la metodología <strong>MAGERIT v3 / ISO 27005</strong>. El proceso cruza el activo con el catálogo de amenazas, vulnerabilidades y controles implementados para calcular el riesgo inherente y residual sin necesidad de intervención manual.')}
+    ${this._h('Como funciona el pipeline de analisis')}
+    ${this._steps([
+      'El agente recibe el perfil del activo: tipo, valoracion CIA, descripcion y categoria.',
+      'Filtra del catalogo las amenazas aplicables al tipo de activo (ej. <em>support_hardware</em> → amenazas fisicas, de red, de malware...).',
+      'Para cada amenaza relevante calcula: probabilidad inherente, consecuencia inherente y nivel de riesgo ISO 27005 (escala 0-8).',
+      'Identifica las vulnerabilidades del catalogo que aplican a ese activo y amenaza.',
+      'Aplica los controles ISO 27002 ya implementados para calcular el riesgo residual.',
+      'Crea o actualiza los registros de riesgo en la seccion Riesgos, marcandolos con la etiqueta <strong>IA</strong>.',
+    ])}
+    ${this._h('Lanzar el analisis')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Por activo individual:</strong> haz clic en el icono <em>⚙</em> de la columna "Analisis IA" en la tabla de activos. El estado cambia a "Analizando..." mientras el agente trabaja en background.</li>
+      <li><strong>Para todos los activos:</strong> usa el boton <strong>Analizar riesgos con IA</strong> de la barra de herramientas. Se lanzan todos los activos de la organizacion en paralelo.</li>
+    </ul>
+    ${this._h('Estados del analisis IA')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      ${[
+        ['Analizando','El agente esta procesando el activo en background.','var(--brand-orange)'],
+        ['Analizado','El analisis ha completado. Pasa el cursor para ver el resumen.','var(--risk-low)'],
+        ['Error','Fallo en el analisis. Reintenta con el boton ⚙.','var(--risk-high)'],
+        ['Sin analisis','El activo aun no ha sido analizado.','var(--text-muted)'],
+      ].map(([l,d,c]) =>
+        `<div style="background:var(--bg-2);border-radius:8px;padding:8px 12px;border-left:3px solid ${c};">
+          <strong style="color:${c};font-size:12px;">${l}</strong>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${d}</div>
+        </div>`).join('')}
+    </div>
+    ${this._h('Riesgos generados por IA')}
+    ${this._p('Los riesgos creados automaticamente por el agente se marcan con la etiqueta <strong style="background:var(--brand-purple-4);color:var(--brand-purple);padding:1px 4px;border-radius:3px;font-size:11px;">IA</strong> junto al codigo en la tabla de riesgos. Pasa el cursor sobre la etiqueta para ver la justificacion del agente.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Los riesgos IA se pueden editar libremente: cambiar probabilidad, consecuencia, controles, plan de tratamiento.</li>
+      <li>Si relanzas el analisis sobre un activo, los riesgos IA existentes se actualizan (no se duplican). Los riesgos creados manualmente nunca se sobreescriben.</li>
+      <li>Puedes eliminar un riesgo IA si el agente ha generado un escenario que no es aplicable a tu contexto.</li>
+    </ul>
+    ${this._warn('<strong>Requiere API key:</strong> el analisis de riesgos IA necesita la clave Anthropic configurada en <strong>Configuracion del Agente</strong>. Sin ella, el boton estara disponible pero el analisis fallara.')}
+    ${this._tip('<strong>Flujo recomendado:</strong> (1) importa los activos via CSV, (2) configura el API key del agente, (3) usa "Analizar riesgos con IA" para todos los activos, (4) revisa y ajusta los riesgos generados, (5) asigna responsables y planes de tratamiento.')}
   `;},
 
   get _cThreats() { return `
@@ -468,6 +506,21 @@ const ViewGuide = {
     ${this._tip('Usa el filtro por responsable junto con el filtro de estado <em>Identified</em> para encontrar rapidamente todos los riesgos nuevos sin propietario ni plan de tratamiento asignados.')}
     ${this._h('Historial de cambios de un riesgo')}
     ${this._p('Al abrir un riesgo existente, al final del formulario aparece la sección <strong>Historial de cambios</strong>. Haz clic para expandirla y ver todas las modificaciones realizadas sobre ese riesgo: timestamp, usuario responsable, acción (crear/actualizar/eliminar) y campos modificados. Útil para auditorías y para justificar decisiones ante comités de seguridad.')}
+    ${this._h('Riesgos generados automaticamente por IA (v1.7.5)')}
+    ${this._p('Los riesgos creados por el agente IA (desde el analisis de activos, OSINT o importacion de CSV) se identifican con la etiqueta <strong style="background:var(--brand-purple-4);color:var(--brand-purple);padding:1px 5px;border-radius:3px;font-size:11px;">IA</strong> visible junto al codigo del riesgo en la tabla. Esta etiqueta facilita distinguir los riesgos autogenerados de los creados manualmente.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Pasa el cursor sobre la etiqueta IA para ver la <strong>justificacion del agente</strong>: por que ese activo y amenaza generan ese nivel de riesgo.</li>
+      <li>Los riesgos IA son completamente editables. Puedes ajustar probabilidad, consecuencia, controles y plan de tratamiento.</li>
+      <li>Relanzar el analisis sobre un activo <em>actualiza</em> los riesgos IA existentes; los riesgos manuales nunca se modifican automaticamente.</li>
+    </ul>
+    ${this._h('Importacion de riesgos desde CSV')}
+    ${this._p('El modulo de importacion CSV permite cargar vulnerabilidades y hallazgos externos (reportes de pentest, escaneados de red, CVEs) que el agente vincula automaticamente a los activos del inventario.')}
+    ${this._steps([
+      'Descarga la plantilla desde <strong>Riesgos → Importar → Descargar plantilla</strong>.',
+      'Rellena la plantilla con los hallazgos: activo, amenaza, descripcion, nivel.',
+      'Sube el CSV. El agente detecta patrones CVE (formato CVE-YYYY-NNNNN) y los vincula al activo correspondiente.',
+      'Los riesgos importados aparecen en el registro con la etiqueta IA y con la fuente identificada.',
+    ])}
   `;},
 
   get _cCalendar() { return `
@@ -877,6 +930,14 @@ const ViewGuide = {
       'Selecciona si escanear usuarios, dominios o ambos, y define el limite de usuarios.',
       'Haz clic en <strong>Importar e iniciar escaneos</strong> para lanzar todos los escaneos en segundo plano.',
     ])}
+    ${this._h('Vinculacion automatica a activos y riesgos (v1.7.5)')}
+    ${this._p('Cuando un escaneo OSINT completa, el agente vincula automaticamente los hallazgos al inventario de activos. Para cada hallazgo sin riesgo previo, el sistema genera un escenario de riesgo en la seccion Riesgos con la etiqueta <strong style="background:var(--brand-purple-4);color:var(--brand-purple);padding:1px 4px;border-radius:3px;font-size:11px;">IA</strong>.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>El agente busca en el inventario de activos por nombre, dominio o IP para identificar el activo afectado.</li>
+      <li>Si encuentra coincidencia, crea un riesgo vinculado al activo con la amenaza mas relevante del catalogo ISO 27005.</li>
+      <li>Si no encuentra un activo concreto, el riesgo se registra igualmente con el objetivo OSINT en la descripcion para que el analista lo revise.</li>
+      <li>Los riesgos OSINT son editables: puedes ajustar niveles, añadir controles y definir el plan de tratamiento.</li>
+    </ul>
     ${this._tip('Los hallazgos CRITICAL sin remediar generan una alerta visual en rojo en la parte superior de la pestana Hallazgos. Configura una regla de alerta por email en <strong>Alertas</strong> para recibir notificaciones automaticas cuando aparezcan hallazgos de alto riesgo.')}
   `;},
 

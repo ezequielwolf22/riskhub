@@ -1,8 +1,10 @@
-﻿/* Vista Activos: CRUD + import/export CSV. */
+﻿/* Vista Activos: CRUD + import/export CSV + analisis de riesgos IA. */
 const ViewAssets = {
   _sortCol: 'code', _sortAsc: true,
+  _pollTimer: null,
 
   async render(main) {
+    ViewAssets._stopPoll();
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
       'Inventario de activos',
@@ -14,6 +16,10 @@ const ViewAssets = {
           Importar CSV
           <input type="file" id="file-import" accept=".csv,.xlsx" style="display:none;">
         </label>
+        <button class="btn btn-ghost" id="btn-analyze-all"
+                title="Analizar riesgos de todos los activos con IA">
+          Analizar riesgos con IA
+        </button>
         <button class="btn btn-primary" id="btn-new">+ Nuevo activo</button>
       ` : ''
     ) + `
@@ -49,12 +55,30 @@ const ViewAssets = {
         const f = e.target.files[0]; if (!f) return;
         try {
           const r = await Api.assets.import(f);
-          UI.toast(`Importación: ${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos`,
+          UI.toast(`Importacion: ${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos`,
                    r.errors.length ? 'error' : 'success');
           ViewAssets._reload();
         } catch (err) { UI.toast(err.message, 'error'); }
         finally { e.target.value = ''; }
       };
+      const btnAnalyzeAll = document.getElementById('btn-analyze-all');
+      if (btnAnalyzeAll) {
+        btnAnalyzeAll.onclick = async () => {
+          btnAnalyzeAll.disabled = true;
+          btnAnalyzeAll.textContent = 'Iniciando...';
+          try {
+            const r = await Api.assets.analyzeAll();
+            UI.toast(`Analisis IA lanzado para ${r.total} activos`, 'success');
+            ViewAssets._reload();
+            ViewAssets._startPollIfNeeded();
+          } catch (e) {
+            UI.toast('Error: ' + e.message, 'error');
+          } finally {
+            btnAnalyzeAll.disabled = false;
+            btnAnalyzeAll.textContent = 'Analizar riesgos con IA';
+          }
+        };
+      }
     }
 
     ViewAssets._reload();
@@ -102,12 +126,28 @@ const ViewAssets = {
                     data-sort="${col}" title="${title||label}">${label}${arrow}</th>`;
       };
 
+      const _aiStatusBadge = (a) => {
+        const s = a.ai_risk_status;
+        if (!s) return `<span style="font-size:10px;color:var(--text-subtle);">-</span>`;
+        const colors = { analysing:'var(--brand-orange)', analysed:'var(--risk-low)', error:'var(--risk-critical)', skipped:'var(--text-muted)' };
+        const labels = { analysing:'Analizando...', analysed:'Analizado', error:'Error', skipped:'Sin IA' };
+        const sum = a.ai_risk_summary || {};
+        const tip = s === 'analysed'
+          ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
+          : (sum.error || sum.reason || '');
+        return `<span style="font-size:10px;font-weight:600;color:${colors[s]||'var(--text-muted)'};"
+                      title="${UI.esc(tip)}">${labels[s]||s}</span>`;
+      };
+
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead>
           <tr>
             ${_th('code','Codigo')}${_th('name','Nombre')}${_th('type','Tipo')}
             <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th>${_th('value_max','Max','Valor maximo CIA')}
-            ${_th('category','Categoria')}${_th('risks','Riesgos','Numero de riesgos asociados','width:80px;text-align:center;')}<th></th>
+            ${_th('category','Categoria')}
+            ${_th('risks','Riesgos','Numero de riesgos asociados','width:70px;text-align:center;')}
+            <th style="white-space:nowrap;">Analisis IA</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -133,7 +173,15 @@ const ViewAssets = {
                           color:${rcColor};text-decoration:none;">${rc}</a>
               </td>
               <td style="white-space:nowrap;" onclick="event.stopPropagation()">
+                ${_aiStatusBadge(a)}
+              </td>
+              <td style="white-space:nowrap;" onclick="event.stopPropagation()">
                 ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}
+                ${Auth.canEdit() && (!a.ai_risk_status || a.ai_risk_status === 'error' || a.ai_risk_status === 'skipped')
+                  ? `<button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
+                             data-analyze="${a.id}"
+                             title="Analizar riesgos con IA para este activo">&#9881; IA</button>`
+                  : ''}
               </td>
             </tr>`;}).join('')}
         </tbody>
@@ -149,11 +197,72 @@ const ViewAssets = {
       });
       list.querySelectorAll('[data-edit]').forEach(b =>
         b.onclick = (e) => { e.stopPropagation(); ViewAssets._edit(parseInt(b.dataset.edit)); });
+      list.querySelectorAll('[data-analyze]').forEach(b =>
+        b.onclick = async (e) => {
+          e.stopPropagation();
+          const id = parseInt(b.dataset.analyze);
+          b.disabled = true; b.textContent = '...';
+          try {
+            await Api.assets.analyze(id);
+            UI.toast('Analisis IA iniciado', 'success');
+            ViewAssets._reload();
+            ViewAssets._startPollIfNeeded();
+          } catch (err) {
+            UI.toast('Error: ' + err.message, 'error');
+            b.disabled = false; b.textContent = '⚙ IA';
+          }
+        });
       list.querySelectorAll('tr[data-id]').forEach(tr =>
         tr.onclick = () => ViewAssets._edit(parseInt(tr.dataset.id)));
+
+      ViewAssets._startPollIfNeeded();
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
+  },
+
+  _startPollIfNeeded() {
+    ViewAssets._stopPoll();
+    // Verificar si hay activos en estado "analysing"
+    const assetList = document.querySelector('#asset-list tbody');
+    if (!assetList) return;
+    const hasAnalysing = assetList.innerHTML.includes('Analizando...');
+    if (!hasAnalysing) return;
+    ViewAssets._pollTimer = setInterval(async () => {
+      try {
+        const q = document.getElementById('asset-search')?.value || '';
+        const t = document.getElementById('asset-type-filter')?.value || '';
+        const params = {};
+        if (q) params.q = q;
+        if (t) params.asset_type = t;
+        const data = await Api.assets.list(params);
+        const tbody = document.querySelector('#asset-list tbody');
+        if (!tbody) { ViewAssets._stopPoll(); return; }
+        // Update just the AI status cells without full rebuild
+        data.forEach(a => {
+          const tr = document.querySelector(`tr[data-id="${a.id}"]`);
+          if (!tr) return;
+          const cells = tr.querySelectorAll('td');
+          // AI status is 2nd to last td
+          const aiCell = cells[cells.length - 2];
+          if (aiCell) {
+            const s = a.ai_risk_status;
+            const colors = { analysing:'var(--brand-orange)', analysed:'var(--risk-low)', error:'var(--risk-critical)', skipped:'var(--text-muted)' };
+            const labels = { analysing:'Analizando...', analysed:'Analizado', error:'Error', skipped:'Sin IA' };
+            const sum = a.ai_risk_summary || {};
+            const tip = s === 'analysed' ? `${sum.risks_created||0} creados, ${sum.risks_updated||0} actualizados` : (sum.error||sum.reason||'');
+            aiCell.innerHTML = `<span style="font-size:10px;font-weight:600;color:${colors[s]||'var(--text-muted)'};" title="${UI.esc(tip)}">${labels[s]||s||'-'}</span>`;
+          }
+        });
+        if (!data.some(a => a.ai_risk_status === 'analysing')) {
+          ViewAssets._stopPoll();
+        }
+      } catch (_) { ViewAssets._stopPoll(); }
+    }, 4000);
+  },
+
+  _stopPoll() {
+    if (ViewAssets._pollTimer) { clearInterval(ViewAssets._pollTimer); ViewAssets._pollTimer = null; }
   },
 
   async _edit(id) {

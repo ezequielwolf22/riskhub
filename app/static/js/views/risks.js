@@ -289,7 +289,10 @@ const ViewRisks = {
               && r.status !== 'treated' && r.status !== 'accepted' && r.status !== 'closed';
             return `<tr data-id="${r.id}" style="cursor:pointer;${isOverdue?'background:rgba(254,226,226,0.4);':''}">
               ${canEdit ? `<td onclick="event.stopPropagation()"><input type="checkbox" class="r-chk" data-id="${r.id}"></td>` : ''}
-              <td>${UI.codePill(r.code)}</td>
+              <td>
+                ${UI.codePill(r.code)}
+                ${r.ai_generated ? `<span style="font-size:9px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc(r.ai_rationale||'Generado por el agente IA')}">IA</span>` : ''}
+              </td>
               <td><strong>${UI.esc(r.asset?.name||'-')}</strong></td>
               <td>${UI.esc(r.threat?.name||'-')}</td>
               <td>${UI.riskPill(r.inherent_level)}</td>

@@ -203,6 +203,9 @@ class Asset(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+    # Analisis de riesgos automatico con IA (v1.7.5)
+    ai_risk_status = Column(String(32), nullable=True)   # analysing|analysed|error
+    ai_risk_summary = Column(JSON, nullable=True)         # {risks_created, risks_updated, summary}
 
     risks = relationship("Risk", back_populates="asset", cascade="all, delete-orphan")
 
@@ -351,6 +354,9 @@ class Risk(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
     next_review = Column(DateTime, nullable=True)
     last_review_notified_at = Column(DateTime, nullable=True)  # dedup emails de revision
+    # IA generado (v1.7.5)
+    ai_generated = Column(Boolean, default=False)
+    ai_rationale = Column(Text, nullable=True)   # justificacion del agente
 
     asset = relationship("Asset", back_populates="risks")
     threat = relationship("Threat")

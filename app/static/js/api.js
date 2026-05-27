@@ -70,6 +70,8 @@ const Api = {
     template: () => Api.download('/api/assets/import/template', 'assets_template.csv'),
     import: (file) => Api.postFile('/api/assets/import', file),
     exportCsv: () => Api.download('/api/assets/export/csv', 'assets.csv'),
+    analyze: (id) => Api.post('/api/assets/' + id + '/analyze', {}),
+    analyzeAll: () => Api.post('/api/assets/analyze-all', {}),
   },
   threats: {
     list: (q) => Api.get('/api/threats/', q),

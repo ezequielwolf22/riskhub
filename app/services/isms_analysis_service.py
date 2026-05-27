@@ -197,6 +197,13 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
                 db, doc, threat_cats, owner_id
             )
 
+        # Si el documento es de categoria risk_assessments, intentar extraer CVEs/vulnerabilidades
+        if doc.category and doc.category.value == "risk_assessments":
+            try:
+                _extract_and_link_csv_vulns(db, doc, text_sample)
+            except Exception as _e:
+                logger.warning("CSV vuln extraction failed doc=%d: %s", doc_id, _e)
+
         doc.isms_status = "analysed"
         doc.isms_summary = result
         db.commit()
@@ -386,6 +393,38 @@ def _next_task_code(db: Session, org_id: int | None) -> str:
         num += 1
         code = f"TSK-{num:04d}"
     return code
+
+
+def _extract_and_link_csv_vulns(db: Session, doc: AiDocument, text_sample: str) -> None:
+    """Extrae CVEs/vulnerabilidades del texto del documento y las asocia a activos."""
+    import re
+    # Detectar patrones CVE
+    cve_pattern = re.compile(r"CVE-\d{4}-\d{4,7}", re.IGNORECASE)
+    cves = list(set(cve_pattern.findall(text_sample)))
+    if not cves:
+        return
+
+    # Detectar lineas con severidad (Nessus/OpenVAS style)
+    severity_pattern = re.compile(
+        r"(critical|high|medium|low)\s+.*?(CVE-\d{4}-\d{4,7})",
+        re.IGNORECASE | re.MULTILINE
+    )
+    findings = []
+    for m in severity_pattern.finditer(text_sample):
+        findings.append({
+            "severity": m.group(1).lower(),
+            "cve_id": m.group(2).upper(),
+            "product": "",
+            "description": m.group(0)[:200],
+        })
+    # Si no encontramos con severidad, agregar solo los CVEs con severidad media
+    if not findings:
+        for cve in cves[:20]:
+            findings.append({"severity": "medium", "cve_id": cve, "product": "", "description": ""})
+
+    if findings:
+        from app.services.asset_risk_analysis_service import link_csv_vulnerabilities_to_assets
+        link_csv_vulnerabilities_to_assets(db, doc.organization_id, findings)
 
 
 def _create_treatment_tasks(

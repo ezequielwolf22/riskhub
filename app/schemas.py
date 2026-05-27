@@ -158,6 +158,9 @@ class AssetOut(ORMBase):
     created_at: datetime
     updated_at: datetime
     risk_count: int = 0
+    # v1.7.5 — analisis IA
+    ai_risk_status: Optional[str] = None
+    ai_risk_summary: Optional[dict] = None
 
 
 # ---------- THREATS ----------
@@ -321,6 +324,9 @@ class RiskOut(ORMBase):
     created_at: datetime
     updated_at: datetime
     next_review: Optional[datetime]
+    # v1.7.5 — IA generado
+    ai_generated: bool = False
+    ai_rationale: Optional[str] = None
     asset: AssetOut
     threat: ThreatOut
 

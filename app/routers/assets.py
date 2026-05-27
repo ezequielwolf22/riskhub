@@ -3,13 +3,13 @@ import io
 from typing import Optional
 
 import pandas as pd
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from sqlalchemy import func
-from app.models import Asset, AssetType, Risk, User
+from app.models import Asset, AssetType, AiDocumentStatus, Risk, User
 from app.schemas import AssetIn, AssetOut, ImportResult
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -208,6 +208,66 @@ async def import_assets(
 
     db.commit()
     return result
+
+
+def _run_asset_analysis_bg(asset_id: int) -> None:
+    """Wrapper background para analisis de riesgos de un activo."""
+    db = SessionLocal()
+    try:
+        from app.services.asset_risk_analysis_service import analyze_asset_risks
+        analyze_asset_risks(db, asset_id)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+def _run_all_assets_analysis_bg(org_id: int) -> None:
+    """Wrapper background para analisis de todos los activos de la org."""
+    db = SessionLocal()
+    try:
+        from app.services.asset_risk_analysis_service import analyze_all_org_assets
+        analyze_all_org_assets(db, org_id)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+@router.post("/{asset_id}/analyze")
+def analyze_asset(
+    asset_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Lanza el analisis de riesgos con IA para un activo concreto."""
+    a = db.get(Asset, asset_id)
+    if not a or not check_org_access(a.organization_id, current_user):
+        raise HTTPException(404, "Activo no encontrado")
+    a.ai_risk_status = None
+    a.ai_risk_summary = None
+    db.commit()
+    background_tasks.add_task(_run_asset_analysis_bg, asset_id)
+    return {"ok": True, "message": "Analisis de riesgos iniciado en background"}
+
+
+@router.post("/analyze-all")
+def analyze_all_assets(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Lanza el analisis de riesgos para todos los activos de la organizacion."""
+    org_id = current_user.organization_id
+    count = db.query(Asset).filter_by(organization_id=org_id).count()
+    # Resetear estados
+    db.query(Asset).filter_by(organization_id=org_id).update(
+        {"ai_risk_status": None, "ai_risk_summary": None}
+    )
+    db.commit()
+    background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+    return {"ok": True, "total": count, "message": f"Analisis lanzado para {count} activos."}
 
 
 @router.get("/export/csv")

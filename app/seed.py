@@ -228,6 +228,11 @@ def _migrate_columns() -> None:
         ("ALTER TABLE osint_identifiers ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "osint_identifiers", "organization_id"),
         ("ALTER TABLE awareness_items ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "awareness_items", "organization_id"),
         ("ALTER TABLE awareness_branding ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "awareness_branding", "organization_id"),
+        # v1.7.5 — analisis de riesgos automatico con IA
+        ("ALTER TABLE assets ADD COLUMN ai_risk_status VARCHAR(32)", "assets", "ai_risk_status"),
+        ("ALTER TABLE assets ADD COLUMN ai_risk_summary JSON", "assets", "ai_risk_summary"),
+        ("ALTER TABLE risks ADD COLUMN ai_generated BOOLEAN DEFAULT 0", "risks", "ai_generated"),
+        ("ALTER TABLE risks ADD COLUMN ai_rationale TEXT", "risks", "ai_rationale"),
         # v1.7.4 — analisis ISMS automatico
         ("ALTER TABLE ai_documents ADD COLUMN isms_status VARCHAR(32)", "ai_documents", "isms_status"),
         ("ALTER TABLE ai_documents ADD COLUMN isms_summary JSON", "ai_documents", "isms_summary"),
