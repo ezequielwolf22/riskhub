@@ -229,26 +229,41 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
 /* ============================================================
    Layout principal: sidebar + content
    ============================================================ */
-.app-body { display: flex; flex: 1; min-height: 0; }
+.app-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 
 .sidebar {
   width: 230px; flex-shrink: 0;
   background: var(--brand-white);
   border-right: 1px solid var(--border);
-  padding: 16px 0;
+  padding: 16px 0 0;
   transition: width 0.2s ease, padding 0.2s ease;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   display: flex; flex-direction: column;
+  height: 100%;
 }
-.sidebar.collapsed { width: 48px; padding: 16px 0; }
+.sidebar.collapsed { width: 48px; padding: 16px 0 0; }
 .sidebar.collapsed .group { display: none; }
 .sidebar.collapsed a { padding: 10px 12px; gap: 0; justify-content: center; }
 .sidebar.collapsed a span, .sidebar.collapsed a [style*="space-between"] { display: none; }
 .sidebar.collapsed a svg { width: 20px; height: 20px; }
 .sidebar.collapsed a.active { border-left-color: var(--brand-orange); }
+
+/* Boton toggle siempre visible al fondo del sidebar */
+.sidebar-toggle-wrap {
+  margin-top: auto;
+  padding: 12px 0 8px;
+  position: sticky;
+  bottom: 0;
+  background: var(--brand-white);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
 #btn-sidebar-toggle {
   display: flex; justify-content: center;
 }
+
 /* Collapsible nav sections */
 .sidebar .nav-section { }
 .sidebar .group {
@@ -305,12 +320,18 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--bg-3); border: 1px solid var(--border);
   cursor: pointer; color: var(--text-muted);
-  margin: 8px auto 0;
   transition: background .15s;
 }
 .sidebar-toggle-btn:hover { background: var(--border-strong); }
 
-.app-content { flex: 1; padding: 24px 32px; max-width: 100%; overflow-x: auto; }
+.app-content {
+  flex: 1;
+  padding: 24px 32px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  height: 100%;
+}
 
 /* ============================================================
    Brackets (elemento grafico - cabecera de seccion)
@@ -846,6 +867,10 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
   background: #14171e;
   border-right-color: #2b2f3b;
 }
+[data-theme="dark"] .sidebar-toggle-wrap {
+  background: #14171e;
+  border-top-color: #2b2f3b;
+}
 [data-theme="dark"] .sidebar a { color: var(--text-muted); }
 [data-theme="dark"] .sidebar a:hover,
 [data-theme="dark"] .sidebar a.active { background: var(--bg-3); color: var(--text); }
@@ -922,6 +947,15 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
   background: var(--bg-3);
   border-color: var(--border-strong);
   color: var(--text);
+}
+
+/* ============================================================
+   Responsive: pantallas estrechas
+   ============================================================ */
+@media (max-width: 900px) {
+  .ai-chat-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* ============================================================

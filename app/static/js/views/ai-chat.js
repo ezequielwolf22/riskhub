@@ -13,7 +13,7 @@ const ViewAiChat = (() => {
       'Agente IA',
       'Consulta sobre riesgos, controles, activos e incidentes de tu organizacion.'
     ) + `
-      <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;align-items:start;">
+      <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;align-items:start;" class="ai-chat-grid">
         <div>
           <div class="card" style="padding:0;overflow:hidden;">
             <!-- Historial de mensajes -->
