@@ -61,7 +61,10 @@ Multi-usuario con roles.
 - [ ] Integracion SharePoint (Microsoft Graph API) para importar documentacion SGSI en masa
 - [ ] Integraciones SAP / Jagger / Sphera
 - [ ] Extraccion automatica de clausulas ISO desde documentos de politicas (IA)
-- [ ] Multi-idioma (en/es/de/fr) — diferido indefinidamente
+- [ ] Multi-idioma i18n (es/en/de/fr) — decision tomada: selector de idioma en header,
+      ficheros `app/static/js/i18n/{es,en}.json`, funcion global `t('key')`.
+      Flujo: primero refactorizar vistas a `t()` manteniendo ES, luego anadir EN.
+      Diferido hasta que la app este estable.
 - [ ] Descargar fuentes Inter a `app/static/vendor/fonts/`
 - [ ] Pruebas end-to-end manuales
 
