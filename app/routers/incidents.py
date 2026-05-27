@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Incident, IncidentStatus, User
 from app.schemas import IncidentIn, IncidentOut, IncidentUpdate
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/incidents", tags=["incidents"])
@@ -22,12 +22,12 @@ def _next_code(db: Session) -> str:
 @router.get("/", response_model=list[IncidentOut])
 def list_incidents(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     status: Optional[IncidentStatus] = None,
     severity: Optional[str] = None,
     nis2: Optional[bool] = None,
 ):
-    q = db.query(Incident)
+    q = filter_by_org(db.query(Incident), Incident, current_user)
     if status:
         q = q.filter(Incident.status == status)
     if severity:
@@ -38,8 +38,8 @@ def list_incidents(
 
 
 @router.get("/stats/summary")
-def incidents_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    incidents = db.query(Incident).all()
+def incidents_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    incidents = filter_by_org(db.query(Incident), Incident, current_user).all()
     now = datetime.now(timezone.utc)
     open_count = sum(1 for i in incidents if i.status not in (IncidentStatus.CLOSED,))
     p1p2 = sum(1 for i in incidents if i.severity in ("p1", "p2") and i.status != IncidentStatus.CLOSED)
@@ -58,9 +58,9 @@ def incidents_summary(db: Session = Depends(get_db), _: User = Depends(get_curre
 
 @router.get("/{incident_id}", response_model=IncidentOut)
 def get_incident(incident_id: int, db: Session = Depends(get_db),
-                 _: User = Depends(get_current_user)):
+                 current_user: User = Depends(get_current_user)):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
-    if not inc:
+    if not inc or not check_org_access(inc.organization_id, current_user):
         raise HTTPException(404, "Incidente no encontrado")
     return inc
 
@@ -70,6 +70,7 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     inc = Incident(
         code=_next_code(db),
+        organization_id=current_user.organization_id,
         title=body.title,
         description=body.description,
         severity=body.severity,
@@ -99,7 +100,7 @@ def update_incident(incident_id: int, body: IncidentUpdate,
                     db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
-    if not inc:
+    if not inc or not check_org_access(inc.organization_id, current_user):
         raise HTTPException(404, "Incidente no encontrado")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(inc, field, value)
@@ -113,7 +114,7 @@ def update_incident(incident_id: int, body: IncidentUpdate,
 def delete_incident(incident_id: int, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
-    if not inc:
+    if not inc or not check_org_access(inc.organization_id, current_user):
         raise HTTPException(404, "Incidente no encontrado")
     log_action(db, current_user.id, "delete", "incident", str(incident_id),
                {"code": inc.code})

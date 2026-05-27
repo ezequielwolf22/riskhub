@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import AiDocument, AiDocumentCategory, AiDocumentStatus, User
-from app.security import get_current_user, require_role
+from app.security import check_org_access, filter_by_org, get_current_user, require_role
 from app.services.document_service import (
     delete_document, doc_path, process_document, save_document_file,
 )
@@ -70,9 +70,11 @@ def _doc_out(d: AiDocument) -> dict:
 @router.get("/")
 def list_documents(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    docs = db.query(AiDocument).order_by(AiDocument.created_at.desc()).all()
+    docs = filter_by_org(db.query(AiDocument), AiDocument, current_user).order_by(
+        AiDocument.created_at.desc()
+    ).all()
     return [_doc_out(d) for d in docs]
 
 
@@ -112,6 +114,7 @@ def upload_document(
         file_size=len(data),
         mime_type=mime,
         uploaded_by_id=current_user.id,
+        organization_id=current_user.organization_id,
     )
     db.add(doc)
     db.commit()
@@ -131,10 +134,10 @@ def upload_document(
 def remove_document(
     doc_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_role("analyst")),
+    current_user: User = Depends(require_role("analyst")),
 ):
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
-    if not doc:
+    if not doc or not check_org_access(doc.organization_id, current_user):
         raise HTTPException(404, "Documento no encontrado")
     delete_document(db, doc)
     return {"ok": True}

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Asset, ControlImplementation, Risk, Threat, User, Vulnerability
-from app.security import get_current_user
+from app.security import filter_by_org, get_current_user
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -19,39 +19,39 @@ def _ilike(column, q: str):
 def global_search(
     q: str = Query(..., min_length=2, max_length=100),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Busca en activos, riesgos, amenazas y vulnerabilidades."""
     term = q.strip()
 
-    # Activos
-    assets = db.query(Asset).filter(
+    # Activos (filtrados por org)
+    assets = filter_by_org(db.query(Asset), Asset, current_user).filter(
         Asset.name.ilike(f"%{term}%") |
         Asset.description.ilike(f"%{term}%") |
         Asset.category.ilike(f"%{term}%")
     ).limit(10).all()
 
-    # Riesgos (codigo, descripcion)
-    risks = db.query(Risk).filter(
+    # Riesgos (filtrados por org)
+    risks = filter_by_org(db.query(Risk), Risk, current_user).filter(
         Risk.code.ilike(f"%{term}%") |
         Risk.description.ilike(f"%{term}%") |
         Risk.consequence_description.ilike(f"%{term}%")
     ).limit(10).all()
 
-    # Amenazas
+    # Amenazas (catalogo global — sin filtro de org)
     threats = db.query(Threat).filter(
         Threat.name.ilike(f"%{term}%") |
         Threat.description.ilike(f"%{term}%")
     ).limit(10).all()
 
-    # Vulnerabilidades
+    # Vulnerabilidades (catalogo global — sin filtro de org)
     vulns = db.query(Vulnerability).filter(
         Vulnerability.name.ilike(f"%{term}%") |
         Vulnerability.description.ilike(f"%{term}%")
     ).limit(10).all()
 
-    # Controles implementados
-    controls = db.query(ControlImplementation).filter(
+    # Controles implementados (filtrados por org)
+    controls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).filter(
         ControlImplementation.name.ilike(f"%{term}%") |
         ControlImplementation.description.ilike(f"%{term}%")
     ).limit(6).all()

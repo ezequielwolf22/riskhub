@@ -32,6 +32,7 @@ const Routes = {
   cve: ViewCve,
   osint: ViewOsint,
   awareness: ViewAwareness,
+  organizations: ViewOrganizations,
 };
 
 function currentRoute() {

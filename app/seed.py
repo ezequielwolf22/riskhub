@@ -1,4 +1,4 @@
-"""Carga inicial de datos: admin, catalogos ISO 27005/27002, contexto."""
+"""Carga inicial de datos: admin, catalogos ISO 27005/27002, contexto, organizacion."""
 import json
 from pathlib import Path
 
@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import Base, SessionLocal, engine
 from app.models import (
-    Control, RiskContext, Threat, ThreatOrigin, User, UserRole, Vulnerability,
+    Control, Organization, RiskContext, Threat, ThreatOrigin, User, UserRole, Vulnerability,
 )
 from app.security import hash_password
 from app.services.risk_engine import (
@@ -23,24 +23,74 @@ def load_json(name: str):
         return json.load(f)
 
 
+def _extract_domain(email: str) -> str:
+    """Extrae el dominio del email (ej. 'user@example.com' -> 'example.com')."""
+    return email.split("@", 1)[-1].lower() if "@" in email else ""
+
+
+def seed_organization(db: Session) -> Organization:
+    """Crea la organizacion por defecto si no existe. Devuelve la org."""
+    org = db.query(Organization).first()
+    if org:
+        return org
+    domain = _extract_domain(settings.admin_email)
+    org = Organization(
+        name="Default Organization",
+        domain=domain,
+        plan="starter",
+        is_active=True,
+        max_users=50,
+    )
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
 def seed_admin(db: Session) -> None:
     if db.query(User).count() > 0:
+        # Asignar organizacion a usuarios existentes sin org
+        org = db.query(Organization).first()
+        if org:
+            db.query(User).filter(User.organization_id == None).update(  # noqa: E711
+                {"organization_id": org.id}
+            )
+            db.commit()
         return
+    org = seed_organization(db)
     admin = User(
         email=settings.admin_email,
         full_name="Administrator",
         hashed_password=hash_password(settings.admin_password),
         role=UserRole.ADMIN,
         is_active=True,
+        organization_id=org.id,
     )
     db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    # Vincular owner de la org al admin
+    org.owner_id = admin.id
     db.commit()
 
 
 def seed_context(db: Session) -> None:
-    if db.query(RiskContext).count() > 0:
+    org = db.query(Organization).first()
+    org_id = org.id if org else None
+    # Crear contexto para la org si no existe
+    q = db.query(RiskContext)
+    if org_id:
+        q = q.filter(RiskContext.organization_id == org_id)
+    if q.count() > 0:
+        # Asignar org a contextos existentes sin org
+        if org_id:
+            db.query(RiskContext).filter(RiskContext.organization_id == None).update(  # noqa: E711
+                {"organization_id": org_id}
+            )
+            db.commit()
         return
     ctx = RiskContext(
+        organization_id=org_id,
         organization_name="Organization",
         scope="Sistemas de informacion corporativos.",
         boundaries="Activos gestionados por el equipo de TI.",
@@ -134,7 +184,7 @@ def _ensure_doc_dir() -> None:
 
 
 def _migrate_columns() -> None:
-    """Agrega columnas nuevas a tablas existentes (SQLite no soporta ALTER TABLE con IF NOT EXISTS en todas las versiones)."""
+    """Agrega columnas nuevas a tablas existentes (SQLite ALTER TABLE sin IF NOT EXISTS)."""
     migrations = [
         # assets: valor monetario para FAIR
         ("ALTER TABLE assets ADD COLUMN monetary_value REAL", "assets", "monetary_value"),
@@ -153,6 +203,31 @@ def _migrate_columns() -> None:
         ("ALTER TABLE suppliers ADD COLUMN contract_ref VARCHAR(255)", "suppliers", "contract_ref"),
         # risks: dedup de notificaciones de revision periodica (v1.2)
         ("ALTER TABLE risks ADD COLUMN last_review_notified_at DATETIME", "risks", "last_review_notified_at"),
+        # v1.7.0 — organization_id en todas las tablas per-org
+        ("ALTER TABLE users ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "users", "organization_id"),
+        ("ALTER TABLE audit_log ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "audit_log", "organization_id"),
+        ("ALTER TABLE integration_configs ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "integration_configs", "organization_id"),
+        ("ALTER TABLE risk_context ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "risk_context", "organization_id"),
+        ("ALTER TABLE assets ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "assets", "organization_id"),
+        ("ALTER TABLE risks ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "risks", "organization_id"),
+        ("ALTER TABLE control_implementations ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "control_implementations", "organization_id"),
+        ("ALTER TABLE incidents ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "incidents", "organization_id"),
+        ("ALTER TABLE suppliers ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "suppliers", "organization_id"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "supplier_questionnaires", "organization_id"),
+        ("ALTER TABLE nonconformities ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "nonconformities", "organization_id"),
+        ("ALTER TABLE treatment_tasks ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "treatment_tasks", "organization_id"),
+        ("ALTER TABLE policies ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "policies", "organization_id"),
+        ("ALTER TABLE audit_programs ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "audit_programs", "organization_id"),
+        ("ALTER TABLE processing_activities ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "processing_activities", "organization_id"),
+        ("ALTER TABLE email_settings ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "email_settings", "organization_id"),
+        ("ALTER TABLE alert_rules ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "alert_rules", "organization_id"),
+        ("ALTER TABLE ai_config ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "ai_config", "organization_id"),
+        ("ALTER TABLE ai_documents ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "ai_documents", "organization_id"),
+        ("ALTER TABLE ai_call_logs ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "ai_call_logs", "organization_id"),
+        ("ALTER TABLE osint_scans ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "osint_scans", "organization_id"),
+        ("ALTER TABLE osint_identifiers ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "osint_identifiers", "organization_id"),
+        ("ALTER TABLE awareness_items ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "awareness_items", "organization_id"),
+        ("ALTER TABLE awareness_branding ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "awareness_branding", "organization_id"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
@@ -177,6 +252,7 @@ def init_db() -> None:
     _ensure_doc_dir()
     db = SessionLocal()
     try:
+        seed_organization(db)
         seed_admin(db)
         seed_context(db)
         seed_threats(db)

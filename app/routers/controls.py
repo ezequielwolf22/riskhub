@@ -14,7 +14,7 @@ from app.models import Control, ControlImplementation, User, risk_control_table
 from app.schemas import (
     ControlImplIn, ControlImplOut, ControlIn, ControlOut,
 )
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 catalog_router = APIRouter(prefix="/api/controls", tags=["controls"])
@@ -42,10 +42,10 @@ def list_controls(
 
 @catalog_router.get("/export-soa-csv")
 def export_soa_csv(db: Session = Depends(get_db),
-                   _: User = Depends(get_current_user)):
+                   current_user: User = Depends(get_current_user)):
     """Exporta el Statement of Applicability (SoA) como CSV."""
     controls = db.query(Control).order_by(Control.code).all()
-    impls = db.query(ControlImplementation).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     impl_by_ctrl = {}
     for i in impls:
         impl_by_ctrl.setdefault(i.control_id, []).append(i)
@@ -116,8 +116,8 @@ def _next_custom_code(db: Session) -> str:
 
 @impl_router.get("/", response_model=list[ControlImplOut])
 def list_impls(db: Session = Depends(get_db),
-               _: User = Depends(get_current_user)):
-    impls = db.query(ControlImplementation).order_by(
+               current_user: User = Depends(get_current_user)):
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).order_by(
         ControlImplementation.id.desc()).all()
 
     # Compute how many risks each control implementation mitigates
@@ -145,7 +145,7 @@ def create_impl(data: ControlImplIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     if not db.get(Control, data.control_id):
         raise HTTPException(400, "control_id no existe")
-    impl = ControlImplementation(**data.model_dump())
+    impl = ControlImplementation(organization_id=current_user.organization_id, **data.model_dump())
     db.add(impl)
     log_action(db, current_user.id, "create", "control_impl", None,
                {"control_id": data.control_id, "name": data.name, "status": str(data.status)})
@@ -158,7 +158,7 @@ def update_impl(impl_id: int, data: ControlImplIn,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     impl = db.get(ControlImplementation, impl_id)
-    if not impl:
+    if not impl or not check_org_access(impl.organization_id, current_user):
         raise HTTPException(404, "Implementacion no encontrada")
     for k, v in data.model_dump().items():
         setattr(impl, k, v)
@@ -172,7 +172,7 @@ def update_impl(impl_id: int, data: ControlImplIn,
 def delete_impl(impl_id: int, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     impl = db.get(ControlImplementation, impl_id)
-    if not impl:
+    if not impl or not check_org_access(impl.organization_id, current_user):
         raise HTTPException(404, "Implementacion no encontrada")
     name = impl.name
     db.delete(impl)
@@ -183,11 +183,11 @@ def delete_impl(impl_id: int, db: Session = Depends(get_db),
 @catalog_router.get("/stats/by-theme")
 def controls_by_theme(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Devuelve el resumen de implementaciones por tema ISO 27002 (para el dashboard)."""
     from app.models import ControlStatus
-    impls = db.query(ControlImplementation).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     theme_order = ["organizational", "people", "physical", "technological"]
     theme_labels = {
         "organizational": "Organizacional",

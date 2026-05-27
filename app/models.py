@@ -71,6 +71,23 @@ class ControlStatus(str, PyEnum):
     NOT_IMPLEMENTED = "not_implemented"
 
 
+# ---------- ORGANIZACIONES (multi-tenancy) ----------
+
+class Organization(Base):
+    """Tenant / cliente — unidad de aislamiento de datos."""
+    __tablename__ = "organizations"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    domain = Column(String(255), nullable=True, index=True)  # dominio email para auto-asignacion
+    plan = Column(String(64), default="starter")             # free/starter/pro/enterprise
+    is_active = Column(Boolean, default=True)
+    max_users = Column(Integer, default=10)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # owner_id se rellena despues de crear el primer admin
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    owner = relationship("User", foreign_keys="Organization.owner_id")
+
+
 # ---------- USUARIOS ----------
 
 class User(Base):
@@ -83,6 +100,8 @@ class User(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login_at = Column(DateTime, nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    organization = relationship("Organization", foreign_keys="User.organization_id")
 
 
 class AuditLog(Base):
@@ -90,6 +109,7 @@ class AuditLog(Base):
     id = Column(Integer, primary_key=True)
     timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     action = Column(String(64), nullable=False)
     entity_type = Column(String(64), nullable=False)
     entity_id = Column(String(64), nullable=True)
@@ -101,7 +121,8 @@ class IntegrationConfig(Base):
     """Configuracion de integraciones externas (credenciales cifradas)."""
     __tablename__ = "integration_configs"
     id = Column(Integer, primary_key=True)
-    name = Column(String(64), unique=True, nullable=False, index=True)  # ej: "sharepoint", "sap"
+    name = Column(String(64), nullable=False, index=True)  # ej: "sharepoint", "sap"
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     config_encrypted = Column(Text, nullable=True)   # JSON cifrado con Fernet
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -126,9 +147,10 @@ class FeatureFlag(Base):
 # ---------- CONTEXTO ----------
 
 class RiskContext(Base):
-    """ISO 27005 cl. 7 - Context establishment (single row)."""
+    """ISO 27005 cl. 7 - Context establishment (una fila por organizacion)."""
     __tablename__ = "risk_context"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     organization_name = Column(String(255), default="Organization")
     scope = Column(Text)
     boundaries = Column(Text)
@@ -154,6 +176,7 @@ class Asset(Base):
     """ISO 27005 8.2.2 + Annex B."""
     __tablename__ = "assets"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)  # ej. AST-0001
     name = Column(String(255), nullable=False)
     description = Column(Text)
@@ -243,6 +266,7 @@ class ControlImplementation(Base):
     """Implementacion concreta del control en la organizacion."""
     __tablename__ = "control_implementations"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     control_id = Column(Integer, ForeignKey("controls.id"), nullable=False)
     name = Column(String(255), nullable=False)    # nombre interno
     description = Column(Text)
@@ -291,6 +315,7 @@ class Risk(Base):
     __table_args__ = (UniqueConstraint("asset_id", "threat_id", name="uq_asset_threat"),)
 
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)  # RSK-0001
 
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
@@ -366,6 +391,7 @@ class EmailSettings(Base):
     """Configuracion SMTP para envio de alertas por correo."""
     __tablename__ = "email_settings"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     smtp_host = Column(String(255), default="")
     smtp_port = Column(Integer, default=587)
     smtp_user = Column(String(255), default="")
@@ -380,6 +406,7 @@ class AlertRule(Base):
     """Regla de alerta: cuando se cumple el criterio, envia email al destinatario."""
     __tablename__ = "alert_rules"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     # Tipos: risk_high, risk_critical, treatment_overdue, risk_no_treatment
     event_type = Column(String(64), nullable=False)
@@ -411,6 +438,7 @@ class Incident(Base):
     """Incidente de seguridad con flujo NIS2 Art. 23 (24h/72h/1 mes)."""
     __tablename__ = "incidents"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text)
@@ -448,6 +476,7 @@ class Supplier(Base):
     """Proveedor / tercero con evaluacion de riesgo de cadena de suministro."""
     __tablename__ = "suppliers"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
@@ -490,6 +519,7 @@ class NonConformity(Base):
     """No conformidad / accion correctiva — ISO 27001 cl. 10.1."""
     __tablename__ = "nonconformities"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text)
@@ -535,6 +565,7 @@ class TreatmentTask(Base):
     """Tarea de plan de tratamiento asociada a un riesgo (opcional)."""
     __tablename__ = "treatment_tasks"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)   # TSK-0001
     title = Column(String(255), nullable=False)
     description = Column(Text)
@@ -568,6 +599,7 @@ class Policy(Base):
     """Politica de seguridad de la informacion — ISO 27001 cl. 5.2."""
     __tablename__ = "policies"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)   # POL-0001
     title = Column(String(255), nullable=False)
     version = Column(String(32), default="1.0")
@@ -616,6 +648,7 @@ class AuditProgram(Base):
     """Programa de auditoria interna — ISO 27001 cl. 9.2."""
     __tablename__ = "audit_programs"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)   # AUD-0001
     title = Column(String(255), nullable=False)
     audit_type = Column(Enum(AuditType), default=AuditType.INTERNAL)
@@ -663,6 +696,7 @@ class SupplierQuestionnaire(Base):
     """Cuestionario de evaluacion de seguridad enviado al proveedor."""
     __tablename__ = "supplier_questionnaires"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)   # SEQ-0001
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
     title = Column(String(255), nullable=False)
@@ -706,6 +740,7 @@ class ProcessingActivity(Base):
     """Registro de actividades de tratamiento — GDPR Art. 30."""
     __tablename__ = "processing_activities"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)   # PAR-0001
     title = Column(String(255), nullable=False)
     purposes = Column(Text)                                  # finalidades del tratamiento
@@ -784,6 +819,7 @@ class AiConfig(Base):
     """Configuracion del agente IA — una fila por organizacion."""
     __tablename__ = "ai_config"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     api_key_encrypted = Column(Text, nullable=True)   # Fernet-encrypted
     model = Column(String(64), default="claude-opus-4-5")
     anonymization_level = Column(Enum(AiAnonymizationLevel), default=AiAnonymizationLevel.MEDIUM)
@@ -800,6 +836,7 @@ class AiDocument(Base):
     """Documento subido para alimentar el agente IA."""
     __tablename__ = "ai_documents"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     filename = Column(String(255), nullable=False)
     original_name = Column(String(255), nullable=False)
     category = Column(Enum(AiDocumentCategory), nullable=False)
@@ -832,6 +869,7 @@ class AiCallLog(Base):
     """Log de llamadas a la API de IA."""
     __tablename__ = "ai_call_logs"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     call_type = Column(String(64), nullable=False)   # risk_suggest|control_gap|chat
     prompt_tokens = Column(Integer, default=0)
@@ -890,6 +928,7 @@ class OSINTScan(Base):
     """Escaneo OSINT iniciado por un usuario."""
     __tablename__ = "osint_scans"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     scan_type = Column(Enum(OSINTScanType), nullable=False)
     target = Column(String(255), nullable=False)  # email, domain, URL, username
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -908,6 +947,7 @@ class OSINTIdentifier(Base):
     """Identificador OSINT monitorizado (email, username, etc.)."""
     __tablename__ = "osint_identifiers"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     identifier_type = Column(Enum(OSINTScanType), nullable=False)
     value = Column(String(255), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -975,6 +1015,7 @@ class AwarenessItem(Base):
     """Infografia de concienciacion generada por IA o editada manualmente."""
     __tablename__ = "awareness_items"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     template_type = Column(String(64), default="risk_alert")
     # risk_alert | best_practices | policy | threat | phishing
@@ -993,6 +1034,7 @@ class AwarenessBranding(Base):
     """Configuracion de marca para las infografias de awareness."""
     __tablename__ = "awareness_branding"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     primary_color = Column(String(7), default="#59008D")
     secondary_color = Column(String(7), default="#D65200")
     logo_filename = Column(String(255))   # archivo almacenado en /srv/data/branding/

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AuditLog, UserRole
+from app.models import AuditLog, User, UserRole
 from app.security import get_current_user
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -32,10 +32,20 @@ class AuditPage(BaseModel):
     items: List[AuditEntryOut]
 
 
-def _require_admin(current_user=Depends(get_current_user)):
+def _require_admin(current_user: User = Depends(get_current_user)):
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
         raise HTTPException(403, "Solo administradores pueden consultar el log de auditoria")
     return current_user
+
+
+def _filter_audit_by_org(q, current_user: User):
+    """Superadmin ve todos los logs; admin solo ve los de su organizacion."""
+    if current_user.role == UserRole.SUPERADMIN:
+        return q
+    return q.join(User, AuditLog.user_id == User.id, isouter=True).filter(
+        (User.organization_id == current_user.organization_id) |
+        (AuditLog.user_id.is_(None))
+    )
 
 
 @router.get("/", response_model=AuditPage)
@@ -48,10 +58,10 @@ def list_audit(
     date_from: Optional[str] = Query(None, description="ISO date string YYYY-MM-DD"),
     date_to: Optional[str] = Query(None, description="ISO date string YYYY-MM-DD"),
     db: Session = Depends(get_db),
-    _: object = Depends(_require_admin),
+    current_user: User = Depends(_require_admin),
 ):
     from datetime import timezone, timedelta
-    q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
+    q = _filter_audit_by_org(db.query(AuditLog), current_user).order_by(AuditLog.timestamp.desc())
     if entity_type:
         q = q.filter(AuditLog.entity_type == entity_type)
     if entity_id:
@@ -126,20 +136,24 @@ def entity_history(
 @router.get("/entity-types")
 def entity_types(
     db: Session = Depends(get_db),
-    _: object = Depends(_require_admin),
+    current_user: User = Depends(_require_admin),
 ):
     """Devuelve los tipos de entidad distintos registrados en el log."""
-    types = db.query(AuditLog.entity_type).distinct().all()
+    types = _filter_audit_by_org(
+        db.query(AuditLog.entity_type).distinct(), current_user
+    ).all()
     return sorted([t[0] for t in types])
 
 
 @router.get("/actions")
 def actions(
     db: Session = Depends(get_db),
-    _: object = Depends(_require_admin),
+    current_user: User = Depends(_require_admin),
 ):
     """Devuelve las acciones distintas registradas en el log."""
-    acts = db.query(AuditLog.action).distinct().all()
+    acts = _filter_audit_by_org(
+        db.query(AuditLog.action).distinct(), current_user
+    ).all()
     return sorted([a[0] for a in acts])
 
 
@@ -150,11 +164,11 @@ def export_csv(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    _: object = Depends(_require_admin),
+    current_user: User = Depends(_require_admin),
 ):
     """Exporta el log completo (o filtrado) a CSV."""
     from datetime import timezone, timedelta
-    q = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
+    q = _filter_audit_by_org(db.query(AuditLog), current_user).order_by(AuditLog.timestamp.desc())
     if entity_type:
         q = q.filter(AuditLog.entity_type == entity_type)
     if action:

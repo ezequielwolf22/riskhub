@@ -4,18 +4,28 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Risk, User
+from app.models import Organization, Risk, User, UserRole
 from app.schemas import UserIn, UserOut, UserUpdate
-from app.security import get_current_user, hash_password, require_admin
+from app.security import filter_by_org, get_current_user, hash_password, require_admin
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=list[UserOut])
-def list_users(db: Session = Depends(get_db)):
-    users = db.query(User).order_by(User.created_at.desc()).all()
-    counts_q = db.query(Risk.owner_id, func.count(Risk.id)).group_by(Risk.owner_id).all()
+def list_users(db: Session = Depends(get_db),
+               current_user: User = Depends(get_current_user)):
+    # Superadmin ve todos los usuarios; admin ve solo los de su org
+    if current_user.role == UserRole.SUPERADMIN:
+        users = db.query(User).order_by(User.created_at.desc()).all()
+    else:
+        users = db.query(User).filter(
+            User.organization_id == current_user.organization_id
+        ).order_by(User.created_at.desc()).all()
+    user_ids = [u.id for u in users]
+    counts_q = db.query(Risk.owner_id, func.count(Risk.id)).filter(
+        Risk.owner_id.in_(user_ids)
+    ).group_by(Risk.owner_id).all()
     risk_counts = {uid: cnt for uid, cnt in counts_q if uid}
     result = []
     for u in users:
@@ -37,9 +47,21 @@ def create_user(data: UserIn, db: Session = Depends(get_db),
             400,
             f"La contrasena debe tener al menos {_MIN_PASSWORD_LEN} caracteres",
         )
+    # Determinar org: explicit > auto-assign por dominio > org del admin que crea
+    org_id = data.organization_id
+    if not org_id:
+        if "@" in data.email:
+            domain = data.email.split("@", 1)[-1].lower()
+            org_by_domain = db.query(Organization).filter(
+                Organization.domain == domain, Organization.is_active.is_(True)
+            ).first()
+            org_id = org_by_domain.id if org_by_domain else None
+    if not org_id and current_user.role != UserRole.SUPERADMIN:
+        org_id = current_user.organization_id
     u = User(
         email=data.email, full_name=data.full_name, role=data.role,
         hashed_password=hash_password(data.password), is_active=True,
+        organization_id=org_id,
     )
     db.add(u)
     log_action(db, current_user.id, "create", "user", None,

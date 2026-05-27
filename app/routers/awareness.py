@@ -29,7 +29,7 @@ from app.models import (
     AiConfig, AwarenessItem, AwarenessBranding, Risk, RiskStatus, User,
 )
 from app.routers.ai_config import resolve_api_key
-from app.security import get_current_user, require_admin, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
 from app.services import awareness_service as svc
 
@@ -62,9 +62,9 @@ _MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
 @router.get("/branding")
 def get_branding(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    brand = db.query(AwarenessBranding).first()
+    brand = filter_by_org(db.query(AwarenessBranding), AwarenessBranding, current_user).first()
     if not brand:
         return {
             "primary_color": "#59008D",
@@ -100,9 +100,9 @@ def save_branding(
     if not _valid_hex(body.secondary_color):
         raise HTTPException(400, "secondary_color debe ser un color hex valido (#RRGGBB)")
 
-    brand = db.query(AwarenessBranding).first()
+    brand = filter_by_org(db.query(AwarenessBranding), AwarenessBranding, current_user).first()
     if not brand:
-        brand = AwarenessBranding()
+        brand = AwarenessBranding(organization_id=current_user.organization_id)
         db.add(brand)
     brand.primary_color = body.primary_color
     brand.secondary_color = body.secondary_color
@@ -130,9 +130,9 @@ def upload_logo(
     fname = f"logo_{uuid.uuid4().hex}.{mime.split('/')[-1]}"
     (_logo_root() / fname).write_bytes(data)
 
-    brand = db.query(AwarenessBranding).first()
+    brand = filter_by_org(db.query(AwarenessBranding), AwarenessBranding, current_user).first()
     if not brand:
-        brand = AwarenessBranding()
+        brand = AwarenessBranding(organization_id=current_user.organization_id)
         db.add(brand)
     # Eliminar logo anterior
     if brand.logo_filename:
@@ -152,7 +152,7 @@ def delete_logo(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    brand = db.query(AwarenessBranding).first()
+    brand = filter_by_org(db.query(AwarenessBranding), AwarenessBranding, current_user).first()
     if brand and brand.logo_filename:
         p = _logo_root() / brand.logo_filename
         if p.exists():
@@ -167,10 +167,10 @@ def delete_logo(
 @router.get("/branding/logo")
 def get_logo(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Devuelve el logo como base64 para embeber en el frontend."""
-    brand = db.query(AwarenessBranding).first()
+    brand = filter_by_org(db.query(AwarenessBranding), AwarenessBranding, current_user).first()
     if not brand or not brand.logo_filename:
         raise HTTPException(404, "No hay logo configurado")
     p = _logo_root() / brand.logo_filename
@@ -207,9 +207,10 @@ def generate_content(
 
     model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5"
 
-    # Contexto de riesgos activos (top 10 por nivel residual)
+    # Contexto de riesgos activos (top 10 por nivel residual, filtrado por org)
+    from app.security import filter_by_org as _fbo
     risks = (
-        db.query(Risk)
+        _fbo(db.query(Risk), Risk, current_user)
         .filter(Risk.status != RiskStatus.CLOSED)
         .order_by(Risk.residual_level.desc())
         .limit(10)
@@ -275,9 +276,9 @@ def _item_out(item: AwarenessItem) -> dict:
 def list_items(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    q = db.query(AwarenessItem)
+    q = filter_by_org(db.query(AwarenessItem), AwarenessItem, current_user)
     if status:
         q = q.filter(AwarenessItem.status == status)
     items = q.order_by(AwarenessItem.updated_at.desc()).all()
@@ -305,6 +306,7 @@ def create_item(
         status=body.status,
         tags=body.tags or [],
         created_by_id=current_user.id,
+        organization_id=current_user.organization_id,
     )
     db.add(item)
     db.commit()
@@ -316,9 +318,12 @@ def create_item(
 def get_item(
     item_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    item = db.query(AwarenessItem).filter_by(id=item_id).first()
+    item = filter_by_org(
+        db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
+        AwarenessItem, current_user
+    ).first()
     if not item:
         raise HTTPException(404, "Infografia no encontrada")
     return _item_out(item)
@@ -331,7 +336,10 @@ def update_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
-    item = db.query(AwarenessItem).filter_by(id=item_id).first()
+    item = filter_by_org(
+        db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
+        AwarenessItem, current_user
+    ).first()
     if not item:
         raise HTTPException(404, "Infografia no encontrada")
     item.title = body.title[:255]
@@ -351,7 +359,10 @@ def delete_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
-    item = db.query(AwarenessItem).filter_by(id=item_id).first()
+    item = filter_by_org(
+        db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
+        AwarenessItem, current_user
+    ).first()
     if not item:
         raise HTTPException(404, "Infografia no encontrada")
     log_action(db, current_user.id, "delete", "awareness", item_id, {"title": item.title})
@@ -368,16 +379,19 @@ def delete_item(
 def export_pdf(
     item_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    item = db.query(AwarenessItem).filter_by(id=item_id).first()
+    item = filter_by_org(
+        db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
+        AwarenessItem, current_user
+    ).first()
     if not item:
         raise HTTPException(404, "Infografia no encontrada")
 
     content = json.loads(item.content_json) if item.content_json else {}
 
-    # Cargar branding
-    brand_row = db.query(AwarenessBranding).first()
+    # Cargar branding de la misma org
+    brand_row = filter_by_org(db.query(AwarenessBranding), AwarenessBranding, current_user).first()
     branding: dict = {}
     if brand_row:
         branding = {

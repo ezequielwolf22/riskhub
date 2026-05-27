@@ -14,7 +14,7 @@ from app.models import (
     Threat, TreatmentOption, User, Vulnerability, risk_control_table,
 )
 from app.schemas import RiskIn, RiskOut, RiskUpdate
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 from app.services.risk_engine import calc_level, calc_residual
 
@@ -46,7 +46,7 @@ def _recalc(db: Session, risk: Risk) -> None:
 @router.get("/", response_model=list[RiskOut])
 def list_risks(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     asset_id: Optional[int] = None,
     threat_id: Optional[int] = None,
     vulnerability_id: Optional[int] = None,
@@ -57,7 +57,7 @@ def list_risks(
     treatment: Optional[str] = None,
 ):
     now = datetime.now(timezone.utc)
-    q = db.query(Risk)
+    q = filter_by_org(db.query(Risk), Risk, current_user)
     if asset_id:
         q = q.filter(Risk.asset_id == asset_id)
     if threat_id:
@@ -91,9 +91,9 @@ def list_risks(
 
 @router.get("/{risk_id}", response_model=RiskOut)
 def get_risk(risk_id: int, db: Session = Depends(get_db),
-             _: User = Depends(get_current_user)):
+             current_user: User = Depends(get_current_user)):
     r = db.get(Risk, risk_id)
-    if not r:
+    if not r or not check_org_access(r.organization_id, current_user):
         raise HTTPException(404, "Riesgo no encontrado")
     return r
 
@@ -101,7 +101,8 @@ def get_risk(risk_id: int, db: Session = Depends(get_db),
 @router.post("/", response_model=RiskOut, status_code=201)
 def create_risk(data: RiskIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
-    if not db.get(Asset, data.asset_id):
+    asset = db.get(Asset, data.asset_id)
+    if not asset or not check_org_access(asset.organization_id, current_user):
         raise HTTPException(400, "asset_id no existe")
     if not db.get(Threat, data.threat_id):
         raise HTTPException(400, "threat_id no existe")
@@ -112,6 +113,7 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
 
     r = Risk(
         code=_next_code(db),
+        organization_id=current_user.organization_id,
         asset_id=data.asset_id, threat_id=data.threat_id,
         description=data.description,
         consequence_description=data.consequence_description,
@@ -141,7 +143,7 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
 def update_risk(risk_id: int, data: RiskUpdate, db: Session = Depends(get_db),
                 user: User = Depends(require_analyst)):
     r = db.get(Risk, risk_id)
-    if not r:
+    if not r or not check_org_access(r.organization_id, user):
         raise HTTPException(404, "Riesgo no encontrado")
 
     update_data = data.model_dump(exclude_unset=True)
@@ -172,7 +174,7 @@ def update_risk(risk_id: int, data: RiskUpdate, db: Session = Depends(get_db),
 def delete_risk(risk_id: int, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     r = db.get(Risk, risk_id)
-    if not r:
+    if not r or not check_org_access(r.organization_id, current_user):
         raise HTTPException(404, "Riesgo no encontrado")
     code = r.code
     db.delete(r)
@@ -183,10 +185,12 @@ def delete_risk(risk_id: int, db: Session = Depends(get_db),
 @router.get("/export/csv")
 def export_risks_csv(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Exporta todos los riesgos como CSV."""
-    risks = db.query(Risk).order_by(Risk.residual_level.desc(), Risk.code).all()
+    risks = filter_by_org(db.query(Risk), Risk, current_user).order_by(
+        Risk.residual_level.desc(), Risk.code
+    ).all()
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow([

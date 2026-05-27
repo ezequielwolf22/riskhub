@@ -11,7 +11,7 @@ from app.schemas import (
     DPIAIn, DPIAOut, DPIAUpdate,
     ProcessingActivityIn, ProcessingActivityOut, ProcessingActivityUpdate,
 )
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/gdpr", tags=["gdpr"])
@@ -32,11 +32,11 @@ def _next_dpia_code(db: Session) -> str:
 @router.get("/activities/", response_model=list[ProcessingActivityOut])
 def list_activities(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     requires_dpia: Optional[bool] = None,
     q: Optional[str] = None,
 ):
-    query = db.query(ProcessingActivity)
+    query = filter_by_org(db.query(ProcessingActivity), ProcessingActivity, current_user)
     if requires_dpia is not None:
         query = query.filter(ProcessingActivity.requires_dpia == requires_dpia)
     if q:
@@ -45,9 +45,10 @@ def list_activities(
 
 
 @router.get("/stats/summary")
-def gdpr_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    activities = db.query(ProcessingActivity).all()
-    dpias = db.query(DPIA).all()
+def gdpr_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    activities = filter_by_org(db.query(ProcessingActivity), ProcessingActivity, current_user).all()
+    activity_ids = [a.id for a in activities]
+    dpias = db.query(DPIA).filter(DPIA.activity_id.in_(activity_ids)).all() if activity_ids else []
     return {
         "total_activities": len(activities),
         "requires_dpia": sum(1 for a in activities if a.requires_dpia),
@@ -59,9 +60,9 @@ def gdpr_summary(db: Session = Depends(get_db), _: User = Depends(get_current_us
 
 @router.get("/activities/{activity_id}", response_model=ProcessingActivityOut)
 def get_activity(activity_id: int, db: Session = Depends(get_db),
-                 _: User = Depends(get_current_user)):
+                 current_user: User = Depends(get_current_user)):
     a = db.query(ProcessingActivity).filter(ProcessingActivity.id == activity_id).first()
-    if not a:
+    if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Actividad de tratamiento no encontrada")
     return a
 
@@ -71,6 +72,7 @@ def create_activity(body: ProcessingActivityIn, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     a = ProcessingActivity(
         code=_next_pa_code(db),
+        organization_id=current_user.organization_id,
         title=body.title,
         purposes=body.purposes,
         legal_basis=body.legal_basis,
@@ -98,7 +100,7 @@ def update_activity(activity_id: int, body: ProcessingActivityUpdate,
                     db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     a = db.query(ProcessingActivity).filter(ProcessingActivity.id == activity_id).first()
-    if not a:
+    if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Actividad de tratamiento no encontrada")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(a, field, value)
@@ -112,7 +114,7 @@ def update_activity(activity_id: int, body: ProcessingActivityUpdate,
 def delete_activity(activity_id: int, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     a = db.query(ProcessingActivity).filter(ProcessingActivity.id == activity_id).first()
-    if not a:
+    if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Actividad de tratamiento no encontrada")
     db.delete(a)
     db.commit()
@@ -121,9 +123,12 @@ def delete_activity(activity_id: int, db: Session = Depends(get_db),
 # ---------- DPIAs ----------
 
 @router.get("/dpias/", response_model=list[DPIAOut])
-def list_dpias(db: Session = Depends(get_db), _: User = Depends(get_current_user),
+def list_dpias(db: Session = Depends(get_db), current_user: User = Depends(get_current_user),
                activity_id: Optional[int] = None):
-    q = db.query(DPIA)
+    # DPIAs son sub-recursos de ProcessingActivity — filtrar via JOIN de org
+    activities = filter_by_org(db.query(ProcessingActivity), ProcessingActivity, current_user).all()
+    act_ids = [a.id for a in activities]
+    q = db.query(DPIA).filter(DPIA.activity_id.in_(act_ids)) if act_ids else db.query(DPIA).filter(DPIA.id == -1)
     if activity_id:
         q = q.filter(DPIA.activity_id == activity_id)
     return q.order_by(DPIA.created_at.desc()).all()
@@ -131,9 +136,13 @@ def list_dpias(db: Session = Depends(get_db), _: User = Depends(get_current_user
 
 @router.get("/dpias/{dpia_id}", response_model=DPIAOut)
 def get_dpia(dpia_id: int, db: Session = Depends(get_db),
-             _: User = Depends(get_current_user)):
+             current_user: User = Depends(get_current_user)):
     d = db.query(DPIA).filter(DPIA.id == dpia_id).first()
     if not d:
+        raise HTTPException(404, "DPIA no encontrado")
+    # Verificar acceso via actividad padre
+    activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == d.activity_id).first()
+    if not activity or not check_org_access(activity.organization_id, current_user):
         raise HTTPException(404, "DPIA no encontrado")
     return d
 

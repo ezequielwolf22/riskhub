@@ -31,12 +31,43 @@ class TokenOut(BaseModel):
     user: "UserOut"
 
 
+# ---------- ORGANIZATIONS ----------
+class OrganizationIn(BaseModel):
+    name: str
+    domain: Optional[str] = None
+    plan: str = "starter"
+    is_active: bool = True
+    max_users: int = 10
+
+
+class OrganizationUpdate(BaseModel):
+    name: Optional[str] = None
+    domain: Optional[str] = None
+    plan: Optional[str] = None
+    is_active: Optional[bool] = None
+    max_users: Optional[int] = None
+
+
+class OrganizationOut(ORMBase):
+    id: int
+    name: str
+    domain: Optional[str] = None
+    plan: str
+    is_active: bool
+    max_users: int
+    created_at: datetime
+    owner_id: Optional[int] = None
+    user_count: int = 0
+    token_usage: int = 0
+
+
 # ---------- USERS ----------
 class UserIn(BaseModel):
     email: EmailStr
     full_name: str
     password: str = Field(min_length=8)
     role: UserRole = UserRole.VIEWER
+    organization_id: Optional[int] = None
 
 
 class UserUpdate(BaseModel):
@@ -44,6 +75,7 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    organization_id: Optional[int] = None
 
 
 class UserOut(ORMBase):
@@ -55,6 +87,7 @@ class UserOut(ORMBase):
     created_at: datetime
     last_login_at: Optional[datetime] = None
     risk_count: int = 0
+    organization_id: Optional[int] = None
 
 
 # ---------- CONTEXT ----------

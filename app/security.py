@@ -84,3 +84,21 @@ def require_role(*roles: UserRole):
 require_superadmin = require_role(UserRole.SUPERADMIN)
 require_admin = require_role(UserRole.ADMIN)
 require_analyst = require_role(UserRole.ANALYST, UserRole.ADMIN)
+
+
+def filter_by_org(query, model, user: User):
+    """Aplica filtro de organization_id a una query ORM.
+
+    Superadmin ve datos de todos los tenants.
+    El resto solo ve datos de su propia organizacion.
+    """
+    if user.role == UserRole.SUPERADMIN:
+        return query
+    return query.filter(model.organization_id == user.organization_id)
+
+
+def check_org_access(record_org_id, user: User) -> bool:
+    """Devuelve True si el usuario tiene acceso al registro dado su organization_id."""
+    if user.role == UserRole.SUPERADMIN:
+        return True
+    return record_org_id == user.organization_id

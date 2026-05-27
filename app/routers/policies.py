@@ -12,7 +12,7 @@ from app.database import get_db
 from app.models import AiConfig, Policy, PolicyStatus, User
 from app.routers.documents import MAX_SIZE_BYTES, _infer_mime, _validate_magic
 from app.schemas import PolicyIn, PolicyOut, PolicyUpdate
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 from app.services.document_service import extract_text
 from app.routers.ai_config import resolve_api_key
@@ -47,12 +47,12 @@ def _next_code(db: Session) -> str:
 @router.get("/", response_model=list[PolicyOut])
 def list_policies(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     status: Optional[PolicyStatus] = None,
     category: Optional[str] = None,
     q: Optional[str] = None,
 ):
-    query = db.query(Policy)
+    query = filter_by_org(db.query(Policy), Policy, current_user)
     if status:
         query = query.filter(Policy.status == status)
     if category:
@@ -63,8 +63,8 @@ def list_policies(
 
 
 @router.get("/stats/summary")
-def policies_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    policies = db.query(Policy).all()
+def policies_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    policies = filter_by_org(db.query(Policy), Policy, current_user).all()
     now = datetime.now(timezone.utc)
     overdue_review = sum(
         1 for p in policies
@@ -81,9 +81,9 @@ def policies_summary(db: Session = Depends(get_db), _: User = Depends(get_curren
 
 @router.get("/{policy_id}", response_model=PolicyOut)
 def get_policy(policy_id: int, db: Session = Depends(get_db),
-               _: User = Depends(get_current_user)):
+               current_user: User = Depends(get_current_user)):
     p = db.query(Policy).filter(Policy.id == policy_id).first()
-    if not p:
+    if not p or not check_org_access(p.organization_id, current_user):
         raise HTTPException(404, "Politica no encontrada")
     return p
 
@@ -93,6 +93,7 @@ def create_policy(body: PolicyIn, db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
     p = Policy(
         code=_next_code(db),
+        organization_id=current_user.organization_id,
         title=body.title,
         version=body.version,
         category=body.category,
@@ -115,7 +116,7 @@ def update_policy(policy_id: int, body: PolicyUpdate,
                   db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
     p = db.query(Policy).filter(Policy.id == policy_id).first()
-    if not p:
+    if not p or not check_org_access(p.organization_id, current_user):
         raise HTTPException(404, "Politica no encontrada")
     update_data = body.model_dump(exclude_none=True)
     # Auto-stamp approved_at when approving
@@ -134,7 +135,7 @@ def update_policy(policy_id: int, body: PolicyUpdate,
 def delete_policy(policy_id: int, db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
     p = db.query(Policy).filter(Policy.id == policy_id).first()
-    if not p:
+    if not p or not check_org_access(p.organization_id, current_user):
         raise HTTPException(404, "Politica no encontrada")
     log_action(db, current_user.id, "delete", "policy", str(policy_id), {"title": p.title})
     db.delete(p)

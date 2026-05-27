@@ -95,10 +95,14 @@ class UserBasic(BaseModel):
 @router.get("/users", response_model=list[UserBasic])
 def list_users_basic(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """Lista simplificada de usuarios activos — accesible a cualquier usuario autenticado."""
-    users = db.query(User).filter(User.is_active.is_(True)).order_by(User.full_name).all()
+    """Lista simplificada de usuarios activos en la misma organizacion."""
+    from app.models import UserRole as _Role
+    q = db.query(User).filter(User.is_active.is_(True))
+    if current_user.role != _Role.SUPERADMIN:
+        q = q.filter(User.organization_id == current_user.organization_id)
+    users = q.order_by(User.full_name).all()
     return [UserBasic(id=u.id, email=u.email, full_name=u.full_name or u.email) for u in users]
 
 

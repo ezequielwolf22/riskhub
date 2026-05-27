@@ -21,7 +21,7 @@ from app.models import (
     Policy, PolicyStatus, ProcessingActivity, Risk, RiskContext, RiskStatus,
     TreatmentTask, TaskStatus, User,
 )
-from app.security import get_current_user
+from app.security import filter_by_org, get_current_user
 from app.services import report_ai_service
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -84,7 +84,7 @@ def _pdf_response(elements, filename: str):
 
 @router.get("/risk-register")
 def risk_register(db: Session = Depends(get_db),
-                  _: User = Depends(get_current_user)):
+                  current_user: User = Depends(get_current_user)):
     """Risk Register (ISO 27005)."""
     s = _styles()
     el = []
@@ -92,7 +92,7 @@ def risk_register(db: Session = Depends(get_db),
     el.append(Paragraph("ISO/IEC 27005:2018", s["SubBrand"]))
     el.append(Spacer(1, 6))
 
-    ctx = db.query(RiskContext).first()
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     if ctx:
         el.append(Paragraph(f"<b>Organizacion:</b> {ctx.organization_name or '-'}", s["BodyBrand"]))
         el.append(Paragraph(f"<b>Alcance:</b> {ctx.scope or '-'}", s["BodyBrand"]))
@@ -100,7 +100,7 @@ def risk_register(db: Session = Depends(get_db),
                             s["BodyBrand"]))
         el.append(Spacer(1, 12))
 
-    risks = db.query(Risk).order_by(Risk.residual_level.desc()).all()
+    risks = filter_by_org(db.query(Risk), Risk, current_user).order_by(Risk.residual_level.desc()).all()
     data = [["Codigo", "Activo", "Amenaza", "Inh.", "Res.", "Estado", "Tratamiento", "Propietario"]]
     for r in risks:
         owner_name = r.owner.full_name if r.owner else "-"
@@ -190,7 +190,7 @@ def risk_register(db: Session = Depends(get_db),
 
 @router.get("/soa")
 def statement_of_applicability(db: Session = Depends(get_db),
-                               _: User = Depends(get_current_user)):
+                               current_user: User = Depends(get_current_user)):
     """Statement of Applicability ISO 27001/27002."""
     s = _styles()
     el = []
@@ -198,7 +198,7 @@ def statement_of_applicability(db: Session = Depends(get_db),
     el.append(Paragraph("ISO/IEC 27001 - ISO/IEC 27002:2022", s["SubBrand"]))
     el.append(Spacer(1, 12))
 
-    impls = db.query(ControlImplementation).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     by_control = {}
     for imp in impls:
         by_control.setdefault(imp.control_id, []).append(imp)
@@ -268,7 +268,7 @@ def statement_of_applicability(db: Session = Depends(get_db),
 
 @router.get("/risk-register-excel")
 def risk_register_excel(db: Session = Depends(get_db),
-                        _: User = Depends(get_current_user)):
+                        current_user: User = Depends(get_current_user)):
     """Exporta el Risk Register completo a Excel (.xlsx)."""
     import openpyxl
     from openpyxl.styles import (
@@ -303,7 +303,7 @@ def risk_register_excel(db: Session = Depends(get_db),
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         cell.border = border
 
-    risks = db.query(Risk).order_by(Risk.residual_level.desc()).all()
+    risks = filter_by_org(db.query(Risk), Risk, current_user).order_by(Risk.residual_level.desc()).all()
     for i, r in enumerate(risks, 2):
         row = [
             r.code,
@@ -356,7 +356,7 @@ def risk_register_excel(db: Session = Depends(get_db),
         c.border = border
         c.alignment = Alignment(horizontal="center")
 
-    assets = db.query(Asset).order_by(Asset.code).all()
+    assets = filter_by_org(db.query(Asset), Asset, current_user).order_by(Asset.code).all()
     for i, a in enumerate(assets, 2):
         ws2.append([
             a.code, a.name,
@@ -382,7 +382,7 @@ def risk_register_excel(db: Session = Depends(get_db),
         c.border = border
         c.alignment = Alignment(horizontal="center")
 
-    impls = db.query(ControlImplementation).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     for i, imp in enumerate(impls, 2):
         ws3.append([
             imp.control.code if imp.control else "-",
@@ -400,7 +400,7 @@ def risk_register_excel(db: Session = Depends(get_db),
 
     # ---- Hoja 4: Resumen ----
     ws4 = wb.create_sheet("Resumen")
-    ctx = db.query(RiskContext).first()
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     stat_fill = PatternFill("solid", fgColor="EDE9FE")
     rows_summary = [
         ("Organizacion", ctx.organization_name if ctx else "-"),
@@ -482,14 +482,14 @@ def _kpi_table(data_rows: list[tuple], s) -> "Table":
 @router.get("/sgsi-status")
 def sgsi_status_report(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Informe del Estado del SGSI — resumen multi-modulo sin IA. Descarga instantanea."""
     from datetime import timezone
     s = _styles()
     el = []
 
-    ctx = db.query(RiskContext).first()
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     org = ctx.organization_name if ctx else "Organizacion"
     now = datetime.now(timezone.utc)
 
@@ -506,7 +506,7 @@ def sgsi_status_report(
     el.append(Spacer(1, 12))
 
     # --- Seccion 1: Riesgos ---
-    risks = db.query(Risk).all()
+    risks = filter_by_org(db.query(Risk), Risk, current_user).all()
     total_r = len(risks)
     high_r = sum(1 for r in risks if (r.residual_level or 0) >= 5)
     medium_r = sum(1 for r in risks if 3 <= (r.residual_level or 0) < 5)
@@ -561,7 +561,7 @@ def sgsi_status_report(
 
     # --- Seccion 2: Controles ---
     el.append(Paragraph("2. Controles de Seguridad ISO 27002:2022", s["H2Brand"]))
-    impls = db.query(ControlImplementation).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     total_impl = len(impls)
     impl_done = sum(1 for i in impls if i.status and i.status.value == "implemented")
     impl_partial = sum(1 for i in impls if i.status and i.status.value == "partial")
@@ -584,7 +584,7 @@ def sgsi_status_report(
 
     # --- Seccion 3: Incidentes ---
     el.append(Paragraph("3. Incidentes de Seguridad (NIS2)", s["H2Brand"]))
-    incidents = db.query(Incident).all()
+    incidents = filter_by_org(db.query(Incident), Incident, current_user).all()
     total_inc = len(incidents)
     open_inc = sum(1 for i in incidents if i.status != IncidentStatus.CLOSED)
     p1p2 = sum(1 for i in incidents if i.severity in ("p1", "p2") and i.status != IncidentStatus.CLOSED)
@@ -603,7 +603,7 @@ def sgsi_status_report(
 
     # --- Seccion 4: Tareas de tratamiento ---
     el.append(Paragraph("4. Tareas de Tratamiento", s["H2Brand"]))
-    tasks = db.query(TreatmentTask).all()
+    tasks = filter_by_org(db.query(TreatmentTask), TreatmentTask, current_user).all()
     total_t = len(tasks)
     done_t = sum(1 for t in tasks if t.status == TaskStatus.DONE)
     inprog_t = sum(1 for t in tasks if t.status == TaskStatus.IN_PROGRESS)
@@ -624,7 +624,7 @@ def sgsi_status_report(
 
     # --- Seccion 5: Politicas ---
     el.append(Paragraph("5. Politicas de Seguridad (ISO 27001 cl. 5.2)", s["H2Brand"]))
-    policies = db.query(Policy).all()
+    policies = filter_by_org(db.query(Policy), Policy, current_user).all()
     total_pol = len(policies)
     pub_pol = sum(1 for p in policies if p.status == PolicyStatus.PUBLISHED)
     rev_pol = sum(1 for p in policies if p.status == PolicyStatus.REVIEW)
@@ -645,8 +645,9 @@ def sgsi_status_report(
 
     # --- Seccion 6: RGPD ---
     el.append(Paragraph("6. RGPD / Privacidad de Datos", s["H2Brand"]))
-    activities = db.query(ProcessingActivity).all()
-    dpias = db.query(DPIA).all()
+    activities = filter_by_org(db.query(ProcessingActivity), ProcessingActivity, current_user).all()
+    act_ids = [a.id for a in activities]
+    dpias = db.query(DPIA).filter(DPIA.activity_id.in_(act_ids)).all() if act_ids else []
     total_act = len(activities)
     req_dpia = sum(1 for a in activities if a.requires_dpia)
     eu_transfer = sum(1 for a in activities if a.transfers_outside_eu)

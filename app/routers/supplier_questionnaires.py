@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Supplier, SupplierQuestionnaire, User
 from app.schemas import SupplierQuestionnaireCreate, SupplierQuestionnaireOut
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/supplier-questionnaires", tags=["supplier-questionnaires"])
@@ -45,10 +45,10 @@ def _calculate_score(answers: dict) -> int:
 @router.get("/", response_model=list[SupplierQuestionnaireOut])
 def list_questionnaires(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     supplier_id: Optional[int] = None,
 ):
-    q = db.query(SupplierQuestionnaire)
+    q = filter_by_org(db.query(SupplierQuestionnaire), SupplierQuestionnaire, current_user)
     if supplier_id:
         q = q.filter(SupplierQuestionnaire.supplier_id == supplier_id)
     return q.order_by(SupplierQuestionnaire.created_at.desc()).all()
@@ -56,8 +56,11 @@ def list_questionnaires(
 
 @router.get("/{qid}", response_model=SupplierQuestionnaireOut)
 def get_questionnaire(qid: int, db: Session = Depends(get_db),
-                      _: User = Depends(get_current_user)):
-    q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid).first()
+                      current_user: User = Depends(get_current_user)):
+    q = filter_by_org(
+        db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
+        SupplierQuestionnaire, current_user
+    ).first()
     if not q:
         raise HTTPException(404, "Cuestionario no encontrado")
     return q
@@ -67,7 +70,7 @@ def get_questionnaire(qid: int, db: Session = Depends(get_db),
 def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depends(get_db),
                          current_user: User = Depends(require_analyst)):
     supplier = db.query(Supplier).filter(Supplier.id == body.supplier_id).first()
-    if not supplier:
+    if not supplier or not check_org_access(supplier.organization_id, current_user):
         raise HTTPException(404, "Proveedor no encontrado")
     expires = body.expires_at or (datetime.now(timezone.utc) + timedelta(days=30))
     q = SupplierQuestionnaire(
@@ -79,6 +82,7 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
         expires_at=expires,
         notes=body.notes,
         created_by_id=current_user.id,
+        organization_id=current_user.organization_id,
     )
     db.add(q)
     db.commit()
@@ -91,7 +95,10 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
 @router.delete("/{qid}", status_code=204)
 def delete_questionnaire(qid: int, db: Session = Depends(get_db),
                          current_user: User = Depends(require_analyst)):
-    q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid).first()
+    q = filter_by_org(
+        db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
+        SupplierQuestionnaire, current_user
+    ).first()
     if not q:
         raise HTTPException(404, "Cuestionario no encontrado")
     db.delete(q)

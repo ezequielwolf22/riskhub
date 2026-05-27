@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Supplier, SupplierRisk, User
 from app.schemas import SupplierIn, SupplierOut, SupplierUpdate
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
@@ -22,11 +22,11 @@ def _next_code(db: Session) -> str:
 @router.get("/", response_model=list[SupplierOut])
 def list_suppliers(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     risk_level: Optional[SupplierRisk] = None,
     q: Optional[str] = None,
 ):
-    query = db.query(Supplier)
+    query = filter_by_org(db.query(Supplier), Supplier, current_user)
     if risk_level:
         query = query.filter(Supplier.risk_level == risk_level)
     if q:
@@ -36,8 +36,8 @@ def list_suppliers(
 
 
 @router.get("/stats/summary")
-def suppliers_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    suppliers = db.query(Supplier).all()
+def suppliers_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    suppliers = filter_by_org(db.query(Supplier), Supplier, current_user).all()
     now = datetime.now(timezone.utc)
     overdue_assessment = sum(
         1 for s in suppliers
@@ -53,9 +53,9 @@ def suppliers_summary(db: Session = Depends(get_db), _: User = Depends(get_curre
 
 @router.get("/{supplier_id}", response_model=SupplierOut)
 def get_supplier(supplier_id: int, db: Session = Depends(get_db),
-                 _: User = Depends(get_current_user)):
+                 current_user: User = Depends(get_current_user)):
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-    if not s:
+    if not s or not check_org_access(s.organization_id, current_user):
         raise HTTPException(404, "Proveedor no encontrado")
     return s
 
@@ -65,6 +65,7 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     s = Supplier(
         code=_next_code(db),
+        organization_id=current_user.organization_id,
         name=body.name,
         category=body.category,
         description=body.description,
@@ -94,7 +95,7 @@ def update_supplier(supplier_id: int, body: SupplierUpdate,
                     db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-    if not s:
+    if not s or not check_org_access(s.organization_id, current_user):
         raise HTTPException(404, "Proveedor no encontrado")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(s, field, value)
@@ -108,7 +109,7 @@ def update_supplier(supplier_id: int, body: SupplierUpdate,
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
-    if not s:
+    if not s or not check_org_access(s.organization_id, current_user):
         raise HTTPException(404, "Proveedor no encontrado")
     log_action(db, current_user.id, "delete", "supplier", str(supplier_id), {"name": s.name})
     db.delete(s)

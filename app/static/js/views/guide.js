@@ -31,6 +31,7 @@ const ViewGuide = {
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
     { id: 'awareness', title: 'Awareness (Infografias)', icon: '🎨' },
+    { id: 'organizations', title: 'Organizaciones (multi-tenant)', icon: '🏢' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'security', title: 'Seguridad y privacidad', icon: '🔐' },
@@ -122,6 +123,7 @@ const ViewGuide = {
       cve: this._cCve,
       osint: this._cOsint,
       awareness: this._cAwareness,
+      organizations: this._cOrganizations,
       audit: this._cAudit,
       admin: this._cAdmin,
       security: this._cSecurity,
@@ -1469,6 +1471,38 @@ const ViewGuide = {
       <li>Ver el estado (Borrador / Publicado) y la fecha de ultima modificacion.</li>
     </ul>
     ${this._tip('<strong>Buena practica:</strong> Genera una infografia mensual de "Amenaza del Mes" basandote en las CVEs mas criticas detectadas por el CVE Monitor. Luego distribuyela por email o pantallas digitales. Guarda las infografias publicadas como biblioteca de conocimiento de awareness de tu organizacion.')}
+  `;},
+
+  get _cOrganizations() { return `
+    ${this._p('La seccion <strong>Organizaciones</strong> permite gestionar el multi-tenancy de RiskHub. Solo los usuarios con rol <strong>superadmin</strong> pueden acceder a esta vista. Cada organizacion es un tenant aislado: sus datos (activos, riesgos, controles, incidentes, etc.) son completamente invisibles para otras organizaciones.')}
+    ${this._warn('Esta seccion solo es visible para superadmins. Los usuarios con rol admin o analyst no tienen acceso.')}
+
+    ${this._h('Aislamiento de datos (row-level isolation)')}
+    ${this._p('Todos los modelos de negocio tienen un campo <code>organization_id</code>. Cada query del backend filtra automaticamente por la organizacion del usuario autenticado. El superadmin puede ver y gestionar todos los tenants.')}
+
+    ${this._h('Funciones disponibles')}
+    <ul style="font-size:14px;line-height:1.8;">
+      <li><strong>Crear organizacion:</strong> define nombre, dominio de email (usado para auto-asignar usuarios al registrarse), plan y limite de usuarios.</li>
+      <li><strong>Editar organizacion:</strong> modificar nombre, dominio, plan y max_users desde el panel de detalle.</li>
+      <li><strong>Desactivar / activar:</strong> desactivar una org (soft-delete) impide que sus usuarios inicien sesion sin borrar datos.</li>
+      <li><strong>Ver usuarios:</strong> lista de todos los usuarios del tenant con su rol y estado.</li>
+      <li><strong>Mover usuario:</strong> el superadmin puede reasignar un usuario a otra organizacion.</li>
+    </ul>
+
+    ${this._h('Planes de organizacion')}
+    <table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border)">Plan</th><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border)">Descripcion</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border-bottom:1px solid var(--border)"><strong>starter</strong></td><td style="padding:6px;border-bottom:1px solid var(--border)">Organizacion pequena — max 10 usuarios por defecto</td></tr>
+        <tr><td style="padding:6px;border-bottom:1px solid var(--border)"><strong>professional</strong></td><td style="padding:6px;border-bottom:1px solid var(--border)">Organizacion mediana — max configurable</td></tr>
+        <tr><td style="padding:6px;"><strong>enterprise</strong></td><td style="padding:6px;">Organizacion grande — sin limite practico</td></tr>
+      </tbody>
+    </table>
+
+    ${this._h('Auto-asignacion de usuarios')}
+    ${this._p('Cuando el admin crea un nuevo usuario, el sistema intenta asignarle automaticamente una organizacion: primero busca coincidencia por dominio de email, luego usa la organizacion del admin que lo crea. Esto simplifica el onboarding en entornos multi-empresa.')}
+
+    ${this._tip('<strong>Seguridad:</strong> el aislamiento es a nivel de base de datos (filtros SQL en cada endpoint). No es posible que un usuario vea datos de otra organizacion, ni siquiera conociendo el ID del recurso, gracias a los filtros de org implementados en todos los routers del backend.')}
   `;},
 
   get _cSecurity() { return `

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import AlertRule, EmailSettings, Risk, UserRole
-from app.security import get_current_user
+from app.security import filter_by_org, get_current_user
 from app.services import email_service
 from app.services.audit_service import log_action
 
@@ -64,7 +64,7 @@ class SendRiskAlertIn(BaseModel):
 @router.get("/settings", response_model=Optional[EmailSettingsOut])
 def get_settings(db: Session = Depends(get_db),
                  current_user=Depends(get_current_user)):
-    cfg = db.query(EmailSettings).first()
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
     if not cfg:
         return None
     return EmailSettingsOut(
@@ -81,9 +81,9 @@ def save_settings(body: EmailSettingsIn, db: Session = Depends(get_db),
                   current_user=Depends(get_current_user)):
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(403, "Solo administradores")
-    cfg = db.query(EmailSettings).first()
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
     if not cfg:
-        cfg = EmailSettings()
+        cfg = EmailSettings(organization_id=current_user.organization_id)
         db.add(cfg)
     cfg.smtp_host = body.smtp_host
     cfg.smtp_port = body.smtp_port
@@ -130,7 +130,7 @@ def send_test(db: Session = Depends(get_db),
 @router.get("/rules", response_model=List[AlertRuleOut])
 def list_rules(db: Session = Depends(get_db),
                current_user=Depends(get_current_user)):
-    rules = db.query(AlertRule).order_by(AlertRule.created_at).all()
+    rules = filter_by_org(db.query(AlertRule), AlertRule, current_user).order_by(AlertRule.created_at).all()
     return [AlertRuleOut(
         id=r.id, name=r.name, event_type=r.event_type,
         recipient_email=r.recipient_email, threshold_level=r.threshold_level,
@@ -147,7 +147,7 @@ def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
     valid_types = {"risk_high", "risk_critical", "treatment_overdue", "risk_no_treatment"}
     if body.event_type not in valid_types:
         raise HTTPException(422, f"event_type debe ser uno de: {', '.join(valid_types)}")
-    rule = AlertRule(**body.model_dump())
+    rule = AlertRule(organization_id=current_user.organization_id, **body.model_dump())
     db.add(rule)
     log_action(db, current_user.id, "create", "alert_rule", None,
                {"name": body.name, "event_type": body.event_type,
@@ -214,7 +214,7 @@ def send_risk_alert(risk_id: int, body: SendRiskAlertIn,
         raise HTTPException(400, "Servidor SMTP no configurado")
 
     from app.models import RiskContext
-    ctx = db.query(RiskContext).first()
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     org = ctx.organization_name if ctx else "Organizacion"
 
     try:
@@ -240,11 +240,13 @@ def check_rules(db: Session = Depends(get_db),
         raise HTTPException(400, "Servidor SMTP no configurado")
 
     from app.models import RiskContext, RiskStatus
-    ctx = db.query(RiskContext).first()
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     org = ctx.organization_name if ctx else "Organizacion"
 
-    rules = db.query(AlertRule).filter(AlertRule.is_active.is_(True)).all()
-    risks = db.query(Risk).all()
+    rules = filter_by_org(
+        db.query(AlertRule).filter(AlertRule.is_active.is_(True)), AlertRule, current_user
+    ).all()
+    risks = filter_by_org(db.query(Risk), Risk, current_user).all()
     sent = 0
     errors = []
 

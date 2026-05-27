@@ -11,7 +11,7 @@ from app.database import get_db
 from sqlalchemy import func
 from app.models import Asset, AssetType, Risk, User
 from app.schemas import AssetIn, AssetOut, ImportResult
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
@@ -33,12 +33,12 @@ def _to_out(a: Asset, risk_count: int = 0) -> AssetOut:
 @router.get("/", response_model=list[AssetOut])
 def list_assets(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     q: Optional[str] = None,
     asset_type: Optional[AssetType] = None,
     limit: int = Query(500, le=2000),
 ):
-    query = db.query(Asset)
+    query = filter_by_org(db.query(Asset), Asset, current_user)
     if q:
         like = f"%{q}%"
         query = query.filter((Asset.name.ilike(like)) | (Asset.code.ilike(like))
@@ -60,9 +60,9 @@ def list_assets(
 
 @router.get("/{asset_id}", response_model=AssetOut)
 def get_asset(asset_id: int, db: Session = Depends(get_db),
-              _: User = Depends(get_current_user)):
+              current_user: User = Depends(get_current_user)):
     a = db.get(Asset, asset_id)
-    if not a:
+    if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Activo no encontrado")
     return _to_out(a)
 
@@ -75,6 +75,7 @@ def create_asset(data: AssetIn, db: Session = Depends(get_db),
         raise HTTPException(400, f"Ya existe activo con codigo {code}")
     payload = data.model_dump(exclude={"owner_ids"})
     payload["code"] = code
+    payload["organization_id"] = current_user.organization_id
     a = Asset(**payload)
     db.add(a)
     log_action(db, current_user.id, "create", "asset", None,
@@ -87,7 +88,7 @@ def create_asset(data: AssetIn, db: Session = Depends(get_db),
 def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
     a = db.get(Asset, asset_id)
-    if not a:
+    if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Activo no encontrado")
     for k, v in data.model_dump(exclude={"owner_ids", "code"}).items():
         setattr(a, k, v)
@@ -101,7 +102,7 @@ def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
 def delete_asset(asset_id: int, db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
     a = db.get(Asset, asset_id)
-    if not a:
+    if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Activo no encontrado")
     code, name = a.code, a.name
     db.delete(a)
@@ -139,9 +140,12 @@ def download_template(_: User = Depends(require_analyst)):
     )
 
 
-@router.post("/import", response_model=ImportResult,
-             dependencies=[Depends(require_analyst)])
-async def import_assets(file: UploadFile = File(...), db: Session = Depends(get_db)):
+@router.post("/import", response_model=ImportResult)
+async def import_assets(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
     """Importa activos desde CSV o Excel."""
     content = await file.read()
     fname = (file.filename or "").lower()
@@ -187,11 +191,15 @@ async def import_assets(file: UploadFile = File(...), db: Session = Depends(get_
             code = str(row["code"]).strip() if "code" in df.columns and pd.notna(row.get("code")) else _next_code(db)
             existing = db.query(Asset).filter(Asset.code == code).first()
             if existing:
-                for k, v in payload.items():
-                    setattr(existing, k, v)
-                result.updated += 1
+                if check_org_access(existing.organization_id, current_user):
+                    for k, v in payload.items():
+                        setattr(existing, k, v)
+                    result.updated += 1
+                else:
+                    result.skipped += 1
+                    result.errors.append(f"Fila {idx+2}: activo {code} pertenece a otra organizacion")
             else:
-                a = Asset(code=code, **payload)
+                a = Asset(code=code, organization_id=current_user.organization_id, **payload)
                 db.add(a); db.flush()
                 result.created += 1
         except Exception as e:
@@ -204,8 +212,8 @@ async def import_assets(file: UploadFile = File(...), db: Session = Depends(get_
 
 @router.get("/export/csv")
 def export_assets_csv(db: Session = Depends(get_db),
-                      _: User = Depends(get_current_user)):
-    assets = db.query(Asset).order_by(Asset.code).all()
+                      current_user: User = Depends(get_current_user)):
+    assets = filter_by_org(db.query(Asset), Asset, current_user).order_by(Asset.code).all()
     df = pd.DataFrame([{
         "code": a.code, "name": a.name, "asset_type": a.asset_type.value,
         "description": a.description, "category": a.category, "location": a.location,

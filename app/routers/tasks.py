@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import TreatmentTask, TaskStatus, User
 from app.schemas import TaskIn, TaskOut, TaskUpdate
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -22,13 +22,13 @@ def _next_code(db: Session) -> str:
 @router.get("/", response_model=list[TaskOut])
 def list_tasks(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     status: Optional[TaskStatus] = None,
     risk_id: Optional[int] = None,
     assigned_to_id: Optional[int] = None,
     overdue: Optional[bool] = None,
 ):
-    q = db.query(TreatmentTask)
+    q = filter_by_org(db.query(TreatmentTask), TreatmentTask, current_user)
     if status:
         q = q.filter(TreatmentTask.status == status)
     if risk_id:
@@ -46,8 +46,8 @@ def list_tasks(
 
 
 @router.get("/stats/summary")
-def tasks_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    tasks = db.query(TreatmentTask).all()
+def tasks_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    tasks = filter_by_org(db.query(TreatmentTask), TreatmentTask, current_user).all()
     now = datetime.now(timezone.utc)
     overdue = sum(
         1 for t in tasks
@@ -66,9 +66,9 @@ def tasks_summary(db: Session = Depends(get_db), _: User = Depends(get_current_u
 
 @router.get("/{task_id}", response_model=TaskOut)
 def get_task(task_id: int, db: Session = Depends(get_db),
-             _: User = Depends(get_current_user)):
+             current_user: User = Depends(get_current_user)):
     t = db.query(TreatmentTask).filter(TreatmentTask.id == task_id).first()
-    if not t:
+    if not t or not check_org_access(t.organization_id, current_user):
         raise HTTPException(404, "Tarea no encontrada")
     return t
 
@@ -78,6 +78,7 @@ def create_task(body: TaskIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     t = TreatmentTask(
         code=_next_code(db),
+        organization_id=current_user.organization_id,
         title=body.title,
         description=body.description,
         risk_id=body.risk_id,
@@ -100,7 +101,7 @@ def update_task(task_id: int, body: TaskUpdate,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     t = db.query(TreatmentTask).filter(TreatmentTask.id == task_id).first()
-    if not t:
+    if not t or not check_org_access(t.organization_id, current_user):
         raise HTTPException(404, "Tarea no encontrada")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(t, field, value)
@@ -114,7 +115,7 @@ def update_task(task_id: int, body: TaskUpdate,
 def delete_task(task_id: int, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     t = db.query(TreatmentTask).filter(TreatmentTask.id == task_id).first()
-    if not t:
+    if not t or not check_org_access(t.organization_id, current_user):
         raise HTTPException(404, "Tarea no encontrada")
     log_action(db, current_user.id, "delete", "task", str(task_id), {"code": t.code})
     db.delete(t)

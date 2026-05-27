@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import AiAnonymizationLevel, AiConfig, User
-from app.security import get_current_user, require_role
+from app.security import filter_by_org, get_current_user, require_role
 
 router = APIRouter(prefix="/api/ai/config", tags=["ai-config"])
 
@@ -60,9 +60,9 @@ class AiConfigIn(BaseModel):
 @router.get("/")
 def get_config(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    cfg = db.query(AiConfig).first()
+    cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     if not cfg:
         return _default_out()
     return _cfg_out(cfg)
@@ -72,11 +72,11 @@ def get_config(
 def update_config(
     payload: AiConfigIn,
     db: Session = Depends(get_db),
-    _: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin")),
 ):
-    cfg = db.query(AiConfig).first()
+    cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     if not cfg:
-        cfg = AiConfig()
+        cfg = AiConfig(organization_id=current_user.organization_id)
         db.add(cfg)
 
     if payload.api_key is not None:
@@ -106,9 +106,9 @@ def update_config(
 @router.post("/test")
 def test_connection(
     db: Session = Depends(get_db),
-    _: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role("admin")),
 ):
-    cfg = db.query(AiConfig).first()
+    cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = resolve_api_key(cfg)
     if not api_key:
         raise HTTPException(400, "No hay API key configurada.")

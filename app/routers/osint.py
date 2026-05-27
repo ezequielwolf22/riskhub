@@ -12,7 +12,7 @@ from app.models import (
     User, OSINTScan, OSINTFinding, OSINTIdentifier, OSINTScanType,
     OSINTFindingRiskLevel, Incident, IncidentSeverity, IncidentStatus
 )
-from app.security import require_role
+from app.security import filter_by_org, require_role
 from app.schemas import (
     OSINTScanCreate, OSINTScanResponse, OSINTFindingResponse,
     OSINTIdentifierResponse, PaginatedResponse
@@ -25,12 +25,13 @@ router = APIRouter(prefix="/api/v1/osint", tags=["osint"])
 _ROLES = ['analyst', 'admin', 'superadmin']
 
 
-def _create_scan(db, scan_type, target, user_id):
+def _create_scan(db, scan_type, target, user_id, organization_id=None):
     """Crea y persiste un OSINTScan en estado pending."""
     scan = OSINTScan(
         scan_type=scan_type,
         target=target,
         user_id=user_id,
+        organization_id=organization_id,
         status='pending'
     )
     db.add(scan)
@@ -56,7 +57,7 @@ async def scan_email(
 ):
     if _check_in_progress(db, current_user.id, email):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
-    scan = _create_scan(db, OSINTScanType.EMAIL, email, current_user.id)
+    scan = _create_scan(db, OSINTScanType.EMAIL, email, current_user.id, current_user.organization_id)
     background_tasks.add_task(osint_engine.run_email_scan, scan.id, email, current_user.id)
     return scan
 
@@ -68,7 +69,7 @@ async def scan_url(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    scan = _create_scan(db, OSINTScanType.URL, url, current_user.id)
+    scan = _create_scan(db, OSINTScanType.URL, url, current_user.id, current_user.organization_id)
     background_tasks.add_task(osint_engine.run_url_scan, scan.id, url, current_user.id)
     return scan
 
@@ -82,7 +83,7 @@ async def scan_username(
 ):
     if _check_in_progress(db, current_user.id, username):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
-    scan = _create_scan(db, OSINTScanType.USERNAME, username, current_user.id)
+    scan = _create_scan(db, OSINTScanType.USERNAME, username, current_user.id, current_user.organization_id)
     background_tasks.add_task(osint_engine.run_username_scan, scan.id, username, current_user.id)
     return scan
 
@@ -96,7 +97,7 @@ async def scan_domain(
 ):
     if _check_in_progress(db, current_user.id, domain):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
-    scan = _create_scan(db, OSINTScanType.DOMAIN, domain, current_user.id)
+    scan = _create_scan(db, OSINTScanType.DOMAIN, domain, current_user.id, current_user.organization_id)
     background_tasks.add_task(osint_engine.run_domain_scan, scan.id, domain, current_user.id)
     return scan
 
@@ -110,7 +111,7 @@ async def scan_ip(
 ):
     if _check_in_progress(db, current_user.id, ip):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
-    scan = _create_scan(db, OSINTScanType.IP, ip, current_user.id)
+    scan = _create_scan(db, OSINTScanType.IP, ip, current_user.id, current_user.organization_id)
     background_tasks.add_task(osint_engine.run_ip_scan, scan.id, ip, current_user.id)
     return scan
 
@@ -151,7 +152,7 @@ async def bulk_scan(
         if _check_in_progress(db, current_user.id, target):
             skipped.append(target)
             continue
-        scan = _create_scan(db, type_enum, target, current_user.id)
+        scan = _create_scan(db, type_enum, target, current_user.id, current_user.organization_id)
         background_tasks.add_task(run_fn, scan.id, target, current_user.id)
         created.append({'target': target, 'scan_id': scan.id})
 
@@ -167,7 +168,7 @@ def list_scans(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    q = db.query(OSINTScan).filter(OSINTScan.user_id == current_user.id)
+    q = filter_by_org(db.query(OSINTScan), OSINTScan, current_user)
     if scan_type:
         q = q.filter(OSINTScan.scan_type == scan_type)
     if status:
@@ -186,9 +187,9 @@ def get_scan(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    scan = db.query(OSINTScan).filter(
-        OSINTScan.id == scan_id,
-        OSINTScan.user_id == current_user.id
+    scan = filter_by_org(
+        db.query(OSINTScan).filter(OSINTScan.id == scan_id),
+        OSINTScan, current_user
     ).first()
     if not scan:
         raise HTTPException(404, "Escaneo no encontrado")
@@ -202,9 +203,9 @@ def get_scan_findings(
     current_user: User = Depends(require_role(_ROLES))
 ):
     """Hallazgos detallados de un escaneo especifico."""
-    scan = db.query(OSINTScan).filter(
-        OSINTScan.id == scan_id,
-        OSINTScan.user_id == current_user.id
+    scan = filter_by_org(
+        db.query(OSINTScan).filter(OSINTScan.id == scan_id),
+        OSINTScan, current_user
     ).first()
     if not scan:
         raise HTTPException(404, "Escaneo no encontrado")
@@ -241,7 +242,10 @@ def list_findings(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    q = db.query(OSINTFinding).join(OSINTScan).filter(OSINTScan.user_id == current_user.id)
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    q = db.query(OSINTFinding).filter(OSINTFinding.scan_id.in_(org_scan_ids))
     if source:
         q = q.filter(OSINTFinding.source == source)
     if risk_level:
@@ -267,8 +271,11 @@ def export_findings_csv(
     current_user: User = Depends(require_role(_ROLES))
 ):
     """Exportar todos los hallazgos a CSV."""
-    findings = db.query(OSINTFinding).join(OSINTScan).filter(
-        OSINTScan.user_id == current_user.id
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    findings = db.query(OSINTFinding).filter(
+        OSINTFinding.scan_id.in_(org_scan_ids)
     ).order_by(OSINTFinding.risk_score.desc()).all()
 
     output = io.StringIO()
@@ -297,9 +304,12 @@ def get_finding(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    finding = db.query(OSINTFinding).filter(
         OSINTFinding.id == finding_id,
-        OSINTScan.user_id == current_user.id
+        OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
         raise HTTPException(404, "Hallazgo no encontrado")
@@ -319,14 +329,17 @@ def remediate_finding(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    finding = db.query(OSINTFinding).filter(
         OSINTFinding.id == finding_id,
-        OSINTScan.user_id == current_user.id
+        OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
         raise HTTPException(404, "Hallazgo no encontrado")
     finding.is_remediated = True
-    finding.remediated_at = datetime.now()
+    finding.remediated_at = datetime.now(timezone.utc)
     db.commit()
     return {'id': finding.id, 'is_remediated': True}
 
@@ -337,9 +350,12 @@ def unremediate_finding(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    finding = db.query(OSINTFinding).filter(
         OSINTFinding.id == finding_id,
-        OSINTScan.user_id == current_user.id
+        OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
         raise HTTPException(404, "Hallazgo no encontrado")
@@ -355,9 +371,12 @@ def delete_finding(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['admin', 'superadmin']))
 ):
-    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    finding = db.query(OSINTFinding).filter(
         OSINTFinding.id == finding_id,
-        OSINTScan.user_id == current_user.id
+        OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
         raise HTTPException(404, "Hallazgo no encontrado")
@@ -371,9 +390,9 @@ def delete_scan(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['admin', 'superadmin']))
 ):
-    scan = db.query(OSINTScan).filter(
-        OSINTScan.id == scan_id,
-        OSINTScan.user_id == current_user.id
+    scan = filter_by_org(
+        db.query(OSINTScan).filter(OSINTScan.id == scan_id),
+        OSINTScan, current_user
     ).first()
     if not scan:
         raise HTTPException(404, "Escaneo no encontrado")
@@ -388,9 +407,9 @@ def delete_identifier(
     current_user: User = Depends(require_role(['admin', 'analyst', 'superadmin']))
 ):
     """Elimina un identificador OSINT (y sus escaneos/hallazgos en cascada)."""
-    identifier = db.query(OSINTIdentifier).filter(
-        OSINTIdentifier.id == identifier_id,
-        OSINTIdentifier.user_id == current_user.id
+    identifier = filter_by_org(
+        db.query(OSINTIdentifier).filter(OSINTIdentifier.id == identifier_id),
+        OSINTIdentifier, current_user
     ).first()
     if not identifier:
         raise HTTPException(404, "Identificador no encontrado")
@@ -406,7 +425,7 @@ def list_identifiers(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    q = db.query(OSINTIdentifier).filter(OSINTIdentifier.user_id == current_user.id)
+    q = filter_by_org(db.query(OSINTIdentifier), OSINTIdentifier, current_user)
     if identifier_type:
         q = q.filter(OSINTIdentifier.identifier_type == identifier_type)
     total = q.count()
@@ -483,7 +502,7 @@ async def import_from_entraid(
                 continue
             if _check_in_progress(db, current_user.id, email):
                 continue
-            scan = _create_scan(db, OSINTScanType.EMAIL, email, current_user.id)
+            scan = _create_scan(db, OSINTScanType.EMAIL, email, current_user.id, current_user.organization_id)
             background_tasks.add_task(osint_engine.run_email_scan, scan.id, email, current_user.id)
             scans_created.append({'type': 'email', 'target': email, 'scan_id': scan.id})
 
@@ -494,7 +513,7 @@ async def import_from_entraid(
                 continue
             if _check_in_progress(db, current_user.id, domain_id):
                 continue
-            scan = _create_scan(db, OSINTScanType.DOMAIN, domain_id, current_user.id)
+            scan = _create_scan(db, OSINTScanType.DOMAIN, domain_id, current_user.id, current_user.organization_id)
             background_tasks.add_task(osint_engine.run_domain_scan, scan.id, domain_id, current_user.id)
             scans_created.append({'type': 'domain', 'target': domain_id, 'scan_id': scan.id})
 
@@ -513,9 +532,12 @@ def create_incident_from_finding(
     current_user: User = Depends(require_role(_ROLES))
 ):
     """Genera un incidente de seguridad a partir de un hallazgo OSINT."""
-    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    finding = db.query(OSINTFinding).filter(
         OSINTFinding.id == finding_id,
-        OSINTScan.user_id == current_user.id
+        OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
         raise HTTPException(404, "Hallazgo no encontrado")
@@ -556,7 +578,8 @@ def create_incident_from_finding(
         severity=severity,
         status=IncidentStatus.OPEN,
         detected_at=finding.created_at or datetime.now(timezone.utc),
-        owner_id=current_user.id
+        owner_id=current_user.id,
+        organization_id=current_user.organization_id,
     )
     db.add(inc)
     db.commit()
@@ -584,16 +607,20 @@ def create_risk_from_osint_finding(
     from app.models import Risk, RiskStatus, Asset, Threat
     from app.services.risk_engine import calc_level
     from app.routers.risks import _next_code as _risk_next_code
+    from app.security import check_org_access
 
-    finding = db.query(OSINTFinding).join(OSINTScan).filter(
+    org_scan_ids = [
+        s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
+    ]
+    finding = db.query(OSINTFinding).filter(
         OSINTFinding.id == finding_id,
-        OSINTScan.user_id == current_user.id
+        OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
         raise HTTPException(404, "Hallazgo no encontrado")
 
     asset = db.query(Asset).filter(Asset.id == asset_id).first()
-    if not asset:
+    if not asset or not check_org_access(asset.organization_id, current_user):
         raise HTTPException(404, "Activo no encontrado")
 
     threat = db.query(Threat).filter(Threat.id == threat_id).first()
@@ -646,7 +673,8 @@ def create_risk_from_osint_finding(
         residual_impact=imp,
         residual_level=inherent_level,
         status=RiskStatus.IDENTIFIED,
-        owner_id=current_user.id
+        owner_id=current_user.id,
+        organization_id=current_user.organization_id,
     )
     db.add(risk)
     db.commit()
@@ -665,8 +693,11 @@ def get_osint_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(_ROLES))
 ):
-    scans_total = db.query(OSINTScan).filter(OSINTScan.user_id == current_user.id).count()
-    findings_q = db.query(OSINTFinding).join(OSINTScan).filter(OSINTScan.user_id == current_user.id)
+    org_scans_q = filter_by_org(db.query(OSINTScan), OSINTScan, current_user)
+    scans_total = org_scans_q.count()
+    org_scan_ids = [s.id for s in org_scans_q.all()]
+
+    findings_q = db.query(OSINTFinding).filter(OSINTFinding.scan_id.in_(org_scan_ids))
     findings_total = findings_q.count()
     findings_remediated = findings_q.filter(OSINTFinding.is_remediated == True).count()
     findings = findings_q.all()
@@ -677,12 +708,12 @@ def get_osint_stats(
         if lvl in risk_by_level:
             risk_by_level[lvl] += 1
 
-    # Por tipo de escaneo
+    # Por tipo de escaneo (filtrado por org)
     scans_by_type = {}
     for stype in ['email', 'url', 'username', 'domain', 'ip']:
-        scans_by_type[stype] = db.query(OSINTScan).filter(
-            OSINTScan.user_id == current_user.id,
-            OSINTScan.scan_type == stype
+        scans_by_type[stype] = filter_by_org(
+            db.query(OSINTScan).filter(OSINTScan.scan_type == stype),
+            OSINTScan, current_user
         ).count()
 
     # Por fuente

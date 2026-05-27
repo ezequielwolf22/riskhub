@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import NCStatus, NonConformity, User
 from app.schemas import NonConformityIn, NonConformityOut, NonConformityUpdate
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/nonconformities", tags=["nonconformities"])
@@ -22,11 +22,11 @@ def _next_code(db: Session) -> str:
 @router.get("/", response_model=list[NonConformityOut])
 def list_ncs(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     status: Optional[NCStatus] = None,
     severity: Optional[str] = None,
 ):
-    q = db.query(NonConformity)
+    q = filter_by_org(db.query(NonConformity), NonConformity, current_user)
     if status:
         q = q.filter(NonConformity.status == status)
     if severity:
@@ -35,8 +35,8 @@ def list_ncs(
 
 
 @router.get("/stats/summary")
-def nc_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
-    ncs = db.query(NonConformity).all()
+def nc_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ncs = filter_by_org(db.query(NonConformity), NonConformity, current_user).all()
     now = datetime.now(timezone.utc)
     open_count = sum(1 for n in ncs if n.status != NCStatus.CLOSED)
     major_open = sum(1 for n in ncs if n.severity == "major" and n.status != NCStatus.CLOSED)
@@ -54,9 +54,9 @@ def nc_summary(db: Session = Depends(get_db), _: User = Depends(get_current_user
 
 
 @router.get("/{nc_id}", response_model=NonConformityOut)
-def get_nc(nc_id: int, db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def get_nc(nc_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     nc = db.query(NonConformity).filter(NonConformity.id == nc_id).first()
-    if not nc:
+    if not nc or not check_org_access(nc.organization_id, current_user):
         raise HTTPException(404, "No conformidad no encontrada")
     return nc
 
@@ -66,6 +66,7 @@ def create_nc(body: NonConformityIn, db: Session = Depends(get_db),
               current_user: User = Depends(require_analyst)):
     nc = NonConformity(
         code=_next_code(db),
+        organization_id=current_user.organization_id,
         title=body.title,
         description=body.description,
         source=body.source,
@@ -92,7 +93,7 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
               db: Session = Depends(get_db),
               current_user: User = Depends(require_analyst)):
     nc = db.query(NonConformity).filter(NonConformity.id == nc_id).first()
-    if not nc:
+    if not nc or not check_org_access(nc.organization_id, current_user):
         raise HTTPException(404, "No conformidad no encontrada")
     update_data = body.model_dump(exclude_none=True)
     # Si se cierra la NC, registrar fecha de cierre
@@ -110,7 +111,7 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
 def delete_nc(nc_id: int, db: Session = Depends(get_db),
               current_user: User = Depends(require_analyst)):
     nc = db.query(NonConformity).filter(NonConformity.id == nc_id).first()
-    if not nc:
+    if not nc or not check_org_access(nc.organization_id, current_user):
         raise HTTPException(404, "No conformidad no encontrada")
     log_action(db, current_user.id, "delete", "nonconformity", str(nc_id), {"code": nc.code})
     db.delete(nc)
