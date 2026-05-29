@@ -1,4 +1,4 @@
-/* Vista Alertas — Configuracion SMTP y reglas de alerta por email. */
+/* Vista Alertas — Reglas de alerta por email. */
 const ViewAlerts = {
 
   _settings: null,
@@ -7,7 +7,7 @@ const ViewAlerts = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
       'Alertas por email',
-      'Configuracion SMTP y reglas de notificacion automatica de riesgos'
+      'Reglas de notificacion automatica de riesgos'
     ) + '<div id="alerts-content"></div>';
     await this._load();
   },
@@ -29,55 +29,27 @@ const ViewAlerts = {
 
   _render(container) {
     const u = Auth.user();
-    const isAdmin = u && (u.role === 'admin' || u.role === 'superadmin');
     const isAnalyst = u && (u.role === 'admin' || u.role === 'superadmin' || u.role === 'analyst');
 
     const s = this._settings || {};
-    const smtpStatus = s.smtp_host
-      ? `<span class="badge badge-muted" style="background:var(--success-soft,#D1FAE5);color:#065F46;">Configurado</span>`
-      : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">Sin configurar</span>`;
+    const smtpOk = !!s.smtp_host;
+    const smtpBadge = smtpOk
+      ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">SMTP configurado</span>`
+      : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">SMTP sin configurar</span>`;
 
     container.innerHTML = `
-      <!-- SMTP config -->
-      <div class="card" style="margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-          <h3 style="margin:0;">Configuracion SMTP ${smtpStatus}</h3>
-          ${isAdmin ? `<button class="btn btn-sm btn-primary" onclick="ViewAlerts._testEmail()">
-            Enviar email de prueba</button>` : ''}
+      <!-- Estado SMTP -->
+      <div class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;padding:14px 20px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <div style="flex:1;">
+          <span style="font-size:13px;font-weight:600;">Servidor de correo (SMTP)</span>
+          <span style="margin-left:10px;">${smtpBadge}</span>
+          ${smtpOk ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${UI.esc(s.smtp_host)}:${s.smtp_port} &mdash; ${UI.esc(s.smtp_from || '')}</div>` : ''}
         </div>
-        ${isAdmin ? `
-        <div class="modal-body">
-          <div class="span2"><label>Host SMTP</label>
-            <input id="smtp-host" type="text" value="${UI.esc(s.smtp_host || '')}"
-                   placeholder="smtp.company.com" style="width:100%;"></div>
-          <div><label>Puerto</label>
-            <input id="smtp-port" type="number" value="${s.smtp_port || 587}"
-                   placeholder="587" style="width:100%;"></div>
-          <div><label>TLS / STARTTLS</label>
-            <select id="smtp-tls" style="width:100%;">
-              <option value="true" ${s.smtp_use_tls !== false ? 'selected' : ''}>STARTTLS (recomendado)</option>
-              <option value="false" ${s.smtp_use_tls === false ? 'selected' : ''}>SSL directo / Sin TLS</option>
-            </select></div>
-          <div><label>Usuario SMTP</label>
-            <input id="smtp-user" type="text" value="${UI.esc(s.smtp_user || '')}"
-                   placeholder="noreply@company.com" style="width:100%;"></div>
-          <div><label>Contraseña SMTP</label>
-            <input id="smtp-pass" type="password" placeholder="Dejar vacio para no cambiar" style="width:100%;"></div>
-          <div><label>Remitente (From)</label>
-            <input id="smtp-from" type="email" value="${UI.esc(s.smtp_from || '')}"
-                   placeholder="riskhub@company.com" style="width:100%;"></div>
-        </div>
-        <div style="text-align:right;margin-top:12px;">
-          <button class="btn btn-primary" onclick="ViewAlerts._saveSmtp()">Guardar configuracion SMTP</button>
-        </div>` : `
-        <div class="modal-body">
-          ${s.smtp_host ? `
-          <div><label>Host</label><p style="margin:4px 0;">${UI.esc(s.smtp_host)}:${s.smtp_port}</p></div>
-          <div><label>Remitente</label><p style="margin:4px 0;">${UI.esc(s.smtp_from || '-')}</p></div>
-          <div><label>TLS</label><p style="margin:4px 0;">${s.smtp_use_tls ? 'STARTTLS' : 'Sin TLS'}</p></div>
-          <div><label>Estado</label><p style="margin:4px 0;">Configurado</p></div>
-          ` : '<div class="span2"><p style="color:var(--text-muted);margin:0;">SMTP no configurado. Contacta al administrador.</p></div>'}
-        </div>`}
+        <button class="btn btn-sm" onclick="App.navigate('integrations')">
+          Configurar SMTP
+        </button>
+        ${smtpOk ? `<button class="btn btn-sm" onclick="ViewAlerts._testEmail()">Enviar prueba</button>` : ''}
       </div>
 
       <!-- Reglas -->
@@ -176,27 +148,6 @@ const ViewAlerts = {
                   style="color:var(--brand-orange);">✕</button>
         </td>
       </tr>`;
-  },
-
-  async _saveSmtp() {
-    const body = {
-      smtp_host: document.getElementById('smtp-host').value.trim(),
-      smtp_port: parseInt(document.getElementById('smtp-port').value) || 587,
-      smtp_use_tls: document.getElementById('smtp-tls').value === 'true',
-      smtp_user: document.getElementById('smtp-user').value.trim(),
-      smtp_password: document.getElementById('smtp-pass').value,
-      smtp_from: document.getElementById('smtp-from').value.trim(),
-    };
-    if (!body.smtp_host || !body.smtp_from) {
-      UI.toast('Host SMTP y remitente son obligatorios', 'error'); return;
-    }
-    try {
-      await Api.put('/api/alerts/settings', body);
-      UI.toast('Configuracion SMTP guardada', 'success');
-      await this._load();
-    } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
-    }
   },
 
   async _testEmail() {

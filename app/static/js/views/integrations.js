@@ -609,6 +609,19 @@ const ViewIntegrations = {
           </div>
         </div>
 
+        <!-- SMTP — Servidor de correo para alertas -->
+        <div class="card" id="smtp-card">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <div>
+              <b style="font-size:15px;">Servidor de correo (SMTP)</b>
+              <div style="font-size:11px;color:var(--text-muted);">Configura el servidor de email para el envio de alertas automaticas</div>
+            </div>
+            <span id="smtp-status-badge" style="margin-left:auto;"></span>
+          </div>
+          <div id="smtp-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
+        </div>
+
         <!-- SAP / Jagger / Sphera — proximas -->
         <div class="card" style="opacity:.7;">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
@@ -628,7 +641,7 @@ const ViewIntegrations = {
 
       </div>
     `;
-    await Promise.all([this._initSharePoint(), this._initSso()]);
+    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp()]);
   },
 
   async _initSharePoint() {
@@ -1098,6 +1111,97 @@ const ViewIntegrations = {
       if (btn) { btn.disabled = false; btn.textContent = 'Importar seleccionados'; }
     }
   },
+
+  // ── SMTP ─────────────────────────────────────────────────────────────────
+
+  async _initSmtp() {
+    const body = document.getElementById('smtp-body');
+    const badge = document.getElementById('smtp-status-badge');
+    if (!body) return;
+    try {
+      const s = await Api.get('/api/alerts/settings');
+      const isAdmin = Auth.isAdmin();
+      const ok = !!s.smtp_host;
+      if (badge) badge.innerHTML = ok
+        ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">Configurado</span>`
+        : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">Sin configurar</span>`;
+      body.innerHTML = isAdmin ? `
+        <div class="form-grid" style="margin-bottom:12px;">
+          <div class="span2">
+            <label>Host SMTP</label>
+            <input id="smtp-host" class="input" type="text" value="${UI.esc(s.smtp_host || '')}" placeholder="smtp.company.com">
+          </div>
+          <div>
+            <label>Puerto</label>
+            <input id="smtp-port" class="input" type="number" value="${s.smtp_port || 587}" placeholder="587">
+          </div>
+          <div>
+            <label>TLS / STARTTLS</label>
+            <select id="smtp-tls" class="input">
+              <option value="true" ${s.smtp_use_tls !== false ? 'selected' : ''}>STARTTLS (recomendado)</option>
+              <option value="false" ${s.smtp_use_tls === false ? 'selected' : ''}>SSL directo / Sin TLS</option>
+            </select>
+          </div>
+          <div>
+            <label>Usuario SMTP</label>
+            <input id="smtp-user" class="input" type="text" value="${UI.esc(s.smtp_user || '')}" placeholder="noreply@company.com">
+          </div>
+          <div>
+            <label>Contrasena SMTP</label>
+            <input id="smtp-pass" class="input" type="password" placeholder="Dejar vacio para no cambiar">
+          </div>
+          <div>
+            <label>Remitente (From)</label>
+            <input id="smtp-from" class="input" type="email" value="${UI.esc(s.smtp_from || '')}" placeholder="riskhub@company.com">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          ${ok ? `<button class="btn" onclick="ViewIntegrations._testSmtp()">Enviar email de prueba</button>` : ''}
+          <button class="btn btn-primary" onclick="ViewIntegrations._saveSmtp()">Guardar configuracion</button>
+        </div>
+      ` : `
+        <div style="font-size:13px;color:var(--text-muted);">
+          ${ok
+            ? `Host: <b>${UI.esc(s.smtp_host)}:${s.smtp_port}</b> &mdash; Remitente: <b>${UI.esc(s.smtp_from || '-')}</b>`
+            : 'SMTP no configurado. Contacta al administrador.'}
+        </div>
+      `;
+    } catch (e) {
+      if (body) body.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _saveSmtp() {
+    const body = {
+      smtp_host: document.getElementById('smtp-host').value.trim(),
+      smtp_port: parseInt(document.getElementById('smtp-port').value) || 587,
+      smtp_use_tls: document.getElementById('smtp-tls').value === 'true',
+      smtp_user: document.getElementById('smtp-user').value.trim(),
+      smtp_password: document.getElementById('smtp-pass').value,
+      smtp_from: document.getElementById('smtp-from').value.trim(),
+    };
+    if (!body.smtp_host || !body.smtp_from) {
+      UI.toast('Host SMTP y remitente son obligatorios', 'error'); return;
+    }
+    try {
+      await Api.put('/api/alerts/settings', body);
+      UI.toast('Configuracion SMTP guardada', 'success');
+      await this._initSmtp();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  async _testSmtp() {
+    try {
+      const res = await Api.post('/api/alerts/test', {});
+      UI.toast(res.message || 'Email de prueba enviado correctamente', 'success');
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  // ── Catalogo ─────────────────────────────────────────────────────────────
 
   _renderCatalog() {
     const cats = this._categories();
