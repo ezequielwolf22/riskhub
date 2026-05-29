@@ -45,8 +45,8 @@ const ViewReports = {
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
               <h4 style="margin:0 0 6px;">Statement of Applicability</h4>
               <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
-                Declaracion de aplicabilidad de los 93 controles ISO 27002:2022, con estado
-                y madurez de cada implementacion. Obligatorio para certificacion ISO 27001.
+                Declaracion de aplicabilidad completa: 93 controles ISO 27002:2022 con estado, madurez,
+                razon de inclusion/exclusion, evidencias, fechas de revision y seccion de firma.
               </p>
               <div style="display:flex;gap:8px;">
                 <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('soa')">
@@ -54,6 +54,27 @@ const ViewReports = {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Revision por la Direccion -->
+        <div class="card" style="margin-bottom:16px;border:2px solid var(--brand-purple);">
+          <h3 style="margin-bottom:4px;">Revision por la Direccion</h3>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+            Informe completo segun ISO 27001:2022 clausula 9.3 y ENS. Incluye todos los apartados normativos
+            con datos reales del sistema — los campos sin datos aparecen marcados [A CUMPLIMENTAR].
+            Disponible en PDF (para presentar), Excel (para editar) y Word (para personalizar y firmar).
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="ViewReports._download('mgmt-review-pdf')">
+              PDF
+            </button>
+            <button class="btn" onclick="ViewReports._download('mgmt-review-excel')">
+              Excel editable
+            </button>
+            <button class="btn" onclick="ViewReports._download('mgmt-review-word')">
+              Word (.docx)
+            </button>
           </div>
         </div>
 
@@ -149,8 +170,27 @@ const ViewReports = {
       },
       'soa': () => {
         UI.toast('Generando Statement of Applicability...', 'info');
-        Api.download('/api/reports/soa', 'statement_of_applicability.pdf')
+        const today = new Date().toISOString().slice(0,10);
+        Api.download('/api/reports/soa', `SOA_${today}.pdf`)
            .catch(e => UI.toast(e.message, 'error'));
+      },
+      'rr-excel': () => {
+        UI.toast('Generando Dashboard Ejecutivo Excel...', 'info');
+        const today = new Date().toISOString().slice(0,10);
+        Api.download('/api/reports/risk-register-excel', `dashboard_ejecutivo_${today}.xlsx`)
+           .catch(e => UI.toast(e.message, 'error'));
+      },
+      'mgmt-review-pdf': () => {
+        UI.toast('Generando Revision por la Direccion PDF...', 'info');
+        Api.reports.managementReview('pdf').catch(e => UI.toast(e.message, 'error'));
+      },
+      'mgmt-review-excel': () => {
+        UI.toast('Generando Revision por la Direccion Excel...', 'info');
+        Api.reports.managementReview('excel').catch(e => UI.toast(e.message, 'error'));
+      },
+      'mgmt-review-word': () => {
+        UI.toast('Generando Revision por la Direccion Word...', 'info');
+        Api.reports.managementReview('word').catch(e => UI.toast(e.message, 'error'));
       },
     };
     if (actions[type]) actions[type]();

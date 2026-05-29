@@ -192,75 +192,184 @@ def risk_register(db: Session = Depends(get_db),
 @router.get("/soa")
 def statement_of_applicability(db: Session = Depends(get_db),
                                current_user: User = Depends(get_current_user)):
-    """Statement of Applicability ISO 27001/27002."""
+    """Statement of Applicability ISO 27001/27002 — completo con todos los campos normativos."""
     s = _styles()
     el = []
-    el.append(Paragraph("Statement of Applicability", s["TitleBrand"]))
-    el.append(Paragraph("ISO/IEC 27001 - ISO/IEC 27002:2022", s["SubBrand"]))
+    now_str = datetime.now().strftime("%d/%m/%Y")
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    org_name = (ctx.organization_name if ctx else None) or "Organizacion"
+    scope = (ctx.scope if ctx else None) or "[Alcance no definido]"
+    appetite = ctx.risk_appetite if ctx else 3
+
+    # ── PORTADA ──────────────────────────────────────────────────────────────
+    el.append(Spacer(1, 30*mm))
+    el.append(Paragraph("Declaracion de Aplicabilidad", s["TitleBrand"]))
+    el.append(Paragraph("Statement of Applicability (SOA)", s["SubBrand"]))
+    el.append(Spacer(1, 8))
+    el.append(Paragraph(f"<b>Organizacion:</b> {_safe(org_name)}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>Norma:</b> ISO/IEC 27001:2022 &mdash; ISO/IEC 27002:2022", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>Fecha de emision:</b> {now_str}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>Version:</b> 1.0", s["BodyBrand"]))
+    el.append(Spacer(1, 16))
+
+    # Alcance y contexto
+    el.append(Paragraph("Alcance del SGSI", s["H2Brand"]))
+    el.append(Paragraph(_safe(scope), s["BodyBrand"]))
+    el.append(Paragraph(f"<b>Apetito de riesgo:</b> Nivel {appetite}/8", s["BodyBrand"]))
+    el.append(PageBreak())
+
+    # ── TABLA DE CONTROL DE VERSIONES ────────────────────────────────────────
+    el.append(Paragraph("Control de Versiones", s["H2Brand"]))
+    ver_data = [
+        ["Version", "Fecha", "Autor", "Descripcion del cambio"],
+        ["1.0", now_str, "Administrador de Seguridad", "Version inicial generada por RiskHub"],
+    ]
+    ver_t = Table(ver_data, colWidths=[20*mm, 30*mm, 60*mm, 60*mm])
+    ver_t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.3, BRAND_GRAY3),
+    ]))
+    el.append(ver_t)
     el.append(Spacer(1, 12))
 
+    # ── ESTADISTICAS ─────────────────────────────────────────────────────────
     impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     by_control = {}
     for imp in impls:
         by_control.setdefault(imp.control_id, []).append(imp)
 
-    from app.models import Control
     controls = db.query(Control).order_by(Control.code).all()
-
-    # Estadisticas resumen
     total_c = len(controls)
     total_impl = sum(1 for c in controls if by_control.get(c.id))
-    implemented_count = sum(
-        1 for imp in impls
-        if imp.status and imp.status.value == "implemented"
-    )
-    el.append(Paragraph(
-        f"Controles catalogados: <b>{total_c}</b>  |  "
-        f"Implementaciones activas: <b>{total_impl}</b>  |  "
-        f"Estado Implementado: <b>{implemented_count}</b>",
-        s["BodyBrand"]))
-    el.append(Spacer(1, 8))
+    implemented_count = sum(1 for imp in impls if imp.status and imp.status.value == "implemented")
+    partial_count = sum(1 for imp in impls if imp.status and imp.status.value == "partial")
+    excluded_count = sum(1 for imp in impls if imp.exclusion_justification)
 
-    data = [["Control", "Nombre", "Aplic.", "Estado", "Mat.", "Razon inclusion", "Evidencia"]]
+    el.append(Paragraph("Resumen Ejecutivo", s["H2Brand"]))
+    stats_data = [
+        ["Indicador", "Valor"],
+        ["Total controles ISO 27002:2022", str(total_c)],
+        ["Controles con implementacion activa", str(total_impl)],
+        ["Controles en estado IMPLEMENTADO", str(implemented_count)],
+        ["Controles en estado PARCIAL", str(partial_count)],
+        ["Controles con justificacion de exclusion", str(excluded_count)],
+        ["Controles sin implementar", str(total_c - total_impl)],
+    ]
+    stats_t = Table(stats_data, colWidths=[120*mm, 50*mm])
+    stats_t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+        ("GRID", (0, 0), (-1, -1), 0.3, BRAND_GRAY3),
+        ("ALIGN", (1, 0), (1, -1), "CENTER"),
+    ]))
+    el.append(stats_t)
+    el.append(PageBreak())
+
+    # ── TABLA COMPLETA DE CONTROLES ───────────────────────────────────────────
+    el.append(Paragraph("Declaracion de Aplicabilidad — Detalle por Control", s["H2Brand"]))
+    el.append(Paragraph(
+        "La siguiente tabla lista todos los controles del Anexo A de ISO/IEC 27001:2022 "
+        "(basados en ISO/IEC 27002:2022), con su estado de aplicabilidad, justificacion, "
+        "evidencias y nivel de madurez.", s["BodyBrand"]))
+    el.append(Spacer(1, 6))
+
+    _STATUS_ES = {
+        "implemented": "Implementado",
+        "partial": "Parcial",
+        "planned": "Planificado",
+        "not_implemented": "No impl.",
+    }
+    _REASON_ES = {
+        "legal": "Legal/Regulatorio",
+        "contractual": "Contractual",
+        "risk": "Gestion riesgo",
+        "best_practice": "Buena practica",
+    }
+
+    data = [[
+        "Ctrl", "Nombre del control", "Aplic.", "Estado",
+        "Mat.", "Razon inclusion", "Razon exclusion",
+        "Evidencias", "Ult. revision SOA", "Prox. revision",
+    ]]
+
     for c in controls:
         ims = by_control.get(c.id, [])
         if ims:
             for imp in ims:
-                reason = (imp.inclusion_reason or "-")[:30]
-                evidence = ""
-                if imp.evidence_refs:
-                    refs = imp.evidence_refs if isinstance(imp.evidence_refs, list) else []
-                    evidence = "; ".join(str(r)[:20] for r in refs[:2])
+                refs = imp.evidence_refs if isinstance(imp.evidence_refs, list) else []
+                ev_str = "\n".join(
+                    (r.get("title") or "")[:28] for r in refs[:3] if r.get("title")
+                ) or (imp.evidence or "-")[:40]
+                soa_rev = imp.soa_reviewed_at.strftime("%d/%m/%y") if imp.soa_reviewed_at else "-"
+                next_rev = imp.next_review.strftime("%d/%m/%y") if imp.next_review else "-"
                 data.append([
-                    c.code, c.name[:45], "Si",
-                    imp.status.value if imp.status else "-",
-                    f"{imp.maturity}/5",
-                    reason, evidence or "-",
+                    c.code,
+                    _safe(c.name, 42),
+                    "Si",
+                    _STATUS_ES.get(imp.status.value if imp.status else "", "-"),
+                    f"{imp.maturity or 0}/5",
+                    _REASON_ES.get(imp.inclusion_reason or "", imp.inclusion_reason or "-"),
+                    _safe(imp.exclusion_justification, 35) if imp.exclusion_justification else "-",
+                    _safe(ev_str, 40),
+                    soa_rev,
+                    next_rev,
                 ])
         else:
-            data.append([c.code, c.name[:45], "No", "-", "-", "-", "-"])
+            data.append([c.code, _safe(c.name, 42), "No", "-", "-", "-", "-", "-", "-", "-"])
 
-    t = Table(data, repeatRows=1, colWidths=[16*mm, 54*mm, 12*mm, 22*mm, 12*mm, 32*mm, 32*mm])
+    # Columnas ajustadas para A4 landscape-ish en puntos
+    col_w = [13*mm, 48*mm, 10*mm, 20*mm, 10*mm, 24*mm, 24*mm, 30*mm, 18*mm, 18*mm]
+    t = Table(data, repeatRows=1, colWidths=col_w)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("FONTSIZE", (0, 0), (-1, -1), 6),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
-        ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+        ("GRID", (0, 0), (-1, -1), 0.2, BRAND_GRAY3),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("WORDWRAP", (1, 1), (1, -1), True),
     ]))
     el.append(t)
 
-    # Nota pie SOA
-    el.append(Spacer(1, 8))
+    # ── SECCION DE FIRMA Y APROBACION ─────────────────────────────────────────
+    el.append(PageBreak())
+    el.append(Paragraph("Aprobacion y Firma", s["H2Brand"]))
     el.append(Paragraph(
-        "<i>Este documento constituye la Declaracion de Aplicabilidad (SOA) requerida por "
-        "ISO/IEC 27001:2022 clausula 6.1.3. Incluye todos los controles del Anexo A "
-        "(ISO/IEC 27002:2022), indicando aplicabilidad, estado, razon de inclusion y evidencias.</i>",
+        "El presente documento ha sido revisado y aprobado por los responsables del "
+        "Sistema de Gestion de la Seguridad de la Informacion (SGSI).", s["BodyBrand"]))
+    el.append(Spacer(1, 20))
+    firma_data = [
+        ["Rol", "Nombre y apellidos", "Fecha", "Firma"],
+        ["Responsable de Seguridad", "_" * 30, "_" * 15, "_" * 20],
+        ["Director / CISO", "_" * 30, "_" * 15, "_" * 20],
+        ["Auditor Interno", "_" * 30, "_" * 15, "_" * 20],
+    ]
+    firma_t = Table(firma_data, colWidths=[45*mm, 55*mm, 30*mm, 40*mm])
+    firma_t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+        ("GRID", (0, 0), (-1, -1), 0.3, BRAND_GRAY3),
+        ("ROWHEIGHT", (0, 1), (-1, -1), 18*mm),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    el.append(firma_t)
+    el.append(Spacer(1, 10))
+    el.append(Paragraph(
+        "<i>Documento generado automaticamente por RiskHub. "
+        "Conforme a ISO/IEC 27001:2022 clausula 6.1.3 (Statement of Applicability).</i>",
         s["BodyBrand"]))
 
-    return _pdf_response(el, "soa.pdf")
+    return _pdf_response(el, f"SOA_{org_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf")
 
 
 # ============================================================
@@ -434,14 +543,434 @@ def risk_register_excel(db: Session = Depends(get_db),
     ws4.column_dimensions["A"].width = 32
     ws4.column_dimensions["B"].width = 30
 
+    # ---- Hoja 5: Dashboard visual ─────────────────────────────────────────
+    from openpyxl.chart import BarChart, PieChart, Reference, Series as ChartSeries  # noqa
+    ws5 = wb.create_sheet("Dashboard", 0)   # primera hoja
+    wb.active = ws5
+
+    # Titulo
+    ws5["A1"] = f"RiskHub — Dashboard Ejecutivo"
+    ws5["A1"].font = Font(size=16, bold=True, color="59008D")
+    ws5["A2"] = f"{ctx.organization_name if ctx else 'Organizacion'} — {datetime.now().strftime('%d/%m/%Y')}"
+    ws5["A2"].font = Font(size=11, color="9D9D9D")
+
+    # KPIs en fila
+    kpi_col = 1
+    for label, val, bg in [
+        ("Total Riesgos", len(risks), "EDE9FE"),
+        ("Riesgos Altos (>=5)", sum(1 for r in risks if r.residual_level >= 5), "FEE2E2"),
+        ("Controles Implantados", sum(1 for imp in impls if imp.status and imp.status.value == "implemented"), "D1FAE5"),
+        ("Madurez Media", f"{round(sum(imp.maturity or 0 for imp in impls)/max(1, len(impls)), 1)}/5", "FEF9C3"),
+    ]:
+        ws5.cell(row=4, column=kpi_col, value=label).font = Font(bold=True, size=9, color="59008D")
+        cell_val = ws5.cell(row=5, column=kpi_col, value=val)
+        cell_val.font = Font(size=18, bold=True)
+        cell_val.fill = PatternFill("solid", fgColor=bg)
+        cell_val.alignment = Alignment(horizontal="center")
+        ws5.column_dimensions[get_column_letter(kpi_col)].width = 22
+        kpi_col += 2
+
+    # Datos para graficos
+    chart_row = 8
+    ws5.cell(row=chart_row, column=1, value="Nivel Residual")
+    ws5.cell(row=chart_row, column=2, value="Cantidad")
+    for lbl, fn in [("Critico (>=7)", lambda r: r.residual_level >= 7),
+                    ("Alto (5-6)", lambda r: 5 <= r.residual_level < 7),
+                    ("Medio (3-4)", lambda r: 3 <= r.residual_level < 5),
+                    ("Bajo (<3)", lambda r: r.residual_level < 3)]:
+        chart_row += 1
+        ws5.cell(row=chart_row, column=1, value=lbl)
+        ws5.cell(row=chart_row, column=2, value=sum(1 for r in risks if fn(r)))
+
+    try:
+        bar = BarChart()
+        bar.title = "Distribucion de Riesgos por Nivel Residual"
+        bar.style = 10
+        bar.y_axis.title = "Numero de riesgos"
+        bar.x_axis.title = "Nivel"
+        bar.shape = 4
+        data_ref = Reference(ws5, min_col=2, min_row=8, max_row=12)
+        cats = Reference(ws5, min_col=1, min_row=9, max_row=12)
+        bar.add_data(data_ref, titles_from_data=True)
+        bar.set_categories(cats)
+        bar.width = 15; bar.height = 10
+        ws5.add_chart(bar, "E4")
+
+        pie = PieChart()
+        pie.title = "Estado de Controles"
+        pie.style = 10
+        st_row = chart_row + 2
+        ws5.cell(row=st_row, column=1, value="Estado controles")
+        ws5.cell(row=st_row, column=2, value="N")
+        for st_lbl, st_val in [
+            ("Implementado", sum(1 for i in impls if i.status and i.status.value == "implemented")),
+            ("Parcial", sum(1 for i in impls if i.status and i.status.value == "partial")),
+            ("Planificado", sum(1 for i in impls if i.status and i.status.value == "planned")),
+            ("No impl.", sum(1 for i in impls if i.status and i.status.value == "not_implemented")),
+        ]:
+            st_row += 1
+            ws5.cell(row=st_row, column=1, value=st_lbl)
+            ws5.cell(row=st_row, column=2, value=st_val)
+        pie_data = Reference(ws5, min_col=2, min_row=chart_row + 2, max_row=st_row)
+        pie_cats = Reference(ws5, min_col=1, min_row=chart_row + 3, max_row=st_row)
+        pie.add_data(pie_data, titles_from_data=True)
+        pie.set_categories(pie_cats)
+        pie.width = 15; pie.height = 10
+        ws5.add_chart(pie, "M4")
+    except Exception:
+        pass  # charts opcionales — no bloquear si hay error
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f"riskhub_export_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    fname = f"riskhub_dashboard_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
+
+
+# ============================================================
+# Informe de Revision por la Direccion — ISO 27001:2022 cl. 9.3 + ENS
+# ============================================================
+
+@router.get("/management-review")
+def management_review(
+    format: str = Query("pdf", regex="^(pdf|excel|word)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Informe de Revision por la Direccion (ISO 27001:2022 cl. 9.3 / ENS).
+
+    Soporta format=pdf | excel | word.
+    """
+    from app.models import AuditProgram, NonConformity, Supplier  # noqa
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    org_name = (ctx.organization_name if ctx else None) or "Organizacion"
+    scope = (ctx.scope if ctx else None) or ""
+    boundaries = (ctx.boundaries if ctx else None) or ""
+    now = datetime.now()
+    now_str = now.strftime("%d/%m/%Y")
+
+    # Recopilar datos reales
+    risks = filter_by_org(db.query(Risk), Risk, current_user).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
+    incidents_all = filter_by_org(db.query(Incident), Incident, current_user).all()
+    tasks_all = filter_by_org(db.query(TreatmentTask), TreatmentTask, current_user).all()
+    policies = filter_by_org(db.query(Policy), Policy, current_user).all()
+    suppliers = filter_by_org(db.query(Supplier), Supplier, current_user).all()
+
+    total_risks = len(risks)
+    high_risks = sum(1 for r in risks if r.residual_level >= 5)
+    untreated = sum(1 for r in risks if not r.treatment_option and r.residual_level >= 5)
+    impl_pct = round(sum(1 for i in impls if i.status and i.status.value == "implemented") / max(1, len(impls)) * 100)
+    avg_mat = round(sum(i.maturity or 0 for i in impls) / max(1, len(impls)), 1)
+    open_inc = sum(1 for i in incidents_all if i.status and i.status.value in ("open", "in_progress"))
+    p1p2 = sum(1 for i in incidents_all if i.severity and i.severity.value in ("p1", "p2"))
+    tasks_overdue = sum(1 for t in tasks_all if t.due_date and t.due_date < now and t.status and t.status.value != "done")
+    tasks_pending = sum(1 for t in tasks_all if t.status and t.status.value == "pending")
+    policies_overdue = sum(1 for p in policies if p.review_date and p.review_date < now)
+
+    EMPTY = "[A CUMPLIMENTAR]"
+
+    sections = [
+        {
+            "title": "a) Estado de acciones de la revision anterior",
+            "content": EMPTY,
+            "iso": "ISO 27001:2022 cl. 9.3.2.a",
+        },
+        {
+            "title": "b) Cambios en el contexto de la organizacion",
+            "content": (
+                f"Alcance del SGSI: {scope or EMPTY}\n"
+                f"Fronteras: {boundaries or EMPTY}\n"
+                f"Cambios internos/externos relevantes: {EMPTY}"
+            ),
+            "iso": "ISO 27001:2022 cl. 9.3.2.b",
+        },
+        {
+            "title": "c) Cambios en las necesidades de las partes interesadas",
+            "content": EMPTY,
+            "iso": "ISO 27001:2022 cl. 9.3.2.c",
+        },
+        {
+            "title": "d) Desempeno del SGSI — Gestion de Riesgos",
+            "content": (
+                f"Total riesgos identificados: {total_risks}\n"
+                f"Riesgos altos (nivel >= 5): {high_risks}\n"
+                f"Riesgos altos sin plan de tratamiento: {untreated}\n"
+                f"Controles implementados: {impl_pct}% | Madurez media: {avg_mat}/5"
+            ),
+            "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 8.2/8.3",
+        },
+        {
+            "title": "d) Desempeno del SGSI — Incidentes de Seguridad",
+            "content": (
+                f"Incidentes abiertos: {open_inc}\n"
+                f"Incidentes P1/P2 (criticos/altos): {p1p2}\n"
+                f"Total historico de incidentes: {len(incidents_all)}\n"
+                f"Lecciones aprendidas documentadas: {sum(1 for i in incidents_all if i.lessons_learned)}"
+            ),
+            "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 6.1.2",
+        },
+        {
+            "title": "d) Desempeno del SGSI — No Conformidades y Acciones Correctivas",
+            "content": EMPTY + "\n(Ver modulo de No Conformidades en RiskHub para el detalle actualizado)",
+            "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 10.1",
+        },
+        {
+            "title": "d) Desempeno del SGSI — Tareas de Tratamiento",
+            "content": (
+                f"Tareas vencidas sin completar: {tasks_overdue}\n"
+                f"Tareas pendientes de inicio: {tasks_pending}\n"
+                f"Total tareas activas: {len(tasks_all)}"
+            ),
+            "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 8.3",
+        },
+        {
+            "title": "d) Desempeno del SGSI — Auditorias Internas",
+            "content": EMPTY + "\n(Ver modulo Auditoria Interna en RiskHub)",
+            "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 9.2",
+        },
+        {
+            "title": "d) Desempeno del SGSI — Cumplimiento de Politicas",
+            "content": (
+                f"Total politicas gestionadas: {len(policies)}\n"
+                f"Politicas con revision vencida: {policies_overdue}\n"
+                f"Politicas en estado borrador: {sum(1 for p in policies if p.status and p.status.value == 'draft')}"
+            ),
+            "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 5.2",
+        },
+        {
+            "title": "d) Desempeno del SGSI — Proveedores y Cadena de Suministro",
+            "content": (
+                f"Total proveedores gestionados: {len(suppliers)}\n"
+                f"Proveedores criticos: {sum(1 for s in suppliers if s.is_critical)}\n"
+                f"Proveedores sin evaluacion reciente: {sum(1 for s in suppliers if not s.last_assessment_at)}"
+            ),
+            "iso": "ISO 27001:2022 cl. 9.3.2.d — NIS2 Art. 21.2.d",
+        },
+        {
+            "title": "d) Retroalimentacion de partes interesadas",
+            "content": EMPTY,
+            "iso": "ISO 27001:2022 cl. 9.3.2.d",
+        },
+        {
+            "title": "e) Resultados de la evaluacion de riesgos y estado del plan de tratamiento",
+            "content": (
+                f"Ver detalle en el Risk Register exportado desde RiskHub.\n"
+                f"Resumen: {total_risks} riesgos | {high_risks} altos | "
+                f"{sum(1 for r in risks if r.status and r.status.value == 'accepted')} aceptados"
+            ),
+            "iso": "ISO 27001:2022 cl. 9.3.2.e",
+        },
+        {
+            "title": "f) Oportunidades de mejora continua",
+            "content": EMPTY,
+            "iso": "ISO 27001:2022 cl. 9.3.2.f / cl. 10.2",
+        },
+        {
+            "title": "g) Objetivos de seguridad para el proximo periodo",
+            "content": EMPTY,
+            "iso": "ISO 27001:2022 cl. 9.3.2 / cl. 6.2",
+        },
+        {
+            "title": "h) Decisiones y acciones resultantes",
+            "content": EMPTY,
+            "iso": "ISO 27001:2022 cl. 9.3.3",
+        },
+        {
+            "title": "i) Recursos necesarios",
+            "content": EMPTY,
+            "iso": "ISO 27001:2022 cl. 9.3.3 / cl. 7.1",
+        },
+        {
+            "title": "j) ENS — Nivel de seguridad alcanzado y plan de adecuacion",
+            "content": (
+                f"Cobertura de controles: {impl_pct}% implementados\n"
+                f"Nivel de madurez medio: {avg_mat}/5\n"
+                f"Plan de adecuacion ENS: {EMPTY}"
+            ),
+            "iso": "ENS RD 311/2022 — Art. 28 / Anexo II",
+        },
+    ]
+
+    if format == "pdf":
+        return _mgmt_review_pdf(sections, org_name, scope, now_str)
+    elif format == "excel":
+        return _mgmt_review_excel(sections, org_name, scope, now_str)
+    else:
+        return _mgmt_review_word(sections, org_name, scope, now_str)
+
+
+def _mgmt_review_pdf(sections, org_name, scope, now_str):
+    """Genera el informe de revision por la direccion en PDF."""
+    s = _styles()
+    el = []
+    el.append(Spacer(1, 20*mm))
+    el.append(Paragraph("Informe de Revision por la Direccion", s["TitleBrand"]))
+    el.append(Paragraph("ISO/IEC 27001:2022 Clausula 9.3 &mdash; ENS RD 311/2022", s["SubBrand"]))
+    el.append(Spacer(1, 6))
+    el.append(Paragraph(f"<b>Organizacion:</b> {_safe(org_name)}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>Fecha:</b> {now_str}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>Alcance:</b> {_safe(scope) or '[A CUMPLIMENTAR]'}", s["BodyBrand"]))
+    el.append(PageBreak())
+
+    for sec in sections:
+        el.append(Paragraph(_safe(sec["title"]), s["H2Brand"]))
+        el.append(Paragraph(f"<i>{_safe(sec['iso'])}</i>",
+                             ParagraphStyle("IsoRef", parent=s["BodyBrand"],
+                                            textColor=BRAND_GRAY3, fontSize=8)))
+        el.append(Spacer(1, 4))
+        for line in (sec["content"] or "").split("\n"):
+            if line.strip():
+                el.append(Paragraph(_safe(line), s["BodyBrand"]))
+        el.append(Spacer(1, 12))
+
+    # Firma
+    el.append(PageBreak())
+    el.append(Paragraph("Aprobacion de la Direccion", s["H2Brand"]))
+    firma_data = [
+        ["Cargo", "Nombre y apellidos", "Fecha", "Firma"],
+        ["Director General / CEO", "_" * 28, "_" * 12, "_" * 20],
+        ["Responsable de Seguridad (CISO)", "_" * 28, "_" * 12, "_" * 20],
+        ["Auditor Interno", "_" * 28, "_" * 12, "_" * 20],
+    ]
+    ft = Table(firma_data, colWidths=[50*mm, 55*mm, 28*mm, 37*mm])
+    ft.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+        ("GRID", (0, 0), (-1, -1), 0.3, BRAND_GRAY3),
+        ("ROWHEIGHT", (0, 1), (-1, -1), 20*mm),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    el.append(ft)
+    return _pdf_response(el, f"revision_direccion_{datetime.now().strftime('%Y%m%d')}.pdf")
+
+
+def _mgmt_review_excel(sections, org_name, scope, now_str):
+    """Genera el informe de revision por la direccion en Excel."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+
+    wb = openpyxl.Workbook()
+    thin = Side(style="thin", color="D1D5DB")
+    brd = Border(left=thin, right=thin, top=thin, bottom=thin)
+    hdr_fill = PatternFill("solid", fgColor="59008D")
+    emp_fill = PatternFill("solid", fgColor="FFFBEB")  # amarillo claro = a rellenar
+
+    ws = wb.active
+    ws.title = "Revision Direccion"
+    ws.column_dimensions["A"].width = 45
+    ws.column_dimensions["B"].width = 80
+
+    ws.append(["Informe de Revision por la Direccion"])
+    ws["A1"].font = Font(size=14, bold=True, color="59008D")
+    ws.append([f"Organizacion: {org_name}   |   Fecha: {now_str}"])
+    ws.append([f"Alcance: {scope or '[A CUMPLIMENTAR]'}"])
+    ws.append(["Norma", "ISO/IEC 27001:2022 Clausula 9.3 — ENS RD 311/2022"])
+    ws.append([])
+
+    for sec in sections:
+        row_hdr = ws.max_row + 1
+        ws.append([sec["title"], sec["iso"]])
+        for col in [1, 2]:
+            c = ws.cell(row=row_hdr, column=col)
+            c.fill = hdr_fill
+            c.font = Font(bold=True, color="FFFFFF", size=9)
+            c.border = brd
+
+        content = sec["content"] or ""
+        needs_fill = "[A CUMPLIMENTAR]" in content
+        row_cont = ws.max_row + 1
+        ws.append(["Contenido", content])
+        for col in [1, 2]:
+            c = ws.cell(row=row_cont, column=col)
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+            c.border = brd
+            if needs_fill and col == 2:
+                c.fill = emp_fill
+                c.font = Font(italic=True, color="92400E")
+        ws.row_dimensions[row_cont].height = max(30, content.count("\n") * 14 + 20)
+        ws.append([])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=revision_direccion_{datetime.now().strftime('%Y%m%d')}.xlsx"},
+    )
+
+
+def _mgmt_review_word(sections, org_name, scope, now_str):
+    """Genera el informe de revision por la direccion en Word (.docx)."""
+    try:
+        from docx import Document
+        from docx.shared import Pt, RGBColor, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+    except ImportError:
+        raise HTTPException(500, "python-docx no instalado. Anade 'python-docx' a requirements.txt.")
+
+    doc = Document()
+
+    # Estilos
+    style_title = doc.styles["Title"]
+    style_title.font.size = Pt(22)
+    style_title.font.color.rgb = RGBColor(0x59, 0x00, 0x8D)
+
+    doc.add_heading("Informe de Revision por la Direccion", 0)
+    doc.add_paragraph(f"Organizacion: {org_name}")
+    doc.add_paragraph(f"Fecha: {now_str}")
+    doc.add_paragraph(f"Alcance del SGSI: {scope or '[A CUMPLIMENTAR]'}")
+    doc.add_paragraph("Norma de referencia: ISO/IEC 27001:2022 cl. 9.3 / ENS RD 311/2022")
+    doc.add_page_break()
+
+    for sec in sections:
+        doc.add_heading(sec["title"], 2)
+        iso_p = doc.add_paragraph(sec["iso"])
+        iso_p.runs[0].italic = True
+        iso_p.runs[0].font.size = Pt(8)
+        iso_p.runs[0].font.color.rgb = RGBColor(0x9D, 0x9D, 0x9D)
+
+        content = sec["content"] or "[A CUMPLIMENTAR]"
+        for line in content.split("\n"):
+            if line.strip():
+                p = doc.add_paragraph(line.strip())
+                if "[A CUMPLIMENTAR]" in line:
+                    for run in p.runs:
+                        run.italic = True
+                        run.font.color.rgb = RGBColor(0x92, 0x40, 0x0E)
+
+        doc.add_paragraph()
+
+    # Seccion de firmas
+    doc.add_page_break()
+    doc.add_heading("Aprobacion de la Direccion", 2)
+    table = doc.add_table(rows=4, cols=4)
+    table.style = "Table Grid"
+    for i, hdr in enumerate(["Cargo", "Nombre y apellidos", "Fecha", "Firma"]):
+        table.cell(0, i).text = hdr
+        table.cell(0, i).paragraphs[0].runs[0].bold = True
+    for row_idx, cargo in enumerate(
+        ["Director General / CEO", "Responsable Seguridad (CISO)", "Auditor Interno"], 1
+    ):
+        table.cell(row_idx, 0).text = cargo
+        for col in [1, 2, 3]:
+            table.cell(row_idx, col).text = ""
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename=revision_direccion_{datetime.now().strftime('%Y%m%d')}.docx"},
     )
 
 

@@ -29,6 +29,9 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: "UserOut"
+    must_change_password: bool = False
+    mfa_required: bool = False
+    mfa_token: Optional[str] = None
 
 
 # ---------- ORGANIZATIONS ----------
@@ -65,7 +68,8 @@ class OrganizationOut(ORMBase):
 class UserIn(BaseModel):
     email: EmailStr
     full_name: str
-    password: str = Field(min_length=8)
+    # password es opcional: si no se provee, el backend genera una OTP automaticamente
+    password: Optional[str] = Field(default=None, min_length=8)
     role: UserRole = UserRole.VIEWER
     organization_id: Optional[int] = None
 
@@ -88,6 +92,11 @@ class UserOut(ORMBase):
     last_login_at: Optional[datetime] = None
     risk_count: int = 0
     organization_id: Optional[int] = None
+    must_change_password: bool = False
+    mfa_enabled: bool = False
+    # Solo se rellena cuando el admin crea un usuario con OTP generado automaticamente
+    otp_password: Optional[str] = None
+    otp_email_sent: Optional[bool] = None
 
 
 # ---------- CONTEXT ----------
@@ -161,6 +170,78 @@ class AssetOut(ORMBase):
     # v1.7.5 — analisis IA
     ai_risk_status: Optional[str] = None
     ai_risk_summary: Optional[dict] = None
+    # v1.8.0 — agrupacion
+    group_id: Optional[int] = None
+    is_group_representative: bool = False
+
+
+# ---------- ASSET GROUPS ----------
+
+class GroupingCriterion(BaseModel):
+    id: str
+    name: str
+    description: str
+    level: int
+    enabled: bool
+
+
+class AssetGroupingConfigOut(ORMBase):
+    id: int
+    criteria: list[GroupingCriterion]
+    updated_at: Optional[datetime] = None
+
+
+class AssetGroupingConfigIn(BaseModel):
+    criteria: list[GroupingCriterion]
+
+
+class AssetMiniOut(ORMBase):
+    id: int
+    code: str
+    name: str
+    asset_type: AssetType
+    category: Optional[str] = None
+    location: Optional[str] = None
+    classification: Optional[str] = None
+    value_confidentiality: int = 0
+    value_integrity: int = 0
+    value_availability: int = 0
+    value_authenticity: int = 0
+    value_accountability: int = 0
+
+
+class AssetGroupOut(ORMBase):
+    id: int
+    name: str
+    description: Optional[str] = None
+    status: str
+    criteria_snapshot: Optional[list] = None
+    ai_rationale: Optional[str] = None
+    representative_asset_id: Optional[int] = None
+    member_count: int = 0
+    members: list[AssetMiniOut] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class AssetGroupIn(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class AssetGroupUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class MoveAssetIn(BaseModel):
+    asset_id: int
+    target_group_id: Optional[int] = None  # None = desagrupar
+
+
+class SplitGroupIn(BaseModel):
+    asset_ids: list[int]  # activos que pasan al nuevo grupo
+    new_group_name: str
 
 
 # ---------- THREATS ----------

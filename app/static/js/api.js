@@ -56,7 +56,15 @@ const Api = {
   // Endpoints específicos
   me: () => Api.get('/api/auth/me'),
   changePassword: (d) => Api.patch('/api/auth/me/password', d),
+  setInitialPassword: (d) => Api.post('/api/auth/set-initial-password', d),
   listUsers: () => Api.get('/api/auth/users'),
+  mfa: {
+    setup: () => Api.post('/api/auth/mfa/setup', {}),
+    verifySetup: (d) => Api.post('/api/auth/mfa/verify-setup', d),
+    disable: () => Api.post('/api/auth/mfa/disable', {}),
+    disableAdmin: (userId) => Api.post('/api/auth/mfa/disable-admin', { user_id: userId }),
+    complete: (d) => Api.post('/api/auth/mfa/complete', d),
+  },
   context: {
     get: () => Api.get('/api/context/'),
     update: (d) => Api.put('/api/context/', d),
@@ -72,6 +80,19 @@ const Api = {
     exportCsv: () => Api.download('/api/assets/export/csv', 'assets.csv'),
     analyze: (id) => Api.post('/api/assets/' + id + '/analyze', {}),
     analyzeAll: () => Api.post('/api/assets/analyze-all', {}),
+  },
+  assetGroups: {
+    getConfig: () => Api.get('/api/asset-groups/config'),
+    saveConfig: (d) => Api.put('/api/asset-groups/config', d),
+    propose: () => Api.post('/api/asset-groups/propose', {}),
+    list: (status) => Api.get('/api/asset-groups/', status ? { status } : undefined),
+    create: (d) => Api.post('/api/asset-groups/', d),
+    update: (id, d) => Api.put('/api/asset-groups/' + id, d),
+    del: (id) => Api.del('/api/asset-groups/' + id),
+    validate: (id) => Api.post('/api/asset-groups/' + id + '/validate', {}),
+    validateAll: () => Api.post('/api/asset-groups/validate-all', {}),
+    moveAsset: (d) => Api.post('/api/asset-groups/move-asset', d),
+    split: (id, d) => Api.post('/api/asset-groups/' + id + '/split', d),
   },
   threats: {
     list: (q) => Api.get('/api/threats/', q),
@@ -125,9 +146,13 @@ const Api = {
   },
   reports: {
     riskRegister: () => Api.download('/api/reports/risk-register', 'risk_register.pdf'),
-    soa: () => Api.download('/api/reports/soa', 'statement_of_applicability.pdf'),
-    riskRegisterExcel: () => Api.download('/api/reports/risk-register-excel', 'risk_register.xlsx'),
+    soa: () => Api.download('/api/reports/soa', `SOA_${new Date().toISOString().slice(0,10)}.pdf`),
+    riskRegisterExcel: () => Api.download('/api/reports/risk-register-excel', `dashboard_ejecutivo_${new Date().toISOString().slice(0,10)}.xlsx`),
     aiGenerate: (d) => Api.post('/api/reports/ai-generate', d),
+    managementReview: (fmt) => Api.download(
+      `/api/reports/management-review?format=${fmt}`,
+      `revision_direccion_${new Date().toISOString().slice(0,10)}.${fmt === 'word' ? 'docx' : fmt}`
+    ),
   },
   incidents: {
     list: (q) => Api.get('/api/incidents/', q),
@@ -163,6 +188,8 @@ const Api = {
     executeAction: (d) => Api.post('/api/ai/execute-action', d),
     feedback: (d) => Api.post('/api/ai/feedback', d),
     feedbackSummary: () => Api.get('/api/ai/feedback/summary'),
+    controlGapDetailed: (d) => Api.post('/api/ai/control-gap-detailed', d),
+    architectureReview: () => Api.post('/api/ai/architecture-review', {}),
   },
   aiConfig: {
     get: () => Api.get('/api/ai/config/'),
@@ -239,8 +266,9 @@ const Api = {
     summary: () => Api.get('/api/gdpr/stats/summary'),
   },
   featureFlags: {
-    list: () => Api.get('/api/feature-flags/'),
-    update: (name, enabled) => Api.patch('/api/feature-flags/' + name, { enabled }),
+    list: (orgId) => Api.get('/api/feature-flags/' + (orgId ? '?org_id=' + orgId : '')),
+    update: (name, enabled, orgId) => Api.patch('/api/feature-flags/' + name, { enabled, organization_id: orgId || null }),
+    reset: (name, orgId) => Api.del('/api/feature-flags/' + name + '?org_id=' + orgId),
   },
   sharepoint: {
     getConfig: () => Api.get('/api/integrations/sharepoint/config'),

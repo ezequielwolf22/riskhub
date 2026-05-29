@@ -1,7 +1,10 @@
 """Autenticacion JWT, hash de passwords y dependencias FastAPI."""
+import base64
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from cryptography.fernet import Fernet
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -14,6 +17,22 @@ from app.models import User, UserRole
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+
+def _fernet() -> Fernet:
+    """Genera una clave Fernet derivada del secret_key de la aplicacion."""
+    key_bytes = hashlib.sha256(settings.secret_key.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(key_bytes))
+
+
+def encrypt_secret(value: str) -> str:
+    """Cifra un string con Fernet; devuelve la cadena cifrada en UTF-8."""
+    return _fernet().encrypt(value.encode()).decode()
+
+
+def decrypt_secret(value: str) -> str:
+    """Descifra un string previamente cifrado con Fernet."""
+    return _fernet().decrypt(value.encode()).decode()
 
 
 def hash_password(plain: str) -> str:

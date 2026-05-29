@@ -24,6 +24,7 @@ const ViewGuide = {
     { id: 'ai', title: 'Agente IA (cuestionario)', icon: '🤖' },
     { id: 'ai-chat', title: 'Chat con el Agente IA', icon: '💬' },
     { id: 'ai-documents', title: 'Documentos del Agente', icon: '📂' },
+    { id: 'architecture-review', title: 'Rev. Arquitectura de Red', icon: '📂' },
     { id: 'onboarding', title: 'Configuracion del Agente', icon: '⚙️' },
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
@@ -116,6 +117,7 @@ const ViewGuide = {
       ai: this._cAI,
       'ai-chat': this._cAiChat,
       'ai-documents': this._cAiDocuments,
+      'architecture-review': this._cArchitectureReview,
       onboarding: this._cOnboarding,
       reports: this._cReports,
       alerts: this._cAlerts,
@@ -1790,6 +1792,30 @@ const ViewGuide = {
     </ul>
     ${this._warn('El analisis ISMS requiere una API key del agente IA configurada. Sin ella, el estado aparece como "Sin IA". Configura la clave en <strong>Configuracion del Agente</strong>.')}
     ${this._tip('Usa el boton <strong>Analizar</strong> en la tabla para relanzar el analisis de cualquier documento ya indexado (util para documentos subidos antes de v1.7.4).')}
+    ${this._h('Auto-categorizacion IA (v1.7.8)')}
+    ${this._p('Tras el analisis ISMS, el sistema infiere automaticamente la categoria correcta del documento basandose en su contenido. Si se detecta una categoria diferente a la asignada manualmente, se actualiza y aparece un badge <strong>IA</strong> junto a la categoria en la tabla.')}
+    ${this._h('Imagenes de arquitectura (v1.7.8)')}
+    ${this._p('Puedes subir imagenes PNG y JPG (diagramas de red, topologias) en la categoria <em>Arquitectura y sistemas</em>. Estas imagenes se procesan directamente mediante Claude Vision en la seccion <strong>Rev. Arquitectura</strong>.')}
+  `;},
+
+  get _cArchitectureReview() { return `
+    ${this._p('La <strong>Revision de Arquitectura de Seguridad</strong> usa IA para analizar tus diagramas y documentos de red, identificar vulnerabilidades de configuracion y proponer mejoras alineadas con ISO 27001 y Zero Trust.')}
+    ${this._h('Como usarlo')}
+    ${this._steps([
+      'Sube diagramas de red, documentos de arquitectura o topologias (PDF, DOCX, PNG, JPG) en la seccion <strong>Docs del Agente</strong> con la categoria <strong>Arquitectura y sistemas</strong>.',
+      'Ve a <strong>Rev. Arquitectura</strong> en el menu lateral.',
+      'Haz clic en <strong>Analizar arquitectura de seguridad</strong>.',
+      'Revisa los resultados: inventario de componentes, vulnerabilidades por criticidad, mejoras propuestas y cumplimiento con ISO 27002 y Zero Trust.',
+    ])}
+    ${this._h('Resultados del analisis')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Inventario:</strong> componentes identificados (firewalls, servidores, redes, etc.).</li>
+      <li><strong>Vulnerabilidades:</strong> problemas de configuracion con nivel de criticidad (CRITICO/ALTO/MEDIO/BAJO), CVE si aplica y control ISO 27002 violado.</li>
+      <li><strong>Mejoras:</strong> propuestas concretas con prioridad y esfuerzo estimado.</li>
+      <li><strong>Cumplimiento:</strong> controles ISO 27002 cubiertos/no cubiertos, recomendaciones Zero Trust y propuesta de segmentacion de red.</li>
+    </ul>
+    ${this._warn('El analisis es generado por IA. Debe ser revisado por el equipo de seguridad antes de implementar cambios en produccion.')}
+    ${this._tip('Para obtener mejores resultados, sube diagramas en formato imagen (PNG/JPG) junto con documentos de descripcion en texto. El agente analizara ambos formatos en conjunto.')}
   `;},
 
   get _cOnboarding() { return `

@@ -1,10 +1,12 @@
 """Gestion de usuarios - solo administradores."""
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Organization, Risk, User, UserRole
+from app.routers.auth import _generate_otp_password, _try_send_otp_email, _validate_password_strength
 from app.schemas import UserIn, UserOut, UserUpdate
 from app.security import filter_by_org, get_current_user, hash_password, require_admin
 from app.services.audit_service import log_action
@@ -34,19 +36,23 @@ def list_users(db: Session = Depends(get_db),
     return result
 
 
-_MIN_PASSWORD_LEN = 8
-
-
 @router.post("/", response_model=UserOut, status_code=201)
 def create_user(data: UserIn, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(400, "Ya existe un usuario con ese email")
-    if len(data.password) < _MIN_PASSWORD_LEN:
-        raise HTTPException(
-            400,
-            f"La contrasena debe tener al menos {_MIN_PASSWORD_LEN} caracteres",
-        )
+
+    # Contrasena: si no se proporciona, generar OTP automaticamente
+    otp_generated = False
+    if not data.password:
+        plain_password = _generate_otp_password()
+        otp_generated = True
+    else:
+        plain_password = data.password
+        error = _validate_password_strength(plain_password)
+        if error:
+            raise HTTPException(400, error)
+
     # Determinar org: explicit > auto-assign por dominio > org del admin que crea
     org_id = data.organization_id
     if not org_id:
@@ -58,16 +64,33 @@ def create_user(data: UserIn, db: Session = Depends(get_db),
             org_id = org_by_domain.id if org_by_domain else None
     if not org_id and current_user.role != UserRole.SUPERADMIN:
         org_id = current_user.organization_id
+
     u = User(
         email=data.email, full_name=data.full_name, role=data.role,
-        hashed_password=hash_password(data.password), is_active=True,
+        hashed_password=hash_password(plain_password), is_active=True,
         organization_id=org_id,
+        must_change_password=otp_generated,
     )
     db.add(u)
     log_action(db, current_user.id, "create", "user", None,
-               {"email": data.email, "role": str(data.role)})
-    db.commit(); db.refresh(u)
-    return u
+               {"email": data.email, "role": str(data.role), "otp_generated": otp_generated})
+    db.commit()
+    db.refresh(u)
+
+    # Intentar enviar la contrasena OTP por email si hay SMTP configurado
+    email_sent = False
+    if otp_generated:
+        email_sent = _try_send_otp_email(db, data.email, data.full_name, plain_password, org_id)
+
+    # Devolver la contrasena generada en la respuesta (solo en este momento)
+    out = UserOut.model_validate(u)
+    if otp_generated:
+        # Inyectar la contrasena temporal para que el admin pueda comunicarla
+        return out.model_copy(update={
+            "otp_password": plain_password,
+            "otp_email_sent": email_sent,
+        })
+    return out
 
 
 @router.patch("/{user_id}", response_model=UserOut)
@@ -86,10 +109,18 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
             raise HTTPException(403, "Solo superadmin puede asignar el rol superadmin")
         if data.role == UserRole.ADMIN and current_user.role not in (UserRole.SUPERADMIN, UserRole.ADMIN):
             raise HTTPException(403, "Solo admin o superior puede asignar el rol admin")
-    if data.full_name is not None: u.full_name = data.full_name
-    if data.role is not None: u.role = data.role
-    if data.is_active is not None: u.is_active = data.is_active
-    if data.password: u.hashed_password = hash_password(data.password)
+    if data.full_name is not None:
+        u.full_name = data.full_name
+    if data.role is not None:
+        u.role = data.role
+    if data.is_active is not None:
+        u.is_active = data.is_active
+    if data.password:
+        error = _validate_password_strength(data.password)
+        if error:
+            raise HTTPException(400, error)
+        u.hashed_password = hash_password(data.password)
+        u.must_change_password = False
     # Solo superadmin puede mover un usuario a otra organizacion
     if data.organization_id is not None:
         if current_user.role != UserRole.SUPERADMIN:
@@ -100,7 +131,8 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
         u.organization_id = data.organization_id
     log_action(db, current_user.id, "update", "user", str(user_id),
                {"email": u.email, "role": str(u.role), "is_active": u.is_active})
-    db.commit(); db.refresh(u)
+    db.commit()
+    db.refresh(u)
     return u
 
 
@@ -120,3 +152,34 @@ def delete_user(user_id: int, db: Session = Depends(get_db),
     db.delete(u)
     log_action(db, current_user.id, "delete", "user", str(user_id), {"email": email})
     db.commit()
+
+
+class MfaRequireIn(BaseModel):
+    required: bool
+
+
+@router.patch("/{user_id}/mfa-require")
+def set_mfa_required(
+    user_id: int,
+    body: MfaRequireIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Admin activa/desactiva la obligatoriedad de MFA para la organizacion del usuario."""
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+    if (current_user.role != UserRole.SUPERADMIN
+            and target.organization_id != current_user.organization_id):
+        raise HTTPException(403, "No autorizado")
+    # Actualizar el flag org_mfa_required en la organizacion del usuario
+    if target.organization_id:
+        org = db.get(Organization, target.organization_id)
+        if org:
+            org.mfa_required = body.required
+            db.commit()
+    log_action(db, current_user.id, "update", "organization",
+               str(target.organization_id),
+               {"action": "mfa_required_set", "value": body.required})
+    db.commit()
+    return {"ok": True, "mfa_required": body.required}

@@ -91,7 +91,7 @@ const ViewOrganizations = (() => {
 
     const panel = document.getElementById('org-detail-panel');
     panel.style.display = 'block';
-    panel.innerHTML = '<p class="muted">Cargando usuarios...</p>';
+    panel.innerHTML = '<p class="muted">Cargando...</p>';
 
     try {
       await fetchOrgUsers(orgId);
@@ -148,6 +148,19 @@ const ViewOrganizations = (() => {
               </tbody>
             </table>
           ` : '<p class="muted">Sin usuarios.</p>'}
+
+          <hr style="margin:20px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="font-size:14px;font-weight:600;margin:0;">Modulos (Feature Flags)</h3>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+            Configura que modulos estan disponibles para esta organizacion.
+            Los flags con la etiqueta <span style="background:var(--bg-secondary);color:var(--text-muted);padding:1px 6px;border-radius:4px;font-size:11px;">Global</span>
+            heredan el valor por defecto del sistema.
+          </p>
+          <div id="org-flags-container-${orgId}">
+            <p class="muted">Cargando modulos...</p>
+          </div>
         </div>
       </div>
     `;
@@ -171,6 +184,88 @@ const ViewOrganizations = (() => {
         UI.toast(err.message, 'error');
       }
     };
+
+    // Cargar y renderizar feature flags de la org
+    await _renderOrgFlags(orgId);
+  }
+
+  async function _renderOrgFlags(orgId) {
+    const container = document.getElementById(`org-flags-container-${orgId}`);
+    if (!container) return;
+    try {
+      const flags = await Api.featureFlags.list(orgId);
+      if (!flags.length) {
+        container.innerHTML = '<p class="muted">No hay modulos configurados.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <table class="table" style="font-size:13px;">
+          <thead>
+            <tr>
+              <th>Modulo</th>
+              <th>Descripcion</th>
+              <th style="text-align:center;">Estado</th>
+              <th style="text-align:center;">Origen</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${flags.map(f => `
+              <tr data-flag="${UI.esc(f.name)}">
+                <td><strong>${UI.esc(f.label)}</strong></td>
+                <td style="color:var(--text-muted);">${UI.esc(f.description || '')}</td>
+                <td style="text-align:center;">
+                  <label class="toggle" title="${f.enabled ? 'Activado' : 'Desactivado'}">
+                    <input type="checkbox" ${f.enabled ? 'checked' : ''}
+                      onchange="ViewOrganizations._toggleOrgFlag('${UI.esc(f.name)}', this.checked, ${orgId})">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </td>
+                <td style="text-align:center;">
+                  ${f.org_override
+                    ? `<span style="background:var(--brand-purple);color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;">Personalizado</span>`
+                    : `<span style="background:var(--bg-secondary);color:var(--text-muted);padding:2px 7px;border-radius:4px;font-size:11px;">Global</span>`
+                  }
+                </td>
+                <td style="text-align:right;">
+                  ${f.org_override ? `
+                    <button class="btn btn-xs btn-ghost"
+                      title="Restablecer al valor global"
+                      onclick="ViewOrganizations._resetOrgFlag('${UI.esc(f.name)}', ${orgId})">
+                      Restablecer
+                    </button>
+                  ` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      container.innerHTML = `<p class="notice">${UI.esc(err.message)}</p>`;
+    }
+  }
+
+  async function _toggleOrgFlag(flagName, enabled, orgId) {
+    try {
+      await Api.featureFlags.update(flagName, enabled, orgId);
+      UI.toast(`Modulo ${enabled ? 'activado' : 'desactivado'}`, 'success');
+      await _renderOrgFlags(orgId);
+    } catch (err) {
+      UI.toast(err.message, 'error');
+      await _renderOrgFlags(orgId);  // revertir visual
+    }
+  }
+
+  async function _resetOrgFlag(flagName, orgId) {
+    if (!confirm(`Restablecer "${flagName}" al valor global para esta organizacion?`)) return;
+    try {
+      await Api.featureFlags.reset(flagName, orgId);
+      UI.toast('Restablecido al valor global', 'success');
+      await _renderOrgFlags(orgId);
+    } catch (err) {
+      UI.toast(err.message, 'error');
+    }
   }
 
   async function _deactivate(orgId) {
@@ -269,5 +364,5 @@ const ViewOrganizations = (() => {
     };
   }
 
-  return { render, _openDetail, _deactivate, _activate, _moveUser };
+  return { render, _openDetail, _deactivate, _activate, _moveUser, _toggleOrgFlag, _resetOrgFlag };
 })();

@@ -238,6 +238,20 @@ def _migrate_columns() -> None:
         ("ALTER TABLE ai_documents ADD COLUMN isms_summary JSON", "ai_documents", "isms_summary"),
         ("ALTER TABLE policies ADD COLUMN source_document_id INTEGER REFERENCES ai_documents(id)", "policies", "source_document_id"),
         ("ALTER TABLE policies ADD COLUMN review_cycle_months INTEGER", "policies", "review_cycle_months"),
+        # v1.8 — Auth: OTP y MFA
+        ("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0", "users", "must_change_password"),
+        ("ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN DEFAULT 0", "users", "mfa_enabled"),
+        ("ALTER TABLE users ADD COLUMN mfa_secret VARCHAR(255)", "users", "mfa_secret"),
+        ("ALTER TABLE organizations ADD COLUMN mfa_required BOOLEAN DEFAULT 0", "organizations", "mfa_required"),
+        # v1.8 — Feature flags per-org
+        ("ALTER TABLE feature_flags ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "feature_flags", "organization_id"),
+        # v1.8 — Compliance/AI: gap cache + auto-categorization
+        ("ALTER TABLE risk_context ADD COLUMN ai_gap_cache JSON", "risk_context", "ai_gap_cache"),
+        ("ALTER TABLE ai_documents ADD COLUMN auto_categorized BOOLEAN DEFAULT 0", "ai_documents", "auto_categorized"),
+        ("ALTER TABLE ai_documents ADD COLUMN detected_category VARCHAR(64)", "ai_documents", "detected_category"),
+        # v1.8.0 — agrupacion de activos
+        ("ALTER TABLE assets ADD COLUMN group_id INTEGER REFERENCES asset_groups(id)", "assets", "group_id"),
+        ("ALTER TABLE assets ADD COLUMN is_group_representative BOOLEAN DEFAULT 0", "assets", "is_group_representative"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
@@ -252,6 +266,21 @@ def _migrate_columns() -> None:
                     conn.commit()
             except Exception:
                 pass  # columna ya existe o tabla no existe aun
+
+        # Migrar indice unico de feature_flags: nombre global -> compuesto (name, org_id)
+        try:
+            conn.execute(__import__("sqlalchemy").text("DROP INDEX IF EXISTS ix_feature_flags_name"))
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            conn.execute(__import__("sqlalchemy").text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_flag_name_org "
+                "ON feature_flags(name, COALESCE(organization_id, 0))"
+            ))
+            conn.commit()
+        except Exception:
+            pass
 
 
 def init_db() -> None:

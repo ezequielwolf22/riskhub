@@ -33,6 +33,8 @@ const Routes = {
   osint: ViewOsint,
   awareness: ViewAwareness,
   organizations: ViewOrganizations,
+  'architecture-review': ViewArchitectureReview,
+  'change-password-required': ViewChangePasswordRequired,
 };
 
 function currentRoute() {
@@ -49,6 +51,12 @@ function setActive(route) {
 async function navigate() {
   if (!Auth.requireAuth()) return;
   const route = currentRoute();
+  // Forzar cambio de contrasena OTP si es el primer login
+  const u = Auth.user();
+  if (u && u.must_change_password && route !== 'change-password-required') {
+    location.hash = '/change-password-required';
+    return;
+  }
   const view = Routes[route] || Routes.dashboard;
   setActive(route);
   // Scroll to top on every navigation

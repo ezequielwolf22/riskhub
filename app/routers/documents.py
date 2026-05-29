@@ -18,6 +18,10 @@ ALLOWED_MIME = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
     "text/csv",
+    # Imagenes de arquitectura (v1.7.8)
+    "image/png",
+    "image/jpeg",
+    "image/svg+xml",
 }
 MAX_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
@@ -25,6 +29,8 @@ MAX_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 _MAGIC_BYTES: dict[str, bytes] = {
     "application/pdf": b"%PDF",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": b"PK\x03\x04",
+    "image/png": b"\x89PNG",
+    "image/jpeg": b"\xff\xd8\xff",
 }
 
 
@@ -36,6 +42,12 @@ def _infer_mime(filename: str, content_type: str) -> str:
         return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     if ext in ("txt", "csv", "md"):
         return "text/plain"
+    if ext == "png":
+        return "image/png"
+    if ext in ("jpg", "jpeg"):
+        return "image/jpeg"
+    if ext == "svg":
+        return "image/svg+xml"
     return content_type or "application/octet-stream"
 
 
@@ -43,7 +55,7 @@ def _validate_magic(mime: str, data: bytes) -> bool:
     """Comprueba que los magic bytes del archivo corresponden al MIME declarado."""
     expected = _MAGIC_BYTES.get(mime)
     if expected is None:
-        # TXT/CSV: no hay magic bytes; aceptar si es decodificable como UTF-8
+        # TXT/CSV/SVG: no hay magic bytes; aceptar si es decodificable como UTF-8
         try:
             data[:512].decode("utf-8", errors="strict")
         except UnicodeDecodeError:
@@ -71,6 +83,9 @@ def _doc_out(d: AiDocument) -> dict:
         "isms_controls_updated": summary.get("controls_updated", 0),
         "isms_tasks_created": summary.get("tasks_created", 0),
         "isms_summary_text": summary.get("summary") or summary.get("reason") or summary.get("error"),
+        # Auto-categorizacion IA (v1.7.8)
+        "auto_categorized": bool(getattr(d, "auto_categorized", False) or summary.get("auto_categorized", False)),
+        "detected_category": getattr(d, "detected_category", None) or summary.get("detected_category"),
     }
 
 
@@ -110,8 +125,8 @@ def upload_document(
         raise HTTPException(400, "Archivo demasiado grande (maximo 20 MB)")
 
     mime = _infer_mime(file.filename or "", file.content_type or "")
-    if mime not in ALLOWED_MIME and not any(k in mime for k in ("pdf", "docx", "plain", "csv")):
-        raise HTTPException(400, "Tipo de archivo no soportado. Usa PDF, DOCX o TXT.")
+    if mime not in ALLOWED_MIME and not any(k in mime for k in ("pdf", "docx", "plain", "csv", "image")):
+        raise HTTPException(400, "Tipo de archivo no soportado. Usa PDF, DOCX, TXT o imagen (PNG/JPG).")
 
     # OWASP A08 — validar contenido real mediante magic bytes
     if not _validate_magic(mime, data):
@@ -140,12 +155,20 @@ def upload_document(
     db.commit()
     db.refresh(doc)
 
-    # Extraccion de texto e indexado FTS5 (sincrono — rapido)
-    try:
-        process_document(db, doc.id)
+    # Para imagenes: marcar directamente como INDEXED sin extraccion de texto
+    # (el architecture-review endpoint las procesa directamente via Vision API)
+    if mime.startswith("image/"):
+        doc.status = AiDocumentStatus.INDEXED
+        doc.chunk_count = 0
+        db.commit()
         db.refresh(doc)
-    except Exception:
-        pass  # status quedo en ERROR; el cliente puede ver el mensaje
+    else:
+        # Extraccion de texto e indexado FTS5 (sincrono — rapido)
+        try:
+            process_document(db, doc.id)
+            db.refresh(doc)
+        except Exception:
+            pass  # status quedo en ERROR; el cliente puede ver el mensaje
 
     # Analisis ISMS en background para no bloquear la respuesta HTTP
     if doc.status == AiDocumentStatus.INDEXED and background_tasks is not None:

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -28,6 +28,8 @@
     </div>
   </div>
   <div class="login-form-wrap">
+
+    <!-- Paso 1: formulario de email + contrasena -->
     <form class="login-form" id="login-form">
       <h2 style="margin-bottom: 4px;">Iniciar sesión</h2>
       <p style="color: var(--text-muted); margin-bottom: 20px;">
@@ -66,12 +68,41 @@
         Si no tienes acceso, contacta con el responsable de seguridad de tu unidad.
       </p>
     </form>
+
+    <!-- Paso 2: segundo factor MFA (TOTP) -->
+    <form class="login-form" id="mfa-form" style="display:none;">
+      <h2 style="margin-bottom: 4px;">Verificacion en dos pasos</h2>
+      <p style="color: var(--text-muted); margin-bottom: 20px;">
+        Introduce el codigo de 6 digitos de tu aplicacion de autenticacion.
+      </p>
+      <div id="mfa-error" class="login-error" style="display: none;"></div>
+      <div class="form-block">
+        <label for="mfa-code">Codigo TOTP</label>
+        <input type="text" id="mfa-code" name="mfa-code" required
+               autocomplete="one-time-code" inputmode="numeric"
+               pattern="[0-9]{6}" maxlength="6"
+               placeholder="123456" autofocus>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width: 100%; justify-content: center; padding: 10px;">
+        Verificar
+      </button>
+      <button type="button" id="mfa-back" class="btn" style="width:100%;justify-content:center;padding:10px;margin-top:8px;">
+        Volver al login
+      </button>
+    </form>
+
   </div>
 </div>
 
 <script>
-const form = document.getElementById('login-form');
-const errBox = document.getElementById('login-error');
+const form    = document.getElementById('login-form');
+const errBox  = document.getElementById('login-error');
+const mfaForm = document.getElementById('mfa-form');
+const mfaErr  = document.getElementById('mfa-error');
+
+// Estado temporal MFA
+let _mfaToken = null;
+let _pendingUser = null;
 
 // Mostrar error SSO si viene en el query param
 (function() {
@@ -98,6 +129,17 @@ fetch('/api/sso/status').then(r => r.json()).then(d => {
   if (d.enabled) document.getElementById('sso-section').style.display = '';
 }).catch(() => {});
 
+function _finishLogin(data) {
+  localStorage.setItem('riskhub_token', data.access_token);
+  localStorage.setItem('riskhub_user', JSON.stringify(data.user));
+  if (data.must_change_password) {
+    window.location.href = '/#/change-password-required';
+  } else {
+    window.location.href = '/';
+  }
+}
+
+// Paso 1: login con email + contrasena
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   errBox.style.display = 'none';
@@ -112,18 +154,62 @@ form.addEventListener('submit', async (e) => {
       body: fd.toString(),
     });
     if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.detail || 'Credenciales no validas');
+      const d = await resp.json().catch(() => ({}));
+      throw new Error(d.detail || 'Credenciales no validas');
     }
     const data = await resp.json();
-    localStorage.setItem('riskhub_token', data.access_token);
-    localStorage.setItem('riskhub_user', JSON.stringify(data.user));
-    window.location.href = '/';
+
+    if (data.mfa_required && data.mfa_token) {
+      // Mostrar paso 2 MFA
+      _mfaToken   = data.mfa_token;
+      _pendingUser = data.user;
+      form.style.display = 'none';
+      mfaForm.style.display = '';
+      document.getElementById('mfa-code').focus();
+      return;
+    }
+
+    _finishLogin(data);
   } catch (err) {
     errBox.textContent = err.message;
     errBox.style.display = 'block';
   }
 });
+
+// Paso 2: verificar codigo TOTP
+mfaForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  mfaErr.style.display = 'none';
+  const code = document.getElementById('mfa-code').value.trim();
+  try {
+    const resp = await fetch('/api/auth/mfa/complete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ mfa_token: _mfaToken, code: code }),
+    });
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      throw new Error(d.detail || 'Codigo incorrecto');
+    }
+    const data = await resp.json();
+    _finishLogin(data);
+  } catch (err) {
+    mfaErr.textContent = err.message;
+    mfaErr.style.display = 'block';
+    document.getElementById('mfa-code').value = '';
+    document.getElementById('mfa-code').focus();
+  }
+});
+
+// Volver al formulario de login
+document.getElementById('mfa-back').onclick = () => {
+  _mfaToken = null;
+  _pendingUser = null;
+  mfaForm.style.display = 'none';
+  mfaErr.style.display = 'none';
+  form.style.display = '';
+  document.getElementById('mfa-code').value = '';
+};
 </script>
 </body>
 </html>

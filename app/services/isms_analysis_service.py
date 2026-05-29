@@ -221,12 +221,26 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             logger.warning("Document→asset linkage failed doc=%d: %s", doc_id, _e)
             result["linked_assets"] = []
 
+        # Auto-categorizar documento basandose en el analisis IA (v1.7.8)
+        inferred_cat = _infer_category(analysis, doc.original_name)
+        if inferred_cat is not None and inferred_cat != doc.category:
+            doc.category = inferred_cat
+            doc.auto_categorized = True
+            doc.detected_category = inferred_cat.value
+            result["auto_categorized"] = True
+            result["detected_category"] = inferred_cat.value
+            logger.info("ISMS auto-cat doc=%d: %s", doc_id, inferred_cat.value)
+        else:
+            result["auto_categorized"] = False
+            result["detected_category"] = doc.category.value if doc.category else None
+
         doc.isms_status = "analysed"
         doc.isms_summary = result
         db.commit()
         logger.info(
-            "ISMS analysis OK doc=%d policy=%s controls=%d tasks=%d",
+            "ISMS analysis OK doc=%d policy=%s controls=%d tasks=%d auto_cat=%s",
             doc_id, result["policy_id"], result["controls_updated"], result["tasks_created"],
+            result.get("detected_category", "-"),
         )
 
         # Si se actualizaron controles, relanzar analisis de activos para recalcular
@@ -546,6 +560,49 @@ def _extract_and_link_csv_vulns(db: Session, doc: AiDocument, text_sample: str) 
     if findings:
         from app.services.asset_risk_analysis_service import link_csv_vulnerabilities_to_assets
         link_csv_vulnerabilities_to_assets(db, doc.organization_id, findings)
+
+
+def _infer_category(
+    analysis: dict, original_name: str
+) -> "AiDocumentCategory | None":
+    """Infiere la categoria correcta del documento basandose en el analisis IA.
+
+    Devuelve None si no hay certeza suficiente para cambiar la categoria actual.
+    """
+    from app.models import AiDocumentCategory
+
+    # Si es politica de seguridad → policies
+    if analysis.get("is_policy"):
+        return AiDocumentCategory.POLICIES
+
+    covered = {c.get("code", "") for c in (analysis.get("controls_covered") or [])}
+
+    # Controles de gestion de activos → assets_inventory
+    asset_controls = {"5.9", "5.10", "5.11", "5.12", "5.13", "5.14"}
+    if covered & asset_controls:
+        return AiDocumentCategory.ASSETS_INVENTORY
+
+    # Controles de gestion de riesgos o evaluaciones → risk_assessments
+    risk_controls = {"5.1", "5.2", "5.3", "5.4", "6.1", "6.2"}
+    threat_cats = analysis.get("threat_categories_addressed") or []
+    if covered & risk_controls or "Unauthorised actions" in str(threat_cats):
+        return AiDocumentCategory.RISK_ASSESSMENTS
+
+    # Controles de proveedores → critical_suppliers
+    supplier_controls = {"5.19", "5.20", "5.21", "5.22", "5.23"}
+    if covered & supplier_controls:
+        return AiDocumentCategory.CRITICAL_SUPPLIERS
+
+    # Inferir por nombre del archivo si ningun control encaja
+    name_lower = (original_name or "").lower()
+    if any(w in name_lower for w in ["arquitectura", "red", "network", "infraestructura", "topology", "diagrama", "architecture"]):
+        return AiDocumentCategory.ARCHITECTURE
+    if any(w in name_lower for w in ["normativa", "compliance", "nis2", "gdpr", "rgpd", "iso", "reglamento"]):
+        return AiDocumentCategory.NORMATIVE
+    if any(w in name_lower for w in ["incidente", "incident", "leccion", "lesson", "postmortem"]):
+        return AiDocumentCategory.INCIDENTS_LESSONS
+
+    return None  # Sin certeza suficiente: no cambiar la categoria actual
 
 
 def _create_treatment_tasks(

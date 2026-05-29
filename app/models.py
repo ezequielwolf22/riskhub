@@ -71,6 +71,12 @@ class ControlStatus(str, PyEnum):
     NOT_IMPLEMENTED = "not_implemented"
 
 
+class AssetGroupStatus(str, PyEnum):
+    PROPOSED = "proposed"
+    VALIDATED = "validated"
+    REJECTED = "rejected"
+
+
 # ---------- ORGANIZACIONES (multi-tenancy) ----------
 
 class Organization(Base):
@@ -86,6 +92,8 @@ class Organization(Base):
     # owner_id se rellena despues de crear el primer admin
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     owner = relationship("User", foreign_keys="Organization.owner_id")
+    # MFA obligatorio para todos los usuarios de la org (v1.8)
+    mfa_required = Column(Boolean, default=False)
 
 
 # ---------- USUARIOS ----------
@@ -102,6 +110,11 @@ class User(Base):
     last_login_at = Column(DateTime, nullable=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     organization = relationship("Organization", foreign_keys="User.organization_id")
+    # OTP primer login (v1.8)
+    must_change_password = Column(Boolean, default=False)
+    # MFA/TOTP (v1.8) — secret cifrado con Fernet
+    mfa_enabled = Column(Boolean, default=False)
+    mfa_secret = Column(String(255), nullable=True)
 
 
 class AuditLog(Base):
@@ -131,17 +144,26 @@ class IntegrationConfig(Base):
 
 
 class FeatureFlag(Base):
-    """Control de modulos por licencia — gestionado exclusivamente por superadmin."""
+    """Control de modulos por licencia — gestionado exclusivamente por superadmin.
+
+    organization_id=None indica un flag global (valor por defecto para todas las orgs).
+    Un flag con organization_id especifico sobreescribe el valor global para esa org.
+    """
     __tablename__ = "feature_flags"
+    __table_args__ = (
+        UniqueConstraint("name", "organization_id", name="uq_flag_name_org"),
+    )
     id = Column(Integer, primary_key=True)
-    name = Column(String(64), unique=True, nullable=False, index=True)
+    name = Column(String(64), nullable=False, index=True)
     label = Column(String(128), nullable=False)
     description = Column(Text, nullable=True)
     enabled = Column(Boolean, nullable=False, default=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
     updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = relationship("User")
+    organization = relationship("Organization")
 
 
 # ---------- CONTEXTO ----------
@@ -159,8 +181,45 @@ class RiskContext(Base):
     risk_acceptance_criteria = Column(JSON)
     risk_matrix = Column(JSON)             # matriz 5x5 ISO 27005 Annex E.2
     risk_appetite = Column(Integer, default=3)  # nivel 0..8 maximo aceptable
+    ai_gap_cache = Column(JSON, nullable=True)   # cache gap analysis detallado (v1.8)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+
+# ---------- AGRUPACION DE ACTIVOS (v1.8.0) ----------
+
+class AssetGroupingConfig(Base):
+    """Criterios de agrupacion de activos configurados por organizacion."""
+    __tablename__ = "asset_grouping_configs"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    criteria = Column(JSON, nullable=False)  # [{id, name, description, level, enabled}]
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AssetGroup(Base):
+    """Grupo de activos para analisis de riesgo consolidado (ISO 27005 8.2)."""
+    __tablename__ = "asset_groups"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    criteria_snapshot = Column(JSON, nullable=True)  # criterios habilitados al crear el grupo
+    status = Column(Enum(AssetGroupStatus), default=AssetGroupStatus.PROPOSED)
+    # Sin FK constraint para evitar referencia circular con assets.id
+    representative_asset_id = Column(Integer, nullable=True)
+    ai_rationale = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    members = relationship(
+        "Asset",
+        foreign_keys="[Asset.group_id]",
+        back_populates="group",
+        primaryjoin="AssetGroup.id == foreign(Asset.group_id)",
+    )
 
 
 # ---------- ASSETS ----------
@@ -206,7 +265,11 @@ class Asset(Base):
     # Analisis de riesgos automatico con IA (v1.7.5)
     ai_risk_status = Column(String(32), nullable=True)   # analysing|analysed|error
     ai_risk_summary = Column(JSON, nullable=True)         # {risks_created, risks_updated, summary}
+    # Agrupacion de activos (v1.8.0)
+    group_id = Column(Integer, ForeignKey("asset_groups.id"), nullable=True, index=True)
+    is_group_representative = Column(Boolean, default=False)
 
+    group = relationship("AssetGroup", foreign_keys="[Asset.group_id]", back_populates="members")
     risks = relationship("Risk", back_populates="asset", cascade="all, delete-orphan")
 
     @property
@@ -861,6 +924,9 @@ class AiDocument(Base):
     # Analisis ISMS automatico (v1.7.4)
     isms_status = Column(String(32), nullable=True)   # analysing|analysed|skipped|error
     isms_summary = Column(JSON, nullable=True)         # {policy_id, controls_updated, tasks_created, summary}
+    # Auto-categorizacion IA (v1.8)
+    auto_categorized = Column(Boolean, default=False)
+    detected_category = Column(String(64), nullable=True)
 
     uploaded_by = relationship("User")
     chunks = relationship("AiDocumentChunk", back_populates="document",

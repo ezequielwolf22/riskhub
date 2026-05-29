@@ -66,12 +66,17 @@ const ViewUsers = {
           ${_th('email','Email')}${_th('full_name','Nombre')}${_th('role','Rol')}
           ${isSuperAdmin ? _th('org','Organizacion') : ''}
           <th>Estado</th>${_th('last_login_at','Ultimo acceso')}
-          ${_th('risk_count','Riesgos')}<th></th>
+          ${_th('risk_count','Riesgos')}<th>MFA</th><th></th>
         </tr></thead>
         <tbody>
           ${data.map(u => {
             const rc = u.risk_count || 0;
             const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+            const mfaBadge = u.mfa_enabled
+              ? '<span class="badge badge-low" title="MFA activo">MFA</span>'
+              : (u.must_change_password
+                  ? '<span class="badge" style="background:var(--brand-orange-4,#fff3e0);color:var(--brand-orange);" title="Primer login pendiente">OTP</span>'
+                  : '<span style="color:var(--text-subtle);font-size:12px;">-</span>');
             return `<tr>
               <td><strong>${UI.esc(u.email)}</strong></td>
               <td>${UI.esc(u.full_name)}</td>
@@ -84,7 +89,13 @@ const ViewUsers = {
                   ? `<a href="#/risks?owner=${u.id}" style="color:${rcColor};text-decoration:none;" title="Ver riesgos de ${UI.esc(u.full_name)}">${rc}</a>`
                   : `<span style="color:${rcColor};">0</span>`}
               </td>
-              <td><button class="btn btn-ghost" data-edit="${u.id}">Editar</button></td>
+              <td>${mfaBadge}</td>
+              <td style="white-space:nowrap;">
+                <button class="btn btn-ghost" data-edit="${u.id}">Editar</button>
+                ${u.mfa_enabled
+                  ? `<button class="btn btn-ghost" data-mfa-disable="${u.id}" title="Desactivar MFA de este usuario" style="margin-left:4px;">MFA off</button>`
+                  : ''}
+              </td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -99,8 +110,21 @@ const ViewUsers = {
       });
       list.querySelectorAll('[data-edit]').forEach(b =>
         b.onclick = () => ViewUsers._edit(parseInt(b.dataset.edit)));
+      list.querySelectorAll('[data-mfa-disable]').forEach(b =>
+        b.onclick = () => ViewUsers._disableMfa(parseInt(b.dataset.mfaDisable)));
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _disableMfa(userId) {
+    if (!await UI.confirm('Desactivar MFA para este usuario? El usuario debera volver a configurarlo.')) return;
+    try {
+      await Api.post('/api/auth/mfa/disable-admin', { user_id: userId });
+      UI.toast('MFA desactivado', 'success');
+      ViewUsers._reload();
+    } catch (e) {
+      UI.toast(e.message, 'error');
     }
   },
 
@@ -154,7 +178,25 @@ const ViewUsers = {
         </div>`;
     }
 
+    // Nota contrasena: al crear, si se deja vacio se genera automaticamente
+    const passNote = id
+      ? '(dejar vacio para no cambiar)'
+      : '(dejar vacio para generar automaticamente y enviar por email si hay SMTP configurado)';
+    const passHint = id ? '' : `
+      <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">
+        Si dejas el campo vacio, se generara una contrasena temporal segura.
+        El usuario debera cambiarla en su primer acceso.
+      </p>`;
+
+    // Aviso de OTP pendiente al editar
+    const otpWarning = (id && u.must_change_password)
+      ? `<div class="span2"><div class="notice warn" style="margin-bottom:0;">
+           Este usuario tiene una contrasena temporal activa. Aun no ha realizado el primer login.
+         </div></div>`
+      : '';
+
     UI.modal(id ? `Editar usuario ${u.email}` : 'Nuevo usuario', `
+      ${otpWarning}
       <div class="span2"><label>Email *</label>
         <input class="input" id="f-email" value="${UI.esc(u.email)}" ${id ? 'disabled' : ''}></div>
       <div class="span2"><label>Nombre completo *</label>
@@ -169,8 +211,11 @@ const ViewUsers = {
         </select>
       </div>
       ${orgField}
-      <div class="span2"><label>Contrasena ${id ? '(dejar vacio para no cambiar)' : '(minimo 8 caracteres)'}</label>
-        <input class="input" type="password" id="f-pass" autocomplete="new-password"></div>
+      <div class="span2">
+        <label>Contrasena ${passNote}</label>
+        <input class="input" type="password" id="f-pass" autocomplete="new-password">
+        ${passHint}
+      </div>
     `, {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 ${id ? '<button class="btn btn-danger" id="m-del">Eliminar</button>' : ''}
@@ -198,8 +243,8 @@ const ViewUsers = {
             body.organization_id = orgVal ? parseInt(orgVal) : null;
           }
           await Api.users.update(id, body);
+          UI.closeModal(); UI.toast('Guardado', 'success'); ViewUsers._reload();
         } else {
-          if (!pass || pass.length < 8) { UI.toast('Contrasena debe tener 8+ caracteres', 'error'); return; }
           // Superadmin debe seleccionar org obligatoriamente
           if (isSuperAdmin && orgEl && !orgEl.value) {
             UI.toast('Debes seleccionar una organizacion', 'error'); return;
@@ -208,12 +253,37 @@ const ViewUsers = {
             email: document.getElementById('f-email').value,
             full_name: document.getElementById('f-name').value,
             role: document.getElementById('f-role').value,
-            password: pass,
           };
+          // Solo incluir password si se ha escrito algo
+          if (pass) payload.password = pass;
           if (orgEl && orgEl.value) payload.organization_id = parseInt(orgEl.value);
-          await Api.users.create(payload);
+          const created = await Api.users.create(payload);
+          UI.closeModal();
+          ViewUsers._reload();
+          // Si el backend genero una OTP, mostrarla al admin
+          if (created && created.otp_password) {
+            const emailInfo = created.otp_email_sent
+              ? 'La contrasena temporal ha sido enviada al email del usuario.'
+              : 'No hay SMTP configurado. Comunica la contrasena manualmente.';
+            UI.modal('Usuario creado - Contrasena temporal', `
+              <div class="span2">
+                <p style="margin-bottom:12px;">
+                  El usuario <strong>${UI.esc(created.email)}</strong> ha sido creado con una contrasena temporal.
+                  Debera cambiarla en el primer acceso.
+                </p>
+                <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--font-mono);font-size:15px;letter-spacing:0.05em;word-break:break-all;text-align:center;margin-bottom:12px;">
+                  ${UI.esc(created.otp_password)}
+                </div>
+                <p style="font-size:12px;color:var(--text-muted);">${emailInfo}</p>
+              </div>
+            `, {
+              actions: '<button class="btn btn-primary" id="m-otp-ok">Entendido</button>'
+            });
+            document.getElementById('m-otp-ok').onclick = UI.closeModal;
+          } else {
+            UI.toast('Usuario creado', 'success');
+          }
         }
-        UI.closeModal(); UI.toast('Guardado', 'success'); ViewUsers._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },
