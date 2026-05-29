@@ -89,7 +89,9 @@ def save_settings(body: EmailSettingsIn, db: Session = Depends(get_db),
     cfg.smtp_port = body.smtp_port
     cfg.smtp_user = body.smtp_user
     if body.smtp_password:  # solo actualizar si se envia valor
-        cfg.smtp_password = body.smtp_password
+        from app.security import encrypt_secret
+        cfg.smtp_password_encrypted = encrypt_secret(body.smtp_password)
+        cfg.smtp_password = ""   # limpiar campo legacy
     cfg.smtp_from = body.smtp_from
     cfg.smtp_use_tls = body.smtp_use_tls
     log_action(db, current_user.id, "update", "email_settings", "1",

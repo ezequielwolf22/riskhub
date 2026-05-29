@@ -132,18 +132,27 @@ function _toggleNavSection(sectionId) {
 }
 
 function init() {
-  // Manejar SSO callback — el token llega en el query param sso_token tras el redirect
+  // Manejar SSO callback — llega un code de un solo uso (30s TTL), se intercambia por JWT
   const _ssoParams = new URLSearchParams(window.location.search);
-  const _ssoToken = _ssoParams.get('sso_token');
-  if (_ssoToken) {
-    // Limpiar el token de la URL antes de procesar (no debe quedar en historial ni en logs del servidor)
+  const _ssoCode = _ssoParams.get('sso_code');
+  if (_ssoCode) {
+    // Limpiar el code de la URL antes de procesar
     window.history.replaceState({}, '', '/');
-    fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + _ssoToken } })
+    fetch('/api/sso/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: _ssoCode }),
+    })
       .then(r => r.ok ? r.json() : Promise.reject('invalid'))
-      .then(user => {
-        localStorage.setItem('riskhub_token', _ssoToken);
-        localStorage.setItem('riskhub_user', JSON.stringify(user));
-        window.location.reload();
+      .then(data => {
+        const tok = data.access_token;
+        return fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + tok } })
+          .then(r => r.ok ? r.json() : Promise.reject('invalid'))
+          .then(user => {
+            localStorage.setItem('riskhub_token', tok);
+            localStorage.setItem('riskhub_user', JSON.stringify(user));
+            window.location.reload();
+          });
       })
       .catch(() => { window.location.href = '/login?sso_error=token_invalid'; });
     return;   // detener init hasta que el reload complete

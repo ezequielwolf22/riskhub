@@ -11,7 +11,6 @@ import base64
 import hashlib
 import json
 import secrets
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -25,15 +24,15 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import IntegrationConfig, User, UserRole
+from app.models import IntegrationConfig, SSOCode, SSOState, User, UserRole
 from app.security import create_access_token, get_current_user, hash_password, require_admin
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/sso", tags=["sso"])
 
 _INTEGRATION_NAME = "sso_oidc"
-_STATE_STORE: dict[str, float] = {}   # state_token -> expires_at (monotonic)
-_STATE_TTL = 600   # 10 minutos
+_STATE_TTL = 600    # 10 minutos
+_CODE_TTL  = 30     # 30 segundos para intercambiar el code por el token
 
 
 # ---------- Cifrado ----------
@@ -56,8 +55,11 @@ def _decrypt(token: str) -> str:
 
 # ---------- Helpers ----------
 
-def _get_config(db: Session) -> Optional[dict]:
-    ic = db.query(IntegrationConfig).filter_by(name=_INTEGRATION_NAME).first()
+def _get_config(db: Session, organization_id=None) -> Optional[dict]:
+    q = db.query(IntegrationConfig).filter(IntegrationConfig.name == _INTEGRATION_NAME)
+    if organization_id is not None:
+        q = q.filter(IntegrationConfig.organization_id == organization_id)
+    ic = q.first()
     if not ic or not ic.config_encrypted:
         return None
     try:
@@ -120,11 +122,57 @@ def _get_userinfo(userinfo_endpoint: str, access_token: str) -> dict:
         raise ValueError(f"Userinfo error {e.code}: {e.reason}")
 
 
-def _purge_expired_states() -> None:
-    now = time.monotonic()
-    expired = [k for k, v in _STATE_STORE.items() if v < now]
-    for k in expired:
-        del _STATE_STORE[k]
+# ---------- SSO State en BD (anti-CSRF, multi-worker safe) ----------
+
+def _create_state(db: Session) -> str:
+    """Genera un state token y lo persiste en BD con TTL."""
+    # Limpiar states expirados
+    db.query(SSOState).filter(
+        SSOState.expires_at < datetime.now(timezone.utc)
+    ).delete(synchronize_session=False)
+    state = secrets.token_hex(32)
+    db.add(SSOState(
+        state=state,
+        expires_at=datetime.now(timezone.utc).replace(
+            microsecond=0
+        ).__class__.fromtimestamp(
+            datetime.now(timezone.utc).timestamp() + _STATE_TTL, tz=timezone.utc
+        ),
+    ))
+    db.commit()
+    return state
+
+
+def _consume_state(db: Session, state: str) -> bool:
+    """Valida y elimina el state. Devuelve True si era valido."""
+    record = db.query(SSOState).filter(SSOState.state == state).first()
+    if not record:
+        return False
+    valid = record.expires_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc)
+    db.delete(record)
+    db.commit()
+    return valid
+
+
+# ---------- SSO Code exchange (evita JWT en URL) ----------
+
+def _create_code(db: Session, token: str) -> str:
+    """Almacena el JWT bajo un code de un solo uso con TTL de 30s."""
+    db.query(SSOCode).filter(
+        SSOCode.expires_at < datetime.now(timezone.utc)
+    ).delete(synchronize_session=False)
+    code = secrets.token_urlsafe(32)
+    db.add(SSOCode(
+        code=code,
+        token=token,
+        expires_at=datetime.now(timezone.utc).replace(
+            microsecond=0
+        ).__class__.fromtimestamp(
+            datetime.now(timezone.utc).timestamp() + _CODE_TTL, tz=timezone.utc
+        ),
+    ))
+    db.commit()
+    return code
 
 
 # ---------- Schemas ----------
@@ -165,10 +213,13 @@ def get_sso_config(
     _: User = Depends(get_current_user),
 ):
     """Devuelve la configuracion SSO actual (sin client_secret)."""
-    cfg = _get_config(db)
+    cfg = _get_config(db, current_user.organization_id)
     if not cfg:
         return SsoConfigOut(configured=False)
-    ic = db.query(IntegrationConfig).filter_by(name=_INTEGRATION_NAME).first()
+    ic = db.query(IntegrationConfig).filter(
+        IntegrationConfig.name == _INTEGRATION_NAME,
+        IntegrationConfig.organization_id == current_user.organization_id,
+    ).first()
     return SsoConfigOut(
         configured=True,
         issuer_url=cfg.get("issuer_url"),
@@ -205,9 +256,12 @@ def save_sso_config(
         "allowed_domains": body.allowed_domains.strip() if body.allowed_domains else None,
     }))
 
-    ic = db.query(IntegrationConfig).filter_by(name=_INTEGRATION_NAME).first()
+    ic = db.query(IntegrationConfig).filter(
+        IntegrationConfig.name == _INTEGRATION_NAME,
+        IntegrationConfig.organization_id == current_user.organization_id,
+    ).first()
     if not ic:
-        ic = IntegrationConfig(name=_INTEGRATION_NAME)
+        ic = IntegrationConfig(name=_INTEGRATION_NAME, organization_id=current_user.organization_id)
         db.add(ic)
     ic.config_encrypted = encrypted
     ic.updated_at = datetime.now(timezone.utc)
@@ -226,7 +280,10 @@ def delete_sso_config(
     current_user: User = Depends(require_admin),
 ):
     """Elimina la configuracion SSO. Solo admin."""
-    ic = db.query(IntegrationConfig).filter_by(name=_INTEGRATION_NAME).first()
+    ic = db.query(IntegrationConfig).filter(
+        IntegrationConfig.name == _INTEGRATION_NAME,
+        IntegrationConfig.organization_id == current_user.organization_id,
+    ).first()
     if not ic:
         raise HTTPException(404, "SSO no configurado.")
     db.delete(ic)
@@ -238,10 +295,10 @@ def delete_sso_config(
 @router.post("/test")
 def test_sso_config(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     """Verifica la conectividad con el proveedor OIDC."""
-    cfg = _get_config(db)
+    cfg = _get_config(db, current_user.organization_id)
     if not cfg:
         raise HTTPException(400, "SSO no configurado.")
     try:
@@ -271,10 +328,8 @@ def sso_login(db: Session = Depends(get_db)):
         err_msg = urllib.parse.quote(str(e)[:200])
         return RedirectResponse(url=f"/login?sso_error={err_msg}", status_code=302)
 
-    # Generar state token para proteccion CSRF
-    state = secrets.token_hex(32)
-    _purge_expired_states()
-    _STATE_STORE[state] = time.monotonic() + _STATE_TTL
+    # Generar state token para proteccion CSRF y persistirlo en BD
+    state = _create_state(db)
 
     auth_url = doc["authorization_endpoint"] + "?" + urllib.parse.urlencode({
         "response_type": "code",
@@ -303,11 +358,9 @@ def sso_callback(
     if not code or not state:
         return RedirectResponse(url="/login?sso_error=missing_params", status_code=302)
 
-    # Validar y consumir state (proteccion CSRF — un solo uso)
-    _purge_expired_states()
-    if state not in _STATE_STORE or _STATE_STORE.get(state, 0) < time.monotonic():
+    # Validar y consumir state (proteccion CSRF — un solo uso, BD-backed)
+    if not _consume_state(db, state):
         return RedirectResponse(url="/login?sso_error=invalid_or_expired_state", status_code=302)
-    del _STATE_STORE[state]
 
     cfg = _get_config(db)
     if not cfg:
@@ -397,8 +450,30 @@ def sso_callback(
     db.commit()
 
     token = create_access_token(subject=user.email, role=user.role.value)
-    # Redirigir a la SPA — el token va en el query param para que app.js lo recoja
+    # Generar un code de un solo uso (30s TTL) — el JWT nunca aparece en la URL
+    code = _create_code(db, token)
     return RedirectResponse(
-        url=f"/?sso_token={urllib.parse.quote(token)}",
+        url=f"/?sso_code={urllib.parse.quote(code)}",
         status_code=302,
     )
+
+
+class SsoExchangeIn(BaseModel):
+    code: str
+
+
+@router.post("/exchange")
+def sso_exchange(body: SsoExchangeIn, db: Session = Depends(get_db)):
+    """Intercambia un SSO code de un solo uso por el JWT de sesion.
+    El code caduca en 30 segundos para minimizar la ventana de exposicion."""
+    record = db.query(SSOCode).filter(SSOCode.code == body.code).first()
+    if not record:
+        raise HTTPException(400, "Codigo SSO invalido o ya utilizado.")
+    if record.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        db.delete(record)
+        db.commit()
+        raise HTTPException(400, "Codigo SSO expirado. Vuelve a iniciar sesion.")
+    token = record.token
+    db.delete(record)
+    db.commit()
+    return {"access_token": token, "token_type": "bearer"}

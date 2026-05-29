@@ -466,11 +466,30 @@ class EmailSettings(Base):
     smtp_host = Column(String(255), default="")
     smtp_port = Column(Integer, default=587)
     smtp_user = Column(String(255), default="")
-    smtp_password = Column(String(255), default="")
+    smtp_password = Column(String(255), default="")          # legacy plaintext (deprecated)
+    smtp_password_encrypted = Column(Text, nullable=True)    # Fernet-encrypted (v1.8+)
     smtp_from = Column(String(255), default="")
     smtp_use_tls = Column(Boolean, default=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+
+class SSOState(Base):
+    """State anti-CSRF para el flujo SSO OIDC — en BD para soporte multi-worker."""
+    __tablename__ = "sso_states"
+    id = Column(Integer, primary_key=True)
+    state = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+
+
+class SSOCode(Base):
+    """Codigo de intercambio de un solo uso para el callback SSO.
+    Evita exponer el JWT de RiskHub en la URL del redirect."""
+    __tablename__ = "sso_codes"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(64), unique=True, nullable=False, index=True)
+    token = Column(Text, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
 
 
 class AlertRule(Base):

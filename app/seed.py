@@ -255,6 +255,8 @@ def _migrate_columns() -> None:
         # v1.8.1 — normativas activas y nivel ENS en contexto
         ("ALTER TABLE risk_context ADD COLUMN active_frameworks JSON", "risk_context", "active_frameworks"),
         ("ALTER TABLE risk_context ADD COLUMN ens_level VARCHAR(16)", "risk_context", "ens_level"),
+        # v1.8.2 — seguridad: SMTP cifrado, SSO state/code en BD
+        ("ALTER TABLE email_settings ADD COLUMN smtp_password_encrypted TEXT", "email_settings", "smtp_password_encrypted"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

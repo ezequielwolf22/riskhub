@@ -49,9 +49,12 @@ def _decrypt(token: str) -> str:
 
 # ---------- Helpers ----------
 
-def _get_config(db: Session) -> Optional[dict]:
+def _get_config(db: Session, organization_id=None) -> Optional[dict]:
     """Devuelve la configuracion de SharePoint descifrada o None si no existe."""
-    ic = db.query(IntegrationConfig).filter_by(name=_INTEGRATION_NAME).first()
+    q = db.query(IntegrationConfig).filter(IntegrationConfig.name == _INTEGRATION_NAME)
+    if organization_id is not None:
+        q = q.filter(IntegrationConfig.organization_id == organization_id)
+    ic = q.first()
     if not ic or not ic.config_encrypted:
         return None
     try:
@@ -60,9 +63,9 @@ def _get_config(db: Session) -> Optional[dict]:
         return None
 
 
-def _resolve_token(db: Session) -> str:
+def _resolve_token(db: Session, organization_id=None) -> str:
     """Obtiene un access token de MS Graph usando las credenciales almacenadas."""
-    cfg = _get_config(db)
+    cfg = _get_config(db, organization_id)
     if not cfg:
         raise HTTPException(400, "SharePoint no configurado. Ve a Integraciones > SharePoint para configurar.")
     try:
@@ -94,10 +97,13 @@ def get_config(
     _: User = Depends(get_current_user),
 ):
     """Devuelve la configuracion actual (sin client_secret)."""
-    cfg = _get_config(db)
+    cfg = _get_config(db, current_user.organization_id)
     if not cfg:
         return SharePointConfigOut(configured=False)
-    ic = db.query(IntegrationConfig).filter_by(name=_INTEGRATION_NAME).first()
+    ic = db.query(IntegrationConfig).filter(
+        IntegrationConfig.name == _INTEGRATION_NAME,
+        IntegrationConfig.organization_id == current_user.organization_id,
+    ).first()
     return SharePointConfigOut(
         configured=True,
         tenant_id=cfg.get("tenant_id"),
@@ -122,9 +128,12 @@ def save_config(
         "client_secret": body.client_secret.strip(),
     }))
 
-    ic = db.query(IntegrationConfig).filter_by(name=_INTEGRATION_NAME).first()
+    ic = db.query(IntegrationConfig).filter(
+        IntegrationConfig.name == _INTEGRATION_NAME,
+        IntegrationConfig.organization_id == current_user.organization_id,
+    ).first()
     if not ic:
-        ic = IntegrationConfig(name=_INTEGRATION_NAME)
+        ic = IntegrationConfig(name=_INTEGRATION_NAME, organization_id=current_user.organization_id)
         db.add(ic)
     ic.config_encrypted = encrypted
     ic.updated_at = datetime.now(timezone.utc)

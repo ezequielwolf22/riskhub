@@ -10,6 +10,17 @@ from sqlalchemy.orm import Session
 from app.models import EmailSettings, Risk
 
 
+def _smtp_password(cfg: EmailSettings) -> str:
+    """Devuelve la contrasena SMTP descifrada. Usa campo cifrado si existe, si no el legacy."""
+    if cfg.smtp_password_encrypted:
+        try:
+            from app.security import decrypt_secret
+            return decrypt_secret(cfg.smtp_password_encrypted)
+        except Exception:
+            pass
+    return cfg.smtp_password or ""
+
+
 def get_settings(db: Session) -> Optional[EmailSettings]:
     return db.query(EmailSettings).first()
 
@@ -32,7 +43,7 @@ def send_email(cfg: EmailSettings, recipient: str, subject: str, body_html: str)
             srv = smtplib.SMTP_SSL(cfg.smtp_host, cfg.smtp_port, timeout=15)
 
         if cfg.smtp_user:
-            srv.login(cfg.smtp_user, cfg.smtp_password)
+            srv.login(cfg.smtp_user, _smtp_password(cfg))
 
         srv.sendmail(cfg.smtp_from, recipient, msg.as_string())
         srv.quit()
