@@ -123,7 +123,7 @@ def _next_alert_run() -> str | None:
 
 @router.get("/security-status")
 def security_status(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Postura de seguridad activa de la instalacion — para panel admin y auditoria."""

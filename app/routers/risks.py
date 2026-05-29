@@ -291,9 +291,10 @@ async def import_risks_csv(
     org_assets = filter_by_org(db.query(Asset), Asset, current_user).all()
     assets_by_code = {a.code: a for a in org_assets}
     assets_by_name = {a.name.lower(): a for a in org_assets}
-    org_threats = filter_by_org(db.query(Threat), Threat, current_user).all()
-    threats_by_code = {t.code: t for t in org_threats}
-    threats_by_name = {t.name.lower(): t for t in org_threats}
+    # Threat es catalogo global (sin organization_id) — se accede sin filtro de org
+    all_threats = db.query(Threat).all()
+    threats_by_code = {t.code: t for t in all_threats}
+    threats_by_name = {t.name.lower(): t for t in all_threats}
 
     def _parse_int(val: str, default: int = 0, lo: int = 0, hi: int = 4) -> int:
         try:

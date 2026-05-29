@@ -754,7 +754,7 @@ const ViewOsint = {
                 ${this._riskBadge(f.risk_level)}
               </div>
               <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-                Fuente: ${f.source} | Score: ${f.risk_score.toFixed(1)}
+                Fuente: ${UI.esc(String(f.source))} | Score: ${f.risk_score.toFixed(1)}
                 ${f.is_remediated ? ' | <span style="color:var(--success);">Remediado</span>' : ''}
               </div>
               ${f.description ? `

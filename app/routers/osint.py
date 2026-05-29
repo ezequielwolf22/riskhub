@@ -542,9 +542,12 @@ def create_incident_from_finding(
     if not finding:
         raise HTTPException(404, "Hallazgo no encontrado")
 
-    # Verificar si ya existe un incidente con este titulo OSINT
+    # Verificar si ya existe un incidente con este titulo OSINT en la misma org
     existing_title = f"[OSINT] {finding.title}"
-    existing = db.query(Incident).filter(Incident.title == existing_title).first()
+    existing = db.query(Incident).filter(
+        Incident.title == existing_title,
+        Incident.organization_id == current_user.organization_id,
+    ).first()
     if existing:
         return {
             'incident_id': existing.id,
@@ -564,7 +567,7 @@ def create_incident_from_finding(
     risk_str = str(finding.risk_level).replace('OSINTFindingRiskLevel.', '').lower()
     severity = severity_map.get(risk_str, IncidentSeverity.P3)
 
-    n = db.query(Incident).count() + 1
+    n = db.query(Incident).filter(Incident.organization_id == current_user.organization_id).count() + 1
     inc = Incident(
         code=f"INC-{n:04d}",
         title=existing_title,
@@ -627,10 +630,11 @@ def create_risk_from_osint_finding(
     if not threat:
         raise HTTPException(404, "Amenaza no encontrada")
 
-    # Verificar si ya existe un riesgo para este par activo/amenaza
+    # Verificar si ya existe un riesgo para este par activo/amenaza en la misma org
     existing = db.query(Risk).filter(
         Risk.asset_id == asset_id,
-        Risk.threat_id == threat_id
+        Risk.threat_id == threat_id,
+        Risk.organization_id == current_user.organization_id,
     ).first()
     if existing:
         return {

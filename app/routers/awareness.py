@@ -211,7 +211,7 @@ def generate_content(
     if not body.prompt or len(body.prompt.strip()) < 5:
         raise HTTPException(400, "La descripcion es demasiado corta.")
 
-    ai_cfg = db.query(AiConfig).first()
+    ai_cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = resolve_api_key(ai_cfg)
     if not api_key:
         raise HTTPException(400, "El Agente IA no esta configurado. Ve a Onboarding.")
@@ -236,7 +236,7 @@ def generate_content(
 
     # Contexto de la organizacion
     from app.services.context_builder import build_context
-    org_context = build_context(db, query=body.prompt)
+    org_context = build_context(db, query=body.prompt, organization_id=current_user.organization_id)
     # Anonimizar antes de enviar al exterior
     from app.services.anonymizer import anonymize
     org_context = anonymize(org_context, "medium")

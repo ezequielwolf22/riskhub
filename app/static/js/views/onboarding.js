@@ -443,7 +443,7 @@ const ViewOnboarding = (() => {
       const apiKey = document.getElementById('ob-apikey').value.trim();
       if (apiKey) await Api.aiConfig.update({ api_key: apiKey });
       const res = await Api.aiConfig.test();
-      if (el) el.innerHTML = `<span style="color:var(--risk-low);">Conexion OK — modelo: ${res.model}</span>`;
+      if (el) el.innerHTML = `<span style="color:var(--risk-low);">Conexion OK — modelo: ${UI.esc(String(res.model))}</span>`;
     } catch (e) {
       if (el) el.innerHTML = `<span style="color:var(--risk-critical);">${e.message}</span>`;
     }

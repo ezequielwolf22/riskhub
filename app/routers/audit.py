@@ -108,16 +108,26 @@ def entity_history(
     entity_id: str,
     limit: int = Query(20, le=100),
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """Historial de cambios de una entidad especifica. Accesible por cualquier usuario autenticado."""
-    entries = (
-        db.query(AuditLog)
-        .filter(AuditLog.entity_type == entity_type, AuditLog.entity_id == entity_id)
-        .order_by(AuditLog.timestamp.desc())
-        .limit(limit)
-        .all()
+    """Historial de cambios de una entidad especifica. Filtrado por org del usuario."""
+    from app.models import UserRole
+    # Superadmin ve todo; el resto solo logs de usuarios de su misma organizacion
+    q = db.query(AuditLog).filter(
+        AuditLog.entity_type == entity_type,
+        AuditLog.entity_id == entity_id,
     )
+    if current_user.role != UserRole.SUPERADMIN:
+        from app.models import User as UserModel
+        allowed_user_ids = [
+            u.id for u in db.query(UserModel).filter(
+                UserModel.organization_id == current_user.organization_id
+            ).all()
+        ]
+        q = q.filter(
+            (AuditLog.user_id.in_(allowed_user_ids)) | (AuditLog.user_id.is_(None))
+        )
+    entries = q.order_by(AuditLog.timestamp.desc()).limit(limit).all()
     return [
         AuditEntryOut(
             id=e.id,
