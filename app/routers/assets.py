@@ -13,6 +13,7 @@ from app.models import Asset, AssetType, AiDocumentStatus, Risk, User
 from app.schemas import AssetIn, AssetOut, ImportResult
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
+from app.services.risk_auto_generator import auto_generate_risks_for_asset
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -237,6 +238,11 @@ def _run_asset_analysis_bg(asset_id: int) -> None:
     """Wrapper background para analisis de riesgos de un activo."""
     db = SessionLocal()
     try:
+        # 1. Auto-generar riesgos (activo × amenazas)
+        asset = db.get(Asset, asset_id)
+        if asset:
+            auto_generate_risks_for_asset(db, asset)
+        # 2. Analisis IA complementario
         from app.services.asset_risk_analysis_service import analyze_asset_risks
         analyze_asset_risks(db, asset_id)
     except Exception:

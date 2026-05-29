@@ -479,9 +479,10 @@ def _run_alert_rules() -> None:
 
 
 def _run_cve_auto_scan() -> None:
-    """Escaneo automatico diario de CVEs criticas/altas contra el inventario de activos."""
+    """Escaneo automatico diario de CVEs: busca + auto-genera riesgos."""
     from app.database import SessionLocal
     from app.models import IntegrationConfig, Asset
+    from app.services.risk_auto_generator import auto_generate_risk_from_cve
     import json, base64, hashlib
 
     db = SessionLocal()
@@ -513,7 +514,26 @@ def _run_cve_auto_scan() -> None:
             logger.info("CVE auto-scan: sin nuevas CVEs %s en los ultimos 2 dias.", severity)
             return
 
-        logger.info("CVE auto-scan: %d CVEs encontradas. El analisis IA se ejecuta bajo demanda desde la UI.", len(cves))
+        # Auto-generar riesgos para activos afectados (NUEVO en v1.7.8)
+        logger.info("CVE auto-scan: %d CVEs encontradas. Generando riesgos automaticos...", len(cves))
+        created_count = 0
+        for cve_record in cves:
+            cve_id = cve_record.get("cve_id", "UNKNOWN")
+            # TODO: Correlacionar CVE con activos (por software, version)
+            # Por ahora: crear riesgo para activos que tengan "software" en descripcion
+            assets = db.query(Asset).filter(
+                Asset.description.ilike(f"%cve%") | Asset.name.ilike(f"%{cve_id}%")
+            ).all()
+            for asset in assets:
+                risk = auto_generate_risk_from_cve(
+                    db, asset.id, cve_id,
+                    affected_software=cve_record.get("description", "Unknown"),
+                    inherent_consequence=4,  # CVE casi siempre alto
+                    inherent_likelihood=3,
+                )
+                if risk:
+                    created_count += 1
+        logger.info("CVE auto-scan: %d riesgos generados automaticamente.", created_count)
     except Exception as exc:
         logger.exception("Error en CVE auto-scan: %s", exc)
     finally:
