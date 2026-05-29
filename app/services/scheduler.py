@@ -953,6 +953,76 @@ def _run_monthly_report() -> None:
         db.close()
 
 
+def _run_incident_tasks() -> None:
+    """Crea tareas de resolucion para incidentes abiertos sin actividad durante mas de 7 dias."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import Incident, IncidentStatus, IncidentSeverity, TreatmentTask, TaskStatus, TaskPriority
+
+    _SEVERITY_PRIORITY = {
+        IncidentSeverity.P1: TaskPriority.CRITICAL,
+        IncidentSeverity.P2: TaskPriority.HIGH,
+        IncidentSeverity.P3: TaskPriority.MEDIUM,
+        IncidentSeverity.P4: TaskPriority.LOW,
+    }
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(days=7)
+
+        open_incidents = db.query(Incident).filter(
+            Incident.status.in_([IncidentStatus.OPEN, IncidentStatus.IN_PROGRESS]),
+            Incident.created_at < threshold,
+        ).all()
+
+        created = 0
+        for inc in open_incidents:
+            # Evitar duplicados: no crear si ya hay tarea activa para este incidente
+            dup = db.query(TreatmentTask).filter(
+                TreatmentTask.organization_id == inc.organization_id,
+                TreatmentTask.title.like(f"%{inc.code}%"),
+                TreatmentTask.status != TaskStatus.DONE,
+            ).first()
+            if dup:
+                continue
+
+            count = db.query(TreatmentTask).filter_by(organization_id=inc.organization_id).count()
+            code = f"TSK-{count + 1:04d}"
+            while db.query(TreatmentTask).filter_by(code=code).first():
+                count += 1
+                code = f"TSK-{count + 1:04d}"
+
+            priority = _SEVERITY_PRIORITY.get(inc.severity, TaskPriority.MEDIUM)
+            days_open = (now - inc.created_at.replace(tzinfo=timezone.utc)).days
+
+            task = TreatmentTask(
+                organization_id=inc.organization_id,
+                code=code,
+                title=f"Resolver incidente {inc.code}: {inc.title[:60]}",
+                description=(
+                    f"El incidente {inc.code} ({inc.title}) lleva {days_open} dias abierto "
+                    f"sin resolucion. Severidad: {inc.severity.value}. "
+                    f"Revisar el estado, tomar acciones de contencion y cierre, "
+                    f"y documentar las lecciones aprendidas."
+                ),
+                status=TaskStatus.PENDING,
+                priority=priority,
+                assigned_to_id=inc.assigned_to_id,
+                created_by_id=inc.assigned_to_id,
+            )
+            db.add(task)
+            created += 1
+
+        if created:
+            db.commit()
+            logger.info("Incident tasks: %d tareas de resolucion creadas.", created)
+    except Exception as exc:
+        logger.exception("Error en incident_tasks: %s", exc)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -994,6 +1064,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),
         id="policy_review_tasks",
         name="Creacion de tareas por politicas con revision vencida",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_incident_tasks,
+        trigger=IntervalTrigger(hours=24),
+        id="incident_tasks",
+        name="Creacion de tareas para incidentes sin resolver >7 dias",
         replace_existing=True,
         misfire_grace_time=3600,
     )

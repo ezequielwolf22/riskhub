@@ -5,7 +5,7 @@ from app.models import (
     AiConfig, Asset, ControlImplementation, ControlStatus,
     Incident, NonConformity, Risk, RiskContext, RiskStatus, Supplier,
 )
-from app.services.rag_service import search_chunks
+from app.services.rag_service import search_chunks_with_source
 
 
 def build_context(
@@ -133,11 +133,15 @@ def build_context(
             parts.append(f"- {nc.code}: {nc.title} [{nc.severity.value}]")
 
     # 8. Fragmentos RAG de documentacion interna (filtrados por organizacion)
+    # Se incluye el nombre del documento fuente para que el agente pueda citar con precision
     if query:
-        chunks = search_chunks(db, query, top_k=max_chunks, organization_id=organization_id)
-        if chunks:
+        results = search_chunks_with_source(
+            db, query, top_k=max_chunks, organization_id=organization_id
+        )
+        if results:
             parts.append("\n## Documentacion interna relevante")
-            for chunk in chunks:
-                parts.append(f"---\n{chunk[:400]}")
+            for r in results:
+                source_label = f"[Fuente: {r['doc_name']}]"
+                parts.append(f"---\n{source_label}\n{r['content'][:800]}")
 
     return "\n".join(parts)

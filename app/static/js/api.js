@@ -180,6 +180,7 @@ const Api = {
     del: (id) => Api.del('/api/ai/documents/' + id),
     reprocess: (id) => Api.post('/api/ai/documents/' + id + '/reprocess', {}),
     analyze: (id) => Api.post('/api/ai/documents/' + id + '/analyze', {}),
+    analyzeAll: () => Api.post('/api/ai/documents/analyze-all', {}),
   },
   tasks: {
     list: (q) => Api.get('/api/tasks/', q),

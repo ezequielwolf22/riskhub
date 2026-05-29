@@ -42,6 +42,21 @@ def _recalc(db: Session, risk: Risk) -> None:
     risk.residual_consequence = rc
     risk.residual_level = rlev
 
+    # Auto-tratamiento basado en apetito de riesgo:
+    # si el nivel residual queda dentro del apetito de la organizacion,
+    # el tratamiento optimo es ACCEPTANCE — sin accion adicional necesaria.
+    ctx = db.query(RiskContext).filter(
+        RiskContext.organization_id == risk.organization_id
+    ).first()
+    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+    if rlev <= appetite and risk.status not in (RiskStatus.CLOSED,):
+        # Solo actualizar si el tratamiento no habia sido elegido manualmente
+        # (i.e., era None o era MODIFICATION/RETENTION sin plan documentado)
+        if risk.treatment_option in (None, TreatmentOption.MODIFICATION, TreatmentOption.RETENTION):
+            risk.treatment_option = TreatmentOption.ACCEPTANCE
+            if risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
+                risk.status = RiskStatus.ACCEPTED
+
 
 @router.get("/", response_model=list[RiskOut])
 def list_risks(

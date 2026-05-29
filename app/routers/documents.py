@@ -207,3 +207,36 @@ def analyze_document(
     db.commit()
     background_tasks.add_task(_run_isms_analysis_bg, doc.id)
     return {"ok": True, "message": "Analisis ISMS iniciado en background"}
+
+
+@router.post("/analyze-all")
+def analyze_all_documents(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """Lanza el analisis ISMS de todos los documentos indexados de la organizacion.
+
+    Solo procesa documentos INDEXED. Los que ya tienen isms_status='analysed' se
+    re-analizan para actualizar el gap analysis con el prompt mejorado.
+    """
+    docs = (
+        db.query(AiDocument)
+        .filter(
+            AiDocument.organization_id == current_user.organization_id,
+            AiDocument.status == AiDocumentStatus.INDEXED,
+        )
+        .all()
+    )
+    if not docs:
+        raise HTTPException(400, "No hay documentos indexados para analizar")
+
+    queued = 0
+    for doc in docs:
+        doc.isms_status = "analysing"
+        doc.isms_summary = None
+        background_tasks.add_task(_run_isms_analysis_bg, doc.id)
+        queued += 1
+
+    db.commit()
+    return {"ok": True, "queued": queued, "message": f"Analisis ISMS iniciado para {queued} documentos"}

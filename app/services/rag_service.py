@@ -18,13 +18,27 @@ def _sanitize_fts5(query: str) -> str:
 def search_chunks(
     db: Session,
     query: str,
-    top_k: int = 5,
+    top_k: int = 8,
     organization_id: int | None = None,
 ) -> list[str]:
-    """Busca en FTS5 y devuelve los top_k fragmentos mas relevantes.
+    """Busca en FTS5 y devuelve los top_k fragmentos mas relevantes (solo texto).
 
     Cuando organization_id se proporciona, la busqueda queda restringida
     a los documentos de esa organizacion — nunca se cruzan datos entre tenants.
+    """
+    results = search_chunks_with_source(db, query, top_k=top_k, organization_id=organization_id)
+    return [r["content"] for r in results]
+
+
+def search_chunks_with_source(
+    db: Session,
+    query: str,
+    top_k: int = 8,
+    organization_id: int | None = None,
+) -> list[dict]:
+    """Busca en FTS5 y devuelve dicts con {content, doc_name, category}.
+
+    Permite al agente IA saber exactamente de que documento proviene cada fragmento.
     """
     if not query or not query.strip():
         return []
@@ -35,7 +49,7 @@ def search_chunks(
         if organization_id is not None:
             rows = db.execute(
                 text(
-                    "SELECT c.content FROM ai_document_chunks c "
+                    "SELECT c.content, d.original_name, d.category FROM ai_document_chunks c "
                     "JOIN ai_chunks_fts fts ON fts.rowid = c.id "
                     "JOIN ai_documents d ON d.id = c.document_id "
                     "WHERE ai_chunks_fts MATCH :q "
@@ -46,17 +60,17 @@ def search_chunks(
                 {"q": safe_q, "k": top_k, "org_id": organization_id},
             ).fetchall()
         else:
-            # Fallback sin filtro: solo para superadmin o uso interno
             rows = db.execute(
                 text(
-                    "SELECT c.content FROM ai_document_chunks c "
+                    "SELECT c.content, d.original_name, d.category FROM ai_document_chunks c "
                     "JOIN ai_chunks_fts fts ON fts.rowid = c.id "
+                    "JOIN ai_documents d ON d.id = c.document_id "
                     "WHERE ai_chunks_fts MATCH :q "
                     "ORDER BY rank "
                     "LIMIT :k"
                 ),
                 {"q": safe_q, "k": top_k},
             ).fetchall()
-        return [r[0] for r in rows]
+        return [{"content": r[0], "doc_name": r[1] or "Documento", "category": r[2] or ""} for r in rows]
     except Exception:
         return []

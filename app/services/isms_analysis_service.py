@@ -50,6 +50,9 @@ Analiza el siguiente fragmento de documento y devuelve UNICAMENTE un objeto JSON
       "code": "<codigo ISO 27002:2022, ej: 5.1>",
       "name": "<nombre del control>",
       "coverage": "<full | partial>",
+      "maturity_current": <entero 1..4, nivel de madurez actual segun CMM>,
+      "maturity_rationale": "<Por que el documento solo alcanza este nivel y no el 5. Ser especifico: que aspectos cubre, que le falta.>",
+      "gap_to_5": "<Lista concreta de lo que faltaria para llegar a nivel 5: procedimientos, evidencias, registros, formacion, revision periodica, metricas, etc. Max 3 acciones especificas.>",
       "evidence_note": "<nota breve de evidencia>"
     }
   ],
@@ -60,8 +63,13 @@ Analiza el siguiente fragmento de documento y devuelve UNICAMENTE un objeto JSON
 REGLAS:
 - Devuelve SOLO el JSON. Sin texto ni markdown antes ni despues.
 - Si el documento NO es una politica de seguridad, pon is_policy=false y policy=null.
-- controls_covered: solo controles ISO 27002:2022 identificados con confianza alta.
+- controls_covered: SOLO controles ISO 27002:2022 que el documento cubre con confianza alta.
   Usa los codigos reales del estandar (5.1, 5.2, ... 8.34).
+  NO incluyas controles que no esten claramente respaldados por el contenido del documento.
+  Un documento de criptografia cubre 8.24, 8.26 etc., NO cubre controles legales ni de RRHH.
+- maturity_current: escala CMM 1-5. Un documento bien redactado con procedimientos claros
+  pero sin evidencias de revision ni metricas = 3. Con evidencias y KPIs = 4. Con mejora
+  continua demostrada = 5. Rara vez se llega al 5 solo con un documento.
 - threat_categories_addressed: categorias de amenazas ISO 27005 Annex C que el documento
   ayuda a mitigar (Physical damage, Natural events, Loss of services, Technical failures,
   Unauthorised actions, Compromise of functions, etc.).
@@ -369,8 +377,18 @@ def _update_controls(
 
         coverage = ctrl_data.get("coverage", "partial")
         note = ctrl_data.get("evidence_note", "")
-        new_status = ControlStatus.IMPLEMENTED if coverage == "full" else ControlStatus.PARTIAL
-        new_maturity = 3 if coverage == "full" else 2
+        # Nivel de madurez: usar el valor del modelo si viene; sino inferir por coverage
+        new_maturity = ctrl_data.get("maturity_current") or (3 if coverage == "full" else 2)
+        new_maturity = max(1, min(5, int(new_maturity)))
+        new_status = ControlStatus.IMPLEMENTED if new_maturity >= 3 else ControlStatus.PARTIAL
+
+        # Gap analysis: por que no llega al 5 y que falta
+        gap_note_parts = []
+        if ctrl_data.get("maturity_rationale"):
+            gap_note_parts.append(f"Nivel actual ({new_maturity}/5): {ctrl_data['maturity_rationale']}")
+        if ctrl_data.get("gap_to_5"):
+            gap_note_parts.append(f"Para llegar a nivel 5: {ctrl_data['gap_to_5']}")
+        gap_note = "\n\n".join(gap_note_parts)
 
         doc_ref = {
             "title": f"[Auto] {doc.original_name}",
@@ -395,6 +413,9 @@ def _update_controls(
                 impl.evidence_refs = refs
             if note and not impl.evidence:
                 impl.evidence = note
+            # Actualizar gap analysis (sobreescribir siempre con la info mas reciente)
+            if gap_note:
+                impl.notes = gap_note
         else:
             impl = ControlImplementation(
                 organization_id=doc.organization_id,
@@ -406,6 +427,7 @@ def _update_controls(
                 owner_id=owner_id,
                 evidence=note,
                 evidence_refs=[doc_ref],
+                notes=gap_note or None,
             )
             db.add(impl)
 

@@ -126,7 +126,7 @@ const ViewAiDocuments = (() => {
         </div>
       </div>
 
-      <!-- Filtros + boton subir -->
+      <!-- Filtros + botones de accion -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
         <button class="btn ${_filter === 'all' ? 'btn-primary' : 'btn-ghost'}"
                 style="font-size:12px;" onclick="ViewAiDocuments._setFilter('all')">
@@ -140,7 +140,13 @@ const ViewAiDocuments = (() => {
               ${CATEGORY_LABELS[c]} (${n})
             </button>` : '';
         }).join('')}
-        <div style="margin-left:auto;">
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+          ${indexedCount > 0 ? `
+          <button class="btn btn-ghost" id="aid-analyze-all-btn"
+                  style="font-size:12px;" onclick="ViewAiDocuments._analyzeAll()"
+                  title="Re-analizar todos los documentos indexados para actualizar controles y gap de madurez">
+            Analizar todos (${indexedCount})
+          </button>` : ''}
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
                  title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV)">
             + Subir documentos
@@ -472,16 +478,20 @@ const ViewAiDocuments = (() => {
         Politica creada</a>`);
     }
     if (d.isms_controls_updated > 0) {
-      parts.push(`<span style="font-size:11px;color:var(--risk-low);">
-        ${d.isms_controls_updated} control${d.isms_controls_updated !== 1 ? 'es' : ''}</span>`);
+      parts.push(`<a href="#/controls" style="font-size:11px;color:var(--risk-low);"
+          title="Ver controles actualizados por este documento. Cada control incluye analisis de gap hasta nivel 5.">
+        ${d.isms_controls_updated} control${d.isms_controls_updated !== 1 ? 'es' : ''} actualizados</a>`);
     }
     if (d.isms_tasks_created > 0) {
       parts.push(`<a href="#/tasks" style="font-size:11px;color:var(--brand-orange);">
         ${d.isms_tasks_created} tarea${d.isms_tasks_created !== 1 ? 's' : ''}</a>`);
     }
-    const tooltip = d.isms_summary_text ? UI.esc(d.isms_summary_text.slice(0, 200)) : '';
+    const tooltip = d.isms_summary_text ? UI.esc(d.isms_summary_text.slice(0, 300)) : '';
     return `<td style="font-size:11px;line-height:1.7;" title="${tooltip}">
       ${parts.length ? parts.join('<br>') : '<span style="color:var(--text-muted);">Sin resultados</span>'}
+      ${tooltip ? `<div style="font-size:10px;color:var(--text-subtle);margin-top:2px;max-width:220px;
+                               overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                       title="${tooltip}">${tooltip}</div>` : ''}
     </td>`;
   }
 
@@ -579,6 +589,23 @@ const ViewAiDocuments = (() => {
     }
   }
 
-  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze };
+  async function _analyzeAll() {
+    const btn = document.getElementById('aid-analyze-all-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
+    try {
+      const res = await Api.aiDocuments.analyzeAll();
+      await _load();
+      const tbody = document.getElementById('aid-tbody');
+      if (tbody) tbody.innerHTML = _renderRows();
+      UI.toast(res.message || `Analisis iniciado para ${res.queued} documentos`, 'success');
+      _startPollIfNeeded();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = `Analizar todos`; }
+    }
+  }
+
+  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll };
 
 })();

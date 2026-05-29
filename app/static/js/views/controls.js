@@ -163,7 +163,10 @@ const ViewControls = {
             <td>${UI.codePill(i.control.code)} <span style="font-size:11px;color:var(--text-subtle);">${UI.esc(i.control.name).slice(0,40)}</span></td>
             <td><strong>${UI.esc(i.name)}</strong></td>
             <td>${UI.controlStatusLabel(i.status)}</td>
-            <td>${ViewControls._maturityBar(i.maturity)}</td>
+            <td>
+              ${ViewControls._maturityBar(i.maturity)}
+              ${i.notes && i.notes.includes('nivel') ? `<div style="font-size:10px;color:var(--brand-purple);margin-top:2px;" title="${UI.esc(i.notes.slice(0,300))}">Gap IA disponible</div>` : ''}
+            </td>
             <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};" title="${rc} riesgo${rc!==1?'s':''} mitigado${rc!==1?'s':''}">${rc}</td>
             <td style="font-size:12px;">${i.next_review
               ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISION</span>':''}`
@@ -231,6 +234,20 @@ const ViewControls = {
         <textarea id="f-evi" rows="2">${UI.esc(data.evidence||'')}</textarea></div>
       <div class="span2"><label>Notas</label>
         <textarea id="f-notes" rows="2">${UI.esc(data.notes||'')}</textarea></div>
+      ${data.notes && data.notes.includes('nivel') ? `
+      <div class="span2">
+        <div style="background:linear-gradient(135deg,rgba(89,0,141,.07),rgba(214,82,0,.05));
+                    border:1px solid rgba(89,0,141,.2);border-radius:8px;padding:12px 14px;margin-top:4px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;
+                      color:var(--brand-purple);letter-spacing:.4px;margin-bottom:8px;">
+            Analisis IA de madurez
+          </div>
+          <div style="font-size:12px;line-height:1.7;color:var(--text-base);white-space:pre-wrap;">${UI.esc(data.notes)}</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">
+            Generado automaticamente al analizar el documento fuente. Edita el campo Notas para personalizar.
+          </div>
+        </div>
+      </div>` : ''}
       <div class="span2" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
         <p style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:0 0 8px;letter-spacing:.05em;">Campos SOA — ISO 27001:2022 cl. 6.1.3</p>
       </div>

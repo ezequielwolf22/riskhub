@@ -33,30 +33,37 @@ const ViewDashboard = {
         <!-- POSTURA DE SEGURIDAD GLOBAL -->
         ${ViewDashboard._postureHtml(postureScore, risks, incidents, tasks, policies, gdprData)}
 
-        <!-- KPIs DE RIESGO -->
+        <!-- KPIs DE RIESGO — todos con navegacion al modulo correspondiente -->
         <div class="card-row" style="margin-bottom:20px;">
-          <div class="kpi">
+          <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/assets'"
+               title="Ver inventario de activos">
             <div class="label">Activos inventariados</div>
             <div class="value">${risks.total_assets}</div>
+            <div class="hint">clic para ver inventario</div>
           </div>
-          <div class="kpi">
+          <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/risks'"
+               title="Ver todos los riesgos">
             <div class="label">Riesgos identificados</div>
             <div class="value">${risks.total_risks}</div>
+            <div class="hint">clic para ver registro</div>
           </div>
-          <div class="kpi">
+          <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/controls'"
+               title="Ver controles ISO 27002">
             <div class="label">Controles implantados</div>
             <div class="value">${risks.controls_implemented}<span style="font-size:16px;color:var(--text-muted);">/${risks.total_controls}</span></div>
-            <div class="hint">madurez media: ${risks.controls_avg_maturity}/5 · ${risks.total_threats} amenazas · ${risks.total_vulnerabilities} vuln.</div>
+            <div class="hint">madurez media: ${risks.controls_avg_maturity}/5 · clic para ver SOA</div>
           </div>
-          <div class="kpi" style="background: linear-gradient(45deg, #FFE6CE 0%, #EDD1FF 100%);">
+          <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#FFE6CE,#EDD1FF);"
+               onclick="location.hash='#/risks?band=high'" title="Ver riesgos altos sin tratar">
             <div class="label">Riesgos altos sin tratar</div>
             <div class="value">${risks.by_band.high}</div>
-            <div class="hint">requieren atencion inmediata</div>
+            <div class="hint">clic para filtrar por nivel alto</div>
           </div>
-          <div class="kpi" style="${risks.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}">
+          <div class="kpi" style="cursor:pointer;${risks.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}"
+               onclick="location.hash='#/risks?owner=__unassigned__'" title="Ver riesgos sin responsable">
             <div class="label">Sin responsable asignado</div>
             <div class="value" style="${risks.no_owner > 0 ? 'color:#6D28D9;' : ''}">${risks.no_owner}</div>
-            <div class="hint">riesgos activos sin propietario</div>
+            <div class="hint">clic para ver sin propietario</div>
           </div>
         </div>
 
@@ -67,30 +74,32 @@ const ViewDashboard = {
             <div class="value" style="${risks.overdue_treatments > 0 ? 'color:#991B1B;' : ''}">${risks.overdue_treatments}</div>
             <div class="hint">clic para ver detalle</div>
           </div>
-          <div class="kpi" style="${risks.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}">
+          <div class="kpi" style="cursor:pointer;${risks.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}"
+               onclick="location.hash='#/risks?treatment=__none__&min_level=5'" title="Ver riesgos altos sin plan">
             <div class="label">Altos sin plan definido</div>
             <div class="value" style="${risks.no_treatment_high > 0 ? 'color:#92400E;' : ''}">${risks.no_treatment_high}</div>
-            <div class="hint">riesgos >= 5 sin opcion de tratamiento</div>
+            <div class="hint">clic para ver riesgos >= 5 sin tratamiento</div>
           </div>
-          <div class="kpi" style="background:linear-gradient(45deg,#D1FAE5,#A7F3D0);">
+          <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#D1FAE5,#A7F3D0);"
+               onclick="location.hash='#/heatmap'" title="Ver mapa de calor">
             <div class="label">Reduccion del riesgo</div>
             <div class="value" style="color:#065F46;">${risks.risk_reduction_pct}%</div>
-            <div class="hint">reduccion media inherente -> residual</div>
+            <div class="hint">clic para ver mapa de calor</div>
           </div>
           <!-- KPIs extra: Incidentes, Tareas, Politicas -->
           ${incidents ? `
           <div class="kpi" style="cursor:pointer;${incidents.p1_p2_open > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
-               onclick="location.hash='#/incidents'" title="Incidentes P1/P2 abiertos">
+               onclick="location.hash='#/incidents?severity=p1'" title="Incidentes P1/P2 abiertos">
             <div class="label">Incidentes P1/P2</div>
             <div class="value" style="${incidents.p1_p2_open > 0 ? 'color:#991B1B;' : ''}">${incidents.p1_p2_open}</div>
-            <div class="hint">${incidents.open} abiertos en total${incidents.nis2_pending_notification > 0 ? ' · ' + incidents.nis2_pending_notification + ' NIS2 pendiente' : ''}</div>
+            <div class="hint">${incidents.open} abiertos · clic para ver criticos</div>
           </div>` : ''}
           ${tasks ? `
           <div class="kpi" style="cursor:pointer;${tasks.overdue > 0 ? 'background:linear-gradient(45deg,#FFF7ED,#FED7AA);border-color:#FDBA74;' : ''}"
-               onclick="location.hash='#/tasks'" title="Tareas vencidas">
+               onclick="location.hash='#/tasks?overdue=1'" title="Tareas vencidas">
             <div class="label">Tareas vencidas</div>
             <div class="value" style="${tasks.overdue > 0 ? 'color:#9A3412;' : ''}">${tasks.overdue}</div>
-            <div class="hint">${tasks.total} tareas totales</div>
+            <div class="hint">${tasks.total} tareas totales · clic para ver vencidas</div>
           </div>` : ''}
         </div>
 
@@ -427,9 +436,9 @@ const ViewDashboard = {
             <a href="#/incidents" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;">
-            ${ViewDashboard._moduleStatLine('Abiertos', incidents.open, incidents.open > 0 ? 'var(--risk-medium)' : 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('P1 / P2', incidents.p1_p2_open, incidents.p1_p2_open > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('NIS2 pendiente', incidents.nis2_pending_notification, incidents.nis2_pending_notification > 0 ? 'var(--risk-critical)' : 'var(--risk-low)')}
+            <a href="#/incidents?status=open" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Abiertos', incidents.open, incidents.open > 0 ? 'var(--risk-medium)' : 'var(--risk-low)')}</a>
+            <a href="#/incidents?severity=p1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('P1 / P2', incidents.p1_p2_open, incidents.p1_p2_open > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+            <a href="#/incidents?nis2=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('NIS2 pendiente', incidents.nis2_pending_notification, incidents.nis2_pending_notification > 0 ? 'var(--risk-critical)' : 'var(--risk-low)')}</a>
             ${ViewDashboard._moduleStatLine('Total historico', incidents.total, 'var(--text-muted)')}
           </div>
         </div>`);
@@ -446,10 +455,10 @@ const ViewDashboard = {
             <a href="#/tasks" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;">
-            ${ViewDashboard._moduleStatLine('Vencidas', tasks.overdue, tasks.overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('En progreso', inProgress, 'var(--brand-purple)')}
-            ${ViewDashboard._moduleStatLine('Pendientes', pending, 'var(--text-muted)')}
-            ${ViewDashboard._moduleStatLine('Completadas', done, 'var(--risk-low)')}
+            <a href="#/tasks?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Vencidas', tasks.overdue, tasks.overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+            <a href="#/tasks?status=in_progress" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('En progreso', inProgress, 'var(--brand-purple)')}</a>
+            <a href="#/tasks?status=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Pendientes', pending, 'var(--text-muted)')}</a>
+            <a href="#/tasks?status=done" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Completadas', done, 'var(--risk-low)')}</a>
           </div>
         </div>`);
     }
@@ -465,10 +474,10 @@ const ViewDashboard = {
             <a href="#/policies" style="font-size:11px;color:var(--brand-purple);">Ver todas -></a>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;">
-            ${ViewDashboard._moduleStatLine('Revision vencida', policies.overdue_review, policies.overdue_review > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('Publicadas', pub, 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('En revision', rev, 'var(--brand-orange)')}
-            ${ViewDashboard._moduleStatLine('Borradores', draft, 'var(--text-muted)')}
+            <a href="#/policies?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Revision vencida', policies.overdue_review, policies.overdue_review > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+            <a href="#/policies?status=published" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Publicadas', pub, 'var(--risk-low)')}</a>
+            <a href="#/policies?status=review" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('En revision', rev, 'var(--brand-orange)')}</a>
+            <a href="#/policies?status=draft" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Borradores', draft, 'var(--text-muted)')}</a>
           </div>
         </div>`);
     }
@@ -481,10 +490,10 @@ const ViewDashboard = {
             <a href="#/gdpr" style="font-size:11px;color:var(--brand-purple);">Ver todo -></a>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px;">
-            ${ViewDashboard._moduleStatLine('Actividades de tratamiento', gdprData.total_activities, 'var(--text-muted)')}
-            ${ViewDashboard._moduleStatLine('Requieren DPIA', gdprData.requires_dpia, gdprData.requires_dpia > 0 ? 'var(--brand-orange)' : 'var(--text-muted)')}
-            ${ViewDashboard._moduleStatLine('DPIAs pendientes', gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('Transferencias fuera UE', gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}
+            <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Actividades de tratamiento', gdprData.total_activities, 'var(--text-muted)')}</a>
+            <a href="#/gdpr?requires_dpia=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Requieren DPIA', gdprData.requires_dpia, gdprData.requires_dpia > 0 ? 'var(--brand-orange)' : 'var(--text-muted)')}</a>
+            <a href="#/gdpr?dpias_pending=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('DPIAs pendientes', gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+            <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Transferencias fuera UE', gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}</a>
           </div>
         </div>`);
     }
