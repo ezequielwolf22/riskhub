@@ -531,9 +531,9 @@ const ViewAiDocuments = (() => {
         <td style="text-align:right;">${d.chunk_count || 0}</td>
         <td style="font-size:12px;">${d.created_at ? d.created_at.slice(0, 10) : '-'}</td>
         <td style="white-space:nowrap;">
-          ${d.status === 'indexed' && (!d.isms_status || d.isms_status === 'error' || d.isms_status === 'skipped') ? `
+          ${d.status === 'indexed' && (!d.isms_status || d.isms_status === 'error' || d.isms_status === 'skipped' || d.isms_status === 'analysing') ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
-                    onclick="ViewAiDocuments._analyze(${d.id})">Analizar</button>` : ''}
+                    onclick="ViewAiDocuments._analyze(${d.id})">${d.isms_status === 'analysing' ? 'Reintentar analisis' : 'Analizar'}</button>` : ''}
           ${d.status === 'error' || d.status === 'pending' ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
                     onclick="ViewAiDocuments._reprocess(${d.id})">Reprocesar</button>` : ''}

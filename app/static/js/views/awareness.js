@@ -456,8 +456,23 @@ const ViewAwareness = (() => {
     }
   };
 
-  window._awExportPdf = function(id) {
-    window.open(`/api/awareness/${id}/export-pdf`, '_blank');
+  window._awExportPdf = async function(id) {
+    try {
+      const tok = localStorage.getItem('riskhub_token');
+      const r = await fetch(`/api/awareness/${id}/export-pdf`, {
+        headers: { Authorization: 'Bearer ' + tok },
+      });
+      if (!r.ok) throw new Error('Error al descargar el PDF (' + r.status + ')');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `infografia_${id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      UI.toast(e.message, 'error');
+    }
   };
 
   // ================================================================

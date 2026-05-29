@@ -29,8 +29,8 @@ const ViewAlerts = {
 
   _render(container) {
     const u = Auth.user();
-    const isAdmin = u && u.role === 'admin';
-    const isAnalyst = u && (u.role === 'admin' || u.role === 'analyst');
+    const isAdmin = u && (u.role === 'admin' || u.role === 'superadmin');
+    const isAnalyst = u && (u.role === 'admin' || u.role === 'superadmin' || u.role === 'analyst');
 
     const s = this._settings || {};
     const smtpStatus = s.smtp_host
@@ -209,22 +209,21 @@ const ViewAlerts = {
   },
 
   _newRule() {
-    const html = `
-      <div class="modal-head">
-        <h2>Nueva regla de alerta</h2>
-        <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="span2"><label>Nombre de la regla <span style="color:var(--brand-orange)">*</span></label>
-          <input id="r-name" type="text" placeholder="Ej: Alerta riesgos criticos CISO" style="width:100%;"></div>
-        <div><label>Tipo de evento <span style="color:var(--brand-orange)">*</span></label>
-          <select id="r-type" style="width:100%;" onchange="ViewAlerts._onTypeChange(this)">
+    UI.modal('Nueva regla de alerta', `
+      <div class="form-grid">
+        <div class="span2">
+          <label>Nombre de la regla *</label>
+          <input id="r-name" class="input" type="text" placeholder="Ej: Alerta riesgos criticos CISO">
+        </div>
+        <div>
+          <label>Tipo de evento *</label>
+          <select id="r-type" class="input" onchange="ViewAlerts._onTypeChange(this)">
             <optgroup label="Riesgos">
               <option value="risk_critical">Riesgo critico (nivel >= umbral)</option>
               <option value="risk_high">Riesgo alto (nivel >= umbral)</option>
               <option value="treatment_overdue">Plan de tratamiento vencido</option>
               <option value="risk_no_treatment">Riesgo sin plan de tratamiento</option>
-              <option value="treatment_due_soon">Tratamiento proximo a vencer (N dias)</option>
+              <option value="treatment_due_soon">Tratamiento proximo a vencer</option>
               <option value="daily_digest">Resumen diario del registro de riesgos</option>
             </optgroup>
             <optgroup label="Controles">
@@ -238,17 +237,23 @@ const ViewAlerts = {
               <option value="policy_review_overdue">Politicas con revision vencida</option>
               <option value="task_overdue">Tareas de tratamiento vencidas</option>
             </optgroup>
-          </select></div>
-        <div id="r-threshold-wrap"><label>Umbral de nivel</label>
-          <input id="r-threshold" type="number" value="5" min="1" max="8" style="width:100%;"></div>
-        <div class="span2"><label>Email destinatario <span style="color:var(--brand-orange)">*</span></label>
-          <input id="r-email" type="email" placeholder="responsable@company.com" style="width:100%;"></div>
+          </select>
+        </div>
+        <div id="r-threshold-wrap">
+          <label>Umbral de nivel</label>
+          <input id="r-threshold" class="input" type="number" value="5" min="1" max="8">
+        </div>
+        <div class="span2">
+          <label>Email destinatario *</label>
+          <input id="r-email" class="input" type="email" placeholder="responsable@company.com">
+        </div>
       </div>
-      <div class="modal-foot">
-        <button class="btn" onclick="UI.closeModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="ViewAlerts._createRule()">Crear regla</button>
-      </div>`;
-    UI.openModal(html);
+    `, {
+      actions: `<button class="btn" id="m-cancel">Cancelar</button>
+                <button class="btn btn-primary" id="m-save">Crear regla</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = () => ViewAlerts._createRule();
   },
 
   async _createRule() {
