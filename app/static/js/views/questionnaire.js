@@ -74,17 +74,58 @@ const ViewQuestionnaire = {
             ${q.options.map(o => `<option value="${UI.esc(o)}">${UI.esc(o)}</option>`).join('')}
           </select>`;
         } else if (q.type === 'multiselect') {
-          html += `<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px;">
-            ${q.options.map(o => `
+          // Opciones predefinidas
+          html += `<div id="ms-grid-${q.id}" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px;">
+            ${q.options.map(o => {
+              const isEns = (q.id === 'regulations' && o.startsWith('ENS'));
+              return `
               <label class="ms-opt" style="display:block;cursor:pointer;background:var(--bg-2);
                      border:1px solid var(--border);border-radius:8px;
                      padding:10px 12px;font-size:13px;line-height:1.5;
                      transition:background .15s,border-color .15s;">
                 <input type="checkbox" data-q="${q.id}" value="${UI.esc(o)}"
-                       style="accent-color:var(--brand-purple);margin-right:8px;vertical-align:middle;flex-shrink:0;">
+                       style="accent-color:var(--brand-purple);margin-right:8px;vertical-align:middle;flex-shrink:0;"
+                       ${isEns ? `onchange="ViewQuestionnaire._toggleEnsLevel(this)"` : ''}>
                 <span style="vertical-align:middle;">${UI.esc(o)}</span>
-              </label>`).join('')}
-          </div>`;
+              </label>`;
+            }).join('')}
+          </div>
+          ${q.id === 'regulations' ? `
+            <div id="ens-level-wrap" style="display:none;margin-top:8px;padding:12px;
+                 background:var(--brand-purple-4);border:1px solid var(--brand-purple-3);border-radius:8px;">
+              <label style="font-size:12px;font-weight:600;color:var(--brand-purple);display:block;margin-bottom:8px;">
+                Nivel ENS (RD 311/2022) *
+              </label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                ${['basico','medio','alto'].map(lvl => `
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;
+                         background:var(--bg-1);border:2px solid var(--border);border-radius:8px;
+                         padding:8px 16px;font-size:13px;font-weight:600;
+                         transition:border-color .15s,background .15s;"
+                         id="ens-lvl-lbl-${lvl}">
+                    <input type="radio" name="ens_level" value="${lvl}" id="ens-lvl-${lvl}"
+                           style="accent-color:var(--brand-purple);"
+                           onchange="ViewQuestionnaire._highlightEnsLevel('${lvl}')">
+                    ${lvl.charAt(0).toUpperCase() + lvl.slice(1)}
+                  </label>`).join('')}
+              </div>
+              <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">
+                Básico: sistemas de categoría BAJA · Medio: categoría MEDIA · Alto: categoría ALTA
+              </p>
+            </div>` : ''}
+          ${q.id === 'controls_existing' ? `
+            <div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:10px;">
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">
+                Añadir control adicional (no está en la lista)
+              </label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input id="custom-ctrl-input" class="input" style="flex:1;"
+                  placeholder="Ej: WAF, PAM, Zero Trust, cifrado de emails..."
+                  onkeydown="if(event.key==='Enter'){event.preventDefault();ViewQuestionnaire._addCustomControl();}">
+                <button type="button" class="btn btn-sm" onclick="ViewQuestionnaire._addCustomControl()">+ Añadir</button>
+              </div>
+              <div id="custom-ctrl-list" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+            </div>` : ''}`;
         } else if (q.type === 'textarea') {
           html += `<textarea id="q-${q.id}" rows="3" style="width:100%;"
                     placeholder="Opcional — escribe cualquier información relevante..."></textarea>`;
@@ -114,6 +155,7 @@ const ViewQuestionnaire = {
       </div>`;
 
     document.getElementById('ai-content').innerHTML = html;
+    this._customControls = [];
 
     // Estilos hover en multiselect
     document.querySelectorAll('.ms-opt').forEach(label => {
@@ -125,6 +167,61 @@ const ViewQuestionnaire = {
     });
 
     document.getElementById('btn-analyze').onclick = () => this._submit();
+  },
+
+  // ---- ENS level ----
+  _toggleEnsLevel(checkbox) {
+    const wrap = document.getElementById('ens-level-wrap');
+    if (!wrap) return;
+    wrap.style.display = checkbox.checked ? '' : 'none';
+    if (!checkbox.checked) {
+      document.querySelectorAll('input[name="ens_level"]').forEach(r => r.checked = false);
+      document.querySelectorAll('[id^="ens-lvl-lbl-"]').forEach(l => {
+        l.style.borderColor = 'var(--border)'; l.style.background = 'var(--bg-1)';
+      });
+    }
+  },
+
+  _highlightEnsLevel(lvl) {
+    ['basico','medio','alto'].forEach(l => {
+      const lbl = document.getElementById(`ens-lvl-lbl-${l}`);
+      if (lbl) {
+        lbl.style.borderColor = l === lvl ? 'var(--brand-purple)' : 'var(--border)';
+        lbl.style.background  = l === lvl ? 'var(--brand-purple-4)' : 'var(--bg-1)';
+      }
+    });
+  },
+
+  // ---- Controles personalizados ----
+  _customControls: [],
+
+  _addCustomControl() {
+    const input = document.getElementById('custom-ctrl-input');
+    const val = input?.value.trim();
+    if (!val) return;
+    if (this._customControls.includes(val)) {
+      UI.toast('Ese control ya está añadido', 'warn'); return;
+    }
+    this._customControls.push(val);
+    input.value = '';
+    this._renderCustomControls();
+  },
+
+  _removeCustomControl(idx) {
+    this._customControls.splice(idx, 1);
+    this._renderCustomControls();
+  },
+
+  _renderCustomControls() {
+    const list = document.getElementById('custom-ctrl-list');
+    if (!list) return;
+    list.innerHTML = this._customControls.map((c, i) => `
+      <span style="display:inline-flex;align-items:center;gap:4px;background:var(--brand-purple-4);
+            border:1px solid var(--brand-purple-3);border-radius:20px;padding:4px 12px;font-size:12px;">
+        ${UI.esc(c)}
+        <button type="button" onclick="ViewQuestionnaire._removeCustomControl(${i})"
+          style="background:none;border:none;cursor:pointer;color:var(--brand-purple);font-size:14px;padding:0 0 0 4px;">×</button>
+      </span>`).join('');
   },
 
   _toggleExtra(qId) {
@@ -162,6 +259,15 @@ const ViewQuestionnaire = {
         }
       }
     });
+
+    // Nivel ENS (si está visible)
+    const ensChecked = document.querySelector('input[name="ens_level"]:checked');
+    if (ensChecked) answers.ens_level = ensChecked.value;
+
+    // Controles personalizados
+    if (this._customControls.length > 0) {
+      answers.custom_controls = [...this._customControls];
+    }
 
     return { answers, missing };
   },
@@ -390,6 +496,14 @@ const ViewQuestionnaire = {
       const payload = { scenarios: toImport };
       if (riskAppetite !== undefined && riskAppetite !== null) {
         payload.risk_appetite = riskAppetite;
+      }
+      // Pasar normativas y nivel ENS del resultado del análisis
+      const result = this._result || {};
+      if (result.active_frameworks?.length) {
+        payload.active_frameworks = result.active_frameworks;
+      }
+      if (result.ens_level) {
+        payload.ens_level = result.ens_level;
       }
       const res = await Api.post('/api/ai/import', payload);
       const appetiteMsg = res.risk_appetite_saved ? ` · Apetito de riesgo (${riskAppetite}) guardado en Contexto` : '';

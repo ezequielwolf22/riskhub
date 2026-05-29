@@ -31,7 +31,9 @@ class AnalyzeRequest(BaseModel):
 
 class ImportRequest(BaseModel):
     scenarios: list[dict[str, Any]]
-    risk_appetite: int | None = None   # nivel 0-8; si se provee, se guarda en RiskContext
+    risk_appetite: int | None = None        # nivel 0-8; guarda en RiskContext
+    active_frameworks: list[str] | None = None  # normativas activas del cuestionario
+    ens_level: str | None = None            # "basico"|"medio"|"alto" si ENS activado
 
 
 @router.get("/questionnaire")
@@ -170,8 +172,9 @@ def import_risks(
 
     db.commit()
 
-    # Guardar apetito de riesgo en RiskContext si se proporciona
-    if req.risk_appetite is not None:
+    # Guardar apetito, normativas y nivel ENS en RiskContext si se proporcionan
+    ctx_updated = False
+    if req.risk_appetite is not None or req.active_frameworks is not None or req.ens_level is not None:
         from app.models import RiskContext
         from app.routers.context import _apply_appetite_bulk
         ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
@@ -179,11 +182,19 @@ def import_risks(
             ctx = RiskContext(organization_id=current_user.organization_id)
             db.add(ctx)
             db.flush()
+
         old_appetite = ctx.risk_appetite
-        ctx.risk_appetite = max(0, min(8, req.risk_appetite))
+        if req.risk_appetite is not None:
+            ctx.risk_appetite = max(0, min(8, req.risk_appetite))
+        if req.active_frameworks is not None:
+            ctx.active_frameworks = req.active_frameworks
+        if req.ens_level is not None:
+            ctx.ens_level = req.ens_level
         db.commit()
-        # Recalcular tratamientos de todos los riesgos con el nuevo apetito
-        if old_appetite != ctx.risk_appetite:
+        ctx_updated = True
+
+        # Recalcular tratamientos de todos los riesgos si cambia el apetito
+        if req.risk_appetite is not None and old_appetite != ctx.risk_appetite:
             _apply_appetite_bulk(db, current_user.organization_id, ctx.risk_appetite)
 
     return {
@@ -192,6 +203,7 @@ def import_risks(
         "detail_created": created,
         "detail_skipped": skipped,
         "risk_appetite_saved": req.risk_appetite is not None,
+        "frameworks_saved": ctx_updated,
     }
 
 

@@ -182,6 +182,9 @@ class RiskContext(Base):
     risk_matrix = Column(JSON)             # matriz 5x5 ISO 27005 Annex E.2
     risk_appetite = Column(Integer, default=3)  # nivel 0..8 maximo aceptable
     ai_gap_cache = Column(JSON, nullable=True)   # cache gap analysis detallado (v1.8)
+    # Normativas activas seleccionadas en el cuestionario IA
+    active_frameworks = Column(JSON, nullable=True)  # ["iso27001","nis2","gdpr","ens",...]
+    ens_level = Column(String(16), nullable=True)    # "basico" | "medio" | "alto"
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 

@@ -196,6 +196,31 @@ CONTROLS_ISO_MAP: dict[str, list[str]] = {
 }
 
 
+_REG_TO_FRAMEWORK: dict[str, str] = {
+    "GDPR / RGPD":                          "gdpr",
+    "NIS2":                                  "nis2",
+    "ENS (Esquema Nacional de Seguridad)":   "ens",
+    "PCI-DSS":                               "pcidss",
+    "HIPAA":                                 "hipaa",
+    "ISO 27001 certificada":                 "iso27001",
+    "SOC 2":                                 "soc2",
+}
+
+
+def _regulations_to_frameworks(regulations: list[str]) -> list[str]:
+    """Convierte las opciones del cuestionario a claves internas de framework."""
+    fw = []
+    for r in regulations:
+        key = _REG_TO_FRAMEWORK.get(r)
+        if key and key not in fw:
+            fw.append(key)
+    if not fw:
+        fw = ["iso27001"]   # siempre al menos ISO 27001
+    elif "iso27001" not in fw:
+        fw.insert(0, "iso27001")   # ISO 27001 siempre presente como base
+    return fw
+
+
 def _parse_appetite_level(answer: str) -> int:
     """Extrae el numero de nivel de apetito de la respuesta seleccionada."""
     import re
@@ -239,14 +264,22 @@ def _build_prompt(answers: dict, assets: list, threats: list, controls: list) ->
     answers_str = "\n".join(f"  - {k}: {v}" for k, v in base_answers.items())
     extra_str = "\n".join(extra_criteria_items) if extra_criteria_items else "  (ninguno)"
 
-    # Mapear controles declarados a ISO 27002:2022
-    declared_controls: list[str] = answers.get("controls_existing") or []
+    # Mapear controles declarados (predefinidos + personalizados) a ISO 27002:2022
+    declared_controls: list[str] = list(answers.get("controls_existing") or [])
+    custom_controls: list[str] = list(answers.get("custom_controls") or [])
+    all_controls = declared_controls + custom_controls
     mapped_controls_lines = []
-    for ctrl_name in declared_controls:
+    for ctrl_name in all_controls:
         iso_codes = CONTROLS_ISO_MAP.get(ctrl_name, [])
-        codes_str = ", ".join(iso_codes) if iso_codes else "ver catalogo"
+        codes_str = ", ".join(iso_codes) if iso_codes else "mapear segun descripcion"
         mapped_controls_lines.append(f"  - {ctrl_name} → ISO 27002: {codes_str}")
     mapped_controls_str = "\n".join(mapped_controls_lines) if mapped_controls_lines else "  (ninguno declarado)"
+
+    # Normativas activas y nivel ENS
+    regulations: list[str] = list(answers.get("regulations") or [])
+    ens_level: str = answers.get("ens_level", "")
+    regs_str = ", ".join(regulations) if regulations else "ninguna especifica"
+    ens_str = f" — Nivel ENS: {ens_level.upper()}" if ens_level else ""
 
     # Apetito de riesgo
     appetite_raw = answers.get("risk_appetite_level", "")
@@ -286,6 +319,12 @@ APETITO DE RIESGO DE LA ORGANIZACIÓN:
 INSTRUCCION: Para cada escenario, asigna treatment_option según la regla:
   · Si residual_level > {appetite_num} → treatment_option = "modification" (DEBE mitigarse)
   · Si residual_level <= {appetite_num} → treatment_option = "retention" (se puede aceptar)
+
+NORMATIVAS REGULATORIAS APLICABLES A ESTA ORGANIZACIÓN:
+  {regs_str}{ens_str}
+INSTRUCCION: Para cada escenario, el campo control_rationale debe mencionar explícitamente
+qué controles de estas normativas cubre o requiere el escenario. Para ENS{ens_str}, ajusta
+la severidad y los controles obligatorios al nivel indicado.
 
 CRITERIOS ADICIONALES APORTADOS POR EL USUARIO:
 {extra_str}
@@ -388,6 +427,10 @@ def run_analysis(answers: dict, db: Session, api_key: str | None = None) -> dict
     # Aseguramos que el apetito quede en el resultado
     if "risk_appetite" not in result:
         result["risk_appetite"] = appetite_num
+    # Propagar normativas y nivel ENS para que el import pueda guardarlos
+    result["active_frameworks"] = _regulations_to_frameworks(answers.get("regulations") or [])
+    if answers.get("ens_level"):
+        result["ens_level"] = answers["ens_level"]
 
     # Post-procesar escenarios: niveles coherentes con la matriz + treatment_option por apetito
     valid_treatments = {"modification", "retention", "avoidance", "sharing"}

@@ -109,6 +109,8 @@ class ContextIn(BaseModel):
     risk_acceptance_criteria: Optional[dict] = None
     risk_matrix: Optional[list[list[int]]] = None
     risk_appetite: Optional[int] = None
+    active_frameworks: Optional[list[str]] = None
+    ens_level: Optional[str] = None
 
 
 class ContextOut(ORMBase):
@@ -121,6 +123,8 @@ class ContextOut(ORMBase):
     risk_acceptance_criteria: Optional[dict]
     risk_matrix: Optional[list[list[int]]]
     risk_appetite: Optional[int]
+    active_frameworks: Optional[list[str]] = None
+    ens_level: Optional[str] = None
     updated_at: datetime
 
 

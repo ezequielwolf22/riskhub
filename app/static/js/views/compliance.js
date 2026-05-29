@@ -7,6 +7,17 @@ const ViewCompliance = (() => {
   let _compData = null;
   // Cache de controles implementados para los paneles ISO/NIST/ENS
   let _implsData = null;
+  // Normativas activas y nivel ENS desde el contexto organizacional
+  let _activeFrameworks = null;   // null = mostrar todo; [] = ISO 27001 mínimo
+  let _ensLevel = null;
+
+  // Mapa interno de frameworks disponibles
+  const _FW_META = {
+    iso27001: { label: 'ISO 27001:2022',   dataKey: 'iso27001' },
+    nis2:     { label: 'NIS2',             dataKey: 'nis2' },
+    nist_csf: { label: 'NIST CSF 2.0',    dataKey: 'nist_csf' },
+    ens:      { label: 'ENS RD 311/2022', dataKey: 'ens' },
+  };
 
   function _scoreColor(score) {
     if (score >= 75) return 'var(--risk-low)';
@@ -112,6 +123,17 @@ const ViewCompliance = (() => {
   // Panel de detalle por framework
   // ============================================================
 
+  function _getActiveFrameworkKeys() {
+    // Si no hay normativas configuradas → mostrar todos los frameworks disponibles
+    const all = Object.keys(_FW_META);
+    if (!_activeFrameworks || _activeFrameworks.length === 0) return all;
+    // Filtrar solo los que tienen datos en _FW_META
+    const active = _activeFrameworks.filter(k => _FW_META[k]);
+    // Siempre garantizar ISO 27001 como base
+    if (!active.includes('iso27001')) active.unshift('iso27001');
+    return active;
+  }
+
   function _togglePanel(key) {
     if (_expandedPanel === key) {
       _expandedPanel = null;
@@ -129,13 +151,19 @@ const ViewCompliance = (() => {
 
     const data = _compData;
     const nist = data.nist_csf || {};
-
-    gaugesEl.innerHTML = `
-      ${_gaugeHtml('ISO 27001:2022', data.iso27001?.score || 0, data.iso27001?.label, 'iso27001')}
-      ${_gaugeHtml('NIS2', data.nis2?.score || 0, data.nis2?.label, 'nis2')}
-      ${_gaugeHtml('NIST CSF 2.0', nist?.score || 0, nist?.label, 'nist_csf')}
-      ${_gaugeHtml('ENS RD 311/2022', data.ens?.score || 0, data.ens?.label, 'ens')}
-    `;
+    // Determinar qué frameworks mostrar
+    const activeKeys = _getActiveFrameworkKeys();
+    gaugesEl.innerHTML = activeKeys
+      .map(k => {
+        const m = _FW_META[k];
+        if (!m) return '';
+        const d = data[m.dataKey] || {};
+        const score = k === 'nist_csf' ? (nist?.score || 0) : (d.score || 0);
+        const sublabel = (k === 'ens' && _ensLevel)
+          ? `Nivel ${_ensLevel.charAt(0).toUpperCase() + _ensLevel.slice(1)}`
+          : (d.label || '');
+        return _gaugeHtml(m.label, score, sublabel, k);
+      }).join('');
 
     if (_expandedPanel) {
       panelEl.style.display = 'block';
@@ -594,13 +622,22 @@ const ViewCompliance = (() => {
     _expandedPanel = null;
     _compData = null;
     _implsData = null;
+    _activeFrameworks = null;
+    _ensLevel = null;
     try {
-      const [data, implsList] = await Promise.all([
+      const [data, implsList, ctx] = await Promise.all([
         Api.compliance.summary(),
         Api.impls.list().catch(() => []),
+        Api.get('/api/context/').catch(() => null),
       ]);
       _compData = data;
       _implsData = implsList;
+      if (ctx?.active_frameworks?.length) {
+        _activeFrameworks = ctx.active_frameworks;
+      }
+      if (ctx?.ens_level) {
+        _ensLevel = ctx.ens_level;
+      }
       _render(content, data);
       // Wire legacy gap button
       const gapBtn = document.getElementById('btn-gap-analysis');
@@ -614,8 +651,70 @@ const ViewCompliance = (() => {
     const meta = data._meta || {};
     const nist = data.nist_csf || {};
     const fns = nist.functions || {};
+    const activeKeys = _getActiveFrameworkKeys();
+
+    // Banner de normativas activas
+    const fwBanner = (_activeFrameworks && _activeFrameworks.length > 0) ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+           background:var(--brand-purple-4);border:1px solid var(--brand-purple-3);
+           border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
+        <div>
+          <strong style="color:var(--brand-purple);">Normativas activas:</strong>
+          ${activeKeys.map(k => {
+            const m = _FW_META[k];
+            const extra = (k === 'ens' && _ensLevel)
+              ? ` <span style="font-size:10px;background:var(--brand-purple);color:#fff;border-radius:3px;padding:1px 5px;">
+                    ${_ensLevel.toUpperCase()}</span>` : '';
+            return m ? `<span class="badge badge-muted" style="margin-left:4px;">${m.label}${extra}</span>` : '';
+          }).join('')}
+        </div>
+        <a href="#questionnaire" onclick="App.navigate('questionnaire');return false;"
+           style="font-size:11px;color:var(--brand-purple);text-decoration:underline;">
+          Cambiar normativas
+        </a>
+      </div>` : `
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;
+           padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--text-muted);">
+        Mostrando todos los frameworks. Ejecuta el <a href="#questionnaire"
+          onclick="App.navigate('questionnaire');return false;"
+          style="color:var(--brand-purple);">cuestionario IA</a>
+        y selecciona las normativas aplicables para personalizar esta vista.
+      </div>`;
+
+    // Paneles de brechas — solo frameworks activos
+    const gapPanels = activeKeys
+      .filter(k => ['iso27001','nis2','nist_csf','ens'].includes(k))
+      .map(k => {
+        const m = _FW_META[k];
+        if (!k || !m) return '';
+        if (k === 'nist_csf') return `
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">NIST CSF 2.0 — Funciones</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">Cobertura por función</p>
+            ${_nistFunctionsHtml(fns)}
+          </div>`;
+        const d = data[m.dataKey] || {};
+        const subtitle = k === 'ens'
+          ? (_ensLevel ? `Nivel ${_ensLevel.charAt(0).toUpperCase()+_ensLevel.slice(1)} · Anexo II` : 'Anexo II')
+          : (k === 'nis2' ? 'Art. 21 y 23' : 'Cláusula 6.1.3 y 10.1');
+        return `
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">${m.label} — Brechas</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">${subtitle}</p>
+            ${_gapsHtml(d.gaps)}
+          </div>`;
+      }).filter(Boolean);
+
+    // Agrupar en filas de 2
+    const gapRows = [];
+    for (let i = 0; i < gapPanels.length; i += 2) {
+      gapRows.push(`<div style="display:grid;grid-template-columns:${gapPanels[i+1] ? '1fr 1fr' : '1fr'};gap:16px;margin-bottom:16px;" class="compliance-detail-grid">
+        ${gapPanels[i]}${gapPanels[i+1] || ''}
+      </div>`);
+    }
 
     content.innerHTML = `
+      ${fwBanner}
       <!-- Resumen global -->
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;">
         <h2 style="font-size:15px;font-weight:700;margin:0 0 16px;">Resumen operacional</h2>
@@ -647,47 +746,18 @@ const ViewCompliance = (() => {
         </div>
       </div>
 
-      <!-- Gauges por framework (clicables) -->
-      <div id="comp-gauges" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
-        ${_gaugeHtml('ISO 27001:2022', data.iso27001?.score || 0, data.iso27001?.label, 'iso27001')}
-        ${_gaugeHtml('NIS2', data.nis2?.score || 0, data.nis2?.label, 'nis2')}
-        ${_gaugeHtml('NIST CSF 2.0', nist?.score || 0, nist?.label, 'nist_csf')}
-        ${_gaugeHtml('ENS RD 311/2022', data.ens?.score || 0, data.ens?.label, 'ens')}
-      </div>
+      <!-- Gauges por framework (solo activos) -->
+      <div id="comp-gauges" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;"></div>
 
-      <!-- Panel de detalle expandible (se rellena al clicar un gauge) -->
+      <!-- Panel de detalle expandible -->
       <div id="comp-detail-panel" style="display:none;margin-bottom:20px;"></div>
 
-      <!-- NIST CSF funciones -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;" class="compliance-detail-grid">
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
-          <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">NIST CSF 2.0 — Funciones</h3>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">Cobertura por funcion</p>
-          ${_nistFunctionsHtml(fns)}
-        </div>
-
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
-          <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">ISO 27001:2022 — Brechas</h3>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Clausula 6.1.3 y 10.1</p>
-          ${_gapsHtml(data.iso27001?.gaps)}
-        </div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" class="compliance-detail-grid">
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
-          <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">NIS2 — Brechas</h3>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Art. 21 y 23</p>
-          ${_gapsHtml(data.nis2?.gaps)}
-        </div>
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
-          <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">ENS RD 311/2022 — Brechas</h3>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Anexo II</p>
-          ${_gapsHtml(data.ens?.gaps)}
-        </div>
-      </div>
+      <!-- Paneles de brechas por normativa activa -->
+      ${gapRows.join('')}
 
       <p style="font-size:11px;color:var(--text-muted);margin-top:16px;text-align:center;">
-        Puntuaciones calculadas a partir de los datos registrados en RiskHub. Actualizar regularmente para reflejar el estado real del SGSI.
+        Puntuaciones calculadas a partir de los datos registrados en RiskHub.
+        Actualizar regularmente para reflejar el estado real del SGSI.
       </p>
 
       <!-- AI Gap Analysis section (legacy estadistico) -->
@@ -699,10 +769,10 @@ const ViewCompliance = (() => {
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <select id="gap-framework" style="font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-1);">
-              <option value="iso27001">ISO 27001</option>
-              <option value="nis2">NIS2</option>
-              <option value="nist_csf">NIST CSF</option>
-              <option value="ens">ENS</option>
+              ${activeKeys.map(k => {
+                const m = _FW_META[k];
+                return m ? `<option value="${k}">${m.label}</option>` : '';
+              }).join('')}
             </select>
             <button class="btn btn-primary" id="btn-gap-analysis">Analizar brechas</button>
           </div>
@@ -710,6 +780,8 @@ const ViewCompliance = (() => {
         <div id="gap-results" style="display:none;"></div>
       </div>
     `;
+    // Rellenar gauges ahora que el DOM está listo
+    _rerenderGaugesAndPanels();
   }
 
   // ============================================================

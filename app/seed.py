@@ -252,6 +252,9 @@ def _migrate_columns() -> None:
         # v1.8.0 — agrupacion de activos
         ("ALTER TABLE assets ADD COLUMN group_id INTEGER REFERENCES asset_groups(id)", "assets", "group_id"),
         ("ALTER TABLE assets ADD COLUMN is_group_representative BOOLEAN DEFAULT 0", "assets", "is_group_representative"),
+        # v1.8.1 — normativas activas y nivel ENS en contexto
+        ("ALTER TABLE risk_context ADD COLUMN active_frameworks JSON", "risk_context", "active_frameworks"),
+        ("ALTER TABLE risk_context ADD COLUMN ens_level VARCHAR(16)", "risk_context", "ens_level"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
