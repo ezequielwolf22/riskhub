@@ -43,11 +43,14 @@ def get_questionnaire(_: User = Depends(get_current_user)):
 def analyze(
     req: AnalyzeRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Envía las respuestas al agente IA y devuelve el análisis de riesgos."""
+    # Resolver la API key del tenant (configurada en IA -> Configuracion)
+    cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
+    api_key = _resolve_api_key(cfg)
     try:
-        result = run_analysis(req.answers, db)
+        result = run_analysis(req.answers, db, api_key=api_key)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -526,6 +529,322 @@ def control_gap_analysis(
         },
         "recommendations": recommendations,
     }
+
+
+# ============================================================
+# M9b — AI Control Gap Analysis DETALLADO (via Claude API)
+# ============================================================
+
+class DetailedGapRequest(BaseModel):
+    framework: str = "iso27001"
+    include_implemented: bool = False
+
+
+@router.post("/control-gap-detailed")
+def control_gap_detailed(
+    req: DetailedGapRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Gap analysis detallado por control usando Claude API. Cachea el resultado en RiskContext."""
+    from app.models import AiConfig, AiDocument, AiDocumentCategory, AiDocumentChunk, RiskContext
+    import json as _json
+    import hashlib
+
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
+    if not impls:
+        raise HTTPException(400, "No hay controles registrados para analizar.")
+
+    # Resolver API key igual que en /chat
+    cfg = db.query(AiConfig).filter(
+        AiConfig.organization_id == current_user.organization_id
+    ).first()
+    api_key = _resolve_api_key(cfg)
+    if not api_key:
+        raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
+
+    model = (cfg.model if cfg else None) or "claude-haiku-4-5"
+
+    # Obtener riesgos para correlacion
+    risks = filter_by_org(
+        db.query(Risk).filter(Risk.status != RiskStatus.CLOSED),
+        Risk, current_user,
+    ).all()
+    risk_by_asset: dict = {}
+    for r in risks:
+        risk_by_asset.setdefault(r.asset_id, []).append(r.residual_level or 0)
+
+    # Construir lista de controles filtrada
+    target_impls = impls if req.include_implemented else [
+        i for i in impls if i.status != ControlStatus.IMPLEMENTED or (i.maturity or 0) < 4
+    ]
+    # Limitar a 50 para no exceder tokens
+    target_impls = target_impls[:50]
+
+    controls_payload = []
+    for i in target_impls:
+        ctrl_code = i.control.code if i.control else ""
+        ctrl_name = i.name or (i.control.name if i.control else "")
+        controls_payload.append({
+            "code": ctrl_code,
+            "name": ctrl_name,
+            "theme": i.control.theme if i.control else "",
+            "status": i.status.value if i.status else "not_implemented",
+            "maturity": i.maturity or 0,
+            "evidence": i.evidence or "",
+            "notes": (i.notes or "")[:200],
+            "inclusion_reason": i.inclusion_reason or "",
+            "exclusion_justification": i.exclusion_justification or "",
+        })
+
+    # Verificar cache en RiskContext
+    ctx = db.query(RiskContext).filter(
+        RiskContext.organization_id == current_user.organization_id
+    ).first()
+    cache_key = hashlib.md5(
+        _json.dumps({"fw": req.framework, "controls": [c["code"] + c["status"] for c in controls_payload]}, sort_keys=True).encode()
+    ).hexdigest()
+    if ctx and ctx.ai_gap_cache:
+        cached = ctx.ai_gap_cache if isinstance(ctx.ai_gap_cache, dict) else {}
+        if cached.get("_cache_key") == cache_key:
+            return cached.get("_data", {})
+
+    prompt_controls = _json.dumps(controls_payload, ensure_ascii=False)
+    system_prompt = (
+        f"Eres auditor ISO 27001:2022 certificado. Realiza un gap analysis completo del SGSI "
+        f"para el framework {req.framework.upper()}.\n\n"
+        "Para cada control de la lista, indica:\n"
+        "- Cumplimiento: CONFORME / PARCIAL / NO CONFORME / EXCLUIDO\n"
+        "- Hallazgo: descripcion especifica de que esta bien y que falta\n"
+        "- Evidencias requeridas: que documentacion deberia existir para este control\n"
+        "- Recomendacion: accion concreta y priorizada\n"
+        "- Riesgo de no cumplimiento: impacto si no se subsana\n"
+        "- Prioridad: INMEDIATA / CORTO PLAZO / MEDIO PLAZO\n\n"
+        "Devuelve UNICAMENTE JSON valido con esta estructura exacta:\n"
+        "{\n"
+        '  "framework_score": <0-100>,\n'
+        '  "controls": [\n'
+        '    {\n'
+        '      "code": "5.1",\n'
+        '      "name": "...",\n'
+        '      "status": "CONFORME|PARCIAL|NO CONFORME|EXCLUIDO",\n'
+        '      "finding": "...",\n'
+        '      "evidence_required": ["..."],\n'
+        '      "recommendation": "...",\n'
+        '      "priority": "INMEDIATA|CORTO PLAZO|MEDIO PLAZO",\n'
+        '      "risk_of_non_compliance": "..."\n'
+        '    }\n'
+        '  ],\n'
+        '  "executive_summary": "...",\n'
+        '  "top_3_priorities": ["...", "...", "..."]\n'
+        "}\n"
+        "Sin texto ni markdown antes ni despues del JSON."
+    )
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Framework: {req.framework}\n"
+                    f"Controles a analizar ({len(controls_payload)}):\n"
+                    f"{prompt_controls}"
+                ),
+            }],
+        )
+        raw = response.content[0].text.strip()
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            parts = raw.split("```", 2)
+            inner = parts[1] if len(parts) > 1 else raw
+            if inner.startswith("json"):
+                inner = inner[4:]
+            raw = inner.rsplit("```", 1)[0].strip()
+        result = _json.loads(raw)
+    except Exception as exc:
+        raise HTTPException(500, f"Error en gap analysis IA: {exc}")
+
+    # Log tokens
+    tokens_in = response.usage.input_tokens if response.usage else 0
+    tokens_out = response.usage.output_tokens if response.usage else 0
+    call_log = AiCallLog(
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        call_type="gap_analysis_detailed",
+        prompt_tokens=tokens_in,
+        completion_tokens=tokens_out,
+        model=model,
+        anonymized=False,
+        response_summary=f"Gap detailed {req.framework}: score={result.get('framework_score', '?')}",
+    )
+    db.add(call_log)
+
+    # Guardar en cache RiskContext
+    if ctx:
+        ctx.ai_gap_cache = {"_cache_key": cache_key, "_data": result}
+    db.commit()
+
+    return result
+
+
+# ============================================================
+# Architecture Review — analisis de documentos de arquitectura
+# ============================================================
+
+@router.post("/architecture-review")
+def architecture_review(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Analiza documentos de categoria 'architecture' con Claude Vision + texto."""
+    from app.models import AiConfig, AiDocument, AiDocumentCategory, AiDocumentChunk
+    import json as _json
+    import base64
+
+    cfg = db.query(AiConfig).filter(
+        AiConfig.organization_id == current_user.organization_id
+    ).first()
+    api_key = _resolve_api_key(cfg)
+    if not api_key:
+        raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
+
+    model = (cfg.model if cfg else None) or "claude-opus-4-5"
+
+    # Obtener documentos de arquitectura de la org
+    from app.models import AiDocumentStatus
+    arch_docs = filter_by_org(
+        db.query(AiDocument).filter(
+            AiDocument.category == AiDocumentCategory.ARCHITECTURE,
+            AiDocument.status == AiDocumentStatus.INDEXED,
+        ),
+        AiDocument, current_user,
+    ).all()
+
+    if not arch_docs:
+        raise HTTPException(400, "No hay documentos de arquitectura indexados. Sube documentos en la categoria 'Arquitectura y sistemas'.")
+
+    _ARCH_REVIEW_PROMPT = (
+        "Eres un arquitecto de seguridad senior con experiencia en:\n"
+        "- Seguridad en redes (firewalls, segmentacion, DMZ, VLANs, Zero Trust)\n"
+        "- Hardening de sistemas (CIS Benchmarks, STIG)\n"
+        "- Cloud security (AWS/Azure/GCP security best practices)\n"
+        "- ISO 27001 controles de red (8.20, 8.21, 8.22, 8.23)\n"
+        "- NIST SP 800-41, SP 800-125, SP 800-190\n\n"
+        "Analiza la arquitectura de red/sistemas descrita y proporciona un JSON con esta estructura exacta:\n"
+        "{\n"
+        '  "components": [\n'
+        '    {"type": "firewall|server|network|endpoint|cloud|other", "name": "...", "description": "..."}\n'
+        "  ],\n"
+        '  "vulnerabilities": [\n'
+        '    {"description": "...", "risk": "CRITICO|ALTO|MEDIO|BAJO", "cve": "CVE-...|null", '
+        '"iso_control_violated": "8.20|null", "affected_component": "..."}\n'
+        "  ],\n"
+        '  "improvements": [\n'
+        '    {"improvement": "...", "justification": "...", "priority": "ALTA|MEDIA|BAJA", "effort": "BAJO|MEDIO|ALTO"}\n'
+        "  ],\n"
+        '  "compliance": {\n'
+        '    "iso27002_covered": ["8.20", "8.21"],\n'
+        '    "iso27002_missing": ["8.22"],\n'
+        '    "zero_trust_recommendations": ["..."],\n'
+        '    "network_segmentation": "..."\n'
+        "  },\n"
+        '  "executive_summary": "..."\n'
+        "}\n"
+        "Devuelve SOLO el JSON. Sin texto ni markdown antes ni despues."
+    )
+
+    # Construir contenido del mensaje
+    message_content = []
+    total_text = ""
+
+    for doc in arch_docs[:5]:  # Limitar a 5 docs
+        mime = doc.mime_type or ""
+        is_image = mime.startswith("image/")
+
+        if is_image:
+            # Decodificar el archivo cifrado y enviar como imagen
+            try:
+                from app.services.document_service import doc_path, _fernet_key
+                from cryptography.fernet import Fernet
+                fpath = doc_path(doc.filename)
+                if fpath.exists():
+                    encrypted = fpath.read_bytes()
+                    raw = Fernet(_fernet_key()).decrypt(encrypted)
+                    b64 = base64.standard_b64encode(raw).decode()
+                    media_type = mime if mime in ("image/png", "image/jpeg", "image/gif", "image/webp") else "image/png"
+                    message_content.append({
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": media_type, "data": b64},
+                    })
+                    message_content.append({
+                        "type": "text",
+                        "text": f"[Imagen de arquitectura: {doc.original_name}]",
+                    })
+            except Exception as _e:
+                pass
+        else:
+            # Obtener chunks de texto
+            chunks = sorted(doc.chunks, key=lambda c: c.chunk_index)[:15]
+            doc_text = "\n".join(c.content for c in chunks)[:6000]
+            if doc_text:
+                total_text += f"\n\n--- Documento: {doc.original_name} ---\n{doc_text}"
+
+    if total_text:
+        message_content.append({"type": "text", "text": total_text})
+
+    if not message_content:
+        raise HTTPException(400, "Los documentos de arquitectura no tienen contenido procesable.")
+
+    message_content.append({
+        "type": "text",
+        "text": "\nRealiza el analisis de seguridad de la arquitectura descrita/mostrada arriba.",
+    })
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=_ARCH_REVIEW_PROMPT,
+            messages=[{"role": "user", "content": message_content}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            parts = raw.split("```", 2)
+            inner = parts[1] if len(parts) > 1 else raw
+            if inner.startswith("json"):
+                inner = inner[4:]
+            raw = inner.rsplit("```", 1)[0].strip()
+        result = _json.loads(raw)
+    except Exception as exc:
+        raise HTTPException(500, f"Error en architecture review IA: {exc}")
+
+    tokens_in = response.usage.input_tokens if response.usage else 0
+    tokens_out = response.usage.output_tokens if response.usage else 0
+    call_log = AiCallLog(
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        call_type="architecture_review",
+        prompt_tokens=tokens_in,
+        completion_tokens=tokens_out,
+        model=model,
+        anonymized=False,
+        response_summary=f"Architecture review: {len(arch_docs)} docs, {len(result.get('vulnerabilities', []))} vulns",
+    )
+    db.add(call_log)
+    db.commit()
+
+    result["_meta"] = {
+        "docs_analyzed": len(arch_docs),
+        "doc_names": [d.original_name for d in arch_docs[:5]],
+    }
+    return result
 
 
 # ============================================================

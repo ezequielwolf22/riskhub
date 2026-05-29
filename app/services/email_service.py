@@ -102,6 +102,30 @@ def risk_alert_html(risk: Risk, org_name: str, reason: str) -> str:
 </html>"""
 
 
+def _wrap_html(subject: str, body: str, org: str) -> str:
+    """Envoltura HTML generica para emails de notificacion."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<body style="margin:0;padding:24px;background:#F5F5F5;font-family:Inter,Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:10px;
+              border:1px solid #E9E9E9;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+    <div style="background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;">
+      <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">{subject}</h1>
+      <p style="color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;">{org}</p>
+    </div>
+    <div style="padding:28px;font-size:14px;color:#262626;line-height:1.6;">
+      {body}
+      <p style="color:#9D9D9D;font-size:11px;margin-top:24px;margin-bottom:0;">
+        Generado automaticamente por RiskHub el {now}.
+        Accede al sistema para revisar los detalles.
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
 def test_email_html() -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     return f"""<!DOCTYPE html>

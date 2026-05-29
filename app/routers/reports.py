@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
+    AiConfig,
     Asset, Control, ControlImplementation, DPIA, DPIAStatus, Incident, IncidentStatus,
     Policy, PolicyStatus, ProcessingActivity, Risk, RiskContext, RiskStatus,
     TreatmentTask, TaskStatus, User,
@@ -711,8 +712,13 @@ def ai_generate(body: AiReportIn, db: Session = Depends(get_db),
     if body.format not in ("pdf", "excel"):
         raise HTTPException(422, "format debe ser 'pdf' o 'excel'")
 
+    # Resolver API key del tenant (configurada en IA -> Configuracion)
+    from app.routers.ai_config import resolve_api_key
+    ai_cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
+    api_key = resolve_api_key(ai_cfg)
+
     try:
-        content = report_ai_service.generate(body.report_type, db)
+        content = report_ai_service.generate(body.report_type, db, api_key=api_key)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:

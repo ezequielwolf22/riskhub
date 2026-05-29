@@ -241,12 +241,16 @@ Genera JSON (sin markdown):
 }}"""
 
 
-def _call_claude(prompt: str) -> dict:
-    if not settings.anthropic_api_key:
-        raise ValueError("API key de Anthropic no configurada. Configura RISKHUB_ANTHROPIC_API_KEY.")
+def _call_claude(prompt: str, api_key: str | None = None) -> dict:
+    effective_key = api_key or settings.anthropic_api_key
+    if not effective_key:
+        raise ValueError(
+            "API key de Claude no configurada. "
+            "Configurala en IA -> Configuracion o añade RISKHUB_ANTHROPIC_API_KEY al entorno."
+        )
 
     import anthropic
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.Anthropic(api_key=effective_key)
     msg = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=4096,
@@ -266,7 +270,7 @@ def _call_claude(prompt: str) -> dict:
     return json.loads(text)
 
 
-def generate(report_type: str, db: Session) -> dict:
+def generate(report_type: str, db: Session, api_key: str | None = None) -> dict:
     """Genera el contenido del informe llamando a Claude. Retorna dict con secciones."""
     if report_type not in REPORT_TYPES:
         raise ValueError(f"Tipo de informe desconocido: {report_type}")
@@ -280,7 +284,7 @@ def generate(report_type: str, db: Session) -> dict:
         "followup_report": _prompt_followup_report,
     }
     prompt = prompts[report_type](data)
-    content = _call_claude(prompt)
+    content = _call_claude(prompt, api_key=api_key)
     content["_meta"] = {
         "report_type": report_type,
         "label": REPORT_TYPES[report_type],

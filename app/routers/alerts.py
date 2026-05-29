@@ -79,7 +79,7 @@ def get_settings(db: Session = Depends(get_db),
 @router.put("/settings", response_model=EmailSettingsOut)
 def save_settings(body: EmailSettingsIn, db: Session = Depends(get_db),
                   current_user=Depends(get_current_user)):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
         raise HTTPException(403, "Solo administradores")
     cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
     if not cfg:
@@ -108,7 +108,7 @@ def save_settings(body: EmailSettingsIn, db: Session = Depends(get_db),
 @router.post("/test")
 def send_test(db: Session = Depends(get_db),
               current_user=Depends(get_current_user)):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
         raise HTTPException(403, "Solo administradores")
     cfg = email_service.get_settings(db)
     if not cfg or not cfg.smtp_host:

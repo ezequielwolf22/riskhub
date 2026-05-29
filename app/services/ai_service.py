@@ -243,10 +243,18 @@ Devuelve EXCLUSIVAMENTE un JSON válido con este esquema (sin texto adicional):
 
 # ---------- Llamada a Claude API ----------
 
-def run_analysis(answers: dict, db: Session) -> dict[str, Any]:
-    """Llama a Claude API y devuelve el análisis de riesgos estructurado."""
-    if not settings.anthropic_api_key:
-        raise ValueError("RISKHUB_ANTHROPIC_API_KEY no configurada. Añádela al .env del servidor.")
+def run_analysis(answers: dict, db: Session, api_key: str | None = None) -> dict[str, Any]:
+    """Llama a Claude API y devuelve el analisis de riesgos estructurado.
+
+    El parametro api_key permite usar la clave per-tenant configurada en la UI
+    (IA -> Configuracion). Si no se proporciona, se usa RISKHUB_ANTHROPIC_API_KEY.
+    """
+    effective_key = api_key or settings.anthropic_api_key
+    if not effective_key:
+        raise ValueError(
+            "API key de Claude no configurada. "
+            "Configurala en IA -> Configuracion o añade RISKHUB_ANTHROPIC_API_KEY al entorno."
+        )
 
     try:
         import anthropic
@@ -271,7 +279,7 @@ def run_analysis(answers: dict, db: Session) -> dict[str, Any]:
 
     prompt = _build_prompt(answers, assets, threats, controls)
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.Anthropic(api_key=effective_key)
     message = client.messages.create(
         model="claude-opus-4-7",
         max_tokens=8192,
