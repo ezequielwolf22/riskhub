@@ -428,21 +428,21 @@ const ViewAssets = {
     if (!list) return;
     const levelColors = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: 'var(--risk-medium)' };
     list.innerHTML = criteria.map((c, i) => `
-      <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;
+      <label style="display:flex;align-items:center;gap:12px;padding:10px 14px;
                     border:1px solid var(--border);border-radius:6px;cursor:pointer;
-                    background:${c.enabled ? 'var(--bg-2)' : 'var(--bg-1)'};transition:background .15s;">
+                    background:${c.enabled ? 'var(--bg-2)' : 'var(--bg)'};
+                    transition:background .15s;width:100%;box-sizing:border-box;">
         <input type="checkbox" data-ci="${i}" ${c.enabled ? 'checked' : ''}
-               style="margin-top:2px;accent-color:var(--brand-purple);"
+               style="flex-shrink:0;accent-color:var(--brand-purple);width:16px;height:16px;"
                onchange="ViewAssets._toggleCriterion(${i})">
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;">
-            <span style="background:${levelColors[c.level]||'var(--text-muted)'};color:#fff;
-                         font-size:10px;padding:1px 6px;border-radius:10px;">
-              N${c.level}
-            </span>
-            ${UI.esc(c.name)}
+        <span style="flex-shrink:0;background:${levelColors[c.level]||'var(--text-muted)'};
+                     color:#fff;font-size:10px;font-weight:700;padding:2px 7px;
+                     border-radius:10px;white-space:nowrap;">N${c.level}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:13px;color:var(--text);">${UI.esc(c.name)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.4;">
+            ${UI.esc(c.description)}
           </div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${UI.esc(c.description)}</div>
         </div>
       </label>
     `).join('');
