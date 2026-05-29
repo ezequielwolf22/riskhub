@@ -33,6 +33,54 @@ def _next_code(db: Session, org_id: int) -> str:
     return f"RSK-{count:04d}"
 
 
+def _inherit_controls(db: Session, asset: Asset, threat: Threat) -> list:
+    """Hereda controles del asset type + threat.
+
+    Busca controles activos que mitigan esta amenaza.
+    """
+    controls = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == asset.organization_id,
+        ControlImplementation.status == "IMPLEMENTED",
+    ).all()
+
+    # Filtrar controles relevantes a la amenaza
+    # (En futuro: mejorar con tabla de mapeo Control-Threat)
+    relevant = [c for c in controls if c.mitigation_level and c.mitigation_level > 0]
+    return relevant[:5]  # Máximo 5 controles por riesgo
+
+
+def _get_inherent_values_from_ai(db: Session, asset: Asset, threat: Threat) -> tuple[int, int]:
+    """IA analiza asset + threat → propone likelihood y consequence.
+
+    Cae back a defaults si no puede.
+    """
+    try:
+        from app.services.rag_service import rag_service
+
+        prompt = (
+            f"Evalúa riesgo de seguridad. Asset: {asset.name} ({asset.description or 'sin desc'}). "
+            f"Amenaza: {threat.name} ({threat.description or 'sin desc'}). "
+            f"Devuelve 2 números (likelihood,consequence) del 0-4 donde "
+            f"0=imposible/nulo, 1=raro, 2=posible, 3=probable, 4=seguro. "
+            f"Formato: SOLO '3,2' sin comillas."
+        )
+
+        response = rag_service.ask(prompt, org_id=asset.organization_id)
+        if response:
+            parts = response.strip().split(',')
+            if len(parts) == 2:
+                l = int(parts[0].strip())
+                c = int(parts[1].strip())
+                if 0 <= l <= 4 and 0 <= c <= 4:
+                    logger.info("IA valuación para %s+%s: L=%d C=%d",
+                               asset.code, threat.code, l, c)
+                    return (l, c)
+    except Exception as e:
+        logger.debug("IA valuación falló: %s, usando defaults", e)
+
+    return (2, 2)  # Default: posible + moderado
+
+
 def auto_generate_risks_for_asset(
     db: Session,
     asset: Asset,
@@ -55,7 +103,6 @@ def auto_generate_risks_for_asset(
         return created_risks
 
     # Query: amenazas aplicables al tipo de asset
-    # Inicialmente: TODAS las amenazas de la org (luego se puede filtrar por tipo)
     applicable_threats = db.query(Threat).filter(
         Threat.organization_id == asset.organization_id,
     ).all()
@@ -87,9 +134,10 @@ def auto_generate_risks_for_asset(
             )
             continue
 
-        # Usar valores por defecto moderados (ISO27005: 2=posible, 2=moderado)
-        inherent_likelihood = 2
-        inherent_consequence = 2
+        # IA valuación: likelihood + consequence
+        inherent_likelihood, inherent_consequence = _get_inherent_values_from_ai(
+            db, asset, threat
+        )
 
         # Crear riesgo
         risk = Risk(
@@ -105,9 +153,8 @@ def auto_generate_risks_for_asset(
             status=RiskStatus.IDENTIFIED,
         )
 
-        # Asignar controles heredados: controls activos de la amenaza o el asset
-        # TODO: logica de herencia — por ahora sin controles
-        risk.controls = []
+        # Asignar controles heredados: controles IMPLEMENTED que aplican a esta amenaza
+        risk.controls = _inherit_controls(db, asset, threat)
 
         # Calcular inherent y residual
         risk.inherent_level = calc_level(
@@ -132,10 +179,11 @@ def auto_generate_risks_for_asset(
         created_risks.append(risk)
 
         logger.info(
-            "Auto-generado riesgo %s: asset=%s threat=%s residual=%d "
-            "(appetite=%d, status=%s)",
-            risk.code, asset.code, threat.code, risk.residual_level,
-            appetite, risk.status
+            "Auto-generado riesgo %s: asset=%s threat=%s "
+            "inherent=(%d,%d) residual=%d (appetite=%d, status=%s)",
+            risk.code, asset.code, threat.code,
+            inherent_likelihood, inherent_consequence,
+            risk.residual_level, appetite, risk.status
         )
 
     try:

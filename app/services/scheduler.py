@@ -478,6 +478,57 @@ def _run_alert_rules() -> None:
         db.close()
 
 
+def _match_cve_to_assets(db, cve_record: dict, org_id: int) -> list:
+    """Inteligencia para correlacionar CVE con activos.
+
+    Estrategia: buscar por software conocidos en descripción CVE:
+    - Apache, Nginx, IIS, MySQL, PostgreSQL, OpenSSL, etc.
+    """
+    from app.models import Asset
+
+    cve_id = cve_record.get("cve_id", "UNKNOWN")
+    desc = (cve_record.get("description", "") or "").lower()
+    affected = []
+
+    # Software patterns conocidos
+    software_patterns = {
+        "apache": ["apache", "httpd"],
+        "nginx": ["nginx"],
+        "iis": ["iis", "internet information services"],
+        "mysql": ["mysql"],
+        "postgresql": ["postgresql", "postgres", "pgsql"],
+        "openssl": ["openssl", "ssl/tls"],
+        "windows": ["windows", "winrm", "smb"],
+        "linux": ["linux", "kernel"],
+        "php": ["php"],
+        "nodejs": ["node.js", "nodejs"],
+    }
+
+    # Detectar software en descripción CVE
+    detected_software = set()
+    for software, patterns in software_patterns.items():
+        if any(p in desc for p in patterns):
+            detected_software.add(software)
+
+    # Buscar activos que usan ese software
+    for asset in db.query(Asset).filter(Asset.organization_id == org_id).all():
+        asset_desc = (asset.description or "").lower()
+        asset_name = (asset.name or "").lower()
+
+        # Match 1: CVE ID explícito en asset
+        if cve_id.lower() in asset_desc or cve_id.lower() in asset_name:
+            affected.append(asset)
+            continue
+
+        # Match 2: Software detectado en CVE coincide con asset
+        for software in detected_software:
+            if software in asset_desc or software in asset_name:
+                affected.append(asset)
+                break
+
+    return affected
+
+
 def _run_cve_auto_scan() -> None:
     """Escaneo automatico diario de CVEs: busca + auto-genera riesgos."""
     from app.database import SessionLocal
@@ -514,25 +565,32 @@ def _run_cve_auto_scan() -> None:
             logger.info("CVE auto-scan: sin nuevas CVEs %s en los ultimos 2 dias.", severity)
             return
 
-        # Auto-generar riesgos para activos afectados (NUEVO en v1.7.8)
-        logger.info("CVE auto-scan: %d CVEs encontradas. Generando riesgos automaticos...", len(cves))
+        logger.info("CVE auto-scan: %d CVEs encontradas. Correlacionando con activos...", len(cves))
         created_count = 0
-        for cve_record in cves:
-            cve_id = cve_record.get("cve_id", "UNKNOWN")
-            # TODO: Correlacionar CVE con activos (por software, version)
-            # Por ahora: crear riesgo para activos que tengan "software" en descripcion
-            assets = db.query(Asset).filter(
-                Asset.description.ilike(f"%cve%") | Asset.name.ilike(f"%{cve_id}%")
-            ).all()
-            for asset in assets:
-                risk = auto_generate_risk_from_cve(
-                    db, asset.id, cve_id,
-                    affected_software=cve_record.get("description", "Unknown"),
-                    inherent_consequence=4,  # CVE casi siempre alto
-                    inherent_likelihood=3,
-                )
-                if risk:
-                    created_count += 1
+        # Procesar por org
+        orgs = db.query(Asset.organization_id).distinct().all()
+        for org_tuple in orgs:
+            org_id = org_tuple[0]
+            for cve_record in cves:
+                cve_id = cve_record.get("cve_id", "UNKNOWN")
+                # MEJORADO: matching inteligente por software
+                affected_assets = _match_cve_to_assets(db, cve_record, org_id)
+
+                if not affected_assets:
+                    # Fallback: buscar por cualquier asset (conservative)
+                    affected_assets = db.query(Asset).filter(
+                        Asset.name.ilike(f"%{cve_record.get('affected_product', '')}%")
+                    ).all()
+
+                for asset in affected_assets:
+                    risk = auto_generate_risk_from_cve(
+                        db, asset.id, cve_id,
+                        affected_software=cve_record.get("description", "Unknown"),
+                        inherent_consequence=4,
+                        inherent_likelihood=3,
+                    )
+                    if risk:
+                        created_count += 1
         logger.info("CVE auto-scan: %d riesgos generados automaticamente.", created_count)
     except Exception as exc:
         logger.exception("Error en CVE auto-scan: %s", exc)
@@ -777,6 +835,56 @@ def _run_control_degradation() -> None:
         db.close()
 
 
+def _match_osint_to_assets(db, finding_type: str, finding_value: str, org_id: int) -> list:
+    """Inteligencia para correlacionar OSINT findings con Assets.
+
+    Estrategia:
+    - email: buscar asset con esa empresa en descripción
+    - domain: buscar asset que mencionan ese dominio
+    - ip: buscar asset por IP en descripción
+    - url: extraer dominio del URL y buscar
+    """
+    from app.models import Asset
+    import re
+
+    affected = []
+
+    for asset in db.query(Asset).filter(Asset.organization_id == org_id).all():
+        desc = (asset.description or "").lower()
+        name = (asset.name or "").lower()
+
+        if finding_type == "email":
+            # Extraer dominio del email
+            domain = finding_value.split("@")[1] if "@" in finding_value else ""
+            if domain and (domain in desc or domain in name):
+                affected.append(asset)
+
+        elif finding_type == "domain":
+            # Búsqueda directa del dominio
+            if finding_value.lower() in desc or finding_value.lower() in name:
+                affected.append(asset)
+
+        elif finding_type == "ip":
+            # Búsqueda por IP
+            if finding_value in desc or finding_value in name:
+                affected.append(asset)
+
+        elif finding_type == "url":
+            # Extraer dominio de URL
+            match = re.search(r"https?://([^/]+)", finding_value)
+            if match:
+                domain = match.group(1).lower()
+                if domain in desc or domain in name:
+                    affected.append(asset)
+
+        elif finding_type == "username":
+            # Búsqueda por username (menos likely, pero incluir)
+            if finding_value.lower() in desc or finding_value.lower() in name:
+                affected.append(asset)
+
+    return affected
+
+
 def _run_osint_periodic_scan() -> None:
     """Re-escanea automaticamente objetivos OSINT que llevan mas de 7 dias sin escanear."""
     from datetime import timedelta
@@ -817,9 +925,10 @@ def _run_osint_periodic_scan() -> None:
             import threading
             target_val = ident.value
             user_id_val = ident.user_id
+            org_id_val = ident.organization_id
             stype_val = ident.identifier_type.value if hasattr(ident.identifier_type, 'value') else str(ident.identifier_type)
 
-            def _do_scan(sid=scan_id, stype=stype_val, tgt=target_val, uid=user_id_val):
+            def _do_scan(sid=scan_id, stype=stype_val, tgt=target_val, uid=user_id_val, oid=org_id_val):
                 try:
                     if stype == "email":
                         osint_engine.run_email_scan(sid, tgt, uid)
@@ -831,6 +940,33 @@ def _run_osint_periodic_scan() -> None:
                         osint_engine.run_url_scan(sid, tgt, uid)
                     elif stype == "username":
                         osint_engine.run_username_scan(sid, tgt, uid)
+
+                    # NUEVO: Auto-generar riesgos si hallazgo es CRITICAL/HIGH
+                    # Buscar scan y verificar findings
+                    db2 = SessionLocal()
+                    try:
+                        scan_obj = db2.query(OSINTScan).get(sid)
+                        if scan_obj and scan_obj.findings:
+                            from app.services.risk_auto_generator import auto_generate_risk_from_osint
+                            findings = scan_obj.findings if isinstance(scan_obj.findings, list) else [scan_obj.findings]
+                            for finding in findings:
+                                severity = finding.get("severity", "LOW") if isinstance(finding, dict) else "LOW"
+                                if severity in ["CRITICAL", "HIGH"]:
+                                    # Correlacionar con assets
+                                    affected_assets = _match_osint_to_assets(db2, stype, tgt, oid)
+                                    for asset in affected_assets:
+                                        auto_generate_risk_from_osint(
+                                            db2, asset.id,
+                                            osint_finding_type=stype,
+                                            osint_finding_title=finding.get("title", "OSINT hallazgo"),
+                                            inherent_consequence=4,
+                                            inherent_likelihood=4,
+                                        )
+                    except Exception as _e2:
+                        logger.debug("OSINT auto-risk generation failed: %s", _e2)
+                    finally:
+                        db2.close()
+
                 except Exception as _e:
                     logger.warning("OSINT periodic scan failed target=%s: %s", tgt, _e)
 

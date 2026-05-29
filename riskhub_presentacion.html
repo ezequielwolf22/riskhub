@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>RiskHub — Presentacion</title>
+<style>
+:root {
+  --purple:#59008D; --orange:#D65200;
+  --bg:#07071A; --card:rgba(255,255,255,.06);
+  --border:rgba(255,255,255,.1); --text:rgba(255,255,255,.92);
+  --muted:rgba(255,255,255,.48);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:Arial,sans-serif;
+       overflow:hidden; height:100vh; width:100vw; }
+
+/* ── Slides ── */
+.slide {
+  position:absolute; inset:0;
+  display:none;                   /* JS mostrara el activo */
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  padding:56px 72px;
+  text-align:center;
+}
+.slide.on { display:flex; }
+
+/* ── Nav ── */
+#nav {
+  position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+  display:flex; align-items:center; gap:14px; z-index:99;
+  background:rgba(5,5,20,.9); border:1px solid var(--border);
+  border-radius:30px; padding:7px 18px;
+}
+#nav button { background:none; border:none; color:var(--text); cursor:pointer;
+              font-size:22px; padding:0 6px; border-radius:6px; }
+#nav button:hover { background:rgba(255,255,255,.1); }
+#counter { font-size:12px; color:var(--muted); min-width:48px; text-align:center; }
+.dots { display:flex; gap:6px; }
+.dot { width:7px; height:7px; border-radius:50%;
+        background:rgba(255,255,255,.2); cursor:pointer; transition:.2s; }
+.dot.on { background:var(--orange); transform:scale(1.4); }
+
+/* ── Type ── */
+h1 { font-size:clamp(32px,5vw,62px); font-weight:800; line-height:1.1; }
+h2 { font-size:clamp(22px,3.5vw,40px); font-weight:700; margin-bottom:10px; }
+.lead { font-size:clamp(13px,1.6vw,17px); color:var(--muted); line-height:1.75; max-width:720px; }
+.grad { background:linear-gradient(90deg,#9B4BCC,var(--orange));
+        -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+
+/* ── Cards ── */
+.grid { display:grid; gap:14px; width:100%; max-width:960px; margin-top:24px; }
+.g2 { grid-template-columns:1fr 1fr; }
+.g3 { grid-template-columns:1fr 1fr 1fr; }
+.g4 { grid-template-columns:1fr 1fr 1fr 1fr; }
+.card { background:var(--card); border:1px solid var(--border);
+        border-radius:12px; padding:18px 16px; text-align:left; }
+.card .ic { font-size:26px; margin-bottom:8px; }
+.card h3 { font-size:14px; margin-bottom:5px; }
+.card p { font-size:11px; color:var(--muted); line-height:1.6; }
+.ap { border-color:rgba(89,0,141,.45); background:rgba(89,0,141,.08); }
+.ao { border-color:rgba(214,82,0,.45); background:rgba(214,82,0,.08); }
+.ag { border-color:rgba(46,168,74,.45); background:rgba(46,168,74,.08); }
+.ab { border-color:rgba(74,158,255,.45); background:rgba(74,158,255,.08); }
+
+/* ── Pills ── */
+.pill { display:inline-block; padding:6px 16px; border-radius:20px;
+        font-size:12px; font-weight:600; margin:4px; border:1px solid currentColor; }
+.pp { color:#C87AFF; border-color:rgba(200,122,255,.4); background:rgba(200,122,255,.1); }
+.po { color:#FF8A50; border-color:rgba(255,138,80,.4); background:rgba(255,138,80,.1); }
+.pg { color:#6EE88C; border-color:rgba(110,232,140,.4); background:rgba(110,232,140,.1); }
+.pb { color:#7EC8FF; border-color:rgba(126,200,255,.4); background:rgba(126,200,255,.1); }
+
+/* ── Stats ── */
+.stats { display:flex; gap:14px; margin-top:24px; flex-wrap:wrap; justify-content:center; }
+.stat { background:var(--card); border:1px solid var(--border);
+        border-radius:12px; padding:18px 22px; text-align:center; min-width:110px; }
+.stat .num { font-size:36px; font-weight:800; }
+.stat .lbl { font-size:10px; color:var(--muted); margin-top:3px;
+              text-transform:uppercase; letter-spacing:.5px; }
+
+/* ── Flow ── */
+.flow { display:flex; align-items:center; gap:0;
+        margin-top:24px; width:100%; max-width:860px; justify-content:center; }
+.fn { background:var(--card); border:1px solid var(--border);
+      border-radius:10px; padding:12px 14px; text-align:center;
+      flex:1; font-size:12px; font-weight:600; }
+.fn small { display:block; font-size:10px; color:var(--muted); font-weight:400; margin-top:2px; }
+.fa { color:var(--muted); font-size:20px; padding:0 4px; flex-shrink:0; }
+
+/* ── Timeline ── */
+.tl { display:flex; flex-direction:column; gap:10px;
+      width:100%; max-width:800px; margin-top:18px; }
+.ti { display:flex; align-items:center; gap:14px;
+      background:var(--card); border:1px solid var(--border);
+      border-radius:9px; padding:10px 16px; text-align:left; }
+.tb { min-width:70px; text-align:center; padding:4px 10px;
+      border-radius:20px; font-size:10px; font-weight:700; text-transform:uppercase; }
+.tt { font-size:13px; font-weight:600; }
+.td { font-size:11px; color:var(--muted); margin-top:2px; }
+
+/* ── Cover bg ── */
+#s1 { background:radial-gradient(ellipse at 30% 60%,rgba(89,0,141,.25) 0%,transparent 55%),
+               radial-gradient(ellipse at 70% 40%,rgba(214,82,0,.15) 0%,transparent 55%); }
+#s10 { background:radial-gradient(ellipse at 35% 55%,rgba(89,0,141,.2) 0%,transparent 55%),
+                radial-gradient(ellipse at 65% 45%,rgba(214,82,0,.12) 0%,transparent 55%); }
+
+@media (max-width:760px) {
+  .slide { padding:32px 20px; }
+  .g3,.g4 { grid-template-columns:1fr 1fr; }
+  .flow { flex-direction:column; }
+  .fa { transform:rotate(90deg); }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── SLIDE 1: Cover ─────────────────────────────────────────── -->
+<div class="slide" id="s1">
+  <div style="font-size:16px;font-weight:800;letter-spacing:2px;padding:9px 22px;
+              border:2px solid var(--purple);border-radius:8px;
+              display:inline-block;margin-bottom:28px;">
+    RISK<span style="color:var(--orange);">HUB</span>
+  </div>
+  <h1>Gestion de riesgo<br><span class="grad">de seguridad de la informacion</span></h1>
+  <p class="lead" style="margin-top:20px;">
+    Plataforma GRC <strong>on-premise</strong> basada en ISO/IEC 27005:2018
+    con catalogo completo ISO/IEC 27002:2022 · NIS2 · NIST CSF 2.0 · ENS
+  </p>
+  <div style="margin-top:30px;">
+    <span class="pill pp">On-premise</span>
+    <span class="pill po">Multi-tenant</span>
+    <span class="pill pg">Agente IA</span>
+    <span class="pill pb">OSINT integrado</span>
+  </div>
+</div>
+
+<!-- ─── SLIDE 2: El problema ──────────────────────────────────── -->
+<div class="slide" id="s2">
+  <h2>El problema que <span class="grad">resuelve</span></h2>
+  <p class="lead">La gestion de riesgos ISO 27005 implica cientos de decisiones interconectadas que hoy se hacen en hojas de calculo dispersas, sin automatizacion ni visibilidad en tiempo real.</p>
+  <div class="grid g3">
+    <div class="card"><div class="ic">📊</div><h3>Riesgo fragmentado</h3>
+      <p>Activos, amenazas, controles e incidentes gestionados en silos. Sin trazabilidad entre ellos.</p></div>
+    <div class="card"><div class="ic">⏰</div><h3>Trabajo manual</h3>
+      <p>Revisiones de controles, escaladas de tareas e informes consumen horas cada semana.</p></div>
+    <div class="card"><div class="ic">🔭</div><h3>Sin visibilidad externa</h3>
+      <p>Brechas de datos, dominios comprometidos o proveedores en riesgo se detectan tarde o nunca.</p></div>
+    <div class="card"><div class="ic">📋</div><h3>Cumplimiento opaco</h3>
+      <p>¿A que % de ISO 27001 estamos? ¿Que gaps tenemos para NIS2? Sin respuesta inmediata.</p></div>
+    <div class="card"><div class="ic">🚨</div><h3>Reaccion tardia</h3>
+      <p>Incidentes y no conformidades se registran manualmente, sin alertas ni correlacion automatica.</p></div>
+    <div class="card"><div class="ic">🔒</div><h3>Soberania de datos</h3>
+      <p>Las soluciones SaaS envian datos de seguridad a terceros. Inaceptable para datos sensibles.</p></div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 3: Modulos ───────────────────────────────────────── -->
+<div class="slide" id="s3">
+  <h2>Una plataforma, <span class="grad">todo el SGSI</span></h2>
+  <p class="lead">14 modulos integrados que cubren el ciclo completo de gestion de riesgos.</p>
+  <div class="grid g4">
+    <div class="card ap"><div class="ic">🖥️</div><h3>Activos</h3>
+      <p>Inventario ISO 27005 B.1. Valoracion CIA. Analisis IA automatico.</p></div>
+    <div class="card ap"><div class="ic">⚠️</div><h3>Riesgos</h3>
+      <p>Matriz 5x5 Annex E.2. RSK-XXXX. Owner, revision, tratamiento.</p></div>
+    <div class="card ap"><div class="ic">🛡️</div><h3>Controles</h3>
+      <p>93 controles ISO 27002:2022. SOA completo. Madurez CMM 0-5.</p></div>
+    <div class="card ao"><div class="ic">🚨</div><h3>Incidentes</h3>
+      <p>Flujo NIS2 Art. 23. Severidad P1-P4. Notificacion automatica.</p></div>
+    <div class="card ao"><div class="ic">🏭</div><h3>Proveedores</h3>
+      <p>Supply chain NIS2. Score 0-100. Cuestionarios. Auto-riesgo.</p></div>
+    <div class="card ao"><div class="ic">📝</div><h3>Politicas</h3>
+      <p>POL-XXXX. Auto-creadas desde documentos. Ciclo de revision.</p></div>
+    <div class="card ag"><div class="ic">📋</div><h3>Tareas</h3>
+      <p>TSK-XXXX. Plan de tratamiento. Escalada automatica de prioridad.</p></div>
+    <div class="card ag"><div class="ic">🔍</div><h3>Auditoria</h3>
+      <p>NC, hallazgos. ISO 27001 cl. 9.2. Log inmutable de operaciones.</p></div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 4: Motor de riesgo ──────────────────────────────── -->
+<div class="slide" id="s4">
+  <h2>Motor de riesgo <span class="grad">ISO 27005</span></h2>
+  <p class="lead">Calculo automatico del nivel inherente y residual segun la matriz 5x5 Annex E.2, con trazabilidad completa activo → amenaza → control.</p>
+  <div class="flow">
+    <div class="fn" style="border-color:rgba(74,158,255,.5);">Activo<small>Valor CIA 0-4</small></div>
+    <div class="fa">→</div>
+    <div class="fn" style="border-color:rgba(89,0,141,.5);">Amenaza<small>49 en catalogo</small></div>
+    <div class="fa">→</div>
+    <div class="fn" style="border-color:rgba(214,82,0,.5);">Riesgo inherente<small>Likelihood x Impacto</small></div>
+    <div class="fa">→</div>
+    <div class="fn" style="border-color:rgba(89,0,141,.5);">Controles<small>93 ISO 27002</small></div>
+    <div class="fa">→</div>
+    <div class="fn" style="border-color:rgba(46,168,74,.5);">Riesgo residual<small>Nivel 0-8</small></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="num grad">49</div><div class="lbl">Amenazas</div></div>
+    <div class="stat"><div class="num grad">67</div><div class="lbl">Vulnerabilidades</div></div>
+    <div class="stat"><div class="num grad">93</div><div class="lbl">Controles</div></div>
+    <div class="stat"><div class="num grad">5x5</div><div class="lbl">Matriz riesgo</div></div>
+    <div class="stat"><div class="num grad">4</div><div class="lbl">Frameworks</div></div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 5: Automatizaciones ────────────────────────────── -->
+<div class="slide" id="s5">
+  <h2>Automatizaciones que trabajan <span class="grad">24/7</span></h2>
+  <p class="lead">8 jobs programados + hooks de creacion mantienen la plataforma actualizada sin intervencion manual.</p>
+  <div class="tl">
+    <div class="ti">
+      <div class="tb" style="background:rgba(89,0,141,.2);color:#C87AFF;">Diario</div>
+      <div><div class="tt">Escalada de prioridad de tareas</div>
+        <div class="td">Tareas vencidas >7 dias: LOW → MEDIUM → HIGH → CRITICAL automaticamente</div></div>
+    </div>
+    <div class="ti">
+      <div class="tb" style="background:rgba(214,82,0,.2);color:#FF8A50;">Diario</div>
+      <div><div class="tt">Revision de politicas vencidas</div>
+        <div class="td">Crea tarea TSK-XXXX asignada al owner de cada politica con review_date pasada</div></div>
+    </div>
+    <div class="ti">
+      <div class="tb" style="background:rgba(46,168,74,.2);color:#6EE88C;">Semanal</div>
+      <div><div class="tt">Degradacion de controles obsoletos</div>
+        <div class="td">Controles IMPLEMENTED sin evidencia >12 meses → PARTIAL + tarea de revision</div></div>
+    </div>
+    <div class="ti">
+      <div class="tb" style="background:rgba(74,158,255,.2);color:#7EC8FF;">Semanal</div>
+      <div><div class="tt">Re-escaneo OSINT periodico</div>
+        <div class="td">Todos los objetivos monitorizados son re-escaneados automaticamente cada 7 dias</div></div>
+    </div>
+    <div class="ti">
+      <div class="tb" style="background:rgba(89,0,141,.2);color:#C87AFF;">Dia 1</div>
+      <div><div class="tt">Informe mensual de seguridad</div>
+        <div class="td">Email automatico a admins: KPIs de riesgos, controles, tareas y reduccion media</div></div>
+    </div>
+    <div class="ti">
+      <div class="tb" style="background:rgba(214,82,0,.2);color:#FF8A50;">Real-time</div>
+      <div><div class="tt">Hooks de creacion inteligentes</div>
+        <div class="td">Incidente → auto-vincula riesgos | NC → auto-vincula riesgo | Proveedor score ≤30 → crea riesgo supply-chain</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 6: Agente IA ────────────────────────────────────── -->
+<div class="slide" id="s6">
+  <h2>Agente IA <span class="grad">proactivo</span></h2>
+  <p class="lead">El agente no solo responde preguntas — propone acciones concretas que el usuario confirma o rechaza antes de ejecutarse.</p>
+  <div class="grid g2" style="max-width:800px;">
+    <div class="card ap"><div class="ic">🧠</div><h3>Contexto enriquecido</h3>
+      <p>Accede a riesgos, controles, incidentes, proveedores. RAG con FTS5 sobre documentos subidos.</p></div>
+    <div class="card ao"><div class="ic">⚡</div><h3>Tool-use — 4 acciones</h3>
+      <p>Crear tarea · Actualizar riesgo · Registrar incidente · Programar revision de control.</p></div>
+    <div class="card ag"><div class="ic">🔒</div><h3>Privacidad garantizada</h3>
+      <p>Anonimizacion configurable de PII (IPs, emails, DNI, IBAN) antes de enviar a la API de IA.</p></div>
+    <div class="card ab"><div class="ic">📄</div><h3>ISMS Analysis</h3>
+      <p>Analiza documentos subidos: detecta politicas, actualiza controles ISO 27002, crea tareas.</p></div>
+  </div>
+  <div style="margin-top:20px;background:var(--card);border:1px solid rgba(214,82,0,.35);
+              border-radius:11px;padding:16px 22px;max-width:800px;width:100%;text-align:left;">
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px;">EJEMPLO DE FLUJO</p>
+    <p style="font-size:13px;line-height:1.75;">
+      <strong style="color:#C87AFF;">Usuario:</strong> "Tenemos un acceso no autorizado a los servidores NAS desde anoche"<br>
+      <strong style="color:#FF8A50;">Agente:</strong> "Esto requiere apertura inmediata de incidente P1 con notificacion NIS2..."<br>
+      <span style="display:inline-block;margin-top:6px;background:rgba(214,82,0,.12);
+                   border:1px solid rgba(214,82,0,.4);border-radius:8px;padding:5px 14px;font-size:12px;">
+        ⚠️ Registrar incidente [P1]: "Acceso no autorizado NAS"
+        &nbsp; <strong>[Confirmar]</strong> &nbsp; <strong>[Rechazar]</strong>
+      </span>
+    </p>
+  </div>
+</div>
+
+<!-- ─── SLIDE 7: OSINT ────────────────────────────────────────── -->
+<div class="slide" id="s7">
+  <h2>OSINT <span class="grad">y vigilancia digital</span></h2>
+  <p class="lead">Monitorizacion continua de la huella digital de la organizacion: brechas, dominios comprometidos, IPs expuestas y codigo con secretos.</p>
+  <div class="grid g3">
+    <div class="card ab"><div class="ic">📧</div><h3>Email / Credenciales</h3>
+      <p>HIBP · LeakCheck · IntelX. Emails corporativos en brechas de datos publicas.</p></div>
+    <div class="card ab"><div class="ic">🌐</div><h3>Dominios</h3>
+      <p>DNS · SSL/TLS · Subdominios (crt.sh) · RDAP · HTTP headers.</p></div>
+    <div class="card ab"><div class="ic">🖧</div><h3>IPs y puertos</h3>
+      <p>Geolocalizacion · Reverse DNS · Puertos abiertos. Superficie de ataque de red.</p></div>
+    <div class="card ab"><div class="ic">🔗</div><h3>URLs / Malware</h3>
+      <p>VirusTotal API. Analisis con 70+ motores antivirus.</p></div>
+    <div class="card ab"><div class="ic">💻</div><h3>GitHub / Codigo</h3>
+      <p>Secretos expuestos en repositorios publicos vinculados a la organizacion.</p></div>
+    <div class="card ag"><div class="ic">🤖</div><h3>100% automatico</h3>
+      <p>Re-escaneo semanal. Hallazgos CRITICAL/HIGH → incidente auto-creado. Vinculacion a riesgos.</p></div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 8: Cumplimiento ─────────────────────────────────── -->
+<div class="slide" id="s8">
+  <h2>Cumplimiento <span class="grad">multi-framework</span></h2>
+  <p class="lead">Score en tiempo real para 4 frameworks basado en los datos reales de la organizacion — sin cuestionarios adicionales.</p>
+  <div class="grid g4">
+    <div class="card ap" style="text-align:center;">
+      <div style="font-size:34px;font-weight:800;color:#C87AFF;">ISO</div>
+      <h3 style="font-size:13px;">ISO/IEC 27001:2022</h3>
+      <p>Controles · SOA · Tratamiento · Propietarios · NC mayores</p></div>
+    <div class="card ao" style="text-align:center;">
+      <div style="font-size:34px;font-weight:800;color:#FF8A50;">NIS2</div>
+      <h3 style="font-size:13px;">Directiva EU 2022/2555</h3>
+      <p>Notificaciones Art. 23 · Supply chain Art. 21 · Medidas tecnicas</p></div>
+    <div class="card ab" style="text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:#7EC8FF;">NIST</div>
+      <h3 style="font-size:13px;">NIST CSF 2.0</h3>
+      <p>GOVERN · IDENTIFY · PROTECT · DETECT · RESPOND · RECOVER</p></div>
+    <div class="card ag" style="text-align:center;">
+      <div style="font-size:34px;font-weight:800;color:#6EE88C;">ENS</div>
+      <h3 style="font-size:13px;">ENS RD 311/2022</h3>
+      <p>Medidas Anexo II · Responsables · Mejora continua</p></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="num grad">4</div><div class="lbl">Frameworks</div></div>
+    <div class="stat"><div class="num grad">Live</div><div class="lbl">Score actualizado</div></div>
+    <div class="stat"><div class="num grad">Auto</div><div class="lbl">Gaps detectados</div></div>
+    <div class="stat"><div class="num grad">PDF</div><div class="lbl">Informe exportable</div></div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 9: Arquitectura ─────────────────────────────────── -->
+<div class="slide" id="s9">
+  <h2>Arquitectura <span class="grad">tecnica</span></h2>
+  <p class="lead">On-premise, sin CDNs en runtime. Todos los datos residen exclusivamente en la infraestructura del cliente.</p>
+  <div class="grid g3">
+    <div class="card"><div class="ic">⚙️</div><h3>Backend</h3>
+      <p>Python 3.11 · FastAPI · SQLAlchemy 2.0 · SQLite/PostgreSQL · APScheduler</p></div>
+    <div class="card"><div class="ic">🖥️</div><h3>Frontend</h3>
+      <p>HTML + Vanilla JS · Sin frameworks · Sin CDNs · SPA hash-based · CSS variables</p></div>
+    <div class="card"><div class="ic">🐳</div><h3>Despliegue</h3>
+      <p>Docker + docker-compose · Volumen persistente · Deploy en 1 comando</p></div>
+    <div class="card"><div class="ic">🔐</div><h3>Seguridad</h3>
+      <p>JWT HS256 · bcrypt · Fernet AES-128 · HTTPS/TLS · Rate limiting · CSP OWASP</p></div>
+    <div class="card"><div class="ic">🧠</div><h3>Inteligencia artificial</h3>
+      <p>Claude API · Tool-use · RAG FTS5 · Anonimizacion PII · Log de uso por tenant</p></div>
+    <div class="card"><div class="ic">👥</div><h3>Multi-tenant</h3>
+      <p>organization_id en 25+ modelos · Roles: superadmin / admin / analyst / viewer</p></div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 10: Resumen ──────────────────────────────────────── -->
+<div class="slide" id="s10">
+  <h2>RiskHub en <span class="grad">una frase</span></h2>
+  <p style="font-size:clamp(15px,2.2vw,24px);color:var(--muted);max-width:700px;
+             margin:18px auto;line-height:1.65;">
+    Todo el ciclo ISO 27005 — inventario, analisis, tratamiento, seguimiento y cumplimiento —
+    en una sola plataforma on-premise con automatizacion inteligente.
+  </p>
+  <div class="stats">
+    <div class="stat"><div class="num" style="color:#C87AFF;">14</div><div class="lbl">Modulos SGSI</div></div>
+    <div class="stat"><div class="num" style="color:#FF8A50;">8</div><div class="lbl">Jobs auto</div></div>
+    <div class="stat"><div class="num" style="color:#7EC8FF;">6</div><div class="lbl">Fuentes OSINT</div></div>
+    <div class="stat"><div class="num" style="color:#6EE88C;">4</div><div class="lbl">Frameworks</div></div>
+    <div class="stat"><div class="num" style="color:#C87AFF;">100%</div><div class="lbl">On-premise</div></div>
+  </div>
+  <div style="margin-top:30px;">
+    <span class="pill pp">ISO/IEC 27005:2018</span>
+    <span class="pill po">ISO/IEC 27002:2022</span>
+    <span class="pill pg">NIS2 · ENS</span>
+    <span class="pill pb">NIST CSF 2.0</span>
+  </div>
+  <p style="margin-top:24px;font-size:12px;color:rgba(255,255,255,.25);">
+    v1.7.7 · http://91.99.83.202
+  </p>
+</div>
+
+<!-- ─── Nav ───────────────────────────────────────────────────── -->
+<div id="nav">
+  <button id="prev">&#8249;</button>
+  <div class="dots" id="dots"></div>
+  <span id="counter">1 / 10</span>
+  <button id="next">&#8250;</button>
+</div>
+
+<script>
+var slides = Array.from(document.querySelectorAll('.slide'));
+var dotsEl = document.getElementById('dots');
+var counter = document.getElementById('counter');
+var cur = 0;
+var N = slides.length;
+
+// Build dots
+slides.forEach(function(_, i) {
+  var d = document.createElement('div');
+  d.className = 'dot';
+  d.onclick = function() { go(i); };
+  dotsEl.appendChild(d);
+});
+
+function go(n) {
+  slides[cur].classList.remove('on');
+  dotsEl.children[cur].classList.remove('on');
+  cur = n < 0 ? 0 : n >= N ? N - 1 : n;
+  slides[cur].classList.add('on');
+  dotsEl.children[cur].classList.add('on');
+  counter.textContent = (cur + 1) + ' / ' + N;
+}
+
+// Start on slide 0
+go(0);
+
+document.getElementById('prev').onclick = function() { go(cur - 1); };
+document.getElementById('next').onclick = function() { go(cur + 1); };
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); go(cur - 1); }
+  if (e.key === 'Home') go(0);
+  if (e.key === 'End') go(N - 1);
+});
+
+var tx = 0;
+document.addEventListener('touchstart', function(e) { tx = e.touches[0].clientX; });
+document.addEventListener('touchend', function(e) {
+  var dx = e.changedTouches[0].clientX - tx;
+  if (Math.abs(dx) > 50) go(dx < 0 ? cur + 1 : cur - 1);
+});
+</script>
+</body>
+</html>

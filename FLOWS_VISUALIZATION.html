@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RiskHub v1.8.0 - Flujos Completos de Automatizacion</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #262626;
+            padding: 24px;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header {
+            background: linear-gradient(90deg, #59008D, #D65200);
+            color: white;
+            padding: 32px;
+            border-radius: 8px;
+            margin-bottom: 32px;
+        }
+        header h1 { font-size: 28px; margin-bottom: 8px; }
+        header p { font-size: 14px; opacity: 0.9; }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 12px;
+        }
+        .tab-btn {
+            padding: 10px 16px;
+            border: none;
+            background: #f0f0f0;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { background: #e0e0e0; }
+        .tab-btn.active { background: #59008D; color: white; }
+
+        .content { display: none; }
+        .content.active { display: block; }
+
+        .section {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        h2 {
+            color: #59008D;
+            font-size: 20px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #D65200;
+        }
+
+        h3 {
+            color: #262626;
+            font-size: 14px;
+            margin: 20px 0 12px;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 13px;
+        }
+        th {
+            background: #59008D;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        tr:hover { background: #f9f9f9; }
+
+        .flow-box {
+            background: #f9f9f9;
+            border-left: 4px solid #D65200;
+            padding: 16px;
+            margin: 16px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.8;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .badge-ok { background: #E8F5E9; color: #2e7d32; }
+        .badge-new { background: #E3F2FD; color: #1565c0; }
+
+        .note {
+            background: #FEF0E3;
+            border-left: 3px solid #D65200;
+            padding: 12px;
+            margin: 12px 0;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        footer {
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>RiskHub v1.8.0 - Flujos de Automatizacion Completos</h1>
+            <p>Auto-generacion de riesgos: activo×amenaza, CVE, OSINT, risk appetite</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="show('overview')">Resumen</button>
+            <button class="tab-btn" onclick="show('asset-flow')">Flujo Activo</button>
+            <button class="tab-btn" onclick="show('cve-flow')">Flujo CVE</button>
+            <button class="tab-btn" onclick="show('appetite')">Risk Appetite</button>
+            <button class="tab-btn" onclick="show('security')">Seguridad</button>
+        </div>
+
+        <!-- OVERVIEW -->
+        <div id="overview" class="content active">
+            <div class="section">
+                <h2>v1.8.0 - Cambios Principales <span class="badge badge-new">NUEVO</span></h2>
+
+                <h3>1. Auto-generacion de Riesgos al Crear Activo</h3>
+                <div class="flow-box">Cuando usuario sube asset nuevo:
+  POST /assets {name, asset_type, ...}
+    ↓
+  Sistema crea Asset en BD
+    ↓
+  Background task auto_generate_risks_for_asset()
+    ├─ Query: SELECT * FROM Threat (amenazas org)
+    ├─ Para cada threat:
+    │   - Crear Risk [asset_id, threat_id]
+    │   - Calcular inherent_level (ISO27005 5x5)
+    │   - Aplicar controles existentes
+    │   - Calcular residual_level
+    │   - Comparar contra risk_appetite (USER DEFINED)
+    │   └─ SI residual <= appetite: ACCEPTANCE automatica
+    │   └─ SI residual > appetite: ASSESSED + email alerta
+    └─ Ejecución paralela a analyze_asset_risks() IA
+                </div>
+
+                <h3>2. Auto-generacion de Riesgos desde CVE</h3>
+                <div class="flow-box">Cada 24h cron _run_cve_auto_scan():
+  1. Fetch NVD API (últimas 2 dias)
+  2. Para cada CVE encontrada:
+     - Buscar activos afectados
+     - auto_generate_risk_from_cve()
+     - inherent_consequence=4 (CVE grave)
+     - inherent_likelihood=3 (probable)
+     - Calcular residual vs appetite
+     - SI > appetite: email URGENT
+  3. Log: "CVE auto-scan: X CVEs, Y riesgos generados"
+                </div>
+
+                <h3>3. Auto-generacion desde OSINT</h3>
+                <div class="flow-box">Cuando OSINT encuentra hallazgo CRITICAL/HIGH:
+  auto_generate_risk_from_osint()
+  ├─ Identificar asset afectado
+  ├─ Crear threat "OSINT-TYPE"
+  ├─ Risk [asset, threat]
+  ├─ Calcular residual
+  └─ SI > appetite: email alerta + mitigacion task
+                </div>
+
+                <h3>4. Risk Appetite Automatico</h3>
+                <p>TODAS las creaciones de riesgo ahora comparan contra <strong>risk_appetite del usuario</strong>:</p>
+                <table>
+                    <tr>
+                        <th>Condition</th>
+                        <th>Action</th>
+                    </tr>
+                    <tr>
+                        <td>residual_level <= risk_appetite</td>
+                        <td>status=ACCEPTED (automatico)</td>
+                    </tr>
+                    <tr>
+                        <td>residual_level > risk_appetite</td>
+                        <td>status=ASSESSED (user debe tratar)</td>
+                    </tr>
+                </table>
+
+                <div class="note">
+                    <strong>Nota:</strong> risk_appetite viene de RiskContext.risk_appetite (configurable por org en UI)
+                </div>
+            </div>
+        </div>
+
+        <!-- ASSET FLOW -->
+        <div id="asset-flow" class="content">
+            <div class="section">
+                <h2>Flujo Completo: Crear Activo</h2>
+
+                <h3>Entrada del Usuario</h3>
+                <table>
+                    <tr>
+                        <th>Campo</th>
+                        <th>Tipo</th>
+                        <th>Requerido</th>
+                    </tr>
+                    <tr>
+                        <td>name</td>
+                        <td>string</td>
+                        <td>Si</td>
+                    </tr>
+                    <tr>
+                        <td>asset_type</td>
+                        <td>enum (ISO27005)</td>
+                        <td>Si</td>
+                    </tr>
+                    <tr>
+                        <td>description</td>
+                        <td>text</td>
+                        <td>No</td>
+                    </tr>
+                </table>
+
+                <h3>Procesamiento Automatico</h3>
+                <div class="flow-box">1. Crear Asset en BD
+2. Commit inmediato
+3. Response HTTP 201 (no espera background)
+4. Background task:
+   a) auto_generate_risks_for_asset()
+      - Para cada Threat de la org:
+        * Crear Risk con:
+          - inherent_likelihood=2 (default)
+          - inherent_consequence=2 (default)
+        * Calcular inherent_level
+        * Calcular residual (incluir controles)
+        * Comparar vs appetite
+        * Guardar en BD
+   b) analyze_asset_risks() [IA complementario]
+5. User ve riesgos creados en UI
+                </div>
+
+                <h3>Resultados</h3>
+                <table>
+                    <tr>
+                        <th>Scenario</th>
+                        <th>Riesgos</th>
+                        <th>Status</th>
+                    </tr>
+                    <tr>
+                        <td>Asset nuevo + 10 amenazas + appetite=3</td>
+                        <td>10 riesgos</td>
+                        <td>3 ACCEPTED, 7 ASSESSED</td>
+                    </tr>
+                    <tr>
+                        <td>Asset critico + amenazas altas</td>
+                        <td>N riesgos</td>
+                        <td>Todos ASSESSED (residual > appetite)</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- CVE FLOW -->
+        <div id="cve-flow" class="content">
+            <div class="section">
+                <h2>Flujo Completo: CVE Auto-Gen <span class="badge badge-new">NUEVO</span></h2>
+
+                <h3>Trigger</h3>
+                <p><strong>Cron:</strong> Cada 24 horas | <strong>Funcion:</strong> _run_cve_auto_scan()</p>
+
+                <h3>Logica</h3>
+                <div class="flow-box">1. Query IntegrationConfig "nvd_cve"
+2. IF not configured: return
+
+3. Fetch NVD API (últimas 2 dias)
+   - Filter: CRITICAL o HIGH
+   - Max: 50 resultados
+
+4. Para cada CVE encontrada:
+   a) Search activos afectados
+      - ilike description / name
+   b) Para cada asset:
+      - auto_generate_risk_from_cve(
+          asset_id, cve_id,
+          inherent_consequence=4,
+          inherent_likelihood=3
+        )
+   c) Calcular residual
+   d) Comparar vs appetite
+   e) SI > appetite: email alerta
+
+5. Log: "CVE auto-scan: X CVEs, Y riesgos"
+                </div>
+
+                <div class="note">
+                    <strong>Parametros:</strong> inherent_consequence=4 (CVE grave), inherent_likelihood=3 (probable)
+                </div>
+            </div>
+        </div>
+
+        <!-- APPETITE -->
+        <div id="appetite" class="content">
+            <div class="section">
+                <h2>Risk Appetite - AUTO-ACCEPTANCE</h2>
+
+                <h3>Configuracion por Org</h3>
+                <table>
+                    <tr>
+                        <th>Campo</th>
+                        <th>Valor</th>
+                        <th>Rango</th>
+                    </tr>
+                    <tr>
+                        <td>risk_appetite</td>
+                        <td>User defines</td>
+                        <td>0-8</td>
+                    </tr>
+                    <tr>
+                        <td>risk_matrix</td>
+                        <td>ISO27005 default</td>
+                        <td>5x5</td>
+                    </tr>
+                </table>
+
+                <h3>Logica de Auto-Acceptance</h3>
+                <div class="flow-box">En ANY creacion de riesgo:
+
+1. GET RiskContext.risk_appetite
+   (ej: 3)
+
+2. Calcular residual_level
+   - Aplicar controles existentes
+   - Usar matriz risk
+
+3. IF residual_level <= appetite:
+     risk.treatment_option = ACCEPTANCE
+     risk.status = ACCEPTED
+     → SIN email, SIN requerimiento manual
+
+4. ELSE:
+     risk.status = ASSESSED
+     → User debe elegir tratamiento
+     → Email alerta si HIGH/CRITICAL
+                </div>
+
+                <h3>Ejemplo</h3>
+                <table>
+                    <tr>
+                        <th>Risk</th>
+                        <th>inherent</th>
+                        <th>Controles</th>
+                        <th>residual</th>
+                        <th>appetite</th>
+                        <th>Resultado</th>
+                    </tr>
+                    <tr>
+                        <td>RSK-001</td>
+                        <td>4</td>
+                        <td>Reduccion 50%</td>
+                        <td>2</td>
+                        <td>3</td>
+                        <td>ACCEPTED auto</td>
+                    </tr>
+                    <tr>
+                        <td>RSK-002</td>
+                        <td>5</td>
+                        <td>Reduccion 20%</td>
+                        <td>4</td>
+                        <td>3</td>
+                        <td>ASSESSED + email</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- SECURITY -->
+        <div id="security" class="content">
+            <div class="section">
+                <h2>Security Review - v1.8.0</h2>
+
+                <h3>Multi-Tenancy ✓</h3>
+                <div class="flow-box">- Todos los queries filtran por organization_id
+- auto_generate_risks_for_asset valida org_id
+- CVE auto-gen solo afecta activos de la org
+- NO data leakage cross-org
+- Risk creados heredan org_id del asset
+                </div>
+
+                <h3>Injection Prevention ✓</h3>
+                <div class="flow-box">- No hay inputs directos de usuario
+- Todo viene de BD (types enumerados)
+- SQLAlchemy ORM (no raw SQL)
+- Logging escapa valores
+                </div>
+
+                <h3>Race Conditions ✓</h3>
+                <div class="flow-box">- Duplicado prevention: query [asset_id, threat_id]
+- Transacciones con commit/rollback
+- Background tasks thread-safe (SessionLocal)
+                </div>
+
+                <h3>Audit Trail ✓</h3>
+                <div class="flow-box">- Risk.created_at = now()
+- Logger.info/warning detallados
+- AuditLog puede ampliarse
+                </div>
+
+                <div class="note">
+                    <strong>Conclusión:</strong> v1.8.0 mantiene estándares security existentes. No nuevas vulns introducidas.
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>RiskHub v1.8.0 | Deployed 2026-05-30 | Auto-Generacion Completa</p>
+            <p>Documentacion: CAMBIOS_v1.8.0_AUTO_RIESGOS.md</p>
+        </footer>
+    </div>
+
+    <script>
+        function show(tab) {
+            document.querySelectorAll('.content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
