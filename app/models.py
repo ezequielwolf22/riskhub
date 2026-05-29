@@ -218,7 +218,6 @@ class AssetGroup(Base):
         "Asset",
         foreign_keys="[Asset.group_id]",
         back_populates="group",
-        primaryjoin="AssetGroup.id == foreign(Asset.group_id)",
     )
 
 

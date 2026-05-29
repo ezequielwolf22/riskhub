@@ -39,6 +39,8 @@ def list_assets(
     limit: int = Query(500, le=2000),
 ):
     query = filter_by_org(db.query(Asset), Asset, current_user)
+    # Excluir activos representativos de grupos (virtuales, solo para analisis de riesgo)
+    query = query.filter(Asset.is_group_representative.is_(False))
     if q:
         like = f"%{q}%"
         query = query.filter((Asset.name.ilike(like)) | (Asset.code.ilike(like))

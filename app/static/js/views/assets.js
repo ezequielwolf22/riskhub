@@ -1,51 +1,92 @@
-﻿/* Vista Activos: CRUD + import/export CSV + analisis de riesgos IA. */
+/* Vista Activos: CRUD + import/export + analisis IA + agrupacion IA. */
 const ViewAssets = {
   _sortCol: 'code', _sortAsc: true,
   _pollTimer: null,
+  _activeTab: 'inventory',
 
   async render(main) {
     ViewAssets._stopPoll();
+    ViewAssets._activeTab = 'inventory';
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
       'Inventario de activos',
       'Activos primarios y de soporte (ISO 27005 Annex B)',
       canEdit ? `
-        <button class="btn" id="btn-export">Exportar CSV</button>
-        <button class="btn" id="btn-template">Plantilla</button>
-        <label class="btn">
-          Importar CSV
-          <input type="file" id="file-import" accept=".csv,.xlsx" style="display:none;">
-        </label>
-        <button class="btn btn-ghost" id="btn-analyze-all"
-                title="Analizar riesgos de todos los activos con IA">
-          Analizar riesgos con IA
-        </button>
-        <button class="btn btn-primary" id="btn-new">+ Nuevo activo</button>
+        <span id="inv-actions">
+          <button class="btn" id="btn-export">Exportar CSV</button>
+          <button class="btn" id="btn-template">Plantilla</button>
+          <label class="btn">
+            Importar
+            <input type="file" id="file-import" accept=".csv,.xlsx" style="display:none;">
+          </label>
+          <button class="btn btn-ghost" id="btn-analyze-all"
+                  title="Analizar riesgos de todos los activos con IA">
+            Analizar riesgos con IA
+          </button>
+          <button class="btn btn-primary" id="btn-new">+ Nuevo activo</button>
+        </span>
       ` : ''
     ) + `
-      <div class="toolbar">
-        <input type="search" id="asset-search" placeholder="Buscar por nombre o codigo...">
-        <select id="asset-type-filter">
-          <option value="">Todos los tipos</option>
-          <option value="primary_process">Proceso</option>
-          <option value="primary_information">Información</option>
-          <option value="support_hardware">Hardware</option>
-          <option value="support_software">Software</option>
-          <option value="support_network">Red</option>
-          <option value="support_personnel">Personal</option>
-          <option value="support_site">Instalación</option>
-          <option value="support_organization">Organización</option>
-        </select>
-        <span class="spacer"></span>
-        <span id="asset-count" style="color:var(--text-subtle);font-size:12px;"></span>
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
+        <button class="asset-tab active" data-tab="inventory"
+          style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
+                 font-weight:600;color:var(--brand-purple);
+                 border-bottom:3px solid var(--brand-purple);margin-bottom:-2px;">
+          Inventario
+        </button>
+        <button class="asset-tab" data-tab="grouping"
+          style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
+                 font-weight:600;color:var(--text-muted);
+                 border-bottom:3px solid transparent;margin-bottom:-2px;">
+          Agrupacion con IA
+        </button>
       </div>
-      <div id="asset-list"></div>
+      <div id="tab-inventory">
+        <div class="toolbar">
+          <input type="search" id="asset-search" placeholder="Buscar por nombre o codigo...">
+          <select id="asset-type-filter">
+            <option value="">Todos los tipos</option>
+            <option value="primary_process">Proceso</option>
+            <option value="primary_information">Informacion</option>
+            <option value="support_hardware">Hardware</option>
+            <option value="support_software">Software</option>
+            <option value="support_network">Red</option>
+            <option value="support_personnel">Personal</option>
+            <option value="support_site">Instalacion</option>
+            <option value="support_organization">Organizacion</option>
+          </select>
+          <span class="spacer"></span>
+          <span id="asset-count" style="color:var(--text-subtle);font-size:12px;"></span>
+        </div>
+        <div id="asset-list"></div>
+      </div>
+      <div id="tab-grouping" style="display:none;">
+        <div id="grouping-view"><div class="notice">Cargando...</div></div>
+      </div>
     `;
 
-    document.getElementById('asset-search').oninput =
-      () => ViewAssets._reload();
-    document.getElementById('asset-type-filter').onchange =
-      () => ViewAssets._reload();
+    // Tab switching
+    main.querySelectorAll('.asset-tab').forEach(btn => {
+      btn.onclick = () => {
+        main.querySelectorAll('.asset-tab').forEach(b => {
+          b.style.color = 'var(--text-muted)';
+          b.style.borderBottomColor = 'transparent';
+        });
+        btn.style.color = 'var(--brand-purple)';
+        btn.style.borderBottomColor = 'var(--brand-purple)';
+        const tab = btn.dataset.tab;
+        ViewAssets._activeTab = tab;
+        document.getElementById('tab-inventory').style.display = tab === 'inventory' ? '' : 'none';
+        document.getElementById('tab-grouping').style.display = tab === 'grouping' ? '' : 'none';
+        const invActions = document.getElementById('inv-actions');
+        if (invActions) invActions.style.display = tab === 'inventory' ? '' : 'none';
+        if (tab === 'grouping') ViewAssets._renderGrouping();
+        if (tab === 'inventory') ViewAssets._reload();
+      };
+    });
+
+    document.getElementById('asset-search').oninput = () => ViewAssets._reload();
+    document.getElementById('asset-type-filter').onchange = () => ViewAssets._reload();
 
     if (canEdit) {
       document.getElementById('btn-new').onclick = () => ViewAssets._edit();
@@ -85,9 +126,10 @@ const ViewAssets = {
   },
 
   async _reload() {
-    const q = document.getElementById('asset-search').value;
-    const t = document.getElementById('asset-type-filter').value;
+    const q = document.getElementById('asset-search')?.value;
+    const t = document.getElementById('asset-type-filter')?.value;
     const list = document.getElementById('asset-list');
+    if (!list) return;
     list.innerHTML = '<div class="notice">Cargando...</div>';
     try {
       const params = {};
@@ -102,7 +144,6 @@ const ViewAssets = {
         );
         return;
       }
-      // Client-side sort
       const _sortVal = a => {
         const k = ViewAssets._sortCol;
         if (k === 'code') return a.code || '';
@@ -139,6 +180,13 @@ const ViewAssets = {
                       title="${UI.esc(tip)}">${labels[s]||s}</span>`;
       };
 
+      const _groupBadge = (a) => {
+        if (!a.group_id) return '';
+        return `<span style="font-size:10px;background:var(--brand-purple);color:#fff;
+                             padding:2px 6px;border-radius:10px;font-weight:600;"
+                      title="Pertenece a un grupo de activos">GRP</span> `;
+      };
+
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead>
           <tr>
@@ -157,7 +205,7 @@ const ViewAssets = {
             return `
             <tr data-id="${a.id}" style="cursor:pointer;">
               <td>${UI.codePill(a.code)}</td>
-              <td><strong>${UI.esc(a.name)}</strong>
+              <td><strong>${_groupBadge(a)}${UI.esc(a.name)}</strong>
                   ${a.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(a.description).slice(0,80)}</div>` : ''}</td>
               <td>${UI.assetTypeLabel(a.asset_type)}</td>
               <td>${a.value_confidentiality}</td>
@@ -223,7 +271,6 @@ const ViewAssets = {
 
   _startPollIfNeeded() {
     ViewAssets._stopPoll();
-    // Verificar si hay activos en estado "analysing"
     const assetList = document.querySelector('#asset-list tbody');
     if (!assetList) return;
     const hasAnalysing = assetList.innerHTML.includes('Analizando...');
@@ -238,12 +285,10 @@ const ViewAssets = {
         const data = await Api.assets.list(params);
         const tbody = document.querySelector('#asset-list tbody');
         if (!tbody) { ViewAssets._stopPoll(); return; }
-        // Update just the AI status cells without full rebuild
         data.forEach(a => {
           const tr = document.querySelector(`tr[data-id="${a.id}"]`);
           if (!tr) return;
           const cells = tr.querySelectorAll('td');
-          // AI status is 2nd to last td
           const aiCell = cells[cells.length - 2];
           if (aiCell) {
             const s = a.ai_risk_status;
@@ -264,6 +309,413 @@ const ViewAssets = {
   _stopPoll() {
     if (ViewAssets._pollTimer) { clearInterval(ViewAssets._pollTimer); ViewAssets._pollTimer = null; }
   },
+
+  // ---------- AGRUPACION CON IA ----------
+
+  async _renderGrouping() {
+    const view = document.getElementById('grouping-view');
+    if (!view) return;
+    view.innerHTML = '<div class="notice">Cargando configuracion...</div>';
+    try {
+      const [cfg, groups] = await Promise.all([
+        Api.assetGroups.getConfig(),
+        Api.assetGroups.list(),
+      ]);
+      ViewAssets._drawGrouping(view, cfg, groups);
+    } catch (e) {
+      view.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _drawGrouping(view, cfg, groups) {
+    const canEdit = Auth.canEdit();
+    const proposed = groups.filter(g => g.status === 'proposed');
+    const validated = groups.filter(g => g.status === 'validated');
+    const totalGrouped = groups.reduce((s, g) => s + g.member_count, 0);
+
+    view.innerHTML = `
+      <!-- Panel criterios -->
+      <details id="criteria-panel" open>
+        <summary style="cursor:pointer;font-size:15px;font-weight:700;
+                        padding:12px 0;list-style:none;display:flex;align-items:center;gap:8px;
+                        color:var(--brand-purple);">
+          <span style="font-size:12px;transition:transform .2s;">&#9654;</span>
+          Criterios de agrupacion
+          <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:4px;">
+            (${cfg.criteria.filter(c=>c.enabled).length} activos)
+          </span>
+        </summary>
+        <div id="criteria-body" style="padding:0 0 16px 20px;">
+          <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
+            Selecciona los criterios que la IA usara para agrupar los activos.
+            El nivel 1 es el criterio principal; los niveles 2 y 3 refinan la agrupacion.
+          </p>
+          <div id="criteria-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+          ${canEdit ? `
+          <div style="margin-top:14px;display:flex;gap:8px;">
+            <button class="btn btn-primary" id="btn-save-criteria">Guardar criterios</button>
+            <button class="btn btn-ghost" id="btn-restore-criteria">Restaurar por defecto</button>
+          </div>` : ''}
+        </div>
+      </details>
+
+      <!-- Accion principal -->
+      ${canEdit ? `
+      <div style="display:flex;align-items:center;gap:12px;padding:16px 0;
+                  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+                  margin-bottom:20px;">
+        <button class="btn btn-primary" id="btn-propose" style="font-size:15px;padding:10px 22px;">
+          Analizar y proponer grupos con IA
+        </button>
+        <span style="font-size:13px;color:var(--text-muted);">
+          ${totalGrouped > 0
+            ? `${groups.length} grupos &middot; ${totalGrouped} activos agrupados`
+            : 'Sin grupos todavia'}
+        </span>
+        ${proposed.length ? `
+        <button class="btn" id="btn-validate-all"
+                style="margin-left:auto;">
+          Validar todos (${proposed.length})
+        </button>` : ''}
+      </div>` : ''}
+
+      <!-- Grupos -->
+      <div id="groups-list">
+        ${groups.length === 0
+          ? `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px;">
+               Sin grupos todavia. Pulsa "Analizar y proponer grupos con IA" para comenzar.
+             </div>`
+          : ''}
+        ${proposed.length ? `<h4 style="font-size:13px;color:var(--text-muted);margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Propuestos (${proposed.length})</h4>` : ''}
+        ${proposed.map(g => ViewAssets._groupCard(g, canEdit)).join('')}
+        ${validated.length ? `<h4 style="font-size:13px;color:var(--text-muted);margin:16px 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Validados (${validated.length})</h4>` : ''}
+        ${validated.map(g => ViewAssets._groupCard(g, canEdit)).join('')}
+      </div>
+    `;
+
+    // Render criteria checkboxes
+    ViewAssets._drawCriteria(cfg.criteria);
+
+    // Handlers
+    document.getElementById('criteria-panel')?.addEventListener('toggle', function() {
+      const arrow = this.querySelector('summary span');
+      if (arrow) arrow.style.transform = this.open ? 'rotate(90deg)' : '';
+    });
+
+    if (canEdit) {
+      document.getElementById('btn-save-criteria')?.addEventListener('click', () =>
+        ViewAssets._saveCriteria());
+      document.getElementById('btn-restore-criteria')?.addEventListener('click', async () => {
+        if (!await UI.confirm('Restaurar criterios por defecto?')) return;
+        try {
+          await Api.assetGroups.resetConfig();
+          const cfg2 = await Api.assetGroups.getConfig();
+          ViewAssets._drawCriteria(cfg2.criteria);
+          UI.toast('Criterios restaurados', 'success');
+        } catch (e) { UI.toast(e.message, 'error'); }
+      });
+      document.getElementById('btn-propose')?.addEventListener('click', () =>
+        ViewAssets._propose());
+      document.getElementById('btn-validate-all')?.addEventListener('click', () =>
+        ViewAssets._validateAll());
+    }
+
+    ViewAssets._attachGroupHandlers(canEdit);
+  },
+
+  _drawCriteria(criteria) {
+    const list = document.getElementById('criteria-list');
+    if (!list) return;
+    const levelColors = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: 'var(--risk-medium)' };
+    list.innerHTML = criteria.map((c, i) => `
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;
+                    border:1px solid var(--border);border-radius:6px;cursor:pointer;
+                    background:${c.enabled ? 'var(--bg-2)' : 'var(--bg-1)'};transition:background .15s;">
+        <input type="checkbox" data-ci="${i}" ${c.enabled ? 'checked' : ''}
+               style="margin-top:2px;accent-color:var(--brand-purple);"
+               onchange="ViewAssets._toggleCriterion(${i})">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13px;">
+            <span style="background:${levelColors[c.level]||'var(--text-muted)'};color:#fff;
+                         font-size:10px;padding:1px 6px;border-radius:10px;">
+              N${c.level}
+            </span>
+            ${UI.esc(c.name)}
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${UI.esc(c.description)}</div>
+        </div>
+      </label>
+    `).join('');
+    list._criteria = criteria;
+  },
+
+  _toggleCriterion(idx) {
+    const list = document.getElementById('criteria-list');
+    if (!list || !list._criteria) return;
+    list._criteria[idx].enabled = !list._criteria[idx].enabled;
+    const label = list.querySelectorAll('label')[idx];
+    if (label) label.style.background = list._criteria[idx].enabled ? 'var(--bg-2)' : 'var(--bg-1)';
+  },
+
+  async _saveCriteria() {
+    const list = document.getElementById('criteria-list');
+    if (!list || !list._criteria) return;
+    const btn = document.getElementById('btn-save-criteria');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    try {
+      await Api.assetGroups.saveConfig({ criteria: list._criteria });
+      UI.toast('Criterios guardados', 'success');
+    } catch (e) { UI.toast(e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'Guardar criterios'; }
+  },
+
+  async _propose() {
+    const btn = document.getElementById('btn-propose');
+    btn.disabled = true;
+    btn.textContent = 'Analizando activos con IA...';
+    btn.style.opacity = '0.7';
+    try {
+      const r = await Api.assetGroups.propose();
+      UI.toast(`Agrupacion completada: ${r.groups_created} grupos propuestos para ${r.assets_analyzed} activos`, 'success');
+      await ViewAssets._renderGrouping();
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+    finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Analizar y proponer grupos con IA'; btn.style.opacity = ''; }
+    }
+  },
+
+  async _validateAll() {
+    const btn = document.getElementById('btn-validate-all');
+    if (btn) { btn.disabled = true; btn.textContent = 'Validando...'; }
+    try {
+      const r = await Api.assetGroups.validateAll();
+      UI.toast(`${r.validated} grupos validados`, 'success');
+      await ViewAssets._renderGrouping();
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  },
+
+  _groupCard(g, canEdit) {
+    const statusColors = { proposed: 'var(--brand-orange)', validated: 'var(--risk-low)', rejected: 'var(--risk-critical)' };
+    const statusLabels = { proposed: 'Propuesto', validated: 'Validado', rejected: 'Rechazado' };
+    const membersList = (g.members || []).slice(0, 8).map(m =>
+      `<span style="font-size:11px;background:var(--bg-3);padding:2px 7px;border-radius:10px;
+                    color:var(--text-muted);">${UI.esc(m.name)}</span>`
+    ).join(' ');
+    const moreCount = (g.members || []).length > 8 ? g.members.length - 8 : 0;
+
+    return `
+    <div class="group-card" data-gid="${g.id}"
+         style="border:1px solid var(--border);border-radius:8px;padding:14px 16px;
+                margin-bottom:10px;background:var(--bg-2);">
+      <div style="display:flex;align-items:flex-start;gap:10px;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="background:${statusColors[g.status]||'var(--text-muted)'};color:#fff;
+                         font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;">
+              ${statusLabels[g.status]||g.status}
+            </span>
+            <strong style="font-size:14px;" class="group-name">${UI.esc(g.name)}</strong>
+            <span style="font-size:12px;color:var(--text-muted);">(${g.member_count} activos)</span>
+          </div>
+          ${g.description ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">${UI.esc(g.description)}</div>` : ''}
+          ${g.ai_rationale ? `
+            <details style="margin-bottom:6px;">
+              <summary style="font-size:11px;color:var(--text-subtle);cursor:pointer;list-style:none;">
+                Justificacion ISO 27005
+              </summary>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;padding:8px;
+                          background:var(--bg-1);border-radius:4px;">${UI.esc(g.ai_rationale)}</div>
+            </details>` : ''}
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+            ${membersList}
+            ${moreCount ? `<span style="font-size:11px;color:var(--text-subtle);">+${moreCount} mas</span>` : ''}
+          </div>
+        </div>
+        ${canEdit ? `
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:100px;align-items:flex-end;">
+          ${g.status === 'proposed' ? `
+            <button class="btn btn-primary" data-action="validate" data-gid="${g.id}"
+                    style="font-size:12px;padding:4px 12px;">Validar</button>` : ''}
+          ${g.status === 'validated' && g.representative_asset_id ? `
+            <a href="#/risks?asset_id=${g.representative_asset_id}" class="btn btn-ghost"
+               style="font-size:12px;padding:4px 12px;">Ver riesgos</a>` : ''}
+          <button class="btn btn-ghost" data-action="edit-group" data-gid="${g.id}"
+                  style="font-size:12px;padding:4px 12px;">Renombrar</button>
+          <button class="btn btn-ghost" data-action="move-asset" data-gid="${g.id}"
+                  style="font-size:12px;padding:4px 12px;">Mover activo</button>
+          ${g.member_count > 1 ? `
+          <button class="btn btn-ghost" data-action="split" data-gid="${g.id}"
+                  style="font-size:12px;padding:4px 12px;">Dividir</button>` : ''}
+          <button class="btn btn-danger" data-action="delete-group" data-gid="${g.id}"
+                  style="font-size:12px;padding:4px 12px;">Eliminar</button>
+        </div>` : ''}
+      </div>
+    </div>`;
+  },
+
+  _attachGroupHandlers(canEdit) {
+    if (!canEdit) return;
+    document.querySelectorAll('[data-action]').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const action = btn.dataset.action;
+        const gid = parseInt(btn.dataset.gid);
+        if (action === 'validate') await ViewAssets._validateGroup(gid, btn);
+        if (action === 'edit-group') await ViewAssets._editGroupName(gid);
+        if (action === 'delete-group') await ViewAssets._deleteGroup(gid);
+        if (action === 'move-asset') await ViewAssets._moveAssetModal(gid);
+        if (action === 'split') await ViewAssets._splitModal(gid);
+      };
+    });
+  },
+
+  async _validateGroup(gid, btn) {
+    btn.disabled = true; btn.textContent = 'Validando...';
+    try {
+      await Api.assetGroups.validate(gid);
+      UI.toast('Grupo validado. Activo representativo creado.', 'success');
+      await ViewAssets._renderGrouping();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = 'Validar';
+    }
+  },
+
+  async _editGroupName(gid) {
+    const card = document.querySelector(`.group-card[data-gid="${gid}"]`);
+    const current = card?.querySelector('.group-name')?.textContent || '';
+    UI.modal('Renombrar grupo', `
+      <div class="span2">
+        <label>Nombre del grupo</label>
+        <input id="grp-name" value="${UI.esc(current)}" style="width:100%;">
+      </div>
+      <div class="span2">
+        <label>Descripcion (opcional)</label>
+        <textarea id="grp-desc" rows="2" style="width:100%;"></textarea>
+      </div>
+    `, {
+      actions: `
+        <button class="btn" id="m-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="m-save">Guardar</button>`
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const name = document.getElementById('grp-name').value.trim();
+      const desc = document.getElementById('grp-desc').value.trim();
+      if (!name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+      try {
+        await Api.assetGroups.update(gid, { name, description: desc || undefined });
+        UI.closeModal();
+        UI.toast('Grupo actualizado', 'success');
+        await ViewAssets._renderGrouping();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  },
+
+  async _deleteGroup(gid) {
+    if (!await UI.confirm('Eliminar el grupo? Los activos quedaran desagrupados.')) return;
+    try {
+      await Api.assetGroups.del(gid);
+      UI.toast('Grupo eliminado', 'success');
+      await ViewAssets._renderGrouping();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _moveAssetModal(gid) {
+    const [groups, groupData] = await Promise.all([
+      Api.assetGroups.list(),
+      Api.assetGroups.list(),
+    ]);
+    const thisGroup = groups.find(g => g.id === gid);
+    if (!thisGroup || !thisGroup.members.length) {
+      UI.toast('El grupo no tiene activos para mover', 'error'); return;
+    }
+    const otherGroups = groups.filter(g => g.id !== gid);
+    UI.modal('Mover activo a otro grupo', `
+      <div class="span2">
+        <label>Activo a mover</label>
+        <select id="move-asset-sel" style="width:100%;">
+          ${thisGroup.members.map(m =>
+            `<option value="${m.id}">${UI.esc(m.name)} (${UI.esc(m.code)})</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="span2">
+        <label>Grupo destino</label>
+        <select id="move-target-sel" style="width:100%;">
+          <option value="">-- Desagrupar (sin grupo) --</option>
+          ${otherGroups.map(g =>
+            `<option value="${g.id}">${UI.esc(g.name)} (${g.member_count} activos)</option>`
+          ).join('')}
+        </select>
+      </div>
+    `, {
+      actions: `
+        <button class="btn" id="m-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="m-save">Mover</button>`
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const assetId = parseInt(document.getElementById('move-asset-sel').value);
+      const targetRaw = document.getElementById('move-target-sel').value;
+      const targetGroupId = targetRaw ? parseInt(targetRaw) : null;
+      try {
+        await Api.assetGroups.moveAsset({ asset_id: assetId, target_group_id: targetGroupId });
+        UI.closeModal();
+        UI.toast('Activo movido', 'success');
+        await ViewAssets._renderGrouping();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  },
+
+  async _splitModal(gid) {
+    const groups = await Api.assetGroups.list();
+    const thisGroup = groups.find(g => g.id === gid);
+    if (!thisGroup || thisGroup.members.length < 2) {
+      UI.toast('Se necesitan al menos 2 activos para dividir el grupo', 'error'); return;
+    }
+    UI.modal('Dividir grupo', `
+      <div class="span2">
+        <label>Nombre del nuevo grupo</label>
+        <input id="split-name" value="${UI.esc(thisGroup.name)} (2)" style="width:100%;">
+      </div>
+      <div class="span2">
+        <label>Selecciona los activos que pasaran al nuevo grupo</label>
+        <div style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;
+                    padding:8px;border:1px solid var(--border);border-radius:6px;margin-top:4px;">
+          ${thisGroup.members.map(m => `
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" value="${m.id}" class="split-cb"
+                     style="accent-color:var(--brand-purple);">
+              <span><strong>${UI.esc(m.name)}</strong>
+                    <span style="font-size:11px;color:var(--text-muted);">${UI.esc(m.code)}</span></span>
+            </label>`).join('')}
+        </div>
+      </div>
+    `, {
+      actions: `
+        <button class="btn" id="m-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="m-save">Dividir</button>`
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const newName = document.getElementById('split-name').value.trim();
+      if (!newName) { UI.toast('Nombre obligatorio', 'error'); return; }
+      const checked = [...document.querySelectorAll('.split-cb:checked')].map(cb => parseInt(cb.value));
+      if (!checked.length) { UI.toast('Selecciona al menos un activo', 'error'); return; }
+      if (checked.length >= thisGroup.members.length) {
+        UI.toast('Deja al menos un activo en el grupo original', 'error'); return;
+      }
+      try {
+        await Api.assetGroups.split(gid, { asset_ids: checked, new_group_name: newName });
+        UI.closeModal();
+        UI.toast('Grupo dividido', 'success');
+        await ViewAssets._renderGrouping();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  },
+
+  // ---------- CRUD de activos ----------
 
   async _edit(id) {
     let a = { name: '', asset_type: 'support_hardware', description: '',
@@ -292,11 +744,11 @@ const ViewAssets = {
         <input id="f-cat" value="${UI.esc(a.category||'')}">
       </div>
       <div class="span2">
-        <label>Descripción</label>
+        <label>Descripcion</label>
         <textarea id="f-desc" rows="2">${UI.esc(a.description||'')}</textarea>
       </div>
       <div>
-        <label>Localización</label>
+        <label>Localizacion</label>
         <input id="f-loc" value="${UI.esc(a.location||'')}">
       </div>
       <div>
@@ -304,7 +756,7 @@ const ViewAssets = {
         <input id="f-proc" value="${UI.esc(a.business_process||'')}">
       </div>
       <div>
-        <label>Clasificación</label>
+        <label>Clasificacion</label>
         <select id="f-class">
           ${['','Publico','Interno','Confidencial','Secreto'].map(c =>
             `<option value="${c}" ${a.classification===c?'selected':''}>${c||'-'}</option>`).join('')}
@@ -314,7 +766,7 @@ const ViewAssets = {
         <label>Valor monetario (EUR, FAIR/ALE)</label>
         <input type="number" min="0" step="1000" id="f-monetary" value="${a.monetary_value || ''}" placeholder="ej. 50000">
       </div>
-      <div class="span2"><label>Valoración CIA (0-4)</label></div>
+      <div class="span2"><label>Valoracion CIA (0-4)</label></div>
       ${['confidentiality','integrity','availability','authenticity','accountability'].map(d =>
         `<div>
            <label>${({confidentiality:'Confidencialidad',integrity:'Integridad',availability:'Disponibilidad',authenticity:'Autenticidad',accountability:'Trazabilidad'})[d]}</label>
@@ -342,7 +794,6 @@ const ViewAssets = {
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
 
-    // Historial de cambios (lazy-load al expandir)
     if (id) {
       const det = document.getElementById('asset-history');
       if (det) {
@@ -379,7 +830,6 @@ const ViewAssets = {
       catch (e) { UI.toast(e.message, 'error'); }
     };
 
-    // Boton IA: sugerir riesgos para este activo
     if (id) {
       const aiBtn = document.getElementById('m-ai-suggest');
       if (aiBtn) aiBtn.onclick = async () => {

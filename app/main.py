@@ -11,10 +11,10 @@ from app import __version__
 from app.config import settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
-    admin, ai, ai_config, alerts, assets, audit, audits, auth, awareness, catalogues, context,
-    controls, cve, documents, feature_flags, gdpr, incidents, nonconformities, organizations,
-    osint, policies, reports, risks, search, sharepoint, sso, supplier_questionnaires, suppliers,
-    tasks, users,
+    admin, ai, ai_config, alerts, asset_groups, assets, audit, audits, auth, awareness,
+    catalogues, context, controls, cve, documents, feature_flags, gdpr, incidents,
+    nonconformities, organizations, osint, policies, reports, risks, search, sharepoint,
+    sso, supplier_questionnaires, suppliers, tasks, users,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -96,6 +96,7 @@ app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(context.router)
 app.include_router(assets.router)
+app.include_router(asset_groups.router)
 app.include_router(catalogues.threats_router)
 app.include_router(catalogues.vulns_router)
 app.include_router(controls.catalog_router)

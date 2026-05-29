@@ -392,6 +392,43 @@ const ViewGuide = {
     ${this._h('Apetito de riesgo automatico')}
     ${this._p('Tras cada analisis, el sistema compara el nivel residual de cada riesgo IA contra el <strong>apetito de riesgo</strong> configurado en la seccion Contexto. Si un riesgo supera el umbral y tenia decision "retention" (aceptar), se escala automaticamente a "modification" (mitigar) para garantizar que ningun riesgo por encima del apetito quede sin plan de accion.')}
     ${this._tip('<strong>Flujo minimo del usuario:</strong> (1) configura el API key del agente, (2) sube tus documentos SGSI, (3) importa tus activos — el resto lo hace el sistema automaticamente.')}
+    ${this._h('Agrupacion de activos con IA (v1.8.0)')}
+    ${this._p('Cuando el inventario contiene cientos o miles de activos (por ejemplo tras una importacion masiva o una integracion con CMDB), el analisis riesgo-por-riesgo es redundante: un servidor Windows de produccion tiene el mismo perfil de amenaza que los 400 servidores Windows iguales. La <strong>Agrupacion con IA</strong> resuelve este problema.')}
+    ${this._h('Flujo de agrupacion')}
+    ${this._steps([
+      '<strong>Tab "Agrupacion con IA":</strong> accede desde la vista de Activos pulsando la pestana.',
+      '<strong>Configura criterios:</strong> expande el panel "Criterios de agrupacion". Activa o desactiva los criterios segun las necesidades de tu organizacion. Los criterios de nivel 1 son los mas relevantes (tipo de activo); los de nivel 2 y 3 refinan los grupos.',
+      '<strong>Analiza con IA:</strong> pulsa "Analizar y proponer grupos con IA". El agente examina todos los activos no agrupados y propone grupos coherentes con ISO 27005, con justificacion metodologica incluida.',
+      '<strong>Revisa las propuestas:</strong> cada grupo muestra nombre, numero de activos, muestra de miembros y la razon ISO 27005 del agrupamiento.',
+      '<strong>Valida o ajusta:</strong> Valida cada grupo (o todos a la vez), renombra, divide grupos en dos, mueve activos entre grupos, o elimina grupos que no sean relevantes.',
+      '<strong>Analisis de riesgo:</strong> al validar un grupo se crea automaticamente un activo representativo con los valores CIA maximos del grupo. El pipeline IA analiza este activo representativo en lugar de cada activo individual.',
+    ])}
+    ${this._h('Criterios de agrupacion ISO 27005')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;text-align:left;">Criterio</th>
+        <th style="padding:8px;text-align:left;">Nivel</th>
+        <th style="padding:8px;text-align:left;">Para que sirve</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Tipo de activo ISO 27005','N1','Primaria: hardware, software, red, personal... Las amenazas dependen del tipo.'],
+          ['Plataforma / Sistema operativo','N2','Diferencia Windows vs Linux vs Cloud, fisico vs virtual.'],
+          ['Clasificacion de la informacion','N2','Separa activos con datos confidenciales de los publicos.'],
+          ['Criticidad CIA','N2','Agrupa por perfil de valoracion (critico, alto, medio, bajo).'],
+          ['Ubicacion / entorno','N3','Distingue CPD propio vs cloud vs oficina.'],
+          ['Propietario / departamento','N3','Util cuando los controles organizacionales difieren por departamento.'],
+          ['Proceso de negocio','N3','Agrupa activos que dan soporte al mismo proceso.'],
+        ].map((r, i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          <td style="padding:8px;">${r[0]}</td>
+          <td style="padding:8px;font-family:monospace;font-size:11px;">${r[1]}</td>
+          <td style="padding:8px;color:var(--text-muted);">${r[2]}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Activo representativo')}
+    ${this._p('Cuando validas un grupo, RiskHub crea un <strong>activo representativo</strong> (codigo GRP-XXXX) que resume el grupo. Sus valores CIA son los maximos del grupo (criterio conservador ISO 27005 para no subestimar el riesgo). El pipeline de analisis IA trabaja sobre este representativo, y los riesgos resultantes cubren a todos los miembros del grupo.')}
+    ${this._warn('Los activos representativos no aparecen en el inventario normal. Solo son visibles en la seccion Riesgos al filtrar por grupo.')}
   `;},
 
   get _cThreats() { return `
