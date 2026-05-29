@@ -94,7 +94,7 @@ class SharePointConfigOut(BaseModel):
 @router.get("/config", response_model=SharePointConfigOut)
 def get_config(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Devuelve la configuracion actual (sin client_secret)."""
     cfg = _get_config(db, current_user.organization_id)
@@ -148,10 +148,10 @@ def save_config(
 @router.post("/test")
 def test_connection(
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     """Prueba la conexion con Microsoft Graph API."""
-    token = _resolve_token(db)
+    token = _resolve_token(db, current_user.organization_id)
     try:
         sites = sp.list_sites(token)
         return {
@@ -166,11 +166,11 @@ def test_connection(
 @router.get("/sites")
 def list_sites(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     search: str = Query("*", description="Termino de busqueda de sitios"),
 ):
     """Lista los sitios de SharePoint accesibles."""
-    token = _resolve_token(db)
+    token = _resolve_token(db, current_user.organization_id)
     try:
         return {"sites": sp.list_sites(token, search)}
     except ValueError as e:
@@ -181,10 +181,10 @@ def list_sites(
 def list_drives(
     site_id: str = Query(..., description="ID del sitio de SharePoint"),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Lista las bibliotecas de documentos de un sitio."""
-    token = _resolve_token(db)
+    token = _resolve_token(db, current_user.organization_id)
     try:
         return {"drives": sp.list_drives(token, site_id)}
     except ValueError as e:
@@ -196,10 +196,10 @@ def list_files(
     drive_id: str = Query(..., description="ID de la biblioteca"),
     item_id: str = Query("root", description="ID del item (carpeta). 'root' para la raiz."),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Lista el contenido de una carpeta en SharePoint."""
-    token = _resolve_token(db)
+    token = _resolve_token(db, current_user.organization_id)
     try:
         items = sp.list_children(token, drive_id, item_id)
         return {
@@ -233,7 +233,7 @@ def import_files(
     except ValueError:
         cat = AiDocumentCategory.OTHER
 
-    token = _resolve_token(db)
+    token = _resolve_token(db, current_user.organization_id)
 
     results = {"imported": [], "skipped": [], "errors": []}
 

@@ -210,7 +210,7 @@ def sso_status(db: Session = Depends(get_db)):
 @router.get("/config", response_model=SsoConfigOut)
 def get_sso_config(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Devuelve la configuracion SSO actual (sin client_secret)."""
     cfg = _get_config(db, current_user.organization_id)
