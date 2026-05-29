@@ -516,7 +516,7 @@ const ViewDashboard = {
     const u = Auth.user();
     const card = document.getElementById('dash-activity-card');
     if (!card) return;
-    if (!u || u.role !== 'admin') { card.style.display = 'none'; return; }
+    if (!u || (u.role !== 'admin' && u.role !== 'superadmin')) { card.style.display = 'none'; return; }
     card.style.display = '';
     const el = document.getElementById('dash-activity-body');
     try {

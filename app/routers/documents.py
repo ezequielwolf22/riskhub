@@ -1,5 +1,7 @@
 """Gestion de documentos para el agente IA."""
+import re
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -137,7 +139,9 @@ def upload_document(
     except ValueError:
         raise HTTPException(400, f"Categoria invalida: {category}")
 
-    unique_name = f"{uuid.uuid4().hex}_{file.filename}"
+    # Sanitizar el filename para evitar path traversal
+    safe_filename = re.sub(r"[^\w.\-]", "_", Path(file.filename or "file").name)[:80]
+    unique_name = f"{uuid.uuid4().hex}_{safe_filename}"
     # Cifrar el archivo antes de escribir en disco (Fernet / AES-128-CBC)
     save_document_file(data, unique_name)
 

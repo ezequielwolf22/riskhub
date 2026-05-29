@@ -181,8 +181,8 @@ def ai_extract_policy(
     # Truncar a ~12 000 chars para no exceder el contexto del modelo
     text_truncated = text[:12000]
 
-    # Resolver API key
-    cfg = db.query(AiConfig).first()
+    # Resolver API key del tenant actual
+    cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = resolve_api_key(cfg)
     if not api_key:
         raise HTTPException(

@@ -759,7 +759,7 @@ const ViewOsint = {
               </div>
               ${f.description ? `
               <div style="font-size:12px;color:var(--text-muted);white-space:pre-wrap;margin-bottom:8px;">
-                ${UI.esc(f.description).substring(0,200)}${f.description.length>200?'...':''}
+                ${UI.esc(f.description.slice(0,200))}${f.description.length>200?'...':''}
               </div>` : ''}
               ${canAct ? `
               <div style="display:flex;gap:6px;">

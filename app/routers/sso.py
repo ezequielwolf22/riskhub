@@ -356,10 +356,22 @@ def sso_callback(
             or email
         )
         try:
-            role = UserRole(cfg.get("default_role", "viewer"))
+            _raw_role = cfg.get("default_role", "viewer")
+            # Restringir a roles no privilegiados para usuarios SSO auto-provisionados
+            if _raw_role in (UserRole.SUPERADMIN.value, UserRole.ADMIN.value):
+                _raw_role = UserRole.VIEWER.value
+            role = UserRole(_raw_role)
         except ValueError:
             role = UserRole.VIEWER
 
+        # Resolver la org por dominio del email o usar la org configurada en SSO
+        from app.models import Organization
+        email_domain = email.split("@")[-1].lower() if "@" in email else ""
+        sso_org = None
+        if email_domain:
+            sso_org = db.query(Organization).filter(
+                Organization.domain == email_domain, Organization.is_active == True
+            ).first()
         user = User(
             email=email,
             full_name=full_name or email,
@@ -367,6 +379,7 @@ def sso_callback(
             hashed_password=hash_password(secrets.token_urlsafe(32)),
             role=role,
             is_active=True,
+            organization_id=sso_org.id if sso_org else None,
         )
         db.add(user)
         db.commit()

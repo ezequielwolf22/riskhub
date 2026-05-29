@@ -67,10 +67,11 @@ def _generate_otp_password(length: int = 12) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    """Extrae la IP real del cliente, respetando proxies de confianza."""
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
+    """Extrae la IP real del cliente desde X-Real-IP (seteado por Nginx/proxy).
+    X-Forwarded-For es ignorado porque el cliente puede falsificarlo."""
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
     return request.client.host if request.client else "unknown"
 
 

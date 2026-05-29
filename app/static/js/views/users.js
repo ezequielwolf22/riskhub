@@ -80,7 +80,7 @@ const ViewUsers = {
             return `<tr>
               <td><strong>${UI.esc(u.email)}</strong></td>
               <td>${UI.esc(u.full_name)}</td>
-              <td><span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">${u.role}</span></td>
+              <td><span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">${UI.esc(u.role)}</span></td>
               ${isSuperAdmin ? `<td style="font-size:12px;">${UI.esc(ViewUsers._orgName(u.organization_id))}</td>` : ''}
               <td>${u.is_active ? '<span class="badge badge-low">Activo</span>' : '<span class="badge badge-high">Inactivo</span>'}</td>
               <td style="font-size:12px;">${u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '-'}</td>

@@ -279,7 +279,8 @@ const ViewCompliance = (() => {
             ${hasGap
               ? `<span style="color:var(--brand-orange);cursor:pointer;font-size:11px;"
                        title="${UI.esc(c.notes.slice(0,300))}"
-                       onclick="this.parentElement.innerHTML='<span style=font-size:11px>${UI.esc(c.notes.replace(/'/g, '').slice(0,300))}</span>'">
+                       data-notes="${UI.esc(c.notes.slice(0,300))}"
+                       onclick="const el=document.createElement('span');el.style.fontSize='11px';el.textContent=this.dataset.notes;this.parentElement.replaceChild(el,this)">
                    Ver gap IA &#9660;</span>`
               : '<span style="color:var(--text-subtle);">-</span>'}
           </td>

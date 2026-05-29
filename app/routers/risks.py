@@ -318,9 +318,11 @@ async def import_risks_csv(
             skipped.append(f"Amenaza no encontrada: '{threat_key}'")
             continue
 
-        # Detectar duplicados
+        # Detectar duplicados dentro de la misma org
         dup = db.query(Risk).filter(
-            Risk.asset_id == asset.id, Risk.threat_id == threat.id
+            Risk.asset_id == asset.id,
+            Risk.threat_id == threat.id,
+            Risk.organization_id == current_user.organization_id,
         ).first()
         if dup:
             skipped.append(f"{asset.code} x {threat.code} (duplicado: {dup.code})")

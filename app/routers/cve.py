@@ -355,7 +355,7 @@ def create_risk_from_cve(
     from app.services.risk_engine import calc_level, clamp
     from app.routers.risks import _next_code
 
-    asset = db.query(Asset).filter(Asset.id == body.asset_id).first()
+    asset = filter_by_org(db.query(Asset).filter(Asset.id == body.asset_id), Asset, current_user).first()
     if not asset:
         raise HTTPException(404, "Activo no encontrado.")
 

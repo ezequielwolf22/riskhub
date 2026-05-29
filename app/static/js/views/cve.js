@@ -154,7 +154,9 @@ const ViewCve = {
   _cveManualCard(cve) {
     const sevColor = { CRITICAL: '#B91C1C', HIGH: '#D97706', MEDIUM: '#2563EB', LOW: '#059669', UNKNOWN: '#6B7280' };
     const col = sevColor[cve.cvss_severity] || '#6B7280';
-    const selBtn = `<button class="btn btn-sm btn-primary" onclick="ViewCve._addManualCveToAnalysis(${JSON.stringify(cve).replace(/"/g,'&quot;')})">
+    const selBtn = `<button class="btn btn-sm btn-primary"
+      data-cve="${UI.esc(JSON.stringify(cve))}"
+      onclick="ViewCve._addManualCveToAnalysis(JSON.parse(this.dataset.cve))">
       Añadir al análisis IA
     </button>`;
     return `

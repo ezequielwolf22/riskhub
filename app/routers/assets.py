@@ -74,7 +74,7 @@ def create_asset(data: AssetIn, background_tasks: BackgroundTasks,
                  db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
     code = data.code or _next_code(db)
-    if db.query(Asset).filter(Asset.code == code).first():
+    if db.query(Asset).filter(Asset.code == code, Asset.organization_id == current_user.organization_id).first():
         raise HTTPException(400, f"Ya existe activo con codigo {code}")
     payload = data.model_dump(exclude={"owner_ids"})
     payload["code"] = code
@@ -203,7 +203,7 @@ async def import_assets(
             payload["asset_type"] = atype
 
             code = str(row["code"]).strip() if "code" in df.columns and pd.notna(row.get("code")) else _next_code(db)
-            existing = db.query(Asset).filter(Asset.code == code).first()
+            existing = db.query(Asset).filter(Asset.code == code, Asset.organization_id == current_user.organization_id).first()
             if existing:
                 if check_org_access(existing.organization_id, current_user):
                     for k, v in payload.items():

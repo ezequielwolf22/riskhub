@@ -1,5 +1,8 @@
 """Construye el bloque de contexto para inyectar en el prompt del agente IA."""
+import logging
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from app.models import (
     AiConfig, Asset, ControlImplementation, ControlStatus,
@@ -20,6 +23,8 @@ def build_context(
     contiene UNICAMENTE datos del tenant del usuario autenticado.
     Solo se omite (None) en contextos de superadmin o pruebas internas.
     """
+    if organization_id is None:
+        logger.warning("build_context llamado sin organization_id — contexto multi-tenant activo")
     parts: list[str] = []
 
     def _forg(q, model):
