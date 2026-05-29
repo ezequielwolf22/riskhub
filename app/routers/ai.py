@@ -31,6 +31,7 @@ class AnalyzeRequest(BaseModel):
 
 class ImportRequest(BaseModel):
     scenarios: list[dict[str, Any]]
+    risk_appetite: int | None = None   # nivel 0-8; si se provee, se guarda en RiskContext
 
 
 @router.get("/questionnaire")
@@ -135,6 +136,18 @@ def import_risks(
         count = filter_by_org(db.query(Risk), Risk, current_user).count() + len(created) + 1
         code = f"RSK-{count:04d}"
 
+        # Mapear treatment_option del escenario IA al enum TreatmentOption
+        treatment_map = {
+            "modification": TreatmentOption.MODIFICATION,
+            "retention": TreatmentOption.RETENTION,
+            "avoidance": TreatmentOption.AVOIDANCE,
+            "sharing": TreatmentOption.SHARING,
+        }
+        sc_treatment = treatment_map.get(
+            (sc.get("treatment_option") or "modification").lower(),
+            TreatmentOption.MODIFICATION,
+        )
+
         risk = Risk(
             code=code,
             asset_id=asset.id,
@@ -147,7 +160,7 @@ def import_risks(
             residual_likelihood=sc.get("residual_likelihood", 1),
             residual_level=sc.get("residual_level", 1),
             status=RiskStatus.IDENTIFIED,
-            treatment_option=TreatmentOption.MODIFICATION,
+            treatment_option=sc_treatment,
             description=sc.get("rationale", ""),
             owner_id=current_user.id,
             organization_id=current_user.organization_id,
@@ -156,11 +169,29 @@ def import_risks(
         created.append(f"{asset.name} × {threat.name}")
 
     db.commit()
+
+    # Guardar apetito de riesgo en RiskContext si se proporciona
+    if req.risk_appetite is not None:
+        from app.models import RiskContext
+        from app.routers.context import _apply_appetite_bulk
+        ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+        if not ctx:
+            ctx = RiskContext(organization_id=current_user.organization_id)
+            db.add(ctx)
+            db.flush()
+        old_appetite = ctx.risk_appetite
+        ctx.risk_appetite = max(0, min(8, req.risk_appetite))
+        db.commit()
+        # Recalcular tratamientos de todos los riesgos con el nuevo apetito
+        if old_appetite != ctx.risk_appetite:
+            _apply_appetite_bulk(db, current_user.organization_id, ctx.risk_appetite)
+
     return {
         "created": len(created),
         "skipped": len(skipped),
         "detail_created": created,
         "detail_skipped": skipped,
+        "risk_appetite_saved": req.risk_appetite is not None,
     }
 
 

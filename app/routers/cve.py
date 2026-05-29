@@ -163,6 +163,37 @@ def save_config(
     return {"ok": True, "message": "Configuracion CVE Monitor guardada."}
 
 
+@router.get("/lookup")
+def lookup_cve(
+    q: str = Query(..., min_length=3, max_length=300,
+                   description="CVE ID (CVE-2024-12345) o URL de NVD/MITRE/CVE.org"),
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Busca un CVE especifico por ID o URL.
+
+    Acepta:
+      - CVE-2024-12345
+      - https://nvd.nist.gov/vuln/detail/CVE-2024-12345
+      - https://www.cve.org/CVERecord?id=CVE-2024-12345
+      - https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-12345
+    """
+    import re
+    match = re.search(r'CVE-\d{4}-\d+', q, re.IGNORECASE)
+    if not match:
+        raise HTTPException(400,
+            "No se encontro un ID CVE valido en la entrada. "
+            "Formato esperado: CVE-YYYY-NNNNN")
+    cve_id = match.group(0).upper()
+    api_key = _get_api_key(db)
+    cve = cvs.fetch_by_id(api_key, cve_id)
+    if not cve:
+        raise HTTPException(404,
+            f"{cve_id} no encontrado en NVD. "
+            "Comprueba que el ID es correcto o que la CVE ya ha sido publicada.")
+    return cve
+
+
 @router.get("/search")
 def search_cves(
     days: int = Query(7, ge=1, le=90),

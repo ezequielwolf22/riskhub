@@ -135,6 +135,63 @@ const ViewCve = {
     `;
   },
 
+  // ---- Busqueda manual ----
+
+  async _lookupManual() {
+    const input = document.getElementById('cve-manual-input');
+    const q = input?.value.trim();
+    if (!q) { UI.toast('Introduce un CVE ID o URL', 'warn'); return; }
+    const res = document.getElementById('cve-manual-result');
+    if (res) res.innerHTML = '<p class="text-muted" style="font-size:13px;">Buscando en NVD...</p>';
+    try {
+      const cve = await Api.cve.lookup(q);
+      if (res) res.innerHTML = this._cveManualCard(cve);
+    } catch (e) {
+      if (res) res.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _cveManualCard(cve) {
+    const sevColor = { CRITICAL: '#B91C1C', HIGH: '#D97706', MEDIUM: '#2563EB', LOW: '#059669', UNKNOWN: '#6B7280' };
+    const col = sevColor[cve.cvss_severity] || '#6B7280';
+    const selBtn = `<button class="btn btn-sm btn-primary" onclick="ViewCve._addManualCveToAnalysis(${JSON.stringify(cve).replace(/"/g,'&quot;')})">
+      Añadir al análisis IA
+    </button>`;
+    return `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg-2);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+          <div>
+            <strong style="font-size:14px;">${UI.esc(cve.id)}</strong>
+            <span style="margin-left:8px;background:${col};color:#fff;border-radius:4px;
+                         padding:2px 8px;font-size:11px;font-weight:700;">${UI.esc(cve.cvss_severity)} ${cve.cvss_score}</span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            ${selBtn}
+            <button class="btn btn-sm" onclick="ViewCve._selectedCves.add('${UI.esc(cve.id)}');UI.toast('${UI.esc(cve.id)} añadido a la seleccion','success');">
+              Seleccionar
+            </button>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;line-height:1.5;">${UI.esc(cve.description.slice(0,300))}${cve.description.length>300?'...':''}</p>
+        <div style="display:flex;gap:16px;font-size:11px;color:var(--text-muted);">
+          <span>Vector: <code>${UI.esc(cve.cvss_vector||'-')}</code></span>
+          <span>Publicado: ${UI.esc((cve.published||'').slice(0,10))}</span>
+          ${cve.affected_products?.length ? `<span>Productos: ${cve.affected_products.slice(0,4).map(p=>UI.esc(p)).join(', ')}</span>` : ''}
+        </div>
+      </div>`;
+  },
+
+  _addManualCveToAnalysis(cve) {
+    // Añadir el CVE a la lista de seleccionados y navegar a Analisis IA
+    this._selectedCves.add(cve.id);
+    // Guardar el CVE en la lista local para que aparezca en el análisis
+    if (!this._cves.find(c => c.id === cve.id)) {
+      this._cves.unshift(cve);
+    }
+    this._showTab('analyze');
+    UI.toast(`${cve.id} añadido al análisis IA`, 'success');
+  },
+
   async _saveConfig() {
     const apikey = document.getElementById('cve-apikey')?.value.trim();
     const days = parseInt(document.getElementById('cve-days')?.value || '7');
@@ -158,6 +215,22 @@ const ViewCve = {
     if (!p) return;
     const cfg = this._config || {};
     p.innerHTML = `
+      <!-- Busqueda manual por ID o URL -->
+      <div class="card" style="margin-bottom:16px;border-left:4px solid var(--brand-purple);">
+        <h4 style="margin:0 0 8px;font-size:13px;font-weight:600;">Añadir CVE manualmente</h4>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+          Pega un ID CVE o un enlace de NVD / MITRE / CVE.org y pulsa Buscar.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input id="cve-manual-input" class="input" style="flex:1;min-width:260px;"
+            placeholder="CVE-2024-12345  ó  https://nvd.nist.gov/vuln/detail/CVE-2024-12345"
+            onkeydown="if(event.key==='Enter')ViewCve._lookupManual()">
+          <button class="btn btn-primary" onclick="ViewCve._lookupManual()">Buscar</button>
+        </div>
+        <div id="cve-manual-result" style="margin-top:12px;"></div>
+      </div>
+
+      <!-- Busqueda periodica NVD -->
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
           <div>

@@ -150,6 +150,23 @@ QUESTIONNAIRE: list[dict] = [
         "type": "select",
         "options": ["< 1 hora", "1 – 4 horas", "4 – 24 horas", "1 – 3 días", "> 3 días"],
         "required": True,
+        "allow_extra": True,
+    },
+    {
+        "id": "risk_appetite_level",
+        "category": "Apetito de riesgo",
+        "question": "¿Cuál es el nivel máximo de riesgo residual que la organización acepta sin tratamiento adicional? (escala ISO 27005: 0 mínimo – 8 máximo)",
+        "type": "select",
+        "options": [
+            "1 — Conservador: solo riesgos mínimos (nivel residual ≤ 1)",
+            "2 — Muy prudente (nivel residual ≤ 2)",
+            "3 — Prudente: tolerancia baja (nivel residual ≤ 3)",
+            "4 — Moderado: equilibrio seguridad / operatividad (nivel residual ≤ 4)",
+            "5 — Tolerante: acepta riesgos medios (nivel residual ≤ 5)",
+            "6 — Permisivo: solo actúa sobre riesgos altos/críticos (nivel residual ≤ 6)",
+        ],
+        "required": True,
+        "allow_extra": True,
     },
     {
         "id": "additional",
@@ -157,8 +174,33 @@ QUESTIONNAIRE: list[dict] = [
         "question": "Información adicional relevante sobre el contexto de riesgo",
         "type": "textarea",
         "required": False,
+        "allow_extra": True,
     },
 ]
+
+
+# ---------- Mapa: control declarado → codigos ISO 27002:2022 ----------
+
+CONTROLS_ISO_MAP: dict[str, list[str]] = {
+    "Firewall perimetral":                              ["8.20", "8.21"],
+    "IDS / IPS":                                       ["8.16"],
+    "EDR / Antivirus gestionado":                      ["8.7"],
+    "SIEM / Monitorización centralizada":              ["8.15", "8.16"],
+    "MFA en accesos críticos":                         ["5.17", "8.5"],
+    "Gestión de parches automatizada":                 ["8.8"],
+    "Backups con pruebas de restauración periódicas":  ["8.13", "8.14"],
+    "Cifrado de datos en reposo y en tránsito":        ["8.24"],
+    "DLP (prevención de fuga de datos)":               ["8.12"],
+    "Formación periódica a empleados en ciberseguridad": ["6.3"],
+    "Plan de respuesta a incidentes documentado y probado": ["5.26", "5.25"],
+}
+
+
+def _parse_appetite_level(answer: str) -> int:
+    """Extrae el numero de nivel de apetito de la respuesta seleccionada."""
+    import re
+    m = re.match(r'^(\d+)', (answer or "").strip())
+    return int(m.group(1)) if m else 3   # default 3 si no se puede parsear
 
 
 # ---------- Construcción del prompt ----------
@@ -184,7 +226,31 @@ def _build_prompt(answers: dict, assets: list, threats: list, controls: list) ->
         ensure_ascii=False, indent=2
     )
 
-    answers_str = "\n".join(f"  - {k}: {v}" for k, v in answers.items())
+    # Separar respuestas propias del cuestionario de criterios extra
+    base_answers = {}
+    extra_criteria_items = []
+    for k, v in answers.items():
+        if k.startswith("extra_"):
+            if v and str(v).strip():
+                extra_criteria_items.append(f"  [{k.replace('extra_', '')}]: {v}")
+        else:
+            base_answers[k] = v
+
+    answers_str = "\n".join(f"  - {k}: {v}" for k, v in base_answers.items())
+    extra_str = "\n".join(extra_criteria_items) if extra_criteria_items else "  (ninguno)"
+
+    # Mapear controles declarados a ISO 27002:2022
+    declared_controls: list[str] = answers.get("controls_existing") or []
+    mapped_controls_lines = []
+    for ctrl_name in declared_controls:
+        iso_codes = CONTROLS_ISO_MAP.get(ctrl_name, [])
+        codes_str = ", ".join(iso_codes) if iso_codes else "ver catalogo"
+        mapped_controls_lines.append(f"  - {ctrl_name} → ISO 27002: {codes_str}")
+    mapped_controls_str = "\n".join(mapped_controls_lines) if mapped_controls_lines else "  (ninguno declarado)"
+
+    # Apetito de riesgo
+    appetite_raw = answers.get("risk_appetite_level", "")
+    appetite_num = _parse_appetite_level(appetite_raw)
 
     return f"""Eres un experto en gestión de riesgos de seguridad de la información certificado en ISO/IEC 27001:2022, ISO/IEC 27005:2018 y MAGERIT v3.
 
@@ -206,6 +272,26 @@ AMENAZAS DISPONIBLES (muestra):
 CONTROLES ISO 27002:2022 DISPONIBLES (muestra):
 {controls_str}
 
+CONTROLES DE SEGURIDAD YA IMPLEMENTADOS EN LA ORGANIZACIÓN:
+{mapped_controls_str}
+INSTRUCCION CRITICA: Los controles listados arriba YA EXISTEN en la organización.
+- Deben aparecer en el campo control_codes de los escenarios que mitigan.
+- Su presencia REDUCE el nivel residual respecto al inherente (probabilidad y/o consecuencia).
+- Si un control cubre parcialmente el riesgo, reduce 1 punto; si lo cubre plenamente, reduce 2 puntos.
+- Incluye también estos controles como evidencia de cumplimiento normativo en el rationale.
+
+APETITO DE RIESGO DE LA ORGANIZACIÓN:
+- Nivel máximo aceptable sin tratamiento adicional: {appetite_num} (escala 0-8, ISO 27005)
+- Opción seleccionada: "{appetite_raw}"
+INSTRUCCION: Para cada escenario, asigna treatment_option según la regla:
+  · Si residual_level > {appetite_num} → treatment_option = "modification" (DEBE mitigarse)
+  · Si residual_level <= {appetite_num} → treatment_option = "retention" (se puede aceptar)
+
+CRITERIOS ADICIONALES APORTADOS POR EL USUARIO:
+{extra_str}
+INSTRUCCION: Considera estos criterios como contexto adicional para calibrar probabilidades,
+consecuencias y tratamientos. Propágalos a todos los escenarios donde apliquen.
+
 RESPUESTAS AL CUESTIONARIO ORGANIZACIONAL:
 {answers_str}
 
@@ -218,6 +304,7 @@ Devuelve EXCLUSIVAMENTE un JSON válido con este esquema (sin texto adicional):
 {{
   "summary": "Resumen ejecutivo del perfil de riesgo en 3-4 frases.",
   "top_risks": ["riesgo crítico 1", "riesgo crítico 2", "riesgo crítico 3"],
+  "risk_appetite": {appetite_num},
   "scenarios": [
     {{
       "asset_id": null,
@@ -231,14 +318,15 @@ Devuelve EXCLUSIVAMENTE un JSON válido con este esquema (sin texto adicional):
       "inherent_likelihood": 0,
       "inherent_level": 0,
       "control_codes": ["5.1", "8.2"],
-      "control_rationale": "Por qué estos controles mitigan este riesgo (1 frase)",
+      "control_rationale": "Por qué estos controles mitigan este riesgo y cómo los controles existentes contribuyen (1-2 frases)",
       "residual_consequence": 0,
       "residual_likelihood": 0,
       "residual_level": 0,
-      "rationale": "Justificación técnica del escenario (1-2 frases)"
+      "treatment_option": "modification|retention|avoidance|sharing",
+      "rationale": "Justificación técnica del escenario incluyendo referencia a controles existentes (1-2 frases)"
     }}
   ]
-}}"""
+}}\n"""
 
 
 # ---------- Llamada a Claude API ----------
@@ -295,7 +383,14 @@ def run_analysis(answers: dict, db: Session, api_key: str | None = None) -> dict
 
     result = json.loads(raw[start:end])
 
-    # Aseguramos niveles coherentes con la matriz
+    # Obtener apetito de riesgo del cuestionario para post-procesado
+    appetite_num = _parse_appetite_level(answers.get("risk_appetite_level", ""))
+    # Aseguramos que el apetito quede en el resultado
+    if "risk_appetite" not in result:
+        result["risk_appetite"] = appetite_num
+
+    # Post-procesar escenarios: niveles coherentes con la matriz + treatment_option por apetito
+    valid_treatments = {"modification", "retention", "avoidance", "sharing"}
     for sc in result.get("scenarios", []):
         c_ = max(0, min(4, int(sc.get("inherent_consequence", 0))))
         l_ = max(0, min(4, int(sc.get("inherent_likelihood", 0))))
@@ -308,5 +403,27 @@ def run_analysis(answers: dict, db: Session, api_key: str | None = None) -> dict
         sc["residual_level"] = DEFAULT_MATRIX[rc][rl]
         sc["residual_consequence"] = rc
         sc["residual_likelihood"] = rl
+
+        # Garantizar treatment_option coherente con el apetito
+        # Si el IA no lo puso o lo puso incorrecto, lo forzamos
+        ai_treatment = sc.get("treatment_option", "")
+        if ai_treatment not in valid_treatments:
+            ai_treatment = ""
+        if not ai_treatment:
+            # Asignar basado en apetito
+            sc["treatment_option"] = (
+                "retention" if sc["residual_level"] <= appetite_num else "modification"
+            )
+        else:
+            # Respetar lo que dijo la IA pero correger incoherencias graves
+            if sc["residual_level"] <= appetite_num and ai_treatment == "modification":
+                sc["treatment_option"] = "retention"
+            elif sc["residual_level"] > appetite_num and ai_treatment == "retention":
+                sc["treatment_option"] = "modification"
+            else:
+                sc["treatment_option"] = ai_treatment
+
+        # Bandera visual para la UI
+        sc["above_appetite"] = sc["residual_level"] > appetite_num
 
     return result

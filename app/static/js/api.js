@@ -84,6 +84,7 @@ const Api = {
   assetGroups: {
     getConfig: () => Api.get('/api/asset-groups/config'),
     saveConfig: (d) => Api.put('/api/asset-groups/config', d),
+    resetConfig: () => Api.del('/api/asset-groups/config'),
     propose: () => Api.post('/api/asset-groups/propose', {}),
     list: (status) => Api.get('/api/asset-groups/', status ? { status } : undefined),
     create: (d) => Api.post('/api/asset-groups/', d),
@@ -284,6 +285,7 @@ const Api = {
     getConfig: () => Api.get('/api/cve/config'),
     saveConfig: (d) => Api.put('/api/cve/config', d),
     search: (q) => Api.get('/api/cve/search', q),
+    lookup: (q) => Api.get('/api/cve/lookup', { q }),
     analyze: (d) => Api.post('/api/cve/analyze', d),
     createRisk: (d) => Api.post('/api/cve/create-risk', d),
   },

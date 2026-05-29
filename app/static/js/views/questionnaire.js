@@ -48,6 +48,10 @@ const ViewQuestionnaire = {
           El agente IA analizará el perfil de riesgo siguiendo <strong>ISO/IEC 27005:2018</strong> y
           <strong>MAGERIT v3</strong>, cruzando activos con amenazas y calculando niveles inherentes
           y residuales. Podrás importar los escenarios generados directamente al registro de riesgos.
+          <br><span style="font-size:12px;color:var(--text-muted);">
+            Puedes añadir criterios adicionales en cualquier sección con el botón
+            <strong>"+ Añadir criterio"</strong> — el agente IA los tendrá en cuenta en todo el análisis.
+          </span>
         </p>
       </div>`;
 
@@ -58,7 +62,11 @@ const ViewQuestionnaire = {
 
       questions.forEach(q => {
         const req = q.required ? '<span style="color:var(--brand-orange)">*</span>' : '';
-        html += `<div class="span2"><label>${UI.esc(q.question)} ${req}</label>`;
+        html += `<div class="span2"><label style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span>${UI.esc(q.question)} ${req}</span>
+          ${q.allow_extra ? `<button type="button" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;"
+            onclick="ViewQuestionnaire._toggleExtra('${q.id}')">+ Añadir criterio</button>` : ''}
+        </label>`;
 
         if (q.type === 'select') {
           html += `<select id="q-${q.id}" style="width:100%;">
@@ -80,6 +88,16 @@ const ViewQuestionnaire = {
         } else if (q.type === 'textarea') {
           html += `<textarea id="q-${q.id}" rows="3" style="width:100%;"
                     placeholder="Opcional — escribe cualquier información relevante..."></textarea>`;
+        }
+
+        // Campo "Añadir criterio" oculto por defecto
+        if (q.allow_extra) {
+          html += `
+            <div id="extra-wrap-${q.id}" style="display:none;margin-top:8px;">
+              <label style="font-size:11px;color:var(--text-muted);">Criterio adicional para el agente IA</label>
+              <textarea id="extra-${q.id}" rows="2" class="input" style="width:100%;font-size:12px;"
+                placeholder="Describe cualquier contexto, restriccion, requisito normativo o detalle relevante sobre este punto..."></textarea>
+            </div>`;
         }
 
         html += `</div>`;
@@ -109,6 +127,15 @@ const ViewQuestionnaire = {
     document.getElementById('btn-analyze').onclick = () => this._submit();
   },
 
+  _toggleExtra(qId) {
+    const wrap = document.getElementById(`extra-wrap-${qId}`);
+    if (wrap) {
+      const visible = wrap.style.display !== 'none';
+      wrap.style.display = visible ? 'none' : '';
+      if (!visible) document.getElementById(`extra-${qId}`)?.focus();
+    }
+  },
+
   _collectAnswers() {
     const answers = {};
     const missing = [];
@@ -126,6 +153,13 @@ const ViewQuestionnaire = {
       } else if (q.type === 'textarea') {
         const el = document.getElementById(`q-${q.id}`);
         if (el) answers[q.id] = el.value;
+      }
+      // Recoger criterio adicional si existe y tiene contenido
+      if (q.allow_extra) {
+        const extraEl = document.getElementById(`extra-${q.id}`);
+        if (extraEl && extraEl.value.trim()) {
+          answers[`extra_${q.id}`] = extraEl.value.trim();
+        }
       }
     });
 
@@ -180,7 +214,16 @@ const ViewQuestionnaire = {
 
   _renderResults(container, result) {
     const scenarios = result.scenarios || [];
-    const levelClass = l => l >= 6 ? 'high' : l >= 3 ? 'medium' : 'low';
+    const appetite = result.risk_appetite ?? 3;
+    const aboveAppetite = scenarios.filter(s => s.above_appetite).length;
+    const belowAppetite = scenarios.length - aboveAppetite;
+
+    const treatmentLabel = t => ({
+      modification: '<span style="color:#D97706;font-size:10px;font-weight:700;">MITIGAR</span>',
+      retention:    '<span style="color:#059669;font-size:10px;font-weight:700;">ACEPTAR</span>',
+      avoidance:    '<span style="color:#B91C1C;font-size:10px;font-weight:700;">EVITAR</span>',
+      sharing:      '<span style="color:#2563EB;font-size:10px;font-weight:700;">TRANSFERIR</span>',
+    }[t] || '');
 
     let html = `
       <div class="card" style="margin-bottom:16px;border-left:4px solid var(--brand-purple);">
@@ -197,6 +240,40 @@ const ViewQuestionnaire = {
           </div>` : ''}
       </div>
 
+      <!-- Apetito de riesgo -->
+      <div class="card" style="margin-bottom:16px;background:var(--bg-2);">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:700;color:var(--brand-purple);">${appetite}</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Apetito de riesgo<br>(escala 0-8)</div>
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <div style="height:10px;border-radius:5px;background:linear-gradient(90deg,#059669,#D97706,#B91C1C);position:relative;margin-bottom:4px;">
+              <div style="position:absolute;left:${Math.round(appetite/8*100)}%;top:-4px;width:18px;height:18px;
+                           border-radius:50%;background:#fff;border:3px solid var(--brand-purple);transform:translateX(-50%);"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">
+              <span>0 Mínimo</span><span>4 Moderado</span><span>8 Máximo</span>
+            </div>
+          </div>
+          <div style="display:flex;gap:16px;text-align:center;">
+            <div>
+              <div style="font-size:20px;font-weight:700;color:#B91C1C;">${aboveAppetite}</div>
+              <div style="font-size:11px;color:var(--text-muted);">Sobre apetito<br><small>requieren mitigación</small></div>
+            </div>
+            <div>
+              <div style="font-size:20px;font-weight:700;color:#059669;">${belowAppetite}</div>
+              <div style="font-size:11px;color:var(--text-muted);">Dentro de apetito<br><small>se pueden aceptar</small></div>
+            </div>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin:10px 0 0;">
+          El apetito de riesgo se guardará en el Contexto organizacional al importar.
+          Los riesgos con nivel residual &gt; ${appetite} tienen tratamiento <strong>Mitigar</strong>;
+          los que están ≤ ${appetite} tienen tratamiento <strong>Aceptar</strong>.
+        </p>
+      </div>
+
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <h3>Escenarios de riesgo generados (${scenarios.length})</h3>
@@ -207,7 +284,9 @@ const ViewQuestionnaire = {
         </div>
         <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
           Selecciona los escenarios que quieres importar al registro de riesgos.
-          Los activos nuevos se crearán automáticamente.
+          Los activos nuevos se crearán automáticamente. La columna <strong>Tratamiento</strong> refleja
+          el apetito de riesgo: <span style="color:#B91C1C;font-weight:700;">MITIGAR</span> = sobre apetito;
+          <span style="color:#059669;font-weight:700;">ACEPTAR</span> = dentro de apetito.
         </p>
         <div style="overflow-x:auto;">
           <table class="data">
@@ -216,15 +295,16 @@ const ViewQuestionnaire = {
                 <th style="width:32px;"></th>
                 <th>Activo</th>
                 <th>Amenaza</th>
-                <th>Vulnerabilidad</th>
                 <th style="width:60px;text-align:center;">Inh.</th>
                 <th style="width:80px;text-align:center;">Controles</th>
                 <th style="width:60px;text-align:center;">Res.</th>
+                <th style="width:80px;text-align:center;">Tratamiento</th>
               </tr>
             </thead>
             <tbody>
               ${scenarios.map((sc, i) => `
-                <tr id="sc-row-${i}" style="cursor:pointer;" onclick="ViewQuestionnaire._toggleRow(${i})">
+                <tr id="sc-row-${i}" style="cursor:pointer;${sc.above_appetite ? 'border-left:3px solid #D97706;' : ''}"
+                    onclick="ViewQuestionnaire._toggleRow(${i})">
                   <td><input type="checkbox" id="sc-cb-${i}" checked
                        style="accent-color:var(--brand-purple);"
                        onclick="event.stopPropagation();ViewQuestionnaire._toggleRow(${i})"></td>
@@ -237,9 +317,6 @@ const ViewQuestionnaire = {
                     ${UI.esc(sc.threat_name || '')}
                     <div style="font-size:11px;color:var(--text-muted);">dim: ${UI.esc(sc.magerit_dimension || '')}</div>
                   </td>
-                  <td style="font-size:12px;color:var(--text-muted);max-width:200px;">
-                    ${UI.esc(sc.vulnerability_description || '')}
-                  </td>
                   <td style="text-align:center;">${UI.riskPill(sc.inherent_level)}</td>
                   <td style="text-align:center;font-size:11px;">
                     ${(sc.control_codes || []).slice(0,3).map(c =>
@@ -247,12 +324,14 @@ const ViewQuestionnaire = {
                     ${(sc.control_codes || []).length > 3 ? `+${sc.control_codes.length - 3}` : ''}
                   </td>
                   <td style="text-align:center;">${UI.riskPill(sc.residual_level)}</td>
+                  <td style="text-align:center;">${treatmentLabel(sc.treatment_option)}</td>
                 </tr>
                 <tr class="sc-detail-${i}" style="display:none;background:var(--bg-2);">
                   <td></td>
                   <td colspan="6" style="padding:8px 12px;font-size:12px;color:var(--text-muted);border-top:none;">
+                    <strong>Vulnerabilidad:</strong> ${UI.esc(sc.vulnerability_description || '')}<br>
                     <strong>Justificación:</strong> ${UI.esc(sc.rationale || '')}
-                    ${sc.control_rationale ? `<br><strong>Controles:</strong> ${UI.esc(sc.control_rationale)}` : ''}
+                    ${sc.control_rationale ? `<br><strong>Controles existentes:</strong> ${UI.esc(sc.control_rationale)}` : ''}
                   </td>
                 </tr>`).join('')}
             </tbody>
@@ -270,7 +349,7 @@ const ViewQuestionnaire = {
       </div>`;
 
     container.innerHTML = html;
-    document.getElementById('btn-import').onclick = () => this._import(scenarios);
+    document.getElementById('btn-import').onclick = () => this._import(scenarios, appetite);
   },
 
   _toggleRow(i) {
@@ -292,7 +371,7 @@ const ViewQuestionnaire = {
     });
   },
 
-  async _import(scenarios) {
+  async _import(scenarios, riskAppetite) {
     const toImport = scenarios.filter((_, i) => {
       const cb = document.getElementById(`sc-cb-${i}`);
       return cb?.checked;
@@ -308,16 +387,21 @@ const ViewQuestionnaire = {
     btn.textContent = 'Importando...';
 
     try {
-      const res = await Api.post('/api/ai/import', { scenarios: toImport });
+      const payload = { scenarios: toImport };
+      if (riskAppetite !== undefined && riskAppetite !== null) {
+        payload.risk_appetite = riskAppetite;
+      }
+      const res = await Api.post('/api/ai/import', payload);
+      const appetiteMsg = res.risk_appetite_saved ? ` · Apetito de riesgo (${riskAppetite}) guardado en Contexto` : '';
       UI.toast(
-        `✓ ${res.created} riesgos importados${res.skipped > 0 ? ` · ${res.skipped} omitidos` : ''}`,
+        `✓ ${res.created} riesgos importados${res.skipped > 0 ? ` · ${res.skipped} omitidos` : ''}${appetiteMsg}`,
         'success'
       );
       if (res.detail_skipped?.length > 0) {
         console.warn('Omitidos:', res.detail_skipped);
       }
       // Navegar a riesgos
-      setTimeout(() => { App.navigate('risks'); }, 1500);
+      setTimeout(() => { App.navigate('risks'); }, 1800);
     } catch (e) {
       UI.toast('Error al importar: ' + e.message, 'error');
       btn.disabled = false;
