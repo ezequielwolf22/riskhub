@@ -287,11 +287,13 @@ async def import_risks_csv(
     except Exception as exc:
         raise HTTPException(400, f"Error al leer el CSV: {exc}") from exc
 
-    # Cache de activos y amenazas para lookups rapidos
-    assets_by_code = {a.code: a for a in db.query(Asset).all()}
-    assets_by_name = {a.name.lower(): a for a in db.query(Asset).all()}
-    threats_by_code = {t.code: t for t in db.query(Threat).all()}
-    threats_by_name = {t.name.lower(): t for t in db.query(Threat).all()}
+    # Cache de activos y amenazas para lookups rapidos (filtrados por org)
+    org_assets = filter_by_org(db.query(Asset), Asset, current_user).all()
+    assets_by_code = {a.code: a for a in org_assets}
+    assets_by_name = {a.name.lower(): a for a in org_assets}
+    org_threats = filter_by_org(db.query(Threat), Threat, current_user).all()
+    threats_by_code = {t.code: t for t in org_threats}
+    threats_by_name = {t.name.lower(): t for t in org_threats}
 
     def _parse_int(val: str, default: int = 0, lo: int = 0, hi: int = 4) -> int:
         try:
@@ -389,11 +391,11 @@ async def import_risks_csv(
 
 @router.get("/heatmap/data")
 def heatmap(db: Session = Depends(get_db),
-            _: User = Depends(get_current_user),
+            current_user: User = Depends(get_current_user),
             mode: str = Query("residual", regex="^(residual|inherent)$")):
     """Devuelve matriz 5x5 con conteo y referencias de riesgo."""
     matrix = [[{"count": 0, "risks": []} for _ in range(5)] for _ in range(5)]
-    for r in db.query(Risk).all():
+    for r in filter_by_org(db.query(Risk), Risk, current_user).all():
         if mode == "residual":
             x, y = r.residual_likelihood, r.residual_consequence
         else:
@@ -410,10 +412,10 @@ def heatmap(db: Session = Depends(get_db),
 
 
 @router.get("/stats/summary")
-def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
+def summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Resumen para el dashboard."""
     now = datetime.now(timezone.utc)
-    risks = db.query(Risk).all()
+    risks = filter_by_org(db.query(Risk), Risk, current_user).all()
     by_band = {"low": 0, "medium": 0, "high": 0}
     for r in risks:
         if r.residual_level <= 2: by_band["low"] += 1
@@ -446,7 +448,7 @@ def summary(db: Session = Depends(get_db), _: User = Depends(get_current_user)):
 
     # Control maturity stats
     from app.models import ControlStatus
-    impls = db.query(ControlImplementation).all()
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     impl_implemented = sum(1 for c in impls if c.status == ControlStatus.IMPLEMENTED)
     avg_maturity = round(sum(c.maturity for c in impls) / len(impls), 1) if impls else 0
     controls_overdue_reviews = sum(

@@ -165,9 +165,9 @@ def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
 @router.delete("/rules/{rule_id}", status_code=204)
 def delete_rule(rule_id: int, db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
-    if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
+    if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST, UserRole.SUPERADMIN):
         raise HTTPException(403, "Acceso denegado")
-    rule = db.get(AlertRule, rule_id)
+    rule = filter_by_org(db.query(AlertRule).filter(AlertRule.id == rule_id), AlertRule, current_user).first()
     if not rule:
         raise HTTPException(404, "Regla no encontrada")
     log_action(db, current_user.id, "delete", "alert_rule", str(rule_id),
@@ -179,9 +179,9 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db),
 @router.patch("/rules/{rule_id}/toggle", response_model=AlertRuleOut)
 def toggle_rule(rule_id: int, db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
-    if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
+    if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST, UserRole.SUPERADMIN):
         raise HTTPException(403, "Acceso denegado")
-    rule = db.get(AlertRule, rule_id)
+    rule = filter_by_org(db.query(AlertRule).filter(AlertRule.id == rule_id), AlertRule, current_user).first()
     if not rule:
         raise HTTPException(404, "Regla no encontrada")
     rule.is_active = not rule.is_active
@@ -206,7 +206,7 @@ def send_risk_alert(risk_id: int, body: SendRiskAlertIn,
     """Envia una alerta manual para un riesgo especifico."""
     if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
         raise HTTPException(403, "Acceso denegado")
-    risk = db.get(Risk, risk_id)
+    risk = filter_by_org(db.query(Risk).filter(Risk.id == risk_id), Risk, current_user).first()
     if not risk:
         raise HTTPException(404, "Riesgo no encontrado")
     cfg = email_service.get_settings(db)

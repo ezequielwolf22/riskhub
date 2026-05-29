@@ -125,6 +125,17 @@ def upload_logo(
     mime = file.content_type or "image/png"
     if mime not in _ALLOWED_LOGO_MIME:
         raise HTTPException(400, "Formato no soportado. Usa PNG, JPG, SVG o WebP.")
+    # Validar magic bytes para evitar spoofing de Content-Type
+    _MAGIC = {
+        b"\x89PNG": "image/png",
+        b"\xff\xd8\xff": "image/jpeg",
+        b"<svg": "image/svg+xml",
+        b"RIFF": "image/webp",
+    }
+    if mime != "image/svg+xml":
+        detected = next((m for sig, m in _MAGIC.items() if data[:len(sig)] == sig), None)
+        if not detected or detected != mime:
+            raise HTTPException(400, "El contenido del archivo no coincide con el formato declarado.")
 
     import uuid
     fname = f"logo_{uuid.uuid4().hex}.{mime.split('/')[-1]}"

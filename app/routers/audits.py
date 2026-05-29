@@ -149,6 +149,9 @@ def create_finding(audit_id: int, body: AuditFindingIn,
 def update_finding(audit_id: int, finding_id: int, body: AuditFindingIn,
                    db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
+    audit = filter_by_org(db.query(AuditProgram).filter(AuditProgram.id == audit_id), AuditProgram, current_user).first()
+    if not audit:
+        raise HTTPException(404, "Auditoria no encontrada")
     f = db.query(AuditFinding).filter(
         AuditFinding.id == finding_id, AuditFinding.audit_id == audit_id
     ).first()
@@ -165,6 +168,9 @@ def update_finding(audit_id: int, finding_id: int, body: AuditFindingIn,
 def delete_finding(audit_id: int, finding_id: int,
                    db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
+    audit = filter_by_org(db.query(AuditProgram).filter(AuditProgram.id == audit_id), AuditProgram, current_user).first()
+    if not audit:
+        raise HTTPException(404, "Auditoria no encontrada")
     f = db.query(AuditFinding).filter(
         AuditFinding.id == finding_id, AuditFinding.audit_id == audit_id
     ).first()

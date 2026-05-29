@@ -150,6 +150,10 @@ def get_dpia(dpia_id: int, db: Session = Depends(get_db),
 @router.post("/dpias/", response_model=DPIAOut)
 def create_dpia(body: DPIAIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    # Verificar que la actividad de tratamiento pertenece a la org del usuario
+    activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == body.activity_id).first()
+    if not activity or not check_org_access(activity.organization_id, current_user):
+        raise HTTPException(404, "Actividad de tratamiento no encontrada")
     d = DPIA(
         code=_next_dpia_code(db),
         activity_id=body.activity_id,
@@ -175,6 +179,9 @@ def update_dpia(dpia_id: int, body: DPIAUpdate,
     d = db.query(DPIA).filter(DPIA.id == dpia_id).first()
     if not d:
         raise HTTPException(404, "DPIA no encontrado")
+    activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == d.activity_id).first()
+    if not activity or not check_org_access(activity.organization_id, current_user):
+        raise HTTPException(404, "DPIA no encontrado")
     update_data = body.model_dump(exclude_none=True)
     if update_data.get("status") == DPIAStatus.APPROVED and not d.reviewed_at:
         update_data.setdefault("reviewed_at", datetime.now(timezone.utc))
@@ -192,6 +199,9 @@ def delete_dpia(dpia_id: int, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     d = db.query(DPIA).filter(DPIA.id == dpia_id).first()
     if not d:
+        raise HTTPException(404, "DPIA no encontrado")
+    activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == d.activity_id).first()
+    if not activity or not check_org_access(activity.organization_id, current_user):
         raise HTTPException(404, "DPIA no encontrado")
     db.delete(d)
     db.commit()

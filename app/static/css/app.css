@@ -98,6 +98,9 @@
   --card-bg:           var(--bg);
   --border-color:      var(--border);
   --bg-muted:          var(--bg-2);
+  /* Variables de fondo adicionales usadas en vistas */
+  --bg-0:              #ffffff;
+  --bg-1:              var(--bg);
   --danger:            #DC2626;
   --danger-soft:       rgba(220,38,38,0.08);
   --success:           var(--risk-low);
@@ -912,6 +915,8 @@ table.data td .code-pill { font-family: var(--font-mono); font-size: 11px;
   --success:      var(--risk-low);
   --success-soft: var(--risk-low-bg);
   --warning-soft: var(--brand-orange-4);
+  --bg-0:         #111318;
+  --bg-1:         #14171e;
 }
 [data-theme="dark"] table.data thead tr { background: var(--bg-3); }
 [data-theme="dark"] table.data tbody tr:hover { background: var(--bg-3); }

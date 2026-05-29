@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import Asset, ControlImplementation, IntegrationConfig, User
-from app.security import get_current_user, require_admin, require_analyst
+from app.security import filter_by_org, get_current_user, require_admin, require_analyst
 from app.services import cve_service as cvs
 from app.services.audit_service import log_action
 
@@ -255,17 +255,19 @@ def analyze_cves(
     if not cve_data:
         raise HTTPException(404, "No se encontraron datos para los CVE IDs proporcionados en NVD.")
 
-    # Obtener activos
+    # Obtener activos filtrados por org
     if body.asset_ids:
-        assets = db.query(Asset).filter(Asset.id.in_(body.asset_ids)).all()
+        assets = filter_by_org(
+            db.query(Asset).filter(Asset.id.in_(body.asset_ids)), Asset, current_user
+        ).all()
     else:
-        assets = db.query(Asset).limit(50).all()
+        assets = filter_by_org(db.query(Asset), Asset, current_user).limit(50).all()
 
     if not assets:
         raise HTTPException(404, "No se encontraron activos. Revisa el inventario de activos.")
 
-    # Obtener controles implementados (para contexto de cobertura)
-    impls = db.query(ControlImplementation).all()
+    # Obtener controles implementados filtrados por org (para contexto de cobertura)
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     controls_context = [
         {
             "name": impl.name,
