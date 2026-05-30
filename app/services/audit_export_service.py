@@ -96,6 +96,15 @@ def generate_audit_package(
     - attestation.json — documento de integridad con hashes de todos los archivos
     - (opcional) evidence/ — archivos físicos de evidencia
     """
+    # Seguridad: validar que el usuario pertenece a la organización solicitada.
+    # NOTA CRÍTICA: usar "is None or" (no "is not None and") para que superadmins
+    # con organization_id=None también sean bloqueados — si no, bypasearían el check.
+    # Solo los superadmins deben poder exportar cualquier org, y ese flujo debe
+    # pasar org_id explícitamente validado en el router.
+    from fastapi import HTTPException as _HTTPException
+    if requested_by.organization_id is None or requested_by.organization_id != org_id:
+        raise _HTTPException(403, "No autorizado para exportar datos de esta organización")
+
     now = datetime.now(timezone.utc)
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     org_name = ctx.organization_name if ctx else f"Org-{org_id}"
@@ -144,13 +153,23 @@ def generate_audit_package(
 
         # Incluir archivo físico si se solicita y existe
         if include_evidence_files and ev.filename:
-            file_path = _EV_DIR / ev.filename
+            import os
+            # Seguridad: sanitizar nombre de archivo para prevenir path traversal y zip slip.
+            # os.path.basename elimina cualquier componente de ruta (../, /, etc.)
+            safe_basename = os.path.basename(ev.filename) or ev.code
+            file_path = _EV_DIR / safe_basename
+            # Verificar que la ruta resuelta sigue dentro de _EV_DIR (anti path traversal)
+            try:
+                file_path.resolve().relative_to(_EV_DIR.resolve())
+            except ValueError:
+                logger.warning("Path traversal bloqueado en evidencia %s: %s", ev.code, ev.filename)
+                continue
             if file_path.exists():
                 file_bytes = file_path.read_bytes()
-                # Verificar integridad
                 actual_hash = _sha256_bytes(file_bytes)
                 entry["hash_verified"] = (actual_hash == ev.file_hash)
-                files[f"evidence/{ev.filename}"] = file_bytes
+                # Usar safe_basename en el ZIP para prevenir zip slip
+                files[f"evidence/{safe_basename}"] = file_bytes
 
         ev_index.append(entry)
 
@@ -206,6 +225,17 @@ def generate_framework_audit_package(
     La estructura del ZIP sigue el orden oficial de los requisitos del framework.
     Incluye: estado por requisito, evidencias asociadas, gaps, attestation.
     """
+    # Seguridad: validar que el usuario pertenece a la organización solicitada.
+    # Usar "is None or" para bloquear también a superadmins con organization_id=None.
+    from fastapi import HTTPException as _HTTPException
+    if requested_by.organization_id is None or requested_by.organization_id != org_id:
+        raise _HTTPException(403, "No autorizado para exportar datos de esta organización")
+
+    # Validar que framework_code es un valor conocido para prevenir enumeración
+    allowed_frameworks = {"iso27001", "gdpr", "nis2", "hipaa", "nist_csf", "soc2", "ens"}
+    if framework_code not in allowed_frameworks:
+        raise ValueError(f"Framework '{framework_code}' no válido")
+
     from app.services.compliance_service import (
         load_framework, get_framework_compliance_status, initialize_org_framework
     )

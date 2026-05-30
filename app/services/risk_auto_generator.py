@@ -175,6 +175,13 @@ def auto_generate_risks_for_asset(
             risk.treatment_option = None
             risk.status = RiskStatus.ASSESSED
 
+        # Fijar próxima revisión según nivel residual (habilita notificaciones scheduler)
+        from datetime import timedelta
+        review_days = {0: 365, 1: 365, 2: 180, 3: 90, 4: 60, 5: 30, 6: 14, 7: 7, 8: 7}
+        risk.next_review = datetime.now(timezone.utc) + timedelta(
+            days=review_days.get(rlev, 90)
+        )
+
         db.add(risk)
         created_risks.append(risk)
 
