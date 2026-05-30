@@ -243,7 +243,7 @@ def list_policy_templates(current_user: User = Depends(get_current_user)):
 async def generate_policy(
     body: dict,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("analyst")),
+    current_user: User = Depends(require_analyst),
 ):
     """Genera una política personalizada con IA desde un template.
 
