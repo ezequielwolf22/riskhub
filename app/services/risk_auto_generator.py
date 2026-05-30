@@ -251,25 +251,23 @@ def auto_generate_risk_from_cve(
         logger.warning("Asset %s sin org_id, CVE auto-gen aborted", asset.code)
         return None
 
-    # Comprobar duplicado: riesgo con mismo asset y threat "CVE-XXXX"
-    cve_threat_code = f"CVE-{cve_id}"
-    existing = db.query(Risk).filter(
-        Risk.asset_id == asset_id,
-        Risk.threat_id == db.query(Threat.id).filter(
-            Threat.code == cve_threat_code,
-            Threat.organization_id == org_id,
-        ),
-    ).first()
-
-    if existing:
-        logger.debug("Riesgo duplicado CVE=%s asset=%s, saltando", cve_id, asset.code)
-        return None
-
     # Buscar o crear threat "CVE-XXXX"
+    cve_threat_code = f"CVE-{cve_id}"
     threat = db.query(Threat).filter(
         Threat.code == cve_threat_code,
         Threat.organization_id == org_id,
     ).first()
+
+    # Comprobar duplicado usando threat_id real (evita subquery incorrecta)
+    if threat:
+        existing = db.query(Risk).filter(
+            Risk.asset_id == asset_id,
+            Risk.threat_id == threat.id,
+            Risk.organization_id == org_id,
+        ).first()
+        if existing:
+            logger.debug("Riesgo duplicado CVE=%s asset=%s, saltando", cve_id, asset.code)
+            return None
 
     if not threat:
         # Crear threat temporal para CVE
@@ -364,27 +362,25 @@ def auto_generate_risk_from_osint(
     # Threat code para OSINT
     osint_threat_code = f"OSINT-{osint_finding_type.upper()}"
 
-    # Comprobar duplicado
-    existing = db.query(Risk).filter(
-        Risk.asset_id == asset_id,
-        Risk.threat_id == db.query(Threat.id).filter(
-            Threat.code == osint_threat_code,
-            Threat.organization_id == org_id,
-        ),
-    ).first()
-
-    if existing:
-        logger.debug(
-            "Riesgo duplicado OSINT=%s asset=%s, saltando",
-            osint_finding_type, asset.code
-        )
-        return None
-
-    # Buscar o crear threat
+    # Buscar o crear threat primero (para poder deduplicar correctamente)
     threat = db.query(Threat).filter(
         Threat.code == osint_threat_code,
         Threat.organization_id == org_id,
     ).first()
+
+    # Comprobar duplicado usando threat_id real
+    if threat:
+        existing = db.query(Risk).filter(
+            Risk.asset_id == asset_id,
+            Risk.threat_id == threat.id,
+            Risk.organization_id == org_id,
+        ).first()
+        if existing:
+            logger.debug(
+                "Riesgo duplicado OSINT=%s asset=%s, saltando",
+                osint_finding_type, asset.code
+            )
+            return None
 
     if not threat:
         threat = Threat(

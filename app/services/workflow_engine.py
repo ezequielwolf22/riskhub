@@ -202,7 +202,7 @@ def _notify_workflow_started(db: Session, risk: Risk, workflow: RiskWorkflow,
             f"<p>Se han creado 3 tareas automáticamente en RiskHub. Por favor, revisa y actúa.</p>"
         )
         for recipient in recipients:
-            email_service.send_html(cfg, subject, body, [recipient])
+            email_service.send_email(cfg, recipient, subject, body)
     except Exception as exc:
         logger.debug("Error enviando notificación workflow: %s", exc)
 
@@ -310,7 +310,7 @@ def run_sla_check(db: Session) -> None:
                         f"<p><strong>Nivel residual:</strong> {risk.residual_level}</p>"
                         f"<p>Se requiere atención inmediata.</p>"
                     )
-                    email_service.send_html(cfg, subject, body, [admin.email])
+                    email_service.send_email(cfg, admin.email, subject, body)
         except Exception as exc:
             logger.debug("Error escalada email: %s", exc)
 

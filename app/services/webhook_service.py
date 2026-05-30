@@ -64,8 +64,6 @@ def trigger_webhook_sync(db: Session, org_id: int, event: str, payload: dict) ->
 
     Retorna número de webhooks disparados.
     """
-    import requests
-
     webhooks = db.query(Webhook).filter(
         Webhook.organization_id == org_id,
         Webhook.is_active == True,

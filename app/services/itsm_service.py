@@ -9,6 +9,7 @@ import base64
 
 from sqlalchemy.orm import Session
 from app.models import IntegrationConfig, Risk, Incident
+from app.services.webhook_service import validate_webhook_url
 
 logger = logging.getLogger("riskhub.itsm")
 
@@ -65,6 +66,12 @@ def create_jira_issue(cfg: dict, summary: str, description: str,
         logger.warning("Jira config incompleta")
         return None
 
+    try:
+        validate_webhook_url(base_url)
+    except ValueError as e:
+        logger.warning("Jira base_url bloqueada (SSRF): %s", e)
+        return None
+
     payload = {
         "fields": {
             "project": {"key": project_key},
@@ -112,6 +119,13 @@ def create_servicenow_incident(cfg: dict, short_desc: str, description: str,
 
     if not all([instance, username, password]):
         logger.warning("ServiceNow config incompleta")
+        return None
+
+    snow_url = f"https://{instance}.service-now.com"
+    try:
+        validate_webhook_url(snow_url)
+    except ValueError as e:
+        logger.warning("ServiceNow URL bloqueada (SSRF): %s", e)
         return None
 
     payload = {

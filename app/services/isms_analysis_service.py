@@ -285,6 +285,22 @@ def _trigger_assets_reanalysis(org_id: int) -> None:
     t.start()
     logger.info("Triggered asset re-analysis for org=%d after controls update", org_id)
 
+    # Sincronizar compliance inmediatamente al actualizar controles
+    def _compliance_worker():
+        _db = SessionLocal()
+        try:
+            from app.services.compliance_service import auto_update_compliance_from_controls
+            updated = auto_update_compliance_from_controls(_db, org_id)
+            if updated:
+                logger.info("Compliance auto-synced for org=%d: %d reqs updated", org_id, updated)
+        except Exception as _exc:
+            logger.debug("Compliance sync after ISMS failed: %s", _exc)
+        finally:
+            _db.close()
+
+    tc = threading.Thread(target=_compliance_worker, daemon=True, name=f"compliance-sync-org{org_id}")
+    tc.start()
+
 
 # ---------- Creacion/actualizacion de politica ----------
 

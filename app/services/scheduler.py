@@ -117,11 +117,18 @@ def _run_alert_rules() -> None:
         if not rules:
             return
 
-        risks = db.query(Risk).all()
+        # Cargar riesgos con filtro por org (multitenancy)
+        rule_org_ids = list({r.organization_id for r in rules if r.organization_id})
+        risks_by_org: dict = {}
+        for org_id in rule_org_ids:
+            risks_by_org[org_id] = db.query(Risk).filter(
+                Risk.organization_id == org_id
+            ).all()
         now = datetime.now(timezone.utc)
         sent = 0
 
         for rule in rules:
+            risks = risks_by_org.get(rule.organization_id, [])
             matching = []
             if rule.event_type in ("risk_critical", "risk_high"):
                 matching = [r for r in risks
@@ -350,7 +357,9 @@ def _run_alert_rules() -> None:
                         continue
                 from app.models import Policy, PolicyStatus
                 overdue_policies = [
-                    p for p in db.query(Policy).all()
+                    p for p in db.query(Policy).filter(
+                        Policy.organization_id == rule.organization_id
+                    ).all()
                     if p.review_date and p.status != PolicyStatus.OBSOLETE
                     and p.review_date.replace(tzinfo=timezone.utc) < now
                 ]
@@ -401,7 +410,9 @@ def _run_alert_rules() -> None:
                         continue
                 from app.models import TreatmentTask, TaskStatus
                 overdue_tasks = [
-                    t for t in db.query(TreatmentTask).all()
+                    t for t in db.query(TreatmentTask).filter(
+                        TreatmentTask.organization_id == rule.organization_id
+                    ).all()
                     if t.due_date and t.status != TaskStatus.DONE
                     and t.due_date.replace(tzinfo=timezone.utc) < now
                 ]
@@ -626,6 +637,7 @@ def _run_risk_reviews() -> None:
             Risk.next_review.isnot(None),
             Risk.status.not_in([RiskStatus.CLOSED]),
             Risk.owner_id.isnot(None),
+            Risk.organization_id.isnot(None),
         ).all()
 
         for risk in active_risks:
@@ -945,7 +957,7 @@ def _run_osint_periodic_scan() -> None:
                     # Buscar scan y verificar findings
                     db2 = SessionLocal()
                     try:
-                        scan_obj = db2.query(OSINTScan).get(sid)
+                        scan_obj = db2.get(OSINTScan, sid)
                         if scan_obj and scan_obj.findings:
                             from app.services.risk_auto_generator import auto_generate_risk_from_osint
                             findings = scan_obj.findings if isinstance(scan_obj.findings, list) else [scan_obj.findings]
@@ -1239,7 +1251,7 @@ def _run_evidence_expiry_check() -> None:
                             f"({ev.expires_at.strftime('%d/%m/%Y')}).</p>"
                             f"<p>Accede a RiskHub para renovarla o subir una nueva versión.</p>"
                         )
-                        email_service.send_html(cfg, subject, body, [admin.email])
+                        email_service.send_email(cfg, admin.email, subject, body)
             except Exception as exc:
                 logger.debug("Error enviando alerta evidencia: %s", exc)
 

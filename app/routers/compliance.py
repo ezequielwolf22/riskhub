@@ -27,7 +27,7 @@ def _filter_org(user: User) -> Optional[int]:
 
 
 @router.get("/frameworks")
-def list_frameworks():
+def list_frameworks(current_user: User = Depends(get_current_user)):
     """Lista todos los frameworks disponibles con metadata."""
     return list_available_frameworks()
 

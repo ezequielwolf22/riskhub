@@ -191,7 +191,7 @@ async def upload_evidence(
     db.commit()
     db.refresh(ev)
 
-    log_action(db, current_user.id, "evidence_upload", f"Evidencia {ev.code} subida", org_id)
+    log_action(db, current_user.id, "create", "evidence", str(ev.id), {"code": ev.code})
 
     return _evidence_out(ev)
 
