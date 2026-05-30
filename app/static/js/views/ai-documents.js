@@ -339,11 +339,14 @@ const ViewAiDocuments = (() => {
                 <span style="font-size:11px;color:var(--text-subtle);flex-shrink:0;">${size}</span>
                 ${isPending ? `
                   <select class="input" style="font-size:11px;padding:3px 6px;height:auto;
-                                               min-width:160px;flex-shrink:0;"
+                                               min-width:180px;flex-shrink:0;"
+                          title="El agente IA reclasificara automaticamente tras analizar el contenido"
                           data-qid="${item.id}" onchange="ViewAiDocuments._setQueueCat(${item.id}, this.value)">
-                    ${Object.entries(CATEGORY_LABELS).map(([v, l]) =>
+                    <option value="other" ${item.category === 'other' ? 'selected' : ''}>Auto (IA detecta categoria)</option>
+                    ${Object.entries(CATEGORY_LABELS).filter(([v]) => v !== 'other').map(([v, l]) =>
                       `<option value="${v}" ${item.category === v ? 'selected' : ''}>${l}</option>`
                     ).join('')}
+                    <option value="other" ${item.category === 'other' ? '' : ''}>Otros</option>
                   </select>
                   <button class="btn btn-ghost"
                           style="font-size:11px;padding:2px 8px;color:var(--risk-critical);flex-shrink:0;"
@@ -564,7 +567,13 @@ const ViewAiDocuments = (() => {
       <tr style="${i % 2 === 0 ? '' : 'background:var(--bg-2);'}">
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${UI.esc(d.original_name)}">${UI.esc(d.original_name)}</td>
-        <td style="font-size:12px;">${CATEGORY_LABELS[d.category] || d.category}</td>
+        <td style="font-size:12px;">
+          ${CATEGORY_LABELS[d.category] || d.category}
+          ${d.auto_categorized ? `<span style="display:inline-block;margin-left:4px;font-size:9px;
+            background:var(--brand-purple-4);color:var(--brand-purple);
+            border-radius:4px;padding:1px 5px;vertical-align:middle;"
+            title="Categoria detectada automaticamente por el agente IA">IA</span>` : ''}
+        </td>
         <td>
           <span style="font-size:11px;font-weight:600;
                        color:${STATUS_COLORS[d.status] || 'var(--text-muted)'};">

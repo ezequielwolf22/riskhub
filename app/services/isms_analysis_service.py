@@ -34,6 +34,7 @@ _ISMS_SYSTEM_PROMPT = """Eres un experto en seguridad de la informacion (ISO/IEC
 Analiza el siguiente fragmento de documento y devuelve UNICAMENTE un objeto JSON valido con esta estructura:
 
 {
+  "document_category": "<una de: architecture | normative | policies | assets_inventory | risk_assessments | critical_suppliers | incidents_lessons | other>",
   "is_policy": <true | false>,
   "policy": {
     "title": "<titulo del documento>",
@@ -62,6 +63,16 @@ Analiza el siguiente fragmento de documento y devuelve UNICAMENTE un objeto JSON
 
 REGLAS:
 - Devuelve SOLO el JSON. Sin texto ni markdown antes ni despues.
+- document_category: clasifica el documento en UNA de estas categorias (obligatorio, nunca null):
+    * "architecture"       — diagramas de red, arquitectura de sistemas, infraestructura IT, topologia
+    * "normative"          — normativas externas, reglamentos, leyes, ISO, NIS2, GDPR, ENS, compliance
+    * "policies"           — politicas de seguridad internas, procedimientos, instrucciones de trabajo
+    * "assets_inventory"   — inventario de activos, CMDB, listados de hardware/software/aplicaciones
+    * "risk_assessments"   — analisis de riesgos, evaluaciones de amenazas, informes de vulnerabilidades, DPIA
+    * "critical_suppliers" — contratos de proveedores, acuerdos SLA, evaluaciones de terceros, DPA
+    * "incidents_lessons"  — informes de incidentes, post-mortems, lecciones aprendidas, registros de incidentes
+    * "other"              — solo si el documento no encaja claramente en ninguna de las anteriores
+- Si el documento ES una politica interna, document_category DEBE ser "policies" e is_policy=true.
 - Si el documento NO es una politica de seguridad, pon is_policy=false y policy=null.
 - controls_covered: SOLO controles ISO 27002:2022 que el documento cubre con confianza alta.
   Usa los codigos reales del estandar (5.1, 5.2, ... 8.34).
@@ -618,40 +629,84 @@ def _infer_category(
 ) -> "AiDocumentCategory | None":
     """Infiere la categoria correcta del documento basandose en el analisis IA.
 
+    Prioridad:
+    1. Campo document_category del JSON de la IA (nuevo, explícito)
+    2. is_policy=true → policies
+    3. Reglas por codigos de control ISO 27002
+    4. Palabras clave en el nombre del fichero
     Devuelve None si no hay certeza suficiente para cambiar la categoria actual.
     """
     from app.models import AiDocumentCategory
 
-    # Si es politica de seguridad → policies
+    # 1. Usar la categoria inferida explicitamente por la IA (campo nuevo en el prompt)
+    ai_category = analysis.get("document_category", "").strip().lower()
+    _CAT_MAP = {
+        "architecture":       AiDocumentCategory.ARCHITECTURE,
+        "normative":          AiDocumentCategory.NORMATIVE,
+        "policies":           AiDocumentCategory.POLICIES,
+        "assets_inventory":   AiDocumentCategory.ASSETS_INVENTORY,
+        "risk_assessments":   AiDocumentCategory.RISK_ASSESSMENTS,
+        "critical_suppliers": AiDocumentCategory.CRITICAL_SUPPLIERS,
+        "incidents_lessons":  AiDocumentCategory.INCIDENTS_LESSONS,
+    }
+    if ai_category and ai_category != "other" and ai_category in _CAT_MAP:
+        return _CAT_MAP[ai_category]
+
+    # 2. Si es politica de seguridad detectada → policies
     if analysis.get("is_policy"):
         return AiDocumentCategory.POLICIES
 
     covered = {c.get("code", "") for c in (analysis.get("controls_covered") or [])}
 
-    # Controles de gestion de activos → assets_inventory
-    asset_controls = {"5.9", "5.10", "5.11", "5.12", "5.13", "5.14"}
+    # 3. Reglas por codigos de control ISO 27002
+    asset_controls    = {"5.9", "5.10", "5.11", "5.12", "5.13", "5.14"}
+    risk_controls     = {"5.1", "5.2", "5.3", "5.4", "6.1", "6.2"}
+    supplier_controls = {"5.19", "5.20", "5.21", "5.22", "5.23"}
+
     if covered & asset_controls:
         return AiDocumentCategory.ASSETS_INVENTORY
-
-    # Controles de gestion de riesgos o evaluaciones → risk_assessments
-    risk_controls = {"5.1", "5.2", "5.3", "5.4", "6.1", "6.2"}
-    threat_cats = analysis.get("threat_categories_addressed") or []
-    if covered & risk_controls or "Unauthorised actions" in str(threat_cats):
-        return AiDocumentCategory.RISK_ASSESSMENTS
-
-    # Controles de proveedores → critical_suppliers
-    supplier_controls = {"5.19", "5.20", "5.21", "5.22", "5.23"}
     if covered & supplier_controls:
         return AiDocumentCategory.CRITICAL_SUPPLIERS
+    if covered & risk_controls:
+        return AiDocumentCategory.RISK_ASSESSMENTS
 
-    # Inferir por nombre del archivo si ningun control encaja
+    # 4. Palabras clave en el nombre del fichero
     name_lower = (original_name or "").lower()
-    if any(w in name_lower for w in ["arquitectura", "red", "network", "infraestructura", "topology", "diagrama", "architecture"]):
+    if any(w in name_lower for w in [
+        "arquitectura", "red", "network", "infraestructura",
+        "topology", "diagrama", "architecture", "topologia",
+    ]):
         return AiDocumentCategory.ARCHITECTURE
-    if any(w in name_lower for w in ["normativa", "compliance", "nis2", "gdpr", "rgpd", "iso", "reglamento"]):
+    if any(w in name_lower for w in [
+        "normativa", "norma", "compliance", "nis2", "gdpr", "rgpd",
+        "iso27", "reglamento", "directiva", "ley ", "boe",
+    ]):
         return AiDocumentCategory.NORMATIVE
-    if any(w in name_lower for w in ["incidente", "incident", "leccion", "lesson", "postmortem"]):
+    if any(w in name_lower for w in [
+        "incidente", "incident", "leccion", "lesson",
+        "postmortem", "post-mortem", "forense",
+    ]):
         return AiDocumentCategory.INCIDENTS_LESSONS
+    if any(w in name_lower for w in [
+        "inventario", "inventory", "activos", "assets",
+        "cmdb", "hardware", "software", "catalogo",
+    ]):
+        return AiDocumentCategory.ASSETS_INVENTORY
+    if any(w in name_lower for w in [
+        "proveedor", "supplier", "vendor", "tercero",
+        "contrato", "sla", "dpa",
+    ]):
+        return AiDocumentCategory.CRITICAL_SUPPLIERS
+    if any(w in name_lower for w in [
+        "riesgo", "risk", "analisis", "evaluacion",
+        "assessment", "amenaza", "vulnerabilidad",
+    ]):
+        return AiDocumentCategory.RISK_ASSESSMENTS
+    if any(w in name_lower for w in [
+        "politica", "policy", "procedimiento", "procedure",
+        "instruccion", "manual", "guia ",
+    ]):
+        return AiDocumentCategory.POLICIES
 
     return None  # Sin certeza suficiente: no cambiar la categoria actual
 
