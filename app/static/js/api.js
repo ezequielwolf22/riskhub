@@ -9,7 +9,14 @@ const Api = {
     if (opts.body && !headers['Content-Type'] && !(opts.body instanceof FormData))
       headers['Content-Type'] = 'application/json';
 
-    const resp = await fetch(path, { ...opts, headers });
+    let resp;
+    try {
+      resp = await fetch(path, { ...opts, headers });
+    } catch (_netErr) {
+      // Error de red (sin conexion, proxy bloqueando, DNS, etc.)
+      throw new Error('No se pudo conectar con el servidor. Verifica tu conexion de red.');
+    }
+
     if (resp.status === 401) {
       localStorage.removeItem('riskhub_token');
       localStorage.removeItem('riskhub_user');
@@ -18,11 +25,31 @@ const Api = {
     }
     const ctype = resp.headers.get('content-type') || '';
     let data = null;
-    if (resp.status === 204) data = null;
-    else if (ctype.includes('application/json')) data = await resp.json();
-    else data = await resp.text();
+    if (resp.status === 204) {
+      data = null;
+    } else if (ctype.includes('application/json')) {
+      data = await resp.json();
+    } else {
+      const text = await resp.text();
+      // Si la respuesta es HTML (proxy, firewall, pagina de error del servidor)
+      // no mostramos el HTML crudo — mostramos un mensaje limpio
+      if (text && (text.trimStart().startsWith('<') || ctype.includes('text/html'))) {
+        data = null;  // se usara el statusText
+      } else {
+        data = text;
+      }
+    }
+
     if (!resp.ok) {
-      const msg = data && data.detail ? data.detail : (data || resp.statusText);
+      let msg;
+      if (data && data.detail) {
+        msg = data.detail;
+      } else if (typeof data === 'string' && data && !data.trimStart().startsWith('<')) {
+        msg = data;
+      } else {
+        // Respuesta HTML o vacia: mensaje generico con el codigo HTTP
+        msg = `Error ${resp.status}: ${resp.statusText || 'Error del servidor'}`;
+      }
       const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
       err.status = resp.status; err.data = data; throw err;
     }
