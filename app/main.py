@@ -11,11 +11,11 @@ from app import __version__
 from app.config import settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
-    admin, ai, ai_config, alerts, asset_groups, assets, audit, audits, auth, awareness,
-    catalogues, compliance, context, controls, cve, documents, evidence, executive,
-    external_findings, feature_flags, gdpr, incidents,
-    nonconformities, organizations, osint, policies, reports, risks, search, sharepoint,
-    sso, supplier_questionnaires, suppliers, tasks, users, webhooks,
+    admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
+    auth, awareness, catalogues, compliance, context, controls, cve, documents,
+    evidence, executive, external_findings, feature_flags, gdpr, incidents,
+    nonconformities, organizations, osint, policies, predictive, reports, risks,
+    search, sharepoint, sso, supplier_questionnaires, suppliers, tasks, users, webhooks,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -130,6 +130,8 @@ app.include_router(evidence.router)
 app.include_router(executive.router)
 app.include_router(webhooks.router)
 app.include_router(external_findings.router)
+app.include_router(predictive.router)
+app.include_router(architecture.router)
 
 
 # Frontend estatico

@@ -382,6 +382,23 @@ const Api = {
     test:      (id)      => Api.post(`/api/webhooks/${id}/test`, {}),
     deliveries:(id)      => Api.get(`/api/webhooks/${id}/deliveries`),
   },
+  predictive: {
+    trend:           (days)  => Api.get('/api/predictive/trend', days ? { days } : {}),
+    maturityPath:    ()      => Api.get('/api/predictive/maturity-path'),
+    highRiskAssets:  (limit) => Api.get('/api/predictive/high-risk-assets', limit ? { limit } : {}),
+    threatForecast:  ()      => Api.get('/api/predictive/threat-forecast'),
+  },
+  architecture: {
+    importDiagram: (fd) => {
+      const token = localStorage.getItem('riskhub_token') || '';
+      return fetch('/api/architecture/import', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e)))));
+    },
+    analyzeText: (d) => Api.post('/api/architecture/analyze-text', d),
+  },
   findings: {
     list:    (q)  => Api.get('/api/findings', q),
     summary: ()   => Api.get('/api/findings/summary'),
