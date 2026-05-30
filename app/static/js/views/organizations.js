@@ -4,6 +4,34 @@ const ViewOrganizations = (() => {
   let _orgs = [];
   let _selectedOrg = null;
   let _orgUsers = [];
+  let _planLimits = null;  // {free:[...], starter:[...], pro:[...], enterprise:null}
+
+  const PLAN_COLORS = {
+    free:       { bg: '#F3F4F6', text: '#6B7280', label: 'Free' },
+    starter:    { bg: '#EEF2FF', text: '#4338CA', label: 'Starter' },
+    pro:        { bg: '#F0FDF4', text: '#15803D', label: 'Pro' },
+    enterprise: { bg: '#FFF7ED', text: '#C2410C', label: 'Enterprise' },
+  };
+
+  function _planBadge(plan) {
+    const p = PLAN_COLORS[plan] || PLAN_COLORS.starter;
+    return `<span style="background:${p.bg};color:${p.text};padding:2px 10px;border-radius:10px;
+                         font-size:11px;font-weight:700;letter-spacing:.3px;">${p.label}</span>`;
+  }
+
+  function _isModuleInPlan(flagName, plan) {
+    if (!_planLimits) return true;  // si no hay datos, no bloquear
+    const limits = _planLimits[plan];
+    if (limits === null) return true;  // enterprise = todo
+    return Array.isArray(limits) && limits.includes(flagName);
+  }
+
+  async function _loadPlanLimits() {
+    if (_planLimits) return;
+    try {
+      _planLimits = await Api.get('/api/feature-flags/plans/limits');
+    } catch (_) { _planLimits = {}; }
+  }
 
   // ---- API helpers ----
   async function fetchOrgs() {
@@ -48,7 +76,7 @@ const ViewOrganizations = (() => {
     if (!grid) return;
     grid.innerHTML = '<p class="muted">Cargando...</p>';
     try {
-      await fetchOrgs();
+      await Promise.all([fetchOrgs(), _loadPlanLimits()]);
       renderGrid(grid);
     } catch (e) {
       grid.innerHTML = `<p class="notice">${UI.esc(e.message)}</p>`;
@@ -60,17 +88,24 @@ const ViewOrganizations = (() => {
       grid.innerHTML = '<p class="muted">No hay organizaciones registradas.</p>';
       return;
     }
-    grid.innerHTML = _orgs.map(o => `
+    grid.innerHTML = _orgs.map(o => {
+      const plan = o.plan || 'starter';
+      const limits = _planLimits ? _planLimits[plan] : null;
+      const moduleCount = limits === null ? 'Todos' : (Array.isArray(limits) ? limits.length : '?');
+      return `
       <div class="card" style="cursor:pointer;" data-org-id="${o.id}">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-          <strong>${UI.esc(o.name)}</strong>
-          <span class="badge ${o.is_active ? 'badge-success' : 'badge-muted'}">${o.is_active ? 'Activa' : 'Inactiva'}</span>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <strong style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${UI.esc(o.name)}</strong>
+          <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+            ${_planBadge(plan)}
+            <span class="badge ${o.is_active ? 'badge-success' : 'badge-muted'}">${o.is_active ? 'Activa' : 'Inactiva'}</span>
+          </div>
         </div>
         <div class="card-body" style="font-size:13px;color:var(--text-secondary);">
-          <div><b>Plan:</b> ${UI.esc(o.plan || 'starter')}</div>
+          <div><b>Modulos:</b> ${moduleCount}</div>
           <div><b>Dominio:</b> ${UI.esc(o.domain || '-')}</div>
           <div><b>Usuarios:</b> ${o.user_count} / ${o.max_users}</div>
-          <div><b>Tokens IA usados:</b> ${(o.token_usage || 0).toLocaleString()}</div>
+          <div><b>Tokens IA:</b> ${(o.token_usage || 0).toLocaleString()}</div>
           <div style="color:var(--text-muted);margin-top:4px;">${o.created_at ? 'Creada: ' + o.created_at.split('T')[0] : ''}</div>
         </div>
         <div class="card-footer" style="display:flex;gap:8px;">
@@ -80,8 +115,8 @@ const ViewOrganizations = (() => {
             : `<button class="btn btn-sm btn-secondary" onclick="ViewOrganizations._activate(${o.id})">Activar</button>`
           }
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   async function _openDetail(orgId) {
@@ -114,9 +149,9 @@ const ViewOrganizations = (() => {
               <input class="input" name="domain" value="${UI.esc(org.domain || '')}" placeholder="empresa.com">
             </label>
             <label>Plan
-              <select class="input" name="plan">
-                ${['starter','professional','enterprise'].map(p =>
-                  `<option value="${p}" ${org.plan === p ? 'selected' : ''}>${p}</option>`
+              <select class="input" name="plan" onchange="ViewOrganizations._onPlanChange(this, ${org.id})">
+                ${['free','starter','pro','enterprise'].map(p =>
+                  `<option value="${p}" ${(org.plan === p || (!org.plan && p === 'starter')) ? 'selected' : ''}>${(PLAN_COLORS[p] || {label:p}).label}</option>`
                 ).join('')}
               </select>
             </label>
@@ -198,6 +233,9 @@ const ViewOrganizations = (() => {
         container.innerHTML = '<p class="muted">No hay modulos configurados.</p>';
         return;
       }
+      const org = _orgs.find(o => o.id === orgId);
+      const orgPlan = org ? (org.plan || 'starter') : 'starter';
+
       container.innerHTML = `
         <table class="table" style="font-size:13px;">
           <thead>
@@ -205,21 +243,36 @@ const ViewOrganizations = (() => {
               <th>Modulo</th>
               <th>Descripcion</th>
               <th style="text-align:center;">Estado</th>
+              <th style="text-align:center;">Plan</th>
               <th style="text-align:center;">Origen</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            ${flags.map(f => `
-              <tr data-flag="${UI.esc(f.name)}">
+            ${flags.map(f => {
+              const inPlan = _isModuleInPlan(f.name, orgPlan);
+              return `
+              <tr data-flag="${UI.esc(f.name)}" ${!inPlan ? 'style="opacity:.55;"' : ''}>
                 <td><strong>${UI.esc(f.label)}</strong></td>
                 <td style="color:var(--text-muted);">${UI.esc(f.description || '')}</td>
                 <td style="text-align:center;">
-                  <label class="toggle" title="${f.enabled ? 'Activado' : 'Desactivado'}">
-                    <input type="checkbox" ${f.enabled ? 'checked' : ''}
-                      onchange="ViewOrganizations._toggleOrgFlag('${UI.esc(f.name)}', this.checked, ${orgId})">
-                    <span class="toggle-slider"></span>
-                  </label>
+                  ${inPlan
+                    ? `<label class="toggle" title="${f.enabled ? 'Activado' : 'Desactivado'}">
+                        <input type="checkbox" ${f.enabled ? 'checked' : ''}
+                          onchange="ViewOrganizations._toggleOrgFlag('${UI.esc(f.name)}', this.checked, ${orgId})">
+                        <span class="toggle-slider"></span>
+                       </label>`
+                    : `<span title="Requiere upgrade de plan"
+                             style="background:#FEE2E2;color:#a83232;padding:2px 7px;border-radius:4px;font-size:10px;cursor:default;">
+                         Sin plan
+                       </span>`
+                  }
+                </td>
+                <td style="text-align:center;">
+                  ${inPlan
+                    ? `<span style="background:#E8F5E9;color:#2e7d32;padding:2px 7px;border-radius:4px;font-size:10px;">Incluido</span>`
+                    : `<span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-size:10px;">Upgrade</span>`
+                  }
                 </td>
                 <td style="text-align:center;">
                   ${f.org_override
@@ -236,14 +289,22 @@ const ViewOrganizations = (() => {
                     </button>
                   ` : ''}
                 </td>
-              </tr>
-            `).join('')}
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>
       `;
     } catch (err) {
       container.innerHTML = `<p class="notice">${UI.esc(err.message)}</p>`;
     }
+  }
+
+  function _onPlanChange(select, orgId) {
+    // Actualizar org en cache local para que los badges de plan se reflejen inmediatamente
+    const org = _orgs.find(o => o.id === orgId);
+    if (org) org.plan = select.value;
+    // Re-renderizar los flags para mostrar que modulos estan incluidos en el nuevo plan
+    _renderOrgFlags(orgId);
   }
 
   async function _toggleOrgFlag(flagName, enabled, orgId) {
@@ -325,9 +386,10 @@ const ViewOrganizations = (() => {
         <div>
           <label>Plan</label>
           <select class="input" id="org-plan">
-            <option value="starter">starter</option>
-            <option value="professional">professional</option>
-            <option value="enterprise">enterprise</option>
+            <option value="free">Free (3 modulos)</option>
+            <option value="starter" selected>Starter (8 modulos)</option>
+            <option value="pro">Pro (17 modulos)</option>
+            <option value="enterprise">Enterprise (todos)</option>
           </select>
         </div>
         <div>
@@ -364,5 +426,5 @@ const ViewOrganizations = (() => {
     };
   }
 
-  return { render, _openDetail, _deactivate, _activate, _moveUser, _toggleOrgFlag, _resetOrgFlag };
+  return { render, _openDetail, _deactivate, _activate, _moveUser, _toggleOrgFlag, _resetOrgFlag, _onPlanChange };
 })();

@@ -13,8 +13,8 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, catalogues, ccm, compliance, context, controls, cve, documents,
-    evidence, executive, external_findings, feature_flags, gdpr, incidents, itsm,
-    magerit, nonconformities, organizations, osint, policies, portal, predictive,
+    evidence, executive, external_findings, feature_flags, gdpr, incidents, integrations_erp,
+    itsm, magerit, nonconformities, organizations, osint, policies, portal, predictive,
     reports, risks, search, sharepoint, sso, supplier_questionnaires, suppliers,
     tasks, users, webhooks,
 )
@@ -137,6 +137,7 @@ app.include_router(itsm.router)
 app.include_router(ccm.router)
 app.include_router(portal.router)
 app.include_router(magerit.router)
+app.include_router(integrations_erp.router)
 
 
 # Frontend estatico

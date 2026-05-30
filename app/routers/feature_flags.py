@@ -15,11 +15,31 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import FeatureFlag, User, UserRole
+from app.models import FeatureFlag, Organization, User, UserRole
 from app.security import get_current_user, require_superadmin
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/feature-flags", tags=["feature-flags"])
+
+# Modulos incluidos por plan (None = sin restricciones = enterprise)
+PLAN_MODULE_LIMITS: dict[str, Optional[set[str]]] = {
+    "free": {
+        "module_assets", "module_risks", "module_controls",
+    },
+    "starter": {
+        "module_assets", "module_risks", "module_controls",
+        "module_incidents", "module_policies", "module_tasks",
+        "module_compliance", "module_reports",
+    },
+    "pro": {
+        "module_assets", "module_risks", "module_controls",
+        "module_incidents", "module_policies", "module_tasks",
+        "module_compliance", "module_reports",
+        "module_suppliers", "module_nonconformities", "module_audits",
+        "module_gdpr", "module_ai", "module_cve", "module_alerts",
+    },
+    "enterprise": None,  # todos los modulos sin restriccion
+}
 
 # Definicion canonica de los modulos del sistema
 _DEFAULT_FLAGS = [
@@ -215,6 +235,18 @@ def update_flag(
     else:
         raise HTTPException(403, "Sin permisos para modificar feature flags")
 
+    # Verificar limite de plan al activar un modulo para una org especifica
+    if org_id_to_update is not None and body.enabled and current_user.role != UserRole.SUPERADMIN:
+        org = db.get(Organization, org_id_to_update)
+        if org:
+            plan_limits = PLAN_MODULE_LIMITS.get(org.plan or "starter")
+            if plan_limits is not None and flag_name not in plan_limits:
+                raise HTTPException(
+                    403,
+                    f"El plan '{org.plan}' no incluye el modulo '{flag_name}'. "
+                    "Actualiza el plan para habilitarlo.",
+                )
+
     # Buscar flag existente para el scope solicitado
     query = db.query(FeatureFlag).filter(FeatureFlag.name == flag_name)
     if org_id_to_update is None:
@@ -281,6 +313,15 @@ def delete_flag_override(
                {"organization_id": org_id})
     db.commit()
     return {"detail": "Override eliminado. La organizacion hereda el valor global."}
+
+
+@router.get("/plans/limits")
+def get_plan_limits(current_user: User = Depends(get_current_user)):
+    """Devuelve los modulos incluidos en cada plan de licencia."""
+    return {
+        plan: sorted(list(modules)) if modules is not None else None
+        for plan, modules in PLAN_MODULE_LIMITS.items()
+    }
 
 
 def seed_default_flags(db: Session) -> None:

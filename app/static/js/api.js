@@ -465,4 +465,9 @@ const Api = {
       }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e)))));
     },
   },
+  erp: {
+    getConfig:  ()  => Api.get('/api/integrations/erp/config'),
+    saveConfig: (d) => Api.put('/api/integrations/erp/config', d),
+    events:     ()  => Api.get('/api/integrations/erp/events'),
+  },
 };

@@ -487,12 +487,66 @@ const ViewAiDocuments = (() => {
         ${d.isms_tasks_created} tarea${d.isms_tasks_created !== 1 ? 's' : ''}</a>`);
     }
     const tooltip = d.isms_summary_text ? UI.esc(d.isms_summary_text.slice(0, 300)) : '';
+
+    // Clausulas ISO extraidas por IA (v2.2)
+    const clauses = Array.isArray(d.extracted_clauses) ? d.extracted_clauses : [];
+    if (clauses.length > 0) {
+      parts.push(`<span style="cursor:pointer;font-size:11px;color:var(--brand-purple);"
+        onclick="ViewAiDocuments._showClauses(${d.id})" title="Ver clausulas ISO extraidas">
+        ${clauses.length} clausula${clauses.length !== 1 ? 's' : ''} ISO</span>`);
+    }
+
     return `<td style="font-size:11px;line-height:1.7;" title="${tooltip}">
       ${parts.length ? parts.join('<br>') : '<span style="color:var(--text-muted);">Sin resultados</span>'}
       ${tooltip ? `<div style="font-size:10px;color:var(--text-subtle);margin-top:2px;max-width:220px;
                                overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                        title="${tooltip}">${tooltip}</div>` : ''}
     </td>`;
+  }
+
+  function _showClauses(docId) {
+    const doc = _docs.find(d => d.id === docId);
+    if (!doc) return;
+    const clauses = Array.isArray(doc.extracted_clauses) ? doc.extracted_clauses : [];
+    if (!clauses.length) { UI.toast('No hay clausulas extraidas', 'info'); return; }
+
+    const rows = clauses.map(c => `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:8px 12px;font-weight:600;color:var(--brand-purple);white-space:nowrap;">${UI.esc(c.ref)}</td>
+        <td style="padding:8px 12px;font-size:13px;">${UI.esc(c.title || '')}</td>
+        <td style="padding:8px 12px;text-align:center;">
+          ${c.control_id
+            ? `<a href="#/controls" style="font-size:11px;color:var(--risk-low);">Control #${c.control_id}</a>`
+            : `<span style="font-size:11px;color:var(--text-muted);">-</span>`}
+        </td>
+        <td style="padding:8px 12px;text-align:center;font-size:11px;color:${c.confidence >= 0.8 ? 'var(--risk-low)' : 'var(--brand-orange)'};">
+          ${Math.round((c.confidence || 0) * 100)}%
+        </td>
+      </tr>
+    `).join('');
+
+    UI.openModal(`
+      <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Clausulas ISO extraidas</h3>
+        <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">x</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+        Documento: <strong>${UI.esc(doc.original_name)}</strong>
+      </p>
+      <div style="overflow-y:auto;max-height:60vh;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:var(--bg-2);font-size:11px;text-transform:uppercase;color:var(--text-muted);">
+              <th style="padding:8px 12px;text-align:left;">Clausula</th>
+              <th style="padding:8px 12px;text-align:left;">Titulo</th>
+              <th style="padding:8px 12px;text-align:center;">Control</th>
+              <th style="padding:8px 12px;text-align:center;">Confianza</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `, { width: '680px' });
   }
 
   function _renderRows() {
@@ -606,6 +660,6 @@ const ViewAiDocuments = (() => {
     }
   }
 
-  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll };
+  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll, _showClauses };
 
 })();

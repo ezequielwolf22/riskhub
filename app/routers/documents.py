@@ -88,6 +88,8 @@ def _doc_out(d: AiDocument) -> dict:
         # Auto-categorizacion IA (v1.7.8)
         "auto_categorized": bool(getattr(d, "auto_categorized", False) or summary.get("auto_categorized", False)),
         "detected_category": getattr(d, "detected_category", None) or summary.get("detected_category"),
+        # Clausulas ISO extraidas por IA (v2.2)
+        "extracted_clauses": getattr(d, "extracted_clauses", None) or [],
     }
 
 
@@ -101,6 +103,13 @@ def _run_isms_analysis_bg(doc_id: int) -> None:
         pass
     finally:
         db.close()
+
+    # Tras el analisis ISMS, extraer clausulas ISO automaticamente
+    try:
+        from app.services.iso_clause_extractor import run_extraction_for_document
+        run_extraction_for_document(doc_id)
+    except Exception:
+        pass
 
 
 @router.get("/")

@@ -622,26 +622,22 @@ const ViewIntegrations = {
           <div id="smtp-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
         </div>
 
-        <!-- SAP / Jagger / Sphera — proximas -->
-        <div class="card" style="opacity:.7;">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <!-- SAP / Jagger / Sphera — Webhooks ERP -->
+        <div class="card" id="erp-card">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
             <div>
-              <b style="font-size:15px;">SAP / Jagger / Sphera</b>
-              <div style="font-size:11px;color:var(--text-muted);">Importacion de proveedores y riesgos desde sistemas ERP y GRC</div>
+              <b style="font-size:15px;">SAP / Jagger / Sphera — Webhooks ERP</b>
+              <div style="font-size:11px;color:var(--text-muted);">Recibe eventos de sistemas ERP/GRC via webhooks HMAC-SHA256 seguros</div>
             </div>
-            <span class="badge badge-muted" style="margin-left:auto;">Proximo</span>
+            <span id="erp-status-badge" style="margin-left:auto;"></span>
           </div>
-          <p style="font-size:12px;color:var(--text-muted);margin:0;">
-            Importacion de proveedores desde SAP (RFC/OData), sincronizacion de evaluaciones de riesgo
-            desde Jagger y exportacion/importacion bidireccional con Sphera. Disponible en v1.4.
-            Por ahora puedes usar la importacion CSV en la seccion Proveedores y el catalogo de guias.
-          </p>
+          <div id="erp-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
         </div>
 
       </div>
     `;
-    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp()]);
+    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initErpWebhooks()]);
   },
 
   async _initSharePoint() {
@@ -1198,6 +1194,159 @@ const ViewIntegrations = {
       UI.toast(res.message || 'Email de prueba enviado correctamente', 'success');
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  // ── ERP Webhooks (SAP / Jagger / Sphera) ─────────────────────────────────
+
+  async _initErpWebhooks() {
+    const body = document.getElementById('erp-body');
+    const badge = document.getElementById('erp-status-badge');
+    if (!body) return;
+    try {
+      const cfg = await Api.get('/api/integrations/erp/config');
+      const isAdmin = Auth.isAdmin();
+      if (badge) badge.innerHTML = cfg.configured
+        ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">Configurado</span>`
+        : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">Sin configurar</span>`;
+
+      const origin = window.location.origin;
+      const webhookUrls = {
+        SAP:    `${origin}/api/integrations/erp/sap/webhook`,
+        Jagger: `${origin}/api/integrations/erp/jagger/webhook`,
+        Sphera: `${origin}/api/integrations/erp/sphera/webhook`,
+      };
+
+      body.innerHTML = `
+        ${cfg.configured ? `
+          <div style="background:var(--bg-2);border-radius:8px;padding:14px;margin-bottom:14px;">
+            <p style="margin:0 0 10px;font-size:12px;font-weight:600;text-transform:uppercase;color:var(--text-muted);">
+              URLs de webhook — configurar en el sistema externo
+            </p>
+            ${Object.entries(webhookUrls).map(([sys, url]) => `
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="min-width:56px;font-size:12px;font-weight:600;">${sys}</span>
+                <input style="flex:1;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text-base);font-family:var(--font-mono);"
+                       value="${url}" readonly onclick="this.select()">
+                <button class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText('${url}');UI.toast('URL copiada','success');">
+                  Copiar
+                </button>
+              </div>
+            `).join('')}
+            <p style="margin:8px 0 0;font-size:11px;color:var(--text-muted);">
+              El sistema externo debe enviar el header <code>X-Org-Id: [id-org]</code>
+              y opcionalmente <code>X-Hub-Signature-256: sha256=[hmac]</code>
+            </p>
+          </div>
+        ` : ''}
+        ${isAdmin ? `
+          <div>
+            <p style="font-size:13px;font-weight:600;margin-bottom:8px;">Configurar webhook secret</p>
+            <div class="form-grid">
+              <div class="span2">
+                <label>Webhook Secret (HMAC-SHA256) *</label>
+                <input id="erp-secret" class="input" type="password"
+                       placeholder="Minimo 16 caracteres — genera uno aleatorio"
+                       value="${cfg.configured ? '••••••••' : ''}">
+              </div>
+              <div class="span2">
+                <label>Fuentes habilitadas</label>
+                <div style="display:flex;gap:12px;margin-top:4px;">
+                  ${['sap','jagger','sphera'].map(src => {
+                    const checked = !cfg.configured || (cfg.enabled_sources || []).includes(src);
+                    return `<label style="display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer;">
+                      <input type="checkbox" id="erp-src-${src}" ${checked ? 'checked' : ''}> ${src.toUpperCase()}
+                    </label>`;
+                  }).join('')}
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:12px;justify-content:space-between;align-items:center;">
+              <button class="btn btn-ghost btn-sm" onclick="ViewIntegrations._generateErpSecret()">
+                Generar secret aleatorio
+              </button>
+              <div style="display:flex;gap:8px;">
+                ${cfg.configured ? `
+                  <button class="btn btn-sm" onclick="ViewIntegrations._loadErpEvents()">
+                    Ver eventos recibidos
+                  </button>` : ''}
+                <button class="btn btn-sm btn-primary" onclick="ViewIntegrations._saveErpConfig()">
+                  Guardar configuracion
+                </button>
+              </div>
+            </div>
+          </div>
+          <div id="erp-events" style="display:none;margin-top:16px;"></div>
+        ` : `
+          <p style="font-size:13px;color:var(--text-muted);">
+            ${cfg.configured ? 'Webhooks ERP configurados. Contacta al administrador para obtener las URLs.' : 'No configurado. Contacta al administrador.'}
+          </p>
+        `}
+      `;
+    } catch (e) {
+      if (body) body.innerHTML = `<p class="notice">${UI.esc(e.message)}</p>`;
+    }
+  },
+
+  _generateErpSecret() {
+    const arr = new Uint8Array(32);
+    crypto.getRandomValues(arr);
+    const secret = Array.from(arr, b => b.toString(16).padStart(2,'0')).join('');
+    const input = document.getElementById('erp-secret');
+    if (input) { input.value = secret; input.type = 'text'; }
+  },
+
+  async _saveErpConfig() {
+    const secret = document.getElementById('erp-secret')?.value?.trim();
+    if (!secret || secret.startsWith('•')) {
+      UI.toast('Introduce un nuevo webhook secret para guardar', 'error'); return;
+    }
+    const sources = ['sap','jagger','sphera'].filter(s =>
+      document.getElementById(`erp-src-${s}`)?.checked
+    );
+    try {
+      await Api.put('/api/integrations/erp/config', {
+        webhook_secret: secret,
+        enabled_sources: sources,
+      });
+      UI.toast('Configuracion ERP guardada', 'success');
+      await this._initErpWebhooks();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _loadErpEvents() {
+    const el = document.getElementById('erp-events');
+    if (!el) return;
+    el.style.display = 'block';
+    try {
+      const { events } = await Api.get('/api/integrations/erp/events');
+      if (!events.length) {
+        el.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">No hay eventos recibidos aun.</p>';
+        return;
+      }
+      el.innerHTML = `
+        <p style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">
+          Ultimos eventos recibidos
+        </p>
+        <table class="table" style="font-size:12px;">
+          <thead><tr><th>Fecha</th><th>Fuente</th><th>Evento</th><th>Entidad</th><th>Resultado</th></tr></thead>
+          <tbody>
+            ${events.map(ev => `
+              <tr>
+                <td style="white-space:nowrap;">${ev.ts ? ev.ts.slice(0,19).replace('T',' ') : '-'}</td>
+                <td><span class="badge badge-muted">${UI.esc(ev.source || '')}</span></td>
+                <td>${UI.esc(ev.event_type || '')}</td>
+                <td>${UI.esc(ev.entity_name || '')}</td>
+                <td style="color:${ev.result === 'ok' ? 'var(--risk-low)' : ev.result === 'queued' ? 'var(--brand-orange)' : 'var(--risk-critical)'};">
+                  ${UI.esc(ev.result || '')}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (e) {
+      el.innerHTML = `<p class="notice">${UI.esc(e.message)}</p>`;
     }
   },
 

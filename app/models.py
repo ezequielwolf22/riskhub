@@ -948,6 +948,8 @@ class AiDocument(Base):
     # Auto-categorizacion IA (v1.8)
     auto_categorized = Column(Boolean, default=False)
     detected_category = Column(String(64), nullable=True)
+    # Clausulas ISO extraidas automaticamente por IA (v2.2)
+    extracted_clauses = Column(JSON, nullable=True)  # [{ref, title, control_id, confidence}]
 
     uploaded_by = relationship("User")
     chunks = relationship("AiDocumentChunk", back_populates="document",
