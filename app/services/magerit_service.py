@@ -149,36 +149,56 @@ def calculate_magerit_risk(
     }
 
 
-def seed_magerit_threats(db: Session, org_id: int) -> int:
-    """Carga las amenazas MAGERIT v3 para una organización.
+# Mapeo de origen MAGERIT ("N","E","A") → ThreatOrigin ("E","A","D")
+# MAGERIT:  N=Natural, E=Error involuntario, A=Ataque deliberado
+# ThreatOrigin: E=Environmental, A=Accidental, D=Deliberate
+_MAGERIT_ORIGIN_MAP = {
+    "N": "E",   # Natural → Environmental
+    "E": "A",   # Error   → Accidental
+    "A": "D",   # Ataque  → Deliberate
+}
 
-    Solo crea las que no existen. Retorna número de amenazas creadas.
+
+def seed_magerit_threats(db: Session, org_id: int) -> int:
+    """Carga las amenazas MAGERIT v3 en el catálogo global de amenazas.
+
+    El catálogo de amenazas es global (sin organization_id).
+    Solo crea las que no existen por código. Retorna amenazas creadas.
     """
-    threats = load_magerit_threats()
+    from app.models import ThreatOrigin
+    threats_data = load_magerit_threats()
     created = 0
-    for t in threats:
+
+    for t in threats_data:
         code = f"MAGERIT-{t['code']}"
-        existing = db.query(Threat).filter(
-            Threat.organization_id == org_id,
-            Threat.code == code,
-        ).first()
-        if existing:
+        # El catálogo es global — no filtramos por org
+        if db.query(Threat).filter(Threat.code == code).first():
             continue
+
+        # Mapear origen MAGERIT → ThreatOrigin
+        raw_origin = _MAGERIT_ORIGIN_MAP.get(t.get("origin", "A"), "A")
+        try:
+            origin = ThreatOrigin(raw_origin)
+        except ValueError:
+            origin = ThreatOrigin.ACCIDENTAL
+
         threat = Threat(
-            organization_id=org_id,
             code=code,
             name=t["name"],
-            description=f"[MAGERIT v3] {t.get('description', '')} — Categoría: {t.get('category','')}",
-            origin=t.get("origin", "D"),
-            likelihood=_MAGERIT_TO_ISO.get(t.get("likelihood", 2), 2),
-            consequence=_MAGERIT_TO_ISO.get(t.get("consequence", 2), 2),
+            description=f"[MAGERIT v3] {t.get('description', '')} — Categoría: {t.get('category', '')}",
+            category=t.get("category", ""),
+            origin=origin,
+            typical_assets=[],
+            affects=t.get("dimension", []),   # D/I/C/A/T — dimensiones afectadas
+            is_custom=False,
         )
         db.add(threat)
         created += 1
+
     if created:
         try:
             db.commit()
-            logger.info("MAGERIT: %d amenazas cargadas para org %d", created, org_id)
+            logger.info("MAGERIT: %d amenazas cargadas en el catalogo global", created)
         except Exception as exc:
             db.rollback()
             logger.exception("Error cargando amenazas MAGERIT: %s", exc)
