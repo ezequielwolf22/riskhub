@@ -334,4 +334,65 @@ const Api = {
     checkRules: () => Api.post('/api/alerts/check-rules', {}),
     sendRisk: (id, d) => Api.post('/api/alerts/send-risk/' + id, d),
   },
+  complianceFrameworks: {
+    list:             ()           => Api.get('/api/compliance/frameworks'),
+    get:              (code)       => Api.get('/api/compliance/frameworks/' + code),
+    status:           ()           => Api.get('/api/compliance/status'),
+    frameworkStatus:  (code)       => Api.get('/api/compliance/status/' + code),
+    subscribe:        (d)          => Api.post('/api/compliance/subscribe', d),
+    updateRequirement:(fw, req, d) => Api.put(`/api/compliance/requirements/${fw}/${req}`, d),
+    syncControls:     ()           => Api.post('/api/compliance/sync-controls', {}),
+  },
+  evidence: {
+    list:       (q)  => Api.get('/api/evidence', q),
+    get:        (id) => Api.get('/api/evidence/' + id),
+    del:        (id) => Api.del('/api/evidence/' + id),
+    download:   (id) => `/api/evidence/${id}/download`,
+    upload: (fd) => {
+      const token = localStorage.getItem('riskhub_token') || '';
+      return fetch('/api/evidence', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e)))));
+    },
+    newVersion: (id, fd) => {
+      const token = localStorage.getItem('riskhub_token') || '';
+      return fetch(`/api/evidence/${id}/new-version`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e)))));
+    },
+  },
+  executive: {
+    kpis:        ()        => Api.get('/api/executive/kpis'),
+    topRisks:    (limit)   => Api.get('/api/executive/top-risks', limit ? { limit } : {}),
+    riskTrend:   (days)    => Api.get('/api/executive/risk-trend', days ? { days } : {}),
+    heatmap:     ()        => Api.get('/api/executive/heatmap'),
+    boardReport: ()        => Api.get('/api/executive/board-report'),
+    boardPdf:    ()        => '/api/executive/board-report/pdf',
+  },
+  webhooks: {
+    list:      ()        => Api.get('/api/webhooks'),
+    events:    ()        => Api.get('/api/webhooks/events'),
+    create:    (d)       => Api.post('/api/webhooks', d),
+    update:    (id, d)   => Api.put('/api/webhooks/' + id, d),
+    del:       (id)      => Api.del('/api/webhooks/' + id),
+    test:      (id)      => Api.post(`/api/webhooks/${id}/test`, {}),
+    deliveries:(id)      => Api.get(`/api/webhooks/${id}/deliveries`),
+  },
+  findings: {
+    list:    (q)  => Api.get('/api/findings', q),
+    summary: ()   => Api.get('/api/findings/summary'),
+    resolve: (id) => Api.put(`/api/findings/${id}/resolve`, {}),
+    import: (fd) => {
+      const token = localStorage.getItem('riskhub_token') || '';
+      return fetch('/api/findings/import', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      }).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(new Error(e.detail || JSON.stringify(e)))));
+    },
+  },
 };

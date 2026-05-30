@@ -1144,3 +1144,213 @@ class AwarenessBranding(Base):
     updated_by_id = Column(Integer, ForeignKey("users.id"))
 
     updated_by = relationship("User", foreign_keys=[updated_by_id])
+
+
+# ---------- COMPLIANCE FRAMEWORKS ----------
+
+class ComplianceRequirementStatus(str, PyEnum):
+    NOT_APPLICABLE = "not_applicable"
+    PLANNED = "planned"
+    PARTIAL = "partial"
+    IMPLEMENTED = "implemented"
+    AUDITED = "audited"
+
+
+class ComplianceFrameworkStatus(Base):
+    """Estado de cumplimiento por framework y requisito, por org."""
+    __tablename__ = "compliance_framework_status"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    framework_code = Column(String(64), nullable=False)       # "iso27001", "gdpr", "hipaa", etc.
+    requirement_id = Column(String(64), nullable=False)       # "A.5.1", "Art.25", etc.
+    status = Column(Enum(ComplianceRequirementStatus), default=ComplianceRequirementStatus.PLANNED)
+    completion_pct = Column(Integer, default=0)               # 0-100
+    responsible_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    notes = Column(Text, nullable=True)
+    next_audit_date = Column(DateTime, nullable=True)
+    last_reviewed_at = Column(DateTime, nullable=True)
+    evidence_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    responsible = relationship("User", foreign_keys=[responsible_id])
+    __table_args__ = (
+        UniqueConstraint("organization_id", "framework_code", "requirement_id"),
+    )
+
+
+# ---------- EVIDENCE CENTRALIZED ----------
+
+class EvidenceType(str, PyEnum):
+    POLICY = "policy"
+    PROCEDURE = "procedure"
+    RECORD = "record"
+    CERTIFICATE = "certificate"
+    SCREENSHOT = "screenshot"
+    LOG = "log"
+    REPORT = "report"
+    OTHER = "other"
+
+
+class Evidence(Base):
+    """Evidencia centralizada con versionado y audit trail."""
+    __tablename__ = "evidence"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    code = Column(String(32), nullable=False, unique=True)         # EVD-0001
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    evidence_type = Column(Enum(EvidenceType), default=EvidenceType.OTHER)
+    filename = Column(String(512), nullable=True)                   # archivo en disco
+    mime_type = Column(String(128), nullable=True)
+    file_hash = Column(String(128), nullable=True)                  # SHA-256 integridad
+    file_size = Column(Integer, nullable=True)
+    # Links polimorficos
+    control_implementation_id = Column(Integer, ForeignKey("control_implementations.id"), nullable=True)
+    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)
+    policy_id = Column(Integer, ForeignKey("policies.id"), nullable=True)
+    compliance_framework = Column(String(64), nullable=True)        # "iso27001"
+    compliance_requirement = Column(String(64), nullable=True)      # "A.5.1"
+    # Expiración
+    valid_from = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    expiry_alert_sent = Column(Boolean, default=False)
+    # Audit
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    version = Column(Integer, default=1)
+    is_current = Column(Boolean, default=True)
+    previous_version_id = Column(Integer, ForeignKey("evidence.id"), nullable=True)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    previous_version = relationship("Evidence", remote_side=[id], foreign_keys=[previous_version_id])
+
+
+# ---------- WEBHOOKS ----------
+
+class WebhookEvent(str, PyEnum):
+    RISK_CREATED = "risk.created"
+    RISK_HIGH = "risk.high"
+    RISK_CLOSED = "risk.closed"
+    EVIDENCE_EXPIRED = "evidence.expired"
+    SUPPLIER_RISK_CHANGED = "supplier.risk_changed"
+    COMPLIANCE_GAP = "compliance.gap"
+    INCIDENT_CREATED = "incident.created"
+    TASK_OVERDUE = "task.overdue"
+
+
+class Webhook(Base):
+    """Configuracion de webhook para notificaciones externas."""
+    __tablename__ = "webhooks"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(128), nullable=False)
+    url = Column(String(1024), nullable=False)
+    secret = Column(String(256), nullable=True)         # HMAC signing secret
+    events = Column(JSON, nullable=False)               # lista de WebhookEvent
+    is_active = Column(Boolean, default=True)
+    headers = Column(JSON, nullable=True)               # headers extra
+    retry_count = Column(Integer, default=3)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_triggered_at = Column(DateTime, nullable=True)
+    last_success_at = Column(DateTime, nullable=True)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class WebhookDelivery(Base):
+    """Log de entregas de webhooks."""
+    __tablename__ = "webhook_deliveries"
+    id = Column(Integer, primary_key=True)
+    webhook_id = Column(Integer, ForeignKey("webhooks.id"), nullable=False, index=True)
+    event = Column(String(64), nullable=False)
+    payload = Column(Text, nullable=True)
+    response_status = Column(Integer, nullable=True)
+    response_body = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    success = Column(Boolean, default=False)
+    attempt = Column(Integer, default=1)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    webhook = relationship("Webhook")
+
+
+# ---------- RISK WORKFLOW ----------
+
+class WorkflowStepStatus(str, PyEnum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    SKIPPED = "skipped"
+
+
+class RiskWorkflow(Base):
+    """Seguimiento del lifecycle automatizado de un riesgo."""
+    __tablename__ = "risk_workflows"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=False, unique=True)
+    step_analysis = Column(Enum(WorkflowStepStatus), default=WorkflowStepStatus.PENDING)
+    step_mitigation = Column(Enum(WorkflowStepStatus), default=WorkflowStepStatus.PENDING)
+    step_verification = Column(Enum(WorkflowStepStatus), default=WorkflowStepStatus.PENDING)
+    step_closure = Column(Enum(WorkflowStepStatus), default=WorkflowStepStatus.PENDING)
+    assigned_analyst_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    sla_days = Column(Integer, default=30)
+    sla_due_date = Column(DateTime, nullable=True)
+    escalated = Column(Boolean, default=False)
+    escalated_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    risk = relationship("Risk")
+    assigned_analyst = relationship("User", foreign_keys=[assigned_analyst_id])
+    assigned_owner = relationship("User", foreign_keys=[assigned_owner_id])
+
+
+# ---------- EXTERNAL FINDINGS (Nessus, Qualys, Burp, etc) ----------
+
+class ExternalFindingSource(str, PyEnum):
+    NESSUS = "nessus"
+    QUALYS = "qualys"
+    BURP = "burp"
+    OPENVAS = "openvas"
+    SHODAN = "shodan"
+    CENSYS = "censys"
+    SIEM = "siem"
+    SSL_LABS = "ssl_labs"
+    MANUAL = "manual"
+
+
+class ExternalFinding(Base):
+    """Hallazgo importado de herramienta de seguridad externa."""
+    __tablename__ = "external_findings"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    source = Column(Enum(ExternalFindingSource), nullable=False)
+    external_id = Column(String(256), nullable=True)            # ID en la herramienta
+    title = Column(String(512), nullable=False)
+    description = Column(Text, nullable=True)
+    severity = Column(String(32), nullable=True)                # CRITICAL/HIGH/MEDIUM/LOW
+    cvss_score = Column(Float, nullable=True)
+    cve_id = Column(String(64), nullable=True)
+    affected_host = Column(String(512), nullable=True)
+    affected_port = Column(Integer, nullable=True)
+    affected_software = Column(String(512), nullable=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # link a asset
+    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)     # risk creado
+    status = Column(String(32), default="open")                 # open/resolved/accepted
+    raw_data = Column(Text, nullable=True)                      # XML/JSON original
+    import_batch_id = Column(String(64), nullable=True)         # agrupa import
+    detected_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    asset = relationship("Asset")
+    risk = relationship("Risk")

@@ -35,6 +35,10 @@ const Routes = {
   organizations: ViewOrganizations,
   'architecture-review': ViewArchitectureReview,
   'change-password-required': ViewChangePasswordRequired,
+  executive: ViewExecutive,
+  evidence: ViewEvidence,
+  webhooks: ViewWebhooks,
+  'external-findings': ViewExternalFindings,
 };
 
 function currentRoute() {

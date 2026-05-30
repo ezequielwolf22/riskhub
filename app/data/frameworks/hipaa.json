@@ -1,0 +1,28 @@
+{
+  "code": "hipaa",
+  "name": "HIPAA (US Health Insurance Portability and Accountability Act)",
+  "version": "2013",
+  "description": "Regulación de privacidad y seguridad de información sanitaria",
+  "audit_frequency_months": 12,
+  "certification_body": "HHS OCR",
+  "requirements": [
+    {"id": "164.308.a.1", "name": "Gestión de riesgos de seguridad", "domain": "Salvaguardas Administrativas", "evidence_types": ["record", "report"], "mandatory": true},
+    {"id": "164.308.a.2", "name": "Gestión de sanciones", "domain": "Salvaguardas Administrativas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.308.a.3", "name": "Gestión de acceso a la información", "domain": "Salvaguardas Administrativas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.308.a.4", "name": "Gestión de acceso a la información - control", "domain": "Salvaguardas Administrativas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.308.a.5", "name": "Concienciación y formación en seguridad", "domain": "Salvaguardas Administrativas", "evidence_types": ["record", "certificate"], "mandatory": true},
+    {"id": "164.308.a.6", "name": "Procedimientos de incidentes de seguridad", "domain": "Salvaguardas Administrativas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.308.a.7", "name": "Plan de contingencia", "domain": "Salvaguardas Administrativas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.308.a.8", "name": "Evaluación periódica", "domain": "Salvaguardas Administrativas", "evidence_types": ["report", "record"], "mandatory": true},
+    {"id": "164.310.a.1", "name": "Controles de acceso físico", "domain": "Salvaguardas Físicas", "evidence_types": ["procedure", "screenshot"], "mandatory": true},
+    {"id": "164.310.a.2", "name": "Uso y reutilización de estaciones de trabajo", "domain": "Salvaguardas Físicas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.310.b", "name": "Controles de estaciones de trabajo", "domain": "Salvaguardas Físicas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.310.c", "name": "Seguridad de equipos portátiles", "domain": "Salvaguardas Físicas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.312.a.1", "name": "Control de acceso (técnico)", "domain": "Salvaguardas Técnicas", "evidence_types": ["procedure", "screenshot"], "mandatory": true},
+    {"id": "164.312.b", "name": "Controles de auditoría", "domain": "Salvaguardas Técnicas", "evidence_types": ["procedure", "log"], "mandatory": true},
+    {"id": "164.312.c.1", "name": "Integridad de ePHI", "domain": "Salvaguardas Técnicas", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "164.312.d", "name": "Autenticación de persona o entidad", "domain": "Salvaguardas Técnicas", "evidence_types": ["procedure", "screenshot"], "mandatory": true},
+    {"id": "164.312.e.1", "name": "Seguridad en transmisión", "domain": "Salvaguardas Técnicas", "evidence_types": ["procedure", "certificate"], "mandatory": true},
+    {"id": "164.314", "name": "Acuerdos con socios de negocio (BAA)", "domain": "Proveedores", "evidence_types": ["record"], "mandatory": true}
+  ]
+}

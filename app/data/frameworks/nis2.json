@@ -1,0 +1,22 @@
+{
+  "code": "nis2",
+  "name": "NIS2 (Directiva UE 2022/2555)",
+  "version": "2022",
+  "description": "Directiva de Seguridad de las Redes y Sistemas de Información",
+  "audit_frequency_months": 24,
+  "certification_body": "ENISA",
+  "requirements": [
+    {"id": "Art.21.1", "name": "Políticas de análisis de riesgos y seguridad de SI", "domain": "Gestión de riesgos", "evidence_types": ["policy_document", "record"], "mandatory": true},
+    {"id": "Art.21.2a", "name": "Tratamiento de incidentes", "domain": "Gestión de incidentes", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "Art.21.2b", "name": "Continuidad de actividad y gestión de crisis", "domain": "Continuidad", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "Art.21.2c", "name": "Seguridad de la cadena de suministro", "domain": "Proveedores", "evidence_types": ["record", "policy_document"], "mandatory": true},
+    {"id": "Art.21.2d", "name": "Seguridad en adquisición, desarrollo y mantenimiento", "domain": "Desarrollo seguro", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "Art.21.2e", "name": "Eficacia de las medidas de gestión de riesgos", "domain": "Evaluación", "evidence_types": ["report", "record"], "mandatory": true},
+    {"id": "Art.21.2f", "name": "Formación en ciberseguridad", "domain": "Formación", "evidence_types": ["record", "certificate"], "mandatory": true},
+    {"id": "Art.21.2g", "name": "Criptografía y cifrado", "domain": "Criptografía", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "Art.21.2h", "name": "Seguridad de recursos humanos, control de acceso y gestión de activos", "domain": "Activos y accesos", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "Art.21.2i", "name": "Autenticación multifactor y comunicaciones seguras", "domain": "Autenticación", "evidence_types": ["screenshot", "record"], "mandatory": true},
+    {"id": "Art.23", "name": "Obligaciones de notificación de incidentes", "domain": "Notificación", "evidence_types": ["procedure", "record"], "mandatory": true},
+    {"id": "Art.20", "name": "Gobernanza (responsabilidad de órganos de dirección)", "domain": "Gobernanza", "evidence_types": ["record"], "mandatory": true}
+  ]
+}

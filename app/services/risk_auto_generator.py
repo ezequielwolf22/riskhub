@@ -195,6 +195,22 @@ def auto_generate_risks_for_asset(
         db.rollback()
         return []
 
+    # Iniciar workflow y webhooks para riesgos ASSESSED
+    for r in created_risks:
+        if r.status == RiskStatus.ASSESSED:
+            try:
+                from app.services.workflow_engine import start_risk_workflow
+                start_risk_workflow(db, r)
+            except Exception as exc:
+                logger.debug("Error iniciando workflow para %s: %s", r.code, exc)
+            try:
+                from app.services.webhook_service import fire_risk_created, fire_risk_high
+                fire_risk_created(db, r)
+                if (r.residual_level or 0) >= 5:
+                    fire_risk_high(db, r)
+            except Exception as exc:
+                logger.debug("Error disparando webhook: %s", exc)
+
     return created_risks
 
 

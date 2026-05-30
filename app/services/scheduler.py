@@ -1179,6 +1179,116 @@ def _run_incident_tasks() -> None:
         db.close()
 
 
+def _run_sla_check() -> None:
+    """Verifica SLAs de workflows de riesgos y escala los vencidos."""
+    from app.database import SessionLocal
+    from app.services.workflow_engine import run_sla_check
+
+    db = SessionLocal()
+    try:
+        run_sla_check(db)
+    except Exception as exc:
+        logger.exception("Error en sla_check: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_evidence_expiry_check() -> None:
+    """Alerta sobre evidencias proximas a vencer (30 dias) o vencidas."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import Evidence, User, UserRole
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        soon = now + timedelta(days=30)
+
+        # Evidencias que vencen en 30 dias y no se ha enviado alerta
+        expiring = db.query(Evidence).filter(
+            Evidence.expires_at.isnot(None),
+            Evidence.expires_at <= soon,
+            Evidence.expires_at >= now,
+            Evidence.expiry_alert_sent == False,
+            Evidence.is_current == True,
+        ).all()
+
+        if not expiring:
+            return
+
+        cfg = email_service.get_settings(db)
+        alerted = 0
+        for ev in expiring:
+            ev.expiry_alert_sent = True
+            days_left = (ev.expires_at - now).days if ev.expires_at else 0
+
+            try:
+                if cfg and cfg.smtp_host:
+                    admins = db.query(User).filter(
+                        User.organization_id == ev.organization_id,
+                        User.role == UserRole.ADMIN,
+                        User.is_active == True,
+                        User.email.isnot(None),
+                    ).all()
+                    for admin in admins:
+                        subject = f"[RiskHub] Evidencia {ev.code} vence en {days_left} días"
+                        body = (
+                            f"<p>La evidencia <strong>{ev.code} — {ev.title}</strong> "
+                            f"vence en <strong>{days_left} días</strong> "
+                            f"({ev.expires_at.strftime('%d/%m/%Y')}).</p>"
+                            f"<p>Accede a RiskHub para renovarla o subir una nueva versión.</p>"
+                        )
+                        email_service.send_html(cfg, subject, body, [admin.email])
+            except Exception as exc:
+                logger.debug("Error enviando alerta evidencia: %s", exc)
+
+            # Disparar webhook
+            try:
+                from app.services.webhook_service import fire_event
+                from app.models import WebhookEvent
+                fire_event(db, ev.organization_id, WebhookEvent.EVIDENCE_EXPIRED, {
+                    "evidence_id": ev.id,
+                    "code": ev.code,
+                    "title": ev.title,
+                    "expires_at": ev.expires_at.isoformat() if ev.expires_at else None,
+                    "days_left": days_left,
+                })
+            except Exception:
+                pass
+
+            alerted += 1
+
+        if alerted:
+            db.commit()
+            logger.info("Evidence expiry: %d evidencias alertadas", alerted)
+    except Exception as exc:
+        logger.exception("Error en evidence_expiry_check: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_compliance_auto_sync() -> None:
+    """Sincroniza estado de compliance con controles implementados."""
+    from app.database import SessionLocal
+    from app.models import Organization
+    from app.services.compliance_service import auto_update_compliance_from_controls
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active == True).all()
+        total_updated = 0
+        for org in orgs:
+            updated = auto_update_compliance_from_controls(db, org.id)
+            total_updated += updated
+        if total_updated:
+            logger.info("Compliance auto-sync: %d requisitos actualizados", total_updated)
+    except Exception as exc:
+        logger.exception("Error en compliance_auto_sync: %s", exc)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -1254,6 +1364,30 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Informe mensual de seguridad por email",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_sla_check,
+        trigger=IntervalTrigger(hours=24),
+        id="sla_check",
+        name="Verificacion SLA de workflows de riesgos",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_evidence_expiry_check,
+        trigger=IntervalTrigger(hours=24),
+        id="evidence_expiry",
+        name="Alerta de evidencias proximas a vencer",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_compliance_auto_sync,
+        trigger=IntervalTrigger(hours=168),  # semanal
+        id="compliance_sync",
+        name="Sincronizacion automatica de estado de compliance",
+        replace_existing=True,
+        misfire_grace_time=7200,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)
