@@ -766,11 +766,48 @@ const ViewAssets = {
         <label>Valor monetario (EUR, FAIR/ALE)</label>
         <input type="number" min="0" step="1000" id="f-monetary" value="${a.monetary_value || ''}" placeholder="ej. 50000">
       </div>
-      <div class="span2"><label>Valoracion CIA (0-4)</label></div>
-      ${['confidentiality','integrity','availability','authenticity','accountability'].map(d =>
+      <!-- Valoración DIACAT (MAGERIT v3 + ISO 27005) — 5 dimensiones de seguridad -->
+      <div class="span2">
+        <label>Valoración de dimensiones de seguridad (0 = sin valor · 4 = crítico)</label>
+        <p style="font-size:11px;color:var(--text-muted);margin:2px 0 10px;">
+          MAGERIT v3 define 5 dimensiones: <strong>D</strong> Disponibilidad ·
+          <strong>I</strong> Integridad · <strong>C</strong> Confidencialidad ·
+          <strong>A</strong> Autenticidad · <strong>T</strong> Trazabilidad.
+          ISO 27005 usa C/I/D (CIA). En modo MAGERIT/Combinado, estos valores determinan
+          automáticamente la consecuencia de riesgo.
+        </p>
+        <!-- Visualización en barras -->
+        <div id="diacat-preview" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px;">
+          ${[
+            ['D','availability','#1565c0','Disponibilidad'],
+            ['I','integrity','#2e7d32','Integridad'],
+            ['C','confidentiality','#6A1B9A','Confidencialidad'],
+            ['A','authenticity','#c25a1f','Autenticidad'],
+            ['T','accountability','#555','Trazabilidad'],
+          ].map(([dim, field, color, label]) => {
+            const val = a['value_' + field] || 0;
+            return `
+            <div style="text-align:center;">
+              <div style="font-size:11px;color:${color};font-weight:700;margin-bottom:4px;">${dim}</div>
+              <div style="height:${Math.max(4, val * 14)}px;background:${color};border-radius:4px;
+                           margin:0 auto;width:28px;transition:height .3s;" id="dbar-${dim}"></div>
+              <div style="font-size:12px;font-weight:700;margin-top:4px;color:${color};" id="dval-${dim}">${val}</div>
+              <div style="font-size:10px;color:var(--text-muted);">${label}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      ${[
+        ['D','availability','#1565c0','Disponibilidad'],
+        ['I','integrity','#2e7d32','Integridad'],
+        ['C','confidentiality','#6A1B9A','Confidencialidad'],
+        ['A','authenticity','#c25a1f','Autenticidad'],
+        ['T','accountability','#555','Trazabilidad'],
+      ].map(([dim, field, color, label]) =>
         `<div>
-           <label>${({confidentiality:'Confidencialidad',integrity:'Integridad',availability:'Disponibilidad',authenticity:'Autenticidad',accountability:'Trazabilidad'})[d]}</label>
-           <input type="number" min="0" max="4" id="f-${d}" value="${a['value_'+d]||0}">
+           <label style="color:${color};font-weight:600;">${dim} — ${label}</label>
+           <input type="number" min="0" max="4" id="f-${field}" value="${a['value_'+field]||0}"
+                  oninput="ViewAssets._updateDiacatBar('${dim}','${field}','${color}',this.value)">
          </div>`).join('')}
       ${id ? `
       <div class="span2">
@@ -885,5 +922,14 @@ const ViewAssets = {
         UI.closeModal(); UI.toast('Guardado', 'success'); ViewAssets._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
+  },
+
+  // Actualiza la barra visual DIACAT en tiempo real al cambiar un valor
+  _updateDiacatBar(dim, field, color, rawVal) {
+    const val = Math.max(0, Math.min(4, parseInt(rawVal) || 0));
+    const bar = document.getElementById(`dbar-${dim}`);
+    const lbl = document.getElementById(`dval-${dim}`);
+    if (bar) bar.style.height = Math.max(4, val * 14) + 'px';
+    if (lbl) lbl.textContent = val;
   },
 };

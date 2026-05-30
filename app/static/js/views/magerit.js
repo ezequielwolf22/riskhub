@@ -23,10 +23,10 @@ const ViewMagerit = (() => {
   }
 
   async function render(el) {
-    // Obtener metodología activa
-    let methodology = 'iso27005';
-    try { const m = await Api.get('/api/risks/methodology'); methodology = m.methodology || 'iso27005'; } catch(_) {}
-    const isActive = methodology === 'magerit' || methodology === 'combined';
+    // Esta sección está integrada en Activos y Amenazas.
+    // Redirigir automáticamente a Activos.
+    App.navigate('assets');
+    return;
 
     el.innerHTML = `
       <div style="max-width:1100px;margin:0 auto;padding:24px 0;">
