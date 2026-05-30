@@ -172,7 +172,7 @@ def auto_generate_risks_for_asset(
             risk.treatment_option = TreatmentOption.ACCEPTANCE
             risk.status = RiskStatus.ACCEPTED
         else:
-            risk.treatment_option = None
+            risk.treatment_option = TreatmentOption.MODIFICATION  # consistente con CVE/OSINT generators
             risk.status = RiskStatus.ASSESSED
 
         # Fijar próxima revisión según nivel residual (habilita notificaciones scheduler)

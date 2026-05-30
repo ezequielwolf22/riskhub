@@ -20,14 +20,20 @@ logger = logging.getLogger("riskhub.webhooks")
 
 # CIDRs internos bloqueados para prevenir SSRF
 _BLOCKED_CIDRS = [
-    ipaddress.ip_network("169.254.0.0/16"),   # link-local / cloud metadata
-    ipaddress.ip_network("10.0.0.0/8"),        # RFC 1918
-    ipaddress.ip_network("172.16.0.0/12"),     # RFC 1918
-    ipaddress.ip_network("192.168.0.0/16"),    # RFC 1918
-    ipaddress.ip_network("127.0.0.0/8"),       # loopback
-    ipaddress.ip_network("0.0.0.0/8"),
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("169.254.0.0/16"),   # link-local IPv4 / cloud metadata AWS
+    ipaddress.ip_network("10.0.0.0/8"),        # RFC 1918 privado
+    ipaddress.ip_network("172.16.0.0/12"),     # RFC 1918 privado
+    ipaddress.ip_network("192.168.0.0/16"),    # RFC 1918 privado
+    ipaddress.ip_network("127.0.0.0/8"),       # loopback IPv4
+    ipaddress.ip_network("0.0.0.0/8"),         # red nula
+    ipaddress.ip_network("100.64.0.0/10"),     # Carrier-Grade NAT (RFC 6598)
+    ipaddress.ip_network("192.0.2.0/24"),      # TEST-NET-1 (RFC 5737)
+    ipaddress.ip_network("198.51.100.0/24"),   # TEST-NET-2 (RFC 5737)
+    ipaddress.ip_network("203.0.113.0/24"),    # TEST-NET-3 (RFC 5737)
+    ipaddress.ip_network("::1/128"),            # loopback IPv6
+    ipaddress.ip_network("fc00::/7"),           # IPv6 ULA privado (RFC 4193)
+    ipaddress.ip_network("fe80::/10"),          # IPv6 link-local (equivalente a 169.254/16)
+    ipaddress.ip_network("::ffff:0:0/96"),      # IPv4-mapped IPv6 (bypass check)
 ]
 
 

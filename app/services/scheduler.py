@@ -635,7 +635,7 @@ def _run_risk_reviews() -> None:
 
         active_risks = db.query(Risk).filter(
             Risk.next_review.isnot(None),
-            Risk.status.not_in([RiskStatus.CLOSED]),
+            Risk.status.notin_([RiskStatus.CLOSED]),
             Risk.owner_id.isnot(None),
             Risk.organization_id.isnot(None),
         ).all()

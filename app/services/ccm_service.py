@@ -213,17 +213,15 @@ def test_suppliers_reviewed(db: Session, org_id: int) -> CCMResult:
     """5.19 — Proveedores críticos con evaluación reciente."""
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(days=365)
+    # Obtener proveedores críticos (is_critical existe en el modelo)
+    # Si no hay ninguno marcado como crítico, evaluar todos los proveedores
     suppliers = db.query(Supplier).filter(
         Supplier.organization_id == org_id,
         Supplier.is_critical == True,
-    ).all() if hasattr(Supplier, "is_critical") else db.query(Supplier).filter(
-        Supplier.organization_id == org_id,
-        Supplier.risk_score.isnot(None),
-        Supplier.risk_score <= 50,
     ).all()
 
     if not suppliers:
-        # Evaluar todos los proveedores si no hay is_critical
+        # Sin proveedores marcados como críticos → evaluar todos
         suppliers = db.query(Supplier).filter(Supplier.organization_id == org_id).all()
     if not suppliers:
         return CCMResult("suppliers_reviewed", "5.19", "Evaluación de proveedores",

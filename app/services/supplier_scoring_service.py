@@ -144,7 +144,12 @@ def calculate_supplier_score(db: Session, supplier: Supplier) -> int:
     recency_score = _score_from_assessment_recency(supplier.last_assessment_at)
     questionnaire_score = _score_from_questionnaire(db, supplier.id)
     osint_score = _score_from_osint(db, supplier)
-    incident_penalty = 10 - _score_from_incidents(db, supplier)
+    # _score_from_incidents devuelve puntuación 0-10 (10=sin incidentes, 0=muchos graves)
+    # La penalización es lo que se RESTA: 10 - score_incidents
+    # Ejemplo: sin incidentes → score=10, penalty=0 → sin penalización
+    # Ejemplo: P1 incident → score=5, penalty=5 → se restan 5 puntos del total
+    incident_score = _score_from_incidents(db, supplier)   # 0-10, mayor=mejor
+    incident_penalty = 10 - incident_score                 # 0-10, mayor=peor
 
     total = cert_score + recency_score + questionnaire_score + osint_score - incident_penalty
     return max(0, min(100, total))
