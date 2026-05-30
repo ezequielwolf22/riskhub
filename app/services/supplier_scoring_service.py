@@ -56,10 +56,11 @@ def _score_from_assessment_recency(last_assessment_at: Optional[datetime]) -> in
 def _score_from_questionnaire(db: Session, supplier_id: int) -> int:
     """Score derivado del cuestionario de seguridad (0-30 puntos)."""
     from app.models import SupplierQuestionnaire
+    # El modelo usa submitted_at para saber si está completado (no tiene campo status)
     q = db.query(SupplierQuestionnaire).filter(
         SupplierQuestionnaire.supplier_id == supplier_id,
-        SupplierQuestionnaire.status == "completed",
-    ).order_by(SupplierQuestionnaire.completed_at.desc()).first()
+        SupplierQuestionnaire.submitted_at.isnot(None),
+    ).order_by(SupplierQuestionnaire.submitted_at.desc()).first()
     if not q:
         return 0
     raw_score = q.score or 0  # 0-100

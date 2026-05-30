@@ -163,6 +163,16 @@ if STATIC_DIR.exists():
     def supplier_questionnaire_page():
         return FileResponse(STATIC_DIR / "supplier-q.html", headers=_NO_CACHE)
 
+    @app.get("/portal/trust/{org_id}/{token}")
+    def trust_portal_page(org_id: int, token: str):
+        """Página pública del Trust Portal — acceso sin autenticación."""
+        return FileResponse(STATIC_DIR / "trust.html")
+
+    @app.get("/portal/auditor/{org_id}/{token}")
+    def auditor_portal_page(org_id: int, token: str):
+        """Portal de auditor — devuelve JSON para uso programático."""
+        return FileResponse(STATIC_DIR / "trust.html")
+
     # SPA fallback
     @app.get("/{full_path:path}")
     def spa_fallback(full_path: str):

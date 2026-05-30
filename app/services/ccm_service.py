@@ -512,7 +512,7 @@ def test_internal_audits_performed(db: Session, org_id: int) -> CCMResult:
         recent = db.query(AuditProgram).filter(
             AuditProgram.organization_id == org_id,
             AuditProgram.status == AuditStatus.COMPLETED,
-            AuditProgram.actual_date > threshold,
+            AuditProgram.actual_end > threshold,
         ).count()
         if recent >= 1:
             return CCMResult("internal_audit", "5.35", "Auditoría interna anual",

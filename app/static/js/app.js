@@ -43,6 +43,7 @@ const Routes = {
   ccm: ViewCcm,
   'itsm-config': ViewItsmConfig,
   'trust-portal': ViewTrustPortal,
+  magerit: ViewMagerit,
 };
 
 function currentRoute() {

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trust Portal — RiskHub</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: #F5F5F5; color: #262626; min-height: 100vh; }
+    .header { background: linear-gradient(90deg,#59008D,#D65200); color: #fff;
+              padding: 28px 32px; }
+    .header h1 { font-size: 22px; font-weight: 700; }
+    .header p { font-size: 13px; opacity: .8; margin-top: 4px; }
+    .container { max-width: 880px; margin: 32px auto; padding: 0 16px 48px; }
+    .card { background: #fff; border-radius: 10px; border: 1px solid #e0e0e0;
+            padding: 24px; margin-bottom: 16px; }
+    .card h2 { font-size: 15px; font-weight: 700; color: #59008D;
+               padding-bottom: 10px; border-bottom: 2px solid #D65200;
+               margin-bottom: 16px; }
+    .fw-row { display: flex; justify-content: space-between; align-items: center;
+              padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+    .fw-row:last-child { border-bottom: none; }
+    .fw-name { font-size: 14px; font-weight: 600; }
+    .fw-pct { font-size: 22px; font-weight: 800; }
+    .bar { background: #eee; border-radius: 4px; height: 8px;
+           overflow: hidden; margin-top: 4px; width: 100%; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+    .badge-ready { background: #E8F5E9; color: #2e7d32; padding: 2px 8px;
+                   border-radius: 8px; font-size: 11px; font-weight: 600; }
+    .footer { text-align: center; font-size: 12px; color: #9d9d9d; margin-top: 32px; }
+    .loading { text-align: center; padding: 60px; color: #9d9d9d; }
+    .error { color: #a83232; padding: 24px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 id="org-name">Trust Portal</h1>
+    <p id="org-sub">Estado de cumplimiento de seguridad de la información</p>
+  </div>
+
+  <div class="container">
+    <div id="content" class="loading">Cargando estado de cumplimiento...</div>
+
+    <div class="footer">
+      <p>Información generada automáticamente por RiskHub · ISO/IEC 27005:2018</p>
+      <p style="margin-top:4px;">Última actualización: <span id="updated-at">—</span></p>
+    </div>
+  </div>
+
+  <script>
+    (async function() {
+      // Extraer org_id y token de la URL: /portal/trust/{org_id}/{token}
+      const parts = location.pathname.split('/').filter(Boolean);
+      // parts: ['portal','trust','{org_id}','{token}']
+      const orgId = parts[2];
+      const token = parts[3];
+
+      if (!orgId || !token) {
+        document.getElementById('content').innerHTML =
+          '<div class="error">URL inválida.</div>';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/portal/trust/data/${orgId}/${token}`);
+        if (!res.ok) throw new Error('Portal no disponible');
+        const data = await res.json();
+
+        document.getElementById('org-name').textContent = data.org_name || 'Trust Portal';
+        if (data.config && data.config.custom_message) {
+          document.getElementById('org-sub').textContent = data.config.custom_message;
+        }
+        document.getElementById('updated-at').textContent =
+          data.last_updated ? data.last_updated.slice(0,10) : '—';
+
+        const col = pct => pct >= 75 ? '#2e7d32' : pct >= 50 ? '#c25a1f' : '#a83232';
+
+        let html = '';
+
+        // Frameworks
+        if (data.frameworks && data.frameworks.length) {
+          html += `<div class="card">
+            <h2>Cumplimiento normativo</h2>
+            ${data.frameworks.map(fw => `
+              <div class="fw-row">
+                <div style="flex:1;">
+                  <div class="fw-name">${esc(fw.framework_name || fw.framework)}
+                    ${fw.is_audit_ready ? '<span class="badge-ready" style="margin-left:8px;">✓ Audit Ready</span>' : ''}
+                  </div>
+                  <div class="bar"><div class="bar-fill"
+                    style="width:${fw.overall_pct}%;background:${col(fw.overall_pct)};"></div></div>
+                </div>
+                <div class="fw-pct" style="margin-left:20px;color:${col(fw.overall_pct)};">
+                  ${fw.overall_pct}%
+                </div>
+              </div>`).join('')}
+          </div>`;
+        }
+
+        // Risks summary
+        if (data.risks) {
+          html += `<div class="card">
+            <h2>Gestión de riesgos</h2>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;">
+              <div style="text-align:center;">
+                <div style="font-size:32px;font-weight:800;color:#59008D;">${data.risks.total}</div>
+                <div style="font-size:12px;color:#9d9d9d;">Riesgos gestionados</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="font-size:32px;font-weight:800;color:#2e7d32;">${data.risks.accepted_pct}%</div>
+                <div style="font-size:12px;color:#9d9d9d;">Aceptados o mitigados</div>
+              </div>
+            </div>
+          </div>`;
+        }
+
+        if (!html) {
+          html = `<div class="card" style="text-align:center;color:#9d9d9d;padding:32px;">
+            Este portal está activo. Contacta con la organización para más información.</div>`;
+        }
+
+        document.getElementById('content').innerHTML = html;
+      } catch (e) {
+        document.getElementById('content').innerHTML =
+          `<div class="error">Portal no disponible o URL incorrecta.</div>`;
+      }
+
+      function esc(s) {
+        return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+    })();
+  </script>
+</body>
+</html>
