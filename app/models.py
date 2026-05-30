@@ -185,6 +185,9 @@ class RiskContext(Base):
     # Normativas activas seleccionadas en el cuestionario IA
     active_frameworks = Column(JSON, nullable=True)  # ["iso27001","nis2","gdpr","ens",...]
     ens_level = Column(String(16), nullable=True)    # "basico" | "medio" | "alto"
+    # Metodologia de analisis de riesgos
+    # "iso27005" (default) | "magerit" | "combined"
+    methodology = Column(String(16), default="iso27005", nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
@@ -419,6 +422,11 @@ class Risk(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
     next_review = Column(DateTime, nullable=True)
     last_review_notified_at = Column(DateTime, nullable=True)  # dedup emails de revision
+    # Campos MAGERIT v3 (cuando methodology="magerit"|"combined")
+    magerit_dimension = Column(String(4), nullable=True)  # D|I|C|A|T — dimension primaria afectada
+    degradation_pct = Column(Integer, nullable=True)       # % degradacion del activo (0-100)
+    magerit_impact = Column(Float, nullable=True)          # impacto calculado = valor_dim × degrad/100
+
     # IA generado (v1.7.5)
     ai_generated = Column(Boolean, default=False)
     ai_rationale = Column(Text, nullable=True)   # justificacion del agente

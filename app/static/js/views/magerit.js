@@ -23,15 +23,43 @@ const ViewMagerit = (() => {
   }
 
   async function render(el) {
+    // Obtener metodología activa
+    let methodology = 'iso27005';
+    try { const m = await Api.get('/api/risks/methodology'); methodology = m.methodology || 'iso27005'; } catch(_) {}
+    const isActive = methodology === 'magerit' || methodology === 'combined';
+
     el.innerHTML = `
       <div style="max-width:1100px;margin:0 auto;padding:24px 0;">
+
+        <!-- Banner de estado de la metodología -->
+        <div style="padding:14px 18px;border-radius:10px;margin-bottom:20px;
+             background:${isActive ? 'var(--brand-purple-4)' : 'var(--bg-2)'};
+             border:1px solid ${isActive ? 'var(--brand-purple-3)' : 'var(--border)'};">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="flex:1;">
+              <strong style="font-size:14px;color:${isActive?'var(--brand-purple)':'var(--text-muted)'};">
+                ${isActive ? '✓ MAGERIT v3 activo como metodología de análisis' : 'MAGERIT v3 no está activo como metodología principal'}
+              </strong>
+              <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">
+                ${isActive
+                  ? 'Al crear riesgos, la consecuencia se calcula automáticamente desde las dimensiones D/I/C/A/T del activo × degradación.'
+                  : 'Esta sección muestra el análisis dimensional de tus activos. Para usar MAGERIT como metodología de cálculo, actívala en Contexto organizacional.'}
+              </p>
+            </div>
+            ${!isActive ? `
+            <button class="btn btn-primary btn-sm" onclick="App.navigate('context')">
+              Activar MAGERIT en Contexto
+            </button>` : ''}
+          </div>
+        </div>
+
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
           <div>
             <h1 style="font-size:22px;font-weight:700;color:var(--brand-purple);margin:0;">
-              MAGERIT v3
+              Análisis dimensional MAGERIT v3
             </h1>
             <p style="color:#9d9d9d;font-size:13px;margin:4px 0 0;">
-              Metodología de análisis y gestión de riesgos — dimensiones D/I/C/A/T
+              Valoración de activos por las 5 dimensiones de seguridad: D/I/C/A/T
             </p>
           </div>
           <div style="display:flex;gap:8px;">

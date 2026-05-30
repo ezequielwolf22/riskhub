@@ -259,6 +259,11 @@ def _migrate_columns() -> None:
         ("ALTER TABLE email_settings ADD COLUMN smtp_password_encrypted TEXT", "email_settings", "smtp_password_encrypted"),
         # v2.2.0 — extraccion automatica de clausulas ISO desde documentos
         ("ALTER TABLE ai_documents ADD COLUMN extracted_clauses JSON", "ai_documents", "extracted_clauses"),
+        # v1.8.2 — metodologia unificada (ISO 27005 / MAGERIT / Combined)
+        ("ALTER TABLE risk_context ADD COLUMN methodology VARCHAR(16) DEFAULT 'iso27005'", "risk_context", "methodology"),
+        ("ALTER TABLE risks ADD COLUMN magerit_dimension VARCHAR(4)", "risks", "magerit_dimension"),
+        ("ALTER TABLE risks ADD COLUMN degradation_pct INTEGER", "risks", "degradation_pct"),
+        ("ALTER TABLE risks ADD COLUMN magerit_impact REAL", "risks", "magerit_impact"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

@@ -47,6 +47,31 @@ const ViewContext = {
               <label>Apetito de riesgo — nivel máximo aceptable (0-8)</label>
               <input type="number" min="0" max="8" id="f-appetite" value="${ctx.risk_appetite ?? 3}" ${ro}>
             </div>
+            <div class="span2">
+              <label>Metodología de análisis de riesgos</label>
+              ${!ro ? `
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;">
+                ${[
+                  {v:'iso27005', label:'ISO 27005', desc:'Consecuencia (0-4) y probabilidad (0-4) introducidas manualmente por el analista.'},
+                  {v:'magerit',  label:'MAGERIT v3', desc:'Consecuencia calculada desde las 5 dimensiones DIACAT del activo × degradación. Probabilidad en escala de frecuencia MAGERIT.'},
+                  {v:'combined', label:'Combinada', desc:'MAGERIT para la consecuencia (auto-calculada) + probabilidad manual ISO 27005.'},
+                ].map(m => `
+                  <label id="meth-lbl-${m.v}" style="cursor:pointer;border:2px solid ${(ctx.methodology||'iso27005')===m.v?'var(--brand-purple)':'var(--border)'};
+                         background:${(ctx.methodology||'iso27005')===m.v?'var(--brand-purple-4)':'var(--bg-2)'};
+                         border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:4px;transition:.15s;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <input type="radio" name="methodology" value="${m.v}" ${(ctx.methodology||'iso27005')===m.v?'checked':''}
+                             style="accent-color:var(--brand-purple);"
+                             onchange="ViewContext._highlightMeth('${m.v}')">
+                      <strong style="font-size:13px;">${m.label}</strong>
+                    </div>
+                    <span style="font-size:11px;color:var(--text-muted);line-height:1.4;">${m.desc}</span>
+                  </label>`).join('')}
+              </div>` : `
+              <div style="font-size:13px;padding:10px;background:var(--bg-2);border-radius:8px;">
+                <strong>${{'iso27005':'ISO 27005','magerit':'MAGERIT v3','combined':'Combinada'}[ctx.methodology||'iso27005']}</strong>
+              </div>`}
+            </div>
           </div>
         </div>
 
@@ -143,15 +168,19 @@ const ViewContext = {
               rules: rulesText.split('\n').map(r => r.trim()).filter(r => r.length > 0),
             };
 
+            const methEl = document.querySelector('input[name="methodology"]:checked');
             await Api.context.update({
               organization_name: document.getElementById('f-org').value,
               scope: document.getElementById('f-scope').value,
               boundaries: document.getElementById('f-bounds').value,
               risk_appetite: parseInt(document.getElementById('f-appetite').value) || 3,
+              methodology: methEl ? methEl.value : 'iso27005',
               likelihood_criteria: likCriteria,
               impact_criteria: impCriteria,
               risk_acceptance_criteria: accCriteria,
             });
+            // Notificar a otros módulos del cambio de metodología
+            window._riskMethodology = methEl ? methEl.value : 'iso27005';
             UI.toast('Contexto actualizado', 'success');
           } catch (e) { UI.toast(e.message, 'error'); }
         };
@@ -159,6 +188,15 @@ const ViewContext = {
     } catch (e) {
       document.getElementById('ctx-content').innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
+  },
+
+  _highlightMeth(val) {
+    ['iso27005','magerit','combined'].forEach(v => {
+      const lbl = document.getElementById(`meth-lbl-${v}`);
+      if (!lbl) return;
+      lbl.style.borderColor = v === val ? 'var(--brand-purple)' : 'var(--border)';
+      lbl.style.background  = v === val ? 'var(--brand-purple-4)' : 'var(--bg-2)';
+    });
   },
 
   _matrixHtml(matrix) {

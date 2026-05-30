@@ -161,3 +161,73 @@ def default_acceptance_criteria() -> dict:
 
 def default_matrix() -> list[list[int]]:
     return [row[:] for row in DEFAULT_MATRIX]
+
+
+# ---------- MAGERIT v3 helpers ----------
+
+# Escala de frecuencia MAGERIT (MA/A/M/B/MB) → probabilidad 0-4 ISO 27005
+MAGERIT_FREQ_LABELS = {
+    0: "MB — Muy Baja (< 1/10 años)",
+    1: "B  — Baja (1/5-10 años)",
+    2: "M  — Media (1/año)",
+    3: "A  — Alta (varias/año)",
+    4: "MA — Muy Alta (mensual o más)",
+}
+
+# Dimensiones de seguridad MAGERIT (5D: DIACAT)
+MAGERIT_DIMENSIONS = {
+    "D": "Disponibilidad",
+    "I": "Integridad",
+    "C": "Confidencialidad",
+    "A": "Autenticidad",
+    "T": "Trazabilidad",
+}
+
+# Mapa dimensión → campo en Asset
+MAGERIT_DIM_FIELD = {
+    "D": "value_availability",
+    "I": "value_integrity",
+    "C": "value_confidentiality",
+    "A": "value_authenticity",
+    "T": "value_accountability",
+}
+
+
+def calc_consequence_magerit(asset_dim_value: int, degradation_pct: int) -> tuple[int, float]:
+    """Calcula consecuencia e impacto MAGERIT.
+
+    MAGERIT: Impacto = Valor_dimensión_activo × (Degradación% / 100)
+    La consecuencia (0-4) se obtiene mapeando el impacto a la escala ISO 27005.
+
+    Args:
+        asset_dim_value: valor de la dimensión afectada en el activo (0-4 escala RiskHub)
+        degradation_pct: porcentaje de degradación si la amenaza se materializa (0-100)
+
+    Returns:
+        (consequence 0-4, magerit_impact float)
+    """
+    impact = asset_dim_value * (degradation_pct / 100.0)
+    consequence = clamp(round(impact))
+    return consequence, round(impact, 2)
+
+
+def primary_dimension_for_threat(threat_affects: list[str], asset: object) -> str:
+    """Devuelve la dimensión MAGERIT más crítica para este activo y amenaza.
+
+    Selecciona la dimensión con mayor valor en el activo entre las que afecta
+    la amenaza (threat.affects = ["C","I","A"...]).
+    Si no hay información, usa la dimensión con el valor más alto del activo.
+    """
+    dims_to_check = [d for d in (threat_affects or []) if d in MAGERIT_DIM_FIELD]
+    if not dims_to_check:
+        dims_to_check = list(MAGERIT_DIM_FIELD.keys())
+
+    best_dim = "D"
+    best_val = -1
+    for dim in dims_to_check:
+        field = MAGERIT_DIM_FIELD[dim]
+        val = getattr(asset, field, 0) or 0
+        if val > best_val:
+            best_val = val
+            best_dim = dim
+    return best_dim

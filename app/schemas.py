@@ -111,6 +111,7 @@ class ContextIn(BaseModel):
     risk_appetite: Optional[int] = None
     active_frameworks: Optional[list[str]] = None
     ens_level: Optional[str] = None
+    methodology: Optional[str] = None   # "iso27005"|"magerit"|"combined"
 
 
 class ContextOut(ORMBase):
@@ -125,6 +126,7 @@ class ContextOut(ORMBase):
     risk_appetite: Optional[int]
     active_frameworks: Optional[list[str]] = None
     ens_level: Optional[str] = None
+    methodology: Optional[str] = "iso27005"
     updated_at: datetime
 
 
@@ -368,6 +370,9 @@ class RiskIn(BaseModel):
     treatment_option: Optional[TreatmentOption] = None
     treatment_plan: Optional[str] = None
     treatment_due_date: Optional[datetime] = None
+    # Campos MAGERIT v3 (opcionales — solo cuando methodology=magerit|combined)
+    magerit_dimension: Optional[str] = None   # D|I|C|A|T
+    degradation_pct: Optional[int] = None     # 0-100
 
 
 class RiskUpdate(BaseModel):
@@ -383,6 +388,10 @@ class RiskUpdate(BaseModel):
     treatment_due_date: Optional[datetime] = None
     status: Optional[RiskStatus] = None
     acceptance_justification: Optional[str] = None
+    next_review: Optional[datetime] = None
+    # Campos MAGERIT v3
+    magerit_dimension: Optional[str] = None
+    degradation_pct: Optional[int] = None
 
 
 class RiskOut(ORMBase):
@@ -412,6 +421,10 @@ class RiskOut(ORMBase):
     # v1.7.5 — IA generado
     ai_generated: bool = False
     ai_rationale: Optional[str] = None
+    # MAGERIT v3
+    magerit_dimension: Optional[str] = None
+    degradation_pct: Optional[int] = None
+    magerit_impact: Optional[float] = None
     asset: AssetOut
     threat: ThreatOut
 

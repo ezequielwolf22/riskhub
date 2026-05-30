@@ -173,16 +173,21 @@ const ViewRisks = {
 
   async _loadCatalogs() {
     try {
-      const [a, t, v, i, u] = await Promise.all([
+      const [a, t, v, i, u, meth] = await Promise.all([
         Api.assets.list({}), Api.threats.list({}),
         Api.vulns.list({}), Api.impls.list(),
         Api.listUsers().catch(() => []),
+        Api.get('/api/risks/methodology').catch(() => ({ methodology: 'iso27005' })),
       ]);
       ViewRisks._assets = a;
       ViewRisks._threats = t;
       ViewRisks._vulns = v;
       ViewRisks._impls = i;
       ViewRisks._users = u;
+      // Guardar metodologia activa en window para que el formulario la use
+      window._riskMethodology = meth.methodology || 'iso27005';
+      window._mageritFreqLabels = meth.magerit_freq_labels || {};
+      window._mageritDimensions = meth.magerit_dimensions || {};
       // Populate owner filter dropdown
       const ownerSel = document.getElementById('r-owner');
       if (ownerSel && u.length) {
@@ -450,14 +455,21 @@ const ViewRisks = {
 
     const canEdit = Auth.canEdit();
 
+    const methodology = window._riskMethodology || 'iso27005';
+    const isMagerit = methodology === 'magerit' || methodology === 'combined';
+    const freqLabels = window._mageritFreqLabels || {0:'Muy Baja',1:'Baja',2:'Media',3:'Alta',4:'Muy Alta'};
+    const dims = window._mageritDimensions || {D:'Disponibilidad',I:'Integridad',C:'Confidencialidad',A:'Autenticidad',T:'Trazabilidad'};
+
     UI.modal(id ? `${r.code} - ${r.asset?.name || ''}` : 'Nuevo riesgo', `
       <div class="span2 notice">
-        Riesgo = combinación de un Activo y una Amenaza. El nivel se calcula como
-        Consecuencia x Probabilidad (matriz 5x5 ISO 27005 Annex E.2).
+        Riesgo = Activo × Amenaza.
+        ${isMagerit
+          ? `<strong>Metodología MAGERIT v3</strong>: consecuencia calculada desde las 5 dimensiones DIACAT del activo × degradación.`
+          : `Nivel calculado como Consecuencia × Probabilidad (matriz 5x5 ISO 27005 Annex E.2).`}
       </div>
       <div>
         <label>Activo *</label>
-        <select id="f-asset" ${id?'disabled':''}>
+        <select id="f-asset" ${id?'disabled':''} onchange="${isMagerit?'ViewRisks._updateMageritPreview()':''}">
           ${ViewRisks._assets.map(a => `<option value="${a.id}" ${r.asset_id===a.id?'selected':''}>${UI.esc(a.code)} - ${UI.esc(a.name)}</option>`).join('')}
         </select>
       </div>
@@ -475,6 +487,52 @@ const ViewRisks = {
         <label>Consecuencias esperadas</label>
         <textarea id="f-cons" rows="2">${UI.esc(r.consequence_description||'')}</textarea>
       </div>
+
+      ${isMagerit ? `
+      <!-- Bloque MAGERIT: dimensión + degradación + vista previa -->
+      <div class="span2" style="background:var(--brand-purple-4);border:1px solid var(--brand-purple-3);border-radius:10px;padding:14px;margin-bottom:4px;">
+        <div style="font-size:12px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;margin-bottom:10px;">
+          MAGERIT v3 — Valoración del impacto
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:12px;">Dimensión afectada *</label>
+            <select id="f-magerit-dim" onchange="ViewRisks._updateMageritPreview()">
+              ${Object.entries(dims).map(([k,v]) =>
+                `<option value="${k}" ${(r.magerit_dimension||'D')===k?'selected':''}>${k} — ${v}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;">Degradación del activo (%)</label>
+            <input type="range" id="f-degrad" min="0" max="100" step="5"
+                   value="${r.degradation_pct ?? 50}"
+                   style="width:100%;accent-color:var(--brand-purple);"
+                   oninput="document.getElementById('f-degrad-val').textContent=this.value+'%';ViewRisks._updateMageritPreview()">
+            <div style="text-align:center;font-size:13px;font-weight:700;color:var(--brand-purple);" id="f-degrad-val">${r.degradation_pct ?? 50}%</div>
+          </div>
+          <div id="magerit-preview-box" style="background:var(--bg-1);border-radius:8px;padding:10px;text-align:center;">
+            <div style="font-size:11px;color:var(--text-muted);">Consecuencia calculada</div>
+            <div style="font-size:28px;font-weight:800;color:var(--brand-purple);" id="magerit-cons-val">${r.inherent_consequence ?? 0}</div>
+            <div style="font-size:11px;color:var(--text-muted);" id="magerit-cons-lbl">—</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Impacto: <span id="magerit-impact-val">${r.magerit_impact ?? '-'}</span></div>
+          </div>
+        </div>
+        <div id="magerit-dims-bar" style="margin-top:10px;display:grid;grid-template-columns:repeat(5,1fr);gap:4px;"></div>
+      </div>
+      <input type="hidden" id="f-ic" value="${r.inherent_consequence}">
+      <div>
+        <label>${methodology === 'magerit' ? 'Frecuencia de la amenaza (0-4)' : 'Probabilidad inherente (0-4)'}</label>
+        <select id="f-il">
+          ${[0,1,2,3,4].map(i => `<option value="${i}" ${r.inherent_likelihood===i?'selected':''}>${i} — ${freqLabels[i]||i}</option>`).join('')}
+        </select>
+      </div>
+      <div id="magerit-cons-display" style="display:flex;flex-direction:column;justify-content:center;">
+        <label style="font-size:12px;color:var(--text-muted);">Consecuencia inherente</label>
+        <div style="font-size:18px;font-weight:700;color:var(--brand-purple);" id="magerit-ic-display">${r.inherent_consequence}</div>
+        <div style="font-size:11px;color:var(--text-muted);">Auto-calculada desde activo × degradación</div>
+      </div>
+      ` : `
       <div>
         <label>Probabilidad inherente (0-4)</label>
         <input type="number" min="0" max="4" id="f-il" value="${r.inherent_likelihood}">
@@ -482,7 +540,7 @@ const ViewRisks = {
       <div>
         <label>Consecuencia inherente (0-4)</label>
         <input type="number" min="0" max="4" id="f-ic" value="${r.inherent_consequence}">
-      </div>
+      </div>`}
       <div class="span2">
         <label>Vulnerabilidades asociadas (multi-selección)</label>
         <select id="f-vulns" multiple size="5" style="height:auto;">
@@ -669,6 +727,9 @@ const ViewRisks = {
       }
       const dueVal = document.getElementById('f-due').value;
       const ownerVal = document.getElementById('f-owner').value;
+      // MAGERIT: leer dimension y degradacion si aplica
+      const mageritDim = document.getElementById('f-magerit-dim')?.value || null;
+      const degradPct = document.getElementById('f-degrad') ? parseInt(document.getElementById('f-degrad').value) : null;
       const body = {
         description: document.getElementById('f-desc').value,
         consequence_description: document.getElementById('f-cons').value,
@@ -682,6 +743,8 @@ const ViewRisks = {
         owner_id: ownerVal ? parseInt(ownerVal) : null,
         treatment_due_date: dueVal || null,
         acceptance_justification: just || null,
+        magerit_dimension: mageritDim,
+        degradation_pct: degradPct,
       };
       try {
         if (id) await Api.risks.update(id, body);
@@ -817,5 +880,49 @@ const ViewRisks = {
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-back').onclick = () => { UI.closeModal(); ViewRisks._edit(r.id); };
+  },
+
+  // ---- MAGERIT: preview en tiempo real ----
+
+  async _updateMageritPreview() {
+    const assetEl = document.getElementById('f-asset');
+    const dimEl   = document.getElementById('f-magerit-dim');
+    const degradEl = document.getElementById('f-degrad');
+    if (!assetEl || !dimEl || !degradEl) return;
+
+    const asset_id     = parseInt(assetEl.value);
+    const dimension    = dimEl.value;
+    const degradation  = parseInt(degradEl.value);
+
+    try {
+      const res = await Api.post('/api/risks/magerit-preview', { asset_id, dimension, degradation_pct: degradation });
+
+      // Actualizar el valor hidden de consecuencia
+      const icHidden = document.getElementById('f-ic');
+      if (icHidden) icHidden.value = res.consequence;
+
+      // Actualizar el display
+      document.getElementById('magerit-cons-val').textContent = res.consequence;
+      document.getElementById('magerit-ic-display').textContent = res.consequence;
+
+      const consLabels = ['Insignificante','Menor','Moderado','Mayor','Crítico'];
+      document.getElementById('magerit-cons-lbl').textContent = consLabels[res.consequence] || '-';
+      document.getElementById('magerit-impact-val').textContent = res.magerit_impact;
+
+      // Barra de dimensiones del activo
+      const bar = document.getElementById('magerit-dims-bar');
+      if (bar && res.asset_dims) {
+        const dimNames = {D:'Disp.',I:'Integr.',C:'Confid.',A:'Autent.',T:'Trazab.'};
+        bar.innerHTML = Object.entries(res.asset_dims).map(([d, v]) => `
+          <div style="text-align:center;">
+            <div style="font-size:10px;color:${d===dimension?'var(--brand-purple)':'var(--text-muted)'};">
+              ${d} — ${dimNames[d]||d}
+            </div>
+            <div style="height:${Math.max(4, v*8)}px;background:${d===dimension?'var(--brand-purple)':'var(--border)'};
+                         border-radius:4px;transition:height .2s,background .2s;"></div>
+            <div style="font-size:11px;font-weight:700;color:${d===dimension?'var(--brand-purple)':'var(--text-muted)'};">${v}</div>
+          </div>`).join('');
+      }
+    } catch (_) { /* silencioso */ }
   },
 };

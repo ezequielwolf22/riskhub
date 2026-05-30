@@ -16,7 +16,10 @@ from app.models import (
 from app.schemas import RiskIn, RiskOut, RiskUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
-from app.services.risk_engine import calc_level, calc_residual
+from app.services.risk_engine import (
+    calc_level, calc_residual,
+    calc_consequence_magerit, primary_dimension_for_threat, MAGERIT_DIM_FIELD,
+)
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
 
@@ -26,13 +29,53 @@ def _next_code(db: Session) -> str:
     return f"RSK-{n:04d}"
 
 
-def _get_matrix(db: Session):
-    ctx = db.query(RiskContext).first()
+def _get_context(db: Session, org_id=None) -> RiskContext | None:
+    q = db.query(RiskContext)
+    if org_id:
+        q = q.filter(RiskContext.organization_id == org_id)
+    return q.first()
+
+
+def _get_matrix(db: Session, org_id=None):
+    ctx = _get_context(db, org_id)
     return ctx.risk_matrix if ctx and ctx.risk_matrix else None
 
 
+def _apply_magerit_consequence(risk: Risk, db: Session) -> None:
+    """Si la metodologia del contexto es magerit|combined y el riesgo tiene
+    dimension + degradacion, recalcula inherent_consequence desde el activo."""
+    if not risk.asset_id:
+        return
+    ctx = _get_context(db, risk.organization_id)
+    if not ctx or ctx.methodology not in ("magerit", "combined"):
+        return
+    if risk.degradation_pct is None:
+        return
+
+    asset = db.get(Asset, risk.asset_id)
+    if not asset:
+        return
+
+    # Determinar dimension primaria si no esta guardada
+    if not risk.magerit_dimension:
+        threat = db.get(Threat, risk.threat_id)
+        affects = getattr(threat, "affects", None) or []
+        risk.magerit_dimension = primary_dimension_for_threat(affects, asset)
+
+    # Calcular consecuencia MAGERIT
+    field = MAGERIT_DIM_FIELD.get(risk.magerit_dimension, "value_availability")
+    dim_value = getattr(asset, field, 0) or 0
+    consequence, magerit_impact = calc_consequence_magerit(dim_value, risk.degradation_pct)
+    risk.inherent_consequence = consequence
+    risk.magerit_impact = magerit_impact
+
+
 def _recalc(db: Session, risk: Risk) -> None:
-    matrix = _get_matrix(db)
+    matrix = _get_matrix(db, risk.organization_id)
+
+    # MAGERIT: si aplica, sobrescribir inherent_consequence antes de calcular
+    _apply_magerit_consequence(risk, db)
+
     risk.inherent_level = calc_level(
         risk.inherent_consequence, risk.inherent_likelihood, matrix)
     controls = [{"maturity": ci.maturity, "contribution": 1.0} for ci in risk.controls]
@@ -42,16 +85,10 @@ def _recalc(db: Session, risk: Risk) -> None:
     risk.residual_consequence = rc
     risk.residual_level = rlev
 
-    # Auto-tratamiento basado en apetito de riesgo:
-    # si el nivel residual queda dentro del apetito de la organizacion,
-    # el tratamiento optimo es ACCEPTANCE — sin accion adicional necesaria.
-    ctx = db.query(RiskContext).filter(
-        RiskContext.organization_id == risk.organization_id
-    ).first()
+    # Auto-tratamiento basado en apetito de riesgo
+    ctx = _get_context(db, risk.organization_id)
     appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
     if rlev <= appetite and risk.status not in (RiskStatus.CLOSED,):
-        # Solo actualizar si el tratamiento no habia sido elegido manualmente
-        # (i.e., era None o era MODIFICATION/RETENTION sin plan documentado)
         if risk.treatment_option in (None, TreatmentOption.MODIFICATION, TreatmentOption.RETENTION):
             risk.treatment_option = TreatmentOption.ACCEPTANCE
             if risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
@@ -149,6 +186,9 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
         treatment_plan=data.treatment_plan,
         treatment_due_date=data.treatment_due_date,
         status=RiskStatus.ASSESSED,
+        # MAGERIT v3 (si se proporcionan)
+        magerit_dimension=data.magerit_dimension,
+        degradation_pct=data.degradation_pct,
     )
     if data.vulnerability_ids:
         r.vulnerabilities = db.query(Vulnerability).filter(
@@ -193,6 +233,61 @@ def update_risk(risk_id: int, data: RiskUpdate, db: Session = Depends(get_db),
                {"code": r.code, "status": str(r.status), "residual_level": r.residual_level})
     db.commit(); db.refresh(r)
     return r
+
+
+@router.get("/methodology")
+def get_methodology(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve la metodologia activa y sus metadatos (para el formulario de riesgos)."""
+    from app.services.risk_engine import MAGERIT_DIMENSIONS, MAGERIT_FREQ_LABELS
+    ctx = _get_context(db, current_user.organization_id)
+    methodology = ctx.methodology if ctx and ctx.methodology else "iso27005"
+    return {
+        "methodology": methodology,
+        "magerit_dimensions": MAGERIT_DIMENSIONS,
+        "magerit_freq_labels": MAGERIT_FREQ_LABELS,
+        "risk_appetite": ctx.risk_appetite if ctx else 3,
+    }
+
+
+@router.post("/magerit-preview")
+def magerit_consequence_preview(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Calcula en tiempo real la consecuencia MAGERIT para un activo + dimension + degradacion.
+
+    Body: {asset_id, dimension, degradation_pct}
+    Respuesta: {consequence, magerit_impact, dim_value, label}
+    """
+    from app.services.risk_engine import calc_consequence_magerit, MAGERIT_DIM_FIELD, CONSEQUENCE_LABELS
+    asset_id = body.get("asset_id")
+    dimension = body.get("dimension", "D")
+    degrad = int(body.get("degradation_pct", 50))
+
+    asset = db.get(Asset, asset_id) if asset_id else None
+    if not asset or not check_org_access(asset.organization_id, current_user):
+        return {"consequence": 0, "magerit_impact": 0.0, "dim_value": 0, "label": "-"}
+
+    field = MAGERIT_DIM_FIELD.get(dimension, "value_availability")
+    dim_value = getattr(asset, field, 0) or 0
+    consequence, impact = calc_consequence_magerit(dim_value, degrad)
+    return {
+        "consequence": consequence,
+        "magerit_impact": impact,
+        "dim_value": dim_value,
+        "label": CONSEQUENCE_LABELS[consequence] if 0 <= consequence < len(CONSEQUENCE_LABELS) else "-",
+        "asset_dims": {
+            "D": asset.value_availability or 0,
+            "I": asset.value_integrity or 0,
+            "C": asset.value_confidentiality or 0,
+            "A": asset.value_authenticity or 0,
+            "T": asset.value_accountability or 0,
+        },
+    }
 
 
 @router.delete("/{risk_id}", status_code=204)
