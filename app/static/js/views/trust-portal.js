@@ -48,36 +48,71 @@ const ViewTrustPortal = (() => {
             PÚBLICO
           </span>
         </div>
-        <div style="background:#f9f9f9;border-radius:6px;padding:12px;margin-bottom:12px;display:flex;gap:8px;align-items:center;">
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;
+                    padding:10px 12px;margin-bottom:16px;display:flex;gap:8px;align-items:center;">
           <input type="text" value="${UI.esc(publicUrl)}" readonly
-                 style="flex:1;border:none;background:transparent;font-size:12px;font-family:monospace;color:#444;">
+                 class="input" style="flex:1;font-size:12px;font-family:var(--font-mono);">
           <button onclick="navigator.clipboard.writeText('${UI.esc(publicUrl)}');UI.toast('URL copiada','success')"
-                  class="btn-outline" style="font-size:11px;padding:3px 8px;">Copiar</button>
-          <a href="${UI.esc(publicUrl)}" target="_blank" class="btn-outline" style="font-size:11px;padding:3px 8px;">
-            Ver
-          </a>
+                  class="btn btn-sm">Copiar</button>
+          <a href="${UI.esc(publicUrl)}" target="_blank" class="btn btn-sm">Ver</a>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="tp-show-frameworks" ${cfg.show_frameworks ? 'checked' : ''}> Mostrar cumplimiento por framework
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;">
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;
+                        padding:10px 12px;border:1px solid var(--border);border-radius:6px;
+                        background:var(--bg-2);transition:background .15s;"
+                 onmouseover="this.style.background='var(--bg-3)'" onmouseout="this.style.background='var(--bg-2)'">
+            <input type="checkbox" id="tp-enabled" ${cfg.enabled ? 'checked' : ''}
+                   style="width:16px;height:16px;flex-shrink:0;accent-color:var(--brand-purple);">
+            <div>
+              <div style="font-weight:600;">Portal activo</div>
+              <div style="font-size:11px;color:var(--text-muted);">Habilita el acceso público a la página de cumplimiento</div>
+            </div>
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="tp-show-risks" ${cfg.show_risks_summary ? 'checked' : ''}> Mostrar resumen de riesgos
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;
+                        padding:10px 12px;border:1px solid var(--border);border-radius:6px;
+                        background:var(--bg-2);transition:background .15s;"
+                 onmouseover="this.style.background='var(--bg-3)'" onmouseout="this.style.background='var(--bg-2)'">
+            <input type="checkbox" id="tp-show-frameworks" ${cfg.show_frameworks ? 'checked' : ''}
+                   style="width:16px;height:16px;flex-shrink:0;accent-color:var(--brand-purple);">
+            <div>
+              <div style="font-weight:600;">Mostrar cumplimiento por framework</div>
+              <div style="font-size:11px;color:var(--text-muted);">Puntuaciones ISO 27001, NIS2, GDPR, NIST, ENS...</div>
+            </div>
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="tp-show-audit" ${cfg.show_last_audit ? 'checked' : ''}> Mostrar última auditoría
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;
+                        padding:10px 12px;border:1px solid var(--border);border-radius:6px;
+                        background:var(--bg-2);transition:background .15s;"
+                 onmouseover="this.style.background='var(--bg-3)'" onmouseout="this.style.background='var(--bg-2)'">
+            <input type="checkbox" id="tp-show-audit" ${cfg.show_last_audit ? 'checked' : ''}
+                   style="width:16px;height:16px;flex-shrink:0;accent-color:var(--brand-purple);">
+            <div>
+              <div style="font-weight:600;">Mostrar última auditoría</div>
+              <div style="font-size:11px;color:var(--text-muted);">Fecha y resultado de la última auditoría interna</div>
+            </div>
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="tp-enabled" ${cfg.enabled ? 'checked' : ''}> Portal activo
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;
+                        padding:10px 12px;border:1px solid var(--border);border-radius:6px;
+                        background:var(--bg-2);transition:background .15s;"
+                 onmouseover="this.style.background='var(--bg-3)'" onmouseout="this.style.background='var(--bg-2)'">
+            <input type="checkbox" id="tp-show-risks" ${cfg.show_risks_summary ? 'checked' : ''}
+                   style="width:16px;height:16px;flex-shrink:0;accent-color:var(--brand-purple);">
+            <div>
+              <div style="font-weight:600;">Mostrar resumen de riesgos</div>
+              <div style="font-size:11px;color:var(--text-muted);">Distribución de riesgos por nivel (sin detalles confidenciales)</div>
+            </div>
           </label>
         </div>
-        <div style="margin-bottom:12px;">
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Mensaje personalizado (opcional)</label>
-          <textarea id="tp-message" class="input-field" rows="2" style="width:100%;" placeholder="Bienvenido a nuestro portal de confianza...">${UI.esc(cfg.custom_message || '')}</textarea>
+        <div style="margin-bottom:16px;">
+          <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;font-weight:600;">
+            Mensaje personalizado (opcional)
+          </label>
+          <textarea id="tp-message" class="input" rows="2" style="width:100%;box-sizing:border-box;"
+                    placeholder="Bienvenido a nuestro portal de confianza...">${UI.esc(cfg.custom_message || '')}</textarea>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button onclick="ViewTrustPortal._saveTrust()" class="btn-primary" style="font-size:13px;">Guardar configuración</button>
-          <button onclick="ViewTrustPortal._regenerateTrustToken()" class="btn-outline" style="font-size:13px;color:#a83232;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="ViewTrustPortal._saveTrust()" class="btn btn-primary">Guardar configuración</button>
+          <button onclick="ViewTrustPortal._regenerateTrustToken()" class="btn"
+                  style="color:var(--risk-high);border-color:var(--risk-high);">
             Regenerar token (invalida URL actual)
           </button>
         </div>
@@ -100,19 +135,20 @@ const ViewTrustPortal = (() => {
             PRIVADO (TOKEN)
           </span>
         </div>
-        <div style="background:#f9f9f9;border-radius:6px;padding:12px;margin-bottom:12px;display:flex;gap:8px;align-items:center;">
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;
+                    padding:10px 12px;margin-bottom:16px;display:flex;gap:8px;align-items:center;">
           <input type="text" value="${UI.esc(auditorUrl)}" readonly
-                 style="flex:1;border:none;background:transparent;font-size:12px;font-family:monospace;color:#444;">
+                 class="input" style="flex:1;font-size:12px;font-family:var(--font-mono);">
           <button onclick="navigator.clipboard.writeText('${UI.esc(auditorUrl)}');UI.toast('URL copiada','success')"
-                  class="btn-outline" style="font-size:11px;padding:3px 8px;">Copiar</button>
+                  class="btn btn-sm">Copiar</button>
         </div>
         <p style="font-size:12px;color:#9d9d9d;margin-bottom:12px;">
           Esta URL da acceso de solo lectura al estado de cumplimiento, evidencias y gaps.
           Solo compártela con tu auditor externo. Puedes revocarla regenerando el token.
         </p>
-        <div style="display:flex;gap:8px;">
-          <button onclick="ViewTrustPortal._regenerateAuditorToken()" class="btn-outline"
-                  style="font-size:13px;color:#a83232;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="ViewTrustPortal._regenerateAuditorToken()" class="btn"
+                  style="color:var(--risk-high);border-color:var(--risk-high);">
             Regenerar token (invalida URL actual)
           </button>
         </div>
