@@ -81,10 +81,10 @@ def get_kpis(db: Session, org_id: int) -> dict:
         Incident.created_at >= thirty_days_ago,
     ).count() if hasattr(Incident, "organization_id") else 0
 
-    # Proveedores
+    # Proveedores criticos (risk_level HIGH o is_critical)
     critical_suppliers = db.query(Supplier).filter(
         Supplier.organization_id == org_id,
-        Supplier.risk_score <= 30,
+        Supplier.is_critical == True,
     ).count()
 
     # Risk appetite status
