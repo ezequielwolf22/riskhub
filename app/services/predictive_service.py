@@ -206,7 +206,7 @@ def get_high_risk_assets(db: Session, org_id: int, limit: int = 10) -> list[dict
     risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.residual_level >= 4,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).all()
 
     asset_risk_counts: dict[int, dict] = defaultdict(lambda: {"count": 0, "max_level": 0, "total_level": 0})
@@ -256,7 +256,7 @@ def get_threat_forecast(db: Session, org_id: int) -> list[dict]:
     # Obtener amenazas con riesgos activos y su historial
     risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).all()
 
     threat_stats: dict[int, dict] = defaultdict(lambda: {

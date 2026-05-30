@@ -25,7 +25,7 @@ def get_kpis(db: Session, org_id: int) -> dict:
     high_risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.residual_level >= 5,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).count()
     accepted_risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
@@ -93,7 +93,7 @@ def get_kpis(db: Session, org_id: int) -> dict:
     risks_over_appetite = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.residual_level > appetite,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).count()
 
     # Overall risk score (0-100, menor = mejor)
@@ -127,7 +127,7 @@ def get_top_risks(db: Session, org_id: int, limit: int = 10) -> list[dict]:
     """Top N riesgos por nivel residual."""
     risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).order_by(Risk.residual_level.desc()).limit(limit).all()
 
     result = []
@@ -169,7 +169,7 @@ def get_risk_trend(db: Session, org_id: int, days: int = 30) -> list[dict]:
         if day not in by_day:
             by_day[day] = {"date": day, "created": 0, "closed": 0, "high": 0}
         by_day[day]["created"] += 1
-        if r.status in [RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]:
+        if r.status in [RiskStatus.ACCEPTED, RiskStatus.CLOSED]:
             by_day[day]["closed"] += 1
         if (r.residual_level or 0) >= 5:
             by_day[day]["high"] += 1
