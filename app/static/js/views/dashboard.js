@@ -8,12 +8,13 @@ const ViewDashboard = {
 
     try {
       // Cargar datos de todos los modulos en paralelo para minimo tiempo de carga
-      const [s, inc, tsk, pol, gdpr] = await Promise.allSettled([
+      const [s, inc, tsk, pol, gdpr, ctx] = await Promise.allSettled([
         Api.risks.summary(),
         Api.incidents.summary(),
         Api.tasks.summary(),
         Api.policies.summary(),
         Api.gdpr.summary(),
+        Api.context.get(),
       ]);
 
       const risks    = s.status    === 'fulfilled' ? s.value    : null;
@@ -21,6 +22,10 @@ const ViewDashboard = {
       const tasks    = tsk.status  === 'fulfilled' ? tsk.value  : null;
       const policies = pol.status  === 'fulfilled' ? pol.value  : null;
       const gdprData = gdpr.status === 'fulfilled' ? gdpr.value : null;
+      const context  = ctx.status  === 'fulfilled' ? ctx.value  : null;
+
+      // Exponer metodología activa globalmente para el formulario de riesgos
+      if (context?.methodology) window._riskMethodology = context.methodology;
 
       if (!risks) throw new Error('No se pudo cargar el resumen de riesgos.');
 
@@ -29,7 +34,34 @@ const ViewDashboard = {
       // --- Calcular puntuacion de postura de seguridad (0-100) ---
       const postureScore = ViewDashboard._calcPosture(risks, incidents, tasks, policies, gdprData);
 
-      c.innerHTML = `
+      // Badge de metodología + frameworks activos
+      const methLabels = { iso27005:'ISO 27005', magerit:'MAGERIT v3', combined:'ISO 27005 + MAGERIT' };
+      const meth = context?.methodology || 'iso27005';
+      const methBadge = `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+          <span style="font-size:11px;color:var(--text-muted);">Metodología activa:</span>
+          <span style="background:var(--brand-purple);color:#fff;border-radius:20px;
+                       padding:3px 12px;font-size:12px;font-weight:700;">
+            ${methLabels[meth] || meth}
+          </span>
+          ${context?.risk_appetite != null ? `
+          <span style="font-size:11px;color:var(--text-muted);">Apetito de riesgo:</span>
+          <span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
+                       padding:3px 12px;font-size:12px;font-weight:700;color:var(--brand-purple);">
+            ${context.risk_appetite} / 8
+          </span>` : ''}
+          ${context?.active_frameworks?.length ? `
+          <span style="font-size:11px;color:var(--text-muted);">Normativas:</span>
+          ${context.active_frameworks.map(f =>
+            `<span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
+                         padding:2px 10px;font-size:11px;">${UI.esc(f.toUpperCase())}</span>`
+          ).join('')}` : ''}
+          <a href="#/context" style="font-size:11px;color:var(--brand-purple);margin-left:4px;">
+            Cambiar en Contexto
+          </a>
+        </div>`;
+
+      c.innerHTML = methBadge + `
         <!-- POSTURA DE SEGURIDAD GLOBAL -->
         ${ViewDashboard._postureHtml(postureScore, risks, incidents, tasks, policies, gdprData)}
 

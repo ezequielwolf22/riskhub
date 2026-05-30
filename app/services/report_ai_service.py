@@ -63,6 +63,16 @@ def _collect(db: Session) -> dict:
         "treated": sum(1 for r in risks if r.status == RiskStatus.TREATED),
     }
 
+    methodology = ctx.methodology if ctx and ctx.methodology else "iso27005"
+    methodology_label = {
+        "iso27005": "ISO/IEC 27005:2018",
+        "magerit":  "MAGERIT v3 (metodologia española)",
+        "combined": "ISO 27005 + MAGERIT v3 combinada",
+    }.get(methodology, "ISO 27005")
+
+    active_frameworks = ctx.active_frameworks if ctx and ctx.active_frameworks else []
+    ens_level = ctx.ens_level if ctx and ctx.ens_level else None
+
     return {
         "org": ctx.organization_name if ctx else "Organizacion",
         "scope": (ctx.scope or "") if ctx else "",
@@ -71,17 +81,24 @@ def _collect(db: Session) -> dict:
         "risks": risk_rows,
         "stats": stats,
         "controls": control_stats,
+        "methodology": methodology_label,
+        "active_frameworks": active_frameworks,
+        "ens_level": ens_level,
     }
 
 
 def _prompt_treatment_plan(data: dict) -> str:
     risks_json = json.dumps(data["risks"][:40], ensure_ascii=False, indent=2)
+    fw_str = ", ".join(data.get("active_frameworks", [])) or "no especificadas"
+    ens_str = f" (Nivel {data['ens_level'].upper()})" if data.get("ens_level") else ""
     return f"""Eres un experto en gestión del riesgo de seguridad de la información certificado en ISO/IEC 27005:2018 y CISM.
 
 Genera un Plan de Tratamiento de Riesgos completo y profesional en ESPAÑOL para la siguiente organización.
 
 CONTEXTO ORGANIZACIONAL:
 - Organización: {data['org']}
+- Metodología de análisis de riesgos activa: {data.get('methodology','ISO 27005')}
+- Normativas aplicables: {fw_str}{ens_str}
 - Alcance: {data['scope']}
 - Apetito de riesgo (máximo aceptable): Nivel {data['appetite']} sobre 8
 - Fecha: {data['date']}

@@ -11,7 +11,9 @@ from app.database import get_db
 from app.models import (
     AiAnonymizationLevel, AiCallLog, AiConfig, AiFeedback,
     Asset, AssetType, ControlImplementation, ControlStatus,
+    DPIA, DPIAStatus, ProcessingActivity,
     Incident, IncidentSeverity, IncidentStatus, NonConformity, NCStatus,
+    Policy, PolicyStatus,
     Risk, RiskStatus, Supplier, SupplierRisk, Threat, TreatmentOption,
     TreatmentTask, TaskStatus, TaskPriority,
     User, UserRole,
@@ -52,8 +54,19 @@ def analyze(
     # Resolver la API key del tenant (configurada en IA -> Configuracion)
     cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = _resolve_api_key(cfg)
+
+    # Leer metodología activa del contexto y pasarla a las respuestas del cuestionario
+    # para que el prompt adapte el análisis (ISO 27005 puro vs MAGERIT con DIACAT)
+    from app.models import RiskContext
+    ctx_obj = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    enriched_answers = dict(req.answers)
+    if ctx_obj and ctx_obj.methodology and "methodology" not in enriched_answers:
+        enriched_answers["_active_methodology"] = ctx_obj.methodology
+    if ctx_obj and ctx_obj.ens_level and "ens_level" not in enriched_answers:
+        enriched_answers["ens_level"] = ctx_obj.ens_level
+
     try:
-        result = run_analysis(req.answers, db, api_key=api_key)
+        result = run_analysis(enriched_answers, db, api_key=api_key)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -278,6 +291,70 @@ def compliance_summary(
     ]
     ens_score = round(sum(ens_components) / len(ens_components))
 
+    # ---- GDPR / RGPD score (Art. 5, 25, 30, 32, 35) ----
+    dpias = filter_by_org(db.query(DPIA), DPIA, current_user).all()
+    activities = filter_by_org(db.query(ProcessingActivity), ProcessingActivity, current_user).all()
+    dpia_high_risk = [d for d in dpias if d.status != DPIAStatus.APPROVED]
+    activities_without_legal_basis = sum(1 for a in activities if not a.legal_basis)
+    gdpr_incidents = sum(1 for i in incidents if getattr(i, 'nis2_notification_required', False))
+    privacy_controls_codes = {"5.34", "5.33", "8.11", "8.12", "5.12"}
+    privacy_impl = sum(1 for ci in impls
+                       if ci.control and ci.control.code in privacy_controls_codes
+                       and ci.status in (ControlStatus.IMPLEMENTED, ControlStatus.PARTIAL))
+    gdpr_components = [
+        min(100, len(activities) * 10) if activities else 0,           # Art. 30 registro
+        100 - min(100, len(dpia_high_risk) * 20),                      # Art. 35 DPIAs
+        100 if activities_without_legal_basis == 0 else max(0, 100 - activities_without_legal_basis * 15),  # Art. 6
+        (privacy_impl / max(1, len(privacy_controls_codes)) * 100),    # Art. 32 controles
+        100 if gdpr_incidents == 0 else max(0, 100 - gdpr_incidents * 20),  # Art. 33
+    ]
+    gdpr_score = round(sum(gdpr_components) / len(gdpr_components))
+
+    # ---- PCI-DSS v4.0 score (heurístico basado en controles de acceso y cifrado) ----
+    pci_codes = {"8.5", "8.6", "8.4", "8.24", "8.20", "8.8", "8.7", "5.17", "6.3"}
+    pci_impl = sum(1 for ci in impls
+                   if ci.control and ci.control.code in pci_codes
+                   and ci.status in (ControlStatus.IMPLEMENTED, ControlStatus.PARTIAL))
+    pci_score = round(
+        (pci_impl / max(1, len(pci_codes)) * 60) +  # controles específicos PCI
+        (effective_score * 0.3) +                    # postura general de controles
+        (10 if total_risks > 0 else 0)               # análisis de riesgo presente
+    )
+    pci_score = min(100, pci_score)
+
+    # ---- SOC 2 Type II score (Trust Services Criteria — CC, A, PI, C, P) ----
+    soc2_cc_codes = {"8.5", "5.15", "5.17", "8.3", "8.6"}  # Common Criteria access control
+    soc2_impl = sum(1 for ci in impls
+                    if ci.control and ci.control.code in soc2_cc_codes
+                    and ci.status in (ControlStatus.IMPLEMENTED, ControlStatus.PARTIAL))
+    audit_logs_ok = any(ci.control and ci.control.code == "8.15"
+                        and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
+    soc2_components = [
+        soc2_impl / max(1, len(soc2_cc_codes)) * 100,   # CC Common Criteria
+        effective_score * 0.5,                           # A Availability
+        100 if audit_logs_ok else 40,                    # PI Processing Integrity
+        (risks_assessed / max(1, total_risks) * 100),   # C Confidentiality
+    ]
+    soc2_score = min(100, round(sum(soc2_components) / len(soc2_components)))
+
+    # ---- HIPAA score (Security Rule § 164.312) ----
+    hipaa_codes = {"5.17", "8.5", "8.24", "8.13", "8.15", "5.26"}
+    hipaa_impl = sum(1 for ci in impls
+                     if ci.control and ci.control.code in hipaa_codes
+                     and ci.status in (ControlStatus.IMPLEMENTED, ControlStatus.PARTIAL))
+    hipaa_score = round(
+        (hipaa_impl / max(1, len(hipaa_codes)) * 70) +
+        (effective_score * 0.2) +
+        (10 if total_risks > 0 else 0)
+    )
+    hipaa_score = min(100, hipaa_score)
+
+    # Metodología activa (para incluir en _meta y que la UI pueda mostrarlo)
+    from app.models import RiskContext
+    ctx_obj = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    active_methodology = ctx_obj.methodology if ctx_obj and ctx_obj.methodology else "iso27005"
+    active_frameworks_list = ctx_obj.active_frameworks if ctx_obj and ctx_obj.active_frameworks else None
+
     return {
         "iso27001": {
             "score": iso_score,
@@ -306,6 +383,26 @@ def compliance_summary(
             "label": "ENS RD 311/2022",
             "gaps": _ens_gaps(impls, risks),
         },
+        "gdpr": {
+            "score": gdpr_score,
+            "label": "GDPR / RGPD",
+            "gaps": _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis),
+        },
+        "pcidss": {
+            "score": pci_score,
+            "label": "PCI-DSS v4.0",
+            "gaps": _pcidss_gaps(impls, pci_codes, pci_impl),
+        },
+        "soc2": {
+            "score": soc2_score,
+            "label": "SOC 2 Type II",
+            "gaps": _soc2_gaps(impls, soc2_codes=soc2_cc_codes, soc2_impl=soc2_impl, audit_logs_ok=audit_logs_ok),
+        },
+        "hipaa": {
+            "score": hipaa_score,
+            "label": "HIPAA Security Rule",
+            "gaps": _hipaa_gaps(impls, hipaa_codes, hipaa_impl),
+        },
         "_meta": {
             "total_controls": total_controls,
             "implemented_controls": implemented,
@@ -313,6 +410,8 @@ def compliance_summary(
             "risks_treated": risks_with_treatment,
             "open_incidents": sum(1 for i in incidents if i.status != IncidentStatus.CLOSED),
             "open_ncs": sum(1 for n in ncs if n.status != NCStatus.CLOSED),
+            "methodology": active_methodology,
+            "active_frameworks": active_frameworks_list,
         },
     }
 
@@ -345,6 +444,65 @@ def _nis2_gaps(incidents, suppliers, nis2_pending) -> list[str]:
     no_assessment = sum(1 for s in suppliers if not s.last_assessment_at) if suppliers else 0
     if no_assessment > 0:
         gaps.append(f"{no_assessment} proveedores sin evaluacion completada (Art. 21.2.d)")
+    return gaps
+
+
+def _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis) -> list[str]:
+    gaps = []
+    if not activities:
+        gaps.append("Sin actividades de tratamiento registradas (Art. 30 RGPD — obligatorio)")
+    if activities_without_legal_basis > 0:
+        gaps.append(f"{activities_without_legal_basis} actividad(es) sin base legal documentada (Art. 6 RGPD)")
+    if dpia_high_risk:
+        gaps.append(f"{len(dpia_high_risk)} DPIA(s) pendiente(s) de aprobacion para tratamientos de alto riesgo (Art. 35)")
+    if not dpias:
+        gaps.append("Sin evaluaciones de impacto (DPIA) registradas — requeridas para tratamientos de alto riesgo")
+    return gaps
+
+
+def _pcidss_gaps(impls, pci_codes, pci_impl) -> list[str]:
+    gaps = []
+    missing = len(pci_codes) - pci_impl
+    if missing > 0:
+        gaps.append(f"{missing} control(es) PCI-DSS clave no implementado(s) (acceso, cifrado, parcheo)")
+    no_encryption = not any(ci.control and ci.control.code == "8.24"
+                             and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
+    if no_encryption:
+        gaps.append("Cifrado de datos en reposo/transito no confirmado (Req. 3, 4 PCI-DSS v4.0)")
+    no_access = not any(ci.control and ci.control.code in ("8.5", "8.6")
+                         and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
+    if no_access:
+        gaps.append("Control de acceso a datos de tarjeta no documentado (Req. 7, 8 PCI-DSS v4.0)")
+    return gaps
+
+
+def _soc2_gaps(impls, soc2_codes, soc2_impl, audit_logs_ok) -> list[str]:
+    gaps = []
+    missing = len(soc2_codes) - soc2_impl
+    if missing > 0:
+        gaps.append(f"{missing} criterio(s) de control comun (CC) SOC 2 sin implementar")
+    if not audit_logs_ok:
+        gaps.append("Logs de auditoria no implementados — requerido para CC7 (Monitoring Activities)")
+    mfa_ok = any(ci.control and ci.control.code == "5.17"
+                 and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
+    if not mfa_ok:
+        gaps.append("MFA/autenticacion fuerte no confirmada (CC6 — Logical and Physical Access Controls)")
+    return gaps
+
+
+def _hipaa_gaps(impls, hipaa_codes, hipaa_impl) -> list[str]:
+    gaps = []
+    missing = len(hipaa_codes) - hipaa_impl
+    if missing > 0:
+        gaps.append(f"{missing} salvaguarda(s) HIPAA Security Rule sin implementar")
+    no_backup = not any(ci.control and ci.control.code == "8.13"
+                         and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
+    if no_backup:
+        gaps.append("Plan de contingencia/backup no implementado (§ 164.312.a.2.ii HIPAA)")
+    no_audit = not any(ci.control and ci.control.code == "8.15"
+                        and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
+    if no_audit:
+        gaps.append("Controles de audit log no implementados (§ 164.312.b HIPAA)")
     return gaps
 
 

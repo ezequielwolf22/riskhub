@@ -13,10 +13,14 @@ const ViewCompliance = (() => {
 
   // Mapa interno de frameworks disponibles
   const _FW_META = {
-    iso27001: { label: 'ISO 27001:2022',   dataKey: 'iso27001' },
-    nis2:     { label: 'NIS2',             dataKey: 'nis2' },
-    nist_csf: { label: 'NIST CSF 2.0',    dataKey: 'nist_csf' },
-    ens:      { label: 'ENS RD 311/2022', dataKey: 'ens' },
+    iso27001: { label: 'ISO 27001:2022',      dataKey: 'iso27001' },
+    nis2:     { label: 'NIS2',                dataKey: 'nis2' },
+    nist_csf: { label: 'NIST CSF 2.0',        dataKey: 'nist_csf' },
+    ens:      { label: 'ENS RD 311/2022',     dataKey: 'ens' },
+    gdpr:     { label: 'GDPR / RGPD',         dataKey: 'gdpr' },
+    pcidss:   { label: 'PCI-DSS v4.0',        dataKey: 'pcidss' },
+    soc2:     { label: 'SOC 2 Type II',        dataKey: 'soc2' },
+    hipaa:    { label: 'HIPAA Security Rule',  dataKey: 'hipaa' },
   };
 
   function _scoreColor(score) {
@@ -203,9 +207,13 @@ const ViewCompliance = (() => {
   function _detailPanelHtml(key, data) {
     const frameworkLabels = {
       iso27001: 'ISO 27001:2022',
-      nis2: 'NIS2 — Directiva EU 2022/2555',
+      nis2:     'NIS2 — Directiva EU 2022/2555',
       nist_csf: 'NIST CSF 2.0',
-      ens: 'ENS RD 311/2022',
+      ens:      'ENS RD 311/2022',
+      gdpr:     'GDPR / RGPD',
+      pcidss:   'PCI-DSS v4.0',
+      soc2:     'SOC 2 Type II',
+      hipaa:    'HIPAA Security Rule',
     };
 
     let innerHtml = '';
@@ -218,6 +226,9 @@ const ViewCompliance = (() => {
       innerHtml = _nistPanelHtml(data);
     } else if (key === 'ens') {
       innerHtml = _ensPanelHtml(data);
+    } else {
+      // Panel genérico para GDPR, PCI-DSS, SOC 2, HIPAA
+      innerHtml = _genericFrameworkPanel(key, data);
     }
 
     return `
@@ -454,6 +465,74 @@ const ViewCompliance = (() => {
         </table>
       </div>
       ${_gapsSection(data.ens?.gaps)}
+    `;
+  }
+
+  // Panel genérico para GDPR, PCI-DSS, SOC 2, HIPAA
+  function _genericFrameworkPanel(key, data) {
+    const fwData = data[key] || {};
+    const score  = fwData.score ?? 0;
+    const gaps   = fwData.gaps  || [];
+    const label  = fwData.label || key.toUpperCase();
+
+    const actionsByFramework = {
+      gdpr: [
+        { action: 'Registra todas las actividades de tratamiento (Art. 30 RGPD)', link: 'gdpr', label: 'Ir a RGPD' },
+        { action: 'Completa DPIAs para tratamientos de alto riesgo (Art. 35 RGPD)', link: 'gdpr', label: 'Ir a RGPD' },
+        { action: 'Documenta la base legal de cada actividad de tratamiento (Art. 6 RGPD)', link: null },
+        { action: 'Implementa controles de privacidad por diseño: cifrado, seudonimización, minimización de datos', link: 'controls', label: 'Ir a Controles' },
+        { action: 'Establece procedimientos de respuesta a violaciones de datos (Art. 33, 72h)', link: 'incidents', label: 'Ir a Incidentes' },
+      ],
+      pcidss: [
+        { action: 'Implementa control de acceso basado en necesidad de conocer (Req. 7 PCI-DSS v4.0)', link: 'controls' },
+        { action: 'Cifra datos de titulares de tarjeta en reposo y en tránsito (Req. 3, 4)', link: 'controls' },
+        { action: 'Mantén inventario de sistemas que almacenan, procesan o transmiten datos de pago (Req. 12)', link: 'assets', label: 'Ir a Activos' },
+        { action: 'Gestiona parches y vulnerabilidades con regularidad (Req. 6)', link: 'cve', label: 'Ir a CVE' },
+        { action: 'Monitoriza y analiza logs de acceso (Req. 10)', link: 'controls' },
+      ],
+      soc2: [
+        { action: 'Documenta controles de acceso lógico (CC6 — Common Criteria)', link: 'controls' },
+        { action: 'Implementa monitorización de actividad del sistema (CC7)', link: 'controls' },
+        { action: 'Define SLAs de disponibilidad para sistemas críticos (A1 — Availability)', link: 'assets', label: 'Ir a Activos' },
+        { action: 'Mantén políticas de seguridad formales y revisadas (CC1 — Control Environment)', link: 'policies', label: 'Ir a Políticas' },
+        { action: 'Documenta el proceso de gestión de cambios (CC8)', link: 'audit', label: 'Ir a Auditorías' },
+      ],
+      hipaa: [
+        { action: 'Implementa controles de acceso a ePHI con MFA (§ 164.312.a.1)', link: 'controls' },
+        { action: 'Cifra toda la información de salud protegida (§ 164.312.a.2.iv)', link: 'controls' },
+        { action: 'Activa logs de auditoría para accesos a ePHI (§ 164.312.b)', link: 'controls' },
+        { action: 'Define plan de contingencia y backups con pruebas (§ 164.312.a.2.ii)', link: 'controls' },
+        { action: 'Evalúa y documenta riesgos sobre ePHI periódicamente (§ 164.308.a.1)', link: 'risks', label: 'Ir a Riesgos' },
+      ],
+    };
+
+    const actions = actionsByFramework[key] || [];
+    const actionsHtml = actions.map((a, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:10px 12px;${i%2===0?'background:var(--bg-2);':''}border-radius:6px;gap:12px;">
+        <div style="font-size:12px;flex:1;">${UI.esc(a.action)}</div>
+        ${a.link ? `<button class="btn btn-sm" style="flex-shrink:0;font-size:11px;"
+          onclick="App.navigate('${a.link}');UI.closeModal();">${a.label||'Ver'}</button>` : ''}
+      </div>`).join('');
+
+    const scoreColor = score >= 75 ? '#059669' : score >= 50 ? '#D97706' : score >= 25 ? '#DC2626' : '#9D1B1B';
+
+    return `
+      <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="text-align:center;min-width:100px;">
+          <div style="font-size:36px;font-weight:800;color:${scoreColor};">${score}</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Puntuación</div>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <p style="font-size:13px;color:var(--text-muted);margin:0 0 8px;">
+            Puntuación calculada a partir de los controles implementados, gestión de riesgos e incidentes
+            relevantes para ${UI.esc(label)}.
+          </p>
+          ${_gapsSection(gaps)}
+        </div>
+      </div>
+      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">Acciones recomendadas</h4>
+      ${actionsHtml}
     `;
   }
 

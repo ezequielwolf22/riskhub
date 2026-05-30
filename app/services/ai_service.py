@@ -251,15 +251,20 @@ def _build_prompt(answers: dict, assets: list, threats: list, controls: list) ->
         ensure_ascii=False, indent=2
     )
 
-    # Separar respuestas propias del cuestionario de criterios extra
+    # Separar respuestas propias del cuestionario de criterios extra y campos internos
     base_answers = {}
     extra_criteria_items = []
     for k, v in answers.items():
         if k.startswith("extra_"):
             if v and str(v).strip():
                 extra_criteria_items.append(f"  [{k.replace('extra_', '')}]: {v}")
+        elif k.startswith("_"):
+            pass   # campos internos (ej: _active_methodology) — no se muestran en el prompt
         else:
             base_answers[k] = v
+
+    # Metodología activa del contexto (enriquecida desde el router)
+    active_methodology = answers.get("_active_methodology", "iso27005")
 
     answers_str = "\n".join(f"  - {k}: {v}" for k, v in base_answers.items())
     extra_str = "\n".join(extra_criteria_items) if extra_criteria_items else "  (ninguno)"
@@ -319,6 +324,13 @@ APETITO DE RIESGO DE LA ORGANIZACIÓN:
 INSTRUCCION: Para cada escenario, asigna treatment_option según la regla:
   · Si residual_level > {appetite_num} → treatment_option = "modification" (DEBE mitigarse)
   · Si residual_level <= {appetite_num} → treatment_option = "retention" (se puede aceptar)
+
+METODOLOGÍA ACTIVA CONFIGURADA POR LA ORGANIZACIÓN: {active_methodology}
+{
+  "iso27005":  "Usa ISO 27005 puro: consecuencia (0-4) y probabilidad (0-4) estimadas por el analista.",
+  "magerit":   "Usa MAGERIT v3: la consecuencia se deriva de las dimensiones D/I/C/A/T del activo × degradación. Indica la dimensión primaria en magerit_dimension. La frecuencia de amenaza sigue escala MAGERIT (MB/B/M/A/MA). Menciona explícitamente las dimensiones afectadas en rationale.",
+  "combined":  "Usa ISO 27005 para la estructura + MAGERIT para los valores CIA+A+T. Indica magerit_dimension en cada escenario. Menciona las dimensiones DIACAT relevantes.",
+}.get(active_methodology, "iso27005")
 
 NORMATIVAS REGULATORIAS APLICABLES A ESTA ORGANIZACIÓN:
   {regs_str}{ens_str}

@@ -594,6 +594,12 @@ const ViewRisks = {
         Nivel inherente actual: <strong>${r.inherent_level}</strong> &nbsp;→&nbsp;
         Nivel residual actual: <strong>${r.residual_level}</strong>
         ${r.inherent_level > 0 ? `&nbsp;<span style="font-size:12px;color:var(--risk-low);">(-${Math.round((1-r.residual_level/r.inherent_level)*100)}% reduccion)</span>` : ''}
+        ${r.magerit_dimension ? `<br><span style="font-size:12px;">
+          <strong>MAGERIT:</strong> dimensión afectada:
+          <span style="background:var(--brand-purple);color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;">${r.magerit_dimension}</span>
+          &nbsp;·&nbsp; degradación: <strong>${r.degradation_pct ?? '-'}%</strong>
+          ${r.magerit_impact != null ? `&nbsp;·&nbsp; impacto calculado: <strong>${r.magerit_impact}</strong>` : ''}
+        </span>` : ''}
         ${r.asset && r.asset.monetary_value ? (() => {
           const ale = Math.round(r.asset.monetary_value * (r.residual_level / 8));
           const aleFmt = ale.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 });
