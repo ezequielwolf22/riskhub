@@ -11,7 +11,7 @@ const ViewExternalFindings = (() => {
   }
 
   function _importModal() {
-    UI.modal(`
+    UI.openModal(`
       <h3 style="margin:0 0 16px;color:var(--brand-purple);">Importar hallazgos</h3>
       <p style="font-size:13px;color:#666;margin-bottom:12px;">
         Sube el archivo de resultados de tu herramienta de seguridad.

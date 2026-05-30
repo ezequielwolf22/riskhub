@@ -241,7 +241,7 @@ const ViewPolicies = (() => {
     if (!templates.length) { UI.toast('No hay templates disponibles', 'error'); return; }
     const options = templates.map(t => `
       <option value="${UI.esc(t.id)}">${UI.esc(t.title)}</option>`).join('');
-    UI.modal(`
+    UI.openModal(`
       <h3 style="margin:0 0 16px;color:var(--brand-purple);">Generar política con IA</h3>
       <p style="font-size:13px;color:#666;margin-bottom:12px;">
         Claude generará una política personalizada con el nombre de tu organización,
@@ -275,7 +275,7 @@ const ViewPolicies = (() => {
         extra_context: context || null,
       });
       // Mostrar el resultado para que el usuario lo revise antes de guardar
-      UI.modal(`
+      UI.openModal(`
         <div style="max-width:700px;">
           <h3 style="margin:0 0 8px;color:var(--brand-purple);">Política generada: ${UI.esc(result.title)}</h3>
           <p style="font-size:12px;color:#9d9d9d;margin-bottom:12px;">

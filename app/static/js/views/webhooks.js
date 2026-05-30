@@ -10,7 +10,7 @@ const ViewWebhooks = (() => {
   function _createModal(existing) {
     const isEdit = !!existing;
     const ev = existing || {};
-    UI.modal(`
+    UI.openModal(`
       <h3 style="margin:0 0 16px;color:var(--brand-purple);">${isEdit ? 'Editar' : 'Nuevo'} Webhook</h3>
       <div style="display:grid;gap:12px;">
         <div>

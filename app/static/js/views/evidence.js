@@ -27,7 +27,7 @@ const ViewEvidence = (() => {
   }
 
   function _uploadModal() {
-    UI.modal(`
+    UI.openModal(`
       <h3 style="margin:0 0 16px;color:var(--brand-purple);">Subir Evidencia</h3>
       <div style="display:grid;gap:12px;">
         <div>

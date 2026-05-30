@@ -930,7 +930,7 @@ const ViewCompliance = (() => {
               <div style="font-size:11px;color:#9d9d9d;">${fw.requirements_count} requisitos</div>
             </div>
           </label>`).join('');
-        UI.modal(`
+        UI.openModal(`
           <h3 style="margin:0 0 16px;color:var(--brand-purple);">Configurar frameworks normativos</h3>
           <p style="font-size:13px;color:#666;margin-bottom:12px;">
             Selecciona los frameworks que debe cumplir tu organización.
