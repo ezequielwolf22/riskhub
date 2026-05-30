@@ -230,3 +230,35 @@ def ai_extract_policy(
         "iso_clauses": extracted.get("iso_clauses") or [],
         "confidence_notes": extracted.get("confidence_notes") or "",
     }
+
+
+@router.get("/templates")
+def list_policy_templates(current_user: User = Depends(get_current_user)):
+    """Lista de templates de políticas disponibles para generación con IA."""
+    from app.services.policy_generation_service import get_template_catalog
+    return get_template_catalog()
+
+
+@router.post("/generate")
+async def generate_policy(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """Genera una política personalizada con IA desde un template.
+
+    Body: {template_id, extra_context?}
+    """
+    from app.services.policy_generation_service import generate_policy_with_ai
+    template_id = body.get("template_id", "")
+    if not template_id:
+        raise HTTPException(400, "Se requiere template_id")
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(400, "Se requiere organization_id")
+    result = await generate_policy_with_ai(
+        db, template_id, org_id, body.get("extra_context")
+    )
+    if "error" in result:
+        raise HTTPException(422, result["error"])
+    return result

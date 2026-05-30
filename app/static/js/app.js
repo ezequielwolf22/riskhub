@@ -40,6 +40,7 @@ const Routes = {
   webhooks: ViewWebhooks,
   'external-findings': ViewExternalFindings,
   predictive: ViewPredictive,
+  ccm: ViewCcm,
 };
 
 function currentRoute() {

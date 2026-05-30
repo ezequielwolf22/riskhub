@@ -1280,6 +1280,63 @@ def _run_evidence_expiry_check() -> None:
         db.close()
 
 
+def _run_ccm_tests() -> None:
+    """Ejecuta tests CCM diariamente por organización y alerta si hay FAIL nuevos."""
+    from app.database import SessionLocal
+    from app.models import Organization, RiskContext
+    from app.services.ccm_service import run_all_tests
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active == True).all()
+        for org in orgs:
+            try:
+                results = run_all_tests(db, org.id)
+                fails = [r for r in results.get("results", []) if r["status"] == "FAIL"]
+                score = results.get("score", 0)
+                logger.info("CCM org=%d: score=%s FAIL=%d", org.id, score, len(fails))
+
+                # Alertar si score < 70 o hay FAILs críticos
+                if fails and score < 70:
+                    cfg = email_service.get_settings(db)
+                    if cfg and cfg.smtp_host:
+                        from app.models import User, UserRole
+                        admins = db.query(User).filter(
+                            User.organization_id == org.id,
+                            User.role == UserRole.ADMIN,
+                            User.is_active == True,
+                            User.email.isnot(None),
+                        ).all()
+                        ctx = db.query(RiskContext).filter(
+                            RiskContext.organization_id == org.id
+                        ).first()
+                        org_name = ctx.organization_name if ctx else org.name if hasattr(org, "name") else f"Org {org.id}"
+                        fail_items = "".join(
+                            f"<li><strong>{r['control_code']}</strong>: {r['name']} — {r['detail']}<br>"
+                            f"<em>{r.get('recommendation','')}</em></li>"
+                            for r in fails[:8]
+                        )
+                        html = (
+                            f"<p><strong>{org_name}</strong> — CCM Score: <strong>{score}/100</strong></p>"
+                            f"<p>Se han detectado {len(fails)} control(es) fallando:</p>"
+                            f"<ul>{fail_items}</ul>"
+                            f"<p>Accede a RiskHub → CCM para ver el detalle completo.</p>"
+                        )
+                        for admin in admins:
+                            email_service.send_email(
+                                cfg, admin.email,
+                                f"[RiskHub] CCM Alert: {len(fails)} controles FAIL — Score {score}/100",
+                                html
+                            )
+            except Exception as exc:
+                logger.exception("Error en CCM tests para org %d: %s", org.id, exc)
+    except Exception as exc:
+        logger.exception("Error en _run_ccm_tests: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_compliance_auto_sync() -> None:
     """Sincroniza estado de compliance con controles implementados."""
     from app.database import SessionLocal
@@ -1400,6 +1457,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Sincronizacion automatica de estado de compliance",
         replace_existing=True,
         misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_ccm_tests,
+        trigger=IntervalTrigger(hours=24),
+        id="ccm_tests",
+        name="Continuous Control Monitoring — tests automáticos diarios",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

@@ -247,3 +247,33 @@ def download_audit_package(
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
+
+
+@router.get("/framework-package/{framework_code}")
+def download_framework_audit_package(
+    framework_code: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_admin),
+):
+    """Descarga paquete ZIP de auditoría estructurado para un framework específico.
+
+    Estructura oficial del framework: dominios, requisitos, evidencias, gaps, attestation.
+    """
+    from fastapi.responses import Response
+    from app.services.audit_export_service import generate_framework_audit_package
+
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(400, "Se requiere organization_id")
+
+    try:
+        zip_bytes = generate_framework_audit_package(db, org_id, framework_code, current_user)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+    fname = f"riskhub_{framework_code}_audit_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )

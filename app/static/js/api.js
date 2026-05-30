@@ -382,6 +382,15 @@ const Api = {
     test:      (id)      => Api.post(`/api/webhooks/${id}/test`, {}),
     deliveries:(id)      => Api.get(`/api/webhooks/${id}/deliveries`),
   },
+  ccm: {
+    catalog:   ()         => Api.get('/api/ccm/catalog'),
+    run:       ()         => Api.post('/api/ccm/run', {}),
+    runTest:   (test_id)  => Api.post(`/api/ccm/run/${test_id}`, {}),
+  },
+  policyTemplates: {
+    list:     ()           => Api.get('/api/policies/templates'),
+    generate: (d)          => Api.post('/api/policies/generate', d),
+  },
   predictive: {
     trend:           (days)  => Api.get('/api/predictive/trend', days ? { days } : {}),
     maturityPath:    ()      => Api.get('/api/predictive/maturity-path'),

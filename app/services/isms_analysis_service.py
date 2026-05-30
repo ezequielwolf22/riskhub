@@ -200,6 +200,22 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         if controls:
             result["controls_updated"] = _update_controls(db, doc, controls, owner_id)
 
+            # NUEVO: Inferencia automática de compliance desde controles cubiertos
+            # Un documento que cubre A.8.5 → marca automáticamente ISO27001, NIST, SOC2, ENS, HIPAA
+            try:
+                from app.services.evidence_inference_service import infer_compliance_from_document
+                inference = infer_compliance_from_document(db, doc, controls, doc.organization_id)
+                result["compliance_requirements_updated"] = inference.get("requirements_updated", 0)
+                result["compliance_evidence_created"] = inference.get("evidence_created", 0)
+                result["frameworks_updated"] = inference.get("frameworks_affected", [])
+                logger.info(
+                    "Evidence inference doc=%d: %d reqs, %d evidencias",
+                    doc_id, inference.get("requirements_updated", 0), inference.get("evidence_created", 0)
+                )
+            except Exception as _ei:
+                logger.warning("Evidence inference failed doc=%d: %s", doc_id, _ei)
+                result["compliance_requirements_updated"] = 0
+
         threat_cats = analysis.get("threat_categories_addressed") or []
         if threat_cats:
             result["tasks_created"] = _create_treatment_tasks(

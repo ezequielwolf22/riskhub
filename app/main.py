@@ -12,7 +12,7 @@ from app.config import settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
-    auth, awareness, catalogues, compliance, context, controls, cve, documents,
+    auth, awareness, catalogues, ccm, compliance, context, controls, cve, documents,
     evidence, executive, external_findings, feature_flags, gdpr, incidents, itsm,
     nonconformities, organizations, osint, policies, predictive, reports, risks,
     search, sharepoint, sso, supplier_questionnaires, suppliers, tasks, users, webhooks,
@@ -133,6 +133,7 @@ app.include_router(external_findings.router)
 app.include_router(predictive.router)
 app.include_router(architecture.router)
 app.include_router(itsm.router)
+app.include_router(ccm.router)
 
 
 # Frontend estatico
