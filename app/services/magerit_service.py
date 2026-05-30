@@ -1,0 +1,224 @@
+"""Metodología MAGERIT v3 — valoración de activos y análisis de riesgos.
+
+MAGERIT (Metodología de Análisis y Gestión de Riesgos de los Sistemas de Información)
+es el estándar español de referencia para análisis de riesgos en el sector público
+y ampliamente usado en España/LATAM.
+
+Dimensiones de seguridad MAGERIT:
+- D: Disponibilidad
+- I: Integridad de los datos
+- C: Confidencialidad de los datos
+- A: Autenticidad
+- T: Trazabilidad
+
+Escala de valoración: 0 (sin valor) a 10 (extremadamente alto)
+"""
+import json
+import logging
+from pathlib import Path
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.models import Asset, AssetType, Risk, RiskContext, Threat
+
+logger = logging.getLogger("riskhub.magerit")
+
+_MAGERIT_THREATS_PATH = Path(__file__).parent.parent / "data" / "magerit_threats.json"
+
+# Escala MAGERIT → ISO27005 (probabilidad e impacto)
+_MAGERIT_TO_ISO = {1: 1, 2: 2, 3: 3, 4: 4, 5: 4}
+
+# Valoración de activos MAGERIT por dimensión (D, I, C, A, T)
+# Guía de niveles:
+_ASSET_VALUE_SCALE = {
+    1: "Muy bajo — Impacto mínimo o nulo",
+    2: "Bajo — Daño leve y recuperable",
+    3: "Medio — Daño moderado, afecta operativa",
+    4: "Alto — Daño grave, afecta misión",
+    5: "Muy alto — Daño catastrófico o irreversible",
+    6: "Crítico — Pérdida total de capacidad operativa",
+    7: "Catastrófico — Comprometería la viabilidad de la organización",
+    8: "Extremo — Afecta a seguridad nacional o ciudadana",
+}
+
+# Tipología de activos MAGERIT (mapeo desde ISO27005 AssetType)
+_ASSET_TYPE_MAGERIT = {
+    AssetType.PRIMARY_INFORMATION:    "datos",
+    AssetType.PRIMARY_PROCESS:        "servicios",
+    AssetType.SUPPORT_SOFTWARE:       "aplicaciones",
+    AssetType.SUPPORT_HARDWARE:       "equipos",
+    AssetType.SUPPORT_NETWORK:        "redes",
+    AssetType.SUPPORT_PERSONNEL:      "personal",
+    AssetType.SUPPORT_SITE:           "instalaciones",
+    AssetType.SUPPORT_ORGANIZATION:   "soportes",
+}
+
+# Dimensiones críticas por tipo de activo
+_DIMENSIONS_BY_TYPE = {
+    "datos":         {"D": 3, "I": 4, "C": 5, "A": 3, "T": 3},
+    "servicios":     {"D": 5, "I": 3, "C": 2, "A": 3, "T": 3},
+    "aplicaciones":  {"D": 4, "I": 4, "C": 3, "A": 3, "T": 3},
+    "equipos":       {"D": 4, "I": 3, "C": 2, "A": 2, "T": 2},
+    "redes":         {"D": 4, "I": 3, "C": 3, "A": 2, "T": 3},
+    "personal":      {"D": 3, "I": 2, "C": 4, "A": 4, "T": 4},
+    "instalaciones": {"D": 3, "I": 2, "C": 2, "A": 1, "T": 1},
+    "soportes":      {"D": 3, "I": 3, "C": 4, "A": 2, "T": 2},
+}
+
+
+def load_magerit_threats() -> list[dict]:
+    """Carga el catálogo de amenazas MAGERIT v3."""
+    try:
+        return json.loads(_MAGERIT_THREATS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def get_asset_magerit_value(asset: Asset) -> dict:
+    """Calcula la valoración MAGERIT de un activo por dimensiones.
+
+    Retorna: {D, I, C, A, T, value_max, magerit_type}
+    """
+    magerit_type = _ASSET_TYPE_MAGERIT.get(asset.asset_type, "aplicaciones")
+    base_dims = _DIMENSIONS_BY_TYPE.get(magerit_type, {"D": 3, "I": 3, "C": 3, "A": 2, "T": 2})
+
+    # Ajustar por clasificación del activo
+    classification = (asset.classification or "").lower()
+    if "secreto" in classification or "restringido" in classification:
+        base_dims["C"] = min(8, base_dims["C"] + 2)
+    elif "confidencial" in classification:
+        base_dims["C"] = min(7, base_dims["C"] + 1)
+
+    value_max = max(base_dims.values())
+    return {
+        **base_dims,
+        "value_max": value_max,
+        "magerit_type": magerit_type,
+        "scale_description": _ASSET_VALUE_SCALE.get(value_max, ""),
+    }
+
+
+def calculate_magerit_risk(
+    asset_value: dict,
+    threat_likelihood: int,
+    threat_consequence: int,
+    degradation_pct: int = 50,
+) -> dict:
+    """Calcula riesgo MAGERIT: Riesgo = Impacto × Frecuencia.
+
+    Args:
+        asset_value: valoración del activo por dimensiones
+        threat_likelihood: probabilidad amenaza (0-4 ISO, se convierte)
+        threat_consequence: consecuencia (0-4 ISO)
+        degradation_pct: % de degradación del activo si amenaza materializa
+
+    Returns: {impact, frequency, risk_value, risk_level_magerit}
+    """
+    # Impacto = Valor_activo × Degradación
+    value_max = asset_value.get("value_max", 3)
+    impact = round(value_max * (degradation_pct / 100), 2)
+
+    # Frecuencia (escala MAGERIT 0-4 → 1-10)
+    freq_map = {0: 0.01, 1: 0.1, 2: 1, 3: 10, 4: 100}
+    frequency = freq_map.get(threat_likelihood, 1)
+
+    # Riesgo MAGERIT = Impacto × Frecuencia (log scale simplificada)
+    import math
+    if frequency <= 0:
+        risk_val = 0
+    else:
+        risk_val = round(impact * math.log10(max(1, frequency) + 1), 2)
+
+    # Nivel de riesgo MAGERIT
+    if risk_val <= 1:
+        level = "BAJO"
+    elif risk_val <= 3:
+        level = "MEDIO"
+    elif risk_val <= 6:
+        level = "ALTO"
+    else:
+        level = "MUY ALTO"
+
+    return {
+        "impact": impact,
+        "frequency": frequency,
+        "degradation_pct": degradation_pct,
+        "risk_value": risk_val,
+        "risk_level_magerit": level,
+    }
+
+
+def seed_magerit_threats(db: Session, org_id: int) -> int:
+    """Carga las amenazas MAGERIT v3 para una organización.
+
+    Solo crea las que no existen. Retorna número de amenazas creadas.
+    """
+    threats = load_magerit_threats()
+    created = 0
+    for t in threats:
+        code = f"MAGERIT-{t['code']}"
+        existing = db.query(Threat).filter(
+            Threat.organization_id == org_id,
+            Threat.code == code,
+        ).first()
+        if existing:
+            continue
+        threat = Threat(
+            organization_id=org_id,
+            code=code,
+            name=t["name"],
+            description=f"[MAGERIT v3] {t.get('description', '')} — Categoría: {t.get('category','')}",
+            origin=t.get("origin", "D"),
+            likelihood=_MAGERIT_TO_ISO.get(t.get("likelihood", 2), 2),
+            consequence=_MAGERIT_TO_ISO.get(t.get("consequence", 2), 2),
+        )
+        db.add(threat)
+        created += 1
+    if created:
+        try:
+            db.commit()
+            logger.info("MAGERIT: %d amenazas cargadas para org %d", created, org_id)
+        except Exception as exc:
+            db.rollback()
+            logger.exception("Error cargando amenazas MAGERIT: %s", exc)
+            return 0
+    return created
+
+
+def get_magerit_analysis(db: Session, org_id: int) -> dict:
+    """Análisis MAGERIT completo de los activos de la org.
+
+    Retorna valoración de activos, riesgos MAGERIT y métricas.
+    """
+    assets = db.query(Asset).filter(Asset.organization_id == org_id).all()
+    magerit_threats = [t for t in db.query(Threat).filter(
+        Threat.organization_id == org_id,
+        Threat.code.like("MAGERIT-%"),
+    ).all()]
+
+    asset_valuations = []
+    for asset in assets:
+        val = get_asset_magerit_value(asset)
+        asset_valuations.append({
+            "asset_id": asset.id,
+            "asset_code": asset.code,
+            "asset_name": asset.name,
+            "asset_type": asset.asset_type.value if hasattr(asset.asset_type, "value") else str(asset.asset_type),
+            "magerit_type": val["magerit_type"],
+            "dimensions": {k: v for k, v in val.items() if k in ("D", "I", "C", "A", "T")},
+            "value_max": val["value_max"],
+            "scale": val["scale_description"],
+        })
+
+    return {
+        "org_id": org_id,
+        "total_assets": len(assets),
+        "magerit_threats_count": len(magerit_threats),
+        "asset_valuations": asset_valuations[:50],
+        "dimensions_legend": {
+            "D": "Disponibilidad", "I": "Integridad", "C": "Confidencialidad",
+            "A": "Autenticidad", "T": "Trazabilidad",
+        },
+        "scale_legend": _ASSET_VALUE_SCALE,
+    }

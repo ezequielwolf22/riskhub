@@ -26,6 +26,13 @@ const ViewGuide = {
     { id: 'ai-documents', title: 'Documentos del Agente', icon: '📂' },
     { id: 'architecture-review', title: 'Rev. Arquitectura de Red', icon: '📂' },
     { id: 'onboarding', title: 'Configuracion del Agente', icon: '⚙️' },
+    { id: 'executive', title: 'Dashboard Ejecutivo', icon: '📈' },
+    { id: 'ccm', title: 'Monit. Continua de Controles', icon: '✅' },
+    { id: 'evidence', title: 'Evidencias', icon: '📁' },
+    { id: 'magerit', title: 'MAGERIT v3', icon: '🇪🇸' },
+    { id: 'predictive', title: 'Analisis Predictivo', icon: '📊' },
+    { id: 'trust-portal', title: 'Trust Portal y Auditor', icon: '🔏' },
+    { id: 'itsm-config', title: 'ITSM y Notificaciones', icon: '🔔' },
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
@@ -119,6 +126,13 @@ const ViewGuide = {
       'ai-documents': this._cAiDocuments,
       'architecture-review': this._cArchitectureReview,
       onboarding: this._cOnboarding,
+      executive: this._cExecutive,
+      ccm: this._cCcm,
+      evidence: this._cEvidence,
+      magerit: this._cMagerit,
+      predictive: this._cPredictive,
+      'trust-portal': this._cTrustPortal,
+      'itsm-config': this._cItsmConfig,
       reports: this._cReports,
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
@@ -1853,6 +1867,134 @@ const ViewGuide = {
     </ul>
     ${this._warn('El analisis es generado por IA. Debe ser revisado por el equipo de seguridad antes de implementar cambios en produccion.')}
     ${this._tip('Para obtener mejores resultados, sube diagramas en formato imagen (PNG/JPG) junto con documentos de descripcion en texto. El agente analizara ambos formatos en conjunto.')}
+  `;},
+
+  get _cExecutive() { return `
+    ${this._p('El <strong>Dashboard Ejecutivo</strong> proporciona una visión global de la postura de seguridad de la organización en tiempo real: KPIs, tendencia de riesgos, estado de cumplimiento por framework y top riesgos activos.')}
+    ${this._h('KPIs principales')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Riesgos totales / Altos / Sobre apetito:</strong> contadores en tiempo real filtrados por org.</li>
+      <li><strong>Mitigados %:</strong> porcentaje de riesgos con tratamiento completado.</li>
+      <li><strong>Controles implementados %:</strong> madurez global del SGSI.</li>
+      <li><strong>Tareas vencidas / Incidentes 30d / Edad media tratamiento:</strong> métricas operativas.</li>
+    </ul>
+    ${this._h('Informe PDF ejecutivo')}
+    ${this._p('El botón "Descargar informe PDF" genera un informe ejecutivo con KPIs, top riesgos, estado de cumplimiento por framework y resumen narrativo. Útil para presentaciones al Comité de Dirección.')}
+    ${this._tip('El informe se genera on-demand. Para envío mensual automático, activa el job de informe mensual en el scheduler (ya activo por defecto el día 1 de cada mes).')}
+  `;},
+
+  get _cCcm() { return `
+    ${this._p('La <strong>Monitorización Continua de Controles (CCM)</strong> ejecuta 27 tests automáticos sobre los datos internos del SGSI y calcula un score de cumplimiento operativo (0-100).')}
+    ${this._h('Cómo funciona')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Los tests se ejecutan manualmente desde la vista o automáticamente cada 24h por el scheduler.</li>
+      <li>Cada test verifica un control ISO 27002 específico usando datos internos (no requiere integraciones externas).</li>
+      <li>Resultado: PASS / WARNING / FAIL / SKIP con detalle y recomendación de acción.</li>
+      <li>Si el score baja de 70 y hay FAILs, se envía email de alerta a los administradores.</li>
+    </ul>
+    ${this._h('Tests incluidos (27)')}
+    ${this._p('Activos con propietario y clasificación, riesgos altos con tratamiento y tareas, controles con evidencia, políticas vigentes, incidentes P1/P2 resueltos, proveedores evaluados anualmente, SLA de tareas, frescura de evidencias (<12m), MFA en admins, vulnerabilidades críticas gestionadas, apetito de riesgo definido, frameworks activos, evidencias de backup, riesgos altos revisados en 90d, usuarios inactivos >90d, contratos de proveedores vigentes, registro GDPR Art.30, auditorías internas anuales, no conformidades gestionadas, contexto SGSI completo, tareas con responsable asignado, formación de awareness, plan de respuesta a incidentes, cobertura de riesgos por activo, evidencias vinculadas a compliance.')}
+    ${this._warn('El CCM complementa, no sustituye, a una auditoría formal. Los resultados son orientativos sobre el estado operativo del SGSI.')}
+  `;},
+
+  get _cEvidence() { return `
+    ${this._p('El <strong>repositorio de Evidencias</strong> centraliza toda la documentación que acredita el cumplimiento de controles y requisitos normativos. Soporta versionado, fechas de expiración y vinculación a frameworks.')}
+    ${this._h('Subir evidencias')}
+    ${this._steps([
+      'Pulsa "+ Subir evidencia" y selecciona el archivo (cualquier formato).',
+      'Asigna título, tipo (política, certificado, log, informe...), framework y requisito específico.',
+      'Opcionalmente, define fecha de validez y fecha de expiración.',
+      'La evidencia queda vinculada al requisito normativo y aparece en el gap analysis.',
+    ])}
+    ${this._h('Inferencia automática')}
+    ${this._p('Cuando subes un documento al Agente IA y se analiza con ISMS, el sistema <strong>infiere automáticamente</strong> qué requisitos de tus frameworks activos cubre el documento y crea las evidencias vinculadas. Un documento de política de backups puede cubrir simultáneamente ISO27001 A.8.13, NIS2 Art.21.2.b, HIPAA y NIST CSF.')}
+    ${this._tip('Las evidencias próximas a vencer reciben alertas automáticas 30 días antes de su expiración.')}
+  `;},
+
+  get _cCompliance() { return `
+    ${this._p('El <strong>Dashboard de Cumplimiento</strong> muestra el estado de implementación de cada framework normativo activo, basado en controles implementados y evidencias subidas.')}
+    ${this._h('Configurar frameworks')}
+    ${this._steps([
+      'Pulsa "Configurar" en el panel superior del dashboard de cumplimiento.',
+      'Selecciona los frameworks que aplican a tu organización (ISO27001, GDPR, NIS2, HIPAA, NIST CSF, SOC2, ENS).',
+      'El sistema inicializa todos los requisitos de los frameworks seleccionados.',
+      'A medida que subes documentos y configuras controles, el cumplimiento se actualiza automáticamente.',
+    ])}
+    ${this._h('Cross-mapping automático')}
+    ${this._p('Cuando se implementa un control ISO 27002, el sistema propaga automáticamente ese estado a todos los requisitos equivalentes en los frameworks activos. Por ejemplo, implementar "8.5 Autenticación segura" marca simultáneamente ISO27001 A.8.5, NIST CSF PR.AA, SOC2 CC6.1, HIPAA 164.312(d), NIS2 Art.21.2.i y ENS op.acc.5.')}
+    ${this._h('Paquete de auditoría')}
+    ${this._p('Desde <em>Auditoría → Paquete por framework</em>, genera un ZIP estructurado con el orden oficial del framework: dominios, requisitos, evidencias vinculadas, gaps y attestation SHA-256.')}
+  `;},
+
+  get _cMagerit() { return `
+    ${this._p('<strong>MAGERIT v3</strong> es la metodología española de análisis y gestión de riesgos desarrollada por el Consejo Superior de Administración Electrónica. RiskHub implementa el catálogo de amenazas MAGERIT y la valoración de activos por dimensiones de seguridad.')}
+    ${this._h('Dimensiones de seguridad MAGERIT')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Dimensión</th><th style="padding:8px;">Descripción</th>
+      </tr></thead>
+      <tbody>
+        ${[['D — Disponibilidad','Garantía de acceso al servicio cuando se necesita'],
+           ['I — Integridad','Mantenimiento de la exactitud y completitud de la información'],
+           ['C — Confidencialidad','Acceso solo a usuarios autorizados'],
+           ['A — Autenticidad','Verificación de la identidad de quien accede o actúa'],
+           ['T — Trazabilidad','Registro de quién hizo qué y cuándo'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}><td style="padding:8px;font-weight:600;">${r[0]}</td><td style="padding:8px;">${r[1]}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Cargar amenazas MAGERIT')}
+    ${this._p('Ve a <em>API → /api/magerit/seed</em> o solicita al administrador que cargue el catálogo MAGERIT para tu organización. Se importan las 47 amenazas del libro II de MAGERIT v3 clasificadas en desastres naturales, errores no intencionados y ataques deliberados.')}
+    ${this._tip('MAGERIT es obligatorio para organismos de la Administración Pública española y recomendado para empresas que operan bajo el ENS (Esquema Nacional de Seguridad).')}
+  `;},
+
+  get _cTrustPortal() { return `
+    ${this._p('El <strong>Trust Portal</strong> es una página pública que muestra el estado de cumplimiento de tu organización a clientes, prospects y socios. El <strong>Portal de Auditor</strong> da acceso de solo lectura a auditores externos con un token seguro.')}
+    ${this._h('Trust Portal (público)')}
+    ${this._steps([
+      'Ve a Informes → Trust Portal (requiere rol admin).',
+      'Configura qué información mostrar: frameworks, resumen de riesgos, última auditoría.',
+      'Copia la URL pública y compártela en tu web corporativa, propuestas comerciales o solicitudes de due diligence.',
+      'Si la URL queda comprometida, regenera el token para invalidarla instantáneamente.',
+    ])}
+    ${this._h('Portal de Auditor (privado por token)')}
+    ${this._steps([
+      'La URL del auditor incluye un token único que da acceso read-only.',
+      'El auditor puede ver: estado por framework, evidencias vinculadas, gaps y requisitos pendientes.',
+      'No puede ver datos sensibles (nombres de empleados, contraseñas, configuración interna).',
+      'Regenera el token tras cada auditoría para revocar el acceso.',
+    ])}
+    ${this._warn('Nunca compartas el token de auditor por canales no seguros. Revócalo siempre tras finalizar la auditoría.')}
+  `;},
+
+  get _cItsmConfig() { return `
+    ${this._p('Las <strong>integraciones ITSM</strong> conectan RiskHub con tus herramientas de gestión de servicios y comunicación para crear tickets y notificaciones automáticamente cuando se detectan riesgos HIGH/CRITICAL.')}
+    ${this._h('Integraciones disponibles')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Jira Cloud/Server:</strong> crea issues automáticamente con prioridad basada en el nivel de riesgo.</li>
+      <li><strong>ServiceNow:</strong> crea incidents con urgencia e impacto calculados según el nivel residual.</li>
+      <li><strong>Slack:</strong> notificaciones en canal con bloques de mensaje estructurados.</li>
+      <li><strong>Microsoft Teams:</strong> tarjetas de mensaje adaptativas en canal.</li>
+    </ul>
+    ${this._h('Configuración')}
+    ${this._steps([
+      'Ve a Integraciones → ITSM y Notificaciones (requiere rol admin).',
+      'Pulsa "Configurar" en la integración deseada e introduce las credenciales.',
+      'Usa "Probar conexión" para verificar antes de guardar.',
+      'Una vez configurado, RiskHub creará tickets/notificaciones automáticamente cuando un riesgo alcance nivel residual ≥5.',
+    ])}
+    ${this._warn('Las credenciales se almacenan cifradas con AES-256 (Fernet). Nunca se registran en logs.')}
+  `;},
+
+  get _cPredictive() { return `
+    ${this._p('El <strong>Análisis Predictivo</strong> analiza la evolución del inventario de riesgos para proyectar tendencias, identificar activos críticos y priorizar qué mejorar para maximizar la postura de seguridad.')}
+    ${this._h('Módulos')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Trend de riesgos (90 días):</strong> velocidad de creación, cambio porcentual y forecast a 30 días.</li>
+      <li><strong>Camino de madurez:</strong> qué controles implementar primero para mejorar más rápido.</li>
+      <li><strong>Activos con mayor riesgo:</strong> activos con más concentración de riesgos altos.</li>
+      <li><strong>Forecast de amenazas:</strong> qué amenazas tienen más probabilidad de materializarse basándose en historial.</li>
+    </ul>
+    ${this._tip('Usa el camino de madurez para priorizar el backlog de controles: los controles parciales tienen el ROI más alto al requerir poco esfuerzo para completarse.')}
   `;},
 
   get _cOnboarding() { return `

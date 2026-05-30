@@ -626,10 +626,11 @@ const ViewCompliance = (() => {
     _activeFrameworks = null;
     _ensLevel = null;
     try {
-      const [data, implsList, ctx] = await Promise.all([
-        Api.compliance.summary(),
+      const [data, implsList, ctx, realStatus] = await Promise.all([
+        Api.compliance.summary().catch(() => ({})),
         Api.impls.list().catch(() => []),
         Api.get('/api/context/').catch(() => null),
+        Api.complianceFrameworks.status().catch(() => null),
       ]);
       _compData = data;
       _implsData = implsList;
@@ -639,13 +640,70 @@ const ViewCompliance = (() => {
       if (ctx?.ens_level) {
         _ensLevel = ctx.ens_level;
       }
-      _render(content, data);
+
+      // Insertar panel de estado real multi-framework si hay datos nuevos
+      if (realStatus && realStatus.frameworks && realStatus.frameworks.length > 0) {
+        const realPanel = _buildRealStatusPanel(realStatus);
+        content.innerHTML = realPanel;
+        const legacyDiv = document.createElement('div');
+        legacyDiv.id = 'comp-legacy';
+        content.appendChild(legacyDiv);
+        _render(legacyDiv, data);
+      } else {
+        _render(content, data);
+      }
+
       // Wire legacy gap button
       const gapBtn = document.getElementById('btn-gap-analysis');
       if (gapBtn) gapBtn.onclick = _runGapAnalysis;
     } catch (e) {
       content.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
+  }
+
+  function _buildRealStatusPanel(status) {
+    const fw = status.frameworks || [];
+    const col = pct => pct >= 75 ? 'var(--risk-low)' : pct >= 50 ? 'var(--risk-medium)' : 'var(--risk-high)';
+    const bar = (pct, c) => `<div style="background:#eee;border-radius:4px;height:8px;overflow:hidden;">
+      <div style="width:${pct}%;background:${c};height:100%;border-radius:4px;"></div></div>`;
+
+    const fwCards = fw.map(f => `
+      <div style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:16px;min-width:200px;flex:1;">
+        <div style="font-size:12px;font-weight:700;color:var(--brand-purple);margin-bottom:8px;">
+          ${UI.esc(f.framework_name || f.framework_code)}
+          ${f.is_audit_ready ? '<span style="background:#E8F5E9;color:#2e7d32;padding:2px 6px;border-radius:8px;font-size:10px;margin-left:4px;">✓ Audit Ready</span>' : ''}
+        </div>
+        <div style="font-size:28px;font-weight:800;color:${col(f.overall_pct)};">${f.overall_pct}%</div>
+        <div style="font-size:11px;color:#9d9d9d;margin:4px 0 6px;">Cumplimiento global</div>
+        ${bar(f.overall_pct, col(f.overall_pct))}
+        ${f.gaps && f.gaps.length ? `<div style="font-size:11px;color:#c25a1f;margin-top:6px;">${f.gaps.length} gap(s)</div>` : ''}
+      </div>`).join('');
+
+    return `
+      <div style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:20px;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div>
+            <h2 style="font-size:15px;font-weight:700;color:var(--brand-purple);margin:0;">
+              Estado real de cumplimiento normativo
+            </h2>
+            <p style="color:#9d9d9d;font-size:12px;margin:4px 0 0;">
+              Basado en controles implementados y evidencias subidas
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <a href="#/evidence" onclick="App.navigate('evidence');return false;"
+               class="btn-outline" style="font-size:12px;padding:5px 12px;">+ Evidencias</a>
+            <button onclick="ViewCompliance._configureFrameworks()"
+                    class="btn-outline" style="font-size:12px;padding:5px 12px;">Configurar</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">${fwCards}</div>
+        <div style="margin-top:12px;font-size:12px;color:#9d9d9d;">
+          Cumplimiento global ponderado: <strong>${status.overall_pct || 0}%</strong> |
+          Total gaps: <strong>${status.total_gaps || 0}</strong>
+        </div>
+      </div>
+      <div id="comp-legacy-placeholder"></div>`;
   }
 
   function _render(content, data) {
@@ -859,5 +917,45 @@ const ViewCompliance = (() => {
     }
   }
 
-  return { render, _togglePanel, _filterGapTable: () => {} };
+  function _configureFrameworks() {
+    Api.complianceFrameworks.list().then(available => {
+      Api.get('/api/context/').then(ctx => {
+        const active = (ctx && ctx.active_frameworks) || [];
+        const checkboxes = available.map(fw => `
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
+            <input type="checkbox" class="fw-cb" value="${UI.esc(fw.code)}"
+                   ${active.includes(fw.code) ? 'checked' : ''}>
+            <div>
+              <div style="font-size:13px;font-weight:600;">${UI.esc(fw.name)}</div>
+              <div style="font-size:11px;color:#9d9d9d;">${fw.requirements_count} requisitos</div>
+            </div>
+          </label>`).join('');
+        UI.modal(`
+          <h3 style="margin:0 0 16px;color:var(--brand-purple);">Configurar frameworks normativos</h3>
+          <p style="font-size:13px;color:#666;margin-bottom:12px;">
+            Selecciona los frameworks que debe cumplir tu organización.
+          </p>
+          <div style="max-height:350px;overflow-y:auto;">${checkboxes}</div>
+          <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+            <button onclick="UI.closeModal()" class="btn-outline">Cancelar</button>
+            <button onclick="ViewCompliance._saveFrameworks()" class="btn-primary">Guardar</button>
+          </div>`);
+      }).catch(() => UI.toast('Error cargando contexto', 'error'));
+    }).catch(() => UI.toast('Error cargando frameworks', 'error'));
+  }
+
+  async function _saveFrameworks() {
+    const selected = [...document.querySelectorAll('.fw-cb:checked')].map(c => c.value);
+    if (!selected.length) { UI.toast('Selecciona al menos un framework', 'error'); return; }
+    try {
+      await Api.complianceFrameworks.subscribe({ frameworks: selected });
+      UI.closeModal();
+      UI.toast('Frameworks configurados correctamente', 'success');
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  return { render, _togglePanel, _filterGapTable: () => {}, _configureFrameworks, _saveFrameworks };
 })();

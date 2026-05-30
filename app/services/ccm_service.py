@@ -419,6 +419,295 @@ def test_open_risks_reviewed_recently(db: Session, org_id: int) -> CCMResult:
     )
 
 
+# ─── Tests adicionales ──────────────────────────────────────────────────────
+
+def test_users_with_inactive_access(db: Session, org_id: int) -> CCMResult:
+    """5.18 — Usuarios inactivos (>90 días sin login) tienen acceso revocado."""
+    now = datetime.now(timezone.utc)
+    threshold = now - timedelta(days=90)
+    all_users = db.query(User).filter(
+        User.organization_id == org_id,
+        User.is_active == True,
+    ).all()
+    if not all_users:
+        return CCMResult("user_inactive", "5.18", "Revisión de usuarios inactivos",
+                         "SKIP", "No hay usuarios activos")
+    stale = [u for u in all_users if hasattr(u, "last_login_at") and u.last_login_at and
+             u.last_login_at.replace(tzinfo=timezone.utc) < threshold]
+    if not stale:
+        return CCMResult("user_inactive", "5.18", "Usuarios inactivos",
+                         "PASS", f"{len(all_users)} usuarios activos, ninguno inactivo >90 días")
+    status = "WARNING" if len(stale) <= 3 else "FAIL"
+    return CCMResult(
+        "user_inactive", "5.18", "Usuarios inactivos sin acceso revocado", status,
+        f"{len(stale)} usuario(s) sin login en >90 días",
+        recommendation="Revisar y deshabilitar usuarios que no acceden desde hace más de 90 días",
+    )
+
+
+def test_supplier_contracts_valid(db: Session, org_id: int) -> CCMResult:
+    """5.19 — Contratos con proveedores críticos vigentes."""
+    now = datetime.now(timezone.utc)
+    suppliers = db.query(Supplier).filter(
+        Supplier.organization_id == org_id,
+        Supplier.is_critical == True,
+    ).all()
+    if not suppliers:
+        suppliers = db.query(Supplier).filter(Supplier.organization_id == org_id).limit(10).all()
+    if not suppliers:
+        return CCMResult("supplier_contracts", "5.19", "Contratos con proveedores",
+                         "SKIP", "No hay proveedores registrados")
+    expired = [s for s in suppliers
+               if s.contract_expiry and
+               s.contract_expiry.replace(tzinfo=timezone.utc) < now]
+    expiring_soon = [s for s in suppliers
+                     if s.contract_expiry and
+                     now < s.contract_expiry.replace(tzinfo=timezone.utc) < now + timedelta(days=30)]
+    if not expired and not expiring_soon:
+        return CCMResult("supplier_contracts", "5.19", "Contratos con proveedores vigentes",
+                         "PASS", f"{len(suppliers)} proveedor(es) con contratos vigentes")
+    status = "FAIL" if expired else "WARNING"
+    msgs = []
+    if expired:
+        msgs.append(f"{len(expired)} contrato(s) vencido(s)")
+    if expiring_soon:
+        msgs.append(f"{len(expiring_soon)} contrato(s) vencen en <30 días")
+    return CCMResult(
+        "supplier_contracts", "5.19", "Vigencia de contratos con proveedores", status,
+        "; ".join(msgs),
+        recommendation="Renovar contratos vencidos o próximos a vencer",
+    )
+
+
+def test_gdpr_activities_documented(db: Session, org_id: int) -> CCMResult:
+    """5.34 — Registro de actividades de tratamiento de datos (GDPR Art. 30)."""
+    try:
+        from app.models import ProcessingActivity
+        count = db.query(ProcessingActivity).filter(
+            ProcessingActivity.organization_id == org_id
+        ).count()
+        if count >= 3:
+            return CCMResult("gdpr_activities", "5.34", "Registro actividades tratamiento",
+                             "PASS", f"{count} actividades de tratamiento documentadas")
+        if count > 0:
+            return CCMResult("gdpr_activities", "5.34", "Registro actividades tratamiento",
+                             "WARNING", f"Solo {count} actividad(es) documentada(s)",
+                             recommendation="Documentar todas las actividades de tratamiento (GDPR Art. 30)")
+        return CCMResult(
+            "gdpr_activities", "5.34", "Registro actividades tratamiento", "FAIL",
+            "No hay actividades de tratamiento de datos documentadas",
+            recommendation="Crear el Registro de Actividades de Tratamiento (GDPR Art. 30)",
+        )
+    except Exception:
+        return CCMResult("gdpr_activities", "5.34", "Registro actividades tratamiento",
+                         "SKIP", "Módulo GDPR no disponible")
+
+
+def test_internal_audits_performed(db: Session, org_id: int) -> CCMResult:
+    """5.35 — Auditoría interna realizada en el último año."""
+    now = datetime.now(timezone.utc)
+    threshold = now - timedelta(days=365)
+    try:
+        from app.models import AuditProgram, AuditStatus
+        recent = db.query(AuditProgram).filter(
+            AuditProgram.organization_id == org_id,
+            AuditProgram.status == AuditStatus.COMPLETED,
+            AuditProgram.actual_date > threshold,
+        ).count()
+        if recent >= 1:
+            return CCMResult("internal_audit", "5.35", "Auditoría interna anual",
+                             "PASS", f"{recent} auditoría(s) interna(s) en último año")
+        planned = db.query(AuditProgram).filter(
+            AuditProgram.organization_id == org_id,
+            AuditProgram.status.in_(["planned", "in_progress"]),
+        ).count()
+        if planned:
+            return CCMResult("internal_audit", "5.35", "Auditoría interna anual",
+                             "WARNING", "No hay auditorías completadas, hay una planificada",
+                             recommendation="Completar la auditoría interna planificada")
+        return CCMResult(
+            "internal_audit", "5.35", "Auditoría interna anual", "FAIL",
+            "No se han realizado auditorías internas en el último año",
+            recommendation="Planificar y ejecutar auditoría interna del SGSI",
+        )
+    except Exception:
+        return CCMResult("internal_audit", "5.35", "Auditoría interna anual",
+                         "SKIP", "Módulo de auditorías no disponible")
+
+
+def test_nonconformities_addressed(db: Session, org_id: int) -> CCMResult:
+    """10.1 — No conformidades con acciones correctivas asignadas."""
+    try:
+        from app.models import NonConformity, NCStatus
+        open_nc = db.query(NonConformity).filter(
+            NonConformity.organization_id == org_id,
+            NonConformity.status.notin_([NCStatus.CLOSED]),
+        ).all()
+        if not open_nc:
+            return CCMResult("nc_addressed", "10.1", "No conformidades gestionadas",
+                             "PASS", "No hay no conformidades abiertas")
+        old_nc = [nc for nc in open_nc
+                  if nc.created_at and
+                  (datetime.now(timezone.utc) - nc.created_at.replace(tzinfo=timezone.utc)).days > 90]
+        if not old_nc:
+            return CCMResult("nc_addressed", "10.1", "No conformidades gestionadas",
+                             "WARNING", f"{len(open_nc)} NC abiertas (todas recientes)",
+                             recommendation="Gestionar las no conformidades abiertas")
+        return CCMResult(
+            "nc_addressed", "10.1", "No conformidades gestionadas", "FAIL",
+            f"{len(old_nc)}/{len(open_nc)} NC abiertas sin cerrar en >90 días",
+            recommendation="Cerrar no conformidades antiguas con acciones correctivas verificadas",
+        )
+    except Exception:
+        return CCMResult("nc_addressed", "10.1", "No conformidades gestionadas",
+                         "SKIP", "Módulo de no conformidades no disponible")
+
+
+def test_risk_context_complete(db: Session, org_id: int) -> CCMResult:
+    """4.1/4.2 — Contexto organizacional del SGSI completo."""
+    ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+    if not ctx:
+        return CCMResult("risk_context", "4.1", "Contexto organizacional",
+                         "FAIL", "No hay contexto de riesgo configurado",
+                         recommendation="Configurar el contexto organizacional del SGSI")
+    missing = []
+    if not ctx.scope:
+        missing.append("alcance")
+    if not ctx.boundaries:
+        missing.append("límites")
+    if not ctx.risk_matrix:
+        missing.append("matriz de riesgos")
+    if ctx.risk_appetite is None:
+        missing.append("apetito de riesgo")
+    if missing:
+        return CCMResult(
+            "risk_context", "4.1", "Contexto organizacional completo", "WARNING",
+            f"Campos sin completar: {', '.join(missing)}",
+            recommendation="Completar todos los campos del contexto en la sección Contexto",
+        )
+    return CCMResult("risk_context", "4.1", "Contexto organizacional completo",
+                     "PASS", "Contexto organizacional completamente configurado")
+
+
+def test_treatment_tasks_assigned(db: Session, org_id: int) -> CCMResult:
+    """5.2 — Tareas de tratamiento con responsable asignado."""
+    from app.models import TreatmentTask
+    total = db.query(TreatmentTask).filter(
+        TreatmentTask.organization_id == org_id,
+        TreatmentTask.status.notin_([TaskStatus.DONE]),
+    ).count()
+    if total == 0:
+        return CCMResult("tasks_assigned", "5.2", "Tareas con responsable",
+                         "PASS", "No hay tareas pendientes")
+    unassigned = db.query(TreatmentTask).filter(
+        TreatmentTask.organization_id == org_id,
+        TreatmentTask.status.notin_([TaskStatus.DONE]),
+        TreatmentTask.assigned_to_id.is_(None),
+    ).count()
+    pct = round((total - unassigned) / total * 100, 1)
+    status = "PASS" if unassigned == 0 else ("WARNING" if unassigned <= 3 else "FAIL")
+    return CCMResult(
+        "tasks_assigned", "5.2", "Tareas de tratamiento con responsable", status,
+        f"{total - unassigned}/{total} tareas tienen responsable asignado ({pct}%)", value=pct,
+        recommendation="" if status == "PASS" else f"Asignar responsable a {unassigned} tarea(s) sin asignar",
+    )
+
+
+def test_awareness_training_recent(db: Session, org_id: int) -> CCMResult:
+    """6.3 — Formación en concienciación reciente (último año)."""
+    try:
+        from app.models import AwarenessItem
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(days=365)
+        recent = db.query(AwarenessItem).filter(
+            AwarenessItem.organization_id == org_id,
+            AwarenessItem.status == "published",
+            AwarenessItem.created_at >= threshold,
+        ).count()
+        if recent >= 2:
+            return CCMResult("awareness", "6.3", "Formación en concienciación",
+                             "PASS", f"{recent} elemento(s) de awareness publicados en último año")
+        if recent == 1:
+            return CCMResult("awareness", "6.3", "Formación en concienciación",
+                             "WARNING", "Solo 1 elemento de awareness en el último año",
+                             recommendation="Aumentar la frecuencia de formación en concienciación")
+        return CCMResult(
+            "awareness", "6.3", "Formación en concienciación (último año)", "FAIL",
+            "No se ha publicado formación de concienciación en el último año",
+            recommendation="Publicar materiales de awareness en seguridad de la información",
+        )
+    except Exception:
+        return CCMResult("awareness", "6.3", "Formación en concienciación",
+                         "SKIP", "Módulo de awareness no disponible")
+
+
+def test_incident_response_plan(db: Session, org_id: int) -> CCMResult:
+    """5.24 — Plan de respuesta a incidentes documentado."""
+    ir_keywords = ["incidente", "incident", "respuesta", "response", "ciberseguridad", "CSIRT"]
+    pol_count = 0
+    for kw in ir_keywords:
+        pol_count += db.query(Policy).filter(
+            Policy.organization_id == org_id,
+            Policy.title.ilike(f"%{kw}%"),
+            Policy.status != PolicyStatus.OBSOLETE,
+        ).count()
+        if pol_count > 0:
+            break
+    if pol_count > 0:
+        return CCMResult("ir_plan", "5.24", "Plan de respuesta a incidentes",
+                         "PASS", "Se ha encontrado política/procedimiento de respuesta a incidentes")
+    return CCMResult(
+        "ir_plan", "5.24", "Plan de respuesta a incidentes documentado", "WARNING",
+        "No se encontró política de respuesta a incidentes",
+        recommendation="Crear/subir el Plan de Respuesta a Incidentes de Seguridad",
+    )
+
+
+def test_assets_with_risk_coverage(db: Session, org_id: int) -> CCMResult:
+    """5.8 — Activos críticos con al menos un riesgo identificado."""
+    from app.models import Asset
+    total_assets = db.query(Asset).filter(Asset.organization_id == org_id).count()
+    if total_assets == 0:
+        return CCMResult("asset_risk_coverage", "5.8", "Activos con riesgos identificados",
+                         "SKIP", "No hay activos registrados")
+    assets_with_risks = db.query(Asset.id).filter(
+        Asset.organization_id == org_id,
+    ).join(Risk, Risk.asset_id == Asset.id, isouter=True).filter(
+        Risk.id.isnot(None)
+    ).distinct().count()
+    pct = round(assets_with_risks / total_assets * 100, 1)
+    status = "PASS" if pct >= 80 else ("WARNING" if pct >= 50 else "FAIL")
+    return CCMResult(
+        "asset_risk_coverage", "5.8", "Activos con riesgos identificados", status,
+        f"{assets_with_risks}/{total_assets} activos con riesgos ({pct}%)", value=pct,
+        recommendation="" if status == "PASS" else "Completar análisis de riesgos para activos sin cobertura",
+    )
+
+
+def test_evidence_linked_to_controls(db: Session, org_id: int) -> CCMResult:
+    """5.35 — Evidencias vinculadas a requisitos de compliance."""
+    total_ev = db.query(Evidence).filter(
+        Evidence.organization_id == org_id,
+        Evidence.is_current == True,
+    ).count()
+    if total_ev == 0:
+        return CCMResult("evidence_linked", "5.35", "Evidencias vinculadas a compliance",
+                         "WARNING", "No hay evidencias registradas",
+                         recommendation="Subir evidencias y vincularlas a requisitos normativos")
+    linked = db.query(Evidence).filter(
+        Evidence.organization_id == org_id,
+        Evidence.is_current == True,
+        Evidence.compliance_framework.isnot(None),
+    ).count()
+    pct = round(linked / total_ev * 100, 1)
+    status = "PASS" if pct >= 70 else ("WARNING" if pct >= 40 else "FAIL")
+    return CCMResult(
+        "evidence_linked", "5.35", "Evidencias vinculadas a requisitos normativos", status,
+        f"{linked}/{total_ev} evidencias vinculadas a frameworks ({pct}%)", value=pct,
+        recommendation="" if status == "PASS" else "Vincular más evidencias a requisitos específicos",
+    )
+
+
 # ─── Runner principal ────────────────────────────────────────────────────────
 
 _ALL_TESTS: list[Callable] = [
@@ -438,6 +727,18 @@ _ALL_TESTS: list[Callable] = [
     test_compliance_frameworks_active,
     test_data_backup_evidence,
     test_open_risks_reviewed_recently,
+    # Nuevos tests
+    test_users_with_inactive_access,
+    test_supplier_contracts_valid,
+    test_gdpr_activities_documented,
+    test_internal_audits_performed,
+    test_nonconformities_addressed,
+    test_risk_context_complete,
+    test_treatment_tasks_assigned,
+    test_awareness_training_recent,
+    test_incident_response_plan,
+    test_assets_with_risk_coverage,
+    test_evidence_linked_to_controls,
 ]
 
 

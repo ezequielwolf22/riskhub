@@ -21,7 +21,7 @@ from app.models import (
     Asset,
     Control, ControlImplementation, ControlStatus,
     Policy, PolicyStatus,
-    Risk, RiskStatus,
+    Risk, RiskContext, RiskStatus,
     TaskPriority, TaskStatus, TreatmentTask,
     User,
 )
@@ -153,6 +153,25 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
 
         text_sample = "\n\n".join(c.content for c in chunks)[:14000]
 
+        # Inyectar frameworks activos en el prompt para mejorar inferencia
+        ctx = db.query(RiskContext).filter(
+            RiskContext.organization_id == doc.organization_id
+        ).first()
+        active_frameworks = (ctx.active_frameworks or []) if ctx else []
+        fw_hint = ""
+        if active_frameworks:
+            fw_names = {
+                "iso27001": "ISO 27001:2022", "gdpr": "GDPR", "nis2": "NIS2",
+                "hipaa": "HIPAA", "nist_csf": "NIST CSF 2.0", "soc2": "SOC2",
+                "ens": "ENS (Esquema Nacional de Seguridad)",
+            }
+            names = [fw_names.get(f, f.upper()) for f in active_frameworks]
+            fw_hint = (
+                f"\n\nIMPORTANTE: La organización tiene activos los frameworks: {', '.join(names)}. "
+                f"Al identificar controls_covered, sé especialmente minucioso con los controles "
+                f"ISO 27002 que sean relevantes para estos frameworks."
+            )
+
         # Llamar al agente IA
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
@@ -161,7 +180,7 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         message = client.messages.create(
             model=model,
             max_tokens=2048,
-            system=_ISMS_SYSTEM_PROMPT,
+            system=_ISMS_SYSTEM_PROMPT + fw_hint,
             messages=[{
                 "role": "user",
                 "content": f"Nombre del documento: {doc.original_name}\n\nContenido:\n{text_sample}",

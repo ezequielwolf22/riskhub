@@ -334,6 +334,26 @@ const Api = {
     checkRules: () => Api.post('/api/alerts/check-rules', {}),
     sendRisk: (id, d) => Api.post('/api/alerts/send-risk/' + id, d),
   },
+  magerit: {
+    threats:      ()         => Api.get('/api/magerit/threats'),
+    seed:         ()         => Api.post('/api/magerit/seed', {}),
+    analysis:     ()         => Api.get('/api/magerit/analysis'),
+    valuation:    (asset_id) => Api.get(`/api/magerit/assets/${asset_id}/valuation`),
+    scale:        ()         => Api.get('/api/magerit/scale'),
+  },
+  portal: {
+    trust: {
+      getConfig:       ()           => Api.get('/api/portal/trust/config'),
+      saveConfig:      (d)          => Api.put('/api/portal/trust/config', d),
+      regenerateToken: ()           => Api.post('/api/portal/trust/regenerate-token', {}),
+      getData:         (org, token) => Api.get(`/api/portal/trust/data/${org}/${token}`),
+    },
+    auditor: {
+      getConfig:       ()              => Api.get('/api/portal/auditor/config'),
+      regenerateToken: ()              => Api.post('/api/portal/auditor/regenerate-token', {}),
+      getData:         (org, token, fw) => Api.get(`/api/portal/auditor/data/${org}/${token}`, fw ? {framework: fw} : {}),
+    },
+  },
   complianceFrameworks: {
     list:             ()           => Api.get('/api/compliance/frameworks'),
     get:              (code)       => Api.get('/api/compliance/frameworks/' + code),

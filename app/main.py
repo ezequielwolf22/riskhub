@@ -14,8 +14,9 @@ from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, catalogues, ccm, compliance, context, controls, cve, documents,
     evidence, executive, external_findings, feature_flags, gdpr, incidents, itsm,
-    nonconformities, organizations, osint, policies, predictive, reports, risks,
-    search, sharepoint, sso, supplier_questionnaires, suppliers, tasks, users, webhooks,
+    magerit, nonconformities, organizations, osint, policies, portal, predictive,
+    reports, risks, search, sharepoint, sso, supplier_questionnaires, suppliers,
+    tasks, users, webhooks,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -134,6 +135,8 @@ app.include_router(predictive.router)
 app.include_router(architecture.router)
 app.include_router(itsm.router)
 app.include_router(ccm.router)
+app.include_router(portal.router)
+app.include_router(magerit.router)
 
 
 # Frontend estatico

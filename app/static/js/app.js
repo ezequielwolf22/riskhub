@@ -41,6 +41,8 @@ const Routes = {
   'external-findings': ViewExternalFindings,
   predictive: ViewPredictive,
   ccm: ViewCcm,
+  'itsm-config': ViewItsmConfig,
+  'trust-portal': ViewTrustPortal,
 };
 
 function currentRoute() {

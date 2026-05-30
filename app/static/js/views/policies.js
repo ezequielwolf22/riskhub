@@ -28,6 +28,9 @@ const ViewPolicies = (() => {
           <button class="btn" id="btn-ai-extract" title="Cargar un documento PDF/DOCX y extraer los campos con IA">
             Extraer con IA
           </button>
+          <button onclick="ViewPolicies._generateWithAI()" class="btn" style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
+            ✨ Generar con IA
+          </button>
           <button class="btn btn-primary" id="btn-new-pol">+ Nueva politica</button>
         </div>
       </div>
@@ -233,5 +236,84 @@ const ViewPolicies = (() => {
     } catch (e) { UI.toast(e.message, 'error'); }
   }
 
-  return { render };
+  async function _generateWithAI() {
+    const templates = await Api.policyTemplates.list().catch(() => []);
+    if (!templates.length) { UI.toast('No hay templates disponibles', 'error'); return; }
+    const options = templates.map(t => `
+      <option value="${UI.esc(t.id)}">${UI.esc(t.title)}</option>`).join('');
+    UI.modal(`
+      <h3 style="margin:0 0 16px;color:var(--brand-purple);">Generar política con IA</h3>
+      <p style="font-size:13px;color:#666;margin-bottom:12px;">
+        Claude generará una política personalizada con el nombre de tu organización,
+        activos, amenazas y frameworks activos.
+      </p>
+      <div style="display:grid;gap:12px;">
+        <div>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Template *</label>
+          <select id="gen-template" class="input-field" style="width:100%;">${options}</select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Contexto adicional (opcional)</label>
+          <textarea id="gen-context" class="input-field" rows="3" style="width:100%;"
+                    placeholder="Ej: empresa de 200 empleados, sector financiero, datos de tarjetas..."></textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+        <button onclick="UI.closeModal()" class="btn-outline">Cancelar</button>
+        <button onclick="ViewPolicies._submitGenerate()" class="btn-primary">Generar con IA</button>
+      </div>`);
+  }
+
+  async function _submitGenerate() {
+    const templateId = document.getElementById('gen-template').value;
+    const context = document.getElementById('gen-context').value.trim();
+    UI.closeModal();
+    UI.toast('Generando política con IA...', 'info');
+    try {
+      const result = await Api.policyTemplates.generate({
+        template_id: templateId,
+        extra_context: context || null,
+      });
+      // Mostrar el resultado para que el usuario lo revise antes de guardar
+      UI.modal(`
+        <div style="max-width:700px;">
+          <h3 style="margin:0 0 8px;color:var(--brand-purple);">Política generada: ${UI.esc(result.title)}</h3>
+          <p style="font-size:12px;color:#9d9d9d;margin-bottom:12px;">
+            Revisa el contenido antes de guardar. Puedes editarlo.
+          </p>
+          <textarea id="gen-result-content" style="width:100%;height:350px;font-size:12px;
+                    font-family:monospace;border:1px solid #e0e0e0;border-radius:6px;padding:10px;
+                    resize:vertical;">${UI.esc(result.content)}</textarea>
+          <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+            <button onclick="UI.closeModal()" class="btn-outline">Descartar</button>
+            <button onclick="ViewPolicies._saveGenerated(${JSON.stringify(result).replace(/"/g,'&quot;')})"
+                    class="btn-primary">Guardar como política</button>
+          </div>
+        </div>`);
+    } catch (e) {
+      UI.toast('Error generando: ' + e.message, 'error');
+    }
+  }
+
+  async function _saveGenerated(result) {
+    const content = document.getElementById('gen-result-content').value;
+    const payload = {
+      title: result.title,
+      content: content,
+      iso_clauses: result.iso_controls || [],
+      scope: 'Generada automáticamente con IA — revisar y adaptar',
+      version: '1.0',
+      review_cycle_months: 12,
+    };
+    try {
+      await Api.policies.create(payload);
+      UI.closeModal();
+      UI.toast('Política guardada correctamente', 'success');
+      await _loadStats(); await _refresh();
+    } catch (e) {
+      UI.toast('Error guardando: ' + e.message, 'error');
+    }
+  }
+
+  return { render, _generateWithAI, _submitGenerate, _saveGenerated };
 })();

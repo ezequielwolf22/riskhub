@@ -1337,6 +1337,32 @@ def _run_ccm_tests() -> None:
         db.close()
 
 
+def _run_supplier_scoring() -> None:
+    """Actualiza el score de riesgo de todos los proveedores semanalmente."""
+    from app.database import SessionLocal
+    from app.models import Organization
+    from app.services.supplier_scoring_service import update_all_supplier_scores
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active == True).all()
+        for org in orgs:
+            try:
+                stats = update_all_supplier_scores(db, org.id)
+                if stats["updated"] > 0:
+                    logger.info(
+                        "Supplier scoring org=%d: %d actualizados H=%d M=%d L=%d",
+                        org.id, stats["updated"],
+                        stats["high_risk"], stats["medium_risk"], stats["low_risk"]
+                    )
+            except Exception as exc:
+                logger.exception("Error en supplier scoring org %d: %s", org.id, exc)
+    except Exception as exc:
+        logger.exception("Error en _run_supplier_scoring: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_compliance_auto_sync() -> None:
     """Sincroniza estado de compliance con controles implementados."""
     from app.database import SessionLocal
@@ -1465,6 +1491,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Continuous Control Monitoring — tests automáticos diarios",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_supplier_scoring,
+        trigger=IntervalTrigger(hours=168),  # semanal
+        id="supplier_scoring",
+        name="Actualización automática del score de riesgo de proveedores",
+        replace_existing=True,
+        misfire_grace_time=7200,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)
