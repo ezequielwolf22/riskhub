@@ -28,7 +28,7 @@ Multi-usuario con roles.
 - **Branding**: Paleta purple `#59008D` / orange `#D65200`. Variables CSS: `--brand-purple`, `--brand-orange`. Tipografia: Inter.
 - **Seguridad**: Rate limiting en memoria, security headers middleware, magic bytes validation, API docs deshabilitados en produccion.
 
-## Estado actual (v1.7.7)
+## Estado actual (v2.2.0)
 
 ### Backend
 
@@ -37,7 +37,7 @@ Multi-usuario con roles.
 - [x] Motor de calculo (`app/services/risk_engine.py`): matriz 5x5 ISO 27005 Annex E.2
 - [x] Endpoints REST en `app/routers/` (auth, users, assets, risks, controls, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, reports, ai, ai_config, documents, admin, audit, alerts, search, context, catalogues)
 - [x] Catalogos precargados: 49 amenazas, 67 vulnerabilidades, 93 controles ISO 27002
-- [x] Seed inicial: admin + contexto + catalogos
+- [x] Seed inicial: admin + contexto + catalogos. Migraciones incremetales en `_migrate_columns()` de seed.py
 - [x] Agente IA: chat conversacional, RAG FTS5, anonimizacion, feedback loop
 - [x] Cifrado Fernet para API key del agente IA
 - [x] Hardening OWASP: rate limiting login, security headers, magic bytes upload, autodocs off en produccion
@@ -50,11 +50,20 @@ Multi-usuario con roles.
 - [x] ISMS analysis: documento→activo linkage automatico por nombre; controles actualizados trigger re-analisis activos
 - [x] OSINT→activos: link_osint_findings_to_assets; OSINT→incidente auto-create (v1.7.6)
 - [x] CVE integration: NVD API, escaneo automatico, analisis IA, link a activos
+- [x] Licenciamiento por plan: PLAN_MODULE_LIMITS (free/starter/pro/enterprise) en `feature_flags.py`; enforcement en PATCH; endpoint GET /api/feature-flags/plans/limits
+- [x] SSO OIDC/SAML: backend completo en `routers/sso.py` (Entra ID, Google, Okta); UI config en Integraciones; boton SSO en login.html
+- [x] SharePoint: backend completo en `routers/sharepoint.py`; UI config + file browser en Integraciones
+- [x] ERP Webhooks: `routers/integrations_erp.py` — SAP/Jagger/Sphera via HMAC-SHA256; mapeo eventos a activos/incidentes; log en memoria; config cifrada Fernet
+- [x] Extraccion clausulas ISO: `services/iso_clause_extractor.py` — Claude Haiku extrae refs ISO 27001/27002 tras analisis ISMS; campo `extracted_clauses` en AiDocument; modal en ai-documents.js
 
 ### Frontend
 
 - [x] SPA hash-based (`app/static/`)
 - [x] Vistas: dashboard, heatmap, assets, threats, vulnerabilities, risks, controls, reports, context, users, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, compliance, alerts, integrations, audit, ai-chat, ai-documents, onboarding, guide, organizations
+- [x] Vistas nuevas: evidence, webhooks, external-findings, predictive, ccm, itsm-config, trust-portal, magerit, executive, architecture-review, cve, osint, feature-flags
+- [x] Organizaciones: badges de plan con colores, modulos incluidos/bloqueados segun plan, plan selector actualizado (free/starter/pro/enterprise)
+- [x] Integraciones: SSO config form, SharePoint config + browser, ERP webhooks config real (reemplaza placeholder)
+- [x] Docs IA: modal de clausulas ISO extraidas con confianza y link a controles
 
 ### Despliegue
 
@@ -65,17 +74,12 @@ Multi-usuario con roles.
 ## Pendiente
 
 ### Proximas funcionalidades
-- [ ] SuperAdmin con control de licenciamiento y activacion de modulos por feature flag
-- [ ] SSO OIDC/SAML (Microsoft Entra, Google Workspace)
-- [ ] Integracion SharePoint (Microsoft Graph API) para importar documentacion SGSI en masa
-- [ ] Integraciones SAP / Jagger / Sphera
-- [ ] Extraccion automatica de clausulas ISO desde documentos de politicas (IA)
 - [ ] Multi-idioma i18n (es/en/de/fr) — decision tomada: selector de idioma en header,
       ficheros `app/static/js/i18n/{es,en}.json`, funcion global `t('key')`.
       Flujo: primero refactorizar vistas a `t()` manteniendo ES, luego anadir EN.
       Diferido hasta que la app este estable.
-- [ ] Descargar fuentes Inter a `app/static/vendor/fonts/`
-- [ ] Pruebas end-to-end manuales
+- [ ] Actualizar guide.js con documentacion de todas las nuevas secciones (evidence, webhooks, external-findings, magerit, ccm, itsm, trust-portal, executive, architecture-review, erp-webhooks, clausulas-iso)
+- [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 
 ## Convenciones
 
@@ -111,9 +115,11 @@ riskhub/
     ├── services/
     │   ├── risk_engine.py
     │   ├── audit_service.py
-    │   ├── rate_limiter.py  # Brute-force protection en login
+    │   ├── rate_limiter.py         # Brute-force protection en login
     │   ├── rag_service.py
     │   ├── document_service.py
+    │   ├── iso_clause_extractor.py # Extraccion clausulas ISO 27001/27002 con Claude
+    │   ├── webhook_service.py      # Envio de webhooks salientes con HMAC-SHA256
     │   ├── context_builder.py
     │   └── anonymizer.py
     ├── data/                # JSON catalogos ISO 27005 / ISO 27002
