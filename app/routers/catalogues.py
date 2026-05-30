@@ -84,8 +84,19 @@ def update_threat(tid: int, data: ThreatIn, db: Session = Depends(get_db),
 def delete_threat(tid: int, db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
     t = db.get(Threat, tid)
-    if not t or not t.is_custom:
-        raise HTTPException(400, "Solo se pueden borrar amenazas personalizadas")
+    if not t:
+        raise HTTPException(404, "Amenaza no encontrada")
+    # Permitir borrar amenazas personalizadas Y amenazas MAGERIT (code MAGERIT-*)
+    is_magerit = t.code.startswith("MAGERIT-")
+    if not t.is_custom and not is_magerit:
+        raise HTTPException(400, "Solo se pueden borrar amenazas personalizadas o del catálogo MAGERIT")
+    # Verificar que no tenga riesgos asociados antes de borrar
+    from app.models import Risk
+    linked = db.query(Risk).filter(Risk.threat_id == tid).count()
+    if linked > 0:
+        raise HTTPException(409,
+            f"Esta amenaza tiene {linked} riesgo(s) asociado(s). "
+            "Elimina o reasigna los riesgos antes de borrar la amenaza.")
     log_action(db, current_user.id, "delete", "threat", str(tid),
                {"code": t.code, "name": t.name})
     db.delete(t); db.commit()

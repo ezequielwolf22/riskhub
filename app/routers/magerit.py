@@ -52,6 +52,43 @@ def get_asset_valuation(asset_id: int, db: Session = Depends(get_db),
     return get_asset_magerit_value(asset)
 
 
+@router.delete("/catalog", status_code=200)
+def delete_magerit_catalog(db: Session = Depends(get_db),
+                            current_user: User = Depends(require_analyst)):
+    """Elimina todas las amenazas del catalogo MAGERIT (codigo MAGERIT-*).
+
+    Las amenazas que tengan riesgos asociados se omiten y se reportan.
+    """
+    from app.models import Risk, Threat
+    from app.services.audit_service import log_action
+
+    magerit_threats = db.query(Threat).filter(Threat.code.like("MAGERIT-%")).all()
+    deleted = 0
+    skipped = []
+
+    for t in magerit_threats:
+        linked = db.query(Risk).filter(Risk.threat_id == t.id).count()
+        if linked > 0:
+            skipped.append({"code": t.code, "name": t.name, "risks": linked})
+            continue
+        db.delete(t)
+        deleted += 1
+
+    if deleted:
+        log_action(db, current_user.id, "delete", "magerit_catalog", None,
+                   {"deleted": deleted, "skipped": len(skipped)})
+        db.commit()
+
+    return {
+        "deleted": deleted,
+        "skipped": skipped,
+        "message": (
+            f"{deleted} amenazas MAGERIT eliminadas."
+            + (f" {len(skipped)} omitidas por tener riesgos asociados." if skipped else "")
+        ),
+    }
+
+
 @router.get("/scale")
 def get_scale(current_user: User = Depends(get_current_user)):
     """Escala de valoración MAGERIT."""

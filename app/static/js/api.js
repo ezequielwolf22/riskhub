@@ -362,11 +362,12 @@ const Api = {
     sendRisk: (id, d) => Api.post('/api/alerts/send-risk/' + id, d),
   },
   magerit: {
-    threats:      ()         => Api.get('/api/magerit/threats'),
-    seed:         ()         => Api.post('/api/magerit/seed', {}),
-    analysis:     ()         => Api.get('/api/magerit/analysis'),
-    valuation:    (asset_id) => Api.get(`/api/magerit/assets/${asset_id}/valuation`),
-    scale:        ()         => Api.get('/api/magerit/scale'),
+    threats:       ()         => Api.get('/api/magerit/threats'),
+    seed:          ()         => Api.post('/api/magerit/seed', {}),
+    deleteCatalog: ()         => Api.del('/api/magerit/catalog'),
+    analysis:      ()         => Api.get('/api/magerit/analysis'),
+    valuation:     (asset_id) => Api.get(`/api/magerit/assets/${asset_id}/valuation`),
+    scale:         ()         => Api.get('/api/magerit/scale'),
   },
   portal: {
     trust: {

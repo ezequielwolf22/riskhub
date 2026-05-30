@@ -8,9 +8,12 @@ const ViewThreats = {
       'Catalogo de amenazas',
       'ISO/IEC 27005:2018 Annex C + MAGERIT v3 + amenazas personalizadas',
       canEdit
-        ? `<div style="display:flex;gap:8px;">
+        ? `<div style="display:flex;gap:8px;flex-wrap:wrap;">
              <button class="btn" id="btn-magerit-seed" title="Carga las 51 amenazas MAGERIT v3 en el catálogo">
-               Cargar amenazas MAGERIT v3
+               Cargar catálogo MAGERIT
+             </button>
+             <button class="btn btn-danger" id="btn-magerit-del" title="Elimina todas las amenazas MAGERIT del catálogo">
+               Quitar catálogo MAGERIT
              </button>
              <button class="btn btn-primary" id="btn-new">+ Nueva amenaza</button>
            </div>`
@@ -26,17 +29,41 @@ const ViewThreats = {
     `;
     if (canEdit) {
       document.getElementById('btn-new').onclick = () => ViewThreats._edit();
+
+      // Cargar catálogo MAGERIT
       const mageritBtn = document.getElementById('btn-magerit-seed');
       if (mageritBtn) mageritBtn.onclick = async () => {
         mageritBtn.disabled = true; mageritBtn.textContent = 'Cargando...';
         try {
           const r = await Api.magerit.seed();
-          UI.toast(`${r.created} amenazas MAGERIT v3 cargadas en el catálogo`, 'success');
+          const msg = r.created > 0
+            ? `${r.created} amenazas MAGERIT v3 cargadas`
+            : 'El catálogo MAGERIT ya estaba cargado';
+          UI.toast(msg, 'success');
           ViewThreats._reload();
         } catch (e) {
           UI.toast('Error: ' + e.message, 'error');
         } finally {
-          mageritBtn.disabled = false; mageritBtn.textContent = 'Cargar amenazas MAGERIT v3';
+          mageritBtn.disabled = false; mageritBtn.textContent = 'Cargar catálogo MAGERIT';
+        }
+      };
+
+      // Quitar catálogo MAGERIT completo
+      const mageritDelBtn = document.getElementById('btn-magerit-del');
+      if (mageritDelBtn) mageritDelBtn.onclick = async () => {
+        if (!confirm('¿Eliminar todas las amenazas del catálogo MAGERIT v3?\n\nLas amenazas con riesgos asociados no se eliminarán.')) return;
+        mageritDelBtn.disabled = true; mageritDelBtn.textContent = 'Eliminando...';
+        try {
+          const r = await Api.magerit.deleteCatalog();
+          UI.toast(r.message, r.deleted > 0 ? 'success' : 'info');
+          if (r.skipped?.length) {
+            UI.toast(`${r.skipped.length} amenaza(s) no eliminada(s) por tener riesgos asociados`, 'warn');
+          }
+          ViewThreats._reload();
+        } catch (e) {
+          UI.toast('Error: ' + e.message, 'error');
+        } finally {
+          mageritDelBtn.disabled = false; mageritDelBtn.textContent = 'Quitar catálogo MAGERIT';
         }
       };
     }
@@ -127,7 +154,13 @@ const ViewThreats = {
                          onclick="ViewThreats._del(${t.id},'${UI.esc(t.name)}')">Eliminar</button>
                      ` : ''}
                   `
-                  : '<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO</span>'
+                  : t.code.startsWith('MAGERIT-')
+                    ? `<span class="badge" style="background:#FEF0E3;color:var(--brand-orange);border:1px solid var(--brand-orange-3);">MAGERIT</span>
+                       ${canEdit ? `
+                         <button class="btn btn-sm btn-danger" style="margin-left:4px;"
+                           onclick="ViewThreats._del(${t.id},'${UI.esc(t.name)}')">Eliminar</button>
+                       ` : ''}`
+                    : '<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO</span>'
                 }
               </td>
             </tr>`; }).join('')}
