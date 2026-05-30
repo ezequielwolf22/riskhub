@@ -208,6 +208,12 @@ def auto_generate_risks_for_asset(
                 fire_risk_created(db, r)
                 if (r.residual_level or 0) >= 5:
                     fire_risk_high(db, r)
+                    # Notificar ITSM (Jira, ServiceNow, Slack, Teams)
+                    try:
+                        from app.services.itsm_service import notify_high_risk
+                        notify_high_risk(db, r)
+                    except Exception as exc2:
+                        logger.debug("Error notificando ITSM: %s", exc2)
             except Exception as exc:
                 logger.debug("Error disparando webhook: %s", exc)
 

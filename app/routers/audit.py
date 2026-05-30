@@ -221,3 +221,29 @@ def export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={fname}"},
     )
+
+
+@router.get("/audit-package")
+def download_audit_package(
+    include_evidence_files: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_admin),
+):
+    """Descarga paquete ZIP de auditoría con attestation de integridad (hashes SHA-256).
+
+    Incluye: riesgos, controles, compliance, audit trail, índice de evidencias.
+    """
+    from fastapi.responses import Response
+    from app.services.audit_export_service import generate_audit_package
+
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(400, "Se requiere organization_id")
+
+    zip_bytes = generate_audit_package(db, org_id, current_user, include_evidence_files)
+    fname = f"riskhub_audit_package_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )

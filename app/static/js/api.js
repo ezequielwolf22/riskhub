@@ -399,6 +399,30 @@ const Api = {
     },
     analyzeText: (d) => Api.post('/api/architecture/analyze-text', d),
   },
+  itsm: {
+    status:         ()    => Api.get('/api/itsm/status'),
+    jira: {
+      getConfig:    ()    => Api.get('/api/itsm/jira/config'),
+      saveConfig:   (d)   => Api.put('/api/itsm/jira/config', d),
+      test:         ()    => Api.post('/api/itsm/jira/test', {}),
+      createTicket: (d)   => Api.post('/api/itsm/jira/ticket', d),
+    },
+    servicenow: {
+      getConfig:    ()    => Api.get('/api/itsm/servicenow/config'),
+      saveConfig:   (d)   => Api.put('/api/itsm/servicenow/config', d),
+      test:         ()    => Api.post('/api/itsm/servicenow/test', {}),
+    },
+    slack: {
+      getConfig:    ()    => Api.get('/api/itsm/slack/config'),
+      saveConfig:   (d)   => Api.put('/api/itsm/slack/config', d),
+      test:         ()    => Api.post('/api/itsm/slack/test', {}),
+    },
+    teams: {
+      getConfig:    ()    => Api.get('/api/itsm/teams/config'),
+      saveConfig:   (d)   => Api.put('/api/itsm/teams/config', d),
+      test:         ()    => Api.post('/api/itsm/teams/test', {}),
+    },
+  },
   findings: {
     list:    (q)  => Api.get('/api/findings', q),
     summary: ()   => Api.get('/api/findings/summary'),
