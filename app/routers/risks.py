@@ -271,11 +271,35 @@ def update_risk(risk_id: int, data: RiskUpdate, db: Session = Depends(get_db),
 
     for k, v in update_data.items():
         setattr(r, k, v)
+    old_status = r.status
     _recalc(db, r)
     log_action(db, user.id, "update", "risk", str(risk_id),
                {"code": r.code, "status": str(r.status), "residual_level": r.residual_level})
     db.commit(); db.refresh(r)
+
+    # Sincronizar compliance cuando el riesgo cambia de estado (especialmente CLOSED/ACCEPTED)
+    if old_status != r.status and r.status in (RiskStatus.CLOSED, RiskStatus.ACCEPTED):
+        _trigger_compliance_sync_bg(r.organization_id)
+
     return r
+
+
+def _trigger_compliance_sync_bg(org_id: int) -> None:
+    """Sincroniza compliance en background tras cambio de estado de riesgo."""
+    import threading
+    from app.database import SessionLocal as _SL
+
+    def _sync():
+        db2 = _SL()
+        try:
+            from app.services.compliance_service import auto_update_compliance_from_controls
+            auto_update_compliance_from_controls(db2, org_id)
+        except Exception:
+            pass
+        finally:
+            db2.close()
+
+    threading.Thread(target=_sync, daemon=True).start()
 
 
 @router.get("/methodology")

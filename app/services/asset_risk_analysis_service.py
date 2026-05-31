@@ -718,6 +718,31 @@ def link_osint_findings_to_assets(
         ).first()
 
         if not existing:
+            from app.models import RiskContext, TreatmentOption
+            from app.services.risk_engine import calc_residual
+            from datetime import datetime, timedelta, timezone
+
+            ctx = db.query(RiskContext).filter(
+                RiskContext.organization_id == org_id
+            ).first()
+            appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+            matrix = ctx.risk_matrix if ctx else None
+
+            inh_level = calc_level(inh_con, inh_lik, matrix)
+            rl, rc, rlev = calc_residual(inh_lik, inh_con, [], matrix)
+
+            # Auto-tratamiento segun appetite
+            if rlev <= appetite:
+                r_status = RiskStatus.ACCEPTED
+                r_treatment = TreatmentOption.ACCEPTANCE
+            else:
+                r_status = RiskStatus.IDENTIFIED
+                r_treatment = TreatmentOption.MODIFICATION
+
+            review_days = {0: 365, 1: 365, 2: 180, 3: 90, 4: 60, 5: 30, 6: 14, 7: 7, 8: 7}
+            treatment_days = {0: 365, 1: 180, 2: 90, 3: 60, 4: 45, 5: 30, 6: 14, 7: 7, 8: 3}
+            now = datetime.now(timezone.utc)
+
             code = _next_risk_code(db)
             risk = Risk(
                 organization_id=org_id,
@@ -728,12 +753,15 @@ def link_osint_findings_to_assets(
                 consequence_description=f"Fuente: {finding.source.value if finding.source else 'OSINT'}. {(finding.description or '')[:200]}",
                 inherent_likelihood=inh_lik,
                 inherent_consequence=inh_con,
-                inherent_level=calc_level(inh_con, inh_lik),
-                residual_likelihood=inh_lik,
-                residual_consequence=inh_con,
-                residual_level=calc_level(inh_con, inh_lik),
-                status=RiskStatus.IDENTIFIED,
+                inherent_level=inh_level,
+                residual_likelihood=rl,
+                residual_consequence=rc,
+                residual_level=rlev,
+                status=r_status,
+                treatment_option=r_treatment,
                 owner_id=owner_id,
+                next_review=now + timedelta(days=review_days.get(rlev, 90)),
+                treatment_due_date=now + timedelta(days=treatment_days.get(rlev, 60)),
                 ai_generated=True,
                 ai_rationale=f"Generado desde hallazgo OSINT [{finding.source.value if finding.source else '?'}]: {finding.title[:100]}",
             )

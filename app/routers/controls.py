@@ -160,6 +160,98 @@ def _trigger_compliance_sync(org_id: int) -> None:
     threading.Thread(target=_sync, daemon=True).start()
 
 
+def _trigger_linked_risks_recalc(impl_id: int, org_id: int) -> None:
+    """Recalcula residual de todos los riesgos que usan este control.
+
+    Si todos los controles del riesgo llegan a maturity=5 → auto-cierre.
+    """
+    import threading
+    from app.database import SessionLocal
+
+    def _recalc_risks():
+        db2 = SessionLocal()
+        try:
+            from app.models import (
+                Risk, RiskContext, RiskStatus, TreatmentOption,
+                risk_control_table, ControlImplementation,
+            )
+            from app.services.risk_engine import calc_level, calc_residual
+            from datetime import datetime, timezone
+
+            ctx_cache: dict[int, object] = {}
+
+            def _get_ctx(oid):
+                if oid not in ctx_cache:
+                    ctx_cache[oid] = db2.query(RiskContext).filter(
+                        RiskContext.organization_id == oid
+                    ).first()
+                return ctx_cache[oid]
+
+            # Riesgos vinculados a este control
+            risk_ids = [
+                row[0]
+                for row in db2.execute(
+                    __import__("sqlalchemy").text(
+                        "SELECT risk_id FROM risk_controls "
+                        "WHERE control_implementation_id = :cid"
+                    ),
+                    {"cid": impl_id},
+                ).fetchall()
+            ]
+            if not risk_ids:
+                return
+
+            risks = db2.query(Risk).filter(
+                Risk.id.in_(risk_ids),
+                Risk.organization_id == org_id,
+                Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+            ).all()
+
+            updated = 0
+            for risk in risks:
+                controls_dicts = [
+                    {"maturity": c.maturity or 0, "contribution": 1.0}
+                    for c in risk.controls
+                ]
+                ctx = _get_ctx(risk.organization_id)
+                matrix = ctx.risk_matrix if ctx else None
+                appetite = (ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3)
+
+                rl, rc, rlev = calc_residual(
+                    risk.inherent_likelihood, risk.inherent_consequence,
+                    controls_dicts, matrix
+                )
+                risk.residual_likelihood = rl
+                risk.residual_consequence = rc
+                risk.residual_level = rlev
+
+                # Auto-aceptar si el nivel residual baja del apetito
+                if rlev <= appetite and risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
+                    risk.treatment_option = TreatmentOption.ACCEPTANCE
+                    risk.status = RiskStatus.ACCEPTED
+                    from datetime import timedelta
+                    if not risk.next_review:
+                        risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
+
+                # Auto-cerrar si TODOS los controles del riesgo tienen maturity=5
+                all_max = all((c.maturity or 0) >= 5 for c in risk.controls) if risk.controls else False
+                if all_max and rlev == 0 and risk.status == RiskStatus.ASSESSED:
+                    risk.status = RiskStatus.CLOSED
+                    risk.closed_at = datetime.now(timezone.utc)
+
+                updated += 1
+
+            if updated:
+                db2.commit()
+
+        except Exception:
+            pass
+        finally:
+            db2.close()
+
+    threading.Thread(target=_recalc_risks, daemon=True).start()
+
+
 @impl_router.post("/", response_model=ControlImplOut, status_code=201)
 def create_impl(data: ControlImplIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
@@ -189,6 +281,8 @@ def update_impl(impl_id: int, data: ControlImplIn,
     db.commit(); db.refresh(impl)
     # Sincronizar compliance automaticamente tras actualizar un control
     _trigger_compliance_sync(impl.organization_id)
+    # Recalcular residual de riesgos vinculados a este control
+    _trigger_linked_risks_recalc(impl.id, impl.organization_id)
     return impl
 
 
