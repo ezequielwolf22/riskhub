@@ -206,8 +206,8 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
                {"asset_id": data.asset_id, "threat_id": data.threat_id})
     db.commit(); db.refresh(r)
 
-    # Disparar alerta inmediata si el riesgo es CRITICO o ALTO (no esperar al scheduler)
-    if (r.residual_level or 0) >= 5:
+    # Disparar alerta inmediata si el riesgo es CRITICO/ALTO y NO fue auto-aceptado
+    if (r.residual_level or 0) >= 5 and r.status != RiskStatus.ACCEPTED:
         import threading
         from app.database import SessionLocal as _SL
 

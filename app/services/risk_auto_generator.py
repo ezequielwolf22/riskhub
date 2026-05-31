@@ -33,6 +33,11 @@ def _next_code(db: Session, org_id: int) -> str:
     return f"RSK-{count:04d}"
 
 
+def _controls_to_dicts(controls: list) -> list[dict]:
+    """Convierte lista de ControlImplementation ORM a list[dict] para calc_residual."""
+    return [{"maturity": c.maturity or 0, "contribution": 1.0} for c in controls]
+
+
 def _inherit_controls(db: Session, asset: Asset, threat: Threat) -> list:
     """Hereda controles del asset type + threat.
 
@@ -155,15 +160,19 @@ def auto_generate_risks_for_asset(
             status=RiskStatus.IDENTIFIED,
         )
 
-        # Asignar controles heredados: controles IMPLEMENTED que aplican a esta amenaza
-        risk.controls = _inherit_controls(db, asset, threat)
+        # Heredar controles ANTES de calcular residual
+        inherited = _inherit_controls(db, asset, threat)
+        risk.controls = inherited  # M2M ORM
 
-        # Calcular inherent y residual
+        # calc_residual espera list[dict] — convertir ORM objects
+        controls_dicts = _controls_to_dicts(inherited)
+
+        # Calcular inherent y residual con controles ya aplicados
         risk.inherent_level = calc_level(
             inherent_consequence, inherent_likelihood, matrix
         )
         rl, rc, rlev = calc_residual(
-            inherent_likelihood, inherent_consequence, risk.controls, matrix
+            inherent_likelihood, inherent_consequence, controls_dicts, matrix
         )
         risk.residual_likelihood = rl
         risk.residual_consequence = rc
@@ -322,20 +331,19 @@ def auto_generate_risk_from_cve(
     risk.residual_consequence = rc
     risk.residual_level = rlev
 
-    # Heredar controles aplicables ANTES de decidir tratamiento
-    # para que el residual final sea el mas preciso posible
+    # Heredar controles ANTES de decidir tratamiento para residual mas preciso
     applicable_controls = _inherit_controls(db, asset, threat)
-    if applicable_controls:
+    controls_dicts = _controls_to_dicts(applicable_controls)  # list[dict] para calc_residual
+    if controls_dicts:
         rl2, rc2, rlev2 = calc_residual(
-            inherent_likelihood, inherent_consequence, applicable_controls, matrix
+            inherent_likelihood, inherent_consequence, controls_dicts, matrix
         )
         risk.residual_likelihood = rl2
         risk.residual_consequence = rc2
         risk.residual_level = rlev2
-        # Usar nivel post-controles para todas las decisiones
-        rlev = rlev2
+        rlev = rlev2  # nivel post-controles para todas las decisiones
 
-    # Auto-tratamiento basado en nivel residual final (post-controles)
+    # Auto-tratamiento basado en nivel residual final
     if rlev <= appetite:
         risk.treatment_option = TreatmentOption.ACCEPTANCE
         risk.status = RiskStatus.ACCEPTED
@@ -343,17 +351,17 @@ def auto_generate_risk_from_cve(
         risk.treatment_option = TreatmentOption.MODIFICATION
         risk.status = RiskStatus.ASSESSED
 
-    # Fechas clave basadas en nivel residual final
+    # Fechas basadas en nivel residual final
     from datetime import timedelta
     review_days = {0: 365, 1: 365, 2: 180, 3: 90, 4: 60, 5: 30, 6: 14, 7: 7, 8: 7}
     risk.next_review = datetime.now(timezone.utc) + timedelta(days=review_days.get(rlev, 90))
     treatment_days = {0: 365, 1: 180, 2: 90, 3: 60, 4: 45, 5: 30, 6: 14, 7: 7, 8: 3}
     risk.treatment_due_date = datetime.now(timezone.utc) + timedelta(days=treatment_days.get(rlev, 60))
 
-    # Asignar controles al risk (relacion M2M)
+    # Asignar controles ORM al risk (M2M)
     risk.controls = applicable_controls
 
-    # Asignar al primer admin activo de la org si no hay owner
+    # Asignar propietario
     if not risk.owner_id:
         from app.models import User, UserRole
         owner = db.query(User).filter(
@@ -468,16 +476,17 @@ def auto_generate_risk_from_osint(
     risk.residual_consequence = rc
     risk.residual_level = rlev
 
-    # Heredar controles ANTES de decidir tratamiento
+    # Heredar controles ANTES de decidir tratamiento para residual mas preciso
     applicable_controls = _inherit_controls(db, asset, threat)
-    if applicable_controls:
+    controls_dicts = _controls_to_dicts(applicable_controls)
+    if controls_dicts:
         rl2, rc2, rlev2 = calc_residual(
-            inherent_likelihood, inherent_consequence, applicable_controls, matrix
+            inherent_likelihood, inherent_consequence, controls_dicts, matrix
         )
         risk.residual_likelihood = rl2
         risk.residual_consequence = rc2
         risk.residual_level = rlev2
-        rlev = rlev2  # Usar nivel post-controles para todas las decisiones
+        rlev = rlev2
 
     # Auto-tratamiento basado en nivel residual final
     if rlev <= appetite:
@@ -487,17 +496,17 @@ def auto_generate_risk_from_osint(
         risk.treatment_option = TreatmentOption.MODIFICATION
         risk.status = RiskStatus.ASSESSED
 
-    # Fechas clave basadas en nivel residual final
+    # Fechas basadas en nivel residual final
     from datetime import timedelta
     review_days = {0: 365, 1: 365, 2: 180, 3: 90, 4: 60, 5: 30, 6: 14, 7: 7, 8: 7}
     risk.next_review = datetime.now(timezone.utc) + timedelta(days=review_days.get(rlev, 90))
     treatment_days = {0: 365, 1: 180, 2: 90, 3: 60, 4: 45, 5: 30, 6: 14, 7: 7, 8: 3}
     risk.treatment_due_date = datetime.now(timezone.utc) + timedelta(days=treatment_days.get(rlev, 60))
 
-    # Asignar controles al risk
+    # Asignar controles ORM al risk (M2M)
     risk.controls = applicable_controls
 
-    # Asignar al primer admin/analyst activo de la org si no hay owner
+    # Asignar propietario
     if not risk.owner_id:
         from app.models import User, UserRole
         owner = db.query(User).filter(
