@@ -274,6 +274,10 @@ class Asset(Base):
     group_id = Column(Integer, ForeignKey("asset_groups.id"), nullable=True, index=True)
     is_group_representative = Column(Boolean, default=False)
 
+    # Etiquetas de software para correlacion CPE/CVE (v2.2.5)
+    # Lista de nombres de productos/vendors: ["apache", "nginx", "openssl", ...]
+    software_tags = Column(JSON, nullable=True)
+
     group = relationship("AssetGroup", foreign_keys="[Asset.group_id]", back_populates="members")
     risks = relationship("Risk", back_populates="asset", cascade="all, delete-orphan")
 

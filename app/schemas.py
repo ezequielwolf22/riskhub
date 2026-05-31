@@ -149,6 +149,7 @@ class AssetIn(BaseModel):
     parent_id: Optional[int] = None
     owner_ids: list[int] = []
     extra: Optional[dict] = None
+    software_tags: Optional[list[str]] = None  # para correlacion CPE/CVE
 
 
 class AssetOut(ORMBase):
@@ -179,6 +180,8 @@ class AssetOut(ORMBase):
     # v1.8.0 — agrupacion
     group_id: Optional[int] = None
     is_group_representative: bool = False
+    # v2.2.5 — etiquetas software para correlacion CVE
+    software_tags: Optional[list[str]] = None
 
 
 # ---------- ASSET GROUPS ----------

@@ -766,6 +766,16 @@ const ViewAssets = {
         <label>Valor monetario (EUR, FAIR/ALE)</label>
         <input type="number" min="0" step="1000" id="f-monetary" value="${a.monetary_value || ''}" placeholder="ej. 50000">
       </div>
+      <div class="span2">
+        <label>Software instalado <span style="font-weight:400;color:var(--text-muted);">(para correlacion CVE automatica)</span></label>
+        <input id="f-software-tags" class="input"
+               value="${UI.esc((a.software_tags||[]).join(', '))}"
+               placeholder="apache, nginx, openssl, mysql, windows, python... (separados por comas)">
+        <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">
+          Introduce los nombres de software/plataformas del activo. RiskHub los cruza con los
+          CPE de cada CVE para detectar vulnerabilidades aplicables automaticamente.
+        </p>
+      </div>
       <!-- Valoración DIACAT (MAGERIT v3 + ISO 27005) — 5 dimensiones de seguridad -->
       <div class="span2">
         <label>Valoración de dimensiones de seguridad (0 = sin valor · 4 = crítico)</label>
@@ -904,6 +914,8 @@ const ViewAssets = {
 
     document.getElementById('m-save').onclick = async () => {
       const monetaryRaw = document.getElementById('f-monetary').value;
+      const softTagsRaw = (document.getElementById('f-software-tags')?.value || '');
+      const softTags = softTagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
       const body = {
         name: document.getElementById('f-name').value,
         asset_type: document.getElementById('f-type').value,
@@ -913,6 +925,7 @@ const ViewAssets = {
         business_process: document.getElementById('f-proc').value,
         classification: document.getElementById('f-class').value,
         monetary_value: monetaryRaw ? parseFloat(monetaryRaw) : null,
+        software_tags: softTags.length ? softTags : null,
       };
       ['confidentiality','integrity','availability','authenticity','accountability']
         .forEach(d => body['value_'+d] = parseInt(document.getElementById('f-'+d).value) || 0);

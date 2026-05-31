@@ -492,54 +492,60 @@ def _run_alert_rules() -> None:
 
 
 def _match_cve_to_assets(db, cve_record: dict, org_id: int) -> list:
-    """Inteligencia para correlacionar CVE con activos.
+    """Correlaciona un CVE con activos de la org usando tres capas de matching:
 
-    Estrategia: buscar por software conocidos en descripción CVE:
-    - Apache, Nginx, IIS, MySQL, PostgreSQL, OpenSSL, etc.
+    1. CPE exacto: affected_products del CVE vs software_tags del activo
+    2. CPE fuzzy: asset_matches_cve() de cve_service (score >= 0.15)
+    3. Descripcion: patterns conocidos en desc del activo/nombre
     """
     from app.models import Asset
+    from app.services.cve_service import asset_matches_cve
 
-    cve_id = cve_record.get("cve_id", "UNKNOWN")
+    # La clave correcta del record normalizado es "id", no "cve_id"
+    cve_id = cve_record.get("id") or cve_record.get("cve_id", "UNKNOWN")
+    cpe_products = set(cve_record.get("affected_products") or [])  # list[str] ya en minusculas
     desc = (cve_record.get("description", "") or "").lower()
-    affected = []
 
-    # Software patterns conocidos
-    software_patterns = {
-        "apache": ["apache", "httpd"],
-        "nginx": ["nginx"],
-        "iis": ["iis", "internet information services"],
-        "mysql": ["mysql"],
-        "postgresql": ["postgresql", "postgres", "pgsql"],
-        "openssl": ["openssl", "ssl/tls"],
-        "windows": ["windows", "winrm", "smb"],
-        "linux": ["linux", "kernel"],
-        "php": ["php"],
-        "nodejs": ["node.js", "nodejs"],
-    }
+    assets = db.query(Asset).filter(Asset.organization_id == org_id).all()
+    matched: dict[int, float] = {}  # asset_id → score (mayor = mejor match)
 
-    # Detectar software en descripción CVE
-    detected_software = set()
-    for software, patterns in software_patterns.items():
-        if any(p in desc for p in patterns):
-            detected_software.add(software)
-
-    # Buscar activos que usan ese software
-    for asset in db.query(Asset).filter(Asset.organization_id == org_id).all():
-        asset_desc = (asset.description or "").lower()
+    for asset in assets:
         asset_name = (asset.name or "").lower()
+        asset_desc = (asset.description or "").lower()
+        asset_tags = [t.lower() for t in (asset.software_tags or [])]
+        score = 0.0
 
-        # Match 1: CVE ID explícito en asset
+        # --- Capa 1: CVE ID explicito en el activo (maxima prioridad) ---
         if cve_id.lower() in asset_desc or cve_id.lower() in asset_name:
-            affected.append(asset)
-            continue
+            score = 1.0
 
-        # Match 2: Software detectado en CVE coincide con asset
-        for software in detected_software:
-            if software in asset_desc or software in asset_name:
-                affected.append(asset)
-                break
+        # --- Capa 2: software_tags del activo vs CPE products del CVE ---
+        elif asset_tags and cpe_products:
+            common = cpe_products & set(asset_tags)
+            if common:
+                score = min(1.0, len(common) / max(1, len(cpe_products)) * 3)
 
-    return affected
+        # --- Capa 3: asset_matches_cve (fuzzy CPE + descripcion) ---
+        if score < 0.15:
+            fuzzy = asset_matches_cve(asset_name, asset_desc, cve_record)
+            score = max(score, fuzzy)
+
+        # --- Capa 4: tags del activo vs descripcion del CVE ---
+        if score < 0.15 and asset_tags:
+            for tag in asset_tags:
+                if len(tag) > 3 and tag in desc:
+                    score = max(score, 0.4)
+                    break
+
+        if score >= 0.15:
+            matched[asset.id] = score
+
+    if not matched:
+        return []
+
+    # Ordenar por score desc, devolver objetos Asset
+    id_to_asset = {a.id: a for a in assets}
+    return [id_to_asset[aid] for aid, _ in sorted(matched.items(), key=lambda x: -x[1])]
 
 
 def _run_cve_auto_scan() -> None:
@@ -585,26 +591,37 @@ def _run_cve_auto_scan() -> None:
         for org_tuple in orgs:
             org_id = org_tuple[0]
             for cve_record in cves:
-                cve_id = cve_record.get("cve_id", "UNKNOWN")
-                # MEJORADO: matching inteligente por software
+                # "id" es la clave correcta del record normalizado por _normalize()
+                cve_id = cve_record.get("id") or cve_record.get("cve_id", "UNKNOWN")
+                # Matching por CPE products + software_tags + descripcion
                 affected_assets = _match_cve_to_assets(db, cve_record, org_id)
 
                 if not affected_assets:
-                    # Fallback: buscar primer token de la descripcion del CVE en la org
-                    desc_words = (cve_record.get("description") or "").split()
-                    first_word = desc_words[0] if desc_words else ""
-                    if first_word and len(first_word) > 3:  # ignorar tokens cortos
-                        affected_assets = db.query(Asset).filter(
-                            Asset.organization_id == org_id,
-                            Asset.name.ilike(f"%{first_word}%"),
-                        ).limit(5).all()
+                    # Fallback: algun CPE product vs nombre de activo
+                    for prod in (cve_record.get("affected_products") or []):
+                        if prod and len(prod) > 4:
+                            hits = db.query(Asset).filter(
+                                Asset.organization_id == org_id,
+                                Asset.name.ilike(f"%{prod}%"),
+                            ).limit(3).all()
+                            if hits:
+                                affected_assets = hits
+                                break
+
+                # Ajustar severidad segun CVSS
+                cvss = cve_record.get("cvss_score", 7.0) or 7.0
+                inh_con = 4 if cvss >= 9.0 else (3 if cvss >= 7.0 else 2)
+                inh_lik = 3 if cvss >= 7.0 else 2
 
                 for asset in affected_assets:
                     risk = auto_generate_risk_from_cve(
                         db, asset.id, cve_id,
-                        affected_software=cve_record.get("description", "Unknown"),
-                        inherent_consequence=4,
-                        inherent_likelihood=3,
+                        affected_software=(
+                            ", ".join((cve_record.get("affected_products") or [])[:3])
+                            or cve_record.get("description", "Unknown")[:100]
+                        ),
+                        inherent_consequence=inh_con,
+                        inherent_likelihood=inh_lik,
                     )
                     if risk:
                         created_count += 1

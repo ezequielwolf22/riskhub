@@ -264,6 +264,8 @@ def _migrate_columns() -> None:
         ("ALTER TABLE risks ADD COLUMN magerit_dimension VARCHAR(4)", "risks", "magerit_dimension"),
         ("ALTER TABLE risks ADD COLUMN degradation_pct INTEGER", "risks", "degradation_pct"),
         ("ALTER TABLE risks ADD COLUMN magerit_impact REAL", "risks", "magerit_impact"),
+        # v2.2.5 — etiquetas de software para correlacion CPE/CVE
+        ("ALTER TABLE assets ADD COLUMN software_tags JSON", "assets", "software_tags"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
