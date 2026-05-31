@@ -114,7 +114,33 @@ def update_supplier(supplier_id: int, body: SupplierUpdate,
     except Exception as _e:
         logger.warning("Supplier→risk auto-create failed for %s: %s", s.code, _e)
 
+    # Recalcular score automaticamente al actualizar campos relevantes para el scoring
+    _trigger_supplier_score_update(db, s.id, s.organization_id)
+
     return s
+
+
+def _trigger_supplier_score_update(db, supplier_id: int, org_id: int) -> None:
+    """Recalcula el score del proveedor en background."""
+    import threading
+    from app.database import SessionLocal
+
+    def _recalc():
+        db2 = SessionLocal()
+        try:
+            from app.services.supplier_scoring_service import calculate_supplier_score
+            from app.models import Supplier as _S
+            s2 = db2.get(_S, supplier_id)
+            if s2 and s2.organization_id == org_id:
+                new_score = calculate_supplier_score(db2, s2)
+                s2.score = new_score
+                db2.commit()
+        except Exception:
+            pass
+        finally:
+            db2.close()
+
+    threading.Thread(target=_recalc, daemon=True).start()
 
 
 # Umbral a partir del cual el proveedor se considera riesgo critico de cadena de suministro

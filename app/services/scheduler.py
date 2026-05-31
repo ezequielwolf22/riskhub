@@ -196,7 +196,9 @@ def _run_alert_rules() -> None:
                             and r.status not in (RiskStatus.TREATED, RiskStatus.ACCEPTED, RiskStatus.CLOSED)]
             elif rule.event_type == "control_review_overdue":
                 from app.models import ControlImplementation
-                impls = db.query(ControlImplementation).all()
+                impls = db.query(ControlImplementation).filter(
+                    ControlImplementation.organization_id == rule.organization_id
+                ).all()
                 # Usamos matching como lista de objetos-like para reutilizar el loop
                 overdue_impls = [
                     i for i in impls
@@ -588,10 +590,13 @@ def _run_cve_auto_scan() -> None:
                 affected_assets = _match_cve_to_assets(db, cve_record, org_id)
 
                 if not affected_assets:
-                    # Fallback: buscar por cualquier asset (conservative)
-                    affected_assets = db.query(Asset).filter(
-                        Asset.name.ilike(f"%{cve_record.get('affected_product', '')}%")
-                    ).all()
+                    # Fallback: buscar por descripcion del CVE en assets de la misma org
+                    desc_fragment = (cve_record.get("description") or "")[:40]
+                    if desc_fragment:
+                        affected_assets = db.query(Asset).filter(
+                            Asset.organization_id == org_id,
+                            Asset.name.ilike(f"%{desc_fragment.split()[0]}%"),
+                        ).limit(5).all()
 
                 for asset in affected_assets:
                     risk = auto_generate_risk_from_cve(
@@ -622,10 +627,6 @@ def _run_risk_reviews() -> None:
         if not cfg or not cfg.smtp_host:
             return
 
-        from app.models import RiskContext
-        ctx = db.query(RiskContext).first()
-        org = ctx.organization_name if ctx else "Organizacion"
-
         now = datetime.now(timezone.utc)
         thresholds = [
             (timedelta(days=30), "en 30 dias"),
@@ -640,6 +641,20 @@ def _run_risk_reviews() -> None:
             Risk.organization_id.isnot(None),
         ).all()
 
+        # Cache de nombres de org para evitar queries repetidas
+        from app.models import RiskContext, Organization
+        _org_name_cache: dict[int, str] = {}
+
+        def _org_name(oid: int) -> str:
+            if oid not in _org_name_cache:
+                ctx2 = db.query(RiskContext).filter(RiskContext.organization_id == oid).first()
+                if ctx2 and ctx2.organization_name:
+                    _org_name_cache[oid] = ctx2.organization_name
+                else:
+                    org2 = db.get(Organization, oid)
+                    _org_name_cache[oid] = org2.name if org2 else "Organizacion"
+            return _org_name_cache[oid]
+
         for risk in active_risks:
             # Dedup: no reenviar si ya se notifico en las ultimas 20 horas
             if risk.last_review_notified_at:
@@ -649,6 +664,7 @@ def _run_risk_reviews() -> None:
                 if (now - notified_dt).total_seconds() < 72000:  # 20 horas
                     continue
 
+            org = _org_name(risk.organization_id)
             review_dt = risk.next_review.replace(tzinfo=timezone.utc)
             sent_this_risk = False
             if review_dt < now:
@@ -909,9 +925,12 @@ def _run_osint_periodic_scan() -> None:
         now = datetime.now(timezone.utc)
         threshold = now - timedelta(days=7)
 
+        from sqlalchemy import or_
         identifiers = db.query(OSINTIdentifier).filter(
-            OSINTIdentifier.last_scanned_at.isnot(None),
-            OSINTIdentifier.last_scanned_at < threshold,
+            or_(
+                OSINTIdentifier.last_scanned_at.is_(None),   # nunca escaneado
+                OSINTIdentifier.last_scanned_at < threshold,  # escaneado hace >7 dias
+            )
         ).all()
 
         if not identifiers:

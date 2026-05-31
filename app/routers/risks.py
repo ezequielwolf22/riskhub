@@ -93,6 +93,10 @@ def _recalc(db: Session, risk: Risk) -> None:
             risk.treatment_option = TreatmentOption.ACCEPTANCE
             if risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
                 risk.status = RiskStatus.ACCEPTED
+                # Riesgos aceptados deben revisarse anualmente
+                if not risk.next_review:
+                    from datetime import timedelta
+                    risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
 
 
 @router.get("/", response_model=list[RiskOut])
@@ -201,6 +205,45 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
     log_action(db, current_user.id, "create", "risk", None,
                {"asset_id": data.asset_id, "threat_id": data.threat_id})
     db.commit(); db.refresh(r)
+
+    # Disparar alerta inmediata si el riesgo es CRITICO o ALTO (no esperar al scheduler)
+    if (r.residual_level or 0) >= 5:
+        import threading
+        from app.database import SessionLocal as _SL
+
+        def _fire_alert(risk_id=r.id, org_id=r.organization_id):
+            db2 = _SL()
+            try:
+                from app.services import email_service
+                from app.models import AlertRule, Risk as _R, RiskContext as _RC
+                cfg = email_service.get_settings(db2)
+                if not cfg or not cfg.smtp_host:
+                    return
+                risk_obj = db2.get(_R, risk_id)
+                if not risk_obj:
+                    return
+                ctx = db2.query(_RC).filter(_RC.organization_id == org_id).first()
+                org_name = ctx.organization_name if ctx else "Organizacion"
+                rules = db2.query(AlertRule).filter(
+                    AlertRule.is_active.is_(True),
+                    AlertRule.organization_id == org_id,
+                    AlertRule.event_type.in_(["risk_critical", "risk_high"]),
+                ).all()
+                for rule in rules:
+                    if risk_obj.residual_level >= rule.threshold_level:
+                        body = f"Se ha creado el riesgo {risk_obj.code} con nivel residual {risk_obj.residual_level}/8."
+                        email_service.send_email(
+                            cfg, rule.recipient_email,
+                            f"RiskHub [NUEVO] — Riesgo {risk_obj.code} requiere atencion ({org_name})",
+                            email_service.risk_alert_html(risk_obj, org_name, body),
+                        )
+            except Exception:
+                pass
+            finally:
+                db2.close()
+
+        threading.Thread(target=_fire_alert, daemon=True).start()
+
     return r
 
 

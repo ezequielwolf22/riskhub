@@ -55,6 +55,10 @@ def _apply_appetite_bulk(db: Session, org_id: int, appetite: int) -> None:
                 r.treatment_option = TreatmentOption.ACCEPTANCE
                 if r.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
                     r.status = RiskStatus.ACCEPTED
+                # Garantizar que los riesgos aceptados entran en el ciclo de revision anual
+                if not r.next_review:
+                    from datetime import datetime, timedelta, timezone
+                    r.next_review = datetime.now(timezone.utc) + timedelta(days=365)
                 updated += 1
     if updated:
         db.commit()

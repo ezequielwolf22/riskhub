@@ -54,7 +54,7 @@ def extract_iso_clauses(db: Session, doc: AiDocument) -> list[dict]:
     text_truncated = text[:32000]
 
     try:
-        raw = _call_claude(text_truncated)
+        raw = _call_claude(db, doc.organization_id, text_truncated)
         clauses = _parse_response(raw)
     except Exception as e:
         logger.warning("iso_clause_extractor: error llamando a Claude: %s", e)
@@ -95,20 +95,55 @@ def _get_doc_text(db: Session, doc: AiDocument) -> str:
     return "\n".join(c.content for c in chunks)
 
 
-def _call_claude(text: str) -> str:
+def _resolve_ai_config(db: Session, org_id: Optional[int]) -> tuple[str, str]:
+    """Obtiene (api_key, model) para la org. Usa per-tenant si disponible, global como fallback."""
+    try:
+        import base64, hashlib
+        from cryptography.fernet import Fernet
+        from app.models import AiConfig
+
+        def _fkey() -> bytes:
+            return base64.urlsafe_b64encode(
+                hashlib.sha256(settings.secret_key.encode()).digest()
+            )
+
+        cfg = None
+        if org_id:
+            cfg = db.query(AiConfig).filter(AiConfig.organization_id == org_id).first()
+
+        model = "claude-haiku-4-5"
+        if cfg and cfg.model:
+            model = cfg.model
+
+        if cfg and cfg.api_key_encrypted:
+            try:
+                api_key = Fernet(_fkey()).decrypt(cfg.api_key_encrypted.encode()).decode()
+                return api_key, model
+            except Exception:
+                logger.warning("iso_clause_extractor: error descifrando API key de org %s", org_id)
+
+    except Exception as e:
+        logger.debug("iso_clause_extractor: no se pudo cargar AiConfig: %s", e)
+
+    # Fallback a clave global
+    api_key = settings.anthropic_api_key or ""
+    return api_key, "claude-haiku-4-5"
+
+
+def _call_claude(db: Session, org_id: Optional[int], text: str) -> str:
     """Llama a Claude API para extraer clausulas ISO del texto."""
     try:
         import anthropic
     except ImportError:
         raise RuntimeError("anthropic no instalado")
 
-    api_key = settings.anthropic_api_key
+    api_key, model = _resolve_ai_config(db, org_id)
     if not api_key:
-        raise RuntimeError("RISKHUB_ANTHROPIC_API_KEY no configurada")
+        raise RuntimeError("API key de Anthropic no configurada")
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model="claude-haiku-4-5",
+        model=model,
         max_tokens=2048,
         system=_SYSTEM_PROMPT,
         messages=[{

@@ -140,6 +140,26 @@ def list_impls(db: Session = Depends(get_db),
     return result
 
 
+def _trigger_compliance_sync(db, org_id: int) -> None:
+    """Dispara sincronizacion de compliance en background tras cambio de control."""
+    if not org_id:
+        return
+    import threading
+    from app.database import SessionLocal
+    from app.services.compliance_service import auto_update_compliance_from_controls
+
+    def _sync():
+        db2 = SessionLocal()
+        try:
+            auto_update_compliance_from_controls(db2, org_id)
+        except Exception:
+            pass
+        finally:
+            db2.close()
+
+    threading.Thread(target=_sync, daemon=True).start()
+
+
 @impl_router.post("/", response_model=ControlImplOut, status_code=201)
 def create_impl(data: ControlImplIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
@@ -150,6 +170,8 @@ def create_impl(data: ControlImplIn, db: Session = Depends(get_db),
     log_action(db, current_user.id, "create", "control_impl", None,
                {"control_id": data.control_id, "name": data.name, "status": str(data.status)})
     db.commit(); db.refresh(impl)
+    # Sincronizar compliance automaticamente tras crear un control
+    _trigger_compliance_sync(db, current_user.organization_id)
     return impl
 
 
@@ -165,6 +187,8 @@ def update_impl(impl_id: int, data: ControlImplIn,
     log_action(db, current_user.id, "update", "control_impl", str(impl_id),
                {"name": impl.name, "status": str(impl.status), "maturity": impl.maturity})
     db.commit(); db.refresh(impl)
+    # Sincronizar compliance automaticamente tras actualizar un control
+    _trigger_compliance_sync(db, impl.organization_id)
     return impl
 
 

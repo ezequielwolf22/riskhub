@@ -90,12 +90,13 @@ def _score_from_osint(db: Session, supplier: Supplier) -> int:
     ).all()
 
     for f in findings:
-        source = (f.source_name or "").lower()
         # Verificar si el hallazgo relaciona con este proveedor
-        data_str = str(f.raw_data or "").lower()
-        if domain and domain.lower() not in data_str:
-            if name.lower() not in data_str:
-                continue
+        data_str = str(f.raw_data or "").lower() + " " + (f.title or "").lower()
+        # Incluir hallazgo solo si coincide con dominio O nombre del proveedor
+        matches_domain = domain and domain.lower() in data_str
+        matches_name = name and name.lower() in data_str
+        if not matches_domain and not matches_name:
+            continue
         # Penalizar según severity
         risk_lvl = f.risk_level
         if risk_lvl == OSINTFindingRiskLevel.CRITICAL:

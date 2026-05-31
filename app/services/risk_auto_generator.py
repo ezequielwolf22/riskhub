@@ -328,6 +328,35 @@ def auto_generate_risk_from_cve(
         risk.treatment_option = TreatmentOption.MODIFICATION
         risk.status = RiskStatus.ASSESSED
 
+    # Fechas clave para que el scheduler las procese correctamente
+    from datetime import timedelta
+    review_days = {0: 365, 1: 365, 2: 180, 3: 90, 4: 60, 5: 30, 6: 14, 7: 7, 8: 7}
+    risk.next_review = datetime.now(timezone.utc) + timedelta(days=review_days.get(rlev, 90))
+    treatment_days = {0: 365, 1: 180, 2: 90, 3: 60, 4: 45, 5: 30, 6: 14, 7: 7, 8: 3}
+    risk.treatment_due_date = datetime.now(timezone.utc) + timedelta(days=treatment_days.get(rlev, 60))
+
+    # Asignar al primer admin activo de la org si no hay owner
+    if not risk.owner_id:
+        from app.models import User, UserRole
+        owner = db.query(User).filter(
+            User.organization_id == org_id,
+            User.role.in_([UserRole.ADMIN, UserRole.ANALYST]),
+            User.is_active.is_(True),
+        ).first()
+        if owner:
+            risk.owner_id = owner.id
+
+    # Heredar controles aplicables (reduce residual mas precisamente)
+    applicable_controls = _inherit_controls(db, asset, threat)
+    risk.controls = applicable_controls
+    if applicable_controls:
+        rl2, rc2, rlev2 = calc_residual(
+            inherent_likelihood, inherent_consequence, applicable_controls, matrix
+        )
+        risk.residual_likelihood = rl2
+        risk.residual_consequence = rc2
+        risk.residual_level = rlev2
+
     db.add(risk)
 
     try:
@@ -439,6 +468,35 @@ def auto_generate_risk_from_osint(
     else:
         risk.treatment_option = TreatmentOption.MODIFICATION
         risk.status = RiskStatus.ASSESSED
+
+    # Fechas clave para que el scheduler las procese correctamente
+    from datetime import timedelta
+    review_days = {0: 365, 1: 365, 2: 180, 3: 90, 4: 60, 5: 30, 6: 14, 7: 7, 8: 7}
+    risk.next_review = datetime.now(timezone.utc) + timedelta(days=review_days.get(rlev, 90))
+    treatment_days = {0: 365, 1: 180, 2: 90, 3: 60, 4: 45, 5: 30, 6: 14, 7: 7, 8: 3}
+    risk.treatment_due_date = datetime.now(timezone.utc) + timedelta(days=treatment_days.get(rlev, 60))
+
+    # Asignar al primer admin/analyst activo de la org si no hay owner
+    if not risk.owner_id:
+        from app.models import User, UserRole
+        owner = db.query(User).filter(
+            User.organization_id == org_id,
+            User.role.in_([UserRole.ADMIN, UserRole.ANALYST]),
+            User.is_active.is_(True),
+        ).first()
+        if owner:
+            risk.owner_id = owner.id
+
+    # Heredar controles aplicables
+    applicable_controls = _inherit_controls(db, asset, threat)
+    risk.controls = applicable_controls
+    if applicable_controls:
+        rl2, rc2, rlev2 = calc_residual(
+            inherent_likelihood, inherent_consequence, applicable_controls, matrix
+        )
+        risk.residual_likelihood = rl2
+        risk.residual_consequence = rc2
+        risk.residual_level = rlev2
 
     db.add(risk)
 
