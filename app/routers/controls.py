@@ -140,7 +140,7 @@ def list_impls(db: Session = Depends(get_db),
     return result
 
 
-def _trigger_compliance_sync(db, org_id: int) -> None:
+def _trigger_compliance_sync(org_id: int) -> None:
     """Dispara sincronizacion de compliance en background tras cambio de control."""
     if not org_id:
         return
@@ -171,7 +171,7 @@ def create_impl(data: ControlImplIn, db: Session = Depends(get_db),
                {"control_id": data.control_id, "name": data.name, "status": str(data.status)})
     db.commit(); db.refresh(impl)
     # Sincronizar compliance automaticamente tras crear un control
-    _trigger_compliance_sync(db, current_user.organization_id)
+    _trigger_compliance_sync(current_user.organization_id)
     return impl
 
 
@@ -188,7 +188,7 @@ def update_impl(impl_id: int, data: ControlImplIn,
                {"name": impl.name, "status": str(impl.status), "maturity": impl.maturity})
     db.commit(); db.refresh(impl)
     # Sincronizar compliance automaticamente tras actualizar un control
-    _trigger_compliance_sync(db, impl.organization_id)
+    _trigger_compliance_sync(impl.organization_id)
     return impl
 
 

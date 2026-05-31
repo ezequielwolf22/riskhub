@@ -590,12 +590,13 @@ def _run_cve_auto_scan() -> None:
                 affected_assets = _match_cve_to_assets(db, cve_record, org_id)
 
                 if not affected_assets:
-                    # Fallback: buscar por descripcion del CVE en assets de la misma org
-                    desc_fragment = (cve_record.get("description") or "")[:40]
-                    if desc_fragment:
+                    # Fallback: buscar primer token de la descripcion del CVE en la org
+                    desc_words = (cve_record.get("description") or "").split()
+                    first_word = desc_words[0] if desc_words else ""
+                    if first_word and len(first_word) > 3:  # ignorar tokens cortos
                         affected_assets = db.query(Asset).filter(
                             Asset.organization_id == org_id,
-                            Asset.name.ilike(f"%{desc_fragment.split()[0]}%"),
+                            Asset.name.ilike(f"%{first_word}%"),
                         ).limit(5).all()
 
                 for asset in affected_assets:
@@ -699,6 +700,8 @@ def _run_risk_reviews() -> None:
                     break
             if sent_this_risk:
                 risk.last_review_notified_at = now
+        # Persistir todas las actualizaciones de last_review_notified_at
+        db.commit()
     except Exception as exc:
         logger.exception("Error en revision de riesgos: %s", exc)
     finally:
