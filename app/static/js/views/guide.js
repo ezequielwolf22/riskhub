@@ -38,6 +38,9 @@ const ViewGuide = {
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
+    { id: 'external-findings', title: 'Hallazgos Externos', icon: '🔗' },
+    { id: 'webhooks', title: 'Webhooks y Integraciones', icon: '🪝' },
+    { id: 'feature-flags', title: 'Feature Flags (Planes)', icon: '🚩' },
     { id: 'awareness', title: 'Awareness (Infografias)', icon: '🎨' },
     { id: 'organizations', title: 'Organizaciones (multi-tenant)', icon: '🏢' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
@@ -138,6 +141,9 @@ const ViewGuide = {
       integrations: this._cIntegrations,
       cve: this._cCve,
       osint: this._cOsint,
+      'external-findings': this._cExternalFindings,
+      webhooks: this._cWebhooks,
+      'feature-flags': this._cFeatureFlags,
       awareness: this._cAwareness,
       organizations: this._cOrganizations,
       audit: this._cAudit,
@@ -2028,5 +2034,58 @@ const ViewGuide = {
       </tbody>
     </table>
     ${this._warn('La primera vez que accedes a RiskHub, el sistema detectara automaticamente si el agente no esta configurado y te redirigira a esta pantalla. Puedes omitir esta configuracion con el boton "Omitir por ahora" y volver cuando estés listo.')}
+  `;},
+
+  get _cExternalFindings() { return `
+    ${this._p('Los <strong>Hallazgos Externos</strong> agrupan vulnerabilidades y amenazas detectadas fuera de RiskHub (OSINT, escaneos de terceros, reportes de consultores) y las vinculas automáticamente a tus activos e incidentes.')}
+    ${this._h('Casos de uso')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Importar resultados de escaneos Qualys, Nessus o Rapid7 en formato CSV/XML.</li>
+      <li>Vincular hallazgos de OSINT a activos específicos.</li>
+      <li>Crear incidentes automáticamente cuando se detecte una vulnerabilidad crítica.</li>
+      <li>Realizar trazabilidad: qué vulnerabilidades externas impactan cada activo.</li>
+    </ul>
+    ${this._h('Formato de archivo soportado')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>CSV:</strong> columnas título, descripción, nivel de riesgo, activo afectado.</li>
+      <li><strong>XML:</strong> estructura estándar de escáneres de vulnerabilidades.</li>
+      <li><strong>JSON:</strong> array de objetos con propiedades de hallazgo.</li>
+    </ul>
+    ${this._tip('Usa la validación de magic bytes: RiskHub rechaza archivos cuya extensión no coincide con el contenido real para prevenir ataques de carga de archivos maliciosos.')}
+  `;},
+
+  get _cWebhooks() { return `
+    ${this._p('Los <strong>Webhooks</strong> integran RiskHub con sistemas externos (ERP, ITSM, herramientas de CI/CD) mediante notificaciones en tiempo real. RiskHub puede tanto <em>recibir</em> webhooks (eventos de terceros) como <em>enviar</em> (cuando ocurren cambios en riesgos/incidentes).')}
+    ${this._h('Webhooks entrantes (entrada de eventos)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>ERP (SAP, Jagger, Sphera):</strong> eventos de cambio en activos, usuarios, procesos.</li>
+      <li><strong>Seguridad:</strong> alertas de SIEM, detecciones de IDS/IPS.</li>
+      <li><strong>Validación HMAC-SHA256:</strong> cada webhook debe incluir firma criptográfica para garantizar que procede del origen esperado.</li>
+    </ul>
+    ${this._h('Webhooks salientes (notificaciones de RiskHub)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Riesgo residual sube a nivel alto → notificar a ITSM o Teams.</li>
+      <li>Nuevo incidente NIS2 detectado → crear ticket en Jira automáticamente.</li>
+      <li>Incidente resuelto → marcar ticket como cerrado.</li>
+    </ul>
+    ${this._warn('Las credenciales y URLs de webhook se almacenan cifradas (AES-256). Prueba siempre la conexión antes de guardar con el botón "Probar".')}
+  `;},
+
+  get _cFeatureFlags() { return `
+    ${this._p('Los <strong>Feature Flags</strong> controlan qué módulos de RiskHub están habilitados según el plan de licencia de cada organización. Permite activar/desactivar características sin redeploying.')}
+    ${this._h('Planes disponibles')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Free:</strong> Activos, Riesgos, Controles. Hasta 10 usuarios.</li>
+      <li><strong>Starter:</strong> Free + Incidentes, Políticas, Tareas, Cumplimiento, Informes.</li>
+      <li><strong>Pro:</strong> Starter + Proveedores, No Conformidades, Auditorías, RGPD, IA, CVE, Alertas.</li>
+      <li><strong>Enterprise:</strong> Pro + Integraciones avanzadas, SSO/OIDC, consultoría personalizada.</li>
+    </ul>
+    ${this._h('Gestión de flags')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Superadmin puede establecer flags globales (aplican a todas las orgs) u overrides por organización.</li>
+      <li>Admin de organización puede activar módulos permitidos por su plan.</li>
+      <li>Los intentos de activar módulos no incluidos en el plan se rechazan automáticamente.</li>
+    </ul>
+    ${this._tip('Los flags se aplican en tiempo real sin necesidad de reiniciar. Usa el endpoint GET /api/feature-flags/plans/limits para consultar qué módulos incluye cada plan.')}
   `;},
 };
