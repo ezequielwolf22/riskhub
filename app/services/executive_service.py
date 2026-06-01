@@ -123,12 +123,12 @@ def get_kpis(db: Session, org_id: int) -> dict:
     }
 
 
-def get_top_risks(db: Session, org_id: int, limit: int = 10) -> list[dict]:
-    """Top N riesgos por nivel residual."""
+def get_top_risks(db: Session, org_id: int, limit: int = 10, offset: int = 0) -> list[dict]:
+    """Top N riesgos por nivel residual con paginacion."""
     risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
-    ).order_by(Risk.residual_level.desc()).limit(limit).all()
+    ).order_by(Risk.residual_level.desc()).offset(offset).limit(limit).all()
 
     result = []
     for r in risks:

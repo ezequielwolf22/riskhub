@@ -18,14 +18,16 @@ def list_tests(current_user: User = Depends(get_current_user)):
 
 @router.post("/run")
 def run_ccm(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),  # A3: VIEWER no debe ver brecha de seguridad
 ):
-    """Ejecuta todos los tests CCM y retorna resultados + score."""
+    """Ejecuta todos los tests CCM y retorna resultados + score con paginacion."""
     org_id = current_user.organization_id
     if not org_id:
         raise HTTPException(400, "Se requiere organization_id")
-    return run_all_tests(db, org_id)
+    return run_all_tests(db, org_id, limit=limit, offset=offset)
 
 
 @router.post("/run/{test_id}")

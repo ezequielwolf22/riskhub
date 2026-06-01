@@ -739,10 +739,10 @@ _ALL_TESTS: list[Callable] = [
 ]
 
 
-def run_all_tests(db: Session, org_id: int) -> dict:
-    """Ejecuta todos los tests CCM para una organización.
+def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) -> dict:
+    """Ejecuta todos los tests CCM para una organización con paginacion.
 
-    Returns: {results, summary, score, timestamp}
+    Returns: {results, summary, score, timestamp, total_tests}
     """
     results = []
     counts = {"PASS": 0, "FAIL": 0, "WARNING": 0, "SKIP": 0}
@@ -770,13 +770,20 @@ def run_all_tests(db: Session, org_id: int) -> dict:
         (counts["PASS"] + counts["WARNING"] * 0.5) / max(1, total_scored) * 100, 1
     )
 
+    # Aplicar paginación
+    total_tests = len(results)
+    paginated_results = results[offset:offset+limit]
+
     return {
         "org_id": org_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "score": score,
         "counts": counts,
-        "total_tests": len(results),
-        "results": results,
+        "total_tests": total_tests,
+        "offset": offset,
+        "limit": limit,
+        "returned": len(paginated_results),
+        "results": paginated_results,
         "summary": (
             f"CCM Score: {score}/100 — "
             f"{counts['PASS']} PASS, {counts['WARNING']} WARNING, "
