@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests y linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Linting con ruff
+        run: ruff check app/
+
+      - name: Tests con pytest
+        env:
+          RISKHUB_ENV: test
+          RISKHUB_SECRET_KEY: ci-test-secret-key-minimum-32-characters-long
+          RISKHUB_ADMIN_EMAIL: admin@test.internal
+          RISKHUB_ADMIN_PASSWORD: TestAdmin123!
+          RISKHUB_DB_PATH: ./test_riskhub.db
+        run: pytest tests/ -v --tb=short --timeout=30
+
+      - name: Limpiar BD de test
+        if: always()
+        run: rm -f ./test_riskhub.db
+
+  docker-build:
+    name: Docker build check
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t riskhub:ci-check .

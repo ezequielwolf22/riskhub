@@ -9,7 +9,11 @@ from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.config import settings
+from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
+
+setup_logging(env=settings.env)
+
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
@@ -89,7 +93,29 @@ def shutdown():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": __version__, "env": settings.env}
+    """Health check con verificacion de BD. Usado por deploy.sh y monitoreo externo."""
+    import time
+    from app.database import engine
+    from sqlalchemy import text
+
+    db_ok = False
+    db_latency_ms = None
+    try:
+        t0 = time.monotonic()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_latency_ms = round((time.monotonic() - t0) * 1000, 1)
+        db_ok = True
+    except Exception as exc:
+        logger.error("Health check: DB no disponible — %s", exc)
+
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "version": __version__,
+        "env": settings.env,
+        "db_ok": db_ok,
+        "db_latency_ms": db_latency_ms,
+    }
 
 
 # Routers REST

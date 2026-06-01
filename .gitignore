@@ -21,3 +21,6 @@ Thumbs.db
 data/
 !app/data/
 .claude/
+test_riskhub.db
+rate_limits.db
+scripts/__pycache__/
