@@ -12,6 +12,7 @@ from app.models import (
     PolicyStatus, AuditType, AuditStatus, AuditFindingType,
     ProcessingLegalBasis, DPIAStatus,
     OSINTScanType, OSINTSourceType, OSINTFindingRiskLevel,
+    LicenseStatus,
 )
 
 
@@ -62,6 +63,46 @@ class OrganizationOut(ORMBase):
     owner_id: Optional[int] = None
     user_count: int = 0
     token_usage: int = 0
+
+
+# ---------- LICENSES ----------
+class LicenseIn(BaseModel):
+    plan: str
+    expires_at: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
+class LicenseUpdate(BaseModel):
+    plan: Optional[str] = None
+    status: Optional[LicenseStatus] = None
+    expires_at: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
+class LicenseOut(ORMBase):
+    id: int
+    organization_id: int
+    plan: str
+    status: LicenseStatus
+    issued_at: datetime
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    updated_by_id: Optional[int] = None
+
+
+class LicenseAuditOut(ORMBase):
+    id: int
+    organization_id: int
+    plan_old: Optional[str] = None
+    plan_new: Optional[str] = None
+    status_old: Optional[str] = None
+    status_new: Optional[str] = None
+    expires_at_old: Optional[datetime] = None
+    expires_at_new: Optional[datetime] = None
+    reason: Optional[str] = None
+    changed_at: datetime
+    changed_by_id: Optional[int] = None
 
 
 # ---------- USERS ----------

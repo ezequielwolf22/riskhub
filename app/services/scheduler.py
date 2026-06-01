@@ -1644,6 +1644,22 @@ def _run_soa_review_check() -> None:
         db.close()
 
 
+def _run_license_expiry_check() -> None:
+    """Auto-expira licencias vencidas y las marca como EXPIRED."""
+    from app.database import SessionLocal
+    from app.services import license_service as lic_svc
+
+    db = SessionLocal()
+    try:
+        expired_count = lic_svc.auto_expire_licenses(db)
+        if expired_count:
+            logger.info("License expiry: %d licencias expiradas automaticamente", expired_count)
+    except Exception as exc:
+        logger.exception("Error en license_expiry_check: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_compliance_auto_sync() -> None:
     """Sincroniza estado de compliance con controles implementados."""
     from app.database import SessionLocal
@@ -1829,6 +1845,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Alerta de SoA sin revision anual",
         replace_existing=True,
         misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_license_expiry_check,
+        trigger=IntervalTrigger(hours=24),  # diario
+        id="license_expiry_check",
+        name="Auto-expiracion de licencias vencidas",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

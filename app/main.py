@@ -14,7 +14,7 @@ from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
     cve, documents, evidence, executive, external_findings, feature_flags, gdpr, incidents,
-    integrations_erp, itsm, management_review, magerit, nis2, nonconformities, organizations,
+    integrations_erp, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
     osint, policies, portal, predictive, report_schedules, reports, risks, search, sharepoint,
     soa_versions, sso, supplier_questionnaires, suppliers, tasks, users, webhooks,
 )
@@ -126,6 +126,7 @@ app.include_router(cve.router)
 app.include_router(osint.router)
 app.include_router(awareness.router)
 app.include_router(organizations.router)
+app.include_router(licenses.router)
 app.include_router(compliance.router)
 app.include_router(evidence.router)
 app.include_router(executive.router)

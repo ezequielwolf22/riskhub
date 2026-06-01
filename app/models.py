@@ -97,6 +97,47 @@ class Organization(Base):
     mfa_required = Column(Boolean, default=False)
 
 
+class LicenseStatus(str, PyEnum):
+    """Estados de una licencia."""
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    EXPIRED = "expired"
+
+
+class License(Base):
+    """Licencia de una organizacion — gestion de planes y vencimiento."""
+    __tablename__ = "licenses"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False, index=True)
+    plan = Column(String(64), nullable=False)  # free/starter/pro/enterprise
+    status = Column(Enum(LicenseStatus), default=LicenseStatus.ACTIVE, nullable=False)
+    issued_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    expires_at = Column(DateTime, nullable=True)  # NULL = sin límite (pago anual/indefinido)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    # Para auditoría
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = relationship("User", foreign_keys="License.updated_by_id")
+    organization = relationship("Organization", foreign_keys="License.organization_id")
+
+
+class LicenseAudit(Base):
+    """Registro de cambios en licencias — trazabilidad completa."""
+    __tablename__ = "license_audits"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    plan_old = Column(String(64), nullable=True)
+    plan_new = Column(String(64), nullable=True)
+    status_old = Column(String(64), nullable=True)
+    status_new = Column(String(64), nullable=True)
+    expires_at_old = Column(DateTime, nullable=True)
+    expires_at_new = Column(DateTime, nullable=True)
+    reason = Column(String(255), nullable=True)  # "expiration_auto", "manual_suspension", "plan_upgrade", etc
+    changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    changed_by = relationship("User", foreign_keys="LicenseAudit.changed_by_id")
+
+
 # ---------- USUARIOS ----------
 
 class User(Base):

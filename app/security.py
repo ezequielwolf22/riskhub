@@ -126,3 +126,34 @@ def check_org_access(record_org_id, user: User) -> bool:
     if user.role == UserRole.SUPERADMIN:
         return True
     return record_org_id == user.organization_id
+
+
+def require_active_license(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Valida que la licencia de la organizacion este activa.
+
+    Se lanza una excepcion 403 si la licencia esta suspendida o expirada.
+    Superadmin siempre pasa (no tienen org asignada o pueden administrar).
+    """
+    from app.services import license_service as lic_svc
+
+    # Superadmin no tiene restriccion
+    if user.role == UserRole.SUPERADMIN:
+        return user
+
+    # Validar que la org tiene licencia activa
+    if not user.organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Usuario no pertenece a ninguna organizacion",
+        )
+
+    if not lic_svc.is_license_active(db, user.organization_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Licencia expirada o suspendida. Contacte a administrador.",
+        )
+
+    return user

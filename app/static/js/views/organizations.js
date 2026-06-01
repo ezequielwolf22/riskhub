@@ -114,6 +114,9 @@ const ViewOrganizations = (() => {
             ? `<button class="btn btn-sm btn-danger" onclick="ViewOrganizations._deactivate(${o.id})">Desactivar</button>`
             : `<button class="btn btn-sm btn-secondary" onclick="ViewOrganizations._activate(${o.id})">Activar</button>`
           }
+          <button class="btn btn-sm btn-danger" style="background:#8B0000;" onclick="ViewOrganizations._deleteOrganization(${o.id}, '${UI.esc(o.name)}')">
+            Eliminar permanentemente
+          </button>
         </div>
       </div>`;
     }).join('');
@@ -196,6 +199,15 @@ const ViewOrganizations = (() => {
           <div id="org-flags-container-${orgId}">
             <p class="muted">Cargando modulos...</p>
           </div>
+
+          <hr style="margin:20px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="font-size:14px;font-weight:600;margin:0;">Licencia</h3>
+            <button class="btn btn-sm btn-secondary" onclick="ViewOrganizations._openLicenseModal(${orgId})">Gestionar licencia</button>
+          </div>
+          <div id="org-license-container-${orgId}">
+            <p class="muted">Cargando licencia...</p>
+          </div>
         </div>
       </div>
     `;
@@ -222,6 +234,8 @@ const ViewOrganizations = (() => {
 
     // Cargar y renderizar feature flags de la org
     await _renderOrgFlags(orgId);
+    // Cargar y renderizar licencia de la org
+    await _renderOrgLicense(orgId);
   }
 
   async function _renderOrgFlags(orgId) {
@@ -329,6 +343,137 @@ const ViewOrganizations = (() => {
     }
   }
 
+  async function _renderOrgLicense(orgId) {
+    const container = document.getElementById(`org-license-container-${orgId}`);
+    if (!container) return;
+    try {
+      const license = await Api.get(`/api/licenses/${orgId}`);
+      const statusColors = {
+        active: { bg: '#E8F5E9', text: '#2e7d32' },
+        suspended: { bg: '#FEE2E2', text: '#a83232' },
+        expired: { bg: '#FEE2E2', text: '#a83232' },
+      };
+      const colors = statusColors[license.status] || statusColors.active;
+      const expiresAt = license.expires_at ? new Date(license.expires_at) : null;
+      const isExpired = expiresAt && expiresAt < new Date();
+      const daysLeft = expiresAt ? Math.ceil((expiresAt - new Date()) / (1000 * 60 * 60 * 24)) : null;
+
+      container.innerHTML = `
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;display:grid;gap:8px;grid-template-columns:auto 1fr auto;">
+          <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);">Plan</div>
+          <div>${_planBadge(license.plan)}</div>
+
+          <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);">Estado</div>
+          <div><span style="background:${colors.bg};color:${colors.text};padding:2px 8px;border-radius:4px;font-size:11px;">${license.status.toUpperCase()}</span></div>
+
+          ${expiresAt ? `
+            <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);">Vencimiento</div>
+            <div>${isExpired ? '🔴 Expirada' : '⏳ ' + (daysLeft > 0 ? daysLeft + ' días' : 'Próxima a vencer')} ${expiresAt.toLocaleDateString('es-ES')}</div>
+          ` : `
+            <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);">Vencimiento</div>
+            <div style="color:var(--text-muted);">Sin límite (pago anual o indefinido)</div>
+          `}
+
+          <div style="grid-column:1/-1;font-size:11px;color:var(--text-muted);">
+            Emitida: ${new Date(license.issued_at).toLocaleDateString('es-ES')}
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      container.innerHTML = `<p class="notice">${UI.esc(err.message)}</p>`;
+    }
+  }
+
+  async function _openLicenseModal(orgId) {
+    try {
+      const license = await Api.get(`/api/licenses/${orgId}`);
+      const expiresStr = license.expires_at ? license.expires_at.split('T')[0] : '';
+      const history = await Api.get(`/api/licenses/${orgId}/audit`);
+
+      UI.modal('Gestionar licencia', `
+        <div class="form-grid">
+          <div class="span2">
+            <label>Plan
+              <select class="input" id="license-plan" required>
+                ${['free','starter','pro','enterprise'].map(p =>
+                  `<option value="${p}" ${license.plan === p ? 'selected' : ''}>${(PLAN_COLORS[p] || {label:p}).label}</option>`
+                ).join('')}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Estado
+              <select class="input" id="license-status" required>
+                <option value="active" ${license.status === 'active' ? 'selected' : ''}>Activa</option>
+                <option value="suspended" ${license.status === 'suspended' ? 'selected' : ''}>Suspendida</option>
+                <option value="expired" ${license.status === 'expired' ? 'selected' : ''}>Expirada</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <label>Fecha de vencimiento (opcional)
+              <input class="input" type="date" id="license-expires" value="${expiresStr}" placeholder="Dejar vacío para sin límite">
+            </label>
+          </div>
+          <div class="span2">
+            <label>Razón del cambio (opcional)
+              <input class="input" id="license-reason" placeholder="ej: plan upgrade, payment received, suspension for non-payment">
+            </label>
+          </div>
+        </div>
+
+        <hr style="margin:20px 0;">
+        <h3 style="font-size:13px;font-weight:600;margin-bottom:12px;">Historial de cambios</h3>
+        ${history.length ? `
+          <table class="table" style="font-size:12px;">
+            <thead><tr><th>Fecha</th><th>Plan</th><th>Estado</th><th>Razón</th></tr></thead>
+            <tbody>
+              ${history.slice(0, 10).map(h => `
+                <tr>
+                  <td>${new Date(h.changed_at).toLocaleDateString('es-ES')}</td>
+                  <td>${h.plan_new || h.plan_old || '-'}</td>
+                  <td><span style="font-size:10px;background:var(--bg-secondary);padding:1px 4px;border-radius:2px;">${h.status_new || h.status_old || '-'}</span></td>
+                  <td>${UI.esc(h.reason || '-')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : '<p class="muted">Sin cambios registrados</p>'}
+      `, {
+        actions: `
+          <button class="btn" id="m-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="m-save">Guardar cambios</button>
+        `,
+      });
+
+      document.getElementById('m-cancel').onclick = UI.closeModal;
+      document.getElementById('m-save').onclick = async () => {
+        const plan = document.getElementById('license-plan').value;
+        const status = document.getElementById('license-status').value;
+        const expiresAt = document.getElementById('license-expires').value;
+        const reason = document.getElementById('license-reason').value;
+
+        const payload = {
+          plan,
+          status,
+          expires_at: expiresAt ? new Date(expiresAt + 'T00:00:00Z').toISOString() : null,
+          reason: reason || null,
+        };
+
+        try {
+          await Api.patch(`/api/licenses/${orgId}`, payload);
+          UI.toast('Licencia actualizada', 'success');
+          UI.closeModal();
+          await _renderOrgLicense(orgId);
+        } catch (err) {
+          UI.toast(err.message, 'error');
+        }
+      };
+    } catch (err) {
+      UI.toast(err.message, 'error');
+    }
+  }
+
   async function _deactivate(orgId) {
     if (!confirm('Desactivar esta organizacion. Sus usuarios no podran iniciar sesion. Continuar?')) return;
     try {
@@ -352,6 +497,69 @@ const ViewOrganizations = (() => {
     } catch (err) {
       UI.toast(err.message, 'error');
     }
+  }
+
+  async function _deleteOrganization(orgId, orgName) {
+    // Primera confirmación visual
+    if (!confirm(
+      `⚠️ CUIDADO: Vas a eliminar PERMANENTEMENTE la organizacion "${orgName}".\n\n` +
+      `Esto eliminara:\n` +
+      `- Todos los datos (riesgos, activos, incidentes, etc.)\n` +
+      `- Todos los usuarios\n` +
+      `- Todas las politicas, controles, evidencias\n` +
+      `- TODO lo asociado a esta organizacion\n\n` +
+      `Esta operacion es IRREVERSIBLE.\n\n` +
+      `¿Estas completamente seguro?`
+    )) return;
+
+    // Segunda confirmación con texto exacto
+    UI.modal('Confirmacion final — Eliminacion permanente', `
+      <div style="background:#FEE2E2;padding:12px;border-radius:8px;margin-bottom:16px;border-left:4px solid #a83232;">
+        <strong style="color:#a83232;">⚠️ OPERACION IRREVERSIBLE</strong>
+        <p style="margin:8px 0 0;font-size:12px;">
+          Se eliminaran permanentemente todos los datos de la organizacion <strong>${UI.esc(orgName)}</strong>.
+          Esta accion no puede ser deshecha.
+        </p>
+      </div>
+
+      <p style="color:var(--text-muted);margin-bottom:8px;">
+        Para confirmar, escribe exactamente: <code>ELIMINAR PERMANENTEMENTE</code>
+      </p>
+      <input class="input" id="delete-confirm-text" type="text" placeholder="ELIMINAR PERMANENTEMENTE" autocomplete="off">
+    `, {
+      actions: `
+        <button class="btn" id="m-cancel">Cancelar</button>
+        <button class="btn" id="m-delete" style="background:#8B0000;color:white;">Eliminar todo permanentemente</button>
+      `,
+    });
+
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-delete').onclick = async () => {
+      const confirmText = document.getElementById('delete-confirm-text').value;
+      if (confirmText !== 'ELIMINAR PERMANENTEMENTE') {
+        UI.toast('Texto de confirmacion incorrecto', 'error');
+        return;
+      }
+
+      document.getElementById('m-delete').disabled = true;
+      document.getElementById('m-delete').textContent = 'Eliminando...';
+
+      try {
+        await Api.post(`/api/organizations/${orgId}/delete-permanently`, {
+          confirmation_text: confirmText,
+        });
+        UI.toast('Organizacion eliminada permanentemente', 'success');
+        UI.closeModal();
+        await fetchOrgs();
+        renderGrid(document.getElementById('orgs-grid'));
+        const panel = document.getElementById('org-detail-panel');
+        if (panel) panel.style.display = 'none';
+      } catch (err) {
+        UI.toast(err.message, 'error');
+        document.getElementById('m-delete').disabled = false;
+        document.getElementById('m-delete').textContent = 'Eliminar todo permanentemente';
+      }
+    };
   }
 
   async function _moveUser(userId) {
@@ -426,5 +634,5 @@ const ViewOrganizations = (() => {
     };
   }
 
-  return { render, _openDetail, _deactivate, _activate, _moveUser, _toggleOrgFlag, _resetOrgFlag, _onPlanChange };
+  return { render, _openDetail, _deactivate, _activate, _moveUser, _toggleOrgFlag, _resetOrgFlag, _onPlanChange, _openLicenseModal, _deleteOrganization };
 })();

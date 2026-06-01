@@ -1,4 +1,5 @@
 """Gestion de organizaciones / tenants — administracion multi-org."""
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -138,7 +139,7 @@ def update_organization(
     return _to_out(org, db)
 
 
-# ── Desactivar / eliminar (solo superadmin) ────────────────────────────────────
+# ── Desactivar (soft delete) ────────────────────────────────────
 
 @router.delete("/{org_id}", status_code=204)
 def delete_organization(
@@ -157,6 +158,157 @@ def delete_organization(
     # Desactivar en lugar de borrar fisicamente para preservar integridad referencial
     org.is_active = False
     db.commit()
+
+
+# ── Eliminar permanentemente (hard delete) ────────────────────────────────────
+
+class PermanentDeleteIn(BaseModel):
+    """Confirmación para eliminación permanente."""
+    confirmation_text: str  # debe ser exactamente "ELIMINAR PERMANENTEMENTE"
+
+
+@router.post("/{org_id}/delete-permanently", status_code=200)
+def delete_organization_permanently(
+    org_id: int,
+    data: PermanentDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+):
+    """Elimina una organizacion PERMANENTEMENTE con todo su contenido.
+
+    Esta operacion es IRREVERSIBLE. Se registra en logs de seguridad como evidencia.
+    """
+    org = db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(404, "Organizacion no encontrada")
+
+    # Seguridad: no permitir eliminar la org del superadmin
+    if org.id == current_user.organization_id:
+        raise HTTPException(400, "No puedes eliminar tu propia organizacion")
+
+    # Verificar texto de confirmación
+    if data.confirmation_text != "ELIMINAR PERMANENTEMENTE":
+        raise HTTPException(400, "Texto de confirmacion incorrecto")
+
+    org_name = org.name
+    org_id_str = str(org_id)
+
+    # Registrar en auditoria ANTES de borrar (como evidencia)
+    log_action(
+        db, current_user.id, "delete_permanently", "organization", org_id_str,
+        {
+            "name": org_name,
+            "action": "Eliminacion permanente e irreversible de la organizacion",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "deleted_by_user_id": current_user.id,
+            "deleted_by_email": current_user.email,
+        }
+    )
+
+    # Eliminar datos en cascada
+    from sqlalchemy import text
+
+    # Primero, obtener usuarios para borrar referencias cruzadas
+    users = db.query(User).filter(User.organization_id == org_id).all()
+
+    # Eliminar tabla por tabla (respetando dependencias)
+    # Se hace por SQL directo para eficiencia
+    try:
+        # Tablas que referencian organization_id
+        tables_to_delete = [
+            "ai_call_logs",
+            "ai_documents",
+            "ai_conversations",
+            "alert_rules",
+            "assets",
+            "asset_groups",
+            "asset_vulnerability_evidence",
+            "audit_log",
+            "audit_programs",
+            "audit_findings",
+            "bcp_continuity_plans",
+            "bcp_recovery_plans",
+            "ccm_test_results",
+            "ccm_tests",
+            "change_requests",
+            "compliance_framework_status",
+            "control_implementations",
+            "controls",
+            "cve_scans",
+            "email_settings",
+            "evidence",
+            "evidence_attachments",
+            "external_findings",
+            "feature_flags",
+            "gdpr_dpia",
+            "gdpr_processing",
+            "incidents",
+            "integration_configs",
+            "itsm_configurations",
+            "license_audits",
+            "licenses",
+            "management_reviews",
+            "nonconformities",
+            "osint_findings",
+            "osint_identifiers",
+            "osint_scans",
+            "policies",
+            "report_schedules",
+            "reports",
+            "risk_acceptance",
+            "risk_context",
+            "risk_review_schedules",
+            "risks",
+            "soa_versions",
+            "supplier_questionnaire_responses",
+            "supplier_questionnaires",
+            "suppliers",
+            "threat_vulnerability_mapping",
+            "treatment_tasks",
+            "webhooks",
+            "webhook_events",
+        ]
+
+        for table in tables_to_delete:
+            try:
+                db.execute(
+                    text(f"DELETE FROM {table} WHERE organization_id = :org_id"),
+                    {"org_id": org_id}
+                )
+            except Exception:
+                # Ignorar errores si la tabla no existe o tiene restricciones
+                pass
+
+        # Finalmente, eliminar usuarios asociados
+        db.query(User).filter(User.organization_id == org_id).delete()
+
+        # Eliminar la organizacion misma
+        db.delete(org)
+
+        db.commit()
+
+        import logging
+        logger = logging.getLogger("riskhub.security")
+        logger.warning(
+            f"ORGANIZACION ELIMINADA PERMANENTEMENTE: {org_name} (ID:{org_id}) "
+            f"por {current_user.email} ({current_user.id})"
+        )
+
+        return {
+            "ok": True,
+            "message": f"Organizacion '{org_name}' eliminada permanentemente",
+            "organization_id": org_id,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        db.rollback()
+        import logging
+        logger = logging.getLogger("riskhub.security")
+        logger.error(
+            f"ERROR al eliminar organizacion {org_name} (ID:{org_id}): {str(e)}"
+        )
+        raise HTTPException(500, f"Error al eliminar: {str(e)}")
 
 
 # ── Usuarios de una organizacion (superadmin) ─────────────────────────────────

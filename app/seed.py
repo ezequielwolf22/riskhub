@@ -286,6 +286,9 @@ def _migrate_columns() -> None:
          "audit_programs", "checklist_generated_at"),
         # v2.3.0 — MFA backup codes
         ("ALTER TABLE users ADD COLUMN mfa_backup_codes JSON", "users", "mfa_backup_codes"),
+        # v2.4.0 — Licenciamiento
+        ("ALTER TABLE licenses ADD COLUMN updated_by_id INTEGER REFERENCES users(id)", "licenses", "updated_by_id"),
+        ("ALTER TABLE licenses ADD COLUMN updated_at DATETIME", "licenses", "updated_at"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
@@ -320,6 +323,20 @@ def _migrate_columns() -> None:
             pass
 
 
+def _seed_licenses(db: Session) -> None:
+    """Crea licencias iniciales para todas las organizaciones sin licencia."""
+    from app.models import License, LicenseStatus
+    from app.services import license_service
+
+    orgs = db.query(Organization).all()
+    for org in orgs:
+        existing = license_service.get_license(db, org.id)
+        if not existing:
+            license_service.create_license_for_org(
+                db, org.id, org.plan, expires_at=None
+            )
+
+
 def init_db() -> None:
     """Crear tablas y cargar seed inicial."""
     Base.metadata.create_all(bind=engine)
@@ -335,6 +352,7 @@ def init_db() -> None:
         seed_vulnerabilities(db)
         seed_controls(db)
         _seed_feature_flags(db)
+        _seed_licenses(db)
     finally:
         db.close()
 
