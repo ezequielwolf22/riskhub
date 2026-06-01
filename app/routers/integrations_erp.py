@@ -223,10 +223,11 @@ async def sap_webhook(
     if "sap" not in cfg.get("enabled_sources", []):
         raise HTTPException(403, "Fuente SAP deshabilitada en la configuracion")
 
-    # Verificar firma HMAC si se proporciona
-    if x_signature:
-        if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
-            raise HTTPException(401, "Firma HMAC invalida")
+    # C4: firma HMAC obligatoria — rechazar si ausente
+    if not x_signature:
+        raise HTTPException(401, "Cabecera X-Hub-Signature-256 requerida")
+    if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
+        raise HTTPException(401, "Firma HMAC invalida")
 
     try:
         payload = json.loads(body)
@@ -281,9 +282,11 @@ async def jagger_webhook(
     if "jagger" not in cfg.get("enabled_sources", []):
         raise HTTPException(403, "Fuente Jagger deshabilitada en la configuracion")
 
-    if x_signature:
-        if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
-            raise HTTPException(401, "Firma HMAC invalida")
+    # C4: firma HMAC obligatoria
+    if not x_signature:
+        raise HTTPException(401, "Cabecera X-Hub-Signature-256 requerida")
+    if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
+        raise HTTPException(401, "Firma HMAC invalida")
 
     try:
         payload = json.loads(body)
@@ -335,9 +338,11 @@ async def sphera_webhook(
     if "sphera" not in cfg.get("enabled_sources", []):
         raise HTTPException(403, "Fuente Sphera deshabilitada en la configuracion")
 
-    if x_signature:
-        if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
-            raise HTTPException(401, "Firma HMAC invalida")
+    # C4: firma HMAC obligatoria
+    if not x_signature:
+        raise HTTPException(401, "Cabecera X-Hub-Signature-256 requerida")
+    if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
+        raise HTTPException(401, "Firma HMAC invalida")
 
     try:
         payload = json.loads(body)
@@ -418,16 +423,16 @@ def _create_incident_from_erp(db: Session, org_id: int, data: dict, source: str)
     """Crea un incidente en RiskHub a partir de datos ERP."""
     title = (data.get("title") or data.get("name") or f"Incidente desde {source.upper()}").strip()
 
-    # Mapeo de severidad
+    # C5: el enum real usa P1-P4, no CRITICAL/HIGH/MEDIUM/LOW
     severity_raw = str(data.get("severity") or data.get("risk_level") or "medium").lower()
     severity_map = {
-        "critical": IncidentSeverity.CRITICAL,
-        "high": IncidentSeverity.HIGH,
-        "medium": IncidentSeverity.MEDIUM,
-        "low": IncidentSeverity.LOW,
-        "very_high": IncidentSeverity.CRITICAL,
+        "critical": IncidentSeverity.P1,
+        "very_high": IncidentSeverity.P1,
+        "high": IncidentSeverity.P2,
+        "medium": IncidentSeverity.P3,
+        "low": IncidentSeverity.P4,
     }
-    severity = severity_map.get(severity_raw, IncidentSeverity.MEDIUM)
+    severity = severity_map.get(severity_raw, IncidentSeverity.P3)
 
     source_note = f"[{source.upper()}] "
     incident = Incident(

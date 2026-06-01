@@ -1,5 +1,5 @@
 """Router de integraciones ITSM (Jira, ServiceNow, Slack, Teams)."""
-import hashlib, base64
+import hashlib, base64, re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -164,10 +164,11 @@ def get_teams_config(db: Session = Depends(get_db),
 @router.put("/teams/config")
 def save_teams_config(body: TeamsConfigIn, db: Session = Depends(get_db),
                       current_user: User = Depends(require_role("admin"))):
-    if not body.webhook_url.startswith("https://"):
-        raise HTTPException(400, "URL de Teams inválida")
+    # A4: validar dominio explicitamente para prevenir SSRF via metadata endpoints
+    if not re.match(r"https://[^/]*\.webhook\.office\.com/", body.webhook_url):
+        raise HTTPException(400, "URL de Teams invalida: debe ser de *.webhook.office.com")
     _save_config(db, current_user.organization_id, "teams", body.model_dump())
-    return {"message": "Configuración Teams guardada"}
+    return {"message": "Configuracion Teams guardada"}
 
 
 @router.post("/teams/test")

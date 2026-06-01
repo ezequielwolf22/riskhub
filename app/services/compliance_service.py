@@ -1,6 +1,7 @@
 """Servicio de cumplimiento normativo multi-framework."""
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -15,18 +16,24 @@ from app.models import (
 logger = logging.getLogger("riskhub.compliance")
 
 _FRAMEWORKS_DIR = Path(__file__).parent.parent / "data" / "frameworks"
+
+# A9: cache con TTL para detectar cambios en archivos JSON sin reiniciar la app
 _CACHE: dict = {}
+_CACHE_TS: dict = {}
+_CACHE_TTL = 300  # 5 minutos
 
 
 def load_framework(code: str) -> Optional[dict]:
-    """Carga definición de framework desde JSON."""
-    if code in _CACHE:
+    """Carga definicion de framework desde JSON con TTL de cache."""
+    now = time.time()
+    if code in _CACHE and (now - _CACHE_TS.get(code, 0)) < _CACHE_TTL:
         return _CACHE[code]
     path = _FRAMEWORKS_DIR / f"{code}.json"
     if not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
     _CACHE[code] = data
+    _CACHE_TS[code] = now
     return data
 
 
@@ -98,8 +105,13 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
     if not framework:
         return {"error": "Framework no encontrado"}
 
-    # Asegurar que los registros existen
-    initialize_org_framework(db, org_id, framework_code)
+    # A8: evitar side-effect en GET — solo inicializar si aun no hay registros
+    existing_count = db.query(ComplianceFrameworkStatus).filter(
+        ComplianceFrameworkStatus.organization_id == org_id,
+        ComplianceFrameworkStatus.framework_code == framework_code,
+    ).count()
+    if existing_count == 0:
+        initialize_org_framework(db, org_id, framework_code)
 
     statuses = db.query(ComplianceFrameworkStatus).filter(
         ComplianceFrameworkStatus.organization_id == org_id,

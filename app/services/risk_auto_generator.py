@@ -13,6 +13,7 @@ Flujo:
      - Si residual > appetite → ASSESSED con email alerta
 """
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -25,7 +26,6 @@ from app.models import (
 from app.services.risk_engine import calc_level, calc_residual
 
 logger = logging.getLogger("riskhub.risk_auto_generator")
-
 
 def _next_code(db: Session, org_id: int) -> str:
     """Genera codigo unico RSK-XXXX por organizacion."""
@@ -59,31 +59,32 @@ def _inherit_controls(db: Session, asset: Asset, threat: Threat) -> list:
 def _get_inherent_values_from_ai(db: Session, asset: Asset, threat: Threat) -> tuple[int, int]:
     """IA analiza asset + threat → propone likelihood y consequence.
 
+    A3: rag_service es un modulo, no un objeto — usar la funcion ask() directamente.
     Cae back a defaults si no puede.
     """
     try:
-        from app.services.rag_service import rag_service
+        from app.services.rag_service import ask as _ask
 
         prompt = (
-            f"Evalúa riesgo de seguridad. Asset: {asset.name} ({asset.description or 'sin desc'}). "
+            f"Evalua riesgo de seguridad. Asset: {asset.name} ({asset.description or 'sin desc'}). "
             f"Amenaza: {threat.name} ({threat.description or 'sin desc'}). "
-            f"Devuelve 2 números (likelihood,consequence) del 0-4 donde "
+            f"Devuelve 2 numeros (likelihood,consequence) del 0-4 donde "
             f"0=imposible/nulo, 1=raro, 2=posible, 3=probable, 4=seguro. "
             f"Formato: SOLO '3,2' sin comillas."
         )
 
-        response = rag_service.ask(prompt, org_id=asset.organization_id)
+        response = _ask(prompt, org_id=asset.organization_id)
         if response:
-            parts = response.strip().split(',')
+            parts = response.strip().split(",")
             if len(parts) == 2:
                 l = int(parts[0].strip())
                 c = int(parts[1].strip())
                 if 0 <= l <= 4 and 0 <= c <= 4:
-                    logger.info("IA valuación para %s+%s: L=%d C=%d",
+                    logger.info("IA valuacion para %s+%s: L=%d C=%d",
                                asset.code, threat.code, l, c)
                     return (l, c)
     except Exception as e:
-        logger.debug("IA valuación falló: %s, usando defaults", e)
+        logger.debug("IA valuacion fallo: %s, usando defaults", e)
 
     return (2, 2)  # Default: posible + moderado
 
@@ -109,10 +110,11 @@ def auto_generate_risks_for_asset(
         logger.warning("Asset %s sin organization_id, saltando auto-gen", asset.id)
         return created_risks
 
-    # Query: amenazas aplicables al tipo de asset
+    # C3: Threat es catalogo global sin organization_id — no filtrar por org.
+    # Usar solo amenazas del catalogo estandar (is_custom=False), max 10 por activo.
     applicable_threats = db.query(Threat).filter(
-        Threat.organization_id == asset.organization_id,
-    ).all()
+        Threat.is_custom == False,  # noqa: E712
+    ).limit(10).all()
 
     if not applicable_threats:
         logger.info("Asset %s: sin amenazas aplicables, saltando", asset.code)
@@ -179,11 +181,12 @@ def auto_generate_risks_for_asset(
         risk.residual_level = rlev
 
         # Auto-tratamiento segun appetite
+        # C2: TreatmentOption.ACCEPTANCE no existe; RETENTION = "aceptar conscientemente"
         if rlev <= appetite:
-            risk.treatment_option = TreatmentOption.ACCEPTANCE
+            risk.treatment_option = TreatmentOption.RETENTION
             risk.status = RiskStatus.ACCEPTED
         else:
-            risk.treatment_option = TreatmentOption.MODIFICATION  # consistente con CVE/OSINT generators
+            risk.treatment_option = TreatmentOption.MODIFICATION
             risk.status = RiskStatus.ASSESSED
 
         # Fijar próxima revisión según nivel residual (habilita notificaciones scheduler)
@@ -226,12 +229,21 @@ def auto_generate_risks_for_asset(
                 fire_risk_created(db, r)
                 if (r.residual_level or 0) >= 5:
                     fire_risk_high(db, r)
-                    # Notificar ITSM (Jira, ServiceNow, Slack, Teams)
-                    try:
-                        from app.services.itsm_service import notify_high_risk
-                        notify_high_risk(db, r)
-                    except Exception as exc2:
-                        logger.debug("Error notificando ITSM: %s", exc2)
+                    # A5: notify_high_risk es sincrono (hasta 40s) — ejecutar en thread
+                    def _notify_itsm_bg(rid: int) -> None:
+                        from app.database import SessionLocal
+                        _db = SessionLocal()
+                        try:
+                            from app.models import Risk as _Risk
+                            _r = _db.get(_Risk, rid)
+                            if _r:
+                                from app.services.itsm_service import notify_high_risk
+                                notify_high_risk(_db, _r)
+                        except Exception as exc2:
+                            logger.debug("Error notificando ITSM background: %s", exc2)
+                        finally:
+                            _db.close()
+                    threading.Thread(target=_notify_itsm_bg, args=(r.id,), daemon=True).start()
             except Exception as exc:
                 logger.debug("Error disparando webhook: %s", exc)
 
@@ -269,14 +281,13 @@ def auto_generate_risk_from_cve(
         logger.warning("Asset %s sin org_id, CVE auto-gen aborted", asset.code)
         return None
 
-    # Buscar o crear threat "CVE-XXXX"
+    # C3: Threat es catalogo global — sin organization_id, likelihood ni consequence.
     cve_threat_code = f"CVE-{cve_id}"
     threat = db.query(Threat).filter(
         Threat.code == cve_threat_code,
-        Threat.organization_id == org_id,
     ).first()
 
-    # Comprobar duplicado usando threat_id real (evita subquery incorrecta)
+    # Comprobar duplicado usando threat_id real
     if threat:
         existing = db.query(Risk).filter(
             Risk.asset_id == asset_id,
@@ -288,15 +299,14 @@ def auto_generate_risk_from_cve(
             return None
 
     if not threat:
-        # Crear threat temporal para CVE
+        # Crear threat en catalogo global (compartido entre orgs)
+        from app.models import ThreatOrigin
         threat = Threat(
             code=cve_threat_code,
-            organization_id=org_id,
             name=f"CVE {cve_id}",
             description=f"Vulnerabilidad critica {cve_id} en {affected_software}",
-            origin="D",  # Deliberate/software vulnerability
-            likelihood=inherent_likelihood,
-            consequence=inherent_consequence,
+            origin=ThreatOrigin.DELIBERATE,
+            is_custom=False,
         )
         db.add(threat)
         db.flush()
@@ -344,8 +354,9 @@ def auto_generate_risk_from_cve(
         rlev = rlev2  # nivel post-controles para todas las decisiones
 
     # Auto-tratamiento basado en nivel residual final
+    # C2: TreatmentOption.ACCEPTANCE no existe; RETENTION = aceptar conscientemente
     if rlev <= appetite:
-        risk.treatment_option = TreatmentOption.ACCEPTANCE
+        risk.treatment_option = TreatmentOption.RETENTION
         risk.status = RiskStatus.ACCEPTED
     else:
         risk.treatment_option = TreatmentOption.MODIFICATION
@@ -410,13 +421,12 @@ def auto_generate_risk_from_osint(
         logger.warning("Asset %s sin org_id, OSINT auto-gen aborted", asset.code)
         return None
 
-    # Threat code para OSINT
+    # C3: Threat es catalogo global — sin organization_id, likelihood ni consequence.
     osint_threat_code = f"OSINT-{osint_finding_type.upper()}"
 
-    # Buscar o crear threat primero (para poder deduplicar correctamente)
+    # Buscar o crear threat en catalogo global
     threat = db.query(Threat).filter(
         Threat.code == osint_threat_code,
-        Threat.organization_id == org_id,
     ).first()
 
     # Comprobar duplicado usando threat_id real
@@ -434,14 +444,13 @@ def auto_generate_risk_from_osint(
             return None
 
     if not threat:
+        from app.models import ThreatOrigin
         threat = Threat(
             code=osint_threat_code,
-            organization_id=org_id,
             name=f"OSINT: {osint_finding_title}",
             description=f"Hallazgo de seguridad externo: {osint_finding_type}",
-            origin="D",
-            likelihood=inherent_likelihood,
-            consequence=inherent_consequence,
+            origin=ThreatOrigin.DELIBERATE,
+            is_custom=False,
         )
         db.add(threat)
         db.flush()
@@ -489,8 +498,9 @@ def auto_generate_risk_from_osint(
         rlev = rlev2
 
     # Auto-tratamiento basado en nivel residual final
+    # C2: TreatmentOption.ACCEPTANCE no existe; RETENTION = aceptar conscientemente
     if rlev <= appetite:
-        risk.treatment_option = TreatmentOption.ACCEPTANCE
+        risk.treatment_option = TreatmentOption.RETENTION
         risk.status = RiskStatus.ACCEPTED
     else:
         risk.treatment_option = TreatmentOption.MODIFICATION

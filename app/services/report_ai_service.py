@@ -20,10 +20,16 @@ REPORT_TYPES = {
 }
 
 
-def _collect(db: Session) -> dict:
-    ctx = db.query(RiskContext).first()
-    risks = db.query(Risk).order_by(Risk.residual_level.desc()).all()
-    impls = db.query(ControlImplementation).all()
+def _collect(db: Session, org_id: int | None = None) -> dict:
+    # C1: filtrar siempre por org — nunca mezclar datos entre tenants
+    if org_id is not None:
+        ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+        risks = db.query(Risk).filter(Risk.organization_id == org_id).order_by(Risk.residual_level.desc()).all()
+        impls = db.query(ControlImplementation).filter(ControlImplementation.organization_id == org_id).all()
+    else:
+        ctx = db.query(RiskContext).first()
+        risks = db.query(Risk).order_by(Risk.residual_level.desc()).all()
+        impls = db.query(ControlImplementation).all()
 
     risk_rows = []
     for r in risks:
@@ -287,12 +293,13 @@ def _call_claude(prompt: str, api_key: str | None = None) -> dict:
     return json.loads(text)
 
 
-def generate(report_type: str, db: Session, api_key: str | None = None) -> dict:
+def generate(report_type: str, db: Session, api_key: str | None = None,
+             org_id: int | None = None) -> dict:
     """Genera el contenido del informe llamando a Claude. Retorna dict con secciones."""
     if report_type not in REPORT_TYPES:
         raise ValueError(f"Tipo de informe desconocido: {report_type}")
 
-    data = _collect(db)
+    data = _collect(db, org_id=org_id)
 
     prompts = {
         "treatment_plan": _prompt_treatment_plan,

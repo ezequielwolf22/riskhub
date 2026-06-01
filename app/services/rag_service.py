@@ -1,11 +1,39 @@
 """RAG: busqueda de fragmentos relevantes en FTS5."""
+import logging
 import re
+from typing import Optional
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+logger = logging.getLogger("riskhub.rag")
+
 # Caracteres especiales del motor FTS5 que podrian alterar la sintaxis de busqueda
 _FTS5_SPECIAL = re.compile(r'["\*\^\(\)\{\}\[\]~\-\+:]+')
+
+
+def ask(prompt: str, org_id: Optional[int] = None) -> Optional[str]:
+    """A3: llamada directa a Claude para preguntas simples (sin RAG).
+
+    Utiliza la API key global de configuracion.
+    Retorna la respuesta como string, o None si no hay API key o hay error.
+    """
+    try:
+        from app.config import settings
+        api_key = getattr(settings, "anthropic_api_key", None)
+        if not api_key:
+            return None
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=50,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return msg.content[0].text.strip()
+    except Exception as e:
+        logger.debug("rag_service.ask fallo: %s", e)
+        return None
 
 
 def _sanitize_fts5(query: str) -> str:

@@ -56,10 +56,9 @@ class CCMResult:
 def test_all_assets_have_owner(db: Session, org_id: int) -> CCMResult:
     """8.1 — Todos los activos tienen propietario asignado."""
     total = db.query(Asset).filter(Asset.organization_id == org_id).count()
-    without_owner = db.query(Asset).filter(
-        Asset.organization_id == org_id,
-        Asset.owner_id.is_(None),
-    ).count()
+    # A1: Asset no tiene owner_id; usa la relacion M2M 'owners'
+    all_assets = db.query(Asset).filter(Asset.organization_id == org_id).all()
+    without_owner = sum(1 for a in all_assets if not (getattr(a, "owners", None)))
     if total == 0:
         return CCMResult("assets_owner", "8.1", "Activos con propietario",
                          "SKIP", "No hay activos registrados")
@@ -97,7 +96,7 @@ def test_high_risks_have_treatment(db: Session, org_id: int) -> CCMResult:
     high_risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.residual_level >= 5,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).all()
     if not high_risks:
         return CCMResult("risks_treatment", "5.8", "Tratamiento de riesgos altos",
@@ -400,7 +399,7 @@ def test_open_risks_reviewed_recently(db: Session, org_id: int) -> CCMResult:
     high = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.residual_level >= 5,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.ARCHIVED]),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).all()
     if not high:
         return CCMResult("risks_reviewed", "5.36", "Revisión de riesgos altos",

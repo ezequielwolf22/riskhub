@@ -1,6 +1,9 @@
 """Carga inicial de datos: admin, catalogos ISO 27005/27002, contexto, organizacion."""
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger("riskhub.seed")
 
 from sqlalchemy.orm import Session
 
@@ -278,8 +281,11 @@ def _migrate_columns() -> None:
                 if col not in existing_cols:
                     conn.execute(__import__("sqlalchemy").text(sql))
                     conn.commit()
-            except Exception:
-                pass  # columna ya existe o tabla no existe aun
+            except Exception as e:
+                # A6: registrar errores reales; silenciar solo "tabla no existe aun"
+                err_lower = str(e).lower()
+                if "no such table" not in err_lower and "already exists" not in err_lower:
+                    logger.error("Migration failed: %s | SQL: %s", e, sql)
 
         # Migrar indice unico de feature_flags: nombre global -> compuesto (name, org_id)
         try:

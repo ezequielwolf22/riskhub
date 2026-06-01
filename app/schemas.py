@@ -1,6 +1,6 @@
 """Esquemas Pydantic para validacion de entrada/salida de la API."""
 from datetime import datetime
-from typing import Optional, Any
+from typing import Literal, Optional, Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models import (
@@ -40,7 +40,7 @@ class OrganizationIn(BaseModel):
     domain: Optional[str] = None
     plan: str = "starter"
     is_active: bool = True
-    max_users: int = 10
+    max_users: int = Field(default=10, ge=1)  # M1: ge=1 evita max_users=-1
 
 
 class OrganizationUpdate(BaseModel):
@@ -48,7 +48,7 @@ class OrganizationUpdate(BaseModel):
     domain: Optional[str] = None
     plan: Optional[str] = None
     is_active: Optional[bool] = None
-    max_users: Optional[int] = None
+    max_users: Optional[int] = Field(default=None, ge=1)
 
 
 class OrganizationOut(ORMBase):
@@ -110,8 +110,8 @@ class ContextIn(BaseModel):
     risk_matrix: Optional[list[list[int]]] = None
     risk_appetite: Optional[int] = None
     active_frameworks: Optional[list[str]] = None
-    ens_level: Optional[str] = None
-    methodology: Optional[str] = None   # "iso27005"|"magerit"|"combined"
+    ens_level: Optional[Literal["basico", "medio", "alto"]] = None  # M1: solo valores validos ENS
+    methodology: Optional[Literal["iso27005", "magerit", "combined"]] = None  # M1: valores controlados
 
 
 class ContextOut(ORMBase):
@@ -365,8 +365,8 @@ class RiskIn(BaseModel):
     threat_id: int
     description: Optional[str] = None
     consequence_description: Optional[str] = None
-    inherent_likelihood: int = 0
-    inherent_consequence: int = 0
+    inherent_likelihood: int = Field(default=0, ge=0, le=4)  # M1: matriz 5x5 ISO 27005
+    inherent_consequence: int = Field(default=0, ge=0, le=4)
     vulnerability_ids: list[int] = []
     control_implementation_ids: list[int] = []
     owner_id: Optional[int] = None
@@ -381,8 +381,8 @@ class RiskIn(BaseModel):
 class RiskUpdate(BaseModel):
     description: Optional[str] = None
     consequence_description: Optional[str] = None
-    inherent_likelihood: Optional[int] = None
-    inherent_consequence: Optional[int] = None
+    inherent_likelihood: Optional[int] = Field(default=None, ge=0, le=4)
+    inherent_consequence: Optional[int] = Field(default=None, ge=0, le=4)
     vulnerability_ids: Optional[list[int]] = None
     control_implementation_ids: Optional[list[int]] = None
     owner_id: Optional[int] = None
@@ -566,7 +566,7 @@ class SupplierIn(BaseModel):
     contract_expiry: Optional[datetime] = None
     last_assessment_at: Optional[datetime] = None
     next_assessment_at: Optional[datetime] = None
-    score: int = 50
+    score: int = Field(default=50, ge=0, le=100)  # M1: 0-100
     notes: Optional[str] = None
     owner_id: Optional[int] = None
 
@@ -585,7 +585,7 @@ class SupplierUpdate(BaseModel):
     contract_expiry: Optional[datetime] = None
     last_assessment_at: Optional[datetime] = None
     next_assessment_at: Optional[datetime] = None
-    score: Optional[int] = None
+    score: Optional[int] = Field(default=None, ge=0, le=100)
     notes: Optional[str] = None
     owner_id: Optional[int] = None
 

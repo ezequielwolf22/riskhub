@@ -17,6 +17,9 @@ logger = logging.getLogger("riskhub.external_findings")
 
 # ─────────────────────────────── PARSERS ───────────────────────────────────────
 
+_MAX_XML_BYTES = 50 * 1024 * 1024  # M5: limite 50 MB para evitar DoS por expansion de entidades
+
+
 def parse_nessus_xml(xml_content: bytes) -> list[dict]:
     """Parsea archivo .nessus (XML) de Tenable Nessus.
 
@@ -26,6 +29,9 @@ def parse_nessus_xml(xml_content: bytes) -> list[dict]:
 
     findings = []
     try:
+        if len(xml_content) > _MAX_XML_BYTES:
+            logger.warning("parse_nessus_xml: archivo demasiado grande (%d bytes), ignorado", len(xml_content))
+            return findings
         root = ET.fromstring(xml_content)
         for report_host in root.iter("ReportHost"):
             hostname = report_host.get("name", "")
@@ -78,6 +84,9 @@ def parse_qualys_xml(xml_content: bytes) -> list[dict]:
 
     findings = []
     try:
+        if len(xml_content) > _MAX_XML_BYTES:
+            logger.warning("parse_qualys_xml: archivo demasiado grande, ignorado")
+            return findings
         root = ET.fromstring(xml_content)
 
         for vuln in root.iter("VULN"):
@@ -134,6 +143,9 @@ def parse_burp_xml(xml_content: bytes) -> list[dict]:
 
     findings = []
     try:
+        if len(xml_content) > _MAX_XML_BYTES:
+            logger.warning("parse_burp_xml: archivo demasiado grande, ignorado")
+            return findings
         root = ET.fromstring(xml_content)
 
         for issue in root.iter("issue"):
@@ -183,6 +195,9 @@ def parse_openvas_xml(xml_content: bytes) -> list[dict]:
 
     findings = []
     try:
+        if len(xml_content) > _MAX_XML_BYTES:
+            logger.warning("parse_openvas_xml: archivo demasiado grande, ignorado")
+            return findings
         root = ET.fromstring(xml_content)
 
         for result in root.iter("result"):

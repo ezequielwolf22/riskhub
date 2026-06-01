@@ -1247,7 +1247,11 @@ def ai_generate(body: AiReportIn, db: Session = Depends(get_db),
     api_key = resolve_api_key(ai_cfg)
 
     try:
-        content = report_ai_service.generate(body.report_type, db, api_key=api_key)
+        # M6/C1: propagar org_id para que _collect() filtre por tenant
+        content = report_ai_service.generate(
+            body.report_type, db, api_key=api_key,
+            org_id=current_user.organization_id,
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:

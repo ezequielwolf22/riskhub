@@ -54,13 +54,18 @@ def _find_analyst(db: Session, org_id: int) -> Optional[User]:
 
 
 def _find_owner(db: Session, risk: Risk) -> Optional[User]:
-    """Busca el owner del activo como owner del riesgo."""
+    """Busca el owner del activo como owner del riesgo.
+
+    Asset.owners es una relacion M2M; no existe Asset.owner_id.
+    """
     if risk.owner_id:
         return db.get(User, risk.owner_id)
     if risk.asset_id:
         asset = db.get(Asset, risk.asset_id)
-        if asset and asset.owner_id:
-            return db.get(User, asset.owner_id)
+        if asset:
+            owners = getattr(asset, "owners", []) or []
+            if owners:
+                return owners[0]
     return None
 
 
@@ -253,7 +258,7 @@ def check_and_auto_close_risk(db: Session, risk_id: int) -> bool:
 
     from app.models import TreatmentOption
     if rlev <= appetite:
-        risk.treatment_option = TreatmentOption.ACCEPTANCE
+        risk.treatment_option = TreatmentOption.RETENTION  # C2: ACCEPTANCE no existe en el enum
         risk.status = RiskStatus.ACCEPTED
         workflow.step_closure = WorkflowStepStatus.DONE
         workflow.completed_at = datetime.now(timezone.utc)
