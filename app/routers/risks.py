@@ -313,11 +313,12 @@ def get_methodology(
     from app.services.risk_engine import MAGERIT_DIMENSIONS, MAGERIT_FREQ_LABELS
     ctx = _get_context(db, current_user.organization_id)
     methodology = ctx.methodology if ctx and ctx.methodology else "iso27005"
+    risk_appetite = (ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3)
     return {
         "methodology": methodology,
         "magerit_dimensions": MAGERIT_DIMENSIONS,
         "magerit_freq_labels": MAGERIT_FREQ_LABELS,
-        "risk_appetite": ctx.risk_appetite if ctx else 3,
+        "risk_appetite": risk_appetite,
     }
 
 
