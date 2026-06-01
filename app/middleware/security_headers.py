@@ -40,14 +40,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "interest-cohort=()"
         )
 
-        # CSP restrictivo: todo desde 'self', sin CDNs
+        # CSP restrictivo: todo desde 'self', sin CDNs externos (excepto Google Fonts)
         # 'unsafe-inline' necesario para la SPA Vanilla JS/CSS
+        # font-src: permite fuentes locales + data URLs + Google Fonts (fallback seguro)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
-            "font-src 'self'; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
             "connect-src 'self'; "
             "worker-src 'none'; "
             "object-src 'none'; "
