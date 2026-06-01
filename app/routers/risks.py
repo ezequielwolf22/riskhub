@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -646,3 +647,146 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
             for r in sorted(risks, key=lambda x: -x.residual_level)[:10]
         ],
     }
+
+
+# ── Risk Acceptance Formal Workflow (ISO 27001 cl. 6.1.2e) ───────────────────
+
+class AcceptanceRequestBody(BaseModel):
+    justification: str
+    review_date: Optional[str] = None   # fecha de re-evaluacion ISO 8601
+
+
+class AcceptanceRejectBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.put("/{risk_id}/request-acceptance")
+def request_acceptance(
+    risk_id: int,
+    body: AcceptanceRequestBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Analyst propone aceptacion formal del riesgo (PENDING_ACCEPTANCE)."""
+    risk = db.get(Risk, risk_id)
+    if not risk:
+        raise HTTPException(404, "Riesgo no encontrado")
+    check_org_access(risk.organization_id, current_user)
+
+    if risk.status not in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED, RiskStatus.TREATED):
+        raise HTTPException(400, f"El riesgo en estado '{risk.status.value}' no puede solicitar aceptacion")
+
+    risk.status = RiskStatus.PENDING_ACCEPTANCE
+    risk.acceptance_justification = body.justification
+    risk.acceptance_requested_by_id = current_user.id
+    risk.acceptance_requested_at = datetime.now(timezone.utc)
+
+    if body.review_date:
+        try:
+            risk.acceptance_review_date = datetime.fromisoformat(body.review_date)
+        except ValueError:
+            pass
+
+    db.commit()
+    log_action(db, current_user.id, "request_acceptance", "risk", str(risk_id),
+               {"code": risk.code, "residual_level": risk.residual_level})
+
+    # Notificar al admin por email
+    try:
+        from app.services.email_service import get_settings, send_email
+        from app.models import UserRole
+        cfg = get_settings(db, risk.organization_id)
+        if cfg and cfg.smtp_host:
+            admin = db.query(User).filter_by(
+                organization_id=risk.organization_id,
+                role=UserRole.ADMIN,
+                is_active=True,
+            ).first()
+            if admin and admin.email:
+                subject = f"[RiskHub] Solicitud de aceptacion de riesgo: {risk.code}"
+                body_html = (
+                    f"<p>El analista <strong>{current_user.full_name}</strong> ha solicitado "
+                    f"la aceptacion formal del riesgo <strong>{risk.code}</strong>.</p>"
+                    f"<p><strong>Nivel residual:</strong> {risk.residual_level}/8</p>"
+                    f"<p><strong>Justificacion:</strong> {body.justification}</p>"
+                    f"<p>Accede a RiskHub para aprobar o rechazar.</p>"
+                )
+                send_email(cfg, admin.email, subject, body_html)
+    except Exception:
+        pass
+
+    return {"status": "pending_acceptance", "risk_code": risk.code}
+
+
+@router.put("/{risk_id}/accept")
+def accept_risk(
+    risk_id: int,
+    body: AcceptanceRequestBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Admin / risk owner aprueba la aceptacion formal del riesgo."""
+    from app.security import require_admin
+    from app.models import UserRole
+    risk = db.get(Risk, risk_id)
+    if not risk:
+        raise HTTPException(404, "Riesgo no encontrado")
+    check_org_access(risk.organization_id, current_user)
+
+    # Solo admin o el owner del riesgo pueden aceptar
+    is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERADMIN)
+    is_owner = risk.owner_id == current_user.id
+    if not (is_admin or is_owner):
+        raise HTTPException(403, "Solo admin o el risk owner pueden aprobar la aceptacion")
+
+    if risk.status != RiskStatus.PENDING_ACCEPTANCE:
+        raise HTTPException(400, "El riesgo no esta en estado PENDING_ACCEPTANCE")
+
+    risk.status = RiskStatus.ACCEPTED
+    risk.accepted_by_id = current_user.id
+    risk.accepted_at = datetime.now(timezone.utc)
+    risk.acceptance_approved_by_id = current_user.id
+    risk.treatment_option = TreatmentOption.RETENTION
+
+    if body.review_date:
+        try:
+            risk.acceptance_review_date = datetime.fromisoformat(body.review_date)
+        except ValueError:
+            pass
+
+    db.commit()
+    log_action(db, current_user.id, "accept", "risk", str(risk_id),
+               {"code": risk.code, "residual_level": risk.residual_level})
+    return {"status": "accepted", "risk_code": risk.code}
+
+
+@router.put("/{risk_id}/reject-acceptance")
+def reject_acceptance(
+    risk_id: int,
+    body: AcceptanceRejectBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Admin / risk owner rechaza la solicitud de aceptacion → vuelve a ASSESSED."""
+    from app.models import UserRole
+    risk = db.get(Risk, risk_id)
+    if not risk:
+        raise HTTPException(404, "Riesgo no encontrado")
+    check_org_access(risk.organization_id, current_user)
+
+    is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERADMIN)
+    is_owner = risk.owner_id == current_user.id
+    if not (is_admin or is_owner):
+        raise HTTPException(403, "Solo admin o el risk owner pueden rechazar la aceptacion")
+
+    if risk.status != RiskStatus.PENDING_ACCEPTANCE:
+        raise HTTPException(400, "El riesgo no esta en estado PENDING_ACCEPTANCE")
+
+    risk.status = RiskStatus.ASSESSED
+    if body.reason:
+        risk.acceptance_justification = (risk.acceptance_justification or "") + f"\nRechazado: {body.reason}"
+
+    db.commit()
+    log_action(db, current_user.id, "reject_acceptance", "risk", str(risk_id),
+               {"code": risk.code, "reason": body.reason})
+    return {"status": "assessed", "risk_code": risk.code}

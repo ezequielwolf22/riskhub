@@ -12,11 +12,11 @@ from app.config import settings
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
-    auth, awareness, catalogues, ccm, compliance, context, controls, cve, documents,
-    evidence, executive, external_findings, feature_flags, gdpr, incidents, integrations_erp,
-    itsm, magerit, nonconformities, organizations, osint, policies, portal, predictive,
-    reports, risks, search, sharepoint, sso, supplier_questionnaires, suppliers,
-    tasks, users, webhooks,
+    auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
+    cve, documents, evidence, executive, external_findings, feature_flags, gdpr, incidents,
+    integrations_erp, itsm, management_review, magerit, nis2, nonconformities, organizations,
+    osint, policies, portal, predictive, report_schedules, reports, risks, search, sharepoint,
+    soa_versions, sso, supplier_questionnaires, suppliers, tasks, users, webhooks,
 )
 from app.seed import init_db
 from app.services import scheduler as sched
@@ -138,6 +138,12 @@ app.include_router(ccm.router)
 app.include_router(portal.router)
 app.include_router(magerit.router)
 app.include_router(integrations_erp.router)
+app.include_router(management_review.router)
+app.include_router(soa_versions.router)
+app.include_router(nis2.router)
+app.include_router(change_requests.router)
+app.include_router(report_schedules.router)
+app.include_router(bcp.router)
 
 
 # Frontend estatico

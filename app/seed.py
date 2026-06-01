@@ -269,6 +269,23 @@ def _migrate_columns() -> None:
         ("ALTER TABLE risks ADD COLUMN magerit_impact REAL", "risks", "magerit_impact"),
         # v2.2.5 — etiquetas de software para correlacion CPE/CVE
         ("ALTER TABLE assets ADD COLUMN software_tags JSON", "assets", "software_tags"),
+        # v2.3.0 — Risk Acceptance formal workflow
+        ("ALTER TABLE risks ADD COLUMN acceptance_requested_by_id INTEGER REFERENCES users(id)",
+         "risks", "acceptance_requested_by_id"),
+        ("ALTER TABLE risks ADD COLUMN acceptance_requested_at DATETIME",
+         "risks", "acceptance_requested_at"),
+        ("ALTER TABLE risks ADD COLUMN acceptance_approved_by_id INTEGER REFERENCES users(id)",
+         "risks", "acceptance_approved_by_id"),
+        ("ALTER TABLE risks ADD COLUMN acceptance_review_date DATETIME",
+         "risks", "acceptance_review_date"),
+        # v2.3.0 — Compliance evidence link
+        ("ALTER TABLE compliance_framework_status ADD COLUMN evidence_document_id INTEGER REFERENCES ai_documents(id)",
+         "compliance_framework_status", "evidence_document_id"),
+        # v2.3.0 — Audit checklist generated timestamp
+        ("ALTER TABLE audit_programs ADD COLUMN checklist_generated_at DATETIME",
+         "audit_programs", "checklist_generated_at"),
+        # v2.3.0 — MFA backup codes
+        ("ALTER TABLE users ADD COLUMN mfa_backup_codes JSON", "users", "mfa_backup_codes"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

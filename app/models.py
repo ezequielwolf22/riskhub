@@ -60,6 +60,7 @@ class RiskStatus(str, PyEnum):
     IDENTIFIED = "identified"
     ASSESSED = "assessed"
     TREATED = "treated"
+    PENDING_ACCEPTANCE = "pending_acceptance"   # esperando aprobacion formal del risk owner
     ACCEPTED = "accepted"
     CLOSED = "closed"
 
@@ -434,6 +435,12 @@ class Risk(Base):
     # IA generado (v1.7.5)
     ai_generated = Column(Boolean, default=False)
     ai_rationale = Column(Text, nullable=True)   # justificacion del agente
+
+    # Risk Acceptance formal workflow (ISO 27001 cl. 6.1.2e)
+    acceptance_requested_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    acceptance_requested_at = Column(DateTime, nullable=True)
+    acceptance_approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    acceptance_review_date = Column(DateTime, nullable=True)   # cuando re-evaluar la aceptacion
 
     asset = relationship("Asset", back_populates="risks")
     threat = relationship("Threat")
@@ -1368,3 +1375,227 @@ class ExternalFinding(Base):
 
     asset = relationship("Asset")
     risk = relationship("Risk")
+
+
+# ---------- MANAGEMENT REVIEW (ISO 27001 cl. 9.3) ----------
+
+class ManagementReview(Base):
+    """Revision por la Direccion — ISO 27001 cl. 9.3. Auto-poblada desde BD."""
+    __tablename__ = "management_reviews"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    code = Column(String(16))                        # MR-2025-01
+    review_date = Column(DateTime, nullable=True)
+    attendees = Column(JSON, nullable=True)           # [{name, role, signature_ref}]
+    status = Column(String(20), default="draft")      # draft|conducted|approved
+    # Entradas ISO 9.3.2 — auto-pobladas por prepare_monthly_review()
+    input_previous_actions = Column(JSON, nullable=True)
+    input_changes_context = Column(Text, nullable=True)
+    input_performance_data = Column(JSON, nullable=True)   # snapshot KPIs
+    input_nc_corrections = Column(JSON, nullable=True)
+    input_risk_register = Column(JSON, nullable=True)      # top risks snapshot
+    input_audit_results = Column(JSON, nullable=True)
+    # Salidas ISO 9.3.3 — rellenadas por el usuario
+    output_decisions = Column(JSON, nullable=True)
+    output_resources = Column(Text, nullable=True)
+    output_objectives = Column(JSON, nullable=True)
+    minutes_pdf_path = Column(String, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+
+# ---------- SOA VERSION (ISO 27001 cl. 6.1.3) ----------
+
+class SoAVersion(Base):
+    """Version aprobada de la Declaracion de Aplicabilidad — snapshot inmutable."""
+    __tablename__ = "soa_versions"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    version = Column(String(16))                      # 2024-v1
+    status = Column(String(20), default="draft")      # draft|under_review|approved|superseded
+    submitted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    submitted_at = Column(DateTime, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approval_notes = Column(Text, nullable=True)
+    snapshot_json = Column(JSON, nullable=True)   # snapshot completo del SoA (inmutable)
+    pdf_path = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    submitted_by = relationship("User", foreign_keys=[submitted_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+
+# ---------- NIS2 NOTIFICATION (NIS2 Art. 23) ----------
+
+class NIS2Notification(Base):
+    """Notificacion NIS2 a la autoridad competente (3 fases: early/initial/final)."""
+    __tablename__ = "nis2_notifications"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    incident_id = Column(Integer, ForeignKey("incidents.id"))
+    stage = Column(String(20))            # early_warning|initial_report|final_report
+    deadline_at = Column(DateTime)
+    submitted_at = Column(DateTime, nullable=True)
+    submitted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    recipient_authority = Column(String, default="INCIBE-CERT")
+    notification_ref = Column(String, nullable=True)
+    content_json = Column(JSON, nullable=True)   # campos del formulario
+    pdf_path = Column(String, nullable=True)
+    status = Column(String(20), default="pending")   # pending|submitted|acknowledged|overdue
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    incident = relationship("Incident")
+    submitted_by = relationship("User", foreign_keys=[submitted_by_id])
+
+
+# ---------- AUDIT CHECKLIST (ISO 27001 cl. 9.2) ----------
+
+class AuditChecklist(Base):
+    """Item de checklist de auditoria — generado automaticamente desde SoA."""
+    __tablename__ = "audit_checklists"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    audit_id = Column(Integer, ForeignKey("audit_programs.id"))
+    control_id = Column(Integer, ForeignKey("controls.id"), nullable=True)
+    iso_clause = Column(String(32), nullable=True)
+    question = Column(Text)
+    expected_evidence = Column(Text, nullable=True)
+    response = Column(String(20), default="pending")  # pending|conformant|minor_nc|major_nc|na
+    evidence_ref = Column(String, nullable=True)
+    auditor_notes = Column(Text, nullable=True)
+    nc_created_id = Column(Integer, ForeignKey("nonconformities.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    audit = relationship("AuditProgram")
+    control = relationship("Control")
+    nc_created = relationship("NonConformity", foreign_keys=[nc_created_id])
+
+
+# ---------- CHANGE MANAGEMENT (ISO 27001 cl. 6.3) ----------
+
+class ChangeRequest(Base):
+    """Solicitud de cambio controlado en el SGSI — ISO 27001 cl. 6.3."""
+    __tablename__ = "change_requests"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    code = Column(String(16))              # CHG-0001
+    title = Column(String(255))
+    change_type = Column(String(32))       # policy|control|asset|process|infrastructure|other
+    description = Column(Text)
+    business_reason = Column(Text)
+    affected_asset_ids = Column(JSON)
+    affected_control_ids = Column(JSON)
+    affected_policy_ids = Column(JSON)
+    risk_impact = Column(String(16))       # none|low|medium|high
+    risk_assessment = Column(Text)
+    status = Column(String(20), default="draft")  # draft|under_review|approved|rejected|implemented|verified
+    requested_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    planned_date = Column(DateTime, nullable=True)
+    implemented_at = Column(DateTime, nullable=True)
+    verification_notes = Column(Text, nullable=True)
+    verified_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+    verified_by = relationship("User", foreign_keys=[verified_by_id])
+
+
+# ---------- SCHEDULED REPORTS ----------
+
+class ReportSchedule(Base):
+    """Programacion automatica de envio de informes PDF/Excel."""
+    __tablename__ = "report_schedules"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    report_type = Column(String(64))       # risk_register|soa|executive_dashboard|committee_minutes
+    frequency = Column(String(16))         # weekly|monthly|quarterly
+    day_of_month = Column(Integer, nullable=True)
+    recipients = Column(JSON)              # [email, ...]
+    include_ai_analysis = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    last_sent_at = Column(DateTime, nullable=True)
+    next_scheduled_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- BCP/BIA (NIS2 Art. 21.2(b) + ISO 27001 A.5.29) ----------
+
+class BusinessProcess(Base):
+    """Proceso de negocio con RTO/RPO para BIA."""
+    __tablename__ = "business_processes"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    criticality = Column(String(16), default="medium")   # critical|high|medium|low
+    rto_hours = Column(Integer, nullable=True)     # Recovery Time Objective
+    rpo_hours = Column(Integer, nullable=True)     # Recovery Point Objective
+    mtpd_hours = Column(Integer, nullable=True)    # Maximum Tolerable Period of Disruption
+    asset_ids = Column(JSON, nullable=True)
+    supplier_ids = Column(JSON, nullable=True)
+    last_tested_at = Column(DateTime, nullable=True)
+    test_result = Column(String(16), nullable=True)   # passed|partial|failed
+    bcp_document_path = Column(String, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    owner = relationship("User", foreign_keys=[owner_id])
+
+
+class BCPTest(Base):
+    """Test de continuidad de negocio programado/realizado."""
+    __tablename__ = "bcp_tests"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    code = Column(String(16))              # BCT-0001
+    test_type = Column(String(16))         # tabletop|simulation|full_test
+    process_ids = Column(JSON)
+    scheduled_at = Column(DateTime)
+    conducted_at = Column(DateTime, nullable=True)
+    result = Column(String(16), nullable=True)   # passed|partial|failed
+    findings = Column(Text, nullable=True)
+    nc_ids = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- GDPR BREACH NOTIFICATION (GDPR Art. 33-34) ----------
+
+class DataBreachNotification(Base):
+    """Notificacion de brecha de datos — GDPR Art. 33 (AEPD) y Art. 34 (interesados)."""
+    __tablename__ = "data_breach_notifications"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    incident_id = Column(Integer, ForeignKey("incidents.id"), nullable=True)
+    # Art. 33 — Notificacion a AEPD (72h)
+    authority_notified_at = Column(DateTime, nullable=True)
+    authority_ref = Column(String, nullable=True)
+    art33_justification = Column(Text, nullable=True)   # si no se notifica (excepcion)
+    # Art. 34 — Notificacion a interesados
+    requires_data_subject_notification = Column(Boolean, default=False)
+    data_subjects_notified_at = Column(DateTime, nullable=True)
+    notification_channels = Column(JSON, nullable=True)    # [email, carta, web]
+    # Formulario AEPD
+    breach_type = Column(JSON, nullable=True)              # confidentiality|integrity|availability
+    data_categories = Column(JSON, nullable=True)
+    estimated_records_affected = Column(Integer, nullable=True)
+    likely_consequences = Column(Text, nullable=True)
+    measures_taken = Column(Text, nullable=True)
+    dpo_consulted_at = Column(DateTime, nullable=True)
+    pdf_path = Column(String, nullable=True)
+    status = Column(String(32), default="draft")
+    # draft|submitted_authority|completed|no_notification_required
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    incident = relationship("Incident")

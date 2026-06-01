@@ -105,29 +105,35 @@ def _run_alert_rules() -> None:
 
     db = SessionLocal()
     try:
-        cfg = email_service.get_settings(db)
-        if not cfg or not cfg.smtp_host:
-            return  # SMTP no configurado — no hay nada que hacer
-
-        from app.models import RiskContext
-        ctx = db.query(RiskContext).first()
-        org = ctx.organization_name if ctx else "Organizacion"
-
         rules = db.query(AlertRule).filter(AlertRule.is_active.is_(True)).all()
         if not rules:
             return
 
-        # Cargar riesgos con filtro por org (multitenancy)
+        # E1: SMTP por org (nunca global)
         rule_org_ids = list({r.organization_id for r in rules if r.organization_id})
+        cfg_by_org: dict = {}
+        ctx_by_org: dict = {}
         risks_by_org: dict = {}
+        from app.models import RiskContext, EmailSettings
         for org_id in rule_org_ids:
+            cfg_by_org[org_id] = db.query(EmailSettings).filter_by(
+                organization_id=org_id
+            ).first()
+            ctx_obj = db.query(RiskContext).filter_by(organization_id=org_id).first()
+            ctx_by_org[org_id] = ctx_obj.organization_name if ctx_obj else "Organizacion"
             risks_by_org[org_id] = db.query(Risk).filter(
                 Risk.organization_id == org_id
             ).all()
+
         now = datetime.now(timezone.utc)
         sent = 0
 
         for rule in rules:
+            # Seleccionar SMTP y nombre de org correctos para esta regla
+            cfg = cfg_by_org.get(rule.organization_id)
+            org = ctx_by_org.get(rule.organization_id, "Organizacion")
+            if not cfg or not cfg.smtp_host:
+                continue   # org sin SMTP configurado — saltar
             risks = risks_by_org.get(rule.organization_id, [])
             matching = []
             if rule.event_type in ("risk_critical", "risk_high"):
@@ -643,10 +649,6 @@ def _run_risk_reviews() -> None:
 
     db = SessionLocal()
     try:
-        cfg = email_service.get_settings(db)
-        if not cfg or not cfg.smtp_host:
-            return
-
         now = datetime.now(timezone.utc)
         thresholds = [
             (timedelta(days=30), "en 30 dias"),
@@ -661,9 +663,10 @@ def _run_risk_reviews() -> None:
             Risk.organization_id.isnot(None),
         ).all()
 
-        # Cache de nombres de org para evitar queries repetidas
-        from app.models import RiskContext, Organization
+        # Cache de SMTP y nombres de org por org_id (E1: per-org SMTP)
+        from app.models import RiskContext, Organization, EmailSettings
         _org_name_cache: dict[int, str] = {}
+        _cfg_cache: dict[int, object] = {}
 
         def _org_name(oid: int) -> str:
             if oid not in _org_name_cache:
@@ -675,6 +678,13 @@ def _run_risk_reviews() -> None:
                     _org_name_cache[oid] = org2.name if org2 else "Organizacion"
             return _org_name_cache[oid]
 
+        def _get_cfg(oid: int):
+            if oid not in _cfg_cache:
+                _cfg_cache[oid] = db.query(EmailSettings).filter_by(
+                    organization_id=oid
+                ).first()
+            return _cfg_cache[oid]
+
         for risk in active_risks:
             # Dedup: no reenviar si ya se notifico en las ultimas 20 horas
             if risk.last_review_notified_at:
@@ -683,6 +693,10 @@ def _run_risk_reviews() -> None:
                     notified_dt = notified_dt.replace(tzinfo=timezone.utc)
                 if (now - notified_dt).total_seconds() < 72000:  # 20 horas
                     continue
+
+            cfg = _get_cfg(risk.organization_id)
+            if not cfg or not cfg.smtp_host:
+                continue
 
             org = _org_name(risk.organization_id)
             review_dt = risk.next_review.replace(tzinfo=timezone.utc)
@@ -1044,16 +1058,17 @@ def _run_monthly_report() -> None:
         if now.day != 1:
             return
 
-        cfg = email_service.get_settings(db)
-        if not cfg or not cfg.smtp_host:
-            return
-
-        # Obtener todas las orgs con contexto
+        # E2: SMTP por org — no global
+        from app.models import EmailSettings
         contexts = db.query(RiskContext).all()
 
         for ctx in contexts:
             org_id = ctx.organization_id
             org_name = ctx.organization_name or "Organizacion"
+
+            cfg = db.query(EmailSettings).filter_by(organization_id=org_id).first()
+            if not cfg or not cfg.smtp_host:
+                continue
 
             # KPIs
             risks = db.query(Risk).filter(
@@ -1404,6 +1419,231 @@ def _run_supplier_scoring() -> None:
         db.close()
 
 
+def _run_cisa_kev_sync() -> None:
+    """Descarga KEV de CISA y cruza con software_tags de activos para generar riesgos CVE."""
+    import urllib.request
+    import json as _json
+    from app.database import SessionLocal
+    from app.models import Asset, Organization
+    from app.services.risk_auto_generator import auto_generate_risk_from_cve
+
+    db = SessionLocal()
+    try:
+        url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+        with urllib.request.urlopen(url, timeout=30) as r:
+            kev_data = _json.loads(r.read())
+        vulnerabilities = kev_data.get("vulnerabilities", [])
+        if not vulnerabilities:
+            return
+        logger.info("CISA KEV: %d vulnerabilidades descargadas", len(vulnerabilities))
+
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        created_count = 0
+        for org in orgs:
+            assets = db.query(Asset).filter(
+                Asset.organization_id == org.id,
+                Asset.software_tags.isnot(None),
+            ).all()
+            if not assets:
+                continue
+            for asset in assets:
+                tags = [t.lower() for t in (asset.software_tags or [])]
+                if not tags:
+                    continue
+                for vuln in vulnerabilities:
+                    product = vuln.get("product", "").lower()
+                    vendor = vuln.get("vendorProject", "").lower()
+                    if any(tag in product or tag in vendor for tag in tags if len(tag) > 3):
+                        cve_id = vuln.get("cveID", "UNKNOWN")
+                        risk = auto_generate_risk_from_cve(
+                            db, asset.id, cve_id,
+                            affected_software=f"{vuln.get('vendorProject','')} {vuln.get('product','')}".strip(),
+                            inherent_consequence=4,
+                            inherent_likelihood=4,   # KEV = explotado activamente
+                        )
+                        if risk:
+                            created_count += 1
+        if created_count:
+            logger.info("CISA KEV: %d nuevos riesgos generados", created_count)
+    except Exception as exc:
+        logger.exception("Error en CISA KEV sync: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_nis2_deadline_check() -> None:
+    """Detecta notificaciones NIS2 proximas a vencer y marca overdue."""
+    from app.database import SessionLocal
+    from app.services.nis2_service import check_nis2_deadlines
+
+    db = SessionLocal()
+    try:
+        check_nis2_deadlines(db)
+    except Exception as exc:
+        logger.exception("Error en NIS2 deadline check: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_management_review_prepare() -> None:
+    """Dia 25 de cada mes: prepara borrador de Management Review para el mes siguiente."""
+    from app.database import SessionLocal
+    from app.models import Organization
+    from app.services.management_review_service import prepare_monthly_review
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        for org in orgs:
+            try:
+                mr = prepare_monthly_review(db, org.id)
+                logger.info("Management Review preparada: org=%d code=%s", org.id, mr.code)
+            except Exception as exc:
+                logger.exception("Error preparando MR para org %d: %s", org.id, exc)
+    except Exception as exc:
+        logger.exception("Error en management_review_prepare: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_scheduled_reports() -> None:
+    """Envía informes PDF programados a sus destinatarios."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import ReportSchedule
+    from app.services import email_service, report_ai_service
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        due = db.query(ReportSchedule).filter(
+            ReportSchedule.is_active.is_(True),
+            ReportSchedule.next_scheduled_at <= now,
+        ).all()
+
+        for schedule in due:
+            try:
+                from app.models import EmailSettings
+                cfg = db.query(EmailSettings).filter_by(
+                    organization_id=schedule.organization_id
+                ).first()
+                if not cfg or not cfg.smtp_host:
+                    continue
+
+                try:
+                    from app.routers.ai_config import resolve_api_key
+                    api_key = resolve_api_key(db, schedule.organization_id)
+                except Exception:
+                    api_key = None
+
+                data = report_ai_service.generate(
+                    schedule.report_type, db,
+                    org_id=schedule.organization_id,
+                    api_key=api_key,
+                )
+                subject = f"[RiskHub] Informe programado: {schedule.report_type}"
+                body_html = f"<p>Informe automatico <strong>{schedule.report_type}</strong> adjunto.</p>"
+                for email_addr in (schedule.recipients or []):
+                    try:
+                        email_service.send_email(cfg, email_addr, subject, body_html)
+                    except Exception as exc2:
+                        logger.warning("Error enviando informe a %s: %s", email_addr, exc2)
+
+                schedule.last_sent_at = now
+                # Recalcular proxima ejecucion
+                delta_map = {"weekly": timedelta(days=7), "monthly": timedelta(days=30),
+                             "quarterly": timedelta(days=90)}
+                schedule.next_scheduled_at = now + delta_map.get(schedule.frequency, timedelta(days=30))
+                db.commit()
+            except Exception as exc:
+                logger.warning("Error en scheduled report id=%d: %s", schedule.id, exc)
+    except Exception as exc:
+        logger.exception("Error en _run_scheduled_reports: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_acceptance_expiry_check() -> None:
+    """Riesgos ACCEPTED cuya acceptance_review_date ha pasado → vuelven a ASSESSED."""
+    from app.database import SessionLocal
+    from app.models import Risk, RiskStatus
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        expired = db.query(Risk).filter(
+            Risk.status == RiskStatus.ACCEPTED,
+            Risk.acceptance_review_date < now,
+            Risk.acceptance_review_date.isnot(None),
+        ).all()
+        for risk in expired:
+            risk.status = RiskStatus.ASSESSED
+            risk.treatment_option = None   # requiere nueva decision
+            logger.info("Risk %s acceptance expirado → ASSESSED", risk.code)
+        if expired:
+            db.commit()
+            logger.info("Acceptance expiry: %d riesgos devueltos a ASSESSED", len(expired))
+    except Exception as exc:
+        logger.exception("Error en acceptance_expiry_check: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_soa_review_check() -> None:
+    """Alerta si la SoA no ha sido aprobada en 11 meses."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import SoAVersion, Organization, User, UserRole, EmailSettings
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        now = datetime.now(timezone.utc)
+        for org in orgs:
+            latest = (
+                db.query(SoAVersion)
+                .filter_by(organization_id=org.id, status="approved")
+                .order_by(SoAVersion.approved_at.desc())
+                .first()
+            )
+            needs_alert = False
+            msg = ""
+            if not latest:
+                needs_alert = True
+                msg = "No existe ninguna version aprobada de la SoA"
+            elif latest.approved_at:
+                approved_dt = latest.approved_at
+                if not approved_dt.tzinfo:
+                    approved_dt = approved_dt.replace(tzinfo=timezone.utc)
+                if (now - approved_dt).days > 330:
+                    needs_alert = True
+                    msg = f"La ultima version aprobada ({latest.version}) tiene {(now - approved_dt).days} dias"
+
+            if needs_alert:
+                cfg = db.query(EmailSettings).filter_by(organization_id=org.id).first()
+                if cfg and cfg.smtp_host:
+                    admins = db.query(User).filter_by(
+                        organization_id=org.id, role=UserRole.ADMIN, is_active=True
+                    ).all()
+                    for admin in admins:
+                        if admin.email:
+                            subject = f"[RiskHub] SoA pendiente de revision — {org.name}"
+                            body = (
+                                f"<p><strong>ISO 27001 cl. 6.1.3</strong> requiere revisar y aprobar la SoA anualmente.</p>"
+                                f"<p>{msg}.</p>"
+                                f"<p>Accede a RiskHub &rarr; SoA para crear una nueva version.</p>"
+                            )
+                            try:
+                                email_service.send_email(cfg, admin.email, subject, body)
+                            except Exception as exc2:
+                                logger.debug("Error enviando alerta SoA: %s", exc2)
+    except Exception as exc:
+        logger.exception("Error en soa_review_check: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_compliance_auto_sync() -> None:
     """Sincroniza estado de compliance con controles implementados."""
     from app.database import SessionLocal
@@ -1537,7 +1777,56 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         func=_run_supplier_scoring,
         trigger=IntervalTrigger(hours=168),  # semanal
         id="supplier_scoring",
-        name="Actualización automática del score de riesgo de proveedores",
+        name="Actualizacion automatica del score de riesgo de proveedores",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    # v2.3.0 — nuevos jobs
+    _scheduler.add_job(
+        func=_run_cisa_kev_sync,
+        trigger=IntervalTrigger(hours=24),
+        id="cisa_kev_sync",
+        name="Sincronizacion CISA Known Exploited Vulnerabilities",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_nis2_deadline_check,
+        trigger=IntervalTrigger(hours=6),
+        id="nis2_deadline_check",
+        name="Verificacion plazos NIS2 Art. 23",
+        replace_existing=True,
+        misfire_grace_time=1800,
+    )
+    _scheduler.add_job(
+        func=_run_management_review_prepare,
+        trigger=IntervalTrigger(hours=24),   # se autofiltra por day==25
+        id="management_review_prepare",
+        name="Preparacion automatica Management Review mensual",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_scheduled_reports,
+        trigger=IntervalTrigger(hours=24),
+        id="scheduled_reports",
+        name="Envio de informes programados",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_acceptance_expiry_check,
+        trigger=IntervalTrigger(hours=24),
+        id="acceptance_expiry_check",
+        name="Expiracion de aceptaciones de riesgo",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_soa_review_check,
+        trigger=IntervalTrigger(hours=168),   # semanal
+        id="soa_review_check",
+        name="Alerta de SoA sin revision anual",
         replace_existing=True,
         misfire_grace_time=7200,
     )

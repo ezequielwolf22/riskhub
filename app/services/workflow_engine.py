@@ -186,7 +186,8 @@ def _notify_workflow_started(db: Session, risk: Risk, workflow: RiskWorkflow,
                               analyst: Optional[User], owner: Optional[User]) -> None:
     """Envía email de notificación cuando se inicia workflow."""
     try:
-        cfg = email_service.get_settings(db)
+        # B17: usar SMTP por org, nunca global
+        cfg = email_service.get_settings(db, org_id=risk.organization_id)
         if not cfg or not cfg.smtp_host:
             return
         recipients = []
@@ -298,9 +299,9 @@ def run_sla_check(db: Session) -> None:
         wf.escalated = True
         wf.escalated_at = now
 
-        # Notificar a admin
+        # Notificar a admin — B17: SMTP por org
         try:
-            cfg = email_service.get_settings(db)
+            cfg = email_service.get_settings(db, org_id=risk.organization_id)
             if cfg and cfg.smtp_host:
                 admin = db.query(User).filter(
                     User.organization_id == risk.organization_id,

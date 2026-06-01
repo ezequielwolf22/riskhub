@@ -44,6 +44,12 @@ const Routes = {
   'itsm-config': ViewItsmConfig,
   'trust-portal': ViewTrustPortal,
   magerit: ViewMagerit,
+  'management-review': ViewManagementReview,
+  'soa-versions': ViewSoaVersions,
+  'nis2-dashboard': ViewNis2Dashboard,
+  'change-requests': ViewChangeRequests,
+  'report-schedules': ViewReportSchedules,
+  bcp: ViewBcp,
 };
 
 function currentRoute() {
