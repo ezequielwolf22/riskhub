@@ -14,8 +14,8 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(Incident).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(Incident).filter(Incident.organization_id == org_id).count() + 1
     return f"INC-{n:04d}"
 
 
@@ -80,7 +80,7 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
             raise HTTPException(422, f"Riesgo {rid} no pertenece a tu organizacion")
 
     inc = Incident(
-        code=_next_code(db),
+        code=_next_code(db, org_id),
         organization_id=org_id,
         title=body.title,
         description=body.description,
@@ -152,3 +152,28 @@ def delete_incident(incident_id: int, db: Session = Depends(get_db),
     db.delete(inc)
     db.commit()
     return
+
+
+@router.post("/{incident_id}/notify-nis2", response_model=IncidentOut)
+def notify_nis2(incident_id: int, db: Session = Depends(get_db),
+                current_user: User = Depends(require_analyst)):
+    """Marca un incidente como notificado a NIS2 (Art. 23).
+
+    Este es el ÚNICO endpoint autorizado para escribir nis2_notification_sent_at.
+    Usa timestamp del servidor para garantizar integridad del registro de auditoría.
+    """
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if not inc or not check_org_access(inc.organization_id, current_user):
+        raise HTTPException(404, "Incidente no encontrado")
+    if not inc.nis2_notification_required:
+        raise HTTPException(400, "Incidente no requiere notificación NIS2")
+    if inc.nis2_notification_sent_at:
+        raise HTTPException(400, "Incidente ya ha sido notificado a NIS2")
+
+    # Timestamp servidor — no se acepta del cliente
+    inc.nis2_notification_sent_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(inc)
+    log_action(db, current_user.id, "notify_nis2", "incident", str(inc.id),
+               {"code": inc.code, "sent_at": inc.nis2_notification_sent_at.isoformat()})
+    return inc

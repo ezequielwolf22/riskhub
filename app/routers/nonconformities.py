@@ -14,8 +14,8 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/api/nonconformities", tags=["nonconformities"])
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(NonConformity).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(NonConformity).filter(NonConformity.organization_id == org_id).count() + 1
     return f"NC-{n:04d}"
 
 
@@ -64,9 +64,10 @@ def get_nc(nc_id: int, db: Session = Depends(get_db), current_user: User = Depen
 @router.post("/", response_model=NonConformityOut)
 def create_nc(body: NonConformityIn, db: Session = Depends(get_db),
               current_user: User = Depends(require_analyst)):
+    org_id = current_user.organization_id
     nc = NonConformity(
-        code=_next_code(db),
-        organization_id=current_user.organization_id,
+        code=_next_code(db, org_id),
+        organization_id=org_id,
         title=body.title,
         description=body.description,
         source=body.source,

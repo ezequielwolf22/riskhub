@@ -14,8 +14,8 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(TreatmentTask).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(TreatmentTask).filter(TreatmentTask.organization_id == org_id).count() + 1
     return f"TSK-{n:04d}"
 
 
@@ -76,9 +76,10 @@ def get_task(task_id: int, db: Session = Depends(get_db),
 @router.post("/", response_model=TaskOut)
 def create_task(body: TaskIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    org_id = current_user.organization_id
     t = TreatmentTask(
-        code=_next_code(db),
-        organization_id=current_user.organization_id,
+        code=_next_code(db, org_id),
+        organization_id=org_id,
         title=body.title,
         description=body.description,
         risk_id=body.risk_id,

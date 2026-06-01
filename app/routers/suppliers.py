@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(Supplier).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(Supplier).filter(Supplier.organization_id == org_id).count() + 1
     return f"SUP-{n:04d}"
 
 
@@ -66,9 +66,10 @@ def get_supplier(supplier_id: int, db: Session = Depends(get_db),
 @router.post("/", response_model=SupplierOut)
 def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    org_id = current_user.organization_id
     s = Supplier(
-        code=_next_code(db),
-        organization_id=current_user.organization_id,
+        code=_next_code(db, org_id),
+        organization_id=org_id,
         name=body.name,
         category=body.category,
         description=body.description,

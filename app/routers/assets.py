@@ -18,8 +18,8 @@ from app.services.risk_auto_generator import auto_generate_risks_for_asset
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(Asset).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(Asset).filter(Asset.organization_id == org_id).count() + 1
     return f"AST-{n:04d}"
 
 
@@ -74,8 +74,9 @@ def get_asset(asset_id: int, db: Session = Depends(get_db),
 def create_asset(data: AssetIn, background_tasks: BackgroundTasks,
                  db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
-    code = data.code or _next_code(db)
-    if db.query(Asset).filter(Asset.code == code, Asset.organization_id == current_user.organization_id).first():
+    org_id = current_user.organization_id
+    code = data.code or _next_code(db, org_id)
+    if db.query(Asset).filter(Asset.code == code, Asset.organization_id == org_id).first():
         raise HTTPException(400, f"Ya existe activo con codigo {code}")
     payload = data.model_dump(exclude={"owner_ids"})
     payload["code"] = code
@@ -203,8 +204,9 @@ async def import_assets(
             payload["name"] = str(row["name"])
             payload["asset_type"] = atype
 
-            code = str(row["code"]).strip() if "code" in df.columns and pd.notna(row.get("code")) else _next_code(db)
-            existing = db.query(Asset).filter(Asset.code == code, Asset.organization_id == current_user.organization_id).first()
+            org_id = current_user.organization_id
+            code = str(row["code"]).strip() if "code" in df.columns and pd.notna(row.get("code")) else _next_code(db, org_id)
+            existing = db.query(Asset).filter(Asset.code == code, Asset.organization_id == org_id).first()
             if existing:
                 if check_org_access(existing.organization_id, current_user):
                     for k, v in payload.items():
@@ -218,7 +220,7 @@ async def import_assets(
                     result.skipped += 1
                     result.errors.append(f"Fila {idx+2}: activo {code} pertenece a otra organizacion")
             else:
-                a = Asset(code=code, organization_id=current_user.organization_id, **payload)
+                a = Asset(code=code, organization_id=org_id, **payload)
                 db.add(a); db.flush()
                 analyzed_ids.append(a.id)
                 result.created += 1

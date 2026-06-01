@@ -39,8 +39,8 @@ Para iso_clauses, busca referencias explicitas a articulos, clausulas o controle
 """
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(Policy).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(Policy).filter(Policy.organization_id == org_id).count() + 1
     return f"POL-{n:04d}"
 
 
@@ -91,9 +91,10 @@ def get_policy(policy_id: int, db: Session = Depends(get_db),
 @router.post("/", response_model=PolicyOut)
 def create_policy(body: PolicyIn, db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
+    org_id = current_user.organization_id
     p = Policy(
-        code=_next_code(db),
-        organization_id=current_user.organization_id,
+        code=_next_code(db, org_id),
+        organization_id=org_id,
         title=body.title,
         version=body.version,
         category=body.category,

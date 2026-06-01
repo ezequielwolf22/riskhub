@@ -22,8 +22,8 @@ logger = logging.getLogger("riskhub.audits")
 router = APIRouter(prefix="/api/audits", tags=["audits"])
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(AuditProgram).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(AuditProgram).filter(AuditProgram.organization_id == org_id).count() + 1
     return f"AUD-{n:04d}"
 
 
@@ -69,9 +69,10 @@ def get_audit(audit_id: int, db: Session = Depends(get_db),
 @router.post("/", response_model=AuditProgramOut)
 def create_audit(body: AuditProgramIn, db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
+    org_id = current_user.organization_id
     a = AuditProgram(
-        code=_next_code(db),
-        organization_id=current_user.organization_id,
+        code=_next_code(db, org_id),
+        organization_id=org_id,
         title=body.title,
         audit_type=body.audit_type,
         scope=body.scope,

@@ -25,8 +25,8 @@ from app.services.risk_engine import (
 router = APIRouter(prefix="/api/risks", tags=["risks"])
 
 
-def _next_code(db: Session) -> str:
-    n = db.query(Risk).count() + 1
+def _next_code(db: Session, org_id: int) -> str:
+    n = db.query(Risk).filter(Risk.organization_id == org_id).count() + 1
     return f"RSK-{n:04d}"
 
 
@@ -178,9 +178,10 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
                 f"Edita el riesgo existente en lugar de crear uno nuevo."
             )
 
+    org_id = current_user.organization_id
     r = Risk(
-        code=_next_code(db),
-        organization_id=current_user.organization_id,
+        code=_next_code(db, org_id),
+        organization_id=org_id,
         asset_id=data.asset_id, threat_id=data.threat_id,
         description=data.description,
         consequence_description=data.consequence_description,
