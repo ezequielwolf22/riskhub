@@ -258,6 +258,7 @@ def _run_alert_rules() -> None:
                         continue
                 from app.models import Incident, IncidentStatus, IncidentSeverity
                 open_p1p2 = db.query(Incident).filter(
+                    Incident.organization_id == rule.organization_id,
                     Incident.status != IncidentStatus.CLOSED,
                     Incident.severity.in_([IncidentSeverity.P1, IncidentSeverity.P2]),
                 ).all()
@@ -309,6 +310,7 @@ def _run_alert_rules() -> None:
                         continue
                 from app.models import Incident, IncidentStatus
                 nis2_pending_list = db.query(Incident).filter(
+                    Incident.organization_id == rule.organization_id,
                     Incident.status != IncidentStatus.CLOSED,
                     Incident.nis2_notification_required.is_(True),
                     Incident.nis2_notification_sent_at.is_(None),

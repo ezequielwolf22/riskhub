@@ -22,7 +22,8 @@ from app.services.osint_entraid import entraid_service
 
 router = APIRouter(prefix="/api/v1/osint", tags=["osint"])
 
-_ROLES = ['analyst', 'admin', 'superadmin']
+from app.models import UserRole as _UserRole
+_ROLES = (_UserRole.ANALYST, _UserRole.ADMIN, _UserRole.SUPERADMIN)
 
 
 def _create_scan(db, scan_type, target, user_id, organization_id=None):
@@ -53,7 +54,7 @@ async def scan_email(
     background_tasks: BackgroundTasks,
     email: str = Query(..., min_length=5, max_length=255),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     if _check_in_progress(db, current_user.id, email):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
@@ -67,7 +68,7 @@ async def scan_url(
     background_tasks: BackgroundTasks,
     url: str = Query(..., min_length=10, max_length=500),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     scan = _create_scan(db, OSINTScanType.URL, url, current_user.id, current_user.organization_id)
     background_tasks.add_task(osint_engine.run_url_scan, scan.id, url, current_user.id)
@@ -79,7 +80,7 @@ async def scan_username(
     background_tasks: BackgroundTasks,
     username: str = Query(..., min_length=2, max_length=255),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     if _check_in_progress(db, current_user.id, username):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
@@ -93,7 +94,7 @@ async def scan_domain(
     background_tasks: BackgroundTasks,
     domain: str = Query(..., min_length=3, max_length=255),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     if _check_in_progress(db, current_user.id, domain):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
@@ -107,7 +108,7 @@ async def scan_ip(
     background_tasks: BackgroundTasks,
     ip: str = Query(..., min_length=7, max_length=45),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     if _check_in_progress(db, current_user.id, ip):
         raise HTTPException(409, "Ya hay un escaneo en progreso para este objetivo")
@@ -122,7 +123,7 @@ async def bulk_scan(
     scan_type: str = Query(..., description="email|domain|ip|url|username"),
     targets: str = Query(..., description="Targets separados por nueva linea o coma"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Inicia multiples escaneos. Targets separados por nueva linea o coma (max 50)."""
     valid_types = {'email', 'domain', 'ip', 'url', 'username'}
@@ -166,7 +167,7 @@ def list_scans(
     scan_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     q = filter_by_org(db.query(OSINTScan), OSINTScan, current_user)
     if scan_type:
@@ -185,7 +186,7 @@ def list_scans(
 def get_scan(
     scan_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     scan = filter_by_org(
         db.query(OSINTScan).filter(OSINTScan.id == scan_id),
@@ -200,7 +201,7 @@ def get_scan(
 def get_scan_findings(
     scan_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Hallazgos detallados de un escaneo especifico."""
     scan = filter_by_org(
@@ -240,7 +241,7 @@ def list_findings(
     is_remediated: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
@@ -268,7 +269,7 @@ def list_findings(
 @router.get("/findings/export/csv")
 def export_findings_csv(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Exportar todos los hallazgos a CSV."""
     org_scan_ids = [
@@ -302,7 +303,7 @@ def export_findings_csv(
 def get_finding(
     finding_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
@@ -327,7 +328,7 @@ def get_finding(
 def remediate_finding(
     finding_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
@@ -348,7 +349,7 @@ def remediate_finding(
 def unremediate_finding(
     finding_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
@@ -423,7 +424,7 @@ def list_identifiers(
     limit: int = Query(100, ge=1, le=200),
     identifier_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     q = filter_by_org(db.query(OSINTIdentifier), OSINTIdentifier, current_user)
     if identifier_type:
@@ -443,7 +444,7 @@ async def test_entraid_connection(
     tenant_id: str = Query(..., min_length=1),
     client_id: str = Query(..., min_length=1),
     client_secret: str = Query(..., min_length=1),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Prueba la conexion con Microsoft Entra ID y devuelve info del tenant."""
     return await entraid_service.test_connection(tenant_id, client_id, client_secret)
@@ -454,7 +455,7 @@ async def preview_entraid_targets(
     tenant_id: str = Query(..., min_length=1),
     client_id: str = Query(..., min_length=1),
     client_secret: str = Query(..., min_length=1),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Lista usuarios y dominios del tenant sin iniciar escaneos."""
     token = await entraid_service.get_access_token(tenant_id, client_id, client_secret)
@@ -483,7 +484,7 @@ async def import_from_entraid(
     scan_domains: bool = Query(True),
     user_limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Importa targets desde Entra ID e inicia escaneos OSINT en segundo plano."""
     token = await entraid_service.get_access_token(tenant_id, client_id, client_secret)
@@ -529,7 +530,7 @@ async def import_from_entraid(
 def create_incident_from_finding(
     finding_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Genera un incidente de seguridad a partir de un hallazgo OSINT."""
     org_scan_ids = [
@@ -604,7 +605,7 @@ def create_risk_from_osint_finding(
     asset_id: int = Query(..., description="ID del activo afectado"),
     threat_id: int = Query(..., description="ID de la amenaza relacionada"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     """Genera un riesgo en el registro de riesgos a partir de un hallazgo OSINT."""
     from app.models import Risk, RiskStatus, Asset, Threat
@@ -695,7 +696,7 @@ def create_risk_from_osint_finding(
 @router.get("/stats")
 def get_osint_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(_ROLES))
+    current_user: User = Depends(require_role(*_ROLES))
 ):
     org_scans_q = filter_by_org(db.query(OSINTScan), OSINTScan, current_user)
     scans_total = org_scans_q.count()

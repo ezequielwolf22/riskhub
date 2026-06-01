@@ -158,7 +158,7 @@ def security_status(
         "layers": {
             "encryption_at_rest_documents": {
                 "active": True,
-                "detail": "Documentos cifrados con Fernet (AES-128-CBC + HMAC-SHA256) antes de escribir en disco.",
+                "detail": "Documentos IA y evidencias cifrados con Fernet (AES-128-CBC + HMAC-SHA256) antes de escribir en disco.",
             },
             "encryption_credentials": {
                 "active": True,

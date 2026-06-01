@@ -1,4 +1,5 @@
 """Router de evidencias centralizadas."""
+import base64
 import hashlib
 import os
 from datetime import datetime, timezone
@@ -135,15 +136,24 @@ async def upload_evidence(
     if len(content) > 50 * 1024 * 1024:  # 50MB max
         raise HTTPException(413, "Archivo demasiado grande (máximo 50MB)")
 
-    # Hash para integridad
+    # Hash para integridad (sobre el contenido original, antes de cifrar)
     file_hash = hashlib.sha256(content).hexdigest()
 
-    # Guardar archivo
-    safe_name = file.filename.replace("..", "").replace("/", "").replace("\\", "")
+    # Cifrar con Fernet antes de escribir en disco (igual que document_service.py)
+    from app.config import settings as _settings
+    from cryptography.fernet import Fernet
+    _fernet_key = base64.urlsafe_b64encode(
+        hashlib.sha256(_settings.secret_key.encode()).digest()
+    )
+    encrypted_content = Fernet(_fernet_key).encrypt(content)
+
+    # Guardar archivo cifrado
+    safe_name = Path(file.filename or "evidence").name
+    safe_name = "".join(c for c in safe_name if c.isalnum() or c in "._- ")[:80]
     code = _next_code(db, org_id)
     stored_name = f"{org_id}_{code}_{safe_name}"
     file_path = _EVIDENCE_DIR / stored_name
-    file_path.write_bytes(content)
+    file_path.write_bytes(encrypted_content)
 
     # Parsear fechas
     def _parse_date(s):
@@ -226,10 +236,24 @@ def download_evidence(
     if not file_path.exists():
         raise HTTPException(404, "Archivo no encontrado en disco")
 
-    return FileResponse(
-        path=str(file_path),
+    # Descifrar Fernet; si falla (archivo legacy sin cifrar) servir en crudo
+    from fastapi.responses import Response
+    from app.config import settings as _settings
+    from cryptography.fernet import Fernet, InvalidToken
+    raw = file_path.read_bytes()
+    try:
+        _fernet_key = base64.urlsafe_b64encode(
+            hashlib.sha256(_settings.secret_key.encode()).digest()
+        )
+        raw = Fernet(_fernet_key).decrypt(raw)
+    except (InvalidToken, Exception):
+        pass  # archivo legacy no cifrado — servir tal cual
+
+    original_name = ev.filename.split("_", 2)[-1] if "_" in ev.filename else ev.filename
+    return Response(
+        content=raw,
         media_type=ev.mime_type or "application/octet-stream",
-        filename=ev.filename,
+        headers={"Content-Disposition": f'attachment; filename="{original_name}"'},
     )
 
 

@@ -52,7 +52,8 @@ def _logo_root():
     return _BRANDING_LOGO_ROOT
 
 
-_ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
+# SVG excluido: puede contener <script> y event handlers → stored XSS via localStorage JWT
+_ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/webp"}
 _MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
 
 # ============================================================
@@ -124,7 +125,7 @@ def upload_logo(
         raise HTTPException(400, "El logo no puede superar 2 MB")
     mime = file.content_type or "image/png"
     if mime not in _ALLOWED_LOGO_MIME:
-        raise HTTPException(400, "Formato no soportado. Usa PNG, JPG, SVG o WebP.")
+        raise HTTPException(400, "Formato no soportado. Usa PNG, JPG o WebP. SVG no esta permitido por seguridad.")
     # Validar magic bytes para evitar spoofing de Content-Type
     _MAGIC = {
         b"\x89PNG": "image/png",

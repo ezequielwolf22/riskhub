@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 

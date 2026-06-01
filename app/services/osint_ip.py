@@ -48,37 +48,9 @@ class IPOSINTService:
             return None
 
     async def check_open_ports(self, ip: str) -> List[int]:
-        """Comprueba puertos comunes abiertos (sin Shodan)."""
-        common_ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995,
-                        3306, 3389, 5432, 6379, 8080, 8443, 27017]
-        open_ports = []
-
-        async def check_port(port: int):
-            try:
-                loop = asyncio.get_event_loop()
-                fut = loop.run_in_executor(None, _try_connect, ip, port)
-                result = await asyncio.wait_for(fut, timeout=2)
-                if result:
-                    open_ports.append(port)
-            except Exception:
-                pass
-
-        def _try_connect(host: str, port: int) -> bool:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(1.5)
-                result = s.connect_ex((host, port))
-                s.close()
-                return result == 0
-            except Exception:
-                return False
-
-        # Check in batches of 5 to avoid flooding
-        for i in range(0, len(common_ports), 5):
-            batch = common_ports[i:i+5]
-            await asyncio.gather(*[check_port(p) for p in batch])
-
-        return sorted(open_ports)
+        """Port scanning activo desactivado — riesgo legal (Art. 197 bis CP).
+        Usar Shodan para datos de puertos sin realizar escaneos directos."""
+        return []
 
     async def check_shodan(self, ip: str) -> Optional[dict]:
         """Consulta Shodan si hay API key disponible."""

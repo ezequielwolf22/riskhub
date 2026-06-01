@@ -7,7 +7,8 @@ from typing import Optional
 from cryptography.fernet import Fernet
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -53,6 +54,7 @@ def create_access_token(subject: str, role: str, extra: Optional[dict] = None) -
 
 
 def decode_token(token: str) -> dict:
+    # PyJWT devuelve dict directamente; algorithms es obligatorio para evitar alg:none
     return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
 
 
@@ -69,6 +71,9 @@ def get_current_user(
         payload = decode_token(token)
         email = payload.get("sub")
         if email is None:
+            raise cred_error
+        # Rechazar tokens intermedios de MFA — solo aceptar tokens de sesion completa
+        if payload.get("type") == "mfa":
             raise cred_error
     except JWTError:
         raise cred_error
