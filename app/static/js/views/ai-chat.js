@@ -67,6 +67,8 @@ const ViewAiChat = (() => {
       'Cuales son las brechas mas importantes en nuestros controles ISO 27002?',
       'Hay proveedores criticos con riesgo elevado que requieran atencion?',
       'Que riesgos deberíamos priorizar este mes?',
+      'Como configuro la API key del agente?',
+      'Como subo documentos para enriquecer el contexto del agente?',
     ];
     return `
       <div class="card" style="margin-bottom:12px;">

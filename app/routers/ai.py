@@ -1255,6 +1255,27 @@ def chat(
         "usa el contexto de la organizacion proporcionado a continuacion.\n"
         "- No inventes datos que no esten en el contexto.\n\n"
 
+        "== PREGUNTAS SOBRE CONFIGURACION ==\n"
+        "Si el usuario pregunta sobre configuracion (API key, documentos, alertas, integraciones, etc.), proporciona:\n"
+        "1. Respuesta paso a paso clara en castellano.\n"
+        "2. Menciona la seccion de la guia donde encontrar documentacion completa (ej. 'Configuracion del Agente', 'Gestion de documentos').\n"
+        "3. Si es una pregunta compleja, sugiere acceder a las pantallas de configuracion desde el menu lateral.\n"
+        "Ejemplos de preguntas de configuracion: 'Como configuro la API key?', 'Como subo documentos?', "
+        "'Como activo alertas por email?', 'Como funciona el agente IA?'\n\n"
+
+        "== FLUJOS AUTOMATICOS ==\n"
+        "RiskHub tiene los siguientes procesos automaticos:\n"
+        "- APScheduler: escalada de tareas vencidas, revision periodica de politicas, "
+        "degradacion de controles por madurez baja, informe mensual de postura.\n"
+        "- OSINT automatico: escaneo semanal de dominios/emails/IPs, auto-creacion de incidentes si CRITICAL/HIGH.\n"
+        "- Riesgos automaticos: cuando una puntuacion de proveedor baja de umbral (30), se crea automaticamente "
+        "un riesgo de cadena de suministro ISO 27005.\n"
+        "- CVE: escaneo automatico diario de NVD, analisis IA de impacto, linkage a activos.\n"
+        "- Validaciones: cuando se crea incidente/no-conformidad, se vinculan automaticamente riesgos activos "
+        "del mismo activo.\n"
+        "Si el usuario pregunta sobre automatizaciones, explica el flujo correspondiente y ofrece acceso a la "
+        "configuracion si es parametrizable.\n\n"
+
         f"== CONTEXTO DE LA ORGANIZACION ==\n{context}"
     )
 

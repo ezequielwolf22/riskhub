@@ -1778,7 +1778,7 @@ const ViewGuide = {
   `;},
 
   get _cAiChat() { return `
-    ${this._p('El <strong>Chat con el Agente IA</strong> permite consultar en lenguaje natural el estado de seguridad de tu organizacion. El agente combina el contexto enriquecido de RiskHub (activos, riesgos, controles, incidentes) con los documentos que hayas subido.')}
+    ${this._p('El <strong>Chat con el Agente IA</strong> permite consultar en lenguaje natural el estado de seguridad de tu organizacion y recibir guia paso a paso sobre configuracion. El agente combina el contexto enriquecido de RiskHub (activos, riesgos, controles, incidentes) con los documentos que hayas subido.')}
     ${this._h('Como funciona')}
     ${this._steps([
       'El agente recibe automaticamente el contexto de tu organizacion: activos, riesgos activos, incidentes recientes, controles con baja madurez y proveedores criticos.',
@@ -1787,16 +1787,39 @@ const ViewGuide = {
       'El agente responde siempre en castellano, con recomendaciones orientadas a la accion.',
       'Puedes valorar cada respuesta (1-5 estrellas) para que el sistema registre la calidad.',
     ])}
-    ${this._h('Ejemplos de consultas')}
-    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li>Dame un resumen ejecutivo del estado de riesgos criticos.</li>
-      <li>Que controles tienen madurez inferior a 2? Que deberia priorizar?</li>
-      <li>Tenemos un incidente de ransomware. Que pasos debo seguir segun NIS2?</li>
-      <li>Cuales son las principales brechas en nuestra implementacion de ISO 27002?</li>
-      <li>Hay proveedores criticos sin evaluacion reciente?</li>
-    </ul>
+    ${this._h('Tipos de preguntas que puedes hacer')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--brand-purple);color:#fff;">
+        <th style="padding:8px 12px;text-align:left;">Categoria</th>
+        <th style="padding:8px 12px;text-align:left;">Ejemplos</th>
+      </tr></thead>
+      <tbody>
+        <tr style="background:var(--bg-2);">
+          <td style="padding:8px 12px;font-weight:600;">Analisis de riesgos</td>
+          <td style="padding:8px 12px;">Dame un resumen ejecutivo de riesgos criticos. Que riesgos deberia priorizar este mes?</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:600;">Controles y madurez</td>
+          <td style="padding:8px 12px;">Que controles tienen baja madurez? Propón tareas para mejorar ISO 27002.</td>
+        </tr>
+        <tr style="background:var(--bg-2);">
+          <td style="padding:8px 12px;font-weight:600;">Incidentes y compliance</td>
+          <td style="padding:8px 12px;">Tenemos ransomware. Que pasos segun NIS2? Cuales son las brechas en ISO 27002?</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 12px;font-weight:600;">Configuracion y ayuda</td>
+          <td style="padding:8px 12px;">Como configuro la API key? Como subo documentos? Como funciona el agente?</td>
+        </tr>
+        <tr style="background:var(--bg-2);">
+          <td style="padding:8px 12px;font-weight:600;">Proveedores y RGPD</td>
+          <td style="padding:8px 12px;">Hay proveedores criticos sin evaluacion? Necesitamos actualizar DPIAs?</td>
+        </tr>
+      </tbody>
+    </table>
+    ${this._h('Preguntas rapidas sugeridas')}
+    ${this._p('En el panel lateral tienes accesos rapidos a preguntas frecuentes sobre analisis de riesgos y control. Tambien puedes acceder directamente a <em>Configuracion IA</em> y <em>Gestionar documentos</em> sin salir del chat.')}
     ${this._warn('<strong>Importante:</strong> El agente usa la API de Claude (Anthropic). Configura tu API key en <em>Config. Agente</em> antes de usar el chat. La informacion enviada se anonimiza segun el nivel configurado.')}
-    ${this._tip('Usa las <em>Preguntas rapidas</em> del panel lateral para consultas frecuentes sin tener que escribirlas.')}
+    ${this._tip('<strong>Pro tip:</strong> Cuanto mas documentacion hayas subido (arquitectura, politicas, normativas), mas precisas seran las respuestas del agente. Usa "Como gestiono documentos?" en el chat para recibir instrucciones paso a paso.')}
   `;},
 
   get _cAiDocuments() { return `
