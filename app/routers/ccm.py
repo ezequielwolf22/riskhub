@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
-from app.security import get_current_user, require_role
+from app.security import get_current_user, require_analyst, require_role
 from app.services.ccm_service import run_all_tests, run_test_by_id, get_test_catalog
 
 router = APIRouter(prefix="/api/ccm", tags=["ccm"])
@@ -19,7 +19,7 @@ def list_tests(current_user: User = Depends(get_current_user)):
 @router.post("/run")
 def run_ccm(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_analyst),  # A3: VIEWER no debe ver brecha de seguridad
 ):
     """Ejecuta todos los tests CCM y retorna resultados + score."""
     org_id = current_user.organization_id
@@ -32,7 +32,7 @@ def run_ccm(
 def run_single_test(
     test_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_analyst),  # A3: idem
 ):
     """Ejecuta un test CCM específico."""
     org_id = current_user.organization_id

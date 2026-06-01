@@ -16,10 +16,15 @@ _GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 _TOKEN_CACHE: dict[str, tuple[str, float]] = {}   # key -> (token, expires_at monotonic)
 
 
-def get_token(tenant_id: str, client_id: str, client_secret: str) -> str:
-    """Obtiene un access token usando client_credentials. Cachea por 55 minutos."""
+def get_token(tenant_id: str, client_id: str, client_secret: str,
+              org_id: int | None = None) -> str:
+    """Obtiene un access token usando client_credentials. Cachea por 55 minutos.
+
+    A4: org_id incluido en la clave de cache para evitar que dos orgs con el mismo
+    tenant/client_id compartan el mismo token en memoria.
+    """
     import time
-    cache_key = f"{tenant_id}:{client_id}"
+    cache_key = f"{org_id}:{tenant_id}:{client_id}"
     if cache_key in _TOKEN_CACHE:
         token, exp = _TOKEN_CACHE[cache_key]
         if time.monotonic() < exp:

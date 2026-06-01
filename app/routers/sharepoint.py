@@ -69,7 +69,9 @@ def _resolve_token(db: Session, organization_id=None) -> str:
     if not cfg:
         raise HTTPException(400, "SharePoint no configurado. Ve a Integraciones > SharePoint para configurar.")
     try:
-        return sp.get_token(cfg["tenant_id"], cfg["client_id"], cfg["client_secret"])
+        # A4: pasar org_id para aislar tokens por tenant en la cache
+        return sp.get_token(cfg["tenant_id"], cfg["client_id"], cfg["client_secret"],
+                            org_id=organization_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

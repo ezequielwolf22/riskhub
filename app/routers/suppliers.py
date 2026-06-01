@@ -120,9 +120,15 @@ def update_supplier(supplier_id: int, body: SupplierUpdate,
     return s
 
 
+from concurrent.futures import ThreadPoolExecutor as _TPE
+_SUPPLIER_EXECUTOR = _TPE(max_workers=3, thread_name_prefix="supplier-score")
+
+
 def _trigger_supplier_score_update(supplier_id: int, org_id: int) -> None:
-    """Recalcula el score del proveedor en background."""
-    import threading
+    """Recalcula el score del proveedor en background.
+
+    M6: pool compartido — evita acumular un thread por cada PATCH /suppliers/{id}.
+    """
     from app.database import SessionLocal
 
     def _recalc():
@@ -140,7 +146,7 @@ def _trigger_supplier_score_update(supplier_id: int, org_id: int) -> None:
         finally:
             db2.close()
 
-    threading.Thread(target=_recalc, daemon=True).start()
+    _SUPPLIER_EXECUTOR.submit(_recalc)
 
 
 # Umbral a partir del cual el proveedor se considera riesgo critico de cadena de suministro

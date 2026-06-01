@@ -43,6 +43,9 @@ async def import_diagram(
     # Parsear archivo si existe
     if file:
         content = await file.read()
+        # A6: limite de tamano para evitar DoS por XML masivo o billion-laughs
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(413, "Archivo demasiado grande (max 10 MB)")
         filename = (file.filename or "").lower()
 
         if filename.endswith(".drawio") or filename.endswith(".xml"):

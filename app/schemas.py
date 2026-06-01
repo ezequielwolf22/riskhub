@@ -496,7 +496,8 @@ class IncidentIn(BaseModel):
     status: IncidentStatus = IncidentStatus.OPEN
     detected_at: Optional[datetime] = None
     nis2_notification_required: bool = False
-    nis2_notification_sent_at: Optional[datetime] = None
+    # C1: nis2_notification_sent_at eliminado del schema de entrada — solo se escribe
+    # via POST /incidents/{id}/notify-nis2 para garantizar integridad del registro NIS2
     gdpr_notification_required: bool = False
     affected_systems: list[str] = []
     affected_asset_ids: list[int] = []
@@ -516,7 +517,7 @@ class IncidentUpdate(BaseModel):
     contained_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
     nis2_notification_required: Optional[bool] = None
-    nis2_notification_sent_at: Optional[datetime] = None
+    # C1: nis2_notification_sent_at no editable directamente — endpoint dedicado notify-nis2
     gdpr_notification_required: Optional[bool] = None
     affected_systems: Optional[list[str]] = None
     affected_asset_ids: Optional[list[int]] = None

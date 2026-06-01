@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
@@ -27,6 +28,9 @@ from app.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# A5: pool compartido para limitar threads concurrentes (sin pool habia 2 threads por documento)
+_ISMS_EXECUTOR = ThreadPoolExecutor(max_workers=3, thread_name_prefix="isms-bg")
 
 # ---------- Prompt del sistema ----------
 
@@ -312,7 +316,6 @@ def _trigger_assets_reanalysis(org_id: int) -> None:
     Se llama despues de actualizar controles para que el riesgo residual refleje
     los nuevos controles aplicados sin bloquear el flujo principal de ISMS.
     """
-    import threading
     from app.database import SessionLocal
 
     def _worker():
@@ -327,8 +330,8 @@ def _trigger_assets_reanalysis(org_id: int) -> None:
         finally:
             _db.close()
 
-    t = threading.Thread(target=_worker, daemon=True, name=f"isms-reanalysis-org{org_id}")
-    t.start()
+    # A5: usar pool compartido en lugar de thread por documento
+    _ISMS_EXECUTOR.submit(_worker)
     logger.info("Triggered asset re-analysis for org=%d after controls update", org_id)
 
     # Sincronizar compliance inmediatamente al actualizar controles
@@ -344,8 +347,7 @@ def _trigger_assets_reanalysis(org_id: int) -> None:
         finally:
             _db.close()
 
-    tc = threading.Thread(target=_compliance_worker, daemon=True, name=f"compliance-sync-org{org_id}")
-    tc.start()
+    _ISMS_EXECUTOR.submit(_compliance_worker)
 
 
 # ---------- Creacion/actualizacion de politica ----------

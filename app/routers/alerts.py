@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -39,7 +39,7 @@ class AlertRuleIn(BaseModel):
     name: str
     event_type: str  # risk_high, risk_critical, treatment_overdue, risk_no_treatment
     recipient_email: EmailStr
-    threshold_level: int = 5
+    threshold_level: int = Field(default=5, ge=0, le=8)  # M1: rango valido para matriz 5x5
     is_active: bool = True
 
 
@@ -112,7 +112,8 @@ def send_test(db: Session = Depends(get_db),
               current_user=Depends(get_current_user)):
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
         raise HTTPException(403, "Solo administradores")
-    cfg = email_service.get_settings(db)
+    # A1: pasar org_id para evitar usar SMTP de otro tenant
+    cfg = email_service.get_settings(db, org_id=current_user.organization_id)
     if not cfg or not cfg.smtp_host:
         raise HTTPException(400, "Configura el servidor SMTP antes de enviar un test")
     try:
@@ -144,8 +145,9 @@ def list_rules(db: Session = Depends(get_db),
 @router.post("/rules", response_model=AlertRuleOut, status_code=201)
 def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
-    if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
-        raise HTTPException(403, "Acceso denegado")
+    # M1: restringido a ADMIN — analyst podria exfiltrar alertas a email externo
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores pueden crear reglas de alerta")
     valid_types = {"risk_high", "risk_critical", "treatment_overdue", "risk_no_treatment"}
     if body.event_type not in valid_types:
         raise HTTPException(422, f"event_type debe ser uno de: {', '.join(valid_types)}")
@@ -167,8 +169,9 @@ def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
 @router.delete("/rules/{rule_id}", status_code=204)
 def delete_rule(rule_id: int, db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
-    if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST, UserRole.SUPERADMIN):
-        raise HTTPException(403, "Acceso denegado")
+    # M1: solo ADMIN puede eliminar reglas
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores pueden eliminar reglas de alerta")
     rule = filter_by_org(db.query(AlertRule).filter(AlertRule.id == rule_id), AlertRule, current_user).first()
     if not rule:
         raise HTTPException(404, "Regla no encontrada")
@@ -181,8 +184,9 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db),
 @router.patch("/rules/{rule_id}/toggle", response_model=AlertRuleOut)
 def toggle_rule(rule_id: int, db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
-    if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST, UserRole.SUPERADMIN):
-        raise HTTPException(403, "Acceso denegado")
+    # M1: solo ADMIN puede activar/desactivar reglas
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores pueden modificar reglas de alerta")
     rule = filter_by_org(db.query(AlertRule).filter(AlertRule.id == rule_id), AlertRule, current_user).first()
     if not rule:
         raise HTTPException(404, "Regla no encontrada")
@@ -211,7 +215,8 @@ def send_risk_alert(risk_id: int, body: SendRiskAlertIn,
     risk = filter_by_org(db.query(Risk).filter(Risk.id == risk_id), Risk, current_user).first()
     if not risk:
         raise HTTPException(404, "Riesgo no encontrado")
-    cfg = email_service.get_settings(db)
+    # A1: org_id para evitar usar SMTP de otro tenant
+    cfg = email_service.get_settings(db, org_id=current_user.organization_id)
     if not cfg or not cfg.smtp_host:
         raise HTTPException(400, "Servidor SMTP no configurado")
 
@@ -237,7 +242,8 @@ def check_rules(db: Session = Depends(get_db),
     """Evalua todas las reglas activas y envia emails para los riesgos que cumplen criterios."""
     if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
         raise HTTPException(403, "Acceso denegado")
-    cfg = email_service.get_settings(db)
+    # A1: org_id para evitar usar SMTP de otro tenant
+    cfg = email_service.get_settings(db, org_id=current_user.organization_id)
     if not cfg or not cfg.smtp_host:
         raise HTTPException(400, "Servidor SMTP no configurado")
 

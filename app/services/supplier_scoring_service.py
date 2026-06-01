@@ -110,23 +110,31 @@ def _score_from_osint(db: Session, supplier: Supplier) -> int:
 
 
 def _score_from_incidents(db: Session, supplier: Supplier) -> int:
-    """Penaliza si hay incidentes relacionados con el proveedor (0-10 puntos base)."""
+    """Penaliza si hay incidentes relacionados con el proveedor (0-10 puntos base).
+
+    M4: sustituido el O(n*m) scan en Python por query SQL con ILIKE para eficiencia.
+    """
     from app.models import Incident, IncidentSeverity
+    from sqlalchemy import or_
     score = 10
-    # Buscar incidentes que mencionen al proveedor
-    name_lower = (supplier.name or "").lower()
+    name = (supplier.name or "").strip()
+    if not name:
+        return score
+    # SQL ILIKE es O(n) sin index, pero evita cargar todos los incidentes en memoria
     incidents = db.query(Incident).filter(
         Incident.organization_id == supplier.organization_id,
+        or_(
+            Incident.title.ilike(f"%{name}%"),
+            Incident.description.ilike(f"%{name}%"),
+        ),
     ).all()
     for inc in incidents:
-        desc = ((inc.description or "") + " " + (inc.title or "")).lower()
-        if name_lower and name_lower[:10] in desc:
-            if inc.severity == IncidentSeverity.P1:
-                score -= 5
-            elif inc.severity == IncidentSeverity.P2:
-                score -= 3
-            elif inc.severity == IncidentSeverity.P3:
-                score -= 1
+        if inc.severity == IncidentSeverity.P1:
+            score -= 5
+        elif inc.severity == IncidentSeverity.P2:
+            score -= 3
+        elif inc.severity == IncidentSeverity.P3:
+            score -= 1
     return max(0, score)
 
 

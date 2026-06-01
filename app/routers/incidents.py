@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Incident, IncidentStatus, User
+from app.models import Asset, Incident, IncidentStatus, Risk, User
 from app.schemas import IncidentIn, IncidentOut, IncidentUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -68,16 +68,27 @@ def get_incident(incident_id: int, db: Session = Depends(get_db),
 @router.post("/", response_model=IncidentOut)
 def create_incident(body: IncidentIn, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    # C2: validar que los asset_ids y risk_ids pertenecen a la misma org
+    org_id = current_user.organization_id
+    for aid in (body.affected_asset_ids or []):
+        a = db.get(Asset, aid)
+        if not a or a.organization_id != org_id:
+            raise HTTPException(422, f"Asset {aid} no pertenece a tu organizacion")
+    for rid in (body.related_risk_ids or []):
+        r = db.get(Risk, rid)
+        if not r or r.organization_id != org_id:
+            raise HTTPException(422, f"Riesgo {rid} no pertenece a tu organizacion")
+
     inc = Incident(
         code=_next_code(db),
-        organization_id=current_user.organization_id,
+        organization_id=org_id,
         title=body.title,
         description=body.description,
         severity=body.severity,
         status=body.status,
         detected_at=body.detected_at or datetime.now(timezone.utc),
         nis2_notification_required=body.nis2_notification_required,
-        nis2_notification_sent_at=body.nis2_notification_sent_at,
+        # C1: nis2_notification_sent_at NO se acepta del usuario — solo via /notify-nis2
         gdpr_notification_required=body.gdpr_notification_required,
         affected_systems=body.affected_systems,
         affected_asset_ids=body.affected_asset_ids,

@@ -21,8 +21,15 @@ def _smtp_password(cfg: EmailSettings) -> str:
     return cfg.smtp_password or ""
 
 
-def get_settings(db: Session) -> Optional[EmailSettings]:
-    return db.query(EmailSettings).first()
+def get_settings(db: Session, org_id: Optional[int] = None) -> Optional[EmailSettings]:
+    """Devuelve la config SMTP.
+
+    A1 (audit3): siempre filtrar por org_id para evitar cross-tenant SMTP.
+    """
+    q = db.query(EmailSettings)
+    if org_id is not None:
+        q = q.filter(EmailSettings.organization_id == org_id)
+    return q.first()
 
 
 def send_email(cfg: EmailSettings, recipient: str, subject: str, body_html: str) -> None:

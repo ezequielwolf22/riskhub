@@ -11,7 +11,7 @@ from app.schemas import (
     DPIAIn, DPIAOut, DPIAUpdate,
     ProcessingActivityIn, ProcessingActivityOut, ProcessingActivityUpdate,
 )
-from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
+from app.security import check_org_access, filter_by_org, get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/gdpr", tags=["gdpr"])
@@ -112,7 +112,8 @@ def update_activity(activity_id: int, body: ProcessingActivityUpdate,
 
 @router.delete("/activities/{activity_id}", status_code=204)
 def delete_activity(activity_id: int, db: Session = Depends(get_db),
-                    current_user: User = Depends(require_analyst)):
+                    current_user: User = Depends(require_admin)):
+    # A2: solo admin — GDPR Art.30 exige conservar el registro; analyst no puede borrar
     a = db.query(ProcessingActivity).filter(ProcessingActivity.id == activity_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Actividad de tratamiento no encontrada")
@@ -196,7 +197,8 @@ def update_dpia(dpia_id: int, body: DPIAUpdate,
 
 @router.delete("/dpias/{dpia_id}", status_code=204)
 def delete_dpia(dpia_id: int, db: Session = Depends(get_db),
-                current_user: User = Depends(require_analyst)):
+                current_user: User = Depends(require_admin)):
+    # A2: solo admin puede borrar DPIAs — evidencia de cumplimiento GDPR
     d = db.query(DPIA).filter(DPIA.id == dpia_id).first()
     if not d:
         raise HTTPException(404, "DPIA no encontrado")

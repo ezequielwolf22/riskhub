@@ -228,6 +228,11 @@ def update_flag(
     - Admin puede crear/actualizar el override de su propia organizacion.
     - Viewer/analyst no tienen acceso.
     """
+    # M5: validar formato del flag_name para prevenir path traversal y nombres arbitrarios
+    import re
+    if not re.match(r'^[a-z][a-z0-9_]{0,63}$', flag_name):
+        raise HTTPException(422, "Nombre de flag invalido (solo minusculas, numeros y _)")
+
     if current_user.role == UserRole.SUPERADMIN:
         org_id_to_update = body.organization_id  # None = global, int = org especifica
     elif current_user.role == UserRole.ADMIN:
