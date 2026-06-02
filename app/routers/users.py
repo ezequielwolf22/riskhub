@@ -20,14 +20,22 @@ def list_users(db: Session = Depends(get_db),
     # Superadmin ve todos los usuarios; admin ve solo los de su org
     if current_user.role == UserRole.SUPERADMIN:
         users = db.query(User).order_by(User.created_at.desc()).all()
+        org_id_filter = None  # sin filtro para superadmin
     else:
         users = db.query(User).filter(
             User.organization_id == current_user.organization_id
         ).order_by(User.created_at.desc()).all()
+        org_id_filter = current_user.organization_id  # filtrar por org para otros
+
     user_ids = [u.id for u in users]
+    # Contar riesgos: superadmin ve todos, otros solo los de su org
     counts_q = db.query(Risk.owner_id, func.count(Risk.id)).filter(
         Risk.owner_id.in_(user_ids)
-    ).group_by(Risk.owner_id).all()
+    )
+    if org_id_filter is not None:
+        counts_q = counts_q.filter(Risk.organization_id == org_id_filter)
+
+    counts_q = counts_q.group_by(Risk.owner_id).all()
     risk_counts = {uid: cnt for uid, cnt in counts_q if uid}
     result = []
     for u in users:
