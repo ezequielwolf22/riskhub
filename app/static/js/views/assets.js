@@ -15,9 +15,9 @@ const ViewAssets = {
         <span id="inv-actions">
           <button class="btn" id="btn-export">Exportar CSV</button>
           <button class="btn" id="btn-template">Plantilla</button>
-          <label class="btn">
+          <label class="btn" id="lbl-import">
             Importar
-            <input type="file" id="file-import" accept=".csv,.xlsx" style="display:none;">
+            <input type="file" id="file-import" accept=".csv,.xlsx" multiple style="display:none;">
           </label>
           <button class="btn btn-ghost" id="btn-analyze-all"
                   title="Analizar riesgos de todos los activos con IA">
@@ -93,15 +93,14 @@ const ViewAssets = {
       document.getElementById('btn-template').onclick = () => Api.assets.template();
       document.getElementById('btn-export').onclick = () => Api.assets.exportCsv();
       document.getElementById('file-import').onchange = async (e) => {
-        const f = e.target.files[0]; if (!f) return;
-        try {
-          const r = await Api.assets.import(f);
-          UI.toast(`Importacion: ${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos`,
-                   r.errors.length ? 'error' : 'success');
-          ViewAssets._reload();
-        } catch (err) { UI.toast(err.message, 'error'); }
-        finally { e.target.value = ''; }
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+        await ViewAssets._importFiles(files);
+        e.target.value = '';
       };
+
+      // Drag-and-drop sobre el inventario completo
+      ViewAssets._setupDrop(main);
       const btnAnalyzeAll = document.getElementById('btn-analyze-all');
       if (btnAnalyzeAll) {
         btnAnalyzeAll.onclick = async () => {
@@ -944,5 +943,145 @@ const ViewAssets = {
     const lbl = document.getElementById(`dval-${dim}`);
     if (bar) bar.style.height = Math.max(4, val * 14) + 'px';
     if (lbl) lbl.textContent = val;
+  },
+
+  // ---------- IMPORT MULTI-ARCHIVO + DRAG & DROP ----------
+
+  async _importFiles(files) {
+    const valid = files.filter(f => /\.(csv|xlsx)$/i.test(f.name));
+    if (!valid.length) {
+      UI.toast('Solo se aceptan archivos CSV o XLSX', 'error');
+      return;
+    }
+
+    // Si es un solo archivo, mantener comportamiento simple
+    if (valid.length === 1) {
+      try {
+        UI.toast(`Importando ${valid[0].name}...`, 'info');
+        const r = await Api.assets.import(valid[0]);
+        UI.toast(
+          `${valid[0].name}: ${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos`,
+          r.errors && r.errors.length ? 'error' : 'success'
+        );
+        ViewAssets._reload();
+      } catch (err) {
+        UI.toast(`Error en ${valid[0].name}: ${err.message}`, 'error');
+      }
+      return;
+    }
+
+    // Varios archivos: mostrar progreso y procesar secuencialmente
+    const toast = UI.toast(`Importando ${valid.length} archivos...`, 'info');
+    let totalCreated = 0, totalUpdated = 0, totalSkipped = 0, totalErrors = 0;
+    const results = [];
+
+    for (let i = 0; i < valid.length; i++) {
+      const f = valid[i];
+      try {
+        const r = await Api.assets.import(f);
+        totalCreated += r.created || 0;
+        totalUpdated += r.updated || 0;
+        totalSkipped += r.skipped || 0;
+        totalErrors += (r.errors || []).length;
+        results.push({ name: f.name, ok: true, ...r });
+      } catch (err) {
+        totalErrors++;
+        results.push({ name: f.name, ok: false, error: err.message });
+      }
+    }
+
+    ViewAssets._reload();
+
+    // Resumen final
+    const allOk = results.every(r => r.ok);
+    const summary = `${valid.length} archivos: ${totalCreated} creados, ${totalUpdated} actualizados, ${totalSkipped} omitidos${totalErrors ? `, ${totalErrors} errores` : ''}`;
+    UI.toast(summary, allOk ? 'success' : 'error');
+
+    // Mostrar detalle si hay errores
+    if (!allOk) {
+      const failed = results.filter(r => !r.ok);
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+      <div class="modal" style="max-width:480px;">
+        <div class="modal-header">
+          <h2>Resumen de importacion</h2>
+          <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        </div>
+        <div class="modal-body">
+          <p><strong>${totalCreated}</strong> activos creados &nbsp;|&nbsp;
+             <strong>${totalUpdated}</strong> actualizados &nbsp;|&nbsp;
+             <strong>${totalSkipped}</strong> omitidos</p>
+          ${failed.length ? `<p style="color:#DC2626;font-weight:600;">Archivos con error:</p>
+            ${failed.map(r => `<div class="list-item" style="font-size:12px;color:#DC2626;">${UI.esc(r.name)}: ${UI.esc(r.error||'Error desconocido')}</div>`).join('')}` : ''}
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+    }
+  },
+
+  _setupDrop(container) {
+    // Crear zona de drop invisible sobre el contenedor
+    let dragCount = 0;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'asset-drop-overlay';
+    overlay.style.cssText = `
+      display:none;position:fixed;inset:0;z-index:9999;
+      background:rgba(89,0,141,0.15);border:3px dashed var(--brand-purple);
+      border-radius:12px;pointer-events:none;
+      align-items:center;justify-content:center;flex-direction:column;
+    `;
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:12px;padding:32px 48px;text-align:center;
+                  box-shadow:0 8px 32px rgba(0,0,0,.2);">
+        <div style="font-size:40px;margin-bottom:12px;">📂</div>
+        <div style="font-size:18px;font-weight:700;color:var(--brand-purple);">
+          Suelta aqui para importar
+        </div>
+        <div style="font-size:13px;color:#9D9D9D;margin-top:6px;">
+          CSV o XLSX — puedes soltar varios archivos a la vez
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    // Escuchar drag events en toda la ventana mientras la vista esté activa
+    const onDragEnter = (e) => {
+      if (!e.dataTransfer.types.includes('Files')) return;
+      dragCount++;
+      overlay.style.display = 'flex';
+    };
+    const onDragLeave = () => {
+      dragCount--;
+      if (dragCount <= 0) { dragCount = 0; overlay.style.display = 'none'; }
+    };
+    const onDragOver = (e) => {
+      if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+    };
+    const onDrop = async (e) => {
+      e.preventDefault();
+      dragCount = 0;
+      overlay.style.display = 'none';
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length) await ViewAssets._importFiles(files);
+    };
+
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+
+    // Limpiar listeners cuando se navegue fuera
+    const observer = new MutationObserver(() => {
+      if (!document.body.contains(container)) {
+        window.removeEventListener('dragenter', onDragEnter);
+        window.removeEventListener('dragleave', onDragLeave);
+        window.removeEventListener('dragover', onDragOver);
+        window.removeEventListener('drop', onDrop);
+        overlay.remove();
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.getElementById('main') || document.body, { childList: true });
   },
 };
