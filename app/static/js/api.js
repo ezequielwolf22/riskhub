@@ -504,4 +504,10 @@ const Api = {
     saveConfig: (d) => Api.put('/api/integrations/erp/config', d),
     events:     ()  => Api.get('/api/integrations/erp/events'),
   },
+  virustotal: {
+    getConfig: () => Api.get('/api/integrations/virustotal/config'),
+    saveConfig: (d) => Api.put('/api/integrations/virustotal/config', d),
+    deleteConfig: () => Api.delete('/api/integrations/virustotal/config'),
+    test: () => Api.post('/api/integrations/virustotal/test', {}),
+  },
 };

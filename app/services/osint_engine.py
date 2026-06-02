@@ -96,21 +96,28 @@ class OSINTEngine:
 
             findings_list = []
 
+            # Resolver API key per-tenant (BD primero, env var como fallback)
             try:
-                vt_result = await virustotal_service.analyze_url(url)
+                from app.routers.integrations_virustotal import get_vt_api_key
+                vt_api_key = get_vt_api_key(db, scan.organization_id)
+            except Exception:
+                vt_api_key = None
+
+            try:
+                vt_result = await virustotal_service.analyze_url(url, api_key=vt_api_key)
                 if vt_result:
                     findings_list.extend(
                         virustotal_service.map_vt_to_findings(vt_result, scan.id)
                     )
                 # Si VT no esta configurado, generar finding informativo
-                if not virustotal_service.api_key:
+                if not vt_api_key:
                     findings_list.append({
                         'scan_id': scan.id,
                         'identifier_id': None,
                         'source': 'virustotal',
                         'finding_type': 'config_missing',
                         'title': f"VirusTotal no configurado — URL: {url[:80]}",
-                        'description': 'Configura RISKHUB_VIRUSTOTAL_API_KEY para analizar URLs',
+                        'description': 'Configura la API key de VirusTotal en Integraciones para analizar URLs.',
                         'risk_level': 'info',
                         'risk_score': 0.0,
                         'metadata': {'url': url}

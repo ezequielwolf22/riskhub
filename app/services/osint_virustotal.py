@@ -32,18 +32,24 @@ class VirusTotalService:
         level = 'dangerous' if score > 50 else ('suspicious' if score > 15 else 'safe')
         return score, level
 
-    async def analyze_url(self, url: str) -> Optional[dict]:
+    def get_effective_key(self, api_key: Optional[str] = None) -> Optional[str]:
+        """Devuelve la clave efectiva: per-tenant > env var."""
+        return api_key or self.api_key
+
+    async def analyze_url(self, url: str, api_key: Optional[str] = None) -> Optional[dict]:
         """
         Analizar URL con VirusTotal.
-        Retorna dict con análisis o None si error.
+        api_key: clave per-tenant (opcional, sobreescribe la de entorno).
+        Retorna dict con analisis o None si error.
         """
-        if not self.api_key:
+        effective_key = self.get_effective_key(api_key)
+        if not effective_key:
             return None
 
         await self._rate_limit()
 
         try:
-            headers = {'x-apikey': self.api_key}
+            headers = {'x-apikey': effective_key}
 
             async with aiohttp.ClientSession() as session:
                 # Submit URL para análisis
@@ -119,15 +125,16 @@ class VirusTotalService:
         except Exception:
             return None
 
-    async def analyze_file_hash(self, file_hash: str) -> Optional[dict]:
+    async def analyze_file_hash(self, file_hash: str, api_key: Optional[str] = None) -> Optional[dict]:
         """Analizar hash de archivo (MD5, SHA1, SHA256)."""
-        if not self.api_key:
+        effective_key = self.get_effective_key(api_key)
+        if not effective_key:
             return None
 
         await self._rate_limit()
 
         try:
-            headers = {'x-apikey': self.api_key}
+            headers = {'x-apikey': effective_key}
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(

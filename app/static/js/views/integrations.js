@@ -635,9 +635,22 @@ const ViewIntegrations = {
           <div id="erp-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
         </div>
 
+        <!-- VirusTotal — Escaneo de URLs y hashes -->
+        <div class="card" id="vt-card">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 10 15.5 10 14 10.67 14 11.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 10 8.5 10 7 10.67 7 11.5 7.67 13 8.5 13zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+            <div>
+              <b style="font-size:15px;">VirusTotal — Análisis de seguridad</b>
+              <div style="font-size:11px;color:var(--text-muted);">Escanea URLs y hashes — integrado con OSINT para hallazgos automáticos</div>
+            </div>
+            <span id="vt-status-badge" style="margin-left:auto;"></span>
+          </div>
+          <div id="vt-body"><p class="text-muted" style="font-size:13px;">Cargando configuracion...</p></div>
+        </div>
+
       </div>
     `;
-    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initErpWebhooks()]);
+    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initErpWebhooks(), this._initVirusTotal()]);
   },
 
   async _initSharePoint() {
@@ -1464,5 +1477,117 @@ const ViewIntegrations = {
       </div>`;
 
     UI.openModal(modalHtml, { width: '640px' });
+  },
+
+  // ─────────────────────────── VirusTotal ───────────────────────────
+
+  async _initVirusTotal() {
+    try {
+      const cfg = await Api.virustotal?.getConfig?.();
+      this._renderVirusTotalBody(cfg);
+    } catch (e) {
+      document.getElementById('vt-body').innerHTML = `<div class="notice" style="color:#dc2626;">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderVirusTotalBody(cfg) {
+    const body = document.getElementById('vt-body');
+    const badge = document.getElementById('vt-status-badge');
+    if (!cfg) { body.innerHTML = '<p class="text-muted">No se pudo cargar la configuracion.</p>'; return; }
+
+    const configured = cfg.configured || cfg.has_api_key;
+    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;background:${configured ? '#22c55e' : '#ef4444'};color:white;border-radius:4px;font-size:11px;font-weight:600;">${configured ? 'CONFIGURADO' : 'NO CONFIGURADO'}</span>`;
+
+    body.innerHTML = `
+      <div style="display:grid;gap:12px;">
+        ${configured ? `
+          <div style="padding:10px 12px;background:var(--bg-2);border-left:3px solid #22c55e;border-radius:4px;font-size:12px;">
+            <strong>API key configurada.</strong> El motor OSINT usara VirusTotal para escanear URLs automaticamente.
+            <div style="margin-top:8px;display:flex;gap:8px;">
+              <button class="btn btn-ghost" id="vt-test" style="font-size:12px;padding:4px 10px;">🔗 Probar conexion</button>
+              <button class="btn btn-ghost" id="vt-edit" style="font-size:12px;padding:4px 10px;">📝 Cambiar API key</button>
+              <button class="btn btn-ghost" id="vt-delete" style="font-size:12px;padding:4px 10px;color:#ef4444;">🗑️ Eliminar</button>
+              <a href="#!/osint" class="btn btn-ghost" style="font-size:12px;padding:4px 10px;margin-left:auto;text-decoration:none;">→ Ir a OSINT</a>
+            </div>
+          </div>
+        ` : `
+          <div style="padding:10px 12px;background:var(--bg-2);border-radius:4px;font-size:12px;color:var(--text-muted);">
+            <p style="margin:0 0 8px;"><strong>Paso 1: Crear cuenta en VirusTotal</strong></p>
+            <p style="margin:0 0 8px;font-size:11px;">
+              Regístrate en <a href="https://www.virustotal.com/" target="_blank">virustotal.com</a> (opción gratuita disponible).
+            </p>
+            <p style="margin:0 0 8px;"><strong>Paso 2: Obtener API key</strong></p>
+            <p style="margin:0 0 8px;font-size:11px;">
+              En tu perfil de VirusTotal, copia la API key personal.
+            </p>
+            <p style="margin:0;"><strong>Paso 3: Guardar en RiskHub</strong></p>
+            <div style="margin-top:8px;">
+              <button class="btn btn-primary" id="vt-setup" style="font-size:12px;padding:6px 12px;">➕ Agregar API key</button>
+            </div>
+          </div>
+        `}
+      </div>
+    `;
+
+    if (configured) {
+      document.getElementById('vt-test')?.addEventListener('click', () => this._testVirusTotal());
+      document.getElementById('vt-edit')?.addEventListener('click', () => this._editVirusTotal());
+      document.getElementById('vt-delete')?.addEventListener('click', () => this._deleteVirusTotal());
+    } else {
+      document.getElementById('vt-setup')?.addEventListener('click', () => this._setupVirusTotal());
+    }
+  },
+
+  async _setupVirusTotal() {
+    const apiKey = prompt('Pega tu API key de VirusTotal personal:');
+    if (!apiKey || !apiKey.trim()) return;
+    try {
+      await Api.put('/api/integrations/virustotal/config', { api_key: apiKey.trim() });
+      UI.toast('API key de VirusTotal guardada', 'success');
+      await this._initVirusTotal();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  async _editVirusTotal() {
+    const apiKey = prompt('Nueva API key de VirusTotal (deja vacio para cancelar):');
+    if (!apiKey && apiKey !== '') return;
+    if (apiKey === '') return;
+    try {
+      await Api.put('/api/integrations/virustotal/config', { api_key: apiKey.trim() });
+      UI.toast('API key actualizada', 'success');
+      await this._initVirusTotal();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  async _deleteVirusTotal() {
+    if (!confirm('¿Eliminar la configuracion de VirusTotal?')) return;
+    try {
+      await Api.delete('/api/integrations/virustotal/config');
+      UI.toast('Configuracion eliminada', 'info');
+      await this._initVirusTotal();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  async _testVirusTotal() {
+    const btn = document.getElementById('vt-test');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Probando...';
+    try {
+      const result = await Api.post('/api/integrations/virustotal/test', {});
+      const msg = `Conectado como: ${result.user || 'usuario'}\nCuota: ${result.quota_used || 0}/${result.quota_limit || '?'} requests hoy`;
+      UI.toast(msg, 'success', 5000);
+    } catch (e) {
+      UI.toast('Conexion fallida: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔗 Probar conexion';
+    }
   },
 };
