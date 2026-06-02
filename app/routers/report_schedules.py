@@ -67,14 +67,26 @@ class ScheduleUpdate(BaseModel):
 @router.get("")
 def list_schedules(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
-    scheds = (
-        db.query(ReportSchedule)
-        .filter_by(organization_id=current_user.organization_id)
-        .order_by(ReportSchedule.created_at.desc())
-        .all()
-    )
+    """Lista programaciones de informes para la organización del usuario.
+
+    Superadmin puede ver todas las orgs; otros usuarios solo ven las de su org.
+    """
+    from app.models import UserRole
+
+    # Superadmin ve todas; otros ven solo la de su org
+    if current_user.role == UserRole.SUPERADMIN:
+        scheds = db.query(ReportSchedule).order_by(ReportSchedule.created_at.desc()).all()
+    else:
+        if not current_user.organization_id:
+            return []
+        scheds = (
+            db.query(ReportSchedule)
+            .filter_by(organization_id=current_user.organization_id)
+            .order_by(ReportSchedule.created_at.desc())
+            .all()
+        )
     return [_sched_to_dict(s) for s in scheds]
 
 
