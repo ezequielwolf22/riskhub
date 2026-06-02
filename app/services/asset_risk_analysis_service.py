@@ -616,6 +616,7 @@ def _process_batch_isolated(
                         ai_generated=True,
                     )
                     db.add(risk)
+                    db.flush()  # necesario: autoflush=False → flush manual para que count() vea el nuevo codigo
                     created += 1
 
             asset.ai_risk_status = "analysed"
