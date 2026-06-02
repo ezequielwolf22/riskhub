@@ -52,56 +52,51 @@ _ASSET_TYPE_KEYS: dict[str, list[str]] = {
 
 # ---------- Prompt del sistema ----------
 
-_RISK_SYSTEM_PROMPT = """Eres un experto en analisis de riesgos de seguridad de la informacion
-aplicando metodologia ISO/IEC 27005:2018 y MAGERIT v3.
+_RISK_SYSTEM_PROMPT = """Eres un experto en analisis de riesgos ISO/IEC 27005:2018, MAGERIT v3 y ENS.
 
-Para el activo que te voy a describir, analiza que amenazas del catalogo son REALMENTE APLICABLES
-y realiza el analisis de riesgo completo para cada una.
+Para el activo descrito, devuelve:
+1. Valoracion CIA segun ENS/ISO 27005 (5 dimensiones)
+2. Analisis completo de amenazas aplicables
 
-Escala de valoracion:
-- Likelihood (probabilidad): 0=muy improbable, 1=improbable, 2=posible, 3=probable, 4=muy probable
-- Consequence (impacto): 0=insignificante, 1=menor, 2=moderado, 3=mayor, 4=critico
+VALORACION CIA — escala 0-4 (0=nulo, 4=critico):
+- c (Confidencialidad): dano por revelacion no autorizada
+- i (Integridad): dano por modificacion o corrupcion
+- a (Disponibilidad): dano por perdida de acceso al activo
+- au (Autenticidad ENS): necesidad de verificar identidad
+- ac (Trazabilidad ENS): necesidad de audit trail y no-repudio
 
-Para calcular consequence, ten en cuenta los valores CIA del activo:
-- Valor C/I/D 0=nulo, 1=bajo, 2=medio, 3=alto, 4=muy alto
-- El impacto de la amenaza depende de a que dimension CIA afecta la amenaza
+Escala de valoracion riesgos:
+- Likelihood: 0=muy improbable, 1=improbable, 2=posible, 3=probable, 4=muy probable
+- Consequence: 0=insignificante, 1=menor, 2=moderado, 3=mayor, 4=critico
 
-Para cada control existente que mitigues, estima:
-- contribution (0.0-1.0): cuanto reduce este control el riesgo
-- Ten en cuenta su estado: implemented > partial > planned
-- Ten en cuenta su madurez (0-5)
+Para cada control, estima contribution (0.0-1.0) y aplica la reduccion al residual.
 
-Para el calculo residual aplica la reduccion de controles:
-- residual_likelihood: segun reduccion de controles preventivos
-- residual_consequence: segun reduccion de controles correctivos/recuperacion
-- Solo incluye controles realmente relevantes para la amenaza concreta
-
-Devuelve UNICAMENTE JSON valido con esta estructura exacta:
-[
-  {
-    "threat_code": "<codigo de la amenaza>",
-    "applies": true,
-    "inherent_likelihood": <0-4>,
-    "inherent_consequence": <0-4>,
-    "rationale": "<justificacion concisa en espanol, max 150 palabras>",
-    "consequence_description": "<descripcion del impacto concreto sobre este activo>",
-    "vulnerability_codes": ["<codigo>", ...],
-    "control_contributions": [
-      {"impl_id": <id de ControlImplementation>, "contribution": <0.0-1.0>}
-    ],
-    "residual_likelihood": <0-4>,
-    "residual_consequence": <0-4>,
-    "treatment_option": "<modification|retention|avoidance|sharing>"
-  }
-]
+Devuelve UNICAMENTE JSON con esta estructura:
+{
+  "cia": {"c": <1-4>, "i": <1-4>, "a": <1-4>, "au": <0-4>, "ac": <0-4>},
+  "risks": [
+    {
+      "threat_code": "<codigo>",
+      "applies": true,
+      "inherent_likelihood": <0-4>,
+      "inherent_consequence": <0-4>,
+      "rationale": "<max 150 palabras>",
+      "consequence_description": "<impacto concreto>",
+      "vulnerability_codes": ["<codigo>", ...],
+      "control_contributions": [{"impl_id": <id>, "contribution": <0.0-1.0>}],
+      "residual_likelihood": <0-4>,
+      "residual_consequence": <0-4>,
+      "treatment_option": "<modification|retention|avoidance|sharing>"
+    }
+  ]
+}
 
 REGLAS:
-- Solo incluye amenazas donde applies=true y el riesgo inherente sea >= 1 en likelihood o consequence.
-- No incluyas amenazas trivialmente inaplicables.
-- Usa los codigos exactos del catalogo proporcionado.
-- control_contributions: solo controles que realmente mitigan la amenaza especifica.
-- treatment_option: modification si hay controles que reducen; retention si riesgo es bajo y se acepta;
-  avoidance si el riesgo es inaceptable; sharing si es transferible a seguro/proveedor.
+- cia: NUNCA dejes los 5 valores a 0. Estima segun el tipo y descripcion del activo.
+- risks: solo amenazas donde applies=true e inherente >= 1 en alguna dimension.
+- Usa codigos exactos del catalogo.
+- treatment_option: modification=hay controles que reducen; retention=riesgo bajo aceptable;
+  avoidance=riesgo inaceptable; sharing=transferible.
 """
 
 
@@ -287,10 +282,38 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
             response_summary=f"Risk analysis for asset {asset_id}: {asset.name[:60]}",
         ))
 
-        risk_items = json.loads(raw_json)
+        parsed = json.loads(raw_json)
         owner_id = _org_owner_id(db, asset.organization_id)
 
-        # 5. Procesar cada riesgo devuelto
+        # Soportar formato nuevo {cia, risks} y formato legado [...]
+        if isinstance(parsed, dict):
+            cia_data = parsed.get("cia") or {}
+            risk_items = parsed.get("risks", [])
+        else:
+            cia_data = {}
+            risk_items = parsed  # formato legado: lista directa
+
+        # 5a. Aplicar valores CIA ENS si el activo los tiene todos a 0
+        if cia_data:
+            _cl = lambda v: max(0, min(4, int(v or 0)))
+            all_zero = not any([
+                asset.value_confidentiality, asset.value_integrity,
+                asset.value_availability, asset.value_authenticity,
+                asset.value_accountability,
+            ])
+            if all_zero:
+                asset.value_confidentiality = _cl(cia_data.get("c", 0))
+                asset.value_integrity       = _cl(cia_data.get("i", 0))
+                asset.value_availability    = _cl(cia_data.get("a", 0))
+                asset.value_authenticity    = _cl(cia_data.get("au", 0))
+                asset.value_accountability  = _cl(cia_data.get("ac", 0))
+                logger.debug("CIA values set for asset %d from AI: C=%d I=%d A=%d Au=%d Ac=%d",
+                             asset_id,
+                             asset.value_confidentiality, asset.value_integrity,
+                             asset.value_availability, asset.value_authenticity,
+                             asset.value_accountability)
+
+        # 5b. Procesar cada riesgo devuelto
         threats_by_code = {t.code: t for t in threats}
         vulns_by_code = {v.code: v for v in vulns}
         impls_by_id = {i.id: i for i in impls}
@@ -309,8 +332,7 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
             created += c
             updated += u
 
-        # 6. Aplicar apetito de riesgo: si residual > appetite y tratamiento es retention,
-        #    escalar automaticamente a modification (v1.7.6)
+        # 6. Aplicar apetito de riesgo
         appetite_upgrades = _enforce_risk_appetite(db, asset)
 
         asset.ai_risk_status = "analysed"
@@ -356,21 +378,28 @@ import threading as _threading
 _api_rate_lock  = _threading.Lock()
 _api_last_call  = [0.0]  # mutable para uso en closure
 
-_BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005 y MAGERIT v3. Analiza cada activo de la lista y devuelve los escenarios de riesgo mas relevantes.
+_BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005, MAGERIT v3 y ENS (Esquema Nacional de Seguridad).
+Analiza cada activo y devuelve: (1) valoracion CIA segun ENS/ISO 27005 y (2) escenarios de riesgo.
 
-Para cada activo selecciona 3-5 amenazas del catalogo que REALMENTE apliquen a su tipo y context. Calcula niveles inherentes (sin controles) y residuales (con controles existentes).
+VALORACION CIA — 5 dimensiones ENS (escala 0-4):
+- c (Confidencialidad): dano por revelacion no autorizada. 0=publico, 4=dato ultrasensible/secreto
+- i (Integridad): dano por modificacion o corrupcion. 0=sin valor, 4=critico (financiero/legal)
+- a (Disponibilidad): dano por perdida de acceso. 0=sin impacto, 4=parada total del negocio
+- au (Autenticidad ENS): necesidad de verificar identidad de usuarios/procesos. 0=no necesario, 4=imprescindible
+- ac (Trazabilidad ENS): necesidad de audit trail y no-repudio. 0=no requerido, 4=obligatorio legal/regulatorio
 
-Escala: consecuencia 0-4 (0=insignificante, 4=critico), probabilidad 0-4 (0=muy improbable, 4=muy probable).
-Nivel de riesgo = DEFAULT_MATRIX[consecuencia][probabilidad]. Apetito = {appetite}/8.
-treatment_option: "modification" si nivel_residual > {appetite}, "retention" si <= {appetite}.
+ESCENARIOS DE RIESGO — selecciona 3-5 amenazas reales para el activo:
+Escala consecuencia/probabilidad: 0=insignificante/muy improbable, 4=critico/muy probable.
+Apetito = {appetite}/8. treatment: "modification" si nivel_residual > {appetite}, "retention" si <=.
 
 REGLAS CRITICAS:
-- Devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional antes ni despues
+- Devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional
 - No uses comillas dentro de strings, no uses backslash, no uses saltos de linea en strings
 - Strings de rationale max 80 chars, vulnerability max 60 chars
+- TODOS los activos deben tener cia con valores > 0 (nunca dejes los 5 a 0)
 
 Formato de respuesta:
-{{"results":[{{"asset_id":<int>,"risks":[{{"threat_code":"<cod>","threat_name":"<nombre>","vulnerability":"<desc max 60>","inherent_consequence":<0-4>,"inherent_likelihood":<0-4>,"residual_consequence":<0-4>,"residual_likelihood":<0-4>,"treatment":"modification|retention","rationale":"<max 80>"}}]}}]}}"""
+{{"results":[{{"asset_id":<int>,"cia":{{"c":<1-4>,"i":<1-4>,"a":<1-4>,"au":<0-4>,"ac":<0-4>}},"risks":[{{"threat_code":"<cod>","threat_name":"<nombre>","vulnerability":"<desc max 60>","inherent_consequence":<0-4>,"inherent_likelihood":<0-4>,"residual_consequence":<0-4>,"residual_likelihood":<0-4>,"treatment":"modification|retention","rationale":"<max 80>"}}]}}]}}"""
 
 
 def _build_org_context_str(db: Session, org_id: int) -> str:
@@ -582,6 +611,23 @@ def _process_batch_isolated(
             asset = next((a for a in assets if a.id == asset_id), None)
             if not asset:
                 continue
+
+            # --- Aplicar valores CIA ENS si el activo los tiene todos a 0 ---
+            cia = ar.get("cia") or {}
+            if cia:
+                _clamp = lambda v: max(0, min(4, int(v or 0)))
+                all_zero = not any([
+                    asset.value_confidentiality, asset.value_integrity,
+                    asset.value_availability, asset.value_authenticity,
+                    asset.value_accountability,
+                ])
+                if all_zero:
+                    asset.value_confidentiality = _clamp(cia.get("c", 0))
+                    asset.value_integrity       = _clamp(cia.get("i", 0))
+                    asset.value_availability    = _clamp(cia.get("a", 0))
+                    asset.value_authenticity    = _clamp(cia.get("au", 0))
+                    asset.value_accountability  = _clamp(cia.get("ac", 0))
+
             created, updated = 0, 0
             for item in ar.get("risks", []):
                 threat = threats_by_code.get(item.get("threat_code", ""))

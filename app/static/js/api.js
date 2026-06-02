@@ -108,6 +108,7 @@ const Api = {
     exportCsv: () => Api.download('/api/assets/export/csv', 'assets.csv'),
     analyze: (id) => Api.post('/api/assets/' + id + '/analyze', {}),
     analyzeAll: () => Api.post('/api/assets/analyze-all', {}),
+    analyzeCiaZero: () => Api.post('/api/assets/analyze-cia-zero', {}),
     analyzeAllForce: () => Api.post('/api/assets/analyze-all-force', {}),
     analysisStatus: () => Api.get('/api/assets/analysis-status'),
     bulkDelete: (ids) => Api.post('/api/assets/bulk-delete', { ids }),

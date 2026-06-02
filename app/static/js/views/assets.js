@@ -28,7 +28,11 @@ const ViewAssets = {
           </label>
           <button class="btn btn-ghost" id="btn-analyze-pending"
                   title="Analiza activos sin analizar y los que tuvieron error (no toca los ya analizados)">
-            Analizar pendientes con IA
+            Analizar pendientes
+          </button>
+          <button class="btn btn-ghost" id="btn-analyze-cia"
+                  title="Re-analiza solo los activos con todas las dimensiones ENS a 0 para que la IA las estime">
+            Estimar dimensiones ENS
           </button>
           <button class="btn btn-ghost" id="btn-analyze-all"
                   title="Fuerza el re-analisis de TODOS los activos con IA">
@@ -153,7 +157,30 @@ const ViewAssets = {
             UI.toast('Error: ' + e.message, 'error');
           } finally {
             btnPending.disabled = false;
-            btnPending.textContent = 'Analizar pendientes con IA';
+            btnPending.textContent = 'Analizar pendientes';
+          }
+        };
+      }
+
+      const btnCia = document.getElementById('btn-analyze-cia');
+      if (btnCia) {
+        btnCia.onclick = async () => {
+          btnCia.disabled = true;
+          btnCia.textContent = 'Lanzando...';
+          try {
+            const r = await Api.assets.analyzeCiaZero();
+            if (r.total === 0) {
+              UI.toast('Todos los activos ya tienen dimensiones ENS valoradas', 'info');
+            } else {
+              UI.toast(`${r.total} activos con dimensiones ENS a 0 — análisis lanzado. La IA estimará C, I, D, Autenticidad y Trazabilidad.`, 'success', 6000);
+              ViewAssets._reload();
+              ViewAssets._startPollIfNeeded();
+            }
+          } catch (e) {
+            UI.toast('Error: ' + e.message, 'error');
+          } finally {
+            btnCia.disabled = false;
+            btnCia.textContent = 'Estimar dimensiones ENS';
           }
         };
       }
@@ -312,7 +339,12 @@ const ViewAssets = {
                    title="Seleccionar todos en esta pagina">
           </th>
           ${_th('code', 'Codigo')}${_th('name', 'Nombre')}${_th('type', 'Tipo')}
-          <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th>${_th('value_max', 'Max', 'Valor maximo CIA')}
+          <th title="Confidencialidad">C</th>
+          <th title="Integridad">I</th>
+          <th title="Disponibilidad">D</th>
+          <th title="Autenticidad (ENS Annex I)" style="color:var(--brand-orange)">Au</th>
+          <th title="Trazabilidad (ENS Annex I)" style="color:var(--brand-orange)">Tr</th>
+          ${_th('value_max', 'Max', 'Valor maximo de las 5 dimensiones ENS')}
           ${_th('category', 'Categoria')}
           ${_th('risks', 'Riesgos', 'Numero de riesgos asociados', 'width:70px;text-align:center;')}
           <th style="white-space:nowrap;">Analisis IA</th>

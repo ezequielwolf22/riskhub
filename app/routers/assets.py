@@ -391,6 +391,38 @@ def analyze_all_assets(
     return {"ok": True, "total": pending, "message": f"Analisis iniciado para {pending} activos pendientes."}
 
 
+@router.post("/analyze-cia-zero")
+def analyze_cia_zero(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Resetea y re-analiza activos que tienen todas las dimensiones CIA a 0.
+    No toca activos que ya tienen CIA correctamente valorado.
+    """
+    org_id = current_user.organization_id
+    # Activos con CIA todo a 0 (sin valorar)
+    zero_cia = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(False),
+        Asset.value_confidentiality == 0,
+        Asset.value_integrity == 0,
+        Asset.value_availability == 0,
+        Asset.value_authenticity == 0,
+        Asset.value_accountability == 0,
+    )
+    count = zero_cia.count()
+    if count:
+        zero_cia.update({"ai_risk_status": None, "ai_risk_summary": None})
+        db.commit()
+        background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+    return {
+        "ok": True,
+        "total": count,
+        "message": f"{count} activos con CIA=0 marcados para re-analisis con estimacion de dimensiones ENS.",
+    }
+
+
 @router.post("/analyze-all-force")
 def analyze_all_assets_force(
     background_tasks: BackgroundTasks,
