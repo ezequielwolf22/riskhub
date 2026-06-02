@@ -41,7 +41,10 @@ const ViewReportSchedules = (() => {
         </table>
       </div>`;
     } catch (e) {
-      container.innerHTML = UI.notice('error', 'Error: ' + e.message);
+      const errMsg = (e && e.message) || 'Error desconocido al cargar programaciones';
+      const statusInfo = (e && e.status) ? ` (código ${e.status})` : '';
+      console.error('ViewReportSchedules error:', e);
+      container.innerHTML = UI.notice('error', errMsg + statusInfo);
     }
   }
 
