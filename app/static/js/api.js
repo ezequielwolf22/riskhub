@@ -157,6 +157,7 @@ const Api = {
     create: (d) => Api.post('/api/control-implementations/', d),
     update: (id, d) => Api.put('/api/control-implementations/' + id, d),
     del: (id) => Api.del('/api/control-implementations/' + id),
+    propagate: (id) => Api.post('/api/control-implementations/' + id + '/propagate', {}),
   },
   risks: {
     list: (q) => Api.get('/api/risks/', q),

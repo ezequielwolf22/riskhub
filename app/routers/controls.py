@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Control, ControlImplementation, User, risk_control_table
+from app.models import Control, ControlImplementation, ControlStatus, User, risk_control_table
 from app.schemas import (
     ControlImplIn, ControlImplOut, ControlIn, ControlOut,
 )
@@ -284,6 +284,30 @@ def update_impl(impl_id: int, data: ControlImplIn,
     # Recalcular residual de riesgos vinculados a este control
     _trigger_linked_risks_recalc(impl.id, impl.organization_id)
     return impl
+
+
+@impl_router.post("/{impl_id}/propagate")
+def propagate_impl(
+    impl_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Propaga el control a riesgos candidatos.
+    Paso 1 (sin IA): recalcula residual de riesgos ya vinculados.
+    Paso 2 (IA): detecta hasta 50 riesgos candidatos no vinculados, estima contribucion y los vincula.
+    """
+    impl = db.get(ControlImplementation, impl_id)
+    if not impl or not check_org_access(impl.organization_id, current_user):
+        raise HTTPException(404, "Implementacion no encontrada")
+    if impl.status == ControlStatus.NOT_IMPLEMENTED:
+        raise HTTPException(400, "El control no esta implementado, no puede propagarse")
+    from app.services.control_propagation_service import propagate_control
+    result = propagate_control(db, impl_id, current_user.organization_id)
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error", "Error en propagacion"))
+    log_action(db, current_user.id, "propagate", "control_impl", str(impl_id),
+               {"linked": result.get("step2_linked", 0), "recalculated": result.get("step1_recalculated", 0)})
+    return result
 
 
 @impl_router.delete("/{impl_id}", status_code=204)

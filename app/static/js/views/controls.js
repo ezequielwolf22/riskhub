@@ -171,7 +171,15 @@ const ViewControls = {
             <td style="font-size:12px;">${i.next_review
               ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISION</span>':''}`
               : '-'}</td>
-            <td>${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${i.id}">Editar</button>` : ''}</td>
+            <td style="white-space:nowrap;" onclick="event.stopPropagation()">
+              ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${i.id}">Editar</button>` : ''}
+              ${Auth.canEdit() && i.status !== 'not_implemented' ? `
+                <button class="btn btn-ghost" data-propagate="${i.id}"
+                        title="Propagar: re-calcula residuales vinculados + IA detecta nuevos riesgos candidatos"
+                        style="font-size:11px;padding:3px 8px;">
+                  Propagar
+                </button>` : ''}
+            </td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -186,8 +194,31 @@ const ViewControls = {
     });
     list.querySelectorAll('[data-edit]').forEach(b =>
       b.onclick = (e) => { e.stopPropagation(); ViewControls._editImpl(parseInt(b.dataset.edit)); });
+    list.querySelectorAll('[data-propagate]').forEach(b =>
+      b.onclick = (e) => { e.stopPropagation(); ViewControls._propagate(parseInt(b.dataset.propagate), b); });
     list.querySelectorAll('tr[data-id]').forEach(tr =>
       tr.onclick = () => ViewControls._editImpl(parseInt(tr.dataset.id)));
+  },
+
+  async _propagate(id, btn) {
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Analizando...';
+    try {
+      const r = await Api.impls.propagate(id);
+      const msg = [
+        r.step1_recalculated ? `${r.step1_recalculated} riesgos vinculados recalculados` : null,
+        r.step2_candidates_evaluated ? `${r.step2_candidates_evaluated} candidatos evaluados` : null,
+        r.step2_linked ? `${r.step2_linked} nuevos vinculos creados` : null,
+      ].filter(Boolean).join(' · ') || r.message || 'Propagacion completada';
+      UI.toast(msg, 'success');
+      ViewControls._renderImpls();
+    } catch (e) {
+      UI.toast('Error al propagar: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
   },
 
   _maturityBar(level) {
