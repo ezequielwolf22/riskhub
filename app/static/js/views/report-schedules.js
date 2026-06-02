@@ -64,12 +64,12 @@ const ViewReportSchedules = (() => {
 
   function _openForm() {
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:440px;">
       <div class="modal-header">
         <h2>Nueva programacion de informe</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
       </div>
       <div class="modal-body">
         <label>Tipo de informe</label>
@@ -92,7 +92,7 @@ const ViewReportSchedules = (() => {
         </label>
         <div style="display:flex;gap:8px;margin-top:14px;">
           <button class="btn btn-primary" onclick="ViewReportSchedules._save()">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
         </div>
       </div>
     </div>`;
@@ -111,7 +111,7 @@ const ViewReportSchedules = (() => {
     try {
       await Api.post('/api/report-schedules', body);
       UI.toast('Programacion creada', 'success');
-      document.querySelector('.modal-overlay')?.remove();
+      document.querySelector('.modal-bg')?.remove();
       location.reload();
     } catch (e) {
       UI.toast('Error: ' + (e.message || e), 'error');
