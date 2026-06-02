@@ -422,9 +422,7 @@ const ViewCve = {
           tienen software identificado y obtienen mejores resultados de escaneo.
           Si no seleccionas ninguno, se usan los primeros 50.
         </p>
-        <div id="analyze-asset-list"
-             style="max-height:280px;overflow-y:auto;overflow-x:hidden;
-                    display:flex;flex-direction:column;gap:2px;">
+        <div id="analyze-asset-list" style="max-height:300px;overflow-y:auto;overflow-x:hidden;">
           ${this._renderAssetCheckboxes()}
         </div>
       </div>
@@ -514,46 +512,80 @@ const ViewCve = {
       : this._assets;
 
     if (!assets.length) {
-      return '<div style="font-size:13px;color:var(--text-muted);padding:10px;">Sin activos que coincidan.</div>';
+      return '<div style="padding:12px;font-size:13px;color:var(--text-muted);">Sin activos que coincidan.</div>';
     }
 
-    const typeLabel = {
+    const typeLabels = {
       primary_process: 'Proceso', primary_information: 'Informacion',
       support_hardware: 'Hardware', support_software: 'Software',
       support_network: 'Red', support_personnel: 'Personal',
       support_site: 'Instalacion', support_organization: 'Organizacion',
     };
 
-    return assets.slice(0, 300).map(a => {
-      const isSel  = this._selectedAssets.has(a.id);
-      const tags   = (a.software_tags || []).filter(Boolean);
-      const tagStr = tags.slice(0, 3).map(t => t.length > 20 ? t.slice(0, 20) + '…' : t).join(', ');
-      const moreTags = tags.length > 3 ? ` +${tags.length - 3}` : '';
-      const tLabel = typeLabel[a.asset_type] || (a.asset_type || '').replace(/_/g, ' ');
+    const allPageSel = assets.slice(0, 300).every(a => this._selectedAssets.has(a.id));
 
-      return `<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;
-              cursor:pointer;border-radius:6px;border:1px solid ${isSel ? 'var(--brand-purple)' : 'transparent'};
-              background:${isSel ? 'rgba(89,0,141,.07)' : 'transparent'};min-width:0;width:100%;box-sizing:border-box;">
-        <input type="checkbox" class="analyze-asset-chk" value="${a.id}"
-               ${isSel ? 'checked' : ''}
-               onchange="ViewCve._toggleAnalyzeAsset(${a.id}, this.checked)"
-               style="accent-color:var(--brand-purple);flex-shrink:0;">
-        <span style="flex:1;min-width:0;font-size:12px;font-weight:600;
-                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-          ${UI.esc(a.name || '(sin nombre)')}
-        </span>
-        <span style="flex-shrink:0;font-size:10px;color:var(--text-muted);
-                     background:var(--bg-2);padding:1px 6px;border-radius:3px;white-space:nowrap;">
-          ${UI.esc(tLabel)}
-        </span>
-        ${tagStr ? `<span style="flex-shrink:0;font-size:10px;color:#6D28D9;
-                         background:#EDE9FE;padding:1px 6px;border-radius:3px;
-                         max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                         title="${UI.esc(tags.join(', '))}">
-          ${UI.esc(tagStr)}${moreTags}
-        </span>` : ''}
-      </label>`;
+    const rows = assets.slice(0, 300).map(a => {
+      const isSel   = this._selectedAssets.has(a.id);
+      const tags    = (a.software_tags || []).filter(Boolean);
+      const tagBadges = tags.slice(0, 4).map(t => {
+        const short = t.length > 22 ? t.slice(0, 22) + '…' : t;
+        return `<span style="display:inline-block;font-size:10px;background:#EDE9FE;color:#6D28D9;
+                             padding:1px 6px;border-radius:3px;white-space:nowrap;max-width:120px;
+                             overflow:hidden;text-overflow:ellipsis;"
+                      title="${UI.esc(t)}">${UI.esc(short)}</span>`;
+      }).join(' ');
+      const moreTags = tags.length > 4 ? `<span style="font-size:10px;color:var(--text-muted);">+${tags.length - 4}</span>` : '';
+      const tLabel = typeLabels[a.asset_type] || (a.asset_type || '').replace(/_/g, ' ');
+
+      return `<tr data-asset-id="${a.id}" style="cursor:pointer;${isSel ? 'background:rgba(89,0,141,.06);' : ''}border-bottom:1px solid var(--border);"
+                  onclick="ViewCve._toggleAnalyzeAsset(${a.id}, !ViewCve._selectedAssets.has(${a.id})); this.querySelector('input').checked=ViewCve._selectedAssets.has(${a.id}); this.style.background=ViewCve._selectedAssets.has(${a.id})?'rgba(89,0,141,.06)':'';">
+        <td style="padding:6px 8px;width:32px;" onclick="event.stopPropagation()">
+          <input type="checkbox" class="analyze-asset-chk" value="${a.id}"
+                 ${isSel ? 'checked' : ''}
+                 onchange="ViewCve._toggleAnalyzeAsset(${a.id}, this.checked); this.closest('tr').style.background=this.checked?'rgba(89,0,141,.06)':'';"
+                 style="accent-color:var(--brand-purple);">
+        </td>
+        <td style="padding:6px 8px;font-size:12px;font-weight:600;max-width:220px;">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${UI.esc(a.name || '(sin nombre)')}</div>
+          ${a.category ? `<div style="font-size:10px;color:var(--text-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${UI.esc(a.category)}</div>` : ''}
+        </td>
+        <td style="padding:6px 8px;white-space:nowrap;">
+          ${UI.assetTypeLabel ? UI.assetTypeLabel(a.asset_type) : `<span style="font-size:11px;color:var(--text-muted);">${UI.esc(tLabel)}</span>`}
+        </td>
+        <td style="padding:6px 8px;">
+          <div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;">
+            ${tagBadges}${moreTags}
+            ${!tags.length ? '<span style="font-size:10px;color:var(--text-subtle);">sin tags</span>' : ''}
+          </div>
+        </td>
+      </tr>`;
     }).join('');
+
+    return `<table class="data" style="width:100%;font-size:12px;border-collapse:collapse;">
+      <thead>
+        <tr style="border-bottom:2px solid var(--border);">
+          <th style="padding:6px 8px;width:32px;">
+            <input type="checkbox" id="chk-all-analyze" ${allPageSel && assets.length > 0 ? 'checked' : ''}
+                   style="accent-color:var(--brand-purple);"
+                   onchange="ViewCve._toggleAllAnalyzeAssets(this.checked, ${JSON.stringify(assets.slice(0,300).map(a=>a.id))})">
+          </th>
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">Nombre</th>
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">Tipo</th>
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">Software tags</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  },
+
+  _toggleAllAnalyzeAssets(checked, ids) {
+    ids.forEach(id => {
+      if (checked) this._selectedAssets.add(id);
+      else this._selectedAssets.delete(id);
+    });
+    const list = document.getElementById('analyze-asset-list');
+    if (list) list.innerHTML = this._renderAssetCheckboxes(this._assetSearchFilter);
+    this._updateAnalyzeAssetCount();
   },
 
   _filterAnalyzeAssets(val) {
