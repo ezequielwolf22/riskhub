@@ -222,7 +222,29 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
         vulns_ctx = _build_vulns_context(vulns)
         controls_ctx = _build_controls_context(impls)
 
+        # Contexto organizacional del cuestionario IA (si existe)
+        org_ctx_lines = []
+        ctx_obj = db.query(RiskContext).filter_by(organization_id=asset.organization_id).first()
+        if ctx_obj:
+            if ctx_obj.risk_appetite is not None:
+                org_ctx_lines.append(f"Apetito de riesgo: {ctx_obj.risk_appetite}/8")
+            if ctx_obj.methodology:
+                org_ctx_lines.append(f"Metodologia: {ctx_obj.methodology}")
+            if ctx_obj.active_frameworks:
+                org_ctx_lines.append(f"Normativas: {', '.join(ctx_obj.active_frameworks)}")
+            qa = ctx_obj.questionnaire_answers or {}
+            _QA_KEYS = ["sector", "employees", "systems", "data_types", "remote_access",
+                        "third_parties", "incidents", "maturity", "controls_existing", "additional"]
+            for key in _QA_KEYS:
+                val = qa.get(key)
+                if val:
+                    if isinstance(val, list):
+                        val = ", ".join(str(v) for v in val)
+                    org_ctx_lines.append(f"  {key}: {val}")
+        org_ctx_str = "\n".join(org_ctx_lines) if org_ctx_lines else "(no configurado)"
+
         user_content = (
+            f"CONTEXTO DE LA ORGANIZACION:\n{org_ctx_str}\n\n"
             f"ACTIVO A ANALIZAR:\n{asset_ctx}\n\n"
             f"CATALOGO DE AMENAZAS APLICABLES ({len(threats)} amenazas):\n{threats_ctx}\n\n"
             f"CATALOGO DE VULNERABILIDADES ({len(vulns)} vulnerabilidades):\n{vulns_ctx}\n\n"

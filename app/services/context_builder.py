@@ -45,6 +45,31 @@ def build_context(
             parts.append(f"Fronteras: {ctx.boundaries}")
         if ctx.risk_appetite is not None:
             parts.append(f"Apetito de riesgo: nivel {ctx.risk_appetite}/8")
+        if ctx.methodology:
+            parts.append(f"Metodologia de riesgo activa: {ctx.methodology}")
+        if ctx.active_frameworks:
+            parts.append(f"Normativas activas: {', '.join(ctx.active_frameworks)}")
+        if ctx.ens_level:
+            parts.append(f"Nivel ENS: {ctx.ens_level.upper()}")
+        # Respuestas del cuestionario IA — contexto organizacional completo
+        qa = ctx.questionnaire_answers or {}
+        if qa:
+            parts.append("\n## Perfil organizacional (cuestionario IA)")
+            _QA_LABELS = {
+                "sector": "Sector", "employees": "Empleados",
+                "regulations": "Normativas", "systems": "Sistemas gestionados",
+                "data_types": "Tipos de datos", "remote_access": "Acceso remoto",
+                "third_parties": "Proveedores externos", "incidents": "Incidentes previos",
+                "controls_existing": "Controles implementados", "maturity": "Madurez de seguridad",
+                "rto": "RTO", "risk_appetite_level": "Apetito de riesgo",
+                "additional": "Contexto adicional",
+            }
+            for key, label in _QA_LABELS.items():
+                val = qa.get(key)
+                if val:
+                    if isinstance(val, list):
+                        val = ", ".join(str(v) for v in val)
+                    parts.append(f"  {label}: {val}")
 
     if ai_cfg:
         if ai_cfg.org_sector:

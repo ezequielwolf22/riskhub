@@ -39,9 +39,15 @@ class ImportRequest(BaseModel):
 
 
 @router.get("/questionnaire")
-def get_questionnaire(_: User = Depends(get_current_user)):
-    """Devuelve la definición del cuestionario de contexto organizacional."""
-    return {"questions": QUESTIONNAIRE}
+def get_questionnaire(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve la definicion del cuestionario y las respuestas guardadas del tenant."""
+    from app.models import RiskContext
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    saved = (ctx.questionnaire_answers or {}) if ctx else {}
+    return {"questions": QUESTIONNAIRE, "saved_answers": saved}
 
 
 @router.post("/analyze")
@@ -67,11 +73,26 @@ def analyze(
 
     try:
         result = run_analysis(enriched_answers, db, api_key=api_key)
-        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el análisis: {str(e)}")
+
+    # Persistir respuestas del cuestionario en RiskContext para pre-rellenar futuros análisis
+    try:
+        from app.models import RiskContext
+        ctx_save = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+        if not ctx_save:
+            ctx_save = RiskContext(organization_id=current_user.organization_id)
+            db.add(ctx_save)
+        # Guardar solo las respuestas del cuestionario (excluir campos internos _*)
+        public_answers = {k: v for k, v in req.answers.items() if not k.startswith("_")}
+        ctx_save.questionnaire_answers = public_answers
+        db.commit()
+    except Exception:
+        pass  # No bloquear si falla el guardado
+
+    return result
 
 
 @router.post("/import")

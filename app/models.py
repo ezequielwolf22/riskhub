@@ -230,6 +230,8 @@ class RiskContext(Base):
     # Metodologia de analisis de riesgos
     # "iso27005" (default) | "magerit" | "combined"
     methodology = Column(String(16), default="iso27005", nullable=False)
+    # Respuestas completas del cuestionario IA (persistidas para no tener que rellenar cada vez)
+    questionnaire_answers = Column(JSON, nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 

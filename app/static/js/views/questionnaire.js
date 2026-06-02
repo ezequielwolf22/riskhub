@@ -18,9 +18,68 @@ const ViewQuestionnaire = {
     try {
       const data = await Api.get('/api/ai/questionnaire');
       this._questions = data.questions;
+      // Pre-cargar respuestas guardadas del análisis anterior
+      if (data.saved_answers && Object.keys(data.saved_answers).length > 0) {
+        this._answers = { ...data.saved_answers };
+      }
       this._renderForm(c);
+      // Pre-rellenar los controles del DOM después de renderizar
+      if (Object.keys(this._answers).length > 0) {
+        this._prefillForm(this._answers);
+      }
     } catch (e) {
       c.innerHTML = UI.notice('Error al cargar el cuestionario: ' + UI.esc(e.message), 'error');
+    }
+  },
+
+  _prefillForm(answers) {
+    if (!answers) return;
+    for (const [id, val] of Object.entries(answers)) {
+      if (!val) continue;
+      const sel = document.getElementById('q-' + id);
+      if (sel && sel.tagName === 'SELECT') {
+        sel.value = val;
+        continue;
+      }
+      const ta = document.getElementById('q-' + id);
+      if (ta && ta.tagName === 'TEXTAREA') {
+        ta.value = val;
+        continue;
+      }
+      // multiselect — val puede ser array
+      const vals = Array.isArray(val) ? val : [val];
+      vals.forEach(v => {
+        // checkboxes del multiselect
+        const grid = document.getElementById('ms-grid-' + id);
+        if (grid) {
+          grid.querySelectorAll('input[type=checkbox]').forEach(cb => {
+            if (cb.value === v) { cb.checked = true; cb.dispatchEvent(new Event('change')); }
+          });
+        }
+      });
+    }
+    // ENS level
+    if (answers.ens_level) {
+      const ensRad = document.querySelector(`input[name="ens_level"][value="${answers.ens_level}"]`);
+      if (ensRad) { ensRad.checked = true; ensRad.dispatchEvent(new Event('change')); }
+    }
+    // Criterios extra
+    for (const [k, v] of Object.entries(answers)) {
+      if (k.startsWith('extra_') && v) {
+        const qid = k.replace('extra_', '');
+        const wrap = document.getElementById('extra-wrap-' + qid);
+        const inp  = document.getElementById('extra-' + qid);
+        if (wrap) wrap.style.display = '';
+        if (inp)  inp.value = v;
+      }
+    }
+    // Custom controls
+    if (answers.custom_controls && Array.isArray(answers.custom_controls)) {
+      answers.custom_controls.forEach(c => {
+        if (typeof ViewQuestionnaire._customControls !== 'undefined') {
+          ViewQuestionnaire._customControls.add(c);
+        }
+      });
     }
   },
 

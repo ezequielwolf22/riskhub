@@ -289,6 +289,8 @@ def _migrate_columns() -> None:
         # v2.4.0 — Licenciamiento
         ("ALTER TABLE licenses ADD COLUMN updated_by_id INTEGER REFERENCES users(id)", "licenses", "updated_by_id"),
         ("ALTER TABLE licenses ADD COLUMN updated_at DATETIME", "licenses", "updated_at"),
+        # v2.4.1 — Persistencia de respuestas del cuestionario IA en RiskContext
+        ("ALTER TABLE risk_context ADD COLUMN questionnaire_answers JSON", "risk_context", "questionnaire_answers"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

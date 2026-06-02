@@ -230,6 +230,25 @@ def _parse_appetite_level(answer: str) -> int:
 
 # ---------- Construcción del prompt ----------
 
+# Instrucciones de metodologia por modo (fuera del f-string para evitar KeyError en format)
+_METHODOLOGY_HINTS: dict[str, str] = {
+    "iso27005": (
+        "Usa ISO 27005 puro: consecuencia (0-4) y probabilidad (0-4) estimadas por el analista."
+    ),
+    "magerit": (
+        "Usa MAGERIT v3: la consecuencia se deriva de las dimensiones D/I/C/A/T del activo "
+        "x degradacion. Indica la dimension primaria en magerit_dimension. "
+        "La frecuencia de amenaza sigue escala MAGERIT (MB/B/M/A/MA). "
+        "Menciona explicitamente las dimensiones afectadas en rationale."
+    ),
+    "combined": (
+        "Usa ISO 27005 para la estructura + MAGERIT para los valores CIA+A+T. "
+        "Indica magerit_dimension en cada escenario. "
+        "Menciona las dimensiones DIACAT relevantes."
+    ),
+}
+
+
 def _build_prompt(answers: dict, assets: list, threats: list, controls: list) -> str:
     matrix_str = "\n".join(
         f"  Consecuencia {i}: {row}" for i, row in enumerate(DEFAULT_MATRIX)
@@ -263,8 +282,11 @@ def _build_prompt(answers: dict, assets: list, threats: list, controls: list) ->
         else:
             base_answers[k] = v
 
-    # Metodología activa del contexto (enriquecida desde el router)
+    # Metodologia activa del contexto (enriquecida desde el router)
     active_methodology = answers.get("_active_methodology", "iso27005")
+    methodology_instruction = _METHODOLOGY_HINTS.get(
+        active_methodology, _METHODOLOGY_HINTS["iso27005"]
+    )
 
     answers_str = "\n".join(f"  - {k}: {v}" for k, v in base_answers.items())
     extra_str = "\n".join(extra_criteria_items) if extra_criteria_items else "  (ninguno)"
@@ -326,11 +348,7 @@ INSTRUCCION: Para cada escenario, asigna treatment_option según la regla:
   · Si residual_level <= {appetite_num} → treatment_option = "retention" (se puede aceptar)
 
 METODOLOGÍA ACTIVA CONFIGURADA POR LA ORGANIZACIÓN: {active_methodology}
-{
-  "iso27005":  "Usa ISO 27005 puro: consecuencia (0-4) y probabilidad (0-4) estimadas por el analista.",
-  "magerit":   "Usa MAGERIT v3: la consecuencia se deriva de las dimensiones D/I/C/A/T del activo × degradación. Indica la dimensión primaria en magerit_dimension. La frecuencia de amenaza sigue escala MAGERIT (MB/B/M/A/MA). Menciona explícitamente las dimensiones afectadas en rationale.",
-  "combined":  "Usa ISO 27005 para la estructura + MAGERIT para los valores CIA+A+T. Indica magerit_dimension en cada escenario. Menciona las dimensiones DIACAT relevantes.",
-}.get(active_methodology, "iso27005")
+INSTRUCCION METODOLOGICA: {methodology_instruction}
 
 NORMATIVAS REGULATORIAS APLICABLES A ESTA ORGANIZACIÓN:
   {regs_str}{ens_str}
