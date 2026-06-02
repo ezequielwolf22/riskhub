@@ -135,10 +135,18 @@ const ViewAssets = {
       if (btnPending) {
         btnPending.onclick = async () => {
           btnPending.disabled = true;
-          btnPending.textContent = 'Iniciando...';
+          btnPending.textContent = 'Lanzando...';
           try {
             const r = await Api.assets.analyzeAll();
-            UI.toast(`Analisis IA iniciado para ${r.total} activos pendientes`, 'success');
+            if (r.total === 0) {
+              UI.toast('Todos los activos ya estan analizados', 'info');
+            } else {
+              UI.toast(
+                `Analisis en paralelo iniciado para ${r.total} activos. ` +
+                `Puede demorar ${Math.ceil(r.total / 15 / 8 * 8)} – ${Math.ceil(r.total / 15 / 8 * 12)} segundos.`,
+                'success', 6000
+              );
+            }
             ViewAssets._reload();
             ViewAssets._startPollIfNeeded();
           } catch (e) {
@@ -490,13 +498,26 @@ const ViewAssets = {
       if (s.total === 0) { banner.innerHTML = ''; return; }
 
       if (inProgress) {
+        const barWidth = Math.max(4, Math.round(pct));
         banner.innerHTML = `
           <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;
-                      padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;font-size:13px;">
-            <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;"></div>
-            <span style="color:#92400E;">
-              Analizando activos con IA... <strong>${s.analysed}/${s.total}</strong> completados (${pct}%)
-            </span>
+                      padding:12px 16px;margin-bottom:10px;font-size:13px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;border-color:rgba(146,64,14,.3);border-top-color:#92400E;"></div>
+              <span style="color:#92400E;font-weight:600;">
+                Analizando activos en paralelo (lotes de 15, 8 simultáneos)...
+              </span>
+              <span style="margin-left:auto;color:#92400E;font-weight:700;">
+                ${s.analysed} / ${s.total} (${pct}%)
+              </span>
+            </div>
+            <div style="height:6px;background:#FED7AA;border-radius:3px;overflow:hidden;">
+              <div style="width:${barWidth}%;height:100%;background:#D97706;border-radius:3px;transition:width .5s;"></div>
+            </div>
+            <div style="margin-top:6px;font-size:11px;color:#92400E;">
+              ${s.analysing} en curso · ${s.error || 0} errores ·
+              ${(s.total - s.analysed - s.analysing - (s.error||0) - (s.skipped||0))} pendientes
+            </div>
           </div>`;
       } else if (pending > 0 || hasError) {
         banner.innerHTML = `
@@ -650,7 +671,7 @@ const ViewAssets = {
           ViewAssets._updateAnalysisBanner();
         }
       } catch (_) { ViewAssets._stopPoll(); }
-    }, 4000);
+    }, 3000);
   },
 
   _stopPoll() {

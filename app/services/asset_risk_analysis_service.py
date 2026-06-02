@@ -326,11 +326,292 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
             pass
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# ANALISIS EN PARALELO POR LOTES
+# Procesa BATCH_SIZE activos por llamada API, MAX_WORKERS llamadas concurrentes.
+# Para 3000 activos: 3000/15 = 200 lotes / 8 workers = ~25 rondas × 8s = ~200s
+# ──────────────────────────────────────────────────────────────────────────────
+
+_BATCH_SIZE    = 15   # activos por llamada API
+_MAX_WORKERS   = 8    # llamadas API concurrentes
+_BATCH_MODEL   = "claude-haiku-4-5-20251001"  # modelo rapido para analisis masivo
+
+_BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005 y MAGERIT v3. Analiza cada activo de la lista y devuelve los escenarios de riesgo mas relevantes.
+
+Para cada activo selecciona 3-5 amenazas del catalogo que REALMENTE apliquen a su tipo y context. Calcula niveles inherentes (sin controles) y residuales (con controles existentes).
+
+Escala: consecuencia 0-4 (0=insignificante, 4=critico), probabilidad 0-4 (0=muy improbable, 4=muy probable).
+Nivel de riesgo = DEFAULT_MATRIX[consecuencia][probabilidad]. Apetito = {appetite}/8.
+treatment_option: "modification" si nivel_residual > {appetite}, "retention" si <= {appetite}.
+
+REGLAS CRITICAS:
+- Devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional antes ni despues
+- No uses comillas dentro de strings, no uses backslash, no uses saltos de linea en strings
+- Strings de rationale max 80 chars, vulnerability max 60 chars
+
+Formato de respuesta:
+{{"results":[{{"asset_id":<int>,"risks":[{{"threat_code":"<cod>","threat_name":"<nombre>","vulnerability":"<desc max 60>","inherent_consequence":<0-4>,"inherent_likelihood":<0-4>,"residual_consequence":<0-4>,"residual_likelihood":<0-4>,"treatment":"modification|retention","rationale":"<max 80>"}}]}}]}}"""
+
+
+def _build_org_context_str(db: Session, org_id: int) -> str:
+    """Construye string de contexto organizacional para incluir en prompts de lote."""
+    ctx = db.query(RiskContext).filter_by(organization_id=org_id).first()
+    if not ctx:
+        return ""
+    lines = []
+    if ctx.risk_appetite is not None:
+        lines.append(f"Apetito de riesgo: {ctx.risk_appetite}/8")
+    if ctx.methodology:
+        lines.append(f"Metodologia: {ctx.methodology}")
+    if ctx.active_frameworks:
+        lines.append(f"Normativas: {', '.join(ctx.active_frameworks)}")
+    qa = ctx.questionnaire_answers or {}
+    for key in ("sector", "employees", "systems", "data_types", "maturity", "incidents"):
+        val = qa.get(key)
+        if val:
+            if isinstance(val, list):
+                val = ", ".join(str(v) for v in val)
+            lines.append(f"{key}: {val}")
+    return "\n".join(lines)
+
+
+def _build_batch_user_prompt(
+    assets: list[Asset],
+    threats: list[Threat],
+    impls_summary: str,
+    org_ctx: str,
+) -> str:
+    """Construye el user-content para analizar un lote de activos."""
+    assets_lines = []
+    for a in assets:
+        assets_lines.append(
+            f"ID:{a.id} [{a.asset_type.value if a.asset_type else 'unknown'}] "
+            f"{a.name} | CIA:{a.value_confidentiality}/{a.value_integrity}/{a.value_availability} "
+            f"| cat:{a.category or '-'} | desc:{(a.description or '')[:80]}"
+        )
+    assets_str = "\n".join(assets_lines)
+
+    # Incluir solo las amenazas mas relevantes (max 50)
+    threats_lines = [
+        f"{t.code}: {t.name} | aplica_a:{','.join((t.typical_assets or [])[:3])}"
+        for t in threats[:50]
+    ]
+    threats_str = "\n".join(threats_lines)
+
+    return (
+        f"CONTEXTO ORG:\n{org_ctx}\n\n"
+        f"CONTROLES IMPLEMENTADOS:\n{impls_summary}\n\n"
+        f"CATALOGO DE AMENAZAS ({len(threats)}):\n{threats_str}\n\n"
+        f"ACTIVOS A ANALIZAR ({len(assets)}):\n{assets_str}"
+    )
+
+
+def _parse_batch_response(raw: str) -> dict:
+    """Parsea la respuesta batch con intentos de reparacion."""
+    import re
+    raw = raw.strip()
+    # Strip markdown fence
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-z]*\n?", "", raw)
+        raw = re.sub(r"\n?```$", "", raw.strip())
+
+    # Extraer bloque JSON
+    start = raw.find("{")
+    end   = raw.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError(f"Sin JSON en respuesta: {raw[:200]}")
+    chunk = raw[start:end]
+
+    # Intento 1: directo
+    try:
+        return json.loads(chunk)
+    except json.JSONDecodeError:
+        pass
+
+    # Intento 2: eliminar trailing commas
+    fixed = re.sub(r",\s*([}\]])", r"\1", chunk)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # Intento 3: usar resultados individuales extraibles
+    asset_results = []
+    for m in re.finditer(r'"asset_id"\s*:\s*(\d+)', chunk):
+        asset_id = int(m.group(1))
+        # Buscar los risks de este asset
+        pos = m.start()
+        risks = re.findall(
+            r'"threat_code"\s*:\s*"([^"]+)".*?"threat_name"\s*:\s*"([^"]+)".*?'
+            r'"inherent_consequence"\s*:\s*(\d).*?"inherent_likelihood"\s*:\s*(\d).*?'
+            r'"residual_consequence"\s*:\s*(\d).*?"residual_likelihood"\s*:\s*(\d)',
+            chunk[pos:pos+3000], re.DOTALL
+        )
+        risk_objs = [
+            {
+                "threat_code": r[0], "threat_name": r[1],
+                "inherent_consequence": int(r[2]), "inherent_likelihood": int(r[3]),
+                "residual_consequence": int(r[4]), "residual_likelihood": int(r[5]),
+                "treatment": "modification", "rationale": "Analisis parcial",
+            }
+            for r in risks
+        ]
+        if risk_objs:
+            asset_results.append({"asset_id": asset_id, "risks": risk_objs})
+
+    if asset_results:
+        logger.warning("Batch JSON repaired via regex: %d asset results", len(asset_results))
+        return {"results": asset_results}
+
+    raise ValueError(f"No se pudo parsear la respuesta batch (len={len(chunk)})")
+
+
+def _process_batch_isolated(
+    batch_ids: list[int],
+    org_id: int,
+    api_key: str,
+    model: str,
+    appetite: int,
+    all_threats: list,
+    impls_summary: str,
+    org_ctx: str,
+    owner_id: int | None,
+) -> None:
+    """Procesa un lote de activos en una sola llamada API. Sesion DB propia."""
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        assets = db.query(Asset).filter(Asset.id.in_(batch_ids)).all()
+        if not assets:
+            return
+
+        # Filtrar amenazas relevantes para los tipos de activo del lote
+        types_in_batch = {a.asset_type.value if a.asset_type else "" for a in assets}
+        relevant_threats = []
+        seen_codes = set()
+        for t in all_threats:
+            ta = t.typical_assets or []
+            if isinstance(ta, str):
+                try:
+                    ta = json.loads(ta)
+                except Exception:
+                    ta = [ta]
+            ta_lower = [x.lower() for x in ta]
+            for atype in types_in_batch:
+                keys = _ASSET_TYPE_KEYS.get(atype, [atype])
+                if any(k in ta_lower or any(k in s for s in ta_lower) for k in keys):
+                    if t.code not in seen_codes:
+                        relevant_threats.append(t)
+                        seen_codes.add(t.code)
+                    break
+        if not relevant_threats:
+            relevant_threats = all_threats[:40]
+
+        user_content = _build_batch_user_prompt(assets, relevant_threats, impls_summary, org_ctx)
+        system = _BATCH_SYSTEM_PROMPT.format(appetite=appetite)
+
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model,
+            max_tokens=8192,
+            system=system,
+            messages=[{"role": "user", "content": user_content}],
+        )
+        raw = msg.content[0].text
+
+        result = _parse_batch_response(raw)
+
+        threats_by_code = {t.code: t for t in all_threats}
+
+        for ar in result.get("results", []):
+            asset_id = ar.get("asset_id")
+            asset = next((a for a in assets if a.id == asset_id), None)
+            if not asset:
+                continue
+            created, updated = 0, 0
+            for item in ar.get("risks", []):
+                threat = threats_by_code.get(item.get("threat_code", ""))
+                if not threat:
+                    continue
+                c_, l_ = max(0, min(4, int(item.get("inherent_consequence", 2)))), max(0, min(4, int(item.get("inherent_likelihood", 2))))
+                rc, rl = max(0, min(4, int(item.get("residual_consequence", 1)))), max(0, min(4, int(item.get("residual_likelihood", 1))))
+                inh_lvl = calc_level(c_, l_)
+                res_lvl = calc_level(rc, rl)
+                tx_str  = item.get("treatment", "")
+                treatment_map = {"modification": TreatmentOption.MODIFICATION, "retention": TreatmentOption.RETENTION,
+                                 "avoidance": TreatmentOption.AVOIDANCE, "sharing": TreatmentOption.SHARING}
+                treatment = treatment_map.get(tx_str, TreatmentOption.MODIFICATION if res_lvl > appetite else TreatmentOption.RETENTION)
+
+                dup = db.query(Risk).filter_by(asset_id=asset.id, threat_id=threat.id).first()
+                if dup:
+                    dup.inherent_consequence = c_; dup.inherent_likelihood = l_; dup.inherent_level = inh_lvl
+                    dup.residual_consequence = rc;  dup.residual_likelihood = rl;  dup.residual_level = res_lvl
+                    dup.treatment_option = treatment
+                    if item.get("rationale"):
+                        dup.description = (item["rationale"] or "")[:1000]
+                    updated += 1
+                else:
+                    # Generar codigo seguro
+                    n = db.query(Risk).count() + 1
+                    code = f"RSK-{n:04d}"
+                    while db.query(Risk).filter_by(code=code).first():
+                        n += 1; code = f"RSK-{n:04d}"
+                    risk = Risk(
+                        code=code,
+                        asset_id=asset.id,
+                        threat_id=threat.id,
+                        inherent_consequence=c_, inherent_likelihood=l_, inherent_level=inh_lvl,
+                        residual_consequence=rc,  residual_likelihood=rl,  residual_level=res_lvl,
+                        treatment_option=treatment,
+                        description=(item.get("rationale") or "")[:1000],
+                        vulnerability_description=(item.get("vulnerability") or "")[:500],
+                        status=RiskStatus.IDENTIFIED,
+                        owner_id=owner_id,
+                        organization_id=org_id,
+                        ai_generated=True,
+                    )
+                    db.add(risk)
+                    created += 1
+
+            asset.ai_risk_status = "analysed"
+            asset.ai_risk_summary = {
+                "risks_created": created, "risks_updated": updated,
+                "threats_analysed": len(ar.get("risks", [])),
+                "summary": f"{created} riesgos creados, {updated} actualizados",
+            }
+
+        # Marcar como error los activos que no aparecieron en la respuesta
+        responded_ids = {ar.get("asset_id") for ar in result.get("results", [])}
+        for asset in assets:
+            if asset.id not in responded_ids and asset.ai_risk_status == "analysing":
+                asset.ai_risk_status = "error"
+                asset.ai_risk_summary = {"error": "No incluido en respuesta del lote. Reintenta."}
+
+        db.commit()
+        logger.debug("Batch done: %d assets, org=%d", len(assets), org_id)
+
+    except Exception as exc:
+        logger.error("Batch failed (ids=%s…): %s", batch_ids[:3], exc)
+        try:
+            for asset in db.query(Asset).filter(Asset.id.in_(batch_ids)).all():
+                if asset.ai_risk_status == "analysing":
+                    asset.ai_risk_status = "error"
+                    asset.ai_risk_summary = {"error": str(exc)[:300]}
+            db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 def analyze_all_org_assets(db: Session, org_id: int) -> dict:
-    """Lanza el analisis solo de activos pendientes (null o error) de la organizacion.
-    Usa sesiones aisladas por activo para evitar contaminacion de estado DB.
+    """Analiza en PARALELO todos los activos pendientes (null/error) de la org.
+    Usa lotes de _BATCH_SIZE activos por llamada API y _MAX_WORKERS llamadas concurrentes.
     """
+    import concurrent.futures
     from sqlalchemy import or_
+
     asset_ids = [
         a.id for a in db.query(Asset).filter(
             Asset.organization_id == org_id,
@@ -338,16 +619,79 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
             or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
         ).all()
     ]
+    if not asset_ids:
+        logger.info("No pending assets for org=%d", org_id)
+        return {"total": 0}
+
     total = len(asset_ids)
-    logger.info("Bulk analysis started: %d pending assets for org=%d", total, org_id)
-    for asset_id in asset_ids:
-        _analyze_isolated(asset_id)
-    logger.info("Bulk analysis finished: %d assets processed for org=%d", total, org_id)
-    return {"total": total, "message": f"Analisis completado para {total} activos pendientes."}
+    logger.info("Parallel batch analysis starting: %d assets, batch=%d, workers=%d, org=%d",
+                total, _BATCH_SIZE, _MAX_WORKERS, org_id)
+
+    # Marcar todos como "analysing" de una vez
+    db.query(Asset).filter(Asset.id.in_(asset_ids)).update(
+        {"ai_risk_status": "analysing", "ai_risk_summary": None},
+        synchronize_session=False,
+    )
+    db.commit()
+
+    # Datos compartidos (leidos una sola vez para todos los lotes)
+    api_key = _get_api_key(db, org_id)
+    if not api_key:
+        db.query(Asset).filter(Asset.id.in_(asset_ids)).update(
+            {"ai_risk_status": "skipped", "ai_risk_summary": {"reason": "Sin API key"}},
+            synchronize_session=False,
+        )
+        db.commit()
+        return {"total": 0}
+
+    # Usar haiku para analisis masivo (rapido y barato); mantener config para analisis individual
+    model = _BATCH_MODEL
+
+    all_threats   = db.query(Threat).all()
+    ctx_obj       = db.query(RiskContext).filter_by(organization_id=org_id).first()
+    appetite      = ctx_obj.risk_appetite if ctx_obj and ctx_obj.risk_appetite is not None else 3
+    owner_id      = _org_owner_id(db, org_id)
+    org_ctx       = _build_org_context_str(db, org_id)
+
+    # Resumen de controles implementados
+    impls = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == org_id,
+        ControlImplementation.status != ControlStatus.NOT_IMPLEMENTED,
+    ).all()
+    impls_summary = ", ".join(
+        f"{i.name}" for i in impls[:20]
+    ) or "ninguno"
+
+    # Dividir en lotes
+    batches = [asset_ids[i:i + _BATCH_SIZE] for i in range(0, total, _BATCH_SIZE)]
+    logger.info("Lotes: %d (tamano=%d), workers=%d", len(batches), _BATCH_SIZE, _MAX_WORKERS)
+
+    # Ejecutar en paralelo
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(
+                _process_batch_isolated,
+                batch, org_id, api_key, model,
+                appetite, all_threats, impls_summary, org_ctx, owner_id,
+            ): batch
+            for batch in batches
+        }
+        done, failed = 0, 0
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+                done += 1
+            except Exception as exc:
+                failed += 1
+                logger.error("Future failed batch=%s: %s", futures[future][:2], exc)
+
+    logger.info("Parallel analysis complete: %d batches done, %d failed, org=%d",
+                done, failed, org_id)
+    return {"total": total}
 
 
 def _analyze_isolated(asset_id: int) -> None:
-    """Analiza un activo con su propia sesion DB para aislar errores de estado."""
+    """Analiza un activo individual con su propia sesion DB (para botón individual)."""
     from app.database import SessionLocal
     db = SessionLocal()
     try:
