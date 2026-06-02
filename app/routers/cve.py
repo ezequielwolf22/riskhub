@@ -101,6 +101,14 @@ class CreateRiskRequest(BaseModel):
     cve_data: dict   # datos del CVE (score, desc, etc.)
 
 
+class AutoScanRequest(BaseModel):
+    asset_ids: list[int] = []   # vacio = todos los activos (hasta 50)
+    days: int = 7
+    severity: str = "HIGH"
+    skip_heuristic: bool = False
+    max_cves: int = 50
+
+
 # ---------- Endpoints ----------
 
 @router.get("/config", response_model=CveConfigOut)
@@ -340,6 +348,170 @@ def analyze_cves(
 
     return {
         "analyzed_pairs": pairs_done,
+        "results": results,
+    }
+
+
+@router.post("/auto-scan")
+def auto_scan_cves(
+    body: AutoScanRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Busca CVEs recientes en NVD relevantes para los activos seleccionados y los analiza con IA.
+
+    Flujo automatico:
+      1. Obtiene activos con sus software_tags.
+      2. Busca CVEs en NVD usando los tags como keywords (y busqueda general como fallback).
+      3. Ejecuta el analisis IA CVE x Activo sobre los pares con coincidencia heuristica.
+    """
+    from app.models import AiConfig
+    from app.routers.ai_config import resolve_api_key
+    from app.services.cve_analysis_service import analyze_cve_asset, get_rag_context
+
+    ai_cfg = db.query(AiConfig).filter_by(organization_id=current_user.organization_id).first()
+    if not ai_cfg:
+        ai_cfg = db.query(AiConfig).first()
+    ai_api_key = resolve_api_key(ai_cfg)
+    if not ai_api_key:
+        raise HTTPException(400, "El Agente IA no esta configurado. Ve a Configuracion > Agente IA.")
+
+    api_key = _get_api_key(db)
+    sev = None if body.severity.upper() == "ALL" else body.severity.upper()
+    valid_sev = {"CRITICAL", "HIGH", "MEDIUM", "LOW", None}
+    if sev not in valid_sev:
+        raise HTTPException(400, "severity invalida.")
+    if not 1 <= body.days <= 90:
+        raise HTTPException(400, "days debe estar entre 1 y 90.")
+
+    # Obtener activos de la org
+    q = filter_by_org(db.query(Asset), Asset, current_user).filter(
+        Asset.is_group_representative.is_(False)
+    )
+    if body.asset_ids:
+        q = q.filter(Asset.id.in_(body.asset_ids))
+    assets = q.limit(100).all()
+    if not assets:
+        raise HTTPException(404, "No se encontraron activos.")
+
+    # Extraer software_tags para busqueda dirigida
+    all_tags: list[str] = []
+    seen_tags: set[str] = set()
+    for a in assets:
+        for tag in (a.software_tags or []):
+            t = (tag or "").strip().lower()
+            if t and t not in seen_tags:
+                all_tags.append(t)
+                seen_tags.add(t)
+
+    # Buscar CVEs en NVD
+    cves_by_id: dict = {}
+    if all_tags:
+        for tag in all_tags[:8]:
+            try:
+                partial = cvs.fetch_recent(
+                    api_key, days=body.days, severity=sev,
+                    keyword=tag, max_results=20,
+                )
+                for c in partial:
+                    if c["id"] not in cves_by_id:
+                        cves_by_id[c["id"]] = c
+                if len(cves_by_id) >= body.max_cves:
+                    break
+            except Exception as exc:
+                logger.warning("NVD search tag=%s: %s", tag, exc)
+
+    if not cves_by_id:
+        # Fallback: busqueda general sin keyword
+        try:
+            general = cvs.fetch_recent(
+                api_key, days=body.days, severity=sev,
+                max_results=min(body.max_cves, 50),
+            )
+            for c in general:
+                cves_by_id[c["id"]] = c
+        except ValueError as exc:
+            raise HTTPException(502, str(exc))
+
+    if not cves_by_id:
+        return {
+            "analyzed_pairs": 0,
+            "cves_found": 0,
+            "results": [],
+            "message": (
+                f"No se encontraron CVEs en los ultimos {body.days} dias "
+                f"con severidad minima {body.severity}. "
+                "Amplia la ventana de tiempo o reduce el filtro de severidad."
+            ),
+        }
+
+    # Controles implementados para contexto de cobertura
+    impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
+    controls_context = [
+        {
+            "name": impl.name,
+            "control_code": impl.control.code if impl.control else "",
+            "status": impl.implementation_status.value if impl.implementation_status else "",
+            "notes": (impl.notes or "")[:200],
+        }
+        for impl in impls
+        if impl.implementation_status and impl.implementation_status.value in ("implemented", "partial")
+    ]
+
+    # Analisis CVE x Activo
+    pairs_done = 0
+    results = []
+
+    for cve_id, cve in cves_by_id.items():
+        for asset in assets:
+            if pairs_done >= _MAX_ANALYSIS_PAIRS:
+                break
+            if not body.skip_heuristic:
+                match_score = cvs.asset_matches_cve(
+                    asset.name or "",
+                    asset.description or "",
+                    cve,
+                )
+                if cve.get("affected_products") and match_score < 0.15:
+                    continue
+            rag_ctx = get_rag_context(
+                cve, {"name": asset.name, "description": asset.description or ""}
+            )
+            asset_dict = {
+                "name": asset.name,
+                "asset_type": asset.asset_type.value if asset.asset_type else "",
+                "description": asset.description or "",
+                "confidentiality": asset.value_confidentiality,
+                "integrity": asset.value_integrity,
+                "availability": asset.value_availability,
+            }
+            analysis = analyze_cve_asset(
+                cve=cve, asset=asset_dict, controls=controls_context,
+                rag_context=rag_ctx, api_key=ai_api_key,
+            )
+            results.append({
+                "cve_id": cve_id,
+                "cve": cve,
+                "asset_id": asset.id,
+                "asset_name": asset.name,
+                "asset_type": asset_dict["asset_type"],
+                "analysis": analysis,
+            })
+            pairs_done += 1
+        if pairs_done >= _MAX_ANALYSIS_PAIRS:
+            break
+
+    log_action(db, current_user.id, "auto_scan", "cve", None, {
+        "cves_found": len(cves_by_id),
+        "asset_count": len(assets),
+        "pairs_analyzed": pairs_done,
+        "tags_used": all_tags[:8],
+    })
+    db.commit()
+
+    return {
+        "analyzed_pairs": pairs_done,
+        "cves_found": len(cves_by_id),
         "results": results,
     }
 

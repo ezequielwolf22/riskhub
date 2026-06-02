@@ -317,6 +317,7 @@ const Api = {
     search: (q) => Api.get('/api/cve/search', q),
     lookup: (q) => Api.get('/api/cve/lookup', { q }),
     analyze: (d) => Api.post('/api/cve/analyze', d),
+    autoScan: (d) => Api.post('/api/cve/auto-scan', d),
     createRisk: (d) => Api.post('/api/cve/create-risk', d),
   },
   awareness: {
