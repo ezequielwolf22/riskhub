@@ -2,6 +2,8 @@
 const ViewRisks = {
   _assets: [], _threats: [], _vulns: [], _impls: [],
   _assetFilter: null,
+  _groupFilter: null,   // {id, name} para filtrar por grupo
+  _riskTab: 'list',     // 'list' | 'groups'
   _sortCol: 'residual_level', _sortAsc: false,
   _page: 0, _pageSize: 50, _allData: [],
 
@@ -23,46 +25,80 @@ const ViewRisks = {
       'ISO/IEC 27005:2018 cl. 8-9 — identificación, análisis, tratamiento',
       canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nuevo riesgo</button>' : ''
     ) + `
-      <div class="toolbar">
-        <input type="search" id="r-search" placeholder="Buscar por activo o amenaza...">
-        <select id="r-status">
-          <option value="">Cualquier estado</option>
-          <option value="identified">Identificado</option>
-          <option value="assessed">Evaluado</option>
-          <option value="treated">Tratado</option>
-          <option value="accepted">Aceptado</option>
-          <option value="closed">Cerrado</option>
-        </select>
-        <select id="r-band">
-          <option value="">Cualquier nivel</option>
-          <option value="6">Solo altos (6+)</option>
-          <option value="3">Medios y altos (3+)</option>
-        </select>
-        <select id="r-treatment">
-          <option value="">Cualquier tratamiento</option>
-          <option value="modification">Mitigar</option>
-          <option value="retention">Aceptar</option>
-          <option value="avoidance">Evitar</option>
-          <option value="sharing">Transferir</option>
-          <option value="__none__">Sin asignar</option>
-        </select>
-        <select id="r-owner">
-          <option value="">Cualquier responsable</option>
-        </select>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
-          <input type="checkbox" id="r-overdue"> Solo vencidos
-        </label>
-        <button class="btn btn-ghost" id="r-export-csv" title="Exportar tabla como CSV" style="margin-left:auto;">Exportar CSV</button>
-        ${canEdit ? `
-        <button class="btn btn-ghost" id="r-import-tpl" title="Descargar plantilla CSV de importacion">Plantilla</button>
-        <label class="btn btn-ghost" style="cursor:pointer;margin:0;" title="Importar riesgos desde CSV">
-          Importar CSV
-          <input type="file" id="r-import-file" accept=".csv" style="display:none;">
-        </label>` : ''}
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
+        <button class="risk-tab-btn" data-risk-tab="list"
+          style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
+                 font-weight:600;color:var(--brand-purple);border-bottom:3px solid var(--brand-purple);margin-bottom:-2px;">
+          Todos los riesgos
+        </button>
+        <button class="risk-tab-btn" data-risk-tab="groups"
+          style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
+                 font-weight:600;color:var(--text-muted);border-bottom:3px solid transparent;margin-bottom:-2px;">
+          Por grupo
+        </button>
       </div>
-      <div id="r-asset-filter" style="display:none;margin-bottom:8px;"></div>
-      <div id="r-list"></div>
+      <div id="risk-tab-list">
+        <div class="toolbar">
+          <input type="search" id="r-search" placeholder="Buscar por activo o amenaza...">
+          <select id="r-status">
+            <option value="">Cualquier estado</option>
+            <option value="identified">Identificado</option>
+            <option value="assessed">Evaluado</option>
+            <option value="treated">Tratado</option>
+            <option value="accepted">Aceptado</option>
+            <option value="closed">Cerrado</option>
+          </select>
+          <select id="r-band">
+            <option value="">Cualquier nivel</option>
+            <option value="6">Solo altos (6+)</option>
+            <option value="3">Medios y altos (3+)</option>
+          </select>
+          <select id="r-treatment">
+            <option value="">Cualquier tratamiento</option>
+            <option value="modification">Mitigar</option>
+            <option value="retention">Aceptar</option>
+            <option value="avoidance">Evitar</option>
+            <option value="sharing">Transferir</option>
+            <option value="__none__">Sin asignar</option>
+          </select>
+          <select id="r-owner">
+            <option value="">Cualquier responsable</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
+            <input type="checkbox" id="r-overdue"> Solo vencidos
+          </label>
+          <button class="btn btn-ghost" id="r-export-csv" title="Exportar tabla como CSV" style="margin-left:auto;">Exportar CSV</button>
+          ${canEdit ? `
+          <button class="btn btn-ghost" id="r-import-tpl" title="Descargar plantilla CSV de importacion">Plantilla</button>
+          <label class="btn btn-ghost" style="cursor:pointer;margin:0;" title="Importar riesgos desde CSV">
+            Importar CSV
+            <input type="file" id="r-import-file" accept=".csv" style="display:none;">
+          </label>` : ''}
+        </div>
+        <div id="r-asset-filter" style="display:none;margin-bottom:8px;"></div>
+        <div id="r-list"></div>
+      </div>
+      <div id="risk-tab-groups" style="display:none;">
+        <div id="r-group-view"><div class="notice">Cargando...</div></div>
+      </div>
     `;
+
+    // Tab switching
+    main.querySelectorAll('.risk-tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        main.querySelectorAll('.risk-tab-btn').forEach(b => {
+          b.style.color = 'var(--text-muted)';
+          b.style.borderBottomColor = 'transparent';
+        });
+        btn.style.color = 'var(--brand-purple)';
+        btn.style.borderBottomColor = 'var(--brand-purple)';
+        const tab = btn.dataset.riskTab;
+        ViewRisks._riskTab = tab;
+        document.getElementById('risk-tab-list').style.display = tab === 'list' ? '' : 'none';
+        document.getElementById('risk-tab-groups').style.display = tab === 'groups' ? '' : 'none';
+        if (tab === 'groups') ViewRisks._renderGroupView();
+      };
+    });
     if (canEdit) document.getElementById('btn-new').onclick = () => ViewRisks._edit();
     document.getElementById('r-search').oninput = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-status').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
@@ -173,8 +209,96 @@ const ViewRisks = {
     ViewRisks._assetFilter = null;
     ViewRisks._threatFilter = null;
     ViewRisks._vulnFilter = null;
-    document.getElementById('r-asset-filter').style.display = 'none';
+    ViewRisks._groupFilter = null;
+    const fb = document.getElementById('r-asset-filter');
+    if (fb) fb.style.display = 'none';
     location.hash = '#/risks';
+    ViewRisks._reload();
+  },
+
+  // ---------- Vista Por Grupo ----------
+
+  async _renderGroupView() {
+    const view = document.getElementById('r-group-view');
+    view.innerHTML = '<div class="notice">Cargando resumen por grupo...</div>';
+    try {
+      const summary = await Api.risks.groupSummary();
+      if (!summary.length) {
+        view.innerHTML = UI.emptyState('Sin grupos', 'Crea y valida grupos desde la seccion Activos → Agrupacion.');
+        return;
+      }
+      const levelColor = l => l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
+      const statusBadge = s => ({
+        proposed: '<span style="font-size:10px;background:var(--brand-orange);color:#fff;padding:1px 6px;border-radius:8px;">Propuesto</span>',
+        validated: '<span style="font-size:10px;background:var(--risk-low);color:#fff;padding:1px 6px;border-radius:8px;">Validado</span>',
+        none: '',
+      }[s] || '');
+
+      view.innerHTML = `
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+          Riesgos organizados por grupo de activos.
+          Los riesgos se analizaron individualmente y aqui se presentan agrupados.
+          Los riesgos individuales <strong>no se pierden</strong> al reagrupar.
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">
+          ${summary.map(g => {
+            const gid = g.group_id ?? -1;
+            const hasRisks = g.risk_count > 0;
+            return `
+            <div style="border:1px solid var(--border);border-radius:8px;padding:14px 16px;
+                        background:var(--bg-2);display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:flex-start;gap:8px;">
+                <div style="flex:1;">
+                  <div style="font-weight:700;font-size:14px;">${UI.esc(g.group_name)}</div>
+                  <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                    ${statusBadge(g.group_status)}
+                    ${g.member_count} activos
+                  </div>
+                </div>
+                ${g.max_residual > 0 ? `
+                <div style="text-align:right;min-width:50px;">
+                  <div style="font-size:22px;font-weight:800;color:${levelColor(g.max_residual)};
+                               font-family:var(--font-mono);">${g.max_residual}</div>
+                  <div style="font-size:10px;color:var(--text-subtle);">max nivel</div>
+                </div>` : ''}
+              </div>
+              <div style="display:flex;gap:12px;font-size:12px;color:var(--text-muted);">
+                <span><strong style="color:var(--text-primary);">${g.risk_count}</strong> riesgos</span>
+                ${g.critical_count ? `<span style="color:var(--risk-critical);font-weight:700;">${g.critical_count} criticos</span>` : ''}
+                ${g.high_count ? `<span style="color:var(--risk-high);font-weight:600;">${g.high_count} altos</span>` : ''}
+              </div>
+              <button class="btn ${hasRisks ? 'btn-primary' : 'btn-ghost'}"
+                      ${!hasRisks ? 'disabled' : ''}
+                      onclick="ViewRisks._showGroupRisks(${gid}, '${UI.esc(g.group_name)}')"
+                      style="font-size:12px;padding:5px 14px;align-self:flex-start;">
+                ${hasRisks ? 'Ver riesgos' : 'Sin riesgos'}
+              </button>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    } catch (e) {
+      view.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _showGroupRisks(groupId, groupName) {
+    // Activa el tab "Todos" con filtro de grupo
+    const listTabBtn = document.querySelector('.risk-tab-btn[data-risk-tab="list"]');
+    if (listTabBtn) listTabBtn.click();
+    ViewRisks._groupFilter = { id: groupId, name: groupName };
+    // Mostrar banner de filtro de grupo
+    const filterDiv = document.getElementById('r-asset-filter');
+    if (filterDiv) {
+      filterDiv.style.display = 'block';
+      filterDiv.innerHTML = `<div style="background:rgba(89,0,141,0.08);border-left:3px solid var(--brand-purple);
+                                          border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
+                                          display:flex;justify-content:space-between;align-items:center;">
+        <span>Riesgos del grupo: <strong>${UI.esc(groupName)}</strong></span>
+        <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+      </div>`;
+    }
+    ViewRisks._page = 0;
     ViewRisks._reload();
   },
 
@@ -232,6 +356,7 @@ const ViewRisks = {
       if (ViewRisks._assetFilter) params.asset_id = ViewRisks._assetFilter.id;
       if (ViewRisks._threatFilter) params.threat_id = ViewRisks._threatFilter.id;
       if (ViewRisks._vulnFilter) params.vulnerability_id = ViewRisks._vulnFilter.id;
+      if (ViewRisks._groupFilter) params.group_id = ViewRisks._groupFilter.id;
       if (overdue) params.overdue = true;
       if (ownerVal && ownerVal !== '__unassigned__') params.owner_id = ownerVal;
       if (treatFilter && treatFilter !== '__none__') params.treatment = treatFilter;

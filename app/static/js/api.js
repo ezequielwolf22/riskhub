@@ -161,6 +161,7 @@ const Api = {
   },
   risks: {
     list: (q) => Api.get('/api/risks/', q),
+    groupSummary: () => Api.get('/api/risks/group-summary'),
     listOverdue: () => Api.get('/api/risks/', { overdue: true }),
     get: (id) => Api.get('/api/risks/' + id),
     create: (d) => Api.post('/api/risks/', d),

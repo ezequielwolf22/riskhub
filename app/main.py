@@ -84,11 +84,32 @@ def startup():
 
     init_db()
     sched.start(interval_hours=1)
+    _reset_stuck_analyses()
 
 
 @app.on_event("shutdown")
 def shutdown():
     sched.stop()
+
+
+def _reset_stuck_analyses() -> None:
+    """En cada arranque, resetea activos atascados en 'analysing' (proceso interrumpido).
+    Esto permite que el siguiente 'Analizar riesgos con IA' los recoja automaticamente."""
+    try:
+        from app.database import SessionLocal
+        from app.models import Asset
+        db = SessionLocal()
+        try:
+            n = db.query(Asset).filter(Asset.ai_risk_status == "analysing").update(
+                {"ai_risk_status": None, "ai_risk_summary": None}
+            )
+            if n:
+                db.commit()
+                logger.info("Startup: reset %d activos atascados en 'analysing' → null", n)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("No se pudo resetear analyses en startup: %s", exc)
 
 
 @app.get("/api/health")

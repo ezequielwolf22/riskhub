@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import (
-    Asset, ControlImplementation, Risk, RiskContext, RiskStatus,
+    Asset, AssetGroup, ControlImplementation, Risk, RiskContext, RiskStatus,
     Threat, TreatmentOption, User, Vulnerability, risk_control_table,
 )
 from app.schemas import RiskIn, RiskOut, RiskUpdate
@@ -100,6 +100,80 @@ def _recalc(db: Session, risk: Risk) -> None:
                     risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
 
 
+@router.get("/group-summary")
+def risks_group_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve estadisticas de riesgos por grupo para la vista 'Por grupo'."""
+    org_id = current_user.organization_id
+
+    # Grupos de la org con sus miembros
+    groups = db.query(AssetGroup).filter_by(organization_id=org_id).order_by(
+        AssetGroup.status, AssetGroup.name
+    ).all()
+
+    result = []
+    for grp in groups:
+        member_ids = [
+            a.id for a in db.query(Asset.id).filter_by(
+                group_id=grp.id, is_group_representative=False
+            ).all()
+        ]
+        if not member_ids:
+            continue
+        risks = db.query(
+            Risk.residual_level, Risk.status, Risk.treatment_option
+        ).filter(
+            Risk.asset_id.in_(member_ids),
+            Risk.organization_id == org_id,
+        ).all()
+
+        total = len(risks)
+        max_res = max((r.residual_level or 0 for r in risks), default=0)
+        high = sum(1 for r in risks if (r.residual_level or 0) >= 6)
+        critical = sum(1 for r in risks if (r.residual_level or 0) >= 7)
+
+        result.append({
+            "group_id": grp.id,
+            "group_name": grp.name,
+            "group_status": grp.status.value if grp.status else "proposed",
+            "member_count": len(member_ids),
+            "risk_count": total,
+            "max_residual": max_res,
+            "high_count": high,
+            "critical_count": critical,
+        })
+
+    # Activos sin grupo
+    ungrouped_ids = [
+        a.id for a in db.query(Asset.id).filter(
+            Asset.organization_id == org_id,
+            Asset.is_group_representative.is_(False),
+            Asset.group_id.is_(None),
+        ).all()
+    ]
+    ung_risks = db.query(
+        Risk.residual_level, Risk.status
+    ).filter(
+        Risk.asset_id.in_(ungrouped_ids),
+        Risk.organization_id == org_id,
+    ).all() if ungrouped_ids else []
+
+    result.append({
+        "group_id": None,
+        "group_name": "Sin grupo",
+        "group_status": "none",
+        "member_count": len(ungrouped_ids),
+        "risk_count": len(ung_risks),
+        "max_residual": max((r.residual_level or 0 for r in ung_risks), default=0),
+        "high_count": sum(1 for r in ung_risks if (r.residual_level or 0) >= 6),
+        "critical_count": sum(1 for r in ung_risks if (r.residual_level or 0) >= 7),
+    })
+
+    return result
+
+
 @router.get("/", response_model=list[RiskOut])
 def list_risks(
     db: Session = Depends(get_db),
@@ -112,11 +186,19 @@ def list_risks(
     overdue: Optional[bool] = None,
     owner_id: Optional[int] = None,
     treatment: Optional[str] = None,
+    group_id: Optional[int] = Query(None, description="-1 = sin grupo, >0 = grupo especifico"),
 ):
     now = datetime.now(timezone.utc)
     q = filter_by_org(db.query(Risk), Risk, current_user)
     if asset_id:
         q = q.filter(Risk.asset_id == asset_id)
+    if group_id is not None:
+        # Filtra por grupo via JOIN con Asset
+        q = q.join(Asset, Risk.asset_id == Asset.id)
+        if group_id < 0:
+            q = q.filter(Asset.group_id.is_(None))  # sin grupo
+        else:
+            q = q.filter(Asset.group_id == group_id)
     if threat_id:
         q = q.filter(Risk.threat_id == threat_id)
     if vulnerability_id:

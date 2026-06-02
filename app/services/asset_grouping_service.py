@@ -227,8 +227,85 @@ def update_config(db: Session, org_id: int | None, criteria: list[dict]) -> Asse
 
 # ---------- Agrupacion IA ----------
 
+_GROUPING_BATCH_SIZE = 300  # activos por llamada IA (lote por tipo)
+
+
+def _call_grouping_batch(
+    batch: list,
+    criteria_text: str,
+    api_key: str,
+    model: str,
+    db: Session,
+    org_id: int | None,
+) -> list[dict]:
+    """Llama a la IA con un lote de activos y devuelve la lista de grupos propuestos."""
+    import anthropic
+    import time as _time
+
+    n = len(batch)
+    asset_payload = json.dumps(
+        [_asset_row(a, compact=True) for a in batch],
+        ensure_ascii=False, separators=(',', ':'),
+    )
+    user_content = (
+        f"INVENTARIO A AGRUPAR ({n} activos del mismo tipo):\n{asset_payload}\n\n"
+        "Agrupa segun los criterios. Nombres CORTOS (<50 chars). "
+        "Devuelve SOLO: name y asset_ids en cada grupo. Sin description, rationale ni summary."
+    )
+
+    system = _GROUPING_SYSTEM_PROMPT.format(criteria_text=criteria_text)
+    client = anthropic.Anthropic(api_key=api_key)
+
+    for attempt in range(4):
+        try:
+            msg = client.messages.create(
+                model=model, max_tokens=8192,
+                system=system,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            break
+        except anthropic.BadRequestError as exc:
+            err = str(exc).lower()
+            if "credit balance" in err or "billing" in err:
+                raise ValueError("Saldo insuficiente en Anthropic. Recarga creditos.")
+            raise
+        except Exception as exc:
+            if "429" in str(exc) or "rate_limit" in str(exc).lower():
+                wait = 15 * (2 ** attempt)
+                logger.warning("Rate limit 429 grouping (intento %d), esperando %ds", attempt + 1, wait)
+                _time.sleep(wait)
+            else:
+                raise
+
+    db.add(AiCallLog(
+        organization_id=org_id,
+        call_type="asset_grouping",
+        prompt_tokens=msg.usage.input_tokens,
+        completion_tokens=msg.usage.output_tokens,
+        model=model, anonymized=False,
+        response_summary=f"Grouping batch {n} assets",
+    ))
+
+    raw = _strip_fence(msg.content[0].text)
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        # Intentar reparar
+        import re
+        start = raw.find("{"); end = raw.rfind("}") + 1
+        if start != -1 and end > 0:
+            try:
+                result = json.loads(raw[start:end])
+            except Exception:
+                logger.error("No se pudo parsear respuesta de agrupacion batch n=%d", n)
+                return []
+        else:
+            return []
+    return result.get("groups", [])
+
+
 def propose_groups(db: Session, org_id: int | None) -> dict:
-    """Llama a la IA para proponer grupos y persiste los resultados como PROPOSED."""
+    """Agrupa TODOS los activos en lotes por asset_type. Sin limite de activos."""
     api_key = _get_api_key(db, org_id)
     if not api_key:
         return {"ok": False, "error": "No hay API key configurada para el agente IA"}
@@ -238,140 +315,66 @@ def propose_groups(db: Session, org_id: int | None) -> dict:
     if not enabled_criteria:
         return {"ok": False, "error": "No hay criterios de agrupacion habilitados"}
 
-    # Solo activos reales (no representativos) que no estén en grupos validados
-    validated_group_ids = [
-        g.id for g in db.query(AssetGroup).filter_by(
-            organization_id=org_id, status=AssetGroupStatus.VALIDATED
-        ).all()
-    ]
-    query = db.query(Asset).filter(
+    # Todos los activos reales (sin limite)
+    all_assets = db.query(Asset).filter(
         Asset.organization_id == org_id,
         Asset.is_group_representative.is_(False),
-    )
-    if validated_group_ids:
-        query = query.filter(
-            (Asset.group_id == None) | (Asset.group_id.notin_(validated_group_ids))  # noqa: E711
-        )
-
-    assets = query.limit(1000).all()
-    if not assets:
+    ).all()
+    if not all_assets:
         return {"ok": False, "error": "No hay activos disponibles para agrupar"}
-
-    n_assets = len(assets)
-    # Modo compacto cuando hay muchos activos para reducir tokens de entrada y salida
-    compact = n_assets > 80
 
     criteria_text = "\n".join(
         f"  Nivel {c['level']} - {c['name']}: {c['description']}"
         for c in sorted(enabled_criteria, key=lambda x: x["level"])
     )
-
-    asset_payload = json.dumps(
-        [_asset_row(a, compact=compact) for a in assets],
-        ensure_ascii=False,
-        separators=(',', ':') if compact else (', ', ': '),
-    )
-
-    compact_hint = (
-        "\nNOTA: inventario grande. Usa nombres de grupo CORTOS (<50 chars). "
-        "Omite campos 'description' y 'rationale' del JSON de salida para ahorrar tokens. "
-        "Solo devuelve: name, asset_ids. No incluyas summary."
-        if compact else ""
-    )
-    user_content = (
-        f"INVENTARIO A AGRUPAR ({n_assets} activos):\n{asset_payload}\n\n"
-        f"Aplica los criterios jerarquicos y devuelve los grupos propuestos.{compact_hint}"
-    )
-
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
     model = _get_model(db, org_id)
 
-    system = _GROUPING_SYSTEM_PROMPT.format(criteria_text=criteria_text)
-    # max_tokens: usar 16384 para modelos modernos; 8192 como fallback seguro
-    max_tok = 16384
-    try:
-        message = client.messages.create(
-            model=model,
-            max_tokens=max_tok,
-            system=system,
-            messages=[{"role": "user", "content": user_content}],
-        )
-    except anthropic.BadRequestError as exc:
-        err_body = str(exc).lower()
-        # Algunos modelos no soportan 16384; reintentar con 8192
-        if "max_tokens" in err_body or "maximum" in err_body:
+    # --- Lotes por asset_type (nivel 1 jerarquico, determinista) ---
+    from collections import defaultdict
+    by_type: dict[str, list] = defaultdict(list)
+    for a in all_assets:
+        key = a.asset_type.value if a.asset_type else "unknown"
+        by_type[key].append(a)
+
+    all_groups_data: list[dict] = []
+    asset_ids_set = {a.id for a in all_assets}
+    total_batches = 0
+
+    for asset_type in sorted(by_type.keys()):
+        type_assets = by_type[asset_type]
+        # Sub-lotes si el tipo tiene muchos activos
+        for i in range(0, max(1, len(type_assets)), _GROUPING_BATCH_SIZE):
+            batch = type_assets[i:i + _GROUPING_BATCH_SIZE]
             try:
-                message = client.messages.create(
-                    model=model,
-                    max_tokens=8192,
-                    system=system,
-                    messages=[{"role": "user", "content": user_content}],
+                groups_from_batch = _call_grouping_batch(
+                    batch, criteria_text, api_key, model, db, org_id
                 )
-            except Exception as exc2:
-                return {"ok": False, "error": f"Error Anthropic API: {exc2}"}
-        elif "credit balance" in err_body or "billing" in err_body:
-            return {"ok": False, "error": "Saldo insuficiente en la cuenta Anthropic. Recarga creditos en console.anthropic.com/settings/billing."}
-        else:
-            return {"ok": False, "error": f"Error Anthropic API: {exc}"}
-    except anthropic.AuthenticationError:
-        return {"ok": False, "error": "API key de Anthropic invalida o no configurada en Configuracion > Agente IA."}
-    except Exception as exc:
-        logger.exception("Error en propuesta de grupos IA")
-        return {"ok": False, "error": f"Error al llamar a la IA: {exc}"}
+                all_groups_data.extend(groups_from_batch)
+                total_batches += 1
+            except Exception as exc:
+                logger.error("Error agrupando batch tipo=%s offset=%d: %s", asset_type, i, exc)
+                return {"ok": False, "error": str(exc)}
 
-    # Detectar truncado por limite de tokens
-    if getattr(message, 'stop_reason', None) == 'max_tokens':
-        logger.warning(f"Grouping response truncated at max_tokens ({max_tok}). Assets={n_assets}")
+    db.flush()  # Flush logs antes del commit masivo
 
-    raw = _strip_fence(message.content[0].text)
-
-    db.add(AiCallLog(
-        organization_id=org_id,
-        call_type="asset_grouping",
-        prompt_tokens=message.usage.input_tokens,
-        completion_tokens=message.usage.output_tokens,
-        model=model,
-        anonymized=False,
-        response_summary=f"Asset grouping: {n_assets} assets analyzed",
-    ))
-
-    try:
-        result = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        stop = getattr(message, 'stop_reason', 'unknown')
-        logger.error(f"JSONDecodeError in grouping (stop_reason={stop}, len={len(raw)}): {exc}")
-        if stop == 'max_tokens':
-            return {"ok": False, "error": (
-                f"La respuesta de la IA fue demasiado larga y se corto ({n_assets} activos). "
-                "Intenta reducir el numero de criterios habilitados o procesa el inventario en bloques "
-                "eliminando activos ya agrupados."
-            )}
-        return {"ok": False, "error": f"La IA devolvio JSON invalido. Intenta de nuevo."}
-
-    groups_data = result.get("groups", [])
-    summary = result.get("summary", "")
-
-    # Borrar TODOS los grupos anteriores (propuestos y validados) para empezar limpio
+    # --- Borrar TODOS los grupos anteriores (los riesgos individuales se preservan) ---
     all_existing = db.query(AssetGroup).filter_by(organization_id=org_id).all()
     for g in all_existing:
-        # Eliminar activo representativo si existe (cascade borra sus riesgos IA)
         if g.representative_asset_id:
             rep = db.get(Asset, g.representative_asset_id)
             if rep and rep.is_group_representative:
                 db.delete(rep)
-        # Desagrupar los miembros
         db.query(Asset).filter_by(group_id=g.id).update(
             {"group_id": None}, synchronize_session=False
         )
         db.delete(g)
     db.commit()
 
-    # Crear nuevos grupos propuestos
-    asset_ids_set = {a.id for a in assets}
+    # --- Crear nuevos grupos propuestos ---
     criteria_ids = [c["id"] for c in enabled_criteria]
     created = 0
-    for gd in groups_data:
+    ungrouped = 0
+    for gd in all_groups_data:
         member_ids = [aid for aid in gd.get("asset_ids", []) if aid in asset_ids_set]
         if not member_ids:
             continue
@@ -391,8 +394,27 @@ def propose_groups(db: Session, org_id: int | None) -> dict:
         ).update({"group_id": grp.id}, synchronize_session=False)
         created += 1
 
+    # Contar activos sin grupo (la IA no los asigno a ningun grupo)
     db.commit()
-    return {"ok": True, "groups_created": created, "assets_analyzed": len(assets), "summary": summary}
+    grouped_count = sum(
+        len([aid for aid in gd.get("asset_ids", []) if aid in asset_ids_set])
+        for gd in all_groups_data
+    )
+    ungrouped = len(all_assets) - grouped_count
+
+    logger.info(
+        "Grouping complete: %d assets, %d batches, %d groups, %d ungrouped, org=%s",
+        len(all_assets), total_batches, created, ungrouped, org_id,
+    )
+    return {
+        "ok": True,
+        "groups_created": created,
+        "assets_analyzed": len(all_assets),
+        "assets_grouped": grouped_count,
+        "assets_ungrouped": ungrouped,
+        "batches": total_batches,
+        "summary": f"{created} grupos propuestos cubriendo {grouped_count}/{len(all_assets)} activos ({total_batches} lotes por tipo).",
+    }
 
 
 # ---------- Operaciones sobre grupos ----------
