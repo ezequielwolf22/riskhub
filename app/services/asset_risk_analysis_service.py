@@ -141,10 +141,22 @@ def _strip_fence(raw: str) -> str:
     return raw
 
 
-def _threats_for_asset(db: Session, asset_type: str) -> list[Threat]:
-    """Filtra amenazas del catalogo aplicables al tipo de activo."""
+def _get_active_catalogs(db: Session, org_id: int) -> list[str]:
+    """Devuelve los catalogos activos de la org o todos si no hay preferencia."""
+    ctx = db.query(RiskContext).filter_by(organization_id=org_id).first()
+    if ctx and ctx.active_threat_catalogs:
+        return ctx.active_threat_catalogs
+    return ["iso27005", "magerit", "custom"]
+
+
+def _threats_for_asset(db: Session, asset_type: str, org_id: int | None = None) -> list[Threat]:
+    """Filtra amenazas del catalogo aplicables al tipo de activo, respetando catalogos activos."""
     keys = _ASSET_TYPE_KEYS.get(asset_type, [asset_type])
-    all_threats = db.query(Threat).all()
+    threat_q = db.query(Threat)
+    if org_id:
+        active_catalogs = _get_active_catalogs(db, org_id)
+        threat_q = threat_q.filter(Threat.catalog.in_(active_catalogs))
+    all_threats = threat_q.all()
     result = []
     for t in all_threats:
         ta = t.typical_assets or []
@@ -205,8 +217,8 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
             db.commit()
             return
 
-        # 1. Obtener catalogo filtrado
-        threats = _threats_for_asset(db, asset.asset_type.value if asset.asset_type else "")
+        # 1. Obtener catalogo filtrado por tipo de activo Y catalogos activos de la org
+        threats = _threats_for_asset(db, asset.asset_type.value if asset.asset_type else "", asset.organization_id)
         threat_codes = [t.code for t in threats]
         vulns = _vulns_for_threats(db, threat_codes)
 
@@ -693,7 +705,8 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
     # Usar haiku para analisis masivo (rapido y barato); mantener config para analisis individual
     model = _BATCH_MODEL
 
-    all_threats   = db.query(Threat).all()
+    active_catalogs = _get_active_catalogs(db, org_id)
+    all_threats   = db.query(Threat).filter(Threat.catalog.in_(active_catalogs)).all()
     ctx_obj       = db.query(RiskContext).filter_by(organization_id=org_id).first()
     appetite      = ctx_obj.risk_appetite if ctx_obj and ctx_obj.risk_appetite is not None else 3
     owner_id      = _org_owner_id(db, org_id)

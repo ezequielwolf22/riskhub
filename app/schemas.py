@@ -303,6 +303,7 @@ class ThreatIn(BaseModel):
     origin: ThreatOrigin
     typical_assets: list[str] = []
     affects: list[str] = []
+    catalog: str = "custom"  # iso27005 | magerit | custom
 
 
 class ThreatOut(ORMBase):
@@ -315,6 +316,7 @@ class ThreatOut(ORMBase):
     typical_assets: Optional[list[str]]
     affects: Optional[list[str]]
     is_custom: bool
+    catalog: str = "iso27005"
     risk_count: int = 0
 
 

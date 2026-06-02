@@ -1,36 +1,93 @@
-/* Vista Amenazas - catalogo ISO 27005 Annex C. */
+/* Vista Amenazas — catalogos ISO 27005, MAGERIT v3 y personalizadas. */
 const ViewThreats = {
   _sortCol: 'code', _sortAsc: true,
+  _activeCatalogs: ['iso27005', 'magerit', 'custom'],  // preferencia org (cargada desde API)
 
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
       'Catalogo de amenazas',
-      'ISO/IEC 27005:2018 Annex C + MAGERIT v3 + amenazas personalizadas',
-      canEdit
-        ? `<div style="display:flex;gap:8px;flex-wrap:wrap;">
-             <button class="btn" id="btn-magerit-seed" title="Carga las 51 amenazas MAGERIT v3 en el catálogo">
-               Cargar catálogo MAGERIT
-             </button>
-             <button class="btn btn-danger" id="btn-magerit-del" title="Elimina todas las amenazas MAGERIT del catálogo">
-               Quitar catálogo MAGERIT
-             </button>
-             <button class="btn btn-primary" id="btn-new">+ Nueva amenaza</button>
-           </div>`
-        : ''
+      'ISO 27005 Annex C + MAGERIT v3 + personalizadas'
     ) + `
-      <div class="toolbar">
-        <input type="search" id="t-search" placeholder="Buscar...">
-        <select id="t-category">
-          <option value="">Todas las categorias</option>
-        </select>
+      <div class="toolbar" style="gap:12px;flex-wrap:wrap;align-items:center;">
+        <input type="search" id="t-search" placeholder="Buscar codigo, nombre...">
+        <select id="t-category"><option value="">Todas las categorias</option></select>
+
+        <!-- Multi-select de catalogos -->
+        <div id="catalog-dropdown" style="position:relative;">
+          <button class="btn" id="catalog-btn"
+                  style="display:flex;align-items:center;gap:6px;min-width:180px;justify-content:space-between;">
+            <span id="catalog-btn-label">Todos los catalogos</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div id="catalog-menu" style="
+              display:none;position:absolute;top:calc(100% + 4px);left:0;
+              background:var(--bg-card);border:1px solid var(--border);border-radius:8px;
+              padding:8px 0;min-width:220px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.12);">
+            <div style="padding:4px 12px 8px;font-size:11px;text-transform:uppercase;
+                        color:var(--text-muted);font-weight:600;letter-spacing:.5px;">
+              Mostrar y aplicar en analisis
+            </div>
+            ${[
+              ['iso27005', 'ISO/IEC 27005:2018', '#7C3AED', 'ISO 27005 Annex C — catalogo estandar internacional'],
+              ['magerit',  'MAGERIT v3',          '#D97706', 'MAGERIT v3 — metodologia espanola ENS/CCN'],
+              ['custom',   'Personalizadas',       '#16A34A', 'Amenazas creadas manualmente por tu equipo'],
+            ].map(([val, label, color, desc]) => `
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 14px;
+                            cursor:pointer;transition:background .1s;" class="catalog-opt"
+                     onmouseover="this.style.background='var(--bg-2)'"
+                     onmouseout="this.style.background=''">
+                <input type="checkbox" class="catalog-check" value="${val}"
+                       style="margin-top:2px;accent-color:${color};">
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:${color};">${label}</div>
+                  <div style="font-size:11px;color:var(--text-muted);">${desc}</div>
+                </div>
+              </label>
+            `).join('')}
+            <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
+            <div style="padding:4px 14px 4px;font-size:11px;color:var(--text-muted);">
+              La seleccion se aplica al analisis IA de riesgos
+            </div>
+            ${canEdit ? `
+              <div style="padding:4px 14px;">
+                <button class="btn btn-ghost" id="btn-magerit-seed"
+                        style="font-size:12px;padding:4px 10px;width:100%;">
+                  + Cargar catalogo MAGERIT v3
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        ${canEdit ? `<button class="btn btn-primary" id="btn-new">+ Nueva amenaza</button>` : ''}
       </div>
       <div id="t-list"></div>
     `;
+
+    // Cargar preferencia de catalogos desde API
+    await ViewThreats._loadActiveCatalogs();
+
+    // Toggle del dropdown
+    document.getElementById('catalog-btn').onclick = (e) => {
+      e.stopPropagation();
+      const menu = document.getElementById('catalog-menu');
+      menu.style.display = menu.style.display === 'none' ? '' : 'none';
+    };
+    document.addEventListener('click', () => {
+      const menu = document.getElementById('catalog-menu');
+      if (menu) menu.style.display = 'none';
+    }, { once: false });
+    document.getElementById('catalog-menu').onclick = e => e.stopPropagation();
+
+    // Cambio en checkboxes de catalogo
+    document.querySelectorAll('.catalog-check').forEach(cb => {
+      cb.onchange = () => ViewThreats._onCatalogChange();
+    });
+
     if (canEdit) {
       document.getElementById('btn-new').onclick = () => ViewThreats._edit();
 
-      // Cargar catálogo MAGERIT
       const mageritBtn = document.getElementById('btn-magerit-seed');
       if (mageritBtn) mageritBtn.onclick = async () => {
         mageritBtn.disabled = true; mageritBtn.textContent = 'Cargando...';
@@ -38,38 +95,74 @@ const ViewThreats = {
           const r = await Api.magerit.seed();
           const msg = r.created > 0
             ? `${r.created} amenazas MAGERIT v3 cargadas`
-            : 'El catálogo MAGERIT ya estaba cargado';
+            : 'El catalogo MAGERIT ya estaba cargado';
           UI.toast(msg, 'success');
-          ViewThreats._reload();
-        } catch (e) {
-          UI.toast('Error: ' + e.message, 'error');
-        } finally {
-          mageritBtn.disabled = false; mageritBtn.textContent = 'Cargar catálogo MAGERIT';
-        }
-      };
-
-      // Quitar catálogo MAGERIT completo
-      const mageritDelBtn = document.getElementById('btn-magerit-del');
-      if (mageritDelBtn) mageritDelBtn.onclick = async () => {
-        if (!confirm('¿Eliminar todas las amenazas del catálogo MAGERIT v3?\n\nLas amenazas con riesgos asociados no se eliminarán.')) return;
-        mageritDelBtn.disabled = true; mageritDelBtn.textContent = 'Eliminando...';
-        try {
-          const r = await Api.magerit.deleteCatalog();
-          UI.toast(r.message, r.deleted > 0 ? 'success' : 'info');
-          if (r.skipped?.length) {
-            UI.toast(`${r.skipped.length} amenaza(s) no eliminada(s) por tener riesgos asociados`, 'warn');
+          // Activar magerit automaticamente si no estaba
+          if (!ViewThreats._activeCatalogs.includes('magerit')) {
+            ViewThreats._activeCatalogs.push('magerit');
+            await ViewThreats._saveActiveCatalogs();
           }
           ViewThreats._reload();
         } catch (e) {
           UI.toast('Error: ' + e.message, 'error');
         } finally {
-          mageritDelBtn.disabled = false; mageritDelBtn.textContent = 'Quitar catálogo MAGERIT';
+          mageritBtn.disabled = false; mageritBtn.textContent = '+ Cargar catalogo MAGERIT v3';
         }
       };
     }
+
     document.getElementById('t-search').oninput = () => ViewThreats._reload();
     document.getElementById('t-category').onchange = () => ViewThreats._reload();
     ViewThreats._reload();
+  },
+
+  async _loadActiveCatalogs() {
+    try {
+      const data = await Api.get('/api/threats/active-catalogs');
+      ViewThreats._activeCatalogs = data.active_catalogs || ['iso27005', 'magerit', 'custom'];
+    } catch (_) {
+      ViewThreats._activeCatalogs = ['iso27005', 'magerit', 'custom'];
+    }
+    ViewThreats._syncCheckboxes();
+    ViewThreats._updateCatalogBtnLabel();
+  },
+
+  _syncCheckboxes() {
+    document.querySelectorAll('.catalog-check').forEach(cb => {
+      cb.checked = ViewThreats._activeCatalogs.includes(cb.value);
+    });
+  },
+
+  _updateCatalogBtnLabel() {
+    const label = document.getElementById('catalog-btn-label');
+    if (!label) return;
+    const active = ViewThreats._activeCatalogs;
+    const _NAMES = { iso27005: 'ISO 27005', magerit: 'MAGERIT', custom: 'Personalizadas' };
+    if (active.length === 3 || active.length === 0) {
+      label.textContent = 'Todos los catalogos';
+    } else {
+      label.textContent = active.map(c => _NAMES[c] || c).join(' + ');
+    }
+  },
+
+  async _onCatalogChange() {
+    const checked = [...document.querySelectorAll('.catalog-check:checked')].map(cb => cb.value);
+    if (checked.length === 0) {
+      // Al menos uno debe estar activo — revertir
+      ViewThreats._syncCheckboxes();
+      UI.toast('Debes tener al menos un catalogo activo', 'warn');
+      return;
+    }
+    ViewThreats._activeCatalogs = checked;
+    ViewThreats._updateCatalogBtnLabel();
+    await ViewThreats._saveActiveCatalogs();
+    ViewThreats._reload();
+  },
+
+  async _saveActiveCatalogs() {
+    try {
+      await Api.put('/api/threats/active-catalogs', { active_catalogs: ViewThreats._activeCatalogs });
+    } catch (_) { /* no bloquear */ }
   },
 
   async _reload() {
@@ -81,6 +174,11 @@ const ViewThreats = {
       const params = {};
       if (q) params.q = q;
       if (cat) params.category = cat;
+      // Filtrar por catalogos activos
+      if (ViewThreats._activeCatalogs.length < 3) {
+        params.catalog = ViewThreats._activeCatalogs.join(',');
+      }
+
       const data = await Api.threats.list(params);
       const canEdit = Auth.canEdit();
 
@@ -92,7 +190,7 @@ const ViewThreats = {
       }
 
       if (!data.length) {
-        list.innerHTML = UI.emptyState('Sin amenazas', 'No se encontraron resultados.');
+        list.innerHTML = UI.emptyState('Sin amenazas', 'No se encontraron resultados para los catalogos seleccionados.');
         return;
       }
 
@@ -103,6 +201,7 @@ const ViewThreats = {
         if (k === 'name') return (t.name || '').toLowerCase();
         if (k === 'origin') return t.origin || '';
         if (k === 'category') return (t.category || '').toLowerCase();
+        if (k === 'catalog') return t.catalog || '';
         if (k === 'risks') return t.risk_count || 0;
         return '';
       };
@@ -111,6 +210,7 @@ const ViewThreats = {
         const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
         return ViewThreats._sortAsc ? cmp : -cmp;
       });
+
       const _th = (col, label, style) => {
         const active = ViewThreats._sortCol === col;
         const arrow = active ? (ViewThreats._sortAsc ? ' ▲' : ' ▼') : '';
@@ -118,23 +218,35 @@ const ViewThreats = {
                     data-sort="${col}">${label}${arrow}</th>`;
       };
 
+      const _catalogBadge = (t) => {
+        if (t.catalog === 'magerit')
+          return `<span class="badge" style="background:#FEF0E3;color:#D97706;border:1px solid #FDE68A;">MAGERIT</span>`;
+        if (t.catalog === 'custom' || t.is_custom)
+          return `<span class="badge" style="background:#DCFCE7;color:#16A34A;border:1px solid #BBF7D0;">Custom</span>`;
+        return `<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO 27005</span>`;
+      };
+
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          ${_th('code','Codigo')}${_th('name','Nombre')}${_th('origin','Origen')}
-          ${_th('category','Categoria')}<th>Afecta</th><th>Aplica a</th>
+          ${_th('code','Codigo')}${_th('name','Nombre')}
+          ${_th('catalog','Catalogo','width:90px;')}
+          ${_th('origin','Origen')}${_th('category','Categoria')}
+          <th>Afecta</th><th>Aplica a</th>
           ${_th('risks','Riesgos','width:70px;text-align:center;')}<th></th>
         </tr></thead>
         <tbody>
           ${data.map(t => {
             const rc = t.risk_count || 0;
             const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+            const isEditable = t.catalog === 'custom' || t.is_custom;
             return `
             <tr>
               <td>${UI.codePill(t.code)}</td>
               <td>
                 <strong>${UI.esc(t.name)}</strong>
-                ${t.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(t.description)}</div>` : ''}
+                ${t.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(t.description.substring(0,80))}${t.description.length>80?'…':''}</div>` : ''}
               </td>
+              <td>${_catalogBadge(t)}</td>
               <td>${UI.threatOriginLabel(t.origin)}</td>
               <td>${UI.esc(t.category||'-')}</td>
               <td>${(t.affects||[]).join(', ')||'-'}</td>
@@ -145,27 +257,21 @@ const ViewThreats = {
                           color:${rcColor};text-decoration:none;">${rc}</a>
               </td>
               <td style="white-space:nowrap;">
-                ${t.is_custom
-                  ? `<span class="badge badge-muted">Custom</span>
-                     ${canEdit ? `
-                       <button class="btn btn-sm" style="margin-left:4px;"
-                         onclick="ViewThreats._edit(${JSON.stringify(t).replace(/"/g,'&quot;')})">Editar</button>
-                       <button class="btn btn-sm btn-danger" style="margin-left:2px;"
-                         onclick="ViewThreats._del(${t.id},'${UI.esc(t.name)}')">Eliminar</button>
-                     ` : ''}
-                  `
-                  : t.code.startsWith('MAGERIT-')
-                    ? `<span class="badge" style="background:#FEF0E3;color:var(--brand-orange);border:1px solid var(--brand-orange-3);">MAGERIT</span>
-                       ${canEdit ? `
-                         <button class="btn btn-sm btn-danger" style="margin-left:4px;"
-                           onclick="ViewThreats._del(${t.id},'${UI.esc(t.name)}')">Eliminar</button>
-                       ` : ''}`
-                    : '<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO</span>'
-                }
+                ${isEditable && canEdit ? `
+                  <button class="btn btn-sm" onclick="ViewThreats._edit(${JSON.stringify(t).replace(/"/g,'&quot;')})">Editar</button>
+                  <button class="btn btn-sm btn-danger" style="margin-left:2px;"
+                    onclick="ViewThreats._del(${t.id},'${UI.esc(t.name)}')">Eliminar</button>
+                ` : ''}
               </td>
-            </tr>`; }).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
-      </table></div>`;
+      </table></div>
+      <div style="font-size:12px;color:var(--text-muted);padding:8px 4px;">
+        ${data.length} amenazas
+        ${ViewThreats._activeCatalogs.length < 3 ? `(filtrando: ${ViewThreats._activeCatalogs.join(', ')})` : '(todos los catalogos)'}
+      </div>`;
+
       list.querySelectorAll('th[data-sort]').forEach(th => {
         th.onclick = () => {
           const col = th.dataset.sort;
@@ -215,6 +321,7 @@ const ViewThreats = {
         origin: document.getElementById('f-origin').value,
         affects: document.getElementById('f-affects').value.split(',').map(s=>s.trim()).filter(Boolean),
         typical_assets: isNew ? [] : (t.typical_assets||[]),
+        catalog: 'custom',
       };
       try {
         if (isNew) {
@@ -230,7 +337,7 @@ const ViewThreats = {
   },
 
   async _del(id, name) {
-    if (!confirm(`Eliminar la amenaza personalizada "${name}"?`)) return;
+    if (!confirm(`Eliminar la amenaza "${name}"?`)) return;
     try {
       await Api.threats.del(id);
       UI.toast('Amenaza eliminada', 'success');

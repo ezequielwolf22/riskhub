@@ -17,12 +17,49 @@ vulns_router = APIRouter(prefix="/api/vulnerabilities", tags=["vulnerabilities"]
 
 # ---------- THREATS ----------
 
+@threats_router.get("/active-catalogs")
+def get_active_catalogs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve los catalogos de amenazas activos para la org."""
+    from app.models import RiskContext
+    from app.security import filter_by_org
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    catalogs = ctx.active_threat_catalogs if ctx and ctx.active_threat_catalogs else ["iso27005", "magerit", "custom"]
+    return {"active_catalogs": catalogs}
+
+
+@threats_router.put("/active-catalogs")
+def set_active_catalogs(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Guarda los catalogos de amenazas activos para la org."""
+    from app.models import RiskContext
+    from app.security import filter_by_org
+    catalogs = body.get("active_catalogs", ["iso27005", "magerit", "custom"])
+    valid = {"iso27005", "magerit", "custom"}
+    catalogs = [c for c in catalogs if c in valid]
+    if not catalogs:
+        catalogs = ["iso27005"]
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    if not ctx:
+        ctx = RiskContext(organization_id=current_user.organization_id)
+        db.add(ctx)
+    ctx.active_threat_catalogs = catalogs
+    db.commit()
+    return {"active_catalogs": catalogs}
+
+
 @threats_router.get("/", response_model=list[ThreatOut])
 def list_threats(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
     q: Optional[str] = None,
     category: Optional[str] = None,
+    catalog: Optional[str] = None,
 ):
     query = db.query(Threat)
     if q:
@@ -30,6 +67,11 @@ def list_threats(
         query = query.filter((Threat.name.ilike(like)) | (Threat.code.ilike(like)))
     if category:
         query = query.filter(Threat.category == category)
+    if catalog:
+        # Acepta multiples separados por coma: "iso27005,magerit"
+        catalogs = [c.strip() for c in catalog.split(",") if c.strip()]
+        if catalogs:
+            query = query.filter(Threat.catalog.in_(catalogs))
     threats = query.order_by(Threat.code).all()
 
     # Compute risk counts in a single query
@@ -56,7 +98,7 @@ def create_threat(data: ThreatIn, db: Session = Depends(get_db),
     code = data.code or _next_code(db, Threat, "T.CUS")
     if db.query(Threat).filter(Threat.code == code).first():
         raise HTTPException(400, f"Ya existe amenaza con codigo {code}")
-    t = Threat(**data.model_dump(exclude={"code"}), code=code, is_custom=True)
+    t = Threat(**data.model_dump(exclude={"code"}), code=code, is_custom=True, catalog="custom")
     db.add(t)
     log_action(db, current_user.id, "create", "threat", None,
                {"code": code, "name": data.name})

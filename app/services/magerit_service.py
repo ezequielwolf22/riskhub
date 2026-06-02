@@ -191,6 +191,7 @@ def seed_magerit_threats(db: Session, org_id: int) -> int:
             typical_assets=[],
             affects=t.get("dimension", []),   # D/I/C/A/T — dimensiones afectadas
             is_custom=False,
+            catalog="magerit",
         )
         db.add(threat)
         created += 1

@@ -117,6 +117,7 @@ def seed_threats(db: Session) -> None:
             existing.category = t.get("category")
             existing.typical_assets = t.get("typical_assets", [])
             existing.affects = t.get("affects", [])
+            existing.catalog = "iso27005"
         else:
             db.add(Threat(
                 code=t["code"], name=t["name"], description=t.get("description"),
@@ -125,7 +126,22 @@ def seed_threats(db: Session) -> None:
                 typical_assets=t.get("typical_assets", []),
                 affects=t.get("affects", []),
                 is_custom=False,
+                catalog="iso27005",
             ))
+
+    # Normalizar amenazas MAGERIT existentes (código MAGERIT-*)
+    db.query(Threat).filter(
+        Threat.code.like("MAGERIT-%"),
+        (Threat.catalog == None) | (Threat.catalog == "iso27005"),  # noqa: E711
+    ).update({"catalog": "magerit"}, synchronize_session=False)
+
+    # Normalizar amenazas custom existentes
+    db.query(Threat).filter(
+        Threat.is_custom == True,  # noqa: E712
+        (Threat.catalog == None) | (Threat.catalog == "iso27005"),  # noqa: E711
+        ~Threat.code.like("MAGERIT-%"),
+    ).update({"catalog": "custom"}, synchronize_session=False)
+
     db.commit()
 
 
@@ -291,6 +307,10 @@ def _migrate_columns() -> None:
         ("ALTER TABLE licenses ADD COLUMN updated_at DATETIME", "licenses", "updated_at"),
         # v2.4.1 — Persistencia de respuestas del cuestionario IA en RiskContext
         ("ALTER TABLE risk_context ADD COLUMN questionnaire_answers JSON", "risk_context", "questionnaire_answers"),
+        # v2.4.2 — Campo catalog en Threat (iso27005 | magerit | custom)
+        ("ALTER TABLE threats ADD COLUMN catalog VARCHAR(32) NOT NULL DEFAULT 'iso27005'", "threats", "catalog"),
+        # v2.4.2 — Catalogos de amenazas activos por org en RiskContext
+        ("ALTER TABLE risk_context ADD COLUMN active_threat_catalogs JSON", "risk_context", "active_threat_catalogs"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

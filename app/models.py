@@ -232,6 +232,8 @@ class RiskContext(Base):
     methodology = Column(String(16), default="iso27005", nullable=False)
     # Respuestas completas del cuestionario IA (persistidas para no tener que rellenar cada vez)
     questionnaire_answers = Column(JSON, nullable=True)
+    # Catalogos de amenazas activos para análisis: ["iso27005", "magerit", "custom"]
+    active_threat_catalogs = Column(JSON, nullable=True)  # None = todos activos
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
@@ -339,7 +341,7 @@ class Asset(Base):
 # ---------- AMENAZAS / VULNERABILIDADES (catalogo + instancias) ----------
 
 class Threat(Base):
-    """Catalogo de amenazas - ISO 27005 Annex C."""
+    """Catalogo de amenazas - ISO 27005 Annex C + MAGERIT v3."""
     __tablename__ = "threats"
     id = Column(Integer, primary_key=True)
     code = Column(String(32), unique=True, nullable=False)
@@ -350,6 +352,8 @@ class Threat(Base):
     typical_assets = Column(JSON)     # tipos de activo a los que aplica
     affects = Column(JSON)            # ["C","I","A","Auth","Acc"]
     is_custom = Column(Boolean, default=False)
+    # Catalogo de origen: "iso27005" | "magerit" | "custom" (amenazas creadas por usuario)
+    catalog = Column(String(32), default="iso27005", nullable=False, index=True)
 
 
 class Vulnerability(Base):
