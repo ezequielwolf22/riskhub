@@ -1,8 +1,9 @@
 ﻿/* Vista Riesgos - identificación, analisis, evaluación, tratamiento. */
 const ViewRisks = {
   _assets: [], _threats: [], _vulns: [], _impls: [],
-  _assetFilter: null, // { id, name } cuando se filtra por activo desde la vista de activos
-  _sortCol: 'residual_level', _sortAsc: false, // orden por defecto: residual desc
+  _assetFilter: null,
+  _sortCol: 'residual_level', _sortAsc: false,
+  _page: 0, _pageSize: 50, _allData: [],
 
   async render(main) {
     const canEdit = Auth.canEdit();
@@ -37,6 +38,14 @@ const ViewRisks = {
           <option value="6">Solo altos (6+)</option>
           <option value="3">Medios y altos (3+)</option>
         </select>
+        <select id="r-treatment">
+          <option value="">Cualquier tratamiento</option>
+          <option value="modification">Mitigar</option>
+          <option value="retention">Aceptar</option>
+          <option value="avoidance">Evitar</option>
+          <option value="sharing">Transferir</option>
+          <option value="__none__">Sin asignar</option>
+        </select>
         <select id="r-owner">
           <option value="">Cualquier responsable</option>
         </select>
@@ -55,11 +64,12 @@ const ViewRisks = {
       <div id="r-list"></div>
     `;
     if (canEdit) document.getElementById('btn-new').onclick = () => ViewRisks._edit();
-    document.getElementById('r-search').oninput = () => ViewRisks._reload();
-    document.getElementById('r-status').onchange = () => ViewRisks._reload();
-    document.getElementById('r-band').onchange = () => ViewRisks._reload();
-    document.getElementById('r-owner').onchange = () => ViewRisks._reload();
-    document.getElementById('r-overdue').onchange = () => ViewRisks._reload();
+    document.getElementById('r-search').oninput = () => { ViewRisks._page = 0; ViewRisks._reload(); };
+    document.getElementById('r-status').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
+    document.getElementById('r-band').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
+    document.getElementById('r-treatment').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
+    document.getElementById('r-owner').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
+    document.getElementById('r-overdue').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-export-csv').onclick = async () => {
       try { await Api.risks.exportCsv(); UI.toast('CSV descargado', 'success'); }
       catch (e) { UI.toast(e.message, 'error'); }
@@ -210,6 +220,7 @@ const ViewRisks = {
     const search = document.getElementById('r-search').value.toLowerCase();
     const status = document.getElementById('r-status').value;
     const band = document.getElementById('r-band').value;
+    const treatFilter = document.getElementById('r-treatment')?.value || '';
     const list = document.getElementById('r-list');
     list.innerHTML = '<div class="notice">Cargando...</div>';
     try {
@@ -223,11 +234,10 @@ const ViewRisks = {
       if (ViewRisks._vulnFilter) params.vulnerability_id = ViewRisks._vulnFilter.id;
       if (overdue) params.overdue = true;
       if (ownerVal && ownerVal !== '__unassigned__') params.owner_id = ownerVal;
+      if (treatFilter && treatFilter !== '__none__') params.treatment = treatFilter;
       let data = await Api.risks.list(params);
-      // Client-side filter for unassigned
-      if (ownerVal === '__unassigned__') {
-        data = data.filter(r => !r.owner_id);
-      }
+      if (ownerVal === '__unassigned__') data = data.filter(r => !r.owner_id);
+      if (treatFilter === '__none__') data = data.filter(r => !r.treatment_option);
       if (search) {
         data = data.filter(r =>
           (r.asset && r.asset.name.toLowerCase().includes(search)) ||
@@ -265,6 +275,14 @@ const ViewRisks = {
         return sortAsc ? cmp : -cmp;
       });
 
+      // Paginación
+      ViewRisks._allData = data;
+      const total = data.length;
+      const ps = ViewRisks._pageSize;
+      if (ViewRisks._page * ps >= total && ViewRisks._page > 0) ViewRisks._page = Math.max(0, Math.ceil(total / ps) - 1);
+      const pageData = data.slice(ViewRisks._page * ps, (ViewRisks._page + 1) * ps);
+      const totalPages = Math.ceil(total / ps);
+
       const _th = (col, label, title) => {
         const active = ViewRisks._sortCol === col;
         const arrow = active ? (ViewRisks._sortAsc ? ' ▲' : ' ▼') : '';
@@ -275,7 +293,18 @@ const ViewRisks = {
       ViewRisks._selected.clear();
       const now = new Date();
       const canEdit = Auth.canEdit();
-      list.innerHTML = `<div class="table-wrap"><table class="data" id="r-table">
+
+      const pagerHtml = total > ps ? `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;font-size:13px;">
+          <button class="btn btn-sm" id="r-prev" ${ViewRisks._page === 0 ? 'disabled' : ''}>← Anterior</button>
+          <span style="color:var(--text-muted);">
+            Mostrando ${ViewRisks._page * ps + 1}–${Math.min((ViewRisks._page + 1) * ps, total)} de <strong>${total}</strong> riesgos
+          </span>
+          <button class="btn btn-sm" id="r-next" ${ViewRisks._page >= totalPages - 1 ? 'disabled' : ''}>Siguiente →</button>
+          <span style="font-size:12px;color:var(--text-muted);">Página ${ViewRisks._page + 1} / ${totalPages}</span>
+        </div>` : `<div style="padding:6px 0;font-size:12px;color:var(--text-muted);">${total} riesgo${total !== 1 ? 's' : ''}</div>`;
+
+      list.innerHTML = pagerHtml + `<div class="table-wrap"><table class="data" id="r-table">
         <thead>
           <tr>
             ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
@@ -285,7 +314,7 @@ const ViewRisks = {
           </tr>
         </thead>
         <tbody>
-          ${data.map(r => {
+          ${pageData.map(r => {
             const red = r.inherent_level > 0
               ? Math.round((1 - r.residual_level / r.inherent_level) * 100) : 0;
             const redColor = red > 0 ? 'var(--risk-low)' : red < 0 ? 'var(--risk-high)' : 'var(--text-muted)';
@@ -340,6 +369,12 @@ const ViewRisks = {
         <button class="btn btn-ghost" id="r-bulk-clear">Limpiar seleccion</button>
       </div>`;
 
+      // Paginación
+      const prevBtn = document.getElementById('r-prev');
+      const nextBtn = document.getElementById('r-next');
+      if (prevBtn) prevBtn.onclick = () => { ViewRisks._page--; ViewRisks._reload(); };
+      if (nextBtn) nextBtn.onclick = () => { ViewRisks._page++; ViewRisks._reload(); };
+
       // Sort header click handlers
       list.querySelectorAll('th[data-sort]').forEach(th => {
         th.onclick = () => {
@@ -350,6 +385,7 @@ const ViewRisks = {
             ViewRisks._sortCol = col;
             ViewRisks._sortAsc = col === 'code' || col === 'asset' || col === 'threat';
           }
+          ViewRisks._page = 0;
           ViewRisks._reload();
         };
       });
@@ -608,6 +644,19 @@ const ViewRisks = {
         ${r.accepted_at ? `<br><span style="font-size:12px;">Aceptado el ${new Date(r.accepted_at).toLocaleString('es-ES')}</span>` : ''}
         ${r.treatment_due_date ? `<br><span style="font-size:12px;">Fecha limite: <strong>${new Date(r.treatment_due_date).toLocaleDateString('es-ES')}</strong></span>` : ''}
       </div>
+      <!-- Sección trazabilidad / madurez / SOA -->
+      <div class="span2">
+        <details id="risk-trace-details">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;
+                          color:var(--brand-purple);padding:8px 0;
+                          list-style:none;display:flex;align-items:center;gap:6px;
+                          border-top:2px solid var(--brand-purple-3);margin-top:8px;">
+            <span style="font-size:10px;">&#9654;</span>
+            Madurez, trazabilidad de fuentes y análisis IA — SOA
+          </summary>
+          <div id="risk-trace-body" style="margin-top:8px;"></div>
+        </details>
+      </div>
       <div class="span2">
         <details id="risk-history">
           <summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;
@@ -660,6 +709,21 @@ const ViewRisks = {
         UI.closeModal();
         ViewRisks._edit(null, cloneData);
       };
+    }
+
+    // Cargar trazabilidad al expandir el <details>
+    if (id) {
+      const traceDetails = document.getElementById('risk-trace-details');
+      if (traceDetails) {
+        traceDetails.addEventListener('toggle', async () => {
+          if (!traceDetails.open) return;
+          const body = document.getElementById('risk-trace-body');
+          if (body && body.children.length === 0) {
+            body.innerHTML = '<div class="notice">Cargando trazabilidad...</div>';
+            await ViewRisks._loadTrace(id, body);
+          }
+        }, { once: true });
+      }
     }
 
     // Cargar historial de cambios al expandir el <details>
@@ -930,5 +994,266 @@ const ViewRisks = {
           </div>`).join('');
       }
     } catch (_) { /* silencioso */ }
+  },
+
+  // ============================================================
+  // Trazabilidad de madurez y fuentes (SOA)
+  // ============================================================
+
+  async _loadTrace(riskId, container) {
+    const matColors = ['#EF4444','#F97316','#F59E0B','#84CC16','#22C55E','#0EA5E9'];
+    const matBg     = ['#FEE2E2','#FFEDD5','#FEF3C7','#F0FDF4','#DCFCE7','#E0F2FE'];
+
+    try {
+      const t = await Api.get(`/api/risks/${riskId}/trace`);
+
+      // --- Cabecera de cálculo ---
+      const calcColor = t.combined_efficacy_pct >= 50 ? 'var(--risk-low)' : t.combined_efficacy_pct >= 25 ? '#D97706' : 'var(--risk-high)';
+      let html = `
+        <div style="background:var(--bg-2);border-radius:10px;padding:14px;margin-bottom:12px;">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center;margin-bottom:10px;">
+            <div>
+              <div style="font-size:22px;font-weight:800;">${UI.riskPill(t.inherent_level)}</div>
+              <div style="font-size:11px;color:var(--text-muted);">Nivel inherente</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t.inherent_likelihood_label} × ${t.inherent_consequence_label}</div>
+            </div>
+            <div>
+              <div style="font-size:22px;font-weight:800;color:${calcColor};">${t.combined_efficacy_pct}%</div>
+              <div style="font-size:11px;color:var(--text-muted);">Eficacia combinada de controles</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t.controls.length} control${t.controls.length !== 1 ? 'es' : ''} vinculado${t.controls.length !== 1 ? 's' : ''}</div>
+            </div>
+            <div>
+              <div style="font-size:22px;font-weight:800;">${UI.riskPill(t.residual_level)}</div>
+              <div style="font-size:11px;color:var(--text-muted);">Nivel residual</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t.residual_likelihood_label} × ${t.residual_consequence_label}</div>
+            </div>
+          </div>
+          <details style="margin-top:6px;">
+            <summary style="font-size:11px;color:var(--text-muted);cursor:pointer;list-style:none;">
+              Ver fórmula de cálculo ISO 27005
+            </summary>
+            <pre style="font-size:11px;background:var(--bg-1);padding:10px;border-radius:6px;margin-top:6px;
+                        white-space:pre-wrap;color:var(--text-base);">${UI.esc(t.calculation_formula)}</pre>
+          </details>
+          ${t.above_appetite ? `<div style="margin-top:8px;padding:6px 10px;background:#FEF3C7;border-radius:6px;font-size:12px;color:#92400E;">
+            ⚠ Nivel residual (${t.residual_level}) supera el apetito de riesgo (${t.appetite}). Requiere tratamiento adicional.
+          </div>` : `<div style="margin-top:8px;padding:6px 10px;background:#F0FDF4;border-radius:6px;font-size:12px;color:#166534;">
+            ✓ Nivel residual (${t.residual_level}) dentro del apetito de riesgo (${t.appetite}).
+          </div>`}
+        </div>`;
+
+      // --- Controles con trazabilidad ---
+      if (t.controls.length) {
+        html += `<h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">
+          Controles vinculados — trazabilidad de fuentes
+        </h4>`;
+        t.controls.forEach(c => {
+          const bg = matBg[c.maturity] || matBg[0];
+          const col = matColors[c.maturity] || matColors[0];
+          const refsHtml = (c.evidence_refs || []).map(ref =>
+            `<a href="${UI.esc(ref.url || '#')}" target="_blank" rel="noopener"
+                style="display:inline-flex;align-items:center;gap:4px;font-size:11px;
+                       background:var(--brand-purple-4);border:1px solid var(--brand-purple-3);
+                       border-radius:4px;padding:2px 8px;color:var(--brand-purple);
+                       text-decoration:none;margin:2px;" title="Referencia SOA">
+              📄 ${UI.esc(ref.title || ref.url || 'Documento')}
+            </a>`
+          ).join('');
+          const filesHtml = (c.evidence_files || []).map(f =>
+            `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;
+                          background:#F0FDF4;border:1px solid #86EFAC;
+                          border-radius:4px;padding:2px 8px;color:#166534;margin:2px;"
+                  title="${f.expires_at ? 'Expira: ' + new Date(f.expires_at).toLocaleDateString('es-ES') : ''}">
+              ✓ ${UI.esc(f.code)} — ${UI.esc(f.title)}${f.compliance_requirement ? ` [${UI.esc(f.compliance_requirement)}]` : ''}
+            </span>`
+          ).join('');
+          const noSource = !c.evidence_refs?.length && !c.evidence_files?.length;
+          html += `
+            <div style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;
+                        padding:12px 14px;margin-bottom:8px;">
+              <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+                <!-- Madurez badge -->
+                <div style="min-width:60px;text-align:center;background:${bg};border-radius:8px;padding:6px 10px;">
+                  <div style="font-size:20px;font-weight:800;color:${col};">${c.maturity}/5</div>
+                  <div style="font-size:9px;color:${col};font-weight:600;">MADUREZ</div>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:14px;">
+                    ${c.code ? `<span class="badge badge-muted" style="font-size:10px;">${UI.esc(c.code)}</span> ` : ''}
+                    ${UI.esc(c.name)}
+                    <span style="margin-left:6px;font-size:11px;font-weight:400;color:var(--text-muted);">
+                      ${c.theme ? `[${UI.esc(c.theme)}]` : ''}
+                    </span>
+                  </div>
+                  <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                    Estado: <strong>${c.status}</strong> ·
+                    Eficacia: <strong style="color:${col};">${c.efficacy_pct}%</strong>
+                    <span style="color:var(--text-muted);"> = (${c.maturity}/5 madurez) × (${Math.round(c.contribution*100)}% contribución)</span>
+                    ${c.inclusion_reason ? ` · Razón SOA: <em>${UI.esc(c.inclusion_reason)}</em>` : ''}
+                    ${c.soa_reviewed_at ? ` · Revisado SOA: ${new Date(c.soa_reviewed_at).toLocaleDateString('es-ES')}` : ''}
+                  </div>
+                  <!-- Explicación de madurez -->
+                  <div style="margin-top:6px;font-size:12px;padding:6px 10px;border-radius:6px;
+                              background:${bg};color:#374151;border-left:3px solid ${col};">
+                    ${UI.esc(c.maturity_why)}
+                  </div>
+                  <!-- Fuentes de evidencia -->
+                  <div style="margin-top:6px;">
+                    ${refsHtml || ''}
+                    ${filesHtml || ''}
+                    ${noSource ? `<span style="font-size:11px;color:#B45309;background:#FEF3C7;
+                                               border-radius:4px;padding:2px 8px;">
+                      ⚠ Sin fuentes documentales — la madurez declarada no tiene soporte de evidencia
+                    </span>` : ''}
+                  </div>
+                  ${c.notes ? `<div style="margin-top:4px;font-size:11px;color:var(--text-muted);">
+                    Notas: ${UI.esc(c.notes)}
+                  </div>` : ''}
+                </div>
+              </div>
+            </div>`;
+        });
+      } else {
+        html += `<div class="notice notice-warn">
+          Sin controles vinculados — el nivel residual es igual al inherente.
+          Vincula controles ISO 27002 para reducir el riesgo.
+        </div>`;
+      }
+
+      // --- Evidencia directa del riesgo ---
+      if (t.evidence_direct?.length) {
+        html += `<h4 style="font-size:13px;font-weight:700;margin:12px 0 6px;">
+          Evidencias vinculadas directamente al riesgo
+        </h4>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${t.evidence_direct.map(e => `
+            <span style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:6px;
+                         padding:4px 10px;font-size:12px;color:#166534;">
+              ✓ ${UI.esc(e.code)} — ${UI.esc(e.title)}
+              ${e.expires_at ? `<span style="font-size:10px;color:var(--text-muted);"> (exp. ${new Date(e.expires_at).toLocaleDateString('es-ES')})</span>` : ''}
+            </span>`).join('')}
+        </div>`;
+      }
+
+      // --- Vulnerabilidades ---
+      if (t.vulnerabilities?.length) {
+        html += `<h4 style="font-size:13px;font-weight:700;margin:12px 0 6px;">
+          Vulnerabilidades que facilitan la amenaza
+        </h4>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          ${t.vulnerabilities.map(v => `
+            <span style="background:var(--brand-orange-4);border:1px solid var(--brand-orange-3);
+                         border-radius:6px;padding:3px 10px;font-size:12px;">
+              ${UI.esc(v.code)} — ${UI.esc(v.name)}
+            </span>`).join('')}
+        </div>`;
+      }
+
+      // --- Botón análisis IA experto ---
+      html += `
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;
+                    display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btn-ai-explain" style="font-size:13px;">
+            Análisis experto con IA
+          </button>
+          <span style="font-size:12px;color:var(--text-muted);">
+            Explicación rigurosa: por qué este nivel, cómo mitigan los controles, brechas SOA y alineación normativa.
+          </span>
+        </div>
+        <div id="ai-explain-result" style="margin-top:10px;"></div>`;
+
+      container.innerHTML = html;
+      const explainBtn = document.getElementById('btn-ai-explain');
+      if (explainBtn) explainBtn.onclick = () => ViewRisks._requestAiExplain(riskId);
+
+    } catch (e) {
+      container.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _requestAiExplain(riskId) {
+    const btn = document.getElementById('btn-ai-explain');
+    const result = document.getElementById('ai-explain-result');
+    if (!btn || !result) return;
+    btn.disabled = true;
+    btn.textContent = 'Analizando...';
+    result.innerHTML = '<div class="notice">El agente IA está analizando el riesgo con toda la información disponible...</div>';
+    try {
+      const data = await Api.post(`/api/risks/${riskId}/ai-explain`, {});
+      const confColor = {'alta':'#166534','media':'#92400E','baja':'#991B1B'}[data.confidence] || '#374151';
+      const confBg    = {'alta':'#F0FDF4','media':'#FEF3C7','baja':'#FEE2E2'}[data.confidence] || '#F9FAFB';
+      result.innerHTML = `
+        <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <strong style="font-size:13px;">Análisis experto IA</strong>
+            <span style="background:${confBg};color:${confColor};border-radius:4px;
+                         padding:2px 10px;font-size:11px;font-weight:700;">
+              Confianza: ${(data.confidence || '').toUpperCase()}
+            </span>
+          </div>
+          <p style="font-size:13px;line-height:1.6;margin-bottom:10px;">${UI.esc(data.executive_summary || '')}</p>
+
+          ${data.why_inherent_level ? `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
+              Por qué nivel inherente = ${(function(){ const r = document.querySelector('.modal-title'); return ''; })()}
+            </div>
+            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.why_inherent_level)}</p>
+          </div>` : ''}
+
+          ${data.why_residual_level ? `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
+              Por qué nivel residual y cómo mitigan los controles
+            </div>
+            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.why_residual_level)}</p>
+          </div>` : ''}
+
+          ${data.source_analysis ? `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
+              Análisis de fuentes y evidencias
+            </div>
+            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.source_analysis)}</p>
+          </div>` : ''}
+
+          ${data.gaps_and_recommendations?.length ? `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
+              Brechas y recomendaciones
+            </div>
+            <ul style="margin:0;padding-left:16px;">
+              ${data.gaps_and_recommendations.map(g => `<li style="font-size:12px;margin-bottom:4px;">${UI.esc(g)}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+
+          ${data.soa_implications ? `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
+              Implicaciones SOA (Declaración de Aplicabilidad)
+            </div>
+            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.soa_implications)}</p>
+          </div>` : ''}
+
+          ${data.normative_alignment ? `
+          <div style="margin-bottom:4px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
+              Alineación normativa
+            </div>
+            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.normative_alignment)}</p>
+          </div>` : ''}
+
+          ${data.confidence_reason ? `
+          <div style="margin-top:8px;font-size:11px;color:var(--text-muted);font-style:italic;">
+            Nivel de confianza: ${UI.esc(data.confidence_reason)}
+          </div>` : ''}
+        </div>`;
+      btn.textContent = 'Regenerar análisis IA';
+      btn.disabled = false;
+    } catch (e) {
+      result.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+      btn.textContent = 'Análisis experto con IA';
+      btn.disabled = false;
+    }
   },
 };

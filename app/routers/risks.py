@@ -155,6 +155,329 @@ def get_risk(risk_id: int, db: Session = Depends(get_db),
     return r
 
 
+@router.get("/{risk_id}/trace")
+def risk_trace(
+    risk_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Trazabilidad completa: desglosa cada control vinculado al riesgo con
+    cálculo de eficacia, madurez, fuentes de evidencia y referencias SOA.
+    Crítico para justificar el nivel residual ante una auditoría ISO 27001."""
+    from sqlalchemy import select
+    from app.models import Evidence, risk_control_table
+    from app.services.risk_engine import control_reduction, LIKELIHOOD_LABELS, CONSEQUENCE_LABELS
+
+    r = db.get(Risk, risk_id)
+    if not r or not check_org_access(r.organization_id, current_user):
+        raise HTTPException(404, "Riesgo no encontrado")
+
+    # --- Leer controles vinculados con su contribution ---
+    rows = db.execute(
+        select(
+            risk_control_table.c.control_implementation_id,
+            risk_control_table.c.contribution,
+        ).where(risk_control_table.c.risk_id == risk_id)
+    ).all()
+
+    def _maturity_label(m: int) -> str:
+        return {0: "Inexistente", 1: "Inicial / ad-hoc", 2: "Básico / documentado",
+                3: "Definido / aplicado", 4: "Gestionado / medido", 5: "Optimizado / continuo"}.get(m, str(m))
+
+    def _maturity_why(m: int, status: str, name: str) -> str:
+        base = {
+            0: f"El control '{name}' no existe o no está configurado. Eficacia nula — no reduce el riesgo.",
+            1: f"'{name}' existe de forma ad-hoc pero sin proceso formal. Reducción mínima e inconsistente.",
+            2: f"'{name}' está documentado y tiene aplicación básica. Reduce el riesgo de forma parcial.",
+            3: f"'{name}' está definido, documentado y aplicado sistemáticamente. Reducción sustancial.",
+            4: f"'{name}' se mide y gestiona activamente. Alta eficacia y consistencia en la reducción.",
+            5: f"'{name}' está completamente optimizado con mejora continua. Máxima eficacia posible.",
+        }.get(m, "")
+        if status == "partial":
+            base += " (implementación parcial — la eficacia está limitada por la cobertura incompleta)."
+        elif status == "planned":
+            base += " (solo planificado — no aporta reducción real hasta su implementación)."
+        elif status == "not_implemented":
+            base = f"El control '{name}' no está implementado. No aporta reducción al nivel residual."
+        return base
+
+    controls_trace = []
+    ctrl_dicts_for_engine = []
+
+    for row in rows:
+        impl = db.get(ControlImplementation, row.control_implementation_id)
+        if not impl:
+            continue
+        mat = impl.maturity or 0
+        contrib = float(row.contribution) if row.contribution is not None else 1.0
+        efficacy = (mat / 5.0) * contrib
+
+        # Evidencias del fichero Evidence vinculadas a este control
+        evd_files = db.query(Evidence).filter(
+            Evidence.control_implementation_id == impl.id,
+            Evidence.is_current.is_(True),
+        ).all()
+
+        controls_trace.append({
+            "id": impl.id,
+            "name": impl.name,
+            "code": impl.control.code if impl.control else None,
+            "theme": impl.control.theme if impl.control else None,
+            "status": impl.status.value if impl.status else "not_implemented",
+            "maturity": mat,
+            "maturity_label": _maturity_label(mat),
+            "maturity_why": _maturity_why(mat, impl.status.value if impl.status else "not_implemented", impl.name),
+            "contribution": round(contrib, 3),
+            "efficacy": round(efficacy, 3),
+            "efficacy_pct": round(efficacy * 100),
+            "inclusion_reason": impl.inclusion_reason,
+            "evidence_refs": impl.evidence_refs or [],
+            "evidence_files": [
+                {
+                    "id": e.id, "code": e.code, "title": e.title,
+                    "type": e.evidence_type.value if e.evidence_type else None,
+                    "valid_from": e.valid_from.isoformat() if e.valid_from else None,
+                    "expires_at": e.expires_at.isoformat() if e.expires_at else None,
+                    "compliance_framework": e.compliance_framework,
+                    "compliance_requirement": e.compliance_requirement,
+                }
+                for e in evd_files
+            ],
+            "notes": impl.notes,
+            "soa_reviewed_at": impl.soa_reviewed_at.isoformat() if impl.soa_reviewed_at else None,
+        })
+        ctrl_dicts_for_engine.append({"maturity": mat, "contribution": contrib})
+
+    # --- Cálculo combinado ---
+    from app.services.risk_engine import control_reduction
+    combined_efficacy = control_reduction(ctrl_dicts_for_engine) if ctrl_dicts_for_engine else 0.0
+    inh_lik = r.inherent_likelihood or 0
+    inh_con = r.inherent_consequence or 0
+    res_lik = max(0, min(4, round(inh_lik * (1.0 - combined_efficacy))))
+    res_con = max(0, min(4, round(inh_con * (1.0 - 0.5 * combined_efficacy))))
+
+    # --- Evidencia directamente vinculada al riesgo ---
+    direct_evd = db.query(Evidence).filter(
+        Evidence.risk_id == risk_id,
+        Evidence.is_current.is_(True),
+    ).all()
+
+    # --- Vulnerabilidades ---
+    vulns_info = [
+        {"id": v.id, "code": v.code, "name": v.name,
+         "description": v.description, "category": v.category}
+        for v in (r.vulnerabilities or [])
+    ]
+
+    appetite = (db.query(RiskContext).filter_by(organization_id=r.organization_id).first() or RiskContext()).risk_appetite or 3
+
+    return {
+        "risk_id": r.id,
+        "code": r.code,
+        "inherent_likelihood": inh_lik,
+        "inherent_consequence": inh_con,
+        "inherent_level": r.inherent_level,
+        "inherent_likelihood_label": LIKELIHOOD_LABELS[inh_lik] if 0 <= inh_lik <= 4 else str(inh_lik),
+        "inherent_consequence_label": CONSEQUENCE_LABELS[inh_con] if 0 <= inh_con <= 4 else str(inh_con),
+        "residual_likelihood": r.residual_likelihood,
+        "residual_consequence": r.residual_consequence,
+        "residual_level": r.residual_level,
+        "residual_likelihood_label": LIKELIHOOD_LABELS[r.residual_likelihood or 0],
+        "residual_consequence_label": CONSEQUENCE_LABELS[r.residual_consequence or 0],
+        "combined_efficacy": round(combined_efficacy, 3),
+        "combined_efficacy_pct": round(combined_efficacy * 100),
+        "reduction_pct": round((1 - r.residual_level / r.inherent_level) * 100) if r.inherent_level else 0,
+        "above_appetite": (r.residual_level or 0) > appetite,
+        "appetite": appetite,
+        "calculation_formula": (
+            f"Eficacia combinada = 1 − ∏(1 − eficacia_i) = {round(combined_efficacy*100)}%\n"
+            f"Prob. residual = round({inh_lik} × (1 − {round(combined_efficacy,2)})) = {res_lik}\n"
+            f"Cons. residual = round({inh_con} × (1 − 0.5 × {round(combined_efficacy,2)})) = {res_con}\n"
+            f"Nivel residual = matriz[{res_con}][{res_lik}] = {r.residual_level}"
+        ),
+        "controls": controls_trace,
+        "vulnerabilities": vulns_info,
+        "evidence_direct": [
+            {"id": e.id, "code": e.code, "title": e.title,
+             "type": e.evidence_type.value if e.evidence_type else None,
+             "expires_at": e.expires_at.isoformat() if e.expires_at else None}
+            for e in direct_evd
+        ],
+    }
+
+
+@router.post("/{risk_id}/ai-explain")
+def risk_ai_explain(
+    risk_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Genera una explicación experta del riesgo usando el modelo IA + RAG sobre documentos.
+
+    Utiliza toda la información disponible: activo, amenaza, vulnerabilidades,
+    controles con madurez, evidencias, contexto del cuestionario y documentación
+    interna indexada. Devuelve un análisis riguroso como lo haría un auditor ISO 27001.
+    """
+    from app.models import AiConfig, AiCallLog, Evidence, risk_control_table
+    from app.security import filter_by_org
+    from app.services.rag_service import search_chunks_with_source
+    from app.services.risk_engine import LIKELIHOOD_LABELS, CONSEQUENCE_LABELS
+    from sqlalchemy import select
+    import json as _json
+
+    r = db.get(Risk, risk_id)
+    if not r or not check_org_access(r.organization_id, current_user):
+        raise HTTPException(404, "Riesgo no encontrado")
+
+    # Resolver API key
+    cfg = db.query(AiConfig).filter_by(organization_id=current_user.organization_id).first()
+    def _resolve_key(cfg):
+        if cfg and cfg.api_key_encrypted:
+            import base64, hashlib
+            from cryptography.fernet import Fernet
+            from app.config import settings
+            key = base64.urlsafe_b64encode(hashlib.sha256(settings.secret_key.encode()).digest())
+            try:
+                return Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+            except Exception:
+                return None
+        from app.config import settings
+        return settings.anthropic_api_key
+    api_key = _resolve_key(cfg)
+    if not api_key:
+        raise HTTPException(400, "API key no configurada. Ve a Configuración > Agente IA.")
+    model = (cfg.model if cfg else None) or "claude-opus-4-7"
+
+    # Contexto organizacional
+    ctx = db.query(RiskContext).filter_by(organization_id=current_user.organization_id).first()
+    qa = (ctx.questionnaire_answers or {}) if ctx else {}
+    frameworks = (ctx.active_frameworks or []) if ctx else []
+
+    # Controles con sus fuentes
+    rows = db.execute(
+        select(risk_control_table.c.control_implementation_id, risk_control_table.c.contribution)
+        .where(risk_control_table.c.risk_id == risk_id)
+    ).all()
+    ctrl_lines = []
+    for row in rows:
+        impl = db.get(ControlImplementation, row.control_implementation_id)
+        if not impl:
+            continue
+        mat = impl.maturity or 0
+        contrib = float(row.contribution) if row.contribution is not None else 1.0
+        eff = round((mat / 5.0) * contrib * 100)
+        refs = "; ".join(r2.get("title", "") for r2 in (impl.evidence_refs or []))
+        evd_count = db.query(Evidence).filter_by(control_implementation_id=impl.id, is_current=True).count()
+        ctrl_lines.append(
+            f"  - [{impl.control.code if impl.control else '?'}] {impl.name}: "
+            f"estado={impl.status.value if impl.status else 'N/A'}, madurez={mat}/5, "
+            f"eficacia={eff}%, contribucion={contrib:.0%}"
+            + (f", refs='{refs}'" if refs else "")
+            + (f", evidencias_archivo={evd_count}" if evd_count else "")
+            + (f", razon_inclusion='{impl.inclusion_reason}'" if impl.inclusion_reason else "")
+        )
+
+    # Vulnerabilidades
+    vuln_lines = [f"  - [{v.code}] {v.name}: {(v.description or '')[:120]}" for v in (r.vulnerabilities or [])]
+
+    # RAG: buscar documentación relevante
+    rag_query = f"{r.asset.name if r.asset else ''} {r.threat.name if r.threat else ''} {r.description or ''}"
+    rag_chunks = search_chunks_with_source(db, rag_query, top_k=4, organization_id=current_user.organization_id)
+    rag_section = ""
+    if rag_chunks:
+        rag_section = "\n\nDOCUMENTACIÓN INTERNA RELEVANTE (RAG):\n" + "\n---\n".join(
+            f"[{c['doc_name']}]:\n{c['content'][:600]}" for c in rag_chunks
+        )
+
+    prompt = f"""Eres un auditor senior certificado en ISO/IEC 27001:2022 e ISO/IEC 27005:2018,
+con amplia experiencia en análisis de riesgos empresariales y revisiones SOA.
+
+Analiza el siguiente riesgo de seguridad y proporciona una evaluación experta, rigurosa y completamente
+alineada con la realidad del activo y la organización. NO seas genérico. Usa los datos exactos.
+
+=== RIESGO ===
+Código: {r.code}
+Activo: {r.asset.name if r.asset else 'N/A'} (tipo: {r.asset.asset_type.value if r.asset and r.asset.asset_type else 'N/A'})
+{"CIA del activo: C=" + str(r.asset.value_confidentiality) + " I=" + str(r.asset.value_integrity) + " A=" + str(r.asset.value_availability) if r.asset else ""}
+Amenaza: {r.threat.name if r.threat else 'N/A'} (código: {r.threat.code if r.threat else 'N/A'}, origen: {r.threat.origin.value if r.threat and r.threat.origin else 'N/A'})
+Descripción del escenario: {r.description or 'Sin descripción'}
+Consecuencia esperada: {r.consequence_description or 'Sin definir'}
+Nivel inherente: {r.inherent_level}/8 (probabilidad={r.inherent_likelihood}, consecuencia={r.inherent_consequence})
+Nivel residual: {r.residual_level}/8 (probabilidad={r.residual_likelihood}, consecuencia={r.residual_consequence})
+Reducción: {round((1 - r.residual_level / r.inherent_level) * 100) if r.inherent_level else 0}%
+Tratamiento: {r.treatment_option.value if r.treatment_option else 'Sin definir'}
+Estado: {r.status.value}
+
+=== VULNERABILIDADES ASOCIADAS ===
+{chr(10).join(vuln_lines) if vuln_lines else '  (ninguna registrada)'}
+
+=== CONTROLES MITIGANTES (con fuentes) ===
+{chr(10).join(ctrl_lines) if ctrl_lines else '  (ningún control vinculado)'}
+
+=== CONTEXTO ORGANIZACIONAL ===
+Sector: {qa.get('sector', 'N/A')}
+Empleados: {qa.get('employees', 'N/A')}
+Normativas aplicables: {', '.join(qa.get('regulations', [])) or 'N/A'}
+Sistemas: {', '.join(qa.get('systems', [])) or 'N/A'}
+Tipos de datos: {', '.join(qa.get('data_types', [])) or 'N/A'}
+Acceso remoto: {qa.get('remote_access', 'N/A')}
+Madurez global: {qa.get('maturity', 'N/A')}
+Frameworks activos: {', '.join(frameworks) or 'N/A'}
+{rag_section}
+
+=== INSTRUCCIONES ===
+Devuelve EXCLUSIVAMENTE JSON válido con esta estructura exacta:
+{{
+  "executive_summary": "Párrafo de 3-5 frases explicando el riesgo, su relevancia para esta organización concreta y por qué el nivel calculado es correcto. Referencia al sector y tipo de activo.",
+  "why_inherent_level": "Explicación técnica de por qué el nivel inherente es {r.inherent_level}. Justifica la probabilidad {r.inherent_likelihood} y la consecuencia {r.inherent_consequence} para este activo y amenaza concretos.",
+  "why_residual_level": "Explicación detallada de cómo los controles existentes reducen el riesgo al nivel residual {r.residual_level}. Cita controles por nombre y eficacia. Si hay brechas, mencionarlas.",
+  "source_analysis": "Análisis de la calidad de las fuentes de evidencia. ¿Las referencias documentales justifican adecuadamente la madurez declarada? ¿Hay controles sin evidencia que debería tenerla?",
+  "gaps_and_recommendations": ["Brecha o recomendación concreta 1", "Brecha o recomendación concreta 2", "..."],
+  "soa_implications": "Cómo este riesgo y sus controles deben reflejarse en la Declaración de Aplicabilidad (SOA). Qué controles ISO 27002:2022 son clave y si están correctamente justificados.",
+  "normative_alignment": "Cómo se alinea este riesgo con las normativas activas ({', '.join(frameworks) or 'ISO 27001'}). Requisitos específicos que aplican.",
+  "confidence": "alta|media|baja",
+  "confidence_reason": "Por qué la confianza en el análisis es alta/media/baja (p.ej. falta de evidencias, controles sin madurez real, etc.)"
+}}
+Sin texto antes ni después del JSON."""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            parts = raw.split("```", 2)
+            inner = parts[1] if len(parts) > 1 else raw
+            if inner.startswith("json"):
+                inner = inner[4:]
+            raw = inner.rsplit("```", 1)[0].strip()
+        result = _json.loads(raw)
+    except Exception as exc:
+        raise HTTPException(500, f"Error en el análisis IA: {exc}")
+
+    # Log tokens
+    tokens_in = response.usage.input_tokens if response.usage else 0
+    tokens_out = response.usage.output_tokens if response.usage else 0
+    log = AiCallLog(
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        call_type="risk_explain",
+        prompt_tokens=tokens_in,
+        completion_tokens=tokens_out,
+        model=model,
+        anonymized=False,
+        response_summary=f"Risk explain {r.code}: conf={result.get('confidence','?')}",
+    )
+    db.add(log)
+    db.commit()
+
+    return result
+
+
 @router.post("/", response_model=RiskOut, status_code=201)
 def create_risk(data: RiskIn, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
