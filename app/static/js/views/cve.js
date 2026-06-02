@@ -423,8 +423,8 @@ const ViewCve = {
           Si no seleccionas ninguno, se usan los primeros 50.
         </p>
         <div id="analyze-asset-list"
-             style="max-height:260px;overflow-y:auto;
-                    display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:4px;">
+             style="max-height:280px;overflow-y:auto;overflow-x:hidden;
+                    display:flex;flex-direction:column;gap:2px;">
           ${this._renderAssetCheckboxes()}
         </div>
       </div>
@@ -509,41 +509,49 @@ const ViewCve = {
           (a.name || '').toLowerCase().includes(f) ||
           (a.asset_type || '').toLowerCase().includes(f) ||
           (a.category || '').toLowerCase().includes(f) ||
-          (a.software_tags || []).some(t => t.toLowerCase().includes(f))
+          (a.software_tags || []).some(t => (t || '').toLowerCase().includes(f))
         )
       : this._assets;
 
-    if (!assets.length) return '<div style="font-size:13px;color:var(--text-muted);padding:10px;grid-column:1/-1;">Sin activos que coincidan con la busqueda.</div>';
+    if (!assets.length) {
+      return '<div style="font-size:13px;color:var(--text-muted);padding:10px;">Sin activos que coincidan.</div>';
+    }
+
+    const typeLabel = {
+      primary_process: 'Proceso', primary_information: 'Informacion',
+      support_hardware: 'Hardware', support_software: 'Software',
+      support_network: 'Red', support_personnel: 'Personal',
+      support_site: 'Instalacion', support_organization: 'Organizacion',
+    };
 
     return assets.slice(0, 300).map(a => {
-      const tags    = (a.software_tags || []).slice(0, 4);
-      const isSel   = this._selectedAssets.has(a.id);
-      return `
-      <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;cursor:pointer;
-             border-radius:6px;transition:background .1s;
-             background:${isSel ? 'rgba(89,0,141,.08)' : 'transparent'};
-             border:1px solid ${isSel ? 'var(--brand-purple)' : 'transparent'};">
+      const isSel  = this._selectedAssets.has(a.id);
+      const tags   = (a.software_tags || []).filter(Boolean);
+      const tagStr = tags.slice(0, 3).map(t => t.length > 20 ? t.slice(0, 20) + '…' : t).join(', ');
+      const moreTags = tags.length > 3 ? ` +${tags.length - 3}` : '';
+      const tLabel = typeLabel[a.asset_type] || (a.asset_type || '').replace(/_/g, ' ');
+
+      return `<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;
+              cursor:pointer;border-radius:6px;border:1px solid ${isSel ? 'var(--brand-purple)' : 'transparent'};
+              background:${isSel ? 'rgba(89,0,141,.07)' : 'transparent'};min-width:0;width:100%;box-sizing:border-box;">
         <input type="checkbox" class="analyze-asset-chk" value="${a.id}"
                ${isSel ? 'checked' : ''}
                onchange="ViewCve._toggleAnalyzeAsset(${a.id}, this.checked)"
-               style="accent-color:var(--brand-purple);margin-top:3px;flex-shrink:0;">
-        <div style="min-width:0;flex:1;">
-          <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            ${UI.esc(a.name || '')}
-          </div>
-          <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px;">
-            <span style="font-size:10px;background:var(--bg-2);padding:1px 5px;border-radius:3px;
-                         color:var(--text-muted);white-space:nowrap;">
-              ${UI.esc((a.asset_type || '').replace(/_/g, ' '))}
-            </span>
-            ${tags.map(t => `
-              <span style="font-size:10px;background:#EDE9FE;color:#6D28D9;
-                           padding:1px 5px;border-radius:3px;white-space:nowrap;">
-                ${UI.esc(t)}
-              </span>`).join('')}
-            ${!tags.length ? '<span style="font-size:10px;color:var(--text-subtle);">sin tags</span>' : ''}
-          </div>
-        </div>
+               style="accent-color:var(--brand-purple);flex-shrink:0;">
+        <span style="flex:1;min-width:0;font-size:12px;font-weight:600;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${UI.esc(a.name || '(sin nombre)')}
+        </span>
+        <span style="flex-shrink:0;font-size:10px;color:var(--text-muted);
+                     background:var(--bg-2);padding:1px 6px;border-radius:3px;white-space:nowrap;">
+          ${UI.esc(tLabel)}
+        </span>
+        ${tagStr ? `<span style="flex-shrink:0;font-size:10px;color:#6D28D9;
+                         background:#EDE9FE;padding:1px 6px;border-radius:3px;
+                         max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                         title="${UI.esc(tags.join(', '))}">
+          ${UI.esc(tagStr)}${moreTags}
+        </span>` : ''}
       </label>`;
     }).join('');
   },
