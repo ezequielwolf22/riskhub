@@ -327,15 +327,43 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 
 
 def analyze_all_org_assets(db: Session, org_id: int) -> dict:
-    """Lanza el analisis de todos los activos de la organizacion."""
-    assets = db.query(Asset).filter_by(organization_id=org_id).all()
-    total = len(assets)
-    for asset in assets:
+    """Lanza el analisis solo de activos pendientes (null o error) de la organizacion.
+    Usa sesiones aisladas por activo para evitar contaminacion de estado DB.
+    """
+    from sqlalchemy import or_
+    asset_ids = [
+        a.id for a in db.query(Asset).filter(
+            Asset.organization_id == org_id,
+            Asset.is_group_representative.is_(False),
+            or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
+        ).all()
+    ]
+    total = len(asset_ids)
+    logger.info("Bulk analysis started: %d pending assets for org=%d", total, org_id)
+    for asset_id in asset_ids:
+        _analyze_isolated(asset_id)
+    logger.info("Bulk analysis finished: %d assets processed for org=%d", total, org_id)
+    return {"total": total, "message": f"Analisis completado para {total} activos pendientes."}
+
+
+def _analyze_isolated(asset_id: int) -> None:
+    """Analiza un activo con su propia sesion DB para aislar errores de estado."""
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        analyze_asset_risks(db, asset_id)
+    except Exception as exc:
+        logger.error("Isolated analysis failed asset=%d: %s", asset_id, exc)
         try:
-            analyze_asset_risks(db, asset.id)
-        except Exception as exc:
-            logger.error("Bulk analysis failed asset=%d: %s", asset.id, exc)
-    return {"total": total, "message": f"Analisis lanzado para {total} activos."}
+            asset = db.get(Asset, asset_id)
+            if asset:
+                asset.ai_risk_status = "error"
+                asset.ai_risk_summary = {"error": str(exc)[:400]}
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 # ---------- Construccion de contexto ----------

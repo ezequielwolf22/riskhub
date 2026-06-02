@@ -377,16 +377,66 @@ def analyze_all_assets(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
-    """Lanza el analisis de riesgos para todos los activos de la organizacion."""
+    """Lanza el analisis de riesgos solo para activos SIN analizar (null) o con error.
+    No toca activos ya correctamente analizados.
+    """
+    from sqlalchemy import or_
     org_id = current_user.organization_id
-    count = db.query(Asset).filter_by(organization_id=org_id).count()
-    # Resetear estados
-    db.query(Asset).filter_by(organization_id=org_id).update(
-        {"ai_risk_status": None, "ai_risk_summary": None}
-    )
+    pending = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(False),
+        or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
+    ).count()
+    background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+    return {"ok": True, "total": pending, "message": f"Analisis iniciado para {pending} activos pendientes."}
+
+
+@router.post("/analyze-all-force")
+def analyze_all_assets_force(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Fuerza el re-analisis de TODOS los activos (incluye ya analizados)."""
+    org_id = current_user.organization_id
+    count = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(False),
+    ).count()
+    db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(False),
+    ).update({"ai_risk_status": None, "ai_risk_summary": None})
     db.commit()
     background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
-    return {"ok": True, "total": count, "message": f"Analisis lanzado para {count} activos."}
+    return {"ok": True, "total": count, "message": f"Re-analisis forzado para {count} activos."}
+
+
+@router.get("/analysis-status")
+def get_analysis_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve estadisticas del estado de analisis IA de los activos."""
+    from sqlalchemy import or_, func
+    org_id = current_user.organization_id
+    base = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(False),
+    )
+    total     = base.count()
+    analysed  = base.filter(Asset.ai_risk_status == "analysed").count()
+    analysing = base.filter(Asset.ai_risk_status == "analysing").count()
+    error     = base.filter(Asset.ai_risk_status == "error").count()
+    skipped   = base.filter(Asset.ai_risk_status == "skipped").count()
+    pending   = base.filter(
+        or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error")  # noqa: E711
+    ).count()
+    return {
+        "total": total, "analysed": analysed, "analysing": analysing,
+        "error": error, "skipped": skipped, "pending": pending,
+        "progress_pct": round(analysed / total * 100, 1) if total else 0,
+    }
 
 
 @router.get("/export/csv")

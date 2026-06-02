@@ -26,9 +26,13 @@ const ViewAssets = {
             Importar (cualquier formato)
             <input type="file" id="file-import" accept="*" multiple style="display:none;">
           </label>
+          <button class="btn btn-ghost" id="btn-analyze-pending"
+                  title="Analiza activos sin analizar y los que tuvieron error (no toca los ya analizados)">
+            Analizar pendientes con IA
+          </button>
           <button class="btn btn-ghost" id="btn-analyze-all"
-                  title="Analizar riesgos de todos los activos con IA">
-            Analizar riesgos con IA
+                  title="Fuerza el re-analisis de TODOS los activos con IA">
+            Re-analizar todos
           </button>
           <button class="btn btn-primary" id="btn-new">+ Nuevo activo</button>
         </span>
@@ -126,21 +130,46 @@ const ViewAssets = {
         e.target.value = '';
       };
       ViewAssets._setupDrop(main);
+
+      const btnPending = document.getElementById('btn-analyze-pending');
+      if (btnPending) {
+        btnPending.onclick = async () => {
+          btnPending.disabled = true;
+          btnPending.textContent = 'Iniciando...';
+          try {
+            const r = await Api.assets.analyzeAll();
+            UI.toast(`Analisis IA iniciado para ${r.total} activos pendientes`, 'success');
+            ViewAssets._reload();
+            ViewAssets._startPollIfNeeded();
+          } catch (e) {
+            UI.toast('Error: ' + e.message, 'error');
+          } finally {
+            btnPending.disabled = false;
+            btnPending.textContent = 'Analizar pendientes con IA';
+          }
+        };
+      }
+
       const btnAnalyzeAll = document.getElementById('btn-analyze-all');
       if (btnAnalyzeAll) {
         btnAnalyzeAll.onclick = async () => {
+          const status = await Api.assets.analysisStatus().catch(() => null);
+          const total = status ? status.total : '?';
+          if (!await UI.confirm(
+            `Re-analizar TODOS los activos (${total}) con IA?\n\nEsto resetea el análisis existente y relanza todos desde cero. Puede tardar varios minutos con inventarios grandes.`
+          )) return;
           btnAnalyzeAll.disabled = true;
           btnAnalyzeAll.textContent = 'Iniciando...';
           try {
-            const r = await Api.assets.analyzeAll();
-            UI.toast(`Analisis IA lanzado para ${r.total} activos`, 'success');
+            const r = await Api.assets.analyzeAllForce();
+            UI.toast(`Re-análisis forzado iniciado para ${r.total} activos`, 'success');
             ViewAssets._reload();
             ViewAssets._startPollIfNeeded();
           } catch (e) {
             UI.toast('Error: ' + e.message, 'error');
           } finally {
             btnAnalyzeAll.disabled = false;
-            btnAnalyzeAll.textContent = 'Analizar riesgos con IA';
+            btnAnalyzeAll.textContent = 'Re-analizar todos';
           }
         };
       }
@@ -219,6 +248,9 @@ const ViewAssets = {
         ? `${start + 1}–${Math.min(start + ps, total)} de ${total} activos`
         : `${total} activos`;
     }
+
+    // Banner de estado de análisis IA
+    ViewAssets._updateAnalysisBanner();
 
     if (!total) {
       list.innerHTML = UI.emptyState('Sin activos', 'Crea uno nuevo o importa el inventario desde un CSV.');
@@ -436,6 +468,66 @@ const ViewAssets = {
     });
   },
 
+  async _updateAnalysisBanner() {
+    const listEl = document.getElementById('asset-list');
+    if (!listEl) return;
+
+    let banner = document.getElementById('analysis-status-banner');
+
+    try {
+      const s = await Api.assets.analysisStatus();
+      const pending   = (s.total || 0) - (s.analysed || 0) - (s.skipped || 0);
+      const hasError  = (s.error || 0) > 0;
+      const inProgress = (s.analysing || 0) > 0;
+      const pct = s.progress_pct || 0;
+
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'analysis-status-banner';
+        listEl.parentNode.insertBefore(banner, listEl);
+      }
+
+      if (s.total === 0) { banner.innerHTML = ''; return; }
+
+      if (inProgress) {
+        banner.innerHTML = `
+          <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;
+                      padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;font-size:13px;">
+            <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;"></div>
+            <span style="color:#92400E;">
+              Analizando activos con IA... <strong>${s.analysed}/${s.total}</strong> completados (${pct}%)
+            </span>
+          </div>`;
+      } else if (pending > 0 || hasError) {
+        banner.innerHTML = `
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;
+                      padding:8px 14px;margin-bottom:10px;display:flex;align-items:center;
+                      gap:12px;font-size:13px;flex-wrap:wrap;">
+            <span style="color:#166534;">
+              <strong>${s.analysed}</strong>/${s.total} analizados (${pct}%)
+              ${hasError ? `&nbsp;·&nbsp;<span style="color:#dc2626;">${s.error} con error</span>` : ''}
+              ${(s.total - s.analysed - s.skipped - s.error) > 0 ? `&nbsp;·&nbsp;<span style="color:#92400E;">${s.total - s.analysed - s.skipped - s.error} sin analizar</span>` : ''}
+            </span>
+            <button class="btn btn-ghost" id="banner-analyze-pending"
+                    style="font-size:12px;padding:3px 10px;margin-left:auto;"
+                    onclick="document.getElementById('btn-analyze-pending')?.click()">
+              Analizar ${pending} pendientes
+            </button>
+          </div>`;
+      } else if (s.analysed === s.total) {
+        banner.innerHTML = `
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;
+                      padding:8px 14px;margin-bottom:10px;font-size:13px;color:#166534;">
+            Todos los activos analizados (${s.total}/${s.total}, ${pct}%)
+          </div>`;
+        // Auto-ocultar tras 5s si todo ok
+        setTimeout(() => { if (banner) banner.innerHTML = ''; }, 5000);
+      }
+    } catch (_) {
+      if (banner) banner.innerHTML = '';
+    }
+  },
+
   _updateSelectionBar() {
     const n = ViewAssets._selectedIds.size;
     let bar = document.getElementById('asset-selection-bar');
@@ -501,9 +593,11 @@ const ViewAssets = {
 
   _startPollIfNeeded() {
     ViewAssets._stopPoll();
-    // Comprobar en TODOS los activos cargados, no solo los de la pagina visible
+    // Arrancar poll si hay activos analizando (en cache) O si el servidor dice que hay en curso
     const hasAnalysing = ViewAssets._allAssets.some(a => a.ai_risk_status === 'analysing');
-    if (!hasAnalysing) return;
+    // También arrancar si el banner muestra que hay pendientes/en-curso (detectado en banner)
+    const bannerHasSpinner = document.getElementById('analysis-status-banner')?.innerHTML.includes('spinner');
+    if (!hasAnalysing && !bannerHasSpinner) return;
 
     const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)', skipped: 'var(--text-muted)' };
     const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error', skipped: 'Sin IA' };
@@ -549,7 +643,12 @@ const ViewAssets = {
           }
         }
 
-        if (stillAnalysing === 0) ViewAssets._stopPoll();
+        if (stillAnalysing === 0) {
+          ViewAssets._stopPoll();
+          ViewAssets._updateAnalysisBanner();
+        } else {
+          ViewAssets._updateAnalysisBanner();
+        }
       } catch (_) { ViewAssets._stopPoll(); }
     }, 4000);
   },
