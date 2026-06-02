@@ -1133,11 +1133,11 @@ class OSINTFinding(Base):
     id = Column(Integer, primary_key=True)
     scan_id = Column(Integer, ForeignKey("osint_scans.id"), nullable=False)
     identifier_id = Column(Integer, ForeignKey("osint_identifiers.id"), nullable=True)
-    source = Column(Enum(OSINTSourceType), nullable=False)
-    finding_type = Column(String(64), nullable=False)  # data_breach, exposed_password, url_malware, etc.
+    source = Column(String(64), nullable=False)          # valor libre: hibp, domain, ip_intel, etc.
+    finding_type = Column(String(64), nullable=False)    # data_breach, exposed_password, url_malware, etc.
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    risk_level = Column(Enum(OSINTFindingRiskLevel), default=OSINTFindingRiskLevel.MEDIUM)
+    risk_level = Column(String(16), default="medium")    # critical|high|medium|low|info
     risk_score = Column(Float, default=0.0)  # 0..100
     is_remediated = Column(Boolean, default=False)
     remediated_at = Column(DateTime, nullable=True)

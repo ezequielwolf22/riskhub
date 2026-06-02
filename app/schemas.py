@@ -1028,11 +1028,11 @@ class OSINTFindingResponse(ORMBase):
     id: int
     scan_id: int
     identifier_id: Optional[int]
-    source: OSINTSourceType
+    source: str
     finding_type: str
     title: str
     description: Optional[str]
-    risk_level: OSINTFindingRiskLevel
+    risk_level: str
     risk_score: float
     is_remediated: bool
     remediated_at: Optional[datetime]

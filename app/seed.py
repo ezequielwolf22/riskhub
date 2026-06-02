@@ -322,6 +322,20 @@ def _migrate_columns() -> None:
         except Exception:
             pass
 
+        # v2.4.1 — Normalizar valores OSINT a minusculas
+        # SQLAlchemy almacenaba enums por NAME (LEAKCHECK) pero el motor los guardaba
+        # por VALUE (leakcheck). Unificar todo a minusculas para consistencia.
+        for norm_sql in [
+            "UPDATE osint_findings SET source = LOWER(source) WHERE source != LOWER(source)",
+            "UPDATE osint_findings SET risk_level = LOWER(risk_level) WHERE risk_level != LOWER(risk_level)",
+            "UPDATE osint_findings SET finding_type = LOWER(finding_type) WHERE finding_type != LOWER(finding_type)",
+        ]:
+            try:
+                conn.execute(__import__("sqlalchemy").text(norm_sql))
+                conn.commit()
+            except Exception:
+                pass
+
 
 def _seed_licenses(db: Session) -> None:
     """Crea licencias iniciales para todas las organizaciones sin licencia."""
