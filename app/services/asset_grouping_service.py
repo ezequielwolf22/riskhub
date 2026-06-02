@@ -120,18 +120,18 @@ REGLAS METODOLOGICAS:
 - NO elimines, modifiques ni renombres los activos originales
 
 Devuelve UNICAMENTE JSON valido con esta estructura exacta:
-{
+{{
   "groups": [
-    {
+    {{
       "name": "Nombre descriptivo del grupo",
       "description": "Descripcion de las caracteristicas comunes de los activos",
       "rationale": "Justificacion ISO 27005 de por que estos activos comparten perfil de riesgo",
       "asset_ids": [1, 2, 3],
       "criteria_applied": ["asset_type", "technology_platform"]
-    }
+    }}
   ],
   "summary": "Resumen ejecutivo: X grupos cubren Y activos. Z activos sin grupo (justificacion)."
-}"""
+}}"""
 
 
 # ---------- Helpers ----------
