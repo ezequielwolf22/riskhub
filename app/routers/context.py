@@ -52,7 +52,7 @@ def _apply_appetite_bulk(db: Session, org_id: int, appetite: int) -> None:
     for r in active_risks:
         if r.residual_level is not None and r.residual_level <= appetite:
             if r.treatment_option in (None, TreatmentOption.MODIFICATION, TreatmentOption.RETENTION):
-                r.treatment_option = TreatmentOption.ACCEPTANCE
+                r.treatment_option = TreatmentOption.RETENTION
                 if r.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
                     r.status = RiskStatus.ACCEPTED
                 # Garantizar que los riesgos aceptados entran en el ciclo de revision anual

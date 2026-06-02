@@ -1,5 +1,7 @@
 """Endpoints del agente IA: cuestionario + análisis de riesgos + chat + feedback."""
 import json
+import threading
+import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,6 +28,26 @@ from app.services.context_builder import build_context
 from app.services.risk_engine import calc_level
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+
+# ============================================================
+# Job store en memoria — análisis asíncrono con polling
+# Evita 504 en proxies con proxy_read_timeout < 60s
+# ============================================================
+
+_JOBS: dict[str, dict] = {}
+_JOBS_LOCK = threading.Lock()
+_JOB_TTL_SECONDS = 1800  # los jobs expiran a los 30 min
+
+
+def _cleanup_old_jobs() -> None:
+    """Elimina jobs expirados. Llamar dentro de _JOBS_LOCK."""
+    now = datetime.now(timezone.utc)
+    expired = [
+        jid for jid, j in _JOBS.items()
+        if (now - j["created_at"]).total_seconds() > _JOB_TTL_SECONDS
+    ]
+    for jid in expired:
+        _JOBS.pop(jid, None)
 
 
 class AnalyzeRequest(BaseModel):
@@ -87,21 +109,134 @@ def analyze(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el análisis: {str(e)}")
 
-    # Persistir respuestas del cuestionario en RiskContext para pre-rellenar futuros análisis
+    # Persistir respuestas + contexto derivado en RiskContext — disponible para chat, informes y cumplimiento
     try:
         from app.models import RiskContext
+        from app.services.ai_service import _regulations_to_frameworks, _parse_appetite_level
         ctx_save = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
         if not ctx_save:
             ctx_save = RiskContext(organization_id=current_user.organization_id)
             db.add(ctx_save)
-        # Guardar solo las respuestas del cuestionario (excluir campos internos _*)
         public_answers = {k: v for k, v in req.answers.items() if not k.startswith("_")}
         ctx_save.questionnaire_answers = public_answers
+        # Normativas, nivel ENS y apetito de riesgo — propagar a todas las secciones
+        regulations = public_answers.get("regulations") or []
+        if regulations:
+            ctx_save.active_frameworks = _regulations_to_frameworks(regulations)
+        if public_answers.get("ens_level"):
+            ctx_save.ens_level = public_answers["ens_level"]
+        appetite_raw = public_answers.get("risk_appetite_level", "")
+        if appetite_raw:
+            ctx_save.risk_appetite = max(0, min(8, _parse_appetite_level(appetite_raw)))
         db.commit()
     except Exception:
         pass  # No bloquear si falla el guardado
 
     return result
+
+
+# ============================================================
+# Análisis asíncrono con polling (evita 504 en proxies)
+# ============================================================
+
+@router.post("/analyze/async")
+def analyze_start(
+    req: AnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lanza el análisis en un hilo de fondo y devuelve un job_id inmediatamente.
+
+    El cliente debe consultar GET /api/ai/analyze/status/{job_id} cada pocos
+    segundos hasta que status sea 'done' o 'error'.
+    """
+    cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
+    api_key = _resolve_api_key(cfg)
+
+    # Enriquecer respuestas con metodología activa (igual que /analyze)
+    from app.models import RiskContext
+    ctx_obj = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    enriched = dict(req.answers)
+    if ctx_obj and ctx_obj.methodology and "_active_methodology" not in enriched:
+        enriched["_active_methodology"] = ctx_obj.methodology
+    if ctx_obj and ctx_obj.ens_level and "ens_level" not in enriched:
+        enriched["ens_level"] = ctx_obj.ens_level
+
+    org_id = current_user.organization_id
+
+    job_id = str(uuid.uuid4())
+    with _JOBS_LOCK:
+        _cleanup_old_jobs()
+        _JOBS[job_id] = {
+            "status": "running",
+            "result": None,
+            "error": None,
+            "created_at": datetime.now(timezone.utc),
+        }
+
+    def _run() -> None:
+        from app.database import SessionLocal
+        from app.services.ai_service import _regulations_to_frameworks, _parse_appetite_level
+        db_t = SessionLocal()
+        try:
+            result = run_analysis(enriched, db_t, api_key=api_key)
+
+            # Guardar contexto organizacional en RiskContext
+            try:
+                from app.models import RiskContext as RC
+                ctx_s = db_t.query(RC).filter(RC.organization_id == org_id).first()
+                if not ctx_s:
+                    ctx_s = RC(organization_id=org_id)
+                    db_t.add(ctx_s)
+                public_answers = {k: v for k, v in enriched.items() if not k.startswith("_")}
+                ctx_s.questionnaire_answers = public_answers
+                regs = public_answers.get("regulations") or []
+                if regs:
+                    ctx_s.active_frameworks = _regulations_to_frameworks(regs)
+                if public_answers.get("ens_level"):
+                    ctx_s.ens_level = public_answers["ens_level"]
+                appetite_raw = public_answers.get("risk_appetite_level", "")
+                if appetite_raw:
+                    ctx_s.risk_appetite = max(0, min(8, _parse_appetite_level(appetite_raw)))
+                db_t.commit()
+            except Exception:
+                pass
+
+            with _JOBS_LOCK:
+                _JOBS[job_id]["status"] = "done"
+                _JOBS[job_id]["result"] = result
+        except Exception as exc:
+            with _JOBS_LOCK:
+                _JOBS[job_id]["status"] = "error"
+                _JOBS[job_id]["error"] = str(exc)
+        finally:
+            db_t.close()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@router.get("/analyze/status/{job_id}")
+def analyze_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve el estado del análisis asíncrono.
+
+    Respuestas posibles:
+      { "status": "running" }
+      { "status": "done",  "result": { ... } }
+      { "status": "error", "error": "mensaje" }
+    """
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job no encontrado o expirado (max 30 min).")
+    return {
+        "status": job["status"],
+        "result": job.get("result"),
+        "error": job.get("error"),
+    }
 
 
 @router.post("/import")
@@ -111,13 +246,17 @@ def import_risks(
     current_user: User = Depends(require_role("analyst")),
 ):
     """Importa los escenarios seleccionados como riesgos en la base de datos."""
-    created = []
-    skipped = []
+    created: list[str] = []
+    skipped:  list[str] = []
 
-    # Función auxiliar para generar código de activo
+    # Función auxiliar para generar código de activo único
     def _next_asset_code() -> str:
         n = db.query(Asset).count() + 1
-        return f"AST-{n:04d}"
+        code = f"AST-{n:04d}"
+        while db.query(Asset).filter(Asset.code == code).first():
+            n += 1
+            code = f"AST-{n:04d}"
+        return code
 
     # Cache de amenazas por código
     threat_by_code = {t.code: t for t in db.query(Threat).all()}
@@ -177,9 +316,12 @@ def import_risks(
             skipped.append(f"{asset.name} × {threat.name} (duplicado)")
             continue
 
-        # Calcular código
-        count = filter_by_org(db.query(Risk), Risk, current_user).count() + len(created) + 1
+        # Calcular código único para el riesgo
+        count = db.query(Risk).count() + len(created) + 1
         code = f"RSK-{count:04d}"
+        while db.query(Risk).filter(Risk.code == code).first():
+            count += 1
+            code = f"RSK-{count:04d}"
 
         # Mapear treatment_option del escenario IA al enum TreatmentOption
         treatment_map = {
@@ -213,32 +355,44 @@ def import_risks(
         db.add(risk)
         created.append(f"{asset.name} × {threat.name}")
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error guardando riesgos: {exc}")
 
     # Guardar apetito, normativas y nivel ENS en RiskContext si se proporcionan
     ctx_updated = False
-    if req.risk_appetite is not None or req.active_frameworks is not None or req.ens_level is not None:
-        from app.models import RiskContext
-        from app.routers.context import _apply_appetite_bulk
-        ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
-        if not ctx:
-            ctx = RiskContext(organization_id=current_user.organization_id)
-            db.add(ctx)
-            db.flush()
+    try:
+        if req.risk_appetite is not None or req.active_frameworks is not None or req.ens_level is not None:
+            from app.models import RiskContext
+            from app.routers.context import _apply_appetite_bulk
+            ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+            if not ctx:
+                ctx = RiskContext(organization_id=current_user.organization_id)
+                db.add(ctx)
+                db.flush()
 
-        old_appetite = ctx.risk_appetite
-        if req.risk_appetite is not None:
-            ctx.risk_appetite = max(0, min(8, req.risk_appetite))
-        if req.active_frameworks is not None:
-            ctx.active_frameworks = req.active_frameworks
-        if req.ens_level is not None:
-            ctx.ens_level = req.ens_level
-        db.commit()
-        ctx_updated = True
+            old_appetite = ctx.risk_appetite
+            if req.risk_appetite is not None:
+                ctx.risk_appetite = max(0, min(8, req.risk_appetite))
+            if req.active_frameworks is not None:
+                ctx.active_frameworks = req.active_frameworks
+            if req.ens_level is not None:
+                ctx.ens_level = req.ens_level
+            db.commit()
+            ctx_updated = True
 
-        # Recalcular tratamientos de todos los riesgos si cambia el apetito
-        if req.risk_appetite is not None and old_appetite != ctx.risk_appetite:
-            _apply_appetite_bulk(db, current_user.organization_id, ctx.risk_appetite)
+            # Recalcular tratamientos de todos los riesgos si cambia el apetito
+            if req.risk_appetite is not None and old_appetite != ctx.risk_appetite:
+                _apply_appetite_bulk(db, current_user.organization_id, ctx.risk_appetite)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # No bloquear la respuesta si falla el guardado del contexto;
+        # los riesgos ya están creados.
+        import logging
+        logging.getLogger("riskhub.ai").warning("import: error guardando contexto: %s", exc)
 
     return {
         "created": len(created),

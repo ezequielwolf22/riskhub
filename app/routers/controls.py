@@ -227,7 +227,7 @@ def _trigger_linked_risks_recalc(impl_id: int, org_id: int) -> None:
 
                 # Auto-aceptar si el nivel residual baja del apetito
                 if rlev <= appetite and risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
-                    risk.treatment_option = TreatmentOption.ACCEPTANCE
+                    risk.treatment_option = TreatmentOption.RETENTION
                     risk.status = RiskStatus.ACCEPTED
                     from datetime import timedelta
                     if not risk.next_review:

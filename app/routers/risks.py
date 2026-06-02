@@ -91,7 +91,7 @@ def _recalc(db: Session, risk: Risk) -> None:
     appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
     if rlev <= appetite and risk.status not in (RiskStatus.CLOSED,):
         if risk.treatment_option in (None, TreatmentOption.MODIFICATION, TreatmentOption.RETENTION):
-            risk.treatment_option = TreatmentOption.ACCEPTANCE
+            risk.treatment_option = TreatmentOption.RETENTION
             if risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
                 risk.status = RiskStatus.ACCEPTED
                 # Riesgos aceptados deben revisarse anualmente
