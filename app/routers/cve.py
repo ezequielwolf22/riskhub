@@ -394,17 +394,34 @@ def auto_scan_cves(
     if not assets:
         raise HTTPException(404, "No se encontraron activos.")
 
-    # Extraer software_tags para busqueda dirigida
-    all_tags: list[str] = []
-    seen_tags: set[str] = set()
-    for a in assets:
-        for tag in (a.software_tags or []):
-            t = (tag or "").strip().lower()
-            if t and t not in seen_tags:
-                all_tags.append(t)
-                seen_tags.add(t)
+    # Extraer keywords de software_tags para busqueda dirigida en NVD.
+    # Los tags pueden tener formato LeanIX ("EA | APP | NombreSoftware") u otros
+    # separadores (";", "/"). Extraemos tokens individuales significativos.
+    _SKIP_TOKENS = {"app", "ea", "erp", "crm", "bi", "api", "ui", "db", "it",
+                    "saas", "paas", "iaas", "cloud", "on", "premise", "the", "and",
+                    "home", "apac", "emea", "amer", "global", "group", "corp"}
 
-    # Buscar CVEs en NVD
+    def _extract_keywords(tags: list) -> list[str]:
+        import re
+        seen: set[str] = set()
+        result: list[str] = []
+        for raw in tags:
+            # Dividir por separadores comunes en tags de LeanIX / sistemas internos
+            parts = re.split(r'[|;/\\,\s]+', raw or "")
+            for part in parts:
+                word = part.strip().lower()
+                # Filtrar: largo minimo 3, no token generico, solo alfanumerico con guion
+                if (len(word) >= 3
+                        and word not in _SKIP_TOKENS
+                        and re.match(r'^[a-z0-9][a-z0-9\-\.]+$', word)
+                        and word not in seen):
+                    seen.add(word)
+                    result.append(word)
+        return result
+
+    all_tags = _extract_keywords([t for a in assets for t in (a.software_tags or [])])
+
+    # Buscar CVEs en NVD — una llamada por keyword (max 8 keywords distintas)
     cves_by_id: dict = {}
     if all_tags:
         for tag in all_tags[:8]:
@@ -419,7 +436,7 @@ def auto_scan_cves(
                 if len(cves_by_id) >= body.max_cves:
                     break
             except Exception as exc:
-                logger.warning("NVD search tag=%s: %s", tag, exc)
+                logger.warning("NVD search keyword=%s: %s", tag, exc)
 
     if not cves_by_id:
         # Fallback: busqueda general sin keyword

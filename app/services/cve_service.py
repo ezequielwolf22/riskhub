@@ -49,6 +49,15 @@ def _nvd_get(params: dict, api_key: Optional[str] = None) -> dict:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read())
     except urllib.error.HTTPError as e:
+        # NVD devuelve 404 cuando la query no devuelve resultados — no es un error real
+        if e.code == 404:
+            return {"vulnerabilities": [], "totalResults": 0}
+        # 403 = API key invalida o bloqueada
+        if e.code == 403:
+            raise ValueError("NVD API: acceso denegado (403). Comprueba que la API key es valida.")
+        # 429 = rate limit
+        if e.code == 429:
+            raise ValueError("NVD API: limite de peticiones superado (429). Espera 30 segundos y reintenta.")
         body = e.read()
         try:
             msg = json.loads(body).get("message", str(e))
