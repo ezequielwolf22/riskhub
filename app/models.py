@@ -1070,12 +1070,15 @@ class OSINTScanType(str, PyEnum):
 
 
 class OSINTSourceType(str, PyEnum):
-    HIBP = "hibp"                    # Have I Been Pwned
-    VIRUSTOTAL = "virustotal"        # VirusTotal
-    LEAKCHECK = "leakcheck"          # LeakCheck
-    INTELX = "intelx"                # Intelligence X
-    GITHUB = "github"                # GitHub Recon
-    SOCIAL = "social"                # Social Media Scraping
+    HIBP = "hibp"                        # Have I Been Pwned
+    VIRUSTOTAL = "virustotal"            # VirusTotal
+    LEAKCHECK = "leakcheck"              # LeakCheck
+    INTELX = "intelx"                    # Intelligence X (short alias)
+    INTELLIGENCE_X = "intelligence_x"   # Intelligence X (full alias usado por osint_intelx.py)
+    GITHUB = "github"                    # GitHub Recon
+    SOCIAL = "social"                    # Social Media Scraping
+    DOMAIN = "domain"                    # Escaneo de dominio (DNS, SSL, subdominios, RDAP)
+    IP_INTEL = "ip_intel"                # Inteligencia de IP (geolocation, ASN, puertos)
 
 
 class OSINTFindingRiskLevel(str, PyEnum):
