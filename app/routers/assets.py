@@ -5,6 +5,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db, SessionLocal
@@ -14,6 +15,10 @@ from app.schemas import AssetIn, AssetOut, ImportResult
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 from app.services.risk_auto_generator import auto_generate_risks_for_asset
+
+
+class BulkDeleteIn(BaseModel):
+    ids: list[int]
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -118,10 +123,37 @@ def delete_asset(asset_id: int, db: Session = Depends(get_db),
     if not a or not check_org_access(a.organization_id, current_user):
         raise HTTPException(404, "Activo no encontrado")
     code, name = a.code, a.name
+    db.query(Risk).filter_by(asset_id=asset_id).update({"asset_id": None}, synchronize_session=False)
     db.delete(a)
     log_action(db, current_user.id, "delete", "asset", str(asset_id),
                {"code": code, "name": name})
     db.commit()
+
+
+@router.post("/bulk-delete")
+def bulk_delete_assets(
+    data: BulkDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Elimina multiples activos a la vez."""
+    deleted = 0
+    errors = []
+    for aid in data.ids:
+        a = db.get(Asset, aid)
+        if not a:
+            errors.append(f"Activo {aid} no encontrado")
+            continue
+        if not check_org_access(a.organization_id, current_user):
+            errors.append(f"Activo {aid}: sin permiso")
+            continue
+        db.query(Risk).filter_by(asset_id=aid).update({"asset_id": None}, synchronize_session=False)
+        log_action(db, current_user.id, "delete", "asset", str(aid),
+                   {"code": a.code, "name": a.name})
+        db.delete(a)
+        deleted += 1
+    db.commit()
+    return {"deleted": deleted, "errors": errors}
 
 
 # -------- IMPORT/EXPORT --------

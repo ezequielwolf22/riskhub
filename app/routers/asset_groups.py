@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Asset, AssetGroup, AssetGroupingConfig, AssetGroupStatus, User
+from app.models import Asset, AssetGroup, AssetGroupingConfig, AssetGroupStatus, Risk, User
 from app.schemas import (
     AssetGroupIn, AssetGroupOut, AssetGroupUpdate, AssetGroupingConfigIn,
     AssetGroupingConfigOut, AssetMiniOut, MoveAssetIn, SplitGroupIn,
@@ -224,6 +224,39 @@ def move(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}
+
+
+# ---------- Eliminar grupo con todos sus activos ----------
+
+@router.delete("/{group_id}/with-assets")
+def delete_group_with_assets(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Elimina el grupo y todos sus activos miembro (incluido representativo)."""
+    g = db.get(AssetGroup, group_id)
+    if not g or not check_org_access(g.organization_id, current_user):
+        raise HTTPException(404, "Grupo no encontrado")
+    group_name = g.name
+    members = db.query(Asset).filter_by(group_id=group_id).all()
+    member_count = len(members)
+    for a in members:
+        # Desvincular riesgos antes de borrar el activo
+        db.query(Risk).filter_by(asset_id=a.id).update({"asset_id": None}, synchronize_session=False)
+        log_action(db, current_user.id, "delete", "asset", str(a.id),
+                   {"code": a.code, "name": a.name, "reason": "group_with_assets_deleted"})
+        db.delete(a)
+    if g.representative_asset_id:
+        rep = db.get(Asset, g.representative_asset_id)
+        if rep:
+            db.query(Risk).filter_by(asset_id=rep.id).update({"asset_id": None}, synchronize_session=False)
+            db.delete(rep)
+    log_action(db, current_user.id, "delete", "asset_group", str(group_id),
+               {"name": group_name, "members_deleted": member_count})
+    db.delete(g)
+    db.commit()
+    return {"ok": True, "group": group_name, "deleted_assets": member_count}
 
 
 # ---------- Dividir grupo ----------

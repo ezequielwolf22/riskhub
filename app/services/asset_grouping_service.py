@@ -264,12 +264,23 @@ def propose_groups(db: Session, org_id: int | None) -> dict:
     model = _get_model(db, org_id)
 
     system = _GROUPING_SYSTEM_PROMPT.format(criteria_text=criteria_text)
-    message = client.messages.create(
-        model=model,
-        max_tokens=8192,
-        system=system,
-        messages=[{"role": "user", "content": user_content}],
-    )
+    try:
+        message = client.messages.create(
+            model=model,
+            max_tokens=8192,
+            system=system,
+            messages=[{"role": "user", "content": user_content}],
+        )
+    except anthropic.BadRequestError as exc:
+        err_body = str(exc).lower()
+        if "credit balance" in err_body or "billing" in err_body:
+            return {"ok": False, "error": "Saldo insuficiente en la cuenta Anthropic. Recarga creditos en console.anthropic.com/settings/billing."}
+        return {"ok": False, "error": f"Error Anthropic API: {exc}"}
+    except anthropic.AuthenticationError:
+        return {"ok": False, "error": "API key de Anthropic invalida o no configurada en Configuracion > Agente IA."}
+    except Exception as exc:
+        logger.exception("Error en propuesta de grupos IA")
+        return {"ok": False, "error": f"Error al llamar a la IA: {exc}"}
     raw = _strip_fence(message.content[0].text)
 
     db.add(AiCallLog(

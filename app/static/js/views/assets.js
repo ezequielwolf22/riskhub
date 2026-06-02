@@ -6,12 +6,14 @@ const ViewAssets = {
   _page: 1,
   _pageSize: 50,
   _allAssets: [],
+  _selectedIds: new Set(),
 
   async render(main) {
     ViewAssets._stopPoll();
     ViewAssets._activeTab = 'inventory';
     ViewAssets._page = 1;
     ViewAssets._allAssets = [];
+    ViewAssets._selectedIds = new Set();
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
       'Inventario de activos',
@@ -93,6 +95,11 @@ const ViewAssets = {
         document.getElementById('tab-grouping').style.display        = tab === 'grouping'        ? '' : 'none';
         const invActions = document.getElementById('inv-actions');
         if (invActions) invActions.style.display = tab === 'inventory' ? '' : 'none';
+        if (tab !== 'inventory') {
+          ViewAssets._selectedIds.clear();
+          const bar = document.getElementById('asset-selection-bar');
+          if (bar) bar.remove();
+        }
         if (tab === 'grouping')       ViewAssets._renderGrouping();
         if (tab === 'groups-results') ViewAssets._renderGroupsResults();
         if (tab === 'inventory')      ViewAssets._reload();
@@ -243,9 +250,17 @@ const ViewAssets = {
                     title="Pertenece a un grupo de activos">GRP</span> `;
     };
 
+    const allPageIds = pageData.map(a => a.id);
+    const allPageSelected = allPageIds.length > 0 && allPageIds.every(id => ViewAssets._selectedIds.has(id));
+
     list.innerHTML = `<div class="table-wrap"><table class="data">
       <thead>
         <tr>
+          <th style="width:32px;padding:4px 6px;" onclick="event.stopPropagation()">
+            <input type="checkbox" id="chk-all" ${allPageSelected ? 'checked' : ''}
+                   style="accent-color:var(--brand-purple);cursor:pointer;"
+                   title="Seleccionar todos en esta pagina">
+          </th>
           ${_th('code', 'Codigo')}${_th('name', 'Nombre')}${_th('type', 'Tipo')}
           <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th>${_th('value_max', 'Max', 'Valor maximo CIA')}
           ${_th('category', 'Categoria')}
@@ -258,8 +273,13 @@ const ViewAssets = {
         ${pageData.map(a => {
           const rc      = a.risk_count || 0;
           const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+          const checked = ViewAssets._selectedIds.has(a.id);
           return `
-          <tr data-id="${a.id}" style="cursor:pointer;">
+          <tr data-id="${a.id}" style="cursor:pointer;${checked ? 'background:var(--bg-3);' : ''}">
+            <td style="padding:4px 6px;" onclick="event.stopPropagation()">
+              <input type="checkbox" class="row-chk" data-id="${a.id}" ${checked ? 'checked' : ''}
+                     style="accent-color:var(--brand-purple);cursor:pointer;">
+            </td>
             <td>${UI.codePill(a.code)}</td>
             <td><strong>${_groupBadge(a)}${UI.esc(a.name)}</strong>
                 ${a.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(a.description).slice(0, 80)}</div>` : ''}</td>
@@ -315,6 +335,31 @@ const ViewAssets = {
         </select>
       </label>
     </div>`;
+
+    // Checkbox: select all on page
+    document.getElementById('chk-all')?.addEventListener('change', (e) => {
+      allPageIds.forEach(id => {
+        if (e.target.checked) ViewAssets._selectedIds.add(id);
+        else ViewAssets._selectedIds.delete(id);
+      });
+      ViewAssets._applyFiltersAndRender();
+    });
+
+    // Checkbox: individual rows
+    list.querySelectorAll('.row-chk').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const id = parseInt(e.target.dataset.id);
+        if (e.target.checked) ViewAssets._selectedIds.add(id);
+        else ViewAssets._selectedIds.delete(id);
+        ViewAssets._updateSelectionBar();
+        // Highlight row
+        const tr = e.target.closest('tr');
+        if (tr) tr.style.background = e.target.checked ? 'var(--bg-3)' : '';
+      });
+    });
+
+    // Show/hide selection bar
+    ViewAssets._updateSelectionBar();
 
     // Sort
     list.querySelectorAll('th[data-sort]').forEach(th => {
@@ -379,6 +424,69 @@ const ViewAssets = {
       ViewAssets._page = 1;
       ViewAssets._applyFiltersAndRender();
     });
+  },
+
+  _updateSelectionBar() {
+    const n = ViewAssets._selectedIds.size;
+    let bar = document.getElementById('asset-selection-bar');
+
+    if (n === 0) {
+      if (bar) bar.remove();
+      return;
+    }
+
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'asset-selection-bar';
+      bar.style.cssText = `
+        position:fixed;bottom:0;left:0;right:0;z-index:1000;
+        background:var(--brand-purple);color:#fff;
+        padding:12px 24px;display:flex;align-items:center;gap:16px;
+        box-shadow:0 -4px 16px rgba(0,0,0,.2);`;
+      document.body.appendChild(bar);
+    }
+
+    bar.innerHTML = `
+      <span style="font-size:14px;font-weight:700;">
+        ${n} activo${n !== 1 ? 's' : ''} seleccionado${n !== 1 ? 's' : ''}
+      </span>
+      <button id="sel-deselect" class="btn"
+              style="background:rgba(255,255,255,.2);color:#fff;border-color:rgba(255,255,255,.3);
+                     font-size:13px;padding:4px 14px;">
+        Deseleccionar todo
+      </button>
+      <span style="flex:1;"></span>
+      <button id="sel-delete" class="btn"
+              style="background:#dc2626;color:#fff;border-color:#dc2626;
+                     font-size:13px;padding:6px 18px;font-weight:700;">
+        Eliminar ${n} activo${n !== 1 ? 's' : ''}
+      </button>`;
+
+    document.getElementById('sel-deselect').onclick = () => {
+      ViewAssets._selectedIds.clear();
+      ViewAssets._applyFiltersAndRender();
+    };
+    document.getElementById('sel-delete').onclick = () => ViewAssets._bulkDelete();
+  },
+
+  async _bulkDelete() {
+    const ids = [...ViewAssets._selectedIds];
+    if (!ids.length) return;
+    const ok = await UI.confirm(
+      `Eliminar ${ids.length} activo${ids.length !== 1 ? 's' : ''}?\n\nEsta accion no se puede deshacer. Los riesgos vinculados quedaran sin activo asociado.`
+    );
+    if (!ok) return;
+    const btn = document.getElementById('sel-delete');
+    if (btn) { btn.disabled = true; btn.textContent = 'Eliminando...'; }
+    try {
+      const r = await Api.assets.bulkDelete(ids);
+      UI.toast(`${r.deleted} activo${r.deleted !== 1 ? 's' : ''} eliminado${r.deleted !== 1 ? 's' : ''}`, 'success');
+      ViewAssets._selectedIds.clear();
+      await ViewAssets._reload();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = `Eliminar ${ids.length} activos`; }
+    }
   },
 
   _startPollIfNeeded() {
@@ -519,11 +627,12 @@ const ViewAssets = {
         e.stopPropagation();
         const action = btn.dataset.resultAction;
         const gid    = parseInt(btn.dataset.gid);
-        if (action === 'validate')    await ViewAssets._validateGroupResult(gid, btn);
-        if (action === 'edit-group')  await ViewAssets._editGroupName(gid);
-        if (action === 'delete-group') await ViewAssets._deleteGroup(gid);
-        if (action === 'move-asset')  await ViewAssets._moveAssetModal(gid);
-        if (action === 'split')       await ViewAssets._splitModal(gid);
+        if (action === 'validate')          await ViewAssets._validateGroupResult(gid, btn);
+        if (action === 'edit-group')        await ViewAssets._editGroupName(gid);
+        if (action === 'delete-group')      await ViewAssets._deleteGroup(gid);
+        if (action === 'delete-with-assets') await ViewAssets._deleteGroupWithAssets(gid);
+        if (action === 'move-asset')        await ViewAssets._moveAssetModal(gid);
+        if (action === 'split')             await ViewAssets._splitModal(gid);
       };
     });
   },
@@ -607,7 +716,15 @@ const ViewAssets = {
             <button class="btn btn-ghost" data-result-action="split" data-gid="${g.id}"
                     style="font-size:11px;padding:3px 10px;">Dividir</button>` : ''}
             <button class="btn btn-danger" data-result-action="delete-group" data-gid="${g.id}"
-                    style="font-size:11px;padding:3px 10px;">Eliminar</button>
+                    style="font-size:11px;padding:3px 10px;"
+                    title="Elimina el grupo pero deja los activos en el inventario">
+              Eliminar grupo
+            </button>
+            <button class="btn btn-danger" data-result-action="delete-with-assets" data-gid="${g.id}"
+                    style="font-size:11px;padding:3px 10px;opacity:.8;"
+                    title="Elimina el grupo Y todos sus activos del inventario">
+              Eliminar todo
+            </button>
           </div>` : ''}
         </div>
       </div>
@@ -878,12 +995,28 @@ const ViewAssets = {
   },
 
   async _deleteGroup(gid) {
-    if (!await UI.confirm('Eliminar el grupo? Los activos quedaran desagrupados.')) return;
+    if (!await UI.confirm('Eliminar el grupo? Los activos quedaran desagrupados y seguiran en el inventario.')) return;
     try {
       await Api.assetGroups.del(gid);
       UI.toast('Grupo eliminado', 'success');
       await ViewAssets._refreshGroupViews();
     } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _deleteGroupWithAssets(gid) {
+    const groups = await Api.assetGroups.list().catch(() => []);
+    const g = groups.find(x => x.id === gid);
+    const n = g ? g.member_count : '?';
+    if (!await UI.confirm(
+      `Eliminar el grupo y sus ${n} activos?\n\nEsta accion borra permanentemente todos los activos del grupo del inventario. Los riesgos vinculados quedaran sin activo.`
+    )) return;
+    try {
+      const r = await Api.assetGroups.deleteWithAssets(gid);
+      UI.toast(`Grupo eliminado junto con ${r.deleted_assets} activos`, 'success');
+      ViewAssets._allAssets = [];
+      await ViewAssets._reload();
+      await ViewAssets._refreshGroupViews();
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
   },
 
   async _moveAssetModal(gid) {

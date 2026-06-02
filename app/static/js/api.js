@@ -108,6 +108,7 @@ const Api = {
     exportCsv: () => Api.download('/api/assets/export/csv', 'assets.csv'),
     analyze: (id) => Api.post('/api/assets/' + id + '/analyze', {}),
     analyzeAll: () => Api.post('/api/assets/analyze-all', {}),
+    bulkDelete: (ids) => Api.post('/api/assets/bulk-delete', { ids }),
   },
   assetGroups: {
     getConfig: () => Api.get('/api/asset-groups/config'),
@@ -118,6 +119,7 @@ const Api = {
     create: (d) => Api.post('/api/asset-groups/', d),
     update: (id, d) => Api.put('/api/asset-groups/' + id, d),
     del: (id) => Api.del('/api/asset-groups/' + id),
+    deleteWithAssets: (id) => Api.del('/api/asset-groups/' + id + '/with-assets'),
     validate: (id) => Api.post('/api/asset-groups/' + id + '/validate', {}),
     validateAll: () => Api.post('/api/asset-groups/validate-all', {}),
     moveAsset: (d) => Api.post('/api/asset-groups/move-asset', d),
