@@ -3,10 +3,15 @@ const ViewAssets = {
   _sortCol: 'code', _sortAsc: true,
   _pollTimer: null,
   _activeTab: 'inventory',
+  _page: 1,
+  _pageSize: 50,
+  _allAssets: [],
 
   async render(main) {
     ViewAssets._stopPoll();
     ViewAssets._activeTab = 'inventory';
+    ViewAssets._page = 1;
+    ViewAssets._allAssets = [];
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
       'Inventario de activos',
@@ -34,6 +39,12 @@ const ViewAssets = {
                  border-bottom:3px solid var(--brand-purple);margin-bottom:-2px;">
           Inventario
         </button>
+        <button class="asset-tab" data-tab="groups-results"
+          style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
+                 font-weight:600;color:var(--text-muted);
+                 border-bottom:3px solid transparent;margin-bottom:-2px;">
+          Grupos
+        </button>
         <button class="asset-tab" data-tab="grouping"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--text-muted);
@@ -60,6 +71,7 @@ const ViewAssets = {
         </div>
         <div id="asset-list"></div>
       </div>
+      <div id="tab-groups-results" style="display:none;padding:4px 0;"></div>
       <div id="tab-grouping" style="display:none;">
         <div id="grouping-view"><div class="notice">Cargando...</div></div>
       </div>
@@ -76,17 +88,25 @@ const ViewAssets = {
         btn.style.borderBottomColor = 'var(--brand-purple)';
         const tab = btn.dataset.tab;
         ViewAssets._activeTab = tab;
-        document.getElementById('tab-inventory').style.display = tab === 'inventory' ? '' : 'none';
-        document.getElementById('tab-grouping').style.display = tab === 'grouping' ? '' : 'none';
+        document.getElementById('tab-inventory').style.display       = tab === 'inventory'       ? '' : 'none';
+        document.getElementById('tab-groups-results').style.display  = tab === 'groups-results'  ? '' : 'none';
+        document.getElementById('tab-grouping').style.display        = tab === 'grouping'        ? '' : 'none';
         const invActions = document.getElementById('inv-actions');
         if (invActions) invActions.style.display = tab === 'inventory' ? '' : 'none';
-        if (tab === 'grouping') ViewAssets._renderGrouping();
-        if (tab === 'inventory') ViewAssets._reload();
+        if (tab === 'grouping')       ViewAssets._renderGrouping();
+        if (tab === 'groups-results') ViewAssets._renderGroupsResults();
+        if (tab === 'inventory')      ViewAssets._reload();
       };
     });
 
-    document.getElementById('asset-search').oninput = () => ViewAssets._reload();
-    document.getElementById('asset-type-filter').onchange = () => ViewAssets._reload();
+    document.getElementById('asset-search').oninput = () => {
+      ViewAssets._page = 1;
+      ViewAssets._applyFiltersAndRender();
+    };
+    document.getElementById('asset-type-filter').onchange = () => {
+      ViewAssets._page = 1;
+      ViewAssets._applyFiltersAndRender();
+    };
 
     if (canEdit) {
       document.getElementById('btn-new').onclick = () => ViewAssets._edit();
@@ -98,8 +118,6 @@ const ViewAssets = {
         await ViewAssets._importFiles(files);
         e.target.value = '';
       };
-
-      // Drag-and-drop sobre el inventario completo
       ViewAssets._setupDrop(main);
       const btnAnalyzeAll = document.getElementById('btn-analyze-all');
       if (btnAnalyzeAll) {
@@ -124,183 +142,273 @@ const ViewAssets = {
     ViewAssets._reload();
   },
 
+  // ---------- INVENTARIO PAGINADO ----------
+
   async _reload() {
-    const q = document.getElementById('asset-search')?.value;
-    const t = document.getElementById('asset-type-filter')?.value;
     const list = document.getElementById('asset-list');
     if (!list) return;
     list.innerHTML = '<div class="notice">Cargando...</div>';
     try {
-      const params = {};
-      if (q) params.q = q;
-      if (t) params.asset_type = t;
-      const data = await Api.assets.list(params);
-      document.getElementById('asset-count').textContent = `${data.length} activos`;
-      if (!data.length) {
-        list.innerHTML = UI.emptyState(
-          'Sin activos',
-          'Crea uno nuevo o importa el inventario desde un CSV.'
-        );
-        return;
-      }
-      const _sortVal = a => {
-        const k = ViewAssets._sortCol;
-        if (k === 'code') return a.code || '';
-        if (k === 'name') return (a.name || '').toLowerCase();
-        if (k === 'type') return a.asset_type || '';
-        if (k === 'value_max') return a.value_max || 0;
-        if (k === 'risks') return a.risk_count || 0;
-        if (k === 'category') return (a.category || '').toLowerCase();
-        return '';
-      };
-      data.sort((a, b) => {
-        const va = _sortVal(a), vb = _sortVal(b);
-        const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-        return ViewAssets._sortAsc ? cmp : -cmp;
-      });
-
-      const _th = (col, label, title, style) => {
-        const active = ViewAssets._sortCol === col;
-        const arrow = active ? (ViewAssets._sortAsc ? ' ▲' : ' ▼') : '';
-        return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${active?'color:var(--brand-purple);':''}${style||''}"
-                    data-sort="${col}" title="${title||label}">${label}${arrow}</th>`;
-      };
-
-      const _aiStatusBadge = (a) => {
-        const s = a.ai_risk_status;
-        if (!s) return `<span style="font-size:10px;color:var(--text-subtle);">-</span>`;
-        const colors = { analysing:'var(--brand-orange)', analysed:'var(--risk-low)', error:'var(--risk-critical)', skipped:'var(--text-muted)' };
-        const labels = { analysing:'Analizando...', analysed:'Analizado', error:'Error', skipped:'Sin IA' };
-        const sum = a.ai_risk_summary || {};
-        const tip = s === 'analysed'
-          ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
-          : (sum.error || sum.reason || '');
-        return `<span style="font-size:10px;font-weight:600;color:${colors[s]||'var(--text-muted)'};"
-                      title="${UI.esc(tip)}">${labels[s]||s}</span>`;
-      };
-
-      const _groupBadge = (a) => {
-        if (!a.group_id) return '';
-        return `<span style="font-size:10px;background:var(--brand-purple);color:#fff;
-                             padding:2px 6px;border-radius:10px;font-weight:600;"
-                      title="Pertenece a un grupo de activos">GRP</span> `;
-      };
-
-      list.innerHTML = `<div class="table-wrap"><table class="data">
-        <thead>
-          <tr>
-            ${_th('code','Codigo')}${_th('name','Nombre')}${_th('type','Tipo')}
-            <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th>${_th('value_max','Max','Valor maximo CIA')}
-            ${_th('category','Categoria')}
-            ${_th('risks','Riesgos','Numero de riesgos asociados','width:70px;text-align:center;')}
-            <th style="white-space:nowrap;">Analisis IA</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.map(a => {
-            const rc = a.risk_count || 0;
-            const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
-            return `
-            <tr data-id="${a.id}" style="cursor:pointer;">
-              <td>${UI.codePill(a.code)}</td>
-              <td><strong>${_groupBadge(a)}${UI.esc(a.name)}</strong>
-                  ${a.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(a.description).slice(0,80)}</div>` : ''}</td>
-              <td>${UI.assetTypeLabel(a.asset_type)}</td>
-              <td>${a.value_confidentiality}</td>
-              <td>${a.value_integrity}</td>
-              <td>${a.value_availability}</td>
-              <td>${a.value_authenticity}</td>
-              <td>${a.value_accountability}</td>
-              <td>${UI.riskPill(a.value_max * 2)}</td>
-              <td>${UI.esc(a.category || '-')}</td>
-              <td style="text-align:center;">
-                <a href="#/risks?asset_id=${a.id}" title="Ver riesgos de este activo"
-                   style="font-weight:700;font-family:var(--font-mono);font-size:13px;
-                          color:${rcColor};text-decoration:none;">${rc}</a>
-              </td>
-              <td style="white-space:nowrap;" onclick="event.stopPropagation()">
-                ${_aiStatusBadge(a)}
-              </td>
-              <td style="white-space:nowrap;" onclick="event.stopPropagation()">
-                ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}
-                ${Auth.canEdit() && (!a.ai_risk_status || a.ai_risk_status === 'error' || a.ai_risk_status === 'skipped')
-                  ? `<button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
-                             data-analyze="${a.id}"
-                             title="Analizar riesgos con IA para este activo">&#9881; IA</button>`
-                  : ''}
-              </td>
-            </tr>`;}).join('')}
-        </tbody>
-      </table></div>`;
-
-      list.querySelectorAll('th[data-sort]').forEach(th => {
-        th.onclick = () => {
-          const col = th.dataset.sort;
-          if (ViewAssets._sortCol === col) ViewAssets._sortAsc = !ViewAssets._sortAsc;
-          else { ViewAssets._sortCol = col; ViewAssets._sortAsc = col !== 'value_max' && col !== 'risks'; }
-          ViewAssets._reload();
-        };
-      });
-      list.querySelectorAll('[data-edit]').forEach(b =>
-        b.onclick = (e) => { e.stopPropagation(); ViewAssets._edit(parseInt(b.dataset.edit)); });
-      list.querySelectorAll('[data-analyze]').forEach(b =>
-        b.onclick = async (e) => {
-          e.stopPropagation();
-          const id = parseInt(b.dataset.analyze);
-          b.disabled = true; b.textContent = '...';
-          try {
-            await Api.assets.analyze(id);
-            UI.toast('Analisis IA iniciado', 'success');
-            ViewAssets._reload();
-            ViewAssets._startPollIfNeeded();
-          } catch (err) {
-            UI.toast('Error: ' + err.message, 'error');
-            b.disabled = false; b.textContent = '⚙ IA';
-          }
-        });
-      list.querySelectorAll('tr[data-id]').forEach(tr =>
-        tr.onclick = () => ViewAssets._edit(parseInt(tr.dataset.id)));
-
-      ViewAssets._startPollIfNeeded();
+      const data = await Api.assets.list({ limit: 10000 });
+      ViewAssets._allAssets = data;
+      ViewAssets._page = 1;
+      ViewAssets._applyFiltersAndRender();
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
   },
 
+  _applyFiltersAndRender() {
+    const list = document.getElementById('asset-list');
+    if (!list) return;
+    const q = (document.getElementById('asset-search')?.value || '').toLowerCase();
+    const t = document.getElementById('asset-type-filter')?.value || '';
+
+    let data = ViewAssets._allAssets;
+    if (q) data = data.filter(a =>
+      (a.name || '').toLowerCase().includes(q) ||
+      (a.code || '').toLowerCase().includes(q) ||
+      (a.description || '').toLowerCase().includes(q)
+    );
+    if (t) data = data.filter(a => a.asset_type === t);
+
+    const _sortVal = a => {
+      const k = ViewAssets._sortCol;
+      if (k === 'code')      return a.code || '';
+      if (k === 'name')      return (a.name || '').toLowerCase();
+      if (k === 'type')      return a.asset_type || '';
+      if (k === 'value_max') return a.value_max || 0;
+      if (k === 'risks')     return a.risk_count || 0;
+      if (k === 'category')  return (a.category || '').toLowerCase();
+      return '';
+    };
+    data.sort((a, b) => {
+      const va = _sortVal(a), vb = _sortVal(b);
+      const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+      return ViewAssets._sortAsc ? cmp : -cmp;
+    });
+
+    const total      = data.length;
+    const ps         = ViewAssets._pageSize;
+    const totalPages = Math.max(1, Math.ceil(total / ps));
+    if (ViewAssets._page > totalPages) ViewAssets._page = totalPages;
+    if (ViewAssets._page < 1)          ViewAssets._page = 1;
+    const start    = (ViewAssets._page - 1) * ps;
+    const pageData = data.slice(start, start + ps);
+
+    const countEl = document.getElementById('asset-count');
+    if (countEl) {
+      countEl.textContent = total > ps
+        ? `${start + 1}–${Math.min(start + ps, total)} de ${total} activos`
+        : `${total} activos`;
+    }
+
+    if (!total) {
+      list.innerHTML = UI.emptyState('Sin activos', 'Crea uno nuevo o importa el inventario desde un CSV.');
+      return;
+    }
+
+    ViewAssets._renderTableContent(list, pageData, total, totalPages);
+    ViewAssets._startPollIfNeeded();
+  },
+
+  _renderTableContent(list, pageData, total, totalPages) {
+    const ps   = ViewAssets._pageSize;
+    const page = ViewAssets._page;
+
+    const _th = (col, label, title, style) => {
+      const active = ViewAssets._sortCol === col;
+      const arrow  = active ? (ViewAssets._sortAsc ? ' ▲' : ' ▼') : '';
+      return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${active ? 'color:var(--brand-purple);' : ''}${style || ''}"
+                  data-sort="${col}" title="${title || label}">${label}${arrow}</th>`;
+    };
+
+    const _aiStatusBadge = (a) => {
+      const s = a.ai_risk_status;
+      if (!s) return `<span style="font-size:10px;color:var(--text-subtle);">-</span>`;
+      const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)', skipped: 'var(--text-muted)' };
+      const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error', skipped: 'Sin IA' };
+      const sum = a.ai_risk_summary || {};
+      const tip = s === 'analysed'
+        ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
+        : (sum.error || sum.reason || '');
+      return `<span style="font-size:10px;font-weight:600;color:${colors[s] || 'var(--text-muted)'};"
+                    title="${UI.esc(tip)}">${labels[s] || s}</span>`;
+    };
+
+    const _groupBadge = (a) => {
+      if (!a.group_id) return '';
+      return `<span style="font-size:10px;background:var(--brand-purple);color:#fff;
+                           padding:2px 6px;border-radius:10px;font-weight:600;"
+                    title="Pertenece a un grupo de activos">GRP</span> `;
+    };
+
+    list.innerHTML = `<div class="table-wrap"><table class="data">
+      <thead>
+        <tr>
+          ${_th('code', 'Codigo')}${_th('name', 'Nombre')}${_th('type', 'Tipo')}
+          <th>C</th><th>I</th><th>D</th><th>Auth</th><th>Acc</th>${_th('value_max', 'Max', 'Valor maximo CIA')}
+          ${_th('category', 'Categoria')}
+          ${_th('risks', 'Riesgos', 'Numero de riesgos asociados', 'width:70px;text-align:center;')}
+          <th style="white-space:nowrap;">Analisis IA</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${pageData.map(a => {
+          const rc      = a.risk_count || 0;
+          const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
+          return `
+          <tr data-id="${a.id}" style="cursor:pointer;">
+            <td>${UI.codePill(a.code)}</td>
+            <td><strong>${_groupBadge(a)}${UI.esc(a.name)}</strong>
+                ${a.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(a.description).slice(0, 80)}</div>` : ''}</td>
+            <td>${UI.assetTypeLabel(a.asset_type)}</td>
+            <td>${a.value_confidentiality}</td>
+            <td>${a.value_integrity}</td>
+            <td>${a.value_availability}</td>
+            <td>${a.value_authenticity}</td>
+            <td>${a.value_accountability}</td>
+            <td>${UI.riskPill(a.value_max * 2)}</td>
+            <td>${UI.esc(a.category || '-')}</td>
+            <td style="text-align:center;">
+              <a href="#/risks?asset_id=${a.id}" title="Ver riesgos de este activo"
+                 style="font-weight:700;font-family:var(--font-mono);font-size:13px;
+                        color:${rcColor};text-decoration:none;">${rc}</a>
+            </td>
+            <td style="white-space:nowrap;" onclick="event.stopPropagation()">
+              ${_aiStatusBadge(a)}
+            </td>
+            <td style="white-space:nowrap;" onclick="event.stopPropagation()">
+              ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}
+              ${Auth.canEdit() && (!a.ai_risk_status || a.ai_risk_status === 'error' || a.ai_risk_status === 'skipped')
+                ? `<button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
+                           data-analyze="${a.id}"
+                           title="Analizar riesgos con IA para este activo">&#9881; IA</button>`
+                : ''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 2px;flex-wrap:wrap;border-top:1px solid var(--border);">
+      <button class="btn btn-ghost" id="pg-first" ${page <= 1 ? 'disabled' : ''}
+              style="padding:4px 10px;font-size:13px;">«</button>
+      <button class="btn btn-ghost" id="pg-prev" ${page <= 1 ? 'disabled' : ''}
+              style="padding:4px 12px;font-size:13px;">← Anterior</button>
+      <span style="font-size:13px;color:var(--text-muted);white-space:nowrap;">
+        Pagina <strong>${page}</strong> de <strong>${totalPages}</strong>
+      </span>
+      <button class="btn btn-ghost" id="pg-next" ${page >= totalPages ? 'disabled' : ''}
+              style="padding:4px 12px;font-size:13px;">Siguiente →</button>
+      <button class="btn btn-ghost" id="pg-last" ${page >= totalPages ? 'disabled' : ''}
+              style="padding:4px 10px;font-size:13px;">»</button>
+      <span style="flex:1;"></span>
+      <label style="font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        Por pagina:
+        <select id="page-size-sel"
+                style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--bg-2);">
+          <option value="25"  ${ps ===  25 ? 'selected' : ''}>25</option>
+          <option value="50"  ${ps ===  50 ? 'selected' : ''}>50</option>
+          <option value="100" ${ps === 100 ? 'selected' : ''}>100</option>
+          <option value="250" ${ps === 250 ? 'selected' : ''}>250</option>
+        </select>
+      </label>
+    </div>`;
+
+    // Sort
+    list.querySelectorAll('th[data-sort]').forEach(th => {
+      th.onclick = () => {
+        const col = th.dataset.sort;
+        if (ViewAssets._sortCol === col) ViewAssets._sortAsc = !ViewAssets._sortAsc;
+        else { ViewAssets._sortCol = col; ViewAssets._sortAsc = col !== 'value_max' && col !== 'risks'; }
+        ViewAssets._applyFiltersAndRender();
+      };
+    });
+
+    // Row actions
+    list.querySelectorAll('[data-edit]').forEach(b =>
+      b.onclick = (e) => { e.stopPropagation(); ViewAssets._edit(parseInt(b.dataset.edit)); });
+    list.querySelectorAll('[data-analyze]').forEach(b =>
+      b.onclick = async (e) => {
+        e.stopPropagation();
+        const id = parseInt(b.dataset.analyze);
+        b.disabled = true; b.textContent = '...';
+        try {
+          await Api.assets.analyze(id);
+          UI.toast('Analisis IA iniciado', 'success');
+          ViewAssets._reload();
+          ViewAssets._startPollIfNeeded();
+        } catch (err) {
+          UI.toast('Error: ' + err.message, 'error');
+          b.disabled = false; b.textContent = '⚙ IA';
+        }
+      });
+    list.querySelectorAll('tr[data-id]').forEach(tr =>
+      tr.onclick = () => ViewAssets._edit(parseInt(tr.dataset.id)));
+
+    // Pagination
+    const _getFilteredTotal = () => {
+      const q = (document.getElementById('asset-search')?.value || '').toLowerCase();
+      const t = document.getElementById('asset-type-filter')?.value || '';
+      let d = ViewAssets._allAssets;
+      if (q) d = d.filter(a =>
+        (a.name || '').toLowerCase().includes(q) ||
+        (a.code || '').toLowerCase().includes(q) ||
+        (a.description || '').toLowerCase().includes(q)
+      );
+      if (t) d = d.filter(a => a.asset_type === t);
+      return d.length;
+    };
+    document.getElementById('pg-first')?.addEventListener('click', () => {
+      ViewAssets._page = 1; ViewAssets._applyFiltersAndRender();
+    });
+    document.getElementById('pg-prev')?.addEventListener('click', () => {
+      if (ViewAssets._page > 1) { ViewAssets._page--; ViewAssets._applyFiltersAndRender(); }
+    });
+    document.getElementById('pg-next')?.addEventListener('click', () => {
+      const tp = Math.max(1, Math.ceil(_getFilteredTotal() / ViewAssets._pageSize));
+      if (ViewAssets._page < tp) { ViewAssets._page++; ViewAssets._applyFiltersAndRender(); }
+    });
+    document.getElementById('pg-last')?.addEventListener('click', () => {
+      ViewAssets._page = Math.max(1, Math.ceil(_getFilteredTotal() / ViewAssets._pageSize));
+      ViewAssets._applyFiltersAndRender();
+    });
+    document.getElementById('page-size-sel')?.addEventListener('change', (e) => {
+      ViewAssets._pageSize = parseInt(e.target.value);
+      ViewAssets._page = 1;
+      ViewAssets._applyFiltersAndRender();
+    });
+  },
+
   _startPollIfNeeded() {
     ViewAssets._stopPoll();
-    const assetList = document.querySelector('#asset-list tbody');
-    if (!assetList) return;
-    const hasAnalysing = assetList.innerHTML.includes('Analizando...');
-    if (!hasAnalysing) return;
+    const tbody = document.querySelector('#asset-list tbody');
+    if (!tbody || !tbody.innerHTML.includes('Analizando...')) return;
     ViewAssets._pollTimer = setInterval(async () => {
       try {
-        const q = document.getElementById('asset-search')?.value || '';
-        const t = document.getElementById('asset-type-filter')?.value || '';
-        const params = {};
-        if (q) params.q = q;
-        if (t) params.asset_type = t;
-        const data = await Api.assets.list(params);
-        const tbody = document.querySelector('#asset-list tbody');
-        if (!tbody) { ViewAssets._stopPoll(); return; }
+        const data = await Api.assets.list({ limit: 10000 });
+        ViewAssets._allAssets = data;
+        const tb = document.querySelector('#asset-list tbody');
+        if (!tb) { ViewAssets._stopPoll(); return; }
         data.forEach(a => {
           const tr = document.querySelector(`tr[data-id="${a.id}"]`);
           if (!tr) return;
           const cells = tr.querySelectorAll('td');
           const aiCell = cells[cells.length - 2];
           if (aiCell) {
-            const s = a.ai_risk_status;
-            const colors = { analysing:'var(--brand-orange)', analysed:'var(--risk-low)', error:'var(--risk-critical)', skipped:'var(--text-muted)' };
-            const labels = { analysing:'Analizando...', analysed:'Analizado', error:'Error', skipped:'Sin IA' };
-            const sum = a.ai_risk_summary || {};
-            const tip = s === 'analysed' ? `${sum.risks_created||0} creados, ${sum.risks_updated||0} actualizados` : (sum.error||sum.reason||'');
-            aiCell.innerHTML = `<span style="font-size:10px;font-weight:600;color:${colors[s]||'var(--text-muted)'};" title="${UI.esc(tip)}">${labels[s]||s||'-'}</span>`;
+            const s      = a.ai_risk_status;
+            const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)', skipped: 'var(--text-muted)' };
+            const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error', skipped: 'Sin IA' };
+            const sum    = a.ai_risk_summary || {};
+            const tip    = s === 'analysed'
+              ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
+              : (sum.error || sum.reason || '');
+            aiCell.innerHTML = `<span style="font-size:10px;font-weight:600;color:${colors[s] || 'var(--text-muted)'};"
+                                      title="${UI.esc(tip)}">${labels[s] || s || '-'}</span>`;
           }
         });
-        if (!data.some(a => a.ai_risk_status === 'analysing')) {
-          ViewAssets._stopPoll();
-        }
+        if (!data.some(a => a.ai_risk_status === 'analysing')) ViewAssets._stopPoll();
       } catch (_) { ViewAssets._stopPoll(); }
     }, 4000);
   },
@@ -309,7 +417,270 @@ const ViewAssets = {
     if (ViewAssets._pollTimer) { clearInterval(ViewAssets._pollTimer); ViewAssets._pollTimer = null; }
   },
 
-  // ---------- AGRUPACION CON IA ----------
+  // ---------- TAB GRUPOS: RESULTADOS ----------
+
+  async _renderGroupsResults() {
+    const view = document.getElementById('tab-groups-results');
+    if (!view) return;
+    view.innerHTML = '<div class="notice">Cargando grupos...</div>';
+    try {
+      const groups = await Api.assetGroups.list();
+      ViewAssets._drawGroupsResults(view, groups);
+    } catch (e) {
+      view.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _drawGroupsResults(view, groups) {
+    const canEdit  = Auth.canEdit();
+    const proposed = groups.filter(g => g.status === 'proposed');
+    const validated = groups.filter(g => g.status === 'validated');
+    const totalGrouped = groups.reduce((s, g) => s + (g.member_count || 0), 0);
+
+    if (!groups.length) {
+      view.innerHTML = `
+        <div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
+          <div style="font-size:56px;opacity:.3;margin-bottom:16px;">&#128193;</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px;">Sin grupos creados todavia</div>
+          <div style="font-size:13px;margin-bottom:24px;">
+            Ve a la pestana "Agrupacion con IA" para analizar y proponer grupos automaticamente.
+          </div>
+          <button class="btn btn-primary"
+                  onclick="document.querySelector('[data-tab=grouping]')?.click()">
+            Ir a Agrupacion con IA
+          </button>
+        </div>`;
+      return;
+    }
+
+    view.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+        <div style="padding:14px;background:var(--bg-2);border-radius:8px;text-align:center;border:1px solid var(--border);">
+          <div style="font-size:28px;font-weight:800;color:var(--brand-purple);">${groups.length}</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:2px;">Grupos totales</div>
+        </div>
+        <div style="padding:14px;background:var(--bg-2);border-radius:8px;text-align:center;border:1px solid var(--border);">
+          <div style="font-size:28px;font-weight:800;color:var(--text);">${totalGrouped}</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:2px;">Activos agrupados</div>
+        </div>
+        <div style="padding:14px;background:#D1FAE5;border-radius:8px;text-align:center;border:1px solid #A7F3D0;">
+          <div style="font-size:28px;font-weight:800;color:#065f46;">${validated.length}</div>
+          <div style="font-size:11px;color:#065f46;text-transform:uppercase;margin-top:2px;">Validados</div>
+        </div>
+        <div style="padding:14px;background:#FFF7ED;border-radius:8px;text-align:center;border:1px solid #FED7AA;">
+          <div style="font-size:28px;font-weight:800;color:#92400E;">${proposed.length}</div>
+          <div style="font-size:11px;color:#92400E;text-transform:uppercase;margin-top:2px;">Pendientes</div>
+        </div>
+      </div>
+
+      ${canEdit && proposed.length ? `
+      <div style="margin-bottom:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btn-validate-all-results">
+          Validar todos los grupos propuestos (${proposed.length})
+        </button>
+        <span style="font-size:12px;color:var(--text-muted);">
+          Validar crea un activo representativo por grupo para el analisis de riesgos grupal
+        </span>
+      </div>` : ''}
+
+      ${proposed.length ? `
+      <h4 style="font-size:11px;color:var(--text-muted);text-transform:uppercase;
+                 letter-spacing:.6px;margin:0 0 10px;font-weight:700;">
+        Propuestos — pendientes de validacion (${proposed.length})
+      </h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;margin-bottom:24px;">
+        ${proposed.map(g => ViewAssets._groupResultCard(g, canEdit)).join('')}
+      </div>` : ''}
+
+      ${validated.length ? `
+      <h4 style="font-size:11px;color:var(--text-muted);text-transform:uppercase;
+                 letter-spacing:.6px;margin:0 0 10px;font-weight:700;">
+        Validados — listos para analisis de riesgo (${validated.length})
+      </h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;">
+        ${validated.map(g => ViewAssets._groupResultCard(g, canEdit)).join('')}
+      </div>` : ''}
+    `;
+
+    document.getElementById('btn-validate-all-results')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-validate-all-results');
+      if (btn) { btn.disabled = true; btn.textContent = 'Validando...'; }
+      try {
+        const r = await Api.assetGroups.validateAll();
+        UI.toast(`${r.validated} grupos validados`, 'success');
+        await ViewAssets._renderGroupsResults();
+      } catch (e) {
+        UI.toast('Error: ' + e.message, 'error');
+      }
+    });
+
+    view.querySelectorAll('[data-result-action]').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const action = btn.dataset.resultAction;
+        const gid    = parseInt(btn.dataset.gid);
+        if (action === 'validate')    await ViewAssets._validateGroupResult(gid, btn);
+        if (action === 'edit-group')  await ViewAssets._editGroupName(gid);
+        if (action === 'delete-group') await ViewAssets._deleteGroup(gid);
+        if (action === 'move-asset')  await ViewAssets._moveAssetModal(gid);
+        if (action === 'split')       await ViewAssets._splitModal(gid);
+      };
+    });
+  },
+
+  _groupResultCard(g, canEdit) {
+    const statusColors = { proposed: 'var(--brand-orange)', validated: 'var(--risk-low)', rejected: 'var(--risk-critical)' };
+    const statusLabels = { proposed: 'Propuesto', validated: 'Validado', rejected: 'Rechazado' };
+    const typeLabels   = {
+      primary_process: 'Proceso', primary_information: 'Informacion',
+      support_hardware: 'Hardware', support_software: 'Software',
+      support_network: 'Red', support_personnel: 'Personal',
+      support_site: 'Instalacion', support_organization: 'Organizacion',
+    };
+
+    // Distribucion de tipos
+    const typeCount = {};
+    (g.members || []).forEach(m => {
+      const t = m.asset_type || 'otro';
+      typeCount[t] = (typeCount[t] || 0) + 1;
+    });
+    const typeBadges = Object.entries(typeCount).map(([t, n]) =>
+      `<span style="font-size:10px;background:var(--bg-3);padding:2px 7px;border-radius:10px;
+                   color:var(--text-muted);white-space:nowrap;">${n}x ${typeLabels[t] || t}</span>`
+    ).join('');
+
+    // Valores maximos del grupo
+    const members = g.members || [];
+    const maxC = members.reduce((m, a) => Math.max(m, a.value_confidentiality || 0), 0);
+    const maxI = members.reduce((m, a) => Math.max(m, a.value_integrity || 0), 0);
+    const maxD = members.reduce((m, a) => Math.max(m, a.value_availability || 0), 0);
+
+    // Lista completa de activos del grupo
+    const memberRows = members.map(m =>
+      `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;
+                   border-bottom:1px solid var(--border);font-size:12px;">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-subtle);
+                     min-width:72px;flex-shrink:0;">${UI.esc(m.code || '')}</span>
+        <span style="flex:1;color:var(--text);font-weight:500;">${UI.esc(m.name)}</span>
+        <span style="font-size:10px;color:var(--text-muted);flex-shrink:0;">
+          ${typeLabels[m.asset_type] || m.asset_type || ''}
+        </span>
+        ${m.value_confidentiality !== undefined ? `
+        <span style="font-size:10px;color:var(--text-subtle);flex-shrink:0;">
+          C${m.value_confidentiality} I${m.value_integrity} D${m.value_availability}
+        </span>` : ''}
+      </div>`
+    ).join('');
+
+    return `
+    <div style="border:1px solid var(--border);border-radius:10px;background:var(--bg-2);
+                overflow:hidden;display:flex;flex-direction:column;">
+      <!-- Cabecera -->
+      <div style="padding:12px 14px;background:var(--bg);border-bottom:1px solid var(--border);">
+        <div style="display:flex;align-items:flex-start;gap:8px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;">
+              <span style="background:${statusColors[g.status] || 'var(--text-muted)'};color:#fff;
+                           font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0;">
+                ${statusLabels[g.status] || g.status}
+              </span>
+              <strong style="font-size:14px;">${UI.esc(g.name)}</strong>
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;">
+              <span style="font-size:12px;font-weight:600;color:var(--text-muted);">${g.member_count} activos</span>
+              ${typeBadges}
+            </div>
+          </div>
+          ${canEdit ? `
+          <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;">
+            ${g.status === 'proposed' ? `
+              <button class="btn btn-primary" data-result-action="validate" data-gid="${g.id}"
+                      style="font-size:11px;padding:3px 10px;">Validar</button>` : ''}
+            ${g.status === 'validated' && g.representative_asset_id ? `
+              <a href="#/risks?asset_id=${g.representative_asset_id}" class="btn btn-ghost"
+                 style="font-size:11px;padding:3px 10px;">Ver riesgos</a>` : ''}
+            <button class="btn btn-ghost" data-result-action="edit-group" data-gid="${g.id}"
+                    style="font-size:11px;padding:3px 10px;">Renombrar</button>
+            <button class="btn btn-ghost" data-result-action="move-asset" data-gid="${g.id}"
+                    style="font-size:11px;padding:3px 10px;">Mover activo</button>
+            ${g.member_count > 1 ? `
+            <button class="btn btn-ghost" data-result-action="split" data-gid="${g.id}"
+                    style="font-size:11px;padding:3px 10px;">Dividir</button>` : ''}
+            <button class="btn btn-danger" data-result-action="delete-group" data-gid="${g.id}"
+                    style="font-size:11px;padding:3px 10px;">Eliminar</button>
+          </div>` : ''}
+        </div>
+      </div>
+
+      <!-- Descripcion y justificacion IA -->
+      ${g.description || g.ai_rationale ? `
+      <div style="padding:10px 14px;background:var(--bg-1);border-bottom:1px solid var(--border);font-size:12px;">
+        ${g.description ? `<div style="color:var(--text);margin-bottom:4px;">${UI.esc(g.description)}</div>` : ''}
+        ${g.ai_rationale ? `<div style="color:var(--text-muted);font-style:italic;">
+          Justificacion ISO 27005: ${UI.esc(g.ai_rationale)}</div>` : ''}
+      </div>` : ''}
+
+      <!-- Valoracion CIA del grupo -->
+      <div style="padding:8px 14px;display:flex;gap:16px;align-items:center;
+                  border-bottom:1px solid var(--border);background:var(--bg);">
+        <span style="font-size:11px;color:var(--text-muted);font-weight:600;">Valores max. del grupo:</span>
+        <span style="font-size:11px;">
+          <strong style="color:#6A1B9A;">C</strong> ${maxC} &nbsp;
+          <strong style="color:#2e7d32;">I</strong> ${maxI} &nbsp;
+          <strong style="color:#1565c0;">D</strong> ${maxD}
+        </span>
+        ${g.status === 'validated' ? `
+        <span style="margin-left:auto;font-size:11px;color:#16a34a;font-weight:600;">
+          &#10003; Listo para analisis de riesgo
+        </span>` : `
+        <span style="margin-left:auto;font-size:11px;color:#92400E;">
+          Pendiente de validacion
+        </span>`}
+      </div>
+
+      <!-- Lista de activos con scroll -->
+      <details ${members.length <= 6 ? 'open' : ''} style="flex:1;">
+        <summary style="cursor:pointer;padding:8px 14px;font-size:12px;font-weight:600;
+                        color:var(--text-muted);list-style:none;display:flex;align-items:center;
+                        gap:6px;user-select:none;background:var(--bg-2);">
+          <span id="grp-arrow-${g.id}" style="font-size:10px;display:inline-block;
+                transition:transform .15s;">&#9654;</span>
+          Activos del grupo (${g.member_count})
+          ${g.status === 'validated' && g.representative_asset_id ? `
+          <span style="font-size:10px;color:#16a34a;margin-left:auto;font-weight:400;">
+            Activo representativo creado
+          </span>` : ''}
+        </summary>
+        <div style="max-height:220px;overflow-y:auto;padding:4px 14px 10px;">
+          ${memberRows || '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">Sin activos en este grupo</div>'}
+        </div>
+      </details>
+    </div>`;
+  },
+
+  async _validateGroupResult(gid, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Validando...'; }
+    try {
+      await Api.assetGroups.validate(gid);
+      UI.toast('Grupo validado. Activo representativo creado.', 'success');
+      await ViewAssets._renderGroupsResults();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Validar'; }
+    }
+  },
+
+  async _refreshGroupViews() {
+    if (ViewAssets._activeTab === 'groups-results') {
+      await ViewAssets._renderGroupsResults();
+    } else if (ViewAssets._activeTab === 'grouping') {
+      await ViewAssets._renderGrouping();
+    } else {
+      await ViewAssets._renderGroupsResults();
+    }
+  },
+
+  // ---------- TAB AGRUPACION CON IA (configuracion) ----------
 
   async _renderGrouping() {
     const view = document.getElementById('grouping-view');
@@ -327,13 +698,10 @@ const ViewAssets = {
   },
 
   _drawGrouping(view, cfg, groups) {
-    const canEdit = Auth.canEdit();
-    const proposed = groups.filter(g => g.status === 'proposed');
-    const validated = groups.filter(g => g.status === 'validated');
-    const totalGrouped = groups.reduce((s, g) => s + g.member_count, 0);
+    const canEdit      = Auth.canEdit();
+    const totalGrouped = groups.reduce((s, g) => s + (g.member_count || 0), 0);
 
     view.innerHTML = `
-      <!-- Panel criterios -->
       <details id="criteria-panel" open>
         <summary style="cursor:pointer;font-size:15px;font-weight:700;
                         padding:12px 0;list-style:none;display:flex;align-items:center;gap:8px;
@@ -341,7 +709,7 @@ const ViewAssets = {
           <span style="font-size:12px;transition:transform .2s;">&#9654;</span>
           Criterios de agrupacion
           <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:4px;">
-            (${cfg.criteria.filter(c=>c.enabled).length} activos)
+            (${cfg.criteria.filter(c => c.enabled).length} habilitados)
           </span>
         </summary>
         <div id="criteria-body" style="padding:0 0 16px 20px;">
@@ -358,11 +726,10 @@ const ViewAssets = {
         </div>
       </details>
 
-      <!-- Accion principal -->
       ${canEdit ? `
       <div style="display:flex;align-items:center;gap:12px;padding:16px 0;
                   border-top:1px solid var(--border);border-bottom:1px solid var(--border);
-                  margin-bottom:20px;">
+                  margin-bottom:20px;flex-wrap:wrap;">
         <button class="btn btn-primary" id="btn-propose" style="font-size:15px;padding:10px 22px;">
           Analizar y proponer grupos con IA
         </button>
@@ -371,32 +738,27 @@ const ViewAssets = {
             ? `${groups.length} grupos &middot; ${totalGrouped} activos agrupados`
             : 'Sin grupos todavia'}
         </span>
-        ${proposed.length ? `
-        <button class="btn" id="btn-validate-all"
-                style="margin-left:auto;">
-          Validar todos (${proposed.length})
+        ${groups.length > 0 ? `
+        <button class="btn btn-ghost" style="margin-left:auto;font-size:13px;"
+                onclick="document.querySelector('[data-tab=groups-results]')?.click()">
+          Ver resultados (${groups.length} grupos) &rarr;
         </button>` : ''}
       </div>` : ''}
 
-      <!-- Grupos -->
-      <div id="groups-list">
-        ${groups.length === 0
-          ? `<div style="text-align:center;padding:40px;color:var(--text-muted);font-size:14px;">
-               Sin grupos todavia. Pulsa "Analizar y proponer grupos con IA" para comenzar.
-             </div>`
-          : ''}
-        ${proposed.length ? `<h4 style="font-size:13px;color:var(--text-muted);margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Propuestos (${proposed.length})</h4>` : ''}
-        ${proposed.map(g => ViewAssets._groupCard(g, canEdit)).join('')}
-        ${validated.length ? `<h4 style="font-size:13px;color:var(--text-muted);margin:16px 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Validados (${validated.length})</h4>` : ''}
-        ${validated.map(g => ViewAssets._groupCard(g, canEdit)).join('')}
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;
+                  padding:14px 16px;font-size:13px;color:var(--text-muted);line-height:1.6;">
+        <strong style="color:var(--text);">Como funciona:</strong>
+        La IA analiza todos los activos del inventario y los agrupa segun los criterios seleccionados.
+        Los grupos <em>propuestos</em> deben validarse en la pestana <strong>Grupos</strong> antes de
+        usarse en el analisis de riesgos.
+        Los grupos <em>validados</em> generan un activo representativo que concentra el calculo de
+        riesgos para todo el grupo (ISO 27005 Annex B.3).
       </div>
     `;
 
-    // Render criteria checkboxes
     ViewAssets._drawCriteria(cfg.criteria);
 
-    // Handlers
-    document.getElementById('criteria-panel')?.addEventListener('toggle', function() {
+    document.getElementById('criteria-panel')?.addEventListener('toggle', function () {
       const arrow = this.querySelector('summary span');
       if (arrow) arrow.style.transform = this.open ? 'rotate(90deg)' : '';
     });
@@ -415,11 +777,7 @@ const ViewAssets = {
       });
       document.getElementById('btn-propose')?.addEventListener('click', () =>
         ViewAssets._propose());
-      document.getElementById('btn-validate-all')?.addEventListener('click', () =>
-        ViewAssets._validateAll());
     }
-
-    ViewAssets._attachGroupHandlers(canEdit);
   },
 
   _drawCriteria(criteria) {
@@ -434,7 +792,7 @@ const ViewAssets = {
         <input type="checkbox" data-ci="${i}" ${c.enabled ? 'checked' : ''}
                style="flex-shrink:0;accent-color:var(--brand-purple);width:16px;height:16px;"
                onchange="ViewAssets._toggleCriterion(${i})">
-        <span style="flex-shrink:0;background:${levelColors[c.level]||'var(--text-muted)'};
+        <span style="flex-shrink:0;background:${levelColors[c.level] || 'var(--text-muted)'};
                      color:#fff;font-size:10px;font-weight:700;padding:2px 7px;
                      border-radius:10px;white-space:nowrap;">N${c.level}</span>
         <div style="flex:1;min-width:0;">
@@ -470,127 +828,35 @@ const ViewAssets = {
 
   async _propose() {
     const btn = document.getElementById('btn-propose');
+    if (!btn) return;
     btn.disabled = true;
     btn.textContent = 'Analizando activos con IA...';
     btn.style.opacity = '0.7';
     try {
       const r = await Api.assetGroups.propose();
       UI.toast(`Agrupacion completada: ${r.groups_created} grupos propuestos para ${r.assets_analyzed} activos`, 'success');
-      await ViewAssets._renderGrouping();
+      // Navegar a la pestana de resultados automaticamente
+      document.querySelector('[data-tab=groups-results]')?.click();
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
     finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Analizar y proponer grupos con IA'; btn.style.opacity = ''; }
     }
   },
 
-  async _validateAll() {
-    const btn = document.getElementById('btn-validate-all');
-    if (btn) { btn.disabled = true; btn.textContent = 'Validando...'; }
-    try {
-      const r = await Api.assetGroups.validateAll();
-      UI.toast(`${r.validated} grupos validados`, 'success');
-      await ViewAssets._renderGrouping();
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
-  },
-
-  _groupCard(g, canEdit) {
-    const statusColors = { proposed: 'var(--brand-orange)', validated: 'var(--risk-low)', rejected: 'var(--risk-critical)' };
-    const statusLabels = { proposed: 'Propuesto', validated: 'Validado', rejected: 'Rechazado' };
-    const membersList = (g.members || []).slice(0, 8).map(m =>
-      `<span style="font-size:11px;background:var(--bg-3);padding:2px 7px;border-radius:10px;
-                    color:var(--text-muted);">${UI.esc(m.name)}</span>`
-    ).join(' ');
-    const moreCount = (g.members || []).length > 8 ? g.members.length - 8 : 0;
-
-    return `
-    <div class="group-card" data-gid="${g.id}"
-         style="border:1px solid var(--border);border-radius:8px;padding:14px 16px;
-                margin-bottom:10px;background:var(--bg-2);">
-      <div style="display:flex;align-items:flex-start;gap:10px;">
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="background:${statusColors[g.status]||'var(--text-muted)'};color:#fff;
-                         font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;">
-              ${statusLabels[g.status]||g.status}
-            </span>
-            <strong style="font-size:14px;" class="group-name">${UI.esc(g.name)}</strong>
-            <span style="font-size:12px;color:var(--text-muted);">(${g.member_count} activos)</span>
-          </div>
-          ${g.description ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">${UI.esc(g.description)}</div>` : ''}
-          ${g.ai_rationale ? `
-            <details style="margin-bottom:6px;">
-              <summary style="font-size:11px;color:var(--text-subtle);cursor:pointer;list-style:none;">
-                Justificacion ISO 27005
-              </summary>
-              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;padding:8px;
-                          background:var(--bg-1);border-radius:4px;">${UI.esc(g.ai_rationale)}</div>
-            </details>` : ''}
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
-            ${membersList}
-            ${moreCount ? `<span style="font-size:11px;color:var(--text-subtle);">+${moreCount} mas</span>` : ''}
-          </div>
-        </div>
-        ${canEdit ? `
-        <div style="display:flex;flex-direction:column;gap:4px;min-width:100px;align-items:flex-end;">
-          ${g.status === 'proposed' ? `
-            <button class="btn btn-primary" data-action="validate" data-gid="${g.id}"
-                    style="font-size:12px;padding:4px 12px;">Validar</button>` : ''}
-          ${g.status === 'validated' && g.representative_asset_id ? `
-            <a href="#/risks?asset_id=${g.representative_asset_id}" class="btn btn-ghost"
-               style="font-size:12px;padding:4px 12px;">Ver riesgos</a>` : ''}
-          <button class="btn btn-ghost" data-action="edit-group" data-gid="${g.id}"
-                  style="font-size:12px;padding:4px 12px;">Renombrar</button>
-          <button class="btn btn-ghost" data-action="move-asset" data-gid="${g.id}"
-                  style="font-size:12px;padding:4px 12px;">Mover activo</button>
-          ${g.member_count > 1 ? `
-          <button class="btn btn-ghost" data-action="split" data-gid="${g.id}"
-                  style="font-size:12px;padding:4px 12px;">Dividir</button>` : ''}
-          <button class="btn btn-danger" data-action="delete-group" data-gid="${g.id}"
-                  style="font-size:12px;padding:4px 12px;">Eliminar</button>
-        </div>` : ''}
-      </div>
-    </div>`;
-  },
-
-  _attachGroupHandlers(canEdit) {
-    if (!canEdit) return;
-    document.querySelectorAll('[data-action]').forEach(btn => {
-      btn.onclick = async (e) => {
-        e.stopPropagation();
-        const action = btn.dataset.action;
-        const gid = parseInt(btn.dataset.gid);
-        if (action === 'validate') await ViewAssets._validateGroup(gid, btn);
-        if (action === 'edit-group') await ViewAssets._editGroupName(gid);
-        if (action === 'delete-group') await ViewAssets._deleteGroup(gid);
-        if (action === 'move-asset') await ViewAssets._moveAssetModal(gid);
-        if (action === 'split') await ViewAssets._splitModal(gid);
-      };
-    });
-  },
-
-  async _validateGroup(gid, btn) {
-    btn.disabled = true; btn.textContent = 'Validando...';
-    try {
-      await Api.assetGroups.validate(gid);
-      UI.toast('Grupo validado. Activo representativo creado.', 'success');
-      await ViewAssets._renderGrouping();
-    } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
-      btn.disabled = false; btn.textContent = 'Validar';
-    }
-  },
+  // ---------- ACCIONES DE GRUPO (compartidas) ----------
 
   async _editGroupName(gid) {
-    const card = document.querySelector(`.group-card[data-gid="${gid}"]`);
-    const current = card?.querySelector('.group-name')?.textContent || '';
+    const groups = await Api.assetGroups.list();
+    const g = groups.find(x => x.id === gid);
+    if (!g) return;
     UI.modal('Renombrar grupo', `
       <div class="span2">
         <label>Nombre del grupo</label>
-        <input id="grp-name" value="${UI.esc(current)}" style="width:100%;">
+        <input id="grp-name" value="${UI.esc(g.name)}" style="width:100%;">
       </div>
       <div class="span2">
         <label>Descripcion (opcional)</label>
-        <textarea id="grp-desc" rows="2" style="width:100%;"></textarea>
+        <textarea id="grp-desc" rows="2" style="width:100%;">${UI.esc(g.description || '')}</textarea>
       </div>
     `, {
       actions: `
@@ -606,7 +872,7 @@ const ViewAssets = {
         await Api.assetGroups.update(gid, { name, description: desc || undefined });
         UI.closeModal();
         UI.toast('Grupo actualizado', 'success');
-        await ViewAssets._renderGrouping();
+        await ViewAssets._refreshGroupViews();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },
@@ -616,15 +882,12 @@ const ViewAssets = {
     try {
       await Api.assetGroups.del(gid);
       UI.toast('Grupo eliminado', 'success');
-      await ViewAssets._renderGrouping();
+      await ViewAssets._refreshGroupViews();
     } catch (e) { UI.toast(e.message, 'error'); }
   },
 
   async _moveAssetModal(gid) {
-    const [groups, groupData] = await Promise.all([
-      Api.assetGroups.list(),
-      Api.assetGroups.list(),
-    ]);
+    const groups    = await Api.assetGroups.list();
     const thisGroup = groups.find(g => g.id === gid);
     if (!thisGroup || !thisGroup.members.length) {
       UI.toast('El grupo no tiene activos para mover', 'error'); return;
@@ -655,20 +918,20 @@ const ViewAssets = {
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = async () => {
-      const assetId = parseInt(document.getElementById('move-asset-sel').value);
-      const targetRaw = document.getElementById('move-target-sel').value;
+      const assetId      = parseInt(document.getElementById('move-asset-sel').value);
+      const targetRaw    = document.getElementById('move-target-sel').value;
       const targetGroupId = targetRaw ? parseInt(targetRaw) : null;
       try {
         await Api.assetGroups.moveAsset({ asset_id: assetId, target_group_id: targetGroupId });
         UI.closeModal();
         UI.toast('Activo movido', 'success');
-        await ViewAssets._renderGrouping();
+        await ViewAssets._refreshGroupViews();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },
 
   async _splitModal(gid) {
-    const groups = await Api.assetGroups.list();
+    const groups    = await Api.assetGroups.list();
     const thisGroup = groups.find(g => g.id === gid);
     if (!thisGroup || thisGroup.members.length < 2) {
       UI.toast('Se necesitan al menos 2 activos para dividir el grupo', 'error'); return;
@@ -709,12 +972,12 @@ const ViewAssets = {
         await Api.assetGroups.split(gid, { asset_ids: checked, new_group_name: newName });
         UI.closeModal();
         UI.toast('Grupo dividido', 'success');
-        await ViewAssets._renderGrouping();
+        await ViewAssets._refreshGroupViews();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },
 
-  // ---------- CRUD de activos ----------
+  // ---------- CRUD DE ACTIVOS ----------
 
   async _edit(id) {
     let a = { name: '', asset_type: 'support_hardware', description: '',
@@ -775,17 +1038,15 @@ const ViewAssets = {
           CPE de cada CVE para detectar vulnerabilidades aplicables automaticamente.
         </p>
       </div>
-      <!-- Valoración DIACAT (MAGERIT v3 + ISO 27005) — 5 dimensiones de seguridad -->
       <div class="span2">
-        <label>Valoración de dimensiones de seguridad (0 = sin valor · 4 = crítico)</label>
+        <label>Valoracion de dimensiones de seguridad (0 = sin valor · 4 = critico)</label>
         <p style="font-size:11px;color:var(--text-muted);margin:2px 0 10px;">
           MAGERIT v3 define 5 dimensiones: <strong>D</strong> Disponibilidad ·
           <strong>I</strong> Integridad · <strong>C</strong> Confidencialidad ·
           <strong>A</strong> Autenticidad · <strong>T</strong> Trazabilidad.
           ISO 27005 usa C/I/D (CIA). En modo MAGERIT/Combinado, estos valores determinan
-          automáticamente la consecuencia de riesgo.
+          automaticamente la consecuencia de riesgo.
         </p>
-        <!-- Visualización en barras -->
         <div id="diacat-preview" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px;">
           ${[
             ['D','availability','#1565c0','Disponibilidad'],
@@ -852,13 +1113,18 @@ const ViewAssets = {
               body.innerHTML = '<p style="font-size:12px;color:var(--text-subtle);">Sin registros de cambio todavia.</p>';
               return;
             }
-            const actionColors = { create:'background:#D1FAE5;color:#065F46', update:'background:#DBEAFE;color:#1E40AF', delete:'background:#FEE2E2;color:#991B1B' };
+            const actionColors = {
+              create: 'background:#D1FAE5;color:#065F46',
+              update: 'background:#DBEAFE;color:#1E40AF',
+              delete: 'background:#FEE2E2;color:#991B1B',
+            };
             body.innerHTML = entries.map(e => {
-              const ts = new Date(e.timestamp).toLocaleString('es-ES', { day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
+              const ts    = new Date(e.timestamp).toLocaleString('es-ES', { day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit' });
               const style = actionColors[e.action] || 'background:var(--bg-3);color:var(--text-muted)';
               const detail = e.detail && Object.keys(e.detail).length
                 ? Object.entries(e.detail).map(([k,v]) => `${UI.esc(k)}: ${UI.esc(String(v))}`).join(' · ') : '';
-              return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">
+              return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;
+                               border-bottom:1px solid var(--border);font-size:12px;">
                 <span style="color:var(--text-subtle);white-space:nowrap;min-width:110px;">${ts}</span>
                 <span class="badge badge-muted" style="${style};font-size:10px;">${UI.esc(e.action)}</span>
                 <span style="color:var(--text-muted);">${UI.esc(e.user_name||e.user_email||'')}</span>
@@ -872,8 +1138,12 @@ const ViewAssets = {
 
     if (id) document.getElementById('m-del').onclick = async () => {
       if (!await UI.confirm('Eliminar este activo?')) return;
-      try { await Api.assets.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewAssets._reload(); }
-      catch (e) { UI.toast(e.message, 'error'); }
+      try {
+        await Api.assets.del(id);
+        UI.closeModal(); UI.toast('Eliminado', 'success');
+        ViewAssets._allAssets = ViewAssets._allAssets.filter(a => a.id !== id);
+        ViewAssets._applyFiltersAndRender();
+      } catch (e) { UI.toast(e.message, 'error'); }
     };
 
     if (id) {
@@ -881,7 +1151,7 @@ const ViewAssets = {
       if (aiBtn) aiBtn.onclick = async () => {
         aiBtn.disabled = true; aiBtn.textContent = 'Analizando...';
         try {
-          const result = await Api.ai.riskSuggest({ asset_id: id });
+          const result      = await Api.ai.riskSuggest({ asset_id: id });
           const suggestions = result.suggestions || result.risks || result || [];
           if (!suggestions.length) {
             UI.toast('No se encontraron sugerencias de riesgo para este activo.', 'info');
@@ -891,14 +1161,18 @@ const ViewAssets = {
           UI.modal('Sugerencias de riesgo — IA', `
             <div class="span2">
               <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
-                Basado en el tipo de activo y el catalogo ISO 27005, el sistema identifica los escenarios de riesgo mas probables.
+                Basado en el tipo de activo y el catalogo ISO 27005, el sistema identifica los
+                escenarios de riesgo mas probables.
               </p>
               <div style="display:flex;flex-direction:column;gap:8px;">
                 ${suggestions.map(s => `
                   <div style="padding:10px 14px;border:1px solid var(--border);border-radius:6px;background:var(--bg-2);">
                     <div style="font-weight:600;font-size:13px;">${UI.esc(s.threat_name || s.threat || '')}</div>
                     ${s.description ? `<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${UI.esc(s.description)}</div>` : ''}
-                    ${s.likelihood !== undefined ? `<div style="font-size:11px;margin-top:4px;color:var(--text-subtle);">Probabilidad estimada: ${s.likelihood}/4 &nbsp;|&nbsp; Impacto: ${s.consequence || s.impact || '-'}/4</div>` : ''}
+                    ${s.likelihood !== undefined
+                      ? `<div style="font-size:11px;margin-top:4px;color:var(--text-subtle);">
+                           Probabilidad estimada: ${s.likelihood}/4 &nbsp;|&nbsp; Impacto: ${s.consequence || s.impact || '-'}/4
+                         </div>` : ''}
                   </div>`).join('')}
               </div>
             </div>
@@ -914,35 +1188,35 @@ const ViewAssets = {
     document.getElementById('m-save').onclick = async () => {
       const monetaryRaw = document.getElementById('f-monetary').value;
       const softTagsRaw = (document.getElementById('f-software-tags')?.value || '');
-      const softTags = softTagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+      const softTags    = softTagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
       const body = {
-        name: document.getElementById('f-name').value,
-        asset_type: document.getElementById('f-type').value,
-        description: document.getElementById('f-desc').value,
-        category: document.getElementById('f-cat').value,
-        location: document.getElementById('f-loc').value,
+        name:             document.getElementById('f-name').value,
+        asset_type:       document.getElementById('f-type').value,
+        description:      document.getElementById('f-desc').value,
+        category:         document.getElementById('f-cat').value,
+        location:         document.getElementById('f-loc').value,
         business_process: document.getElementById('f-proc').value,
-        classification: document.getElementById('f-class').value,
-        monetary_value: monetaryRaw ? parseFloat(monetaryRaw) : null,
-        software_tags: softTags.length ? softTags : null,
+        classification:   document.getElementById('f-class').value,
+        monetary_value:   monetaryRaw ? parseFloat(monetaryRaw) : null,
+        software_tags:    softTags.length ? softTags : null,
       };
       ['confidentiality','integrity','availability','authenticity','accountability']
         .forEach(d => body['value_'+d] = parseInt(document.getElementById('f-'+d).value) || 0);
       try {
         if (id) await Api.assets.update(id, body);
-        else await Api.assets.create(body);
-        UI.closeModal(); UI.toast('Guardado', 'success'); ViewAssets._reload();
+        else    await Api.assets.create(body);
+        UI.closeModal(); UI.toast('Guardado', 'success');
+        await ViewAssets._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },
 
-  // Actualiza la barra visual DIACAT en tiempo real al cambiar un valor
   _updateDiacatBar(dim, field, color, rawVal) {
     const val = Math.max(0, Math.min(4, parseInt(rawVal) || 0));
     const bar = document.getElementById(`dbar-${dim}`);
     const lbl = document.getElementById(`dval-${dim}`);
     if (bar) bar.style.height = Math.max(4, val * 14) + 'px';
-    if (lbl) lbl.textContent = val;
+    if (lbl) lbl.textContent  = val;
   },
 
   // ---------- IMPORT MULTI-ARCHIVO + DRAG & DROP ----------
@@ -950,7 +1224,6 @@ const ViewAssets = {
   async _importFiles(files) {
     if (!files.length) return;
 
-    // Mostrar banner de progreso durante la normalizacion IA
     const progressBanner = document.createElement('div');
     progressBanner.id = 'import-progress-banner';
     progressBanner.style.cssText = `
@@ -998,14 +1271,12 @@ const ViewAssets = {
     }
 
     progressBanner.remove();
-    ViewAssets._reload();
+    await ViewAssets._reload();
 
-    // Modal de resumen siempre visible tras importar
     ViewAssets._showImportResult(results, totalCreated, totalUpdated, totalSkipped);
   },
 
   _showImportResult(results, created, updated, skipped) {
-    const allOk = results.every(r => r.ok);
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
 
@@ -1029,7 +1300,7 @@ const ViewAssets = {
     <div class="modal" style="max-width:520px;">
       <div class="modal-header">
         <h2>Importacion completada</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">x</button>
       </div>
       <div class="modal-body">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
@@ -1049,16 +1320,16 @@ const ViewAssets = {
 
         <div style="max-height:180px;overflow-y:auto;margin-bottom:16px;">${fileRows}</div>
 
-        ${created > 0 ? `
+        ${created > 0 || updated > 0 ? `
         <div style="background:#FFF7ED;border-radius:8px;padding:14px;border:1px solid #FED7AA;">
           <div style="font-weight:700;color:#92400E;font-size:13px;margin-bottom:8px;">
-            Que quieres hacer con los ${created} activos importados?
+            Que quieres hacer con los ${created + updated} activos importados?
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn btn-primary" onclick="ViewAssets._postImportAnalyze(); this.closest('.modal-overlay').remove();">
               Analizar riesgos activo a activo
             </button>
-            <button class="btn btn-secondary" onclick="App.navigate('assets'); document.querySelector('[data-tab=grouping]')?.click(); this.closest('.modal-overlay').remove();">
+            <button class="btn" onclick="document.querySelector('[data-tab=grouping]')?.click(); this.closest('.modal-overlay').remove();">
               Agrupar con IA primero
             </button>
             <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove();">
@@ -1066,8 +1337,8 @@ const ViewAssets = {
             </button>
           </div>
           <p style="font-size:11px;color:#9D9D9D;margin:8px 0 0;">
-            <strong>Agrupar primero</strong> consolida activos similares y genera un analisis de riesgos por grupo.
-            <strong>Analizar directo</strong> genera riesgos individuales para cada activo importado.
+            <strong>Agrupar primero</strong> consolida activos similares y genera analisis de riesgos por grupo.
+            <strong>Analizar directo</strong> genera riesgos individuales para cada activo.
           </p>
         </div>` : ''}
       </div>
@@ -1082,7 +1353,6 @@ const ViewAssets = {
       else {
         const r = await Api.assets.analyzeAll();
         UI.toast(`Analisis IA lanzado para ${r.total} activos`, 'success');
-        ViewAssets._reload();
         ViewAssets._startPollIfNeeded();
       }
     } catch (e) {
@@ -1091,9 +1361,7 @@ const ViewAssets = {
   },
 
   _setupDrop(container) {
-    // Crear zona de drop invisible sobre el contenedor
     let dragCount = 0;
-
     const overlay = document.createElement('div');
     overlay.id = 'asset-drop-overlay';
     overlay.style.cssText = `
@@ -1105,7 +1373,7 @@ const ViewAssets = {
     overlay.innerHTML = `
       <div style="background:#fff;border-radius:12px;padding:32px 48px;text-align:center;
                   box-shadow:0 8px 32px rgba(0,0,0,.2);">
-        <div style="font-size:40px;margin-bottom:12px;">📂</div>
+        <div style="font-size:40px;margin-bottom:12px;">&#128193;</div>
         <div style="font-size:18px;font-weight:700;color:var(--brand-purple);">
           Suelta aqui para importar
         </div>
@@ -1115,7 +1383,6 @@ const ViewAssets = {
       </div>`;
     document.body.appendChild(overlay);
 
-    // Escuchar drag events en toda la ventana mientras la vista esté activa
     const onDragEnter = (e) => {
       if (!e.dataTransfer.types.includes('Files')) return;
       dragCount++;
@@ -1125,7 +1392,7 @@ const ViewAssets = {
       dragCount--;
       if (dragCount <= 0) { dragCount = 0; overlay.style.display = 'none'; }
     };
-    const onDragOver = (e) => {
+    const onDragOver  = (e) => {
       if (e.dataTransfer.types.includes('Files')) e.preventDefault();
     };
     const onDrop = async (e) => {
@@ -1138,16 +1405,15 @@ const ViewAssets = {
 
     window.addEventListener('dragenter', onDragEnter);
     window.addEventListener('dragleave', onDragLeave);
-    window.addEventListener('dragover', onDragOver);
-    window.addEventListener('drop', onDrop);
+    window.addEventListener('dragover',  onDragOver);
+    window.addEventListener('drop',      onDrop);
 
-    // Limpiar listeners cuando se navegue fuera
     const observer = new MutationObserver(() => {
       if (!document.body.contains(container)) {
         window.removeEventListener('dragenter', onDragEnter);
         window.removeEventListener('dragleave', onDragLeave);
-        window.removeEventListener('dragover', onDragOver);
-        window.removeEventListener('drop', onDrop);
+        window.removeEventListener('dragover',  onDragOver);
+        window.removeEventListener('drop',      onDrop);
         overlay.remove();
         observer.disconnect();
       }

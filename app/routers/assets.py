@@ -37,7 +37,7 @@ def list_assets(
     current_user: User = Depends(get_current_user),
     q: Optional[str] = None,
     asset_type: Optional[AssetType] = None,
-    limit: int = Query(500, le=2000),
+    limit: int = Query(200, le=10000),
 ):
     query = filter_by_org(db.query(Asset), Asset, current_user)
     # Excluir activos representativos de grupos (virtuales, solo para analisis de riesgo)
