@@ -16,44 +16,46 @@ const ViewThreats = {
         <!-- Multi-select de catalogos -->
         <div id="catalog-dropdown" style="position:relative;">
           <button class="btn" id="catalog-btn"
-                  style="display:flex;align-items:center;gap:6px;min-width:180px;justify-content:space-between;">
+                  style="display:flex;align-items:center;gap:6px;min-width:200px;justify-content:space-between;">
             <span id="catalog-btn-label">Todos los catalogos</span>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div id="catalog-menu" style="
-              display:none;position:absolute;top:calc(100% + 4px);left:0;
-              background:var(--bg-card);border:1px solid var(--border);border-radius:8px;
-              padding:8px 0;min-width:220px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.12);">
-            <div style="padding:4px 12px 8px;font-size:11px;text-transform:uppercase;
-                        color:var(--text-muted);font-weight:600;letter-spacing:.5px;">
-              Mostrar y aplicar en analisis
+              display:none;position:absolute;top:calc(100% + 6px);left:0;
+              background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;
+              padding:6px 0 10px;min-width:280px;z-index:9999;
+              box-shadow:0 8px 24px rgba(0,0,0,.18);">
+            <div style="padding:10px 14px 8px;font-size:11px;text-transform:uppercase;
+                        color:#64748b;font-weight:700;letter-spacing:.6px;border-bottom:1px solid #f1f5f9;margin-bottom:4px;">
+              Catalogos de amenazas activos
             </div>
             ${[
-              ['iso27005', 'ISO/IEC 27005:2018', '#7C3AED', 'ISO 27005 Annex C — catalogo estandar internacional'],
-              ['magerit',  'MAGERIT v3',          '#D97706', 'MAGERIT v3 — metodologia espanola ENS/CCN'],
-              ['custom',   'Personalizadas',       '#16A34A', 'Amenazas creadas manualmente por tu equipo'],
+              ['iso27005', 'ISO/IEC 27005:2018', '#7C3AED', 'Catalogo estandar internacional (49 amenazas)'],
+              ['magerit',  'MAGERIT v3',          '#D97706', 'Metodologia espanola ENS/CCN (51 amenazas)'],
+              ['custom',   'Amenazas personalizadas', '#16A34A', 'Creadas manualmente por tu equipo'],
             ].map(([val, label, color, desc]) => `
-              <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 14px;
-                            cursor:pointer;transition:background .1s;" class="catalog-opt"
-                     onmouseover="this.style.background='var(--bg-2)'"
-                     onmouseout="this.style.background=''">
+              <label style="display:flex;align-items:flex-start;gap:10px;padding:9px 14px;
+                            cursor:pointer;background:#fff;transition:background .1s;" class="catalog-opt"
+                     onmouseover="this.style.background='#f8fafc'"
+                     onmouseout="this.style.background='#fff'">
                 <input type="checkbox" class="catalog-check" value="${val}"
-                       style="margin-top:2px;accent-color:${color};">
+                       style="margin-top:3px;width:15px;height:15px;accent-color:${color};cursor:pointer;">
                 <div>
                   <div style="font-size:13px;font-weight:600;color:${color};">${label}</div>
-                  <div style="font-size:11px;color:var(--text-muted);">${desc}</div>
+                  <div style="font-size:11px;color:#94a3b8;margin-top:1px;">${desc}</div>
                 </div>
               </label>
             `).join('')}
-            <div style="border-top:1px solid var(--border);margin:4px 0;"></div>
-            <div style="padding:4px 14px 4px;font-size:11px;color:var(--text-muted);">
-              La seleccion se aplica al analisis IA de riesgos
+            <div style="margin:8px 14px 0;padding:8px 10px;background:#f0fdf4;
+                        border:1px solid #bbf7d0;border-radius:6px;font-size:11px;color:#166534;">
+              <strong>Efecto:</strong> La seleccion determina que amenazas usa el analisis IA de riesgos
+              en Activos. Cambia los catalogos y vuelve a lanzar el analisis de activos.
             </div>
             ${canEdit ? `
-              <div style="padding:4px 14px;">
+              <div style="padding:8px 14px 0;">
                 <button class="btn btn-ghost" id="btn-magerit-seed"
-                        style="font-size:12px;padding:4px 10px;width:100%;">
-                  + Cargar catalogo MAGERIT v3
+                        style="font-size:12px;padding:5px 12px;width:100%;text-align:left;">
+                  + Cargar catalogo MAGERIT v3 (si no esta cargado)
                 </button>
               </div>
             ` : ''}
@@ -62,6 +64,7 @@ const ViewThreats = {
 
         ${canEdit ? `<button class="btn btn-primary" id="btn-new">+ Nueva amenaza</button>` : ''}
       </div>
+      <div id="catalog-info-banner" style="margin-bottom:12px;"></div>
       <div id="t-list"></div>
     `;
 
@@ -137,12 +140,47 @@ const ViewThreats = {
     const label = document.getElementById('catalog-btn-label');
     if (!label) return;
     const active = ViewThreats._activeCatalogs;
-    const _NAMES = { iso27005: 'ISO 27005', magerit: 'MAGERIT', custom: 'Personalizadas' };
+    const _NAMES = { iso27005: 'ISO 27005', magerit: 'MAGERIT v3', custom: 'Personalizadas' };
     if (active.length === 3 || active.length === 0) {
       label.textContent = 'Todos los catalogos';
     } else {
       label.textContent = active.map(c => _NAMES[c] || c).join(' + ');
     }
+    ViewThreats._updateInfoBanner();
+  },
+
+  _updateInfoBanner() {
+    const banner = document.getElementById('catalog-info-banner');
+    if (!banner) return;
+    const active = ViewThreats._activeCatalogs;
+    const _NAMES = { iso27005: 'ISO 27005', magerit: 'MAGERIT v3', custom: 'Personalizadas' };
+    const _COLORS = { iso27005: '#7C3AED', magerit: '#D97706', custom: '#16A34A' };
+    const badges = active.map(c =>
+      `<span style="display:inline-block;padding:2px 8px;background:${_COLORS[c]}22;
+              color:${_COLORS[c]};border:1px solid ${_COLORS[c]}44;border-radius:4px;
+              font-size:11px;font-weight:600;">${_NAMES[c]||c}</span>`
+    ).join(' ');
+
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;
+                  background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
+                  font-size:13px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="color:#475569;font-weight:600;">Catalogos activos:</span>
+          ${badges}
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:12px;color:#64748b;">
+            El analisis IA de riesgos en Activos usara solo estas amenazas.
+          </span>
+          <a href="#!/assets" style="
+              display:inline-flex;align-items:center;gap:4px;padding:5px 12px;
+              background:#7C3AED;color:#fff;border-radius:6px;font-size:12px;
+              font-weight:600;text-decoration:none;">
+            → Ir a Activos y relanzar analisis
+          </a>
+        </div>
+      </div>`;
   },
 
   async _onCatalogChange() {
