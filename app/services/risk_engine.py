@@ -167,11 +167,11 @@ def default_matrix() -> list[list[int]]:
 
 # Escala de frecuencia MAGERIT (MA/A/M/B/MB) → probabilidad 0-4 ISO 27005
 MAGERIT_FREQ_LABELS = {
-    0: "MB — Muy Baja (< 1/10 años)",
-    1: "B  — Baja (1/5-10 años)",
-    2: "M  — Media (1/año)",
-    3: "A  — Alta (varias/año)",
-    4: "MA — Muy Alta (mensual o más)",
+    "0": "MB — Muy Baja (< 1/10 años)",
+    "1": "B  — Baja (1/5-10 años)",
+    "2": "M  — Media (1/año)",
+    "3": "A  — Alta (varias/año)",
+    "4": "MA — Muy Alta (mensual o más)",
 }
 
 # Dimensiones de seguridad MAGERIT (5D: DIACAT)

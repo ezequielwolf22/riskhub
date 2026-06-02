@@ -452,6 +452,12 @@ def get_analysis_status(
     """Devuelve estadisticas del estado de analisis IA de los activos."""
     from sqlalchemy import or_, func
     org_id = current_user.organization_id
+    if not org_id:
+        return {
+            "total": 0, "analysed": 0, "analysing": 0,
+            "error": 0, "skipped": 0, "pending": 0,
+            "progress_pct": 0.0,
+        }
     base = db.query(Asset).filter(
         Asset.organization_id == org_id,
         Asset.is_group_representative.is_(False),
