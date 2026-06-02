@@ -147,6 +147,16 @@ const ViewAssets = {
     }
 
     ViewAssets._reload();
+
+    // Detener el poll y limpiar la barra de seleccion cuando el usuario navegue fuera de esta seccion
+    const _viewCleanupObserver = new MutationObserver(() => {
+      if (!document.getElementById('asset-list')) {
+        ViewAssets._stopPoll();
+        document.getElementById('asset-selection-bar')?.remove();
+        _viewCleanupObserver.disconnect();
+      }
+    });
+    _viewCleanupObserver.observe(document.getElementById('main') || document.body, { childList: true });
   },
 
   // ---------- INVENTARIO PAGINADO ----------
@@ -491,32 +501,55 @@ const ViewAssets = {
 
   _startPollIfNeeded() {
     ViewAssets._stopPoll();
-    const tbody = document.querySelector('#asset-list tbody');
-    if (!tbody || !tbody.innerHTML.includes('Analizando...')) return;
+    // Comprobar en TODOS los activos cargados, no solo los de la pagina visible
+    const hasAnalysing = ViewAssets._allAssets.some(a => a.ai_risk_status === 'analysing');
+    if (!hasAnalysing) return;
+
+    const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)', skipped: 'var(--text-muted)' };
+    const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error', skipped: 'Sin IA' };
+
     ViewAssets._pollTimer = setInterval(async () => {
       try {
+        // Si el usuario navego a otra seccion, parar el poll limpiamente
+        if (!document.getElementById('asset-list')) {
+          ViewAssets._stopPoll();
+          return;
+        }
         const data = await Api.assets.list({ limit: 10000 });
         ViewAssets._allAssets = data;
-        const tb = document.querySelector('#asset-list tbody');
-        if (!tb) { ViewAssets._stopPoll(); return; }
+
+        // Actualizar solo las celdas de estado IA en las filas visibles (sin re-render)
         data.forEach(a => {
           const tr = document.querySelector(`tr[data-id="${a.id}"]`);
           if (!tr) return;
-          const cells = tr.querySelectorAll('td');
+          const cells  = tr.querySelectorAll('td');
           const aiCell = cells[cells.length - 2];
-          if (aiCell) {
-            const s      = a.ai_risk_status;
-            const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)', skipped: 'var(--text-muted)' };
-            const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error', skipped: 'Sin IA' };
-            const sum    = a.ai_risk_summary || {};
-            const tip    = s === 'analysed'
-              ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
-              : (sum.error || sum.reason || '');
-            aiCell.innerHTML = `<span style="font-size:10px;font-weight:600;color:${colors[s] || 'var(--text-muted)'};"
-                                      title="${UI.esc(tip)}">${labels[s] || s || '-'}</span>`;
-          }
+          if (!aiCell) return;
+          const s   = a.ai_risk_status;
+          const sum = a.ai_risk_summary || {};
+          const tip = s === 'analysed'
+            ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
+            : (sum.error || sum.reason || '');
+          aiCell.innerHTML = `<span style="font-size:10px;font-weight:600;color:${colors[s] || 'var(--text-muted)'};"
+                                    title="${UI.esc(tip)}">${labels[s] || s || '-'}</span>`;
         });
-        if (!data.some(a => a.ai_risk_status === 'analysing')) ViewAssets._stopPoll();
+
+        // Mostrar progreso global en el contador
+        const stillAnalysing = data.filter(a => a.ai_risk_status === 'analysing').length;
+        const countEl = document.getElementById('asset-count');
+        if (countEl) {
+          if (stillAnalysing > 0) {
+            const done = data.filter(a => a.ai_risk_status === 'analysed').length;
+            countEl.textContent = `Analizando... ${done}/${data.length} completados`;
+            countEl.style.color = 'var(--brand-orange)';
+          } else {
+            countEl.style.color = '';
+            // Refrescar tabla al terminar para mostrar estados finales y botones correctos
+            ViewAssets._applyFiltersAndRender();
+          }
+        }
+
+        if (stillAnalysing === 0) ViewAssets._stopPoll();
       } catch (_) { ViewAssets._stopPoll(); }
     }, 4000);
   },
