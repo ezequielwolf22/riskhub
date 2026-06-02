@@ -104,6 +104,7 @@ const Api = {
     del: (id) => Api.del('/api/assets/' + id),
     template: () => Api.download('/api/assets/import/template', 'assets_template.csv'),
     import: (file) => Api.postFile('/api/assets/import', file),
+    smartImport: (file) => Api.postFile('/api/assets/smart-import', file),
     exportCsv: () => Api.download('/api/assets/export/csv', 'assets.csv'),
     analyze: (id) => Api.post('/api/assets/' + id + '/analyze', {}),
     analyzeAll: () => Api.post('/api/assets/analyze-all', {}),

@@ -15,9 +15,9 @@ const ViewAssets = {
         <span id="inv-actions">
           <button class="btn" id="btn-export">Exportar CSV</button>
           <button class="btn" id="btn-template">Plantilla</button>
-          <label class="btn" id="lbl-import">
-            Importar
-            <input type="file" id="file-import" accept=".csv,.xlsx" multiple style="display:none;">
+          <label class="btn" id="lbl-import" title="Acepta cualquier formato: CSV, XLSX, JSON, etc. La IA normaliza las columnas automaticamente">
+            Importar (cualquier formato)
+            <input type="file" id="file-import" accept="*" multiple style="display:none;">
           </label>
           <button class="btn btn-ghost" id="btn-analyze-all"
                   title="Analizar riesgos de todos los activos con IA">
@@ -948,75 +948,145 @@ const ViewAssets = {
   // ---------- IMPORT MULTI-ARCHIVO + DRAG & DROP ----------
 
   async _importFiles(files) {
-    const valid = files.filter(f => /\.(csv|xlsx)$/i.test(f.name));
-    if (!valid.length) {
-      UI.toast('Solo se aceptan archivos CSV o XLSX', 'error');
-      return;
-    }
+    if (!files.length) return;
 
-    // Si es un solo archivo, mantener comportamiento simple
-    if (valid.length === 1) {
-      try {
-        UI.toast(`Importando ${valid[0].name}...`, 'info');
-        const r = await Api.assets.import(valid[0]);
-        UI.toast(
-          `${valid[0].name}: ${r.created} creados, ${r.updated} actualizados, ${r.skipped} omitidos`,
-          r.errors && r.errors.length ? 'error' : 'success'
-        );
-        ViewAssets._reload();
-      } catch (err) {
-        UI.toast(`Error en ${valid[0].name}: ${err.message}`, 'error');
-      }
-      return;
-    }
+    // Mostrar banner de progreso durante la normalizacion IA
+    const progressBanner = document.createElement('div');
+    progressBanner.id = 'import-progress-banner';
+    progressBanner.style.cssText = `
+      position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+      background:#59008D;color:#fff;padding:14px 28px;border-radius:10px;
+      font-size:14px;font-weight:600;z-index:10000;
+      box-shadow:0 4px 20px rgba(0,0,0,.25);display:flex;align-items:center;gap:12px;`;
+    progressBanner.innerHTML = `
+      <span style="width:18px;height:18px;border:2px solid rgba(255,255,255,.4);
+                   border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;
+                   display:inline-block;flex-shrink:0;"></span>
+      <span id="import-progress-text">
+        Analizando ${files.length} archivo${files.length > 1 ? 's' : ''}...
+        La IA esta normalizando las columnas.
+      </span>`;
 
-    // Varios archivos: mostrar progreso y procesar secuencialmente
-    const toast = UI.toast(`Importando ${valid.length} archivos...`, 'info');
-    let totalCreated = 0, totalUpdated = 0, totalSkipped = 0, totalErrors = 0;
+    if (!document.getElementById('import-spin-style')) {
+      const s = document.createElement('style');
+      s.id = 'import-spin-style';
+      s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(progressBanner);
+
+    const setText = (t) => {
+      const el = document.getElementById('import-progress-text');
+      if (el) el.textContent = t;
+    };
+
+    let totalCreated = 0, totalUpdated = 0, totalSkipped = 0;
     const results = [];
 
-    for (let i = 0; i < valid.length; i++) {
-      const f = valid[i];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      setText(`Procesando ${f.name} (${i + 1}/${files.length})...`);
       try {
-        const r = await Api.assets.import(f);
+        const r = await Api.assets.smartImport(f);
         totalCreated += r.created || 0;
         totalUpdated += r.updated || 0;
         totalSkipped += r.skipped || 0;
-        totalErrors += (r.errors || []).length;
         results.push({ name: f.name, ok: true, ...r });
       } catch (err) {
-        totalErrors++;
         results.push({ name: f.name, ok: false, error: err.message });
       }
     }
 
+    progressBanner.remove();
     ViewAssets._reload();
 
-    // Resumen final
-    const allOk = results.every(r => r.ok);
-    const summary = `${valid.length} archivos: ${totalCreated} creados, ${totalUpdated} actualizados, ${totalSkipped} omitidos${totalErrors ? `, ${totalErrors} errores` : ''}`;
-    UI.toast(summary, allOk ? 'success' : 'error');
+    // Modal de resumen siempre visible tras importar
+    ViewAssets._showImportResult(results, totalCreated, totalUpdated, totalSkipped);
+  },
 
-    // Mostrar detalle si hay errores
-    if (!allOk) {
-      const failed = results.filter(r => !r.ok);
-      const modal = document.createElement('div');
-      modal.className = 'modal-overlay';
-      modal.innerHTML = `
-      <div class="modal" style="max-width:480px;">
-        <div class="modal-header">
-          <h2>Resumen de importacion</h2>
-          <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-        </div>
-        <div class="modal-body">
-          <p><strong>${totalCreated}</strong> activos creados &nbsp;|&nbsp;
-             <strong>${totalUpdated}</strong> actualizados &nbsp;|&nbsp;
-             <strong>${totalSkipped}</strong> omitidos</p>
-          ${failed.length ? `<p style="color:#DC2626;font-weight:600;">Archivos con error:</p>
-            ${failed.map(r => `<div class="list-item" style="font-size:12px;color:#DC2626;">${UI.esc(r.name)}: ${UI.esc(r.error||'Error desconocido')}</div>`).join('')}` : ''}
-        </div>
+  _showImportResult(results, created, updated, skipped) {
+    const allOk = results.every(r => r.ok);
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+
+    const fileRows = results.map(r => {
+      if (r.ok) {
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+          <strong>${UI.esc(r.name)}</strong>
+          <span style="float:right;color:#16a34a;">${r.created} nuevos · ${r.updated} actualizados</span>
+          ${r.mapping_notes ? `<div style="font-size:11px;color:#9D9D9D;margin-top:2px;">
+            IA: ${UI.esc(r.mapping_notes)}</div>` : ''}
+        </div>`;
+      }
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+        <strong>${UI.esc(r.name)}</strong>
+        <span style="float:right;color:#DC2626;">Error</span>
+        <div style="font-size:11px;color:#DC2626;margin-top:2px;">${UI.esc(r.error)}</div>
       </div>`;
-      document.body.appendChild(modal);
+    }).join('');
+
+    modal.innerHTML = `
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-header">
+        <h2>Importacion completada</h2>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+          <div style="text-align:center;padding:12px;background:#D1FAE5;border-radius:8px;">
+            <div style="font-size:28px;font-weight:800;color:#065f46;">${created}</div>
+            <div style="font-size:11px;color:#065f46;text-transform:uppercase;">Nuevos</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:#DBEAFE;border-radius:8px;">
+            <div style="font-size:28px;font-weight:800;color:#1d4ed8;">${updated}</div>
+            <div style="font-size:11px;color:#1d4ed8;text-transform:uppercase;">Actualizados</div>
+          </div>
+          <div style="text-align:center;padding:12px;background:#F5F5F5;border-radius:8px;">
+            <div style="font-size:28px;font-weight:800;color:#9D9D9D;">${skipped}</div>
+            <div style="font-size:11px;color:#9D9D9D;text-transform:uppercase;">Omitidos</div>
+          </div>
+        </div>
+
+        <div style="max-height:180px;overflow-y:auto;margin-bottom:16px;">${fileRows}</div>
+
+        ${created > 0 ? `
+        <div style="background:#FFF7ED;border-radius:8px;padding:14px;border:1px solid #FED7AA;">
+          <div style="font-weight:700;color:#92400E;font-size:13px;margin-bottom:8px;">
+            Que quieres hacer con los ${created} activos importados?
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary" onclick="ViewAssets._postImportAnalyze(); this.closest('.modal-overlay').remove();">
+              Analizar riesgos activo a activo
+            </button>
+            <button class="btn btn-secondary" onclick="App.navigate('assets'); document.querySelector('[data-tab=grouping]')?.click(); this.closest('.modal-overlay').remove();">
+              Agrupar con IA primero
+            </button>
+            <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove();">
+              Solo ver inventario
+            </button>
+          </div>
+          <p style="font-size:11px;color:#9D9D9D;margin:8px 0 0;">
+            <strong>Agrupar primero</strong> consolida activos similares y genera un analisis de riesgos por grupo.
+            <strong>Analizar directo</strong> genera riesgos individuales para cada activo importado.
+          </p>
+        </div>` : ''}
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+  },
+
+  async _postImportAnalyze() {
+    try {
+      const btn = document.getElementById('btn-analyze-all');
+      if (btn) btn.click();
+      else {
+        const r = await Api.assets.analyzeAll();
+        UI.toast(`Analisis IA lanzado para ${r.total} activos`, 'success');
+        ViewAssets._reload();
+        ViewAssets._startPollIfNeeded();
+      }
+    } catch (e) {
+      UI.toast('Error lanzando analisis: ' + e.message, 'error');
     }
   },
 
@@ -1040,7 +1110,7 @@ const ViewAssets = {
           Suelta aqui para importar
         </div>
         <div style="font-size:13px;color:#9D9D9D;margin-top:6px;">
-          CSV o XLSX — puedes soltar varios archivos a la vez
+          CSV, XLSX, JSON, TSV u otro — la IA normaliza las columnas automaticamente
         </div>
       </div>`;
     document.body.appendChild(overlay);

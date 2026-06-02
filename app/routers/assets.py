@@ -253,6 +253,62 @@ def _run_asset_analysis_bg(asset_id: int) -> None:
         db.close()
 
 
+@router.post("/smart-import")
+async def smart_import_assets(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Importa activos desde cualquier formato usando IA para normalizar columnas.
+
+    Acepta CSV, XLSX, XLS, JSON, TSV, ODS, etc.
+    Claude infiere la correspondencia de columnas y el asset_type automaticamente.
+    """
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "El fichero esta vacio.")
+
+    from app.services.smart_import_service import smart_import
+    from app.routers.ai_config import resolve_api_key
+    from app.models import AiConfig
+
+    # Resolver api_key y modelo per-tenant
+    org_id = current_user.organization_id
+    try:
+        api_key = resolve_api_key(db, org_id)
+    except Exception:
+        api_key = None
+
+    model = "claude-haiku-4-5"   # modelo rapido y barato para la tarea de mapeo
+    try:
+        cfg = db.query(AiConfig).filter_by(organization_id=org_id).first()
+        if cfg and cfg.model:
+            model = cfg.model
+    except Exception:
+        pass
+
+    try:
+        result = smart_import(
+            content=content,
+            filename=file.filename or "import.csv",
+            org_id=org_id,
+            db=db,
+            api_key=api_key,
+            model=model,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(500, f"Error en la importacion: {exc}")
+
+    # Lanzar auto-analisis de riesgos en background para los activos nuevos
+    if background_tasks and result.get("created", 0) > 0:
+        background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+
+    return result
+
+
 def _run_all_assets_analysis_bg(org_id: int) -> None:
     """Wrapper background para analisis de todos los activos de la org."""
     db = SessionLocal()
