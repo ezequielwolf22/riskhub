@@ -332,12 +332,12 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 # Para 3000 activos: 3000/10 = 300 lotes / 2 workers + rate limiter 2.5s = ~24 req/min
 # ──────────────────────────────────────────────────────────────────────────────
 
-_BATCH_SIZE    = 10   # activos por llamada API (reducido para prompts mas cortos)
-_MAX_WORKERS   = 2    # llamadas API concurrentes (2 workers + rate limiter = ~25 req/min)
+_BATCH_SIZE    = 10   # activos por llamada API
+_MAX_WORKERS   = 1    # 1 worker serie: evita race condition en codigos RSK + mas simple
 _BATCH_MODEL   = "claude-haiku-4-5-20251001"  # modelo rapido para analisis masivo
 _MAX_RETRIES   = 4    # reintentos en caso de rate limit 429
 _RETRY_BASE_S  = 15   # segundos base entre reintentos (backoff exponencial)
-_MIN_CALL_GAP  = 2.5  # segundos minimos entre llamadas API (rate limiter global)
+_MIN_CALL_GAP  = 1.5  # segundos minimos entre llamadas API (rate limiter, con 1 worker es suficiente)
 
 # Rate limiter global: evita superar 50 req/min independientemente del paralelismo
 import threading as _threading
@@ -650,8 +650,9 @@ def _process_batch_isolated(
 
 
 def analyze_all_org_assets(db: Session, org_id: int) -> dict:
-    """Analiza en PARALELO todos los activos pendientes (null/error) de la org.
-    Usa lotes de _BATCH_SIZE activos por llamada API y _MAX_WORKERS llamadas concurrentes.
+    """Analiza en SERIE todos los activos pendientes (null/error) de la org.
+    Procesa lotes de _BATCH_SIZE activos por llamada API. Con _MAX_WORKERS=1
+    los lotes son secuenciales para evitar race conditions en codigos RSK.
     """
     import concurrent.futures
     from sqlalchemy import or_
@@ -668,8 +669,8 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
         return {"total": 0}
 
     total = len(asset_ids)
-    logger.info("Parallel batch analysis starting: %d assets, batch=%d, workers=%d, org=%d",
-                total, _BATCH_SIZE, _MAX_WORKERS, org_id)
+    logger.info("Serial batch analysis starting: %d assets, batch=%d, org=%d",
+                total, _BATCH_SIZE, org_id)
 
     # Marcar todos como "analysing" de una vez
     db.query(Asset).filter(Asset.id.in_(asset_ids)).update(
@@ -708,7 +709,7 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
 
     # Dividir en lotes
     batches = [asset_ids[i:i + _BATCH_SIZE] for i in range(0, total, _BATCH_SIZE)]
-    logger.info("Lotes: %d (tamano=%d), workers=%d", len(batches), _BATCH_SIZE, _MAX_WORKERS)
+    logger.info("Lotes: %d (tamano=%d), serial", len(batches), _BATCH_SIZE)
 
     # Ejecutar en paralelo
     with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
@@ -729,7 +730,7 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
                 failed += 1
                 logger.error("Future failed batch=%s: %s", futures[future][:2], exc)
 
-    logger.info("Parallel analysis complete: %d batches done, %d failed, org=%d",
+    logger.info("Serial analysis complete: %d batches done, %d failed, org=%d",
                 done, failed, org_id)
     return {"total": total}
 
