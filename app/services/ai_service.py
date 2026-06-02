@@ -10,6 +10,7 @@ escenarios de riesgo estructurados listos para importar.
 """
 from __future__ import annotations
 import json
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -17,6 +18,81 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Asset, Control, Threat
 from app.services.risk_engine import DEFAULT_MATRIX
+
+
+def _sanitize_prompt_value(v: Any) -> str:
+    """Elimina caracteres que confunden a Claude al generar JSON (comillas, backslashes, etc.)."""
+    if isinstance(v, list):
+        return ", ".join(_sanitize_prompt_value(x) for x in v)
+    s = str(v)
+    # Reemplazar comillas dobles por simples y backslashes por slash
+    s = s.replace("\\", "/").replace('"', "'").replace("\r\n", " ").replace("\n", " ").strip()
+    return s
+
+
+def _repair_json(raw: str) -> dict:
+    """Intenta extraer y reparar JSON de la respuesta de Claude.
+
+    Estrategias (en orden):
+    1. Parseo directo del bloque { ... }
+    2. Eliminar trailing commas y parsear
+    3. Truncar en el ultimo escenario completo y cerrar el JSON
+    """
+    # Extraer bloque JSON principal
+    start = raw.find("{")
+    end   = raw.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError(f"La IA no devolvio JSON. Respuesta: {raw[:300]}")
+    chunk = raw[start:end]
+
+    # Estrategia 1: parseo directo
+    try:
+        return json.loads(chunk)
+    except json.JSONDecodeError:
+        pass
+
+    # Estrategia 2: eliminar trailing commas ( ,} y ,] )
+    fixed = re.sub(r",\s*([}\]])", r"\1", chunk)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # Estrategia 3: truncar en el ultimo }} completo (escenario cerrado)
+    # Buscar la ultima ocurrencia de "}," o "}" antes de un "]"
+    last_complete = chunk.rfind("}\n    ]")
+    if last_complete == -1:
+        last_complete = chunk.rfind("}]")
+    if last_complete != -1:
+        truncated = chunk[:last_complete + 2] + "\n  ]\n}"
+        truncated = re.sub(r",\s*([}\]])", r"\1", truncated)
+        try:
+            return json.loads(truncated)
+        except json.JSONDecodeError:
+            pass
+
+    # Estrategia 4: buscar escenarios completos uno a uno usando regex
+    # Extraer el summary y top_risks si existen, construir respuesta parcial
+    summary_m = re.search(r'"summary"\s*:\s*"([^"]*)"', chunk)
+    summary   = summary_m.group(1) if summary_m else "Analisis parcial (JSON truncado)"
+    scenarios_raw = re.findall(
+        r'\{[^{}]*"threat_name"[^{}]*\}',
+        chunk, re.DOTALL
+    )
+    scenarios = []
+    for s in scenarios_raw:
+        try:
+            scenarios.append(json.loads(s))
+        except Exception:
+            pass
+
+    if scenarios:
+        return {"summary": summary, "top_risks": [], "scenarios": scenarios}
+
+    raise ValueError(
+        f"La IA devolvio JSON invalido (char {len(chunk)}). "
+        "Intenta de nuevo o reduce el numero de normativas/criterios adicionales."
+    )
 
 # ---------- Cuestionario de contexto organizacional ----------
 
@@ -271,16 +347,19 @@ def _build_prompt(answers: dict, assets: list, threats: list, controls: list) ->
     )
 
     # Separar respuestas propias del cuestionario de criterios extra y campos internos
+    # Sanitizar valores para evitar que Claude genere JSON invalido con comillas/saltos
     base_answers = {}
     extra_criteria_items = []
     for k, v in answers.items():
         if k.startswith("extra_"):
             if v and str(v).strip():
-                extra_criteria_items.append(f"  [{k.replace('extra_', '')}]: {v}")
+                extra_criteria_items.append(
+                    f"  [{k.replace('extra_', '')}]: {_sanitize_prompt_value(v)}"
+                )
         elif k.startswith("_"):
             pass   # campos internos (ej: _active_methodology) — no se muestran en el prompt
         else:
-            base_answers[k] = v
+            base_answers[k] = _sanitize_prompt_value(v)
 
     # Metodologia activa del contexto (enriquecida desde el router)
     active_methodology = answers.get("_active_methodology", "iso27005")
@@ -365,11 +444,18 @@ RESPUESTAS AL CUESTIONARIO ORGANIZACIONAL:
 {answers_str}
 
 TAREA:
-Genera entre 15 y 25 escenarios de riesgo realistas y prioritarios para este perfil organizacional.
+Genera entre 12 y 18 escenarios de riesgo realistas y prioritarios para este perfil organizacional.
 Usa amenazas del catálogo cuando sea posible (usa el campo threat_code).
 Para activos: usa los registrados en la BD si aplican; si no, propón uno nuevo con asset_suggestion.
 
-Devuelve EXCLUSIVAMENTE un JSON válido con este esquema (sin texto adicional):
+IMPORTANTE FORMATO JSON:
+- Devuelve EXCLUSIVAMENTE JSON valido, sin texto antes ni despues
+- Usa comillas dobles para todas las cadenas
+- No incluyas caracteres especiales sin escapar en los strings
+- Mantén los strings cortos: rationale maximo 120 chars, control_rationale maximo 100 chars
+- NO uses saltos de linea dentro de los strings
+
+Devuelve EXCLUSIVAMENTE un JSON válido con este esquema:
 {{
   "summary": "Resumen ejecutivo del perfil de riesgo en 3-4 frases.",
   "top_risks": ["riesgo crítico 1", "riesgo crítico 2", "riesgo crítico 3"],
@@ -437,20 +523,36 @@ def run_analysis(answers: dict, db: Session, api_key: str | None = None) -> dict
     prompt = _build_prompt(answers, assets, threats, controls)
 
     client = anthropic.Anthropic(api_key=effective_key)
-    message = client.messages.create(
-        model="claude-opus-4-7",
-        max_tokens=8192,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    # Usar max_tokens alto para evitar truncacion del JSON con muchos escenarios
+    try:
+        message = client.messages.create(
+            model="claude-opus-4-7",
+            max_tokens=16384,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as exc:
+        # Algunos modelos no soportan 16384; reintentar con 8192
+        err_str = str(exc).lower()
+        if "max_tokens" in err_str or "maximum" in err_str:
+            message = client.messages.create(
+                model="claude-opus-4-7",
+                max_tokens=8192,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        else:
+            raise
 
     raw = message.content[0].text.strip()
-    # Extraer JSON aunque haya texto envolvente
-    start = raw.find("{")
-    end = raw.rfind("}") + 1
-    if start == -1 or end == 0:
-        raise ValueError(f"La IA no devolvió JSON válido: {raw[:200]}")
 
-    result = json.loads(raw[start:end])
+    # Advertencia si el modelo se corto por limite de tokens
+    if getattr(message, "stop_reason", None) == "max_tokens":
+        import logging
+        logging.getLogger("riskhub.ai").warning(
+            "Analysis response truncated at max_tokens. Consider reducing scenario count."
+        )
+
+    # Parseo robusto: varios intentos de reparacion antes de fallar
+    result = _repair_json(raw)
 
     # Obtener apetito de riesgo del cuestionario para post-procesado
     appetite_num = _parse_appetite_level(answers.get("risk_appetite_level", ""))

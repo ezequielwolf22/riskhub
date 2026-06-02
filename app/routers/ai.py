@@ -1,4 +1,5 @@
 """Endpoints del agente IA: cuestionario + análisis de riesgos + chat + feedback."""
+import json
 from collections import defaultdict
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
@@ -75,6 +76,14 @@ def analyze(
         result = run_analysis(enriched_answers, db, api_key=api_key)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"La respuesta de la IA no es JSON valido ({e}). "
+                "Intenta de nuevo — puede ser un fallo transitorio del modelo."
+            )
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el análisis: {str(e)}")
 
