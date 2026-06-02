@@ -352,12 +352,18 @@ def propose_groups(db: Session, org_id: int | None) -> dict:
     groups_data = result.get("groups", [])
     summary = result.get("summary", "")
 
-    # Borrar grupos propuestos anteriores (no los validados)
-    old_proposed = db.query(AssetGroup).filter_by(
-        organization_id=org_id, status=AssetGroupStatus.PROPOSED
-    ).all()
-    for g in old_proposed:
-        db.query(Asset).filter_by(group_id=g.id).update({"group_id": None})
+    # Borrar TODOS los grupos anteriores (propuestos y validados) para empezar limpio
+    all_existing = db.query(AssetGroup).filter_by(organization_id=org_id).all()
+    for g in all_existing:
+        # Eliminar activo representativo si existe (cascade borra sus riesgos IA)
+        if g.representative_asset_id:
+            rep = db.get(Asset, g.representative_asset_id)
+            if rep and rep.is_group_representative:
+                db.delete(rep)
+        # Desagrupar los miembros
+        db.query(Asset).filter_by(group_id=g.id).update(
+            {"group_id": None}, synchronize_session=False
+        )
         db.delete(g)
     db.commit()
 

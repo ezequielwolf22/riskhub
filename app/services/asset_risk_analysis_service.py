@@ -333,8 +333,10 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 _BATCH_SIZE    = 15   # activos por llamada API
-_MAX_WORKERS   = 8    # llamadas API concurrentes
+_MAX_WORKERS   = 3    # llamadas API concurrentes (reducido para no exceder 50 req/min)
 _BATCH_MODEL   = "claude-haiku-4-5-20251001"  # modelo rapido para analisis masivo
+_MAX_RETRIES   = 4    # reintentos en caso de rate limit 429
+_RETRY_BASE_S  = 15   # segundos base entre reintentos (backoff exponencial)
 
 _BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005 y MAGERIT v3. Analiza cada activo de la lista y devuelve los escenarios de riesgo mas relevantes.
 
@@ -511,13 +513,36 @@ def _process_batch_isolated(
         system = _BATCH_SYSTEM_PROMPT.format(appetite=appetite)
 
         import anthropic
+        import time as _time
         client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model=model,
-            max_tokens=8192,
-            system=system,
-            messages=[{"role": "user", "content": user_content}],
-        )
+
+        # Retry con backoff exponencial en caso de rate limit 429
+        last_exc = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                msg = client.messages.create(
+                    model=model,
+                    max_tokens=8192,
+                    system=system,
+                    messages=[{"role": "user", "content": user_content}],
+                )
+                last_exc = None
+                break
+            except Exception as _exc:
+                last_exc = _exc
+                err_str = str(_exc)
+                if "429" in err_str or "rate_limit" in err_str.lower():
+                    wait_s = _RETRY_BASE_S * (2 ** attempt)
+                    logger.warning(
+                        "Rate limit 429 (intento %d/%d), esperando %ds — batch ids=%s",
+                        attempt + 1, _MAX_RETRIES, wait_s, batch_ids[:3],
+                    )
+                    _time.sleep(wait_s)
+                else:
+                    raise  # otro tipo de error, no reintentar
+        if last_exc is not None:
+            raise last_exc
+
         raw = msg.content[0].text
 
         result = _parse_batch_response(raw)
@@ -1128,7 +1153,7 @@ def link_osint_findings_to_assets(
             # Auto-tratamiento segun appetite
             if rlev <= appetite:
                 r_status = RiskStatus.ACCEPTED
-                r_treatment = TreatmentOption.ACCEPTANCE
+                r_treatment = TreatmentOption.RETENTION
             else:
                 r_status = RiskStatus.IDENTIFIED
                 r_treatment = TreatmentOption.MODIFICATION
