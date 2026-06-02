@@ -335,11 +335,13 @@ def import_risks(
             TreatmentOption.MODIFICATION,
         )
 
+        vuln_desc = sc.get("vulnerability_description", "")
+        rat_desc  = sc.get("rationale", "")
+        combined  = (vuln_desc + (" — " + rat_desc if rat_desc else ""))[:1000]
         risk = Risk(
             code=code,
             asset_id=asset.id,
             threat_id=threat.id,
-            vulnerability_description=sc.get("vulnerability_description", ""),
             inherent_consequence=sc.get("inherent_consequence", 2),
             inherent_likelihood=sc.get("inherent_likelihood", 2),
             inherent_level=sc.get("inherent_level", 4),
@@ -348,7 +350,9 @@ def import_risks(
             residual_level=sc.get("residual_level", 1),
             status=RiskStatus.IDENTIFIED,
             treatment_option=sc_treatment,
-            description=sc.get("rationale", ""),
+            description=combined,
+            ai_rationale=rat_desc[:500],
+            ai_generated=True,
             owner_id=current_user.id,
             organization_id=current_user.organization_id,
         )

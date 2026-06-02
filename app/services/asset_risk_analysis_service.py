@@ -329,14 +329,20 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # ANALISIS EN PARALELO POR LOTES
 # Procesa BATCH_SIZE activos por llamada API, MAX_WORKERS llamadas concurrentes.
-# Para 3000 activos: 3000/15 = 200 lotes / 8 workers = ~25 rondas × 8s = ~200s
+# Para 3000 activos: 3000/10 = 300 lotes / 2 workers + rate limiter 2.5s = ~24 req/min
 # ──────────────────────────────────────────────────────────────────────────────
 
-_BATCH_SIZE    = 15   # activos por llamada API
-_MAX_WORKERS   = 3    # llamadas API concurrentes (reducido para no exceder 50 req/min)
+_BATCH_SIZE    = 10   # activos por llamada API (reducido para prompts mas cortos)
+_MAX_WORKERS   = 2    # llamadas API concurrentes (2 workers + rate limiter = ~25 req/min)
 _BATCH_MODEL   = "claude-haiku-4-5-20251001"  # modelo rapido para analisis masivo
 _MAX_RETRIES   = 4    # reintentos en caso de rate limit 429
 _RETRY_BASE_S  = 15   # segundos base entre reintentos (backoff exponencial)
+_MIN_CALL_GAP  = 2.5  # segundos minimos entre llamadas API (rate limiter global)
+
+# Rate limiter global: evita superar 50 req/min independientemente del paralelismo
+import threading as _threading
+_api_rate_lock  = _threading.Lock()
+_api_last_call  = [0.0]  # mutable para uso en closure
 
 _BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005 y MAGERIT v3. Analiza cada activo de la lista y devuelve los escenarios de riesgo mas relevantes.
 
@@ -514,9 +520,19 @@ def _process_batch_isolated(
 
         import anthropic
         import time as _time
+
+        # Rate limiter global: esperar si la ultima llamada fue hace menos de _MIN_CALL_GAP s
+        with _api_rate_lock:
+            now = _time.time()
+            gap = now - _api_last_call[0]
+            if gap < _MIN_CALL_GAP:
+                _time.sleep(_MIN_CALL_GAP - gap)
+            _api_last_call[0] = _time.time()
+
         client = anthropic.Anthropic(api_key=api_key)
 
         # Retry con backoff exponencial en caso de rate limit 429
+        msg = None
         last_exc = None
         for attempt in range(_MAX_RETRIES):
             try:
@@ -582,6 +598,9 @@ def _process_batch_isolated(
                     code = f"RSK-{n:04d}"
                     while db.query(Risk).filter_by(code=code).first():
                         n += 1; code = f"RSK-{n:04d}"
+                    vuln_txt = (item.get("vulnerability") or "")[:400]
+                    rat_txt  = (item.get("rationale") or "")[:400]
+                    desc = (vuln_txt + (" — " + rat_txt if rat_txt else ""))[:1000]
                     risk = Risk(
                         code=code,
                         asset_id=asset.id,
@@ -589,8 +608,8 @@ def _process_batch_isolated(
                         inherent_consequence=c_, inherent_likelihood=l_, inherent_level=inh_lvl,
                         residual_consequence=rc,  residual_likelihood=rl,  residual_level=res_lvl,
                         treatment_option=treatment,
-                        description=(item.get("rationale") or "")[:1000],
-                        vulnerability_description=(item.get("vulnerability") or "")[:500],
+                        description=desc,
+                        ai_rationale=rat_txt,
                         status=RiskStatus.IDENTIFIED,
                         owner_id=owner_id,
                         organization_id=org_id,
