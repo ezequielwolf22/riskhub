@@ -39,12 +39,25 @@ def _require_admin(current_user: User = Depends(get_current_user)):
 
 
 def _filter_audit_by_org(q, current_user: User):
-    """Superadmin ve todos los logs; admin solo ve los de su organizacion."""
+    """Superadmin ve todos los logs; admin solo ve los de su organizacion.
+
+    Estrategia de filtrado:
+    - Logs con organization_id poblado: filtrado directo por org (nuevos registros).
+    - Logs legacy con organization_id=NULL pero user_id asignado: filtrado via JOIN
+      con el usuario (compatibilidad hacia atras).
+    - Logs de sistema con user_id=NULL y organization_id=NULL: NO se exponen
+      a ninguna org (evita fuga cross-tenant).
+    """
     if current_user.role == UserRole.SUPERADMIN:
         return q
+    org_id = current_user.organization_id
     return q.join(User, AuditLog.user_id == User.id, isouter=True).filter(
-        (User.organization_id == current_user.organization_id) |
-        (AuditLog.user_id.is_(None))
+        (AuditLog.organization_id == org_id) |
+        (
+            AuditLog.organization_id.is_(None) &
+            AuditLog.user_id.isnot(None) &
+            (User.organization_id == org_id)
+        )
     )
 
 
@@ -119,13 +132,22 @@ def entity_history(
     )
     if current_user.role != UserRole.SUPERADMIN:
         from app.models import User as UserModel
+        org_id = current_user.organization_id
         allowed_user_ids = [
             u.id for u in db.query(UserModel).filter(
-                UserModel.organization_id == current_user.organization_id
+                UserModel.organization_id == org_id
             ).all()
         ]
+        # Logs con org asignada: filtrar directamente.
+        # Logs legacy sin org pero con usuario: filtrar por usuario de la org.
+        # Logs de sistema sin user ni org: excluidos (evita fuga cross-tenant).
         q = q.filter(
-            (AuditLog.user_id.in_(allowed_user_ids)) | (AuditLog.user_id.is_(None))
+            (AuditLog.organization_id == org_id) |
+            (
+                AuditLog.organization_id.is_(None) &
+                AuditLog.user_id.isnot(None) &
+                AuditLog.user_id.in_(allowed_user_ids)
+            )
         )
     entries = q.order_by(AuditLog.timestamp.desc()).limit(limit).all()
     return [

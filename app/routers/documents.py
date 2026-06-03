@@ -196,9 +196,13 @@ def remove_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
+    from app.models import UserRole
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
     if not doc or not check_org_access(doc.organization_id, current_user):
         raise HTTPException(404, "Documento no encontrado")
+    # Solo el propietario o un administrador pueden eliminar el documento
+    if doc.uploaded_by_id != current_user.id and current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "No tienes permiso para eliminar este documento")
     delete_document(db, doc)
     return {"ok": True}
 
