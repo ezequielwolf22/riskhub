@@ -124,13 +124,19 @@ def _get_userinfo(userinfo_endpoint: str, access_token: str) -> dict:
 
 # ---------- SSO State en BD (anti-CSRF, multi-worker safe) ----------
 
-def _create_state(db: Session) -> str:
-    """Genera un state token y lo persiste en BD con TTL."""
+def _create_state(db: Session, org_id: Optional[int] = None) -> str:
+    """Genera un state token y lo persiste en BD con TTL.
+
+    El org_id se codifica como prefijo "{org_id}:{token}" para vincular el
+    flujo SSO a una organizacion concreta sin necesitar columna adicional en BD.
+    """
     # Limpiar states expirados
     db.query(SSOState).filter(
         SSOState.expires_at < datetime.now(timezone.utc)
     ).delete(synchronize_session=False)
-    state = secrets.token_hex(32)
+    raw = secrets.token_hex(32)
+    # Formato: "0:token" (sin org) o "123:token" (con org_id)
+    state = f"{org_id or 0}:{raw}"
     db.add(SSOState(
         state=state,
         expires_at=datetime.now(timezone.utc).replace(
@@ -143,15 +149,28 @@ def _create_state(db: Session) -> str:
     return state
 
 
-def _consume_state(db: Session, state: str) -> bool:
-    """Valida y elimina el state. Devuelve True si era valido."""
+def _consume_state(db: Session, state: str) -> "tuple[bool, Optional[int]]":
+    """Valida y elimina el state. Devuelve (valido, org_id).
+
+    org_id es None si el state no lleva org o si no era valido.
+    Compatibilidad hacia atras: states sin prefijo (formato antiguo) devuelven org_id=None.
+    """
     record = db.query(SSOState).filter(SSOState.state == state).first()
     if not record:
-        return False
+        return False, None
     valid = record.expires_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc)
+    # Extraer org_id del prefijo "{org_id}:{token}"
+    org_id: Optional[int] = None
+    try:
+        prefix = state.split(":")[0]
+        parsed = int(prefix)
+        if parsed > 0:
+            org_id = parsed
+    except (ValueError, IndexError):
+        pass
     db.delete(record)
     db.commit()
-    return valid
+    return valid, org_id
 
 
 # ---------- SSO Code exchange (evita JWT en URL) ----------
@@ -201,9 +220,12 @@ class SsoConfigOut(BaseModel):
 # ---------- Endpoints ----------
 
 @router.get("/status")
-def sso_status(db: Session = Depends(get_db)):
-    """Endpoint publico — indica si SSO esta habilitado (para mostrar boton en login)."""
-    cfg = _get_config(db)
+def sso_status(org_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    """Endpoint publico — indica si SSO esta habilitado (para mostrar boton en login).
+
+    Acepta org_id para devolver el estado correcto en entornos multi-tenant.
+    """
+    cfg = _get_config(db, org_id)
     return {"enabled": bool(cfg)}
 
 

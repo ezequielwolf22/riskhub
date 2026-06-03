@@ -17,13 +17,23 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/api/gdpr", tags=["gdpr"])
 
 
-def _next_pa_code(db: Session) -> str:
-    n = db.query(ProcessingActivity).count() + 1
+def _next_pa_code(db: Session, org_id: int | None = None) -> str:
+    q = db.query(ProcessingActivity)
+    if org_id is not None:
+        q = q.filter(ProcessingActivity.organization_id == org_id)
+    n = q.count() + 1
     return f"PAR-{n:04d}"
 
 
-def _next_dpia_code(db: Session) -> str:
-    n = db.query(DPIA).count() + 1
+def _next_dpia_code(db: Session, org_id: int | None = None) -> str:
+    q = db.query(DPIA)
+    if org_id is not None:
+        q = q.filter(
+            DPIA.activity_id.in_(
+                db.query(ProcessingActivity.id).filter(ProcessingActivity.organization_id == org_id)
+            )
+        )
+    n = q.count() + 1
     return f"DPI-{n:04d}"
 
 
@@ -71,7 +81,7 @@ def get_activity(activity_id: int, db: Session = Depends(get_db),
 def create_activity(body: ProcessingActivityIn, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     a = ProcessingActivity(
-        code=_next_pa_code(db),
+        code=_next_pa_code(db, current_user.organization_id),
         organization_id=current_user.organization_id,
         title=body.title,
         purposes=body.purposes,
@@ -156,7 +166,7 @@ def create_dpia(body: DPIAIn, db: Session = Depends(get_db),
     if not activity or not check_org_access(activity.organization_id, current_user):
         raise HTTPException(404, "Actividad de tratamiento no encontrada")
     d = DPIA(
-        code=_next_dpia_code(db),
+        code=_next_dpia_code(db, current_user.organization_id),
         activity_id=body.activity_id,
         title=body.title,
         necessity_assessment=body.necessity_assessment,

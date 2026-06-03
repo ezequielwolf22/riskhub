@@ -128,12 +128,12 @@ const ViewBcp = (() => {
 
   function _openProcForm(proc) {
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:480px;">
       <div class="modal-header">
         <h2>${proc?'Editar proceso':'Nuevo proceso BIA'}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
       </div>
       <div class="modal-body">
         <label>Nombre *</label>
@@ -151,7 +151,7 @@ const ViewBcp = (() => {
         <textarea id="proc-desc" class="form-control" rows="2">${UI.esc(proc?.description||'')}</textarea>
         <div style="display:flex;gap:8px;margin-top:14px;">
           <button class="btn btn-primary" onclick="ViewBcp._saveProc(${proc?.id||'null'})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
         </div>
       </div>
     </div>`;
@@ -172,19 +172,19 @@ const ViewBcp = (() => {
       if (id) await Api.patch(`/api/bcp/processes/${id}`, body);
       else await Api.post('/api/bcp/processes', body);
       UI.toast('Proceso guardado', 'success');
-      document.querySelector('.modal-overlay')?.remove();
+      document.querySelector('.modal-bg')?.remove();
       location.reload();
     } catch (e) { UI.toast('Error: '+(e.message||e), 'error'); }
   }
 
   function _openTestForm() {
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:380px;">
       <div class="modal-header">
         <h2>Programar test BCM</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
       </div>
       <div class="modal-body">
         <label>Tipo</label>
@@ -197,7 +197,7 @@ const ViewBcp = (() => {
         <input id="test-date" class="form-control" type="datetime-local">
         <div style="display:flex;gap:8px;margin-top:14px;">
           <button class="btn btn-primary" onclick="ViewBcp._saveTest()">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
         </div>
       </div>
     </div>`;
@@ -214,7 +214,7 @@ const ViewBcp = (() => {
     try {
       await Api.post('/api/bcp/tests', body);
       UI.toast('Test programado', 'success');
-      document.querySelector('.modal-overlay')?.remove();
+      document.querySelector('.modal-bg')?.remove();
       location.reload();
     } catch (e) { UI.toast('Error: '+(e.message||e), 'error'); }
   }
@@ -222,12 +222,12 @@ const ViewBcp = (() => {
   function _updateTest(id) {
     const test = (window._bcpTests||[]).find(t => t.id === id);
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:380px;">
       <div class="modal-header">
         <h2>Actualizar test ${UI.esc(test?.code||'')}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
       </div>
       <div class="modal-body">
         <label>Fecha de realizacion</label>
@@ -241,7 +241,7 @@ const ViewBcp = (() => {
         <textarea id="upd-findings" class="form-control" rows="3">${UI.esc(test?.findings||'')}</textarea>
         <div style="display:flex;gap:8px;margin-top:14px;">
           <button class="btn btn-primary" onclick="ViewBcp._doUpdateTest(${id})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
         </div>
       </div>
     </div>`;
@@ -257,7 +257,7 @@ const ViewBcp = (() => {
     try {
       await Api.patch(`/api/bcp/tests/${id}`, body);
       UI.toast('Test actualizado', 'success');
-      document.querySelector('.modal-overlay')?.remove();
+      document.querySelector('.modal-bg')?.remove();
       location.reload();
     } catch (e) { UI.toast('Error: '+(e.message||e), 'error'); }
   }
