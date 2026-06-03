@@ -497,3 +497,81 @@ def export_assets_csv(db: Session = Depends(get_db),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=assets_export.csv"},
     )
+
+
+# ========== IMPORT HEALTH & ROLLBACK ==========
+
+@router.get("/import-health")
+def get_import_health(
+    limit: int = Query(50, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Dashboard de salud de importaciones: histórico de sesiones."""
+    from app.models import ImportSession
+
+    sessions = (
+        db.query(ImportSession)
+        .filter_by(organization_id=current_user.organization_id)
+        .order_by(ImportSession.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "session_id": s.session_id,
+                "filename": s.filename,
+                "source_system": s.source_system,
+                "status": s.status,
+                "total_rows": s.total_rows,
+                "created": s.created,
+                "updated": s.updated,
+                "skipped": s.skipped,
+                "errors_count": s.errors_count,
+                "data_loss_detected": s.data_loss_detected,
+                "expected_processed": s.expected_processed,
+                "actual_processed": s.actual_processed,
+                "dedup_by_external_id": s.dedup_by_external_id,
+                "started_at": s.started_at.isoformat(),
+                "completed_at": s.completed_at.isoformat() if s.completed_at else None,
+                "rolled_back_at": s.rolled_back_at.isoformat() if s.rolled_back_at else None,
+            }
+            for s in sessions
+        ],
+        "total": len(sessions),
+    }
+
+
+@router.post("/import-rollback/{session_id}")
+def rollback_import(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Revierte una importación completa (borra todos los activos creados en esa sesión)."""
+    from app.services.smart_import_service import rollback_import_session
+
+    result = rollback_import_session(
+        db=db,
+        session_id=session_id,
+        org_id=current_user.organization_id,
+        user_id=current_user.id,
+    )
+
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error"))
+
+    # Log de auditoría
+    log_action(
+        db,
+        current_user.id,
+        "delete",
+        "import_session",
+        session_id,
+        f"Rolled back import: {result['rolled_back_count']} assets deleted",
+    )
+
+    return result

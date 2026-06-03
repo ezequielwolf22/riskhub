@@ -1649,3 +1649,46 @@ class DataBreachNotification(Base):
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     incident = relationship("Incident")
+
+
+# ---------- IMPORT AUDIT & HEALTH ----------
+
+class ImportSession(Base):
+    """Histórico de sesiones de importación para auditoría y rollback."""
+    __tablename__ = "import_sessions"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    session_id = Column(String(64), unique=True, index=True)  # UUID corto
+    filename = Column(String(255))
+    source_system = Column(String(64), nullable=True)  # leanix|cmdb|custom
+
+    # Estadísticas
+    total_rows = Column(Integer)
+    created = Column(Integer)
+    updated = Column(Integer)
+    skipped = Column(Integer)
+    errors_count = Column(Integer, default=0)
+
+    # Integridad
+    expected_processed = Column(Integer)
+    actual_processed = Column(Integer)
+    data_loss_detected = Column(Boolean, default=False)
+
+    # Deduplicación
+    dedup_by_external_id = Column(Integer, default=0)
+    dedup_by_name = Column(Integer, default=0)
+
+    # Status & rollback
+    status = Column(String(16), default="completed")  # completed|failed|rolled_back
+    error_message = Column(Text, nullable=True)
+    rolled_back_at = Column(DateTime, nullable=True)
+    rolled_back_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Timestamps
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime, nullable=True)
+
+    # Lineage
+    mapping_notes = Column(Text, nullable=True)
+
+    rolled_back_by = relationship("User", foreign_keys=[rolled_back_by_id])

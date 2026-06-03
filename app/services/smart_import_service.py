@@ -269,13 +269,18 @@ def smart_import(
     api_key: Optional[str],
     model: str = "claude-haiku-4-5",
     session_id: Optional[str] = None,  # para audit trail
+    source_system: Optional[str] = None,  # leanix|cmdb|custom
 ) -> dict:
     """Importa activos desde cualquier formato usando IA para normalizar.
 
-    Returns: dict con created, updated, skipped, errors, mapping_notes
+    Returns: dict con created, updated, skipped, errors, mapping_notes, session_id
     """
-    from app.models import Asset, AssetType
+    from app.models import Asset, AssetType, ImportSession
     from app.routers.assets import _next_code
+    from datetime import datetime, timezone
+    import uuid
+    if not session_id:
+        session_id = str(uuid.uuid4())[:8]
 
     # 1. Leer fichero
     df = _read_file(content, filename)
@@ -316,10 +321,6 @@ def smart_import(
         mapping_notes = "Mapeo heuristico (sin IA configurada)"
 
     # 3. Crear/actualizar activos en BD con logging detallado
-    import uuid
-    from datetime import datetime
-    if not session_id:
-        session_id = str(uuid.uuid4())[:8]
 
     created = 0
     updated = 0
@@ -424,6 +425,34 @@ def smart_import(
         "data_loss_detected": data_loss,
     }
 
+    # Guardar en audit log
+    try:
+        import_session = ImportSession(
+            organization_id=org_id,
+            session_id=session_id,
+            filename=filename,
+            source_system=source_system or "unknown",
+            total_rows=len(normalized_rows),
+            created=created,
+            updated=updated,
+            skipped=skipped,
+            errors_count=len(errors),
+            expected_processed=expected_processed,
+            actual_processed=actual_processed,
+            data_loss_detected=data_loss,
+            dedup_by_external_id=dedup_by_external_id,
+            dedup_by_name=dedup_by_name,
+            status="completed" if not data_loss else "failed",
+            error_message=" | ".join(errors[:5]) if errors else None,
+            mapping_notes=mapping_notes,
+            completed_at=datetime.now(timezone.utc),
+        )
+        db.add(import_session)
+        db.commit()
+        result["import_session_id_db"] = import_session.id
+    except Exception as exc:
+        logger.error(f"[import:{session_id}] Error saving ImportSession: {exc}")
+
     # Loguear resultado
     logger.info(f"[import:{session_id}] Import completo: {created} creados, {updated} actualizados, "
                 f"{skipped} saltados. Dedup: {dedup_by_external_id} por ID, {dedup_by_name} por nombre. "
@@ -434,6 +463,58 @@ def smart_import(
                        f"procesado {actual_processed}")
 
     return result
+
+
+def rollback_import_session(db, session_id: str, org_id: int, user_id: int) -> dict:
+    """Revierte una importación: borra todos los activos creados en esa sesión.
+
+    Returns: {"rolled_back_count": N, "errors": [...]}
+    """
+    from app.models import ImportSession, Asset
+    from sqlalchemy import delete
+
+    try:
+        # Buscar la sesión
+        import_sess = (
+            db.query(ImportSession)
+            .filter_by(organization_id=org_id, session_id=session_id)
+            .first()
+        )
+        if not import_sess:
+            return {"ok": False, "error": f"ImportSession {session_id} no encontrada"}
+
+        # Contar activos creados en esta sesión
+        assets_to_delete = (
+            db.query(Asset)
+            .filter_by(organization_id=org_id, import_session_id=session_id)
+            .count()
+        )
+
+        # Borrar activos (cascada borra también sus riesgos)
+        db.execute(
+            delete(Asset).where(
+                (Asset.organization_id == org_id) &
+                (Asset.import_session_id == session_id)
+            )
+        )
+
+        # Marcar sesión como rolled_back
+        import_sess.status = "rolled_back"
+        import_sess.rolled_back_at = datetime.now(timezone.utc)
+        import_sess.rolled_back_by_id = user_id
+
+        db.commit()
+
+        logger.info(f"[rollback:{session_id}] Reverted {assets_to_delete} assets by user {user_id}")
+
+        return {
+            "ok": True,
+            "rolled_back_count": assets_to_delete,
+            "message": f"Reverted import session {session_id}: {assets_to_delete} assets deleted",
+        }
+    except Exception as exc:
+        logger.error(f"[rollback:{session_id}] Error: {exc}")
+        return {"ok": False, "error": str(exc)}
 
 
 def _build_heuristic_mapping(columns: list[str]) -> dict:
