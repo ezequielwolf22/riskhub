@@ -918,8 +918,8 @@ const ViewOsint = {
   async _populateRiskSelectors(findingId) {
     try {
       const [assetsResp, threatsResp] = await Promise.all([
-        Api.get('/api/assets?limit=200'),
-        Api.get('/api/threats?limit=200')
+        Api.get('/api/assets?limit=10000'),
+        Api.get('/api/threats?limit=10000')
       ]);
       const assets = assetsResp.items || assetsResp || [];
       const threats = threatsResp.items || threatsResp || [];

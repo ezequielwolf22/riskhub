@@ -308,7 +308,7 @@ const ViewRisks = {
   async _loadCatalogs() {
     try {
       const [a, t, v, i, u, meth] = await Promise.all([
-        Api.assets.list({}), Api.threats.list({}),
+        Api.assets.list({ limit: 10000 }), Api.threats.list({}),
         Api.vulns.list({}), Api.impls.list(),
         Api.listUsers().catch(() => []),
         Api.get('/api/risks/methodology').catch(() => ({ methodology: 'iso27005' })),

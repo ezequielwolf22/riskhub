@@ -35,6 +35,7 @@ ASSET_TYPES = {
 # Campos RiskHub destino y descripcion para el prompt
 RISKHUB_FIELDS = {
     "name":                  "Nombre del activo (obligatorio)",
+    "external_id":           "ID externo unico del sistema origen (LeanIX ID, CMDB ID, etc.) — usa el campo 'id' del fichero si existe",
     "description":           "Descripcion del activo",
     "category":              "Categoria libre (ej: ERP, Cloud, Infraestructura)",
     "location":              "Ubicacion fisica o logica",
@@ -336,7 +337,7 @@ def smart_import(
                 "name": name,
                 "asset_type": atype,
             }
-            for field in ("description", "category", "location", "business_process",
+            for field in ("external_id", "description", "category", "location", "business_process",
                           "classification", "value_confidentiality", "value_integrity",
                           "value_availability", "value_authenticity", "value_accountability"):
                 if field in row and row[field] is not None:
@@ -347,15 +348,29 @@ def smart_import(
                 tags = [t.strip() for t in str(row["software_tags"]).split(",") if t.strip()]
                 payload["software_tags"] = tags
 
-            # Buscar por nombre dentro de la org (sin código fijo)
-            existing = (
-                db.query(Asset)
-                .filter(
-                    Asset.organization_id == org_id,
-                    Asset.name == name,
+            # Deduplicación inteligente:
+            # 1. Si external_id está presente, buscar por external_id (más confiable)
+            # 2. Si no, buscar por nombre (fallback para imports sin IDs externos)
+            existing = None
+            if payload.get("external_id"):
+                existing = (
+                    db.query(Asset)
+                    .filter(
+                        Asset.organization_id == org_id,
+                        Asset.external_id == payload["external_id"],
+                    )
+                    .first()
                 )
-                .first()
-            )
+
+            if not existing:
+                existing = (
+                    db.query(Asset)
+                    .filter(
+                        Asset.organization_id == org_id,
+                        Asset.name == name,
+                    )
+                    .first()
+                )
 
             if existing:
                 for k, v in payload.items():
