@@ -338,9 +338,12 @@ def test_sso_config(
 
 
 @router.get("/login")
-def sso_login(db: Session = Depends(get_db)):
-    """Genera la URL de autorizacion y redirige al proveedor de identidad."""
-    cfg = _get_config(db)
+def sso_login(org_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    """Genera la URL de autorizacion y redirige al proveedor de identidad.
+
+    org_id es necesario en entornos multi-tenant para usar la config SSO correcta.
+    """
+    cfg = _get_config(db, org_id)
     if not cfg:
         return RedirectResponse(url="/login?sso_error=sso_not_configured", status_code=302)
 
@@ -350,8 +353,8 @@ def sso_login(db: Session = Depends(get_db)):
         err_msg = urllib.parse.quote(str(e)[:200])
         return RedirectResponse(url=f"/login?sso_error={err_msg}", status_code=302)
 
-    # Generar state token para proteccion CSRF y persistirlo en BD
-    state = _create_state(db)
+    # Generar state token vinculado a la org para proteccion CSRF
+    state = _create_state(db, org_id)
 
     auth_url = doc["authorization_endpoint"] + "?" + urllib.parse.urlencode({
         "response_type": "code",
@@ -381,10 +384,12 @@ def sso_callback(
         return RedirectResponse(url="/login?sso_error=missing_params", status_code=302)
 
     # Validar y consumir state (proteccion CSRF — un solo uso, BD-backed)
-    if not _consume_state(db, state):
+    # _consume_state devuelve (valido, org_id) para mantener el contexto de org
+    state_valid, sso_org_id = _consume_state(db, state)
+    if not state_valid:
         return RedirectResponse(url="/login?sso_error=invalid_or_expired_state", status_code=302)
 
-    cfg = _get_config(db)
+    cfg = _get_config(db, sso_org_id)
     if not cfg:
         return RedirectResponse(url="/login?sso_error=sso_not_configured", status_code=302)
 
@@ -439,14 +444,23 @@ def sso_callback(
         except ValueError:
             role = UserRole.VIEWER
 
-        # Resolver la org por dominio del email o usar la org configurada en SSO
+        # Resolver la org: prioridad 1 = org del flujo SSO (via state),
+        # prioridad 2 = coincidencia por dominio del email.
+        # Si no se puede determinar, rechazar para evitar usuario sin org.
         from app.models import Organization
-        email_domain = email.split("@")[-1].lower() if "@" in email else ""
         sso_org = None
-        if email_domain:
-            sso_org = db.query(Organization).filter(
-                Organization.domain == email_domain, Organization.is_active == True
-            ).first()
+        if sso_org_id:
+            sso_org = db.get(Organization, sso_org_id)
+        if not sso_org:
+            email_domain = email.split("@")[-1].lower() if "@" in email else ""
+            if email_domain:
+                sso_org = db.query(Organization).filter(
+                    Organization.domain == email_domain, Organization.is_active == True
+                ).first()
+        if not sso_org:
+            return RedirectResponse(
+                url="/login?sso_error=cannot_determine_org", status_code=302
+            )
         user = User(
             email=email,
             full_name=full_name or email,
@@ -454,7 +468,7 @@ def sso_callback(
             hashed_password=hash_password(secrets.token_urlsafe(32)),
             role=role,
             is_active=True,
-            organization_id=sso_org.id if sso_org else None,
+            organization_id=sso_org.id,
         )
         db.add(user)
         db.commit()
