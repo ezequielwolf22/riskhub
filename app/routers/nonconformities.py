@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -125,6 +125,7 @@ def create_nc(body: NonConformityIn, db: Session = Depends(get_db),
 
 @router.patch("/{nc_id}", response_model=NonConformityOut)
 def update_nc(nc_id: int, body: NonConformityUpdate,
+              background_tasks: BackgroundTasks,
               db: Session = Depends(get_db),
               current_user: User = Depends(require_analyst)):
     nc = db.query(NonConformity).filter(NonConformity.id == nc_id).first()
@@ -132,12 +133,21 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
         raise HTTPException(404, "No conformidad no encontrada")
     update_data = body.model_dump(exclude_none=True)
     # Si se cierra la NC, registrar fecha de cierre
-    if update_data.get("status") == NCStatus.CLOSED and not nc.closed_at:
+    closing = update_data.get("status") == NCStatus.CLOSED and not nc.closed_at
+    if closing:
         update_data["closed_at"] = datetime.now(timezone.utc)
     for field, value in update_data.items():
         setattr(nc, field, value)
     db.commit()
     db.refresh(nc)
+
+    # NC cerrada con control asociado → re-ejecutar CCM en background
+    if closing and nc.related_control_id:
+        from app.services.ccm_service import run_single_test_for_control
+        background_tasks.add_task(
+            run_single_test_for_control, nc.related_control_id, nc.organization_id
+        )
+
     log_action(db, current_user.id, "update", "nonconformity", str(nc.id))
     return nc
 

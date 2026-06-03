@@ -293,6 +293,12 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             result.get("detected_category", "-"),
         )
 
+        # Mapear categoria del documento a requisitos de compliance (v3.0)
+        try:
+            _update_compliance_from_doc_category(db, doc, doc.organization_id)
+        except Exception as _ce:
+            logger.warning("Doc-compliance mapping failed doc=%d: %s", doc_id, _ce)
+
         # Si se actualizaron controles, relanzar analisis de activos para recalcular
         # el riesgo residual con los nuevos controles aplicados (v1.7.6)
         if result["controls_updated"] > 0 and doc.organization_id:
@@ -306,6 +312,64 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             db.commit()
         except Exception:
             pass
+
+
+# ---------- Mapeo categoria de documento → requisitos compliance ----------
+
+# Usa los valores reales del enum AiDocumentCategory del modelo
+_DOC_CATEGORY_COMPLIANCE_MAP: dict[str, list[tuple[str, str]]] = {
+    "policies": [
+        ("iso27001", "A.5.1"),
+        ("iso27001", "5.2"),
+    ],
+    "critical_suppliers": [
+        ("iso27001", "A.5.19"),
+        ("iso27001", "A.5.20"),
+        ("nis2", "Art.21.2c"),
+    ],
+    "incidents_lessons": [
+        ("iso27001", "A.5.24"),
+        ("nis2", "Art.21.2a"),
+    ],
+    "risk_assessments": [
+        ("iso27001", "6.1.2"),
+        ("iso27001", "8.2"),
+        ("nist_csf", "ID.RA"),
+    ],
+}
+
+
+def _update_compliance_from_doc_category(db: Session, doc, org_id: int) -> None:
+    """Actualiza ComplianceFrameworkStatus cuando se analiza un documento de categoria conocida.
+
+    Incrementa a PARTIAL (30%) los requisitos que mapean a la categoria del documento,
+    siempre que el estado actual sea PLANNED.
+    """
+    from app.models import ComplianceFrameworkStatus, ComplianceRequirementStatus
+    cat = doc.category.value if doc.category else None
+    mappings = _DOC_CATEGORY_COMPLIANCE_MAP.get(cat, [])
+    if not mappings:
+        return
+
+    changed = False
+    for framework_code, req_id in mappings:
+        existing = db.query(ComplianceFrameworkStatus).filter_by(
+            organization_id=org_id,
+            framework_code=framework_code,
+            requirement_id=req_id,
+        ).first()
+        if existing and existing.status == ComplianceRequirementStatus.PLANNED:
+            existing.status = ComplianceRequirementStatus.PARTIAL
+            existing.completion_pct = max(existing.completion_pct or 0, 30)
+            existing.last_reviewed_at = datetime.now(timezone.utc)
+            changed = True
+
+    if changed:
+        db.commit()
+        logger.info(
+            "Doc-compliance mapping: doc=%d cat=%s → %d requisitos actualizados",
+            doc.id, cat, len(mappings),
+        )
 
 
 # ---------- Re-analisis de activos en cadena ----------

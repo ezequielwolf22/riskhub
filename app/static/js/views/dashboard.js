@@ -1,4 +1,33 @@
 /* Dashboard - resumen ejecutivo multi-modulo. */
+
+/**
+ * Muestra un banner de bienvenida si el cuestionario IA no se ha completado.
+ * Se antepone al contenido principal del dashboard.
+ */
+async function _renderOnboardingBanner(container) {
+  try {
+    const ctx = await Api.get('/api/context/');
+    const isIncomplete = !ctx || !ctx.questionnaire_answers || !ctx.organization_name;
+    if (!isIncomplete) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'onboarding-banner';
+    banner.innerHTML = `
+      <div class="banner-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div class="banner-text">
+        <h3>Bienvenido a RiskHub &mdash; Empieza aqui</h3>
+        <p>Completa el cuestionario IA para que la plataforma genere automaticamente tu analisis de riesgos, compliance y recomendaciones personalizadas.</p>
+      </div>
+      <button class="btn btn-white" onclick="location.hash='/questionnaire'">
+        Completar Cuestionario IA &rarr;
+      </button>
+    `;
+    container.prepend(banner);
+  } catch (_e) { /* silencioso */ }
+}
+
 const ViewDashboard = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
@@ -30,6 +59,9 @@ const ViewDashboard = {
       if (!risks) throw new Error('No se pudo cargar el resumen de riesgos.');
 
       const c = document.getElementById('dash-content');
+
+      // Banner de onboarding si el SGSI no esta configurado (v3.0)
+      _renderOnboardingBanner(c);
 
       // --- Calcular puntuacion de postura de seguridad (0-100) ---
       const postureScore = ViewDashboard._calcPosture(risks, incidents, tasks, policies, gdprData);

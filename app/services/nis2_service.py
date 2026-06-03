@@ -69,6 +69,38 @@ def create_nis2_notification_chain(db: Session, incident_id: int, org_id: int) -
     return created
 
 
+def recalculate_nis2_deadlines(db: Session, incident_id: int) -> None:
+    """Recalcula deadlines de notificaciones NIS2 pendientes cuando cambia detected_at.
+
+    Solo actualiza notificaciones en estado 'pending' (las enviadas no se tocan).
+    """
+    from app.models import NIS2Notification, Incident
+
+    inc = db.get(Incident, incident_id)
+    if not inc:
+        return
+
+    notifs = db.query(NIS2Notification).filter_by(
+        incident_id=incident_id, status="pending"
+    ).all()
+    if not notifs:
+        return
+
+    detected = inc.detected_at or inc.created_at
+    if detected and not detected.tzinfo:
+        detected = detected.replace(tzinfo=timezone.utc)
+
+    for notif in notifs:
+        delta = NIS2_DEADLINES.get(notif.stage)
+        if delta:
+            notif.deadline_at = detected + delta
+
+    db.commit()
+    logger.info(
+        "NIS2: recalculados %d deadlines para incidente %d", len(notifs), incident_id
+    )
+
+
 def check_nis2_deadlines(db: Session) -> None:
     """Job periodico: detecta notificaciones proximas a vencer y marca overdue."""
     from app.models import NIS2Notification, EmailSettings, User, UserRole

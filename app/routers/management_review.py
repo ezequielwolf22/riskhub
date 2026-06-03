@@ -182,6 +182,14 @@ def approve_review(
     if mr.status not in ("conducted", "draft"):
         raise HTTPException(400, "Solo se pueden aprobar revisiones en estado 'conducted' o 'draft'")
 
+    # Validar campos obligatorios ISO 9.3.3
+    if not mr.review_date:
+        raise HTTPException(422, "La fecha de revisión es obligatoria (ISO 9.3.3)")
+    if not mr.output_decisions:
+        raise HTTPException(422, "Las decisiones de salida son obligatorias (ISO 9.3.3)")
+    if not mr.attendees:
+        raise HTTPException(422, "Los asistentes son obligatorios para la validez del acta (ISO 9.3.3)")
+
     mr.status = "approved"
     mr.approved_by_id = current_user.id
     mr.approved_at = datetime.now(timezone.utc)

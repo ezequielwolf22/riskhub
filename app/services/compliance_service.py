@@ -192,6 +192,30 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
         for d, v in domain_stats.items()
     ]
 
+    # Clausulas 4-10 (nucleares ISO 27001 — no son Annex A)
+    clauses_4_10 = [r for r in requirements if not r["id"].startswith("A.")]
+    clauses_implemented = sum(
+        1 for r in clauses_4_10
+        if status_map.get(r["id"]) and
+        status_map[r["id"]].status in [
+            ComplianceRequirementStatus.IMPLEMENTED,
+            ComplianceRequirementStatus.AUDITED,
+        ]
+    )
+    clauses_pct = int(clauses_implemented / len(clauses_4_10) * 100) if clauses_4_10 else 0
+
+    # Bloqueantes: clausulas 4-10 que aun no estan implementadas
+    audit_blockers = [
+        r["id"] for r in clauses_4_10
+        if not (
+            status_map.get(r["id"]) and
+            status_map[r["id"]].status in [
+                ComplianceRequirementStatus.IMPLEMENTED,
+                ComplianceRequirementStatus.AUDITED,
+            ]
+        )
+    ]
+
     return {
         "framework_code": framework_code,
         "framework_name": framework["name"],
@@ -199,10 +223,12 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
         "mandatory_requirements": mandatory_total,
         "overall_pct": overall_pct,
         "mandatory_pct": mandatory_pct,
+        "clauses_4_10_pct": clauses_pct,
         "status_breakdown": status_breakdown,
         "domains": sorted(domains, key=lambda x: x["pct"]),
         "gaps": gaps[:20],  # Top 20 gaps
-        "is_audit_ready": mandatory_pct >= 85,
+        "is_audit_ready": clauses_pct == 100 and mandatory_pct >= 80,
+        "audit_blockers": audit_blockers[:5],  # top 5 bloqueantes
     }
 
 
@@ -252,23 +278,40 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
             ControlImplementation.status == ControlStatus.IMPLEMENTED,
         ).all()
 
+        # Match por codigo del control (5.1, 8.23...) O por nombre
+        implemented_control_codes = {
+            (c.control.code or "").lower()
+            for c in implemented_controls if c.control
+        }
         implemented_control_names = {
             (c.name or "").lower() for c in implemented_controls
         }
 
         for req in framework.get("requirements", []):
             req_controls = [c.lower() for c in req.get("controls", [])]
-            # Si los controles requeridos están implementados → actualizar a PARTIAL/IMPLEMENTED
-            if req_controls and all(
-                any(rc in name for name in implemented_control_names)
+            if not req_controls:
+                continue
+
+            # Un requisito se satisface si todos sus controles referenciados
+            # estan implementados (match por codigo O por nombre)
+            matched = all(
+                any(
+                    rc == code or rc in name
+                    for code in implemented_control_codes
+                    for name in implemented_control_names
+                )
                 for rc in req_controls
-            ):
+            )
+
+            if matched:
                 existing = db.query(ComplianceFrameworkStatus).filter(
                     ComplianceFrameworkStatus.organization_id == org_id,
                     ComplianceFrameworkStatus.framework_code == framework_code,
                     ComplianceFrameworkStatus.requirement_id == req["id"],
                 ).first()
-                if existing and existing.status == ComplianceRequirementStatus.PLANNED:
+                if existing and existing.status in [
+                    ComplianceRequirementStatus.PLANNED,
+                ]:
                     existing.status = ComplianceRequirementStatus.PARTIAL
                     existing.completion_pct = 50
                     existing.last_reviewed_at = datetime.now(timezone.utc)

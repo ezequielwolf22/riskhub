@@ -283,6 +283,52 @@ function init() {
   // Inicializar secciones colapsables del sidebar
   _initNavSections();
 
+  // FAB toggle — boton de acciones rapidas
+  const _fabToggle = document.getElementById('fab-toggle');
+  const _fabMenu = document.getElementById('fab-menu');
+  if (_fabToggle && _fabMenu) {
+    _fabToggle.onclick = () => {
+      _fabMenu.style.display = _fabMenu.style.display === 'none' ? 'flex' : 'none';
+    };
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#quick-actions-fab')) {
+        if (_fabMenu) _fabMenu.style.display = 'none';
+      }
+    });
+  }
+
+  // Contador de notificaciones pendientes (NIS2 urgentes + tareas vencidas)
+  async function _loadNotifCount() {
+    try {
+      const [nis2, overdue] = await Promise.all([
+        Api.get('/api/nis2/notifications/?status=overdue').catch(() => []),
+        Api.get('/api/tasks/?status=overdue&limit=1').catch(() => ({total: 0})),
+      ]);
+      const total = (Array.isArray(nis2) ? nis2.length : 0) + (overdue.total || 0);
+      const badge = document.getElementById('notif-count');
+      if (badge) {
+        badge.textContent = total > 9 ? '9+' : String(total);
+        badge.style.display = total > 0 ? 'flex' : 'none';
+      }
+    } catch (_e) { /* silencioso */ }
+  }
+  _loadNotifCount();
+  setInterval(_loadNotifCount, 60000);
+
+  // Badge NIS2 urgente en sidebar
+  async function _loadNis2Badge() {
+    try {
+      const urgent = await Api.get('/api/nis2/notifications/?status=pending&overdue=true').catch(() => []);
+      const badge = document.getElementById('badge-nis2-urgent');
+      if (badge) {
+        const count = Array.isArray(urgent) ? urgent.length : 0;
+        badge.textContent = count > 0 ? String(count) : '';
+        badge.style.display = count > 0 ? 'flex' : 'none';
+      }
+    } catch (_e) { /* silencioso */ }
+  }
+  _loadNis2Badge();
+
   // Exponer navigate global para uso desde vistas
   window.App = {
     navigate: (route) => { location.hash = '/' + route; },

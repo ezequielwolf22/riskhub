@@ -81,7 +81,11 @@ def test_assets_classified(db: Session, org_id: int) -> CCMResult:
         Asset.classification != "",
     ).count()
     if total == 0:
-        return CCMResult("assets_classified", "5.12", "Activos clasificados", "SKIP", "No hay activos")
+        return CCMResult(
+            "assets_classified", "5.12", "Clasificación de información en activos",
+            "WARNING", "No hay activos definidos — requerido para cumplimiento ISO 27001 A.5.12",
+            recommendation="Registrar activos de información y clasificarlos",
+        )
     pct = round(classified / total * 100, 1)
     status = "PASS" if pct >= 90 else ("WARNING" if pct >= 70 else "FAIL")
     return CCMResult(
@@ -790,6 +794,73 @@ def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) ->
             f"{counts['FAIL']} FAIL, {counts['SKIP']} SKIP"
         ),
     }
+
+
+def _sync_passed_tests_to_compliance(db: Session, ccm_results: dict, org_id: int) -> None:
+    """Sincroniza tests CCM que pasan a PASS con ComplianceFrameworkStatus.
+
+    Para cada test con PASS, busca el control asociado por control_code y actualiza
+    los requisitos de compliance en estado PLANNED a PARTIAL.
+    Sigue el mismo patron que auto_update_compliance_from_controls en compliance_service.
+    """
+    from app.models import (
+        ComplianceFrameworkStatus, ComplianceRequirementStatus,
+        Control, ControlImplementation, ControlStatus, RiskContext,
+    )
+    from app.services.compliance_service import load_framework
+
+    passed_control_codes = {
+        r.get("control_code", "").lower()
+        for r in ccm_results.get("results", [])
+        if r.get("status") == "PASS" and r.get("control_code")
+    }
+    if not passed_control_codes:
+        return
+
+    ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+    active_frameworks = (ctx.active_frameworks or []) if ctx else []
+
+    for framework_code in active_frameworks:
+        framework = load_framework(framework_code)
+        if not framework:
+            continue
+        for req in framework.get("requirements", []):
+            req_controls = [c.lower() for c in req.get("controls", [])]
+            if not req_controls:
+                continue
+            if all(rc in passed_control_codes for rc in req_controls):
+                existing = db.query(ComplianceFrameworkStatus).filter_by(
+                    organization_id=org_id,
+                    framework_code=framework_code,
+                    requirement_id=req["id"],
+                ).first()
+                if existing and existing.status == ComplianceRequirementStatus.PLANNED:
+                    existing.status = ComplianceRequirementStatus.PARTIAL
+                    existing.completion_pct = 50
+                    existing.last_reviewed_at = datetime.now(timezone.utc)
+
+
+def run_single_test_for_control(control_id: int, org_id: int) -> None:
+    """Re-ejecuta todos los tests CCM y sincroniza los que pasan con compliance.
+
+    Se llama en background tras el cierre de una No Conformidad relacionada con un control.
+    Usa su propia sesion de BD para no interferir con la sesion HTTP del caller.
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        results = run_all_tests(db, org_id)
+        _sync_passed_tests_to_compliance(db, results, org_id)
+        db.commit()
+        logger.info(
+            "CCM retest org=%d tras cierre NC de control %d: score=%s",
+            org_id, control_id, results.get("score"),
+        )
+    except Exception as exc:
+        logger.exception("CCM retest failed org=%d control=%d: %s", org_id, control_id, exc)
+    finally:
+        db.close()
 
 
 def run_test_by_id(db: Session, org_id: int, test_id: str) -> Optional[dict]:

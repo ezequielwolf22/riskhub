@@ -133,10 +133,26 @@ def update_incident(incident_id: int, body: IncidentUpdate,
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc or not check_org_access(inc.organization_id, current_user):
         raise HTTPException(404, "Incidente no encontrado")
-    for field, value in body.model_dump(exclude_none=True).items():
+
+    update_data = body.model_dump(exclude_none=True)
+    detected_at_changed = (
+        "detected_at" in update_data and
+        update_data["detected_at"] != inc.detected_at
+    )
+
+    for field, value in update_data.items():
         setattr(inc, field, value)
     db.commit()
     db.refresh(inc)
+
+    # Si cambia detected_at → recalcular deadlines NIS2 pendientes
+    if detected_at_changed:
+        try:
+            from app.services.nis2_service import recalculate_nis2_deadlines
+            recalculate_nis2_deadlines(db, inc.id)
+        except Exception as _e:
+            pass  # no bloquear la respuesta si el recalculo falla
+
     log_action(db, current_user.id, "update", "incident", str(inc.id))
     return inc
 

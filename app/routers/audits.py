@@ -331,6 +331,22 @@ def respond_checklist_item(
             nc_code, item_id, audit_id,
         )
 
+    # Si el item es conforme y tiene clausula ISO → actualizar compliance a AUDITED
+    if body.response == "conformant" and item.iso_clause:
+        from app.models import ComplianceFrameworkStatus, ComplianceRequirementStatus
+        org_id = current_user.organization_id
+        stmt = db.query(ComplianceFrameworkStatus).filter(
+            ComplianceFrameworkStatus.organization_id == org_id,
+            ComplianceFrameworkStatus.requirement_id == item.iso_clause,
+            ComplianceFrameworkStatus.status.in_([
+                ComplianceRequirementStatus.PLANNED,
+                ComplianceRequirementStatus.PARTIAL,
+            ])
+        ).first()
+        if stmt:
+            stmt.status = ComplianceRequirementStatus.AUDITED
+            stmt.last_reviewed_at = datetime.now(timezone.utc)
+
     db.commit()
     return _checklist_to_dict(item)
 

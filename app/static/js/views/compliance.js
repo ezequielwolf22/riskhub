@@ -1,4 +1,32 @@
 /* Vista de dashboard de cumplimiento multi-framework. */
+
+/**
+ * Renderiza un SVG de progress ring circular para el dashboard de compliance.
+ * @param {number} pct  Porcentaje 0-100
+ * @param {number} size Tamano en px (default 80)
+ * @param {number} strokeWidth Grosor del trazo (default 8)
+ * @returns {string} HTML del ring
+ */
+function _renderProgressRing(pct, size = 80, strokeWidth = 8) {
+  const r = (size - strokeWidth) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  const colorClass = pct >= 80 ? 'high' : pct >= 60 ? 'medium' : 'low';
+  return `
+    <div class="progress-ring-wrap">
+      <svg class="progress-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <circle class="progress-ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${strokeWidth}"/>
+        <circle class="progress-ring-fill ${colorClass}" cx="${size / 2}" cy="${size / 2}" r="${r}"
+          stroke-width="${strokeWidth}"
+          stroke-dasharray="${circ.toFixed(2)}"
+          stroke-dashoffset="${offset.toFixed(2)}"
+        />
+      </svg>
+      <div class="progress-ring-label">${pct}<span style="font-size:14px;font-weight:500;color:var(--text-subtle)">%</span></div>
+    </div>
+  `;
+}
+
 const ViewCompliance = (() => {
 
   // Estado de panel expandido por framework key

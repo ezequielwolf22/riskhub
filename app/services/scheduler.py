@@ -1471,6 +1471,79 @@ def _run_cisa_kev_sync() -> None:
         db.close()
 
 
+def _run_compliance_review_reminders() -> None:
+    """Dia 1 de cada mes: alerta sobre requisitos de compliance sin revisar en 300+ dias.
+
+    Para cada org con SMTP configurado, notifica al admin de los requisitos implementados
+    que no han sido revisados en el periodo recomendado.
+    """
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import (
+        ComplianceFrameworkStatus, ComplianceRequirementStatus,
+        EmailSettings, Organization, User, UserRole,
+    )
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        stale_cutoff = now - timedelta(days=300)
+
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        for org in orgs:
+            stale = db.query(ComplianceFrameworkStatus).filter(
+                ComplianceFrameworkStatus.organization_id == org.id,
+                ComplianceFrameworkStatus.status == ComplianceRequirementStatus.IMPLEMENTED,
+                ComplianceFrameworkStatus.last_reviewed_at < stale_cutoff,
+            ).all()
+            if not stale:
+                continue
+
+            cfg = db.query(EmailSettings).filter_by(organization_id=org.id).first()
+            if not cfg or not cfg.smtp_host:
+                continue
+
+            admin = db.query(User).filter_by(
+                organization_id=org.id, role=UserRole.ADMIN, is_active=True
+            ).first()
+            if not admin or not admin.email:
+                continue
+
+            rows_html = "".join(
+                f"<tr><td style='padding:6px 10px;'>{s.framework_code.upper()}</td>"
+                f"<td style='padding:6px 10px;'>{s.requirement_id}</td>"
+                f"<td style='padding:6px 10px;'>"
+                f"{s.last_reviewed_at.strftime('%d/%m/%Y') if s.last_reviewed_at else 'Nunca'}"
+                f"</td></tr>"
+                for s in stale[:20]
+            )
+            subject = f"[RiskHub] {len(stale)} requisito(s) de compliance sin revision — {org.name}"
+            body_html = (
+                f"<p>Los siguientes requisitos de compliance en <strong>{org.name}</strong> "
+                f"llevan mas de 300 dias sin revisarse:</p>"
+                f"<table style='border-collapse:collapse;font-size:13px;'>"
+                f"<thead><tr>"
+                f"<th style='padding:6px 10px;background:#f0f0f0;text-align:left;'>Framework</th>"
+                f"<th style='padding:6px 10px;background:#f0f0f0;text-align:left;'>Requisito</th>"
+                f"<th style='padding:6px 10px;background:#f0f0f0;text-align:left;'>Ultima revision</th>"
+                f"</tr></thead><tbody>{rows_html}</tbody></table>"
+                f"<p style='margin-top:16px;'>Accede a RiskHub &rarr; Cumplimiento Normativo para revisar y actualizar su estado.</p>"
+            )
+            try:
+                email_service.send_email(cfg, admin.email, subject, body_html)
+                logger.info(
+                    "Compliance reminders enviados a %s org=%d (%d requisitos)",
+                    admin.email, org.id, len(stale),
+                )
+            except Exception as exc2:
+                logger.debug("Error enviando compliance reminder org=%d: %s", org.id, exc2)
+    except Exception as exc:
+        logger.exception("compliance_review_reminders error: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_nis2_deadline_check() -> None:
     """Detecta notificaciones NIS2 proximas a vencer y marca overdue."""
     from app.database import SessionLocal
@@ -1798,6 +1871,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         misfire_grace_time=7200,
     )
     # v2.3.0 — nuevos jobs
+    _scheduler.add_job(
+        func=_run_compliance_review_reminders,
+        trigger=IntervalTrigger(hours=24),  # se autofiltra por day==1
+        id="compliance_review_reminders",
+        name="Recordatorios de requisitos compliance pendientes de revision",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
     _scheduler.add_job(
         func=_run_cisa_kev_sync,
         trigger=IntervalTrigger(hours=24),

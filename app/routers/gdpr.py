@@ -184,13 +184,35 @@ def update_dpia(dpia_id: int, body: DPIAUpdate,
     if not activity or not check_org_access(activity.organization_id, current_user):
         raise HTTPException(404, "DPIA no encontrado")
     update_data = body.model_dump(exclude_none=True)
-    if update_data.get("status") == DPIAStatus.APPROVED and not d.reviewed_at:
+    approving = update_data.get("status") == DPIAStatus.APPROVED and not d.reviewed_at
+    if approving:
         update_data.setdefault("reviewed_at", datetime.now(timezone.utc))
         update_data.setdefault("approved_by_id", current_user.id)
     for field, value in update_data.items():
         setattr(d, field, value)
     db.commit()
     db.refresh(d)
+
+    # DPIA aprobado → marcar Art.35 GDPR como PARTIAL en compliance
+    if approving:
+        try:
+            from app.models import ComplianceFrameworkStatus, ComplianceRequirementStatus
+            org_id = current_user.organization_id
+            req = db.query(ComplianceFrameworkStatus).filter_by(
+                organization_id=org_id,
+                framework_code="gdpr",
+                requirement_id="Art.35",
+            ).first()
+            if req and req.status not in (
+                ComplianceRequirementStatus.IMPLEMENTED,
+                ComplianceRequirementStatus.AUDITED,
+            ):
+                req.status = ComplianceRequirementStatus.PARTIAL
+                req.completion_pct = 60
+                db.commit()
+        except Exception:
+            pass
+
     log_action(db, current_user.id, "update", "dpia", str(d.id))
     return d
 
