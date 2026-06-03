@@ -311,6 +311,10 @@ def _migrate_columns() -> None:
         ("ALTER TABLE threats ADD COLUMN catalog VARCHAR(32) NOT NULL DEFAULT 'iso27005'", "threats", "catalog"),
         # v2.4.2 — Catalogos de amenazas activos por org en RiskContext
         ("ALTER TABLE risk_context ADD COLUMN active_threat_catalogs JSON", "risk_context", "active_threat_catalogs"),
+        # v2.5.0 — Importación segura: external_id constraint + audit log
+        ("ALTER TABLE assets ADD COLUMN external_id VARCHAR(255)", "assets", "external_id"),
+        ("ALTER TABLE assets ADD COLUMN import_session_id VARCHAR(64)", "assets", "import_session_id"),
+        ("ALTER TABLE assets ADD COLUMN imported_at DATETIME DEFAULT CURRENT_TIMESTAMP", "assets", "imported_at"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
@@ -339,6 +343,16 @@ def _migrate_columns() -> None:
             conn.execute(__import__("sqlalchemy").text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_flag_name_org "
                 "ON feature_flags(name, COALESCE(organization_id, 0))"
+            ))
+            conn.commit()
+        except Exception:
+            pass
+
+        # v2.5.0 — Constraint UNIQUE para external_id (previene duplicacion cruzada de imports)
+        try:
+            conn.execute(__import__("sqlalchemy").text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_asset_external_id_org "
+                "ON assets(organization_id, external_id) WHERE external_id IS NOT NULL"
             ))
             conn.commit()
         except Exception:

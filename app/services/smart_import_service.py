@@ -268,6 +268,7 @@ def smart_import(
     db,
     api_key: Optional[str],
     model: str = "claude-haiku-4-5",
+    session_id: Optional[str] = None,  # para audit trail
 ) -> dict:
     """Importa activos desde cualquier formato usando IA para normalizar.
 
@@ -314,18 +315,28 @@ def smart_import(
         normalized_rows = _apply_mapping(df, mapping)
         mapping_notes = "Mapeo heuristico (sin IA configurada)"
 
-    # 3. Crear/actualizar activos en BD
+    # 3. Crear/actualizar activos en BD con logging detallado
+    import uuid
+    from datetime import datetime
+    if not session_id:
+        session_id = str(uuid.uuid4())[:8]
+
     created = 0
     updated = 0
     skipped = 0
     errors = []
+    dedup_by_external_id = 0
+    dedup_by_name = 0
 
     for idx, row in enumerate(normalized_rows):
         try:
             name = row.get("name", "").strip()
             if not name:
                 skipped += 1
+                logger.warning(f"[import:{session_id}] Row {idx+2}: sin nombre, saltada")
                 continue
+
+            external_id = row.get("external_id", "").strip() if row.get("external_id") else None
 
             atype_raw = row.get("asset_type", "support_software")
             try:
@@ -336,8 +347,11 @@ def smart_import(
             payload = {
                 "name": name,
                 "asset_type": atype,
+                "external_id": external_id,  # SIEMPRE incluir (incluso si None)
+                "import_session_id": session_id,
+                "imported_at": datetime.utcnow(),
             }
-            for field in ("external_id", "description", "category", "location", "business_process",
+            for field in ("description", "category", "location", "business_process",
                           "classification", "value_confidentiality", "value_integrity",
                           "value_availability", "value_authenticity", "value_accountability"):
                 if field in row and row[field] is not None:
@@ -348,35 +362,29 @@ def smart_import(
                 tags = [t.strip() for t in str(row["software_tags"]).split(",") if t.strip()]
                 payload["software_tags"] = tags
 
-            # Deduplicación inteligente:
-            # 1. Si external_id está presente, buscar por external_id (más confiable)
-            # 2. Si no, buscar por nombre (fallback para imports sin IDs externos)
+            # Deduplicación ESTRICTA:
+            # 1. Si external_id está presente, SOLO buscar por external_id (no fallback)
+            # 2. Si no tiene external_id, crear NUEVO activo
+            # (esto evita el peligroso fallback a nombre que causó pérdida de datos)
             existing = None
-            if payload.get("external_id"):
+            if external_id:
                 existing = (
                     db.query(Asset)
                     .filter(
                         Asset.organization_id == org_id,
-                        Asset.external_id == payload["external_id"],
+                        Asset.external_id == external_id,
                     )
                     .first()
                 )
-
-            if not existing:
-                existing = (
-                    db.query(Asset)
-                    .filter(
-                        Asset.organization_id == org_id,
-                        Asset.name == name,
-                    )
-                    .first()
-                )
+                if existing:
+                    dedup_by_external_id += 1
+                    logger.debug(f"[import:{session_id}] Asset {existing.id} actualizado por external_id={external_id}")
 
             if existing:
+                # Actualizar PERO preservar análisis anterior
                 for k, v in payload.items():
                     setattr(existing, k, v)
-                existing.ai_risk_status = None
-                existing.ai_risk_summary = None
+                # NO resetear ai_risk_status/ai_risk_summary — preservar análisis anterior
                 updated += 1
                 db.flush()
             else:
@@ -385,22 +393,47 @@ def smart_import(
                 db.add(a)
                 db.flush()
                 created += 1
+                logger.debug(f"[import:{session_id}] Asset {a.code} creado: {name[:50]}")
 
         except Exception as exc:
             skipped += 1
             errors.append(f"Fila {idx + 2}: {exc}")
+            logger.error(f"[import:{session_id}] Row {idx+2} error: {exc}")
 
     db.commit()
 
-    return {
+    # Validación de integridad: detectar pérdida de datos silenciosa
+    expected_processed = len(normalized_rows)
+    actual_processed = created + updated + skipped
+    data_loss = expected_processed != actual_processed
+
+    result = {
+        "session_id": session_id,
         "total": len(normalized_rows),
         "created": created,
         "updated": updated,
         "skipped": skipped,
+        "dedup_by_external_id": dedup_by_external_id,
+        "dedup_by_name": dedup_by_name,
         "errors": errors,
         "mapping_notes": mapping_notes,
         "columns_detected": columns,
+        # Auditoría de integridad
+        "expected_processed": expected_processed,
+        "actual_processed": actual_processed,
+        "data_loss_detected": data_loss,
     }
+
+    # Loguear resultado
+    logger.info(f"[import:{session_id}] Import completo: {created} creados, {updated} actualizados, "
+                f"{skipped} saltados. Dedup: {dedup_by_external_id} por ID, {dedup_by_name} por nombre. "
+                f"Integridad: {actual_processed}/{expected_processed}")
+
+    if data_loss:
+        logger.warning(f"[import:{session_id}] ALERTA: Posible pérdida de datos. Esperado {expected_processed}, "
+                       f"procesado {actual_processed}")
+
+    return result
 
 
 def _build_heuristic_mapping(columns: list[str]) -> dict:
