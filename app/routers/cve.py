@@ -241,8 +241,10 @@ def analyze_cves(
     if len(body.cve_ids) > 20:
         raise HTTPException(400, "Maximo 20 CVEs por analisis.")
 
-    # Configuracion IA
-    ai_cfg = db.query(AiConfig).first()
+    # Configuracion IA — org-scoped primero, fallback a global
+    ai_cfg = db.query(AiConfig).filter_by(organization_id=current_user.organization_id).first()
+    if not ai_cfg:
+        ai_cfg = db.query(AiConfig).first()
     ai_api_key = resolve_api_key(ai_cfg)
     if not ai_api_key:
         raise HTTPException(400, "El Agente IA no esta configurado. Ve a Onboarding para configurarlo.")
@@ -307,7 +309,7 @@ def analyze_cves(
                 if cve.get("affected_products") and match_score < 0.15:
                     continue
 
-            rag_ctx = get_rag_context(cve, {"name": asset.name, "description": asset.description or ""})
+            rag_ctx = get_rag_context(cve, {"name": asset.name, "description": asset.description or ""}, organization_id=current_user.organization_id)
 
             asset_dict = {
                 "name": asset.name,
@@ -492,7 +494,8 @@ def auto_scan_cves(
                 if cve.get("affected_products") and match_score < 0.15:
                     continue
             rag_ctx = get_rag_context(
-                cve, {"name": asset.name, "description": asset.description or ""}
+                cve, {"name": asset.name, "description": asset.description or ""},
+                organization_id=current_user.organization_id,
             )
             asset_dict = {
                 "name": asset.name,
@@ -630,6 +633,7 @@ def create_risk_from_cve(
         treatment_option=TreatmentOption.MODIFICATION if res_04 >= 2 else None,
         status=RiskStatus.IDENTIFIED,
         owner_id=current_user.id,
+        organization_id=current_user.organization_id,
     )
     db.add(risk)
     db.flush()

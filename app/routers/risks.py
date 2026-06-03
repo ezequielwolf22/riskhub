@@ -1078,7 +1078,8 @@ def request_acceptance(
     risk = db.get(Risk, risk_id)
     if not risk:
         raise HTTPException(404, "Riesgo no encontrado")
-    check_org_access(risk.organization_id, current_user)
+    if not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(403, "No autorizado")
 
     if risk.status not in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED, RiskStatus.TREATED):
         raise HTTPException(400, f"El riesgo en estado '{risk.status.value}' no puede solicitar aceptacion")
@@ -1138,7 +1139,8 @@ def accept_risk(
     risk = db.get(Risk, risk_id)
     if not risk:
         raise HTTPException(404, "Riesgo no encontrado")
-    check_org_access(risk.organization_id, current_user)
+    if not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(403, "No autorizado")
 
     # Solo admin o el owner del riesgo pueden aceptar
     is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERADMIN)
@@ -1179,7 +1181,8 @@ def reject_acceptance(
     risk = db.get(Risk, risk_id)
     if not risk:
         raise HTTPException(404, "Riesgo no encontrado")
-    check_org_access(risk.organization_id, current_user)
+    if not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(403, "No autorizado")
 
     is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERADMIN)
     is_owner = risk.owner_id == current_user.id

@@ -10,6 +10,7 @@ from typing import List, Optional
 from app.database import get_db
 from app.models import BusinessProcess, BCPTest, User
 from app.security import get_current_user, require_admin, require_analyst
+from app.models import UserRole
 from app.services.audit_service import log_action
 
 logger = logging.getLogger("riskhub.bcp")
@@ -102,14 +103,23 @@ class TestUpdate(BaseModel):
 @router.get("/processes")
 def list_processes(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
-    procs = (
-        db.query(BusinessProcess)
-        .filter_by(organization_id=current_user.organization_id)
-        .order_by(BusinessProcess.criticality)
-        .all()
-    )
+    """Lista procesos BCP de la organización del usuario.
+
+    Superadmin ve todas las orgs; otros usuarios solo ven los de su org.
+    """
+    if current_user.role == UserRole.SUPERADMIN:
+        procs = db.query(BusinessProcess).order_by(BusinessProcess.criticality).all()
+    else:
+        if not current_user.organization_id:
+            return []
+        procs = (
+            db.query(BusinessProcess)
+            .filter_by(organization_id=current_user.organization_id)
+            .order_by(BusinessProcess.criticality)
+            .all()
+        )
     return [_proc_to_dict(p) for p in procs]
 
 
@@ -117,13 +127,29 @@ def list_processes(
 def create_process(
     body: ProcessCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
+    """Crea un nuevo proceso BCP.
+
+    Requiere al menos rol ANALYST. Superadmin puede asignar a cualquier org;
+    otros usuarios solo a la suya.
+    """
+    if current_user.role not in (UserRole.ANALYST, UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Se requiere rol analyst o superior")
+
     if body.criticality not in VALID_CRITICALITY:
         raise HTTPException(422, f"criticality invalido. Validos: {VALID_CRITICALITY}")
 
+    # Determinar organization_id: usar la del usuario o la especificada si es superadmin
+    org_id = current_user.organization_id
+    if not org_id and current_user.role != UserRole.SUPERADMIN:
+        raise HTTPException(400, "Usuario sin organizacion asignada")
+
+    # Si se proporcionó explícitamente, usar esa (solo superadmin)
+    # Por ahora no lo permitimos desde el formulario, pero está listo
+
     p = BusinessProcess(
-        organization_id=current_user.organization_id,
+        organization_id=org_id,
         name=body.name,
         description=body.description,
         criticality=body.criticality,
@@ -145,11 +171,14 @@ def create_process(
 def get_process(
     proc_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
     p = db.get(BusinessProcess, proc_id)
-    if not p or p.organization_id != current_user.organization_id:
+    if not p:
         raise HTTPException(404, "Proceso no encontrado")
+    # Superadmin ve todos; otros solo los de su org
+    if current_user.role != UserRole.SUPERADMIN and p.organization_id != current_user.organization_id:
+        raise HTTPException(403, "No autorizado")
     return _proc_to_dict(p)
 
 
@@ -158,11 +187,14 @@ def update_process(
     proc_id: int,
     body: ProcessUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
     p = db.get(BusinessProcess, proc_id)
-    if not p or p.organization_id != current_user.organization_id:
+    if not p:
         raise HTTPException(404, "Proceso no encontrado")
+    # Superadmin puede editar todos; otros solo los de su org
+    if current_user.role != UserRole.SUPERADMIN and p.organization_id != current_user.organization_id:
+        raise HTTPException(403, "No autorizado")
 
     for field in ("name", "description", "criticality", "rto_hours", "rpo_hours",
                   "mtpd_hours", "asset_ids", "supplier_ids", "owner_id"):
@@ -180,8 +212,11 @@ def delete_process(
     current_user: User = Depends(require_admin),
 ):
     p = db.get(BusinessProcess, proc_id)
-    if not p or p.organization_id != current_user.organization_id:
+    if not p:
         raise HTTPException(404, "Proceso no encontrado")
+    # Admin ve todos si es superadmin; otros solo de su org
+    if current_user.role != UserRole.SUPERADMIN and p.organization_id != current_user.organization_id:
+        raise HTTPException(403, "No autorizado")
     db.delete(p)
     db.commit()
 
@@ -191,14 +226,23 @@ def delete_process(
 @router.get("/tests")
 def list_tests(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
-    tests = (
-        db.query(BCPTest)
-        .filter_by(organization_id=current_user.organization_id)
-        .order_by(BCPTest.scheduled_at.desc())
-        .all()
-    )
+    """Lista tests BCM de la organizacion del usuario.
+
+    Superadmin ve todas las orgs; otros usuarios solo ven los de su org.
+    """
+    if current_user.role == UserRole.SUPERADMIN:
+        tests = db.query(BCPTest).order_by(BCPTest.scheduled_at.desc()).all()
+    else:
+        if not current_user.organization_id:
+            return []
+        tests = (
+            db.query(BCPTest)
+            .filter_by(organization_id=current_user.organization_id)
+            .order_by(BCPTest.scheduled_at.desc())
+            .all()
+        )
     return [_test_to_dict(t) for t in tests]
 
 
@@ -206,8 +250,15 @@ def list_tests(
 def create_test(
     body: TestCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
+    """Crea un nuevo test BCM.
+
+    Requiere al menos rol ANALYST.
+    """
+    if current_user.role not in (UserRole.ANALYST, UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Se requiere rol analyst o superior")
+
     if body.test_type not in VALID_TEST_TYPES:
         raise HTTPException(422, f"test_type invalido")
 
@@ -217,6 +268,9 @@ def create_test(
         raise HTTPException(422, "scheduled_at debe ser ISO 8601")
 
     org_id = current_user.organization_id
+    if not org_id and current_user.role != UserRole.SUPERADMIN:
+        raise HTTPException(400, "Usuario sin organizacion asignada")
+
     t = BCPTest(
         organization_id=org_id,
         code=_next_bct_code(db, org_id),
@@ -236,11 +290,14 @@ def update_test(
     test_id: int,
     body: TestUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
     t = db.get(BCPTest, test_id)
-    if not t or t.organization_id != current_user.organization_id:
+    if not t:
         raise HTTPException(404, "Test no encontrado")
+    # Superadmin puede editar todos; otros solo los de su org
+    if current_user.role != UserRole.SUPERADMIN and t.organization_id != current_user.organization_id:
+        raise HTTPException(403, "No autorizado")
 
     if body.conducted_at:
         try:
@@ -267,15 +324,33 @@ def update_test(
 @router.get("/dashboard")
 def bcp_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_analyst),
+    current_user: User = Depends(get_current_user),
 ):
-    """Resumen BCP/BIA para la organizacion."""
-    from datetime import timedelta
-    org_id = current_user.organization_id
-    procs = db.query(BusinessProcess).filter_by(organization_id=org_id).all()
-    tests = db.query(BCPTest).filter_by(organization_id=org_id).all()
-    now = datetime.now(timezone.utc)
+    """Resumen BCP/BIA para la organizacion.
 
+    Superadmin ve el resumen de todas las orgs; otros ven solo el de la suya.
+    """
+    from datetime import timedelta
+
+    if current_user.role == UserRole.SUPERADMIN:
+        # Sumario global
+        procs = db.query(BusinessProcess).all()
+        tests = db.query(BCPTest).all()
+    else:
+        if not current_user.organization_id:
+            # Usuario sin org asignada
+            return {
+                "total_processes": 0,
+                "critical_processes": 0,
+                "processes_overdue_test": 0,
+                "total_tests": 0,
+                "last_test_date": None,
+            }
+        org_id = current_user.organization_id
+        procs = db.query(BusinessProcess).filter_by(organization_id=org_id).all()
+        tests = db.query(BCPTest).filter_by(organization_id=org_id).all()
+
+    now = datetime.now(timezone.utc)
     critical = [p for p in procs if p.criticality == "critical"]
     overdue_tests = [
         p for p in procs
@@ -290,5 +365,5 @@ def bcp_dashboard(
         "total_tests": len(tests),
         "last_test_date": max(
             (t.conducted_at for t in tests if t.conducted_at), default=None
-        ),
+        ).isoformat() if max((t.conducted_at for t in tests if t.conducted_at), default=None) else None,
     }

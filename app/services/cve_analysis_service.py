@@ -141,12 +141,16 @@ def _fallback_analysis(cve: dict, asset: dict) -> dict:
     }
 
 
-def get_rag_context(cve: dict, asset: dict) -> str:
-    """Obtiene contexto RAG relevante para la combinacion CVE-activo."""
+def get_rag_context(cve: dict, asset: dict, organization_id: "int | None" = None) -> str:
+    """Obtiene contexto RAG relevante para la combinacion CVE-activo.
+
+    organization_id es obligatorio en entornos multi-tenant para evitar que
+    el FTS5 devuelva chunks de otras organizaciones.
+    """
     try:
         from app.services.rag_service import search_chunks
         query = f"{cve['id']} {asset.get('name', '')} {' '.join(cve.get('affected_products', [])[:3])}"
-        chunks = search_chunks(query, limit=5)
+        chunks = search_chunks(query, limit=5, organization_id=organization_id)
         if not chunks:
             return ""
         return "\n---\n".join(c.get("chunk_text", "") for c in chunks if c.get("chunk_text"))

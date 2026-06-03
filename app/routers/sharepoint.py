@@ -282,6 +282,7 @@ def import_files(
             file_size=len(data),
             mime_type=inferred_mime,
             uploaded_by_id=current_user.id,
+            organization_id=current_user.organization_id,
         )
         db.add(doc)
         db.commit()
