@@ -519,6 +519,7 @@ def rollback_import_session(db, session_id: str, org_id: int, user_id: int) -> d
 
 def _build_heuristic_mapping(columns: list[str]) -> dict:
     """Mapeo heurístico por similitud de nombre de columna cuando Claude no está disponible."""
+    EXT_ID_HINTS = ["id", "external_id", "externalid", "leanix_id", "cmdb_id", "asset_id", "uid", "unique_id", "uuid"]
     NAME_HINTS = ["name", "nombre", "asset", "activo", "title", "titulo", "item", "recurso", "resource", "hostname", "host", "application", "aplicacion", "app name", "display name"]
     DESC_HINTS = ["description", "descripcion", "desc", "details", "detalle", "detail", "notes", "notas", "comment", "comentario"]
     CAT_HINTS = ["category", "categoria", "type", "tipo", "class", "clase", "kind", "grupo", "group", "tag", "tags", "technology", "tecnologia", "tier"]
@@ -544,6 +545,12 @@ def _build_heuristic_mapping(columns: list[str]) -> dict:
         return None
 
     mapped = set()
+
+    # Mapear external_id PRIMERO (deduplicación crucial)
+    ext_id_col = _best(EXT_ID_HINTS, mapped)
+    if ext_id_col:
+        col_map[ext_id_col] = "external_id"
+        mapped.add(ext_id_col)
 
     name_col = _best(NAME_HINTS, mapped) or (columns[0] if columns else "name")
     if name_col:
