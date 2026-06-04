@@ -135,6 +135,9 @@ def _dep_d(d: BCPDependency) -> dict:
         "alternative": d.alternative,
         "supplier_id": d.supplier_id,
         "asset_id": d.asset_id,
+        "depends_on_process_id": getattr(d, "depends_on_process_id", None),
+        "recovery_sequence": getattr(d, "recovery_sequence", None),
+        "notes": getattr(d, "notes", None),
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
 
@@ -174,6 +177,14 @@ def _plan_d(p: BCPPlan) -> dict:
         "approved_by_id": p.approved_by_id,
         "approved_at": p.approved_at.isoformat() if p.approved_at else None,
         "last_exercised_at": p.last_exercised_at.isoformat() if p.last_exercised_at else None,
+        # Campos enriquecidos del plan (drawer UI)
+        "sections": getattr(p, "sections", None),
+        "roles_matrix": getattr(p, "roles_matrix", None),
+        "contact_list": getattr(p, "contact_list", None),
+        "system_dependencies": getattr(p, "system_dependencies", None),
+        "kpis": getattr(p, "kpis", None),
+        "plan_owner_name": getattr(p, "plan_owner_name", None),
+        "classification": getattr(p, "classification", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -271,6 +282,9 @@ class DepIn(BaseModel):
     alternative: Optional[str] = None
     supplier_id: Optional[int] = None
     asset_id: Optional[int] = None
+    depends_on_process_id: Optional[int] = None
+    recovery_sequence: Optional[int] = None
+    notes: Optional[str] = None
 
 
 class DepUpdate(BaseModel):
@@ -285,6 +299,9 @@ class DepUpdate(BaseModel):
     alternative: Optional[str] = None
     supplier_id: Optional[int] = None
     asset_id: Optional[int] = None
+    depends_on_process_id: Optional[int] = None
+    recovery_sequence: Optional[int] = None
+    notes: Optional[str] = None
 
 
 class StratIn(BaseModel):
@@ -320,6 +337,13 @@ class PlanIn(BaseModel):
     process_ids: Optional[list] = None
     team_members: Optional[list] = None
     review_date: Optional[str] = None
+    sections: Optional[list] = None
+    roles_matrix: Optional[list] = None
+    contact_list: Optional[list] = None
+    system_dependencies: Optional[list] = None
+    kpis: Optional[list] = None
+    plan_owner_name: Optional[str] = None
+    classification: Optional[str] = None
 
 
 class PlanUpdate(BaseModel):
@@ -334,6 +358,13 @@ class PlanUpdate(BaseModel):
     process_ids: Optional[list] = None
     team_members: Optional[list] = None
     review_date: Optional[str] = None
+    sections: Optional[list] = None
+    roles_matrix: Optional[list] = None
+    contact_list: Optional[list] = None
+    system_dependencies: Optional[list] = None
+    kpis: Optional[list] = None
+    plan_owner_name: Optional[str] = None
+    classification: Optional[str] = None
 
 
 class TestIn(BaseModel):
@@ -393,6 +424,64 @@ class EPUpdate(BaseModel):
     lessons_learned: Optional[str] = None
 
 
+# ── Compliance hooks ──────────────────────────────────────────────────────────
+
+def _update_compliance_from_bcp(db: Session, org_id: int, event: str, data: dict) -> None:
+    """
+    Actualiza ComplianceFrameworkStatus cuando ocurren eventos BCP relevantes.
+    Mapeo normativo:
+      ISO 27001 A.5.29, A.5.30 — BCM y ICT readiness
+      NIS2 Art.21.2b — business continuity
+      ENS op.cont.1/2/3 — medidas de continuidad
+    """
+    try:
+        from app.services.compliance_service import get_or_create_requirement_status  # type: ignore
+
+        def _set(framework: str, req_id: str, status: str, pct: int = 50) -> None:
+            try:
+                obj = get_or_create_requirement_status(db, org_id, framework, req_id)
+                if obj is None:
+                    return
+                # Solo avanzar el estado, nunca retroceder
+                order = {"not_started": 0, "planned": 1, "partial": 2, "implemented": 3}
+                if order.get(status, 0) > order.get(obj.status, 0):
+                    obj.status = status
+                    obj.completion_pct = pct
+                    obj.last_reviewed_at = datetime.now(timezone.utc)
+            except Exception:
+                pass
+
+        if event == "plan_approved":
+            plan_type = data.get("plan_type", "")
+            _set("iso27001", "A.5.29", "implemented", 80)
+            if plan_type in ("drp", "crp"):
+                _set("iso27001", "A.5.30", "partial", 60)
+            _set("nis2", "Art.21.2b", "partial", 50)
+            if plan_type in ("bcp", "drp"):
+                _set("ens", "op.cont.2", "implemented", 80)
+
+        elif event == "test_passed":
+            _set("iso27001", "A.5.30", "implemented", 90)
+            _set("nis2", "Art.21.2b", "implemented", 80)
+            _set("ens", "op.cont.3", "implemented", 90)
+
+        elif event == "bia_complete":
+            _set("ens", "op.cont.1", "partial", 60)
+            _set("iso27001", "A.5.29", "partial", 40)
+
+        elif event == "strategy_created":
+            _set("iso27001", "A.5.29", "partial", 30)
+            _set("ens", "op.cont.1", "partial", 40)
+
+        elif event == "supplier_link_contingency":
+            _set("iso27001", "A.5.19", "partial", 40)
+            _set("nis2", "Art.21.2c", "partial", 40)
+
+        db.commit()
+    except Exception as exc:
+        logger.debug("BCP compliance update skipped: %s", exc)
+
+
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 @router.get("/dashboard")
@@ -438,10 +527,10 @@ def bcp_dashboard(db: Session = Depends(get_db), u: User = Depends(get_current_u
 # ── ISO 22301 status ──────────────────────────────────────────────────────────
 
 @router.get("/iso22301-status")
-def iso22301_status(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+def iso22301_status_endpoint(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
     org = u.organization_id
     if not org:
-        return []
+        return {"clauses": [], "implemented": 0, "partial": 0, "total": 0, "pct": 0, "is_ready": False}
     from app.services.bcp_service import iso22301_status as _status
     return _status(db, org)
 
@@ -506,6 +595,10 @@ def update_process(pid: int, body: ProcessUpdate, db: Session = Depends(get_db),
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(p, k, v)
     db.commit()
+    # ENS op.cont.1 + ISO 27001 A.5.29 cuando BIA alcanza >= 80%
+    from app.services.bcp_service import bia_completeness as _bia
+    if _bia(None, p)["pct"] >= 80:
+        _update_compliance_from_bcp(db, _org(u), "bia_complete", {})
     return _proc_d(p)
 
 
@@ -603,6 +696,8 @@ def create_strat(body: StratIn, db: Session = Depends(get_db),
     db.refresh(s)
     log_action(db, u.id, "create", "bcp_strategy", str(s.id),
                {"name": s.name, "type": s.strategy_type})
+    # ENS op.cont.1 + ISO 27001 A.5.29
+    _update_compliance_from_bcp(db, org, "strategy_created", {})
     return _strat_d(s)
 
 
@@ -724,6 +819,8 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
     p.approved_at = datetime.now(timezone.utc)
     db.commit()
     log_action(db, u.id, "approve", "bcp_plan", str(p.id), {"code": p.code})
+    # ISO 27001 A.5.29/A.5.30 + ENS op.cont.2 + NIS2 Art.21.2b
+    _update_compliance_from_bcp(db, _org(u), "plan_approved", {"plan_type": p.plan_type})
     return _plan_d(p)
 
 
@@ -789,6 +886,9 @@ def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
         if v is not None:
             setattr(t, f, v)
     db.commit()
+    # ISO 27001 A.5.30 + ENS op.cont.3 + NIS2 Art.21.2b
+    if body.result == "passed":
+        _update_compliance_from_bcp(db, _org(u), "test_passed", {})
     return _test_d(t)
 
 
@@ -822,6 +922,9 @@ def create_sl(body: SupLinkIn, db: Session = Depends(get_db), u: User = Depends(
     db.refresh(sl)
     log_action(db, u.id, "create", "bcp_supplier_link", str(sl.id),
                {"supplier_id": sl.supplier_id})
+    # ISO 27001 A.5.19 / NIS2 Art.21.2c si tiene plan contingencia
+    if body.has_contingency_plan:
+        _update_compliance_from_bcp(db, org, "supplier_link_contingency", {})
     return _sl_d(sl, db)
 
 
@@ -1003,13 +1106,83 @@ async def import_ai_preview(
         raise HTTPException(422, f"Error en analisis IA: {exc}")
 
 
+_BCP_ANALYSIS_PROMPT = """
+Eres un Lead Auditor certificado en ISO 22301:2019, ISO 27001:2022 (A.5.29/A.5.30),
+NIS2 Art.21.2(b) y ENS (op.cont.1/2/3).
+
+Analiza el estado del SGCN (Sistema de Gestion de Continuidad de Negocio) de esta
+organizacion y proporciona un informe ejecutivo estructurado.
+
+ESTADO ACTUAL DEL SGCN:
+{bcp_summary}
+
+RESPONDE en este formato exacto (usa Markdown):
+
+## Brechas criticas (bloquean certificacion ISO 22301)
+Para cada brecha: * [Clausula ISO 22301] Descripcion del gap -- Accion recomendada
+
+## Brechas importantes (observaciones en auditoria)
+Para cada observacion: * [Referencia normativa] Descripcion -- Accion recomendada
+
+## Estado ENS
+* op.cont.1 (BIA + Plan): [Estado] -- [Que falta]
+* op.cont.2 (Plan documentado): [Estado] -- [Que falta]
+* op.cont.3 (Pruebas): [Estado] -- [Que falta]
+
+## Estado ISO 27001
+* A.5.29 (Business Continuity): [Estado] -- [Evidencias / Que falta]
+* A.5.30 (ICT Readiness): [Estado] -- [Evidencias / Que falta]
+
+## Fortalezas identificadas
+Lista breve de lo que esta bien implementado
+
+## Top 5 acciones prioritarias
+1. [Accion concreta] -> [Clausula] -> Esfuerzo: [bajo/medio/alto]
+2. ...
+
+Se especifico y directo. Referencia clausulas exactas. Maximo 600 palabras total.
+"""
+
+
+def _build_bcp_summary(db: Session, org_id: int) -> str:
+    """Construye el resumen del estado BCP para el prompt de analisis IA."""
+    from app.services.bcp_service import iso22301_status, bia_completeness
+
+    status = iso22301_status(db, org_id)
+    procs = db.query(BusinessProcess).filter_by(organization_id=org_id).all()
+    plans = db.query(BCPPlan).filter_by(organization_id=org_id).all()
+    tests = db.query(BCPTest).filter_by(organization_id=org_id).all()
+
+    gaps = [c for c in status.get("clauses", []) if c["status"] == "gap"]
+    partial = [c for c in status.get("clauses", []) if c["status"] == "partial"]
+
+    bia_scores = [(p.name, bia_completeness(db, p)["pct"]) for p in procs]
+    low_bia = [(n, s) for n, s in bia_scores if s < 80]
+
+    return (
+        f"CUMPLIMIENTO ISO 22301: {status.get('pct', 0)}% "
+        f"({status.get('implemented', 0)}/{status.get('total', 0)} clausulas implementadas)\n\n"
+        f"GAPS ({len(gaps)} clausulas):\n"
+        + "\n".join(f"- {c['id']}: {c['name']} -- {c['detail']}" for c in gaps[:8])
+        + f"\n\nPARCIALES ({len(partial)} clausulas):\n"
+        + "\n".join(f"- {c['id']}: {c['name']} -- {c['detail']}" for c in partial[:5])
+        + f"\n\nPROCESOS: {len(procs)} total, "
+        f"{sum(1 for p in procs if p.criticality=='critical')} criticos\n"
+        f"BIA INCOMPLETO: {', '.join(f'{n} ({s}%)' for n, s in low_bia[:5]) or 'ninguno'}\n\n"
+        f"PLANES: {len([p for p in plans if p.status=='approved'])} aprobados de {len(plans)} total\n"
+        f"TIPOS: {', '.join(set(p.plan_type for p in plans)) or 'ninguno'}\n\n"
+        f"TESTS: {len(tests)} total, {sum(1 for t in tests if t.result=='passed')} superados"
+    ).strip()
+
+
 @router.post("/analyze")
 def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
     """Analiza el estado BCP de la org con IA y devuelve recomendaciones. Consumo manual — no auto."""
     org = _org(u)
     from app.models import AiConfig
     cfg = db.query(AiConfig).filter_by(organization_id=org).first()
-    import base64, hashlib
+    import base64
+    import hashlib
     from cryptography.fernet import Fernet
     api_key = None
     if cfg and cfg.api_key_encrypted:
@@ -1023,54 +1196,81 @@ def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require
     if not api_key:
         raise HTTPException(422, "No hay API key de IA configurada")
 
-    from app.services.bcp_service import bia_completeness, iso22301_status as _iso_status
-    procs = db.query(BusinessProcess).filter_by(organization_id=org).all()
-    plans = db.query(BCPPlan).filter_by(organization_id=org).all()
-    tests = db.query(BCPTest).filter_by(organization_id=org).all()
-
-    proc_summaries = []
-    for p in procs[:20]:
-        bia = bia_completeness(None, p)
-        proc_summaries.append(
-            f"- {p.name} [{p.criticality}] RTO:{p.rto_hours or '?'}h RPO:{p.rpo_hours or '?'}h "
-            f"BIA:{bia['pct']}% falta:{','.join(bia['missing'][:3]) or 'nada'}"
-        )
-
-    prompt = f"""Eres un experto ISO 22301 (Business Continuity Management). Analiza este estado BCP:
-
-PROCESOS ({len(procs)} total):
-{chr(10).join(proc_summaries) or 'Ninguno registrado'}
-
-PLANES: {len(plans)} ({sum(1 for p in plans if p.status=='approved')} aprobados)
-TESTS BCM: {len(tests)} ({sum(1 for t in tests if t.conducted_at)} realizados)
-
-Devuelve JSON con este formato exacto:
-{{
-  "summary": "resumen ejecutivo de 1-2 frases del estado BCP",
-  "recommendations": ["recomendacion 1", "recomendacion 2", "recomendacion 3"],
-  "process_suggestions": [
-    {{"name": "nombre proceso", "rto_suggestion": 4, "notes": "justificacion breve"}}
-  ]
-}}
-
-Solo incluye process_suggestions para procesos con BIA incompleto o RTO no definido.
-Maximo 5 recomendaciones. Responde SOLO con JSON valido."""
-
     try:
         import anthropic
+        summary = _build_bcp_summary(db, org)
+        prompt = _BCP_ANALYSIS_PROMPT.format(bcp_summary=summary)
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
+            max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
-        import json as _json
-        raw = msg.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        return _json.loads(raw.strip())
+        analysis_text = msg.content[0].text.strip()
+        return {"analysis": analysis_text, "format": "markdown"}
     except Exception as exc:
         logger.error("BCP AI analyze error org=%d: %s", org, exc)
         raise HTTPException(422, f"Error en analisis IA: {exc}")
+
+
+# ── NC desde test fallido (ISO 22301 cl. 10.1) ────────────────────────────────
+
+def _next_nc_code(db: Session, org_id: int) -> str:
+    try:
+        from app.models import NonConformity
+        n = db.query(NonConformity).filter_by(organization_id=org_id).count()
+        return f"NC-{n + 1:04d}"
+    except Exception:
+        import uuid
+        return f"NC-{str(uuid.uuid4())[:8].upper()}"
+
+
+@router.post("/tests/{test_id}/create-nc", status_code=201)
+def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
+                        u: User = Depends(require_analyst)):
+    """Crea una No Conformidad vinculada a un test de continuidad fallido.
+
+    ISO 22301 cl. 10.1 — no conformidades y acciones correctoras.
+    """
+    t = db.get(BCPTest, test_id)
+    if not t or t.organization_id != _org(u):
+        raise HTTPException(404)
+    if t.result not in ("failed", "partial"):
+        raise HTTPException(
+            422,
+            "Solo se puede crear NC desde tests con resultado 'failed' o 'partial'",
+        )
+    try:
+        from app.models import NonConformity, NCSeverity, NCStatus
+        severity = NCSeverity.MAJOR if t.result == "failed" else NCSeverity.MINOR
+        nc = NonConformity(
+            organization_id=_org(u),
+            code=_next_nc_code(db, _org(u)),
+            title=f"Test de continuidad {t.result.upper()}: {t.code}",
+            description=(
+                f"Tipo de ejercicio: {t.test_type}\n"
+                f"Fecha realizacion: {t.conducted_at.date() if t.conducted_at else 'pendiente'}\n"
+                f"Hallazgos: {t.findings or 'Sin hallazgos documentados'}"
+            ),
+            source="bcp_test",
+            severity=severity,
+            status=NCStatus.OPEN,
+            iso_clause="8.5",
+            owner_id=u.id,
+        )
+        db.add(nc)
+        db.flush()  # obtener nc.id antes de modificar t
+        nc_ids = list(t.nc_ids or [])
+        nc_ids.append(nc.id)
+        t.nc_ids = nc_ids
+        db.commit()
+        log_action(db, u.id, "create", "nonconformity_from_bcp_test",
+                   str(nc.id), {"test_code": t.code, "result": t.result})
+        return {"nc_id": nc.id, "nc_code": nc.code,
+                "message": f"NC {nc.code} creada correctamente"}
+    except ImportError:
+        raise HTTPException(500, "Modulo de NCs no disponible")
+    except Exception as exc:
+        db.rollback()
+        logger.error("create_nc_from_test error: %s", exc)
+        raise HTTPException(500, f"Error al crear NC: {exc}")

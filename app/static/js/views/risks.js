@@ -435,7 +435,7 @@ const ViewRisks = {
             ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
             ${_th('code','Codigo')}${_th('asset','Activo')}${_th('threat','Amenaza')}
             ${_th('inherent_level','Inh.','Nivel inherente')}${_th('residual_level','Res.','Nivel residual')}${_th('reduction','Red.','Reduccion inherente → residual')}
-            ${_th('status','Estado')}${_th('treatment','Tratamiento')}${_th('owner','Responsable','width:110px;')}<th></th>
+            ${_th('status','Estado')}${_th('treatment','Tratamiento')}${_th('owner','Responsable','width:110px;')}<th style="font-size:10px;white-space:nowrap;">BCP</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -463,6 +463,12 @@ const ViewRisks = {
                 (() => { const u = ViewRisks._users.find(u => u.id === r.owner_id);
                          return u ? UI.esc((u.full_name || u.email).split(' ')[0]) : '-'; })()
               }</td>
+              <td>${r.bcp_coverage
+                ? `<span style="font-size:10px;background:var(--success-soft,#dcfce7);color:var(--risk-low,#16a34a);
+                   border-radius:999px;padding:2px 7px;font-weight:600;white-space:nowrap;"
+                   title="Plan: ${UI.esc(r.bcp_coverage.plan_code || '')} &middot; RTO: ${r.bcp_coverage.rto_hours != null ? r.bcp_coverage.rto_hours + 'h' : '?'}">
+                   <i class="ti ti-shield-check" style="font-size:10px"></i> BCP ${r.bcp_coverage.coverage_pct || 0}%</span>`
+                : '<span style="font-size:10px;color:var(--text-subtle)">—</span>'}</td>
               <td><button class="btn btn-ghost" data-edit="${r.id}" onclick="event.stopPropagation()">Ver</button></td>
             </tr>`;
           }).join('')}

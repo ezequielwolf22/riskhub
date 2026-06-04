@@ -1849,6 +1849,14 @@ def _run_bcp_plan_review_due() -> None:
     except Exception as exc:
         logger.exception("bcp_plan_review_due error: %s", exc)
     finally:
+        # Actualizar cobertura BCP en el registro de riesgos (ISO 22301 cl. 8.4 / ISO 27001 A.5.29)
+        try:
+            from app.services.bcp_service import update_risk_bcp_coverage
+            orgs = db.query(Organization).filter_by(is_active=True).all()
+            for org in orgs:
+                update_risk_bcp_coverage(db, org.id)
+        except Exception as exc_cov:
+            logger.debug("bcp risk coverage update error: %s", exc_cov)
         db.close()
 
 

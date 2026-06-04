@@ -494,6 +494,11 @@ class Risk(Base):
     acceptance_approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     acceptance_review_date = Column(DateTime, nullable=True)   # cuando re-evaluar la aceptacion
 
+    # BCP coverage (ISO 22301 / ISO 27001 A.5.29) — calculado periodicamente por scheduler
+    bcp_coverage = Column(JSON, nullable=True)
+    # {"plan_id": 1, "plan_code": "BCP-0001", "plan_type": "bcp", "rto_hours": 4,
+    #  "last_tested": "2025-01-01", "coverage_pct": 80}
+
     asset = relationship("Asset", back_populates="risks")
     threat = relationship("Threat")
     owner = relationship("User", foreign_keys=[owner_id])
@@ -1668,6 +1673,13 @@ class BCPDependency(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     process = relationship("BusinessProcess", foreign_keys=[process_id])
+    depends_on_process_id = Column(Integer, ForeignKey("business_processes.id"), nullable=True)
+    # FK al proceso del que depende este proceso. Solo para dependency_type == "process"
+    recovery_sequence = Column(Integer, nullable=True)
+    # Orden en la secuencia de recuperacion (1 = primero que debe estar disponible)
+    notes = Column(Text, nullable=True)
+    # Notas adicionales sobre esta dependencia
+
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
 
 
@@ -1710,6 +1722,21 @@ class BCPPlan(Base):
     approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     last_exercised_at = Column(DateTime, nullable=True)
+    # Campos enriquecidos del plan
+    sections = Column(JSON, nullable=True)
+    # Array de secciones estructuradas: [{id, title, content, type}]
+    roles_matrix = Column(JSON, nullable=True)
+    # [{role_name, responsible, actions_notification, actions_recovery, actions_reconstitution}]
+    contact_list = Column(JSON, nullable=True)
+    # [{name, role, team, phone, email, backup_name, backup_phone}]
+    system_dependencies = Column(JSON, nullable=True)
+    # [{system_name, dependency_type, rto_hours, notes}]
+    kpis = Column(JSON, nullable=True)
+    # [{metric, target, current, status}]
+    plan_owner_name = Column(String(255), nullable=True)
+    # Nombre del propietario del plan
+    classification = Column(String(32), nullable=True)
+    # "confidential" | "internal" | "restricted"
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     approved_by = relationship("User", foreign_keys=[approved_by_id])

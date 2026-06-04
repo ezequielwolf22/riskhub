@@ -338,6 +338,30 @@ def _migrate_columns() -> None:
         ("ALTER TABLE bcp_tests ADD COLUMN lessons_learned TEXT", "bcp_tests", "lessons_learned"),
         ("ALTER TABLE bcp_tests ADD COLUMN improvement_actions TEXT", "bcp_tests", "improvement_actions"),
         ("ALTER TABLE bcp_tests ADD COLUMN evidence_doc_ids JSON", "bcp_tests", "evidence_doc_ids"),
+        # v3.3.1 — BCP enriquecido: BCPDependency + 3 campos
+        ("ALTER TABLE bcp_dependencies ADD COLUMN depends_on_process_id INTEGER REFERENCES business_processes(id)",
+         "bcp_dependencies", "depends_on_process_id"),
+        ("ALTER TABLE bcp_dependencies ADD COLUMN recovery_sequence INTEGER",
+         "bcp_dependencies", "recovery_sequence"),
+        ("ALTER TABLE bcp_dependencies ADD COLUMN notes TEXT",
+         "bcp_dependencies", "notes"),
+        # v3.3.1 — BCP enriquecido: BCPPlan + 7 campos (formulario drawer)
+        ("ALTER TABLE bcp_plans ADD COLUMN sections JSON",
+         "bcp_plans", "sections"),
+        ("ALTER TABLE bcp_plans ADD COLUMN roles_matrix JSON",
+         "bcp_plans", "roles_matrix"),
+        ("ALTER TABLE bcp_plans ADD COLUMN contact_list JSON",
+         "bcp_plans", "contact_list"),
+        ("ALTER TABLE bcp_plans ADD COLUMN system_dependencies JSON",
+         "bcp_plans", "system_dependencies"),
+        ("ALTER TABLE bcp_plans ADD COLUMN kpis JSON",
+         "bcp_plans", "kpis"),
+        ("ALTER TABLE bcp_plans ADD COLUMN plan_owner_name VARCHAR(255)",
+         "bcp_plans", "plan_owner_name"),
+        ("ALTER TABLE bcp_plans ADD COLUMN classification VARCHAR(32)",
+         "bcp_plans", "classification"),
+        # v3.3.1 — Cobertura BCP en el registro de riesgos (ISO 22301 / ISO 27001 A.5.29)
+        ("ALTER TABLE risks ADD COLUMN bcp_coverage JSON", "risks", "bcp_coverage"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

@@ -1526,3 +1526,102 @@ table.data td .code-pill {
 }
 .bcp-tab i { font-size: 15px; }
 .bcp-tab-content { min-height: 400px; }
+
+/* ── BCP Drawer (panel lateral para formularios complejos) ── */
+.drawer-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10, 11, 18, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 90;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.drawer-overlay.open { opacity: 1; pointer-events: all; }
+
+.drawer-panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(840px, 95vw);
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-xl);
+  z-index: 91;
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+.drawer-panel.open { transform: translateX(0); }
+
+.drawer-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-card);
+  position: sticky; top: 0; z-index: 1;
+}
+.drawer-title { margin: 0; font-size: 16px; font-weight: 600; }
+
+.drawer-body {
+  flex: 1; overflow-y: auto; padding: 24px;
+}
+
+/* ── Separador de secciones dentro de formularios ── */
+.form-section-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 20px 0 14px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-subtle);
+}
+.form-section-divider::after {
+  content: ''; flex: 1; height: 0.5px; background: var(--border);
+}
+
+/* ── Tablas editables inline ── */
+.inline-table-wrap {
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.inline-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+}
+.inline-table th {
+  background: var(--bg-2); padding: 7px 10px;
+  text-align: left; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-subtle); border-bottom: 0.5px solid var(--border);
+}
+.inline-table td {
+  padding: 4px 6px; border-bottom: 0.5px solid var(--border);
+}
+.inline-table tr:last-child td { border-bottom: none; }
+.inline-table td input,
+.inline-table td textarea {
+  width: 100%; border: none; background: transparent;
+  font-size: 12px; font-family: var(--font-sans);
+  padding: 4px; resize: none; color: var(--text);
+}
+.inline-table td input:focus,
+.inline-table td textarea:focus {
+  outline: 1px solid var(--primary); border-radius: 3px;
+  background: var(--bg-2);
+}
+
+/* ── Modal footer sticky ── */
+.modal-footer-sticky {
+  position: sticky; bottom: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── BCP badges de plan ── */
+.plan-badge-bcp      { background: #1D4ED822; color: #1D4ED8; }
+.plan-badge-drp      { background: #D9770622; color: #D97706; }
+.plan-badge-crp      { background: #59008D22; color: #59008D; }
+.plan-badge-cyber    { background: #DC262622; color: #DC2626; }
+.plan-badge-pandemic { background: #16a34a22; color: #16a34a; }
+.plan-badge-ems      { background: #6B728022; color: #6B7280; }
+.plan-badge-supply   { background: #92400e22; color: #92400e; }

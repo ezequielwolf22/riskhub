@@ -86,26 +86,38 @@ const ViewBcp = (() => {
   // ── Tab Overview ─────────────────────────────────────────────────────────────
 
   async function _tabOverview(el) {
-    const [dash, iso] = await Promise.all([
+    const [dash, isoResp] = await Promise.all([
       Api.get('/api/bcp/dashboard').catch(() => ({})),
-      Api.get('/api/bcp/iso22301-status').catch(() => []),
+      Api.get('/api/bcp/iso22301-status').catch(() => ({})),
     ]);
 
-    const gaps = (iso || []).filter(c => c.status === 'gap');
-    const partial = (iso || []).filter(c => c.status === 'partial');
+    // La API ahora devuelve un dict {clauses, pct, implemented, partial, total, is_ready}
+    const iso = isoResp && isoResp.clauses ? isoResp : { clauses: [], pct: 0, implemented: 0, partial: 0, total: 0 };
+    const clauses = iso.clauses || [];
+    const gaps = clauses.filter(c => c.status === 'gap');
+    const partials = clauses.filter(c => c.status === 'partial');
+    const implemented = clauses.filter(c => c.status === 'implemented');
+
+    const pctColor = iso.pct >= 80 ? 'var(--risk-low)' : iso.pct >= 50 ? 'var(--risk-medium)' : 'var(--risk-critical)';
 
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div></div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="font-size:28px;font-weight:800;color:${pctColor}">${iso.pct}%</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;">Cumplimiento ISO 22301</div>
+          <div style="font-size:11px;color:var(--text-subtle);">${implemented.length} implementadas · ${partials.length} parciales · ${gaps.length} gaps de ${iso.total}</div>
+        </div>
+      </div>
       <button class="btn btn-secondary" id="btn-bcp-ai-analyze" style="display:flex;align-items:center;gap:6px;">
-        <i class="ti ti-brain"></i> Analizar gaps BCP con IA
+        <i class="ti ti-brain"></i> Analizar gaps con IA
       </button>
     </div>
     <div id="bcp-ai-result"></div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
       <div class="stat-card">
         <div class="stat-value">${dash.total_processes ?? 0}</div>
-        <div class="stat-label">Procesos criticos</div>
+        <div class="stat-label">Procesos registrados</div>
       </div>
       <div class="stat-card ${(dash.bia_avg_pct ?? 0) < 60 ? 'stat-warning' : ''}">
         <div class="stat-value">${dash.bia_avg_pct ?? 0}%</div>
@@ -124,46 +136,68 @@ const ViewBcp = (() => {
     ${gaps.length > 0 ? `
     <div class="notice notice-warning" style="margin-bottom:16px;">
       <strong>Gaps ISO 22301 detectados:</strong>
-      ${gaps.map(g => `<span class="badge badge-danger" style="margin:2px;">${g.clause} ${g.name}</span>`).join('')}
+      ${gaps.map(g => `<span class="badge badge-danger" style="margin:2px;">${UI.esc(g.id)} ${UI.esc(g.name)}</span>`).join('')}
     </div>` : ''}
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div style="display:grid;grid-template-columns:3fr 1fr;gap:16px;">
       <div class="card">
-        <div class="card-header"><h3>Checklist ISO 22301</h3></div>
-        <div class="card-body" style="padding:0;">
-          <table class="data-table">
-            <thead><tr><th>Clausula</th><th>Requisito</th><th>Estado</th></tr></thead>
-            <tbody>
-            ${(iso || []).map(c => `<tr>
-              <td><strong>${c.clause}</strong></td>
-              <td>${c.name}</td>
-              <td><span class="badge badge-${c.status === 'ok' ? 'success' : c.status === 'partial' ? 'warning' : 'danger'}">
-                ${c.status === 'ok' ? '&#10003; ok' : c.status === 'partial' ? '&#9888; parcial' : '&#10007; gap'}
-              </span></td>
-            </tr>`).join('')}
-            </tbody>
-          </table>
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;">Checklist ISO 22301:2019 — ${iso.total} clausulas</h3>
+        </div>
+        <div class="card-body" style="padding:0 16px;">
+          ${clauses.map(c => `
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)">
+            <i class="ti ${c.status==='implemented' ? 'ti-circle-check' : c.status==='partial' ? 'ti-circle-half-2' : 'ti-circle-x'}"
+               style="color:${c.status==='implemented' ? 'var(--risk-low)' : c.status==='partial' ? 'var(--risk-medium)' : 'var(--risk-critical)'};font-size:16px;flex-shrink:0;margin-top:2px"></i>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span style="font-size:11px;font-weight:700;color:var(--text-subtle);font-family:var(--font-mono)">${UI.esc(c.id)}</span>
+                <span style="font-size:13px;font-weight:500">${UI.esc(c.name)}</span>
+                <span style="font-size:10px;color:var(--text-subtle);margin-left:auto">${UI.esc(c.reference || '')}</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-subtle);margin-top:2px">${UI.esc(c.detail || '')}</div>
+            </div>
+          </div>`).join('')}
         </div>
       </div>
-      <div class="card">
-        <div class="card-header"><h3>Resumen de actividad</h3></div>
-        <div class="card-body">
-          <div style="display:grid;gap:10px;">
-            <div style="display:flex;justify-content:space-between;">
-              <span>Procesos sin test en 12 meses</span>
-              <strong style="color:${(dash.processes_overdue_test??0)>0?'#DC2626':'#16a34a'}">${dash.processes_overdue_test ?? 0}</strong>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="card">
+          <div class="card-header"><h3 style="margin:0;font-size:13px;">Actividad</h3></div>
+          <div class="card-body" style="padding:12px;">
+            <div style="display:grid;gap:8px;font-size:13px;">
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:var(--text-subtle)">Sin test (12m)</span>
+                <strong style="color:${(dash.processes_overdue_test??0)>0?'var(--risk-critical)':'var(--risk-low)'}">${dash.processes_overdue_test ?? 0}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:var(--text-subtle)">Tests totales</span>
+                <strong>${dash.total_tests ?? 0}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:var(--text-subtle)">Criticos</span>
+                <strong>${dash.critical_processes ?? 0}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:var(--text-subtle)">Ultimo test</span>
+                <strong style="font-size:11px">${dash.last_test_date ? new Date(dash.last_test_date).toLocaleDateString('es-ES') : '—'}</strong>
+              </div>
             </div>
-            <div style="display:flex;justify-content:space-between;">
-              <span>Total tests programados</span>
-              <strong>${dash.total_tests ?? 0}</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;">
-              <span>Ultimo test realizado</span>
-              <strong>${dash.last_test_date ? new Date(dash.last_test_date).toLocaleDateString('es-ES') : '—'}</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;">
-              <span>Clausulas OK / Parcial / Gap</span>
-              <strong>${(iso||[]).filter(c=>c.status==='ok').length} / ${partial.length} / ${gaps.length}</strong>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3 style="margin:0;font-size:13px;">Cumplimiento</h3></div>
+          <div class="card-body" style="padding:12px;">
+            <div style="display:grid;gap:6px;font-size:12px;">
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:var(--risk-low)">Implementadas</span><strong>${implemented.length}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:var(--risk-medium)">Parciales</span><strong>${partials.length}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;">
+                <span style="color:var(--risk-critical)">Gaps</span><strong>${gaps.length}</strong>
+              </div>
+              ${iso.is_ready ? `<div style="margin-top:6px;padding:6px;background:var(--success-soft,#dcfce7);border-radius:6px;font-size:11px;color:var(--risk-low);font-weight:600;text-align:center;">Lista para certificacion</div>` : ''}
             </div>
           </div>
         </div>
@@ -182,30 +216,33 @@ const ViewBcp = (() => {
     resultEl.innerHTML = '';
     try {
       const res = await Api.post('/api/bcp/analyze', {});
+      // La API devuelve {analysis: "markdown text", format: "markdown"}
+      const analysisText = res.analysis || '';
+      // Renderizar markdown simple: headers, listas, negrita
+      const rendered = analysisText
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^## (.+)$/gm, '<h4 style="margin:16px 0 8px;font-size:14px;font-weight:700;color:var(--text)">$1</h4>')
+        .replace(/^### (.+)$/gm, '<h5 style="margin:12px 0 6px;font-size:13px;font-weight:600">$1</h5>')
+        .replace(/^\* (.+)$/gm, '<div style="display:flex;gap:6px;margin:4px 0;"><span style="color:var(--primary);flex-shrink:0">•</span><span>$1</span></div>')
+        .replace(/^(\d+)\. (.+)$/gm, '<div style="display:flex;gap:6px;margin:4px 0;"><span style="font-weight:700;flex-shrink:0;min-width:16px">$1.</span><span>$2</span></div>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n\n/g, '<br>');
+
       resultEl.innerHTML = `
       <div class="card" style="margin-bottom:16px;border-left:4px solid var(--primary);">
-        <div class="card-header"><h3><i class="ti ti-brain"></i> Analisis IA — Recomendaciones BCP</h3></div>
-        <div class="card-body">
-          ${res.summary ? `<p style="margin-bottom:12px;">${UI.esc(res.summary)}</p>` : ''}
-          ${(res.recommendations||[]).length ? `
-          <ul style="padding-left:20px;margin:0;">
-            ${res.recommendations.map(r => `<li style="margin-bottom:6px;">${UI.esc(r)}</li>`).join('')}
-          </ul>` : ''}
-          ${(res.process_suggestions||[]).length ? `
-          <h4 style="margin-top:16px;">Sugerencias por proceso:</h4>
-          ${res.process_suggestions.map(ps => `
-          <div style="margin-bottom:12px;padding:10px;background:var(--bg-2);border-radius:6px;">
-            <strong>${UI.esc(ps.name)}</strong>
-            ${ps.rto_suggestion ? `<div style="font-size:13px;color:var(--text-muted);">RTO sugerido: <strong>${ps.rto_suggestion}h</strong></div>` : ''}
-            ${ps.notes ? `<div style="font-size:13px;margin-top:4px;">${UI.esc(ps.notes)}</div>` : ''}
-          </div>`).join('')}` : ''}
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <h3 style="margin:0;"><i class="ti ti-brain"></i> Analisis IA — Informe de gaps BCP/ISO 22301</h3>
+          <button class="btn btn-sm btn-ghost" onclick="this.closest('.card').remove()">
+            <i class="ti ti-x"></i>
+          </button>
         </div>
+        <div class="card-body" style="font-size:13px;line-height:1.6;">${rendered || 'Sin analisis disponible'}</div>
       </div>`;
     } catch (e) {
       resultEl.innerHTML = UI.notice('Error en analisis IA: ' + e.message + '. Asegurate de tener la API key de IA configurada.');
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<i class="ti ti-brain"></i> Analizar gaps BCP con IA';
+      btn.innerHTML = '<i class="ti ti-brain"></i> Analizar gaps con IA';
     }
   }
 
@@ -213,56 +250,92 @@ const ViewBcp = (() => {
 
   async function _tabProcesses(el) {
     _procs = await Api.get('/api/bcp/processes').catch(() => []);
-    el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+
+    const headerHtml = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <h3 style="margin:0;">Procesos Criticos (${_procs.length})</h3>
-      <button class="btn btn-primary" id="btn-new-proc">+ Nuevo proceso</button>
+      <button class="btn btn-primary" id="btn-new-proc"><i class="ti ti-plus"></i> Nuevo proceso</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input class="form-control" id="proc-search" placeholder="Buscar por nombre..." style="max-width:280px;font-size:13px;">
+      <select class="form-control" id="proc-crit-filter" style="max-width:160px;font-size:13px;">
+        <option value="">Todas las criticidades</option>
+        <option value="critical">Critica</option>
+        <option value="high">Alta</option>
+        <option value="medium">Media</option>
+        <option value="low">Baja</option>
+      </select>
     </div>`;
-    if (!_procs.length) {
-      el.innerHTML += `<div style="text-align:center;padding:48px 24px;border:2px dashed var(--border);border-radius:8px;">
-        <i class="ti ti-sitemap" style="font-size:48px;color:var(--text-muted);"></i>
-        <h3 style="margin:16px 0 8px;">Sin procesos criticos registrados</h3>
-        <p style="color:var(--text-muted);margin-bottom:20px;max-width:400px;margin-left:auto;margin-right:auto;">
-          ISO 22301 cl. 8.2 requiere identificar las actividades criticas y sus objetivos de recuperacion (RTO/RPO/MTPD).
-        </p>
-        <button class="btn btn-primary btn-lg" onclick="document.getElementById('btn-new-proc').click()">
-          <i class="ti ti-plus"></i> Crear primer proceso critico
-        </button>
-      </div>`;
-    } else {
-      el.innerHTML += `
-      <div class="table-container">
+
+    const emptyHtml = `<div style="text-align:center;padding:48px 24px;border:2px dashed var(--border);border-radius:8px;">
+      <i class="ti ti-sitemap" style="font-size:48px;color:var(--text-muted);"></i>
+      <h3 style="margin:16px 0 8px;">Sin procesos criticos registrados</h3>
+      <p style="color:var(--text-muted);margin-bottom:20px;max-width:400px;margin-left:auto;margin-right:auto;">
+        ISO 22301 cl. 8.2 requiere identificar las actividades criticas y sus objetivos de recuperacion (RTO/RPO/MTPD).
+      </p>
+      <button class="btn btn-primary btn-lg" id="btn-new-proc-empty">
+        <i class="ti ti-plus"></i> Crear primer proceso critico
+      </button>
+    </div>`;
+
+    const CRIT_LABELS = { critical: 'Critica', high: 'Alta', medium: 'Media', low: 'Baja' };
+
+    function renderTable(list) {
+      if (!list.length) return `<div style="padding:24px;text-align:center;color:var(--text-subtle);">Sin resultados para este filtro.</div>`;
+      return `<div class="table-container">
         <table class="data-table">
           <thead><tr>
             <th>Proceso</th><th>Criticidad</th><th>RTO</th><th>RPO</th><th>MTPD</th>
-            <th>BIA%</th><th>Propietario</th><th>Ultimo test</th><th></th>
+            <th>BIA%</th><th>Dep.</th><th>Propietario</th><th>Ultimo test</th><th></th>
           </tr></thead>
           <tbody>
-          ${_procs.map(p => `<tr>
-            <td><strong>${UI.esc(p.name)}</strong></td>
-            <td><span style="color:${CRIT_COLORS[p.criticality]};font-weight:700;">${p.criticality}</span></td>
-            <td>${p.rto_hours != null ? p.rto_hours + 'h' : '—'}</td>
-            <td>${p.rpo_hours != null ? p.rpo_hours + 'h' : '—'}</td>
-            <td>${p.mtpd_hours != null ? p.mtpd_hours + 'h' : '—'}</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:6px;">
-                <div style="flex:1;height:6px;background:var(--bg-3);border-radius:3px;">
-                  <div style="width:${p.bia_pct||0}%;height:100%;background:${(p.bia_pct||0)>=80?'#16a34a':(p.bia_pct||0)>=50?'#D97706':'#DC2626'};border-radius:3px;"></div>
+          ${list.map(p => {
+            const biaColor = (p.bia_pct||0) >= 80 ? '#16a34a' : (p.bia_pct||0) >= 50 ? '#D97706' : '#DC2626';
+            const ownerName = p.owner_name || (p.owner_id ? '#' + p.owner_id : '—');
+            const depCount = (_deps.filter(d => d.process_id === p.id)).length;
+            return `<tr>
+              <td><strong>${UI.esc(p.name)}</strong>${p.description ? `<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(p.description.substring(0,60))}</div>` : ''}</td>
+              <td><span style="color:${CRIT_COLORS[p.criticality]};font-weight:700;font-size:12px;">${CRIT_LABELS[p.criticality]||p.criticality}</span></td>
+              <td>${p.rto_hours != null ? p.rto_hours + 'h' : '—'}</td>
+              <td>${p.rpo_hours != null ? p.rpo_hours + 'h' : '—'}</td>
+              <td>${p.mtpd_hours != null ? p.mtpd_hours + 'h' : '—'}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div style="flex:1;height:5px;background:var(--bg-3);border-radius:3px;min-width:40px;">
+                    <div style="width:${p.bia_pct||0}%;height:100%;background:${biaColor};border-radius:3px;"></div>
+                  </div>
+                  <span style="font-size:11px;color:${biaColor};font-weight:600;">${p.bia_pct||0}%</span>
                 </div>
-                <span style="font-size:11px;">${p.bia_pct||0}%</span>
-              </div>
-            </td>
-            <td>${p.owner_id ? '#' + p.owner_id : '—'}</td>
-            <td>${p.last_tested_at ? new Date(p.last_tested_at).toLocaleDateString('es-ES') : '—'}</td>
-            <td>
-              <button class="btn btn-sm btn-secondary" onclick="ViewBcp._editProc(${p.id})">Editar</button>
-            </td>
-          </tr>`).join('')}
+              </td>
+              <td>${depCount > 0 ? `<span class="badge" style="font-size:10px;">${depCount}</span>` : '—'}</td>
+              <td style="font-size:12px;color:var(--text-subtle);">${UI.esc(ownerName)}</td>
+              <td style="font-size:12px;">${p.last_tested_at ? new Date(p.last_tested_at).toLocaleDateString('es-ES') : '—'}</td>
+              <td><button class="btn btn-sm btn-secondary" onclick="ViewBcp._editProc(${p.id})">Editar</button></td>
+            </tr>`;
+          }).join('')}
           </tbody>
         </table>
       </div>`;
     }
+
+    el.innerHTML = headerHtml + (!_procs.length ? emptyHtml : `<div id="proc-table-wrap">${renderTable(_procs)}</div>`);
+
     document.getElementById('btn-new-proc')?.addEventListener('click', () => _openProcModal());
+    document.getElementById('btn-new-proc-empty')?.addEventListener('click', () => _openProcModal());
+
+    function applyFilters() {
+      const search = (document.getElementById('proc-search')?.value || '').toLowerCase();
+      const critFilter = document.getElementById('proc-crit-filter')?.value || '';
+      const filtered = _procs.filter(p =>
+        (!search || p.name.toLowerCase().includes(search)) &&
+        (!critFilter || p.criticality === critFilter)
+      );
+      const wrap = document.getElementById('proc-table-wrap');
+      if (wrap) wrap.innerHTML = renderTable(filtered);
+    }
+
+    document.getElementById('proc-search')?.addEventListener('input', applyFilters);
+    document.getElementById('proc-crit-filter')?.addEventListener('change', applyFilters);
   }
 
   // ── Tab BIA ──────────────────────────────────────────────────────────────────
@@ -351,61 +424,96 @@ const ViewBcp = (() => {
 
   // ── Tab Dependencias ─────────────────────────────────────────────────────────
 
+  const DEP_ICONS = {
+    IT_system: 'ti-cpu', personnel: 'ti-users', facility: 'ti-building',
+    supplier: 'ti-truck', utility: 'ti-plug', communication: 'ti-phone',
+    transport: 'ti-car', external_service: 'ti-world', process: 'ti-sitemap',
+  };
+  const DEP_LABELS = {
+    IT_system: 'Sistema IT', personnel: 'Personal', facility: 'Instalacion',
+    supplier: 'Proveedor', utility: 'Suministro', communication: 'Comunicacion',
+    transport: 'Transporte', external_service: 'Servicio externo', process: 'Proceso',
+  };
+
   async function _tabDependencies(el) {
     [_procs, _deps] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
       Api.get('/api/bcp/dependencies').catch(() => []),
     ]);
-    const DEP_ICONS = {
-      IT_system:'ti-server', personnel:'ti-users', facility:'ti-building',
-      supplier:'ti-truck', utility:'ti-bolt', communication:'ti-phone',
-      transport:'ti-car', external_service:'ti-cloud',
-    };
-    el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div style="display:flex;gap:8px;align-items:center;">
-        <h3 style="margin:0;">Dependencias (${_deps.length})</h3>
-        <select id="dep-filter" class="form-control" style="width:200px;">
-          <option value="">Todos los procesos</option>
-          ${_procs.map(p => `<option value="${p.id}">${UI.esc(p.name)}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn btn-primary" id="btn-new-dep">+ Nueva dependencia</button>
-    </div>
-    <div id="dep-table-wrap"></div>`;
 
-    const renderDeps = (filter) => {
-      const list = filter ? _deps.filter(d => d.process_id == filter) : _deps;
-      const wrap = document.getElementById('dep-table-wrap');
-      if (!list.length) { wrap.innerHTML = UI.emptyState('No hay dependencias registradas.'); return; }
-      const procName = id => (_procs.find(p => p.id == id)||{}).name || '#'+id;
-      wrap.innerHTML = `
-      <div class="table-container">
-        <table class="data-table">
+    const procName = id => (_procs.find(p => p.id == id) || {}).name || '#' + id;
+
+    // Separar dependencias: process-to-process vs recursos
+    const procDeps = _deps.filter(d => d.dependency_type === 'process' || d.depends_on_process_id);
+    const resourceDeps = _deps.filter(d => d.dependency_type !== 'process' && !d.depends_on_process_id);
+
+    const procDepRows = procDeps.map(d => `<tr>
+      <td style="font-size:12px;">${UI.esc(procName(d.process_id))}</td>
+      <td>${UI.esc(procName(d.depends_on_process_id || d.process_id))} ${d.depends_on_process_id ? '' : '<span style="font-size:10px;color:var(--text-subtle)">(proceso origen)</span>'}</td>
+      <td style="font-size:12px;">${UI.esc(d.description || d.notes || '—')}</td>
+      <td style="text-align:center;">${d.recovery_sequence != null ? `<span class="badge">${d.recovery_sequence}</span>` : '—'}</td>
+      <td style="font-size:12px;">${UI.esc(d.alternative || '—')}</td>
+      <td><button class="btn btn-sm btn-secondary" onclick="ViewBcp._editDep(${d.id})">Editar</button></td>
+    </tr>`).join('');
+
+    const resourceRows = resourceDeps.map(d => `<tr>
+      <td><i class="ti ${DEP_ICONS[d.dependency_type] || 'ti-circle'}" style="margin-right:4px;"></i>${DEP_LABELS[d.dependency_type] || d.dependency_type}</td>
+      <td style="font-size:12px;">${UI.esc(procName(d.process_id))}</td>
+      <td><strong style="font-size:13px;">${UI.esc(d.name)}</strong>${d.description ? `<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(d.description.substring(0,50))}</div>` : ''}</td>
+      <td style="text-align:center;">${d.qty_normal ?? '—'} / ${d.qty_recovery ?? '—'}</td>
+      <td style="text-align:center;">${d.rto_hours != null ? d.rto_hours + 'h' : '—'}</td>
+      <td style="text-align:center;">${d.is_critical ? '<span class="badge badge-danger" style="font-size:10px;">Si</span>' : '<span style="font-size:11px;color:var(--text-subtle)">No</span>'}</td>
+      <td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;">${UI.esc((d.alternative || '—').substring(0,50))}</td>
+      <td style="text-align:center;">${d.recovery_sequence != null ? `<span class="badge">${d.recovery_sequence}</span>` : '—'}</td>
+      <td><button class="btn btn-sm btn-secondary" onclick="ViewBcp._editDep(${d.id})">Editar</button></td>
+    </tr>`).join('');
+
+    const html = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:8px;">
+      <button class="btn btn-primary" id="btn-new-dep"><i class="ti ti-plus"></i> Nueva dependencia de recurso</button>
+      <button class="btn btn-secondary" id="btn-new-proc-dep"><i class="ti ti-sitemap"></i> Nueva dep. proceso-proceso</button>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;"><i class="ti ti-sitemap" style="margin-right:6px;"></i>Dependencias entre procesos</h3>
+        <span style="font-size:12px;color:var(--text-subtle);">${procDeps.length} registradas</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-subtle);padding:0 16px 8px;">
+        Un proceso no puede iniciar su recuperacion hasta que el proceso dependiente este operativo.
+      </div>
+      ${!procDeps.length
+        ? `<div style="padding:24px;text-align:center;color:var(--text-subtle);">Sin dependencias proceso-proceso registradas. Usa el boton "Nueva dep. proceso-proceso".</div>`
+        : `<div style="overflow-x:auto;"><table class="data-table" style="font-size:12px;">
+          <thead><tr><th>Este proceso</th><th>Depende de</th><th>Motivo</th><th>Secuencia</th><th>Impacto</th><th></th></tr></thead>
+          <tbody>${procDepRows}</tbody>
+        </table></div>`
+      }
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;"><i class="ti ti-link" style="margin-right:6px;"></i>Recursos y dependencias externas</h3>
+        <span style="font-size:12px;color:var(--text-subtle);">${resourceDeps.length} registradas</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-subtle);padding:0 16px 8px;">
+        Recursos que necesita cada proceso para recuperarse: sistemas IT, personal, instalaciones, proveedores, suministros.
+      </div>
+      ${!resourceDeps.length
+        ? `<div style="padding:24px;text-align:center;color:var(--text-subtle);">Sin dependencias de recursos registradas.</div>`
+        : `<div style="overflow-x:auto;"><table class="data-table" style="font-size:12px;">
           <thead><tr>
-            <th>Tipo</th><th>Recurso</th><th>Proceso</th>
-            <th>Qty normal</th><th>Qty recuperacion</th><th>RTO nec.</th>
-            <th>Critico</th><th>Alternativa</th><th></th>
+            <th>Tipo</th><th>Proceso</th><th>Recurso</th><th>Normal/Recup.</th>
+            <th>RTO nec.</th><th>Critico</th><th>Alternativa</th><th>Seq.</th><th></th>
           </tr></thead>
-          <tbody>
-          ${list.map(d => `<tr>
-            <td><i class="ti ${DEP_ICONS[d.dependency_type]||'ti-circle'}"></i> ${d.dependency_type}</td>
-            <td>${UI.esc(d.name)}</td>
-            <td>${UI.esc(procName(d.process_id))}</td>
-            <td>${d.qty_normal ?? '—'}</td>
-            <td>${d.qty_recovery ?? '—'}</td>
-            <td>${d.rto_hours != null ? d.rto_hours + 'h' : '—'}</td>
-            <td>${d.is_critical ? '<span class="badge badge-danger">Si</span>' : '<span class="badge">No</span>'}</td>
-            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;">${d.alternative ? UI.esc(d.alternative.substring(0,40)) : '—'}</td>
-            <td><button class="btn btn-sm btn-secondary" onclick="ViewBcp._editDep(${d.id})">Editar</button></td>
-          </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-    };
-    renderDeps('');
-    document.getElementById('dep-filter')?.addEventListener('change', e => renderDeps(e.target.value));
+          <tbody>${resourceRows}</tbody>
+        </table></div>`
+      }
+    </div>`;
+
+    el.innerHTML = html;
     document.getElementById('btn-new-dep')?.addEventListener('click', () => _openDepModal());
+    document.getElementById('btn-new-proc-dep')?.addEventListener('click', () => _openDepModal(null, true));
   }
 
   // ── Tab Estrategias ──────────────────────────────────────────────────────────
@@ -446,38 +554,44 @@ const ViewBcp = (() => {
 
   // ── Tab Planes ───────────────────────────────────────────────────────────────
 
+  const PLAN_BADGE_CLASS = {
+    bcp: 'plan-badge-bcp', drp: 'plan-badge-drp', crp: 'plan-badge-crp',
+    cyber_response: 'plan-badge-cyber', pandemic: 'plan-badge-pandemic',
+    ems: 'plan-badge-ems', supply_chain: 'plan-badge-supply',
+  };
+  const PLAN_TYPE_LABELS = {
+    bcp: 'BCP', drp: 'DRP', crp: 'CRP',
+    cyber_response: 'Cyber', pandemic: 'Pandemia', ems: 'EMS', supply_chain: 'Cadena sum.',
+  };
+  const CLASSIFICATION_LABELS = { confidential: 'Confidencial', internal: 'Uso interno', restricted: 'Restringido' };
+
   async function _tabPlans(el) {
     [_procs, _plans] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
       Api.get('/api/bcp/plans').catch(() => []),
     ]);
-    el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;">Planes BCP/DRP (${_plans.length})</h3>
-      <button class="btn btn-primary" id="btn-new-plan">+ Nuevo plan</button>
-    </div>`;
-    if (!_plans.length) {
-      el.innerHTML += UI.emptyState('No hay planes BCP/DRP. ISO 22301 cl. 8.4 requiere planes documentados de continuidad.');
-    } else {
-      el.innerHTML += `
-      <div class="table-container">
+
+    const tableHtml = !_plans.length
+      ? UI.emptyState('No hay planes BCP/DRP. ISO 22301 cl. 8.4 requiere planes documentados de continuidad.')
+      : `<div class="table-container">
         <table class="data-table">
           <thead><tr>
-            <th>Codigo</th><th>Tipo</th><th>Nombre</th><th>Version</th><th>Estado</th>
-            <th>Doc. vinculado</th><th>Procesos</th><th>Ultima prueba</th><th></th>
+            <th>Codigo</th><th>Tipo</th><th>Clasificacion</th><th>Nombre</th><th>Version</th>
+            <th>Estado</th><th>Procesos</th><th>Propietario</th><th>Revision</th><th></th>
           </tr></thead>
           <tbody>
           ${_plans.map(p => `<tr>
             <td>${UI.codePill(p.code)}</td>
-            <td><span class="badge">${p.plan_type}</span></td>
-            <td>${UI.esc(p.name)}</td>
-            <td>${UI.esc(p.version || '1.0')}</td>
+            <td><span class="badge ${PLAN_BADGE_CLASS[p.plan_type]||''}" style="font-size:11px;">${PLAN_TYPE_LABELS[p.plan_type]||p.plan_type}</span></td>
+            <td style="font-size:11px;color:var(--text-subtle);">${CLASSIFICATION_LABELS[p.classification]||'—'}</td>
+            <td><strong>${UI.esc(p.name)}</strong></td>
+            <td style="font-size:12px;color:var(--text-subtle);">v${UI.esc(p.version||'1.0')}</td>
             <td><span class="badge badge-${p.status==='approved'?'success':p.status==='under_review'?'warning':'secondary'}"
-              style="background:${STATUS_COLORS[p.status]||'#666'}22;color:${STATUS_COLORS[p.status]||'#666'};">${p.status}</span></td>
-            <td>${p.document_id ? `<a href="#/ai-documents" title="Doc #${p.document_id}"><i class="ti ti-file"></i> #${p.document_id}</a>` : '—'}</td>
-            <td>${(p.process_ids||[]).length}</td>
-            <td>${p.last_exercised_at ? new Date(p.last_exercised_at).toLocaleDateString('es-ES') : '—'}</td>
-            <td style="display:flex;gap:4px;">
+              style="background:${STATUS_COLORS[p.status]||'#666'}22;color:${STATUS_COLORS[p.status]||'#666'};font-size:11px;">${p.status}</span></td>
+            <td style="font-size:12px;">${(p.process_ids||[]).length}</td>
+            <td style="font-size:12px;color:var(--text-subtle);">${UI.esc(p.plan_owner_name||'—')}</td>
+            <td style="font-size:12px;">${p.review_date ? new Date(p.review_date).toLocaleDateString('es-ES') : '—'}</td>
+            <td style="display:flex;gap:4px;flex-wrap:nowrap;">
               <button class="btn btn-sm btn-secondary" onclick="ViewBcp._editPlan(${p.id})">Editar</button>
               ${['draft','under_review'].includes(p.status) ?
                 `<button class="btn btn-sm btn-primary" onclick="ViewBcp._approvePlan(${p.id})">Aprobar</button>` : ''}
@@ -486,8 +600,32 @@ const ViewBcp = (() => {
           </tbody>
         </table>
       </div>`;
-    }
-    document.getElementById('btn-new-plan')?.addEventListener('click', () => _openPlanModal());
+
+    el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;">Planes BCP/DRP (${_plans.length})</h3>
+      <button class="btn btn-primary" id="btn-new-plan"><i class="ti ti-plus"></i> Nuevo plan</button>
+    </div>
+    ${tableHtml}
+    <!-- Drawer para formulario de plan -->
+    <div class="drawer-overlay" id="plan-drawer-overlay"></div>
+    <div class="drawer-panel" id="plan-drawer">
+      <div class="drawer-header">
+        <h3 class="drawer-title" id="plan-drawer-title">Nuevo Plan</h3>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" id="plan-drawer-cancel">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="plan-drawer-save">
+            <i class="ti ti-check"></i> Guardar
+          </button>
+        </div>
+      </div>
+      <div class="drawer-body" id="plan-drawer-body"></div>
+    </div>`;
+
+    document.getElementById('btn-new-plan')?.addEventListener('click', () => _openPlanDrawer());
+    document.getElementById('plan-drawer-cancel')?.addEventListener('click', () => _closePlanDrawer());
+    document.getElementById('plan-drawer-overlay')?.addEventListener('click', () => _closePlanDrawer());
+    document.getElementById('plan-drawer-save')?.addEventListener('click', () => _savePlan(_currentPlanId));
   }
 
   // ── Tab Tests ────────────────────────────────────────────────────────────────
@@ -810,67 +948,146 @@ const ViewBcp = (() => {
 
   // ── Modales — Proceso ────────────────────────────────────────────────────────
 
-  function _openProcModal(proc) {
-    const CRIT = ['critical','high','medium','low'];
-    const IMPACTS = ['0 — Ninguno','1 — Bajo','2 — Medio','3 — Alto'];
+  async function _openProcModal(proc) {
+    // Cargar usuarios para los selects de responsable
+    let users = [];
+    try { users = await Api.get('/api/users/'); } catch (_) { }
+    const userOpts = users.map(u =>
+      `<option value="${u.id}"${(proc?.owner_id === u.id) ? ' selected' : ''}>${UI.esc(u.full_name || u.email)}</option>`
+    ).join('');
+    const rUserOpts = users.map(u =>
+      `<option value="${u.id}"${(proc?.recovery_owner_id === u.id) ? ' selected' : ''}>${UI.esc(u.full_name || u.email)}</option>`
+    ).join('');
+
+    const IMPACTS = ['0 — Ninguno', '1 — Menor', '2 — Significativo', '3 — Critico'];
+
+    // Convertir arrays JSON a texto multi-linea (una linea por item)
+    const arrToLines = (arr) => Array.isArray(arr) ? arr.join('\n') : (arr || '');
+
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:640px;">
-      <div class="modal-header">
-        <h2>${proc ? 'Editar proceso BIA' : 'Nuevo proceso critico'}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
+    <div class="modal" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="flex-shrink:0;">
+        <h2>${proc ? 'Editar proceso critico' : 'Nuevo proceso critico'}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-          <div style="grid-column:1/-1;"><label>Nombre *</label>
-            <input id="pm-name" class="form-control" value="${UI.esc(proc?.name||'')}"></div>
-          <div><label>Criticidad</label>
-            <select id="pm-crit" class="form-control">
-              ${CRIT.map(c=>`<option value="${c}"${proc?.criticality===c?' selected':''}>${c}</option>`).join('')}
-            </select></div>
-          <div><label>Prioridad</label><input id="pm-prio" class="form-control" type="number" value="${proc?.priority||''}"></div>
-          <div><label>Responsable (ID usuario)</label><input id="pm-owner" class="form-control" type="number" value="${proc?.owner_id||''}"></div>
-          <div><label>Resp. recuperacion (ID)</label><input id="pm-rowner" class="form-control" type="number" value="${proc?.recovery_owner_id||''}"></div>
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;">
+
+        <div class="form-section-divider"><span>INFORMACION BASICA</span></div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Nombre <span style="color:var(--danger)">*</span></label>
+          <input id="pm-name" class="form-control" value="${UI.esc(proc?.name||'')}" style="font-size:13px;">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Descripcion</label>
+          <textarea id="pm-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(proc?.description||'')}</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Criticidad <span style="color:var(--danger)">*</span></label>
+            <select id="pm-crit" class="form-control" style="font-size:13px;">
+              ${['critical','high','medium','low'].map(c=>`<option value="${c}"${proc?.criticality===c?' selected':''}>${{critical:'Critica',high:'Alta',medium:'Media',low:'Baja'}[c]}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Prioridad de recuperacion</label>
+            <input id="pm-prio" class="form-control" type="number" min="1" style="font-size:13px;" value="${proc?.priority||''}" placeholder="1 = mas urgente">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Responsable</label>
+            <select id="pm-owner" class="form-control" style="font-size:13px;">
+              <option value="">— Sin asignar —</option>${userOpts}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Responsable de recuperacion</label>
+            <select id="pm-rowner" class="form-control" style="font-size:13px;">
+              <option value="">— Sin asignar —</option>${rUserOpts}
+            </select>
+          </div>
         </div>
 
-        <details open style="margin-top:14px;"><summary style="cursor:pointer;font-weight:600;margin-bottom:10px;">Objetivos BIA (RTO/RPO/MTPD/MBCO)</summary>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-          <div><label>RTO (h)</label><input id="pm-rto" class="form-control" type="number" value="${proc?.rto_hours??''}"></div>
-          <div><label>RPO (h)</label><input id="pm-rpo" class="form-control" type="number" value="${proc?.rpo_hours??''}"></div>
-          <div><label>MTPD (h)</label><input id="pm-mtpd" class="form-control" type="number" value="${proc?.mtpd_hours??''}"></div>
-          <div><label>Staff min.</label><input id="pm-staff" class="form-control" type="number" value="${proc?.min_recovery_staff??''}"></div>
+        <div class="form-section-divider"><span>OBJETIVOS DE RECUPERACION (BIA)</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">RTO (horas)</label>
+            <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Recovery Time Objective</div>
+            <input id="pm-rto" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.rto_hours??''}">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">RPO (horas)</label>
+            <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Recovery Point Objective</div>
+            <input id="pm-rpo" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.rpo_hours??''}">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">MTPD (horas)</label>
+            <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Max. Tolerable Period of Disruption</div>
+            <input id="pm-mtpd" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.mtpd_hours??''}">
+          </div>
         </div>
-        <div style="margin-top:8px;"><label>MBCO</label>
-          <input id="pm-mbco" class="form-control" value="${UI.esc(proc?.mbco||'')}" placeholder="Nivel minimo de servicio aceptable"></div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Personal minimo en recuperacion</label>
+            <input id="pm-staff" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.min_recovery_staff??''}">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">MBCO — Objetivo Minimo de Continuidad del Negocio</label>
+          <textarea id="pm-mbco" class="form-control" rows="2" style="font-size:13px;" placeholder="Nivel minimo de servicio aceptable durante la recuperacion...">${UI.esc(proc?.mbco||'')}</textarea>
+        </div>
+
+        <div class="form-section-divider"><span>EVALUACION DE IMPACTO BIA</span></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
           ${[['pm-fi','Financiero','financial_impact'],['pm-ri','Reputacional','reputational_impact'],
-             ['pm-li','Legal','legal_impact'],['pm-oi','Operacional','operational_impact']].map(([id,lbl,fld])=>`
-          <div><label>${lbl}</label><select id="${id}" class="form-control">
-            ${IMPACTS.map((imp,i)=>`<option value="${i}"${proc?.[fld]===i?' selected':''}>${imp}</option>`).join('')}
-          </select></div>`).join('')}
+             ['pm-li','Legal/Reg.','legal_impact'],['pm-oi','Operacional','operational_impact']].map(([id,lbl,fld])=>`
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">${lbl}</label>
+            <select id="${id}" class="form-control" style="font-size:12px;">
+              ${IMPACTS.map((imp,i)=>`<option value="${i}"${proc?.[fld]===i?' selected':''}>${imp}</option>`).join('')}
+            </select>
+          </div>`).join('')}
         </div>
-        </details>
 
-        <details style="margin-top:14px;"><summary style="cursor:pointer;font-weight:600;margin-bottom:10px;">Documentacion y procedimientos</summary>
-        <label>Descripcion</label>
-        <textarea id="pm-desc" class="form-control" rows="2">${UI.esc(proc?.description||'')}</textarea>
-        <label style="margin-top:8px;">Criterios de activacion</label>
-        <textarea id="pm-activ" class="form-control" rows="2">${UI.esc(proc?.activation_criteria||'')}</textarea>
-        <label style="margin-top:8px;">Procedimiento alternativo</label>
-        <textarea id="pm-altproc" class="form-control" rows="2">${UI.esc(proc?.alternative_procedure||'')}</textarea>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
-          <div><label>Sistemas IT (JSON)</label>
-            <textarea id="pm-it" class="form-control" rows="2">${proc?.it_systems ? JSON.stringify(proc.it_systems,null,2) : ''}</textarea></div>
-          <div><label>Instalaciones (JSON)</label>
-            <textarea id="pm-fac" class="form-control" rows="2">${proc?.facilities ? JSON.stringify(proc.facilities,null,2) : ''}</textarea></div>
+        <div class="form-section-divider"><span>ACTIVACION Y PROCEDIMIENTOS</span></div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Criterios de activacion <span style="color:var(--danger)">*</span></label>
+          <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">¿Que condiciones deben darse para activar el plan de este proceso?</div>
+          <textarea id="pm-activ" class="form-control" rows="2" style="font-size:13px;">${UI.esc(proc?.activation_criteria||'')}</textarea>
         </div>
-        </details>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Procedimiento alternativo <span style="color:var(--danger)">*</span></label>
+          <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">¿Como puede este proceso funcionar manualmente o de forma degradada?</div>
+          <textarea id="pm-altproc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(proc?.alternative_procedure||'')}</textarea>
+        </div>
 
-        <div style="display:flex;gap:8px;margin-top:16px;">
-          <button class="btn btn-primary" onclick="ViewBcp._saveProc(${proc?.id||'null'})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
-          ${proc ? `<button class="btn btn-danger" style="margin-left:auto;" onclick="ViewBcp._delProc(${proc.id})">Eliminar</button>` : ''}
+        <div class="form-section-divider"><span>RECURSOS Y DOCUMENTACION</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Registros vitales</label>
+            <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Un registro por linea</div>
+            <textarea id="pm-vr" class="form-control" rows="3" style="font-size:12px;" placeholder="ERP datos ventas&#10;Contratos con clientes&#10;Certificados SSL">${UI.esc(arrToLines(proc?.vital_records))}</textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Sistemas IT</label>
+            <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Un sistema por linea</div>
+            <textarea id="pm-it" class="form-control" rows="3" style="font-size:12px;" placeholder="ERP SAP&#10;CRM Salesforce&#10;VPN Cisco">${UI.esc(arrToLines(proc?.it_systems))}</textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Instalaciones</label>
+            <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Una instalacion por linea</div>
+            <textarea id="pm-fac" class="form-control" rows="3" style="font-size:12px;" placeholder="Sede Madrid&#10;CPD principal&#10;Almacen logistico">${UI.esc(arrToLines(proc?.facilities))}</textarea>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer-sticky">
+        ${proc ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delProc(${proc.id})"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveProc(${proc?.id||'null'})"><i class="ti ti-check"></i> Guardar</button>
         </div>
       </div>
     </div>`;
@@ -883,34 +1100,34 @@ const ViewBcp = (() => {
   }
 
   async function _saveProc(id) {
-    const g = id => document.getElementById(id);
+    const g = eid => document.getElementById(eid);
+    // Convertir textarea multi-linea a array (filtrar lineas vacias)
+    const linesToArr = (val) => {
+      const lines = (val || '').split('\n').map(l => l.trim()).filter(Boolean);
+      return lines.length ? lines : null;
+    };
     const body = {
       name: g('pm-name').value.trim(),
+      description: g('pm-desc').value || null,
       criticality: g('pm-crit').value,
-      priority: parseInt(g('pm-prio').value)||null,
-      rto_hours: parseInt(g('pm-rto').value)||null,
-      rpo_hours: parseInt(g('pm-rpo').value)||null,
-      mtpd_hours: parseInt(g('pm-mtpd').value)||null,
-      mbco: g('pm-mbco').value||null,
+      priority: parseInt(g('pm-prio').value) || null,
+      owner_id: parseInt(g('pm-owner').value) || null,
+      recovery_owner_id: parseInt(g('pm-rowner').value) || null,
+      rto_hours: parseInt(g('pm-rto').value) || null,
+      rpo_hours: parseInt(g('pm-rpo').value) || null,
+      mtpd_hours: parseInt(g('pm-mtpd').value) || null,
+      min_recovery_staff: parseInt(g('pm-staff').value) || null,
+      mbco: g('pm-mbco').value || null,
       financial_impact: parseInt(g('pm-fi').value),
       reputational_impact: parseInt(g('pm-ri').value),
       legal_impact: parseInt(g('pm-li').value),
       operational_impact: parseInt(g('pm-oi').value),
-      min_recovery_staff: parseInt(g('pm-staff').value)||null,
-      description: g('pm-desc').value||null,
-      activation_criteria: g('pm-activ').value||null,
-      alternative_procedure: g('pm-altproc').value||null,
-      owner_id: parseInt(g('pm-owner').value)||null,
-      recovery_owner_id: parseInt(g('pm-rowner').value)||null,
+      activation_criteria: g('pm-activ').value || null,
+      alternative_procedure: g('pm-altproc').value || null,
+      vital_records: linesToArr(g('pm-vr')?.value),
+      it_systems: linesToArr(g('pm-it')?.value),
+      facilities: linesToArr(g('pm-fac')?.value),
     };
-    try {
-      const itVal = g('pm-it').value.trim();
-      body.it_systems = itVal ? JSON.parse(itVal) : null;
-    } catch(e) { body.it_systems = g('pm-it').value ? [g('pm-it').value] : null; }
-    try {
-      const facVal = g('pm-fac').value.trim();
-      body.facilities = facVal ? JSON.parse(facVal) : null;
-    } catch(e) { body.facilities = g('pm-fac').value ? [g('pm-fac').value] : null; }
     if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
     try {
       if (id) await Api.patch(`/api/bcp/processes/${id}`, body);
@@ -933,67 +1150,159 @@ const ViewBcp = (() => {
 
   // ── Modales — Dependencia ────────────────────────────────────────────────────
 
-  function _openDepModal(dep) {
+  function _openDepModal(dep, isProcDep) {
+    const isProc = isProcDep || dep?.dependency_type === 'process' || !!dep?.depends_on_process_id;
     const DEP_TYPES = ['IT_system','personnel','facility','supplier','utility','communication','transport','external_service'];
+    const lbl = (text, req) => `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${text}${req ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
+
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
-    modal.innerHTML = `
-    <div class="modal" style="max-width:520px;">
-      <div class="modal-header">
-        <h2>${dep ? 'Editar dependencia' : 'Nueva dependencia'}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
-      </div>
-      <div class="modal-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div><label>Proceso *</label>
-            <select id="dm-proc" class="form-control">
+
+    if (isProc) {
+      // Formulario proceso-proceso
+      modal.innerHTML = `
+      <div class="modal" style="max-width:520px;">
+        <div class="modal-header">
+          <h2>${dep ? 'Editar dependencia de proceso' : 'Nueva dependencia proceso-proceso'}</h2>
+          <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+        </div>
+        <div class="modal-body">
+          <div style="margin-bottom:14px;">${lbl('Proceso origen', true)}
+            <select id="dm-proc" class="form-control" style="font-size:13px;">
               ${_procs.map(p=>`<option value="${p.id}"${dep?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
-            </select></div>
-          <div><label>Tipo *</label>
-            <select id="dm-type" class="form-control">
-              ${DEP_TYPES.map(t=>`<option value="${t}"${dep?.dependency_type===t?' selected':''}>${t}</option>`).join('')}
-            </select></div>
-          <div style="grid-column:1/-1;"><label>Nombre *</label>
-            <input id="dm-name" class="form-control" value="${UI.esc(dep?.name||'')}"></div>
-          <div><label>Qty normal</label><input id="dm-qn" class="form-control" type="number" value="${dep?.qty_normal??''}"></div>
-          <div><label>Qty recuperacion</label><input id="dm-qr" class="form-control" type="number" value="${dep?.qty_recovery??''}"></div>
-          <div><label>RTO necesario (h)</label><input id="dm-rto" class="form-control" type="number" value="${dep?.rto_hours??''}"></div>
-          <div style="display:flex;align-items:center;gap:8px;padding-top:20px;">
-            <input id="dm-crit" type="checkbox" ${dep?.is_critical?' checked':''}>
-            <label for="dm-crit" style="margin:0;">Es critico</label>
+            </select>
           </div>
-          <div style="grid-column:1/-1;"><label>Alternativa</label>
-            <textarea id="dm-alt" class="form-control" rows="2">${UI.esc(dep?.alternative||'')}</textarea></div>
+          <div style="margin-bottom:14px;">${lbl('Depende de (proceso)', true)}
+            <select id="dm-dep-proc" class="form-control" style="font-size:13px;">
+              <option value="">— Seleccionar proceso dependiente —</option>
+              ${_procs.map(p=>`<option value="${p.id}"${dep?.depends_on_process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="margin-bottom:14px;">${lbl('Motivo / descripcion')}
+            <textarea id="dm-name" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Por que depende este proceso del otro?">${UI.esc(dep?.description || dep?.name || '')}</textarea>
+          </div>
+          <div style="margin-bottom:14px;">${lbl('Secuencia de recuperacion')}
+            <input id="dm-seq" class="form-control" type="number" min="1" style="font-size:13px;" value="${dep?.recovery_sequence??''}" placeholder="Orden (1 = primero que debe estar disponible)">
+          </div>
+          <div style="margin-bottom:14px;">${lbl('Impacto si no esta disponible')}
+            <textarea id="dm-alt" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Que pasa si este proceso dependiente no esta disponible?">${UI.esc(dep?.alternative||'')}</textarea>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="btn btn-primary" onclick="ViewBcp._saveDep(${dep?.id||'null'})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
-          ${dep ? `<button class="btn btn-danger" style="margin-left:auto;" onclick="ViewBcp._delDep(${dep.id})">Eliminar</button>` : ''}
+        <div class="modal-footer-sticky">
+          ${dep ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delDep(${dep.id})"><i class="ti ti-trash"></i></button>` : ''}
+          <div style="display:flex;gap:8px;margin-left:auto;">
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveDep(${dep?.id||'null'}, true)"><i class="ti ti-check"></i> Guardar</button>
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
+    } else {
+      // Formulario recurso / dependencia externa
+      modal.innerHTML = `
+      <div class="modal" style="max-width:580px;max-height:90vh;display:flex;flex-direction:column;">
+        <div class="modal-header" style="flex-shrink:0;">
+          <h2>${dep ? 'Editar recurso/dependencia' : 'Nueva dependencia de recurso'}</h2>
+          <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+        </div>
+        <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div>${lbl('Proceso critico', true)}
+              <select id="dm-proc" class="form-control" style="font-size:13px;">
+                ${_procs.map(p=>`<option value="${p.id}"${dep?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>${lbl('Tipo de dependencia', true)}
+              <select id="dm-type" class="form-control" style="font-size:13px;">
+                ${DEP_TYPES.map(t=>`<option value="${t}"${dep?.dependency_type===t?' selected':''}>${DEP_LABELS[t]||t}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">${lbl('Nombre del recurso', true)}
+            <input id="dm-name" class="form-control" style="font-size:13px;" value="${UI.esc(dep?.name||'')}" placeholder="Ej: ERP SAP, Equipo tecnico de red">
+          </div>
+          <div style="margin-bottom:14px;">${lbl('Descripcion')}
+            <textarea id="dm-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(dep?.description||'')}</textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div>${lbl('Qty operacion normal')}
+              <input id="dm-qn" class="form-control" type="number" style="font-size:13px;" value="${dep?.qty_normal??''}">
+            </div>
+            <div>${lbl('Qty minima recuperacion')}
+              <input id="dm-qr" class="form-control" type="number" style="font-size:13px;" value="${dep?.qty_recovery??''}">
+            </div>
+            <div>${lbl('RTO necesario (horas)')}
+              <input id="dm-rto" class="form-control" type="number" style="font-size:13px;" value="${dep?.rto_hours??''}">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div>${lbl('Secuencia de recuperacion')}
+              <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Orden (1 = primero que debe estar)</div>
+              <input id="dm-seq" class="form-control" type="number" min="1" style="font-size:13px;" value="${dep?.recovery_sequence??''}">
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding-top:26px;">
+              <input id="dm-crit" type="checkbox" ${dep?.is_critical?' checked':''}>
+              <label for="dm-crit" style="margin:0;font-size:13px;">Es critico (sin el, la recuperacion no puede comenzar)</label>
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">${lbl('Procedimiento alternativo')}
+            <textarea id="dm-alt" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Que se hace si no esta disponible?">${UI.esc(dep?.alternative||'')}</textarea>
+          </div>
+          <div style="margin-bottom:14px;">${lbl('Notas adicionales')}
+            <textarea id="dm-notes" class="form-control" rows="2" style="font-size:13px;">${UI.esc(dep?.notes||'')}</textarea>
+          </div>
+        </div>
+        <div class="modal-footer-sticky">
+          ${dep ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delDep(${dep.id})"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
+          <div style="display:flex;gap:8px;margin-left:auto;">
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveDep(${dep?.id||'null'}, false)"><i class="ti ti-check"></i> Guardar</button>
+          </div>
+        </div>
+      </div>`;
+    }
     document.body.appendChild(modal);
   }
 
   function _editDep(id) { _openDepModal(_deps.find(d => d.id === id)); }
 
-  async function _saveDep(id) {
-    const body = {
-      process_id: parseInt(document.getElementById('dm-proc').value),
-      dependency_type: document.getElementById('dm-type').value,
-      name: document.getElementById('dm-name').value.trim(),
-      qty_normal: parseInt(document.getElementById('dm-qn').value)||null,
-      qty_recovery: parseInt(document.getElementById('dm-qr').value)||null,
-      rto_hours: parseInt(document.getElementById('dm-rto').value)||null,
-      is_critical: document.getElementById('dm-crit').checked,
-      alternative: document.getElementById('dm-alt').value||null,
-    };
-    if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+  async function _saveDep(id, isProc) {
+    const g = eid => document.getElementById(eid);
+    let body;
+    if (isProc) {
+      const depProcId = parseInt(g('dm-dep-proc')?.value) || null;
+      if (!depProcId) { UI.toast('Selecciona el proceso del que depende', 'error'); return; }
+      body = {
+        process_id: parseInt(g('dm-proc').value),
+        dependency_type: 'process',
+        name: g('dm-name')?.value?.trim() || 'Dependencia de proceso',
+        description: g('dm-name')?.value?.trim() || null,
+        depends_on_process_id: depProcId,
+        recovery_sequence: parseInt(g('dm-seq')?.value) || null,
+        alternative: g('dm-alt')?.value || null,
+        is_critical: false,
+      };
+    } else {
+      body = {
+        process_id: parseInt(g('dm-proc').value),
+        dependency_type: g('dm-type').value,
+        name: g('dm-name').value.trim(),
+        description: g('dm-desc')?.value || null,
+        qty_normal: parseInt(g('dm-qn').value) || null,
+        qty_recovery: parseInt(g('dm-qr').value) || null,
+        rto_hours: parseInt(g('dm-rto').value) || null,
+        is_critical: g('dm-crit')?.checked || false,
+        alternative: g('dm-alt')?.value || null,
+        recovery_sequence: parseInt(g('dm-seq')?.value) || null,
+        notes: g('dm-notes')?.value || null,
+      };
+      if (!body.name) { UI.toast('El nombre del recurso es obligatorio', 'error'); return; }
+    }
     try {
       if (id) await Api.patch(`/api/bcp/dependencies/${id}`, body);
       else await Api.post('/api/bcp/dependencies', body);
       UI.toast('Dependencia guardada', 'success');
       document.querySelector('.modal-bg')?.remove();
+      _deps = [];
       _switchTab('dependencies');
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
   }
@@ -1086,89 +1395,409 @@ const ViewBcp = (() => {
     _switchTab('strategies');
   }
 
-  // ── Modales — Plan ───────────────────────────────────────────────────────────
+  // ── Drawer — Plan ────────────────────────────────────────────────────────────
 
-  function _openPlanModal(plan) {
+  let _currentPlanId = null;
+
+  function _openPlanDrawer(plan) {
+    _currentPlanId = plan?.id || null;
     const TYPES = ['bcp','drp','crp','ems','pandemic','cyber_response','supply_chain'];
-    const modal = document.createElement('div');
-    modal.className = 'modal-bg';
-    modal.innerHTML = `
-    <div class="modal" style="max-width:560px;">
-      <div class="modal-header">
-        <h2>${plan ? 'Editar plan' : 'Nuevo plan BCP/DRP'}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
+    const CLASSIFS = [['confidential','Confidencial'],['internal','Uso interno'],['restricted','Restringido']];
+    const lbl = (text, req, sub) =>
+      `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${text}${req?' <span style="color:var(--danger)">*</span>':''}
+      </label>${sub?`<div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">${sub}</div>`:''}`;
+
+    // Obtener secciones del plan
+    const sections = plan?.sections || [];
+    const getSec = id => (sections.find(s => s.id === id) || {}).content || '';
+    const sysDeps = plan?.system_dependencies || [];
+    const roles = plan?.roles_matrix || [];
+    const contacts = plan?.contact_list || [];
+    const kpis = plan?.kpis || [];
+
+    const titleEl = document.getElementById('plan-drawer-title');
+    if (titleEl) titleEl.textContent = plan ? `Editar plan: ${plan.code}` : 'Nuevo Plan BCP/DRP';
+
+    const body = document.getElementById('plan-drawer-body');
+    if (!body) return;
+
+    const showForTypes = (types, pt) => types.includes(pt || 'bcp') ? '' : 'style="display:none"';
+    const currType = plan?.plan_type || 'bcp';
+
+    body.innerHTML = `
+    <!-- SECCION 1: Cabecera -->
+    <div class="form-section-divider"><span>CABECERA DEL PLAN</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+      <div>${lbl('Tipo de plan','*')}
+        <select id="pl-type" class="form-control" style="font-size:13px;" onchange="ViewBcp._onPlanTypeChange(this.value)">
+          ${TYPES.map(t=>`<option value="${t}"${currType===t?' selected':''}>${PLAN_TYPE_LABELS[t]||t}</option>`).join('')}
+        </select>
       </div>
-      <div class="modal-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div><label>Tipo *</label>
-            <select id="plm-type" class="form-control">
-              ${TYPES.map(t=>`<option value="${t}"${plan?.plan_type===t?' selected':''}>${t}</option>`).join('')}
-            </select></div>
-          <div><label>Version</label><input id="plm-ver" class="form-control" value="${UI.esc(plan?.version||'1.0')}"></div>
-          <div style="grid-column:1/-1;"><label>Nombre *</label>
-            <input id="plm-name" class="form-control" value="${UI.esc(plan?.name||'')}"></div>
-          <div style="grid-column:1/-1;"><label>Alcance</label>
-            <textarea id="plm-scope" class="form-control" rows="2">${UI.esc(plan?.scope||'')}</textarea></div>
-          <div style="grid-column:1/-1;"><label>Criterios de activacion</label>
-            <textarea id="plm-activ" class="form-control" rows="2">${UI.esc(plan?.activation_criteria||'')}</textarea></div>
-          <div style="grid-column:1/-1;"><label>Resumen de contenido</label>
-            <textarea id="plm-sum" class="form-control" rows="2">${UI.esc(plan?.content_summary||'')}</textarea></div>
-          <div><label>ID documento vinculado</label>
-            <input id="plm-doc" class="form-control" type="number" value="${plan?.document_id||''}"></div>
-          <div><label>Fecha revision</label>
-            <input id="plm-rev" class="form-control" type="date" value="${plan?.review_date?plan.review_date.substring(0,10):''}"></div>
-          <div style="grid-column:1/-1;"><label>Procesos cubiertos</label>
-            <div style="max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px;">
-            ${_procs.map(p => `<label style="display:flex;gap:6px;align-items:center;padding:2px;">
-              <input type="checkbox" value="${p.id}" class="plm-pids"
-                ${(plan?.process_ids||[]).includes(p.id)?'checked':''}> ${UI.esc(p.name)}
-            </label>`).join('')}
-            </div>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="btn btn-primary" onclick="ViewBcp._savePlan(${plan?.id||'null'})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
-        </div>
+      <div>${lbl('Version')}
+        <input id="pl-ver" class="form-control" style="font-size:13px;" value="${UI.esc(plan?.version||'1.0')}">
       </div>
-    </div>`;
-    document.body.appendChild(modal);
+    </div>
+    <div style="margin-bottom:14px;">${lbl('Nombre del plan','*')}
+      <input id="pl-name" class="form-control" style="font-size:13px;" value="${UI.esc(plan?.name||'')}">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+      <div>${lbl('Clasificacion')}
+        <select id="pl-class" class="form-control" style="font-size:13px;">
+          <option value="">— Sin clasificar —</option>
+          ${CLASSIFS.map(([v,l])=>`<option value="${v}"${plan?.classification===v?' selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div>${lbl('Propietario del plan')}
+        <input id="pl-owner" class="form-control" style="font-size:13px;" value="${UI.esc(plan?.plan_owner_name||'')}" placeholder="Nombre del responsable">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+      <div>${lbl('Fecha proxima revision')}
+        <input id="pl-rev" class="form-control" type="date" style="font-size:13px;" value="${plan?.review_date?plan.review_date.substring(0,10):''}">
+      </div>
+      <div>${lbl('ID documento vinculado')}
+        <input id="pl-doc" class="form-control" type="number" style="font-size:13px;" value="${plan?.document_id||''}" placeholder="ID del documento en Agente IA">
+      </div>
+    </div>
+    <div style="margin-bottom:14px;">${lbl('Procesos cubiertos')}
+      <div style="max-height:120px;overflow-y:auto;border:0.5px solid var(--border);border-radius:var(--radius);padding:8px;">
+      ${_procs.map(p => `<label style="display:flex;gap:6px;align-items:center;padding:3px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" value="${p.id}" class="pl-pids" ${(plan?.process_ids||[]).includes(p.id)?'checked':''}>
+        <span class="badge" style="font-size:10px;background:${CRIT_COLORS[p.criticality]||''}22;color:${CRIT_COLORS[p.criticality]||'#666'}">${p.criticality}</span>
+        ${UI.esc(p.name)}
+      </label>`).join('')}
+      </div>
+    </div>
+
+    <!-- SECCION 2: Alcance y objetivos -->
+    <div class="form-section-divider"><span>ALCANCE Y OBJETIVOS</span></div>
+    <div style="margin-bottom:14px;">${lbl('Alcance del plan')}
+      <textarea id="pl-scope" class="form-control" rows="3" style="font-size:13px;" placeholder="¿Que sistemas, procesos y areas cubre este plan?">${UI.esc(plan?.scope||'')}</textarea>
+    </div>
+    <div style="margin-bottom:14px;">${lbl('Criterios de activacion')}
+      <div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">¿Cuando se activa este plan? Incluir condiciones formales.</div>
+      <textarea id="pl-activ" class="form-control" rows="3" style="font-size:13px;">${UI.esc(plan?.activation_criteria||'')}</textarea>
+    </div>
+    <div style="margin-bottom:14px;">${lbl('Resumen ejecutivo')}
+      <textarea id="pl-sum" class="form-control" rows="2" style="font-size:13px;">${UI.esc(plan?.content_summary||'')}</textarea>
+    </div>
+
+    <!-- SECCION 3: RTO/RPO por sistema (solo DRP/CRP) -->
+    <div id="pl-sys-section" ${showForTypes(['drp','crp'], currType)}>
+      <div class="form-section-divider"><span>RTO/RPO POR SISTEMA</span></div>
+      <div class="inline-table-wrap" style="margin-bottom:8px;">
+        <table class="inline-table">
+          <thead><tr><th>Sistema / Servicio</th><th>RTO (h)</th><th>RPO (h)</th><th>Responsable</th><th>Notas</th><th style="width:30px"></th></tr></thead>
+          <tbody id="pl-sys-tbody">
+            ${sysDeps.map((s,i)=>`<tr>
+              <td><input value="${UI.esc(s.system_name||'')}" oninput="ViewBcp._updateSysDep(${i},'system_name',this.value)"></td>
+              <td><input type="number" value="${s.rto_hours??''}" style="width:60px;" oninput="ViewBcp._updateSysDep(${i},'rto_hours',this.value)"></td>
+              <td><input type="number" value="${s.rpo_hours??''}" style="width:60px;" oninput="ViewBcp._updateSysDep(${i},'rpo_hours',this.value)"></td>
+              <td><input value="${UI.esc(s.responsible||'')}" oninput="ViewBcp._updateSysDep(${i},'responsible',this.value)"></td>
+              <td><input value="${UI.esc(s.notes||'')}" oninput="ViewBcp._updateSysDep(${i},'notes',this.value)"></td>
+              <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeSysDep(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addSysDep()" style="margin-bottom:14px;font-size:12px;">
+        <i class="ti ti-plus"></i> Anadir sistema
+      </button>
+    </div>
+
+    <!-- SECCION 4: Procedimientos de recuperacion (DRP/CRP/Cyber) -->
+    <div id="pl-proc-section" ${showForTypes(['drp','crp','cyber_response'], currType)}>
+      <div class="form-section-divider"><span>PROCEDIMIENTOS DE RECUPERACION</span></div>
+      ${[
+        ['notification','Notificacion','Quién avisa a quién y como en las primeras horas. Incluir: (1) como se detecta, (2) a quien se notifica, (3) plazo, (4) escalado.'],
+        ['activation','Activacion','Quién tiene autoridad para activar, criterios formales, lista de verificacion pre-activacion.'],
+        ['recovery','Recuperacion tecnica','Secuencia de recuperacion de sistemas, pasos por sistema, validaciones de integridad, ubicacion de backups.'],
+        ['reconstitution','Reconstitucion','Criterios para declarar recuperacion completa, pruebas de validacion, comunicacion de reanudacion, revision post-incidente.'],
+      ].map(([secId, title, hint]) => `
+      <div style="margin-bottom:14px;">${lbl(title)}
+        <div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">${hint}</div>
+        <textarea id="pl-sec-${secId}" class="form-control" rows="3" style="font-size:13px;">${UI.esc(getSec(secId))}</textarea>
+      </div>`).join('')}
+    </div>
+
+    <!-- SECCION 5: Roles y responsabilidades -->
+    <div class="form-section-divider"><span>ROLES Y RESPONSABILIDADES</span></div>
+    <div class="inline-table-wrap" style="margin-bottom:8px;">
+      <table class="inline-table">
+        <thead><tr><th>Rol / Equipo</th><th>Responsable (nombre)</th><th>Acciones notificacion</th><th>Acciones recuperacion</th><th style="width:30px"></th></tr></thead>
+        <tbody id="pl-roles-tbody">
+          ${roles.map((r,i)=>`<tr>
+            <td><input value="${UI.esc(r.role_name||'')}" oninput="ViewBcp._updateRole(${i},'role_name',this.value)"></td>
+            <td><input value="${UI.esc(r.responsible||'')}" oninput="ViewBcp._updateRole(${i},'responsible',this.value)"></td>
+            <td><textarea rows="1" style="resize:none;" oninput="ViewBcp._updateRole(${i},'actions_notification',this.value)">${UI.esc(r.actions_notification||'')}</textarea></td>
+            <td><textarea rows="1" style="resize:none;" oninput="ViewBcp._updateRole(${i},'actions_recovery',this.value)">${UI.esc(r.actions_recovery||'')}</textarea></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeRole(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addRole()" style="font-size:12px;"><i class="ti ti-plus"></i> Anadir rol</button>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._loadDRPRoles()" style="font-size:12px;"><i class="ti ti-template"></i> Plantilla DRP</button>
+    </div>
+
+    <!-- SECCION 6: Contactos y escalada -->
+    <div class="form-section-divider"><span>LISTA DE CONTACTOS Y ESCALADA</span></div>
+    <div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px;">Incluir todos los contactos necesarios durante una activacion: equipo interno, proveedores criticos y contactos de emergencia.</div>
+    <div class="inline-table-wrap" style="margin-bottom:8px;">
+      <table class="inline-table">
+        <thead><tr><th>Nombre</th><th>Rol / Equipo</th><th>Telefono</th><th>Email</th><th>Backup</th><th>Tlf backup</th><th style="width:30px"></th></tr></thead>
+        <tbody id="pl-contacts-tbody">
+          ${contacts.map((c,i)=>`<tr>
+            <td><input value="${UI.esc(c.name||'')}" oninput="ViewBcp._updateContact(${i},'name',this.value)"></td>
+            <td><input value="${UI.esc(c.role||'')}" oninput="ViewBcp._updateContact(${i},'role',this.value)"></td>
+            <td><input value="${UI.esc(c.phone||'')}" oninput="ViewBcp._updateContact(${i},'phone',this.value)"></td>
+            <td><input value="${UI.esc(c.email||'')}" oninput="ViewBcp._updateContact(${i},'email',this.value)"></td>
+            <td><input value="${UI.esc(c.backup_name||'')}" oninput="ViewBcp._updateContact(${i},'backup_name',this.value)"></td>
+            <td><input value="${UI.esc(c.backup_phone||'')}" oninput="ViewBcp._updateContact(${i},'backup_phone',this.value)"></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeContact(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addContact()" style="margin-bottom:14px;font-size:12px;"><i class="ti ti-plus"></i> Anadir contacto</button>
+
+    <!-- SECCION 7: Contingencia IT y workarounds -->
+    <div class="form-section-divider"><span>CONTINGENCIA IT Y WORKAROUNDS</span></div>
+    <div style="margin-bottom:14px;">${lbl('Procedimientos de trabajo temporal')}
+      <div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">¿Como puede el negocio seguir operando sin los sistemas afectados?</div>
+      <textarea id="pl-workaround" class="form-control" rows="3" style="font-size:13px;">${UI.esc(plan?.sections?.find?.(s=>s.id==='workaround')?.content||'')}</textarea>
+    </div>
+    <div style="margin-bottom:14px;">${lbl('Recuperacion de datos')}
+      <div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">Ubicacion de backups, acceso, validacion de integridad.</div>
+      <textarea id="pl-backup" class="form-control" rows="2" style="font-size:13px;">${UI.esc(plan?.sections?.find?.(s=>s.id==='backup')?.content||'')}</textarea>
+    </div>
+
+    <!-- SECCION 8: KPIs -->
+    <div class="form-section-divider"><span>KPIs Y METRICAS</span></div>
+    <div class="inline-table-wrap" style="margin-bottom:8px;">
+      <table class="inline-table">
+        <thead><tr><th>Metrica</th><th>Objetivo</th><th>Como medir</th><th style="width:30px"></th></tr></thead>
+        <tbody id="pl-kpis-tbody">
+          ${kpis.map((k,i)=>`<tr>
+            <td><input value="${UI.esc(k.metric||'')}" oninput="ViewBcp._updateKPI(${i},'metric',this.value)"></td>
+            <td><input value="${UI.esc(k.target||'')}" style="width:80px;" oninput="ViewBcp._updateKPI(${i},'target',this.value)"></td>
+            <td><input value="${UI.esc(k.measure||'')}" oninput="ViewBcp._updateKPI(${i},'measure',this.value)"></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeKPI(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addKPI()" style="font-size:12px;"><i class="ti ti-plus"></i> Anadir KPI</button>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._loadStandardKPIs()" style="font-size:12px;"><i class="ti ti-template"></i> KPIs estandar DRP</button>
+    </div>
+
+    <!-- SECCION 9: Historial -->
+    ${plan ? `<div class="form-section-divider"><span>HISTORIAL Y MANTENIMIENTO</span></div>
+    <div style="font-size:12px;color:var(--text-subtle);display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+      <div>Estado: <strong>${UI.esc(plan.status)}</strong></div>
+      <div>Ultima prueba: <strong>${plan.last_exercised_at ? new Date(plan.last_exercised_at).toLocaleDateString('es-ES') : '—'}</strong></div>
+      ${plan.approved_by_id ? `<div>Aprobado por: <strong>#${plan.approved_by_id}</strong></div>` : ''}
+      ${plan.approved_at ? `<div>Aprobado: <strong>${new Date(plan.approved_at).toLocaleDateString('es-ES')}</strong></div>` : ''}
+    </div>` : ''}`;
+
+    // Datos en memoria para las tablas inline
+    window._planSysDeps = [...sysDeps];
+    window._planRoles = [...roles];
+    window._planContacts = [...contacts];
+    window._planKpis = [...kpis];
+
+    // Guardar save handler actualizado con el ID
+    document.getElementById('plan-drawer-save').onclick = () => _savePlan(_currentPlanId);
+
+    _openDrawer('plan-drawer');
   }
 
-  function _editPlan(id) { _openPlanModal(_plans.find(p => p.id === id)); }
+  function _onPlanTypeChange(type) {
+    const sysSec = document.getElementById('pl-sys-section');
+    const procSec = document.getElementById('pl-proc-section');
+    if (sysSec) sysSec.style.display = ['drp','crp'].includes(type) ? '' : 'none';
+    if (procSec) procSec.style.display = ['drp','crp','cyber_response'].includes(type) ? '' : 'none';
+  }
+
+  // Helpers para tablas inline del drawer de planes
+  function _rerenderSysDeps() {
+    const tbody = document.getElementById('pl-sys-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (window._planSysDeps || []).map((s,i) => `<tr>
+      <td><input value="${UI.esc(s.system_name||'')}" oninput="ViewBcp._updateSysDep(${i},'system_name',this.value)"></td>
+      <td><input type="number" value="${s.rto_hours??''}" style="width:60px;" oninput="ViewBcp._updateSysDep(${i},'rto_hours',this.value)"></td>
+      <td><input type="number" value="${s.rpo_hours??''}" style="width:60px;" oninput="ViewBcp._updateSysDep(${i},'rpo_hours',this.value)"></td>
+      <td><input value="${UI.esc(s.responsible||'')}" oninput="ViewBcp._updateSysDep(${i},'responsible',this.value)"></td>
+      <td><input value="${UI.esc(s.notes||'')}" oninput="ViewBcp._updateSysDep(${i},'notes',this.value)"></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeSysDep(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addSysDep() { (window._planSysDeps = window._planSysDeps || []).push({system_name:'',rto_hours:null,rpo_hours:null,responsible:'',notes:''}); _rerenderSysDeps(); }
+  function _removeSysDep(i) { (window._planSysDeps||[]).splice(i,1); _rerenderSysDeps(); }
+  function _updateSysDep(i, field, val) { if (window._planSysDeps?.[i]) window._planSysDeps[i][field] = field.includes('hours') ? (parseInt(val)||null) : val; }
+
+  function _rerenderRoles() {
+    const tbody = document.getElementById('pl-roles-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (window._planRoles || []).map((r,i) => `<tr>
+      <td><input value="${UI.esc(r.role_name||'')}" oninput="ViewBcp._updateRole(${i},'role_name',this.value)"></td>
+      <td><input value="${UI.esc(r.responsible||'')}" oninput="ViewBcp._updateRole(${i},'responsible',this.value)"></td>
+      <td><textarea rows="1" style="resize:none;" oninput="ViewBcp._updateRole(${i},'actions_notification',this.value)">${UI.esc(r.actions_notification||'')}</textarea></td>
+      <td><textarea rows="1" style="resize:none;" oninput="ViewBcp._updateRole(${i},'actions_recovery',this.value)">${UI.esc(r.actions_recovery||'')}</textarea></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeRole(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addRole() { (window._planRoles = window._planRoles || []).push({role_name:'',responsible:'',actions_notification:'',actions_recovery:''}); _rerenderRoles(); }
+  function _removeRole(i) { (window._planRoles||[]).splice(i,1); _rerenderRoles(); }
+  function _updateRole(i, field, val) { if (window._planRoles?.[i]) window._planRoles[i][field] = val; }
+  function _loadDRPRoles() {
+    window._planRoles = [
+      {role_name:'Global IT Security Team',responsible:'',actions_notification:'Verificar deteccion y activar protocolo',actions_recovery:'Coordinar recuperacion tecnica'},
+      {role_name:'Hosting/Infrastructure Team',responsible:'',actions_notification:'Evaluar impacto en sistemas',actions_recovery:'Recuperar sistemas segun secuencia'},
+      {role_name:'Asset Owner',responsible:'',actions_notification:'Notificar a equipos IT',actions_recovery:'Validar integridad de datos'},
+      {role_name:'Business Unit Manager',responsible:'',actions_notification:'Comunicar a stakeholders',actions_recovery:'Activar procedimientos manuales'},
+      {role_name:'Senior Leadership / Sponsor',responsible:'',actions_notification:'Tomar decision de activacion',actions_recovery:'Aprobar vuelta a operacion normal'},
+    ];
+    _rerenderRoles();
+  }
+
+  function _rerenderContacts() {
+    const tbody = document.getElementById('pl-contacts-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (window._planContacts || []).map((c,i) => `<tr>
+      <td><input value="${UI.esc(c.name||'')}" oninput="ViewBcp._updateContact(${i},'name',this.value)"></td>
+      <td><input value="${UI.esc(c.role||'')}" oninput="ViewBcp._updateContact(${i},'role',this.value)"></td>
+      <td><input value="${UI.esc(c.phone||'')}" oninput="ViewBcp._updateContact(${i},'phone',this.value)"></td>
+      <td><input value="${UI.esc(c.email||'')}" oninput="ViewBcp._updateContact(${i},'email',this.value)"></td>
+      <td><input value="${UI.esc(c.backup_name||'')}" oninput="ViewBcp._updateContact(${i},'backup_name',this.value)"></td>
+      <td><input value="${UI.esc(c.backup_phone||'')}" oninput="ViewBcp._updateContact(${i},'backup_phone',this.value)"></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeContact(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addContact() { (window._planContacts = window._planContacts || []).push({name:'',role:'',phone:'',email:'',backup_name:'',backup_phone:''}); _rerenderContacts(); }
+  function _removeContact(i) { (window._planContacts||[]).splice(i,1); _rerenderContacts(); }
+  function _updateContact(i, field, val) { if (window._planContacts?.[i]) window._planContacts[i][field] = val; }
+
+  function _rerenderKPIs() {
+    const tbody = document.getElementById('pl-kpis-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (window._planKpis || []).map((k,i) => `<tr>
+      <td><input value="${UI.esc(k.metric||'')}" oninput="ViewBcp._updateKPI(${i},'metric',this.value)"></td>
+      <td><input value="${UI.esc(k.target||'')}" style="width:80px;" oninput="ViewBcp._updateKPI(${i},'target',this.value)"></td>
+      <td><input value="${UI.esc(k.measure||'')}" oninput="ViewBcp._updateKPI(${i},'measure',this.value)"></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeKPI(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addKPI() { (window._planKpis = window._planKpis || []).push({metric:'',target:'',measure:''}); _rerenderKPIs(); }
+  function _removeKPI(i) { (window._planKpis||[]).splice(i,1); _rerenderKPIs(); }
+  function _updateKPI(i, field, val) { if (window._planKpis?.[i]) window._planKpis[i][field] = val; }
+  function _loadStandardKPIs() {
+    window._planKpis = [
+      {metric:'RTO objetivo sistemas criticos cumplido',target:'Si',measure:'% ejercicios donde RTO fue respetado'},
+      {metric:'RPO objetivo sistemas criticos cumplido',target:'Si',measure:'% datos recuperados dentro del RPO'},
+      {metric:'Tests anuales completados con resultado "passed"',target:'>= 90%',measure:'n tests passed / n tests planificados'},
+      {metric:'Tiempo real recuperacion vs RTO objetivo',target:'<= 1x RTO',measure:'Tiempo de recuperacion real en ultimo test'},
+      {metric:'Escaladas ejecutadas en tiempo',target:'100%',measure:'% contactos notificados en el plazo definido'},
+    ];
+    _rerenderKPIs();
+  }
+
+  function _openDrawer(id) {
+    document.getElementById('drawer-overlay-' + id)?.classList.add('open');
+    document.getElementById(id)?.classList.add('open');
+    // El plan drawer usa su propio overlay con id plan-drawer-overlay
+    document.getElementById('plan-drawer-overlay')?.classList.add('open');
+    document.getElementById('plan-drawer')?.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function _closePlanDrawer() {
+    document.getElementById('plan-drawer-overlay')?.classList.remove('open');
+    document.getElementById('plan-drawer')?.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function _editPlan(id) {
+    const plan = _plans.find(p => p.id === id);
+    _openPlanDrawer(plan);
+  }
 
   async function _savePlan(id) {
-    const pids = [...document.querySelectorAll('.plm-pids:checked')].map(c => parseInt(c.value));
+    const g = eid => document.getElementById(eid);
+    const pids = [...document.querySelectorAll('.pl-pids:checked')].map(c => parseInt(c.value));
+
+    // Construir secciones
+    const sections = [
+      {id:'notification', title:'Notificacion', content: g('pl-sec-notification')?.value || ''},
+      {id:'activation',   title:'Activacion',   content: g('pl-sec-activation')?.value || ''},
+      {id:'recovery',     title:'Recuperacion',  content: g('pl-sec-recovery')?.value || ''},
+      {id:'reconstitution',title:'Reconstitucion',content: g('pl-sec-reconstitution')?.value || ''},
+      {id:'workaround',   title:'Work temporal', content: g('pl-workaround')?.value || ''},
+      {id:'backup',       title:'Recuperacion datos', content: g('pl-backup')?.value || ''},
+    ].filter(s => s.content);
+
     const body = {
-      plan_type: document.getElementById('plm-type').value,
-      name: document.getElementById('plm-name').value.trim(),
-      version: document.getElementById('plm-ver').value||'1.0',
-      scope: document.getElementById('plm-scope').value||null,
-      activation_criteria: document.getElementById('plm-activ').value||null,
-      content_summary: document.getElementById('plm-sum').value||null,
-      document_id: parseInt(document.getElementById('plm-doc').value)||null,
-      review_date: document.getElementById('plm-rev').value||null,
+      plan_type: g('pl-type')?.value || 'bcp',
+      name: g('pl-name')?.value?.trim() || '',
+      version: g('pl-ver')?.value || '1.0',
+      classification: g('pl-class')?.value || null,
+      plan_owner_name: g('pl-owner')?.value || null,
+      scope: g('pl-scope')?.value || null,
+      activation_criteria: g('pl-activ')?.value || null,
+      content_summary: g('pl-sum')?.value || null,
+      document_id: parseInt(g('pl-doc')?.value) || null,
+      review_date: g('pl-rev')?.value || null,
       process_ids: pids,
+      sections: sections.length ? sections : null,
+      system_dependencies: (window._planSysDeps || []).length ? window._planSysDeps : null,
+      roles_matrix: (window._planRoles || []).length ? window._planRoles : null,
+      contact_list: (window._planContacts || []).length ? window._planContacts : null,
+      kpis: (window._planKpis || []).length ? window._planKpis : null,
     };
-    if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+
+    if (!body.name) { UI.toast('El nombre del plan es obligatorio', 'error'); return; }
     try {
       if (id) await Api.patch(`/api/bcp/plans/${id}`, body);
       else await Api.post('/api/bcp/plans', body);
       UI.toast('Plan guardado', 'success');
-      document.querySelector('.modal-bg')?.remove();
+      _closePlanDrawer();
       _plans = [];
       _switchTab('plans');
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
   }
 
   async function _approvePlan(id) {
-    if (!confirm('Aprobar este plan? Su estado cambiara a "approved".')) return;
-    try {
-      await Api.post(`/api/bcp/plans/${id}/approve`, {});
-      UI.toast('Plan aprobado', 'success');
-      _plans = [];
-      _switchTab('plans');
-    } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+    const plan = _plans.find(p => p.id === id);
+    if (!plan) return;
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header"><h2><i class="ti ti-shield-check"></i> Confirmar aprobacion</h2></div>
+      <div class="modal-body">
+        <p style="margin-bottom:12px;"><strong>${UI.esc(plan.name)}</strong> — v${UI.esc(plan.version||'1.0')} — ${PLAN_TYPE_LABELS[plan.plan_type]||plan.plan_type}</p>
+        <p style="font-size:13px;color:var(--text-subtle);">Al aprobar este plan confirmas que ha sido revisado y es valido para su activacion. El plan pasara a estado <strong>aprobado</strong> y podra ser activado en caso de incidente.</p>
+        <div class="modal-footer-sticky" style="position:relative;padding:12px 0 0;">
+          <div style="display:flex;gap:8px;margin-left:auto;">
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="btn-confirm-approve" style="background:var(--risk-high);border-color:var(--risk-high);">
+              <i class="ti ti-check"></i> Aprobar plan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#btn-confirm-approve').addEventListener('click', async () => {
+      try {
+        await Api.post(`/api/bcp/plans/${id}/approve`, {});
+        UI.toast('Plan aprobado', 'success');
+        modal.remove();
+        _plans = [];
+        _switchTab('plans');
+      } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+    });
   }
 
   // ── Modales — Test ───────────────────────────────────────────────────────────
@@ -1234,53 +1863,148 @@ const ViewBcp = (() => {
   function _openTestResultModal(id) {
     const test = _tests.find(t => t.id === id);
     if (!test) return;
+    const lbl = (text, req, sub) =>
+      `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${text}${req?' <span style="color:var(--danger)">*</span>':''}
+      </label>${sub?`<div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">${sub}</div>`:''}`;
+
+    const RESULT_DESCS = {
+      passed: 'El ejercicio se completo sin problemas significativos.',
+      partial: 'Se identificaron problemas menores o areas de mejora.',
+      failed: 'El ejercicio no alcanzo los objetivos. Se requieren acciones correctoras.',
+    };
+
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:480px;">
-      <div class="modal-header">
-        <h2>Resultado: ${UI.esc(test.code)}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
+    <div class="modal" style="max-width:520px;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="flex-shrink:0;">
+        <h2>Resultado: ${UI.esc(test.code)} — ${test.test_type}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body">
-        <label>Fecha de realizacion</label>
-        <input id="rm-date" class="form-control" type="datetime-local"
-          value="${test.conducted_at?(test.conducted_at.replace('Z','')||''):''}">
-        <label style="margin-top:10px;">Resultado</label>
-        <select id="rm-result" class="form-control">
-          <option value="">Sin resultado</option>
-          ${['passed','partial','failed'].map(r=>
-            `<option value="${r}"${test.result===r?' selected':''}>${r}</option>`).join('')}
-        </select>
-        <label style="margin-top:10px;">Hallazgos</label>
-        <textarea id="rm-findings" class="form-control" rows="3">${UI.esc(test.findings||'')}</textarea>
-        <label style="margin-top:10px;">Lecciones aprendidas</label>
-        <textarea id="rm-lessons" class="form-control" rows="3">${UI.esc(test.lessons_learned||'')}</textarea>
-        <label style="margin-top:10px;">Acciones de mejora</label>
-        <textarea id="rm-actions" class="form-control" rows="2">${UI.esc(test.improvement_actions||'')}</textarea>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="btn btn-primary" onclick="ViewBcp._saveTestResult(${id})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Resultado','*')}
+            <select id="rm-result" class="form-control" style="font-size:13px;" onchange="ViewBcp._onResultChange(this.value)">
+              <option value="">— Sin resultado —</option>
+              ${['passed','partial','failed'].map(r =>
+                `<option value="${r}"${test.result===r?' selected':''}>${{passed:'Pasado',partial:'Parcial',failed:'Fallido'}[r]}</option>`
+              ).join('')}
+            </select>
+            <div id="rm-result-desc" style="font-size:11px;color:var(--text-subtle);margin-top:4px;">${RESULT_DESCS[test.result]||''}</div>
+          </div>
+          <div>${lbl('Fecha de realizacion','*')}
+            <input id="rm-date" class="form-control" type="datetime-local" style="font-size:13px;"
+              value="${test.conducted_at?(test.conducted_at.replace('Z','')||''):''}">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">${lbl('Hallazgos','',''¿Que no funciono segun lo esperado?')}
+          <textarea id="rm-findings" class="form-control" rows="3" style="font-size:13px;">${UI.esc(test.findings||'')}</textarea>
+        </div>
+        <div style="margin-bottom:14px;">${lbl('Lecciones aprendidas',true,'Obligatorio si resultado != Pasado')}
+          <textarea id="rm-lessons" class="form-control" rows="3" style="font-size:13px;">${UI.esc(test.lessons_learned||'')}</textarea>
+        </div>
+        <div style="margin-bottom:14px;">${lbl('Acciones de mejora','')}
+          <textarea id="rm-actions" class="form-control" rows="2" style="font-size:13px;">${UI.esc(test.improvement_actions||'')}</textarea>
+        </div>
+        <div style="margin-bottom:14px;">${lbl('IDs de documentos de evidencia','')}
+          <input id="rm-evidence" class="form-control" style="font-size:13px;" placeholder="1, 2, 3 (IDs separados por coma)"
+            value="${(test.evidence_doc_ids||[]).join(', ')}">
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveTestResult(${id})"><i class="ti ti-check"></i> Guardar resultado</button>
         </div>
       </div>
     </div>`;
     document.body.appendChild(modal);
+
+    // Set description for current result
+    const currentResult = test.result || '';
+    if (currentResult) {
+      const desc = document.getElementById('rm-result-desc');
+      if (desc) desc.textContent = RESULT_DESCS[currentResult] || '';
+    }
+  }
+
+  function _onResultChange(val) {
+    const DESCS = {
+      passed: 'El ejercicio se completo sin problemas significativos.',
+      partial: 'Se identificaron problemas menores o areas de mejora.',
+      failed: 'El ejercicio no alcanzo los objetivos. Se requieren acciones correctoras.',
+    };
+    const el = document.getElementById('rm-result-desc');
+    if (el) el.textContent = DESCS[val] || '';
   }
 
   async function _saveTestResult(id) {
+    const result = document.getElementById('rm-result')?.value || null;
+    const evidenceRaw = (document.getElementById('rm-evidence')?.value || '').trim();
+    const evidence = evidenceRaw
+      ? evidenceRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+      : null;
     const body = {
-      conducted_at: document.getElementById('rm-date').value||null,
-      result: document.getElementById('rm-result').value||null,
-      findings: document.getElementById('rm-findings').value||null,
-      lessons_learned: document.getElementById('rm-lessons').value||null,
-      improvement_actions: document.getElementById('rm-actions').value||null,
+      conducted_at: document.getElementById('rm-date')?.value || null,
+      result,
+      findings: document.getElementById('rm-findings')?.value || null,
+      lessons_learned: document.getElementById('rm-lessons')?.value || null,
+      improvement_actions: document.getElementById('rm-actions')?.value || null,
+      evidence_doc_ids: evidence,
     };
+    // Validar: si resultado != "passed", lecciones son obligatorias
+    if (result && result !== 'passed' && !body.lessons_learned) {
+      UI.toast('Las lecciones aprendidas son obligatorias para resultado parcial o fallido', 'error');
+      return;
+    }
     try {
       await Api.patch(`/api/bcp/tests/${id}`, body);
       UI.toast('Resultado guardado', 'success');
       document.querySelector('.modal-bg')?.remove();
-      _switchTab('tests');
+
+      // Si el test fallo o fue parcial, ofrecer crear NC
+      if (result === 'failed' || result === 'partial') {
+        _offerCreateNC(id, result);
+      } else {
+        _switchTab('tests');
+      }
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+  }
+
+  function _offerCreateNC(testId, result) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h2><i class="ti ti-alert-circle" style="color:var(--risk-high)"></i> Test ${result === 'failed' ? 'fallido' : 'parcial'}</h2>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;margin-bottom:16px;">Un test ${result === 'failed' ? 'fallido' : 'con resultado parcial'} puede generar una No Conformidad automaticamente para garantizar el seguimiento.
+        <br><br><strong>¿Crear NC vinculada a este test?</strong></p>
+        <div class="modal-footer-sticky" style="position:relative;padding:12px 0 0;">
+          <div style="display:flex;gap:8px;margin-left:auto;">
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove();ViewBcp._switchTab('tests')">No por ahora</button>
+            <button class="btn btn-primary btn-sm" id="btn-create-nc-from-test">
+              <i class="ti ti-plus"></i> Si, crear NC
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#btn-create-nc-from-test').addEventListener('click', async () => {
+      try {
+        const res = await Api.post(`/api/bcp/tests/${testId}/create-nc`, {});
+        UI.toast(`NC ${res.nc_code} creada correctamente`, 'success');
+        modal.remove();
+        _switchTab('tests');
+      } catch (e) {
+        UI.toast('Error al crear NC: ' + (e.message || e), 'error');
+        modal.remove();
+        _switchTab('tests');
+      }
+    });
   }
 
   // ── Modales — Proveedor BCM ──────────────────────────────────────────────────
@@ -1413,11 +2137,18 @@ const ViewBcp = (() => {
 
   return {
     render,
+    _switchTab,
     _editProc, _saveProc, _delProc,
     _editDep, _saveDep, _delDep,
     _editStrat, _saveStrat, _delStrat,
     _editPlan, _savePlan, _approvePlan,
-    _saveTest, _openTestResultModal, _saveTestResult,
+    _openPlanDrawer, _closePlanDrawer,
+    _onPlanTypeChange,
+    _addSysDep, _removeSysDep, _updateSysDep,
+    _addRole, _removeRole, _updateRole, _loadDRPRoles,
+    _addContact, _removeContact, _updateContact,
+    _addKPI, _removeKPI, _updateKPI, _loadStandardKPIs,
+    _saveTest, _openTestResultModal, _saveTestResult, _onResultChange,
     _editSL, _saveSL, _delSL,
     _openEPModal, _saveEP,
     _handleDrop, _handleFileSelect,
