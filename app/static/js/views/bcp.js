@@ -86,10 +86,19 @@ const ViewBcp = (() => {
   // ── Tab Overview ─────────────────────────────────────────────────────────────
 
   async function _tabOverview(el) {
-    const [dash, isoResp] = await Promise.all([
+    const [dash, isoResp, procs, deps, plans, tests] = await Promise.all([
       Api.get('/api/bcp/dashboard').catch(() => ({})),
       Api.get('/api/bcp/iso22301-status').catch(() => ({})),
+      Api.get('/api/bcp/processes').catch(() => []),
+      Api.get('/api/bcp/dependencies').catch(() => []),
+      Api.get('/api/bcp/plans').catch(() => []),
+      Api.get('/api/bcp/tests').catch(() => []),
     ]);
+    // poblar cache para tabs que se visiten a continuacion
+    if (procs.length) _procs = procs;
+    if (deps.length)  _deps  = deps;
+    if (plans.length) _plans = plans;
+    if (tests.length) _tests = tests;
 
     // La API ahora devuelve un dict {clauses, pct, implemented, partial, total, is_ready}
     const iso = isoResp && isoResp.clauses ? isoResp : { clauses: [], pct: 0, implemented: 0, partial: 0, total: 0 };
@@ -202,9 +211,204 @@ const ViewBcp = (() => {
           </div>
         </div>
       </div>
-    </div>`;
+    </div>
+    <div id="bcp-continuity-map"><div style="padding:20px;text-align:center;color:var(--text-subtle);font-size:13px;">Cargando mapa...</div></div>`;
 
     document.getElementById('btn-bcp-ai-analyze')?.addEventListener('click', _runBcpAiAnalysis);
+
+    // Renderizar mapa conceptual y KPIs debajo del checklist
+    const mapWrap = document.getElementById('bcp-continuity-map');
+    if (mapWrap) _renderContinuityMap(mapWrap, procs, deps, plans, tests, dash);
+  }
+
+  // ── Mapa conceptual de continuidad ───────────────────────────────────────────
+
+  function _renderContinuityMap(wrap, procs, deps, plans, tests, dash) {
+    if (!procs.length) {
+      wrap.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-subtle);font-size:13px;">
+        Registra procesos criticos para ver el mapa de continuidad.
+      </div>`;
+      return;
+    }
+
+    // Colores y datos derivados
+    const CRIT_COLOR  = { critical:'#DC2626', high:'#D97706', medium:'#2563EB', low:'#16a34a' };
+    const CRIT_BG     = { critical:'#FEF2F2', high:'#FFFBEB', medium:'#EFF6FF', low:'#F0FDF4' };
+    const CRIT_ORDER  = { critical:0, high:1, medium:2, low:3 };
+    const CRIT_LABEL  = { critical:'CRITICA', high:'ALTA', medium:'MEDIA', low:'BAJA' };
+
+    const approvedPlanIds = new Set(
+      plans.filter(p => p.status === 'approved' || p.status === 'active')
+           .flatMap(p => p.process_ids || [])
+    );
+    const testByProc = {};
+    tests.forEach(t => (t.process_ids || []).forEach(pid => {
+      if (!testByProc[pid] || t.conducted_at > (testByProc[pid].conducted_at || '')) testByProc[pid] = t;
+    }));
+
+    // Agrupar por criticidad
+    const sorted = [...procs].sort((a, b) => (CRIT_ORDER[a.criticality]||4) - (CRIT_ORDER[b.criticality]||4));
+    const groups = {};
+    sorted.forEach(p => {
+      const c = p.criticality || 'low';
+      (groups[c] = groups[c] || []).push(p);
+    });
+
+    // Layout de nodos en cuadrícula SVG
+    const NR       = 38;     // radio del nodo
+    const H_GAP    = 130;    // separacion horizontal entre centros
+    const V_GAP    = 110;    // separacion vertical entre filas
+    const PAD_TOP  = 28;
+    const PAD_LEFT = 64;     // espacio para etiqueta de fila
+    const rows     = Object.entries(groups).filter(([,g]) => g.length);
+    const maxPerRow= Math.max(...rows.map(([,g]) => g.length));
+    const SVG_W    = Math.max(480, PAD_LEFT + maxPerRow * H_GAP + 20);
+    const SVG_H    = PAD_TOP + rows.length * V_GAP + 30;
+
+    const pos = {};  // pid -> {x, y}
+    rows.forEach(([crit, group], rowIdx) => {
+      const totalW = (group.length - 1) * H_GAP;
+      const startX = PAD_LEFT + (SVG_W - PAD_LEFT - totalW) / 2;
+      group.forEach((p, i) => { pos[p.id] = { x: startX + i * H_GAP, y: PAD_TOP + NR + rowIdx * V_GAP }; });
+    });
+
+    // Líneas de dependencia (proceso-a-proceso)
+    const procDepLines = deps
+      .filter(d => d.depends_on_process_id && pos[d.process_id] && pos[d.depends_on_process_id])
+      .map(d => {
+        const f = pos[d.depends_on_process_id], t = pos[d.process_id];
+        const dx = t.x - f.x, dy = t.y - f.y;
+        const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+        const ux = dx/dist, uy = dy/dist;
+        const x1 = f.x + ux*NR, y1 = f.y + uy*NR;
+        const x2 = t.x - ux*(NR+8), y2 = t.y - uy*(NR+8);
+        const mx = (x1+x2)/2, my = (y1+y2)/2 - 20;
+        return `<path d="M${x1},${y1} Q${mx},${my} ${x2},${y2}"
+          fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 3"
+          marker-end="url(#bcp-arrow)" opacity="0.7"/>`;
+      }).join('');
+
+    // Nodos de proceso
+    const nodesSvg = sorted.map(p => {
+      const pt = pos[p.id]; if (!pt) return '';
+      const col   = CRIT_COLOR[p.criticality] || '#6B7280';
+      const bg    = CRIT_BG[p.criticality]    || '#F9FAFB';
+      const bia   = p.bia_pct || 0;
+      const circ  = 2 * Math.PI * NR;
+      const dash  = (bia / 100) * circ;
+      const hasPlan  = approvedPlanIds.has(p.id);
+      const testR    = testByProc[p.id]?.result;
+      const testCol  = testR === 'passed' ? '#16a34a' : testR === 'partial' ? '#D97706' : testR === 'failed' ? '#DC2626' : null;
+      const biaCol   = bia >= 80 ? '#16a34a' : bia >= 50 ? '#D97706' : '#DC2626';
+
+      // Nombre truncado en 2 líneas de ~13 chars
+      const words = p.name.split(' ');
+      let l1 = '', l2 = '';
+      for (const w of words) {
+        if (!l1 || (l1+' '+w).length <= 13) l1 = l1 ? l1+' '+w : w;
+        else if (!l2 || (l2+' '+w).length <= 13) l2 = l2 ? l2+' '+w : w;
+      }
+      if (l2.length > 13) l2 = l2.substring(0,12) + '…';
+
+      return `
+      <g data-id="${p.id}" onclick="ViewBcp._switchTab('processes')"
+         style="cursor:pointer;" role="button" aria-label="${p.name.replace(/"/g,'&quot;')}">
+        <title>${p.name} | BIA: ${bia}% | ${p.criticality}${hasPlan ? ' | Plan aprobado' : ''}${testR ? ' | Test: ' + testR : ''}</title>
+        <!-- halo plan aprobado -->
+        ${hasPlan ? `<circle cx="${pt.x}" cy="${pt.y}" r="${NR+9}" fill="none" stroke="#16a34a" stroke-width="2" opacity="0.4"/>` : ''}
+        <!-- fondo -->
+        <circle cx="${pt.x}" cy="${pt.y}" r="${NR+2}" fill="${bg}" stroke="${col}" stroke-width="1.5"/>
+        <!-- ring track -->
+        <circle cx="${pt.x}" cy="${pt.y}" r="${NR}" fill="none" stroke="#E2E8F0" stroke-width="5"/>
+        <!-- ring BIA -->
+        <circle cx="${pt.x}" cy="${pt.y}" r="${NR}" fill="none" stroke="${biaCol}" stroke-width="5"
+                stroke-linecap="round" stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}"
+                transform="rotate(-90 ${pt.x} ${pt.y})"/>
+        <!-- relleno interior -->
+        <circle cx="${pt.x}" cy="${pt.y}" r="${NR-7}" fill="${col}" fill-opacity="0.12"/>
+        <!-- texto nombre -->
+        <text x="${pt.x}" y="${l2 ? pt.y - 7 : pt.y}" text-anchor="middle" dominant-baseline="middle"
+              font-size="9.5" font-weight="700" fill="${col}" font-family="Inter,system-ui,sans-serif">${UI.esc(l1)}</text>
+        ${l2 ? `<text x="${pt.x}" y="${pt.y + 9}" text-anchor="middle" dominant-baseline="middle"
+              font-size="9.5" font-weight="700" fill="${col}" font-family="Inter,system-ui,sans-serif">${UI.esc(l2)}</text>` : ''}
+        <!-- BIA % -->
+        <text x="${pt.x}" y="${pt.y + NR + 14}" text-anchor="middle"
+              font-size="9" font-weight="700" fill="${biaCol}" font-family="Inter,system-ui,sans-serif">BIA ${bia}%</text>
+        <!-- badge test -->
+        ${testCol ? `<circle cx="${pt.x + NR - 3}" cy="${pt.y + NR - 3}" r="7" fill="${testCol}" stroke="white" stroke-width="1.5"/>
+          <text x="${pt.x + NR - 3}" y="${pt.y + NR - 3}" text-anchor="middle" dominant-baseline="middle"
+                font-size="8" fill="white" font-weight="700">T</text>` : ''}
+        <!-- badge plan -->
+        ${hasPlan ? `<circle cx="${pt.x - NR + 3}" cy="${pt.y - NR + 3}" r="7" fill="#16a34a" stroke="white" stroke-width="1.5"/>
+          <text x="${pt.x - NR + 3}" y="${pt.y - NR + 3}" text-anchor="middle" dominant-baseline="middle"
+                font-size="8" fill="white" font-weight="700">P</text>` : ''}
+      </g>`;
+    }).join('');
+
+    // Etiquetas de fila (criticidad)
+    const rowLabels = rows.map(([crit], i) => {
+      const y = PAD_TOP + NR + i * V_GAP;
+      return `<text x="4" y="${y}" dominant-baseline="middle"
+                    font-size="8.5" font-weight="800" fill="${CRIT_COLOR[crit]||'#666'}"
+                    font-family="Inter,system-ui,sans-serif" letter-spacing="0.08em"
+                    transform="rotate(-90, 20, ${y})">${CRIT_LABEL[crit]||crit}</text>`;
+    }).join('');
+
+    // KPIs adicionales
+    const critCount  = procs.filter(p => p.criticality === 'critical').length;
+    const highCount  = procs.filter(p => p.criticality === 'high').length;
+    const withPlan   = procs.filter(p => approvedPlanIds.has(p.id)).length;
+    const withTest   = procs.filter(p => testByProc[p.id]?.result === 'passed').length;
+    const bia80      = procs.filter(p => (p.bia_pct||0) >= 80).length;
+    const procDepCnt = deps.filter(d => d.depends_on_process_id).length;
+    const resCnt     = deps.filter(d => !d.depends_on_process_id).length;
+
+    wrap.innerHTML = `
+    <div class="card" style="margin-top:20px;">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;">
+        <h3 style="margin:0;font-size:14px;"><i class="ti ti-topology-ring-3" style="margin-right:6px;"></i>Mapa de Continuidad</h3>
+        <div style="display:flex;gap:16px;font-size:11px;color:var(--text-subtle);">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:3px;"></span>P plan aprobado</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:3px;"></span>T test pasado</span>
+          <span><span style="display:inline-block;width:8px;height:8px;background:#DC2626;margin-right:3px;"></span>T test fallido</span>
+          <span style="font-style:italic;">Ring = % BIA completado</span>
+        </div>
+      </div>
+      <div class="card-body" style="padding:8px 16px 16px;">
+        <!-- KPIs compactos -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px;">
+          ${[
+            ['Criticos', critCount, '#DC2626'],
+            ['Altos', highCount, '#D97706'],
+            ['BIA ≥80%', bia80 + '/' + procs.length, '#16a34a'],
+            ['Con plan', withPlan + '/' + procs.length, '#16a34a'],
+            ['Test OK', withTest + '/' + procs.length, '#16a34a'],
+            ['Dep. proc.', procDepCnt, '#2563EB'],
+            ['Dep. recursos', resCnt, '#6B7280'],
+          ].map(([l,v,c]) => `
+          <div style="text-align:center;padding:8px 4px;background:var(--bg-2);border-radius:8px;">
+            <div style="font-size:16px;font-weight:800;color:${c};">${v}</div>
+            <div style="font-size:9.5px;color:var(--text-subtle);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-top:2px;">${l}</div>
+          </div>`).join('')}
+        </div>
+        <!-- SVG mapa -->
+        <div style="overflow-x:auto;border:0.5px solid var(--border);border-radius:10px;background:var(--bg-2);padding:12px;">
+          <svg viewBox="0 0 ${SVG_W} ${SVG_H}" width="100%" style="min-width:${Math.min(SVG_W, 360)}px;max-height:${SVG_H + 20}px;">
+            <defs>
+              <marker id="bcp-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#94A3B8"/>
+              </marker>
+            </defs>
+            ${rowLabels}
+            ${procDepLines}
+            ${nodesSvg}
+          </svg>
+        </div>
+        ${procDepLines ? '' : `<div style="font-size:11px;color:var(--text-subtle);margin-top:6px;text-align:center;">
+          Sin dependencias proceso-proceso registradas. Añadelas en el tab <strong>Dependencias</strong>.
+        </div>`}
+      </div>
+    </div>`;
   }
 
   async function _runBcpAiAnalysis() {

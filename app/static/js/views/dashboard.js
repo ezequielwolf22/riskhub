@@ -37,13 +37,14 @@ const ViewDashboard = {
 
     try {
       // Cargar datos de todos los modulos en paralelo para minimo tiempo de carga
-      const [s, inc, tsk, pol, gdpr, ctx] = await Promise.allSettled([
+      const [s, inc, tsk, pol, gdpr, ctx, bcpRaw] = await Promise.allSettled([
         Api.risks.summary(),
         Api.incidents.summary(),
         Api.tasks.summary(),
         Api.policies.summary(),
         Api.gdpr.summary(),
         Api.context.get(),
+        Api.get('/api/bcp/dashboard').catch(() => null),
       ]);
 
       const risks    = s.status    === 'fulfilled' ? s.value    : null;
@@ -52,6 +53,7 @@ const ViewDashboard = {
       const policies = pol.status  === 'fulfilled' ? pol.value  : null;
       const gdprData = gdpr.status === 'fulfilled' ? gdpr.value : null;
       const context  = ctx.status  === 'fulfilled' ? ctx.value  : null;
+      const bcpData  = bcpRaw.status === 'fulfilled' ? bcpRaw.value : null;
 
       // Exponer metodología activa globalmente para el formulario de riesgos
       if (context?.methodology) window._riskMethodology = context.methodology;
@@ -231,7 +233,10 @@ const ViewDashboard = {
         </div>
 
         <!-- MODULOS SECUNDARIOS -->
-        ${ViewDashboard._modulesRowHtml(incidents, tasks, policies, gdprData)}
+        ${ViewDashboard._modulesRowHtml(incidents, tasks, policies, gdprData, bcpData)}
+
+        <!-- PANEL BCP -->
+        ${ViewDashboard._bcpPanelHtml(bcpData)}
 
         <!-- TOP 10 RIESGOS -->
         <div class="card" style="margin-top:16px;">
@@ -488,8 +493,75 @@ const ViewDashboard = {
     `;
   },
 
-  /* Fila de tarjetas de modulos secundarios (incidentes, tareas, politicas, GDPR). */
-  _modulesRowHtml(incidents, tasks, policies, gdprData) {
+  /* Panel BCP/ISO 22301 para el dashboard global. */
+  _bcpPanelHtml(bcp) {
+    if (!bcp || (!bcp.total_processes && bcp.total_processes !== 0)) return '';
+    const biaPct   = bcp.bia_avg_pct   ?? 0;
+    const approved = bcp.approved_plans ?? 0;
+    const overdue  = bcp.processes_overdue_test ?? 0;
+    const critical = bcp.critical_processes ?? 0;
+    const testsDone= bcp.tests_done ?? 0;
+    const total    = bcp.total_processes ?? 0;
+
+    // Calcular semaforo BCP
+    const bcpOk = approved > 0 && biaPct >= 60 && overdue === 0;
+    const bcpWarn = approved === 0 || biaPct < 60 || overdue > 0;
+    const statusColor = bcpOk ? 'var(--risk-low)' : bcpWarn ? 'var(--risk-medium)' : 'var(--risk-critical)';
+    const statusLabel = bcpOk ? 'Operativo' : approved === 0 ? 'Sin planes' : biaPct < 40 ? 'BIA incompleto' : 'Revision necesaria';
+
+    const bar = (pct, col) => `
+      <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;margin-top:2px;">
+        <div style="height:100%;width:${pct}%;background:${col};border-radius:2px;transition:width .4s;"></div>
+      </div>`;
+
+    return `
+    <div class="card" style="margin-top:16px;" onclick="location.hash='#/bcp'" style="cursor:pointer;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};flex-shrink:0;box-shadow:0 0 0 3px ${statusColor}22;"></div>
+          <h3 style="margin:0;font-size:14px;">Continuidad de Negocio <span style="font-size:11px;font-weight:400;color:var(--text-subtle);">ISO 22301</span></h3>
+          <span style="font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;background:${statusColor}22;color:${statusColor};">${statusLabel}</span>
+        </div>
+        <a href="#/bcp" style="font-size:11px;color:var(--brand-purple);">Ver modulo BCP -></a>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;">
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:var(--text);">${total}</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Procesos</div>
+          ${bar(total ? 100 : 0, 'var(--brand-purple)')}
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:${critical > 0 ? 'var(--risk-critical)' : 'var(--text)'};">${critical}</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Criticos</div>
+          ${bar(total ? critical/total*100 : 0, 'var(--risk-critical)')}
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:${biaPct < 60 ? 'var(--risk-medium)' : 'var(--risk-low)'};">${biaPct}%</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">BIA media</div>
+          ${bar(biaPct, biaPct >= 80 ? 'var(--risk-low)' : biaPct >= 50 ? 'var(--risk-medium)' : 'var(--risk-critical)')}
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:${approved === 0 ? 'var(--risk-critical)' : 'var(--risk-low)'};">${approved}</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Planes aprobados</div>
+          ${bar(approved > 0 ? 100 : 0, 'var(--risk-low)')}
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:${testsDone === 0 ? 'var(--risk-medium)' : 'var(--risk-low)'};">${testsDone}</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Tests OK</div>
+          ${bar(testsDone > 0 ? 100 : 0, 'var(--risk-low)')}
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:${overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)'};">${overdue}</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Sin test 12m</div>
+          ${bar(overdue > 0 ? Math.min(overdue/Math.max(total,1)*100, 100) : 0, 'var(--risk-high)')}
+        </div>
+      </div>
+      ${bcp.last_test_date ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:10px;text-align:right;">Ultimo test: ${new Date(bcp.last_test_date).toLocaleDateString('es-ES')}</div>` : ''}
+    </div>`;
+  },
+
+  /* Fila de tarjetas de modulos secundarios (incidentes, tareas, politicas, GDPR, BCP). */
+  _modulesRowHtml(incidents, tasks, policies, gdprData, bcpData) {
     const cards = [];
 
     if (incidents) {
@@ -558,6 +630,24 @@ const ViewDashboard = {
             <a href="#/gdpr?requires_dpia=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Requieren DPIA', gdprData.requires_dpia, gdprData.requires_dpia > 0 ? 'var(--brand-orange)' : 'var(--text-muted)')}</a>
             <a href="#/gdpr?dpias_pending=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('DPIAs pendientes', gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
             <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Transferencias fuera UE', gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}</a>
+          </div>
+        </div>`);
+    }
+
+    if (bcpData && (bcpData.total_processes > 0 || bcpData.approved_plans > 0)) {
+      const biaPct = bcpData.bia_avg_pct ?? 0;
+      const ovrd = bcpData.processes_overdue_test ?? 0;
+      cards.push(`
+        <div class="card" style="flex:1;min-width:200px;cursor:pointer;" onclick="location.hash='#/bcp'">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:14px;">Continuidad BCP</h3>
+            <a href="#/bcp" style="font-size:11px;color:var(--brand-purple);" onclick="event.stopPropagation()">Ver -></a>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            ${ViewDashboard._moduleStatLine('Procesos registrados', bcpData.total_processes ?? 0, 'var(--text-muted)')}
+            ${ViewDashboard._moduleStatLine('Planes aprobados', bcpData.approved_plans ?? 0, (bcpData.approved_plans ?? 0) === 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('BIA completado (media)', biaPct + '%', biaPct < 60 ? 'var(--risk-medium)' : 'var(--risk-low)')}
+            ${ViewDashboard._moduleStatLine('Sin test en 12 meses', ovrd, ovrd > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
           </div>
         </div>`);
     }
