@@ -235,3 +235,264 @@ def _safe_int(val) -> int | None:
         return int(float(str(val))) if val is not None else None
     except (ValueError, TypeError):
         return None
+
+
+def export_org_data(db: Session, org_id: int) -> bytes:
+    """Exporta todos los datos BCP de la organización como Excel."""
+    from app.models import (
+        BusinessProcess, BCPDependency, BCPPlan, BCPTest, BCPSupplierLink, Supplier,
+    )
+    from app.services.bcp_service import bia_completeness
+
+    wb = openpyxl.Workbook()
+
+    # Hoja 1: Procesos
+    ws_proc = wb.active
+    ws_proc.title = "Procesos"
+    _write_header(ws_proc, [
+        "ID", "Nombre", "Criticidad", "Prioridad", "RTO (h)", "RPO (h)", "MTPD (h)",
+        "MBCO", "Impacto Financiero", "Impacto Reputacional", "Impacto Legal",
+        "Impacto Operacional", "Staff min recuperacion", "Criterios activacion",
+        "Procedimiento alternativo", "BIA %", "Ultimo test", "Resultado test",
+    ])
+    procs = db.query(BusinessProcess).filter_by(organization_id=org_id).all()
+    for p in procs:
+        try:
+            bia = bia_completeness(None, p)
+        except Exception:
+            bia = {"pct": 0}
+        ws_proc.append([
+            p.id, p.name, p.criticality, p.priority,
+            p.rto_hours, p.rpo_hours, p.mtpd_hours,
+            p.mbco, p.financial_impact, p.reputational_impact, p.legal_impact,
+            p.operational_impact, p.min_recovery_staff,
+            p.activation_criteria, p.alternative_procedure,
+            bia["pct"],
+            p.last_tested_at.strftime("%Y-%m-%d") if p.last_tested_at else "",
+            p.test_result or "",
+        ])
+
+    # Hoja 2: Dependencias
+    ws_dep = wb.create_sheet("Dependencias")
+    _write_header(ws_dep, [
+        "ID", "Proceso", "Tipo", "Nombre", "Qty normal", "Qty recuperacion",
+        "RTO necesario (h)", "Es critico", "Alternativa",
+    ])
+    deps = db.query(BCPDependency).filter_by(organization_id=org_id).all()
+    proc_map = {p.id: p.name for p in procs}
+    for d in deps:
+        ws_dep.append([
+            d.id, proc_map.get(d.process_id, d.process_id),
+            d.dependency_type, d.name, d.qty_normal, d.qty_recovery,
+            d.rto_hours, "Si" if d.is_critical else "No", d.alternative or "",
+        ])
+
+    # Hoja 3: Planes
+    ws_plan = wb.create_sheet("Planes")
+    _write_header(ws_plan, [
+        "ID", "Codigo", "Tipo", "Nombre", "Version", "Estado",
+        "Alcance", "Criterios activacion", "Ultima prueba", "Revision",
+    ])
+    plans = db.query(BCPPlan).filter_by(organization_id=org_id).all()
+    for p in plans:
+        ws_plan.append([
+            p.id, p.code, p.plan_type, p.name, p.version, p.status,
+            (p.scope or "")[:200], (p.activation_criteria or "")[:200],
+            p.last_exercised_at.strftime("%Y-%m-%d") if p.last_exercised_at else "",
+            p.review_date.strftime("%Y-%m-%d") if p.review_date else "",
+        ])
+
+    # Hoja 4: Tests
+    ws_test = wb.create_sheet("Tests")
+    _write_header(ws_test, [
+        "ID", "Codigo", "Tipo", "Programado", "Realizado", "Resultado",
+        "Objetivo", "Hallazgos", "Lecciones aprendidas",
+    ])
+    tests = db.query(BCPTest).filter_by(organization_id=org_id).all()
+    for t in tests:
+        ws_test.append([
+            t.id, t.code, t.test_type,
+            t.scheduled_at.strftime("%Y-%m-%d") if t.scheduled_at else "",
+            t.conducted_at.strftime("%Y-%m-%d") if t.conducted_at else "",
+            t.result or "", t.objective or "", t.findings or "", t.lessons_learned or "",
+        ])
+
+    # Hoja 5: Proveedores BCM
+    ws_sup = wb.create_sheet("Proveedores BCM")
+    _write_header(ws_sup, [
+        "ID", "Proveedor", "Criticidad BCM", "RTO impacto (h)",
+        "Plan contingencia", "SLA contrato (h)", "Ultima revision",
+    ])
+    slinks = db.query(BCPSupplierLink).filter_by(organization_id=org_id).all()
+    for sl in slinks:
+        sup = db.get(Supplier, sl.supplier_id)
+        ws_sup.append([
+            sl.id, sup.name if sup else sl.supplier_id,
+            sl.criticality, sl.rto_impact_hours,
+            "Si" if sl.has_contingency_plan else "No",
+            sl.contract_sla_hours,
+            sl.last_review_date.strftime("%Y-%m-%d") if sl.last_review_date else "",
+        ])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+async def ai_parse_any_format(content: bytes, filename: str, api_key: str) -> dict:
+    """Usa Claude para parsear cualquier Excel/CSV y mapear a campos BCP."""
+    import anthropic
+    import csv
+    import json
+
+    raw_rows = []
+    headers = []
+
+    if filename.lower().endswith(".csv"):
+        text = content.decode("utf-8", errors="replace")
+        reader = csv.reader(text.splitlines())
+        rows = list(reader)
+        if rows:
+            headers = rows[0]
+            raw_rows = rows[1:21]
+    else:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        ws = wb.active
+        all_rows = list(ws.iter_rows(values_only=True))
+        if all_rows:
+            headers = [str(h) if h is not None else "" for h in all_rows[0]]
+            raw_rows = [
+                [str(c) if c is not None else "" for c in row]
+                for row in all_rows[1:21]
+            ]
+
+    if not headers:
+        return {
+            "errors": ["No se detectaron columnas en el archivo"],
+            "summary": {"processes_found": 0, "dependencies_found": 0, "suppliers_found": 0},
+            "processes": [], "all_processes": [], "all_dependencies": [], "all_suppliers": [],
+            "ai_mapping": {}, "ai_warnings": [], "ai_confidence": 0,
+        }
+
+    rows_text = "\n".join(
+        [", ".join(str(h) for h in headers)] +
+        [", ".join(str(c) for c in row) for row in raw_rows[:5]]
+    )
+
+    prompt = f"""Analiza este archivo Excel/CSV que contiene datos de BCP (Business Continuity Planning).
+
+Columnas detectadas: {headers}
+
+Primeras filas de datos:
+{rows_text}
+
+Tu tarea:
+1. Identifica que columna corresponde a cada campo BCP de la lista de abajo.
+2. Lista los campos BCP OBLIGATORIOS que faltan en el archivo.
+3. Da advertencias sobre datos que parecen incorrectos o incompletos.
+
+Campos BCP disponibles para procesos:
+- name (OBLIGATORIO): nombre del proceso
+- criticality: critical/high/medium/low
+- rto_hours: Recovery Time Objective en horas (numero)
+- rpo_hours: Recovery Point Objective en horas (numero)
+- mtpd_hours: Maximum Tolerable Period of Disruption en horas (numero)
+- description: descripcion del proceso
+- priority: prioridad numerica
+- activation_criteria: criterios de activacion del plan
+- owner_email: email del propietario
+
+Responde UNICAMENTE con JSON valido en este formato exacto:
+{{
+  "mapping": {{
+    "name": "nombre_columna_detectada_o_null",
+    "criticality": "nombre_columna_detectada_o_null",
+    "rto_hours": "nombre_columna_detectada_o_null",
+    "rpo_hours": "nombre_columna_detectada_o_null",
+    "mtpd_hours": "nombre_columna_detectada_o_null",
+    "description": "nombre_columna_detectada_o_null",
+    "priority": "nombre_columna_detectada_o_null",
+    "activation_criteria": "nombre_columna_detectada_o_null",
+    "owner_email": "nombre_columna_detectada_o_null"
+  }},
+  "missing_required": ["lista de campos obligatorios que faltan"],
+  "warnings": ["avisos sobre datos que parecen incorrectos o incompletos"],
+  "confidence": 0.85
+}}"""
+
+    client = anthropic.Anthropic(api_key=api_key)
+    message = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    raw = message.content[0].text.strip()
+    # Limpiar markdown code blocks si Claude los incluye
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else raw
+        if raw.startswith("json"):
+            raw = raw[4:]
+    ai_result = json.loads(raw.strip())
+
+    mapping = ai_result.get("mapping", {})
+    warnings = ai_result.get("warnings", [])
+    missing = ai_result.get("missing_required", [])
+
+    # Aplicar el mapping para extraer procesos
+    col_indices = {h: i for i, h in enumerate(headers)}
+
+    def get_val(row, field_name):
+        col = mapping.get(field_name)
+        if not col or col not in col_indices:
+            return None
+        idx = col_indices[col]
+        val = row[idx] if idx < len(row) else None
+        if val is None or str(val).strip() in ("", "None"):
+            return None
+        return val
+
+    processes = []
+    for row in raw_rows:
+        name = get_val(row, "name")
+        if not name:
+            continue
+        crit = (get_val(row, "criticality") or "medium").lower()
+        if crit not in ("critical", "high", "medium", "low"):
+            warnings.append(f"Proceso '{name}': criticidad '{crit}' invalida, se usara 'medium'")
+            crit = "medium"
+        processes.append({
+            "name": str(name).strip(),
+            "criticality": crit,
+            "rto_hours": _safe_int(get_val(row, "rto_hours")),
+            "rpo_hours": _safe_int(get_val(row, "rpo_hours")),
+            "mtpd_hours": _safe_int(get_val(row, "mtpd_hours")),
+            "description": str(get_val(row, "description")).strip()
+                if get_val(row, "description") else None,
+            "priority": _safe_int(get_val(row, "priority")),
+            "activation_criteria": str(get_val(row, "activation_criteria")).strip()
+                if get_val(row, "activation_criteria") else None,
+            "owner_email": str(get_val(row, "owner_email")).strip()
+                if get_val(row, "owner_email") else None,
+        })
+
+    errors = []
+    if missing:
+        errors.append(f"Campos obligatorios no encontrados: {', '.join(missing)}")
+
+    return {
+        "errors": errors,
+        "summary": {
+            "processes_found": len(processes),
+            "dependencies_found": 0,
+            "suppliers_found": 0,
+        },
+        "processes": processes[:3],
+        "all_processes": processes,
+        "all_dependencies": [],
+        "all_suppliers": [],
+        "ai_mapping": mapping,
+        "ai_warnings": warnings,
+        "ai_confidence": ai_result.get("confidence", 0.5),
+    }

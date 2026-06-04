@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import (
     BCPDependency, BCPExerciseProgramme, BCPPlan, BCPStrategy,
@@ -437,17 +438,22 @@ def bcp_dashboard(db: Session = Depends(get_db), u: User = Depends(get_current_u
 # ── ISO 22301 status ──────────────────────────────────────────────────────────
 
 @router.get("/iso22301-status")
-def iso22301_status(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def iso22301_status(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
     from app.services.bcp_service import iso22301_status as _status
-    return _status(db, _org(u))
+    return _status(db, org)
 
 
 # ── BIA completeness ──────────────────────────────────────────────────────────
 
 @router.get("/bia")
-def bia_overview(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def bia_overview(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
     from app.services.bcp_service import bia_completeness
-    org = _org(u)
     procs = db.query(BusinessProcess).filter_by(organization_id=org).all()
     return [{"id": p.id, "name": p.name, "criticality": p.criticality,
              **bia_completeness(db, p)} for p in procs]
@@ -456,8 +462,10 @@ def bia_overview(db: Session = Depends(get_db), u: User = Depends(require_analys
 # ── Procesos ──────────────────────────────────────────────────────────────────
 
 @router.get("/processes")
-def list_processes(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
-    org = _org(u)
+def list_processes(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
     return [_proc_d(p) for p in db.query(BusinessProcess).filter_by(
         organization_id=org).order_by(BusinessProcess.criticality).all()]
 
@@ -514,8 +522,11 @@ def delete_process(pid: int, db: Session = Depends(get_db), u: User = Depends(re
 
 @router.get("/dependencies")
 def list_deps(process_id: Optional[int] = None, db: Session = Depends(get_db),
-              u: User = Depends(require_analyst)):
-    q = db.query(BCPDependency).filter_by(organization_id=_org(u))
+              u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
+    q = db.query(BCPDependency).filter_by(organization_id=org)
     if process_id:
         q = q.filter_by(process_id=process_id)
     return [_dep_d(d) for d in q.all()]
@@ -562,9 +573,12 @@ def delete_dep(did: int, db: Session = Depends(get_db), u: User = Depends(requir
 # ── Strategies ────────────────────────────────────────────────────────────────
 
 @router.get("/strategies")
-def list_strats(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def list_strats(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
     return [_strat_d(s) for s in db.query(BCPStrategy).filter_by(
-        organization_id=_org(u)).all()]
+        organization_id=org).all()]
 
 
 @router.post("/strategies", status_code=201)
@@ -618,9 +632,12 @@ def delete_strat(sid: int, db: Session = Depends(get_db), u: User = Depends(requ
 # ── Plans ─────────────────────────────────────────────────────────────────────
 
 @router.get("/plans")
-def list_plans(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def list_plans(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
     return [_plan_d(p) for p in db.query(BCPPlan).filter_by(
-        organization_id=_org(u)).order_by(BCPPlan.created_at.desc()).all()]
+        organization_id=org).order_by(BCPPlan.created_at.desc()).all()]
 
 
 @router.post("/plans", status_code=201)
@@ -713,9 +730,12 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 @router.get("/tests")
-def list_tests(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def list_tests(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
     return [_test_d(t) for t in db.query(BCPTest).filter_by(
-        organization_id=_org(u)).order_by(BCPTest.scheduled_at.desc()).all()]
+        organization_id=org).order_by(BCPTest.scheduled_at.desc()).all()]
 
 
 @router.post("/tests", status_code=201)
@@ -775,9 +795,12 @@ def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
 # ── Supplier links ────────────────────────────────────────────────────────────
 
 @router.get("/supplier-links")
-def list_sl(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def list_sl(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
     return [_sl_d(s, db) for s in db.query(BCPSupplierLink).filter_by(
-        organization_id=_org(u)).all()]
+        organization_id=org).all()]
 
 
 @router.post("/supplier-links", status_code=201)
@@ -829,8 +852,11 @@ def delete_sl(lid: int, db: Session = Depends(get_db), u: User = Depends(require
 
 @router.get("/exercise-programme")
 def list_ep(year: Optional[int] = None, db: Session = Depends(get_db),
-            u: User = Depends(require_analyst)):
-    q = db.query(BCPExerciseProgramme).filter_by(organization_id=_org(u))
+            u: User = Depends(get_current_user)):
+    org = u.organization_id
+    if not org:
+        return []
+    q = db.query(BCPExerciseProgramme).filter_by(organization_id=org)
     if year:
         q = q.filter_by(year=year)
     return [{"id": p.id, "year": p.year, "status": p.status,
@@ -919,3 +945,59 @@ def download_template(u: User = Depends(require_analyst)):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=BCP_Plantilla.xlsx"},
     )
+
+
+@router.get("/export")
+def export_bcp_excel(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Exporta todos los datos BCP de la organización como Excel."""
+    org = u.organization_id
+    if not org:
+        raise HTTPException(400, "Sin organización asignada")
+    from app.services.bcp_excel_service import export_org_data
+    content = export_org_data(db, org)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=BCP_datos.xlsx"},
+    )
+
+
+@router.post("/import/ai-preview")
+async def import_ai_preview(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    u: User = Depends(require_analyst),
+):
+    """Usa Claude para parsear cualquier formato Excel/CSV y mapear columnas BCP."""
+    if not file.filename.endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(422, "Se aceptan .xlsx, .xls, .csv")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Max 10 MB")
+    from app.models import AiConfig
+    org = _org(u)
+    cfg = db.query(AiConfig).filter_by(organization_id=org).first()
+    # Obtener API key usando el mismo patron que el router ai.py
+    import base64
+    import hashlib
+    from cryptography.fernet import Fernet
+    api_key = None
+    if cfg and cfg.api_key_encrypted:
+        try:
+            key = base64.urlsafe_b64encode(
+                hashlib.sha256(settings.secret_key.encode()).digest()
+            )
+            api_key = Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+        except Exception:
+            api_key = None
+    if not api_key:
+        api_key = settings.anthropic_api_key
+    if not api_key:
+        raise HTTPException(422, "No hay API key de IA configurada. Configura el agente IA primero.")
+    from app.services.bcp_excel_service import ai_parse_any_format
+    try:
+        result = await ai_parse_any_format(content, file.filename, api_key)
+        return result
+    except Exception as exc:
+        logger.error("AI BCP import error: %s", exc)
+        raise HTTPException(422, f"Error en analisis IA: {exc}")

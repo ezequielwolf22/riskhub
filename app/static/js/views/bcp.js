@@ -534,110 +534,206 @@ const ViewBcp = (() => {
     document.getElementById('btn-new-sl')?.addEventListener('click', () => _openSLModal());
   }
 
-  // ── Tab Importar Excel ───────────────────────────────────────────────────────
+  // ── Tab Importar / Exportar Excel ───────────────────────────────────────────
+
+  let _importMode = 'std';
 
   function _tabImport(el) {
     el.innerHTML = `
-    <div style="max-width:700px;">
-      <h3>Importar datos BCP desde Excel</h3>
-      <div class="card" style="margin-bottom:16px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+      <!-- Panel exportar -->
+      <div class="card">
+        <div class="card-header"><h3><i class="ti ti-table-export"></i> Exportar datos actuales</h3></div>
         <div class="card-body">
-          <p>El archivo Excel debe contener 3 hojas:</p>
-          <ul style="font-size:13px;line-height:1.8;">
-            <li><strong>Procesos</strong>: Nombre *, Criticidad, RTO, RPO, MTPD, Descripcion, Propietario, Prioridad</li>
-            <li><strong>Dependencias</strong>: Proceso *, Tipo *, Nombre *, RTO necesario, Es critico</li>
-            <li><strong>Proveedores BCM</strong>: Proveedor *, Criticidad BCM, RTO impacto</li>
-          </ul>
-          <a class="btn btn-secondary" href="/api/bcp/import/template" download>
-            <i class="ti ti-download"></i> Descargar plantilla Excel
+          <p style="color:var(--text-muted);font-size:14px;">Descarga todos tus procesos, dependencias, planes y tests en formato Excel.</p>
+          <a href="/api/bcp/export" class="btn btn-secondary" download="BCP_datos.xlsx">
+            <i class="ti ti-download"></i> Descargar BCP_datos.xlsx
           </a>
-        </div>
-      </div>
-
-      <div class="card" id="import-step1">
-        <div class="card-header"><h4>Paso 1 — Seleccionar archivo</h4></div>
-        <div class="card-body">
-          <div id="drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:30px;text-align:center;cursor:pointer;transition:.2s;"
-            ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
-            ondragleave="this.style.borderColor='var(--border)'"
-            ondrop="ViewBcp._handleDrop(event)">
-            <i class="ti ti-table-import" style="font-size:32px;color:var(--text-muted);"></i>
-            <div style="margin-top:8px;color:var(--text-muted);">Arrastra un .xlsx aqui o</div>
-            <label style="margin-top:8px;display:inline-block;" class="btn btn-secondary btn-sm">
-              Seleccionar archivo
-              <input type="file" id="import-file" accept=".xlsx,.xls" style="display:none;"
-                onchange="ViewBcp._handleFileSelect(this.files[0])">
-            </label>
+          <div style="margin-top:12px;">
+            <a href="/api/bcp/import/template" class="btn btn-secondary btn-sm" download>
+              <i class="ti ti-file-download"></i> Descargar plantilla vacia
+            </a>
           </div>
         </div>
       </div>
-
-      <div id="import-step2" style="display:none;" class="card">
-        <div class="card-header"><h4>Paso 2 — Vista previa</h4></div>
-        <div class="card-body" id="import-preview-body"></div>
+      <!-- Panel importar -->
+      <div class="card">
+        <div class="card-header"><h3><i class="ti ti-table-import"></i> Importar datos</h3></div>
+        <div class="card-body">
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <button class="btn btn-secondary btn-sm active" id="import-mode-std"
+              onclick="ViewBcp._setImportMode('std')">
+              <i class="ti ti-file-spreadsheet"></i> Plantilla estandar
+            </button>
+            <button class="btn btn-secondary btn-sm" id="import-mode-ai"
+              onclick="ViewBcp._setImportMode('ai')">
+              <i class="ti ti-brain"></i> Cualquier formato (IA)
+            </button>
+          </div>
+          <div id="import-mode-desc" style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+            Usa la plantilla descargada arriba. El sistema valida la estructura exacta.
+          </div>
+          <label style="display:block;border:2px dashed var(--border);border-radius:8px;padding:24px;text-align:center;cursor:pointer;transition:.2s;"
+                 id="drop-zone"
+                 ondragover="event.preventDefault()"
+                 ondrop="ViewBcp._handleDrop(event)">
+            <i class="ti ti-cloud-upload" style="font-size:32px;color:var(--text-muted);"></i>
+            <div id="drop-zone-label" style="margin-top:8px;color:var(--text-muted);">Arrastra el archivo aqui o haz clic</div>
+            <div style="font-size:12px;margin-top:4px;color:var(--text-muted);">.xlsx &middot; .xls &middot; .csv</div>
+            <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" id="import-file-input"
+                   onchange="ViewBcp._onFileSelect(this.files[0])">
+          </label>
+        </div>
       </div>
-    </div>`;
+    </div>
+    <div id="import-preview-area"></div>`;
+
+    document.getElementById('drop-zone').addEventListener('click', () => {
+      document.getElementById('import-file-input').click();
+    });
   }
 
-  async function _handleDrop(event) {
+  function _setImportMode(mode) {
+    _importMode = mode;
+    document.getElementById('import-mode-std')?.classList.toggle('active', mode === 'std');
+    document.getElementById('import-mode-ai')?.classList.toggle('active', mode === 'ai');
+    const desc = document.getElementById('import-mode-desc');
+    if (desc) desc.textContent = mode === 'ai'
+      ? 'Claude analizara la estructura de tu Excel y mapeara automaticamente los campos BCP, aunque no siga la plantilla exacta.'
+      : 'Usa la plantilla descargada arriba. El sistema valida la estructura exacta.';
+  }
+
+  function _handleDrop(event) {
     event.preventDefault();
-    document.getElementById('drop-zone').style.borderColor = 'var(--border)';
     const file = event.dataTransfer.files[0];
-    if (file) await _handleFileSelect(file);
+    if (file) _onFileSelect(file);
   }
 
+  // Kept for backward-compat (old inline handler in older markup if any)
   async function _handleFileSelect(file) {
-    if (!file || !file.name.match(/\.(xlsx|xls)$/i)) {
-      UI.toast('Solo se aceptan archivos .xlsx o .xls', 'error');
-      return;
-    }
-    UI.toast('Leyendo archivo...', 'info');
+    return _onFileSelect(file);
+  }
+
+  async function _onFileSelect(file) {
+    if (!file) return;
+    const dropZone = document.getElementById('drop-zone');
+    const lbl = document.getElementById('drop-zone-label');
+    if (dropZone) dropZone.style.borderColor = 'var(--primary)';
+    if (lbl) lbl.textContent = file.name;
+
+    const area = document.getElementById('import-preview-area');
+    if (area) area.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);">Analizando archivo...</div>';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
     try {
-      const preview = await Api.postFile('/api/bcp/import/preview', file);
-      document.getElementById('import-step2').style.display = '';
-      const body = document.getElementById('import-preview-body');
-      body.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
-        <div class="stat-card"><div class="stat-value">${preview.summary.processes_found}</div><div class="stat-label">Procesos detectados</div></div>
-        <div class="stat-card"><div class="stat-value">${preview.summary.dependencies_found}</div><div class="stat-label">Dependencias</div></div>
-        <div class="stat-card"><div class="stat-value">${preview.summary.suppliers_found}</div><div class="stat-label">Proveedores BCM</div></div>
-      </div>
-      ${preview.errors.length ? `<div class="notice notice-warning"><strong>Advertencias:</strong> ${preview.errors.map(e => UI.esc(e)).join('; ')}</div>` : ''}
-      ${preview.processes.length ? `
-      <h4>Primeros procesos a importar:</h4>
+      const endpoint = _importMode === 'ai' ? '/api/bcp/import/ai-preview' : '/api/bcp/import/preview';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') },
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      const preview = await res.json();
+      _renderImportPreview(preview, file);
+    } catch (e) {
+      if (area) area.innerHTML = UI.notice('error', 'Error al analizar: ' + e.message);
+    }
+  }
+
+  function _renderImportPreview(preview, file) {
+    const area = document.getElementById('import-preview-area');
+    if (!area) return;
+    const hasErrors = preview.errors && preview.errors.length > 0;
+    const hasWarnings = preview.ai_warnings && preview.ai_warnings.length > 0;
+
+    let aiInfo = '';
+    if (preview.ai_mapping && Object.keys(preview.ai_mapping).length) {
+      const mapped = Object.entries(preview.ai_mapping)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `<span class="badge badge-info" style="margin:2px;">${UI.esc(k)} &rarr; ${UI.esc(v)}</span>`)
+        .join('');
+      const conf = Math.round((preview.ai_confidence || 0) * 100);
+      aiInfo = `
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header"><h4><i class="ti ti-brain"></i> Mapeo detectado por IA (confianza: ${conf}%)</h4></div>
+        <div class="card-body">${mapped || 'No se detecto ningun mapeo'}</div>
+      </div>`;
+    }
+
+    const procs = preview.processes || [];
+    area.innerHTML = `
+    ${aiInfo}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+      <div class="stat-card"><div class="stat-value">${preview.summary.processes_found}</div><div class="stat-label">Procesos</div></div>
+      <div class="stat-card"><div class="stat-value">${preview.summary.dependencies_found}</div><div class="stat-label">Dependencias</div></div>
+      <div class="stat-card"><div class="stat-value">${preview.summary.suppliers_found}</div><div class="stat-label">Proveedores</div></div>
+    </div>
+    ${hasErrors ? `<div class="notice notice-warning" style="margin-bottom:8px;"><strong>Errores:</strong> ${preview.errors.map(e => UI.esc(e)).join('; ')}</div>` : ''}
+    ${hasWarnings ? `<div class="notice notice-warning" style="margin-bottom:8px;"><strong>Avisos IA:</strong> ${preview.ai_warnings.map(w => UI.esc(w)).join('; ')}</div>` : ''}
+    ${procs.length ? `
+    <h4>Vista previa (primeros ${procs.length} procesos):</h4>
+    <div class="table-container">
       <table class="data-table">
         <thead><tr><th>Nombre</th><th>Criticidad</th><th>RTO</th><th>RPO</th></tr></thead>
         <tbody>
-        ${preview.processes.map(p => `<tr>
+        ${procs.map(p => `<tr>
           <td>${UI.esc(p.name)}</td>
           <td>${UI.esc(String(p.criticality))}</td>
-          <td>${p.rto_hours != null ? p.rto_hours + 'h' : '—'}</td>
-          <td>${p.rpo_hours != null ? p.rpo_hours + 'h' : '—'}</td>
+          <td>${p.rto_hours != null ? p.rto_hours + 'h' : '&mdash;'}</td>
+          <td>${p.rpo_hours != null ? p.rpo_hours + 'h' : '&mdash;'}</td>
         </tr>`).join('')}
         </tbody>
-      </table>` : ''}
-      <div style="display:flex;gap:8px;margin-top:16px;">
-        <button class="btn btn-primary" id="btn-confirm-import">
-          <i class="ti ti-check"></i> Confirmar importacion
-        </button>
-        <button class="btn btn-secondary" onclick="document.getElementById('import-step2').style.display='none'">
-          Cancelar
-        </button>
-      </div>`;
-      document.getElementById('btn-confirm-import').addEventListener('click', () => _confirmImport(file));
-    } catch (e) {
-      UI.toast('Error: ' + (e.message || e), 'error');
-    }
+      </table>
+    </div>` : ''}
+    ${!hasErrors && preview.summary.processes_found > 0 ? `
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn btn-primary" id="btn-confirm-import">
+        <i class="ti ti-check"></i> Confirmar importacion (${preview.summary.processes_found} procesos)
+      </button>
+    </div>` : ''}`;
+
+    // Guardar preview y file para la confirmacion
+    window._bcpLastPreview = preview;
+    document.getElementById('btn-confirm-import')?.addEventListener('click', () => _confirmImport(file));
   }
 
   async function _confirmImport(file) {
+    if (!confirm(`Importar ${window._bcpLastPreview?.summary?.processes_found || 0} procesos?`)) return;
+    const btn = document.getElementById('btn-confirm-import');
+    if (btn) { btn.disabled = true; btn.textContent = 'Importando...'; }
+
+    const formData = new FormData();
+    const inputFile = document.getElementById('import-file-input');
+    const fileToSend = (inputFile && inputFile.files[0]) || file;
+    if (!fileToSend) {
+      UI.toast('Selecciona el archivo de nuevo para confirmar', 'error');
+      if (btn) btn.disabled = false;
+      return;
+    }
+    formData.append('file', fileToSend);
+
     try {
-      const res = await Api.postFile('/api/bcp/import/confirm', file);
-      UI.toast(`Importacion completada: ${res.created.processes} procesos, ${res.created.dependencies} dependencias, ${res.created.supplier_links} proveedores`, 'success');
+      const res = await fetch('/api/bcp/import/confirm', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') },
+        body: formData,
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+      const result = await res.json();
+      UI.toast(
+        `Importacion completada: ${result.created.processes} procesos, ${result.created.dependencies} dependencias`,
+        'success'
+      );
       _procs = [];
-      setTimeout(() => _switchTab('processes'), 1500);
+      _switchTab('processes');
     } catch (e) {
-      UI.toast('Error importando: ' + (e.message || e), 'error');
+      UI.toast('Error: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Confirmar importacion'; }
     }
   }
 
@@ -1254,5 +1350,6 @@ const ViewBcp = (() => {
     _editSL, _saveSL, _delSL,
     _openEPModal, _saveEP,
     _handleDrop, _handleFileSelect,
+    _setImportMode, _onFileSelect, _renderImportPreview, _confirmImport,
   };
 })();
