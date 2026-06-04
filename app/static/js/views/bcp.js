@@ -214,13 +214,19 @@ const ViewBcp = (() => {
 
   async function _tabBIA(el) {
     if (!_procs.length) _procs = await Api.get('/api/bcp/processes').catch(() => []);
-    if (!_procs.length) {
-      el.innerHTML = UI.empty('No hay procesos. Empieza creando procesos en la tab Procesos Criticos.');
-      return;
-    }
     const IMPACT_LABELS = ['Ninguno','Bajo','Medio','Alto'];
     const IMPACT_COLORS = ['#6B7280','#16a34a','#D97706','#DC2626'];
-    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">
+    el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;">Analisis de Impacto (BIA) — ${_procs.length} procesos</h3>
+      <button class="btn btn-primary" id="btn-bia-new">+ Nuevo proceso BIA</button>
+    </div>`;
+    document.getElementById('btn-bia-new')?.addEventListener('click', () => _openProcModal());
+    if (!_procs.length) {
+      el.innerHTML += UI.empty('No hay procesos BIA. Crea tu primer proceso critico con el boton de arriba.');
+      return;
+    }
+    el.innerHTML += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">
     ${_procs.map(p => {
       const pct = p.bia_pct || 0;
       const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';

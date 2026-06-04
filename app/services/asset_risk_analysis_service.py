@@ -378,6 +378,11 @@ import threading as _threading
 _api_rate_lock  = _threading.Lock()
 _api_last_call  = [0.0]  # mutable para uso en closure
 
+# Circuit breaker: evita reintentos masivos cuando la API key no tiene créditos.
+# Se resetea cuando el proceso reinicia (flag en memoria).
+_credit_exhausted: dict[str, bool] = {}  # api_key_hash → True si sin créditos
+_analysis_org_lock: dict[int, bool] = {}  # org_id → True si ya hay análisis en curso
+
 _BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005, MAGERIT v3 y ENS (Esquema Nacional de Seguridad).
 Analiza cada activo y devuelve: (1) valoracion CIA segun ENS/ISO 27005 y (2) escenarios de riesgo.
 
@@ -588,6 +593,11 @@ def _process_batch_isolated(
             except Exception as _exc:
                 last_exc = _exc
                 err_str = str(_exc)
+                # Circuit breaker: créditos agotados → abortar inmediatamente
+                if "credit balance" in err_str.lower() or "billing" in err_str.lower() or "insufficient_balance" in err_str.lower():
+                    _credit_exhausted[api_key[:16]] = True
+                    logger.warning("API credit exhausted — aborting batch analysis (batch=%s)", batch_ids[:3])
+                    raise
                 if "429" in err_str or "rate_limit" in err_str.lower():
                     wait_s = _RETRY_BASE_S * (2 ** attempt)
                     logger.warning(
@@ -748,6 +758,17 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
         db.commit()
         return {"total": 0}
 
+    # Circuit breaker: si ya sabemos que no hay créditos, no reintentar
+    if _credit_exhausted.get(api_key[:16]):
+        logger.warning("Credit exhausted circuit breaker active — skipping org=%d analysis", org_id)
+        return {"total": 0}
+
+    # Anti-duplicación: si ya hay un análisis en curso para esta org, salir
+    if _analysis_org_lock.get(org_id):
+        logger.info("Analysis already running for org=%d — skipping duplicate", org_id)
+        return {"total": 0}
+    _analysis_org_lock[org_id] = True
+
     # Usar haiku para analisis masivo (rapido y barato); mantener config para analisis individual
     model = _BATCH_MODEL
 
@@ -790,6 +811,7 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
                 failed += 1
                 logger.error("Future failed batch=%s: %s", futures[future][:2], exc)
 
+    _analysis_org_lock.pop(org_id, None)
     logger.info("Serial analysis complete: %d batches done, %d failed, org=%d",
                 done, failed, org_id)
     return {"total": total}
