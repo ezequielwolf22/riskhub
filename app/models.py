@@ -324,6 +324,11 @@ class Asset(Base):
     # Lista de nombres de productos/vendors: ["apache", "nginx", "openssl", ...]
     software_tags = Column(JSON, nullable=True)
 
+    # Import audit (v2.5.0)
+    external_id = Column(String(255), nullable=True, index=True)  # ID externo (LeanIX, CMDB, etc)
+    import_session_id = Column(String(64), nullable=True, index=True)  # para audit + rollback
+    imported_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
+
     group = relationship("AssetGroup", foreign_keys="[Asset.group_id]", back_populates="members")
     risks = relationship("Risk", back_populates="asset", cascade="all, delete-orphan")
 
