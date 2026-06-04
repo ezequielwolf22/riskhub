@@ -1897,7 +1897,7 @@ const ViewBcp = (() => {
               value="${test.conducted_at?(test.conducted_at.replace('Z','')||''):''}">
           </div>
         </div>
-        <div style="margin-bottom:14px;">${lbl('Hallazgos','',''¿Que no funciono segun lo esperado?')}
+        <div style="margin-bottom:14px;">${lbl('Hallazgos','','¿Que no funciono segun lo esperado?')}
           <textarea id="rm-findings" class="form-control" rows="3" style="font-size:13px;">${UI.esc(test.findings||'')}</textarea>
         </div>
         <div style="margin-bottom:14px;">${lbl('Lecciones aprendidas',true,'Obligatorio si resultado != Pasado')}
