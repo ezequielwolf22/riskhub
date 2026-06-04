@@ -392,6 +392,13 @@ def auto_generate_risk_from_cve(
             "Auto-generado riesgo CVE %s para asset %s: residual=%d",
             cve_id, asset.code, risk.residual_level
         )
+        # Flagear procesos BCP que dependen del activo afectado (ISO 22301 cl. 8.3)
+        try:
+            from app.services.bcp_service import flag_bcp_process_for_cve
+            flag_bcp_process_for_cve(db, asset_id=asset.id, cve_id=cve_id,
+                                     org_id=asset.organization_id)
+        except Exception:
+            pass
         return risk
     except Exception as exc:
         logger.exception("Error creating CVE risk: %s", exc)

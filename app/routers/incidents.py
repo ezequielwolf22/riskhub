@@ -123,6 +123,13 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
         logging.getLogger(__name__).warning("Incident->risks auto-link failed: %s", _exc)
     log_action(db, current_user.id, "create", "incident", str(inc.id),
                {"code": inc.code, "severity": inc.severity.value})
+    # Comprobar si el incidente activa criterios de algún proceso BCP (ISO 22301 cl. 8.4)
+    try:
+        from app.services.bcp_service import check_incident_bcp_activation
+        check_incident_bcp_activation(db, inc, current_user.organization_id)
+    except Exception as _e:
+        import logging as _logging
+        _logging.getLogger(__name__).debug("BCP activation check skipped: %s", _e)
     return inc
 
 

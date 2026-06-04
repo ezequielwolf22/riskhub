@@ -651,6 +651,13 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
 
         threading.Thread(target=_fire_alert, daemon=True).start()
 
+    # Comprobar cobertura BCP del riesgo (ISO 22301 cl. 8.2)
+    try:
+        from app.services.bcp_service import check_bcp_coverage_for_risk
+        check_bcp_coverage_for_risk(db, r, current_user.organization_id)
+    except Exception as _e:
+        logger.debug("BCP coverage check skipped: %s", _e)
+
     return r
 
 

@@ -1501,3 +1501,28 @@ table.data td .code-pill {
   .notice { border: 1px solid #ddd; background: #f9f9f9; }
   body { font-size: 12px; background: #fff; color: #000; }
 }
+
+/* ── BCP Module — Tab navigation (ISO 22301 dashboard) ── */
+.bcp-tab-bar {
+  display: flex; gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.bcp-tab-bar::-webkit-scrollbar { display: none; }
+.bcp-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 14px; font-size: var(--text-sm);
+  color: var(--text-muted); background: transparent; border: none;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  cursor: pointer; white-space: nowrap; font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.bcp-tab:hover { color: var(--text-primary); background: var(--bg-2); }
+.bcp-tab.active {
+  color: var(--primary); border-bottom-color: var(--primary);
+  background: var(--brand-sunrise-soft, #59008d11); font-weight: 600;
+}
+.bcp-tab i { font-size: 15px; }
+.bcp-tab-content { min-height: 400px; }

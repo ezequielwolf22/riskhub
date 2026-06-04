@@ -1581,26 +1581,42 @@ class ReportSchedule(Base):
 # ---------- BCP/BIA (NIS2 Art. 21.2(b) + ISO 27001 A.5.29) ----------
 
 class BusinessProcess(Base):
-    """Proceso de negocio con RTO/RPO para BIA."""
+    """Proceso de negocio con RTO/RPO para BIA (ISO 22301 cl. 8.2)."""
     __tablename__ = "business_processes"
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     criticality = Column(String(16), default="medium")   # critical|high|medium|low
+    priority = Column(Integer, nullable=True)
     rto_hours = Column(Integer, nullable=True)     # Recovery Time Objective
     rpo_hours = Column(Integer, nullable=True)     # Recovery Point Objective
     mtpd_hours = Column(Integer, nullable=True)    # Maximum Tolerable Period of Disruption
+    mbco = Column(Text, nullable=True)             # Minimum Business Continuity Objective
+    # Impactos BIA: 0=ninguno, 1=bajo, 2=medio, 3=alto
+    financial_impact = Column(Integer, nullable=True)
+    reputational_impact = Column(Integer, nullable=True)
+    legal_impact = Column(Integer, nullable=True)
+    operational_impact = Column(Integer, nullable=True)
+    min_recovery_staff = Column(Integer, nullable=True)
+    vital_records = Column(JSON, nullable=True)
+    activation_criteria = Column(Text, nullable=True)
+    alternative_procedure = Column(Text, nullable=True)
+    it_systems = Column(JSON, nullable=True)
+    facilities = Column(JSON, nullable=True)
+    escalation_contacts = Column(JSON, nullable=True)
     asset_ids = Column(JSON, nullable=True)
     supplier_ids = Column(JSON, nullable=True)
     last_tested_at = Column(DateTime, nullable=True)
     test_result = Column(String(16), nullable=True)   # passed|partial|failed
     bcp_document_path = Column(String, nullable=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    recovery_owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     owner = relationship("User", foreign_keys=[owner_id])
+    recovery_owner = relationship("User", foreign_keys=[recovery_owner_id])
 
 
 class BCPTest(Base):
@@ -1613,10 +1629,121 @@ class BCPTest(Base):
     process_ids = Column(JSON)
     scheduled_at = Column(DateTime)
     conducted_at = Column(DateTime, nullable=True)
+    objective = Column(Text, nullable=True)
+    scope_description = Column(Text, nullable=True)
+    participants = Column(JSON, nullable=True)
+    facilitator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     result = Column(String(16), nullable=True)   # passed|partial|failed
     findings = Column(Text, nullable=True)
+    lessons_learned = Column(Text, nullable=True)
+    improvement_actions = Column(Text, nullable=True)
+    evidence_doc_ids = Column(JSON, nullable=True)
     nc_ids = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    facilitator = relationship("User", foreign_keys=[facilitator_id])
+
+
+class BCPDependency(Base):
+    """Dependencia de un proceso BCP (ISO 22301 cl. 8.2 — recursos necesarios)."""
+    __tablename__ = "bcp_dependencies"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    process_id = Column(Integer, ForeignKey("business_processes.id"), nullable=False)
+    dependency_type = Column(String(32))   # IT_system|personnel|facility|supplier|utility|communication|transport|external_service
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    qty_normal = Column(Integer, nullable=True)
+    qty_recovery = Column(Integer, nullable=True)
+    rto_hours = Column(Integer, nullable=True)
+    is_critical = Column(Boolean, default=False)
+    alternative = Column(Text, nullable=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    process = relationship("BusinessProcess", foreign_keys=[process_id])
+    supplier = relationship("Supplier", foreign_keys=[supplier_id])
+
+
+class BCPStrategy(Base):
+    """Estrategia de recuperación BCP (ISO 22301 cl. 8.3)."""
+    __tablename__ = "bcp_strategies"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    process_id = Column(Integer, ForeignKey("business_processes.id"), nullable=True)
+    strategy_type = Column(String(32))   # hot_site|cold_site|warm_site|work_from_home|outsourcing|manual_workaround|dual_site|cloud_failover
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    estimated_cost = Column(Float, nullable=True)
+    implementation_status = Column(String(32), default="planned")  # planned|in_progress|implemented|tested
+    responsible_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    target_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    process = relationship("BusinessProcess", foreign_keys=[process_id])
+    responsible = relationship("User", foreign_keys=[responsible_id])
+
+
+class BCPPlan(Base):
+    """Plan de continuidad o recuperación (ISO 22301 cl. 8.4)."""
+    __tablename__ = "bcp_plans"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    code = Column(String(16))              # BCP-0001 / DRP-0001
+    plan_type = Column(String(32))         # bcp|drp|crp|ems|pandemic|cyber_response|supply_chain
+    name = Column(String(255), nullable=False)
+    version = Column(String(16), default="1.0")
+    status = Column(String(32), default="draft")  # draft|under_review|approved|deprecated
+    scope = Column(Text, nullable=True)
+    activation_criteria = Column(Text, nullable=True)
+    content_summary = Column(Text, nullable=True)
+    document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
+    process_ids = Column(JSON, nullable=True)
+    team_members = Column(JSON, nullable=True)
+    review_date = Column(DateTime, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    last_exercised_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+
+class BCPExerciseProgramme(Base):
+    """Programa anual de ejercicios de continuidad (ISO 22301 cl. 8.5)."""
+    __tablename__ = "bcp_exercise_programmes"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    year = Column(Integer, nullable=False)
+    status = Column(String(32), default="draft")   # draft|approved|completed
+    overall_objective = Column(Text, nullable=True)
+    exercises = Column(JSON, nullable=True)         # [{month, type, processes, objective}]
+    lessons_learned = Column(Text, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+
+class BCPSupplierLink(Base):
+    """Vinculo BCM con proveedor (ISO 22301 cl. 8.2 — cadena de suministro)."""
+    __tablename__ = "bcp_supplier_links"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    process_ids = Column(JSON, nullable=True)
+    criticality = Column(String(16), default="medium")  # critical|high|medium|low
+    rto_impact_hours = Column(Integer, nullable=True)
+    has_contingency_plan = Column(Boolean, default=False)
+    contingency_description = Column(Text, nullable=True)
+    alternative_supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    contract_sla_hours = Column(Integer, nullable=True)
+    notes = Column(Text, nullable=True)
+    last_review_date = Column(DateTime, nullable=True)
+
+    supplier = relationship("Supplier", foreign_keys=[supplier_id])
+    alternative_supplier = relationship("Supplier", foreign_keys=[alternative_supplier_id])
 
 
 # ---------- GDPR BREACH NOTIFICATION (GDPR Art. 33-34) ----------

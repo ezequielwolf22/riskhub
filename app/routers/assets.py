@@ -283,6 +283,18 @@ def _run_asset_analysis_bg(asset_id: int) -> None:
         pass
     finally:
         db.close()
+    # 3. Sugerir proceso BCP para activos críticos (ISO 22301 cl. 8.2)
+    try:
+        from app.services.bcp_service import suggest_bcp_for_asset
+        from app.database import SessionLocal as _SL
+        db2 = _SL()
+        try:
+            suggest_bcp_for_asset(db2, asset_id)
+            db2.commit()
+        finally:
+            db2.close()
+    except Exception as _e:
+        logger.debug("BCP suggest skipped: %s", _e)
 
 
 @router.post("/smart-import")

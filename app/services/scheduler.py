@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger("riskhub.scheduler")
@@ -1754,6 +1755,157 @@ def _run_compliance_auto_sync() -> None:
         db.close()
 
 
+def _run_bcp_test_overdue() -> None:
+    """Alerta sobre procesos BCP críticos sin test de continuidad en >12 meses."""
+    from app.models import BusinessProcess, User, UserRole
+    from app.database import SessionLocal
+    from app.services import email_service
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        procs = db.query(BusinessProcess).filter(
+            BusinessProcess.criticality.in_(["critical", "high"])
+        ).all()
+        by_org: dict[int, list] = {}
+        for p in procs:
+            if not p.organization_id:
+                continue
+            stale = (
+                not p.last_tested_at
+                or (now - p.last_tested_at.replace(tzinfo=timezone.utc)).days > 365
+            )
+            if stale:
+                by_org.setdefault(p.organization_id, []).append(p)
+        for org_id, procs_list in by_org.items():
+            cfg = email_service.get_settings(db)
+            if not cfg or not cfg.smtp_host:
+                continue
+            admin = db.query(User).filter_by(
+                organization_id=org_id, role=UserRole.ADMIN, is_active=True
+            ).first()
+            if not admin:
+                continue
+            names = ", ".join(p.name for p in procs_list[:5])
+            suffix = "..." if len(procs_list) > 5 else ""
+            subject = "[RiskHub] Procesos BCM sin test de continuidad"
+            body_html = (
+                f"<p>Los siguientes <strong>{len(procs_list)}</strong> proceso(s) critico(s) "
+                f"no tienen un test de continuidad en los ultimos 12 meses:</p>"
+                f"<p>{names}{suffix}</p>"
+                f"<p>ISO 22301 cl. 8.5 requiere ejercicios periodicos. "
+                f"<a href='#/bcp'>Ir al modulo BCP</a></p>"
+            )
+            try:
+                email_service.send_email(cfg, admin.email, subject,
+                                         email_service._wrap_html(subject, body_html, ""))
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.exception("bcp_test_overdue error: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_bcp_plan_review_due() -> None:
+    """Alerta sobre planes BCP cuya fecha de revision ha vencido."""
+    from app.models import BCPPlan, User, UserRole
+    from app.database import SessionLocal
+    from app.services import email_service
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        overdue = db.query(BCPPlan).filter(
+            BCPPlan.status.in_(["approved"]),
+            BCPPlan.review_date < now,
+            BCPPlan.review_date.isnot(None),
+        ).all()
+        by_org: dict[int, list] = {}
+        for p in overdue:
+            if p.organization_id:
+                by_org.setdefault(p.organization_id, []).append(p)
+        for org_id, plans in by_org.items():
+            cfg = email_service.get_settings(db)
+            if not cfg or not cfg.smtp_host:
+                continue
+            admin = db.query(User).filter_by(
+                organization_id=org_id, role=UserRole.ADMIN, is_active=True
+            ).first()
+            if not admin:
+                continue
+            names = ", ".join(f"{p.code} ({p.plan_type})" for p in plans[:5])
+            suffix = "..." if len(plans) > 5 else ""
+            subject = "[RiskHub] Planes de continuidad pendientes de revision"
+            body_html = (
+                f"<p><strong>{len(plans)}</strong> plan(es) BCP/DRP superaron su fecha de revision:</p>"
+                f"<p>{names}{suffix}</p>"
+                f"<p>ISO 22301 cl. 8.4 requiere revision periodica de los planes. "
+                f"<a href='#/bcp'>Ir al modulo BCP</a></p>"
+            )
+            try:
+                email_service.send_email(cfg, admin.email, subject,
+                                         email_service._wrap_html(subject, body_html, ""))
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.exception("bcp_plan_review_due error: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_bcp_bia_gap_check() -> None:
+    """Alerta sobre procesos criticos con BIA incompleto (<80%)."""
+    from app.models import BusinessProcess, User, UserRole
+    from app.database import SessionLocal
+    from app.services import email_service
+    from app.services.bcp_service import bia_completeness
+    db = SessionLocal()
+    try:
+        procs = db.query(BusinessProcess).filter(
+            BusinessProcess.criticality.in_(["critical", "high"])
+        ).all()
+        by_org: dict[int, list] = {}
+        for p in procs:
+            if not p.organization_id:
+                continue
+            bia = bia_completeness(db, p)
+            if bia["pct"] < 80:
+                by_org.setdefault(p.organization_id, []).append(
+                    (p.name, bia["pct"], bia["missing"])
+                )
+        for org_id, gaps in by_org.items():
+            cfg = email_service.get_settings(db)
+            if not cfg or not cfg.smtp_host:
+                continue
+            admin = db.query(User).filter_by(
+                organization_id=org_id, role=UserRole.ADMIN, is_active=True
+            ).first()
+            if not admin:
+                continue
+            rows = "".join(
+                f"<tr><td>{name}</td><td>{pct}%</td>"
+                f"<td>{', '.join(str(m) for m in missing[:3])}</td></tr>"
+                for name, pct, missing in gaps[:10]
+            )
+            subject = "[RiskHub] Analisis de Impacto (BIA) incompletos"
+            body_html = (
+                f"<p><strong>{len(gaps)}</strong> proceso(s) critico(s) tienen el BIA incompleto:</p>"
+                f"<table border='1' cellpadding='4'>"
+                f"<tr><th>Proceso</th><th>Completitud</th><th>Campos faltantes</th></tr>"
+                f"{rows}</table>"
+                f"<p>BIA completo es requerido por ISO 22301 cl. 8.2. "
+                f"<a href='#/bcp'>Completar en modulo BCP</a></p>"
+            )
+            try:
+                email_service.send_email(cfg, admin.email, subject,
+                                         email_service._wrap_html(subject, body_html, ""))
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.exception("bcp_bia_gap_check error: %s", exc)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -1932,6 +2084,33 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),  # diario
         id="license_expiry_check",
         name="Auto-expiracion de licencias vencidas",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # BCP: test overdue (semanal lunes 8h)
+    _scheduler.add_job(
+        func=_run_bcp_test_overdue,
+        trigger=CronTrigger(day_of_week="mon", hour=8),
+        id="bcp_test_overdue",
+        name="Procesos BCP sin test en >12 meses",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # BCP: revisión de planes vencida (mensual día 1)
+    _scheduler.add_job(
+        func=_run_bcp_plan_review_due,
+        trigger=CronTrigger(day=1, hour=9),
+        id="bcp_plan_review_due",
+        name="Planes BCP con revision vencida",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # BCP: BIA gap check (mensual día 15)
+    _scheduler.add_job(
+        func=_run_bcp_bia_gap_check,
+        trigger=CronTrigger(day=15, hour=9),
+        id="bcp_bia_gap_check",
+        name="Procesos criticos con BIA incompleto",
         replace_existing=True,
         misfire_grace_time=3600,
     )

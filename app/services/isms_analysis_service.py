@@ -304,6 +304,34 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         if result["controls_updated"] > 0 and doc.organization_id:
             _trigger_assets_reanalysis(doc.organization_id)
 
+        # ── Auto-detección de documentos BCP/DRP ─────────────────────────────
+        try:
+            from app.services.bcp_service import (detect_bcp_document,
+                                                   suggest_plan_type_from_doc,
+                                                   next_plan_code)
+            from app.models import BCPPlan as _BCPPlan
+            _org_id = doc.organization_id
+            if detect_bcp_document(doc.original_name or "", analysis.get("summary", "")):
+                already = db.query(_BCPPlan).filter_by(
+                    organization_id=_org_id, document_id=doc.id).first()
+                if not already:
+                    pt = suggest_plan_type_from_doc(doc.original_name or "",
+                                                    analysis.get("summary", ""))
+                    db.add(_BCPPlan(
+                        organization_id=_org_id,
+                        code=next_plan_code(db, _org_id, pt),
+                        plan_type=pt,
+                        name=f"[Auto] {doc.original_name}",
+                        status="draft",
+                        content_summary=(analysis.get("summary") or "")[:500],
+                        document_id=doc.id,
+                    ))
+                    db.commit()
+                    logger.info("BCP plan auto-created from ISMS doc %d: %s",
+                                doc.id, doc.original_name)
+        except Exception as _e:
+            logger.debug("BCP auto-detect skipped: %s", _e)
+
     except Exception as exc:
         logger.error("ISMS analysis failed doc=%d: %s", doc_id, exc)
         try:

@@ -315,6 +315,29 @@ def _migrate_columns() -> None:
         ("ALTER TABLE assets ADD COLUMN external_id VARCHAR(255)", "assets", "external_id"),
         ("ALTER TABLE assets ADD COLUMN import_session_id VARCHAR(64)", "assets", "import_session_id"),
         ("ALTER TABLE assets ADD COLUMN imported_at DATETIME DEFAULT CURRENT_TIMESTAMP", "assets", "imported_at"),
+        # v3.0.0 — BCP/ISO 22301: BusinessProcess ampliado (14 campos BIA)
+        ("ALTER TABLE business_processes ADD COLUMN priority INTEGER", "business_processes", "priority"),
+        ("ALTER TABLE business_processes ADD COLUMN recovery_owner_id INTEGER REFERENCES users(id)", "business_processes", "recovery_owner_id"),
+        ("ALTER TABLE business_processes ADD COLUMN mbco TEXT", "business_processes", "mbco"),
+        ("ALTER TABLE business_processes ADD COLUMN financial_impact INTEGER", "business_processes", "financial_impact"),
+        ("ALTER TABLE business_processes ADD COLUMN reputational_impact INTEGER", "business_processes", "reputational_impact"),
+        ("ALTER TABLE business_processes ADD COLUMN legal_impact INTEGER", "business_processes", "legal_impact"),
+        ("ALTER TABLE business_processes ADD COLUMN operational_impact INTEGER", "business_processes", "operational_impact"),
+        ("ALTER TABLE business_processes ADD COLUMN min_recovery_staff INTEGER", "business_processes", "min_recovery_staff"),
+        ("ALTER TABLE business_processes ADD COLUMN vital_records JSON", "business_processes", "vital_records"),
+        ("ALTER TABLE business_processes ADD COLUMN activation_criteria TEXT", "business_processes", "activation_criteria"),
+        ("ALTER TABLE business_processes ADD COLUMN alternative_procedure TEXT", "business_processes", "alternative_procedure"),
+        ("ALTER TABLE business_processes ADD COLUMN it_systems JSON", "business_processes", "it_systems"),
+        ("ALTER TABLE business_processes ADD COLUMN facilities JSON", "business_processes", "facilities"),
+        ("ALTER TABLE business_processes ADD COLUMN escalation_contacts JSON", "business_processes", "escalation_contacts"),
+        # v3.0.0 — BCP/ISO 22301: BCPTest ampliado (7 campos nuevos)
+        ("ALTER TABLE bcp_tests ADD COLUMN objective TEXT", "bcp_tests", "objective"),
+        ("ALTER TABLE bcp_tests ADD COLUMN scope_description TEXT", "bcp_tests", "scope_description"),
+        ("ALTER TABLE bcp_tests ADD COLUMN participants JSON", "bcp_tests", "participants"),
+        ("ALTER TABLE bcp_tests ADD COLUMN facilitator_id INTEGER REFERENCES users(id)", "bcp_tests", "facilitator_id"),
+        ("ALTER TABLE bcp_tests ADD COLUMN lessons_learned TEXT", "bcp_tests", "lessons_learned"),
+        ("ALTER TABLE bcp_tests ADD COLUMN improvement_actions TEXT", "bcp_tests", "improvement_actions"),
+        ("ALTER TABLE bcp_tests ADD COLUMN evidence_doc_ids JSON", "bcp_tests", "evidence_doc_ids"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
