@@ -418,8 +418,8 @@ const ViewBcp = (() => {
     ${bodyHtml}`;
 
     // listeners siempre DESPUES de asignar innerHTML
-    document.getElementById('btn-bia-new')?.addEventListener('click', () => _openProcModal());
-    document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openProcModal());
+    document.getElementById('btn-bia-new')?.addEventListener('click', () => _openProcModal(null, true));
+    document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openProcModal(null, true));
   }
 
   // ── Tab Dependencias ─────────────────────────────────────────────────────────
@@ -948,7 +948,7 @@ const ViewBcp = (() => {
 
   // ── Modales — Proceso ────────────────────────────────────────────────────────
 
-  async function _openProcModal(proc) {
+  async function _openProcModal(proc, isBia) {
     // Cargar usuarios para los selects de responsable
     let users = [];
     try { users = await Api.get('/api/users/'); } catch (_) { }
@@ -969,10 +969,10 @@ const ViewBcp = (() => {
     modal.innerHTML = `
     <div class="modal" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
       <div class="modal-header" style="flex-shrink:0;">
-        <h2>${proc ? 'Editar proceso critico' : 'Nuevo proceso critico'}</h2>
+        <h2>${proc ? 'Editar proceso' : (isBia ? 'Nuevo proceso BIA' : 'Nuevo proceso critico')}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;">
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
 
         <div class="form-section-divider"><span>INFORMACION BASICA</span></div>
         <div style="margin-bottom:14px;">
@@ -1028,15 +1028,17 @@ const ViewBcp = (() => {
             <input id="pm-mtpd" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.mtpd_hours??''}">
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:160px 1fr;gap:12px;margin-bottom:14px;">
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Personal minimo en recuperacion</label>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Staff minimo</label>
+            <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Personas para recuperar</div>
             <input id="pm-staff" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.min_recovery_staff??''}">
           </div>
-        </div>
-        <div style="margin-bottom:14px;">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">MBCO — Objetivo Minimo de Continuidad del Negocio</label>
-          <textarea id="pm-mbco" class="form-control" rows="2" style="font-size:13px;" placeholder="Nivel minimo de servicio aceptable durante la recuperacion...">${UI.esc(proc?.mbco||'')}</textarea>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">MBCO — Objetivo Minimo de Continuidad</label>
+            <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Nivel minimo de servicio aceptable</div>
+            <textarea id="pm-mbco" class="form-control" rows="2" style="font-size:13px;" placeholder="Ej: 50% de pedidos procesados, acceso de lectura a datos criticos...">${UI.esc(proc?.mbco||'')}</textarea>
+          </div>
         </div>
 
         <div class="form-section-divider"><span>EVALUACION DE IMPACTO BIA</span></div>
@@ -1166,7 +1168,7 @@ const ViewBcp = (() => {
           <h2>${dep ? 'Editar dependencia de proceso' : 'Nueva dependencia proceso-proceso'}</h2>
           <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="display:block;padding:20px;">
           <div style="margin-bottom:14px;">${lbl('Proceso origen', true)}
             <select id="dm-proc" class="form-control" style="font-size:13px;">
               ${_procs.map(p=>`<option value="${p.id}"${dep?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
@@ -1319,45 +1321,59 @@ const ViewBcp = (() => {
 
   function _openStratModal(strat) {
     const TYPES = ['hot_site','cold_site','warm_site','work_from_home','outsourcing','manual_workaround','dual_site','cloud_failover'];
+    const TYPE_LABELS = {hot_site:'Hot site',cold_site:'Cold site',warm_site:'Warm site',
+      work_from_home:'Trabajo remoto',outsourcing:'Outsourcing',manual_workaround:'Procedimiento manual',
+      dual_site:'Dual site',cloud_failover:'Cloud failover'};
+    const STATUS_OPTS = [{v:'planned',l:'Planificado'},{v:'in_progress',l:'En progreso'},
+      {v:'implemented',l:'Implementado'},{v:'tested',l:'Probado'}];
+    const lbl = t => `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${t}</label>`;
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:520px;">
-      <div class="modal-header">
-        <h2>${strat ? 'Editar estrategia' : 'Nueva estrategia'}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
+    <div class="modal" style="max-width:520px;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="flex-shrink:0;">
+        <h2>${strat ? 'Editar estrategia' : 'Nueva estrategia de recuperacion'}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div><label>Tipo *</label>
-            <select id="sm-type" class="form-control">
-              ${TYPES.map(t=>`<option value="${t}"${strat?.strategy_type===t?' selected':''}>${t}</option>`).join('')}
-            </select></div>
-          <div><label>Estado implementacion</label>
-            <select id="sm-status" class="form-control">
-              ${['planned','in_progress','implemented','tested'].map(s=>
-                `<option value="${s}"${strat?.implementation_status===s?' selected':''}>${s}</option>`).join('')}
-            </select></div>
-          <div style="grid-column:1/-1;"><label>Nombre *</label>
-            <input id="sm-name" class="form-control" value="${UI.esc(strat?.name||'')}"></div>
-          <div><label>Proceso vinculado (opcional)</label>
-            <select id="sm-proc" class="form-control">
-              <option value="">Global (sin proceso)</option>
-              ${_procs.map(p=>`<option value="${p.id}"${strat?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
-            </select></div>
-          <div><label>Coste estimado (€)</label>
-            <input id="sm-cost" class="form-control" type="number" value="${strat?.estimated_cost??''}"></div>
-          <div><label>Responsable (ID)</label>
-            <input id="sm-resp" class="form-control" type="number" value="${strat?.responsible_id||''}"></div>
-          <div><label>Fecha objetivo</label>
-            <input id="sm-date" class="form-control" type="date" value="${strat?.target_date?strat.target_date.substring(0,10):''}"></div>
-          <div style="grid-column:1/-1;"><label>Descripcion</label>
-            <textarea id="sm-desc" class="form-control" rows="2">${UI.esc(strat?.description||'')}</textarea></div>
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Tipo *')}
+            <select id="sm-type" class="form-control" style="font-size:13px;">
+              ${TYPES.map(t=>`<option value="${t}"${strat?.strategy_type===t?' selected':''}>${TYPE_LABELS[t]||t}</option>`).join('')}
+            </select>
+          </div>
+          <div>${lbl('Estado')}
+            <select id="sm-status" class="form-control" style="font-size:13px;">
+              ${STATUS_OPTS.map(s=>`<option value="${s.v}"${strat?.implementation_status===s.v?' selected':''}>${s.l}</option>`).join('')}
+            </select>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="btn btn-primary" onclick="ViewBcp._saveStrat(${strat?.id||'null'})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
-          ${strat ? `<button class="btn btn-danger" style="margin-left:auto;" onclick="ViewBcp._delStrat(${strat.id})">Eliminar</button>` : ''}
+        <div style="margin-bottom:14px;">${lbl('Nombre *')}
+          <input id="sm-name" class="form-control" style="font-size:13px;" value="${UI.esc(strat?.name||'')}">
+        </div>
+        <div style="margin-bottom:14px;">${lbl('Proceso vinculado (opcional)')}
+          <select id="sm-proc" class="form-control" style="font-size:13px;">
+            <option value="">— Global (aplica a todos los procesos) —</option>
+            ${_procs.map(p=>`<option value="${p.id}"${strat?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Coste estimado (€)')}
+            <input id="sm-cost" class="form-control" type="number" style="font-size:13px;" value="${strat?.estimated_cost??''}">
+          </div>
+          <div>${lbl('Fecha objetivo')}
+            <input id="sm-date" class="form-control" type="date" style="font-size:13px;" value="${strat?.target_date?strat.target_date.substring(0,10):''}">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">${lbl('Descripcion')}
+          <textarea id="sm-desc" class="form-control" rows="3" style="font-size:13px;">${UI.esc(strat?.description||'')}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        ${strat ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delStrat(${strat.id})"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveStrat(${strat?.id||'null'})"><i class="ti ti-check"></i> Guardar</button>
         </div>
       </div>
     </div>`;
@@ -1881,7 +1897,7 @@ const ViewBcp = (() => {
         <h2>Resultado: ${UI.esc(test.code)} — ${test.test_type}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;">
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>${lbl('Resultado','*')}
             <select id="rm-result" class="form-control" style="font-size:13px;" onchange="ViewBcp._onResultChange(this.value)">
@@ -1979,7 +1995,7 @@ const ViewBcp = (() => {
       <div class="modal-header">
         <h2><i class="ti ti-alert-circle" style="color:var(--risk-high)"></i> Test ${result === 'failed' ? 'fallido' : 'parcial'}</h2>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" style="display:block;">
         <p style="font-size:13px;margin-bottom:16px;">Un test ${result === 'failed' ? 'fallido' : 'con resultado parcial'} puede generar una No Conformidad automaticamente para garantizar el seguimiento.
         <br><br><strong>¿Crear NC vinculada a este test?</strong></p>
         <div class="modal-footer-sticky" style="position:relative;padding:12px 0 0;">
@@ -2010,56 +2026,72 @@ const ViewBcp = (() => {
   // ── Modales — Proveedor BCM ──────────────────────────────────────────────────
 
   function _openSLModal(sl) {
+    const lbl = (t, req) => `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${t}${req?' <span style="color:var(--danger)">*</span>':''}</label>`;
+    const CRIT_SL = [{v:'critical',l:'Critica'},{v:'high',l:'Alta'},{v:'medium',l:'Media'},{v:'low',l:'Baja'}];
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:520px;">
-      <div class="modal-header">
-        <h2>${sl ? 'Editar vinculo BCM' : 'Vincular proveedor BCM'}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
+    <div class="modal" style="max-width:540px;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="flex-shrink:0;">
+        <h2>${sl ? 'Editar vinculo BCM' : 'Vincular proveedor al BCP'}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div><label>Proveedor *</label>
-            <select id="slm-sup" class="form-control" ${sl?'disabled':''}>
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Proveedor',true)}
+            <select id="slm-sup" class="form-control" style="font-size:13px;" ${sl?'disabled':''}>
+              <option value="">— Seleccionar proveedor —</option>
               ${_suppliers.map(s=>`<option value="${s.id}"${sl?.supplier_id===s.id?' selected':''}>${UI.esc(s.name)}</option>`).join('')}
-            </select></div>
-          <div><label>Criticidad BCM</label>
-            <select id="slm-crit" class="form-control">
-              ${['critical','high','medium','low'].map(c=>
-                `<option value="${c}"${sl?.criticality===c?' selected':''}>${c}</option>`).join('')}
-            </select></div>
-          <div><label>RTO impacto (h)</label>
-            <input id="slm-rto" class="form-control" type="number" value="${sl?.rto_impact_hours??''}"></div>
-          <div><label>SLA contrato (h)</label>
-            <input id="slm-sla" class="form-control" type="number" value="${sl?.contract_sla_hours??''}"></div>
-          <div style="display:flex;align-items:center;gap:8px;padding-top:20px;">
-            <input id="slm-hasplan" type="checkbox" ${sl?.has_contingency_plan?'checked':''}>
-            <label for="slm-hasplan" style="margin:0;">Tiene plan de contingencia</label>
+            </select>
           </div>
-          <div><label>Proveedor alternativo</label>
-            <select id="slm-alt" class="form-control">
-              <option value="">Ninguno</option>
-              ${_suppliers.filter(s=>s.id!==sl?.supplier_id).map(s=>
-                `<option value="${s.id}"${sl?.alternative_supplier_id===s.id?' selected':''}>${UI.esc(s.name)}</option>`).join('')}
-            </select></div>
-          <div><label>Ultima revision</label>
-            <input id="slm-rev" class="form-control" type="date" value="${sl?.last_review_date?sl.last_review_date.substring(0,10):''}"></div>
-          <div style="grid-column:1/-1;"><label>Descripcion plan contingencia</label>
-            <textarea id="slm-desc" class="form-control" rows="2">${UI.esc(sl?.contingency_description||'')}</textarea></div>
-          <div style="grid-column:1/-1;"><label>Procesos dependientes</label>
-            <div style="max-height:100px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px;">
-              ${_procs.map(p=>`<label style="display:flex;gap:6px;align-items:center;padding:2px;">
-                <input type="checkbox" value="${p.id}" class="slm-pids"
-                  ${(sl?.process_ids||[]).includes(p.id)?'checked':''}> ${UI.esc(p.name)}
-              </label>`).join('')}
-            </div>
+          <div>${lbl('Criticidad BCM')}
+            <select id="slm-crit" class="form-control" style="font-size:13px;">
+              ${CRIT_SL.map(c=>`<option value="${c.v}"${sl?.criticality===c.v?' selected':''}>${c.l}</option>`).join('')}
+            </select>
           </div>
         </div>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="btn btn-primary" onclick="ViewBcp._saveSL(${sl?.id||'null'})">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
-          ${sl ? `<button class="btn btn-danger" style="margin-left:auto;" onclick="ViewBcp._delSL(${sl.id})">Eliminar</button>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('RTO impacto si falla (horas)')}
+            <input id="slm-rto" class="form-control" type="number" style="font-size:13px;" value="${sl?.rto_impact_hours??''}">
+          </div>
+          <div>${lbl('SLA contractual (horas)')}
+            <input id="slm-sla" class="form-control" type="number" style="font-size:13px;" value="${sl?.contract_sla_hours??''}">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Proveedor alternativo')}
+            <select id="slm-alt" class="form-control" style="font-size:13px;">
+              <option value="">— Ninguno —</option>
+              ${_suppliers.filter(s=>s.id!==sl?.supplier_id).map(s=>
+                `<option value="${s.id}"${sl?.alternative_supplier_id===s.id?' selected':''}>${UI.esc(s.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>${lbl('Ultima revision')}
+            <input id="slm-rev" class="form-control" type="date" style="font-size:13px;" value="${sl?.last_review_date?sl.last_review_date.substring(0,10):''}">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px;background:var(--bg-2);border-radius:var(--radius);">
+          <input id="slm-hasplan" type="checkbox" style="width:16px;height:16px;" ${sl?.has_contingency_plan?'checked':''}>
+          <label for="slm-hasplan" style="margin:0;font-size:13px;cursor:pointer;">Este proveedor tiene plan de contingencia documentado</label>
+        </div>
+        <div style="margin-bottom:14px;">${lbl('Descripcion del plan de contingencia')}
+          <textarea id="slm-desc" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Como se garantiza la continuidad si este proveedor falla?">${UI.esc(sl?.contingency_description||'')}</textarea>
+        </div>
+        <div style="margin-bottom:14px;">${lbl('Procesos que dependen de este proveedor')}
+          <div style="max-height:110px;overflow-y:auto;border:0.5px solid var(--border);border-radius:var(--radius);padding:8px;">
+            ${_procs.length ? _procs.map(p=>`<label style="display:flex;gap:6px;align-items:center;padding:3px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" value="${p.id}" class="slm-pids" ${(sl?.process_ids||[]).includes(p.id)?'checked':''}>
+              <span style="font-size:10px;color:${CRIT_COLORS[p.criticality]||'#666'};font-weight:700;">${p.criticality}</span>
+              ${UI.esc(p.name)}
+            </label>`).join('') : '<span style="font-size:12px;color:var(--text-subtle)">No hay procesos registrados.</span>'}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        ${sl ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delSL(${sl.id})"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveSL(${sl?.id||'null'})"><i class="ti ti-check"></i> Guardar</button>
         </div>
       </div>
     </div>`;

@@ -39,6 +39,7 @@ const ViewGuide = {
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
     { id: 'external-findings', title: 'Hallazgos Externos', icon: '🔗' },
+    { id: 'bcp', title: 'Continuidad de Negocio (BCP)', icon: '♻️' },
     { id: 'webhooks', title: 'Webhooks y Integraciones', icon: '🪝' },
     { id: 'feature-flags', title: 'Feature Flags (Planes)', icon: '🚩' },
     { id: 'awareness', title: 'Awareness (Infografias)', icon: '🎨' },
@@ -142,6 +143,7 @@ const ViewGuide = {
       cve: this._cCve,
       osint: this._cOsint,
       'external-findings': this._cExternalFindings,
+      bcp: this._cBcp,
       webhooks: this._cWebhooks,
       'feature-flags': this._cFeatureFlags,
       awareness: this._cAwareness,
@@ -2110,5 +2112,131 @@ const ViewGuide = {
       <li>Los intentos de activar módulos no incluidos en el plan se rechazan automáticamente.</li>
     </ul>
     ${this._tip('Los flags se aplican en tiempo real sin necesidad de reiniciar. Usa el endpoint GET /api/feature-flags/plans/limits para consultar qué módulos incluye cada plan.')}
+  `;},
+
+  get _cBcp() { return `
+    ${this._p('El modulo de <strong>Continuidad de Negocio (BCP/BIA)</strong> implementa el ciclo completo de gestion de continuidad segun <strong>ISO 22301:2019</strong> (Sistema de Gestion de Continuidad de Negocio) integrado con ISO 27001 A.5.29/A.5.30, ENS op.cont.1/2/3 y NIS2 Art. 21.2(b).')}
+    ${this._h('Conceptos clave')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px;">Termino</th><th style="padding:8px;">Definicion</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['RTO (Recovery Time Objective)','Tiempo maximo tolerable para restaurar un proceso o sistema tras una interrupcion.'],
+          ['RPO (Recovery Point Objective)','Cantidad maxima de datos que se puede perder medida en tiempo (antigüedad del ultimo backup valido).'],
+          ['MTPD (Max. Tolerable Period of Disruption)','Tiempo maximo absoluto que la organizacion puede sobrevivir sin el proceso.'],
+          ['MBCO (Min. Business Continuity Objective)','Nivel minimo de servicio aceptable mientras se recupera el proceso.'],
+          ['BIA (Business Impact Analysis)','Analisis que cuantifica el impacto financiero, reputacional, legal y operacional de la interrupcion de cada proceso.'],
+          ['Plan BCP','Procedimientos documentados para mantener la continuidad durante una interrupcion.'],
+          ['Plan DRP','Plan de Recuperacion ante Desastres: restauracion de sistemas IT tras un evento catastrofico.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>${r.map(c=>`<td style="padding:8px;">${c}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+
+    ${this._h('Flujo recomendado ISO 22301')}
+    ${this._steps([
+      '<strong>Procesos criticos:</strong> Registra los procesos de negocio criticos y sus responsables. Minimo RTO, RPO y MTPD por proceso.',
+      '<strong>BIA:</strong> Completa el Analisis de Impacto de Negocio para cada proceso. Un proceso tiene BIA completo cuando rellenas los 10 campos requeridos (RTO, RPO, MTPD, MBCO, 4 impactos, criterios de activacion y registros vitales).',
+      '<strong>Dependencias:</strong> Documenta que sistemas IT, personal, instalaciones y proveedores necesita cada proceso para recuperarse.',
+      '<strong>Estrategias:</strong> Define al menos una estrategia de recuperacion por proceso critico (hot site, trabajo remoto, procedimiento manual, etc.).',
+      '<strong>Planes BCP/DRP:</strong> Crea planes documentados para los procesos. Usa el drawer de 9 secciones para completar roles, contactos, procedimientos y KPIs.',
+      '<strong>Tests y ejercicios:</strong> Programa tests periodicos (tabletop, simulacion o test completo). Registra resultados y lecciones aprendidas.',
+      '<strong>Proveedores BCM:</strong> Vincula proveedores criticos al BCP, define su impacto en RTO y documenta planes de contingencia.',
+    ])}
+
+    ${this._h('Tab Resumen (Overview)')}
+    ${this._p('Muestra el estado global del SGCN con 23 clausulas ISO 22301:2019. Cada clausula tiene estado <em>implementado / parcial / gap</em>, detalle y referencia normativa. El porcentaje global indica madurez del sistema. Usa el boton <strong>Analizar gaps con IA</strong> para obtener un informe ejecutivo con referencias a ISO 22301, ISO 27001 A.5.29/A.5.30, ENS y NIS2.')}
+    ${this._warn('<strong>Atencion:</strong> El boton "Analizar con IA" consume tokens de la API de Claude. Solo usarlo manualmente cuando necesites el informe de auditor.')}
+
+    ${this._h('Tab Procesos Criticos')}
+    ${this._p('Tabla de todos los procesos con criticidad, RTO/RPO/MTPD, % BIA completado y conteo de dependencias. Usa el buscador y el filtro de criticidad para navegar en organizaciones con muchos procesos. Haz clic en <strong>Editar</strong> para abrir el formulario completo con 6 secciones:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Informacion basica:</strong> nombre, descripcion, criticidad, responsables (select de usuarios reales, no IDs).</li>
+      <li><strong>Objetivos de recuperacion:</strong> RTO, RPO, MTPD, staff minimo, MBCO.</li>
+      <li><strong>Evaluacion de impacto:</strong> 4 dimensiones de impacto (financiero, reputacional, legal, operacional) con escala 0-3.</li>
+      <li><strong>Activacion y procedimientos:</strong> criterios de activacion y procedimiento alternativo (obligatorios para BIA completo).</li>
+      <li><strong>Recursos y documentacion:</strong> registros vitales, sistemas IT e instalaciones (un elemento por linea, se guardan como array).</li>
+    </ul>
+
+    ${this._h('Tab BIA (Analisis de Impacto)')}
+    ${this._p('Vista de tarjetas con el estado BIA de cada proceso: metricas RTO/RPO/MTPD/MBCO, badges de impacto por dimension y barra de completitud. El color indica estado: verde >= 80%, naranja >= 50%, rojo < 50%. Un proceso con BIA >= 80% contribuye al cumplimiento de ISO 22301 cl. 8.2 y ENS op.cont.1.')}
+    ${this._tip('Para facilitar la auditoria, ISO 22301 cl. 8.2 requiere que al menos el 80% de los procesos criticos (criticidad "critica" o "alta") tengan BIA completo.')}
+
+    ${this._h('Tab Dependencias')}
+    ${this._p('Dividido en dos secciones:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Dependencias entre procesos:</strong> relaciones proceso-a-proceso. "El proceso A no puede recuperarse hasta que el proceso B este operativo." Define secuencia de recuperacion y motivo.</li>
+      <li><strong>Recursos y dependencias externas:</strong> sistemas IT, personal, instalaciones, proveedores, suministros. Define cantidades en operacion normal y en recuperacion, RTO necesario y si es critico (sin el, la recuperacion no puede comenzar).</li>
+    </ul>
+
+    ${this._h('Tab Estrategias (ISO 22301 cl. 8.3)')}
+    ${this._p('Una estrategia define como se recuperara un proceso. Tipos disponibles: hot site, cold site, warm site, trabajo remoto, outsourcing, procedimiento manual, dual site, cloud failover. Asigna una estrategia global o vinculada a un proceso especifico. Seguimiento del estado: planificado, en progreso, implementado, probado.')}
+
+    ${this._h('Tab Planes BCP/DRP (ISO 22301 cl. 8.4)')}
+    ${this._p('Formulario en drawer lateral con 9 secciones. Solo aparecen las secciones relevantes segun el tipo de plan:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Cabecera:</strong> tipo, version, clasificacion (confidencial/interno/restringido), propietario, procesos cubiertos.</li>
+      <li><strong>Alcance y objetivos:</strong> alcance, criterios de activacion, resumen ejecutivo.</li>
+      <li><strong>RTO/RPO por sistema</strong> (solo DRP/CRP): tabla editable con sistemas, objetivos y responsable.</li>
+      <li><strong>Procedimientos</strong> (solo DRP/CRP/Cyber): notificacion, activacion, recuperacion tecnica, reconstitucion.</li>
+      <li><strong>Roles y responsabilidades:</strong> tabla editable. Boton "Plantilla DRP" precarga roles estandar.</li>
+      <li><strong>Contactos y escalada:</strong> lista de contactos con backup.</li>
+      <li><strong>Contingencia IT y workarounds:</strong> procedimientos manuales y recuperacion de datos.</li>
+      <li><strong>KPIs:</strong> tabla editable. Boton "KPIs estandar DRP" precarga metricas recomendadas.</li>
+      <li><strong>Historial:</strong> datos de aprobacion y tests vinculados.</li>
+    </ul>
+    ${this._tip('Para aprobar un plan, haz clic en el boton "Aprobar" de la tabla. Aparece un dialogo de confirmacion. Solo los administradores pueden aprobar planes. Al aprobar, se actualiza automaticamente el estado ISO 27001 A.5.29 y ENS op.cont.2.')}
+
+    ${this._h('Tab Tests y Ejercicios (ISO 22301 cl. 8.5)')}
+    ${this._p('Programa y registra los ejercicios de continuidad. Tres tipos disponibles:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Tabletop exercise:</strong> discusion teorica del escenario con el equipo.</li>
+      <li><strong>Simulacion:</strong> ejercicio parcial sin afectar sistemas de produccion.</li>
+      <li><strong>Full test:</strong> prueba completa del plan en condiciones reales.</li>
+    </ul>
+    ${this._p('Al registrar el resultado, los campos <em>hallazgos</em> y <em>lecciones aprendidas</em> son obligatorios si el resultado es parcial o fallido. Si el test falla, el sistema ofrece crear una No Conformidad automaticamente (ISO 22301 cl. 10.1).')}
+    ${this._tip('Un "full test" en los ultimos 12 meses cuenta como evidencia para la clausula 9.2 (auditoria interna del SGCN). Los tests superados actualizan ISO 27001 A.5.30 y ENS op.cont.3.')}
+
+    ${this._h('Tab Proveedores BCM (ISO 22301 cl. 8.2)')}
+    ${this._p('Vincula proveedores criticos al programa de continuidad. Para cada vinculo, define: criticidad BCM, RTO de impacto si el proveedor falla, SLA contractual, proveedor alternativo y si tiene plan de contingencia. Asocia los procesos que dependen del proveedor para tener visibilidad cruzada.')}
+    ${this._warn('Si el proveedor tiene plan de contingencia documentado, se actualiza automaticamente el estado de ISO 27001 A.5.19 y NIS2 Art.21.2(c) en el modulo de cumplimiento.')}
+
+    ${this._h('Tab Importar / Exportar')}
+    ${this._p('Dos modos de importacion Excel:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Plantilla estandar:</strong> usa la plantilla descargable con las columnas exactas que espera el sistema. Valida la estructura antes de importar y muestra una vista previa.</li>
+      <li><strong>Cualquier formato (IA):</strong> sube un Excel propio. Claude analizara la estructura, identificara las columnas BCP aunque no coincidan exactamente, y mapeara los datos. Ideal para importar BIAs existentes o datos de otras herramientas.</li>
+    </ul>
+    ${this._p('La exportacion genera un Excel con 5 hojas: procesos, dependencias, estrategias, planes y tests.')}
+
+    ${this._h('Integraciones automaticas (sin IA)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Activo critico sin BCP:</strong> cuando se crea un activo con valor CIA >= 3 y no esta vinculado a ningun proceso BCP, el sistema crea un proceso BCP draft de sugerencia.</li>
+      <li><strong>Riesgo critico sin cobertura:</strong> cuando un riesgo alcanza nivel residual >= 6 y su activo no tiene proceso BCP, se activa la misma sugerencia.</li>
+      <li><strong>Incidente P1/P2:</strong> si un incidente grave afecta activos de un proceso BCP critico, el sistema anota una alerta de activacion potencial en los contactos de escalada del proceso.</li>
+      <li><strong>CVE en activo BCP:</strong> si un CVE afecta un activo de un proceso BCP critico, se anota en los registros vitales del proceso para revision.</li>
+      <li><strong>Cobertura BCP en riesgos:</strong> el scheduler mensual calcula que riesgos tienen cobertura de un plan BCP aprobado y muestra un badge verde en el registro de riesgos.</li>
+    </ul>
+
+    ${this._h('Cumplimiento normativo automatico')}
+    ${this._p('Los eventos BCP actualizan automaticamente el estado en el modulo de cumplimiento:')}
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:6px 8px;">Evento BCP</th>
+        <th style="padding:6px 8px;">Normativa actualizada</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['BIA >= 80% en proceso critico','ISO 27001 A.5.29 (partial) · ENS op.cont.1 (partial)'],
+          ['Plan BCP aprobado','ISO 27001 A.5.29 (implemented) · ENS op.cont.2 · NIS2 Art.21.2(b)'],
+          ['Plan DRP/CRP aprobado','ISO 27001 A.5.29 + A.5.30 (partial) · ENS op.cont.2 · NIS2 Art.21.2(b)'],
+          ['Test superado (passed)','ISO 27001 A.5.30 (implemented) · ENS op.cont.3 · NIS2 Art.21.2(b)'],
+          ['Estrategia creada','ISO 27001 A.5.29 (partial) · ENS op.cont.1 (partial)'],
+          ['Proveedor con plan contingencia','ISO 27001 A.5.19 (partial) · NIS2 Art.21.2(c)'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>${r.map(c=>`<td style="padding:6px 8px;">${c}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._tip('Para ver el estado de cumplimiento detallado, ve a <em>Cumplimiento</em> en el menu lateral y selecciona los frameworks ISO 27001, ENS o NIS2.')}
   `;},
 };
