@@ -863,6 +863,9 @@ def update_ep(eid: int, body: EPUpdate, db: Session = Depends(get_db),
     ep = db.get(BCPExerciseProgramme, eid)
     if not ep or ep.organization_id != _org(u):
         raise HTTPException(404)
+    # Security: solo admin puede marcar como aprobado (ISO 27001 A.8.15 — trazabilidad)
+    if body.status == "approved" and u.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo un administrador puede aprobar el programa de ejercicios")
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(ep, k, v)
     db.commit()

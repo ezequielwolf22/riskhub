@@ -602,7 +602,7 @@ const ViewBcp = (() => {
         <div class="stat-card"><div class="stat-value">${preview.summary.dependencies_found}</div><div class="stat-label">Dependencias</div></div>
         <div class="stat-card"><div class="stat-value">${preview.summary.suppliers_found}</div><div class="stat-label">Proveedores BCM</div></div>
       </div>
-      ${preview.errors.length ? `<div class="notice notice-warning"><strong>Advertencias:</strong> ${preview.errors.join('; ')}</div>` : ''}
+      ${preview.errors.length ? `<div class="notice notice-warning"><strong>Advertencias:</strong> ${preview.errors.map(e => UI.esc(e)).join('; ')}</div>` : ''}
       ${preview.processes.length ? `
       <h4>Primeros procesos a importar:</h4>
       <table class="data-table">
@@ -610,7 +610,7 @@ const ViewBcp = (() => {
         <tbody>
         ${preview.processes.map(p => `<tr>
           <td>${UI.esc(p.name)}</td>
-          <td>${p.criticality}</td>
+          <td>${UI.esc(String(p.criticality))}</td>
           <td>${p.rto_hours != null ? p.rto_hours + 'h' : '—'}</td>
           <td>${p.rpo_hours != null ? p.rpo_hours + 'h' : '—'}</td>
         </tr>`).join('')}

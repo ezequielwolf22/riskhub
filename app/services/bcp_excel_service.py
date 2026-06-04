@@ -1,4 +1,5 @@
 """Servicio de importación/exportación Excel para el módulo BCP."""
+import html
 import io
 import logging
 
@@ -87,7 +88,8 @@ def parse_excel_preview(content: bytes) -> dict:
                 continue
             crit = str(row[1]).strip().lower() if len(row) > 1 and row[1] else "medium"
             if crit not in ("critical", "high", "medium", "low"):
-                errors.append(f"Procesos fila {i}: criticidad inválida '{crit}'")
+                # html.escape previene XSS cuando el error se renderiza en el frontend
+                errors.append(f"Procesos fila {i}: criticidad inválida '{html.escape(crit)}'")
                 crit = "medium"
             processes.append({
                 "name": name,
