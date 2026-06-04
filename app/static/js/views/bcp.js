@@ -78,7 +78,8 @@ const ViewBcp = (() => {
         default: content.innerHTML = '';
       }
     } catch (e) {
-      content.innerHTML = UI.notice('error', 'Error al cargar: ' + e.message);
+      console.error('[BCP] Error en tab', _activeTab, e);
+      content.innerHTML = UI.notice('Error al cargar tab "' + _activeTab + '": ' + e.message + ' (ver consola para detalles)');
     }
   }
 
@@ -201,7 +202,7 @@ const ViewBcp = (() => {
         </div>
       </div>`;
     } catch (e) {
-      resultEl.innerHTML = UI.notice('error', 'Error en analisis IA: ' + e.message + '. Asegurate de tener la API key de IA configurada.');
+      resultEl.innerHTML = UI.notice('Error en analisis IA: ' + e.message + '. Asegurate de tener la API key de IA configurada.');
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="ti ti-brain"></i> Analizar gaps BCP con IA';
@@ -376,7 +377,7 @@ const ViewBcp = (() => {
     const renderDeps = (filter) => {
       const list = filter ? _deps.filter(d => d.process_id == filter) : _deps;
       const wrap = document.getElementById('dep-table-wrap');
-      if (!list.length) { wrap.innerHTML = UI.empty('No hay dependencias registradas.'); return; }
+      if (!list.length) { wrap.innerHTML = UI.emptyState('No hay dependencias registradas.'); return; }
       const procName = id => (_procs.find(p => p.id == id)||{}).name || '#'+id;
       wrap.innerHTML = `
       <div class="table-container">
@@ -420,7 +421,7 @@ const ViewBcp = (() => {
       <button class="btn btn-primary" id="btn-new-strat">+ Nueva estrategia</button>
     </div>`;
     if (!_strats.length) {
-      el.innerHTML += UI.empty('No hay estrategias de recuperacion. ISO 22301 cl. 8.3 requiere definir al menos una estrategia por proceso critico.');
+      el.innerHTML += UI.emptyState('No hay estrategias de recuperacion. ISO 22301 cl. 8.3 requiere definir al menos una estrategia por proceso critico.');
     } else {
       const procName = id => id ? ((_procs.find(p => p.id == id)||{}).name || '#'+id) : 'Global';
       el.innerHTML += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">
@@ -456,7 +457,7 @@ const ViewBcp = (() => {
       <button class="btn btn-primary" id="btn-new-plan">+ Nuevo plan</button>
     </div>`;
     if (!_plans.length) {
-      el.innerHTML += UI.empty('No hay planes BCP/DRP. ISO 22301 cl. 8.4 requiere planes documentados de continuidad.');
+      el.innerHTML += UI.emptyState('No hay planes BCP/DRP. ISO 22301 cl. 8.4 requiere planes documentados de continuidad.');
     } else {
       el.innerHTML += `
       <div class="table-container">
@@ -529,7 +530,7 @@ const ViewBcp = (() => {
 
     const testsList = document.getElementById('tests-list');
     if (!_tests.length) {
-      testsList.innerHTML = UI.empty('No hay tests programados. ISO 22301 cl. 8.5 requiere ejercicios periodicos.');
+      testsList.innerHTML = UI.emptyState('No hay tests programados. ISO 22301 cl. 8.5 requiere ejercicios periodicos.');
     } else {
       testsList.innerHTML = `
       <div class="table-container">
@@ -574,7 +575,7 @@ const ViewBcp = (() => {
       <button class="btn btn-primary" id="btn-new-sl">+ Vincular proveedor</button>
     </div>`;
     if (!_slinks.length) {
-      el.innerHTML += UI.empty('No hay proveedores vinculados al BCP. ISO 22301 cl. 8.2 requiere identificar proveedores criticos.');
+      el.innerHTML += UI.emptyState('No hay proveedores vinculados al BCP. ISO 22301 cl. 8.2 requiere identificar proveedores criticos.');
     } else {
       el.innerHTML += `
       <div class="table-container">
@@ -701,7 +702,7 @@ const ViewBcp = (() => {
       const endpoint = _importMode === 'ai' ? '/api/bcp/import/ai-preview' : '/api/bcp/import/preview';
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') },
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('riskhub_token') || '') },
         body: formData,
       });
       if (!res.ok) {
@@ -711,7 +712,7 @@ const ViewBcp = (() => {
       const preview = await res.json();
       _renderImportPreview(preview, file);
     } catch (e) {
-      if (area) area.innerHTML = UI.notice('error', 'Error al analizar: ' + e.message);
+      if (area) area.innerHTML = UI.notice('Error al analizar: ' + e.message);
     }
   }
 
@@ -790,7 +791,7 @@ const ViewBcp = (() => {
     try {
       const res = await fetch('/api/bcp/import/confirm', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') },
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('riskhub_token') || '') },
         body: formData,
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
