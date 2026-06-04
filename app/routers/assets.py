@@ -269,21 +269,22 @@ async def import_assets(
 
 
 def _run_asset_analysis_bg(asset_id: int) -> None:
-    """Wrapper background para analisis de riesgos de un activo."""
+    """Wrapper background para auto-generar riesgos de un activo.
+
+    El análisis IA de activos es ahora manual (botón 'Analizar con IA')
+    para evitar consumo masivo de tokens en creaciones en lote.
+    """
     db = SessionLocal()
     try:
-        # 1. Auto-generar riesgos (activo × amenazas)
+        # Auto-generar riesgos regla (activo × amenazas) — sin IA, pura lógica
         asset = db.get(Asset, asset_id)
         if asset:
             auto_generate_risks_for_asset(db, asset)
-        # 2. Analisis IA complementario
-        from app.services.asset_risk_analysis_service import analyze_asset_risks
-        analyze_asset_risks(db, asset_id)
     except Exception:
         pass
     finally:
         db.close()
-    # 3. Sugerir proceso BCP para activos críticos (ISO 22301 cl. 8.2)
+    # Sugerir proceso BCP para activos críticos (ISO 22301 cl. 8.2) — sin IA
     try:
         from app.services.bcp_service import suggest_bcp_for_asset
         from app.database import SessionLocal as _SL

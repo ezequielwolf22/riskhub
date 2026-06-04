@@ -1001,3 +1001,76 @@ async def import_ai_preview(
     except Exception as exc:
         logger.error("AI BCP import error: %s", exc)
         raise HTTPException(422, f"Error en analisis IA: {exc}")
+
+
+@router.post("/analyze")
+def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    """Analiza el estado BCP de la org con IA y devuelve recomendaciones. Consumo manual — no auto."""
+    org = _org(u)
+    from app.models import AiConfig
+    cfg = db.query(AiConfig).filter_by(organization_id=org).first()
+    import base64, hashlib
+    from cryptography.fernet import Fernet
+    api_key = None
+    if cfg and cfg.api_key_encrypted:
+        try:
+            key = base64.urlsafe_b64encode(hashlib.sha256(settings.secret_key.encode()).digest())
+            api_key = Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+        except Exception:
+            api_key = None
+    if not api_key:
+        api_key = settings.anthropic_api_key
+    if not api_key:
+        raise HTTPException(422, "No hay API key de IA configurada")
+
+    from app.services.bcp_service import bia_completeness, iso22301_status as _iso_status
+    procs = db.query(BusinessProcess).filter_by(organization_id=org).all()
+    plans = db.query(BCPPlan).filter_by(organization_id=org).all()
+    tests = db.query(BCPTest).filter_by(organization_id=org).all()
+
+    proc_summaries = []
+    for p in procs[:20]:
+        bia = bia_completeness(None, p)
+        proc_summaries.append(
+            f"- {p.name} [{p.criticality}] RTO:{p.rto_hours or '?'}h RPO:{p.rpo_hours or '?'}h "
+            f"BIA:{bia['pct']}% falta:{','.join(bia['missing'][:3]) or 'nada'}"
+        )
+
+    prompt = f"""Eres un experto ISO 22301 (Business Continuity Management). Analiza este estado BCP:
+
+PROCESOS ({len(procs)} total):
+{chr(10).join(proc_summaries) or 'Ninguno registrado'}
+
+PLANES: {len(plans)} ({sum(1 for p in plans if p.status=='approved')} aprobados)
+TESTS BCM: {len(tests)} ({sum(1 for t in tests if t.conducted_at)} realizados)
+
+Devuelve JSON con este formato exacto:
+{{
+  "summary": "resumen ejecutivo de 1-2 frases del estado BCP",
+  "recommendations": ["recomendacion 1", "recomendacion 2", "recomendacion 3"],
+  "process_suggestions": [
+    {{"name": "nombre proceso", "rto_suggestion": 4, "notes": "justificacion breve"}}
+  ]
+}}
+
+Solo incluye process_suggestions para procesos con BIA incompleto o RTO no definido.
+Maximo 5 recomendaciones. Responde SOLO con JSON valido."""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        raw = msg.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return _json.loads(raw.strip())
+    except Exception as exc:
+        logger.error("BCP AI analyze error org=%d: %s", org, exc)
+        raise HTTPException(422, f"Error en analisis IA: {exc}")

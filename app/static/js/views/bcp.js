@@ -94,6 +94,13 @@ const ViewBcp = (() => {
     const partial = (iso || []).filter(c => c.status === 'partial');
 
     el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div></div>
+      <button class="btn btn-secondary" id="btn-bcp-ai-analyze" style="display:flex;align-items:center;gap:6px;">
+        <i class="ti ti-brain"></i> Analizar gaps BCP con IA
+      </button>
+    </div>
+    <div id="bcp-ai-result"></div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
       <div class="stat-card">
         <div class="stat-value">${dash.total_processes ?? 0}</div>
@@ -161,6 +168,44 @@ const ViewBcp = (() => {
         </div>
       </div>
     </div>`;
+
+    document.getElementById('btn-bcp-ai-analyze')?.addEventListener('click', _runBcpAiAnalysis);
+  }
+
+  async function _runBcpAiAnalysis() {
+    const btn = document.getElementById('btn-bcp-ai-analyze');
+    const resultEl = document.getElementById('bcp-ai-result');
+    if (!btn || !resultEl) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Analizando...';
+    resultEl.innerHTML = '';
+    try {
+      const res = await Api.post('/api/bcp/analyze', {});
+      resultEl.innerHTML = `
+      <div class="card" style="margin-bottom:16px;border-left:4px solid var(--primary);">
+        <div class="card-header"><h3><i class="ti ti-brain"></i> Analisis IA — Recomendaciones BCP</h3></div>
+        <div class="card-body">
+          ${res.summary ? `<p style="margin-bottom:12px;">${UI.esc(res.summary)}</p>` : ''}
+          ${(res.recommendations||[]).length ? `
+          <ul style="padding-left:20px;margin:0;">
+            ${res.recommendations.map(r => `<li style="margin-bottom:6px;">${UI.esc(r)}</li>`).join('')}
+          </ul>` : ''}
+          ${(res.process_suggestions||[]).length ? `
+          <h4 style="margin-top:16px;">Sugerencias por proceso:</h4>
+          ${res.process_suggestions.map(ps => `
+          <div style="margin-bottom:12px;padding:10px;background:var(--bg-2);border-radius:6px;">
+            <strong>${UI.esc(ps.name)}</strong>
+            ${ps.rto_suggestion ? `<div style="font-size:13px;color:var(--text-muted);">RTO sugerido: <strong>${ps.rto_suggestion}h</strong></div>` : ''}
+            ${ps.notes ? `<div style="font-size:13px;margin-top:4px;">${UI.esc(ps.notes)}</div>` : ''}
+          </div>`).join('')}` : ''}
+        </div>
+      </div>`;
+    } catch (e) {
+      resultEl.innerHTML = UI.notice('error', 'Error en analisis IA: ' + e.message + '. Asegurate de tener la API key de IA configurada.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ti ti-brain"></i> Analizar gaps BCP con IA';
+    }
   }
 
   // ── Tab Procesos ─────────────────────────────────────────────────────────────
@@ -173,7 +218,16 @@ const ViewBcp = (() => {
       <button class="btn btn-primary" id="btn-new-proc">+ Nuevo proceso</button>
     </div>`;
     if (!_procs.length) {
-      el.innerHTML += UI.empty('No hay procesos BIA. Registra los procesos criticos con sus objetivos de recuperacion.');
+      el.innerHTML += `<div style="text-align:center;padding:48px 24px;border:2px dashed var(--border);border-radius:8px;">
+        <i class="ti ti-sitemap" style="font-size:48px;color:var(--text-muted);"></i>
+        <h3 style="margin:16px 0 8px;">Sin procesos criticos registrados</h3>
+        <p style="color:var(--text-muted);margin-bottom:20px;max-width:400px;margin-left:auto;margin-right:auto;">
+          ISO 22301 cl. 8.2 requiere identificar las actividades criticas y sus objetivos de recuperacion (RTO/RPO/MTPD).
+        </p>
+        <button class="btn btn-primary btn-lg" onclick="document.getElementById('btn-new-proc').click()">
+          <i class="ti ti-plus"></i> Crear primer proceso critico
+        </button>
+      </div>`;
     } else {
       el.innerHTML += `
       <div class="table-container">
@@ -216,17 +270,16 @@ const ViewBcp = (() => {
     if (!_procs.length) _procs = await Api.get('/api/bcp/processes').catch(() => []);
     const IMPACT_LABELS = ['Ninguno','Bajo','Medio','Alto'];
     const IMPACT_COLORS = ['#6B7280','#16a34a','#D97706','#DC2626'];
-    el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;">Analisis de Impacto (BIA) — ${_procs.length} procesos</h3>
-      <button class="btn btn-primary" id="btn-bia-new">+ Nuevo proceso BIA</button>
-    </div>`;
-    document.getElementById('btn-bia-new')?.addEventListener('click', () => _openProcModal());
-    if (!_procs.length) {
-      el.innerHTML += UI.empty('No hay procesos BIA. Crea tu primer proceso critico con el boton de arriba.');
-      return;
-    }
-    el.innerHTML += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">
+    // IMPORTANTE: construir todo el HTML antes de asignarlo para evitar que
+    // innerHTML += destruya los event listeners adjuntados previamente.
+    const bodyHtml = !_procs.length
+      ? `<div style="text-align:center;padding:48px 24px;">
+          <i class="ti ti-chart-dots" style="font-size:48px;color:var(--text-muted);"></i>
+          <h3 style="margin:16px 0 8px;">Sin procesos BIA</h3>
+          <p style="color:var(--text-muted);margin-bottom:20px;">Registra primero tus procesos criticos para completar el Analisis de Impacto.</p>
+          <button class="btn btn-primary btn-lg" id="btn-bia-new2">+ Crear primer proceso BIA</button>
+        </div>`
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">
     ${_procs.map(p => {
       const pct = p.bia_pct || 0;
       const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
@@ -282,6 +335,17 @@ const ViewBcp = (() => {
       </div>`;
     }).join('')}
     </div>`;
+
+    el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;">Analisis de Impacto (BIA) — ${_procs.length} procesos</h3>
+      <button class="btn btn-primary" id="btn-bia-new">+ Nuevo proceso BIA</button>
+    </div>
+    ${bodyHtml}`;
+
+    // listeners siempre DESPUES de asignar innerHTML
+    document.getElementById('btn-bia-new')?.addEventListener('click', () => _openProcModal());
+    document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openProcModal());
   }
 
   // ── Tab Dependencias ─────────────────────────────────────────────────────────
@@ -1357,5 +1421,6 @@ const ViewBcp = (() => {
     _openEPModal, _saveEP,
     _handleDrop, _handleFileSelect,
     _setImportMode, _onFileSelect, _renderImportPreview, _confirmImport,
+    _runBcpAiAnalysis,
   };
 })();

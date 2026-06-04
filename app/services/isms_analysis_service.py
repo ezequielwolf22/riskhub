@@ -299,10 +299,8 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         except Exception as _ce:
             logger.warning("Doc-compliance mapping failed doc=%d: %s", doc_id, _ce)
 
-        # Si se actualizaron controles, relanzar analisis de activos para recalcular
-        # el riesgo residual con los nuevos controles aplicados (v1.7.6)
-        if result["controls_updated"] > 0 and doc.organization_id:
-            _trigger_assets_reanalysis(doc.organization_id)
+        # Nota: el re-análisis automático de activos se desactivó para evitar
+        # consumo masivo de tokens de IA. Usar el botón "Analizar con IA" manual.
 
         # ── Auto-detección de documentos BCP/DRP ─────────────────────────────
         try:
