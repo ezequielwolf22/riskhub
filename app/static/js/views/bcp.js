@@ -722,37 +722,68 @@ const ViewBcp = (() => {
 
   // ── Tab Estrategias ──────────────────────────────────────────────────────────
 
+  const IMPL_LABELS = {
+    planned: 'Planificado', in_progress: 'En progreso',
+    implemented: 'Implementado', tested: 'Probado',
+  };
+  const STRAT_TYPE_LABELS = {
+    hot_site: 'Hot site', cold_site: 'Cold site', warm_site: 'Warm site',
+    work_from_home: 'Trabajo remoto', outsourcing: 'Outsourcing',
+    manual_workaround: 'Procedimiento manual', dual_site: 'Dual site',
+    cloud_failover: 'Cloud failover',
+  };
+
   async function _tabStrategies(el) {
     [_procs, _strats] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
       Api.get('/api/bcp/strategies').catch(() => []),
     ]);
+
+    const procName = id => id ? ((_procs.find(p => p.id == id) || {}).name || '#' + id) : 'Global';
+
+    // Construir TODO el HTML antes de asignar (evita que innerHTML += destruya listeners)
+    const bodyHtml = !_strats.length
+      ? UI.emptyState(
+          'Sin estrategias de recuperacion',
+          'ISO 22301 cl. 8.3 requiere al menos una estrategia por proceso critico. Tipos: hot site, trabajo remoto, procedimiento manual, cloud failover...'
+        )
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">
+        ${_strats.map(s => `
+        <div class="card" style="cursor:pointer;transition:box-shadow .15s;"
+             onmouseenter="this.style.boxShadow='var(--shadow-md)'"
+             onmouseleave="this.style.boxShadow=''"
+             onclick="ViewBcp._editStrat(${s.id})">
+          <div class="card-body">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <span class="badge" style="background:#59008D22;color:#59008D;font-size:11px;">
+                <i class="ti ti-route" style="font-size:10px;margin-right:3px;"></i>
+                ${STRAT_TYPE_LABELS[s.strategy_type] || s.strategy_type}
+              </span>
+              <span style="font-size:11px;font-weight:600;color:${IMPL_COLORS[s.implementation_status]||'#666'};">
+                ${IMPL_LABELS[s.implementation_status] || s.implementation_status}
+              </span>
+            </div>
+            <strong style="font-size:14px;display:block;margin-bottom:4px;">${UI.esc(s.name)}</strong>
+            <div style="font-size:12px;color:var(--text-subtle);">
+              <i class="ti ti-sitemap" style="font-size:11px;margin-right:3px;"></i>${UI.esc(procName(s.process_id))}
+            </div>
+            ${s.description ? `<div style="font-size:12px;color:var(--text-subtle);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${UI.esc(s.description.substring(0, 80))}</div>` : ''}
+            ${s.estimated_cost != null ? `<div style="font-size:12px;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border);">Coste estimado: <strong>${s.estimated_cost.toLocaleString('es-ES')} €</strong></div>` : ''}
+            ${s.target_date ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:4px;">Fecha objetivo: ${new Date(s.target_date).toLocaleDateString('es-ES')}</div>` : ''}
+          </div>
+        </div>`).join('')}
+      </div>`;
+
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h3 style="margin:0;">Estrategias de Recuperacion (${_strats.length})</h3>
-      <button class="btn btn-primary" id="btn-new-strat">+ Nueva estrategia</button>
-    </div>`;
-    if (!_strats.length) {
-      el.innerHTML += UI.emptyState('No hay estrategias de recuperacion. ISO 22301 cl. 8.3 requiere definir al menos una estrategia por proceso critico.');
-    } else {
-      const procName = id => id ? ((_procs.find(p => p.id == id)||{}).name || '#'+id) : 'Global';
-      el.innerHTML += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">
-      ${_strats.map(s => `
-      <div class="card" style="cursor:pointer;" onclick="ViewBcp._editStrat(${s.id})">
-        <div class="card-body">
-          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-            <span class="badge" style="background:#59008D22;color:#59008D;">${s.strategy_type}</span>
-            <span style="font-size:12px;color:${IMPL_COLORS[s.implementation_status]||'#666'};">
-              ${s.implementation_status}
-            </span>
-          </div>
-          <strong style="font-size:14px;">${UI.esc(s.name)}</strong>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${UI.esc(procName(s.process_id))}</div>
-          ${s.estimated_cost != null ? `<div style="font-size:12px;margin-top:6px;">Coste est.: <strong>${s.estimated_cost.toLocaleString('es-ES')} €</strong></div>` : ''}
-        </div>
-      </div>`).join('')}
-      </div>`;
-    }
+      <button class="btn btn-primary" id="btn-new-strat">
+        <i class="ti ti-plus"></i> Nueva estrategia
+      </button>
+    </div>
+    ${bodyHtml}`;
+
+    // Listener DESPUES de asignar innerHTML
     document.getElementById('btn-new-strat')?.addEventListener('click', () => _openStratModal());
   }
 
@@ -905,45 +936,73 @@ const ViewBcp = (() => {
 
   // ── Tab Proveedores BCM ──────────────────────────────────────────────────────
 
+  const CRIT_LABELS_BCM = { critical: 'Critica', high: 'Alta', medium: 'Media', low: 'Baja' };
+
   async function _tabSuppliers(el) {
     [_procs, _slinks, _suppliers] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
       Api.get('/api/bcp/supplier-links').catch(() => []),
       Api.get('/api/suppliers').catch(() => []),
     ]);
-    el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;">Proveedores BCM (${_slinks.length})</h3>
-      <button class="btn btn-primary" id="btn-new-sl">+ Vincular proveedor</button>
-    </div>`;
-    if (!_slinks.length) {
-      el.innerHTML += UI.emptyState('No hay proveedores vinculados al BCP. ISO 22301 cl. 8.2 requiere identificar proveedores criticos.');
-    } else {
-      el.innerHTML += `
-      <div class="table-container">
+
+    // Construir TODO el HTML antes de asignar (evita que innerHTML += destruya listeners)
+    const bodyHtml = !_slinks.length
+      ? UI.emptyState(
+          'Sin proveedores BCM vinculados',
+          'ISO 22301 cl. 8.2 requiere identificar los proveedores criticos y su impacto en la continuidad.'
+        )
+      : `<div class="table-container">
         <table class="data-table">
           <thead><tr>
-            <th>Proveedor</th><th>Criticidad BCM</th><th>Procesos dep.</th><th>Impacto RTO</th>
-            <th>SLA contrato</th><th>Plan contingencia</th><th>Prov. alternativo</th><th>Ultima revision</th><th></th>
+            <th>Proveedor</th>
+            <th>Criticidad BCM</th>
+            <th>Procesos</th>
+            <th>RTO impacto</th>
+            <th>SLA contrato</th>
+            <th>Contingencia</th>
+            <th>Alternativo</th>
+            <th>Revision</th>
+            <th></th>
           </tr></thead>
           <tbody>
           ${_slinks.map(s => `<tr>
-            <td><strong>${UI.esc(s.supplier_name)}</strong></td>
-            <td><span style="color:${CRIT_COLORS[s.criticality]};font-weight:700;">${s.criticality}</span></td>
-            <td>${(s.process_ids||[]).length}</td>
-            <td>${s.rto_impact_hours != null ? s.rto_impact_hours + 'h' : '—'}</td>
-            <td>${s.contract_sla_hours != null ? s.contract_sla_hours + 'h' : '—'}</td>
-            <td>${s.has_contingency_plan ?
-              '<span class="badge badge-success">&#10003; Si</span>' :
-              '<span class="badge badge-danger">&#10007; No</span>'}</td>
-            <td>${s.alternative_supplier_name || '—'}</td>
-            <td>${s.last_review_date ? new Date(s.last_review_date).toLocaleDateString('es-ES') : '—'}</td>
-            <td><button class="btn btn-sm btn-secondary" onclick="ViewBcp._editSL(${s.id})">Editar</button></td>
+            <td>
+              <strong>${UI.esc(s.supplier_name)}</strong>
+              ${s.notes ? `<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(s.notes.substring(0, 50))}</div>` : ''}
+            </td>
+            <td>
+              <span style="color:${CRIT_COLORS[s.criticality]};font-weight:700;font-size:12px;">
+                ${CRIT_LABELS_BCM[s.criticality] || s.criticality}
+              </span>
+            </td>
+            <td style="text-align:center;">${(s.process_ids || []).length}</td>
+            <td style="font-size:13px;">${s.rto_impact_hours != null ? '<strong>' + s.rto_impact_hours + 'h</strong>' : '—'}</td>
+            <td style="font-size:12px;color:var(--text-subtle);">${s.contract_sla_hours != null ? s.contract_sla_hours + 'h' : '—'}</td>
+            <td style="text-align:center;">
+              ${s.has_contingency_plan
+                ? '<span class="badge badge-success" style="font-size:11px;"><i class="ti ti-check" style="font-size:10px;"></i> Si</span>'
+                : '<span class="badge" style="font-size:11px;color:var(--risk-high);background:var(--risk-high-soft,#FEE2E2);">No</span>'}
+            </td>
+            <td style="font-size:12px;color:var(--text-subtle);">${s.alternative_supplier_name || '—'}</td>
+            <td style="font-size:12px;color:var(--text-subtle);">${s.last_review_date ? new Date(s.last_review_date).toLocaleDateString('es-ES') : '—'}</td>
+            <td>
+              <button class="btn btn-sm btn-secondary" onclick="ViewBcp._editSL(${s.id})">Editar</button>
+            </td>
           </tr>`).join('')}
           </tbody>
         </table>
       </div>`;
-    }
+
+    el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3 style="margin:0;">Proveedores BCM (${_slinks.length})</h3>
+      <button class="btn btn-primary" id="btn-new-sl">
+        <i class="ti ti-plus"></i> Vincular proveedor
+      </button>
+    </div>
+    ${bodyHtml}`;
+
+    // Listener DESPUES de asignar innerHTML
     document.getElementById('btn-new-sl')?.addEventListener('click', () => _openSLModal());
   }
 
@@ -1171,43 +1230,43 @@ const ViewBcp = (() => {
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column;">
+    <div class="modal" style="max-width:720px;max-height:92vh;display:flex;flex-direction:column;">
       <div class="modal-header" style="flex-shrink:0;">
         <h2>${proc ? 'Editar proceso' : (isBia ? 'Nuevo proceso BIA' : 'Nuevo proceso critico')}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
 
         <div class="form-section-divider"><span>INFORMACION BASICA</span></div>
         <div style="margin-bottom:14px;">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Nombre <span style="color:var(--danger)">*</span></label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Nombre <span style="color:var(--danger)">*</span></label>
           <input id="pm-name" class="form-control" value="${UI.esc(proc?.name||'')}" style="font-size:13px;">
         </div>
         <div style="margin-bottom:14px;">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Descripcion</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Descripcion</label>
           <textarea id="pm-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(proc?.description||'')}</textarea>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Criticidad <span style="color:var(--danger)">*</span></label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Criticidad <span style="color:var(--danger)">*</span></label>
             <select id="pm-crit" class="form-control" style="font-size:13px;">
               ${['critical','high','medium','low'].map(c=>`<option value="${c}"${proc?.criticality===c?' selected':''}>${{critical:'Critica',high:'Alta',medium:'Media',low:'Baja'}[c]}</option>`).join('')}
             </select>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Prioridad de recuperacion</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Prioridad de recuperacion</label>
             <input id="pm-prio" class="form-control" type="number" min="1" style="font-size:13px;" value="${proc?.priority||''}" placeholder="1 = mas urgente">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Responsable</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Responsable</label>
             <select id="pm-owner" class="form-control" style="font-size:13px;">
               <option value="">— Sin asignar —</option>${userOpts}
             </select>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Responsable de recuperacion</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Responsable de recuperacion</label>
             <select id="pm-rowner" class="form-control" style="font-size:13px;">
               <option value="">— Sin asignar —</option>${rUserOpts}
             </select>
@@ -1217,29 +1276,29 @@ const ViewBcp = (() => {
         <div class="form-section-divider"><span>OBJETIVOS DE RECUPERACION (BIA)</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">RTO (horas)</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">RTO (horas)</label>
             <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Recovery Time Objective</div>
             <input id="pm-rto" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.rto_hours??''}">
           </div>
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">RPO (horas)</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">RPO (horas)</label>
             <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Recovery Point Objective</div>
             <input id="pm-rpo" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.rpo_hours??''}">
           </div>
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">MTPD (horas)</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">MTPD (horas)</label>
             <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Max. Tolerable Period of Disruption</div>
             <input id="pm-mtpd" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.mtpd_hours??''}">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:160px 1fr;gap:12px;margin-bottom:14px;">
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Staff minimo</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Staff minimo</label>
             <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Personas para recuperar</div>
             <input id="pm-staff" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.min_recovery_staff??''}">
           </div>
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">MBCO — Objetivo Minimo de Continuidad</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">MBCO — Objetivo Minimo de Continuidad</label>
             <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Nivel minimo de servicio aceptable</div>
             <textarea id="pm-mbco" class="form-control" rows="2" style="font-size:13px;" placeholder="Ej: 50% de pedidos procesados, acceso de lectura a datos criticos...">${UI.esc(proc?.mbco||'')}</textarea>
           </div>
@@ -1250,7 +1309,7 @@ const ViewBcp = (() => {
           ${[['pm-fi','Financiero','financial_impact'],['pm-ri','Reputacional','reputational_impact'],
              ['pm-li','Legal/Reg.','legal_impact'],['pm-oi','Operacional','operational_impact']].map(([id,lbl,fld])=>`
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">${lbl}</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${lbl}</label>
             <select id="${id}" class="form-control" style="font-size:12px;">
               ${IMPACTS.map((imp,i)=>`<option value="${i}"${proc?.[fld]===i?' selected':''}>${imp}</option>`).join('')}
             </select>
@@ -1259,12 +1318,12 @@ const ViewBcp = (() => {
 
         <div class="form-section-divider"><span>ACTIVACION Y PROCEDIMIENTOS</span></div>
         <div style="margin-bottom:14px;">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Criterios de activacion <span style="color:var(--danger)">*</span></label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Criterios de activacion <span style="color:var(--danger)">*</span></label>
           <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">¿Que condiciones deben darse para activar el plan de este proceso?</div>
           <textarea id="pm-activ" class="form-control" rows="2" style="font-size:13px;">${UI.esc(proc?.activation_criteria||'')}</textarea>
         </div>
         <div style="margin-bottom:14px;">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Procedimiento alternativo <span style="color:var(--danger)">*</span></label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Procedimiento alternativo <span style="color:var(--danger)">*</span></label>
           <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">¿Como puede este proceso funcionar manualmente o de forma degradada?</div>
           <textarea id="pm-altproc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(proc?.alternative_procedure||'')}</textarea>
         </div>
@@ -1272,17 +1331,17 @@ const ViewBcp = (() => {
         <div class="form-section-divider"><span>RECURSOS Y DOCUMENTACION</span></div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Registros vitales</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Registros vitales</label>
             <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Un registro por linea</div>
             <textarea id="pm-vr" class="form-control" rows="3" style="font-size:12px;" placeholder="ERP datos ventas&#10;Contratos con clientes&#10;Certificados SSL">${UI.esc(arrToLines(proc?.vital_records))}</textarea>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Sistemas IT</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Sistemas IT</label>
             <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Un sistema por linea</div>
             <textarea id="pm-it" class="form-control" rows="3" style="font-size:12px;" placeholder="ERP SAP&#10;CRM Salesforce&#10;VPN Cisco">${UI.esc(arrToLines(proc?.it_systems))}</textarea>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);">Instalaciones</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Instalaciones</label>
             <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Una instalacion por linea</div>
             <textarea id="pm-fac" class="form-control" rows="3" style="font-size:12px;" placeholder="Sede Madrid&#10;CPD principal&#10;Almacen logistico">${UI.esc(arrToLines(proc?.facilities))}</textarea>
           </div>
@@ -1359,7 +1418,7 @@ const ViewBcp = (() => {
   function _openDepModal(dep, isProcDep) {
     const isProc = isProcDep || dep?.dependency_type === 'process' || !!dep?.depends_on_process_id;
     const DEP_TYPES = ['IT_system','personnel','facility','supplier','utility','communication','transport','external_service'];
-    const lbl = (text, req) => `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${text}${req ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
+    const lbl = (text, req) => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${text}${req ? ' <span style="color:var(--danger)">*</span>' : ''}</label>`;
 
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
@@ -1530,7 +1589,7 @@ const ViewBcp = (() => {
       dual_site:'Dual site',cloud_failover:'Cloud failover'};
     const STATUS_OPTS = [{v:'planned',l:'Planificado'},{v:'in_progress',l:'En progreso'},
       {v:'implemented',l:'Implementado'},{v:'tested',l:'Probado'}];
-    const lbl = t => `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${t}</label>`;
+    const lbl = t => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${t}</label>`;
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
@@ -1539,7 +1598,7 @@ const ViewBcp = (() => {
         <h2>${strat ? 'Editar estrategia' : 'Nueva estrategia de recuperacion'}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>${lbl('Tipo *')}
             <select id="sm-type" class="form-control" style="font-size:13px;">
@@ -1624,7 +1683,7 @@ const ViewBcp = (() => {
     const TYPES = ['bcp','drp','crp','ems','pandemic','cyber_response','supply_chain'];
     const CLASSIFS = [['confidential','Confidencial'],['internal','Uso interno'],['restricted','Restringido']];
     const lbl = (text, req, sub) =>
-      `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${text}${req?' <span style="color:var(--danger)">*</span>':''}
+      `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${text}${req?' <span style="color:var(--danger)">*</span>':''}
       </label>${sub?`<div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">${sub}</div>`:''}`;
 
     // Obtener secciones del plan
@@ -2084,7 +2143,7 @@ const ViewBcp = (() => {
     const test = _tests.find(t => t.id === id);
     if (!test) return;
     const lbl = (text, req, sub) =>
-      `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${text}${req?' <span style="color:var(--danger)">*</span>':''}
+      `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${text}${req?' <span style="color:var(--danger)">*</span>':''}
       </label>${sub?`<div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">${sub}</div>`:''}`;
 
     const RESULT_DESCS = {
@@ -2101,7 +2160,7 @@ const ViewBcp = (() => {
         <h2>Resultado: ${UI.esc(test.code)} — ${test.test_type}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>${lbl('Resultado','*')}
             <select id="rm-result" class="form-control" style="font-size:13px;" onchange="ViewBcp._onResultChange(this.value)">
@@ -2230,7 +2289,7 @@ const ViewBcp = (() => {
   // ── Modales — Proveedor BCM ──────────────────────────────────────────────────
 
   function _openSLModal(sl) {
-    const lbl = (t, req) => `<label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-subtle);display:block;margin-bottom:4px;">${t}${req?' <span style="color:var(--danger)">*</span>':''}</label>`;
+    const lbl = (t, req) => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${t}${req?' <span style="color:var(--danger)">*</span>':''}</label>`;
     const CRIT_SL = [{v:'critical',l:'Critica'},{v:'high',l:'Alta'},{v:'medium',l:'Media'},{v:'low',l:'Baja'}];
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
@@ -2240,7 +2299,7 @@ const ViewBcp = (() => {
         <h2>${sl ? 'Editar vinculo BCM' : 'Vincular proveedor al BCP'}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>${lbl('Proveedor',true)}
             <select id="slm-sup" class="form-control" style="font-size:13px;" ${sl?'disabled':''}>
