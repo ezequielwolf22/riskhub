@@ -301,7 +301,7 @@ function init() {
   async function _loadNotifCount() {
     try {
       const [nis2, overdue] = await Promise.all([
-        Api.get('/api/nis2/notifications/?status=overdue').catch(() => []),
+        Api.get('/api/nis2/notifications?status=overdue').catch(() => []),
         Api.get('/api/tasks/stats/summary').catch(() => ({overdue: 0})),
       ]);
       const total = (Array.isArray(nis2) ? nis2.length : 0) + (overdue.overdue || 0);
