@@ -1387,4 +1387,296 @@ const ViewRisks = {
       btn.disabled = false;
     }
   },
+
+  // ── Sección de encuestas distribuidas ─────────────────────────────────────
+
+  async renderSurveySection(risk, container) {
+    const canEdit = Auth.canEdit();
+    let campaigns = [];
+    try { campaigns = await Api.get('/api/surveys/campaigns'); } catch (_) {}
+    const related = campaigns.filter(c => (c.scope_risk_ids || []).includes(risk.id));
+
+    const surveySummary = (risk.survey_response_count > 0)
+      ? `<div style="margin-top:8px;padding:10px 12px;background:#e8f5e9;border-radius:8px;font-size:13px;color:#2e7d32;">
+           ${risk.survey_response_count} valoración(es) externas integradas en este riesgo.
+           Última: ${risk.last_survey_date ? risk.last_survey_date.slice(0, 10) : 'desconocida'}
+         </div>` : '';
+
+    const campaignsHtml = related.length === 0
+      ? `<div class="notice notice-info" style="font-size:13px;">
+           Sin encuestas enviadas para este riesgo. Pulsa "Nueva encuesta" para solicitar la valoración de los responsables de área.
+         </div>`
+      : related.map(c => {
+          const statusBadge = c.status === 'active' ? 'badge-purple'
+            : c.status === 'closed' ? 'badge-low' : 'badge-muted';
+          const applyBtn = (c.status === 'closed' && c.completed_responses > 0 && canEdit)
+            ? `<button class="btn btn-ghost btn-sm" style="color:var(--success)"
+                       data-apply-campaign="${c.id}" title="Aplicar al registro de riesgos">
+                 Aplicar
+               </button>` : '';
+          return `<div class="card" style="padding:14px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <div>
+                <code style="font-size:11px;">${UI.esc(c.code)}</code>
+                <strong style="font-size:14px;margin-left:6px;">${UI.esc(c.title)}</strong>
+                <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">
+                  <span class="badge ${statusBadge}">${c.status}</span>
+                  <span style="font-size:12px;color:var(--text-muted);">
+                    ${c.completed_responses}/${c.total_respondents} respuestas (${c.response_rate}%)
+                  </span>
+                </div>
+              </div>
+              <div style="display:flex;gap:4px;">
+                <button class="btn btn-ghost btn-sm" data-survey-results="${c.id}" title="Ver resultados">
+                  Resultados
+                </button>
+                ${applyBtn}
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+
+    container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div>
+          <h4 style="margin:0;font-size:14px;">Evaluaciones distribuidas</h4>
+          <p style="margin:2px 0 0;font-size:12px;color:var(--text-muted);">
+            Encuestas enviadas a responsables de área sobre este riesgo
+          </p>
+        </div>
+        ${canEdit ? `<button class="btn btn-primary btn-sm" id="btn-new-survey-risk">Nueva encuesta</button>` : ''}
+      </div>
+      ${campaignsHtml}
+      ${surveySummary}
+    `;
+
+    if (canEdit) {
+      const newBtn = container.querySelector('#btn-new-survey-risk');
+      if (newBtn) newBtn.onclick = () => ViewRisks._modalNewSurveyForRisk(risk);
+    }
+
+    container.querySelectorAll('[data-survey-results]').forEach(btn => {
+      btn.onclick = () => ViewRisks._openSurveyResults(parseInt(btn.dataset.surveyResults));
+    });
+    container.querySelectorAll('[data-apply-campaign]').forEach(btn => {
+      btn.onclick = () => ViewRisks._applySurveyToRisk(parseInt(btn.dataset.applyCampaign));
+    });
+  },
+
+  async _modalNewSurveyForRisk(risk) {
+    let templates = [];
+    try { templates = await Api.get('/api/surveys/templates'); } catch (_) {}
+
+    const defaultTemplate = templates.find(t => t.survey_type === 'risk_assessment' && t.is_default) || templates[0];
+    const templateOptions = templates.map(t =>
+      `<option value="${t.id}" ${defaultTemplate && t.id === defaultTemplate.id ? 'selected' : ''}>${UI.esc(t.name)}</option>`
+    ).join('');
+
+    const deadlineDefault = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:560px;width:100%;">
+        <div class="modal-header">
+          <h3 class="modal-title">Nueva encuesta para ${UI.esc(risk.name)}</h3>
+          <button class="modal-close" id="modal-close-survey">&times;</button>
+        </div>
+        <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+          <div class="form-group">
+            <label class="form-label">Título de la campaña</label>
+            <input type="text" id="srv-title" class="form-control"
+                   value="Evaluación de riesgo: ${UI.esc(risk.name).slice(0, 60)}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Plantilla</label>
+            <select id="srv-template" class="form-control">${templateOptions}</select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha límite</label>
+            <input type="date" id="srv-deadline" class="form-control" value="${deadlineDefault}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Texto de introducción (opcional)</label>
+            <textarea id="srv-intro" class="form-control" rows="2" placeholder="Contexto adicional para el destinatario..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight:700;margin-bottom:8px;">
+              Destinatarios <span id="srv-respondent-count" style="font-weight:400;color:var(--text-muted);">(0)</span>
+            </label>
+            <div id="srv-respondents-list"></div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-add-respondent" style="margin-top:8px;">
+              + Añadir destinatario
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="btn-srv-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="btn-srv-send">Enviar encuesta</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    modal.querySelector('#modal-close-survey').onclick = close;
+    modal.querySelector('#btn-srv-cancel').onclick = close;
+    modal.onclick = e => { if (e.target === modal) close(); };
+
+    const respondentsList = modal.querySelector('#srv-respondents-list');
+    const countLabel = modal.querySelector('#srv-respondent-count');
+    const respondents = [];
+
+    const renderRespondents = () => {
+      countLabel.textContent = `(${respondents.length})`;
+      respondentsList.innerHTML = respondents.map((r, i) => `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+          <input type="text" placeholder="Nombre" value="${UI.esc(r.name)}" data-ri="${i}" data-field="name"
+                 class="form-control srv-r-field" style="flex:2;min-width:120px;">
+          <input type="email" placeholder="Email" value="${UI.esc(r.email)}" data-ri="${i}" data-field="email"
+                 class="form-control srv-r-field" style="flex:2;min-width:140px;">
+          <input type="text" placeholder="Rol (opcional)" value="${UI.esc(r.role || '')}" data-ri="${i}" data-field="role"
+                 class="form-control srv-r-field" style="flex:1;min-width:100px;">
+          <button type="button" class="btn btn-ghost btn-sm" data-del="${i}" style="color:var(--danger);">×</button>
+        </div>`).join('');
+      respondentsList.querySelectorAll('.srv-r-field').forEach(inp => {
+        inp.oninput = () => { respondents[inp.dataset.ri][inp.dataset.field] = inp.value; };
+      });
+      respondentsList.querySelectorAll('[data-del]').forEach(btn => {
+        btn.onclick = () => { respondents.splice(parseInt(btn.dataset.del), 1); renderRespondents(); };
+      });
+    };
+
+    modal.querySelector('#btn-add-respondent').onclick = () => {
+      respondents.push({ name: '', email: '', role: '' });
+      renderRespondents();
+    };
+
+    modal.querySelector('#btn-srv-send').onclick = async () => {
+      const title = modal.querySelector('#srv-title').value.trim();
+      const templateId = parseInt(modal.querySelector('#srv-template').value);
+      const deadlineVal = modal.querySelector('#srv-deadline').value;
+      const intro = modal.querySelector('#srv-intro').value.trim();
+
+      if (!title) { alert('El título es obligatorio.'); return; }
+      const validRespondents = respondents.filter(r => r.name && r.email);
+      if (validRespondents.length === 0) { alert('Añade al menos un destinatario con nombre y email.'); return; }
+
+      const deadlineDays = deadlineVal
+        ? Math.max(1, Math.round((new Date(deadlineVal) - Date.now()) / 86400000))
+        : 14;
+
+      const sendBtn = modal.querySelector('#btn-srv-send');
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Creando...';
+
+      try {
+        const campaign = await Api.post('/api/surveys/campaigns', {
+          title, template_id: templateId, scope_risk_ids: [risk.id],
+          deadline_days: deadlineDays, intro_text: intro || null,
+          show_risk_context: true, allow_comments: true,
+        });
+        await Api.post(`/api/surveys/campaigns/${campaign.id}/respondents`, {
+          respondents: validRespondents.map(r => ({ name: r.name, email: r.email, role: r.role || null })),
+        });
+        const result = await Api.post(`/api/surveys/campaigns/${campaign.id}/send`, {});
+        close();
+        UI.toast(`Encuesta creada y ${result.sent || 0} email(s) enviado(s).`, 'success');
+        window.dispatchEvent(new Event('risks-updated'));
+      } catch (e) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Enviar encuesta';
+        alert('Error: ' + (e.message || 'No se pudo crear la encuesta.'));
+      }
+    };
+  },
+
+  async _openSurveyResults(campaignId) {
+    let results;
+    try { results = await Api.get(`/api/surveys/campaigns/${campaignId}/results`); } catch (e) {
+      alert('No se pudieron cargar los resultados.'); return;
+    }
+
+    const questionsHtml = (results.questions || []).map(q => {
+      let vizHtml = '';
+      if (q.distribution) {
+        const entries = Object.entries(q.distribution).sort((a, b) => b[1] - a[1]);
+        const max = Math.max(...entries.map(e => e[1]), 1);
+        vizHtml = '<div style="margin-top:8px;">' + entries.map(([val, count]) =>
+          `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">
+             <span style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${UI.esc(val)}">${UI.esc(val)}</span>
+             <div style="flex:1;background:#eeeef5;border-radius:4px;height:14px;">
+               <div style="width:${Math.round(count/max*100)}%;height:100%;background:var(--brand-purple);border-radius:4px;"></div>
+             </div>
+             <span style="min-width:24px;text-align:right;">${count}</span>
+           </div>`
+        ).join('') + '</div>';
+      }
+      const avgHtml = q.average !== undefined
+        ? `<span style="font-size:12px;color:var(--text-muted);"> — promedio: <strong>${q.average}</strong></span>` : '';
+      return `<div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #eeeef5;">
+        <div style="font-size:13px;font-weight:600;">${UI.esc(q.question_text || '')}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">${q.response_count} respuesta(s)${avgHtml}</div>
+        ${vizHtml}
+        ${(q.comments || []).length ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">
+          ${q.comments.map(c => `<div style="margin-bottom:2px;">"${UI.esc(c)}"</div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('');
+
+    const commentsHtml = (results.general_comments || []).length
+      ? `<div style="margin-top:12px;">
+           <strong style="font-size:12px;">Comentarios generales:</strong>
+           ${results.general_comments.map(c => `<div style="font-size:13px;padding:6px 0;border-bottom:1px solid #eeeef5;">"${UI.esc(c)}"</div>`).join('')}
+         </div>` : '';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:600px;width:100%;">
+        <div class="modal-header">
+          <h3 class="modal-title">${UI.esc(results.title)} — Resultados</h3>
+          <button class="modal-close" id="srv-res-close">&times;</button>
+        </div>
+        <div class="modal-body" style="max-height:75vh;overflow-y:auto;">
+          <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+            <div style="text-align:center;padding:12px 20px;background:#f5f5fa;border-radius:8px;">
+              <div style="font-size:24px;font-weight:700;color:var(--brand-purple);">${results.response_rate}%</div>
+              <div style="font-size:11px;color:var(--text-muted);">Tasa de respuesta</div>
+            </div>
+            <div style="text-align:center;padding:12px 20px;background:#f5f5fa;border-radius:8px;">
+              <div style="font-size:24px;font-weight:700;">${results.completed}/${results.total_respondents}</div>
+              <div style="font-size:11px;color:var(--text-muted);">Completadas</div>
+            </div>
+          </div>
+          ${questionsHtml}
+          ${commentsHtml}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="srv-res-close2">Cerrar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('#srv-res-close').onclick = close;
+    modal.querySelector('#srv-res-close2').onclick = close;
+    modal.onclick = e => { if (e.target === modal) close(); };
+  },
+
+  async _applySurveyToRisk(campaignId) {
+    let result;
+    try { result = await Api.post(`/api/surveys/campaigns/${campaignId}/apply-to-risks`, {}); }
+    catch (e) { alert('Error al aplicar: ' + (e.message || '')); return; }
+
+    if (!result.changes || result.changes.length === 0) {
+      alert('No hay cambios a aplicar (ya aplicados o sin respuestas nuevas).'); return;
+    }
+    const msg = result.changes.map(c =>
+      `- ${c.risk_code}: Probabilidad ${c.likelihood_before} → ${c.likelihood_after}, Impacto ${c.impact_before} → ${c.impact_after}`
+    ).join('\n');
+    const n = result.changes[0]?.responses_count || 0;
+    if (confirm(`Se aplicarán los siguientes cambios basados en ${n} respuesta(s):\n\n${msg}\n\n¿Confirmar?`)) {
+      UI.toast('Valoraciones aplicadas al registro de riesgos.', 'success');
+      window.dispatchEvent(new Event('risks-updated'));
+    }
+  },
 };

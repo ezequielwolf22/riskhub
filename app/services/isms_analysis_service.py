@@ -332,9 +332,20 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
 
     except Exception as exc:
         logger.error("ISMS analysis failed doc=%d: %s", doc_id, exc)
+        err_str = str(exc)
+        is_credit = (
+            "credit balance" in err_str.lower()
+            or "insufficient_balance" in err_str.lower()
+            or "billing" in err_str.lower()
+            or "402" in err_str
+        )
+        err_msg = (
+            "Sin creditos Anthropic. Recarga en console.anthropic.com/settings/billing"
+            if is_credit else err_str[:500]
+        )
         try:
             doc.isms_status = "error"
-            doc.isms_summary = {"error": str(exc)[:500]}
+            doc.isms_summary = {"error": err_msg}
             db.commit()
         except Exception:
             pass

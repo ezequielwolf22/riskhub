@@ -302,9 +302,9 @@ function init() {
     try {
       const [nis2, overdue] = await Promise.all([
         Api.get('/api/nis2/notifications/?status=overdue').catch(() => []),
-        Api.get('/api/tasks/?status=overdue&limit=1').catch(() => ({total: 0})),
+        Api.get('/api/tasks/stats/summary').catch(() => ({overdue: 0})),
       ]);
-      const total = (Array.isArray(nis2) ? nis2.length : 0) + (overdue.total || 0);
+      const total = (Array.isArray(nis2) ? nis2.length : 0) + (overdue.overdue || 0);
       const badge = document.getElementById('notif-count');
       if (badge) {
         badge.textContent = total > 9 ? '9+' : String(total);

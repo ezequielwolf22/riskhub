@@ -362,6 +362,9 @@ def _migrate_columns() -> None:
          "bcp_plans", "classification"),
         # v3.3.1 — Cobertura BCP en el registro de riesgos (ISO 22301 / ISO 27001 A.5.29)
         ("ALTER TABLE risks ADD COLUMN bcp_coverage JSON", "risks", "bcp_coverage"),
+        # v3.4.0 — Encuestas distribuidas: contadores en riesgos
+        ("ALTER TABLE risks ADD COLUMN last_survey_date DATETIME", "risks", "last_survey_date"),
+        ("ALTER TABLE risks ADD COLUMN survey_response_count INTEGER DEFAULT 0", "risks", "survey_response_count"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
@@ -434,6 +437,131 @@ def _seed_licenses(db: Session) -> None:
             )
 
 
+def seed_default_survey_templates(db: Session, org_id: int) -> None:
+    """Crea plantillas de encuesta por defecto para una organización nueva."""
+    from app.models import SurveyTemplate
+    if db.query(SurveyTemplate).filter_by(organization_id=org_id).count() > 0:
+        return
+    templates = [
+        {
+            "name": "Evaluación de riesgo por propietario de activo",
+            "description": "Encuesta corta para que el propietario del activo evalúe la probabilidad e impacto de un riesgo desde su conocimiento operativo.",
+            "survey_type": "risk_assessment",
+            "is_default": True,
+            "questions": [
+                {
+                    "id": "q1", "type": "likelihood_scale",
+                    "text": "En tu opinión, ¿con qué probabilidad podría materializarse este riesgo en los próximos 12 meses?",
+                    "help_text": "1=Muy improbable, 2=Improbable, 3=Posible, 4=Probable, 5=Casi seguro",
+                    "required": True, "risk_field": "inherent_likelihood",
+                    "options": ["1 - Muy improbable", "2 - Improbable", "3 - Posible", "4 - Probable", "5 - Casi seguro"],
+                },
+                {
+                    "id": "q2", "type": "impact_scale",
+                    "text": "Si este riesgo se materializara, ¿cuál sería el impacto en tus operaciones?",
+                    "help_text": "1=Insignificante, 2=Menor, 3=Moderado, 4=Mayor, 5=Catastrófico",
+                    "required": True, "risk_field": "inherent_consequence",
+                    "options": ["1 - Insignificante", "2 - Menor", "3 - Moderado", "4 - Mayor", "5 - Catastrófico"],
+                },
+                {
+                    "id": "q3", "type": "control_effectiveness",
+                    "text": "¿Qué controles tienes actualmente en tu área para mitigar este riesgo?",
+                    "required": False, "risk_field": None,
+                    "options": ["No existen controles", "Controles básicos/informales", "Controles parciales documentados", "Controles implementados y revisados", "Controles optimizados y monitorizados continuamente"],
+                },
+                {
+                    "id": "q4", "type": "text_long",
+                    "text": "¿Qué medidas adicionales crees que deberían implementarse?",
+                    "required": False, "risk_field": None,
+                },
+                {
+                    "id": "q5", "type": "yes_no_na",
+                    "text": "¿Has tenido en tu área algún incidente relacionado con este riesgo en los últimos 12 meses?",
+                    "required": False, "risk_field": None,
+                },
+            ],
+        },
+        {
+            "name": "Validación de controles por responsable",
+            "description": "Para que los responsables de controles confirmen el estado de implementación y efectividad.",
+            "survey_type": "control_validation",
+            "is_default": True,
+            "questions": [
+                {
+                    "id": "q1", "type": "control_effectiveness",
+                    "text": "¿Cuál es el estado actual de implementación de este control?",
+                    "required": True, "risk_field": None,
+                    "options": ["No implementado", "En proceso de implementación", "Implementado parcialmente", "Implementado completamente", "Optimizado y bajo mejora continua"],
+                },
+                {
+                    "id": "q2", "type": "yes_no_na",
+                    "text": "¿Existe documentación actualizada de este control?",
+                    "required": True, "risk_field": None,
+                },
+                {
+                    "id": "q3", "type": "yes_no_na",
+                    "text": "¿Se realizan revisiones periódicas del control?",
+                    "required": True, "risk_field": None,
+                },
+                {
+                    "id": "q4", "type": "date",
+                    "text": "¿Cuándo fue la última revisión o prueba de este control?",
+                    "required": False, "risk_field": None,
+                },
+                {
+                    "id": "q5", "type": "text_long",
+                    "text": "Describe brevemente cómo funciona este control en la práctica",
+                    "required": False, "risk_field": None,
+                },
+                {
+                    "id": "q6", "type": "file_upload",
+                    "text": "Adjunta evidencia del control (captura, informe, registro)",
+                    "required": False, "risk_field": None,
+                },
+            ],
+        },
+        {
+            "name": "Revisión anual del registro de riesgos",
+            "description": "Encuesta completa para la revisión anual de todos los riesgos de un área.",
+            "survey_type": "annual_review",
+            "is_default": True,
+            "questions": [
+                {
+                    "id": "q1", "type": "yes_no_na",
+                    "text": "¿Sigue siendo este riesgo relevante para tu área de actividad?",
+                    "required": True, "risk_field": None,
+                },
+                {
+                    "id": "q2", "type": "likelihood_scale",
+                    "text": "Probabilidad actual (considerando los controles existentes)",
+                    "required": True, "risk_field": None,
+                    "options": ["1 - Muy improbable", "2 - Improbable", "3 - Posible", "4 - Probable", "5 - Casi seguro"],
+                },
+                {
+                    "id": "q3", "type": "impact_scale",
+                    "text": "Impacto potencial actual",
+                    "required": True, "risk_field": None,
+                    "options": ["1 - Insignificante", "2 - Menor", "3 - Moderado", "4 - Mayor", "5 - Catastrófico"],
+                },
+                {
+                    "id": "q4", "type": "multi_select",
+                    "text": "¿Qué ha cambiado desde la última evaluación?",
+                    "required": False, "risk_field": None,
+                    "options": ["El proceso de negocio ha cambiado", "Nueva tecnología implementada", "Cambio de proveedor", "Cambio regulatorio", "Incidente previo en esta área", "Cambio en el equipo responsable", "Nada significativo ha cambiado"],
+                },
+                {
+                    "id": "q5", "type": "text_long",
+                    "text": "Comentarios adicionales para el equipo de seguridad",
+                    "required": False, "risk_field": None,
+                },
+            ],
+        },
+    ]
+    for t in templates:
+        db.add(SurveyTemplate(organization_id=org_id, created_by_id=None, **t))
+    db.commit()
+
+
 def init_db() -> None:
     """Crear tablas y cargar seed inicial."""
     Base.metadata.create_all(bind=engine)
@@ -442,7 +570,7 @@ def init_db() -> None:
     _ensure_doc_dir()
     db = SessionLocal()
     try:
-        seed_organization(db)
+        org = seed_organization(db)
         seed_admin(db)
         seed_context(db)
         seed_threats(db)
@@ -450,6 +578,7 @@ def init_db() -> None:
         seed_controls(db)
         _seed_feature_flags(db)
         _seed_licenses(db)
+        seed_default_survey_templates(db, org.id)
     finally:
         db.close()
 

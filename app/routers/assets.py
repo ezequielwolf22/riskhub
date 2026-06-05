@@ -436,6 +436,39 @@ def analyze_cia_zero(
     }
 
 
+@router.post("/reset-stuck")
+def reset_stuck_assets(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Resetea activos atascados en 'analysing' y lanza el analisis de todos los pendientes."""
+    from sqlalchemy import or_
+    org_id = current_user.organization_id
+    stuck = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(False),
+        Asset.ai_risk_status == "analysing",
+    )
+    stuck_count = stuck.count()
+    if stuck_count:
+        stuck.update({"ai_risk_status": None, "ai_risk_summary": None})
+        db.commit()
+    pending = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(False),
+        or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
+    ).count()
+    if pending:
+        background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+    return {
+        "ok": True,
+        "stuck_reset": stuck_count,
+        "pending": pending,
+        "message": f"{stuck_count} atascados reseteados. {pending} activos pendientes en cola.",
+    }
+
+
 @router.post("/analyze-all-force")
 def analyze_all_assets_force(
     background_tasks: BackgroundTasks,

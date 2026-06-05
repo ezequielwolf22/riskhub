@@ -108,6 +108,7 @@ const Api = {
     exportCsv: () => Api.download('/api/assets/export/csv', 'assets.csv'),
     analyze: (id) => Api.post('/api/assets/' + id + '/analyze', {}),
     analyzeAll: () => Api.post('/api/assets/analyze-all', {}),
+    resetStuck: () => Api.post('/api/assets/reset-stuck', {}),
     analyzeCiaZero: () => Api.post('/api/assets/analyze-cia-zero', {}),
     analyzeAllForce: () => Api.post('/api/assets/analyze-all-force', {}),
     analysisStatus: () => Api.get('/api/assets/analysis-status'),
@@ -243,6 +244,7 @@ const Api = {
     del: (id) => Api.del('/api/ai/documents/' + id),
     reprocess: (id) => Api.post('/api/ai/documents/' + id + '/reprocess', {}),
     analyze: (id) => Api.post('/api/ai/documents/' + id + '/analyze', {}),
+    analyzePending: () => Api.post('/api/ai/documents/analyze-pending', {}),
     analyzeAll: () => Api.post('/api/ai/documents/analyze-all', {}),
   },
   tasks: {

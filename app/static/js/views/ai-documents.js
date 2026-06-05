@@ -65,6 +65,12 @@ const ViewAiDocuments = (() => {
     await _load();
     _renderRoot();
     _startPollIfNeeded();
+    // Mostrar banner si ya hay errores de creditos al entrar
+    const hasCredit = _docs.some(d =>
+      d.isms_status === 'error' &&
+      (d.isms_summary_text || '').toLowerCase().includes('credito')
+    );
+    if (hasCredit) _showCreditBanner();
   }
 
   function _startPollIfNeeded() {
@@ -76,8 +82,47 @@ const ViewAiDocuments = (() => {
       const tbody = document.getElementById('aid-tbody');
       if (tbody) tbody.innerHTML = _renderRows();
       _updateStats();
-      if (!_docs.some(d => d.isms_status === 'analysing')) _stopPoll();
+      if (!_docs.some(d => d.isms_status === 'analysing')) {
+        _stopPoll();
+        // Detectar errores de creditos al terminar
+        const creditErrors = _docs.filter(d =>
+          d.isms_status === 'error' &&
+          (d.isms_summary_text || '').toLowerCase().includes('credito')
+        );
+        if (creditErrors.length > 0) _showCreditBanner();
+      }
     }, 4000);
+  }
+
+  function _showCreditBanner() {
+    const existing = document.getElementById('aid-credit-banner');
+    if (existing) return;
+    const banner = document.createElement('div');
+    banner.id = 'aid-credit-banner';
+    banner.style.cssText = `
+      background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;
+      padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;
+      font-size:13px;color:#92400E;
+    `;
+    banner.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" style="flex-shrink:0;">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span>
+        <strong>Sin creditos Anthropic:</strong> el analisis de documentos se ha detenido.
+        Recarga creditos en
+        <a href="https://console.anthropic.com/settings/billing" target="_blank"
+           style="color:#92400E;font-weight:700;">console.anthropic.com/settings/billing</a>
+        y luego pulsa <em>Analizar pendientes</em>.
+      </span>
+      <button onclick="this.parentElement.remove()"
+              style="margin-left:auto;background:none;border:none;cursor:pointer;
+                     font-size:16px;color:#92400E;padding:0 4px;">&times;</button>
+    `;
+    const root = document.getElementById('aid-root');
+    root?.insertBefore(banner, root.firstChild);
   }
 
   function _stopPoll() {
@@ -142,10 +187,15 @@ const ViewAiDocuments = (() => {
         }).join('')}
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
           ${indexedCount > 0 ? `
+          <button class="btn btn-ghost" id="aid-analyze-pending-btn"
+                  style="font-size:12px;" onclick="ViewAiDocuments._analyzePending()"
+                  title="Analiza documentos sin analizar y resetea los atascados. No toca los ya analizados.">
+            Analizar pendientes
+          </button>
           <button class="btn btn-ghost" id="aid-analyze-all-btn"
                   style="font-size:12px;" onclick="ViewAiDocuments._analyzeAll()"
-                  title="Re-analizar todos los documentos indexados para actualizar controles y gap de madurez">
-            Analizar todos (${indexedCount})
+                  title="Re-analizar TODOS los documentos indexados (incluye ya analizados)">
+            Re-analizar todos (${indexedCount})
           </button>` : ''}
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
                  title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV)">
@@ -652,6 +702,26 @@ const ViewAiDocuments = (() => {
     }
   }
 
+  async function _analyzePending() {
+    const btn = document.getElementById('aid-analyze-pending-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
+    try {
+      const res = await Api.aiDocuments.analyzePending();
+      await _load();
+      const tbody = document.getElementById('aid-tbody');
+      if (tbody) tbody.innerHTML = _renderRows();
+      const msg = res.stuck_reset > 0
+        ? `${res.stuck_reset} atascados reseteados. ${res.queued} documentos en cola.`
+        : (res.queued > 0 ? `${res.queued} documentos pendientes en cola.` : 'No hay documentos pendientes.');
+      UI.toast(msg, 'success');
+      _startPollIfNeeded();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Analizar pendientes'; }
+    }
+  }
+
   async function _analyzeAll() {
     const btn = document.getElementById('aid-analyze-all-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
@@ -665,10 +735,10 @@ const ViewAiDocuments = (() => {
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = `Analizar todos`; }
+      if (btn) { btn.disabled = false; btn.textContent = `Re-analizar todos`; }
     }
   }
 
-  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll, _showClauses };
+  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll, _analyzePending, _showClauses };
 
 })();

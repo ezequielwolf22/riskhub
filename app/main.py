@@ -20,8 +20,9 @@ from app.routers import (
     cve, documents, evidence, executive, external_findings, feature_flags, gdpr, incidents,
     integrations_erp, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
     osint, policies, portal, predictive, report_schedules, reports, risks, search, sharepoint,
-    soa_versions, sso, supplier_questionnaires, suppliers, tasks, users, webhooks,
+    soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, users, webhooks,
 )
+from app.routers.surveys import public_router as survey_public_router
 from app.seed import init_db
 from app.services import scheduler as sched
 
@@ -193,6 +194,8 @@ app.include_router(nis2.router)
 app.include_router(change_requests.router)
 app.include_router(report_schedules.router)
 app.include_router(bcp.router)
+app.include_router(surveys.router)
+app.include_router(survey_public_router)
 
 
 # Frontend estatico

@@ -352,9 +352,10 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 
     except Exception as exc:
         logger.error("Risk analysis failed asset=%d: %s", asset_id, exc)
+        err_msg = _CREDIT_ERROR_MSG if _is_credit_error(str(exc)) else str(exc)[:500]
         try:
             asset.ai_risk_status = "error"
-            asset.ai_risk_summary = {"error": str(exc)[:500]}
+            asset.ai_risk_summary = {"error": err_msg}
             db.commit()
         except Exception:
             pass
@@ -382,6 +383,21 @@ _api_last_call  = [0.0]  # mutable para uso en closure
 # Se resetea cuando el proceso reinicia (flag en memoria).
 _credit_exhausted: dict[str, bool] = {}  # api_key_hash → True si sin créditos
 _analysis_org_lock: dict[int, bool] = {}  # org_id → True si ya hay análisis en curso
+
+_CREDIT_ERROR_MSG = (
+    "Sin creditos Anthropic. "
+    "Recarga en console.anthropic.com/settings/billing"
+)
+
+
+def _is_credit_error(err: str) -> bool:
+    low = err.lower()
+    return (
+        "credit balance" in low
+        or "insufficient_balance" in low
+        or "billing" in low
+        or "402" in low
+    )
 
 _BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005, MAGERIT v3 y ENS (Esquema Nacional de Seguridad).
 Analiza cada activo y devuelve: (1) valoracion CIA segun ENS/ISO 27005 y (2) escenarios de riesgo.
@@ -594,7 +610,7 @@ def _process_batch_isolated(
                 last_exc = _exc
                 err_str = str(_exc)
                 # Circuit breaker: créditos agotados → abortar inmediatamente
-                if "credit balance" in err_str.lower() or "billing" in err_str.lower() or "insufficient_balance" in err_str.lower():
+                if _is_credit_error(err_str):
                     _credit_exhausted[api_key[:16]] = True
                     logger.warning("API credit exhausted — aborting batch analysis (batch=%s)", batch_ids[:3])
                     raise
@@ -706,11 +722,12 @@ def _process_batch_isolated(
 
     except Exception as exc:
         logger.error("Batch failed (ids=%s…): %s", batch_ids[:3], exc)
+        err_msg = _CREDIT_ERROR_MSG if _is_credit_error(str(exc)) else str(exc)[:300]
         try:
             for asset in db.query(Asset).filter(Asset.id.in_(batch_ids)).all():
                 if asset.ai_risk_status == "analysing":
                     asset.ai_risk_status = "error"
-                    asset.ai_risk_summary = {"error": str(exc)[:300]}
+                    asset.ai_risk_summary = {"error": err_msg}
             db.commit()
         except Exception:
             pass
@@ -758,10 +775,18 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
         db.commit()
         return {"total": 0}
 
-    # Circuit breaker: si ya sabemos que no hay créditos, no reintentar
+    # Circuit breaker: si ya sabemos que no hay créditos, marcar pendientes como error
     if _credit_exhausted.get(api_key[:16]):
-        logger.warning("Credit exhausted circuit breaker active — skipping org=%d analysis", org_id)
-        return {"total": 0}
+        logger.warning("Credit exhausted circuit breaker active — marking assets as error org=%d", org_id)
+        db.query(Asset).filter(
+            Asset.id.in_(asset_ids),
+            Asset.ai_risk_status.in_(["analysing", None]),
+        ).update(
+            {"ai_risk_status": "error", "ai_risk_summary": {"error": _CREDIT_ERROR_MSG}},
+            synchronize_session=False,
+        )
+        db.commit()
+        return {"total": 0, "credit_error": True}
 
     # Anti-duplicación: si ya hay un análisis en curso para esta org, salir
     if _analysis_org_lock.get(org_id):
@@ -825,11 +850,12 @@ def _analyze_isolated(asset_id: int) -> None:
         analyze_asset_risks(db, asset_id)
     except Exception as exc:
         logger.error("Isolated analysis failed asset=%d: %s", asset_id, exc)
+        err_msg = _CREDIT_ERROR_MSG if _is_credit_error(str(exc)) else str(exc)[:400]
         try:
             asset = db.get(Asset, asset_id)
             if asset:
                 asset.ai_risk_status = "error"
-                asset.ai_risk_summary = {"error": str(exc)[:400]}
+                asset.ai_risk_summary = {"error": err_msg}
                 db.commit()
         except Exception:
             pass

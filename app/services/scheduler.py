@@ -1860,6 +1860,28 @@ def _run_bcp_plan_review_due() -> None:
         db.close()
 
 
+def _run_survey_reminders() -> None:
+    """Recordatorio diario a destinatarios de encuestas activas próximas al deadline."""
+    from app.services.survey_service import send_reminders
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        base_url = "https://localhost"
+        try:
+            from app.config import settings as _s
+            base_url = getattr(_s, "base_url", base_url)
+        except Exception:
+            pass
+        sent = send_reminders(db, base_url)
+        if sent > 0:
+            logger.info("Survey reminders sent: %d", sent)
+    except Exception as exc:
+        logger.exception("survey_reminders error: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_bcp_bia_gap_check() -> None:
     """Alerta sobre procesos criticos con BIA incompleto (<80%)."""
     from app.models import BusinessProcess, User, UserRole
@@ -2119,6 +2141,15 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=CronTrigger(day=15, hour=9),
         id="bcp_bia_gap_check",
         name="Procesos criticos con BIA incompleto",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Encuestas: recordatorio diario a las 9:00
+    _scheduler.add_job(
+        func=_run_survey_reminders,
+        trigger=CronTrigger(hour=9),
+        id="survey_reminders",
+        name="Recordatorios de encuestas pendientes",
         replace_existing=True,
         misfire_grace_time=3600,
     )

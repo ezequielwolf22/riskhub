@@ -1851,3 +1851,72 @@ class ImportSession(Base):
     mapping_notes = Column(Text, nullable=True)
 
     rolled_back_by = relationship("User", foreign_keys=[rolled_back_by_id])
+
+
+# ---------- ENCUESTAS DISTRIBUIDAS ----------
+
+class SurveyTemplate(Base):
+    """Plantilla reutilizable de encuesta de riesgos."""
+    __tablename__ = "survey_templates"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    name            = Column(String(255), nullable=False)
+    description     = Column(Text, nullable=True)
+    survey_type     = Column(String(32), default="risk_assessment")
+    questions       = Column(JSON, nullable=False)
+    is_default      = Column(Boolean, default=False)
+    created_by_id   = Column(Integer, ForeignKey("users.id"))
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
+class SurveyCampaign(Base):
+    """Campaña de encuesta: un envío a uno o varios destinatarios sobre uno o varios riesgos."""
+    __tablename__ = "survey_campaigns"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    code            = Column(String(16))
+    title           = Column(String(255), nullable=False)
+    template_id     = Column(Integer, ForeignKey("survey_templates.id"), nullable=True)
+    campaign_type   = Column(String(32), default="risk_assessment")
+    scope_risk_ids  = Column(JSON, nullable=True)
+    scope_asset_ids = Column(JSON, nullable=True)
+    scope_control_ids = Column(JSON, nullable=True)
+    questions       = Column(JSON, nullable=False)
+    deadline_at     = Column(DateTime, nullable=True)
+    reminder_days   = Column(Integer, default=3)
+    status          = Column(String(20), default="draft")
+    created_by_id   = Column(Integer, ForeignKey("users.id"))
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    closed_at       = Column(DateTime, nullable=True)
+    intro_text      = Column(Text, nullable=True)
+    thank_you_text  = Column(Text, nullable=True)
+    show_risk_context = Column(Boolean, default=True)
+    allow_comments  = Column(Boolean, default=True)
+
+
+class SurveyResponse(Base):
+    """Respuesta individual de un destinatario a una campaña."""
+    __tablename__ = "survey_responses"
+    id              = Column(Integer, primary_key=True)
+    campaign_id     = Column(Integer, ForeignKey("survey_campaigns.id"), index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    respondent_name  = Column(String(255), nullable=False)
+    respondent_email = Column(String(255), nullable=False)
+    respondent_role  = Column(String(255), nullable=True)
+    respondent_dept  = Column(String(255), nullable=True)
+    user_id         = Column(Integer, ForeignKey("users.id"), nullable=True)
+    token           = Column(String(64), unique=True, nullable=False, index=True)
+    token_expires_at = Column(DateTime, nullable=False)
+    status          = Column(String(20), default="pending")
+    opened_at       = Column(DateTime, nullable=True)
+    completed_at    = Column(DateTime, nullable=True)
+    last_reminder_at = Column(DateTime, nullable=True)
+    answers         = Column(JSON, nullable=True)
+    general_comment = Column(Text, nullable=True)
+    applied_to_risks = Column(Boolean, default=False)
+    applied_at      = Column(DateTime, nullable=True)
+    applied_by_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    ip_address      = Column(String(45), nullable=True)
+    user_agent      = Column(String(255), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))

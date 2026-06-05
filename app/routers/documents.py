@@ -249,6 +249,49 @@ def analyze_document(
     return {"ok": True, "message": "Analisis ISMS iniciado en background"}
 
 
+@router.post("/analyze-pending")
+def analyze_pending_documents(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """Resetea documentos atascados en 'analysing' y lanza analisis solo para pendientes (null/error).
+
+    No toca documentos ya analizados correctamente.
+    """
+    from sqlalchemy import or_
+    org_id = current_user.organization_id
+    # Resetear stuck
+    stuck = db.query(AiDocument).filter(
+        AiDocument.organization_id == org_id,
+        AiDocument.status == AiDocumentStatus.INDEXED,
+        AiDocument.isms_status == "analysing",
+    )
+    stuck_count = stuck.count()
+    if stuck_count:
+        stuck.update({"isms_status": None, "isms_summary": None})
+        db.commit()
+    # Lanzar solo los pendientes (null o error)
+    docs = db.query(AiDocument).filter(
+        AiDocument.organization_id == org_id,
+        AiDocument.status == AiDocumentStatus.INDEXED,
+        or_(AiDocument.isms_status == None, AiDocument.isms_status == "error"),  # noqa: E711
+    ).all()
+    queued = 0
+    for doc in docs:
+        doc.isms_status = "analysing"
+        doc.isms_summary = None
+        background_tasks.add_task(_run_isms_analysis_bg, doc.id)
+        queued += 1
+    db.commit()
+    return {
+        "ok": True,
+        "stuck_reset": stuck_count,
+        "queued": queued,
+        "message": f"{stuck_count} atascados reseteados. {queued} documentos en cola.",
+    }
+
+
 @router.post("/analyze-all")
 def analyze_all_documents(
     background_tasks: BackgroundTasks,

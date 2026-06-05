@@ -1,6 +1,9 @@
 """Gestion de organizaciones / tenants — administracion multi-org."""
+import logging
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger("riskhub.organizations")
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -98,6 +101,11 @@ def create_organization(
                {"name": data.name, "domain": data.domain, "plan": data.plan})
     db.commit()
     db.refresh(org)
+    try:
+        from app.seed import seed_default_survey_templates
+        seed_default_survey_templates(db, org.id)
+    except Exception as _e:
+        logger.warning("seed_default_survey_templates failed for org %d: %s", org.id, _e)
     return _to_out(org, db)
 
 

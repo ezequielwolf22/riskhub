@@ -141,13 +141,14 @@ const ViewAssets = {
           btnPending.disabled = true;
           btnPending.textContent = 'Lanzando...';
           try {
-            const r = await Api.assets.analyzeAll();
-            if (r.total === 0) {
+            // reset-stuck resetea atascados y lanza pendientes en una sola llamada
+            const r = await Api.assets.resetStuck();
+            if (r.pending === 0 && r.stuck_reset === 0) {
               UI.toast('Todos los activos ya estan analizados', 'info');
             } else {
+              const stuckMsg = r.stuck_reset > 0 ? ` (${r.stuck_reset} atascados reseteados)` : '';
               UI.toast(
-                `Analisis en paralelo iniciado para ${r.total} activos. ` +
-                `Puede demorar ${Math.ceil(r.total / 15 / 8 * 8)} – ${Math.ceil(r.total / 15 / 8 * 12)} segundos.`,
+                `Analisis iniciado para ${r.pending} activos pendientes${stuckMsg}.`,
                 'success', 6000
               );
             }
@@ -234,6 +235,12 @@ const ViewAssets = {
       ViewAssets._allAssets = data;
       ViewAssets._page = 1;
       ViewAssets._applyFiltersAndRender();
+      // Mostrar banner si ya hay errores de creditos
+      const hasCredit = data.some(a =>
+        a.ai_risk_status === 'error' &&
+        (a.ai_risk_summary?.error || '').toLowerCase().includes('credito')
+      );
+      if (hasCredit) ViewAssets._showCreditBanner();
     } catch (e) {
       list.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
@@ -699,11 +706,50 @@ const ViewAssets = {
         if (stillAnalysing === 0) {
           ViewAssets._stopPoll();
           ViewAssets._updateAnalysisBanner();
+          // Detectar errores de creditos al terminar el analisis
+          const creditErrors = data.filter(a =>
+            a.ai_risk_status === 'error' &&
+            (a.ai_risk_summary?.error || '').toLowerCase().includes('credito')
+          );
+          if (creditErrors.length > 0) {
+            ViewAssets._showCreditBanner();
+          }
         } else {
           ViewAssets._updateAnalysisBanner();
         }
       } catch (_) { ViewAssets._stopPoll(); }
     }, 3000);
+  },
+
+  _showCreditBanner() {
+    const existing = document.getElementById('credit-error-banner');
+    if (existing) return;
+    const banner = document.createElement('div');
+    banner.id = 'credit-error-banner';
+    banner.style.cssText = `
+      background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;
+      padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;
+      font-size:13px;color:#92400E;
+    `;
+    banner.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" style="flex-shrink:0;">
+        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span>
+        <strong>Sin creditos Anthropic:</strong> el analisis se ha detenido.
+        Recarga creditos en
+        <a href="https://console.anthropic.com/settings/billing" target="_blank"
+           style="color:#92400E;font-weight:700;">console.anthropic.com/settings/billing</a>
+        y luego pulsa <em>Analizar pendientes</em>.
+      </span>
+      <button onclick="this.parentElement.remove()"
+              style="margin-left:auto;background:none;border:none;cursor:pointer;
+                     font-size:16px;color:#92400E;padding:0 4px;">&times;</button>
+    `;
+    const listEl = document.getElementById('asset-list');
+    listEl?.parentElement?.insertBefore(banner, listEl);
   },
 
   _stopPoll() {
