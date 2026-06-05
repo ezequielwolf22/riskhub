@@ -268,6 +268,8 @@ class AssetGroupOut(ORMBase):
     criteria_snapshot: Optional[list] = None
     ai_rationale: Optional[str] = None
     representative_asset_id: Optional[int] = None
+    rep_ai_status: Optional[str] = None
+    rep_ai_summary: Optional[dict] = None
     member_count: int = 0
     members: list[AssetMiniOut] = []
     created_at: datetime

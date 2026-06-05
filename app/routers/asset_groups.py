@@ -22,6 +22,7 @@ router = APIRouter(prefix="/api/asset-groups", tags=["asset-groups"])
 
 def _group_out(g: AssetGroup, db: Session) -> AssetGroupOut:
     members = db.query(Asset).filter_by(group_id=g.id, is_group_representative=False).all()
+    rep = db.get(Asset, g.representative_asset_id) if g.representative_asset_id else None
     return AssetGroupOut(
         id=g.id,
         name=g.name,
@@ -30,6 +31,8 @@ def _group_out(g: AssetGroup, db: Session) -> AssetGroupOut:
         criteria_snapshot=g.criteria_snapshot,
         ai_rationale=g.ai_rationale,
         representative_asset_id=g.representative_asset_id,
+        rep_ai_status=rep.ai_risk_status if rep else None,
+        rep_ai_summary=rep.ai_risk_summary if rep else None,
         member_count=len(members),
         members=[AssetMiniOut.model_validate(a) for a in members],
         created_at=g.created_at,

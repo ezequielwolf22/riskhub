@@ -2,6 +2,7 @@
 const ViewAssets = {
   _sortCol: 'code', _sortAsc: true,
   _pollTimer: null,
+  _groupPollTimer: null,
   _activeTab: 'inventory',
   _page: 1,
   _pageSize: 50,
@@ -10,6 +11,7 @@ const ViewAssets = {
 
   async render(main) {
     ViewAssets._stopPoll();
+    if (ViewAssets._groupPollTimer) { clearInterval(ViewAssets._groupPollTimer); ViewAssets._groupPollTimer = null; }
     ViewAssets._activeTab = 'inventory';
     ViewAssets._page = 1;
     ViewAssets._allAssets = [];
@@ -217,6 +219,7 @@ const ViewAssets = {
     const _viewCleanupObserver = new MutationObserver(() => {
       if (!document.getElementById('asset-list')) {
         ViewAssets._stopPoll();
+        if (ViewAssets._groupPollTimer) { clearInterval(ViewAssets._groupPollTimer); ViewAssets._groupPollTimer = null; }
         document.getElementById('asset-selection-bar')?.remove();
         _viewCleanupObserver.disconnect();
       }
@@ -812,15 +815,26 @@ const ViewAssets = {
         </div>
       </div>
 
-      ${canEdit && proposed.length ? `
-      <div style="margin-bottom:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      ${canEdit ? `
+      <div style="margin-bottom:18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+                  padding:14px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;">
+        ${proposed.length ? `
         <button class="btn btn-primary" id="btn-validate-all-results">
-          Validar todos los grupos propuestos (${proposed.length})
-        </button>
-        <span style="font-size:12px;color:var(--text-muted);">
-          Validar crea un activo representativo por grupo para el analisis de riesgos grupal
+          Validar propuestos (${proposed.length})
+        </button>` : ''}
+        ${validated.length ? `
+        <button class="btn btn-primary" id="btn-analyze-groups"
+                style="background:var(--brand-purple);"
+                title="Opcion B: analiza los ${validated.length} grupos validados con IA en lugar de analizar activos uno a uno">
+          Analizar grupos con IA (${validated.length})
+        </button>` : ''}
+        <span style="font-size:12px;color:var(--text-muted);line-height:1.4;">
+          ${validated.length
+            ? `Opcion B: el agente analiza ${validated.length} grupos en lugar de los activos individuales. Los riesgos se generan sobre el activo representativo del grupo.`
+            : 'Valida los grupos propuestos para habilitar el analisis de riesgo grupal.'}
         </span>
       </div>` : ''}
+      <div id="group-analysis-banner" style="margin-bottom:12px;"></div>
 
       ${proposed.length ? `
       <h4 style="font-size:11px;color:var(--text-muted);text-transform:uppercase;
@@ -850,8 +864,29 @@ const ViewAssets = {
         await ViewAssets._renderGroupsResults();
       } catch (e) {
         UI.toast('Error: ' + e.message, 'error');
+        if (btn) { btn.disabled = false; btn.textContent = `Validar propuestos`; }
       }
     });
+
+    document.getElementById('btn-analyze-groups')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-analyze-groups');
+      if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
+      try {
+        const r = await Api.assets.analyzeGroups();
+        if (r.ok === false) {
+          UI.toast(r.message || 'Sin grupos validados', 'info');
+        } else {
+          UI.toast(r.message || 'Analisis de grupos iniciado', 'success', 6000);
+          ViewAssets._startGroupPoll();
+        }
+      } catch (e) {
+        UI.toast('Error: ' + e.message, 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = `Analizar grupos con IA (${validated.length})`; }
+      }
+    });
+
+    ViewAssets._updateGroupAnalysisBanner();
 
     view.querySelectorAll('[data-result-action]').forEach(btn => {
       btn.onclick = async (e) => {
@@ -866,6 +901,81 @@ const ViewAssets = {
         if (action === 'split')             await ViewAssets._splitModal(gid);
       };
     });
+  },
+
+  async _updateGroupAnalysisBanner() {
+    const banner = document.getElementById('group-analysis-banner');
+    if (!banner) return;
+    try {
+      const s = await Api.assets.groupAnalysisStatus();
+      if (!s.total) { banner.innerHTML = ''; return; }
+      const pct = s.progress_pct || 0;
+      if (s.analysing > 0) {
+        const barWidth = Math.max(4, Math.round(pct));
+        banner.innerHTML = `
+          <div style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:8px;
+                      padding:12px 16px;font-size:13px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <div class="spinner" style="width:16px;height:16px;border-width:2px;flex-shrink:0;
+                   border-color:rgba(89,0,141,.2);border-top-color:var(--brand-purple);"></div>
+              <span style="color:var(--brand-purple);font-weight:600;">
+                Analizando grupos con IA (Opcion B)...
+              </span>
+              <span style="margin-left:auto;color:var(--brand-purple);font-weight:700;">
+                ${s.analysed} / ${s.total} (${pct}%)
+              </span>
+            </div>
+            <div style="height:6px;background:#DDD6FE;border-radius:3px;overflow:hidden;">
+              <div style="width:${barWidth}%;height:100%;background:var(--brand-purple);
+                          border-radius:3px;transition:width .5s;"></div>
+            </div>
+            <div style="margin-top:6px;font-size:11px;color:var(--brand-purple);">
+              ${s.analysing} en curso &middot; ${s.error || 0} errores &middot;
+              ${s.pending - s.analysing} pendientes
+            </div>
+          </div>`;
+        ViewAssets._startGroupPoll();
+      } else if (s.analysed > 0) {
+        banner.innerHTML = `
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;
+                      padding:8px 14px;font-size:13px;color:#166534;display:flex;
+                      align-items:center;gap:8px;">
+            <span>&#10003; ${s.analysed} grupos analizados (${pct}%)
+            ${s.error > 0 ? `&nbsp;&middot;&nbsp;<span style="color:#dc2626;">${s.error} con error</span>` : ''}
+            </span>
+            <button class="btn btn-ghost" style="margin-left:auto;font-size:12px;padding:3px 10px;"
+                    onclick="document.getElementById('btn-analyze-groups')?.click()">
+              Re-analizar
+            </button>
+          </div>`;
+      } else {
+        banner.innerHTML = '';
+      }
+    } catch (_) { if (banner) banner.innerHTML = ''; }
+  },
+
+  _startGroupPoll() {
+    if (ViewAssets._groupPollTimer) return;
+    ViewAssets._groupPollTimer = setInterval(async () => {
+      if (!document.getElementById('group-analysis-banner')) {
+        clearInterval(ViewAssets._groupPollTimer);
+        ViewAssets._groupPollTimer = null;
+        return;
+      }
+      try {
+        const s = await Api.assets.groupAnalysisStatus();
+        if (s.analysing === 0) {
+          clearInterval(ViewAssets._groupPollTimer);
+          ViewAssets._groupPollTimer = null;
+          await ViewAssets._renderGroupsResults();
+        } else {
+          await ViewAssets._updateGroupAnalysisBanner();
+        }
+      } catch (_) {
+        clearInterval(ViewAssets._groupPollTimer);
+        ViewAssets._groupPollTimer = null;
+      }
+    }, 3500);
   },
 
   _groupResultCard(g, canEdit) {
@@ -969,18 +1079,26 @@ const ViewAssets = {
       </div>` : ''}
 
       <!-- Valoracion CIA del grupo -->
-      <div style="padding:8px 14px;display:flex;gap:16px;align-items:center;
+      <div style="padding:8px 14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;
                   border-bottom:1px solid var(--border);background:var(--bg);">
-        <span style="font-size:11px;color:var(--text-muted);font-weight:600;">Valores max. del grupo:</span>
+        <span style="font-size:11px;color:var(--text-muted);font-weight:600;">Valores max.:</span>
         <span style="font-size:11px;">
           <strong style="color:#6A1B9A;">C</strong> ${maxC} &nbsp;
           <strong style="color:#2e7d32;">I</strong> ${maxI} &nbsp;
           <strong style="color:#1565c0;">D</strong> ${maxD}
         </span>
-        ${g.status === 'validated' ? `
-        <span style="margin-left:auto;font-size:11px;color:#16a34a;font-weight:600;">
-          &#10003; Listo para analisis de riesgo
-        </span>` : `
+        ${g.status === 'validated' ? (() => {
+          const s = g.rep_ai_status;
+          if (!s) return `<span style="margin-left:auto;font-size:11px;color:#92400E;font-weight:600;">Sin analizar — usa "Analizar grupos con IA"</span>`;
+          const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)' };
+          const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error' };
+          const sum = g.rep_ai_summary || {};
+          const tip = s === 'analysed'
+            ? `${sum.risks_created || 0} riesgos creados, ${sum.risks_updated || 0} actualizados`
+            : (sum.error || '');
+          return `<span style="margin-left:auto;font-size:11px;font-weight:700;color:${colors[s] || 'var(--text-muted)'};"
+                        title="${UI.esc(tip)}">${labels[s] || s}</span>`;
+        })() : `
         <span style="margin-left:auto;font-size:11px;color:#92400E;">
           Pendiente de validacion
         </span>`}

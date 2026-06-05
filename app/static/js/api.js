@@ -112,6 +112,8 @@ const Api = {
     analyzeCiaZero: () => Api.post('/api/assets/analyze-cia-zero', {}),
     analyzeAllForce: () => Api.post('/api/assets/analyze-all-force', {}),
     analysisStatus: () => Api.get('/api/assets/analysis-status'),
+    analyzeGroups: () => Api.post('/api/assets/analyze-groups', {}),
+    groupAnalysisStatus: () => Api.get('/api/assets/group-analysis-status'),
     bulkDelete: (ids) => Api.post('/api/assets/bulk-delete', { ids }),
   },
   assetGroups: {

@@ -355,11 +355,23 @@ async def smart_import_assets(
 
 
 def _run_all_assets_analysis_bg(org_id: int) -> None:
-    """Wrapper background para analisis de todos los activos de la org."""
+    """Wrapper background para analisis de activos individuales (Opcion A)."""
     db = SessionLocal()
     try:
         from app.services.asset_risk_analysis_service import analyze_all_org_assets
-        analyze_all_org_assets(db, org_id)
+        analyze_all_org_assets(db, org_id, representatives_only=False)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+def _run_groups_analysis_bg(org_id: int) -> None:
+    """Wrapper background para analisis de activos representativos de grupos (Opcion B)."""
+    db = SessionLocal()
+    try:
+        from app.services.asset_risk_analysis_service import analyze_all_org_assets
+        analyze_all_org_assets(db, org_id, representatives_only=True)
     except Exception:
         pass
     finally:
@@ -519,6 +531,69 @@ def get_analysis_status(
     return {
         "total": total, "analysed": analysed, "analysing": analysing,
         "error": error, "skipped": skipped, "pending": pending,
+        "progress_pct": round(analysed / total * 100, 1) if total else 0,
+    }
+
+
+@router.post("/analyze-groups")
+def analyze_validated_groups(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Opcion B: lanza el analisis de riesgos IA para los activos representativos
+    de todos los grupos validados. No toca activos individuales."""
+    from sqlalchemy import or_
+    org_id = current_user.organization_id
+    pending = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(True),
+        or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
+    )
+    count = pending.count()
+    if count == 0:
+        # Todos ya analizados; permitir forzar reset
+        total = db.query(Asset).filter(
+            Asset.organization_id == org_id,
+            Asset.is_group_representative.is_(True),
+        ).count()
+        if total == 0:
+            return {"ok": False, "total": 0, "message": "No hay grupos validados. Valida los grupos propuestos primero."}
+        # Re-analizar todos los representativos
+        db.query(Asset).filter(
+            Asset.organization_id == org_id,
+            Asset.is_group_representative.is_(True),
+        ).update({"ai_risk_status": None, "ai_risk_summary": None}, synchronize_session=False)
+        db.commit()
+        count = total
+    background_tasks.add_task(_run_groups_analysis_bg, org_id)
+    return {"ok": True, "total": count, "message": f"Analisis de riesgos iniciado para {count} grupos validados."}
+
+
+@router.get("/group-analysis-status")
+def get_group_analysis_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve el progreso del analisis IA de los activos representativos de grupos."""
+    from sqlalchemy import or_
+    org_id = current_user.organization_id
+    if not org_id:
+        return {"total": 0, "analysed": 0, "analysing": 0, "error": 0, "pending": 0, "progress_pct": 0.0}
+    base = db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        Asset.is_group_representative.is_(True),
+    )
+    total     = base.count()
+    analysed  = base.filter(Asset.ai_risk_status == "analysed").count()
+    analysing = base.filter(Asset.ai_risk_status == "analysing").count()
+    error     = base.filter(Asset.ai_risk_status == "error").count()
+    pending   = base.filter(
+        or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error")  # noqa: E711
+    ).count()
+    return {
+        "total": total, "analysed": analysed, "analysing": analysing,
+        "error": error, "pending": pending,
         "progress_pct": round(analysed / total * 100, 1) if total else 0,
     }
 

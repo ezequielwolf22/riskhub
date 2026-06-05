@@ -735,10 +735,14 @@ def _process_batch_isolated(
         db.close()
 
 
-def analyze_all_org_assets(db: Session, org_id: int) -> dict:
+def analyze_all_org_assets(
+    db: Session, org_id: int, representatives_only: bool = False
+) -> dict:
     """Analiza en SERIE todos los activos pendientes (null/error) de la org.
-    Procesa lotes de _BATCH_SIZE activos por llamada API. Con _MAX_WORKERS=1
-    los lotes son secuenciales para evitar race conditions en codigos RSK.
+
+    Si representatives_only=True analiza solo activos representativos de grupos
+    validados (Opcion B — analisis por grupos). Por defecto analiza activos
+    individuales excluyendo representativos (Opcion A).
     """
     import concurrent.futures
     from sqlalchemy import or_
@@ -746,7 +750,7 @@ def analyze_all_org_assets(db: Session, org_id: int) -> dict:
     asset_ids = [
         a.id for a in db.query(Asset).filter(
             Asset.organization_id == org_id,
-            Asset.is_group_representative.is_(False),
+            Asset.is_group_representative.is_(representatives_only),
             or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
         ).all()
     ]
