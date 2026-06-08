@@ -157,6 +157,8 @@ class User(Base):
     # MFA/TOTP (v1.8) — secret cifrado con Fernet
     mfa_enabled = Column(Boolean, default=False)
     mfa_secret = Column(String(255), nullable=True)
+    # Codigos de recuperacion MFA — lista de hashes SHA-256
+    mfa_backup_codes = Column(JSON, nullable=True)
 
 
 class AuditLog(Base):

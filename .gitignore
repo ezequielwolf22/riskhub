@@ -24,3 +24,4 @@ data/
 test_riskhub.db
 rate_limits.db
 scripts/__pycache__/
+BCP_MODULE.md

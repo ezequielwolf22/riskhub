@@ -1340,14 +1340,9 @@ def _action_label(name: str, inp: dict) -> str:
 def _resolve_api_key(cfg: AiConfig | None) -> str | None:
     """Resuelve la API key activa: per-tenant primero, luego global."""
     if cfg and cfg.api_key_encrypted:
-        import base64
-        import hashlib
         try:
-            from cryptography.fernet import Fernet
-            key = base64.urlsafe_b64encode(
-                hashlib.sha256(settings.secret_key.encode()).digest()
-            )
-            return Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+            from app.security import decrypt_secret
+            return decrypt_secret(cfg.api_key_encrypted)
         except Exception:
             return None
     return settings.anthropic_api_key

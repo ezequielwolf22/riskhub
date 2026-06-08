@@ -7,14 +7,12 @@ Seguridad:
   - Validacion de dominio configurable para restringir acceso
   - Auto-provisioning opcional con rol configurable
 """
-import base64
-import hashlib
 import json
 import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,10 +20,9 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.database import get_db
 from app.models import IntegrationConfig, SSOCode, SSOState, User, UserRole
-from app.security import create_access_token, get_current_user, hash_password, require_admin
+from app.security import create_access_token, decrypt_secret, encrypt_secret, get_current_user, hash_password, require_admin
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/sso", tags=["sso"])
@@ -33,24 +30,6 @@ router = APIRouter(prefix="/api/sso", tags=["sso"])
 _INTEGRATION_NAME = "sso_oidc"
 _STATE_TTL = 600    # 10 minutos
 _CODE_TTL  = 30     # 30 segundos para intercambiar el code por el token
-
-
-# ---------- Cifrado ----------
-
-def _fernet_key() -> bytes:
-    return base64.urlsafe_b64encode(
-        hashlib.sha256(settings.secret_key.encode()).digest()
-    )
-
-
-def _encrypt(plain: str) -> str:
-    from cryptography.fernet import Fernet
-    return Fernet(_fernet_key()).encrypt(plain.encode()).decode()
-
-
-def _decrypt(token: str) -> str:
-    from cryptography.fernet import Fernet
-    return Fernet(_fernet_key()).decrypt(token.encode()).decode()
 
 
 # ---------- Helpers ----------
@@ -63,7 +42,7 @@ def _get_config(db: Session, organization_id=None) -> Optional[dict]:
     if not ic or not ic.config_encrypted:
         return None
     try:
-        return json.loads(_decrypt(ic.config_encrypted))
+        return json.loads(decrypt_secret(ic.config_encrypted))
     except Exception:
         return None
 
@@ -139,11 +118,7 @@ def _create_state(db: Session, org_id: Optional[int] = None) -> str:
     state = f"{org_id or 0}:{raw}"
     db.add(SSOState(
         state=state,
-        expires_at=datetime.now(timezone.utc).replace(
-            microsecond=0
-        ).__class__.fromtimestamp(
-            datetime.now(timezone.utc).timestamp() + _STATE_TTL, tz=timezone.utc
-        ),
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=_STATE_TTL),
     ))
     db.commit()
     return state
@@ -184,11 +159,7 @@ def _create_code(db: Session, token: str) -> str:
     db.add(SSOCode(
         code=code,
         token=token,
-        expires_at=datetime.now(timezone.utc).replace(
-            microsecond=0
-        ).__class__.fromtimestamp(
-            datetime.now(timezone.utc).timestamp() + _CODE_TTL, tz=timezone.utc
-        ),
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=_CODE_TTL),
     ))
     db.commit()
     return code
@@ -268,7 +239,7 @@ def save_sso_config(
     if body.default_role not in valid_roles:
         raise HTTPException(400, f"default_role debe ser uno de: {valid_roles}")
 
-    encrypted = _encrypt(json.dumps({
+    encrypted = encrypt_secret(json.dumps({
         "issuer_url": body.issuer_url.strip().rstrip("/"),
         "client_id": body.client_id.strip(),
         "client_secret": body.client_secret.strip(),

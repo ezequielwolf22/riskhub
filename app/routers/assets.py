@@ -91,7 +91,9 @@ def create_asset(data: AssetIn, background_tasks: BackgroundTasks,
     log_action(db, current_user.id, "create", "asset", None,
                {"code": code, "name": data.name, "asset_type": str(data.asset_type)})
     db.commit(); db.refresh(a)
-    # Auto-analisis de riesgos IA al crear el activo (v1.7.6)
+    # Auto-analisis de riesgos IA al crear el activo
+    a.ai_risk_status = "analysing"
+    db.commit()
     background_tasks.add_task(_run_asset_analysis_bg, a.id)
     return _to_out(a)
 
@@ -105,14 +107,16 @@ def update_asset(asset_id: int, data: AssetIn, background_tasks: BackgroundTasks
         raise HTTPException(404, "Activo no encontrado")
     for k, v in data.model_dump(exclude={"owner_ids", "code"}).items():
         setattr(a, k, v)
-    # Resetear estado IA para indicar que el analisis esta desactualizado
-    a.ai_risk_status = None
-    a.ai_risk_summary = None
     log_action(db, current_user.id, "update", "asset", str(asset_id),
                {"code": a.code, "name": a.name})
-    db.commit(); db.refresh(a)
-    # Re-analizar riesgos IA cuando el activo cambia (v1.7.6)
-    background_tasks.add_task(_run_asset_analysis_bg, asset_id)
+    # Si ya hay un analisis en curso no lanzar otro — evita race condition
+    if a.ai_risk_status != "analysing":
+        a.ai_risk_status = "analysing"
+        a.ai_risk_summary = None
+        db.commit(); db.refresh(a)
+        background_tasks.add_task(_run_asset_analysis_bg, asset_id)
+    else:
+        db.commit(); db.refresh(a)
     return _to_out(a)
 
 

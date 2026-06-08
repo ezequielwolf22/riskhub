@@ -302,6 +302,18 @@ const ViewAiDocuments = (() => {
 
   // ---------- Cola de subida ----------
 
+  function _guessCategoryFromName(filename) {
+    const n = filename.toLowerCase().replace(/[_\-\.]/g, ' ');
+    if (/politic|policy|procedur|instruc|manual|proceso|reglamento interno/.test(n)) return 'policies';
+    if (/arquitect|topolog|diagrama|network|infraestruc|red corp|architecture/.test(n)) return 'architecture';
+    if (/normativ|compliance|nis2|gdpr|rgpd|iso\s?27|directiva|reglamento|boe|legisl/.test(n)) return 'normative';
+    if (/incidente|incident|postmortem|leccion|lesson|forense|analisis forense/.test(n)) return 'incidents_lessons';
+    if (/inventario|inventory|activo|asset|cmdb|hardware|software|catalogo/.test(n)) return 'assets_inventory';
+    if (/proveedor|supplier|vendor|tercero|contrato|sla|dpa|acuerdo/.test(n)) return 'critical_suppliers';
+    if (/riesgo|risk|evaluac|assessment|amenaza|vulnerabilid|dpia|impacto/.test(n)) return 'risk_assessments';
+    return 'other';
+  }
+
   function _addFilesToQueue(files) {
     let added = 0;
     for (const file of files) {
@@ -313,7 +325,8 @@ const ViewAiDocuments = (() => {
       // Evitar duplicados pendientes por nombre
       const alreadyPending = _queue.some(q => q.file.name === file.name && q.status === 'pending');
       if (alreadyPending) continue;
-      _queue.push({ id: ++_queueId, file, category: 'other', status: 'pending', error: null });
+      const guessedCat = _guessCategoryFromName(file.name);
+      _queue.push({ id: ++_queueId, file, category: guessedCat, status: 'pending', error: null });
       added++;
     }
     if (added > 0) _renderQueue();

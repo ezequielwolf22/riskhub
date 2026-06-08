@@ -203,18 +203,6 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         )
         raw_json = _strip_fence(message.content[0].text)
 
-        # Registrar uso de tokens
-        call_log = AiCallLog(
-            organization_id=doc.organization_id,
-            call_type="isms_analysis",
-            prompt_tokens=message.usage.input_tokens,
-            completion_tokens=message.usage.output_tokens,
-            model=model,
-            anonymized=False,
-            response_summary=f"ISMS analysis for doc {doc_id}: {doc.original_name[:60]}",
-        )
-        db.add(call_log)
-
         analysis = json.loads(raw_json)
         owner_id = _org_owner(db, doc.organization_id)
 
@@ -226,16 +214,21 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         }
 
         if analysis.get("is_policy") and analysis.get("policy"):
-            result["policy_id"] = _create_or_update_policy(
-                db, doc, analysis["policy"], owner_id
-            )
+            try:
+                result["policy_id"] = _create_or_update_policy(
+                    db, doc, analysis["policy"], owner_id
+                )
+            except Exception as _pe:
+                logger.warning("Policy creation failed doc=%d: %s", doc_id, _pe)
 
         controls = analysis.get("controls_covered") or []
         if controls:
-            result["controls_updated"] = _update_controls(db, doc, controls, owner_id)
+            try:
+                result["controls_updated"] = _update_controls(db, doc, controls, owner_id)
+            except Exception as _ce2:
+                logger.warning("Controls update failed doc=%d: %s", doc_id, _ce2)
 
-            # NUEVO: Inferencia automática de compliance desde controles cubiertos
-            # Un documento que cubre A.8.5 → marca automáticamente ISO27001, NIST, SOC2, ENS, HIPAA
+            # Inferencia automatica de compliance desde controles cubiertos
             try:
                 from app.services.evidence_inference_service import infer_compliance_from_document
                 inference = infer_compliance_from_document(db, doc, controls, doc.organization_id)
@@ -252,9 +245,12 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
 
         threat_cats = analysis.get("threat_categories_addressed") or []
         if threat_cats:
-            result["tasks_created"] = _create_treatment_tasks(
-                db, doc, threat_cats, owner_id
-            )
+            try:
+                result["tasks_created"] = _create_treatment_tasks(
+                    db, doc, threat_cats, owner_id
+                )
+            except Exception as _te:
+                logger.warning("Tasks creation failed doc=%d: %s", doc_id, _te)
 
         # Si el documento es de categoria risk_assessments, intentar extraer CVEs/vulnerabilidades
         if doc.category and doc.category.value == "risk_assessments":
@@ -271,27 +267,50 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             logger.warning("Document→asset linkage failed doc=%d: %s", doc_id, _e)
             result["linked_assets"] = []
 
-        # Auto-categorizar documento basandose en el analisis IA (v1.7.8)
+        # Auto-categorizar documento basandose en el analisis IA
         inferred_cat = _infer_category(analysis, doc.original_name)
-        if inferred_cat is not None and inferred_cat != doc.category:
+        from app.models import AiDocumentCategory as _AiCat
+        current_is_other = (doc.category is None or doc.category == _AiCat.OTHER)
+        if inferred_cat is not None and (inferred_cat != doc.category or current_is_other):
             doc.category = inferred_cat
             doc.auto_categorized = True
             doc.detected_category = inferred_cat.value
             result["auto_categorized"] = True
             result["detected_category"] = inferred_cat.value
-            logger.info("ISMS auto-cat doc=%d: %s", doc_id, inferred_cat.value)
+            logger.info("ISMS auto-cat doc=%d: %s -> %s", doc_id,
+                        doc.category.value if doc.category else "none", inferred_cat.value)
         else:
             result["auto_categorized"] = False
             result["detected_category"] = doc.category.value if doc.category else None
 
         doc.isms_status = "analysed"
         doc.isms_summary = result
-        db.commit()
+        db.commit()   # commit del status — separado del call_log para no mezclar fallos
         logger.info(
             "ISMS analysis OK doc=%d policy=%s controls=%d tasks=%d auto_cat=%s",
             doc_id, result["policy_id"], result["controls_updated"], result["tasks_created"],
             result.get("detected_category", "-"),
         )
+
+        # Registrar uso de tokens (no critico — fallo aqui no debe afectar el status)
+        try:
+            call_log = AiCallLog(
+                organization_id=doc.organization_id,
+                call_type="isms_analysis",
+                prompt_tokens=message.usage.input_tokens,
+                completion_tokens=message.usage.output_tokens,
+                model=model,
+                anonymized=False,
+                response_summary=f"ISMS analysis for doc {doc_id}: {doc.original_name[:60]}",
+            )
+            db.add(call_log)
+            db.commit()
+        except Exception as _cl:
+            logger.warning("Call log failed doc=%d: %s", doc_id, _cl)
+            try:
+                db.rollback()
+            except Exception:
+                pass
 
         # Mapear categoria del documento a requisitos de compliance (v3.0)
         try:
@@ -733,16 +752,15 @@ def _infer_category(
     """Infiere la categoria correcta del documento basandose en el analisis IA.
 
     Prioridad:
-    1. Campo document_category del JSON de la IA (nuevo, explícito)
+    1. Campo document_category del JSON de la IA (explícito)
     2. is_policy=true → policies
     3. Reglas por codigos de control ISO 27002
     4. Palabras clave en el nombre del fichero
-    Devuelve None si no hay certeza suficiente para cambiar la categoria actual.
+    5. Palabras clave en el overall_summary generado por la IA
+    Devuelve None solo si ningun signal es suficiente.
     """
     from app.models import AiDocumentCategory
 
-    # 1. Usar la categoria inferida explicitamente por la IA (campo nuevo en el prompt)
-    ai_category = analysis.get("document_category", "").strip().lower()
     _CAT_MAP = {
         "architecture":       AiDocumentCategory.ARCHITECTURE,
         "normative":          AiDocumentCategory.NORMATIVE,
@@ -752,10 +770,13 @@ def _infer_category(
         "critical_suppliers": AiDocumentCategory.CRITICAL_SUPPLIERS,
         "incidents_lessons":  AiDocumentCategory.INCIDENTS_LESSONS,
     }
+
+    # 1. Campo document_category explícito de la IA (señal más fiable)
+    ai_category = analysis.get("document_category", "").strip().lower()
     if ai_category and ai_category != "other" and ai_category in _CAT_MAP:
         return _CAT_MAP[ai_category]
 
-    # 2. Si es politica de seguridad detectada → policies
+    # 2. is_policy=true → policies
     if analysis.get("is_policy"):
         return AiDocumentCategory.POLICIES
 
@@ -763,8 +784,8 @@ def _infer_category(
 
     # 3. Reglas por codigos de control ISO 27002
     asset_controls    = {"5.9", "5.10", "5.11", "5.12", "5.13", "5.14"}
-    risk_controls     = {"5.1", "5.2", "5.3", "5.4", "6.1", "6.2"}
     supplier_controls = {"5.19", "5.20", "5.21", "5.22", "5.23"}
+    risk_controls     = {"5.1", "5.2", "5.3", "5.4", "6.1", "6.2"}
 
     if covered & asset_controls:
         return AiDocumentCategory.ASSETS_INVENTORY
@@ -810,6 +831,46 @@ def _infer_category(
         "instruccion", "manual", "guia ",
     ]):
         return AiDocumentCategory.POLICIES
+
+    # 5. Palabras clave en el resumen generado por la IA (fallback cuando nombre no da pistas)
+    summary_lower = (analysis.get("overall_summary") or "").lower()
+    if summary_lower:
+        if any(w in summary_lower for w in [
+            "politica de seguridad", "security policy", "procedimiento de seguridad",
+            "instruccion de trabajo", "politica interna", "control de acceso",
+        ]):
+            return AiDocumentCategory.POLICIES
+        if any(w in summary_lower for w in [
+            "arquitectura", "topologia de red", "diagrama de red", "infraestructura",
+            "architecture", "network topology",
+        ]):
+            return AiDocumentCategory.ARCHITECTURE
+        if any(w in summary_lower for w in [
+            "normativa", "reglamento", "nis2", "gdpr", "rgpd", "iso 27",
+            "cumplimiento normativo", "compliance", "directiva", "legislacion",
+        ]):
+            return AiDocumentCategory.NORMATIVE
+        if any(w in summary_lower for w in [
+            "incidente de seguridad", "gestion de incidentes", "respuesta a incidentes",
+            "post-mortem", "leccion aprendida", "registro de incidentes",
+        ]):
+            return AiDocumentCategory.INCIDENTS_LESSONS
+        if any(w in summary_lower for w in [
+            "inventario de activos", "catalogo de activos", "gestion de activos",
+            "cmdb", "asset inventory", "listado de sistemas",
+        ]):
+            return AiDocumentCategory.ASSETS_INVENTORY
+        if any(w in summary_lower for w in [
+            "proveedor", "tercero", "acuerdo de nivel de servicio", "sla",
+            "contrato de servicio", "dpa", "supplier", "vendor",
+        ]):
+            return AiDocumentCategory.CRITICAL_SUPPLIERS
+        if any(w in summary_lower for w in [
+            "analisis de riesgo", "evaluacion de riesgo", "risk assessment",
+            "dpia", "evaluacion de impacto", "amenaza", "vulnerabilidad",
+            "gestion del riesgo",
+        ]):
+            return AiDocumentCategory.RISK_ASSESSMENTS
 
     return None  # Sin certeza suficiente: no cambiar la categoria actual
 

@@ -1,4 +1,5 @@
 """Endpoints de autenticacion."""
+import hashlib
 import re
 import secrets
 import string
@@ -100,11 +101,19 @@ def _try_send_otp_email(db: Session, to_email: str, full_name: str,
         msg["Subject"] = "RiskHub - Credenciales de acceso"
         msg["From"] = cfg.smtp_from or cfg.smtp_user
         msg["To"] = to_email
+        smtp_pwd = ""
+        if cfg.smtp_password_encrypted:
+            try:
+                smtp_pwd = decrypt_secret(cfg.smtp_password_encrypted)
+            except Exception:
+                smtp_pwd = cfg.smtp_password or ""
+        else:
+            smtp_pwd = cfg.smtp_password or ""
         with smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=10) as srv:
             if cfg.smtp_use_tls:
                 srv.starttls()
             if cfg.smtp_user:
-                srv.login(cfg.smtp_user, cfg.smtp_password or "")
+                srv.login(cfg.smtp_user, smtp_pwd)
             srv.sendmail(msg["From"], [to_email], msg.as_string())
         return True
     except Exception:
@@ -297,12 +306,45 @@ def _verify_mfa_token(token: str) -> str:
         )
 
 
+def _generate_backup_codes() -> tuple[list[str], list[str]]:
+    """Genera 8 codigos de recuperacion de un solo uso.
+
+    Devuelve (plain_codes, hashed_codes).
+    Los plain_codes se muestran una sola vez al usuario; los hashed_codes se almacenan en BD.
+    """
+    plain = [secrets.token_hex(4).upper() for _ in range(8)]
+    hashed = [hashlib.sha256(c.encode()).hexdigest() for c in plain]
+    return plain, hashed
+
+
+def _use_backup_code(user: User, code: str) -> bool:
+    """Consume un codigo de recuperacion si es valido. Devuelve True si era valido."""
+    codes: list[str] = user.mfa_backup_codes or []
+    if not codes:
+        return False
+    code_hash = hashlib.sha256(code.upper().encode()).hexdigest()
+    if code_hash not in codes:
+        return False
+    user.mfa_backup_codes = [h for h in codes if h != code_hash]
+    return True
+
+
+class MfaSetupIn(BaseModel):
+    current_password: str
+
+
 @router.post("/mfa/setup")
 def mfa_setup(
+    body: MfaSetupIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Genera un secreto TOTP y devuelve el otpauth URL para configurar la app."""
+    """Genera un secreto TOTP y devuelve el otpauth URL para configurar la app.
+
+    Requiere la contrasena actual para evitar que una sesion robada active MFA.
+    """
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="La contrasena actual no es correcta")
     secret = pyotp.random_base32()
     totp = pyotp.TOTP(secret)
     uri = totp.provisioning_uri(user.email, issuer_name="RiskHub")
@@ -328,16 +370,52 @@ def mfa_verify_setup(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Confirma el secreto TOTP y activa MFA para el usuario."""
+    """Confirma el secreto TOTP y activa MFA. Devuelve los codigos de recuperacion (solo esta vez)."""
     totp = pyotp.TOTP(body.secret)
     if not totp.verify(body.code, valid_window=1):
         raise HTTPException(status_code=400, detail="Codigo TOTP incorrecto")
+    plain_codes, hashed_codes = _generate_backup_codes()
     user.mfa_secret = encrypt_secret(body.secret)
     user.mfa_enabled = True
+    user.mfa_backup_codes = hashed_codes
     log_action(db, user.id, "update", "user", str(user.id),
                {"email": user.email, "action": "mfa_enabled"})
     db.commit()
-    return {"ok": True, "message": "MFA activado correctamente"}
+    return {
+        "ok": True,
+        "message": "MFA activado correctamente",
+        "backup_codes": plain_codes,
+        "backup_codes_note": (
+            "Guarda estos codigos en un lugar seguro. "
+            "Cada uno es de un solo uso y no podras verlos de nuevo."
+        ),
+    }
+
+
+@router.post("/mfa/backup-codes/regenerate")
+def mfa_regenerate_backup_codes(
+    body: MfaSetupIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Regenera los codigos de recuperacion MFA. Requiere contrasena actual."""
+    if not user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="MFA no esta activado")
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="La contrasena actual no es correcta")
+    plain_codes, hashed_codes = _generate_backup_codes()
+    user.mfa_backup_codes = hashed_codes
+    log_action(db, user.id, "update", "user", str(user.id),
+               {"email": user.email, "action": "mfa_backup_codes_regenerated"})
+    db.commit()
+    return {
+        "ok": True,
+        "backup_codes": plain_codes,
+        "backup_codes_note": (
+            "Guarda estos codigos en un lugar seguro. "
+            "Los codigos anteriores han quedado invalidados."
+        ),
+    }
 
 
 @router.post("/mfa/disable")
@@ -348,6 +426,7 @@ def mfa_disable(
     """Desactiva MFA para el usuario autenticado."""
     user.mfa_enabled = False
     user.mfa_secret = None
+    user.mfa_backup_codes = None
     log_action(db, user.id, "update", "user", str(user.id),
                {"email": user.email, "action": "mfa_disabled"})
     db.commit()
@@ -377,6 +456,7 @@ def mfa_disable_admin(
         raise HTTPException(status_code=403, detail="No autorizado")
     target.mfa_enabled = False
     target.mfa_secret = None
+    target.mfa_backup_codes = None
     log_action(db, current_user.id, "update", "user", str(target.id),
                {"email": target.email, "action": "mfa_disabled_by_admin"})
     db.commit()
@@ -402,8 +482,14 @@ def mfa_complete(
         raise HTTPException(status_code=400, detail="MFA no configurado para este usuario")
     secret = decrypt_secret(user.mfa_secret)
     totp = pyotp.TOTP(secret)
-    if not totp.verify(body.code, valid_window=1):
-        raise HTTPException(status_code=400, detail="Codigo TOTP incorrecto")
+    totp_valid = totp.verify(body.code, valid_window=1)
+    if not totp_valid:
+        # Intentar como codigo de recuperacion de un solo uso
+        if not _use_backup_code(user, body.code):
+            raise HTTPException(status_code=400, detail="Codigo TOTP o de recuperacion incorrecto")
+        log_action(db, user.id, "update", "user", str(user.id),
+                   {"email": user.email, "action": "mfa_backup_code_used"})
+    db.commit()
     token = create_access_token(subject=user.email, role=user.role.value)
     return TokenOut(
         access_token=token,

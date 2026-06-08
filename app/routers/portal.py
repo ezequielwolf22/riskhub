@@ -1,5 +1,5 @@
 """Trust portal público y auditor portal con acceso read-only tokenizado."""
-import hashlib
+import json
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import IntegrationConfig, RiskContext, User
-from app.security import get_current_user, require_admin
+from app.security import decrypt_secret, encrypt_secret, get_current_user, require_admin
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
 
@@ -19,25 +19,19 @@ router = APIRouter(prefix="/api/portal", tags=["portal"])
 
 def _get_or_create_token(db: Session, org_id: int, token_type: str) -> str:
     """Obtiene o crea un token persistente para el portal."""
-    import json, base64
-    from app.config import settings
-    from cryptography.fernet import Fernet
-    key = base64.urlsafe_b64encode(
-        hashlib.sha256(settings.secret_key.encode()).digest()
-    )
     name = f"portal_{token_type}"
     ic = db.query(IntegrationConfig).filter_by(
         name=name, organization_id=org_id
     ).first()
     if ic and ic.config_encrypted:
         try:
-            cfg = json.loads(Fernet(key).decrypt(ic.config_encrypted.encode()).decode())
+            cfg = json.loads(decrypt_secret(ic.config_encrypted))
             return cfg.get("token", "")
         except Exception:
             pass
     # Crear nuevo token
     token = secrets.token_urlsafe(32)
-    encrypted = Fernet(key).encrypt(json.dumps({"token": token}).encode()).decode()
+    encrypted = encrypt_secret(json.dumps({"token": token}))
     if not ic:
         ic = IntegrationConfig(name=name, organization_id=org_id)
         db.add(ic)
@@ -63,18 +57,12 @@ class TrustPortalConfig(BaseModel):
 
 
 def _get_portal_config(db: Session, org_id: int) -> dict:
-    import json, base64
-    from app.config import settings
-    from cryptography.fernet import Fernet
-    key = base64.urlsafe_b64encode(
-        hashlib.sha256(settings.secret_key.encode()).digest()
-    )
     ic = db.query(IntegrationConfig).filter_by(
         name="trust_portal_config", organization_id=org_id
     ).first()
     if ic and ic.config_encrypted:
         try:
-            return json.loads(Fernet(key).decrypt(ic.config_encrypted.encode()).decode())
+            return json.loads(decrypt_secret(ic.config_encrypted))
         except Exception:
             pass
     return {"enabled": True, "show_frameworks": True, "show_risks_summary": False,
@@ -82,13 +70,7 @@ def _get_portal_config(db: Session, org_id: int) -> dict:
 
 
 def _save_portal_config(db: Session, org_id: int, cfg: dict) -> None:
-    import json, base64
-    from app.config import settings
-    from cryptography.fernet import Fernet
-    key = base64.urlsafe_b64encode(
-        hashlib.sha256(settings.secret_key.encode()).digest()
-    )
-    encrypted = Fernet(key).encrypt(json.dumps(cfg).encode()).decode()
+    encrypted = encrypt_secret(json.dumps(cfg))
     ic = db.query(IntegrationConfig).filter_by(
         name="trust_portal_config", organization_id=org_id
     ).first()
@@ -126,15 +108,9 @@ def save_trust_config(body: TrustPortalConfig,
 def regenerate_trust_token(db: Session = Depends(get_db),
                            current_user: User = Depends(require_admin)):
     """Regenera el token del trust portal (invalida el anterior)."""
-    import json, base64
-    from app.config import settings
-    from cryptography.fernet import Fernet
-    key = base64.urlsafe_b64encode(
-        hashlib.sha256(settings.secret_key.encode()).digest()
-    )
     org_id = current_user.organization_id
     new_token = secrets.token_urlsafe(32)
-    encrypted = Fernet(key).encrypt(json.dumps({"token": new_token}).encode()).decode()
+    encrypted = encrypt_secret(json.dumps({"token": new_token}))
     ic = db.query(IntegrationConfig).filter_by(
         name="portal_trust", organization_id=org_id
     ).first()
@@ -161,15 +137,9 @@ def get_auditor_config(db: Session = Depends(get_db),
 @router.post("/auditor/regenerate-token")
 def regenerate_auditor_token(db: Session = Depends(get_db),
                               current_user: User = Depends(require_admin)):
-    import json, base64
-    from app.config import settings
-    from cryptography.fernet import Fernet
-    key = base64.urlsafe_b64encode(
-        hashlib.sha256(settings.secret_key.encode()).digest()
-    )
     org_id = current_user.organization_id
     new_token = secrets.token_urlsafe(32)
-    encrypted = Fernet(key).encrypt(json.dumps({"token": new_token}).encode()).decode()
+    encrypted = encrypt_secret(json.dumps({"token": new_token}))
     ic = db.query(IntegrationConfig).filter_by(
         name="portal_auditor", organization_id=org_id
     ).first()

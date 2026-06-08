@@ -1,7 +1,4 @@
 """Configuracion del agente IA — API key, modelo, anonimizacion, perfil org."""
-import base64
-import hashlib
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -9,34 +6,18 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import AiAnonymizationLevel, AiConfig, User
-from app.security import filter_by_org, get_current_user, require_role
+from app.security import decrypt_secret, encrypt_secret, filter_by_org, get_current_user, require_role
 
 router = APIRouter(prefix="/api/ai/config", tags=["ai-config"])
 
 
 # ---------- Utilidades de cifrado ----------
 
-def _fernet_key() -> bytes:
-    return base64.urlsafe_b64encode(
-        hashlib.sha256(settings.secret_key.encode()).digest()
-    )
-
-
-def encrypt_api_key(plain: str) -> str:
-    from cryptography.fernet import Fernet
-    return Fernet(_fernet_key()).encrypt(plain.encode()).decode()
-
-
-def decrypt_api_key(token: str) -> str:
-    from cryptography.fernet import Fernet
-    return Fernet(_fernet_key()).decrypt(token.encode()).decode()
-
-
 def resolve_api_key(cfg: AiConfig | None) -> str | None:
     """Devuelve la API key activa: primero per-tenant, luego global."""
     if cfg and cfg.api_key_encrypted:
         try:
-            return decrypt_api_key(cfg.api_key_encrypted)
+            return decrypt_secret(cfg.api_key_encrypted)
         except Exception:
             return None
     return settings.anthropic_api_key
@@ -81,7 +62,7 @@ def update_config(
 
     if payload.api_key is not None:
         cfg.api_key_encrypted = (
-            encrypt_api_key(payload.api_key) if payload.api_key else None
+            encrypt_secret(payload.api_key) if payload.api_key else None
         )
     if payload.model is not None:
         cfg.model = payload.model

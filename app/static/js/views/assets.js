@@ -855,18 +855,28 @@ const ViewAssets = {
       </div>` : ''}
     `;
 
-    document.getElementById('btn-validate-all-results')?.addEventListener('click', async () => {
-      const btn = document.getElementById('btn-validate-all-results');
-      if (btn) { btn.disabled = true; btn.textContent = 'Validando...'; }
-      try {
-        const r = await Api.assetGroups.validateAll();
-        UI.toast(`${r.validated} grupos validados`, 'success');
-        await ViewAssets._renderGroupsResults();
-      } catch (e) {
-        UI.toast('Error: ' + e.message, 'error');
-        if (btn) { btn.disabled = false; btn.textContent = `Validar propuestos`; }
-      }
-    });
+    const btnValidateAll = document.getElementById('btn-validate-all-results');
+    if (btnValidateAll) {
+      btnValidateAll.onclick = async () => {
+        btnValidateAll.disabled = true;
+        btnValidateAll.textContent = 'Validando...';
+        try {
+          const r = await Api.assetGroups.validateAll();
+          if (r.validated > 0) {
+            UI.toast(`${r.validated} grupo${r.validated !== 1 ? 's' : ''} validado${r.validated !== 1 ? 's' : ''}`, 'success');
+          } else if (r.errors && r.errors.length > 0) {
+            UI.toast('Error al validar: ' + r.errors[0].error, 'error');
+          } else {
+            UI.toast('No habia grupos propuestos para validar', 'info');
+          }
+          await ViewAssets._renderGroupsResults();
+        } catch (e) {
+          UI.toast('Error: ' + e.message, 'error');
+          btnValidateAll.disabled = false;
+          btnValidateAll.textContent = 'Validar propuestos';
+        }
+      };
+    }
 
     document.getElementById('btn-analyze-groups')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-analyze-groups');

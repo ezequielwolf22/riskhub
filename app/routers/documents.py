@@ -136,7 +136,7 @@ def upload_document(
         raise HTTPException(400, "Archivo demasiado grande (maximo 20 MB)")
 
     mime = _infer_mime(file.filename or "", file.content_type or "")
-    if mime not in ALLOWED_MIME and not any(k in mime for k in ("pdf", "docx", "plain", "csv", "image")):
+    if mime not in ALLOWED_MIME:
         raise HTTPException(400, "Tipo de archivo no soportado. Usa PDF, DOCX, TXT o imagen (PNG/JPG).")
 
     # OWASP A08 — validar contenido real mediante magic bytes

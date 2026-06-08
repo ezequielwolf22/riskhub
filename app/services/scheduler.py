@@ -1936,6 +1936,17 @@ def _run_bcp_bia_gap_check() -> None:
         db.close()
 
 
+def _cleanup_ai_jobs() -> None:
+    """Elimina jobs IA expirados del store en memoria del router de IA."""
+    try:
+        from app.routers.ai import _JOBS, _JOBS_LOCK, _cleanup_old_jobs
+        with _JOBS_LOCK:
+            _cleanup_old_jobs()
+        logger.debug("AI jobs cleanup completado.")
+    except Exception as exc:
+        logger.warning("AI jobs cleanup error: %s", exc)
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -2152,6 +2163,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Recordatorios de encuestas pendientes",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_cleanup_ai_jobs,
+        trigger=IntervalTrigger(hours=1),
+        id="cleanup_ai_jobs",
+        name="Limpieza de jobs IA expirados en memoria",
+        replace_existing=True,
+        misfire_grace_time=300,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)
