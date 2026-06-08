@@ -1,98 +1,148 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RiskHub · Iniciar sesión</title>
-<link rel="stylesheet" href="/css/app.css">
-<link rel="icon" type="image/svg+xml" href="/img/logo.svg">
-<script>
-  (function() {
-    var t = localStorage.getItem('riskhub_theme') || 'light';
-    document.documentElement.setAttribute('data-theme', t);
-  })();
-</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RiskHub · Iniciar sesión</title>
+
+  <!-- Fuente DM Serif Display -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="icon" type="image/svg+xml" href="/img/logo.svg">
+
+  <script>
+    (function() {
+      var t = localStorage.getItem('riskhub_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
 </head>
 <body>
-<div class="brand-bar"></div>
+
 <div class="login-page">
+
+  <!-- PANEL IZQUIERDO: Brand editorial -->
   <div class="login-hero">
-    <div>
-      <img src="/img/logo.svg" alt="RiskHub" style="height: 56px; filter: brightness(0) invert(1); margin-bottom: 32px;">
-      <span class="iso-badge">ISO/IEC 27005:2018</span>
-      <h1>Gestión del riesgo de seguridad de la información</h1>
-      <p>Plataforma corporativa para identificar, analizar, tratar y monitorizar los riesgos de seguridad de la información conforme al estandar ISO/IEC 27005:2018 y al catálogo de controles ISO/IEC 27002:2022.</p>
+
+    <!-- Brand mark -->
+    <div class="login-hero-brand">
+      <svg width="26" height="26" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <polygon points="16,2 28,9 28,23 16,30 4,23 4,9"
+          stroke="#1A8DE8" stroke-width="1.8" fill="none"/>
+        <line x1="16" y1="2"  x2="16" y2="10" stroke="#1A8DE8" stroke-width="1.3" opacity="0.38"/>
+        <line x1="28" y1="9"  x2="21" y2="13" stroke="#1A8DE8" stroke-width="1.3" opacity="0.38"/>
+        <line x1="28" y1="23" x2="21" y2="19" stroke="#1A8DE8" stroke-width="1.3" opacity="0.38"/>
+        <circle cx="16" cy="16" r="3.2" fill="#1A8DE8"/>
+        <circle cx="16" cy="16" r="1.4" fill="white"/>
+        <line x1="10" y1="16" x2="22" y2="16" stroke="#1A8DE8" stroke-width="1.1" opacity="0.4"/>
+      </svg>
+      <span class="wordmark">RiskHub</span>
     </div>
-    <div style="font-size: 11px; opacity: 0.7; font-family: var(--font-mono); letter-spacing: 0.05em;">
-      USO INTERNO &middot; CONFIDENCIAL
+
+    <!-- Hero content -->
+    <div class="login-hero-content">
+      <div class="login-editorial-rule">
+        <span>Seguridad de la información</span>
+      </div>
+
+      <h1>Gestión de riesgos<br>de ciberseguridad</h1>
+
+      <p>Identifique, analice y trate el riesgo de su organización
+         con rigor normativo y visibilidad ejecutiva total.</p>
     </div>
+
+    <!-- Footer -->
+    <div class="login-hero-footer">Confidencial</div>
+
   </div>
+
+
+  <!-- PANEL DERECHO: Formularios -->
   <div class="login-form-wrap">
 
-    <!-- Paso 1: formulario de email + contrasena -->
+    <!-- Paso 1: formulario email + contraseña -->
     <form class="login-form" id="login-form">
-      <h2 style="margin-bottom: 4px;">Iniciar sesión</h2>
-      <p style="color: var(--text-muted); margin-bottom: 20px;">
-        Usa tus credenciales corporativas.
-      </p>
-      <div id="login-error" class="login-error" style="display: none;"></div>
+
+      <h2>Iniciar sesión</h2>
+      <p class="subtitle">Usa tus credenciales corporativas</p>
+
+      <div id="login-error" class="login-error" style="display:none;"></div>
+
       <div class="form-block">
         <label for="email">Email</label>
-        <input type="email" id="email" name="email" required autocomplete="username" autofocus>
+        <input type="email" id="email" name="email"
+               required autocomplete="username" autofocus>
       </div>
+
       <div class="form-block">
-        <label for="password">Contrasena</label>
-        <input type="password" id="password" name="password" required autocomplete="current-password">
+        <label for="password">Contraseña</label>
+        <input type="password" id="password" name="password"
+               required autocomplete="current-password">
       </div>
-      <button class="btn btn-primary" type="submit" style="width: 100%; justify-content: center; padding: 10px;">
+
+      <button class="btn btn-primary" type="submit"
+              style="width:100%; justify-content:center; padding:12px; margin-top:4px;">
         Acceder
       </button>
 
-      <!-- Boton SSO — se muestra solo si SSO esta configurado -->
+      <!-- SSO: se muestra solo si está configurado -->
       <div id="sso-section" style="display:none; margin-top:16px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-          <div style="flex:1;height:1px;background:var(--border);"></div>
-          <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">o continua con</span>
-          <div style="flex:1;height:1px;background:var(--border);"></div>
-        </div>
-        <a href="/api/sso/login" class="btn" style="width:100%;justify-content:center;padding:10px;display:flex;gap:8px;align-items:center;">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/>
-            <rect x="13" y="13" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/>
+        <div class="login-divider"><span>o continúa con</span></div>
+        <a href="/api/sso/login" class="login-sso-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3"  y="3"  width="8" height="8" fill="#F25022"/>
+            <rect x="13" y="3"  width="8" height="8" fill="#7FBA00"/>
+            <rect x="3"  y="13" width="8" height="8" fill="#00A4EF"/>
+            <rect x="13" y="13" width="8" height="8" fill="#FFB900"/>
           </svg>
-          Iniciar sesion con SSO
+          Iniciar sesión con SSO
         </a>
       </div>
 
-      <p style="font-size: 11px; color: var(--text-subtle); margin-top: 24px; text-align: center;">
-        Si no tienes acceso, contacta con el responsable de seguridad de tu unidad.
+      <p class="login-note">
+        ¿Sin acceso? Contacta con el responsable<br>de seguridad de tu unidad.
       </p>
+
     </form>
+
 
     <!-- Paso 2: segundo factor MFA (TOTP) -->
     <form class="login-form" id="mfa-form" style="display:none;">
-      <h2 style="margin-bottom: 4px;">Verificacion en dos pasos</h2>
-      <p style="color: var(--text-muted); margin-bottom: 20px;">
-        Introduce el codigo de 6 digitos de tu aplicacion de autenticacion.
+
+      <h2>Verificación en dos pasos</h2>
+      <p class="subtitle">
+        Introduce el código de 6 dígitos de tu aplicación de autenticación.
       </p>
-      <div id="mfa-error" class="login-error" style="display: none;"></div>
+
+      <div id="mfa-error" class="login-error" style="display:none;"></div>
+
       <div class="form-block">
-        <label for="mfa-code">Codigo TOTP</label>
-        <input type="text" id="mfa-code" name="mfa-code" required
-               autocomplete="one-time-code" inputmode="numeric"
-               pattern="[0-9]{6}" maxlength="6"
-               placeholder="123456" autofocus>
+        <label for="mfa-code">Código TOTP</label>
+        <input type="text" id="mfa-code" name="mfa-code"
+               required autocomplete="one-time-code"
+               inputmode="numeric" pattern="[0-9]{6}"
+               maxlength="6" placeholder="123456" autofocus>
       </div>
-      <button class="btn btn-primary" type="submit" style="width: 100%; justify-content: center; padding: 10px;">
+
+      <button class="btn btn-primary" type="submit"
+              style="width:100%; justify-content:center; padding:12px;">
         Verificar
       </button>
-      <button type="button" id="mfa-back" class="btn" style="width:100%;justify-content:center;padding:10px;margin-top:8px;">
+
+      <button type="button" id="mfa-back" class="btn"
+              style="width:100%; justify-content:center; padding:12px; margin-top:8px;">
         Volver al login
       </button>
+
     </form>
 
   </div>
+
 </div>
+
 
 <script>
 const form    = document.getElementById('login-form');
@@ -100,22 +150,20 @@ const errBox  = document.getElementById('login-error');
 const mfaForm = document.getElementById('mfa-form');
 const mfaErr  = document.getElementById('mfa-error');
 
-// Estado temporal MFA
 let _mfaToken = null;
 let _pendingUser = null;
 
-// Mostrar error SSO si viene en el query param
 (function() {
   const params = new URLSearchParams(window.location.search);
   const ssoErr = params.get('sso_error');
   if (ssoErr) {
     const msgs = {
       user_not_found: 'Tu cuenta no existe en RiskHub. Contacta con el administrador.',
-      account_disabled: 'Tu cuenta esta desactivada. Contacta con el administrador.',
-      domain_not_allowed: 'Tu dominio de correo no esta autorizado para acceder via SSO.',
-      invalid_or_expired_state: 'La sesion de SSO ha expirado. Intenta de nuevo.',
-      sso_not_configured: 'SSO no esta configurado.',
-      no_email_in_userinfo: 'El proveedor de identidad no devolvio un email valido.',
+      account_disabled: 'Tu cuenta está desactivada. Contacta con el administrador.',
+      domain_not_allowed: 'Tu dominio de correo no está autorizado para acceder via SSO.',
+      invalid_or_expired_state: 'La sesión de SSO ha expirado. Intenta de nuevo.',
+      sso_not_configured: 'SSO no está configurado.',
+      no_email_in_userinfo: 'El proveedor de identidad no devolvió un email válido.',
       missing_params: 'Respuesta incompleta del proveedor de identidad.',
     };
     errBox.textContent = msgs[ssoErr] || decodeURIComponent(ssoErr);
@@ -124,7 +172,6 @@ let _pendingUser = null;
   }
 })();
 
-// Comprobar si SSO esta habilitado para mostrar el boton
 fetch('/api/sso/status').then(r => r.json()).then(d => {
   if (d.enabled) document.getElementById('sso-section').style.display = '';
 }).catch(() => {});
@@ -139,14 +186,12 @@ function _finishLogin(data) {
   }
 }
 
-// Paso 1: login con email + contrasena
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   errBox.style.display = 'none';
   const fd = new URLSearchParams();
   fd.append('username', document.getElementById('email').value);
   fd.append('password', document.getElementById('password').value);
-
   try {
     const resp = await fetch('/api/auth/login', {
       method: 'POST',
@@ -155,20 +200,17 @@ form.addEventListener('submit', async (e) => {
     });
     if (!resp.ok) {
       const d = await resp.json().catch(() => ({}));
-      throw new Error(d.detail || 'Credenciales no validas');
+      throw new Error(d.detail || 'Credenciales no válidas');
     }
     const data = await resp.json();
-
     if (data.mfa_required && data.mfa_token) {
-      // Mostrar paso 2 MFA
-      _mfaToken   = data.mfa_token;
+      _mfaToken = data.mfa_token;
       _pendingUser = data.user;
       form.style.display = 'none';
       mfaForm.style.display = '';
       document.getElementById('mfa-code').focus();
       return;
     }
-
     _finishLogin(data);
   } catch (err) {
     errBox.textContent = err.message;
@@ -176,7 +218,6 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// Paso 2: verificar codigo TOTP
 mfaForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   mfaErr.style.display = 'none';
@@ -189,7 +230,7 @@ mfaForm.addEventListener('submit', async (e) => {
     });
     if (!resp.ok) {
       const d = await resp.json().catch(() => ({}));
-      throw new Error(d.detail || 'Codigo incorrecto');
+      throw new Error(d.detail || 'Código incorrecto');
     }
     const data = await resp.json();
     _finishLogin(data);
@@ -201,7 +242,6 @@ mfaForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Volver al formulario de login
 document.getElementById('mfa-back').onclick = () => {
   _mfaToken = null;
   _pendingUser = null;
@@ -211,5 +251,6 @@ document.getElementById('mfa-back').onclick = () => {
   document.getElementById('mfa-code').value = '';
 };
 </script>
+
 </body>
 </html>
