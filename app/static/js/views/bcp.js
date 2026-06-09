@@ -1347,6 +1347,46 @@ const ViewBcp = (() => {
           </div>
         </div>
 
+        <div class="form-section-divider"><span>PARAMETROS ENS Y ECONOMICOS</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Categoria ENS</label>
+            <select id="pm-ens" class="form-control" style="font-size:13px;">
+              <option value="">— No aplica —</option>
+              ${['ALTA','MEDIA','BASICA'].map(c => `<option value="${c}"${proc?.ens_category===c?' selected':''}>${c}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Coste indisponibilidad (€/h)</label>
+            <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Para calcular impacto economico</div>
+            <input id="pm-cph" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.cost_per_hour??''}" placeholder="Ej: 2500">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Version BIA</label>
+              <input id="pm-biaver" class="form-control" style="font-size:13px;" value="${UI.esc(proc?.bia_version||'')}" placeholder="v1.0">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Proxima revision</label>
+              <input id="pm-biarev" class="form-control" type="date" style="font-size:13px;" value="${proc?.bia_review_date?proc.bia_review_date.substring(0,10):''}">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section-divider"><span>IMPACTO PROGRESIVO EN EL TIEMPO</span></div>
+        <div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px;">¿Como evoluciona el impacto si el proceso sigue sin disponibilidad? (0=Bajo · 1=Medio · 2=Alto)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
+          ${[['pm-i1h','A la hora 1','impact_1h'],['pm-i24h','A las 24 horas','impact_24h'],['pm-i7d','A los 7 dias','impact_7d']].map(([id,lbl,fld]) => `
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${lbl}</label>
+            <select id="${id}" class="form-control" style="font-size:13px;">
+              <option value="0"${proc?.[fld]===0?' selected':!proc?.[fld]&&proc?.[fld]!==0?' selected':''}>Bajo</option>
+              <option value="1"${proc?.[fld]===1?' selected':''}>Medio</option>
+              <option value="2"${proc?.[fld]===2?' selected':''}>Alto</option>
+            </select>
+          </div>`).join('')}
+        </div>
+
       </div>
       <div class="modal-footer-sticky">
         ${proc ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delProc(${proc.id})"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
@@ -1392,6 +1432,14 @@ const ViewBcp = (() => {
       vital_records: linesToArr(g('pm-vr')?.value),
       it_systems: linesToArr(g('pm-it')?.value),
       facilities: linesToArr(g('pm-fac')?.value),
+      // BIA campos normativos
+      ens_category: g('pm-ens')?.value || null,
+      cost_per_hour: parseFloat(g('pm-cph')?.value) || null,
+      impact_1h: parseInt(g('pm-i1h')?.value) ?? null,
+      impact_24h: parseInt(g('pm-i24h')?.value) ?? null,
+      impact_7d: parseInt(g('pm-i7d')?.value) ?? null,
+      bia_version: g('pm-biaver')?.value || null,
+      bia_review_date: g('pm-biarev')?.value || null,
     };
     if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
     try {
@@ -1872,6 +1920,106 @@ const ViewBcp = (() => {
       <button class="btn btn-ghost btn-sm" onclick="ViewBcp._loadStandardKPIs()" style="font-size:12px;"><i class="ti ti-template"></i> KPIs estandar DRP</button>
     </div>
 
+    <!-- SECCION DR SITE (solo DRP/CRP/cyber_response) -->
+    <div id="pl-drsite-section" ${showForTypes(['drp','crp','cyber_response'], currType)}>
+      <div class="form-section-divider"><span>SITIO ALTERNATIVO — DR SITE</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>${lbl('Tipo de DR Site')}
+          <select id="pl-drsite-type" class="form-control" style="font-size:13px;">
+            <option value="">— Sin DR Site —</option>
+            ${[['hot','Hot site — Failover automatico (<15 min)'],['warm','Warm site — Failover semi-auto (1-4h)'],
+               ['cold','Cold site — Restauracion manual (>4h)'],['cloud','Cloud DR — Instancias on-demand']]
+              .map(([v,l])=>`<option value="${v}"${plan?.dr_site?.site_type===v?' selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+        <div>${lbl('Ubicacion DR Site')}
+          <input id="pl-drsite-loc" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.dr_site?.location||'')}" placeholder="Ciudad · Distancia a sede principal">
+        </div>
+        <div>${lbl('Acceso (IP / VPN / ref. boveda)')}
+          <input id="pl-drsite-access" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.dr_site?.access_info||'')}" placeholder="IP gestion · ref. boveda credenciales">
+        </div>
+        <div>${lbl('RTO de activacion del DR Site (horas)')}
+          <input id="pl-drsite-rto" class="form-control" type="number" min="0" style="font-size:13px;"
+            value="${plan?.dr_site?.rto_hours??''}" placeholder="Tiempo hasta que el DR site esta operativo">
+        </div>
+        <div>${lbl('Capacidad instalada')}
+          <input id="pl-drsite-cap" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.dr_site?.capacity||'')}" placeholder="Servidores, almacenamiento, RAM total">
+        </div>
+        <div>${lbl('Conectividad')}
+          <input id="pl-drsite-conn" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.dr_site?.connectivity||'')}" placeholder="ISP · ancho de banda · latencia">
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">${lbl('Infraestructura disponible (notas)')}
+        <textarea id="pl-drsite-notes" class="form-control" rows="3" style="font-size:13px;"
+          placeholder="Servidores, VMs, networking, sistemas preinstalados...">${UI.esc(plan?.dr_site?.infrastructure_notes||'')}</textarea>
+      </div>
+    </div>
+
+    <!-- SECCION POLITICA DE BACKUPS (solo DRP/CRP) -->
+    <div id="pl-backup-section" ${showForTypes(['drp','crp'], currType)}>
+      <div class="form-section-divider"><span>POLITICA DE BACKUPS</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>${lbl('Regla 3-2-1 aplicada')}
+          <select id="pl-bkp-321" class="form-control" style="font-size:13px;">
+            <option value="si"${plan?.backup_policy?.rule_321==='si'?' selected':''}>Si — 3 copias, 2 soportes, 1 offsite</option>
+            <option value="parcial"${plan?.backup_policy?.rule_321==='parcial'?' selected':''}>Parcial</option>
+            <option value="no"${plan?.backup_policy?.rule_321==='no'?' selected':''}>No — requiere accion</option>
+          </select>
+        </div>
+        <div>${lbl('Cifrado de backups')}
+          <select id="pl-bkp-enc" class="form-control" style="font-size:13px;">
+            <option value="aes256"${plan?.backup_policy?.encryption==='aes256'?' selected':''}>AES-256 en transito y reposo</option>
+            <option value="reposo"${plan?.backup_policy?.encryption==='reposo'?' selected':''}>Solo en reposo</option>
+            <option value="no"${plan?.backup_policy?.encryption==='no'?' selected':''}>No cifrado — requiere accion</option>
+          </select>
+        </div>
+        <div>${lbl('Retencion minima')}
+          <input id="pl-bkp-ret" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.backup_policy?.retention||'')}" placeholder="Ej: 30 dias diario + 12 meses mensual">
+        </div>
+        <div>${lbl('Almacenamiento offsite')}
+          <input id="pl-bkp-offsite" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.backup_policy?.offsite_location||'')}" placeholder="Proveedor cloud · region · distancia">
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px;">Un backup sin prueba de restauracion documentada no es valido para auditoria.</div>
+      <div class="inline-table-wrap" style="margin-bottom:8px;">
+        <table class="inline-table">
+          <thead><tr>
+            <th>Sistema</th><th>Tipo</th><th>Frecuencia</th><th>Retencion</th>
+            <th>RPO cubierto</th><th>Ubicacion</th><th>Ultimo test</th><th>Resultado</th>
+            <th style="width:30px"></th>
+          </tr></thead>
+          <tbody id="pl-backup-tbody">
+            ${(plan?.backup_policy?.items||[]).map((b,i)=>`<tr>
+              <td><input value="${UI.esc(b.system||'')}" oninput="ViewBcp._updateBkpItem(${i},'system',this.value)"></td>
+              <td><select oninput="ViewBcp._updateBkpItem(${i},'backup_type',this.value)" style="font-size:11px;">
+                ${['Completo diario','Incremental','Diferencial','Replicacion sincrona'].map(t=>
+                  `<option${b.backup_type===t?' selected':''}>${t}</option>`).join('')}
+              </select></td>
+              <td><input value="${UI.esc(b.frequency||'')}" style="width:70px;" oninput="ViewBcp._updateBkpItem(${i},'frequency',this.value)"></td>
+              <td><input value="${UI.esc(b.retention||'')}" style="width:60px;" oninput="ViewBcp._updateBkpItem(${i},'retention',this.value)"></td>
+              <td><input value="${UI.esc(b.rpo_covered||'')}" style="width:55px;" oninput="ViewBcp._updateBkpItem(${i},'rpo_covered',this.value)"></td>
+              <td><input value="${UI.esc(b.location||'')}" oninput="ViewBcp._updateBkpItem(${i},'location',this.value)"></td>
+              <td><input type="date" value="${b.last_test_date||''}" oninput="ViewBcp._updateBkpItem(${i},'last_test_date',this.value)"></td>
+              <td><select oninput="ViewBcp._updateBkpItem(${i},'last_test_result',this.value)" style="font-size:11px;">
+                ${['OK','Parcial','Fallido','Pendiente'].map(r=>
+                  `<option${b.last_test_result===r?' selected':''}>${r}</option>`).join('')}
+              </select></td>
+              <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeBkpItem(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addBkpItem()" style="margin-bottom:14px;font-size:12px;">
+        <i class="ti ti-plus"></i> Anadir sistema
+      </button>
+    </div>
+
     <!-- SECCION 9: Historial -->
     ${plan ? `<div class="form-section-divider"><span>HISTORIAL Y MANTENIMIENTO</span></div>
     <div style="font-size:12px;color:var(--text-subtle);display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
@@ -1882,10 +2030,11 @@ const ViewBcp = (() => {
     </div>` : ''}`;
 
     // Datos en memoria para las tablas inline
-    window._planSysDeps = [...sysDeps];
-    window._planRoles = [...roles];
+    window._planSysDeps  = [...sysDeps];
+    window._planRoles    = [...roles];
     window._planContacts = [...contacts];
-    window._planKpis = [...kpis];
+    window._planKpis     = [...kpis];
+    window._planBkpItems = [...(plan?.backup_policy?.items || [])];
 
     // Guardar save handler actualizado con el ID
     document.getElementById('plan-drawer-save').onclick = () => _savePlan(_currentPlanId);
@@ -1894,11 +2043,46 @@ const ViewBcp = (() => {
   }
 
   function _onPlanTypeChange(type) {
-    const sysSec = document.getElementById('pl-sys-section');
-    const procSec = document.getElementById('pl-proc-section');
-    if (sysSec) sysSec.style.display = ['drp','crp'].includes(type) ? '' : 'none';
-    if (procSec) procSec.style.display = ['drp','crp','cyber_response'].includes(type) ? '' : 'none';
+    const sysSec   = document.getElementById('pl-sys-section');
+    const procSec  = document.getElementById('pl-proc-section');
+    const drsiteSec= document.getElementById('pl-drsite-section');
+    const bkpSec   = document.getElementById('pl-backup-section');
+    if (sysSec)    sysSec.style.display    = ['drp','crp'].includes(type) ? '' : 'none';
+    if (procSec)   procSec.style.display   = ['drp','crp','cyber_response'].includes(type) ? '' : 'none';
+    if (drsiteSec) drsiteSec.style.display = ['drp','crp','cyber_response'].includes(type) ? '' : 'none';
+    if (bkpSec)    bkpSec.style.display    = ['drp','crp'].includes(type) ? '' : 'none';
   }
+
+  // Helpers tablas inline backup
+  function _rerenderBkpItems() {
+    const tbody = document.getElementById('pl-backup-tbody');
+    if (!tbody) return;
+    const BKP_TYPES = ['Completo diario','Incremental','Diferencial','Replicacion sincrona'];
+    const RESULTS   = ['OK','Parcial','Fallido','Pendiente'];
+    tbody.innerHTML = (window._planBkpItems || []).map((b,i) => `<tr>
+      <td><input value="${UI.esc(b.system||'')}" oninput="ViewBcp._updateBkpItem(${i},'system',this.value)"></td>
+      <td><select oninput="ViewBcp._updateBkpItem(${i},'backup_type',this.value)" style="font-size:11px;">
+        ${BKP_TYPES.map(t=>`<option${b.backup_type===t?' selected':''}>${t}</option>`).join('')}
+      </select></td>
+      <td><input value="${UI.esc(b.frequency||'')}" style="width:70px;" oninput="ViewBcp._updateBkpItem(${i},'frequency',this.value)"></td>
+      <td><input value="${UI.esc(b.retention||'')}" style="width:60px;" oninput="ViewBcp._updateBkpItem(${i},'retention',this.value)"></td>
+      <td><input value="${UI.esc(b.rpo_covered||'')}" style="width:55px;" oninput="ViewBcp._updateBkpItem(${i},'rpo_covered',this.value)"></td>
+      <td><input value="${UI.esc(b.location||'')}" oninput="ViewBcp._updateBkpItem(${i},'location',this.value)"></td>
+      <td><input type="date" value="${b.last_test_date||''}" oninput="ViewBcp._updateBkpItem(${i},'last_test_date',this.value)"></td>
+      <td><select oninput="ViewBcp._updateBkpItem(${i},'last_test_result',this.value)" style="font-size:11px;">
+        ${RESULTS.map(r=>`<option${b.last_test_result===r?' selected':''}>${r}</option>`).join('')}
+      </select></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeBkpItem(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addBkpItem() {
+    (window._planBkpItems = window._planBkpItems || []).push(
+      {system:'',backup_type:'Completo diario',frequency:'',retention:'',rpo_covered:'',location:'',last_test_date:'',last_test_result:'Pendiente'}
+    );
+    _rerenderBkpItems();
+  }
+  function _removeBkpItem(i) { (window._planBkpItems||[]).splice(i,1); _rerenderBkpItems(); }
+  function _updateBkpItem(i, field, val) { if (window._planBkpItems?.[i]) window._planBkpItems[i][field] = val; }
 
   // Helpers para tablas inline del drawer de planes
   function _rerenderSysDeps() {
@@ -2033,6 +2217,24 @@ const ViewBcp = (() => {
       roles_matrix: (window._planRoles || []).length ? window._planRoles : null,
       contact_list: (window._planContacts || []).length ? window._planContacts : null,
       kpis: (window._planKpis || []).length ? window._planKpis : null,
+      // DR Site
+      dr_site: g('pl-drsite-type')?.value ? {
+        site_type:            g('pl-drsite-type')?.value || null,
+        location:             g('pl-drsite-loc')?.value  || null,
+        access_info:          g('pl-drsite-access')?.value || null,
+        rto_hours:            parseInt(g('pl-drsite-rto')?.value) || null,
+        capacity:             g('pl-drsite-cap')?.value  || null,
+        connectivity:         g('pl-drsite-conn')?.value || null,
+        infrastructure_notes: g('pl-drsite-notes')?.value || null,
+      } : null,
+      // Politica de backups
+      backup_policy: g('pl-bkp-321')?.value ? {
+        rule_321:         g('pl-bkp-321')?.value    || null,
+        encryption:       g('pl-bkp-enc')?.value    || null,
+        retention:        g('pl-bkp-ret')?.value    || null,
+        offsite_location: g('pl-bkp-offsite')?.value || null,
+        items:            (window._planBkpItems || []).length ? window._planBkpItems : [],
+      } : null,
     };
 
     if (!body.name) { UI.toast('El nombre del plan es obligatorio', 'error'); return; }
@@ -2111,6 +2313,14 @@ const ViewBcp = (() => {
         </div>
         <label style="margin-top:10px;">Facilitador (ID usuario)</label>
         <input id="tm-fac" class="form-control" type="number">
+        <label style="margin-top:10px;">Frecuencia planificada</label>
+        <select id="tm-freq" class="form-control">
+          <option value="">— Sin definir —</option>
+          <option value="mensual">Mensual</option>
+          <option value="trimestral">Trimestral</option>
+          <option value="semestral">Semestral</option>
+          <option value="anual">Anual</option>
+        </select>
         <div style="display:flex;gap:8px;margin-top:14px;">
           <button class="btn btn-primary" onclick="ViewBcp._saveTest()">Guardar</button>
           <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
@@ -2129,6 +2339,7 @@ const ViewBcp = (() => {
       scope_description: document.getElementById('tm-scope').value||null,
       process_ids: pids,
       facilitator_id: parseInt(document.getElementById('tm-fac').value)||null,
+      frequency: document.getElementById('tm-freq')?.value || null,
     };
     if (!body.scheduled_at) { UI.toast('La fecha es obligatoria', 'error'); return; }
     try {
@@ -2185,6 +2396,16 @@ const ViewBcp = (() => {
         <div style="margin-bottom:14px;">${lbl('Acciones de mejora','')}
           <textarea id="rm-actions" class="form-control" rows="2" style="font-size:13px;">${UI.esc(test.improvement_actions||'')}</textarea>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('RTO real conseguido (horas)','','Tiempo que tardo realmente la recuperacion')}
+            <input id="rm-rto-achieved" class="form-control" type="number" min="0" style="font-size:13px;"
+              value="${test.rto_achieved_hours??''}" placeholder="Ej: 3">
+          </div>
+          <div>${lbl('RPO real conseguido (horas)','','Datos perdidos reales medidos')}
+            <input id="rm-rpo-achieved" class="form-control" type="number" min="0" style="font-size:13px;"
+              value="${test.rpo_achieved_hours??''}" placeholder="Ej: 1">
+          </div>
+        </div>
         <div style="margin-bottom:14px;">${lbl('IDs de documentos de evidencia','')}
           <input id="rm-evidence" class="form-control" style="font-size:13px;" placeholder="1, 2, 3 (IDs separados por coma)"
             value="${(test.evidence_doc_ids||[]).join(', ')}">
@@ -2230,6 +2451,8 @@ const ViewBcp = (() => {
       lessons_learned: document.getElementById('rm-lessons')?.value || null,
       improvement_actions: document.getElementById('rm-actions')?.value || null,
       evidence_doc_ids: evidence,
+      rto_achieved_hours: parseInt(document.getElementById('rm-rto-achieved')?.value) || null,
+      rpo_achieved_hours: parseInt(document.getElementById('rm-rpo-achieved')?.value) || null,
     };
     // Validar: si resultado != "passed", lecciones son obligatorias
     if (result && result !== 'passed' && !body.lessons_learned) {
@@ -2443,6 +2666,7 @@ const ViewBcp = (() => {
     _addRole, _removeRole, _updateRole, _loadDRPRoles,
     _addContact, _removeContact, _updateContact,
     _addKPI, _removeKPI, _updateKPI, _loadStandardKPIs,
+    _addBkpItem, _removeBkpItem, _updateBkpItem,
     _saveTest, _openTestResultModal, _saveTestResult, _onResultChange,
     _editSL, _saveSL, _delSL,
     _openEPModal, _saveEP,

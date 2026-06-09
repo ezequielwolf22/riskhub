@@ -93,6 +93,14 @@ def _proc_d(p: BusinessProcess) -> dict:
         "test_result": p.test_result,
         "bia_pct": bia["pct"],
         "bia_missing": bia["missing"],
+        # BIA campos normativos adicionales
+        "ens_category": getattr(p, "ens_category", None),
+        "cost_per_hour": getattr(p, "cost_per_hour", None),
+        "impact_1h": getattr(p, "impact_1h", None),
+        "impact_24h": getattr(p, "impact_24h", None),
+        "impact_7d": getattr(p, "impact_7d", None),
+        "bia_version": getattr(p, "bia_version", None),
+        "bia_review_date": p.bia_review_date.isoformat() if getattr(p, "bia_review_date", None) else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -116,6 +124,9 @@ def _test_d(t: BCPTest) -> dict:
         "improvement_actions": t.improvement_actions,
         "evidence_doc_ids": t.evidence_doc_ids,
         "nc_ids": t.nc_ids,
+        "frequency": getattr(t, "frequency", None),
+        "rto_achieved_hours": getattr(t, "rto_achieved_hours", None),
+        "rpo_achieved_hours": getattr(t, "rpo_achieved_hours", None),
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
 
@@ -185,6 +196,8 @@ def _plan_d(p: BCPPlan) -> dict:
         "kpis": getattr(p, "kpis", None),
         "plan_owner_name": getattr(p, "plan_owner_name", None),
         "classification": getattr(p, "classification", None),
+        "dr_site": getattr(p, "dr_site", None),
+        "backup_policy": getattr(p, "backup_policy", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -242,6 +255,14 @@ class ProcessIn(BaseModel):
     supplier_ids: Optional[list] = None
     owner_id: Optional[int] = None
     recovery_owner_id: Optional[int] = None
+    # BIA campos normativos
+    ens_category: Optional[str] = None
+    cost_per_hour: Optional[float] = None
+    impact_1h: Optional[int] = None
+    impact_24h: Optional[int] = None
+    impact_7d: Optional[int] = None
+    bia_version: Optional[str] = None
+    bia_review_date: Optional[str] = None
 
 
 class ProcessUpdate(BaseModel):
@@ -268,6 +289,13 @@ class ProcessUpdate(BaseModel):
     supplier_ids: Optional[list] = None
     owner_id: Optional[int] = None
     recovery_owner_id: Optional[int] = None
+    ens_category: Optional[str] = None
+    cost_per_hour: Optional[float] = None
+    impact_1h: Optional[int] = None
+    impact_24h: Optional[int] = None
+    impact_7d: Optional[int] = None
+    bia_version: Optional[str] = None
+    bia_review_date: Optional[str] = None
 
 
 class DepIn(BaseModel):
@@ -344,6 +372,8 @@ class PlanIn(BaseModel):
     kpis: Optional[list] = None
     plan_owner_name: Optional[str] = None
     classification: Optional[str] = None
+    dr_site: Optional[dict] = None
+    backup_policy: Optional[dict] = None
 
 
 class PlanUpdate(BaseModel):
@@ -365,6 +395,8 @@ class PlanUpdate(BaseModel):
     kpis: Optional[list] = None
     plan_owner_name: Optional[str] = None
     classification: Optional[str] = None
+    dr_site: Optional[dict] = None
+    backup_policy: Optional[dict] = None
 
 
 class TestIn(BaseModel):
@@ -375,6 +407,7 @@ class TestIn(BaseModel):
     scope_description: Optional[str] = None
     participants: Optional[list] = None
     facilitator_id: Optional[int] = None
+    frequency: Optional[str] = None
 
 
 class TestUpdate(BaseModel):
@@ -384,6 +417,9 @@ class TestUpdate(BaseModel):
     lessons_learned: Optional[str] = None
     improvement_actions: Optional[str] = None
     evidence_doc_ids: Optional[list] = None
+    frequency: Optional[str] = None
+    rto_achieved_hours: Optional[int] = None
+    rpo_achieved_hours: Optional[int] = None
 
 
 class SupLinkIn(BaseModel):
@@ -593,6 +629,8 @@ def update_process(pid: int, body: ProcessUpdate, db: Session = Depends(get_db),
         raise HTTPException(422, "criticality inválido")
     # GDPR: escalation_contacts puede contener datos personales (Art. 6(1)(f) RGPD).
     for k, v in body.model_dump(exclude_none=True).items():
+        if k == "bia_review_date":
+            v = _parse_dt(v, "bia_review_date")
         setattr(p, k, v)
     db.commit()
     # ENS op.cont.1 + ISO 27001 A.5.29 cuando BIA alcanza >= 80%
@@ -881,7 +919,8 @@ def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
         for plan in db.query(BCPPlan).filter_by(organization_id=_org(u)).all():
             if any(pid in (plan.process_ids or []) for pid in (t.process_ids or [])):
                 plan.last_exercised_at = t.conducted_at or datetime.now(timezone.utc)
-    for f in ("findings", "lessons_learned", "improvement_actions", "evidence_doc_ids"):
+    for f in ("findings", "lessons_learned", "improvement_actions", "evidence_doc_ids",
+              "frequency", "rto_achieved_hours", "rpo_achieved_hours"):
         v = getattr(body, f, None)
         if v is not None:
             setattr(t, f, v)

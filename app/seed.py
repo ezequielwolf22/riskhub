@@ -365,6 +365,21 @@ def _migrate_columns() -> None:
         # v3.4.0 — Encuestas distribuidas: contadores en riesgos
         ("ALTER TABLE risks ADD COLUMN last_survey_date DATETIME", "risks", "last_survey_date"),
         ("ALTER TABLE risks ADD COLUMN survey_response_count INTEGER DEFAULT 0", "risks", "survey_response_count"),
+        # v3.4.3 — BIA: campos normativos (ENS, impacto progresivo en el tiempo, coste, version)
+        ("ALTER TABLE business_processes ADD COLUMN ens_category VARCHAR(8)", "business_processes", "ens_category"),
+        ("ALTER TABLE business_processes ADD COLUMN cost_per_hour REAL", "business_processes", "cost_per_hour"),
+        ("ALTER TABLE business_processes ADD COLUMN impact_1h INTEGER", "business_processes", "impact_1h"),
+        ("ALTER TABLE business_processes ADD COLUMN impact_24h INTEGER", "business_processes", "impact_24h"),
+        ("ALTER TABLE business_processes ADD COLUMN impact_7d INTEGER", "business_processes", "impact_7d"),
+        ("ALTER TABLE business_processes ADD COLUMN bia_version VARCHAR(16)", "business_processes", "bia_version"),
+        ("ALTER TABLE business_processes ADD COLUMN bia_review_date DATETIME", "business_processes", "bia_review_date"),
+        # v3.4.3 — BCPTest: frecuencia planificada + RTO/RPO real medido en ejercicio
+        ("ALTER TABLE bcp_tests ADD COLUMN frequency VARCHAR(16)", "bcp_tests", "frequency"),
+        ("ALTER TABLE bcp_tests ADD COLUMN rto_achieved_hours INTEGER", "bcp_tests", "rto_achieved_hours"),
+        ("ALTER TABLE bcp_tests ADD COLUMN rpo_achieved_hours INTEGER", "bcp_tests", "rpo_achieved_hours"),
+        # v3.4.3 — BCPPlan: DR Site + politica de backups (solo planes tipo DRP/CRP)
+        ("ALTER TABLE bcp_plans ADD COLUMN dr_site JSON", "bcp_plans", "dr_site"),
+        ("ALTER TABLE bcp_plans ADD COLUMN backup_policy JSON", "bcp_plans", "backup_policy"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

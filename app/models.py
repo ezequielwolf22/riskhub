@@ -1627,6 +1627,15 @@ class BusinessProcess(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
+    # BIA: campos normativos adicionales
+    ens_category = Column(String(8), nullable=True)        # ALTA | MEDIA | BÁSICA
+    cost_per_hour = Column(Float, nullable=True)           # Coste indisponibilidad €/h
+    impact_1h = Column(Integer, nullable=True)             # Impacto a 1h  (0=bajo,1=medio,2=alto)
+    impact_24h = Column(Integer, nullable=True)            # Impacto a 24h
+    impact_7d = Column(Integer, nullable=True)             # Impacto a 7 dias
+    bia_version = Column(String(16), nullable=True)        # Version del BIA (ej. "v1.0")
+    bia_review_date = Column(DateTime, nullable=True)      # Proxima revision del BIA
+
     owner = relationship("User", foreign_keys=[owner_id])
     recovery_owner = relationship("User", foreign_keys=[recovery_owner_id])
 
@@ -1651,6 +1660,10 @@ class BCPTest(Base):
     improvement_actions = Column(Text, nullable=True)
     evidence_doc_ids = Column(JSON, nullable=True)
     nc_ids = Column(JSON, nullable=True)
+    # Frecuencia planificada y valores reales medidos en el ejercicio
+    frequency = Column(String(16), nullable=True)          # mensual|trimestral|semestral|anual
+    rto_achieved_hours = Column(Integer, nullable=True)    # RTO real conseguido en el test
+    rpo_achieved_hours = Column(Integer, nullable=True)    # RPO real conseguido en el test
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     facilitator = relationship("User", foreign_keys=[facilitator_id])
@@ -1739,6 +1752,11 @@ class BCPPlan(Base):
     # Nombre del propietario del plan
     classification = Column(String(32), nullable=True)
     # "confidential" | "internal" | "restricted"
+    dr_site = Column(JSON, nullable=True)
+    # DRP: {site_type, location, access_info, capacity, connectivity, rto_hours, infrastructure_notes}
+    backup_policy = Column(JSON, nullable=True)
+    # DRP: {rule_321, encryption, retention, offsite_location,
+    #        items:[{system,backup_type,frequency,retention,rpo_covered,location,last_test_date,last_test_result}]}
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     approved_by = relationship("User", foreign_keys=[approved_by_id])
