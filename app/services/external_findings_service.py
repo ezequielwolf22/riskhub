@@ -25,7 +25,7 @@ def parse_nessus_xml(xml_content: bytes) -> list[dict]:
 
     Retorna lista de hallazgos normalizados.
     """
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     findings = []
     try:
@@ -80,7 +80,7 @@ def parse_nessus_xml(xml_content: bytes) -> list[dict]:
 
 def parse_qualys_xml(xml_content: bytes) -> list[dict]:
     """Parsea reporte XML de Qualys Guard."""
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     findings = []
     try:
@@ -139,7 +139,7 @@ def parse_qualys_xml(xml_content: bytes) -> list[dict]:
 
 def parse_burp_xml(xml_content: bytes) -> list[dict]:
     """Parsea reporte XML de Burp Suite."""
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     findings = []
     try:
@@ -191,7 +191,7 @@ def parse_burp_xml(xml_content: bytes) -> list[dict]:
 
 def parse_openvas_xml(xml_content: bytes) -> list[dict]:
     """Parsea reporte XML de OpenVAS/GVM."""
-    import xml.etree.ElementTree as ET
+    from defusedxml import ElementTree as ET
 
     findings = []
     try:

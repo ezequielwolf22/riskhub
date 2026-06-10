@@ -380,6 +380,21 @@ def _migrate_columns() -> None:
         # v3.4.3 — BCPPlan: DR Site + politica de backups (solo planes tipo DRP/CRP)
         ("ALTER TABLE bcp_plans ADD COLUMN dr_site JSON", "bcp_plans", "dr_site"),
         ("ALTER TABLE bcp_plans ADD COLUMN backup_policy JSON", "bcp_plans", "backup_policy"),
+        # BCM Expansion — location_id en tablas existentes
+        ("ALTER TABLE business_processes ADD COLUMN location_id INTEGER REFERENCES bcm_locations(id)",
+         "business_processes", "location_id"),
+        ("ALTER TABLE bcp_tests ADD COLUMN location_id INTEGER REFERENCES bcm_locations(id)",
+         "bcp_tests", "location_id"),
+        ("ALTER TABLE bcp_plans ADD COLUMN location_id INTEGER REFERENCES bcm_locations(id)",
+         "bcp_plans", "location_id"),
+        ("ALTER TABLE bcp_dependencies ADD COLUMN cross_location_id INTEGER REFERENCES bcm_locations(id)",
+         "bcp_dependencies", "cross_location_id"),
+        ("ALTER TABLE bcp_strategies ADD COLUMN location_id INTEGER REFERENCES bcm_locations(id)",
+         "bcp_strategies", "location_id"),
+        ("ALTER TABLE bcp_supplier_links ADD COLUMN location_id INTEGER REFERENCES bcm_locations(id)",
+         "bcp_supplier_links", "location_id"),
+        ("ALTER TABLE assets ADD COLUMN bcm_location_id INTEGER REFERENCES bcm_locations(id)",
+         "assets", "bcm_location_id"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

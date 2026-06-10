@@ -12,7 +12,10 @@ from app.database import get_db
 from app.models import (
     BCPDependency, BCPExerciseProgramme, BCPPlan, BCPStrategy,
     BCPSupplierLink, BCPTest, BusinessProcess, Supplier, User, UserRole,
+    BCMLocation, BCMEvidenceItem, BCMTestRecommendation,
+    BCPTestRunbook, BCPRecoverySequence, BCMActivation,
 )
+from app.services import bcm_location_service, bcm_graph_service, bcm_test_engine
 from app.security import get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
 
@@ -1313,3 +1316,765 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
         db.rollback()
         logger.error("create_nc_from_test error: %s", exc)
         raise HTTPException(500, f"Error al crear NC: {exc}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BCM EXPANSION — Schemas nuevos
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class LocationCreate(BaseModel):
+    name: str
+    parent_id: Optional[int] = None
+    description: Optional[str] = None
+    address: Optional[str] = None
+    country: Optional[str] = None
+    timezone: Optional[str] = None
+    bcm_manager_id: Optional[int] = None
+    recovery_site_type: Optional[str] = None
+    recovery_site_description: Optional[str] = None
+    alternate_location_id: Optional[int] = None
+
+
+class LocationUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    address: Optional[str] = None
+    bcm_manager_id: Optional[int] = None
+    recovery_site_type: Optional[str] = None
+    recovery_site_description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+# ── Helpers BCM Expansion ─────────────────────────────────────────────────────
+
+def _chk_loc(db, loc_id, org_id):
+    loc = db.get(BCMLocation, loc_id)
+    if not loc or loc.organization_id != org_id:
+        raise HTTPException(404, "Localización no encontrada")
+    return loc
+
+
+def _chk_act(db, act_id, org_id):
+    act = db.get(BCMActivation, act_id)
+    if not act or act.organization_id != org_id:
+        raise HTTPException(404, "Activación no encontrada")
+    return act
+
+
+def _loc_d(loc):
+    return {
+        "id": loc.id, "code": loc.code, "name": loc.name,
+        "description": loc.description, "parent_id": loc.parent_id,
+        "address": loc.address, "country": loc.country,
+        "bcm_manager_id": loc.bcm_manager_id,
+        "recovery_site_type": loc.recovery_site_type,
+        "recovery_site_description": loc.recovery_site_description,
+        "alternate_location_id": loc.alternate_location_id,
+        "is_active": loc.is_active,
+        "created_at": loc.created_at.isoformat() if loc.created_at else None,
+    }
+
+
+def _evid_d(e):
+    return {
+        "id": e.id, "location_id": e.location_id, "evidence_type": e.evidence_type,
+        "title": e.title, "description": e.description, "file_name": e.file_name,
+        "file_size": e.file_size, "mime_type": e.mime_type, "sha256_hash": e.sha256_hash,
+        "tags": e.tags, "is_current": e.is_current, "uploaded_by_id": e.uploaded_by_id,
+        "linked_test_id": e.linked_test_id, "linked_plan_id": e.linked_plan_id,
+        "linked_process_id": e.linked_process_id,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    }
+
+
+def _rec_d(r):
+    return {
+        "id": r.id, "location_id": r.location_id, "plan_id": r.plan_id,
+        "process_id": r.process_id, "recommended_test_type": r.recommended_test_type,
+        "reason": r.reason, "priority": r.priority, "trigger": r.trigger,
+        "status": r.status,
+        "recommended_date": r.recommended_date.isoformat() if r.recommended_date else None,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+def _runbook_d(rb):
+    return {
+        "id": rb.id, "title": rb.title, "test_type": rb.test_type,
+        "scenario": rb.scenario, "plan_id": rb.plan_id, "test_id": rb.test_id,
+        "location_id": rb.location_id, "steps": rb.steps or [],
+        "total_estimated_minutes": rb.total_estimated_minutes,
+        "generated_by_ai": rb.generated_by_ai,
+        "created_at": rb.created_at.isoformat() if rb.created_at else None,
+    }
+
+
+def _seq_d(s):
+    return {
+        "id": s.id, "name": s.name, "plan_id": s.plan_id, "location_id": s.location_id,
+        "sequence_items": s.sequence_items or [],
+        "activation_status": s.activation_status,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+def _act_d(a):
+    return {
+        "id": a.id, "code": a.code, "title": a.title, "status": a.status,
+        "location_id": a.location_id, "activated_plan_ids": a.activated_plan_ids,
+        "incident_id": a.incident_id,
+        "activated_at": a.activated_at.isoformat() if a.activated_at else None,
+        "closed_at": a.closed_at.isoformat() if a.closed_at else None,
+        "rto_objective_hours": a.rto_objective_hours,
+        "rto_actual_hours": a.rto_actual_hours,
+        "systems_status": a.systems_status or [],
+        "log_count": len(a.situation_log or []),
+        "situation_log": (a.situation_log or [])[-20:],
+        "lessons_learned": a.lessons_learned,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+    }
+
+
+# ── LOCALIZACIONES BCM ────────────────────────────────────────────────────────
+
+@router.get("/locations")
+def list_locations(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    return bcm_location_service.get_location_tree(db, _org(u))
+
+
+@router.get("/locations/consolidated")
+def consolidated(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    return bcm_location_service.get_consolidated_metrics(db, _org(u))
+
+
+@router.post("/locations", status_code=201)
+def create_location(body: LocationCreate, db: Session = Depends(get_db),
+                    u: User = Depends(require_admin)):
+    if body.parent_id:
+        p = db.get(BCMLocation, body.parent_id)
+        if not p or p.organization_id != _org(u):
+            raise HTTPException(422, "Localización padre no encontrada")
+    loc = BCMLocation(
+        organization_id=_org(u),
+        code=bcm_location_service.next_location_code(db, _org(u)),
+        **body.model_dump(exclude_none=True),
+    )
+    db.add(loc)
+    db.commit()
+    db.refresh(loc)
+    log_action(db, u.id, "create", "bcm_location", str(loc.id), {"name": loc.name})
+    return _loc_d(loc)
+
+
+@router.get("/locations/{loc_id}")
+def get_location(loc_id: int, db: Session = Depends(get_db),
+                 u: User = Depends(get_current_user)):
+    loc = _chk_loc(db, loc_id, _org(u))
+    metrics = bcm_location_service.get_location_metrics(db, loc_id, _org(u))
+    return {**_loc_d(loc), "metrics": metrics}
+
+
+@router.patch("/locations/{loc_id}")
+def update_location(loc_id: int, body: LocationUpdate,
+                    db: Session = Depends(get_db), u: User = Depends(require_admin)):
+    loc = _chk_loc(db, loc_id, _org(u))
+    for k, v in body.model_dump(exclude_none=True).items():
+        setattr(loc, k, v)
+    db.commit()
+    return _loc_d(loc)
+
+
+@router.delete("/locations/{loc_id}", status_code=204)
+def delete_location(loc_id: int, db: Session = Depends(get_db),
+                    u: User = Depends(require_admin)):
+    loc = _chk_loc(db, loc_id, _org(u))
+    procs = db.query(BusinessProcess).filter_by(
+        organization_id=_org(u), location_id=loc_id).count()
+    if procs:
+        raise HTTPException(422, f"No se puede eliminar: {procs} proceso(s) vinculado(s)")
+    db.delete(loc)
+    db.commit()
+
+
+# ── GRAFO DE DEPENDENCIAS BCM ─────────────────────────────────────────────────
+
+@router.get("/graph")
+def get_graph(location_id: Optional[int] = None,
+              db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Grafo de dependencias BCM compatible con Cytoscape.js."""
+    if location_id:
+        _chk_loc(db, location_id, _org(u))
+    return bcm_graph_service.build_dependency_graph(db, _org(u), location_id)
+
+
+@router.post("/graph/analyze")
+def analyze_graph(location_id: Optional[int] = None,
+                  db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    """Análisis IA del grafo de dependencias."""
+    from app.services.isms_analysis_service import _get_api_key, _get_model
+    api_key = _get_api_key(db, _org(u))
+    if not api_key:
+        raise HTTPException(422, "API key IA no configurada")
+    graph = bcm_graph_service.build_dependency_graph(db, _org(u), location_id)
+    analysis = bcm_graph_service.analyze_graph_with_ai(
+        db, graph, _org(u), api_key, _get_model(db, _org(u))
+    )
+    return {"analysis": analysis, "stats": graph["stats"]}
+
+
+# ── TEST RECOMMENDATIONS ──────────────────────────────────────────────────────
+
+@router.get("/test-recommendations")
+def list_recommendations(location_id: Optional[int] = None,
+                          status: Optional[str] = None,
+                          db: Session = Depends(get_db),
+                          u: User = Depends(get_current_user)):
+    q = db.query(BCMTestRecommendation).filter_by(organization_id=_org(u))
+    if location_id:
+        q = q.filter_by(location_id=location_id)
+    if status:
+        q = q.filter_by(status=status)
+    return [_rec_d(r) for r in q.order_by(
+        BCMTestRecommendation.priority, BCMTestRecommendation.recommended_date).all()]
+
+
+@router.post("/test-recommendations/generate")
+def generate_recommendations(location_id: Optional[int] = None,
+                               db: Session = Depends(get_db),
+                               u: User = Depends(require_analyst)):
+    n = bcm_test_engine.generate_recommendations(db, _org(u), location_id)
+    return {"created": n}
+
+
+@router.patch("/test-recommendations/{rid}")
+def update_recommendation(rid: int, body: dict,
+                           db: Session = Depends(get_db),
+                           u: User = Depends(require_analyst)):
+    rec = db.get(BCMTestRecommendation, rid)
+    if not rec or rec.organization_id != _org(u):
+        raise HTTPException(404)
+    new_status = body.get("status")
+    if new_status not in ("accepted", "dismissed"):
+        raise HTTPException(422)
+    rec.status = new_status
+    rec.accepted_by_id = u.id
+    db.commit()
+    return _rec_d(rec)
+
+
+@router.get("/tests/filter")
+def filter_tests(location_ids: Optional[str] = None,
+                 asset_id: Optional[int] = None,
+                 plan_type: Optional[str] = None,
+                 supplier_id: Optional[int] = None,
+                 db: Session = Depends(get_db),
+                 u: User = Depends(get_current_user)):
+    filters = {}
+    if location_ids:
+        filters["location_ids"] = [int(x) for x in location_ids.split(",") if x.strip()]
+    if asset_id:
+        filters["asset_id"] = asset_id
+    if plan_type:
+        filters["plan_type"] = plan_type
+    if supplier_id:
+        filters["supplier_id"] = supplier_id
+    return bcm_test_engine.filter_tests_ad_hoc(db, _org(u), filters)
+
+
+# ── EVIDENCIAS BCM ────────────────────────────────────────────────────────────
+
+@router.get("/evidence")
+def list_evidence(location_id: Optional[int] = None,
+                  evidence_type: Optional[str] = None,
+                  linked_test_id: Optional[int] = None,
+                  linked_plan_id: Optional[int] = None,
+                  db: Session = Depends(get_db),
+                  u: User = Depends(get_current_user)):
+    q = db.query(BCMEvidenceItem).filter_by(organization_id=_org(u))
+    if location_id:
+        q = q.filter_by(location_id=location_id)
+    if evidence_type:
+        q = q.filter_by(evidence_type=evidence_type)
+    if linked_test_id:
+        q = q.filter_by(linked_test_id=linked_test_id)
+    if linked_plan_id:
+        q = q.filter_by(linked_plan_id=linked_plan_id)
+    return [_evid_d(e) for e in q.order_by(BCMEvidenceItem.created_at.desc()).all()]
+
+
+@router.post("/evidence", status_code=201)
+async def upload_evidence(
+    title: str,
+    evidence_type: str,
+    location_id: Optional[int] = None,
+    linked_test_id: Optional[int] = None,
+    linked_plan_id: Optional[int] = None,
+    linked_process_id: Optional[int] = None,
+    description: Optional[str] = None,
+    tags: Optional[str] = None,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    u: User = Depends(require_analyst),
+):
+    """Sube evidencia BCM con cifrado Fernet y hash SHA-256 de integridad."""
+    import hashlib
+    import base64
+    from pathlib import Path
+    from cryptography.fernet import Fernet
+
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(413, "Archivo demasiado grande (máx 50 MB)")
+
+    sha256 = hashlib.sha256(content).hexdigest()
+
+    evidence_dir = Path(settings.data_dir) / "bcm_evidence" / str(_org(u))
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    stored = f"{sha256[:16]}_{file.filename}"
+    fpath = evidence_dir / stored
+
+    try:
+        key_bytes = settings.secret_key[:32].encode().ljust(32)[:32]
+        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+        fpath.write_bytes(fernet.encrypt(content))
+    except Exception:
+        fpath.write_bytes(content)
+
+    item = BCMEvidenceItem(
+        organization_id=_org(u), location_id=location_id,
+        evidence_type=evidence_type, title=title, description=description,
+        linked_test_id=linked_test_id, linked_plan_id=linked_plan_id,
+        linked_process_id=linked_process_id,
+        file_path=str(fpath), file_name=file.filename,
+        file_size=len(content), mime_type=file.content_type,
+        sha256_hash=sha256,
+        tags=[t.strip() for t in tags.split(",")] if tags else [],
+        uploaded_by_id=u.id,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, u.id, "upload", "bcm_evidence", str(item.id),
+               {"title": title, "type": evidence_type})
+    return _evid_d(item)
+
+
+@router.get("/evidence/{eid}/download")
+def download_evidence(eid: int, db: Session = Depends(get_db),
+                      u: User = Depends(require_analyst)):
+    from fastapi.responses import FileResponse
+    from pathlib import Path
+    ev = db.get(BCMEvidenceItem, eid)
+    if not ev or ev.organization_id != _org(u):
+        raise HTTPException(404)
+    if not ev.file_path or not Path(ev.file_path).exists():
+        raise HTTPException(404, "Archivo no encontrado en el servidor")
+    return FileResponse(ev.file_path, filename=ev.file_name,
+                        media_type=ev.mime_type or "application/octet-stream")
+
+
+@router.delete("/evidence/{eid}", status_code=204)
+def delete_evidence(eid: int, db: Session = Depends(get_db),
+                    u: User = Depends(require_analyst)):
+    from pathlib import Path
+    ev = db.get(BCMEvidenceItem, eid)
+    if not ev or ev.organization_id != _org(u):
+        raise HTTPException(404)
+    try:
+        Path(ev.file_path).unlink(missing_ok=True)
+    except Exception:
+        pass
+    db.delete(ev)
+    db.commit()
+
+
+# ── ACTIVACIONES BCM (CRISIS MANAGEMENT) ─────────────────────────────────────
+
+@router.get("/activations")
+def list_activations(status: Optional[str] = None,
+                     db: Session = Depends(get_db),
+                     u: User = Depends(get_current_user)):
+    q = db.query(BCMActivation).filter_by(organization_id=_org(u))
+    if status:
+        q = q.filter_by(status=status)
+    return [_act_d(a) for a in q.order_by(BCMActivation.activated_at.desc()).all()]
+
+
+@router.post("/activations", status_code=201)
+def create_activation(body: dict, db: Session = Depends(get_db),
+                      u: User = Depends(require_analyst)):
+    for pid in (body.get("activated_plan_ids") or []):
+        plan = db.get(BCPPlan, pid)
+        if not plan or plan.organization_id != _org(u):
+            raise HTTPException(422, f"Plan {pid} no encontrado")
+    n = db.query(BCMActivation).filter_by(organization_id=_org(u)).count()
+    act = BCMActivation(
+        organization_id=_org(u),
+        code=f"ACT-{n + 1:04d}",
+        title=body.get("title", "Activación BCM"),
+        activated_plan_ids=body.get("activated_plan_ids", []),
+        incident_id=body.get("incident_id"),
+        location_id=body.get("location_id"),
+        activated_at=datetime.now(timezone.utc),
+        activated_by_id=u.id,
+        situation_log=[],
+        systems_status=[],
+    )
+    db.add(act)
+    db.commit()
+    db.refresh(act)
+    log_action(db, u.id, "create", "bcm_activation", str(act.id), {"code": act.code})
+    return _act_d(act)
+
+
+@router.post("/activations/{aid}/log")
+def add_log_entry(aid: int, body: dict, db: Session = Depends(get_db),
+                  u: User = Depends(require_analyst)):
+    act = _chk_act(db, aid, _org(u))
+    log = list(act.situation_log or [])
+    log.append({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "user_id": u.id, "user_email": u.email,
+        "type": body.get("type", "action"),
+        "text": str(body.get("text", ""))[:2000],
+    })
+    act.situation_log = log
+    db.commit()
+    return {"entries": len(log)}
+
+
+@router.patch("/activations/{aid}/systems")
+def update_system_status(aid: int, body: dict, db: Session = Depends(get_db),
+                          u: User = Depends(require_analyst)):
+    from app.models import Asset as AssetModel
+    act = _chk_act(db, aid, _org(u))
+    systems = list(act.systems_status or [])
+    now = datetime.now(timezone.utc).isoformat()
+    asset = db.get(AssetModel, body.get("asset_id")) if body.get("asset_id") else None
+    found = False
+    for s in systems:
+        if s.get("asset_id") == body.get("asset_id"):
+            s.update({"status": body.get("status"), "notes": body.get("notes"),
+                      "updated_at": now})
+            found = True
+            break
+    if not found:
+        systems.append({
+            "asset_id": body.get("asset_id"),
+            "asset_name": asset.name if asset else str(body.get("asset_id")),
+            "status": body.get("status", "down"),
+            "notes": body.get("notes"),
+            "updated_at": now,
+        })
+    act.systems_status = systems
+    db.commit()
+    return {"systems_count": len(systems)}
+
+
+@router.post("/activations/{aid}/close")
+def close_activation(aid: int, body: dict, db: Session = Depends(get_db),
+                     u: User = Depends(require_admin)):
+    act = _chk_act(db, aid, _org(u))
+    if act.status == "closed":
+        raise HTTPException(422, "Activación ya cerrada")
+    now = datetime.now(timezone.utc)
+    rto_real = (now - act.activated_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+    act.status = "closed"
+    act.closed_at = now
+    act.closed_by_id = u.id
+    act.rto_actual_hours = round(rto_real, 2)
+    act.root_cause = body.get("root_cause")
+    act.lessons_learned = body.get("lessons_learned")
+    act.improvement_actions = body.get("improvement_actions")
+    _update_compliance_from_bcp(db, _org(u), "test_passed", {})
+    log_action(db, u.id, "close", "bcm_activation", str(act.id),
+               {"rto_actual_hours": rto_real})
+    db.commit()
+    return _act_d(act)
+
+
+# ── RUNBOOKS Y RECOVERY SEQUENCES ────────────────────────────────────────────
+
+@router.get("/runbooks")
+def list_runbooks(plan_id: Optional[int] = None, test_id: Optional[int] = None,
+                  db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    q = db.query(BCPTestRunbook).filter_by(organization_id=_org(u))
+    if plan_id:
+        q = q.filter_by(plan_id=plan_id)
+    if test_id:
+        q = q.filter_by(test_id=test_id)
+    return [_runbook_d(r) for r in q.all()]
+
+
+@router.post("/runbooks", status_code=201)
+def create_runbook(body: dict, db: Session = Depends(get_db),
+                   u: User = Depends(require_analyst)):
+    rb = BCPTestRunbook(
+        organization_id=_org(u), created_by_id=u.id,
+        **{k: v for k, v in body.items() if hasattr(BCPTestRunbook, k)}
+    )
+    db.add(rb)
+    db.commit()
+    db.refresh(rb)
+    return _runbook_d(rb)
+
+
+@router.post("/runbooks/{rid}/generate-ai")
+def generate_runbook_ai(rid: int, db: Session = Depends(get_db),
+                         u: User = Depends(require_analyst)):
+    """Genera los pasos del runbook con IA."""
+    import anthropic
+    import json
+    from app.services.isms_analysis_service import _get_api_key, _get_model
+    rb = db.get(BCPTestRunbook, rid)
+    if not rb or rb.organization_id != _org(u):
+        raise HTTPException(404)
+    api_key = _get_api_key(db, _org(u))
+    if not api_key:
+        raise HTTPException(422, "API key IA no configurada")
+    plan = db.get(BCPPlan, rb.plan_id) if rb.plan_id else None
+    plan_info = f"Plan: {plan.name} ({plan.plan_type})" if plan else ""
+    prompt = (
+        f"Experto en BCM ISO 22301. Genera runbook para:\n"
+        f"Tipo: {rb.test_type}, Escenario: {rb.scenario or 'Simulacro general'}\n{plan_info}\n"
+        f'JSON SOLO: {{"steps":[{{"seq":1,"title":"...","responsible_role":"...",'
+        f'"description":"...","expected_result":"...","estimated_minutes":15,'
+        f'"validation_check":"...","rollback_if_fails":"..."}}]}}\n'
+        f"8-12 pasos realistas y accionables."
+    )
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(model=_get_model(db, _org(u)), max_tokens=1500,
+                                      messages=[{"role": "user", "content": prompt}])
+        text = msg.content[0].text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(text)
+        rb.steps = data.get("steps", [])
+        rb.total_estimated_minutes = sum(s.get("estimated_minutes", 0) for s in rb.steps)
+        rb.generated_by_ai = True
+        db.commit()
+        return _runbook_d(rb)
+    except Exception as exc:
+        raise HTTPException(500, f"Error: {exc}")
+
+
+@router.patch("/runbooks/{rid}")
+def update_runbook(rid: int, body: dict, db: Session = Depends(get_db),
+                   u: User = Depends(require_analyst)):
+    rb = db.get(BCPTestRunbook, rid)
+    if not rb or rb.organization_id != _org(u):
+        raise HTTPException(404)
+    for k, v in body.items():
+        if hasattr(rb, k):
+            setattr(rb, k, v)
+    db.commit()
+    return _runbook_d(rb)
+
+
+@router.delete("/runbooks/{rid}", status_code=204)
+def delete_runbook(rid: int, db: Session = Depends(get_db),
+                   u: User = Depends(require_analyst)):
+    rb = db.get(BCPTestRunbook, rid)
+    if not rb or rb.organization_id != _org(u):
+        raise HTTPException(404)
+    db.delete(rb)
+    db.commit()
+
+
+@router.get("/recovery-sequences")
+def list_sequences(plan_id: Optional[int] = None, db: Session = Depends(get_db),
+                   u: User = Depends(get_current_user)):
+    q = db.query(BCPRecoverySequence).filter_by(organization_id=_org(u))
+    if plan_id:
+        q = q.filter_by(plan_id=plan_id)
+    return [_seq_d(s) for s in q.all()]
+
+
+@router.post("/recovery-sequences", status_code=201)
+def create_sequence(body: dict, db: Session = Depends(get_db),
+                    u: User = Depends(require_analyst)):
+    from app.models import Asset as AssetModel
+    for item in (body.get("sequence_items") or []):
+        aid = item.get("asset_id")
+        if aid:
+            a = db.get(AssetModel, aid)
+            if not a or a.organization_id != _org(u):
+                raise HTTPException(422, f"Activo {aid} no pertenece a esta organización")
+    seq = BCPRecoverySequence(
+        organization_id=_org(u),
+        **{k: v for k, v in body.items() if hasattr(BCPRecoverySequence, k)}
+    )
+    db.add(seq)
+    db.commit()
+    db.refresh(seq)
+    return _seq_d(seq)
+
+
+@router.patch("/recovery-sequences/{sid}")
+def update_sequence(sid: int, body: dict, db: Session = Depends(get_db),
+                    u: User = Depends(require_analyst)):
+    seq = db.get(BCPRecoverySequence, sid)
+    if not seq or seq.organization_id != _org(u):
+        raise HTTPException(404)
+    for k, v in body.items():
+        if hasattr(seq, k):
+            setattr(seq, k, v)
+    db.commit()
+    return _seq_d(seq)
+
+
+# ── REPORTING BCM ─────────────────────────────────────────────────────────────
+
+@router.get("/report/executive")
+def executive_report(location_id: Optional[int] = None,
+                     db: Session = Depends(get_db),
+                     u: User = Depends(require_analyst)):
+    from app.services.bcm_location_service import get_consolidated_metrics
+    from app.services.bcp_service import iso22301_status as _iso
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "consolidated_metrics": get_consolidated_metrics(db, _org(u)),
+        "iso22301_status": _iso(db, _org(u)),
+    }
+
+
+@router.get("/report/ens-compliance")
+def ens_report(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    from app.models import ComplianceFrameworkStatus
+    items = db.query(ComplianceFrameworkStatus).filter(
+        ComplianceFrameworkStatus.organization_id == _org(u),
+        ComplianceFrameworkStatus.framework_code == "ens",
+        ComplianceFrameworkStatus.requirement_id.in_(["op.cont.1", "op.cont.2", "op.cont.3"]),
+    ).all()
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "ens_measures": [
+            {
+                "id": i.requirement_id, "status": i.status,
+                "completion_pct": i.completion_pct,
+                "last_reviewed": i.last_reviewed_at.isoformat() if i.last_reviewed_at else None,
+            }
+            for i in items
+        ],
+    }
+
+
+@router.get("/report/activation-history")
+def activation_history(db: Session = Depends(get_db),
+                       u: User = Depends(require_analyst)):
+    acts = db.query(BCMActivation).filter_by(organization_id=_org(u)).order_by(
+        BCMActivation.activated_at.desc()).all()
+    closed = [a for a in acts if a.status == "closed" and a.rto_actual_hours]
+    avg_rto = sum(a.rto_actual_hours for a in closed) / len(closed) if closed else None
+    return {
+        "total": len(acts),
+        "active_now": sum(1 for a in acts if a.status == "active"),
+        "closed": len(closed),
+        "avg_rto_actual": round(avg_rto, 1) if avg_rto else None,
+        "activations": [_act_d(a) for a in acts[:20]],
+    }
+
+
+@router.get("/risk-coverage-gaps")
+def risk_coverage_gaps(location_id: Optional[int] = None,
+                       db: Session = Depends(get_db),
+                       u: User = Depends(require_analyst)):
+    """Riesgos críticos sin cobertura BCM — gap visible en dashboard ejecutivo."""
+    from app.models import Risk, RiskStatus, Asset as AssetModel
+    risks = db.query(Risk).filter(
+        Risk.organization_id == _org(u),
+        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
+        Risk.residual_level >= 6,
+    ).all()
+    gaps = []
+    for r in risks:
+        if getattr(r, "bcp_coverage", None):
+            continue
+        asset = db.get(AssetModel, r.asset_id) if r.asset_id else None
+        if location_id and asset and asset.bcm_location_id != location_id:
+            continue
+        gaps.append({
+            "risk_id": r.id, "risk_code": r.code, "risk_name": r.name,
+            "residual_level": r.residual_level,
+            "asset_id": r.asset_id,
+            "asset_name": asset.name if asset else None,
+            "asset_location_id": asset.bcm_location_id if asset else None,
+        })
+    return {"gaps_count": len(gaps), "gaps": gaps[:50]}
+
+
+# ── SUPPLIER AI ANALYSIS ──────────────────────────────────────────────────────
+
+@router.post("/suppliers/analyze-ai")
+def analyze_suppliers_ai(location_id: Optional[int] = None,
+                          db: Session = Depends(get_db),
+                          u: User = Depends(require_analyst)):
+    import anthropic
+    from app.services.isms_analysis_service import _get_api_key, _get_model
+    api_key = _get_api_key(db, _org(u))
+    if not api_key:
+        raise HTTPException(422, "API key IA no configurada")
+    q = db.query(BCPSupplierLink).filter_by(organization_id=_org(u))
+    if location_id:
+        try:
+            q = q.filter_by(location_id=location_id)
+        except Exception:
+            pass
+    links = q.all()
+    if not links:
+        return {"analysis": "No hay proveedores BCM vinculados."}
+    lines = []
+    for lk in links:
+        sup = db.get(Supplier, lk.supplier_id)
+        if not sup:
+            continue
+        procs = [db.get(BusinessProcess, pid) for pid in (lk.process_ids or [])]
+        lines.append(
+            f"- {sup.name} ({lk.criticality}): RTO {lk.rto_impact_hours or '?'}h, "
+            f"contingencia:{'sí' if lk.has_contingency_plan else 'NO'}, "
+            f"procesos:{', '.join(p.name for p in procs if p)}"
+        )
+    prompt = (
+        "Experto ISO 22301 y NIS2 Art.21.2c.\n"
+        "Analiza proveedores críticos BCM:\n" + "\n".join(lines) +
+        "\n\n(1) Concentración de riesgo, (2) Sin plan contingencia, "
+        "(3) Gaps SLA vs RTO, (4) Top 3 recomendaciones con referencia normativa. "
+        "Máximo 300 palabras."
+    )
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(model=_get_model(db, _org(u)), max_tokens=450,
+                                      messages=[{"role": "user", "content": prompt}])
+        return {"analysis": msg.content[0].text}
+    except Exception as exc:
+        raise HTTPException(500, f"Error: {exc}")
+
+
+# ── UPLOAD DOCUMENTACIÓN BCM ──────────────────────────────────────────────────
+
+@router.post("/documents/upload", status_code=201)
+async def upload_bcm_document(
+    file: UploadFile = File(...),
+    location_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    u: User = Depends(require_analyst),
+):
+    """Upload de documentación BCM — usa el pipeline del Agente IA con hint BCM."""
+    try:
+        from app.services.isms_analysis_service import process_document_upload
+        return await process_document_upload(
+            file=file, db=db, user=u,
+            category_hint="bcp",
+            location_id=location_id,
+        )
+    except (ImportError, TypeError):
+        import hashlib
+        from pathlib import Path
+        content = await file.read()
+        if len(content) > 50 * 1024 * 1024:
+            raise HTTPException(413, "Máx 50 MB")
+        docs_dir = Path(settings.data_dir) / "documents" / str(_org(u))
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        sha = hashlib.sha256(content).hexdigest()[:16]
+        fpath = docs_dir / f"{sha}_{file.filename}"
+        fpath.write_bytes(content)
+        return {"message": "Documento guardado. Procesamiento en cola.", "filename": file.filename}

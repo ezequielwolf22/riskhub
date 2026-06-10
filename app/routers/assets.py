@@ -300,6 +300,26 @@ def _run_asset_analysis_bg(asset_id: int) -> None:
             db2.close()
     except Exception as _e:
         logger.debug("BCP suggest skipped: %s", _e)
+    # Auto-link BCMLocation por nombre de localización del activo
+    try:
+        from app.models import BCMLocation
+        from app.database import SessionLocal as _SL2
+        db3 = _SL2()
+        try:
+            asset = db3.get(Asset, asset_id)
+            if asset and asset.location and not asset.bcm_location_id:
+                loc = db3.query(BCMLocation).filter(
+                    BCMLocation.organization_id == asset.organization_id,
+                    BCMLocation.name.ilike(f"%{asset.location}%"),
+                    BCMLocation.is_active == True,
+                ).first()
+                if loc:
+                    asset.bcm_location_id = loc.id
+                    db3.commit()
+        finally:
+            db3.close()
+    except Exception:
+        pass
 
 
 @router.post("/smart-import")

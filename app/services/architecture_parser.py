@@ -8,7 +8,7 @@ Soporta:
 import json
 import logging
 import re
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 from typing import Optional
 
 from sqlalchemy.orm import Session

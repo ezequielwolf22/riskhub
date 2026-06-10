@@ -57,36 +57,32 @@ def _inherit_controls(db: Session, asset: Asset, threat: Threat) -> list:
 
 
 def _get_inherent_values_from_ai(db: Session, asset: Asset, threat: Threat) -> tuple[int, int]:
-    """IA analiza asset + threat → propone likelihood y consequence.
-
-    A3: rag_service es un modulo, no un objeto — usar la funcion ask() directamente.
-    Cae back a defaults si no puede.
-    """
+    """Llama directamente a Anthropic — rag_service.ask() no existe."""
     try:
-        from app.services.rag_service import ask as _ask
-
+        from app.services.isms_analysis_service import _get_api_key, _get_model
+        import anthropic
+        api_key = _get_api_key(db, asset.organization_id)
+        if not api_key:
+            return (2, 2)
+        client = anthropic.Anthropic(api_key=api_key)
         prompt = (
-            f"Evalua riesgo de seguridad. Asset: {asset.name} ({asset.description or 'sin desc'}). "
-            f"Amenaza: {threat.name} ({threat.description or 'sin desc'}). "
-            f"Devuelve 2 numeros (likelihood,consequence) del 0-4 donde "
-            f"0=imposible/nulo, 1=raro, 2=posible, 3=probable, 4=seguro. "
-            f"Formato: SOLO '3,2' sin comillas."
+            f"Evalúa riesgo ISO 27005. Activo: {asset.name} "
+            f"({asset.asset_type.value if asset.asset_type else 'desconocido'}). "
+            f"Amenaza: {threat.name}. "
+            f"Devuelve SOLO dos enteros separados por coma: likelihood,consequence "
+            f"(escala 0-4). Ejemplo: 3,2"
         )
-
-        response = _ask(prompt, org_id=asset.organization_id)
-        if response:
-            parts = response.strip().split(",")
-            if len(parts) == 2:
-                l = int(parts[0].strip())
-                c = int(parts[1].strip())
-                if 0 <= l <= 4 and 0 <= c <= 4:
-                    logger.info("IA valuacion para %s+%s: L=%d C=%d",
-                               asset.code, threat.code, l, c)
-                    return (l, c)
-    except Exception as e:
-        logger.debug("IA valuacion fallo: %s, usando defaults", e)
-
-    return (2, 2)  # Default: posible + moderado
+        msg = client.messages.create(
+            model=_get_model(db, asset.organization_id), max_tokens=10,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        parts = msg.content[0].text.strip().split(",")
+        l, c = int(parts[0].strip()), int(parts[1].strip())
+        if 0 <= l <= 4 and 0 <= c <= 4:
+            return (l, c)
+    except Exception:
+        pass
+    return (2, 2)
 
 
 def auto_generate_risks_for_asset(

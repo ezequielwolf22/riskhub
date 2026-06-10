@@ -334,7 +334,7 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
                 if not already:
                     pt = suggest_plan_type_from_doc(doc.original_name or "",
                                                     analysis.get("summary", ""))
-                    db.add(_BCPPlan(
+                    plan = _BCPPlan(
                         organization_id=_org_id,
                         code=next_plan_code(db, _org_id, pt),
                         plan_type=pt,
@@ -342,7 +342,20 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
                         status="draft",
                         content_summary=(analysis.get("summary") or "")[:500],
                         document_id=doc.id,
-                    ))
+                    )
+                    # Auto-detectar localización por nombre en el documento
+                    try:
+                        from app.models import BCMLocation
+                        locs = db.query(BCMLocation).filter_by(
+                            organization_id=_org_id, is_active=True).all()
+                        doc_text = (doc.original_name or "").lower()
+                        for loc in locs:
+                            if loc.name.lower() in doc_text or (loc.code or "").lower() in doc_text:
+                                plan.location_id = loc.id
+                                break
+                    except Exception:
+                        pass
+                    db.add(plan)
                     db.commit()
                     logger.info("BCP plan auto-created from ISMS doc %d: %s",
                                 doc.id, doc.original_name)

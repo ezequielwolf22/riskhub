@@ -1286,13 +1286,13 @@ def _run_evidence_expiry_check() -> None:
         if not expiring:
             return
 
-        cfg = email_service.get_settings(db)
         alerted = 0
         for ev in expiring:
             ev.expiry_alert_sent = True
             days_left = (ev.expires_at - now).days if ev.expires_at else 0
 
             try:
+                cfg = email_service.get_settings_for_org(db, ev.organization_id)
                 if cfg and cfg.smtp_host:
                     admins = db.query(User).filter(
                         User.organization_id == ev.organization_id,
@@ -1356,7 +1356,7 @@ def _run_ccm_tests() -> None:
 
                 # Alertar si score < 70 o hay FAILs críticos
                 if fails and score < 70:
-                    cfg = email_service.get_settings(db)
+                    cfg = email_service.get_settings_for_org(db, org.id)
                     if cfg and cfg.smtp_host:
                         from app.models import User, UserRole
                         admins = db.query(User).filter(
@@ -1777,7 +1777,7 @@ def _run_bcp_test_overdue() -> None:
             if stale:
                 by_org.setdefault(p.organization_id, []).append(p)
         for org_id, procs_list in by_org.items():
-            cfg = email_service.get_settings(db)
+            cfg = email_service.get_settings_for_org(db, org_id)
             if not cfg or not cfg.smtp_host:
                 continue
             admin = db.query(User).filter_by(
@@ -1824,7 +1824,7 @@ def _run_bcp_plan_review_due() -> None:
             if p.organization_id:
                 by_org.setdefault(p.organization_id, []).append(p)
         for org_id, plans in by_org.items():
-            cfg = email_service.get_settings(db)
+            cfg = email_service.get_settings_for_org(db, org_id)
             if not cfg or not cfg.smtp_host:
                 continue
             admin = db.query(User).filter_by(
@@ -1903,7 +1903,7 @@ def _run_bcp_bia_gap_check() -> None:
                     (p.name, bia["pct"], bia["missing"])
                 )
         for org_id, gaps in by_org.items():
-            cfg = email_service.get_settings(db)
+            cfg = email_service.get_settings_for_org(db, org_id)
             if not cfg or not cfg.smtp_host:
                 continue
             admin = db.query(User).filter_by(
@@ -1932,6 +1932,23 @@ def _run_bcp_bia_gap_check() -> None:
                 pass
     except Exception as exc:
         logger.exception("bcp_bia_gap_check error: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_bcm_test_recommendations() -> None:
+    """Genera recomendaciones de tests BCM para todas las organizaciones activas."""
+    from app.services.bcm_test_engine import generate_recommendations
+    from app.database import SessionLocal
+    from app.models import Organization
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter_by(is_active=True).all()
+        total = sum(generate_recommendations(db, o.id) for o in orgs)
+        if total:
+            logger.info("BCM test recommendations: %d generated", total)
+    except Exception as exc:
+        logger.exception("bcm_test_recommendations error: %s", exc)
     finally:
         db.close()
 
@@ -2171,6 +2188,15 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Limpieza de jobs IA expirados en memoria",
         replace_existing=True,
         misfire_grace_time=300,
+    )
+    # BCM: generar recomendaciones de tests (domingos 7h)
+    _scheduler.add_job(
+        func=_run_bcm_test_recommendations,
+        trigger=CronTrigger(day_of_week="sun", hour=7),
+        id="bcm_test_recommendations",
+        name="Generar recomendaciones de tests BCM",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

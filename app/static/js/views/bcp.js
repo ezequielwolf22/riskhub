@@ -2,15 +2,19 @@
 const ViewBcp = (() => {
 
   const BCP_TABS = [
-    { id: 'overview',     label: 'Resumen',           icon: 'ti-dashboard' },
-    { id: 'processes',    label: 'Procesos Criticos',  icon: 'ti-sitemap' },
-    { id: 'bia',          label: 'BIA',               icon: 'ti-chart-dots' },
-    { id: 'dependencies', label: 'Dependencias',       icon: 'ti-link' },
-    { id: 'strategies',   label: 'Estrategias',        icon: 'ti-route' },
-    { id: 'plans',        label: 'Planes BCP/DRP',     icon: 'ti-file-text' },
-    { id: 'tests',        label: 'Tests & Ejercicios', icon: 'ti-clipboard-check' },
-    { id: 'suppliers',    label: 'Proveedores BCM',    icon: 'ti-truck' },
-    { id: 'import',       label: 'Importar Excel',     icon: 'ti-table-import' },
+    { id: 'overview',         label: 'Resumen',           icon: 'ti-dashboard' },
+    { id: 'processes',        label: 'Procesos Criticos',  icon: 'ti-sitemap' },
+    { id: 'bia',              label: 'BIA',               icon: 'ti-chart-dots' },
+    { id: 'dependencies',     label: 'Dependencias',       icon: 'ti-link' },
+    { id: 'strategies',       label: 'Estrategias',        icon: 'ti-route' },
+    { id: 'plans',            label: 'Planes BCP/DRP',     icon: 'ti-file-text' },
+    { id: 'tests',            label: 'Tests & Ejercicios', icon: 'ti-clipboard-check' },
+    { id: 'suppliers',        label: 'Proveedores BCM',    icon: 'ti-truck' },
+    { id: 'import',           label: 'Importar Excel',     icon: 'ti-table-import' },
+    { id: 'locations',        label: 'Localizaciones',     icon: 'ti-map-pin' },
+    { id: 'graph',            label: 'Mapa Deps.',         icon: 'ti-topology-full' },
+    { id: 'evidence',         label: 'Evidencias',         icon: 'ti-files' },
+    { id: 'recommendations',  label: 'Tests IA',           icon: 'ti-bulb' },
   ];
   let _activeTab = 'overview';
 
@@ -38,11 +42,38 @@ const ViewBcp = (() => {
       `<button class="bcp-tab${t.id === _activeTab ? ' active' : ''}" data-tab="${t.id}">
         <i class="ti ${t.icon}"></i>${t.label}
       </button>`
-    ).join('');
+    ).join('') + `
+      <div style="margin-left:auto;display:flex;align-items:center;padding-right:4px">
+        <button class="btn btn-ghost btn-sm" id="btn-bcm-doc-upload" title="Subir documentación BCM">
+          <i class="ti ti-cloud-upload" aria-hidden="true"></i> Docs BCM
+        </button>
+      </div>`;
     container.appendChild(tabBar);
     tabBar.querySelectorAll('.bcp-tab').forEach(btn =>
       btn.addEventListener('click', () => _switchTab(btn.dataset.tab))
     );
+    tabBar.querySelector('#btn-bcm-doc-upload')?.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.pdf,.docx,.doc,.txt,.xlsx,.xls';
+      input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          await fetch('/api/bcp/documents/upload', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + Api.token() },
+            body: fd,
+          });
+          UI.toast('Documento BCM subido y procesado por el agente IA.', 'success');
+        } catch (err) {
+          UI.toast('Error al subir el documento.', 'error');
+        }
+      };
+      input.click();
+    });
 
     const content = document.createElement('div');
     content.id = 'bcp-tab-content';
@@ -73,8 +104,12 @@ const ViewBcp = (() => {
         case 'strategies':   await _tabStrategies(content); break;
         case 'plans':        await _tabPlans(content); break;
         case 'tests':        await _tabTests(content); break;
-        case 'suppliers':    await _tabSuppliers(content); break;
-        case 'import':       _tabImport(content); break;
+        case 'suppliers':        await _tabSuppliers(content); break;
+        case 'import':           _tabImport(content); break;
+        case 'locations':        await _tabLocations(content); break;
+        case 'graph':            await _tabGraph(content); break;
+        case 'evidence':         await _tabEvidence(content); break;
+        case 'recommendations':  await _tabRecommendations(content); break;
         default: content.innerHTML = '';
       }
     } catch (e) {
@@ -2651,6 +2686,449 @@ const ViewBcp = (() => {
       document.querySelector('.modal-bg')?.remove();
       _switchTab('tests');
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+  }
+
+  // ── Tab Localizaciones ───────────────────────────────────────────────────────
+
+  async function _tabLocations(container) {
+    const [tree, consolidated] = await Promise.all([
+      Api.get('/api/bcp/locations').catch(() => []),
+      Api.get('/api/bcp/locations/consolidated').catch(() => ({})),
+    ]);
+
+    const mColor = { green: 'var(--risk-low)', yellow: 'var(--risk-medium)', red: 'var(--risk-critical)' };
+    const mIcon  = { green: 'ti-circle-check', yellow: 'ti-alert-triangle', red: 'ti-circle-x' };
+
+    function renderNode(node, depth) {
+      const m = consolidated.locations?.[node.id]?.metrics || {};
+      const color = mColor[m.maturity_color || 'red'] || 'var(--risk-critical)';
+      return `
+        <div style="margin-left:${depth * 20}px;margin-bottom:8px">
+          <div class="card" style="padding:12px 16px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <i class="ti ${mIcon[m.maturity_color || 'red']}" style="color:${color};font-size:18px;flex-shrink:0"></i>
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <code style="font-size:11px">${UI.esc(node.code || '')}</code>
+                  <strong style="font-size:14px">${UI.esc(node.name)}</strong>
+                  ${node.country ? `<span style="font-size:12px;color:var(--text-subtle)">${UI.esc(node.country)}</span>` : ''}
+                </div>
+                <div style="display:flex;gap:12px;margin-top:4px;font-size:12px;color:var(--text-subtle)">
+                  <span>${m.processes_critical || 0} proc. críticos</span>
+                  <span>${m.plans_approved || 0} planes aprobados</span>
+                  <span>BIA avg ${m.avg_bia_pct || 0}%</span>
+                  <span>${m.tests_passed_12m || 0} tests OK</span>
+                </div>
+              </div>
+              <button class="btn btn-ghost btn-sm" data-filter-loc="${node.id}" title="Filtrar por esta localización">
+                <i class="ti ti-filter" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          ${(node.children || []).map(c => renderNode(c, depth + 1)).join('')}
+        </div>`;
+    }
+
+    const isAdmin = window._userRole === 'admin' || window._userRole === 'superadmin';
+    container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="margin:0;font-size:16px">Localizaciones BCM</h3>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">
+            Jerarquía de sedes y unidades — ${consolidated.total_locations || 0} localización(es)
+            · Madurez global:
+            <span style="font-weight:700;color:${mColor[consolidated.org_maturity || 'red']}">${consolidated.org_maturity || 'sin datos'}</span>
+          </p>
+        </div>
+        ${isAdmin ? `<button class="btn btn-primary btn-sm" id="btn-new-loc">
+          <i class="ti ti-plus" aria-hidden="true"></i> Nueva localización</button>` : ''}
+      </div>
+      ${tree.length === 0
+        ? `<div class="notice notice-info">Sin localizaciones definidas. Crea la primera para organizar tu BCM por sede.</div>`
+        : tree.map(n => renderNode(n, 0)).join('')}
+      ${(consolidated.unlocated_processes > 0) ? `
+        <div class="notice notice-warning" style="margin-top:12px">
+          ${consolidated.unlocated_processes} proceso(s) sin localización asignada
+        </div>` : ''}
+    `;
+
+    container.querySelectorAll('[data-filter-loc]').forEach(btn => {
+      btn.onclick = () => {
+        window._bcmLocationFilter = parseInt(btn.dataset.filterLoc);
+        _switchTab('processes');
+      };
+    });
+
+    if (isAdmin) {
+      container.querySelector('#btn-new-loc')?.addEventListener('click', () => _modalLocation());
+    }
+  }
+
+  function _modalLocation() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:480px">
+        <div class="modal-header"><h3>Nueva localización BCM</h3>
+          <button onclick="this.closest('.modal-bg').remove()" class="btn-icon"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
+          <div><label>Nombre *</label><input id="loc-name" class="form-control" placeholder="Sede Madrid"></div>
+          <div><label>País</label><input id="loc-country" class="form-control" placeholder="España"></div>
+          <div><label>Dirección</label><input id="loc-address" class="form-control"></div>
+          <div><label>Tipo site de recuperación</label>
+            <select id="loc-site-type" class="form-select">
+              <option value="">— ninguno —</option>
+              <option value="hot">Hot site</option>
+              <option value="warm">Warm site</option>
+              <option value="cold">Cold site</option>
+              <option value="cloud">Cloud</option>
+              <option value="wfh">Work from home</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary" id="btn-save-loc">Guardar</button>
+            <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#btn-save-loc').onclick = async () => {
+      const name = modal.querySelector('#loc-name').value.trim();
+      if (!name) return UI.toast('El nombre es obligatorio', 'error');
+      try {
+        await Api.post('/api/bcp/locations', {
+          name,
+          country: modal.querySelector('#loc-country').value.trim() || null,
+          address: modal.querySelector('#loc-address').value.trim() || null,
+          recovery_site_type: modal.querySelector('#loc-site-type').value || null,
+        });
+        modal.remove();
+        _switchTab('locations');
+      } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+    };
+  }
+
+  // ── Tab Grafo de dependencias ─────────────────────────────────────────────────
+
+  async function _tabGraph(container) {
+    if (typeof cytoscape === 'undefined') {
+      container.innerHTML = '<div class="notice notice-warning">Cytoscape.js no disponible. Comprueba que está cargado en index.html.</div>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <h3 style="margin:0;font-size:16px">Mapa de dependencias BCM</h3>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">
+            Procesos · Activos · Proveedores · SPOFs marcados en rojo
+          </p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <select id="graph-loc-filter" class="form-select" style="width:160px">
+            <option value="">Todas las localizaciones</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" id="btn-analyze-graph">
+            <i class="ti ti-brain" aria-hidden="true"></i> Analizar con IA
+          </button>
+        </div>
+      </div>
+      <div id="cy-container" style="width:100%;height:520px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg-2)"></div>
+      <div id="graph-analysis" style="display:none;margin-top:12px"></div>
+    `;
+
+    try {
+      const locs = await Api.get('/api/bcp/locations');
+      const sel = container.querySelector('#graph-loc-filter');
+      const flat = [];
+      function flattenLocs(nodes) { nodes.forEach(n => { flat.push(n); flattenLocs(n.children || []); }); }
+      flattenLocs(locs);
+      flat.forEach(loc => {
+        const opt = document.createElement('option');
+        opt.value = loc.id; opt.textContent = loc.name;
+        sel.appendChild(opt);
+      });
+    } catch (e) {}
+
+    async function loadGraph(locationId) {
+      const url = locationId ? `/api/bcp/graph?location_id=${locationId}` : '/api/bcp/graph';
+      const data = await Api.get(url).catch(() => ({ nodes: [], edges: [] }));
+
+      const elements = [
+        ...data.nodes.map(n => ({ data: { id: n.id, label: n.label, type: n.type,
+          criticality: n.criticality, is_spof: n.is_spof, rto: n.rto_hours,
+          location_name: n.location_name } })),
+        ...data.edges.map(e => ({ data: { id: e.id, source: e.source, target: e.target,
+          type: e.type, label: e.label, is_critical: e.is_critical } })),
+      ];
+
+      container.querySelector('#cy-container').innerHTML = '';
+      cytoscape({
+        container: container.querySelector('#cy-container'),
+        elements,
+        style: [
+          { selector: 'node', style: { 'label': 'data(label)', 'font-size': '11px',
+            'text-valign': 'bottom', 'text-margin-y': '4px', 'width': '36px', 'height': '36px' } },
+          { selector: 'node[type="process"]', style: { 'background-color': '#5B00AD', 'shape': 'ellipse' } },
+          { selector: 'node[type="asset"]', style: { 'background-color': '#E05500', 'shape': 'rectangle' } },
+          { selector: 'node[type="supplier"]', style: { 'background-color': '#1A7A40', 'shape': 'hexagon' } },
+          { selector: 'node[?is_spof]', style: { 'border-width': '3px', 'border-color': '#DC2626',
+            'width': '44px', 'height': '44px' } },
+          { selector: 'edge', style: { 'width': '1.5px', 'line-color': '#bebdd0',
+            'target-arrow-shape': 'triangle', 'target-arrow-color': '#bebdd0',
+            'curve-style': 'bezier', 'font-size': '9px', 'label': 'data(label)',
+            'text-rotation': 'autorotate' } },
+          { selector: 'edge[?is_critical]', style: { 'line-color': '#DC2626',
+            'target-arrow-color': '#DC2626', 'width': '2.5px' } },
+        ],
+        layout: { name: 'cose', animate: true, animationDuration: 500 },
+      });
+    }
+
+    await loadGraph(null);
+
+    container.querySelector('#graph-loc-filter').onchange = async (e) => {
+      await loadGraph(e.target.value || null);
+    };
+
+    container.querySelector('#btn-analyze-graph').onclick = async () => {
+      const btn = container.querySelector('#btn-analyze-graph');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i>';
+      const locId = container.querySelector('#graph-loc-filter').value;
+      try {
+        const url = locId ? `/api/bcp/graph/analyze?location_id=${locId}` : '/api/bcp/graph/analyze';
+        const res = await Api.post(url, {});
+        const div = container.querySelector('#graph-analysis');
+        div.style.display = 'block';
+        div.innerHTML = `<div class="card" style="white-space:pre-wrap;font-size:13px;line-height:1.6">${UI.esc(res.analysis)}</div>`;
+      } catch (e) { UI.toast('Error en análisis IA', 'error'); }
+      finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ti ti-brain"></i> Analizar con IA';
+      }
+    };
+  }
+
+  // ── Tab Evidencias ────────────────────────────────────────────────────────────
+
+  async function _tabEvidence(container) {
+    const evidence = await Api.get('/api/bcp/evidence').catch(() => []);
+
+    container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="margin:0;font-size:16px">Repositorio de evidencias BCM</h3>
+        <button class="btn btn-primary btn-sm" id="btn-upload-evidence">
+          <i class="ti ti-upload" aria-hidden="true"></i> Subir evidencia
+        </button>
+      </div>
+      ${evidence.length === 0
+        ? `<div class="notice notice-info">Sin evidencias. Sube actas de tests, aprobaciones de planes o informes de auditoría.</div>`
+        : `<div class="table-wrap"><table class="data">
+            <thead><tr><th>Tipo</th><th>Título</th><th>Loc.</th><th>Vinculada a</th><th>Integridad</th><th>Fecha</th><th></th></tr></thead>
+            <tbody>
+              ${evidence.map(e => `<tr>
+                <td><span class="badge badge-muted" style="font-size:10px">${UI.esc(e.evidence_type)}</span></td>
+                <td><strong>${UI.esc(e.title)}</strong>
+                  ${e.file_name ? `<br><small style="color:var(--text-subtle)">${UI.esc(e.file_name)}</small>` : ''}
+                </td>
+                <td style="font-size:12px">${e.location_id ? `#${e.location_id}` : '—'}</td>
+                <td style="font-size:12px">
+                  ${e.linked_test_id ? `Test #${e.linked_test_id}` : ''}
+                  ${e.linked_plan_id ? `Plan #${e.linked_plan_id}` : ''}
+                  ${e.linked_process_id ? `Proc #${e.linked_process_id}` : ''}
+                  ${!e.linked_test_id && !e.linked_plan_id && !e.linked_process_id ? '—' : ''}
+                </td>
+                <td>
+                  <span title="SHA-256: ${UI.esc(e.sha256_hash || '')}" style="font-size:10px;font-family:var(--font-mono);color:var(--text-subtle)">
+                    ${e.sha256_hash ? '&#10003; ' + e.sha256_hash.slice(0, 8) + '…' : '—'}
+                  </span>
+                </td>
+                <td style="font-size:12px">${e.created_at ? e.created_at.slice(0, 10) : '—'}</td>
+                <td>
+                  <a href="/api/bcp/evidence/${e.id}/download" class="btn btn-ghost btn-sm" title="Descargar" target="_blank">
+                    <i class="ti ti-download" aria-hidden="true"></i>
+                  </a>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table></div>`
+      }
+    `;
+
+    container.querySelector('#btn-upload-evidence').onclick = () => _modalUploadEvidence();
+  }
+
+  function _modalUploadEvidence() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:500px">
+        <div class="modal-header"><h3>Subir evidencia BCM</h3>
+          <button onclick="this.closest('.modal-bg').remove()" class="btn-icon"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
+          <div><label>Título *</label><input id="ev-title" class="form-control" placeholder="Acta del ejercicio tabletop Q1-2025"></div>
+          <div><label>Tipo *</label>
+            <select id="ev-type" class="form-select">
+              <option value="test_report">Informe de test</option>
+              <option value="plan_approval">Aprobación de plan</option>
+              <option value="bcp_activation">Activación BCP real</option>
+              <option value="audit_report">Informe de auditoría</option>
+              <option value="backup_validation">Validación de backup</option>
+              <option value="training_record">Registro de formación</option>
+              <option value="supplier_cert">Certificación proveedor</option>
+              <option value="screenshot">Captura de pantalla</option>
+              <option value="other">Otro</option>
+            </select>
+          </div>
+          <div><label>Descripción</label><textarea id="ev-desc" class="form-control" rows="2"></textarea></div>
+          <div><label>Archivo *</label><input id="ev-file" type="file" class="form-control"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-primary" id="btn-save-ev">Subir</button>
+            <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#btn-save-ev').onclick = async () => {
+      const title = modal.querySelector('#ev-title').value.trim();
+      const file = modal.querySelector('#ev-file').files[0];
+      if (!title || !file) return UI.toast('Título y archivo son obligatorios', 'error');
+      const fd = new FormData();
+      fd.append('file', file);
+      const params = new URLSearchParams({
+        title,
+        evidence_type: modal.querySelector('#ev-type').value,
+        description: modal.querySelector('#ev-desc').value.trim() || '',
+      });
+      try {
+        await fetch(`/api/bcp/evidence?${params}`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + Api.token() },
+          body: fd,
+        });
+        modal.remove();
+        UI.toast('Evidencia subida correctamente', 'success');
+        _switchTab('evidence');
+      } catch (e) { UI.toast('Error al subir la evidencia', 'error'); }
+    };
+  }
+
+  // ── Tab Recomendaciones IA ────────────────────────────────────────────────────
+
+  async function _tabRecommendations(container) {
+    const recs = await Api.get('/api/bcp/test-recommendations?status=pending').catch(() => []);
+    const pColors = {
+      critical: 'var(--risk-critical)', high: 'var(--risk-high)',
+      medium: 'var(--risk-medium)', low: 'var(--risk-low)',
+    };
+    const triggerLabels = {
+      plan_approved: 'Plan aprobado', overdue_12m: 'Sin test >12m',
+      never_tested: 'Nunca testado', incident: 'Incidente reciente',
+      test_failed: 'Test fallido', regulatory: 'Requisito normativo',
+    };
+
+    container.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div>
+          <h3 style="margin:0;font-size:16px">Tests recomendados por IA</h3>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">
+            Motor ISO 22301 cl. 8.5 — ${recs.length} recomendación(es) pendiente(s)
+          </p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-gen-recs">
+          <i class="ti ti-refresh" aria-hidden="true"></i> Regenerar
+        </button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
+        <select id="filter-plan-type" class="form-select" style="width:130px">
+          <option value="">Tipo plan</option>
+          ${['bcp','drp','communication','crisis_management','cyber_response'].map(t =>
+            `<option value="${t}">${t}</option>`).join('')}
+        </select>
+        <select id="filter-asset" class="form-select" style="width:180px">
+          <option value="">Activo</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="btn-apply-filter">Filtrar</button>
+      </div>
+      <div id="recs-list">
+        ${recs.length === 0
+          ? `<div class="notice notice-info">Sin recomendaciones pendientes. Pulsa "Regenerar" para analizar el estado actual.</div>`
+          : recs.map(r => `
+            <div class="card" style="padding:14px;margin-bottom:8px;border-left:3px solid ${pColors[r.priority] || 'var(--border)'}">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div style="flex:1">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <span class="badge" style="background:${pColors[r.priority]}22;color:${pColors[r.priority]};font-size:10px">${r.priority}</span>
+                    <code style="font-size:11px">${UI.esc(r.recommended_test_type)}</code>
+                    <span style="font-size:11px;color:var(--text-subtle)">${triggerLabels[r.trigger] || r.trigger}</span>
+                  </div>
+                  <p style="margin:0;font-size:13px">${UI.esc(r.reason)}</p>
+                  ${r.recommended_date ? `<p style="margin:4px 0 0;font-size:11px;color:var(--text-subtle)">Fecha sugerida: ${r.recommended_date.slice(0, 10)}</p>` : ''}
+                </div>
+                <div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0">
+                  <button class="btn btn-primary btn-sm" data-rec-accept="${r.id}">
+                    <i class="ti ti-check" aria-hidden="true"></i> Aceptar
+                  </button>
+                  <button class="btn btn-ghost btn-sm" data-rec-dismiss="${r.id}">
+                    <i class="ti ti-x" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </div>
+            </div>`).join('')
+        }
+      </div>
+    `;
+
+    Api.get('/api/assets/?limit=100').then(data => {
+      const items = data.items || data || [];
+      const sel = container.querySelector('#filter-asset');
+      if (sel) items.forEach(a => {
+        const o = document.createElement('option');
+        o.value = a.id; o.textContent = `${a.code} — ${a.name}`;
+        sel.appendChild(o);
+      });
+    }).catch(() => {});
+
+    container.querySelector('#btn-gen-recs').onclick = async () => {
+      await Api.post('/api/bcp/test-recommendations/generate', {});
+      _switchTab('recommendations');
+    };
+
+    container.querySelector('#btn-apply-filter').onclick = async () => {
+      const pt = container.querySelector('#filter-plan-type').value;
+      const aid = container.querySelector('#filter-asset').value;
+      const params = new URLSearchParams();
+      if (pt) params.set('plan_type', pt);
+      if (aid) params.set('asset_id', aid);
+      const results = await Api.get(`/api/bcp/tests/filter?${params}`).catch(() => []);
+      const list = container.querySelector('#recs-list');
+      if (list) list.innerHTML = results.length === 0
+        ? `<div class="notice notice-info">Sin resultados con esos filtros.</div>`
+        : results.map(r => `<div class="card" style="padding:12px;margin-bottom:6px">
+            <strong>${UI.esc(r.plan_name)}</strong>
+            <span class="badge badge-muted" style="margin-left:8px">${r.plan_type}</span>
+            <span style="font-size:12px;color:var(--text-subtle);margin-left:8px">
+              Test sugerido: <code>${r.suggested_test_type}</code>
+            </span>
+          </div>`).join('');
+    };
+
+    container.querySelectorAll('[data-rec-accept]').forEach(btn => {
+      btn.onclick = async () => {
+        await Api.patch(`/api/bcp/test-recommendations/${btn.dataset.recAccept}`, { status: 'accepted' });
+        _switchTab('recommendations');
+      };
+    });
+    container.querySelectorAll('[data-rec-dismiss]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('¿Descartar esta recomendación?')) return;
+        await Api.patch(`/api/bcp/test-recommendations/${btn.dataset.recDismiss}`, { status: 'dismissed' });
+        _switchTab('recommendations');
+      };
+    });
   }
 
   return {

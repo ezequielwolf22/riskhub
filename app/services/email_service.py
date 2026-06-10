@@ -32,6 +32,11 @@ def get_settings(db: Session, org_id: Optional[int] = None) -> Optional[EmailSet
     return q.first()
 
 
+def get_settings_for_org(db: Session, org_id: int) -> Optional[EmailSettings]:
+    """Per-org SMTP — usar en jobs del scheduler para evitar cross-tenant SMTP."""
+    return db.query(EmailSettings).filter_by(organization_id=org_id).first()
+
+
 def send_email(cfg: EmailSettings, recipient: str, subject: str, body_html: str) -> None:
     """Envia un email HTML via SMTP. Lanza RuntimeError si falla."""
     msg = MIMEMultipart("alternative")

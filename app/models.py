@@ -331,6 +331,9 @@ class Asset(Base):
     import_session_id = Column(String(64), nullable=True, index=True)  # para audit + rollback
     imported_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=True)
 
+    # BCM location link — FK a BCMLocation, opcional (no reemplaza el campo 'location' String)
+    bcm_location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+
     group = relationship("AssetGroup", foreign_keys="[Asset.group_id]", back_populates="members")
     risks = relationship("Risk", back_populates="asset", cascade="all, delete-orphan")
 
@@ -1796,6 +1799,149 @@ class BCPSupplierLink(Base):
 
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
     alternative_supplier = relationship("Supplier", foreign_keys=[alternative_supplier_id])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BCM EXPANSION — Localizaciones, Evidencias, Activaciones, ITDR
+# ══════════════════════════════════════════════════════════════════════════════
+
+class BCMLocation(Base):
+    """
+    Localización BCM — sede, filial o unidad organizativa con BCM independiente.
+    Árbol jerárquico dentro de la misma organización: parent_id=None = nivel corporativo.
+    """
+    __tablename__ = "bcm_locations"
+    id                    = Column(Integer, primary_key=True)
+    organization_id       = Column(Integer, ForeignKey("organizations.id"), index=True)
+    parent_id             = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    code                  = Column(String(16))
+    name                  = Column(String(255), nullable=False)
+    description           = Column(Text, nullable=True)
+    address               = Column(Text, nullable=True)
+    country               = Column(String(64), nullable=True)
+    timezone              = Column(String(64), nullable=True)
+    bcm_manager_id        = Column(Integer, ForeignKey("users.id"), nullable=True)
+    recovery_site_type    = Column(String(16), nullable=True)
+    recovery_site_description = Column(Text, nullable=True)
+    alternate_location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    is_active             = Column(Boolean, default=True)
+    created_at            = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at            = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    parent           = relationship("BCMLocation", foreign_keys=[parent_id],
+                                    remote_side="BCMLocation.id", backref="children")
+    alternate        = relationship("BCMLocation", foreign_keys=[alternate_location_id],
+                                    remote_side="BCMLocation.id")
+    bcm_manager      = relationship("User", foreign_keys=[bcm_manager_id])
+
+
+class BCMEvidenceItem(Base):
+    """Repositorio de evidencias BCM — cifrado con Fernet, hash SHA-256 para integridad."""
+    __tablename__ = "bcm_evidence_items"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    location_id     = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    evidence_type   = Column(String(32), nullable=False)
+    title           = Column(String(255), nullable=False)
+    description     = Column(Text, nullable=True)
+    linked_test_id  = Column(Integer, ForeignKey("bcp_tests.id"), nullable=True)
+    linked_plan_id  = Column(Integer, ForeignKey("bcp_plans.id"), nullable=True)
+    linked_process_id = Column(Integer, ForeignKey("business_processes.id"), nullable=True)
+    file_path       = Column(String, nullable=True)
+    file_name       = Column(String(255), nullable=True)
+    file_size       = Column(Integer, nullable=True)
+    mime_type       = Column(String(128), nullable=True)
+    sha256_hash     = Column(String(64), nullable=True)
+    tags            = Column(JSON, nullable=True)
+    review_date     = Column(DateTime, nullable=True)
+    is_current      = Column(Boolean, default=True)
+    uploaded_by_id  = Column(Integer, ForeignKey("users.id"))
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    uploader        = relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class BCMTestRecommendation(Base):
+    """Test sugerido automáticamente — por el motor de reglas o tras un incidente/CVE."""
+    __tablename__ = "bcm_test_recommendations"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    location_id     = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    plan_id         = Column(Integer, ForeignKey("bcp_plans.id"), nullable=True)
+    process_id      = Column(Integer, ForeignKey("business_processes.id"), nullable=True)
+    recommended_test_type = Column(String(32))
+    reason          = Column(Text)
+    recommended_date = Column(DateTime, nullable=True)
+    priority        = Column(String(16), default="medium")
+    trigger         = Column(String(32))
+    status          = Column(String(20), default="pending")
+    accepted_by_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    resulting_test_id = Column(Integer, ForeignKey("bcp_tests.id"), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    plan    = relationship("BCPPlan", foreign_keys=[plan_id])
+    process = relationship("BusinessProcess", foreign_keys=[process_id])
+
+
+class BCPTestRunbook(Base):
+    """Runbook paso a paso para un ejercicio BCM. Generado por IA o manual."""
+    __tablename__ = "bcp_test_runbooks"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    location_id     = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    plan_id         = Column(Integer, ForeignKey("bcp_plans.id"), nullable=True)
+    test_id         = Column(Integer, ForeignKey("bcp_tests.id"), nullable=True)
+    title           = Column(String(255), nullable=False)
+    scenario        = Column(Text, nullable=True)
+    test_type       = Column(String(32))
+    steps           = Column(JSON)
+    total_estimated_minutes = Column(Integer, nullable=True)
+    generated_by_ai = Column(Boolean, default=False)
+    created_by_id   = Column(Integer, ForeignKey("users.id"))
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
+class BCPRecoverySequence(Base):
+    """Secuencia ordenada de recuperación de sistemas IT para un DRP."""
+    __tablename__ = "bcp_recovery_sequences"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    location_id     = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    plan_id         = Column(Integer, ForeignKey("bcp_plans.id"), nullable=True)
+    name            = Column(String(255), nullable=False)
+    sequence_items  = Column(JSON)
+    activation_status = Column(JSON, nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
+class BCMActivation(Base):
+    """Activación real de un plan BCM durante un incidente. Sala de crisis virtual."""
+    __tablename__ = "bcm_activations"
+    id                  = Column(Integer, primary_key=True)
+    organization_id     = Column(Integer, ForeignKey("organizations.id"), index=True)
+    location_id         = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    code                = Column(String(16))
+    title               = Column(String(255), nullable=False)
+    activated_plan_ids  = Column(JSON)
+    incident_id         = Column(Integer, ForeignKey("incidents.id"), nullable=True)
+    status              = Column(String(20), default="active")
+    activated_at        = Column(DateTime, nullable=False)
+    activated_by_id     = Column(Integer, ForeignKey("users.id"))
+    closed_at           = Column(DateTime, nullable=True)
+    closed_by_id        = Column(Integer, ForeignKey("users.id"), nullable=True)
+    situation_log       = Column(JSON, nullable=True)
+    systems_status      = Column(JSON, nullable=True)
+    rto_objective_hours = Column(Integer, nullable=True)
+    rto_actual_hours    = Column(Float, nullable=True)
+    root_cause          = Column(Text, nullable=True)
+    lessons_learned     = Column(Text, nullable=True)
+    improvement_actions = Column(JSON, nullable=True)
+    created_at          = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at          = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    activated_by = relationship("User", foreign_keys=[activated_by_id])
 
 
 # ---------- GDPR BREACH NOTIFICATION (GDPR Art. 33-34) ----------
