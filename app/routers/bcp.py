@@ -30,7 +30,7 @@ VALID_TEST_TYPES = ("tabletop", "simulation", "full_test")
 VALID_TEST_RESULTS = ("passed", "partial", "failed")
 VALID_DEP_TYPES = (
     "IT_system", "personnel", "facility", "supplier",
-    "utility", "communication", "transport", "external_service",
+    "utility", "communication", "transport", "external_service", "process",
 )
 VALID_STRATEGY_TYPES = (
     "hot_site", "cold_site", "warm_site", "work_from_home",

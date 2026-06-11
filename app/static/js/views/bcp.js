@@ -1905,7 +1905,6 @@ const ViewBcp = (() => {
       process_id: parseInt(document.getElementById('sm-proc').value)||null,
       implementation_status: document.getElementById('sm-status').value,
       estimated_cost: parseFloat(document.getElementById('sm-cost').value)||null,
-      responsible_id: parseInt(document.getElementById('sm-resp').value)||null,
       target_date: document.getElementById('sm-date').value||null,
       description: document.getElementById('sm-desc').value||null,
     };
@@ -2729,29 +2728,58 @@ const ViewBcp = (() => {
 
   // ── Modales — Proveedor BCM ──────────────────────────────────────────────────
 
-  function _openSLModal(sl) {
+  async function _openSLModal(sl) {
     const lbl = (t, req) => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${t}${req?' <span style="color:var(--danger)">*</span>':''}</label>`;
     const CRIT_SL = [{v:'critical',l:'Critica'},{v:'high',l:'Alta'},{v:'medium',l:'Media'},{v:'low',l:'Baja'}];
+
+    _suppliers = await Api.get('/api/suppliers').catch(() => _suppliers);
+
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:540px;max-height:90vh;display:flex;flex-direction:column;">
+    <div class="modal" style="max-width:560px;max-height:90vh;display:flex;flex-direction:column;">
       <div class="modal-header" style="flex-shrink:0;">
         <h2>${sl ? 'Editar vinculo BCM' : 'Vincular proveedor al BCP'}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <div>${lbl('Proveedor',true)}
-            <select id="slm-sup" class="form-control" style="font-size:13px;" ${sl?'disabled':''}>
+        <div style="margin-bottom:14px;">
+          ${lbl('Proveedor',true)}
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="slm-sup" class="form-control" style="font-size:13px;flex:1;" ${sl?'disabled':''}>
               <option value="">— Seleccionar proveedor —</option>
               ${_suppliers.map(s=>`<option value="${s.id}"${sl?.supplier_id===s.id?' selected':''}>${UI.esc(s.name)}</option>`).join('')}
             </select>
+            ${!sl ? `<button type="button" class="btn btn-ghost btn-sm" id="slm-btn-new-sup" title="Crear nuevo proveedor" style="white-space:nowrap;flex-shrink:0;">
+              <i class="ti ti-plus"></i> Nuevo
+            </button>` : ''}
           </div>
+          <div id="slm-new-sup-form" style="display:none;margin-top:10px;padding:12px;background:var(--bg-2);border-radius:var(--radius);border:1px solid var(--border);">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;">Crear nuevo proveedor</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+              <div>
+                <label style="font-size:11px;color:var(--text-subtle);display:block;margin-bottom:3px;">Nombre <span style="color:var(--danger)">*</span></label>
+                <input id="slm-new-sup-name" class="form-control" style="font-size:13px;" placeholder="Nombre del proveedor">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-subtle);display:block;margin-bottom:3px;">Categoria</label>
+                <input id="slm-new-sup-cat" class="form-control" style="font-size:13px;" placeholder="Ej: Cloud, Software...">
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;">
+              <button type="button" class="btn btn-sm" id="slm-cancel-new-sup">Cancelar</button>
+              <button type="button" class="btn btn-primary btn-sm" id="slm-confirm-new-sup"><i class="ti ti-check"></i> Crear</button>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>${lbl('Criticidad BCM')}
             <select id="slm-crit" class="form-control" style="font-size:13px;">
               ${CRIT_SL.map(c=>`<option value="${c.v}"${sl?.criticality===c.v?' selected':''}>${c.l}</option>`).join('')}
             </select>
+          </div>
+          <div>${lbl('Ultima revision')}
+            <input id="slm-rev" class="form-control" type="date" style="font-size:13px;" value="${sl?.last_review_date?sl.last_review_date.substring(0,10):''}">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
@@ -2762,32 +2790,28 @@ const ViewBcp = (() => {
             <input id="slm-sla" class="form-control" type="number" style="font-size:13px;" value="${sl?.contract_sla_hours??''}">
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <div>${lbl('Proveedor alternativo')}
-            <select id="slm-alt" class="form-control" style="font-size:13px;">
-              <option value="">— Ninguno —</option>
-              ${_suppliers.filter(s=>s.id!==sl?.supplier_id).map(s=>
-                `<option value="${s.id}"${sl?.alternative_supplier_id===s.id?' selected':''}>${UI.esc(s.name)}</option>`).join('')}
-            </select>
-          </div>
-          <div>${lbl('Ultima revision')}
-            <input id="slm-rev" class="form-control" type="date" style="font-size:13px;" value="${sl?.last_review_date?sl.last_review_date.substring(0,10):''}">
-          </div>
+        <div style="margin-bottom:14px;">${lbl('Proveedor alternativo')}
+          <select id="slm-alt" class="form-control" style="font-size:13px;">
+            <option value="">— Ninguno —</option>
+            ${_suppliers.filter(s=>s.id!==sl?.supplier_id).map(s=>
+              `<option value="${s.id}"${sl?.alternative_supplier_id===s.id?' selected':''}>${UI.esc(s.name)}</option>`).join('')}
+          </select>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px;background:var(--bg-2);border-radius:var(--radius);">
           <input id="slm-hasplan" type="checkbox" style="width:16px;height:16px;" ${sl?.has_contingency_plan?'checked':''}>
-          <label for="slm-hasplan" style="margin:0;font-size:13px;cursor:pointer;">Este proveedor tiene plan de contingencia documentado</label>
+          <label for="slm-hasplan" style="margin:0;font-size:13px;cursor:pointer;display:inline;">Este proveedor tiene plan de contingencia documentado</label>
         </div>
         <div style="margin-bottom:14px;">${lbl('Descripcion del plan de contingencia')}
           <textarea id="slm-desc" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Como se garantiza la continuidad si este proveedor falla?">${UI.esc(sl?.contingency_description||'')}</textarea>
         </div>
         <div style="margin-bottom:14px;">${lbl('Procesos que dependen de este proveedor')}
-          <div style="max-height:110px;overflow-y:auto;border:0.5px solid var(--border);border-radius:var(--radius);padding:8px;">
-            ${_procs.length ? _procs.map(p=>`<label style="display:flex;gap:6px;align-items:center;padding:3px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" value="${p.id}" class="slm-pids" ${(sl?.process_ids||[]).includes(p.id)?'checked':''}>
-              <span style="font-size:10px;color:${CRIT_COLORS[p.criticality]||'#666'};font-weight:700;">${p.criticality}</span>
-              ${UI.esc(p.name)}
-            </label>`).join('') : '<span style="font-size:12px;color:var(--text-subtle)">No hay procesos registrados.</span>'}
+          <div style="max-height:130px;overflow-y:auto;border:0.5px solid var(--border);border-radius:var(--radius);padding:8px;">
+            ${_procs.length ? _procs.map(p=>`
+              <div style="display:flex;gap:8px;align-items:center;padding:4px 2px;">
+                <input type="checkbox" value="${p.id}" class="slm-pids" style="flex-shrink:0;width:15px;height:15px;" ${(sl?.process_ids||[]).includes(p.id)?'checked':''}>
+                <span style="flex-shrink:0;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:${CRIT_COLORS[p.criticality]||'#6B7280'}22;color:${CRIT_COLORS[p.criticality]||'#6B7280'};">${p.criticality}</span>
+                <span style="font-size:13px;">${UI.esc(p.name)}</span>
+              </div>`).join('') : '<span style="font-size:12px;color:var(--text-subtle)">No hay procesos registrados.</span>'}
           </div>
         </div>
       </div>
@@ -2800,6 +2824,47 @@ const ViewBcp = (() => {
       </div>
     </div>`;
     document.body.appendChild(modal);
+
+    document.getElementById('slm-btn-new-sup')?.addEventListener('click', () => {
+      document.getElementById('slm-new-sup-form').style.display = 'block';
+      document.getElementById('slm-btn-new-sup').style.display = 'none';
+      document.getElementById('slm-new-sup-name').focus();
+    });
+    document.getElementById('slm-cancel-new-sup')?.addEventListener('click', () => {
+      document.getElementById('slm-new-sup-form').style.display = 'none';
+      document.getElementById('slm-btn-new-sup').style.display = '';
+    });
+    document.getElementById('slm-confirm-new-sup')?.addEventListener('click', async () => {
+      const name = document.getElementById('slm-new-sup-name').value.trim();
+      if (!name) { UI.toast('El nombre del proveedor es obligatorio', 'error'); return; }
+      const cat = document.getElementById('slm-new-sup-cat').value.trim() || null;
+      const btn = document.getElementById('slm-confirm-new-sup');
+      btn.disabled = true;
+      try {
+        const created = await Api.post('/api/suppliers/', { name, category: cat });
+        _suppliers.push(created);
+        const sel = document.getElementById('slm-sup');
+        const opt = document.createElement('option');
+        opt.value = created.id;
+        opt.textContent = created.name;
+        opt.selected = true;
+        sel.appendChild(opt);
+        const altSel = document.getElementById('slm-alt');
+        const altOpt = document.createElement('option');
+        altOpt.value = created.id;
+        altOpt.textContent = created.name;
+        altSel.appendChild(altOpt);
+        document.getElementById('slm-new-sup-form').style.display = 'none';
+        document.getElementById('slm-btn-new-sup').style.display = '';
+        document.getElementById('slm-new-sup-name').value = '';
+        document.getElementById('slm-new-sup-cat').value = '';
+        UI.toast(`Proveedor "${name}" creado`, 'success');
+      } catch (e) {
+        UI.toast('Error al crear proveedor: ' + (e.message || e), 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
   }
 
   function _editSL(id) { _openSLModal(_slinks.find(s => s.id === id)); }
