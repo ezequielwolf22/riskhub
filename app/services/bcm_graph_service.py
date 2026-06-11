@@ -1,7 +1,8 @@
 """Grafo de dependencias BCM — compatible con Cytoscape.js."""
 import logging
 from sqlalchemy.orm import Session
-from app.models import (BusinessProcess, BCPDependency, Asset, Supplier, BCMLocation)
+from app.models import (BusinessProcess, BCPDependency, Asset, Supplier, BCMLocation,
+                        BCPSupplierLink)
 
 logger = logging.getLogger("riskhub.bcm_graph")
 
@@ -123,6 +124,36 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
                               "type": "asset_dep",
                               "label": dep.dependency_type or "depende de",
                               "is_critical": dep.is_critical})
+
+    # Include suppliers linked via BCPSupplierLink (the main way to link suppliers to processes)
+    slinks = db.query(BCPSupplierLink).filter_by(organization_id=org_id).all()
+    for sl in slinks:
+        s = db.get(Supplier, sl.supplier_id)
+        if not s or s.organization_id != org_id:
+            continue
+        nid = f"sup_{sl.supplier_id}"
+        if nid not in nodes:
+            nodes[nid] = {
+                "id": nid, "type": "supplier",
+                "label": s.name,
+                "criticality": sl.criticality or getattr(s, "risk_level", "medium"),
+                "is_spof": not sl.has_contingency_plan,
+                **NODE_STYLES["supplier"],
+            }
+        for pid in (sl.process_ids or []):
+            try:
+                pn = f"proc_{int(pid)}"
+            except (ValueError, TypeError):
+                continue
+            if pn not in nodes:
+                continue
+            eid = f"e_{pn}_{nid}_sl"
+            if not any(e["id"] == eid for e in edges):
+                edges.append({
+                    "id": eid, "source": pn, "target": nid,
+                    "type": "uses_supplier", "label": "depende de",
+                    "is_critical": sl.criticality in ("critical", "high"),
+                })
 
     in_deg = {}
     for e in edges:

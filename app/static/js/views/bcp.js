@@ -1101,7 +1101,7 @@ const ViewBcp = (() => {
     [_procs, _slinks, _suppliers] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
       Api.get('/api/bcp/supplier-links' + _locParam()).catch(() => []),
-      Api.get('/api/suppliers').catch(() => []),
+      Api.get('/api/suppliers/').catch(() => []),
     ]);
 
     // Construir TODO el HTML antes de asignar (evita que innerHTML += destruya listeners)
@@ -2732,7 +2732,7 @@ const ViewBcp = (() => {
     const lbl = (t, req) => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${t}${req?' <span style="color:var(--danger)">*</span>':''}</label>`;
     const CRIT_SL = [{v:'critical',l:'Critica'},{v:'high',l:'Alta'},{v:'medium',l:'Media'},{v:'low',l:'Baja'}];
 
-    _suppliers = await Api.get('/api/suppliers').catch(() => _suppliers);
+    _suppliers = await Api.get('/api/suppliers/').catch(() => _suppliers);
 
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
