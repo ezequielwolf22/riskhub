@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.models import BCPPlan, BCPTest, BusinessProcess, BCMTestRecommendation
+from app.services.bcp_service import bia_completeness
 
 logger = logging.getLogger("riskhub.bcm_test_engine")
 
@@ -84,6 +85,32 @@ def generate_recommendations(db: Session, org_id: int, location_id: int = None) 
                 recommended_date=now + timedelta(days=7),
                 priority="critical" if proc.criticality == "critical" else "high",
                 trigger="never_tested" if days == 9999 else "overdue_12m",
+            ))
+            created += 1
+
+    # BIA completeness alerts — processes with < 80% BIA
+    for proc in pq.all():
+        bia = bia_completeness(None, proc)
+        if bia["pct"] >= 80:
+            continue
+        exists = db.query(BCMTestRecommendation).filter_by(
+            organization_id=org_id, process_id=proc.id,
+            recommended_test_type="bia_incomplete", status="pending"
+        ).first()
+        if not exists:
+            missing_str = ", ".join(bia["missing"][:4])
+            db.add(BCMTestRecommendation(
+                organization_id=org_id,
+                location_id=getattr(proc, "location_id", None),
+                process_id=proc.id,
+                recommended_test_type="bia_incomplete",
+                reason=(
+                    f"BIA incompleto para '{proc.name}' — {bia['pct']}% completado. "
+                    f"Faltan: {missing_str}. ISO 22301 cl. 8.2."
+                ),
+                recommended_date=now + timedelta(days=7),
+                priority="critical" if proc.criticality in ("critical", "high") else "medium",
+                trigger="bia_incomplete",
             ))
             created += 1
 

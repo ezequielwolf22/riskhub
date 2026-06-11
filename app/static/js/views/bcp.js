@@ -758,8 +758,8 @@ const ViewBcp = (() => {
     ${bodyHtml}`;
 
     // listeners siempre DESPUES de asignar innerHTML
-    document.getElementById('btn-bia-new')?.addEventListener('click', () => _openProcModal(null, true));
-    document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openProcModal(null, true));
+    document.getElementById('btn-bia-new')?.addEventListener('click', () => _openBiaPicker());
+    document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openBiaPicker());
   }
 
   // ── Tab Dependencias ─────────────────────────────────────────────────────────
@@ -1473,6 +1473,29 @@ const ViewBcp = (() => {
           </div>
         </div>
 
+        ${proc ? (() => {
+          const pct = proc.bia_pct || 0;
+          const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
+          const missing = proc.bia_missing || [];
+          const fieldLabels = {
+            rto_hours:'RTO', rpo_hours:'RPO', mtpd_hours:'MTPD', mbco:'MBCO',
+            financial_impact:'Impacto financiero', reputational_impact:'Impacto reputacional',
+            legal_impact:'Impacto legal', operational_impact:'Impacto operacional',
+            activation_criteria:'Criterios activacion', vital_records:'Registros vitales',
+          };
+          return `<div style="padding:10px 14px;background:${color}14;border:1px solid ${color}44;border-radius:var(--radius);margin-bottom:14px;display:flex;align-items:center;gap:14px;">
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                <span style="font-size:12px;font-weight:700;color:${color};">Completitud BIA: ${pct}%</span>
+                ${pct >= 80 ? '<span style="font-size:11px;color:#16a34a;">Listo para certificacion ISO 22301</span>' : ''}
+              </div>
+              <div style="height:6px;background:${color}22;border-radius:3px;">
+                <div style="width:${pct}%;height:100%;background:${color};border-radius:3px;transition:.3s;"></div>
+              </div>
+              ${missing.length ? `<div style="margin-top:6px;font-size:11px;color:${color};">Pendiente: ${missing.map(f=>fieldLabels[f]||f).join(' · ')}</div>` : ''}
+            </div>
+          </div>`;
+        })() : ''}
         <div class="form-section-divider"><span>OBJETIVOS DE RECUPERACION (BIA)</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
           <div>
@@ -1602,6 +1625,95 @@ const ViewBcp = (() => {
   function _editProc(id) {
     const proc = _procs.find(p => p.id === id);
     if (proc) _openProcModal(proc);
+    else Api.get('/api/bcp/processes').then(list => {
+      const p = list.find(x => x.id === id);
+      if (p) { _procs = list; _openProcModal(p); }
+    }).catch(() => {});
+  }
+
+  async function _openBiaPicker() {
+    if (!_procs.length) _procs = await Api.get('/api/bcp/processes').catch(() => []);
+    const incomplete = _procs.filter(p => (p.bia_pct || 0) < 100).sort((a, b) => {
+      const order = { critical: 0, high: 1, medium: 2, low: 3 };
+      return (order[a.criticality] ?? 2) - (order[b.criticality] ?? 2);
+    });
+
+    if (!incomplete.length) { _openProcModal(null, true); return; }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header">
+        <h2>Nuevo / Completar BIA</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;">
+        <p style="margin:0 0 14px;font-size:13px;color:var(--text-subtle);">
+          El BIA forma parte del proceso critico. Selecciona un proceso existente para completar su analisis de impacto, o crea uno nuevo.
+        </p>
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:6px;">Proceso</label>
+        <select id="bia-proc-sel" class="form-control" style="font-size:13px;margin-bottom:12px;">
+          <option value="new">+ Crear proceso nuevo</option>
+          <optgroup label="Procesos con BIA incompleto">
+            ${incomplete.map(p => {
+              const pct = p.bia_pct || 0;
+              const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
+              return `<option value="${p.id}" data-pct="${pct}" data-missing='${JSON.stringify(p.bia_missing||[])}'>${UI.esc(p.name)} — BIA ${pct}%</option>`;
+            }).join('')}
+          </optgroup>
+        </select>
+        <div id="bia-picker-preview" style="display:none;padding:10px;background:var(--bg-2);border-radius:var(--radius);font-size:12px;"></div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="bia-pick-go"><i class="ti ti-arrow-right"></i> Continuar</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+
+    const sel = modal.querySelector('#bia-proc-sel');
+    const preview = modal.querySelector('#bia-picker-preview');
+
+    function updatePreview() {
+      const opt = sel.options[sel.selectedIndex];
+      const val = sel.value;
+      if (val === 'new') { preview.style.display = 'none'; return; }
+      const pct = parseInt(opt.dataset.pct || '0');
+      const color = pct >= 80 ? '#16a34a' : pct >= 50 ? '#D97706' : '#DC2626';
+      let missing = [];
+      try { missing = JSON.parse(opt.dataset.missing || '[]'); } catch (_) {}
+      const fieldLabels = {
+        rto_hours: 'RTO', rpo_hours: 'RPO', mtpd_hours: 'MTPD', mbco: 'MBCO',
+        financial_impact: 'Impacto financiero', reputational_impact: 'Impacto reputacional',
+        legal_impact: 'Impacto legal', operational_impact: 'Impacto operacional',
+        activation_criteria: 'Criterios de activacion', vital_records: 'Registros vitales',
+      };
+      preview.style.display = 'block';
+      preview.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-weight:700;font-size:13px;">${UI.esc(opt.text.split(' — ')[0])}</span>
+          <span style="color:${color};font-weight:700;">BIA ${pct}%</span>
+        </div>
+        <div style="height:5px;background:var(--bg-3);border-radius:3px;margin-bottom:8px;">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:3px;"></div>
+        </div>
+        ${missing.length
+          ? `<div style="color:#DC2626;font-size:11px;">Campos pendientes: ${missing.map(f => fieldLabels[f] || f).join(', ')}</div>`
+          : '<div style="color:#16a34a;font-size:11px;">BIA completamente relleno</div>'}`;
+    }
+
+    sel.addEventListener('change', updatePreview);
+    updatePreview();
+
+    modal.querySelector('#bia-pick-go').addEventListener('click', () => {
+      const val = sel.value;
+      modal.remove();
+      if (val === 'new') { _openProcModal(null, true); }
+      else { const p = _procs.find(x => x.id === parseInt(val)); if (p) _openProcModal(p); }
+    });
   }
 
   async function _saveProc(id) {
@@ -3738,34 +3850,54 @@ const ViewBcp = (() => {
     function _buildRecsList(recList, pc, tl) {
       if (!recList.length)
         return `<div class="notice notice-info">Sin recomendaciones pendientes. Pulsa "Regenerar" para analizar el estado actual.</div>`;
-      return recList.map(r => `
-        <div class="card" style="padding:14px;margin-bottom:8px;border-left:3px solid ${pc[r.priority] || 'var(--border)'}">
+      return recList.map(r => {
+        const isBiaAlert = r.recommended_test_type === 'bia_incomplete';
+        const borderColor = isBiaAlert ? '#D97706' : (pc[r.priority] || 'var(--border)');
+        const typeLabel = isBiaAlert ? 'BIA incompleto' : (r.recommended_test_type || r.test_type || '');
+        return `
+        <div class="card" style="padding:14px;margin-bottom:8px;border-left:3px solid ${borderColor}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start">
             <div style="flex:1">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-                <span class="badge" style="background:${pc[r.priority] || 'var(--border)'}22;color:${pc[r.priority] || 'var(--text-subtle)'};font-size:10px">${UI.esc(r.priority || 'medium')}</span>
-                <code style="font-size:11px">${UI.esc(r.recommended_test_type || r.test_type || '')}</code>
+                <span class="badge" style="background:${borderColor}22;color:${borderColor};font-size:10px">${UI.esc(r.priority || 'medium')}</span>
+                ${isBiaAlert
+                  ? `<span style="font-size:11px;background:#D9770622;color:#D97706;padding:1px 6px;border-radius:4px;font-weight:700;">BIA</span>`
+                  : `<code style="font-size:11px">${UI.esc(typeLabel)}</code>`}
                 <span style="font-size:11px;color:var(--text-subtle)">${UI.esc(tl[r.trigger] || r.trigger || '')}</span>
               </div>
               <p style="margin:0;font-size:13px;line-height:1.5">${UI.esc(r.reason || '')}</p>
+              ${r.process_name ? `<p style="margin:4px 0 0;font-size:11px;color:var(--text-subtle)"><i class="ti ti-sitemap" style="font-size:10px;"></i> Proceso: <strong>${UI.esc(r.process_name)}</strong></p>` : ''}
               ${r.plan_name ? `<p style="margin:4px 0 0;font-size:11px;color:var(--text-subtle)">Plan: ${UI.esc(r.plan_name)}</p>` : ''}
               ${r.recommended_date ? `<p style="margin:2px 0 0;font-size:11px;color:var(--text-subtle)">Fecha sugerida: ${r.recommended_date.slice(0, 10)}</p>` : ''}
             </div>
             <div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0">
-              <button class="btn btn-primary btn-sm" data-rec-accept="${r.id}"
-                data-plan-id="${r.plan_id || ''}" data-test-type="${UI.esc(r.recommended_test_type || '')}"
-                data-rec-date="${r.recommended_date || ''}">
-                <i class="ti ti-check"></i> Aceptar
-              </button>
+              ${isBiaAlert && r.process_id
+                ? `<button class="btn btn-primary btn-sm" data-rec-bia="${r.id}" data-proc-id="${r.process_id}">
+                    <i class="ti ti-pencil"></i> Completar BIA
+                   </button>`
+                : `<button class="btn btn-primary btn-sm" data-rec-accept="${r.id}"
+                    data-plan-id="${r.plan_id || ''}" data-test-type="${UI.esc(r.recommended_test_type || '')}"
+                    data-rec-date="${r.recommended_date || ''}">
+                    <i class="ti ti-check"></i> Aceptar
+                   </button>`}
               <button class="btn btn-ghost btn-sm" data-rec-dismiss="${r.id}" title="Descartar">
                 <i class="ti ti-x"></i>
               </button>
             </div>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
 
     function bindRecButtons() {
+      container.querySelectorAll('[data-rec-bia]').forEach(btn => {
+        btn.onclick = async () => {
+          const recId = btn.dataset.recBia;
+          const procId = parseInt(btn.dataset.procId);
+          await Api.patch(`/api/bcp/test-recommendations/${recId}`, { status: 'accepted' }).catch(() => {});
+          _editProc(procId);
+        };
+      });
       container.querySelectorAll('[data-rec-accept]').forEach(btn => {
         btn.onclick = async () => {
           const recId = btn.dataset.recAccept;

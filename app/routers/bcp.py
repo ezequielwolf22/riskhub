@@ -1390,10 +1390,15 @@ def _evid_d(e):
     }
 
 
-def _rec_d(r):
+def _rec_d(r, db=None):
+    proc_name = None
+    if r.process_id and db:
+        p = db.get(BusinessProcess, r.process_id)
+        proc_name = p.name if p else None
     return {
         "id": r.id, "location_id": r.location_id, "plan_id": r.plan_id,
-        "process_id": r.process_id, "recommended_test_type": r.recommended_test_type,
+        "process_id": r.process_id, "process_name": proc_name,
+        "recommended_test_type": r.recommended_test_type,
         "reason": r.reason, "priority": r.priority, "trigger": r.trigger,
         "status": r.status,
         "recommended_date": r.recommended_date.isoformat() if r.recommended_date else None,
@@ -1654,7 +1659,7 @@ def list_recommendations(location_id: Optional[int] = None,
         q = q.filter_by(location_id=location_id)
     if status:
         q = q.filter_by(status=status)
-    return [_rec_d(r) for r in q.order_by(
+    return [_rec_d(r, db) for r in q.order_by(
         BCMTestRecommendation.priority, BCMTestRecommendation.recommended_date).all()]
 
 
