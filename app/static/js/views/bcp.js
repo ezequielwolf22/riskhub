@@ -2874,9 +2874,10 @@ const ViewBcp = (() => {
       const hasChildren = (node.children || []).length > 0;
       return `
         <div class="bcm-loc-node" style="margin-left:${depth * 24}px;margin-bottom:6px">
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-card);border:0.5px solid var(--border);border-radius:var(--radius);">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-card);border:0.5px solid var(--border);border-radius:var(--radius);${isAdmin ? 'cursor:pointer' : ''}"
+            ${isAdmin ? `onclick="if(!event.target.closest('button'))ViewBcp._editLocation(${node.id})"` : ''}>
             ${hasChildren
-              ? `<button class="btn btn-ghost btn-sm bcm-loc-toggle" style="padding:2px 4px;min-width:22px" onclick="ViewBcp._toggleLocChildren(${node.id})">
+              ? `<button class="btn btn-ghost btn-sm bcm-loc-toggle" style="padding:2px 4px;min-width:22px" onclick="event.stopPropagation();ViewBcp._toggleLocChildren(${node.id})">
                   <i class="ti ti-chevron-down" id="loc-chev-${node.id}" style="font-size:12px"></i></button>`
               : `<span style="width:22px;flex-shrink:0"></span>`}
             <span class="bcm-traffic-light ${tlClass}"></span>
@@ -2885,6 +2886,7 @@ const ViewBcp = (() => {
                 ${node.code ? `<code style="font-size:10px;color:var(--text-subtle)">${UI.esc(node.code)}</code>` : ''}
                 <strong style="font-size:14px">${UI.esc(node.name)}</strong>
                 ${node.country ? `<span style="font-size:11px;color:var(--text-subtle)"><i class="ti ti-globe" style="font-size:10px"></i> ${UI.esc(node.country)}</span>` : ''}
+                ${isAdmin ? `<span style="font-size:10px;color:var(--text-subtle);opacity:.6"><i class="ti ti-edit" style="font-size:10px"></i> editar</span>` : ''}
               </div>
               <div style="display:flex;gap:14px;margin-top:3px;font-size:11px;color:var(--text-subtle);flex-wrap:wrap">
                 <span><strong style="color:var(--risk-critical)">${m.processes_critical || 0}</strong> proc. críticos</span>
@@ -2894,11 +2896,11 @@ const ViewBcp = (() => {
               </div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="btn btn-ghost btn-sm" title="Filtrar por esta localización" onclick="ViewBcp._setLocFilter(${node.id})">
+              <button class="btn btn-ghost btn-sm" title="Filtrar por esta localización" onclick="event.stopPropagation();ViewBcp._setLocFilter(${node.id})">
                 <i class="ti ti-filter" style="font-size:13px"></i>
               </button>
-              ${isAdmin ? `<button class="btn btn-ghost btn-sm" title="Gestionar" onclick="ViewBcp._editLocation(${node.id})">
-                <i class="ti ti-settings" style="font-size:13px"></i>
+              ${isAdmin ? `<button class="btn btn-primary btn-sm" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();ViewBcp._editLocation(${node.id})">
+                <i class="ti ti-edit" style="font-size:11px"></i> Editar
               </button>` : ''}
             </div>
           </div>
@@ -2966,9 +2968,11 @@ const ViewBcp = (() => {
     _renderContent();
   }
 
-  function _editLocation(locId) {
-    const loc = _locationMap[locId];
-    if (!loc) return;
+  async function _editLocation(locId) {
+    // Intentar obtener datos frescos del API; caer en cache si falla
+    let loc = await Api.get('/api/bcp/locations/' + locId).catch(() => null);
+    if (!loc) loc = _locationMap[locId];
+    if (!loc) { UI.toast('No se encontró la localización', 'error'); return; }
     _modalLocation(loc);
   }
 
@@ -3100,7 +3104,7 @@ const ViewBcp = (() => {
         UI.toast('Localización guardada', 'success');
         modal.remove();
         await _loadLocations();
-        _switchTab('locations');
+        _setStep(1);
       } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
     };
 
@@ -3112,7 +3116,7 @@ const ViewBcp = (() => {
           UI.toast('Localización eliminada', 'success');
           modal.remove();
           await _loadLocations();
-          _switchTab('locations');
+          _setStep(1);
         } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
       };
     }
