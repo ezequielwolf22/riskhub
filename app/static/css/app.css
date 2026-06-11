@@ -2119,3 +2119,74 @@ table.data td .code-pill {
 
 /* ── BCM Content area ── */
 .bcm-content { flex: 1; }
+
+/* ── BCM Activaciones ── */
+.bcm-act-layout {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+}
+@media (max-width: 900px) { .bcm-act-layout { grid-template-columns: 1fr; } }
+.bcm-act-banner {
+  background: #DC262608;
+  border: 2px solid #DC262630;
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.bcm-act-idle {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.bcm-act-active-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px; font-size: 13px;
+}
+.bcm-act-pulse-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #DC2626;
+  box-shadow: 0 0 0 3px rgba(220,38,38,.25);
+  animation: bcm-pulse 1.5s infinite;
+}
+@keyframes bcm-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(220,38,38,.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(220,38,38,0); }
+  100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+}
+.bcm-tile-danger { border-color: #DC262630 !important; }
+.bcm-tile-danger:hover { border-color: #DC2626 !important; }
+.bcm-tile-danger.active { border-color: #DC2626 !important; background: #DC262610 !important; }
+.bcm-act-right {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px;
+}
+
+/* ── BCM Calendario de tests ── */
+.bcm-cal-grid {
+  display: flex; flex-direction: column; gap: 10px;
+  max-height: 520px; overflow-y: auto; padding-right: 4px;
+}
+.bcm-cal-month {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 10px 12px;
+}
+.bcm-cal-month-header {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700;
+  color: var(--text-subtle); margin-bottom: 8px;
+}
+
+/* ── BCM Alertas enriquecidas ── */
+.bcm-alert-section {
+  margin-bottom: 12px;
+}
+.bcm-alert-section-header {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; margin-bottom: 6px;
+}
+.bcm-alert-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius);
+  background: var(--bg-2); border: 1px solid var(--border);
+  margin-bottom: 5px; font-size: 12px;
+}
+.bcm-alert-item:hover { border-color: var(--border-hover, #444); }

@@ -3767,16 +3767,26 @@ const ViewBcp = (() => {
 
   async function _renderOperarMode(content) {
     const tiles = [
-      { id:'dashboard', label:'Dashboard ISO 22301', icon:'ti-chart-dots-3', color:'var(--primary)',    sub:'Score global · clausulas' },
-      { id:'graph',     label:'Mapa Dependencias',   icon:'ti-topology-full', color:'var(--bo,#D65200)', sub:'SPOFs · grafo interactivo' },
-      { id:'tests',     label:'Tests & Evidencias',  icon:'ti-clipboard-check', color:'#16a34a',         sub:'Ejercicios · archivos' },
-      { id:'alertas',   label:'Alertas & Rec. IA',   icon:'ti-brain',         color:'#2563EB',           sub:'Recomendaciones IA' },
+      { id:'dashboard',     label:'Dashboard ISO 22301', icon:'ti-chart-dots-3',   color:'var(--primary)',   sub:'Score global · clausulas' },
+      { id:'graph',         label:'Mapa Dependencias',   icon:'ti-topology-full',  color:'#D65200',          sub:'SPOFs · grafo interactivo' },
+      { id:'tests',         label:'Tests & Evidencias',  icon:'ti-clipboard-check',color:'#16a34a',          sub:'Calendario · ejercicios' },
+      { id:'alertas',       label:'Alertas & Rec. IA',   icon:'ti-bell-ringing',   color:'#2563EB',          sub:'Vencimientos · rec. IA' },
+      { id:'activaciones',  label:'Activar BCP',         icon:'ti-alert-triangle', color:'#DC2626',          sub:'Emergencia · historial' },
     ];
-    let tilesHtml = '<div class="bcm-tiles-grid">';
+    // Badge de activacion activa
+    const activeAct = await Api.get('/api/bcp/activations').catch(() => []).then(list => list.find(a => !a.closed_at));
+    let tilesHtml = '<div class="bcm-tiles-grid" style="grid-template-columns:repeat(5,1fr)">';
     tiles.forEach(t => {
       const activeCls = _currentTile === t.id ? ' active' : '';
-      tilesHtml += '<div class="bcm-tile' + activeCls + '" onclick="ViewBcp._setTile(\'' + t.id + '\')">';
-      tilesHtml += '<div class="bcm-tile-icon" style="background:' + t.color + '18"><i class="ti ' + t.icon + '" style="color:' + t.color + ';font-size:22px"></i></div>';
+      const isActTile = t.id === 'activaciones';
+      const pulseDot = (isActTile && activeAct)
+        ? '<span class="bcm-act-pulse-dot"></span>'
+        : '';
+      tilesHtml += '<div class="bcm-tile' + activeCls + (isActTile ? ' bcm-tile-danger' : '') + '" onclick="ViewBcp._setTile(\'' + t.id + '\')">';
+      tilesHtml += '<div class="bcm-tile-icon" style="background:' + t.color + '18;position:relative">';
+      tilesHtml += '<i class="ti ' + t.icon + '" style="color:' + t.color + ';font-size:22px"></i>';
+      tilesHtml += pulseDot;
+      tilesHtml += '</div>';
       tilesHtml += '<div class="bcm-tile-label">' + t.label + '</div>';
       tilesHtml += '<div class="bcm-tile-sub">' + t.sub + '</div>';
       tilesHtml += '</div>';
@@ -3785,10 +3795,11 @@ const ViewBcp = (() => {
     content.innerHTML = tilesHtml + '<div id="bcm-tile-body" class="bcm-tile-body"></div>';
     const body = content.querySelector('#bcm-tile-body');
     switch (_currentTile) {
-      case 'dashboard': await _tileDashboard(body); break;
-      case 'graph':     await _tabGraph(body); break;
-      case 'tests':     await _stepTests(body); break;
-      case 'alertas':   await _stepAlertas(body); break;
+      case 'dashboard':    await _tileDashboard(body); break;
+      case 'graph':        await _tabGraph(body); break;
+      case 'tests':        await _stepTests(body); break;
+      case 'alertas':      await _stepAlertas(body); break;
+      case 'activaciones': await _tileActivaciones(body, activeAct); break;
     }
   }
 
@@ -3840,9 +3851,11 @@ const ViewBcp = (() => {
     const tabs = [
       { id:'strategies', label:'Estrategias',    icon:'ti-route' },
       { id:'plans',      label:'Planes BCP/DRP', icon:'ti-file-text' },
+      { id:'runbooks',   label:'Runbooks',        icon:'ti-checklist' },
     ];
     _buildSubTabs(4, tabs, body, async (subBody, active) => {
-      if (active === 'strategies') await _tabStrategies(subBody);
+      if (active === 'strategies')    await _tabStrategies(subBody);
+      else if (active === 'runbooks') await _tileRunbooks(subBody);
       else await _tabPlans(subBody);
     });
   }
@@ -3860,17 +3873,19 @@ const ViewBcp = (() => {
 
   async function _stepTests(body) {
     const tabs = [
-      { id:'tests',    label:'Tests & Ejercicios', icon:'ti-clipboard-check' },
-      { id:'evidence', label:'Evidencias',         icon:'ti-files' },
+      { id:'lista',     label:'Lista de tests',    icon:'ti-clipboard-check' },
+      { id:'calendario',label:'Calendario',         icon:'ti-calendar-event' },
+      { id:'evidence',  label:'Evidencias',         icon:'ti-files' },
     ];
     _buildSubTabs('tests', tabs, body, async (subBody, active) => {
-      if (active === 'tests') await _tabTests(subBody);
+      if (active === 'lista')      await _tabTests(subBody);
+      else if (active === 'calendario') await _tileCalendarioTests(subBody);
       else await _tabEvidence(subBody);
     });
   }
 
   async function _stepAlertas(body) {
-    await _tabRecommendations(body);
+    await _richAlertas(body);
   }
 
   // ── Tile: Dashboard ISO 22301 ─────────────────────────────────────────────────
@@ -4250,6 +4265,563 @@ const ViewBcp = (() => {
     msgs.scrollTop = msgs.scrollHeight;
   }
 
+  // ── Tile: Activaciones de emergencia ─────────────────────────────────────────
+
+  async function _tileActivaciones(body, activeAct) {
+    const [activations, plans] = await Promise.all([
+      activations ? Promise.resolve([]) : Api.get('/api/bcp/activations').catch(() => []),
+      Api.get('/api/bcp/plans').catch(() => []),
+    ]);
+    // Re-fetch if not already passed
+    const allActs = await Api.get('/api/bcp/activations').catch(() => []);
+    const active = allActs.find(a => !a.closed_at);
+    const history = allActs.filter(a => !!a.closed_at).slice(0, 10);
+
+    const approvedPlans = plans.filter(p => p.status === 'approved');
+
+    body.innerHTML = `
+      <div class="bcm-act-layout">
+        <div class="bcm-act-left">
+          ${active ? `
+            <div class="bcm-act-banner">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+                <span class="bcm-act-pulse-dot" style="position:static;width:12px;height:12px"></span>
+                <strong style="font-size:15px;color:#DC2626">BCP ACTIVADO — EN CURSO</strong>
+              </div>
+              <div style="font-size:13px;margin-bottom:4px"><strong>Incidente:</strong> ${UI.esc(active.incident_name||'—')}</div>
+              <div style="font-size:12px;color:var(--text-subtle)">Activado: ${new Date(active.activated_at).toLocaleString('es-ES')}</div>
+              <div style="font-size:12px;color:var(--text-subtle)">Plan: ${UI.esc(active.plan_name||'—')} · Responsable: ${UI.esc(active.activated_by_name||'—')}</div>
+              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+                <button class="btn btn-sm btn-secondary" onclick="ViewBcp._logActivacion(${active.id})">
+                  <i class="ti ti-message-plus"></i> Registrar evento
+                </button>
+                <button class="btn btn-sm" style="background:#DC262615;color:#DC2626;border:1px solid #DC262630"
+                  onclick="ViewBcp._closeActivacion(${active.id})">
+                  <i class="ti ti-lock"></i> Cerrar activacion
+                </button>
+              </div>
+              <div id="act-log-${active.id}" style="margin-top:14px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-subtle);margin-bottom:6px">TIMELINE DE EVENTOS</div>
+                ${(active.log_entries||[]).length === 0
+                  ? '<div style="font-size:12px;color:var(--text-subtle)">Sin eventos registrados todavia.</div>'
+                  : (active.log_entries||[]).map(e => `
+                    <div style="display:flex;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+                      <span style="color:var(--text-subtle);flex-shrink:0;width:100px">${new Date(e.timestamp).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</span>
+                      <span>${UI.esc(e.message||'')}</span>
+                    </div>
+                  `).join('')
+                }
+              </div>
+            </div>
+          ` : `
+            <div class="bcm-act-idle">
+              <div style="text-align:center;padding:32px 20px">
+                <div style="width:60px;height:60px;border-radius:50%;background:#DC262615;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+                  <i class="ti ti-shield-check" style="font-size:28px;color:#DC2626"></i>
+                </div>
+                <div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin activaciones en curso</div>
+                <div style="font-size:12px;color:var(--text-subtle);margin-bottom:20px">
+                  El BCP no está activado. Usa este botón únicamente cuando se detecte un incidente real que requiera activar los planes de continuidad.
+                </div>
+                <button class="btn" style="background:#DC2626;color:#fff;font-size:14px;font-weight:700;padding:10px 22px"
+                  onclick="ViewBcp._modalActivacion()">
+                  <i class="ti ti-alert-triangle"></i> ACTIVAR BCP / DRP
+                </button>
+                <div style="font-size:11px;color:var(--text-subtle);margin-top:10px">
+                  Requiere seleccionar plan y documentar el incidente
+                </div>
+              </div>
+            </div>
+          `}
+        </div>
+        <div class="bcm-act-right">
+          <div style="font-size:13px;font-weight:700;margin-bottom:12px">Historial de activaciones (${allActs.length})</div>
+          ${!allActs.length
+            ? '<div class="notice notice-info">No hay activaciones registradas.</div>'
+            : `<table class="data" style="font-size:12px">
+                <thead><tr><th>Fecha</th><th>Incidente</th><th>Plan</th><th>Duración</th><th>Estado</th></tr></thead>
+                <tbody>
+                  ${allActs.map(a => {
+                    const dur = a.closed_at
+                      ? Math.round((new Date(a.closed_at) - new Date(a.activated_at)) / 60000) + ' min'
+                      : '<span style="color:#DC2626;font-weight:700">ACTIVO</span>';
+                    return `<tr>
+                      <td>${new Date(a.activated_at).toLocaleDateString('es-ES')}</td>
+                      <td>${UI.esc(a.incident_name||'—')}</td>
+                      <td>${UI.esc(a.plan_name||'—')}</td>
+                      <td>${dur}</td>
+                      <td><span class="badge badge-${a.closed_at?'secondary':'danger'}">${a.closed_at?'Cerrada':'Activa'}</span></td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>`
+          }
+        </div>
+      </div>
+      <!-- Modal nueva activacion (oculto) -->
+      <div id="modal-activacion" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+        <div class="modal" style="max-width:500px;width:95%;padding:24px">
+          <h3 style="margin:0 0 16px;color:#DC2626"><i class="ti ti-alert-triangle"></i> Activar BCP / DRP</h3>
+          <div class="fg">
+            <label>Plan a activar *</label>
+            <select id="act-plan-sel" class="form-control">
+              <option value="">-- Seleccionar plan --</option>
+              ${approvedPlans.map(p => `<option value="${p.id}">${UI.esc(p.code)} — ${UI.esc(p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="fg">
+            <label>Nombre / descripcion del incidente *</label>
+            <input id="act-incident" class="form-control" placeholder="p.ej. Ransomware detectado en servidor de BD">
+          </div>
+          <div class="fg">
+            <label>Notas iniciales</label>
+            <textarea id="act-notes" class="form-control" rows="3" placeholder="Descripcion breve del estado actual..."></textarea>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+            <button class="btn btn-ghost" onclick="ViewBcp._closeActModal()">Cancelar</button>
+            <button class="btn" style="background:#DC2626;color:#fff;font-weight:700" onclick="ViewBcp._confirmActivacion()">
+              <i class="ti ti-alert-triangle"></i> CONFIRMAR ACTIVACION
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function _modalActivacion() {
+    const m = document.getElementById('modal-activacion');
+    if (m) m.style.display = 'flex';
+  }
+  function _closeActModal() {
+    const m = document.getElementById('modal-activacion');
+    if (m) m.style.display = 'none';
+  }
+
+  async function _confirmActivacion() {
+    const planId = document.getElementById('act-plan-sel')?.value;
+    const incident = document.getElementById('act-incident')?.value?.trim();
+    if (!planId || !incident) { UI.toast('Completa el plan y el nombre del incidente', 'error'); return; }
+    try {
+      await Api.post('/api/bcp/activations', {
+        plan_id: parseInt(planId),
+        incident_name: incident,
+        notes: document.getElementById('act-notes')?.value || '',
+      });
+      _closeActModal();
+      UI.toast('BCP activado. Registra eventos en el timeline.', 'warning');
+      _setTile('activaciones');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _logActivacion(aid) {
+    const msg = window.prompt('Registrar evento en el timeline:');
+    if (!msg?.trim()) return;
+    try {
+      await Api.post('/api/bcp/activations/' + aid + '/log', { message: msg.trim() });
+      _setTile('activaciones');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _closeActivacion(aid) {
+    const notes = window.prompt('Notas de cierre (resumen de la respuesta):');
+    if (notes === null) return;
+    try {
+      await Api.post('/api/bcp/activations/' + aid + '/close', { closure_notes: notes });
+      UI.toast('Activacion cerrada. Se ha registrado el incidente.', 'success');
+      _setTile('activaciones');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  // ── Tile: Calendario de tests ─────────────────────────────────────────────────
+
+  async function _tileCalendarioTests(container) {
+    const tests = await Api.get('/api/bcp/tests' + _locParam()).catch(() => []);
+    const now = new Date();
+    const ms30 = 30 * 86400000;
+    const ms90 = 90 * 86400000;
+
+    // Agrupar por mes (próximos 6 meses + vencidos)
+    const overdue = [];
+    const upcoming = {};
+    const done = [];
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now);
+      d.setMonth(d.getMonth() + i);
+      const key = d.toISOString().slice(0, 7);
+      upcoming[key] = [];
+    }
+
+    tests.forEach(t => {
+      const sched = t.scheduled_date ? new Date(t.scheduled_date) : null;
+      const exec  = t.executed_date  ? new Date(t.executed_date)  : null;
+      if (exec || t.status === 'completed' || t.status === 'passed' || t.status === 'failed') {
+        done.push(t);
+      } else if (sched) {
+        if (sched < now) {
+          overdue.push(t);
+        } else {
+          const key = sched.toISOString().slice(0, 7);
+          if (upcoming[key]) upcoming[key].push(t);
+          else { upcoming[key] = [t]; }
+        }
+      }
+    });
+
+    const monthName = key => {
+      const [y, m] = key.split('-');
+      return new Date(y, parseInt(m) - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    };
+
+    const testRow = t => {
+      const sched = t.scheduled_date ? new Date(t.scheduled_date).toLocaleDateString('es-ES') : '—';
+      const diff = t.scheduled_date ? Math.round((new Date(t.scheduled_date) - now) / 86400000) : null;
+      const urgColor = diff !== null && diff <= 14 ? '#DC2626' : diff !== null && diff <= 30 ? '#D97706' : '#16a34a';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--bg-2);margin-bottom:4px;font-size:12px">
+        <i class="ti ti-clipboard-check" style="color:${urgColor};flex-shrink:0"></i>
+        <div style="flex:1">
+          <div style="font-weight:600">${UI.esc(t.name||t.test_type||'Test')}</div>
+          <div style="color:var(--text-subtle);font-size:11px">${UI.esc(t.test_type||'')} · ${sched}${diff!==null?' · en '+diff+' días':''}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="font-size:10px;padding:2px 6px" onclick="ViewBcp._openTestModal(${t.id})">Ver</button>
+      </div>`;
+    };
+
+    let html = '';
+
+    if (overdue.length) {
+      html += `<div class="bcm-cal-month">
+        <div class="bcm-cal-month-header" style="color:#DC2626">
+          <i class="ti ti-alert-circle"></i> VENCIDOS (${overdue.length})
+        </div>
+        ${overdue.map(testRow).join('')}
+      </div>`;
+    }
+
+    const sortedMonths = Object.keys(upcoming).sort();
+    sortedMonths.forEach(key => {
+      const items = upcoming[key];
+      if (!items.length && key < now.toISOString().slice(0, 7)) return;
+      const isCurrentMonth = key === now.toISOString().slice(0, 7);
+      html += `<div class="bcm-cal-month">
+        <div class="bcm-cal-month-header" style="${isCurrentMonth ? 'color:var(--primary);font-weight:800' : ''}">
+          <i class="ti ti-calendar"></i> ${monthName(key)}
+          ${items.length ? `<span class="badge badge-secondary" style="margin-left:auto">${items.length}</span>` : '<span style="margin-left:auto;font-size:11px;color:var(--text-subtle)">Sin tests</span>'}
+        </div>
+        ${items.length ? items.map(testRow).join('') : '<div style="font-size:12px;color:var(--text-subtle);padding:4px 8px">Mes libre — considera programar un ejercicio tabletop.</div>'}
+      </div>`;
+    });
+
+    if (done.length) {
+      html += `<details style="margin-top:8px">
+        <summary style="font-size:12px;font-weight:700;color:var(--text-subtle);cursor:pointer;padding:4px 0">
+          <i class="ti ti-check"></i> Tests completados (${done.length})
+        </summary>
+        <div style="margin-top:8px">
+          ${done.slice(0, 20).map(t => {
+            const ex = t.executed_date ? new Date(t.executed_date).toLocaleDateString('es-ES') : '—';
+            const col = t.status === 'passed' ? '#16a34a' : t.status === 'failed' ? '#DC2626' : '#6B7280';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid var(--border)">
+              <i class="ti ti-circle-check" style="color:${col}"></i>
+              <span style="flex:1">${UI.esc(t.name||t.test_type||'Test')}</span>
+              <span style="color:var(--text-subtle)">${ex}</span>
+              <span style="color:${col};font-weight:700">${t.status||'—'}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </details>`;
+    }
+
+    if (!html) {
+      html = '<div class="notice notice-info">No hay tests programados. Crea tests en la pestaña "Lista de tests".</div>';
+    }
+
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-size:14px;font-weight:700">Calendario de Tests ISO 22301</div>
+          <div style="font-size:11px;color:var(--text-subtle)">ISO 22301 cl. 8.5 / 9.1 — Pruebas y ejercicios de continuidad</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="ViewBcp._openTestModal(null)">
+          <i class="ti ti-plus"></i> Programar test
+        </button>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <div class="bcm-kpi" style="flex:1;border-top:3px solid #DC2626;padding:10px 12px">
+          <div class="bcm-kpi-label">Vencidos</div>
+          <div class="bcm-kpi-val" style="font-size:20px;color:#DC2626">${overdue.length}</div>
+        </div>
+        <div class="bcm-kpi" style="flex:1;border-top:3px solid #D97706;padding:10px 12px">
+          <div class="bcm-kpi-label">Proximos 30 dias</div>
+          <div class="bcm-kpi-val" style="font-size:20px;color:#D97706">${Object.values(upcoming).flat().filter(t => {
+            const d = new Date(t.scheduled_date);
+            return d >= now && d <= new Date(now.getTime() + ms30);
+          }).length}</div>
+        </div>
+        <div class="bcm-kpi" style="flex:1;border-top:3px solid #16a34a;padding:10px 12px">
+          <div class="bcm-kpi-label">Completados</div>
+          <div class="bcm-kpi-val" style="font-size:20px;color:#16a34a">${done.length}</div>
+        </div>
+      </div>
+      <div class="bcm-cal-grid">${html}</div>
+    `;
+  }
+
+  // ── Tile: Runbooks ────────────────────────────────────────────────────────────
+
+  async function _tileRunbooks(container) {
+    const [runbooks, plans] = await Promise.all([
+      Api.get('/api/bcp/runbooks').catch(() => []),
+      Api.get('/api/bcp/plans').catch(() => []),
+    ]);
+    const planMap = {};
+    plans.forEach(p => { planMap[p.id] = p; });
+
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div>
+          <div style="font-size:14px;font-weight:700">Runbooks de recuperacion</div>
+          <div style="font-size:11px;color:var(--text-subtle)">Procedimientos paso a paso enlazados a planes BCP/DRP</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="ViewBcp._newRunbook()">
+          <i class="ti ti-plus"></i> Nuevo runbook
+        </button>
+      </div>
+      ${!runbooks.length
+        ? `<div class="notice notice-info">
+            Sin runbooks. Los runbooks son procedimientos detallados paso a paso para recuperar sistemas o procesos.
+            <button class="btn btn-sm btn-secondary" style="margin-left:10px" onclick="ViewBcp._newRunbook()">Crear primero</button>
+          </div>`
+        : `<div style="display:flex;flex-direction:column;gap:10px">
+            ${runbooks.map(rb => {
+              const plan = planMap[rb.plan_id];
+              const steps = rb.steps || [];
+              const doneSteps = steps.filter(s => s.done).length;
+              return `<div class="card" style="padding:14px">
+                <div style="display:flex;align-items:flex-start;gap:10px">
+                  <div style="width:36px;height:36px;border-radius:50%;background:var(--primary)18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <i class="ti ti-checklist" style="color:var(--primary)"></i>
+                  </div>
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <strong style="font-size:13px">${UI.esc(rb.name||'Sin nombre')}</strong>
+                      ${plan ? `<span class="badge badge-secondary" style="font-size:10px">${UI.esc(plan.code||plan.name)}</span>` : ''}
+                      <span class="badge" style="font-size:10px;background:${rb.runbook_type==='recovery'?'#16a34a22':rb.runbook_type==='failover'?'#D9770622':'#59008D22'};color:${rb.runbook_type==='recovery'?'#16a34a':rb.runbook_type==='failover'?'#D97706':'#59008D'}">
+                        ${rb.runbook_type||'general'}
+                      </span>
+                    </div>
+                    ${rb.description ? `<div style="font-size:12px;color:var(--text-subtle);margin-top:3px">${UI.esc(rb.description)}</div>` : ''}
+                    ${steps.length ? `
+                      <div style="margin-top:8px">
+                        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-subtle);margin-bottom:4px">
+                          <span>${doneSteps}/${steps.length} pasos completados</span>
+                          <div style="flex:1;height:4px;background:var(--bg-3,#222);border-radius:2px">
+                            <div style="width:${steps.length?Math.round(doneSteps/steps.length*100):0}%;height:100%;background:#16a34a;border-radius:2px"></div>
+                          </div>
+                        </div>
+                        ${steps.slice(0, 4).map((s, i) => `
+                          <div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0">
+                            <span style="width:18px;height:18px;border-radius:50%;background:${s.done?'#16a34a':'var(--border)'};color:${s.done?'#fff':'var(--text-subtle)'};display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0">${s.done?'✓':i+1}</span>
+                            <span style="color:${s.done?'var(--text-subtle)':'var(--text)'}${s.done?';text-decoration:line-through':''}">${UI.esc(s.description||s.title||'Paso '+(i+1))}</span>
+                          </div>
+                        `).join('')}
+                        ${steps.length > 4 ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:2px">+ ${steps.length-4} pasos mas...</div>` : ''}
+                      </div>
+                    ` : ''}
+                  </div>
+                  <div style="display:flex;gap:4px;flex-shrink:0">
+                    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._editRunbook(${rb.id})">
+                      <i class="ti ti-edit"></i>
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._genAiRunbook(${rb.id})"
+                      title="Generar pasos con IA">
+                      <i class="ti ti-sparkles"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>`
+      }
+    `;
+  }
+
+  async function _newRunbook() {
+    const plans = await Api.get('/api/bcp/plans').catch(() => []);
+    const name = window.prompt('Nombre del runbook:');
+    if (!name?.trim()) return;
+    const planSel = plans.length
+      ? window.prompt('ID del plan a enlazar (opcional, dejar vacío para ninguno):\n' + plans.map(p => p.id + ' — ' + p.name).join('\n'))
+      : null;
+    try {
+      await Api.post('/api/bcp/runbooks', {
+        name: name.trim(),
+        plan_id: planSel ? parseInt(planSel) : null,
+        runbook_type: 'recovery',
+        steps: [],
+      });
+      UI.toast('Runbook creado', 'success');
+      _setSubTab(4, 'runbooks');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _editRunbook(rid) {
+    const rb = await Api.get('/api/bcp/runbooks').then(list => list.find(r => r.id === rid)).catch(() => null);
+    if (!rb) return;
+    const name = window.prompt('Nombre del runbook:', rb.name||'');
+    if (name === null) return;
+    const desc = window.prompt('Descripcion:', rb.description||'');
+    if (desc === null) return;
+    try {
+      await Api.patch('/api/bcp/runbooks/' + rid, { name: name.trim(), description: desc.trim() });
+      UI.toast('Runbook actualizado', 'success');
+      _setSubTab(4, 'runbooks');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _genAiRunbook(rid) {
+    UI.toast('Generando pasos con IA...', 'info');
+    try {
+      await Api.post('/api/bcp/runbooks/' + rid + '/generate-ai', {});
+      UI.toast('Pasos generados por IA', 'success');
+      _setSubTab(4, 'runbooks');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  // ── Alertas enriquecidas (vencimientos + recomendaciones IA) ──────────────────
+
+  async function _richAlertas(body) {
+    const [comp, tests, plans, recs] = await Promise.all([
+      Api.get('/api/bcp/compliance/iso22301' + _locParam()).catch(() => null),
+      Api.get('/api/bcp/tests' + _locParam()).catch(() => []),
+      Api.get('/api/bcp/plans' + _locParam()).catch(() => []),
+      Api.get('/api/bcp/test-recommendations' + _locParam()).catch(() => []),
+    ]);
+
+    const now = new Date();
+    const ms30 = 30 * 86400000;
+    const ms90 = 90 * 86400000;
+
+    // Calcular alertas
+    const alerts = { critical:[], warning:[], info:[] };
+
+    // Tests vencidos
+    tests.filter(t => !t.executed_date && t.scheduled_date && new Date(t.scheduled_date) < now)
+      .forEach(t => alerts.critical.push({
+        icon:'ti-clipboard-x', text:`Test vencido: <strong>${t.name||t.test_type}</strong>`, sub: 'Programado: ' + new Date(t.scheduled_date).toLocaleDateString('es-ES'), action: `ViewBcp._openTestModal(${t.id})`, actionLabel:'Ver test',
+      }));
+
+    // Planes sin aprobacion
+    plans.filter(p => p.status === 'draft').forEach(p => alerts.critical.push({
+      icon:'ti-file-x', text:`Plan sin aprobar: <strong>${p.code} — ${p.name}</strong>`, sub:'Estado: borrador · ISO 22301 cl. 8.4.4 requiere aprobacion formal', action:null,
+    }));
+
+    // Procesos sin BIA
+    const procs = await Api.get('/api/bcp/processes').catch(() => []);
+    procs.filter(p => !p.rto && !p.rpo).forEach(p => alerts.warning.push({
+      icon:'ti-sitemap', text:`Proceso sin BIA: <strong>${p.name}</strong>`, sub:'Faltan RTO/RPO · ISO 22301 cl. 8.2', action:`ViewBcp._editProc(${p.id})`, actionLabel:'Editar',
+    }));
+
+    // Tests proximos 30 dias
+    tests.filter(t => !t.executed_date && t.scheduled_date && new Date(t.scheduled_date) >= now && new Date(t.scheduled_date) <= new Date(now.getTime() + ms30))
+      .forEach(t => alerts.info.push({
+        icon:'ti-calendar-event', text:`Test próximo: <strong>${t.name||t.test_type}</strong>`, sub: 'En ' + Math.round((new Date(t.scheduled_date) - now)/86400000) + ' días · ' + new Date(t.scheduled_date).toLocaleDateString('es-ES'), action: `ViewBcp._openTestModal(${t.id})`, actionLabel:'Ver',
+      }));
+
+    // Planes con revision proxima
+    plans.filter(p => p.review_date && new Date(p.review_date) >= now && new Date(p.review_date) <= new Date(now.getTime() + ms90))
+      .forEach(p => alerts.info.push({
+        icon:'ti-calendar-check', text:`Plan con revision proxima: <strong>${p.name}</strong>`, sub:'Revision: ' + new Date(p.review_date).toLocaleDateString('es-ES'), action:null,
+      }));
+
+    const renderAlertList = (list, color, label) => {
+      if (!list.length) return '';
+      return `<div class="bcm-alert-section">
+        <div class="bcm-alert-section-header" style="color:${color}">
+          <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></span>
+          ${label} (${list.length})
+        </div>
+        ${list.map(a => `
+          <div class="bcm-alert-item">
+            <i class="ti ${a.icon}" style="color:${color};flex-shrink:0;font-size:15px"></i>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px">${a.text}</div>
+              ${a.sub ? `<div style="font-size:11px;color:var(--text-subtle)">${a.sub}</div>` : ''}
+            </div>
+            ${a.action ? `<button class="btn btn-ghost btn-sm" style="font-size:10px;white-space:nowrap" onclick="${a.action}">${a.actionLabel||'Ver'}</button>` : ''}
+          </div>
+        `).join('')}
+      </div>`;
+    };
+
+    const totalAlerts = alerts.critical.length + alerts.warning.length + alerts.info.length;
+
+    body.innerHTML = `
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:280px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-size:14px;font-weight:700">
+              ${totalAlerts ? `<span style="color:#DC2626">${totalAlerts} alertas activas</span>` : '<span style="color:#16a34a">Sin alertas criticas</span>'}
+            </div>
+          </div>
+          ${!totalAlerts
+            ? '<div class="notice notice-success"><i class="ti ti-shield-check"></i> Todo en orden. No hay alertas de vencimiento ni gaps criticos identificados.</div>'
+            : renderAlertList(alerts.critical,'#DC2626','CRITICO') +
+              renderAlertList(alerts.warning,'#D97706','ATENCION') +
+              renderAlertList(alerts.info,'#2563EB','INFORMACION')
+          }
+        </div>
+        <div style="flex:1;min-width:280px">
+          <div style="font-size:14px;font-weight:700;margin-bottom:12px">
+            Recomendaciones IA (${recs.length})
+          </div>
+          ${!recs.length
+            ? `<div class="notice notice-info">
+                Sin recomendaciones pendientes.
+                <button class="btn btn-sm btn-secondary" style="margin-left:8px" onclick="ViewBcp._genRecs()">
+                  <i class="ti ti-sparkles"></i> Generar con IA
+                </button>
+              </div>`
+            : recs.slice(0,10).map(r => {
+                const col = r.priority === 'critical'?'#DC2626':r.priority==='high'?'#D97706':r.priority==='medium'?'#2563EB':'#16a34a';
+                return `<div class="bcm-alert-item" style="margin-bottom:6px">
+                  <div style="width:6px;height:6px;border-radius:50%;background:${col};flex-shrink:0;margin-top:5px"></div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12px;font-weight:600">${UI.esc(r.title||r.recommendation_text||'')}</div>
+                    ${r.description ? `<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(r.description)}</div>` : ''}
+                    <div style="font-size:10px;color:var(--text-subtle);margin-top:2px">${UI.esc(r.iso_clause||'')} · ${r.priority||''}</div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="ViewBcp._acceptRec(${r.id})">Aceptar</button>
+                </div>`;
+              }).join('')
+          }
+          <div style="margin-top:14px">
+            <button class="btn btn-ghost btn-sm" onclick="ViewBcp._openAiPanel();ViewBcp._sendAiMsg('Analiza el estado actual del BCP y genera recomendaciones de mejora priorizadas por impacto ISO 22301')">
+              <i class="ti ti-brain"></i> Pedir analisis al agente IA
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function _genRecs() {
+    UI.toast('Generando recomendaciones...', 'info');
+    try {
+      await Api.post('/api/bcp/test-recommendations/generate', {});
+      _setTile('alertas');
+      UI.toast('Recomendaciones generadas', 'success');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _acceptRec(rid) {
+    try {
+      await Api.patch('/api/bcp/test-recommendations/' + rid, { status: 'accepted' });
+      _setTile('alertas');
+      UI.toast('Recomendacion aceptada', 'success');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
   return {
     render,
     _switchTab, _setMode, _setStep, _setTile, _setSubTab,
@@ -4274,5 +4846,8 @@ const ViewBcp = (() => {
     _runBcpAiAnalysis,
     _toggleLocChildren, _setLocFilter, _editLocation, _modalLocation,
     _openTestModal,
+    _modalActivacion, _closeActModal, _confirmActivacion, _logActivacion, _closeActivacion,
+    _newRunbook, _editRunbook, _genAiRunbook,
+    _genRecs, _acceptRec,
   };
 })();
