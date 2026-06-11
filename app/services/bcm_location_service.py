@@ -36,11 +36,19 @@ def get_location_metrics(db: Session, location_id: int, org_id: int) -> dict:
     from app.services.bcp_service import bia_completeness
     now = datetime.now(timezone.utc)
 
-    procs = db.query(BusinessProcess).filter_by(
-        organization_id=org_id, location_id=location_id).all()
+    try:
+        procs = db.query(BusinessProcess).filter_by(
+            organization_id=org_id, location_id=location_id).all()
+    except Exception:
+        procs = []
+
     plans = _safe_query(db, "bcp_plans", BCPPlan, org_id, location_id)
-    tests = db.query(BCPTest).filter_by(
-        organization_id=org_id, location_id=location_id).all()
+
+    try:
+        tests = db.query(BCPTest).filter_by(
+            organization_id=org_id, location_id=location_id).all()
+    except Exception:
+        tests = []
 
     bia_pcts = [bia_completeness(db, p)["pct"] for p in procs]
     avg_bia = int(sum(bia_pcts) / len(bia_pcts)) if bia_pcts else 0
@@ -50,8 +58,11 @@ def get_location_metrics(db: Session, location_id: int, org_id: int) -> dict:
         if t.result == "passed" and t.conducted_at and
         (now - t.conducted_at.replace(tzinfo=timezone.utc)).days <= 365
     ]
-    assets_count = db.query(Asset).filter_by(
-        organization_id=org_id, bcm_location_id=location_id).count()
+    try:
+        assets_count = db.query(Asset).filter_by(
+            organization_id=org_id, bcm_location_id=location_id).count()
+    except Exception:
+        assets_count = 0
 
     maturity = "green" if avg_bia >= 80 and approved and recent_passed \
                else "yellow" if avg_bia >= 50 \

@@ -106,6 +106,7 @@ def _proc_d(p: BusinessProcess) -> dict:
         "impact_7d": getattr(p, "impact_7d", None),
         "bia_version": getattr(p, "bia_version", None),
         "bia_review_date": p.bia_review_date.isoformat() if getattr(p, "bia_review_date", None) else None,
+        "location_id": getattr(p, "location_id", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -1490,12 +1491,129 @@ def update_location(loc_id: int, body: LocationUpdate,
 def delete_location(loc_id: int, db: Session = Depends(get_db),
                     u: User = Depends(require_admin)):
     loc = _chk_loc(db, loc_id, _org(u))
-    procs = db.query(BusinessProcess).filter_by(
-        organization_id=_org(u), location_id=loc_id).count()
-    if procs:
-        raise HTTPException(422, f"No se puede eliminar: {procs} proceso(s) vinculado(s)")
+    try:
+        procs = db.query(BusinessProcess).filter_by(
+            organization_id=_org(u), location_id=loc_id).count()
+        if procs:
+            raise HTTPException(422, f"No se puede eliminar: {procs} proceso(s) vinculado(s)")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     db.delete(loc)
     db.commit()
+
+
+@router.post("/locations/{loc_id}/sync-deps")
+def sync_location_deps(loc_id: int, db: Session = Depends(get_db),
+                       u: User = Depends(require_analyst)):
+    """Auto-crea dependencias BCM cuando una localización tiene localización alternativa.
+    ISO 22301 cl. 8.3 — cada proceso debe tener estrategia de localización alternativa.
+    Las dependencias creadas son categorizadas como criticas o no segun la criticidad del proceso.
+    """
+    org = _org(u)
+    loc = _chk_loc(db, loc_id, org)
+    if not loc.alternate_location_id:
+        return {"created": 0, "skipped": 0, "message": "Sin localización alternativa configurada"}
+
+    alt_loc = db.get(BCMLocation, loc.alternate_location_id)
+    if not alt_loc or alt_loc.organization_id != org:
+        raise HTTPException(422, "Localización alternativa no válida")
+
+    try:
+        procs = db.query(BusinessProcess).filter_by(
+            organization_id=org, location_id=loc_id).all()
+    except Exception:
+        procs = []
+
+    created = 0
+    skipped = 0
+    for proc in procs:
+        dep_name = f"Sede alternativa: {alt_loc.name}"
+        existing = db.query(BCPDependency).filter_by(
+            organization_id=org,
+            process_id=proc.id,
+            dependency_type="facility",
+            name=dep_name,
+        ).first()
+        if existing:
+            skipped += 1
+            continue
+        is_critical = proc.criticality in ("critical", "high")
+        dep = BCPDependency(
+            organization_id=org,
+            process_id=proc.id,
+            dependency_type="facility",
+            name=dep_name,
+            description=(
+                f"Dependencia auto-generada: {loc.name} tiene como sede alternativa "
+                f"{alt_loc.name}. Activar en caso de indisponibilidad de sede principal."
+            ),
+            is_critical=is_critical,
+            alternative=f"Activar trasladado a {alt_loc.name} ({alt_loc.recovery_site_type or 'site alternativo'})",
+            notes="auto:location_alternate",
+        )
+        db.add(dep)
+        created += 1
+
+    if created:
+        db.commit()
+        log_action(db, u.id, "auto_sync", "bcp_dependencies", str(loc_id),
+                   {"created": created, "location": loc.name, "alternate": alt_loc.name})
+
+    return {
+        "created": created,
+        "skipped": skipped,
+        "location": loc.name,
+        "alternate": alt_loc.name,
+        "message": f"{created} dependencia(s) creada(s), {skipped} ya existían",
+    }
+
+
+@router.post("/locations/sync-all-deps")
+def sync_all_location_deps(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    """Sincroniza dependencias de todas las localizaciones con sede alternativa."""
+    org = _org(u)
+    locs = db.query(BCMLocation).filter(
+        BCMLocation.organization_id == org,
+        BCMLocation.alternate_location_id.isnot(None),
+        BCMLocation.is_active == True,
+    ).all()
+    total_created = 0
+    for loc in locs:
+        try:
+            result = sync_location_deps.__wrapped__(loc.id, db, u) if hasattr(sync_location_deps, '__wrapped__') else None
+            if result is None:
+                alt_loc = db.get(BCMLocation, loc.alternate_location_id)
+                if not alt_loc or alt_loc.organization_id != org:
+                    continue
+                try:
+                    procs = db.query(BusinessProcess).filter_by(
+                        organization_id=org, location_id=loc.id).all()
+                except Exception:
+                    procs = []
+                for proc in procs:
+                    dep_name = f"Sede alternativa: {alt_loc.name}"
+                    if db.query(BCPDependency).filter_by(
+                        organization_id=org, process_id=proc.id,
+                        dependency_type="facility", name=dep_name,
+                    ).first():
+                        continue
+                    dep = BCPDependency(
+                        organization_id=org, process_id=proc.id,
+                        dependency_type="facility", name=dep_name,
+                        description=f"Auto: {loc.name} → {alt_loc.name}",
+                        is_critical=proc.criticality in ("critical", "high"),
+                        alternative=f"Trasladar a {alt_loc.name}",
+                        notes="auto:location_alternate",
+                    )
+                    db.add(dep)
+                    total_created += 1
+        except Exception as e:
+            logger.warning("sync_all_location_deps loc=%d: %s", loc.id, e)
+    if total_created:
+        db.commit()
+    return {"created": total_created, "locations_processed": len(locs)}
 
 
 # ── GRAFO DE DEPENDENCIAS BCM ─────────────────────────────────────────────────

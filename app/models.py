@@ -1638,6 +1638,7 @@ class BusinessProcess(Base):
     impact_7d = Column(Integer, nullable=True)             # Impacto a 7 dias
     bia_version = Column(String(16), nullable=True)        # Version del BIA (ej. "v1.0")
     bia_review_date = Column(DateTime, nullable=True)      # Proxima revision del BIA
+    location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id])
     recovery_owner = relationship("User", foreign_keys=[recovery_owner_id])
@@ -1667,6 +1668,7 @@ class BCPTest(Base):
     frequency = Column(String(16), nullable=True)          # mensual|trimestral|semestral|anual
     rto_achieved_hours = Column(Integer, nullable=True)    # RTO real conseguido en el test
     rpo_achieved_hours = Column(Integer, nullable=True)    # RPO real conseguido en el test
+    location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     facilitator = relationship("User", foreign_keys=[facilitator_id])
@@ -1760,6 +1762,7 @@ class BCPPlan(Base):
     backup_policy = Column(JSON, nullable=True)
     # DRP: {rule_321, encryption, retention, offsite_location,
     #        items:[{system,backup_type,frequency,retention,rpo_covered,location,last_test_date,last_test_result}]}
+    location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     approved_by = relationship("User", foreign_keys=[approved_by_id])

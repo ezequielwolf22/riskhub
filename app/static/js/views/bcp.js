@@ -691,7 +691,7 @@ const ViewBcp = (() => {
           <i class="ti ti-chart-dots" style="font-size:48px;color:var(--text-muted);"></i>
           <h3 style="margin:16px 0 8px;">Sin procesos BIA</h3>
           <p style="color:var(--text-muted);margin-bottom:20px;">Registra primero tus procesos criticos para completar el Analisis de Impacto.</p>
-          <button class="btn btn-primary btn-lg" id="btn-bia-new2">+ Crear primer proceso BIA</button>
+          <button class="btn btn-primary btn-lg" id="btn-bia-new2">+ Crear primer BIA</button>
         </div>`
       : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px;">
     ${_procs.map(p => {
@@ -753,7 +753,7 @@ const ViewBcp = (() => {
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h3 style="margin:0;">Analisis de Impacto (BIA) — ${_procs.length} procesos</h3>
-      <button class="btn btn-primary" id="btn-bia-new">+ Nuevo proceso BIA</button>
+      <button class="btn btn-primary" id="btn-bia-new">+ Nuevo BIA</button>
     </div>
     ${bodyHtml}`;
 
@@ -799,19 +799,26 @@ const ViewBcp = (() => {
     const resourceRows = resourceDeps.map(d => `<tr>
       <td><i class="ti ${DEP_ICONS[d.dependency_type] || 'ti-circle'}" style="margin-right:4px;"></i>${DEP_LABELS[d.dependency_type] || d.dependency_type}</td>
       <td style="font-size:12px;">${UI.esc(procName(d.process_id))}</td>
-      <td><strong style="font-size:13px;">${UI.esc(d.name)}</strong>${d.description ? `<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(d.description.substring(0,50))}</div>` : ''}</td>
+      <td><strong style="font-size:13px;">${UI.esc(d.name)}</strong>${d.notes === 'auto:location_alternate' ? ' <span class="badge badge-muted" style="font-size:9px;">auto</span>' : ''}${d.description ? `<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(d.description.substring(0,60))}</div>` : ''}</td>
       <td style="text-align:center;">${d.qty_normal ?? '—'} / ${d.qty_recovery ?? '—'}</td>
       <td style="text-align:center;">${d.rto_hours != null ? d.rto_hours + 'h' : '—'}</td>
-      <td style="text-align:center;">${d.is_critical ? '<span class="badge badge-danger" style="font-size:10px;">Si</span>' : '<span style="font-size:11px;color:var(--text-subtle)">No</span>'}</td>
+      <td style="text-align:center;">${d.is_critical ? '<span class="badge badge-danger" style="font-size:10px;">Critica</span>' : '<span style="font-size:11px;color:var(--text-subtle)">No critica</span>'}</td>
       <td style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;">${UI.esc((d.alternative || '—').substring(0,50))}</td>
       <td style="text-align:center;">${d.recovery_sequence != null ? `<span class="badge">${d.recovery_sequence}</span>` : '—'}</td>
       <td><button class="btn btn-sm btn-secondary" onclick="ViewBcp._editDep(${d.id})">Editar</button></td>
     </tr>`).join('');
 
     const html = `
-    <div style="display:flex;justify-content:flex-end;margin-bottom:16px;gap:8px;">
-      <button class="btn btn-primary" id="btn-new-dep"><i class="ti ti-plus"></i> Nueva dependencia de recurso</button>
-      <button class="btn btn-secondary" id="btn-new-proc-dep"><i class="ti ti-sitemap"></i> Nueva dep. proceso-proceso</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="btn btn-ghost btn-sm" id="btn-sync-loc-deps" title="Detecta localizaciones con sede alternativa y crea dependencias automáticamente">
+          <i class="ti ti-refresh"></i> Sincronizar dependencias de sedes
+        </button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" id="btn-new-dep"><i class="ti ti-plus"></i> Nueva dependencia de recurso</button>
+        <button class="btn btn-secondary" id="btn-new-proc-dep"><i class="ti ti-sitemap"></i> Nueva dep. proceso-proceso</button>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -854,6 +861,21 @@ const ViewBcp = (() => {
     el.innerHTML = html;
     document.getElementById('btn-new-dep')?.addEventListener('click', () => _openDepModal());
     document.getElementById('btn-new-proc-dep')?.addEventListener('click', () => _openDepModal(null, true));
+    document.getElementById('btn-sync-loc-deps')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-sync-loc-deps');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Sincronizando...'; }
+      try {
+        const res = await Api.post('/api/bcp/locations/sync-all-deps', {});
+        UI.toast(res.created > 0
+          ? res.created + ' dependencia(s) creada(s) de ' + res.locations_processed + ' sede(s) con alternativa'
+          : 'No hay dependencias nuevas que crear', res.created > 0 ? 'success' : 'info');
+        if (res.created > 0) _renderContent();
+      } catch (e) {
+        UI.toast('Error: ' + (e.message || e), 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Sincronizar dependencias de sedes'; }
+      }
+    });
   }
 
   // ── Tab Estrategias ──────────────────────────────────────────────────────────
@@ -1400,7 +1422,7 @@ const ViewBcp = (() => {
     modal.innerHTML = `
     <div class="modal" style="max-width:720px;max-height:92vh;display:flex;flex-direction:column;">
       <div class="modal-header" style="flex-shrink:0;">
-        <h2>${proc ? 'Editar proceso' : (isBia ? 'Nuevo proceso BIA' : 'Nuevo proceso critico')}</h2>
+        <h2>${proc ? 'Editar proceso' : (isBia ? 'Nuevo BIA' : 'Nuevo proceso critico')}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
@@ -1633,11 +1655,13 @@ const ViewBcp = (() => {
 
   async function _delProc(id) {
     if (!confirm('Eliminar proceso? Esta accion no se puede deshacer.')) return;
-    await Api.del(`/api/bcp/processes/${id}`);
-    UI.toast('Proceso eliminado', 'success');
-    document.querySelector('.modal-bg')?.remove();
-    _procs = [];
-    _switchTab('processes');
+    try {
+      await Api.del(`/api/bcp/processes/${id}`);
+      UI.toast('Proceso eliminado', 'success');
+      document.querySelector('.modal-bg')?.remove();
+      _procs = [];
+      _switchTab('processes');
+    } catch (e) { UI.toast('Error al eliminar: ' + (e.message || e), 'error'); }
   }
 
   // ── Modales — Dependencia ────────────────────────────────────────────────────
@@ -1801,10 +1825,12 @@ const ViewBcp = (() => {
 
   async function _delDep(id) {
     if (!confirm('Eliminar dependencia?')) return;
-    await Api.del(`/api/bcp/dependencies/${id}`);
-    UI.toast('Dependencia eliminada', 'success');
-    document.querySelector('.modal-bg')?.remove();
-    _switchTab('dependencies');
+    try {
+      await Api.del(`/api/bcp/dependencies/${id}`);
+      UI.toast('Dependencia eliminada', 'success');
+      document.querySelector('.modal-bg')?.remove();
+      _switchTab('dependencies');
+    } catch (e) { UI.toast('Error al eliminar: ' + (e.message || e), 'error'); }
   }
 
   // ── Modales — Estrategia ─────────────────────────────────────────────────────
@@ -1895,10 +1921,12 @@ const ViewBcp = (() => {
 
   async function _delStrat(id) {
     if (!confirm('Eliminar estrategia?')) return;
-    await Api.del(`/api/bcp/strategies/${id}`);
-    UI.toast('Estrategia eliminada', 'success');
-    document.querySelector('.modal-bg')?.remove();
-    _switchTab('strategies');
+    try {
+      await Api.del(`/api/bcp/strategies/${id}`);
+      UI.toast('Estrategia eliminada', 'success');
+      document.querySelector('.modal-bg')?.remove();
+      _switchTab('strategies');
+    } catch (e) { UI.toast('Error al eliminar: ' + (e.message || e), 'error'); }
   }
 
   // ── Drawer — Plan ────────────────────────────────────────────────────────────
@@ -3086,6 +3114,7 @@ const ViewBcp = (() => {
     modal.querySelector('#btn-save-loc-full').onclick = async () => {
       const name = modal.querySelector('#locm-name').value.trim();
       if (!name) return UI.toast('El nombre es obligatorio', 'error');
+      const altLocId = parseInt(modal.querySelector('#locm-alt-loc').value) || null;
       const body = {
         name,
         code: modal.querySelector('#locm-code').value.trim() || null,
@@ -3095,15 +3124,26 @@ const ViewBcp = (() => {
         bcm_manager_id: parseInt(modal.querySelector('#locm-mgr').value) || null,
         recovery_site_type: modal.querySelector('#locm-site-type').value || null,
         recovery_site_description: modal.querySelector('#locm-site-desc').value.trim() || null,
-        alternate_location_id: parseInt(modal.querySelector('#locm-alt-loc').value) || null,
+        alternate_location_id: altLocId,
         is_active: modal.querySelector('#locm-active').checked,
       };
       try {
-        if (loc) await Api.patch('/api/bcp/locations/' + loc.id, body);
-        else await Api.post('/api/bcp/locations', body);
+        let saved;
+        if (loc) saved = await Api.patch('/api/bcp/locations/' + loc.id, body);
+        else saved = await Api.post('/api/bcp/locations', body);
         UI.toast('Localización guardada', 'success');
         modal.remove();
         await _loadLocations();
+        // Auto-crear dependencias si hay sede alternativa configurada
+        const savedId = saved?.id || loc?.id;
+        if (savedId && altLocId) {
+          try {
+            const syncRes = await Api.post('/api/bcp/locations/' + savedId + '/sync-deps', {});
+            if (syncRes.created > 0) {
+              UI.toast(syncRes.created + ' dependencia(s) de localización alternativa creada(s) automáticamente', 'success');
+            }
+          } catch (_) { /* sync falla silenciosamente */ }
+        }
         _setStep(1);
       } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
     };
@@ -3138,7 +3178,7 @@ const ViewBcp = (() => {
   async function _tabGraph(container) {
     const cytOk = await _ensureCytoscape();
     if (!cytOk) {
-      container.innerHTML = '<div class="notice notice-warning">No se pudo cargar Cytoscape.js. Comprueba la conexión a internet.</div>';
+      container.innerHTML = '<div class="notice notice-warning">No se pudo cargar el visualizador de grafo. Verifica que el archivo <code>/vendor/js/cytoscape.min.js</code> esté disponible en el servidor.</div>';
       return;
     }
 
