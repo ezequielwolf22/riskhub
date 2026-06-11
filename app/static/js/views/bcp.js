@@ -1658,7 +1658,7 @@ const ViewBcp = (() => {
           <h2>${dep ? 'Editar dependencia de proceso' : 'Nueva dependencia proceso-proceso'}</h2>
           <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
         </div>
-        <div class="modal-body" style="display:block;padding:20px;">
+        <div style="display:block;padding:20px;overflow-y:auto;">
           <div style="margin-bottom:14px;">${lbl('Proceso origen', true)}
             <select id="dm-proc" class="form-control" style="font-size:13px;">
               ${_procs.map(p=>`<option value="${p.id}"${dep?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
@@ -1696,7 +1696,7 @@ const ViewBcp = (() => {
           <h2>${dep ? 'Editar recurso/dependencia' : 'Nueva dependencia de recurso'}</h2>
           <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
         </div>
-        <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;">
+        <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
             <div>${lbl('Proceso critico', true)}
               <select id="dm-proc" class="form-control" style="font-size:13px;">
@@ -2866,7 +2866,7 @@ const ViewBcp = (() => {
     const unlocated = consolidated.unlocated_processes || 0;
     const greenCount = flat.filter(l => locData[l.id]?.metrics?.maturity_color === 'green').length;
     const pctGreen = flat.length ? Math.round(greenCount / flat.length * 100) : 0;
-    const isAdmin = window._userRole === 'admin' || window._userRole === 'superadmin';
+    const isAdmin = Auth.canEdit();
 
     function renderNode(node, depth) {
       const m = locData[node.id]?.metrics || {};
@@ -3124,7 +3124,7 @@ const ViewBcp = (() => {
     if (window.cytoscape) return true;
     return new Promise(resolve => {
       const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js';
+      s.src = '/vendor/js/cytoscape.min.js';
       s.onload = () => resolve(true);
       s.onerror = () => resolve(false);
       document.head.appendChild(s);
@@ -4267,14 +4267,11 @@ const ViewBcp = (() => {
   // ── Tile: Activaciones de emergencia ─────────────────────────────────────────
 
   async function _tileActivaciones(body, activeAct) {
-    const [activations, plans] = await Promise.all([
-      activations ? Promise.resolve([]) : Api.get('/api/bcp/activations').catch(() => []),
+    const [allActs, plans] = await Promise.all([
+      Api.get('/api/bcp/activations').catch(() => []),
       Api.get('/api/bcp/plans').catch(() => []),
     ]);
-    // Re-fetch if not already passed
-    const allActs = await Api.get('/api/bcp/activations').catch(() => []);
     const active = allActs.find(a => !a.closed_at);
-    const history = allActs.filter(a => !!a.closed_at).slice(0, 10);
 
     const approvedPlans = plans.filter(p => p.status === 'approved');
 
