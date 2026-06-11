@@ -1,32 +1,21 @@
-/* BCP/BIA — Continuidad de negocio (ISO 22301) */
+﻿/* BCP/BIA — Continuidad de negocio (ISO 22301) — Plataforma BCM */
 const ViewBcp = (() => {
 
-  const BCP_TABS = [
-    { id: 'overview',         label: 'Resumen',           icon: 'ti-dashboard' },
-    { id: 'processes',        label: 'Procesos Criticos',  icon: 'ti-sitemap' },
-    { id: 'bia',              label: 'BIA',               icon: 'ti-chart-dots' },
-    { id: 'dependencies',     label: 'Dependencias',       icon: 'ti-link' },
-    { id: 'strategies',       label: 'Estrategias',        icon: 'ti-route' },
-    { id: 'plans',            label: 'Planes BCP/DRP',     icon: 'ti-file-text' },
-    { id: 'tests',            label: 'Tests & Ejercicios', icon: 'ti-clipboard-check' },
-    { id: 'suppliers',        label: 'Proveedores BCM',    icon: 'ti-truck' },
-    { id: 'import',           label: 'Importar Excel',     icon: 'ti-table-import' },
-    { id: 'locations',        label: 'Localizaciones',     icon: 'ti-map-pin' },
-    { id: 'graph',            label: 'Mapa Deps.',         icon: 'ti-topology-full' },
-    { id: 'evidence',         label: 'Evidencias',         icon: 'ti-files' },
-    { id: 'recommendations',  label: 'Tests IA',           icon: 'ti-bulb' },
-  ];
-  let _activeTab = 'overview';
+  // ── Estado de navegacion ─────────────────────────────────────────────────────
+  let _currentMode = 'config';
+  let _currentStep = 1;
+  let _currentTile = 'dashboard';
+  let _currentSubTabs = { 2: 'procesos', 3: 'dependencies', 4: 'strategies', 5: 'evidence' };
+  let _bcmContext = null;
+  let _aiPanelInitialized = false;
+  let _activeTab = 'overview'; // backward compat
 
   const CRIT_COLORS = { critical:'#DC2626', high:'#D97706', medium:'#2563EB', low:'#16a34a' };
   const IMPL_COLORS = { planned:'#6B7280', in_progress:'#D97706', implemented:'#2563EB', tested:'#16a34a' };
   const STATUS_COLORS = { draft:'#6B7280', under_review:'#D97706', approved:'#16a34a', deprecated:'#DC2626' };
 
-  // Cache de datos
   let _procs = [], _deps = [], _strats = [], _plans = [], _tests = [], _slinks = [], _suppliers = [];
   let _container = null;
-
-  // Filtro global de localización
   let _locationFilter = null;
   let _locations = [];
   let _locationMap = {};
@@ -35,6 +24,7 @@ const ViewBcp = (() => {
     if (!_locationFilter) return '';
     return (sep !== undefined ? sep : '?') + 'location_id=' + _locationFilter;
   }
+
 
   async function _loadLocations() {
     try {
@@ -45,13 +35,13 @@ const ViewBcp = (() => {
         nodes.forEach(n => { flat.push({...n, depth}); flatten(n.children || [], depth + 1); });
       })(tree, 0);
       flat.forEach(l => { _locationMap[l.id] = l; });
-      const sel = document.getElementById('bcp-loc-select');
+      const sel = document.getElementById('bcm-sede-select') || document.getElementById('bcp-loc-select');
       if (!sel) return;
       while (sel.options.length > 1) sel.remove(1);
       flat.forEach(loc => {
         const opt = document.createElement('option');
         opt.value = loc.id;
-        opt.textContent = ' '.repeat(loc.depth * 3) + loc.name;
+        opt.textContent = ' '.repeat(loc.depth * 2) + loc.name;
         if (loc.id === _locationFilter) opt.selected = true;
         sel.appendChild(opt);
       });
@@ -59,124 +49,170 @@ const ViewBcp = (() => {
         sel._bcmListenerAdded = true;
         sel.addEventListener('change', () => {
           _locationFilter = sel.value ? parseInt(sel.value) : null;
-          const badge = document.getElementById('bcp-loc-badge');
-          if (badge) {
-            if (_locationFilter) {
-              badge.style.display = 'inline';
-              badge.textContent = _locationMap[_locationFilter]?.name || '';
-            } else {
-              badge.style.display = 'none';
-            }
-          }
-          _renderActiveTab();
+          _updateSedeBadge();
+          _loadSedeStats();
+          _renderContent();
         });
       }
-    } catch (e) { console.warn('No se pudieron cargar localizaciones BCM:', e); }
+    } catch (e) { console.warn('BCM: no se pudieron cargar localizaciones', e); }
   }
 
-  // ── Entry point ──────────────────────────────────────────────────────────────
+  function _updateSedeBadge() {
+    const badge = document.getElementById('bcm-sede-badge');
+    if (!badge) return;
+    if (_locationFilter) {
+      badge.style.display = 'inline-flex';
+      const nameEl = badge.querySelector('.bcm-sede-name');
+      if (nameEl) nameEl.textContent = _locationMap[_locationFilter]?.name || '';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  async function _loadSedeStats() {
+    const el = document.getElementById('bcm-sede-stats');
+    if (!el) return;
+    try {
+      const c = await Api.get('/api/bcp/compliance/iso22301' + _locParam()).catch(() => null);
+      if (!c) { el.innerHTML = ''; return; }
+      const k = c.kpis || {};
+      const score = c.score_global || 0;
+      const sc = score >= 70 ? '#16a34a' : score >= 40 ? '#ca8a04' : '#dc2626';
+      let statsHtml = '<span class="bcm-stat" style="color:' + sc + '"><i class="ti ti-shield-check"></i> ' + score + '%</span>';
+      statsHtml += '<span class="bcm-stat"><i class="ti ti-sitemap"></i> ' + (k.processes_total || 0) + ' proc.</span>';
+      statsHtml += '<span class="bcm-stat"><i class="ti ti-file-text"></i> ' + (k.plans_approved || 0) + '/' + (k.plans_total || 0) + ' planes</span>';
+      if ((k.tests_overdue || 0) > 0) {
+        statsHtml += '<span class="bcm-stat" style="color:#dc2626"><i class="ti ti-alert-triangle"></i> ' + k.tests_overdue + ' test vencido</span>';
+      }
+      el.innerHTML = statsHtml;
+    } catch (_) { el.innerHTML = ''; }
+  }
+
+  // Entry point
 
   async function render(container) {
     _container = container;
-    container.innerHTML = UI.sectionHeader(
-      'Continuidad de Negocio (BCP/BIA)',
-      'NIS2 Art. 21.2(b) + ISO 27001 A.5.29 + ISO 22301 — Procesos criticos, RTO/RPO, planes y tests'
-    );
+    _bcmContext = await Api.get('/api/bcp/context').catch(() => null);
 
-    // Barra de filtro por localización (encima de las tabs)
-    const locBar = document.createElement('div');
-    locBar.id = 'bcp-location-bar';
-    locBar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0 4px;border-bottom:1px solid var(--border);margin-bottom:6px;';
-    locBar.innerHTML = `
-      <i class="ti ti-map-pin" style="color:var(--text-subtle);font-size:15px"></i>
-      <select id="bcp-loc-select" style="font-size:13px;border:none;background:transparent;color:var(--text);cursor:pointer;outline:none;max-width:260px">
-        <option value="">Vista corporativa (todas las localizaciones)</option>
-      </select>
-      <span id="bcp-loc-badge" style="display:none;padding:2px 10px;background:var(--primary-soft,#f3e8ff);color:var(--primary);border-radius:999px;font-size:11px;font-weight:600"></span>
-    `;
-    container.appendChild(locBar);
-    _loadLocations();
+    const wizardLabel = (_bcmContext && _bcmContext.wizard_completed) ? 'Contexto IA' : 'Configurar IA';
+    const wizardDot = (!_bcmContext || !_bcmContext.wizard_completed) ? '<span class="bcm-badge-dot"></span>' : '';
 
-    // Tab bar
-    const tabBar = document.createElement('div');
-    tabBar.className = 'bcp-tab-bar';
-    tabBar.innerHTML = BCP_TABS.map(t =>
-      `<button class="bcp-tab${t.id === _activeTab ? ' active' : ''}" data-tab="${t.id}">
-        <i class="ti ${t.icon}"></i>${t.label}
-      </button>`
-    ).join('') + `
-      <div style="margin-left:auto;display:flex;align-items:center;padding-right:4px">
-        <button class="btn btn-ghost btn-sm" id="btn-bcm-doc-upload" title="Subir documentación BCM">
-          <i class="ti ti-cloud-upload" aria-hidden="true"></i> Docs BCM
-        </button>
-      </div>`;
-    container.appendChild(tabBar);
-    tabBar.querySelectorAll('.bcp-tab').forEach(btn =>
-      btn.addEventListener('click', () => _switchTab(btn.dataset.tab))
-    );
-    tabBar.querySelector('#btn-bcm-doc-upload')?.addEventListener('click', () => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.pdf,.docx,.doc,.txt,.xlsx,.xls';
-      input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const fd = new FormData();
-        fd.append('file', file);
-        try {
-          await fetch('/api/bcp/documents/upload', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + Api.token() },
-            body: fd,
-          });
-          UI.toast('Documento BCM subido y procesado por el agente IA.', 'success');
-        } catch (err) {
-          UI.toast('Error al subir el documento.', 'error');
-        }
-      };
-      input.click();
+    container.innerHTML = '<div class="bcm-platform">'
+      + '<div class="bcm-header">'
+      + '<div class="bcm-header-row1">'
+      + '<div class="bcm-brand">'
+      + '<i class="ti ti-shield-check" style="color:var(--primary);font-size:19px"></i>'
+      + '<div>'
+      + '<div style="font-size:15px;font-weight:700;line-height:1.2">Continuidad de Negocio</div>'
+      + '<div style="font-size:11px;color:var(--text-subtle)">ISO 22301 &middot; NIS2 Art.21.2(b) &middot; ISO 27001 A.5.29</div>'
+      + '</div></div>'
+      + '<div class="bcm-mode-toggle">'
+      + '<button class="bcm-mode-btn active" id="bcm-btn-config" onclick="ViewBcp._setMode(\'config\')"><i class="ti ti-settings-2"></i> Configurar BCP</button>'
+      + '<button class="bcm-mode-btn" id="bcm-btn-operar" onclick="ViewBcp._setMode(\'operar\')"><i class="ti ti-activity"></i> Operar BCP</button>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;align-items:center">'
+      + '<button class="btn btn-ghost btn-sm" id="btn-bcm-wizard" title="Configurar contexto del agente IA">'
+      + '<i class="ti ti-brain"></i> <span id="bcm-wizard-label">' + wizardLabel + '</span>' + wizardDot + '</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="ViewBcp._exportBcp()"><i class="ti ti-file-export"></i> Exportar</button>'
+      + '</div></div>'
+      + '<div class="bcm-sede-bar">'
+      + '<i class="ti ti-map-pin" style="color:var(--text-subtle);font-size:13px;flex-shrink:0"></i>'
+      + '<span class="bcm-sede-label">Sede:</span>'
+      + '<select id="bcm-sede-select" class="bcm-sede-select">'
+      + '<option value="">Vista corporativa (todas las sedes)</option>'
+      + '</select>'
+      + '<span id="bcm-sede-badge" style="display:none" class="bcm-sede-badge">'
+      + '<i class="ti ti-map-pin" style="font-size:10px"></i>'
+      + '<span class="bcm-sede-name"></span>'
+      + '<button onclick="ViewBcp._clearSede()" title="Ver todas">&times;</button>'
+      + '</span>'
+      + '<div id="bcm-sede-stats" class="bcm-sede-stats-row"></div>'
+      + '</div></div>'
+      + '<div class="bcm-content" id="bcm-content">'
+      + '<div style="padding:40px;text-align:center;color:var(--text-subtle)"><i class="ti ti-loader-2 ti-spin"></i> Cargando...</div>'
+      + '</div></div>';
+
+    _initAiPanel();
+
+    container.querySelector('#btn-bcm-wizard').addEventListener('click', () => {
+      _currentStep = 0;
+      _renderContent();
     });
 
-    const content = document.createElement('div');
-    content.id = 'bcp-tab-content';
-    content.className = 'bcp-tab-content';
-    container.appendChild(content);
-
-    await _renderActiveTab();
+    await _loadLocations();
+    await _renderContent();
+    _loadSedeStats();
   }
 
+  // Navigation
+
+  function _setMode(mode) {
+    _currentMode = mode;
+    document.getElementById('bcm-btn-config')?.classList.toggle('active', mode === 'config');
+    document.getElementById('bcm-btn-operar')?.classList.toggle('active', mode === 'operar');
+    _renderContent();
+  }
+
+  function _setStep(step) {
+    _currentMode = 'config';
+    _currentStep = step;
+    document.getElementById('bcm-btn-config')?.classList.add('active');
+    document.getElementById('bcm-btn-operar')?.classList.remove('active');
+    _renderContent();
+  }
+
+  function _setTile(tile) {
+    _currentMode = 'operar';
+    _currentTile = tile;
+    _renderContent();
+  }
+
+  function _setSubTab(step, tab) {
+    _currentSubTabs[step] = tab;
+    _renderContent();
+  }
+
+  function _clearSede() {
+    _locationFilter = null;
+    const sel = document.getElementById('bcm-sede-select');
+    if (sel) sel.value = '';
+    _updateSedeBadge();
+    _loadSedeStats();
+    _renderContent();
+  }
+
+  function _exportBcp() {
+    window.open('/api/reports/bcm?format=pdf', '_blank');
+  }
+
+  // Backward compat
   function _switchTab(tab) {
-    _activeTab = tab;
-    _container.querySelectorAll('.bcp-tab').forEach(b =>
-      b.classList.toggle('active', b.dataset.tab === tab)
-    );
-    _renderActiveTab();
+    const toStep = { locations:1, processes:2, bia:2, dependencies:3, suppliers:3, strategies:4, plans:4, evidence:5, import:5 };
+    const toTile = { overview:'dashboard', graph:'graph', tests:'tests', recommendations:'alertas' };
+    if (toStep[tab]) _setStep(toStep[tab]);
+    else if (toTile[tab]) { _currentTile = toTile[tab]; _setMode('operar'); }
+    else _renderContent();
   }
 
-  async function _renderActiveTab() {
-    const content = document.getElementById('bcp-tab-content');
+  function _renderActiveTab() { _renderContent(); }
+
+  // Render dispatcher
+
+  async function _renderContent() {
+    const content = document.getElementById('bcm-content');
     if (!content) return;
-    content.innerHTML = '<div style="padding:20px;color:var(--text-muted);">Cargando...</div>';
+    content.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text-subtle)"><i class="ti ti-loader-2 ti-spin"></i></div>';
     try {
-      switch (_activeTab) {
-        case 'overview':     await _tabOverview(content); break;
-        case 'processes':    await _tabProcesses(content); break;
-        case 'bia':          await _tabBIA(content); break;
-        case 'dependencies': await _tabDependencies(content); break;
-        case 'strategies':   await _tabStrategies(content); break;
-        case 'plans':        await _tabPlans(content); break;
-        case 'tests':        await _tabTests(content); break;
-        case 'suppliers':        await _tabSuppliers(content); break;
-        case 'import':           _tabImport(content); break;
-        case 'locations':        await _tabLocations(content); break;
-        case 'graph':            await _tabGraph(content); break;
-        case 'evidence':         await _tabEvidence(content); break;
-        case 'recommendations':  await _tabRecommendations(content); break;
-        default: content.innerHTML = '';
+      if (_currentStep === 0) {
+        await _contextWizard(content);
+      } else if (_currentMode === 'config') {
+        await _renderConfigMode(content);
+      } else {
+        await _renderOperarMode(content);
       }
     } catch (e) {
-      console.error('[BCP] Error en tab', _activeTab, e);
-      content.innerHTML = UI.notice('Error al cargar tab "' + _activeTab + '": ' + e.message + ' (ver consola para detalles)');
+      console.error('[BCM]', e);
+      content.innerHTML = '<div class="notice notice-error">Error: ' + UI.esc(e.message) + '</div>';
     }
   }
 
@@ -2921,11 +2957,11 @@ const ViewBcp = (() => {
 
   function _setLocFilter(locId) {
     _locationFilter = locId;
-    const badge = document.getElementById('bcp-loc-badge');
-    const sel = document.getElementById('bcp-loc-select');
+    const sel = document.getElementById('bcm-sede-select') || document.getElementById('bcp-loc-select');
     if (sel) sel.value = locId;
-    if (badge) { badge.style.display = 'inline'; badge.textContent = _locationMap[locId]?.name || ''; }
-    _switchTab('overview');
+    _updateSedeBadge();
+    _loadSedeStats();
+    _renderContent();
   }
 
   function _editLocation(locId) {
@@ -3692,9 +3728,533 @@ const ViewBcp = (() => {
   }
 
 
+
+  // ── Config mode: stepper ─────────────────────────────────────────────────────
+
+  async function _renderConfigMode(content) {
+    const steps = [
+      { n:1, label:'Localizaciones', icon:'ti-map-pin' },
+      { n:2, label:'Procesos & BIA', icon:'ti-sitemap' },
+      { n:3, label:'Dependencias',   icon:'ti-link' },
+      { n:4, label:'Planes & DRP',   icon:'ti-file-text' },
+      { n:5, label:'Documentacion',  icon:'ti-files' },
+    ];
+    let stepperHtml = '<div class="bcm-stepper-wrap">';
+    steps.forEach((s, i) => {
+      const cls = 'bcm-step' + (_currentStep > s.n ? ' done' : '') + (_currentStep === s.n ? ' active' : '');
+      const numHtml = _currentStep > s.n ? '<i class="ti ti-check" style="font-size:10px"></i>' : s.n;
+      stepperHtml += '<div class="' + cls + '" onclick="ViewBcp._setStep(' + s.n + ')">';
+      stepperHtml += '<div class="bcm-step-num">' + numHtml + '</div>';
+      stepperHtml += '<div class="bcm-step-label"><i class="ti ' + s.icon + '"></i> ' + s.label + '</div>';
+      stepperHtml += '</div>';
+      if (i < steps.length - 1) {
+        stepperHtml += '<div class="bcm-step-connector' + (_currentStep > s.n ? ' done' : '') + '"></div>';
+      }
+    });
+    stepperHtml += '</div>';
+    content.innerHTML = stepperHtml + '<div id="bcm-step-body" class="bcm-step-body"></div>';
+    const body = content.querySelector('#bcm-step-body');
+    switch (_currentStep) {
+      case 1: await _tabLocations(body); break;
+      case 2: await _stepProcesosBIA(body); break;
+      case 3: await _stepDependencias(body); break;
+      case 4: await _stepPlanesDRP(body); break;
+      case 5: await _stepDocumentacion(body); break;
+    }
+  }
+
+  // ── Operar mode: tiles ────────────────────────────────────────────────────────
+
+  async function _renderOperarMode(content) {
+    const tiles = [
+      { id:'dashboard', label:'Dashboard ISO 22301', icon:'ti-chart-dots-3', color:'var(--primary)',    sub:'Score global · clausulas' },
+      { id:'graph',     label:'Mapa Dependencias',   icon:'ti-topology-full', color:'var(--bo,#D65200)', sub:'SPOFs · grafo interactivo' },
+      { id:'tests',     label:'Tests & Evidencias',  icon:'ti-clipboard-check', color:'#16a34a',         sub:'Ejercicios · archivos' },
+      { id:'alertas',   label:'Alertas & Rec. IA',   icon:'ti-brain',         color:'#2563EB',           sub:'Recomendaciones IA' },
+    ];
+    let tilesHtml = '<div class="bcm-tiles-grid">';
+    tiles.forEach(t => {
+      const activeCls = _currentTile === t.id ? ' active' : '';
+      tilesHtml += '<div class="bcm-tile' + activeCls + '" onclick="ViewBcp._setTile(\'' + t.id + '\')">';
+      tilesHtml += '<div class="bcm-tile-icon" style="background:' + t.color + '18"><i class="ti ' + t.icon + '" style="color:' + t.color + ';font-size:22px"></i></div>';
+      tilesHtml += '<div class="bcm-tile-label">' + t.label + '</div>';
+      tilesHtml += '<div class="bcm-tile-sub">' + t.sub + '</div>';
+      tilesHtml += '</div>';
+    });
+    tilesHtml += '</div>';
+    content.innerHTML = tilesHtml + '<div id="bcm-tile-body" class="bcm-tile-body"></div>';
+    const body = content.querySelector('#bcm-tile-body');
+    switch (_currentTile) {
+      case 'dashboard': await _tileDashboard(body); break;
+      case 'graph':     await _tabGraph(body); break;
+      case 'tests':     await _stepTests(body); break;
+      case 'alertas':   await _stepAlertas(body); break;
+    }
+  }
+
+  // ── Step wrappers (sub-tabs within each config step) ─────────────────────────
+
+  function _buildSubTabs(stepN, tabs, body, renderFn) {
+    const active = _currentSubTabs[stepN] || tabs[0].id;
+    let subTabsHtml = '<div class="bcm-subtabs">';
+    tabs.forEach(t => {
+      const activeCls = active === t.id ? ' active' : '';
+      subTabsHtml += '<button class="bcm-subtab' + activeCls + '" onclick="ViewBcp._setSubTab(' + stepN + ',\'' + t.id + '\')">';
+      subTabsHtml += '<i class="ti ' + t.icon + '"></i> ' + t.label + '</button>';
+    });
+    subTabsHtml += '</div>';
+    const prevBtn = stepN > 1
+      ? '<button class="btn btn-ghost btn-sm" onclick="ViewBcp._setStep(' + (stepN - 1) + ')"><i class="ti ti-arrow-left"></i> Atras</button>'
+      : '<span></span>';
+    const nextBtn = stepN < 5
+      ? '<button class="btn btn-primary btn-sm" onclick="ViewBcp._setStep(' + (stepN + 1) + ')">Siguiente <i class="ti ti-arrow-right"></i></button>'
+      : '';
+    const navHtml = '<div class="bcm-step-nav">' + prevBtn + nextBtn + '</div>';
+    body.innerHTML = subTabsHtml + '<div id="bcm-subtab-body-' + stepN + '" class="bcm-subtab-body"></div>' + navHtml;
+    renderFn(body.querySelector('#bcm-subtab-body-' + stepN), active);
+  }
+
+  async function _stepProcesosBIA(body) {
+    const tabs = [
+      { id:'procesos', label:'Procesos Criticos', icon:'ti-sitemap' },
+      { id:'bia',      label:'Analisis BIA',      icon:'ti-chart-dots' },
+    ];
+    _buildSubTabs(2, tabs, body, async (subBody, active) => {
+      if (active === 'procesos') await _tabProcesses(subBody);
+      else await _tabBIA(subBody);
+    });
+  }
+
+  async function _stepDependencias(body) {
+    const tabs = [
+      { id:'dependencies', label:'Mapa Dependencias', icon:'ti-link' },
+      { id:'suppliers',    label:'Proveedores BCM',   icon:'ti-truck' },
+    ];
+    _buildSubTabs(3, tabs, body, async (subBody, active) => {
+      if (active === 'dependencies') await _tabDependencies(subBody);
+      else await _tabSuppliers(subBody);
+    });
+  }
+
+  async function _stepPlanesDRP(body) {
+    const tabs = [
+      { id:'strategies', label:'Estrategias',    icon:'ti-route' },
+      { id:'plans',      label:'Planes BCP/DRP', icon:'ti-file-text' },
+    ];
+    _buildSubTabs(4, tabs, body, async (subBody, active) => {
+      if (active === 'strategies') await _tabStrategies(subBody);
+      else await _tabPlans(subBody);
+    });
+  }
+
+  async function _stepDocumentacion(body) {
+    const tabs = [
+      { id:'evidence', label:'Evidencias',     icon:'ti-files' },
+      { id:'import',   label:'Importar Excel', icon:'ti-table-import' },
+    ];
+    _buildSubTabs(5, tabs, body, async (subBody, active) => {
+      if (active === 'evidence') await _tabEvidence(subBody);
+      else _tabImport(subBody);
+    });
+  }
+
+  async function _stepTests(body) {
+    const tabs = [
+      { id:'tests',    label:'Tests & Ejercicios', icon:'ti-clipboard-check' },
+      { id:'evidence', label:'Evidencias',         icon:'ti-files' },
+    ];
+    _buildSubTabs('tests', tabs, body, async (subBody, active) => {
+      if (active === 'tests') await _tabTests(subBody);
+      else await _tabEvidence(subBody);
+    });
+  }
+
+  async function _stepAlertas(body) {
+    await _tabRecommendations(body);
+  }
+
+  // ── Tile: Dashboard ISO 22301 ─────────────────────────────────────────────────
+
+  async function _tileDashboard(container) {
+    container.innerHTML = '<div style="padding:20px;color:var(--text-subtle)"><i class="ti ti-loader-2 ti-spin"></i> Cargando dashboard...</div>';
+    const [comp, dash] = await Promise.all([
+      Api.get('/api/bcp/compliance/iso22301' + _locParam()).catch(() => null),
+      Api.get('/api/bcp/dashboard').catch(() => ({})),
+    ]);
+
+    if (!comp) {
+      container.innerHTML = '<div class="notice notice-info">No hay datos suficientes para calcular el score ISO 22301. Completa la configuracion en modo Configurar BCP.</div>';
+      return;
+    }
+
+    const k = comp.kpis || {};
+    const score = comp.score_global || 0;
+    const scoreColor = score >= 70 ? '#16a34a' : score >= 40 ? '#ca8a04' : '#dc2626';
+    const scoreLabel = score >= 70 ? 'Conforme' : score >= 40 ? 'Parcial' : 'No conforme';
+    const biaDone = k.processes_with_bia || 0;
+    const biaTotal = k.processes_total || 0;
+    const biaColor = biaDone < biaTotal ? '#ca8a04' : '#16a34a';
+    const biaNote = biaTotal - biaDone > 0 ? (biaTotal - biaDone) + ' sin BIA' : 'Completo';
+    const plansApp = k.plans_approved || 0;
+    const plansTotal = k.plans_total || 0;
+    const testsOvr = k.tests_overdue || 0;
+    const testsOvrColor = testsOvr > 0 ? '#dc2626' : '#16a34a';
+
+    let kpiHtml = '<div class="bcm-kpi-grid">';
+    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid ' + scoreColor + '">';
+    kpiHtml += '<div class="bcm-kpi-label">Score ISO 22301</div>';
+    kpiHtml += '<div class="bcm-kpi-val" style="color:' + scoreColor + '">' + score + '%</div>';
+    kpiHtml += '<div class="bcm-kpi-sub" style="color:' + scoreColor + '">' + scoreLabel + '</div></div>';
+    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid var(--primary)">';
+    kpiHtml += '<div class="bcm-kpi-label">BIA completado</div>';
+    kpiHtml += '<div class="bcm-kpi-val">' + biaDone + '/' + biaTotal + '</div>';
+    kpiHtml += '<div class="bcm-kpi-sub" style="color:' + biaColor + '">' + biaNote + '</div></div>';
+    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid #16a34a">';
+    kpiHtml += '<div class="bcm-kpi-label">Planes aprobados</div>';
+    kpiHtml += '<div class="bcm-kpi-val">' + plansApp + '/' + plansTotal + '</div>';
+    kpiHtml += '<div class="bcm-kpi-sub">' + (plansTotal - plansApp) + ' en borrador</div></div>';
+    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid ' + testsOvrColor + '">';
+    kpiHtml += '<div class="bcm-kpi-label">Tests vencidos</div>';
+    kpiHtml += '<div class="bcm-kpi-val" style="color:' + testsOvrColor + '">' + testsOvr + '</div>';
+    kpiHtml += '<div class="bcm-kpi-sub">' + (k.tests_recent_12m || 0) + ' tests en 12 meses</div></div>';
+    kpiHtml += '</div>';
+
+    const clausesHtml = (comp.clauses || []).map(c => {
+      const cc = c.score >= 70 ? '#16a34a' : c.score >= 40 ? '#ca8a04' : '#dc2626';
+      return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
+        + '<span style="width:32px;flex-shrink:0;font-weight:700;color:var(--text-subtle)">Cl.' + c.id + '</span>'
+        + '<span style="flex:1;color:var(--text-subtle)">' + UI.esc(c.title) + '</span>'
+        + '<div style="width:120px;height:5px;background:var(--bg-3,#222);border-radius:3px;overflow:hidden;flex-shrink:0">'
+        + '<div style="width:' + c.score + '%;height:100%;background:' + cc + ';border-radius:3px"></div></div>'
+        + '<span style="width:32px;text-align:right;font-weight:700;color:' + cc + ';flex-shrink:0">' + c.score + '%</span>'
+        + '</div>';
+    }).join('');
+
+    let locsHtml;
+    if (!(comp.locations || []).length) {
+      locsHtml = '<div class="notice notice-info" style="margin:0">Sin sedes definidas. Anade localizaciones en Configurar BCP &gt; Localizaciones.</div>';
+    } else {
+      locsHtml = '<table class="data" style="font-size:12px"><thead><tr><th>Sede</th><th>Score</th><th>Planes</th><th>Ult. test</th></tr></thead><tbody>';
+      (comp.locations || []).forEach(loc => {
+        const lc = loc.status === 'green' ? '#16a34a' : loc.status === 'yellow' ? '#ca8a04' : '#dc2626';
+        locsHtml += '<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + lc + ';margin-right:6px"></span>' + UI.esc(loc.name) + '</td>'
+          + '<td style="color:' + lc + ';font-weight:700">' + loc.score + '%</td>'
+          + '<td>' + loc.plans_approved + '/' + loc.plans_total + '</td>'
+          + '<td style="font-size:11px;color:var(--text-subtle)">' + (loc.last_test_date || '&#8212;') + '</td></tr>';
+      });
+      locsHtml += '</tbody></table>';
+    }
+
+    container.innerHTML = '<div class="bcm-dashboard">'
+      + kpiHtml
+      + '<div class="bcm-dashboard-grid">'
+      + '<div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-checklist"></i> Clausulas ISO 22301</div></div>'
+      + '<div style="display:flex;flex-direction:column;gap:8px;padding-top:4px">' + clausesHtml + '</div></div>'
+      + '<div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-map-pin"></i> Estado por sede</div></div>'
+      + locsHtml + '</div>'
+      + '</div>'
+      + '<div class="card" style="margin-top:14px">'
+      + '<div class="card-header"><div class="card-title"><i class="ti ti-brain"></i> Analisis IA del estado BCM</div>'
+      + '<button class="btn btn-ghost btn-sm" id="btn-dash-ai-analyze"><i class="ti ti-sparkles"></i> Analizar</button></div>'
+      + '<div id="dash-ai-result" style="font-size:12px;color:var(--text-subtle)">Pulsa "Analizar" para que el agente IA evalue el estado actual y proponga acciones de mejora.</div>'
+      + '</div></div>';
+
+    container.querySelector('#btn-dash-ai-analyze').onclick = async () => {
+      const btn = container.querySelector('#btn-dash-ai-analyze');
+      const res = container.querySelector('#dash-ai-result');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i>';
+      try {
+        const msg = 'Analiza el estado actual del BCP/BCM de la organizacion. Score ISO 22301: ' + score
+          + '%. KPIs: procesos con BIA ' + biaDone + '/' + biaTotal
+          + ', planes aprobados ' + plansApp + '/' + plansTotal
+          + ', tests vencidos ' + testsOvr
+          + '. Identifica los 3 gaps mas criticos y propone acciones concretas y priorizadas.';
+        const sedeCtx = _locationFilter ? ', sede: ' + (_locationMap[_locationFilter]?.name || _locationFilter) : '';
+        const r = await Api.post('/api/bcp/ai/quick', {
+          message: msg,
+          context_hint: 'dashboard ISO 22301, vista corporativa' + sedeCtx,
+        });
+        res.innerHTML = '<div style="line-height:1.7;white-space:pre-wrap">' + UI.esc(r.response || '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') + '</div>';
+      } catch (e) {
+        res.innerHTML = '<span style="color:var(--danger)">Error: ' + UI.esc(e.message) + '</span>';
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ti ti-sparkles"></i> Analizar';
+      }
+    };
+  }
+
+  // ── Context Wizard ────────────────────────────────────────────────────────────
+
+  async function _contextWizard(container) {
+    const ctx = _bcmContext || {};
+    const activeWizardStep = parseInt(ctx.wizard_step) || 1;
+    const wizardSteps = [
+      { n:1, title:'Organizacion', fields:[
+        { id:'sector', label:'Sector de actividad *', type:'select', options:['Banca/Finanzas','Seguros','Salud','Industria/Manufactura','Energia/Utilities','Telecomunicaciones','Tecnologia/TI','Retail/Comercio','Administracion Publica','Logistica/Transporte','Educacion','Otro'] },
+        { id:'employees_range', label:'Empleados', type:'select', options:['1-50','51-200','201-500','501-2000','2001-10000','Mas de 10000'] },
+        { id:'geographic_scope', label:'Alcance geografico', type:'select', options:['Local (ciudad/provincia)','Nacional','Internacional (Europa)','Global'] },
+        { id:'annual_loss_estimate', label:'Impacto economico estimado por hora de caida (EUR)', type:'text', placeholder:'p.ej. 50000' },
+      ]},
+      { n:2, title:'Infraestructura y sistemas criticos', fields:[
+        { id:'it_architecture', label:'Arquitectura TI', type:'select', options:['100% On-premise','Mayoritariamente On-premise + algo cloud','Hibrido equilibrado','Mayoritariamente cloud','100% Cloud (SaaS/IaaS)'] },
+        { id:'critical_infra', label:'Sistemas criticos (uno por linea)', type:'textarea', placeholder:'ERP SAP\nCRM Salesforce\n...', isJson:true },
+        { id:'key_suppliers', label:'Proveedores clave de TI/servicios criticos (uno por linea)', type:'textarea', placeholder:'AWS - infraestructura cloud\n...', isJson:true },
+      ]},
+      { n:3, title:'Escenarios de riesgo y regulacion', fields:[
+        { id:'risk_scenarios', label:'Escenarios de continuidad relevantes', type:'checkboxes',
+          options:['Ciberataque / ransomware','Incendio o inundacion en sede','Fallo del proveedor cloud principal','Corte de suministro electrico prolongado','Pandemia / ausencia masiva de personal','Fallo de conectividad / red','Desastre natural en sede principal','Fallo de proveedor critico de TI'] },
+        { id:'regulations', label:'Regulaciones/normativas aplicables', type:'checkboxes',
+          options:['ISO 22301','NIS2 (Directiva europea)','DORA (sector financiero UE)','GDPR','ENS (Esquema Nacional de Seguridad)','PCI-DSS','SOC 2','Otra regulacion sectorial'] },
+        { id:'incident_history', label:'Incidentes de continuidad recientes (resumen)', type:'textarea', placeholder:'p.ej. En 2023 sufrimos un ransomware que afecto 4h al ERP.' },
+      ]},
+      { n:4, title:'Objetivos de recuperacion', fields:[
+        { id:'rto_target', label:'RTO objetivo global', type:'select', options:['15 minutos','30 minutos','1 hora','2 horas','4 horas','8 horas','24 horas','48 horas','72 horas'] },
+        { id:'rpo_target', label:'RPO objetivo global', type:'select', options:['Cero (tiempo real)','15 minutos','1 hora','4 horas','24 horas','48 horas','72 horas'] },
+        { id:'max_tolerable_downtime', label:'MTD - Maximo tiempo de interrupcion tolerable', type:'select', options:['1 hora','4 horas','8 horas','24 horas','48 horas','72 horas','1 semana'] },
+      ]},
+    ];
+
+    function _fieldVal(field) {
+      const raw = ctx[field.id];
+      if (field.isJson) return Array.isArray(raw) ? raw.join('\n') : (typeof raw === 'string' ? raw : '');
+      if (Array.isArray(raw)) return raw;
+      return raw || '';
+    }
+
+    function _buildField(f) {
+      const val = _fieldVal(f);
+      if (f.type === 'select') {
+        let opts = '<option value="">-- Seleccionar --</option>';
+        f.options.forEach(o => { opts += '<option value="' + UI.esc(o) + '"' + (val === o ? ' selected' : '') + '>' + UI.esc(o) + '</option>'; });
+        return '<div class="fg"><label>' + UI.esc(f.label) + '</label><select id="wz-' + f.id + '" class="form-control">' + opts + '</select></div>';
+      }
+      if (f.type === 'textarea') {
+        const v = Array.isArray(val) ? val.join('\n') : val;
+        return '<div class="fg"><label>' + UI.esc(f.label) + '</label><textarea id="wz-' + f.id + '" class="form-control" rows="4" placeholder="' + UI.esc(f.placeholder || '') + '">' + UI.esc(v) + '</textarea></div>';
+      }
+      if (f.type === 'checkboxes') {
+        const checked = Array.isArray(val) ? val : [];
+        let cbs = '';
+        f.options.forEach(o => {
+          cbs += '<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;padding:4px 8px;background:var(--bg-3,#1a1a22);border:1px solid var(--border);border-radius:6px">';
+          cbs += '<input type="checkbox" value="' + UI.esc(o) + '" class="wz-cb-' + f.id + '"' + (checked.includes(o) ? ' checked' : '') + '> ' + UI.esc(o) + '</label>';
+        });
+        return '<div class="fg"><label>' + UI.esc(f.label) + '</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">' + cbs + '</div></div>';
+      }
+      return '<div class="fg"><label>' + UI.esc(f.label) + '</label><input id="wz-' + f.id + '" class="form-control" value="' + UI.esc(String(val || '')) + '" placeholder="' + UI.esc(f.placeholder || '') + '"></div>';
+    }
+
+    const ws = wizardSteps.find(s => s.n === activeWizardStep) || wizardSteps[0];
+    const fieldsHtml = ws.fields.map(_buildField).join('');
+
+    let stepsNavHtml = '';
+    wizardSteps.forEach((s, i) => {
+      const bg = s.n === activeWizardStep ? 'var(--primary-soft,#f3e8ff)' : 'var(--bg-2,#18181f)';
+      const bd = s.n === activeWizardStep ? 'var(--primary)' : 'var(--border)';
+      const nbg = s.n < activeWizardStep ? '#16a34a' : s.n === activeWizardStep ? 'var(--primary)' : 'var(--border)';
+      const nbody = s.n < activeWizardStep ? '<i class="ti ti-check" style="font-size:9px"></i>' : s.n;
+      const fromN = s.n > 1 ? s.n - 1 : 0;
+      stepsNavHtml += '<div style="flex:1;display:flex;align-items:center;gap:6px;padding:8px;border-radius:8px;cursor:pointer;background:' + bg + ';border:1px solid ' + bd + '" onclick="ViewBcp._saveWizardStep(' + fromN + ',' + s.n + ')">';
+      stepsNavHtml += '<div style="width:22px;height:22px;border-radius:50%;background:' + nbg + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">' + nbody + '</div>';
+      stepsNavHtml += '<span style="font-size:11px;font-weight:600;color:var(--text)">' + s.title + '</span></div>';
+      if (i < wizardSteps.length - 1) stepsNavHtml += '<div style="width:20px;height:1px;background:var(--border);flex-shrink:0;margin-top:1px;align-self:center"></div>';
+    });
+
+    const prevBtnW = activeWizardStep > 1
+      ? '<button class="btn btn-ghost btn-sm" onclick="ViewBcp._saveWizardStep(' + activeWizardStep + ',' + (activeWizardStep - 1) + ')"><i class="ti ti-arrow-left"></i> Anterior</button>'
+      : '<span></span>';
+    const nextBtnW = activeWizardStep < 4
+      ? '<button class="btn btn-primary btn-sm" id="btn-wz-next" onclick="ViewBcp._saveWizardStep(' + activeWizardStep + ',' + (activeWizardStep + 1) + ')">Siguiente <i class="ti ti-arrow-right"></i></button>'
+      : '<button class="btn btn-primary btn-sm" id="btn-wz-next" onclick="ViewBcp._saveWizardStep(' + activeWizardStep + ',\'done\')"><i class="ti ti-check"></i> Completar y guardar</button>';
+    const completedNotice = ctx.wizard_completed
+      ? '<div class="notice notice-success" style="margin-top:12px"><i class="ti ti-check"></i> Contexto completado. El agente IA ya tiene informacion de tu organizacion.</div>'
+      : '';
+
+    container.innerHTML = '<div style="max-width:700px;margin:0 auto;padding:4px 0">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
+      + '<div><h2 style="font-size:17px;font-weight:700;margin:0">Contexto BCM para el Agente IA</h2>'
+      + '<p style="font-size:12px;color:var(--text-subtle);margin:4px 0 0">Proporciona contexto organizacional para que el agente IA pueda asistirte mejor en BCP/DRP</p></div>'
+      + '<button class="btn btn-ghost btn-sm" onclick="ViewBcp._setStep(1)" title="Volver al modulo BCM"><i class="ti ti-x"></i> Cerrar</button></div>'
+      + '<div style="display:flex;gap:8px;margin-bottom:24px">' + stepsNavHtml + '</div>'
+      + '<div class="card" style="padding:20px">'
+      + '<h3 style="font-size:14px;font-weight:700;margin:0 0 16px">' + activeWizardStep + '. ' + ws.title + '</h3>'
+      + '<div style="display:flex;flex-direction:column;gap:12px" id="wz-fields">' + fieldsHtml + '</div>'
+      + '<div style="display:flex;justify-content:space-between;margin-top:20px">' + prevBtnW + nextBtnW + '</div>'
+      + '</div>' + completedNotice + '</div>';
+  }
+
+  async function _saveWizardStep(fromStep, toStep) {
+    const body = { wizard_step: typeof toStep === 'number' ? toStep : 4, wizard_completed: toStep === 'done' };
+
+    const collectField = (fieldId, type) => {
+      if (type === 'checkboxes') {
+        return Array.from(document.querySelectorAll('.wz-cb-' + fieldId + ':checked')).map(cb => cb.value);
+      }
+      if (type === 'textarea') {
+        const el = document.getElementById('wz-' + fieldId);
+        if (!el) return undefined;
+        return el.value.split('\n').map(l => l.trim()).filter(Boolean);
+      }
+      const el = document.getElementById('wz-' + fieldId);
+      return el ? el.value : undefined;
+    };
+
+    const allFields = [
+      { id:'sector', type:'select' }, { id:'employees_range', type:'select' },
+      { id:'geographic_scope', type:'select' }, { id:'annual_loss_estimate', type:'text' },
+      { id:'it_architecture', type:'select' }, { id:'critical_infra', type:'textarea', isJson:true },
+      { id:'key_suppliers', type:'textarea', isJson:true },
+      { id:'risk_scenarios', type:'checkboxes' }, { id:'regulations', type:'checkboxes' },
+      { id:'incident_history', type:'textarea' },
+      { id:'rto_target', type:'select' }, { id:'rpo_target', type:'select' },
+      { id:'max_tolerable_downtime', type:'select' },
+    ];
+
+    allFields.forEach(f => {
+      const val = collectField(f.id, f.type);
+      if (val !== undefined) body[f.id] = val;
+    });
+
+    try {
+      _bcmContext = await Api.post('/api/bcp/context', body);
+      const lbl = document.getElementById('bcm-wizard-label');
+      if (lbl) lbl.textContent = _bcmContext.wizard_completed ? 'Contexto IA' : 'Configurar IA';
+      if (toStep === 'done') {
+        UI.toast('Contexto BCM guardado correctamente', 'success');
+        _currentStep = 1;
+        _renderContent();
+      } else {
+        _currentStep = 0;
+        _bcmContext.wizard_step = typeof toStep === 'number' ? toStep : 4;
+        _renderContent();
+      }
+    } catch (e) {
+      UI.toast('Error guardando: ' + e.message, 'error');
+    }
+  }
+
+  // ── AI Panel (FAB + slide-in drawer) ─────────────────────────────────────────
+
+  function _initAiPanel() {
+    if (_aiPanelInitialized) return;
+    _aiPanelInitialized = true;
+    document.getElementById('bcm-ai-panel')?.remove();
+    document.getElementById('bcm-ai-overlay')?.remove();
+    document.getElementById('bcm-ai-fab')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'bcm-ai-overlay';
+    overlay.className = 'bcm-ai-overlay';
+    overlay.onclick = () => ViewBcp._closeAiPanel();
+    document.body.appendChild(overlay);
+
+    const panel = document.createElement('div');
+    panel.id = 'bcm-ai-panel';
+    panel.className = 'bcm-ai-panel';
+    const panelMsg = _bcmContext && _bcmContext.wizard_completed
+      ? ''
+      : '<em>Para respuestas mas precisas, completa el <strong>Contexto IA</strong> desde el boton del header.</em>';
+    panel.innerHTML = '<div class="bcm-ai-header">'
+      + '<div style="display:flex;align-items:center;gap:8px"><div class="bcm-ai-dot"></div><strong style="font-size:13px">Asistente BCM</strong></div>'
+      + '<button onclick="ViewBcp._closeAiPanel()" style="background:none;border:none;color:var(--text-subtle);cursor:pointer;font-size:16px;padding:2px">&#x2715;</button></div>'
+      + '<div class="bcm-ai-ctx" id="bcm-ai-ctx">'
+      + '<i class="ti ti-info-circle" style="font-size:11px"></i>'
+      + '<span id="bcm-ai-ctx-text">Listo para ayudarte con BCP/DRP</span></div>'
+      + '<div class="bcm-ai-msgs" id="bcm-ai-msgs">'
+      + '<div class="bcm-ai-msg bcm-ai-msg-ai">Hola. Soy tu asistente de continuidad de negocio. Puedo ayudarte a:<br><strong>&middot; Analizar procesos y dependencias</strong><br><strong>&middot; Completar planes DRP paso a paso</strong><br><strong>&middot; Identificar gaps ISO 22301</strong><br><strong>&middot; Proponer escenarios de test</strong><br><br>' + panelMsg + '</div>'
+      + '</div>'
+      + '<div class="bcm-ai-suggestions" id="bcm-ai-suggestions">'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Analiza el estado actual de mi BCP e identifica los 3 gaps mas criticos\')">Analizar estado BCP</div>'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Propone un escenario de test tabletop para los procesos mas criticos\')">Proponer test tabletop</div>'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Ayudame a redactar el procedimiento de recuperacion para el proceso mas critico\')">Redactar DRP</div>'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Que gaps tengo frente a ISO 22301 clausula 8?\')">Gap ISO 22301</div>'
+      + '</div>'
+      + '<div class="bcm-ai-input-row">'
+      + '<textarea id="bcm-ai-input" class="bcm-ai-input" placeholder="Pregunta sobre BCP, DRP, dependencias, ISO 22301..." rows="1"'
+      + ' onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();ViewBcp._sendAiMsg()}"></textarea>'
+      + '<button class="bcm-ai-send" onclick="ViewBcp._sendAiMsg()"><i class="ti ti-send"></i></button>'
+      + '</div>';
+    document.body.appendChild(panel);
+
+    const fab = document.createElement('button');
+    fab.id = 'bcm-ai-fab';
+    fab.className = 'bcm-ai-fab';
+    fab.title = 'Asistente BCM IA';
+    fab.innerHTML = '<i class="ti ti-message-chatbot"></i>';
+    fab.onclick = () => ViewBcp._openAiPanel();
+    document.body.appendChild(fab);
+  }
+
+  function _openAiPanel() {
+    document.getElementById('bcm-ai-panel')?.classList.add('open');
+    document.getElementById('bcm-ai-overlay')?.classList.add('show');
+    const fab = document.getElementById('bcm-ai-fab');
+    if (fab) fab.style.display = 'none';
+    const ctxEl = document.getElementById('bcm-ai-ctx-text');
+    if (ctxEl) {
+      const stepLabels = { 0:'Wizard contexto', 1:'Localizaciones', 2:'Procesos & BIA', 3:'Dependencias', 4:'Planes & DRP', 5:'Documentacion' };
+      const tileLabels = { dashboard:'Dashboard ISO 22301', graph:'Mapa Dependencias', tests:'Tests & Evidencias', alertas:'Alertas IA' };
+      const screenCtx = _currentMode === 'config'
+        ? (stepLabels[_currentStep] || 'Configurar BCP')
+        : (tileLabels[_currentTile] || 'Operar BCP');
+      const sedeCtx = _locationFilter ? ' · ' + (_locationMap[_locationFilter]?.name || 'Sede') : '';
+      ctxEl.textContent = screenCtx + sedeCtx;
+    }
+  }
+
+  function _closeAiPanel() {
+    document.getElementById('bcm-ai-panel')?.classList.remove('open');
+    document.getElementById('bcm-ai-overlay')?.classList.remove('show');
+    const fab = document.getElementById('bcm-ai-fab');
+    if (fab) fab.style.display = '';
+  }
+
+  async function _sendAiMsg(textArg) {
+    const inp = document.getElementById('bcm-ai-input');
+    const text = textArg || (inp ? inp.value.trim() : '');
+    if (!text) return;
+    if (inp) inp.value = '';
+    const msgs = document.getElementById('bcm-ai-msgs');
+    if (!msgs) return;
+
+    const userDiv = document.createElement('div');
+    userDiv.className = 'bcm-ai-msg bcm-ai-msg-user';
+    userDiv.textContent = text;
+    msgs.appendChild(userDiv);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    const loadDiv = document.createElement('div');
+    loadDiv.className = 'bcm-ai-msg bcm-ai-msg-ai';
+    loadDiv.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Pensando...';
+    msgs.appendChild(loadDiv);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    const stepLabels = { 1:'Localizaciones', 2:'Procesos y BIA', 3:'Dependencias', 4:'Planes y DRP', 5:'Documentacion' };
+    const tileLabels = { dashboard:'Dashboard ISO 22301', graph:'Mapa Dependencias', tests:'Tests', alertas:'Alertas IA' };
+    const screenCtx = _currentMode === 'config'
+      ? ('paso ' + (_currentStep || '') + ': ' + (stepLabels[_currentStep] || ''))
+      : ('tile ' + (tileLabels[_currentTile] || ''));
+    const sedeCtx = _locationFilter ? ', sede: ' + (_locationMap[_locationFilter]?.name || '') : '';
+
+    try {
+      const r = await Api.post('/api/bcp/ai/quick', {
+        message: text,
+        context_hint: screenCtx + sedeCtx,
+      });
+      loadDiv.innerHTML = (r.response || '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    } catch (e) {
+      loadDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + UI.esc(e.message) + '</span>';
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
   return {
     render,
-    _switchTab,
+    _switchTab, _setMode, _setStep, _setTile, _setSubTab,
+    _clearSede, _openAiPanel, _closeAiPanel, _sendAiMsg,
+    _saveWizardStep,
     _editProc, _saveProc, _delProc,
     _editDep, _saveDep, _delDep,
     _editStrat, _saveStrat, _delStrat,

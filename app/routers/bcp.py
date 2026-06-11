@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+import json as _json
+
 from app.models import (
     BCPDependency, BCPExerciseProgramme, BCPPlan, BCPStrategy,
     BCPSupplierLink, BCPTest, BusinessProcess, Supplier, User, UserRole,
     BCMLocation, BCMEvidenceItem, BCMTestRecommendation,
-    BCPTestRunbook, BCPRecoverySequence, BCMActivation,
+    BCPTestRunbook, BCPRecoverySequence, BCMActivation, BCMContext,
 )
 from app.services import bcm_location_service, bcm_graph_service, bcm_test_engine
 from app.security import get_current_user, require_admin, require_analyst
@@ -2078,3 +2080,229 @@ async def upload_bcm_document(
         fpath = docs_dir / f"{sha}_{file.filename}"
         fpath.write_bytes(content)
         return {"message": "Documento guardado. Procesamiento en cola.", "filename": file.filename}
+
+# â”€â”€ BCM Context (wizard de configuracion IA) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+def _ctx_to_dict(ctx):
+    return {
+        "id": ctx.id,
+        "sector": ctx.sector,
+        "employees_range": ctx.employees_range,
+        "geographic_scope": ctx.geographic_scope,
+        "critical_infra": _json.loads(ctx.critical_infra_json or "[]"),
+        "risk_scenarios": _json.loads(ctx.risk_scenarios_json or "[]"),
+        "regulations": _json.loads(ctx.regulations_json or "[]"),
+        "incident_history": ctx.incident_history,
+        "rto_target": ctx.rto_target,
+        "rpo_target": ctx.rpo_target,
+        "max_tolerable_downtime": ctx.max_tolerable_downtime,
+        "annual_loss_estimate": ctx.annual_loss_estimate,
+        "it_architecture": ctx.it_architecture,
+        "key_suppliers": _json.loads(ctx.key_suppliers or "[]"),
+        "wizard_completed": ctx.wizard_completed,
+        "wizard_step": ctx.wizard_step or 0,
+    }
+
+
+@router.get("/context")
+def get_bcm_context(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    ctx = db.query(BCMContext).filter_by(organization_id=_org(u)).first()
+    return _ctx_to_dict(ctx) if ctx else {}
+
+
+@router.post("/context")
+def save_bcm_context(body: dict, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    org = _org(u)
+    ctx = db.query(BCMContext).filter_by(organization_id=org).first()
+    if not ctx:
+        ctx = BCMContext(organization_id=org)
+        db.add(ctx)
+    fields = [
+        "sector", "employees_range", "geographic_scope", "incident_history",
+        "rto_target", "rpo_target", "max_tolerable_downtime", "annual_loss_estimate",
+        "it_architecture", "wizard_completed", "wizard_step",
+    ]
+    for f in fields:
+        if f in body:
+            setattr(ctx, f, body[f])
+    json_fields = {
+        "critical_infra": "critical_infra_json",
+        "risk_scenarios": "risk_scenarios_json",
+        "regulations": "regulations_json",
+        "key_suppliers": "key_suppliers",
+    }
+    for src, dst in json_fields.items():
+        if src in body:
+            setattr(ctx, dst, _json.dumps(body[src]))
+    db.commit()
+    db.refresh(ctx)
+    return _ctx_to_dict(ctx)
+
+
+# â”€â”€ ISO 22301 Compliance scoring â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.get("/compliance/iso22301")
+def get_iso22301_compliance(
+    location_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    u: User = Depends(get_current_user),
+):
+    from datetime import timedelta
+    org = _org(u)
+    now = datetime.now(timezone.utc)
+    cutoff_12m = now - timedelta(days=365)
+
+    def qf(model):
+        q = db.query(model).filter_by(organization_id=org)
+        if location_id and hasattr(model, "location_id"):
+            q = q.filter(getattr(model, "location_id") == location_id)
+        return q.all()
+
+    procs   = qf(BusinessProcess)
+    plans   = qf(BCPPlan)
+    tests   = qf(BCPTest)
+    strats  = qf(BCPStrategy)
+    evid    = db.query(BCMEvidenceItem).filter_by(organization_id=org).all()
+    ctx     = db.query(BCMContext).filter_by(organization_id=org).first()
+    locs    = db.query(BCMLocation).filter_by(organization_id=org, is_active=True).all()
+
+    procs_with_bia = [p for p in procs if getattr(p, "bia_score", None) and p.bia_score > 0]
+    plans_approved = [p for p in plans if p.status == "approved"]
+
+    def safe_ts(dt):
+        if dt is None:
+            return None
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+    tests_recent = [t for t in tests if safe_ts(t.scheduled_at) and safe_ts(t.scheduled_at) >= cutoff_12m]
+    tests_passed = [t for t in tests if t.status == "passed"]
+    tests_overdue = [t for t in tests if (not safe_ts(t.scheduled_at) or safe_ts(t.scheduled_at) < cutoff_12m)
+                     and t.status not in ("passed", "partial")]
+    strats_impl = [s for s in strats if s.implementation_status in ("implemented", "tested")]
+
+    def pct(n, d): return round(n * 100 / d) if d else 0
+
+    cl4  = min(100, (50 if ctx else 0) + (30 if ctx and ctx.wizard_completed else 0) + (20 if locs else 0))
+    cl6  = pct(len(procs_with_bia), len(procs))
+    cl7  = min(100, len(evid) * 10)
+    cl8  = pct(len(plans_approved), len(plans))
+    cl83 = cl6
+    cl84 = pct(len(strats_impl), len(strats))
+    cl85 = pct(len(plans_approved), len(plans))
+    cl9  = pct(len(tests_recent), max(len(locs), 1))
+    cl91 = pct(len(tests_passed), len(tests))
+    cl10 = min(100, 40 + (cl9 // 2))
+
+    clauses = [
+        {"id": "4",   "title": "Contexto de la organizacion",   "score": cl4,  "weight": 1.0},
+        {"id": "6",   "title": "Planificacion y BIA",            "score": cl6,  "weight": 1.5},
+        {"id": "7",   "title": "Soporte y documentacion",        "score": cl7,  "weight": 0.8},
+        {"id": "8",   "title": "Operacion",                      "score": cl8,  "weight": 2.0},
+        {"id": "8.3", "title": "Analisis de impacto (BIA)",      "score": cl83, "weight": 1.5},
+        {"id": "8.4", "title": "Estrategias de continuidad",     "score": cl84, "weight": 1.5},
+        {"id": "8.5", "title": "Planes BCP/DRP",                 "score": cl85, "weight": 2.0},
+        {"id": "9",   "title": "Evaluacion y ejercicios",        "score": cl9,  "weight": 1.5},
+        {"id": "9.1", "title": "Seguimiento y medicion",         "score": cl91, "weight": 1.0},
+        {"id": "10",  "title": "Mejora continua",                "score": cl10, "weight": 0.8},
+    ]
+    total_w = sum(c["weight"] for c in clauses)
+    score_global = round(sum(c["score"] * c["weight"] for c in clauses) / total_w) if total_w else 0
+
+    loc_list = []
+    for loc in locs:
+        lp = [p for p in plans if getattr(p, "location_id", None) == loc.id]
+        lt = [t for t in tests if getattr(t, "location_id", None) == loc.id]
+        lr = [t for t in lt if safe_ts(t.scheduled_at) and safe_ts(t.scheduled_at) >= cutoff_12m]
+        ls = pct(len([p for p in lp if p.status == "approved"]), max(len(lp), 1))
+        status = "green" if ls >= 70 and lr else ("yellow" if ls >= 40 else "red")
+        last_t = max((t.scheduled_at for t in lt if t.scheduled_at), default=None)
+        loc_list.append({
+            "id": loc.id, "name": loc.name, "score": ls, "status": status,
+            "plans_approved": len([p for p in lp if p.status == "approved"]),
+            "plans_total": len(lp), "tests_total": len(lt),
+            "last_test_date": last_t.isoformat()[:10] if last_t else None,
+        })
+
+    return {
+        "score_global": score_global,
+        "clauses": clauses,
+        "kpis": {
+            "processes_total": len(procs), "processes_with_bia": len(procs_with_bia),
+            "plans_total": len(plans), "plans_approved": len(plans_approved),
+            "tests_total": len(tests), "tests_recent_12m": len(tests_recent),
+            "tests_passed": len(tests_passed), "tests_overdue": len(tests_overdue),
+            "strategies_total": len(strats), "strategies_implemented": len(strats_impl),
+            "evidence_items": len(evid), "locations_total": len(locs),
+        },
+        "locations": loc_list,
+    }
+
+
+# â”€â”€ BCM AI Quick chat (panel IA contextual) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+class _BcmAiBody(BaseModel):
+    message: str
+    context_hint: str = ""
+
+
+@router.post("/ai/quick")
+def bcm_ai_quick(
+    body: _BcmAiBody,
+    db: Session = Depends(get_db),
+    u: User = Depends(get_current_user),
+):
+    org = _org(u)
+    ctx = db.query(BCMContext).filter_by(organization_id=org).first()
+    procs = db.query(BusinessProcess).filter_by(organization_id=org).limit(20).all()
+    plans = db.query(BCPPlan).filter_by(organization_id=org).limit(10).all()
+
+    ctx_block = ""
+    if ctx and ctx.wizard_completed:
+        ctx_block = (
+            f"Contexto organizacional BCM:\n"
+            f"- Sector: {ctx.sector or 'N/D'}\n"
+            f"- Empleados: {ctx.employees_range or 'N/D'}\n"
+            f"- Ambito: {ctx.geographic_scope or 'N/D'}\n"
+            f"- Infraestructura critica: {ctx.critical_infra_json or 'N/D'}\n"
+            f"- Escenarios de riesgo: {ctx.risk_scenarios_json or 'N/D'}\n"
+            f"- Regulaciones: {ctx.regulations_json or 'N/D'}\n"
+            f"- RTO objetivo: {ctx.rto_target or 'N/D'} | RPO: {ctx.rpo_target or 'N/D'}\n"
+            f"- Arquitectura TI: {ctx.it_architecture or 'N/D'}\n"
+        )
+
+    procs_block = "\n".join(
+        f"- {p.name} (criticidad: {p.criticality}, RTO: {getattr(p,'rto_hours',None)}h)"
+        for p in procs
+    ) or "Sin procesos definidos."
+    plans_block = "\n".join(
+        f"- {p.name} ({p.plan_type}, estado: {p.status})"
+        for p in plans
+    ) or "Sin planes definidos."
+
+    system_prompt = (
+        "Eres el Asistente de Continuidad de Negocio de RiskHub, experto en ISO 22301, BCP/DRP y gestion de la continuidad.\n"
+        "Responde siempre en castellano. SÃ© conciso pero preciso. Usa ** para destacar puntos clave.\n"
+        "Cuando detectes riesgos o gaps, mencionalos con recomendaciones accionables.\n\n"
+        f"{ctx_block}\n"
+        f"Procesos criticos:\n{procs_block}\n\n"
+        f"Planes BCP/DRP:\n{plans_block}\n\n"
+        f"Contexto actual del usuario: {body.context_hint}\n"
+    )
+
+    try:
+        import anthropic
+    except ImportError:
+        raise HTTPException(503, "Paquete anthropic no disponible")
+
+    api_key = settings.anthropic_api_key
+    if not api_key:
+        raise HTTPException(503, "API key IA no configurada. Configurala en Integraciones > Agente IA.")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    msg = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=800,
+        system=system_prompt,
+        messages=[{"role": "user", "content": body.message}],
+    )
+    return {"response": msg.content[0].text}

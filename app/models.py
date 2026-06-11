@@ -1944,6 +1944,32 @@ class BCMActivation(Base):
     activated_by = relationship("User", foreign_keys=[activated_by_id])
 
 
+# ---------- BCM CONTEXT (Wizard contexto para Agente IA) ----------
+
+class BCMContext(Base):
+    """Contexto organizacional BCM recopilado por el wizard — alimenta al Agente IA."""
+    __tablename__ = "bcm_context"
+    id                   = Column(Integer, primary_key=True)
+    organization_id      = Column(Integer, ForeignKey("organizations.id"), nullable=False, unique=True)
+    sector               = Column(String(100), nullable=True)
+    employees_range      = Column(String(50), nullable=True)
+    geographic_scope     = Column(String(50), nullable=True)   # local/national/international
+    critical_infra_json  = Column(Text, nullable=True)         # JSON list
+    risk_scenarios_json  = Column(Text, nullable=True)         # JSON list
+    regulations_json     = Column(Text, nullable=True)         # JSON list
+    incident_history     = Column(Text, nullable=True)
+    rto_target           = Column(String(20), nullable=True)
+    rpo_target           = Column(String(20), nullable=True)
+    max_tolerable_downtime = Column(String(20), nullable=True)
+    annual_loss_estimate = Column(String(50), nullable=True)
+    it_architecture      = Column(Text, nullable=True)         # cloud/on-prem/hybrid + details
+    key_suppliers        = Column(Text, nullable=True)         # JSON list
+    wizard_completed     = Column(Boolean, default=False)
+    wizard_step          = Column(Integer, default=0)
+    created_at           = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at           = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
 # ---------- GDPR BREACH NOTIFICATION (GDPR Art. 33-34) ----------
 
 class DataBreachNotification(Base):
