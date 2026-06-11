@@ -2190,3 +2190,21 @@ table.data td .code-pill {
   margin-bottom: 5px; font-size: 12px;
 }
 .bcm-alert-item:hover { border-color: var(--border-hover, #444); }
+
+/* ── Wizard form group (.fg) ── */
+.fg {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.fg label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+}
+.fg .form-control {
+  width: 100%;
+  box-sizing: border-box;
+}

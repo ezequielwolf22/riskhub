@@ -148,6 +148,7 @@ const ViewBcp = (() => {
 
   function _setMode(mode) {
     _currentMode = mode;
+    if (_currentStep === 0) _currentStep = 1; // escapar wizard si estaba activo
     document.getElementById('bcm-btn-config')?.classList.toggle('active', mode === 'config');
     document.getElementById('bcm-btn-operar')?.classList.toggle('active', mode === 'operar');
     _renderContent();
@@ -163,6 +164,7 @@ const ViewBcp = (() => {
 
   function _setTile(tile) {
     _currentMode = 'operar';
+    _currentStep = 1; // escapar wizard si estaba activo
     _currentTile = tile;
     _renderContent();
   }
@@ -4103,14 +4105,16 @@ const ViewBcp = (() => {
   async function _saveWizardStep(fromStep, toStep) {
     const body = { wizard_step: typeof toStep === 'number' ? toStep : 4, wizard_completed: toStep === 'done' };
 
-    const collectField = (fieldId, type) => {
+    const collectField = (fieldId, type, isJson) => {
       if (type === 'checkboxes') {
         return Array.from(document.querySelectorAll('.wz-cb-' + fieldId + ':checked')).map(cb => cb.value);
       }
       if (type === 'textarea') {
         const el = document.getElementById('wz-' + fieldId);
         if (!el) return undefined;
-        return el.value.split('\n').map(l => l.trim()).filter(Boolean);
+        // Solo devolver array si el campo es JSON (listas); texto plano como string
+        if (isJson) return el.value.split('\n').map(l => l.trim()).filter(Boolean);
+        return el.value.trim();
       }
       const el = document.getElementById('wz-' + fieldId);
       return el ? el.value : undefined;
@@ -4122,14 +4126,14 @@ const ViewBcp = (() => {
       { id:'it_architecture', type:'select' }, { id:'critical_infra', type:'textarea', isJson:true },
       { id:'key_suppliers', type:'textarea', isJson:true },
       { id:'risk_scenarios', type:'checkboxes' }, { id:'regulations', type:'checkboxes' },
-      { id:'incident_history', type:'textarea' },
+      { id:'incident_history', type:'textarea', isJson:false },
       { id:'rto_target', type:'select' }, { id:'rpo_target', type:'select' },
       { id:'max_tolerable_downtime', type:'select' },
     ];
 
     allFields.forEach(f => {
-      const val = collectField(f.id, f.type);
-      if (val !== undefined) body[f.id] = val;
+      const val = collectField(f.id, f.type, f.isJson);
+      if (val !== undefined && val !== '') body[f.id] = val;
     });
 
     try {
@@ -4192,21 +4196,16 @@ const ViewBcp = (() => {
       + '<button class="bcm-ai-send" onclick="ViewBcp._sendAiMsg()"><i class="ti ti-send"></i></button>'
       + '</div>';
     document.body.appendChild(panel);
-
-    const fab = document.createElement('button');
-    fab.id = 'bcm-ai-fab';
-    fab.className = 'bcm-ai-fab';
-    fab.title = 'Asistente BCM IA';
-    fab.innerHTML = '<i class="ti ti-message-chatbot"></i>';
-    fab.onclick = () => ViewBcp._openAiPanel();
-    document.body.appendChild(fab);
+    // El panel se abre desde el FAB global — no crear FAB separado
   }
 
   function _openAiPanel() {
+    if (!_aiPanelInitialized) _initAiPanel();
     document.getElementById('bcm-ai-panel')?.classList.add('open');
     document.getElementById('bcm-ai-overlay')?.classList.add('show');
-    const fab = document.getElementById('bcm-ai-fab');
-    if (fab) fab.style.display = 'none';
+    // Ocultar FAB global mientras el panel está abierto
+    const fabMain = document.getElementById('quick-actions-fab');
+    if (fabMain) fabMain.style.opacity = '0.3';
     const ctxEl = document.getElementById('bcm-ai-ctx-text');
     if (ctxEl) {
       const stepLabels = { 0:'Wizard contexto', 1:'Localizaciones', 2:'Procesos & BIA', 3:'Dependencias', 4:'Planes & DRP', 5:'Documentacion' };
@@ -4222,8 +4221,8 @@ const ViewBcp = (() => {
   function _closeAiPanel() {
     document.getElementById('bcm-ai-panel')?.classList.remove('open');
     document.getElementById('bcm-ai-overlay')?.classList.remove('show');
-    const fab = document.getElementById('bcm-ai-fab');
-    if (fab) fab.style.display = '';
+    const fabMain = document.getElementById('quick-actions-fab');
+    if (fabMain) fabMain.style.opacity = '';
   }
 
   async function _sendAiMsg(textArg) {
