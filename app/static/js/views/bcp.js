@@ -4518,23 +4518,71 @@ const ViewBcp = (() => {
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
   }
 
-  async function _logActivacion(aid) {
-    const msg = window.prompt('Registrar evento en el timeline:');
-    if (!msg?.trim()) return;
-    try {
-      await Api.post('/api/bcp/activations/' + aid + '/log', { message: msg.trim() });
-      _setTile('activaciones');
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  function _logActivacion(aid) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2>Registrar evento</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:6px;">Mensaje del evento <span style="color:var(--danger)">*</span></label>
+        <textarea id="log-msg" class="form-control" rows="3" style="font-size:13px;" placeholder="Describe lo que ha ocurrido en este momento..."></textarea>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="log-submit"><i class="ti ti-send"></i> Registrar</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#log-msg').focus();
+    modal.querySelector('#log-submit').addEventListener('click', async () => {
+      const msg = modal.querySelector('#log-msg').value.trim();
+      if (!msg) { UI.toast('El mensaje no puede estar vacio', 'error'); return; }
+      try {
+        await Api.post('/api/bcp/activations/' + aid + '/log', { message: msg });
+        modal.remove();
+        _setTile('activaciones');
+      } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+    });
   }
 
-  async function _closeActivacion(aid) {
-    const notes = window.prompt('Notas de cierre (resumen de la respuesta):');
-    if (notes === null) return;
-    try {
-      await Api.post('/api/bcp/activations/' + aid + '/close', { closure_notes: notes });
-      UI.toast('Activacion cerrada. Se ha registrado el incidente.', 'success');
-      _setTile('activaciones');
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  function _closeActivacion(aid) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2>Cerrar activacion</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;">
+        <div class="notice notice-warning" style="margin-bottom:14px;font-size:13px;">Se cerrara la activacion y se registrara un incidente automaticamente.</div>
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:6px;">Notas de cierre</label>
+        <textarea id="close-notes" class="form-control" rows="3" style="font-size:13px;" placeholder="Resumen de la respuesta y acciones tomadas..."></textarea>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-danger btn-sm" id="close-submit"><i class="ti ti-lock"></i> Cerrar activacion</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#close-notes').focus();
+    modal.querySelector('#close-submit').addEventListener('click', async () => {
+      const notes = modal.querySelector('#close-notes').value;
+      try {
+        await Api.post('/api/bcp/activations/' + aid + '/close', { closure_notes: notes });
+        UI.toast('Activacion cerrada. Se ha registrado el incidente.', 'success');
+        modal.remove();
+        _setTile('activaciones');
+      } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+    });
   }
 
   // ── Tile: Calendario de tests ─────────────────────────────────────────────────
@@ -4753,35 +4801,138 @@ const ViewBcp = (() => {
 
   async function _newRunbook() {
     const plans = await Api.get('/api/bcp/plans').catch(() => []);
-    const name = window.prompt('Nombre del runbook:');
-    if (!name?.trim()) return;
-    const planSel = plans.length
-      ? window.prompt('ID del plan a enlazar (opcional, dejar vacío para ninguno):\n' + plans.map(p => p.id + ' — ' + p.name).join('\n'))
-      : null;
-    try {
-      await Api.post('/api/bcp/runbooks', {
-        name: name.trim(),
-        plan_id: planSel ? parseInt(planSel) : null,
-        runbook_type: 'recovery',
-        steps: [],
-      });
-      UI.toast('Runbook creado', 'success');
-      _setSubTab(4, 'runbooks');
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+    const RB_TYPES = [
+      {v:'recovery', l:'Recuperacion'},
+      {v:'failover', l:'Failover'},
+      {v:'general',  l:'General'},
+    ];
+    const lbl = t => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">${t}</label>`;
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:500px;">
+      <div class="modal-header">
+        <h2>Nuevo runbook</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;">
+        <div style="margin-bottom:14px;">
+          ${lbl('Nombre <span style="color:var(--danger)">*</span>')}
+          <input id="rb-name" class="form-control" style="font-size:13px;" placeholder="Ej: Recuperacion servidor de base de datos">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Plan BCP/DRP asociado')}
+            <select id="rb-plan" class="form-control" style="font-size:13px;">
+              <option value="">— Ninguno —</option>
+              ${plans.map(p=>`<option value="${p.id}">${UI.esc(p.code ? p.code+' — '+p.name : p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>${lbl('Tipo')}
+            <select id="rb-type" class="form-control" style="font-size:13px;">
+              ${RB_TYPES.map(t=>`<option value="${t.v}">${t.l}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Descripcion')}
+          <textarea id="rb-desc" class="form-control" rows="2" style="font-size:13px;" placeholder="Objetivo y alcance de este runbook..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="rb-submit"><i class="ti ti-check"></i> Crear runbook</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#rb-name').focus();
+    modal.querySelector('#rb-submit').addEventListener('click', async () => {
+      const name = modal.querySelector('#rb-name').value.trim();
+      if (!name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+      const btn = modal.querySelector('#rb-submit');
+      btn.disabled = true;
+      try {
+        await Api.post('/api/bcp/runbooks', {
+          name,
+          plan_id: parseInt(modal.querySelector('#rb-plan').value) || null,
+          runbook_type: modal.querySelector('#rb-type').value,
+          description: modal.querySelector('#rb-desc').value.trim() || null,
+          steps: [],
+        });
+        UI.toast('Runbook creado', 'success');
+        modal.remove();
+        _setSubTab(4, 'runbooks');
+      } catch (e) { UI.toast('Error: ' + e.message, 'error'); btn.disabled = false; }
+    });
   }
 
   async function _editRunbook(rid) {
     const rb = await Api.get('/api/bcp/runbooks').then(list => list.find(r => r.id === rid)).catch(() => null);
     if (!rb) return;
-    const name = window.prompt('Nombre del runbook:', rb.name||'');
-    if (name === null) return;
-    const desc = window.prompt('Descripcion:', rb.description||'');
-    if (desc === null) return;
-    try {
-      await Api.patch('/api/bcp/runbooks/' + rid, { name: name.trim(), description: desc.trim() });
-      UI.toast('Runbook actualizado', 'success');
-      _setSubTab(4, 'runbooks');
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+    const plans = await Api.get('/api/bcp/plans').catch(() => []);
+    const RB_TYPES = [
+      {v:'recovery', l:'Recuperacion'},
+      {v:'failover', l:'Failover'},
+      {v:'general',  l:'General'},
+    ];
+    const lbl = t => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">${t}</label>`;
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:500px;">
+      <div class="modal-header">
+        <h2>Editar runbook</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;">
+        <div style="margin-bottom:14px;">
+          ${lbl('Nombre <span style="color:var(--danger)">*</span>')}
+          <input id="rbe-name" class="form-control" style="font-size:13px;" value="${UI.esc(rb.name||'')}">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Plan BCP/DRP asociado')}
+            <select id="rbe-plan" class="form-control" style="font-size:13px;">
+              <option value="">— Ninguno —</option>
+              ${plans.map(p=>`<option value="${p.id}"${rb.plan_id===p.id?' selected':''}>${UI.esc(p.code ? p.code+' — '+p.name : p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>${lbl('Tipo')}
+            <select id="rbe-type" class="form-control" style="font-size:13px;">
+              ${RB_TYPES.map(t=>`<option value="${t.v}"${rb.runbook_type===t.v?' selected':''}>${t.l}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Descripcion')}
+          <textarea id="rbe-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(rb.description||'')}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="rbe-submit"><i class="ti ti-check"></i> Guardar</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#rbe-submit').addEventListener('click', async () => {
+      const name = modal.querySelector('#rbe-name').value.trim();
+      if (!name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+      const btn = modal.querySelector('#rbe-submit');
+      btn.disabled = true;
+      try {
+        await Api.patch('/api/bcp/runbooks/' + rid, {
+          name,
+          plan_id: parseInt(modal.querySelector('#rbe-plan').value) || null,
+          runbook_type: modal.querySelector('#rbe-type').value,
+          description: modal.querySelector('#rbe-desc').value.trim() || null,
+        });
+        UI.toast('Runbook actualizado', 'success');
+        modal.remove();
+        _setSubTab(4, 'runbooks');
+      } catch (e) { UI.toast('Error: ' + e.message, 'error'); btn.disabled = false; }
+    });
   }
 
   async function _genAiRunbook(rid) {
