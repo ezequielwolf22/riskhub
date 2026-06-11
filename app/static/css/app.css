@@ -1758,3 +1758,44 @@ table.data td .code-pill {
 .plan-badge-pandemic { background: #16a34a22; color: #16a34a; }
 .plan-badge-ems      { background: #6B728022; color: #6B7280; }
 .plan-badge-supply   { background: #92400e22; color: #92400e; }
+
+/* ── BCM Localizaciones: arbol jerarquico ── */
+.bcm-loc-node {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius);
+  cursor: pointer; font-size: 13px;
+  transition: background 0.15s;
+}
+.bcm-loc-node:hover { background: var(--bg-2); }
+.bcm-loc-node .bcm-loc-toggle {
+  width: 16px; height: 16px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--text-subtle);
+}
+.bcm-loc-children { margin-left: 20px; }
+.bcm-loc-children.collapsed { display: none; }
+
+/* ── BCM Semaforos de madurez ── */
+.bcm-traffic-light {
+  display: inline-block; width: 12px; height: 12px;
+  border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+.bcm-tl-green  { background: #16a34a; }
+.bcm-tl-yellow { background: #ca8a04; }
+.bcm-tl-red    { background: #dc2626; }
+
+/* ── BCM Grafo Cytoscape ── */
+#cy-graph, #cy-container {
+  width: 100%; height: 520px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+}
+
+/* ── BCM Barra de localizacion ── */
+#bcp-location-bar { position: relative; z-index: 1; }
+#bcp-loc-select {
+  min-width: 200px; max-width: 320px;
+  font-size: 13px;
+}

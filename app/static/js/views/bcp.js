@@ -26,6 +26,54 @@ const ViewBcp = (() => {
   let _procs = [], _deps = [], _strats = [], _plans = [], _tests = [], _slinks = [], _suppliers = [];
   let _container = null;
 
+  // Filtro global de localización
+  let _locationFilter = null;
+  let _locations = [];
+  let _locationMap = {};
+
+  function _locParam(sep) {
+    if (!_locationFilter) return '';
+    return (sep !== undefined ? sep : '?') + 'location_id=' + _locationFilter;
+  }
+
+  async function _loadLocations() {
+    try {
+      const tree = await Api.get('/api/bcp/locations').catch(() => []);
+      _locations = tree;
+      const flat = [];
+      (function flatten(nodes, depth) {
+        nodes.forEach(n => { flat.push({...n, depth}); flatten(n.children || [], depth + 1); });
+      })(tree, 0);
+      flat.forEach(l => { _locationMap[l.id] = l; });
+      const sel = document.getElementById('bcp-loc-select');
+      if (!sel) return;
+      while (sel.options.length > 1) sel.remove(1);
+      flat.forEach(loc => {
+        const opt = document.createElement('option');
+        opt.value = loc.id;
+        opt.textContent = ' '.repeat(loc.depth * 3) + loc.name;
+        if (loc.id === _locationFilter) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      if (!sel._bcmListenerAdded) {
+        sel._bcmListenerAdded = true;
+        sel.addEventListener('change', () => {
+          _locationFilter = sel.value ? parseInt(sel.value) : null;
+          const badge = document.getElementById('bcp-loc-badge');
+          if (badge) {
+            if (_locationFilter) {
+              badge.style.display = 'inline';
+              badge.textContent = _locationMap[_locationFilter]?.name || '';
+            } else {
+              badge.style.display = 'none';
+            }
+          }
+          _renderActiveTab();
+        });
+      }
+    } catch (e) { console.warn('No se pudieron cargar localizaciones BCM:', e); }
+  }
+
   // ── Entry point ──────────────────────────────────────────────────────────────
 
   async function render(container) {
@@ -34,6 +82,20 @@ const ViewBcp = (() => {
       'Continuidad de Negocio (BCP/BIA)',
       'NIS2 Art. 21.2(b) + ISO 27001 A.5.29 + ISO 22301 — Procesos criticos, RTO/RPO, planes y tests'
     );
+
+    // Barra de filtro por localización (encima de las tabs)
+    const locBar = document.createElement('div');
+    locBar.id = 'bcp-location-bar';
+    locBar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0 4px;border-bottom:1px solid var(--border);margin-bottom:6px;';
+    locBar.innerHTML = `
+      <i class="ti ti-map-pin" style="color:var(--text-subtle);font-size:15px"></i>
+      <select id="bcp-loc-select" style="font-size:13px;border:none;background:transparent;color:var(--text);cursor:pointer;outline:none;max-width:260px">
+        <option value="">Vista corporativa (todas las localizaciones)</option>
+      </select>
+      <span id="bcp-loc-badge" style="display:none;padding:2px 10px;background:var(--primary-soft,#f3e8ff);color:var(--primary);border-radius:999px;font-size:11px;font-weight:600"></span>
+    `;
+    container.appendChild(locBar);
+    _loadLocations();
 
     // Tab bar
     const tabBar = document.createElement('div');
@@ -488,7 +550,7 @@ const ViewBcp = (() => {
   // ── Tab Procesos ─────────────────────────────────────────────────────────────
 
   async function _tabProcesses(el) {
-    _procs = await Api.get('/api/bcp/processes').catch(() => []);
+    _procs = await Api.get('/api/bcp/processes' + _locParam()).catch(() => []);
 
     const headerHtml = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -524,7 +586,7 @@ const ViewBcp = (() => {
       return `<div class="table-container">
         <table class="data-table">
           <thead><tr>
-            <th>Proceso</th><th>Criticidad</th><th>RTO</th><th>RPO</th><th>MTPD</th>
+            <th>Proceso</th><th>Criticidad</th><th>Localiz.</th><th>RTO</th><th>RPO</th><th>MTPD</th>
             <th>BIA%</th><th>Dep.</th><th>Propietario</th><th>Ultimo test</th><th></th>
           </tr></thead>
           <tbody>
@@ -535,6 +597,7 @@ const ViewBcp = (() => {
             return `<tr>
               <td><strong>${UI.esc(p.name)}</strong>${p.description ? `<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(p.description.substring(0,60))}</div>` : ''}</td>
               <td><span style="color:${CRIT_COLORS[p.criticality]};font-weight:700;font-size:12px;">${CRIT_LABELS[p.criticality]||p.criticality}</span></td>
+              <td style="font-size:11px;color:var(--text-subtle)">${UI.esc(_locationMap[p.location_id]?.name || '—')}</td>
               <td>${p.rto_hours != null ? p.rto_hours + 'h' : '—'}</td>
               <td>${p.rpo_hours != null ? p.rpo_hours + 'h' : '—'}</td>
               <td>${p.mtpd_hours != null ? p.mtpd_hours + 'h' : '—'}</td>
@@ -838,7 +901,7 @@ const ViewBcp = (() => {
   async function _tabPlans(el) {
     [_procs, _plans] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
-      Api.get('/api/bcp/plans').catch(() => []),
+      Api.get('/api/bcp/plans' + _locParam()).catch(() => []),
     ]);
 
     const tableHtml = !_plans.length
@@ -847,7 +910,7 @@ const ViewBcp = (() => {
         <table class="data-table">
           <thead><tr>
             <th>Codigo</th><th>Tipo</th><th>Clasificacion</th><th>Nombre</th><th>Version</th>
-            <th>Estado</th><th>Procesos</th><th>Propietario</th><th>Revision</th><th></th>
+            <th>Estado</th><th>Localiz.</th><th>Procesos</th><th>Propietario</th><th>Revision</th><th></th>
           </tr></thead>
           <tbody>
           ${_plans.map(p => `<tr>
@@ -858,6 +921,7 @@ const ViewBcp = (() => {
             <td style="font-size:12px;color:var(--text-subtle);">v${UI.esc(p.version||'1.0')}</td>
             <td><span class="badge badge-${p.status==='approved'?'success':p.status==='under_review'?'warning':'secondary'}"
               style="background:${STATUS_COLORS[p.status]||'#666'}22;color:${STATUS_COLORS[p.status]||'#666'};font-size:11px;">${p.status}</span></td>
+            <td style="font-size:11px;color:var(--text-subtle)">${UI.esc(_locationMap[p.location_id]?.name || '—')}</td>
             <td style="font-size:12px;">${(p.process_ids||[]).length}</td>
             <td style="font-size:12px;color:var(--text-subtle);">${UI.esc(p.plan_owner_name||'—')}</td>
             <td style="font-size:12px;">${p.review_date ? new Date(p.review_date).toLocaleDateString('es-ES') : '—'}</td>
@@ -903,7 +967,7 @@ const ViewBcp = (() => {
   async function _tabTests(el) {
     [_procs, _tests] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
-      Api.get('/api/bcp/tests').catch(() => []),
+      Api.get('/api/bcp/tests' + _locParam()).catch(() => []),
     ]);
     const year = new Date().getFullYear();
     const ep = await Api.get(`/api/bcp/exercise-programme?year=${year}`).catch(() => []);
@@ -976,7 +1040,7 @@ const ViewBcp = (() => {
   async function _tabSuppliers(el) {
     [_procs, _slinks, _suppliers] = await Promise.all([
       _procs.length ? Promise.resolve(_procs) : Api.get('/api/bcp/processes').catch(() => []),
-      Api.get('/api/bcp/supplier-links').catch(() => []),
+      Api.get('/api/bcp/supplier-links' + _locParam()).catch(() => []),
       Api.get('/api/suppliers').catch(() => []),
     ]);
 
@@ -1031,14 +1095,38 @@ const ViewBcp = (() => {
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h3 style="margin:0;">Proveedores BCM (${_slinks.length})</h3>
-      <button class="btn btn-primary" id="btn-new-sl">
-        <i class="ti ti-plus"></i> Vincular proveedor
-      </button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" id="btn-analyze-suppliers">
+          <i class="ti ti-brain"></i> Analizar con IA
+        </button>
+        <button class="btn btn-primary btn-sm" id="btn-new-sl">
+          <i class="ti ti-plus"></i> Vincular proveedor
+        </button>
+      </div>
     </div>
-    ${bodyHtml}`;
+    ${bodyHtml}
+    <div id="supplier-ai-result"></div>`;
 
-    // Listener DESPUES de asignar innerHTML
     document.getElementById('btn-new-sl')?.addEventListener('click', () => _openSLModal());
+    document.getElementById('btn-analyze-suppliers')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-analyze-suppliers');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i>';
+      const url = '/api/bcp/suppliers/analyze-ai' + _locParam();
+      try {
+        const res = await Api.post(url, {});
+        const div = document.getElementById('supplier-ai-result');
+        if (div) div.innerHTML = `<div class="card" style="padding:14px;margin-top:12px;border-left:3px solid var(--primary)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+            <strong><i class="ti ti-brain"></i> Análisis IA de proveedores BCM</strong>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('supplier-ai-result').innerHTML=''"><i class="ti ti-x"></i></button>
+          </div>
+          <div style="font-size:13px;line-height:1.6;white-space:pre-wrap">${UI.esc(res.analysis || JSON.stringify(res))}</div>
+        </div>`;
+      } catch (e) { UI.toast('Error en análisis IA: ' + (e.message || e), 'error'); }
+      finally { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brain"></i> Analizar con IA'; }
+    });
   }
 
   // ── Tab Importar / Exportar Excel ───────────────────────────────────────────
@@ -1247,9 +1335,16 @@ const ViewBcp = (() => {
   // ── Modales — Proceso ────────────────────────────────────────────────────────
 
   async function _openProcModal(proc, isBia) {
-    // Cargar usuarios para los selects de responsable
-    let users = [];
-    try { users = await Api.get('/api/users/'); } catch (_) { }
+    let users = [], locFlat = [];
+    try {
+      [users] = await Promise.all([
+        Api.get('/api/users/').catch(() => []),
+      ]);
+      // Flatten location map for select
+      (function flatten(nodes) {
+        nodes.forEach(n => { locFlat.push(n); flatten(n.children || []); });
+      })(_locations);
+    } catch (_) { }
     const userOpts = users.map(u =>
       `<option value="${u.id}"${(proc?.owner_id === u.id) ? ' selected' : ''}>${UI.esc(u.full_name || u.email)}</option>`
     ).join('');
@@ -1304,6 +1399,16 @@ const ViewBcp = (() => {
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Responsable de recuperacion</label>
             <select id="pm-rowner" class="form-control" style="font-size:13px;">
               <option value="">— Sin asignar —</option>${rUserOpts}
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Localización</label>
+            <select id="pm-location" class="form-control" style="font-size:13px;">
+              <option value="">— Sin localización asignada —</option>
+              ${locFlat.map(l => `<option value="${l.id}"${(proc?.location_id === l.id || (!proc && _locationFilter === l.id)) ? ' selected' : ''}>${'&nbsp;'.repeat((l.depth || 0) * 2)}${UI.esc(l.name)}</option>`).join('')}
             </select>
           </div>
         </div>
@@ -1475,6 +1580,7 @@ const ViewBcp = (() => {
       impact_7d: parseInt(g('pm-i7d')?.value) ?? null,
       bia_version: g('pm-biaver')?.value || null,
       bia_review_date: g('pm-biarev')?.value || null,
+      location_id: parseInt(g('pm-location')?.value) || null,
     };
     if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
     try {
@@ -2318,7 +2424,7 @@ const ViewBcp = (() => {
 
   // ── Modales — Test ───────────────────────────────────────────────────────────
 
-  function _openTestModal() {
+  function _openTestModal(id, prefill) {
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
@@ -2363,6 +2469,17 @@ const ViewBcp = (() => {
       </div>
     </div>`;
     document.body.appendChild(modal);
+    // Aplicar prefill de recomendaciones IA
+    if (prefill) {
+      if (prefill.test_type) {
+        const sel = modal.querySelector('#tm-type');
+        if (sel) sel.value = prefill.test_type;
+      }
+      if (prefill.scheduled_date) {
+        const inp = modal.querySelector('#tm-date');
+        if (inp) inp.value = prefill.scheduled_date + 'T09:00';
+      }
+    }
   }
 
   async function _saveTest() {
@@ -2696,124 +2813,290 @@ const ViewBcp = (() => {
       Api.get('/api/bcp/locations/consolidated').catch(() => ({})),
     ]);
 
+    // Actualizar cache global
+    _locations = tree;
+    const flat = [];
+    (function flatten(nodes, depth) {
+      nodes.forEach(n => { flat.push({...n, depth}); flatten(n.children || [], depth + 1); });
+    })(tree, 0);
+    flat.forEach(l => { _locationMap[l.id] = l; });
+
     const mColor = { green: 'var(--risk-low)', yellow: 'var(--risk-medium)', red: 'var(--risk-critical)' };
-    const mIcon  = { green: 'ti-circle-check', yellow: 'ti-alert-triangle', red: 'ti-circle-x' };
+    const locData = consolidated.locations || {};
+    const total = consolidated.total_locations || 0;
+    const orgMaturity = consolidated.org_maturity || 'red';
+    const unlocated = consolidated.unlocated_processes || 0;
+    const greenCount = flat.filter(l => locData[l.id]?.metrics?.maturity_color === 'green').length;
+    const pctGreen = flat.length ? Math.round(greenCount / flat.length * 100) : 0;
+    const isAdmin = window._userRole === 'admin' || window._userRole === 'superadmin';
 
     function renderNode(node, depth) {
-      const m = consolidated.locations?.[node.id]?.metrics || {};
-      const color = mColor[m.maturity_color || 'red'] || 'var(--risk-critical)';
+      const m = locData[node.id]?.metrics || {};
+      const tlClass = 'bcm-tl-' + (m.maturity_color || 'red');
+      const hasChildren = (node.children || []).length > 0;
       return `
-        <div style="margin-left:${depth * 20}px;margin-bottom:8px">
-          <div class="card" style="padding:12px 16px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <i class="ti ${mIcon[m.maturity_color || 'red']}" style="color:${color};font-size:18px;flex-shrink:0"></i>
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <code style="font-size:11px">${UI.esc(node.code || '')}</code>
-                  <strong style="font-size:14px">${UI.esc(node.name)}</strong>
-                  ${node.country ? `<span style="font-size:12px;color:var(--text-subtle)">${UI.esc(node.country)}</span>` : ''}
-                </div>
-                <div style="display:flex;gap:12px;margin-top:4px;font-size:12px;color:var(--text-subtle)">
-                  <span>${m.processes_critical || 0} proc. críticos</span>
-                  <span>${m.plans_approved || 0} planes aprobados</span>
-                  <span>BIA avg ${m.avg_bia_pct || 0}%</span>
-                  <span>${m.tests_passed_12m || 0} tests OK</span>
-                </div>
+        <div class="bcm-loc-node" style="margin-left:${depth * 24}px;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-card);border:0.5px solid var(--border);border-radius:var(--radius);">
+            ${hasChildren
+              ? `<button class="btn btn-ghost btn-sm bcm-loc-toggle" style="padding:2px 4px;min-width:22px" onclick="ViewBcp._toggleLocChildren(${node.id})">
+                  <i class="ti ti-chevron-down" id="loc-chev-${node.id}" style="font-size:12px"></i></button>`
+              : `<span style="width:22px;flex-shrink:0"></span>`}
+            <span class="bcm-traffic-light ${tlClass}"></span>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                ${node.code ? `<code style="font-size:10px;color:var(--text-subtle)">${UI.esc(node.code)}</code>` : ''}
+                <strong style="font-size:14px">${UI.esc(node.name)}</strong>
+                ${node.country ? `<span style="font-size:11px;color:var(--text-subtle)"><i class="ti ti-globe" style="font-size:10px"></i> ${UI.esc(node.country)}</span>` : ''}
               </div>
-              <button class="btn btn-ghost btn-sm" data-filter-loc="${node.id}" title="Filtrar por esta localización">
-                <i class="ti ti-filter" aria-hidden="true"></i>
+              <div style="display:flex;gap:14px;margin-top:3px;font-size:11px;color:var(--text-subtle);flex-wrap:wrap">
+                <span><strong style="color:var(--risk-critical)">${m.processes_critical || 0}</strong> proc. críticos</span>
+                <span><strong style="color:var(--risk-low)">${m.plans_approved || 0}</strong> planes aprobados</span>
+                <span>BIA avg <strong>${m.avg_bia_pct || 0}%</strong></span>
+                <span><strong>${m.tests_passed_12m || 0}</strong> tests OK 12m</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn btn-ghost btn-sm" title="Filtrar por esta localización" onclick="ViewBcp._setLocFilter(${node.id})">
+                <i class="ti ti-filter" style="font-size:13px"></i>
               </button>
+              ${isAdmin ? `<button class="btn btn-ghost btn-sm" title="Gestionar" onclick="ViewBcp._editLocation(${node.id})">
+                <i class="ti ti-settings" style="font-size:13px"></i>
+              </button>` : ''}
             </div>
           </div>
-          ${(node.children || []).map(c => renderNode(c, depth + 1)).join('')}
+          ${hasChildren ? `<div class="bcm-loc-children" id="loc-children-${node.id}">
+            ${node.children.map(c => renderNode(c, depth + 1)).join('')}
+          </div>` : ''}
         </div>`;
     }
 
-    const isAdmin = window._userRole === 'admin' || window._userRole === 'superadmin';
     container.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div>
           <h3 style="margin:0;font-size:16px">Localizaciones BCM</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">
-            Jerarquía de sedes y unidades — ${consolidated.total_locations || 0} localización(es)
-            · Madurez global:
-            <span style="font-weight:700;color:${mColor[consolidated.org_maturity || 'red']}">${consolidated.org_maturity || 'sin datos'}</span>
-          </p>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">ISO 22301 cl. 8.2 — Jerarquía de sedes y unidades</p>
         </div>
-        ${isAdmin ? `<button class="btn btn-primary btn-sm" id="btn-new-loc">
-          <i class="ti ti-plus" aria-hidden="true"></i> Nueva localización</button>` : ''}
+        ${isAdmin ? `<button class="btn btn-primary btn-sm" id="btn-new-loc"><i class="ti ti-plus"></i> Nueva localización</button>` : ''}
       </div>
-      ${tree.length === 0
-        ? `<div class="notice notice-info">Sin localizaciones definidas. Crea la primera para organizar tu BCM por sede.</div>`
-        : tree.map(n => renderNode(n, 0)).join('')}
-      ${(consolidated.unlocated_processes > 0) ? `
-        <div class="notice notice-warning" style="margin-top:12px">
-          ${consolidated.unlocated_processes} proceso(s) sin localización asignada
-        </div>` : ''}
-    `;
 
-    container.querySelectorAll('[data-filter-loc]').forEach(btn => {
-      btn.onclick = () => {
-        window._bcmLocationFilter = parseInt(btn.dataset.filterLoc);
-        _switchTab('processes');
-      };
-    });
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+        <div class="stat-card"><div class="stat-value">${total}</div><div class="stat-label">Total localizaciones</div></div>
+        <div class="stat-card ${pctGreen < 50 ? 'stat-warning' : ''}">
+          <div class="stat-value" style="color:${mColor[pctGreen >= 50 ? 'green' : 'red']}">${pctGreen}%</div>
+          <div class="stat-label">Con madurez verde</div>
+        </div>
+        <div class="stat-card ${unlocated > 0 ? 'stat-warning' : ''}">
+          <div class="stat-value" style="color:${unlocated > 0 ? 'var(--risk-high)' : 'inherit'}">${unlocated}</div>
+          <div class="stat-label">Procesos sin localización</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="font-size:15px;font-weight:700;color:${mColor[orgMaturity]}">${orgMaturity.toUpperCase()}</div>
+          <div class="stat-label">Madurez global</div>
+        </div>
+      </div>
+
+      <div id="loc-tree">
+        ${tree.length === 0
+          ? `<div class="notice notice-info">Sin localizaciones definidas. Crea la primera para organizar tu BCM por sede.</div>`
+          : tree.map(n => renderNode(n, 0)).join('')}
+      </div>
+    `;
 
     if (isAdmin) {
       container.querySelector('#btn-new-loc')?.addEventListener('click', () => _modalLocation());
     }
   }
 
-  function _modalLocation() {
+  function _toggleLocChildren(id) {
+    const children = document.getElementById('loc-children-' + id);
+    const chev = document.getElementById('loc-chev-' + id);
+    if (!children) return;
+    children.classList.toggle('collapsed');
+    if (chev) {
+      chev.className = children.classList.contains('collapsed')
+        ? 'ti ti-chevron-right' : 'ti ti-chevron-down';
+      chev.style.fontSize = '12px';
+    }
+  }
+
+  function _setLocFilter(locId) {
+    _locationFilter = locId;
+    const badge = document.getElementById('bcp-loc-badge');
+    const sel = document.getElementById('bcp-loc-select');
+    if (sel) sel.value = locId;
+    if (badge) { badge.style.display = 'inline'; badge.textContent = _locationMap[locId]?.name || ''; }
+    _switchTab('overview');
+  }
+
+  function _editLocation(locId) {
+    const loc = _locationMap[locId];
+    if (!loc) return;
+    _modalLocation(loc);
+  }
+
+  async function _modalLocation(loc) {
+    let users = [];
+    try { users = await Api.get('/api/users/').catch(() => []); } catch (_) {}
+    const flatLocs = [];
+    (function flatten(nodes) { nodes.forEach(n => { flatLocs.push(n); flatten(n.children || []); }); })(_locations);
+
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-      <div class="modal-box" style="max-width:480px">
-        <div class="modal-header"><h3>Nueva localización BCM</h3>
-          <button onclick="this.closest('.modal-bg').remove()" class="btn-icon"><i class="ti ti-x"></i></button>
+      <div class="modal" style="max-width:560px;max-height:92vh;display:flex;flex-direction:column;">
+        <div class="modal-header" style="flex-shrink:0;">
+          <h2>${loc ? 'Editar localización: ' + UI.esc(loc.name) : 'Nueva localización BCM'}</h2>
+          <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
         </div>
-        <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
-          <div><label>Nombre *</label><input id="loc-name" class="form-control" placeholder="Sede Madrid"></div>
-          <div><label>País</label><input id="loc-country" class="form-control" placeholder="España"></div>
-          <div><label>Dirección</label><input id="loc-address" class="form-control"></div>
-          <div><label>Tipo site de recuperación</label>
-            <select id="loc-site-type" class="form-select">
-              <option value="">— ninguno —</option>
-              <option value="hot">Hot site</option>
-              <option value="warm">Warm site</option>
-              <option value="cold">Cold site</option>
-              <option value="cloud">Cloud</option>
-              <option value="wfh">Work from home</option>
-            </select>
+        <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px;">
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Nombre *</label>
+              <input id="locm-name" class="form-control" style="font-size:13px" value="${UI.esc(loc?.name || '')}">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Código</label>
+              <input id="locm-code" class="form-control" style="font-size:13px" value="${UI.esc(loc?.code || '')}" ${loc ? 'readonly' : ''} placeholder="LOC-001">
+            </div>
           </div>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-primary" id="btn-save-loc">Guardar</button>
-            <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Localización padre</label>
+              <select id="locm-parent" class="form-control" style="font-size:13px">
+                <option value="">— Nivel raíz (corporativo) —</option>
+                ${flatLocs.filter(l => !loc || l.id !== loc.id).map(l =>
+                  `<option value="${l.id}"${loc?.parent_id === l.id ? ' selected' : ''}>${'&nbsp;'.repeat((l.depth || 0) * 2)}${UI.esc(l.name)}</option>`
+                ).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">País</label>
+              <input id="locm-country" class="form-control" style="font-size:13px" value="${UI.esc(loc?.country || '')}" placeholder="España">
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Dirección</label>
+            <textarea id="locm-address" class="form-control" rows="2" style="font-size:13px">${UI.esc(loc?.address || '')}</textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Responsable BCM</label>
+              <select id="locm-mgr" class="form-control" style="font-size:13px">
+                <option value="">— Sin asignar —</option>
+                ${users.map(u => `<option value="${u.id}"${loc?.bcm_manager_id === u.id ? ' selected' : ''}>${UI.esc(u.full_name || u.email)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Tipo site recuperación</label>
+              <select id="locm-site-type" class="form-control" style="font-size:13px">
+                <option value="">— Ninguno —</option>
+                ${[['hot','Hot site'],['warm','Warm site'],['cold','Cold site'],['cloud','Cloud'],['wfh','Trabajo remoto']].map(([v,l]) =>
+                  `<option value="${v}"${loc?.recovery_site_type === v ? ' selected' : ''}>${l}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Descripción del site de recuperación</label>
+            <textarea id="locm-site-desc" class="form-control" rows="2" style="font-size:13px">${UI.esc(loc?.recovery_site_description || '')}</textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+            <div>
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Localización alternativa</label>
+              <select id="locm-alt-loc" class="form-control" style="font-size:13px">
+                <option value="">— Ninguna —</option>
+                ${flatLocs.filter(l => !loc || l.id !== loc.id).map(l =>
+                  `<option value="${l.id}"${loc?.alternate_location_id === l.id ? ' selected' : ''}>${UI.esc(l.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding-top:26px">
+              <input id="locm-active" type="checkbox" style="width:16px;height:16px" ${!loc || loc.is_active !== false ? 'checked' : ''}>
+              <label for="locm-active" style="margin:0;font-size:13px;cursor:pointer">Activa</label>
+            </div>
+          </div>
+          ${loc ? `<div style="border-top:0.5px solid var(--border);padding-top:12px;margin-top:4px">
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)">Activos asignados a esta localización</label>
+            <div id="loc-assets-list" style="margin-top:6px;font-size:12px;color:var(--text-subtle)">Cargando...</div>
+          </div>` : ''}
+        </div>
+        <div class="modal-footer-sticky">
+          ${loc ? `<button class="btn btn-danger btn-sm" id="btn-del-loc-full"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
+          <div style="display:flex;gap:8px;margin-left:auto">
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="btn-save-loc-full"><i class="ti ti-check"></i> Guardar</button>
           </div>
         </div>
       </div>`;
     document.body.appendChild(modal);
-    modal.querySelector('#btn-save-loc').onclick = async () => {
-      const name = modal.querySelector('#loc-name').value.trim();
+
+    if (loc) {
+      Api.get('/api/assets/?limit=200').then(data => {
+        const items = Array.isArray(data) ? data : (data.items || []);
+        const locAssets = items.filter(a => a.bcm_location_id === loc.id);
+        const el = modal.querySelector('#loc-assets-list');
+        if (!el) return;
+        if (!locAssets.length) { el.textContent = 'Sin activos asignados a esta localización.'; return; }
+        el.innerHTML = locAssets.map(a =>
+          `<span class="badge badge-muted" style="margin:2px;font-size:11px">${UI.esc(a.code || '')} ${UI.esc(a.name)}</span>`
+        ).join('');
+      }).catch(() => {});
+    }
+
+    modal.querySelector('#btn-save-loc-full').onclick = async () => {
+      const name = modal.querySelector('#locm-name').value.trim();
       if (!name) return UI.toast('El nombre es obligatorio', 'error');
+      const body = {
+        name,
+        code: modal.querySelector('#locm-code').value.trim() || null,
+        parent_id: parseInt(modal.querySelector('#locm-parent').value) || null,
+        country: modal.querySelector('#locm-country').value.trim() || null,
+        address: modal.querySelector('#locm-address').value.trim() || null,
+        bcm_manager_id: parseInt(modal.querySelector('#locm-mgr').value) || null,
+        recovery_site_type: modal.querySelector('#locm-site-type').value || null,
+        recovery_site_description: modal.querySelector('#locm-site-desc').value.trim() || null,
+        alternate_location_id: parseInt(modal.querySelector('#locm-alt-loc').value) || null,
+        is_active: modal.querySelector('#locm-active').checked,
+      };
       try {
-        await Api.post('/api/bcp/locations', {
-          name,
-          country: modal.querySelector('#loc-country').value.trim() || null,
-          address: modal.querySelector('#loc-address').value.trim() || null,
-          recovery_site_type: modal.querySelector('#loc-site-type').value || null,
-        });
+        if (loc) await Api.patch('/api/bcp/locations/' + loc.id, body);
+        else await Api.post('/api/bcp/locations', body);
+        UI.toast('Localización guardada', 'success');
         modal.remove();
+        await _loadLocations();
         _switchTab('locations');
       } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
     };
+
+    if (loc) {
+      modal.querySelector('#btn-del-loc-full').onclick = async () => {
+        if (!confirm('¿Eliminar localización? Solo posible si no hay procesos vinculados.')) return;
+        try {
+          await Api.del('/api/bcp/locations/' + loc.id);
+          UI.toast('Localización eliminada', 'success');
+          modal.remove();
+          await _loadLocations();
+          _switchTab('locations');
+        } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+      };
+    }
   }
 
   // ── Tab Grafo de dependencias ─────────────────────────────────────────────────
 
+  async function _ensureCytoscape() {
+    if (window.cytoscape) return true;
+    return new Promise(resolve => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js';
+      s.onload = () => resolve(true);
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  }
+
   async function _tabGraph(container) {
-    if (typeof cytoscape === 'undefined') {
-      container.innerHTML = '<div class="notice notice-warning">Cytoscape.js no disponible. Comprueba que está cargado en index.html.</div>';
+    const cytOk = await _ensureCytoscape();
+    if (!cytOk) {
+      container.innerHTML = '<div class="notice notice-warning">No se pudo cargar Cytoscape.js. Comprueba la conexión a internet.</div>';
       return;
     }
 
@@ -2821,188 +3104,400 @@ const ViewBcp = (() => {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div>
           <h3 style="margin:0;font-size:16px">Mapa de dependencias BCM</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">
-            Procesos · Activos · Proveedores · SPOFs marcados en rojo
-          </p>
-        </div>
-        <div style="display:flex;gap:8px">
-          <select id="graph-loc-filter" class="form-select" style="width:160px">
-            <option value="">Todas las localizaciones</option>
-          </select>
-          <button class="btn btn-ghost btn-sm" id="btn-analyze-graph">
-            <i class="ti ti-brain" aria-hidden="true"></i> Analizar con IA
-          </button>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">Procesos · Activos · Proveedores · SPOFs en rojo</p>
         </div>
       </div>
-      <div id="cy-container" style="width:100%;height:520px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg-2)"></div>
-      <div id="graph-analysis" style="display:none;margin-top:12px"></div>
+      <div style="display:grid;grid-template-columns:70% 30%;gap:14px;">
+        <div>
+          <div id="cy-graph" style="width:100%;height:520px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg-2)"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div class="card" style="padding:12px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Filtros</div>
+            <select id="graph-loc-filter" class="form-control" style="font-size:12px;margin-bottom:8px">
+              <option value="">Todas las localizaciones</option>
+            </select>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
+              <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+                <input type="checkbox" id="graph-show-assets" checked> Mostrar activos
+              </label>
+              <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+                <input type="checkbox" id="graph-show-suppliers" checked> Mostrar proveedores
+              </label>
+            </div>
+          </div>
+          <div class="card" style="padding:12px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Leyenda</div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;">
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:50%;background:#5B00AD;flex-shrink:0"></span>Proceso</div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;background:#E05500;flex-shrink:0"></span>Activo</div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:#1A7A40;flex-shrink:0"></span>Proveedor</div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:50%;border:3px solid #DC2626;flex-shrink:0"></span>SPOF (borde rojo)</div>
+            </div>
+          </div>
+          <div class="card" style="padding:12px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Estadísticas</div>
+            <div id="graph-stats" style="font-size:12px;color:var(--text-subtle)">Cargando...</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-analyze-graph">
+            <i class="ti ti-brain"></i> Analizar con IA
+          </button>
+          <div id="graph-node-detail" style="display:none"></div>
+          <div id="graph-analysis" style="display:none"></div>
+        </div>
+      </div>
     `;
 
-    try {
-      const locs = await Api.get('/api/bcp/locations');
-      const sel = container.querySelector('#graph-loc-filter');
-      const flat = [];
-      function flattenLocs(nodes) { nodes.forEach(n => { flat.push(n); flattenLocs(n.children || []); }); }
-      flattenLocs(locs);
-      flat.forEach(loc => {
-        const opt = document.createElement('option');
-        opt.value = loc.id; opt.textContent = loc.name;
-        sel.appendChild(opt);
-      });
-    } catch (e) {}
+    // Poblar select de localizaciones
+    Object.values(_locationMap).filter(l => !l.parent_id).forEach(loc => {
+      const opt = document.createElement('option');
+      opt.value = loc.id; opt.textContent = loc.name;
+      if (loc.id === _locationFilter) opt.selected = true;
+      container.querySelector('#graph-loc-filter').appendChild(opt);
+    });
+
+    let _cyInstance = null;
 
     async function loadGraph(locationId) {
       const url = locationId ? `/api/bcp/graph?location_id=${locationId}` : '/api/bcp/graph';
-      const data = await Api.get(url).catch(() => ({ nodes: [], edges: [] }));
+      const data = await Api.get(url).catch(() => ({ nodes: [], edges: [], stats: {} }));
+
+      const showAssets = container.querySelector('#graph-show-assets')?.checked !== false;
+      const showSuppliers = container.querySelector('#graph-show-suppliers')?.checked !== false;
+
+      const filteredNodes = (data.nodes || []).filter(n => {
+        if (n.type === 'asset' && !showAssets) return false;
+        if (n.type === 'supplier' && !showSuppliers) return false;
+        return true;
+      });
+      const nodeIds = new Set(filteredNodes.map(n => String(n.id)));
+      const filteredEdges = (data.edges || []).filter(e =>
+        nodeIds.has(String(e.source)) && nodeIds.has(String(e.target))
+      );
 
       const elements = [
-        ...data.nodes.map(n => ({ data: { id: n.id, label: n.label, type: n.type,
-          criticality: n.criticality, is_spof: n.is_spof, rto: n.rto_hours,
-          location_name: n.location_name } })),
-        ...data.edges.map(e => ({ data: { id: e.id, source: e.source, target: e.target,
-          type: e.type, label: e.label, is_critical: e.is_critical } })),
+        ...filteredNodes.map(n => ({ data: {
+          id: String(n.id), label: n.label || n.name || String(n.id),
+          type: n.type, criticality: n.criticality,
+          is_spof: n.is_spof ? true : undefined,
+          rto: n.rto_hours, location_name: n.location_name,
+          _raw: n,
+        }})),
+        ...filteredEdges.map(e => ({ data: {
+          id: 'e-' + e.id, source: String(e.source), target: String(e.target),
+          type: e.type, label: e.label || '',
+          is_critical: e.is_critical ? true : undefined,
+        }})),
       ];
 
-      container.querySelector('#cy-container').innerHTML = '';
-      cytoscape({
-        container: container.querySelector('#cy-container'),
+      const cyContainer = container.querySelector('#cy-graph');
+      if (!cyContainer) return;
+      cyContainer.innerHTML = '';
+
+      if (_cyInstance) { try { _cyInstance.destroy(); } catch (_) {} }
+
+      _cyInstance = cytoscape({
+        container: cyContainer,
         elements,
         style: [
-          { selector: 'node', style: { 'label': 'data(label)', 'font-size': '11px',
-            'text-valign': 'bottom', 'text-margin-y': '4px', 'width': '36px', 'height': '36px' } },
-          { selector: 'node[type="process"]', style: { 'background-color': '#5B00AD', 'shape': 'ellipse' } },
-          { selector: 'node[type="asset"]', style: { 'background-color': '#E05500', 'shape': 'rectangle' } },
-          { selector: 'node[type="supplier"]', style: { 'background-color': '#1A7A40', 'shape': 'hexagon' } },
-          { selector: 'node[?is_spof]', style: { 'border-width': '3px', 'border-color': '#DC2626',
-            'width': '44px', 'height': '44px' } },
-          { selector: 'edge', style: { 'width': '1.5px', 'line-color': '#bebdd0',
+          { selector: 'node', style: {
+            'label': 'data(label)', 'font-size': '10px', 'color': '#fff',
+            'text-valign': 'bottom', 'text-margin-y': '5px', 'text-outline-width': '1px',
+            'text-outline-color': '#333', 'width': '36px', 'height': '36px',
+          }},
+          { selector: 'node[type="process"]', style: { 'background-color': '#5B00AD', 'shape': 'ellipse' }},
+          { selector: 'node[type="asset"]',   style: { 'background-color': '#E05500', 'shape': 'rectangle' }},
+          { selector: 'node[type="supplier"]',style: { 'background-color': '#1A7A40', 'shape': 'hexagon' }},
+          { selector: 'node[?is_spof]', style: {
+            'border-width': '3px', 'border-color': '#DC2626', 'width': '46px', 'height': '46px',
+          }},
+          { selector: 'node[criticality="critical"]', style: { 'width': '46px', 'height': '46px' }},
+          { selector: 'edge', style: {
+            'width': '1.5px', 'line-color': '#bebdd0',
             'target-arrow-shape': 'triangle', 'target-arrow-color': '#bebdd0',
-            'curve-style': 'bezier', 'font-size': '9px', 'label': 'data(label)',
-            'text-rotation': 'autorotate' } },
-          { selector: 'edge[?is_critical]', style: { 'line-color': '#DC2626',
-            'target-arrow-color': '#DC2626', 'width': '2.5px' } },
+            'curve-style': 'bezier', 'font-size': '9px',
+            'label': 'data(label)', 'text-rotation': 'autorotate',
+            'text-outline-width': '1px', 'text-outline-color': '#fff', 'color': '#555',
+          }},
+          { selector: 'edge[?is_critical]', style: {
+            'line-color': '#DC2626', 'target-arrow-color': '#DC2626', 'width': '2.5px',
+          }},
         ],
-        layout: { name: 'cose', animate: true, animationDuration: 500 },
+        layout: { name: 'cose', animate: true, animationDuration: 600, nodeDimensionsIncludeLabels: true },
       });
+
+      // Clic en nodo → panel de detalle
+      _cyInstance.on('tap', 'node', evt => {
+        const raw = evt.target.data('_raw') || {};
+        const detail = container.querySelector('#graph-node-detail');
+        if (!detail) return;
+        detail.style.display = 'block';
+        const typeLabels = { process: 'Proceso', asset: 'Activo', supplier: 'Proveedor' };
+        detail.innerHTML = `<div class="card" style="padding:12px;border-left:3px solid var(--primary)">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">Nodo seleccionado</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px">${UI.esc(raw.label || raw.name || '')}</div>
+          <div style="font-size:12px;color:var(--text-subtle);display:grid;gap:4px">
+            <div>Tipo: <strong>${UI.esc(typeLabels[raw.type] || raw.type || '—')}</strong></div>
+            <div>Criticidad: <strong style="color:${CRIT_COLORS[raw.criticality] || 'inherit'}">${UI.esc(raw.criticality || '—')}</strong></div>
+            <div>RTO: <strong>${raw.rto_hours != null ? raw.rto_hours + 'h' : '—'}</strong></div>
+            <div>Localización: <strong>${UI.esc(raw.location_name || '—')}</strong></div>
+            ${raw.is_spof ? `<div style="color:#DC2626;font-weight:700">⚠ SPOF — Punto único de fallo</div>` : ''}
+          </div>
+          ${raw.type === 'process' ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px;font-size:11px"
+            onclick="ViewBcp._switchTab('processes')"><i class="ti ti-external-link"></i> Ver en Procesos</button>` : ''}
+        </div>`;
+      });
+
+      // Estadísticas
+      const stats = data.stats || {};
+      const statsEl = container.querySelector('#graph-stats');
+      if (statsEl) statsEl.innerHTML = `
+        <div>${filteredNodes.length} nodos · ${filteredEdges.length} aristas</div>
+        <div style="color:${(stats.spof_count || 0) > 0 ? 'var(--risk-critical)' : 'inherit'}">
+          ${stats.spof_count || 0} SPOF${(stats.spof_count || 0) !== 1 ? 's' : ''}
+        </div>`;
     }
 
-    await loadGraph(null);
+    await loadGraph(_locationFilter);
 
-    container.querySelector('#graph-loc-filter').onchange = async (e) => {
-      await loadGraph(e.target.value || null);
+    container.querySelector('#graph-loc-filter').onchange = async e => {
+      await loadGraph(e.target.value ? parseInt(e.target.value) : null);
     };
+    container.querySelector('#graph-show-assets').onchange = () =>
+      loadGraph(container.querySelector('#graph-loc-filter').value ? parseInt(container.querySelector('#graph-loc-filter').value) : (_locationFilter || null));
+    container.querySelector('#graph-show-suppliers').onchange = () =>
+      loadGraph(container.querySelector('#graph-loc-filter').value ? parseInt(container.querySelector('#graph-loc-filter').value) : (_locationFilter || null));
 
     container.querySelector('#btn-analyze-graph').onclick = async () => {
       const btn = container.querySelector('#btn-analyze-graph');
       btn.disabled = true;
-      btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i>';
+      btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Analizando...';
       const locId = container.querySelector('#graph-loc-filter').value;
       try {
         const url = locId ? `/api/bcp/graph/analyze?location_id=${locId}` : '/api/bcp/graph/analyze';
         const res = await Api.post(url, {});
         const div = container.querySelector('#graph-analysis');
         div.style.display = 'block';
-        div.innerHTML = `<div class="card" style="white-space:pre-wrap;font-size:13px;line-height:1.6">${UI.esc(res.analysis)}</div>`;
-      } catch (e) { UI.toast('Error en análisis IA', 'error'); }
-      finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="ti ti-brain"></i> Analizar con IA';
-      }
+        div.innerHTML = `<div class="card" style="padding:12px;margin-top:8px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px"><i class="ti ti-brain"></i> Análisis IA</div>
+          <div style="font-size:12px;line-height:1.6;white-space:pre-wrap">${UI.esc(res.analysis || '')}</div>
+        </div>`;
+      } catch (e) { UI.toast('Error en análisis IA: ' + (e.message || e), 'error'); }
+      finally { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brain"></i> Analizar con IA'; }
     };
   }
 
   // ── Tab Evidencias ────────────────────────────────────────────────────────────
 
   async function _tabEvidence(container) {
-    const evidence = await Api.get('/api/bcp/evidence').catch(() => []);
+    // Carga datos en paralelo
+    const [evidence, plans, tests, processes] = await Promise.all([
+      Api.get('/api/bcp/evidence' + _locParam()).catch(() => []),
+      Api.get('/api/bcp/plans' + _locParam()).catch(() => []),
+      Api.get('/api/bcp/tests' + _locParam()).catch(() => []),
+      Api.get('/api/bcp/processes' + _locParam()).catch(() => []),
+    ]);
+
+    const planMap = {}; plans.forEach(p => { planMap[p.id] = p; });
+    const testMap = {}; tests.forEach(t => { testMap[t.id] = t; });
+    const procMap = {}; processes.forEach(p => { procMap[p.id] = p; });
+
+    const evTypeLabels = {
+      test_report: 'Informe test', plan_approval: 'Aprob. plan',
+      bcp_activation: 'Activacion BCP', audit_report: 'Informe auditoria',
+      backup_validation: 'Valid. backup', training_record: 'Formacion',
+      supplier_cert: 'Cert. proveedor', screenshot: 'Captura', other: 'Otro',
+    };
+
+    function _buildLinkedName(e) {
+      if (e.linked_test_id && testMap[e.linked_test_id])
+        return `Test: ${testMap[e.linked_test_id].name || ('#' + e.linked_test_id)}`;
+      if (e.linked_plan_id && planMap[e.linked_plan_id])
+        return `Plan: ${planMap[e.linked_plan_id].name || ('#' + e.linked_plan_id)}`;
+      if (e.linked_process_id && procMap[e.linked_process_id])
+        return `Proc: ${procMap[e.linked_process_id].name || ('#' + e.linked_process_id)}`;
+      return '—';
+    }
 
     container.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <h3 style="margin:0;font-size:16px">Repositorio de evidencias BCM</h3>
         <button class="btn btn-primary btn-sm" id="btn-upload-evidence">
-          <i class="ti ti-upload" aria-hidden="true"></i> Subir evidencia
+          <i class="ti ti-upload"></i> Subir evidencia
         </button>
       </div>
-      ${evidence.length === 0
-        ? `<div class="notice notice-info">Sin evidencias. Sube actas de tests, aprobaciones de planes o informes de auditoría.</div>`
-        : `<div class="table-wrap"><table class="data">
-            <thead><tr><th>Tipo</th><th>Título</th><th>Loc.</th><th>Vinculada a</th><th>Integridad</th><th>Fecha</th><th></th></tr></thead>
-            <tbody>
-              ${evidence.map(e => `<tr>
-                <td><span class="badge badge-muted" style="font-size:10px">${UI.esc(e.evidence_type)}</span></td>
-                <td><strong>${UI.esc(e.title)}</strong>
-                  ${e.file_name ? `<br><small style="color:var(--text-subtle)">${UI.esc(e.file_name)}</small>` : ''}
-                </td>
-                <td style="font-size:12px">${e.location_id ? `#${e.location_id}` : '—'}</td>
-                <td style="font-size:12px">
-                  ${e.linked_test_id ? `Test #${e.linked_test_id}` : ''}
-                  ${e.linked_plan_id ? `Plan #${e.linked_plan_id}` : ''}
-                  ${e.linked_process_id ? `Proc #${e.linked_process_id}` : ''}
-                  ${!e.linked_test_id && !e.linked_plan_id && !e.linked_process_id ? '—' : ''}
-                </td>
-                <td>
-                  <span title="SHA-256: ${UI.esc(e.sha256_hash || '')}" style="font-size:10px;font-family:var(--font-mono);color:var(--text-subtle)">
-                    ${e.sha256_hash ? '&#10003; ' + e.sha256_hash.slice(0, 8) + '…' : '—'}
-                  </span>
-                </td>
-                <td style="font-size:12px">${e.created_at ? e.created_at.slice(0, 10) : '—'}</td>
-                <td>
-                  <a href="/api/bcp/evidence/${e.id}/download" class="btn btn-ghost btn-sm" title="Descargar" target="_blank">
-                    <i class="ti ti-download" aria-hidden="true"></i>
-                  </a>
-                </td>
-              </tr>`).join('')}
-            </tbody>
-          </table></div>`
-      }
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <select id="ev-filter-type" class="form-control" style="width:160px;font-size:12px">
+          <option value="">Tipo de evidencia</option>
+          ${Object.entries(evTypeLabels).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+        </select>
+        <select id="ev-filter-loc" class="form-control" style="width:160px;font-size:12px">
+          <option value="">Localización</option>
+          ${Object.values(_locationMap).map(l => `<option value="${l.id}">${UI.esc(l.name)}</option>`).join('')}
+        </select>
+        <select id="ev-filter-linked" class="form-control" style="width:160px;font-size:12px">
+          <option value="">Vinculado a</option>
+          <option value="plan">Plan</option>
+          <option value="test">Test</option>
+          <option value="process">Proceso</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="btn-ev-filter">Filtrar</button>
+        <button class="btn btn-ghost btn-sm" id="btn-ev-clear">Limpiar</button>
+      </div>
+      <div id="ev-table-wrap">
+        ${_buildEvidenceTable(evidence, planMap, testMap, procMap, evTypeLabels, _buildLinkedName)}
+      </div>
     `;
 
-    container.querySelector('#btn-upload-evidence').onclick = () => _modalUploadEvidence();
+    container.querySelector('#btn-upload-evidence').onclick = () =>
+      _modalUploadEvidence(plans, tests, processes, () => _switchTab('evidence'));
+
+    function applyFilter() {
+      const type = container.querySelector('#ev-filter-type').value;
+      const locId = container.querySelector('#ev-filter-loc').value;
+      const linked = container.querySelector('#ev-filter-linked').value;
+      let filtered = evidence;
+      if (type) filtered = filtered.filter(e => e.evidence_type === type);
+      if (locId) filtered = filtered.filter(e => String(e.location_id) === locId);
+      if (linked === 'plan') filtered = filtered.filter(e => e.linked_plan_id);
+      else if (linked === 'test') filtered = filtered.filter(e => e.linked_test_id);
+      else if (linked === 'process') filtered = filtered.filter(e => e.linked_process_id);
+      container.querySelector('#ev-table-wrap').innerHTML =
+        _buildEvidenceTable(filtered, planMap, testMap, procMap, evTypeLabels, _buildLinkedName);
+    }
+
+    container.querySelector('#btn-ev-filter').onclick = applyFilter;
+    container.querySelector('#btn-ev-clear').onclick = () => {
+      ['#ev-filter-type', '#ev-filter-loc', '#ev-filter-linked'].forEach(id => {
+        const el = container.querySelector(id);
+        if (el) el.value = '';
+      });
+      applyFilter();
+    };
   }
 
-  function _modalUploadEvidence() {
+  function _buildEvidenceTable(evidence, planMap, testMap, procMap, evTypeLabels, _buildLinkedName) {
+    if (!evidence.length)
+      return `<div class="notice notice-info">Sin evidencias. Sube actas de tests, aprobaciones de planes o informes de auditoria.</div>`;
+    return `<div class="table-wrap"><table class="data">
+      <thead><tr>
+        <th>Tipo</th><th>Titulo</th><th>Localizacion</th>
+        <th>Vinculada a</th><th>Integridad</th><th>Fecha</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${evidence.map(e => `<tr>
+          <td><span class="badge badge-muted" style="font-size:10px">${UI.esc(evTypeLabels[e.evidence_type] || e.evidence_type)}</span></td>
+          <td>
+            <strong>${UI.esc(e.title)}</strong>
+            ${e.file_name ? `<br><small style="color:var(--text-subtle)">${UI.esc(e.file_name)}</small>` : ''}
+            ${e.tags ? `<br><span style="font-size:10px;color:var(--text-subtle)">${UI.esc(e.tags)}</span>` : ''}
+          </td>
+          <td style="font-size:12px">${UI.esc(_locationMap[e.location_id]?.name || '—')}</td>
+          <td style="font-size:12px">${UI.esc(_buildLinkedName(e))}</td>
+          <td>
+            <span title="SHA-256: ${UI.esc(e.sha256_hash || '')}" style="font-size:10px;font-family:monospace;color:var(--text-subtle)">
+              ${e.sha256_hash ? '&#10003; ' + e.sha256_hash.slice(0, 8) + '...' : '—'}
+            </span>
+          </td>
+          <td style="font-size:12px">${e.created_at ? e.created_at.slice(0, 10) : '—'}</td>
+          <td>
+            <a href="/api/bcp/evidence/${e.id}/download" class="btn btn-ghost btn-sm" title="Descargar" target="_blank">
+              <i class="ti ti-download"></i>
+            </a>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+  }
+
+  function _modalUploadEvidence(plans, tests, processes, onSuccess) {
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-      <div class="modal-box" style="max-width:500px">
-        <div class="modal-header"><h3>Subir evidencia BCM</h3>
+      <div class="modal-box" style="max-width:520px">
+        <div class="modal-header">
+          <h3>Subir evidencia BCM</h3>
           <button onclick="this.closest('.modal-bg').remove()" class="btn-icon"><i class="ti ti-x"></i></button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
-          <div><label>Título *</label><input id="ev-title" class="form-control" placeholder="Acta del ejercicio tabletop Q1-2025"></div>
+          <div><label>Titulo *</label>
+            <input id="ev-title" class="form-control" placeholder="Acta ejercicio tabletop Q1-2025">
+          </div>
           <div><label>Tipo *</label>
-            <select id="ev-type" class="form-select">
+            <select id="ev-type" class="form-control">
               <option value="test_report">Informe de test</option>
-              <option value="plan_approval">Aprobación de plan</option>
-              <option value="bcp_activation">Activación BCP real</option>
-              <option value="audit_report">Informe de auditoría</option>
-              <option value="backup_validation">Validación de backup</option>
-              <option value="training_record">Registro de formación</option>
-              <option value="supplier_cert">Certificación proveedor</option>
+              <option value="plan_approval">Aprobacion de plan</option>
+              <option value="bcp_activation">Activacion BCP real</option>
+              <option value="audit_report">Informe de auditoria</option>
+              <option value="backup_validation">Validacion de backup</option>
+              <option value="training_record">Registro de formacion</option>
+              <option value="supplier_cert">Certificacion proveedor</option>
               <option value="screenshot">Captura de pantalla</option>
               <option value="other">Otro</option>
             </select>
           </div>
-          <div><label>Descripción</label><textarea id="ev-desc" class="form-control" rows="2"></textarea></div>
-          <div><label>Archivo *</label><input id="ev-file" type="file" class="form-control"></div>
-          <div style="display:flex;gap:8px;margin-top:8px">
+          <div><label>Localizacion</label>
+            <select id="ev-location" class="form-control">
+              <option value="">Sin localización</option>
+              ${Object.values(_locationMap).map(l => `<option value="${l.id}">${UI.esc(l.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><label>Test vinculado</label>
+              <select id="ev-test" class="form-control">
+                <option value="">—</option>
+                ${(tests || []).map(t => `<option value="${t.id}">${UI.esc(t.name || t.test_type || ('#' + t.id))}</option>`).join('')}
+              </select>
+            </div>
+            <div><label>Plan vinculado</label>
+              <select id="ev-plan" class="form-control">
+                <option value="">—</option>
+                ${(plans || []).map(p => `<option value="${p.id}">${UI.esc(p.name || ('#' + p.id))}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div><label>Proceso vinculado</label>
+            <select id="ev-process" class="form-control">
+              <option value="">—</option>
+              ${(processes || []).map(p => `<option value="${p.id}">${UI.esc(p.name || ('#' + p.id))}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>Descripcion</label>
+            <textarea id="ev-desc" class="form-control" rows="2" placeholder="Contexto o notas relevantes..."></textarea>
+          </div>
+          <div><label>Etiquetas (separadas por coma)</label>
+            <input id="ev-tags" class="form-control" placeholder="iso22301, ejercicio, q1">
+          </div>
+          <div><label>Archivo *</label>
+            <input id="ev-file" type="file" class="form-control">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:4px">
             <button class="btn btn-primary" id="btn-save-ev">Subir</button>
             <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
           </div>
         </div>
       </div>`;
     document.body.appendChild(modal);
+
     modal.querySelector('#btn-save-ev').onclick = async () => {
       const title = modal.querySelector('#ev-title').value.trim();
       const file = modal.querySelector('#ev-file').files[0];
-      if (!title || !file) return UI.toast('Título y archivo son obligatorios', 'error');
+      if (!title || !file) return UI.toast('Titulo y archivo son obligatorios', 'error');
       const fd = new FormData();
       fd.append('file', file);
-      const params = new URLSearchParams({
-        title,
-        evidence_type: modal.querySelector('#ev-type').value,
-        description: modal.querySelector('#ev-desc').value.trim() || '',
-      });
+      const params = new URLSearchParams({ title, evidence_type: modal.querySelector('#ev-type').value });
+      const desc = modal.querySelector('#ev-desc').value.trim();
+      if (desc) params.set('description', desc);
+      const tags = modal.querySelector('#ev-tags').value.trim();
+      if (tags) params.set('tags', tags);
+      const locId = modal.querySelector('#ev-location').value;
+      if (locId) params.set('location_id', locId);
+      const testId = modal.querySelector('#ev-test').value;
+      if (testId) params.set('linked_test_id', testId);
+      const planId = modal.querySelector('#ev-plan').value;
+      if (planId) params.set('linked_plan_id', planId);
+      const procId = modal.querySelector('#ev-process').value;
+      if (procId) params.set('linked_process_id', procId);
       try {
         await fetch(`/api/bcp/evidence?${params}`, {
           method: 'POST',
@@ -3011,7 +3506,7 @@ const ViewBcp = (() => {
         });
         modal.remove();
         UI.toast('Evidencia subida correctamente', 'success');
-        _switchTab('evidence');
+        if (onSuccess) onSuccess();
       } catch (e) { UI.toast('Error al subir la evidencia', 'error'); }
     };
   }
@@ -3019,7 +3514,6 @@ const ViewBcp = (() => {
   // ── Tab Recomendaciones IA ────────────────────────────────────────────────────
 
   async function _tabRecommendations(container) {
-    const recs = await Api.get('/api/bcp/test-recommendations?status=pending').catch(() => []);
     const pColors = {
       critical: 'var(--risk-critical)', high: 'var(--risk-high)',
       medium: 'var(--risk-medium)', low: 'var(--risk-low)',
@@ -3030,106 +3524,173 @@ const ViewBcp = (() => {
       test_failed: 'Test fallido', regulatory: 'Requisito normativo',
     };
 
+    const [recs, plans, assets] = await Promise.all([
+      Api.get('/api/bcp/test-recommendations?status=pending' + _locParam('&')).catch(() => []),
+      Api.get('/api/bcp/plans' + _locParam()).catch(() => []),
+      Api.get('/api/assets/?limit=200').then(d => d.items || d || []).catch(() => []),
+    ]);
+
     container.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="display:grid;grid-template-columns:65% 35%;gap:16px;align-items:start">
         <div>
-          <h3 style="margin:0;font-size:16px">Tests recomendados por IA</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">
-            Motor ISO 22301 cl. 8.5 — ${recs.length} recomendación(es) pendiente(s)
-          </p>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div>
+              <h3 style="margin:0;font-size:16px">Tests recomendados por IA</h3>
+              <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">
+                ISO 22301 cl. 8.5 — <span id="rec-count">${recs.length}</span> recomendacion(es) pendiente(s)
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-gen-recs">
+              <i class="ti ti-refresh"></i> Regenerar
+            </button>
+          </div>
+          <div id="recs-list">
+            ${_buildRecsList(recs, pColors, triggerLabels)}
+          </div>
         </div>
-        <button class="btn btn-primary btn-sm" id="btn-gen-recs">
-          <i class="ti ti-refresh" aria-hidden="true"></i> Regenerar
-        </button>
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">
-        <select id="filter-plan-type" class="form-select" style="width:130px">
-          <option value="">Tipo plan</option>
-          ${['bcp','drp','communication','crisis_management','cyber_response'].map(t =>
-            `<option value="${t}">${t}</option>`).join('')}
-        </select>
-        <select id="filter-asset" class="form-select" style="width:180px">
-          <option value="">Activo</option>
-        </select>
-        <button class="btn btn-ghost btn-sm" id="btn-apply-filter">Filtrar</button>
-      </div>
-      <div id="recs-list">
-        ${recs.length === 0
-          ? `<div class="notice notice-info">Sin recomendaciones pendientes. Pulsa "Regenerar" para analizar el estado actual.</div>`
-          : recs.map(r => `
-            <div class="card" style="padding:14px;margin-bottom:8px;border-left:3px solid ${pColors[r.priority] || 'var(--border)'}">
-              <div style="display:flex;justify-content:space-between;align-items:flex-start">
-                <div style="flex:1">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                    <span class="badge" style="background:${pColors[r.priority]}22;color:${pColors[r.priority]};font-size:10px">${r.priority}</span>
-                    <code style="font-size:11px">${UI.esc(r.recommended_test_type)}</code>
-                    <span style="font-size:11px;color:var(--text-subtle)">${triggerLabels[r.trigger] || r.trigger}</span>
-                  </div>
-                  <p style="margin:0;font-size:13px">${UI.esc(r.reason)}</p>
-                  ${r.recommended_date ? `<p style="margin:4px 0 0;font-size:11px;color:var(--text-subtle)">Fecha sugerida: ${r.recommended_date.slice(0, 10)}</p>` : ''}
-                </div>
-                <div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0">
-                  <button class="btn btn-primary btn-sm" data-rec-accept="${r.id}">
-                    <i class="ti ti-check" aria-hidden="true"></i> Aceptar
-                  </button>
-                  <button class="btn btn-ghost btn-sm" data-rec-dismiss="${r.id}">
-                    <i class="ti ti-x" aria-hidden="true"></i>
-                  </button>
-                </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card" style="padding:14px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:10px">
+              Buscar tests ad-hoc
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div>
+                <label style="font-size:12px">Tipo de plan</label>
+                <select id="filter-plan-type" class="form-control" style="font-size:12px">
+                  <option value="">Todos</option>
+                  ${['bcp','drp','communication','crisis_management','cyber_response'].map(t =>
+                    `<option value="${t}">${t}</option>`).join('')}
+                </select>
               </div>
-            </div>`).join('')
-        }
+              <div>
+                <label style="font-size:12px">Activo</label>
+                <select id="filter-asset" class="form-control" style="font-size:12px">
+                  <option value="">Todos</option>
+                  ${assets.map(a => `<option value="${a.id}">${UI.esc((a.code ? a.code + ' — ' : '') + a.name)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label style="font-size:12px">Localizaciones</label>
+                <select id="filter-locs" class="form-control" style="font-size:12px" multiple size="4">
+                  ${Object.values(_locationMap).map(l =>
+                    `<option value="${l.id}"${l.id === _locationFilter ? ' selected' : ''}>${UI.esc(l.name)}</option>`
+                  ).join('')}
+                </select>
+                <div style="font-size:10px;color:var(--text-subtle);margin-top:2px">Ctrl+clic para multiple seleccion</div>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btn-apply-filter">
+                <i class="ti ti-search"></i> Buscar tests
+              </button>
+            </div>
+          </div>
+          <div id="filter-results" style="display:none"></div>
+        </div>
       </div>
     `;
 
-    Api.get('/api/assets/?limit=100').then(data => {
-      const items = data.items || data || [];
-      const sel = container.querySelector('#filter-asset');
-      if (sel) items.forEach(a => {
-        const o = document.createElement('option');
-        o.value = a.id; o.textContent = `${a.code} — ${a.name}`;
-        sel.appendChild(o);
+    function _buildRecsList(recList, pc, tl) {
+      if (!recList.length)
+        return `<div class="notice notice-info">Sin recomendaciones pendientes. Pulsa "Regenerar" para analizar el estado actual.</div>`;
+      return recList.map(r => `
+        <div class="card" style="padding:14px;margin-bottom:8px;border-left:3px solid ${pc[r.priority] || 'var(--border)'}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+                <span class="badge" style="background:${pc[r.priority] || 'var(--border)'}22;color:${pc[r.priority] || 'var(--text-subtle)'};font-size:10px">${UI.esc(r.priority || 'medium')}</span>
+                <code style="font-size:11px">${UI.esc(r.recommended_test_type || r.test_type || '')}</code>
+                <span style="font-size:11px;color:var(--text-subtle)">${UI.esc(tl[r.trigger] || r.trigger || '')}</span>
+              </div>
+              <p style="margin:0;font-size:13px;line-height:1.5">${UI.esc(r.reason || '')}</p>
+              ${r.plan_name ? `<p style="margin:4px 0 0;font-size:11px;color:var(--text-subtle)">Plan: ${UI.esc(r.plan_name)}</p>` : ''}
+              ${r.recommended_date ? `<p style="margin:2px 0 0;font-size:11px;color:var(--text-subtle)">Fecha sugerida: ${r.recommended_date.slice(0, 10)}</p>` : ''}
+            </div>
+            <div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0">
+              <button class="btn btn-primary btn-sm" data-rec-accept="${r.id}"
+                data-plan-id="${r.plan_id || ''}" data-test-type="${UI.esc(r.recommended_test_type || '')}"
+                data-rec-date="${r.recommended_date || ''}">
+                <i class="ti ti-check"></i> Aceptar
+              </button>
+              <button class="btn btn-ghost btn-sm" data-rec-dismiss="${r.id}" title="Descartar">
+                <i class="ti ti-x"></i>
+              </button>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function bindRecButtons() {
+      container.querySelectorAll('[data-rec-accept]').forEach(btn => {
+        btn.onclick = async () => {
+          const recId = btn.dataset.recAccept;
+          const planId = btn.dataset.planId;
+          const testType = btn.dataset.testType;
+          const recDate = btn.dataset.recDate;
+          await Api.patch(`/api/bcp/test-recommendations/${recId}`, { status: 'accepted' }).catch(() => {});
+          // Abrir modal de test pre-relleno
+          _openTestModal(null, {
+            plan_id: planId ? parseInt(planId) : undefined,
+            test_type: testType || undefined,
+            scheduled_date: recDate ? recDate.slice(0, 10) : undefined,
+          });
+        };
       });
-    }).catch(() => {});
+      container.querySelectorAll('[data-rec-dismiss]').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('Descartar esta recomendacion?')) return;
+          await Api.patch(`/api/bcp/test-recommendations/${btn.dataset.recDismiss}`, { status: 'dismissed' });
+          const recId = parseInt(btn.dataset.recDismiss);
+          const updatedRecs = recs.filter(r => r.id !== recId);
+          container.querySelector('#recs-list').innerHTML = _buildRecsList(updatedRecs, pColors, triggerLabels);
+          const cnt = container.querySelector('#rec-count');
+          if (cnt) cnt.textContent = updatedRecs.length;
+          bindRecButtons();
+        };
+      });
+    }
+
+    bindRecButtons();
 
     container.querySelector('#btn-gen-recs').onclick = async () => {
-      await Api.post('/api/bcp/test-recommendations/generate', {});
-      _switchTab('recommendations');
+      const btn = container.querySelector('#btn-gen-recs');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i>';
+      try {
+        await Api.post('/api/bcp/test-recommendations/generate', {});
+        UI.toast('Recomendaciones regeneradas', 'success');
+        _switchTab('recommendations');
+      } catch (e) { UI.toast('Error al regenerar', 'error'); }
+      finally { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerar'; }
     };
 
     container.querySelector('#btn-apply-filter').onclick = async () => {
       const pt = container.querySelector('#filter-plan-type').value;
       const aid = container.querySelector('#filter-asset').value;
+      const locsEl = container.querySelector('#filter-locs');
+      const locIds = locsEl ? Array.from(locsEl.selectedOptions).map(o => o.value) : [];
       const params = new URLSearchParams();
       if (pt) params.set('plan_type', pt);
       if (aid) params.set('asset_id', aid);
+      locIds.forEach(id => params.append('location_id', id));
       const results = await Api.get(`/api/bcp/tests/filter?${params}`).catch(() => []);
-      const list = container.querySelector('#recs-list');
-      if (list) list.innerHTML = results.length === 0
-        ? `<div class="notice notice-info">Sin resultados con esos filtros.</div>`
-        : results.map(r => `<div class="card" style="padding:12px;margin-bottom:6px">
-            <strong>${UI.esc(r.plan_name)}</strong>
-            <span class="badge badge-muted" style="margin-left:8px">${r.plan_type}</span>
-            <span style="font-size:12px;color:var(--text-subtle);margin-left:8px">
-              Test sugerido: <code>${r.suggested_test_type}</code>
-            </span>
-          </div>`).join('');
+      const div = container.querySelector('#filter-results');
+      div.style.display = 'block';
+      if (!results.length) {
+        div.innerHTML = `<div class="notice notice-info">Sin tests con esos filtros.</div>`;
+        return;
+      }
+      div.innerHTML = `<div class="card" style="padding:12px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">
+          ${results.length} test(s) encontrado(s)
+        </div>
+        ${results.map(r => `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <strong>${UI.esc(r.plan_name || r.name || ('#' + r.id))}</strong>
+          <span class="badge badge-muted" style="margin-left:6px;font-size:10px">${UI.esc(r.plan_type || r.test_type || '')}</span>
+          ${r.scheduled_date ? `<div style="color:var(--text-subtle);font-size:11px">${r.scheduled_date.slice(0, 10)}</div>` : ''}
+        </div>`).join('')}
+      </div>`;
     };
-
-    container.querySelectorAll('[data-rec-accept]').forEach(btn => {
-      btn.onclick = async () => {
-        await Api.patch(`/api/bcp/test-recommendations/${btn.dataset.recAccept}`, { status: 'accepted' });
-        _switchTab('recommendations');
-      };
-    });
-    container.querySelectorAll('[data-rec-dismiss]').forEach(btn => {
-      btn.onclick = async () => {
-        if (!confirm('¿Descartar esta recomendación?')) return;
-        await Api.patch(`/api/bcp/test-recommendations/${btn.dataset.recDismiss}`, { status: 'dismissed' });
-        _switchTab('recommendations');
-      };
-    });
   }
+
 
   return {
     render,
@@ -3151,5 +3712,7 @@ const ViewBcp = (() => {
     _handleDrop, _handleFileSelect,
     _setImportMode, _onFileSelect, _renderImportPreview, _confirmImport,
     _runBcpAiAnalysis,
+    _toggleLocChildren, _setLocFilter, _editLocation, _modalLocation,
+    _openTestModal,
   };
 })();
