@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 from app.models import (
-    AiConfig, Asset, ControlImplementation, ControlStatus,
+    AiConfig, AiDocument, AiDocumentStatus, Asset, ControlImplementation, ControlStatus,
     Incident, NonConformity, Risk, RiskContext, RiskStatus, Supplier,
 )
 from app.services.rag_service import search_chunks_with_source
@@ -162,16 +162,38 @@ def build_context(
         for nc in ncs:
             parts.append(f"- {nc.code}: {nc.title} [{nc.severity.value}]")
 
-    # 8. Fragmentos RAG de documentacion interna (filtrados por organizacion)
-    # Se incluye el nombre del documento fuente para que el agente pueda citar con precision
+    # 8. Documentos indexados disponibles + fragmentos RAG relevantes
+    indexed_docs = (
+        _forg(db.query(AiDocument), AiDocument)
+        .filter(AiDocument.status == AiDocumentStatus.INDEXED)
+        .order_by(AiDocument.id.desc())
+        .limit(30)
+        .all()
+    )
+    if indexed_docs:
+        parts.append(f"\n## Documentos indexados disponibles ({len(indexed_docs)})")
+        for d in indexed_docs:
+            cat = d.category.value if hasattr(d.category, "value") else (d.category or "sin categoria")
+            parts.append(f"- {d.original_name} [categoria: {cat}, fragmentos: {d.chunk_count}]")
+        parts.append(
+            "(Puedes hacer preguntas sobre el contenido de cualquiera de estos documentos.)"
+        )
+
+    # Fragmentos RAG relevantes a la consulta actual
     if query:
         results = search_chunks_with_source(
             db, query, top_k=max_chunks, organization_id=organization_id
         )
         if results:
-            parts.append("\n## Documentacion interna relevante")
+            parts.append("\n## Contenido relevante encontrado en documentos")
             for r in results:
                 source_label = f"[Fuente: {r['doc_name']}]"
                 parts.append(f"---\n{source_label}\n{r['content'][:800]}")
+        elif indexed_docs:
+            parts.append(
+                "\n*No se encontraron fragmentos especificos para esta consulta. "
+                "Si quieres consultar un documento concreto, menciona su nombre o "
+                "usa terminos que aparezcan en el documento.*"
+            )
 
     return "\n".join(parts)

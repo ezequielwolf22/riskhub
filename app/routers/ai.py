@@ -1438,6 +1438,18 @@ def chat(
         "usa el contexto de la organizacion proporcionado a continuacion.\n"
         "- No inventes datos que no esten en el contexto.\n\n"
 
+        "== ACCESO A DOCUMENTOS ==\n"
+        "IMPORTANTE: SI puedes leer y analizar documentos. El sistema incluye en tu contexto:\n"
+        "1. La lista de todos los documentos indexados de la organizacion (seccion 'Documentos indexados disponibles').\n"
+        "2. Fragmentos del contenido de los documentos mas relevantes para la consulta del usuario "
+        "(seccion 'Contenido relevante encontrado en documentos').\n"
+        "Cuando el usuario pregunte sobre un documento:\n"
+        "- Si encuentras fragmentos relevantes en la seccion de contenido, citalos textualmente e indica la fuente.\n"
+        "- Si no hay fragmentos pero el documento esta en la lista de indexados, explica que el documento "
+        "existe pero la busqueda por palabras clave no encontro esa seccion especifica, y pide al usuario "
+        "que reformule la pregunta con terminos mas especificos del documento.\n"
+        "- NUNCA digas que no puedes ver documentos o que no tienes acceso a ellos — SI los tienes via RAG.\n\n"
+
         "== PREGUNTAS SOBRE CONFIGURACION ==\n"
         "Si el usuario pregunta sobre configuracion (API key, documentos, alertas, integraciones, etc.), proporciona:\n"
         "1. Respuesta paso a paso clara en castellano.\n"
