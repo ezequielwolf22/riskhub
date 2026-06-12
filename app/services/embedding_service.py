@@ -27,11 +27,13 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def embed_texts(texts: list[str], api_key: str, input_type: str = "document") -> list[list[float] | None]:
-    """Vectoriza una lista de textos con Voyage AI (en batches).
+    """Vectoriza una lista de textos con Voyage AI (en batches con retry ante rate limit).
 
     input_type: "document" para chunks de documentos, "query" para preguntas.
     Devuelve lista del mismo largo que texts; None para textos que fallaron.
     """
+    import time
+
     if not texts or not api_key:
         return [None] * len(texts)
     try:
@@ -40,11 +42,27 @@ def embed_texts(texts: list[str], api_key: str, input_type: str = "document") ->
         results: list[list[float] | None] = []
         for i in range(0, len(texts), EMBED_BATCH_SIZE):
             batch = texts[i:i + EMBED_BATCH_SIZE]
-            try:
-                res = vo.embed(batch, model=VOYAGE_MODEL, input_type=input_type)
-                results.extend(res.embeddings)
-            except Exception as e:
-                logger.warning("Voyage embed batch error: %s", e)
+            # Reintentar hasta 4 veces con backoff exponencial ante rate limit
+            for attempt in range(4):
+                try:
+                    res = vo.embed(batch, model=VOYAGE_MODEL, input_type=input_type)
+                    results.extend(res.embeddings)
+                    # Pausa minima entre batches para no superar 3 RPM en cuentas sin billing
+                    if i + EMBED_BATCH_SIZE < len(texts):
+                        time.sleep(21)  # 60s / 3 RPM = 20s + 1s margen
+                    break
+                except Exception as e:
+                    err = str(e).lower()
+                    if "rate" in err or "429" in err or "limit" in err:
+                        wait = 22 * (2 ** attempt)  # 22s, 44s, 88s, 176s
+                        logger.warning("Voyage rate limit, reintentando en %ds (intento %d)", wait, attempt + 1)
+                        time.sleep(wait)
+                    else:
+                        logger.warning("Voyage embed batch error: %s", e)
+                        results.extend([None] * len(batch))
+                        break
+            else:
+                # Todos los reintentos fallaron
                 results.extend([None] * len(batch))
         return results
     except ImportError:
