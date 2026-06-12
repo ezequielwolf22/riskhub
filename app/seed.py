@@ -398,6 +398,9 @@ def _migrate_columns() -> None:
         # v2.3.0 — BCM checklist de activación
         ("ALTER TABLE bcp_plans ADD COLUMN checklist_template JSON", "bcp_plans", "checklist_template"),
         ("ALTER TABLE bcm_activations ADD COLUMN checklist_items JSON", "bcm_activations", "checklist_items"),
+        # v3.5.0 — Voyage AI embeddings para busqueda semantica multilingue
+        ("ALTER TABLE ai_config ADD COLUMN voyage_api_key_encrypted TEXT", "ai_config", "voyage_api_key_encrypted"),
+        ("ALTER TABLE ai_document_chunks ADD COLUMN embedding TEXT", "ai_document_chunks", "embedding"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

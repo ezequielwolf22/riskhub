@@ -16,6 +16,7 @@ def build_context(
     query: str = "",
     max_chunks: int = 8,
     organization_id: int | None = None,
+    voyage_api_key: str | None = None,
 ) -> str:
     """Genera el bloque de contexto completo para inyectar en el prompt.
 
@@ -182,7 +183,8 @@ def build_context(
     # Fragmentos RAG relevantes a la consulta actual
     if query:
         results = search_chunks_with_source(
-            db, query, top_k=max_chunks, organization_id=organization_id
+            db, query, top_k=max_chunks, organization_id=organization_id,
+            voyage_api_key=voyage_api_key,
         )
         if results:
             parts.append("\n## Contenido relevante encontrado en documentos")

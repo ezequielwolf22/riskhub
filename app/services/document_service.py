@@ -175,11 +175,35 @@ def process_document(db: Session, doc_id: int) -> None:
         doc.processed_at = datetime.now(timezone.utc)
         db.commit()
 
+        # Generar embeddings semanticos si hay Voyage API key configurada
+        _try_embed_document(db, doc_id, doc.organization_id)
+
     except Exception as e:
         doc.status = AiDocumentStatus.ERROR
         doc.error_message = str(e)[:500]
         db.commit()
         raise
+
+
+def _try_embed_document(db: Session, doc_id: int, organization_id: int | None) -> None:
+    """Genera embeddings Voyage AI para el documento si la key esta configurada.
+
+    Falla silenciosamente — los embeddings son una mejora opcional sobre FTS5.
+    """
+    if not organization_id:
+        return
+    try:
+        from app.models import AiConfig
+        from app.security import decrypt_secret
+        from app.services.embedding_service import embed_document_chunks
+        cfg = db.query(AiConfig).filter_by(organization_id=organization_id).first()
+        if not cfg or not cfg.voyage_api_key_encrypted:
+            return
+        voyage_key = decrypt_secret(cfg.voyage_api_key_encrypted)
+        embed_document_chunks(db, doc_id, voyage_key)
+    except Exception as e:
+        import logging
+        logging.getLogger("riskhub.doc").warning("Embedding falló para doc %d: %s", doc_id, e)
 
 
 def delete_document(db: Session, doc: AiDocument) -> None:

@@ -995,7 +995,8 @@ class AiConfig(Base):
     __tablename__ = "ai_config"
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
-    api_key_encrypted = Column(Text, nullable=True)   # Fernet-encrypted
+    api_key_encrypted = Column(Text, nullable=True)        # Fernet-encrypted Anthropic key
+    voyage_api_key_encrypted = Column(Text, nullable=True) # Fernet-encrypted Voyage AI key
     model = Column(String(64), default="claude-opus-4-5")
     anonymization_level = Column(Enum(AiAnonymizationLevel), default=AiAnonymizationLevel.MEDIUM)
     setup_completed = Column(Boolean, default=False)
@@ -1038,12 +1039,13 @@ class AiDocument(Base):
 
 
 class AiDocumentChunk(Base):
-    """Fragmento de texto indexado en FTS5."""
+    """Fragmento de texto indexado en FTS5 y opcionalmente vectorizado con embeddings."""
     __tablename__ = "ai_document_chunks"
     id = Column(Integer, primary_key=True)
     document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=False)
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
+    embedding = Column(Text, nullable=True)  # JSON float array — Voyage AI vector
 
     document = relationship("AiDocument", back_populates="chunks")
 

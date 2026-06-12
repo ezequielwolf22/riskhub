@@ -1396,13 +1396,26 @@ def chat(
         cfg.anonymization_level.value if cfg and cfg.anonymization_level else "medium"
     )
 
+    # Voyage AI key para busqueda semantica multilingue (opcional)
+    voyage_api_key = None
+    if cfg and cfg.voyage_api_key_encrypted:
+        try:
+            from app.security import decrypt_secret
+            voyage_api_key = decrypt_secret(cfg.voyage_api_key_encrypted)
+        except Exception:
+            pass
+
     # Extraer ultima consulta del usuario para RAG
     last_query = next(
         (m.content for m in reversed(req.messages) if m.role == "user"), ""
     )
 
     # Construir y anonimizar el contexto — SOLO datos del tenant del usuario autenticado
-    context = build_context(db, query=last_query, organization_id=current_user.organization_id)
+    context = build_context(
+        db, query=last_query,
+        organization_id=current_user.organization_id,
+        voyage_api_key=voyage_api_key,
+    )
     if anon_level_val != "low":
         context = anonymize(context, anon_level_val)
 

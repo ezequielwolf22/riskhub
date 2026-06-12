@@ -21,3 +21,4 @@ cryptography>=42.0.0
 aiohttp>=3.9.0
 pyotp==2.9.0
 defusedxml>=0.7.1
+voyageai>=0.3.0

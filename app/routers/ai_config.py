@@ -7,6 +7,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import AiAnonymizationLevel, AiConfig, User
 from app.security import decrypt_secret, encrypt_secret, filter_by_org, get_current_user, require_role
+import threading
 
 router = APIRouter(prefix="/api/ai/config", tags=["ai-config"])
 
@@ -27,6 +28,7 @@ def resolve_api_key(cfg: AiConfig | None) -> str | None:
 
 class AiConfigIn(BaseModel):
     api_key: str | None = None
+    voyage_api_key: str | None = None
     model: str | None = None
     anonymization_level: AiAnonymizationLevel | None = None
     setup_completed: bool | None = None
@@ -63,6 +65,10 @@ def update_config(
     if payload.api_key is not None:
         cfg.api_key_encrypted = (
             encrypt_secret(payload.api_key) if payload.api_key else None
+        )
+    if payload.voyage_api_key is not None:
+        cfg.voyage_api_key_encrypted = (
+            encrypt_secret(payload.voyage_api_key) if payload.voyage_api_key else None
         )
     if payload.model is not None:
         cfg.model = payload.model
@@ -108,6 +114,40 @@ def test_connection(
         raise HTTPException(400, f"Error de conexion con la API: {e}")
 
 
+@router.post("/embed-existing")
+def embed_existing_documents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Genera embeddings Voyage AI para todos los documentos ya indexados.
+
+    Util para activar la busqueda semantica en documentos subidos antes de
+    configurar la Voyage API key. Se ejecuta en background para no bloquear.
+    """
+    cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
+    if not cfg or not cfg.voyage_api_key_encrypted:
+        raise HTTPException(400, "Configura primero la Voyage API key.")
+    try:
+        voyage_key = decrypt_secret(cfg.voyage_api_key_encrypted)
+    except Exception:
+        raise HTTPException(400, "No se pudo descifrar la Voyage API key.")
+
+    org_id = current_user.organization_id
+
+    def _run():
+        from app.database import SessionLocal
+        from app.services.embedding_service import embed_all_org_chunks
+        with SessionLocal() as bg_db:
+            try:
+                embed_all_org_chunks(bg_db, org_id, voyage_key)
+            except Exception as e:
+                import logging
+                logging.getLogger("riskhub.embedding").error("embed_existing error: %s", e)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"ok": True, "message": "Vectorizacion iniciada en background. Puede tardar unos minutos segun el numero de documentos."}
+
+
 def _cfg_out(cfg: AiConfig) -> dict:
     return {
         "model": cfg.model or "claude-opus-4-5",
@@ -120,6 +160,7 @@ def _cfg_out(cfg: AiConfig) -> dict:
         "org_critical_processes": cfg.org_critical_processes,
         "org_tech_stack": cfg.org_tech_stack,
         "has_api_key": bool(cfg.api_key_encrypted),
+        "has_voyage_key": bool(cfg.voyage_api_key_encrypted),
     }
 
 
@@ -133,4 +174,5 @@ def _default_out() -> dict:
         "org_critical_processes": None,
         "org_tech_stack": None,
         "has_api_key": bool(settings.anthropic_api_key),
+        "has_voyage_key": False,
     }

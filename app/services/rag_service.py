@@ -339,9 +339,12 @@ def search_chunks(
     query: str,
     top_k: int = 8,
     organization_id: int | None = None,
+    voyage_api_key: str | None = None,
 ) -> list[str]:
-    """Busca en FTS5 y devuelve los top_k fragmentos mas relevantes (solo texto)."""
-    results = search_chunks_with_source(db, query, top_k=top_k, organization_id=organization_id)
+    """Busca y devuelve los top_k fragmentos mas relevantes (solo texto)."""
+    results = search_chunks_with_source(
+        db, query, top_k=top_k, organization_id=organization_id, voyage_api_key=voyage_api_key
+    )
     return [r["content"] for r in results]
 
 
@@ -350,33 +353,51 @@ def search_chunks_with_source(
     query: str,
     top_k: int = 8,
     organization_id: int | None = None,
+    voyage_api_key: str | None = None,
 ) -> list[dict]:
-    """Busca en FTS5 con expansion bilingue ES/EN y multiples estrategias de fallback.
+    """Busqueda semantica multilingue con Voyage AI + fallback a FTS5.
 
-    Orden de intentos:
-      frase exacta ES → palabras clave ES → terminos EN equivalentes →
-      cada termino EN individualmente → prefijo comodin ES
+    Orden:
+    1. Voyage AI embedding search (semantico, multilingual) — si voyage_api_key disponible
+    2. FTS5 con expansion bilingue ES/EN (keywords exactos)
 
     Nunca se cruzan datos entre tenants (organization_id obligatorio en uso normal).
     """
     if not query or not query.strip():
         return []
+
+    # -- Nivel 1: busqueda semantica con embeddings Voyage AI --
+    if voyage_api_key:
+        try:
+            from app.services.embedding_service import embed_query, search_by_embedding
+            query_emb = embed_query(query, voyage_api_key)
+            if query_emb:
+                results = search_by_embedding(db, query_emb, top_k, organization_id)
+                if results:
+                    logger.debug("RAG embedding: %d resultados (top score %.3f)",
+                                 len(results), results[0].get("score", 0))
+                    return results
+        except Exception as e:
+            logger.warning("Embedding search error, fallback a FTS5: %s", e)
+
+    # -- Nivel 2: FTS5 con expansion bilingue --
     try:
         for variant in _fts5_query_variants(query):
             try:
                 rows = _run_fts5(db, variant, top_k, organization_id)
                 if rows:
-                    logger.debug("RAG hit con variante: %r -> %d resultados", variant, len(rows))
+                    logger.debug("RAG FTS5 hit con variante: %r -> %d resultados", variant, len(rows))
                     return [
                         {"content": r[0], "doc_name": r[1] or "Documento", "category": r[2] or ""}
                         for r in rows
                     ]
             except Exception:
                 continue
-        logger.debug("RAG: sin resultados para query: %r", query[:80])
-        return []
     except Exception:
-        return []
+        pass
+
+    logger.debug("RAG: sin resultados para query: %r", query[:80])
+    return []
 
 
 def ask(prompt: str, org_id: Optional[int] = None) -> Optional[str]:

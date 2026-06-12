@@ -273,6 +273,20 @@ const ViewOnboarding = (() => {
             </label>
             <input type="password" id="ob-apikey" placeholder="${keyOk ? '••••••••••••••• (configurada)' : 'sk-ant-api03-...'}" autocomplete="new-password">
           </div>
+          <div class="span2">
+            <label>API Key de Voyage AI
+              <span style="font-size:11px;margin-left:6px;color:var(--text-muted);">Opcional — activa busqueda semantica multilingue en documentos</span>
+              <a href="https://www.voyageai.com/" target="_blank"
+                 style="font-size:11px;margin-left:6px;color:var(--brand-purple);">
+                Obtener clave gratis
+              </a>
+            </label>
+            <input type="password" id="ob-voyage-key" placeholder="${c.has_voyage_key ? '••••••••••••••• (configurada)' : 'pa-...'}" autocomplete="new-password">
+            ${c.has_voyage_key ? `<div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+              <span style="font-size:12px;color:var(--risk-low);">Busqueda semantica activa</span>
+              <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;" id="ob-embed-existing">Vectorizar documentos existentes</button>
+            </div>` : '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin esta clave el agente usa busqueda por palabras clave. Con ella entiende preguntas en cualquier idioma aunque el documento este en otro.</p>'}
+          </div>
           <div>
             <label>Modelo</label>
             <select id="ob-model">
@@ -384,6 +398,10 @@ const ViewOnboarding = (() => {
     const testAi = document.getElementById('ob-test-ai');
     if (testAi) testAi.onclick = _testConnection;
 
+    // Vectorizar documentos existentes con Voyage AI
+    const embedExisting = document.getElementById('ob-embed-existing');
+    if (embedExisting) embedExisting.onclick = _embedExisting;
+
     // Skip
     const skip = document.getElementById('ob-skip');
     if (skip) skip.onclick = () => {
@@ -419,12 +437,14 @@ const ViewOnboarding = (() => {
     _saving = true;
     try {
       const apiKey = document.getElementById('ob-apikey').value.trim();
+      const voyageKey = document.getElementById('ob-voyage-key')?.value.trim();
       const payload = {
         model: document.getElementById('ob-model').value,
         anonymization_level: document.getElementById('ob-anon').value,
         setup_completed: true,
       };
       if (apiKey) payload.api_key = apiKey;
+      if (voyageKey) payload.voyage_api_key = voyageKey;
       _cfg = { ..._cfg, ...await Api.aiConfig.update(payload) };
       UI.toast('Configuracion guardada', 'success');
       _render();
@@ -432,6 +452,19 @@ const ViewOnboarding = (() => {
       UI.toast('Error: ' + e.message, 'error');
     } finally {
       _saving = false;
+    }
+  }
+
+  async function _embedExisting() {
+    const btn = document.getElementById('ob-embed-existing');
+    if (btn) { btn.disabled = true; btn.textContent = 'Vectorizando...'; }
+    try {
+      await Api.post('/api/ai/config/embed-existing', {});
+      UI.toast('Vectorizacion iniciada. Los documentos estaran listos en unos minutos.', 'success');
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Vectorizar documentos existentes'; }
     }
   }
 
