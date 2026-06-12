@@ -953,8 +953,13 @@ const ViewBcp = (() => {
     ems: 'plan-badge-ems', supply_chain: 'plan-badge-supply',
   };
   const PLAN_TYPE_LABELS = {
-    bcp: 'BCP', drp: 'DRP', crp: 'CRP',
-    cyber_response: 'Cyber', pandemic: 'Pandemia', ems: 'EMS', supply_chain: 'Cadena sum.',
+    bcp: 'Plan de Continuidad de Negocio (BCP)',
+    drp: 'Plan de Recuperacion ante Desastres (DRP)',
+    crp: 'Plan de Respuesta a Crisis (CRP)',
+    cyber_response: 'Plan de Respuesta Cibernetica',
+    pandemic: 'Plan de Continuidad ante Pandemia',
+    ems: 'Sistema de Gestion de Emergencias (EMS)',
+    supply_chain: 'Plan de Continuidad de Cadena de Suministro',
   };
   const CLASSIFICATION_LABELS = { confidential: 'Confidencial', internal: 'Uso interno', restricted: 'Restringido' };
 
