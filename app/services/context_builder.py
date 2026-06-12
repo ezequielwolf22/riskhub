@@ -14,7 +14,7 @@ from app.services.rag_service import search_chunks_with_source
 def build_context(
     db: Session,
     query: str = "",
-    max_chunks: int = 5,
+    max_chunks: int = 8,
     organization_id: int | None = None,
 ) -> str:
     """Genera el bloque de contexto completo para inyectar en el prompt.
@@ -188,7 +188,7 @@ def build_context(
             parts.append("\n## Contenido relevante encontrado en documentos")
             for r in results:
                 source_label = f"[Fuente: {r['doc_name']}]"
-                parts.append(f"---\n{source_label}\n{r['content'][:800]}")
+                parts.append(f"---\n{source_label}\n{r['content'][:1200]}")
         elif indexed_docs:
             parts.append(
                 "\n*No se encontraron fragmentos especificos para esta consulta. "
