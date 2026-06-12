@@ -4595,54 +4595,78 @@ const ViewBcp = (() => {
           }
         </div>
       </div>
-      <!-- Modal nueva activacion (oculto) -->
-      <div id="modal-activacion" style="display:none;position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
-        <div class="modal" style="max-width:500px;width:95%;padding:24px">
-          <h3 style="margin:0 0 16px;color:#DC2626"><i class="ti ti-alert-triangle"></i> Activar BCP / DRP</h3>
-          <div class="fg">
-            <label>Plan a activar *</label>
-            <select id="act-plan-sel" class="form-control">
-              <option value="">-- Seleccionar plan --</option>
-              ${approvedPlans.map(p => `<option value="${p.id}">${UI.esc(p.code)} — ${UI.esc(p.name)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="fg">
-            <label>Nombre / descripcion del incidente *</label>
-            <input id="act-incident" class="form-control" placeholder="p.ej. Ransomware detectado en servidor de BD">
-          </div>
-          <div class="fg">
-            <label>Notas iniciales</label>
-            <textarea id="act-notes" class="form-control" rows="3" placeholder="Descripcion breve del estado actual..."></textarea>
-          </div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-            <button class="btn btn-ghost" onclick="ViewBcp._closeActModal()">Cancelar</button>
-            <button class="btn" style="background:#DC2626;color:#fff;font-weight:700" onclick="ViewBcp._confirmActivacion()">
-              <i class="ti ti-alert-triangle"></i> CONFIRMAR ACTIVACION
-            </button>
-          </div>
-        </div>
-      </div>
     `;
   }
 
-  function _modalActivacion() {
-    const m = document.getElementById('modal-activacion');
-    if (m) m.style.display = 'flex';
+  async function _modalActivacion() {
+    const plans = await Api.get('/api/bcp/plans').catch(() => []);
+    const STATUS_LABELS = { draft:'Borrador', under_review:'En revision', approved:'Aprobado', deprecated:'Obsoleto' };
+    const existing = document.getElementById('modal-activacion-dyn');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'modal-activacion-dyn';
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:500px;">
+      <div class="modal-header" style="border-bottom:2px solid #DC2626;">
+        <h2 style="color:#DC2626;"><i class="ti ti-alert-triangle"></i> Activar BCP / DRP</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;">
+        <div class="notice notice-warning" style="margin-bottom:14px;font-size:13px;">
+          Usa este boton <strong>unicamente</strong> ante un incidente real que requiera activar los planes de continuidad.
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Plan a activar <span style="color:var(--danger)">*</span></label>
+          <select id="act-plan-sel" class="form-control" style="font-size:13px;">
+            <option value="">— Seleccionar plan —</option>
+            ${plans.length
+              ? plans.map(p => {
+                  const st = STATUS_LABELS[p.status] || p.status;
+                  const warn = p.status !== 'approved' ? ' ⚠' : '';
+                  return `<option value="${p.id}">${UI.esc(p.code ? p.code+' — ' : '')}${UI.esc(p.name)} [${st}${warn}]</option>`;
+                }).join('')
+              : '<option disabled>Sin planes registrados</option>'}
+          </select>
+          ${!plans.filter(p=>p.status==='approved').length && plans.length
+            ? '<div style="font-size:11px;color:#D97706;margin-top:4px;">Ningun plan esta aprobado aun. Puedes activar cualquiera en emergencia.</div>'
+            : ''}
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Nombre / descripcion del incidente <span style="color:var(--danger)">*</span></label>
+          <input id="act-incident" class="form-control" style="font-size:13px;" placeholder="Ej: Ransomware detectado en servidor de BD">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Notas iniciales</label>
+          <textarea id="act-notes" class="form-control" rows="2" style="font-size:13px;" placeholder="Descripcion breve del estado actual..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-sm" id="act-confirm-btn" style="background:#DC2626;color:#fff;font-weight:700;border-color:#DC2626;">
+            <i class="ti ti-alert-triangle"></i> CONFIRMAR ACTIVACION
+          </button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#act-confirm-btn').addEventListener('click', () => _confirmActivacion(modal));
   }
   function _closeActModal() {
-    const m = document.getElementById('modal-activacion');
-    if (m) m.style.display = 'none';
+    document.getElementById('modal-activacion-dyn')?.remove();
   }
 
-  async function _confirmActivacion() {
-    const planId = document.getElementById('act-plan-sel')?.value;
-    const incident = document.getElementById('act-incident')?.value?.trim();
+  async function _confirmActivacion(modal) {
+    const root = modal || document.getElementById('modal-activacion-dyn') || document;
+    const planId = root.querySelector('#act-plan-sel')?.value;
+    const incident = root.querySelector('#act-incident')?.value?.trim();
     if (!planId || !incident) { UI.toast('Completa el plan y el nombre del incidente', 'error'); return; }
     try {
       await Api.post('/api/bcp/activations', {
         plan_id: parseInt(planId),
         incident_name: incident,
-        notes: document.getElementById('act-notes')?.value || '',
+        notes: root.querySelector('#act-notes')?.value || '',
       });
       _closeActModal();
       UI.toast('BCP activado. Registra eventos en el timeline.', 'warning');
@@ -4980,16 +5004,16 @@ const ViewBcp = (() => {
     document.body.appendChild(modal);
     modal.querySelector('#rb-name').focus();
     modal.querySelector('#rb-submit').addEventListener('click', async () => {
-      const name = modal.querySelector('#rb-name').value.trim();
-      if (!name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+      const title = modal.querySelector('#rb-name').value.trim();
+      if (!title) { UI.toast('El nombre es obligatorio', 'error'); return; }
       const btn = modal.querySelector('#rb-submit');
       btn.disabled = true;
       try {
         await Api.post('/api/bcp/runbooks', {
-          name,
+          title,
           plan_id: parseInt(modal.querySelector('#rb-plan').value) || null,
-          runbook_type: modal.querySelector('#rb-type').value,
-          description: modal.querySelector('#rb-desc').value.trim() || null,
+          test_type: modal.querySelector('#rb-type').value,
+          scenario: modal.querySelector('#rb-desc').value.trim() || null,
           steps: [],
         });
         UI.toast('Runbook creado', 'success');
@@ -5020,7 +5044,7 @@ const ViewBcp = (() => {
       <div class="modal-body" style="display:block;padding:20px 24px;">
         <div style="margin-bottom:14px;">
           ${lbl('Nombre <span style="color:var(--danger)">*</span>')}
-          <input id="rbe-name" class="form-control" style="font-size:13px;" value="${UI.esc(rb.name||'')}">
+          <input id="rbe-name" class="form-control" style="font-size:13px;" value="${UI.esc(rb.title||'')}">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>${lbl('Plan BCP/DRP asociado')}
@@ -5031,13 +5055,13 @@ const ViewBcp = (() => {
           </div>
           <div>${lbl('Tipo')}
             <select id="rbe-type" class="form-control" style="font-size:13px;">
-              ${RB_TYPES.map(t=>`<option value="${t.v}"${rb.runbook_type===t.v?' selected':''}>${t.l}</option>`).join('')}
+              ${RB_TYPES.map(t=>`<option value="${t.v}"${rb.test_type===t.v?' selected':''}>${t.l}</option>`).join('')}
             </select>
           </div>
         </div>
         <div style="margin-bottom:14px;">
           ${lbl('Descripcion')}
-          <textarea id="rbe-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(rb.description||'')}</textarea>
+          <textarea id="rbe-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(rb.scenario||'')}</textarea>
         </div>
       </div>
       <div class="modal-footer-sticky">
@@ -5055,10 +5079,10 @@ const ViewBcp = (() => {
       btn.disabled = true;
       try {
         await Api.patch('/api/bcp/runbooks/' + rid, {
-          name,
+          title: modal.querySelector('#rbe-name').value.trim(),
           plan_id: parseInt(modal.querySelector('#rbe-plan').value) || null,
-          runbook_type: modal.querySelector('#rbe-type').value,
-          description: modal.querySelector('#rbe-desc').value.trim() || null,
+          test_type: modal.querySelector('#rbe-type').value,
+          scenario: modal.querySelector('#rbe-desc').value.trim() || null,
         });
         UI.toast('Runbook actualizado', 'success');
         modal.remove();
