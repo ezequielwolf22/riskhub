@@ -4599,8 +4599,8 @@ const ViewBcp = (() => {
   }
 
   async function _modalActivacion() {
-    const plans = await Api.get('/api/bcp/plans').catch(() => []);
-    const STATUS_LABELS = { draft:'Borrador', under_review:'En revision', approved:'Aprobado', deprecated:'Obsoleto' };
+    const allPlans = await Api.get('/api/bcp/plans').catch(() => []);
+    const plans = allPlans.filter(p => p.status === 'approved');
     const existing = document.getElementById('modal-activacion-dyn');
     if (existing) existing.remove();
     const modal = document.createElement('div');
@@ -4616,21 +4616,17 @@ const ViewBcp = (() => {
         <div class="notice notice-warning" style="margin-bottom:14px;font-size:13px;">
           Usa este boton <strong>unicamente</strong> ante un incidente real que requiera activar los planes de continuidad.
         </div>
+        ${!plans.length ? `
+          <div class="notice notice-error" style="margin-bottom:14px;font-size:13px;">
+            No hay planes aprobados. Aprueba un plan antes de poder activarlo.
+          </div>
+        ` : ''}
         <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Plan a activar <span style="color:var(--danger)">*</span></label>
-          <select id="act-plan-sel" class="form-control" style="font-size:13px;">
+          <select id="act-plan-sel" class="form-control" style="font-size:13px;" ${!plans.length ? 'disabled' : ''}>
             <option value="">— Seleccionar plan —</option>
-            ${plans.length
-              ? plans.map(p => {
-                  const st = STATUS_LABELS[p.status] || p.status;
-                  const warn = p.status !== 'approved' ? ' ⚠' : '';
-                  return `<option value="${p.id}">${UI.esc(p.code ? p.code+' — ' : '')}${UI.esc(p.name)} [${st}${warn}]</option>`;
-                }).join('')
-              : '<option disabled>Sin planes registrados</option>'}
+            ${plans.map(p => `<option value="${p.id}">${UI.esc(p.code ? p.code+' — ' : '')}${UI.esc(p.name)}</option>`).join('')}
           </select>
-          ${!plans.filter(p=>p.status==='approved').length && plans.length
-            ? '<div style="font-size:11px;color:#D97706;margin-top:4px;">Ningun plan esta aprobado aun. Puedes activar cualquiera en emergencia.</div>'
-            : ''}
         </div>
         <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Nombre / descripcion del incidente <span style="color:var(--danger)">*</span></label>
@@ -4644,7 +4640,7 @@ const ViewBcp = (() => {
       <div class="modal-footer-sticky">
         <div style="display:flex;gap:8px;margin-left:auto;">
           <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
-          <button class="btn btn-sm" id="act-confirm-btn" style="background:#DC2626;color:#fff;font-weight:700;border-color:#DC2626;">
+          <button class="btn btn-sm" id="act-confirm-btn" style="background:#DC2626;color:#fff;font-weight:700;border-color:#DC2626;" ${!plans.length ? 'disabled' : ''}>
             <i class="ti ti-alert-triangle"></i> CONFIRMAR ACTIVACION
           </button>
         </div>
@@ -4653,6 +4649,7 @@ const ViewBcp = (() => {
     document.body.appendChild(modal);
     modal.querySelector('#act-confirm-btn').addEventListener('click', () => _confirmActivacion(modal));
   }
+
   function _closeActModal() {
     document.getElementById('modal-activacion-dyn')?.remove();
   }
@@ -4663,15 +4660,137 @@ const ViewBcp = (() => {
     const incident = root.querySelector('#act-incident')?.value?.trim();
     if (!planId || !incident) { UI.toast('Completa el plan y el nombre del incidente', 'error'); return; }
     try {
-      await Api.post('/api/bcp/activations', {
-        plan_id: parseInt(planId),
-        incident_name: incident,
+      const act = await Api.post('/api/bcp/activations', {
+        activated_plan_ids: [parseInt(planId)],
+        title: incident,
         notes: root.querySelector('#act-notes')?.value || '',
       });
       _closeActModal();
-      UI.toast('BCP activado. Registra eventos en el timeline.', 'warning');
+      UI.toast('BCP activado.', 'warning');
       _setTile('activaciones');
+      if (act && act.checklist_items && act.checklist_items.length) {
+        _openChecklistModal(act);
+      }
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  function _openChecklistModal(act) {
+    const existing = document.getElementById('modal-checklist-dyn');
+    if (existing) existing.remove();
+    const ACTION_LABELS = {
+      manual: '',
+      notify_users: 'Notificar',
+      create_task: 'Crear tarea',
+      log_timeline: 'Registrar',
+    };
+    const renderItem = (item) => {
+      const isDone = item.status === 'done';
+      const hasAction = item.action_type && item.action_type !== 'manual';
+      return `
+        <div class="checklist-item" data-order="${item.order}" style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+          <input type="checkbox" class="chk-item" data-order="${item.order}" ${isDone ? 'checked' : ''}
+            style="margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:${isDone ? 'default' : 'pointer'}" ${isDone ? 'disabled' : ''}>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:${isDone ? '400' : '600'};color:${isDone ? 'var(--text-subtle)' : 'var(--text)'};text-decoration:${isDone ? 'line-through' : 'none'}">${UI.esc(item.title)}</div>
+            ${item.description ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:2px">${UI.esc(item.description)}</div>` : ''}
+            ${isDone && item.executed_by ? `<div style="font-size:10px;color:var(--text-subtle);margin-top:2px">Ejecutado por ${UI.esc(item.executed_by)}</div>` : ''}
+          </div>
+          ${!isDone && hasAction ? `
+            <button class="btn btn-sm btn-exec" data-order="${item.order}" data-actid="${act.id}"
+              style="font-size:11px;flex-shrink:0;white-space:nowrap;">
+              <i class="ti ti-bolt"></i> ${ACTION_LABELS[item.action_type] || 'Ejecutar'}
+            </button>
+          ` : ''}
+        </div>
+      `;
+    };
+
+    const modal = document.createElement('div');
+    modal.id = 'modal-checklist-dyn';
+    modal.className = 'modal-bg';
+    const items = act.checklist_items || [];
+    modal.innerHTML = `
+    <div class="modal" style="max-width:580px;">
+      <div class="modal-header" style="border-bottom:2px solid var(--brand-purple);">
+        <h2><i class="ti ti-checklist"></i> Checklist de activacion — ${UI.esc(act.code||'')} ${UI.esc(act.title||'')}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:16px 24px;max-height:60vh;overflow-y:auto;">
+        <div style="font-size:12px;color:var(--text-subtle);margin-bottom:12px">
+          ${items.filter(i=>i.status==='done').length} / ${items.length} acciones completadas
+        </div>
+        <div id="checklist-items-container">
+          ${items.map(renderItem).join('')}
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cerrar</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+
+    // Checkboxes manuales
+    modal.querySelectorAll('.chk-item').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const order = parseInt(chk.dataset.order);
+        try {
+          const res = await Api.patch(`/api/bcp/activations/${act.id}/checklist/${order}`, { status: chk.checked ? 'done' : 'pending' });
+          act.checklist_items = res.checklist_items;
+          _refreshChecklist(modal, act, renderItem);
+        } catch (e) { UI.toast('Error: ' + e.message, 'error'); chk.checked = !chk.checked; }
+      });
+    });
+
+    // Botones de accion automatica
+    modal.querySelectorAll('.btn-exec').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const order = parseInt(btn.dataset.order);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ti ti-loader"></i> Ejecutando...';
+        try {
+          const res = await Api.post(`/api/bcp/activations/${act.id}/checklist/${order}/execute`, {});
+          act.checklist_items = res.checklist_items;
+          _refreshChecklist(modal, act, renderItem);
+          UI.toast('Accion ejecutada.', 'success');
+        } catch (e) { UI.toast('Error: ' + e.message, 'error'); btn.disabled = false; btn.innerHTML = '<i class="ti ti-bolt"></i> Ejecutar'; }
+      });
+    });
+  }
+
+  function _refreshChecklist(modal, act, renderItem) {
+    const container = modal.querySelector('#checklist-items-container');
+    if (container) container.innerHTML = (act.checklist_items || []).map(renderItem).join('');
+    const summary = modal.querySelector('.modal-body > div:first-child');
+    if (summary) {
+      const items = act.checklist_items || [];
+      summary.textContent = `${items.filter(i=>i.status==='done').length} / ${items.length} acciones completadas`;
+    }
+    // Rebind events
+    modal.querySelectorAll('.chk-item:not([disabled])').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const order = parseInt(chk.dataset.order);
+        try {
+          const res = await Api.patch(`/api/bcp/activations/${act.id}/checklist/${order}`, { status: chk.checked ? 'done' : 'pending' });
+          act.checklist_items = res.checklist_items;
+          _refreshChecklist(modal, act, renderItem);
+        } catch (e) { UI.toast('Error: ' + e.message, 'error'); chk.checked = !chk.checked; }
+      });
+    });
+    modal.querySelectorAll('.btn-exec').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const order = parseInt(btn.dataset.order);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ti ti-loader"></i> Ejecutando...';
+        try {
+          const res = await Api.post(`/api/bcp/activations/${act.id}/checklist/${order}/execute`, {});
+          act.checklist_items = res.checklist_items;
+          _refreshChecklist(modal, act, renderItem);
+          UI.toast('Accion ejecutada.', 'success');
+        } catch (e) { UI.toast('Error: ' + e.message, 'error'); btn.disabled = false; btn.innerHTML = '<i class="ti ti-bolt"></i> Ejecutar'; }
+      });
+    });
   }
 
   function _logActivacion(aid) {

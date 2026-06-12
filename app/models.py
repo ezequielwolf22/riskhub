@@ -1763,6 +1763,9 @@ class BCPPlan(Base):
     # DRP: {rule_321, encryption, retention, offsite_location,
     #        items:[{system,backup_type,frequency,retention,rpo_covered,location,last_test_date,last_test_result}]}
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    checklist_template = Column(JSON, nullable=True)
+    # [{order,title,description,action_type,action_config}]
+    # action_type: manual|notify_users|create_task|log_timeline
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     approved_by = relationship("User", foreign_keys=[approved_by_id])
@@ -1936,6 +1939,8 @@ class BCMActivation(Base):
     closed_by_id        = Column(Integer, ForeignKey("users.id"), nullable=True)
     situation_log       = Column(JSON, nullable=True)
     systems_status      = Column(JSON, nullable=True)
+    checklist_items     = Column(JSON, nullable=True)
+    # [{order,title,description,action_type,action_config,status,executed_at,executed_by,notes}]
     rto_objective_hours = Column(Integer, nullable=True)
     rto_actual_hours    = Column(Float, nullable=True)
     root_cause          = Column(Text, nullable=True)

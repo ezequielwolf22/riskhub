@@ -395,6 +395,9 @@ def _migrate_columns() -> None:
          "bcp_supplier_links", "location_id"),
         ("ALTER TABLE assets ADD COLUMN bcm_location_id INTEGER REFERENCES bcm_locations(id)",
          "assets", "bcm_location_id"),
+        # v2.3.0 — BCM checklist de activación
+        ("ALTER TABLE bcp_plans ADD COLUMN checklist_template JSON", "bcp_plans", "checklist_template"),
+        ("ALTER TABLE bcm_activations ADD COLUMN checklist_items JSON", "bcm_activations", "checklist_items"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

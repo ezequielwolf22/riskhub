@@ -204,6 +204,7 @@ def _plan_d(p: BCPPlan) -> dict:
         "classification": getattr(p, "classification", None),
         "dr_site": getattr(p, "dr_site", None),
         "backup_policy": getattr(p, "backup_policy", None),
+        "checklist_template": getattr(p, "checklist_template", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -834,11 +835,14 @@ def update_plan(pid: int, body: PlanUpdate, db: Session = Depends(get_db),
         doc = db.get(AiDocument, data["document_id"])
         if not doc or doc.organization_id != _org(u):
             raise HTTPException(422, "Documento no encontrado en esta organización")
+    doc_id_changed = "document_id" in data and data["document_id"] != p.document_id
     for k, v in data.items():
         if k == "review_date":
             v = _parse_dt(v, "review_date")
         setattr(p, k, v)
     db.commit()
+    if doc_id_changed and p.status == "approved":
+        _trigger_checklist_extraction(db, p, _org(u))
     return _plan_d(p)
 
 
@@ -865,6 +869,8 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
     log_action(db, u.id, "approve", "bcp_plan", str(p.id), {"code": p.code})
     # ISO 27001 A.5.29/A.5.30 + ENS op.cont.2 + NIS2 Art.21.2b
     _update_compliance_from_bcp(db, _org(u), "plan_approved", {"plan_type": p.plan_type})
+    # Extraer checklist automaticamente en background si hay documento
+    _trigger_checklist_extraction(db, p, _org(u))
     return _plan_d(p)
 
 
@@ -1364,6 +1370,43 @@ def _chk_act(db, act_id, org_id):
     return act
 
 
+def _trigger_checklist_extraction(db: Session, plan: BCPPlan, org_id: int) -> None:
+    """Extrae el checklist del documento del plan usando Claude (sin bloquear la respuesta)."""
+    import threading
+    from app.models import AiConfig
+    from app.services.bcm_checklist_service import extract_plan_checklist
+    from app.database import SessionLocal
+
+    config = db.query(AiConfig).filter_by(organization_id=org_id).first()
+    if not config or not config.api_key_encrypted:
+        # Sin config IA, generar checklist por defecto
+        from app.services.bcm_checklist_service import _default_checklist
+        plan.checklist_template = _default_checklist(plan)
+        db.commit()
+        return
+
+    from app.security import decrypt_secret
+    try:
+        api_key = decrypt_secret(config.api_key_encrypted)
+    except Exception:
+        return
+
+    plan_id = plan.id
+    model = config.model or "claude-haiku-4-5-20251001"
+
+    def _extract():
+        with SessionLocal() as sess:
+            p = sess.get(BCPPlan, plan_id)
+            if not p:
+                return
+            template = extract_plan_checklist(sess, p, api_key, model)
+            p.checklist_template = template
+            sess.commit()
+
+    t = threading.Thread(target=_extract, daemon=True)
+    t.start()
+
+
 def _loc_d(loc):
     return {
         "id": loc.id, "code": loc.code, "name": loc.name,
@@ -1438,6 +1481,7 @@ def _act_d(a):
         "systems_status": a.systems_status or [],
         "log_count": len(a.situation_log or []),
         "situation_log": (a.situation_log or [])[-20:],
+        "checklist_items": a.checklist_items or [],
         "lessons_learned": a.lessons_learned,
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
@@ -1828,22 +1872,41 @@ def list_activations(status: Optional[str] = None,
 @router.post("/activations", status_code=201)
 def create_activation(body: dict, db: Session = Depends(get_db),
                       u: User = Depends(require_analyst)):
-    for pid in (body.get("activated_plan_ids") or []):
+    from app.services.bcm_checklist_service import build_activation_checklist
+    plan_ids = body.get("activated_plan_ids") or []
+    plans = []
+    for pid in plan_ids:
         plan = db.get(BCPPlan, pid)
         if not plan or plan.organization_id != _org(u):
             raise HTTPException(422, f"Plan {pid} no encontrado")
+        plans.append(plan)
+
+    # Merge checklists de todos los planes activados
+    merged_checklist = []
+    order = 1
+    for plan in plans:
+        template = getattr(plan, "checklist_template", None) or []
+        checklist = build_activation_checklist(template)
+        for item in checklist:
+            item["order"] = order
+            item["plan_id"] = plan.id
+            item["plan_name"] = plan.name
+            merged_checklist.append(item)
+            order += 1
+
     n = db.query(BCMActivation).filter_by(organization_id=_org(u)).count()
     act = BCMActivation(
         organization_id=_org(u),
         code=f"ACT-{n + 1:04d}",
         title=body.get("title", "Activación BCM"),
-        activated_plan_ids=body.get("activated_plan_ids", []),
+        activated_plan_ids=plan_ids,
         incident_id=body.get("incident_id"),
         location_id=body.get("location_id"),
         activated_at=datetime.now(timezone.utc),
         activated_by_id=u.id,
         situation_log=[],
         systems_status=[],
+        checklist_items=merged_checklist,
     )
     db.add(act)
     db.commit()
@@ -1916,6 +1979,49 @@ def close_activation(aid: int, body: dict, db: Session = Depends(get_db),
                {"rto_actual_hours": rto_real})
     db.commit()
     return _act_d(act)
+
+
+@router.patch("/activations/{aid}/checklist/{order}")
+def update_checklist_item(aid: int, order: int, body: dict,
+                          db: Session = Depends(get_db),
+                          u: User = Depends(require_analyst)):
+    act = _chk_act(db, aid, _org(u))
+    items = list(act.checklist_items or [])
+    item = next((i for i in items if i.get("order") == order), None)
+    if not item:
+        raise HTTPException(404, "Item de checklist no encontrado")
+    allowed = {"status", "notes"}
+    for k, v in body.items():
+        if k in allowed:
+            item[k] = v
+    if body.get("status") == "done" and not item.get("executed_at"):
+        item["executed_at"] = datetime.now(timezone.utc).isoformat()
+        item["executed_by"] = u.email
+    act.checklist_items = items
+    db.commit()
+    return {"checklist_items": items}
+
+
+@router.post("/activations/{aid}/checklist/{order}/execute")
+def execute_checklist_item(aid: int, order: int,
+                           db: Session = Depends(get_db),
+                           u: User = Depends(require_analyst)):
+    from app.services.bcm_checklist_service import execute_checklist_action
+    act = _chk_act(db, aid, _org(u))
+    items = list(act.checklist_items or [])
+    item = next((i for i in items if i.get("order") == order), None)
+    if not item:
+        raise HTTPException(404, "Item de checklist no encontrado")
+    if item.get("status") == "done":
+        raise HTTPException(422, "Este item ya fue ejecutado")
+    updated = execute_checklist_action(db, act, item, u, _org(u))
+    for i, it in enumerate(items):
+        if it.get("order") == order:
+            items[i] = updated
+            break
+    act.checklist_items = items
+    db.commit()
+    return {"checklist_items": items}
 
 
 # ── RUNBOOKS Y RECOVERY SEQUENCES ────────────────────────────────────────────
