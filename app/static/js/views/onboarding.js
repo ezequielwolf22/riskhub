@@ -282,10 +282,7 @@ const ViewOnboarding = (() => {
               </a>
             </label>
             <input type="password" id="ob-voyage-key" placeholder="${c.has_voyage_key ? '••••••••••••••• (configurada)' : 'pa-...'}" autocomplete="new-password">
-            ${c.has_voyage_key ? `<div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
-              <span style="font-size:12px;color:var(--risk-low);">Busqueda semantica activa</span>
-              <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;" id="ob-embed-existing">Vectorizar documentos existentes</button>
-            </div>` : '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin esta clave el agente usa busqueda por palabras clave. Con ella entiende preguntas en cualquier idioma aunque el documento este en otro.</p>'}
+            ${c.has_voyage_key ? `<p style="font-size:12px;color:var(--risk-low);margin:4px 0 0;">Busqueda semantica activa — el agente entiende preguntas en cualquier idioma.</p>` : '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin esta clave el agente usa busqueda por palabras clave. Con ella entiende preguntas en cualquier idioma aunque el documento este en otro.</p>'}
           </div>
           <div>
             <label>Modelo</label>
@@ -398,9 +395,6 @@ const ViewOnboarding = (() => {
     const testAi = document.getElementById('ob-test-ai');
     if (testAi) testAi.onclick = _testConnection;
 
-    // Vectorizar documentos existentes con Voyage AI
-    const embedExisting = document.getElementById('ob-embed-existing');
-    if (embedExisting) embedExisting.onclick = _embedExisting;
 
     // Skip
     const skip = document.getElementById('ob-skip');
@@ -452,19 +446,6 @@ const ViewOnboarding = (() => {
       UI.toast('Error: ' + e.message, 'error');
     } finally {
       _saving = false;
-    }
-  }
-
-  async function _embedExisting() {
-    const btn = document.getElementById('ob-embed-existing');
-    if (btn) { btn.disabled = true; btn.textContent = 'Vectorizando...'; }
-    try {
-      await Api.post('/api/ai/config/embed-existing', {});
-      UI.toast('Vectorizacion iniciada. Los documentos estaran listos en unos minutos.', 'success');
-    } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Vectorizar documentos existentes'; }
     }
   }
 

@@ -129,14 +129,9 @@ const ViewAiDocuments = (() => {
     if (_pollTimer !== null) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
-  let _aiCfg = null;
-
   async function _load() {
     try {
-      [_docs, _aiCfg] = await Promise.all([
-        Api.aiDocuments.list(),
-        Api.aiConfig.get().catch(() => null),
-      ]);
+      _docs = await Api.aiDocuments.list();
     } catch (_) {
       _docs = [];
     }
@@ -202,12 +197,7 @@ const ViewAiDocuments = (() => {
                   title="Re-analizar TODOS los documentos indexados (incluye ya analizados)">
             Re-analizar todos (${indexedCount})
           </button>
-          ${_aiCfg && _aiCfg.has_voyage_key ? `
-          <button class="btn btn-ghost" id="aid-embed-btn"
-                  style="font-size:12px;color:var(--brand-purple);" onclick="ViewAiDocuments._embedExisting()"
-                  title="Genera embeddings semanticos para todos los documentos (necesario una vez tras configurar Voyage AI)">
-            Activar busqueda semantica
-          </button>` : ''}` : ''}
+` : ''}
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
                  title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV)">
             + Subir documentos
@@ -763,19 +753,6 @@ const ViewAiDocuments = (() => {
     }
   }
 
-  async function _embedExisting() {
-    const btn = document.getElementById('aid-embed-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Vectorizando...'; }
-    try {
-      const res = await Api.post('/api/ai/config/embed-existing', {});
-      UI.toast(res.message || 'Vectorizacion iniciada en background.', 'success');
-    } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Activar busqueda semantica'; }
-    }
-  }
-
-  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll, _analyzePending, _showClauses, _embedExisting };
+  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll, _analyzePending, _showClauses };
 
 })();
