@@ -204,6 +204,7 @@ def _plan_d(p: BCPPlan) -> dict:
         "classification": getattr(p, "classification", None),
         "dr_site": getattr(p, "dr_site", None),
         "backup_policy": getattr(p, "backup_policy", None),
+        "crisis_comms": getattr(p, "crisis_comms", None),
         "checklist_template": getattr(p, "checklist_template", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
@@ -381,6 +382,7 @@ class PlanIn(BaseModel):
     classification: Optional[str] = None
     dr_site: Optional[dict] = None
     backup_policy: Optional[dict] = None
+    crisis_comms: Optional[dict] = None
 
 
 class PlanUpdate(BaseModel):
@@ -404,6 +406,7 @@ class PlanUpdate(BaseModel):
     classification: Optional[str] = None
     dr_site: Optional[dict] = None
     backup_policy: Optional[dict] = None
+    crisis_comms: Optional[dict] = None
 
 
 class TestIn(BaseModel):
@@ -1342,6 +1345,7 @@ class LocationCreate(BaseModel):
     recovery_site_type: Optional[str] = None
     recovery_site_description: Optional[str] = None
     alternate_location_id: Optional[int] = None
+    capacity_details: Optional[dict] = None
 
 
 class LocationUpdate(BaseModel):
@@ -1352,6 +1356,7 @@ class LocationUpdate(BaseModel):
     recovery_site_type: Optional[str] = None
     recovery_site_description: Optional[str] = None
     is_active: Optional[bool] = None
+    capacity_details: Optional[dict] = None
 
 
 # ── Helpers BCM Expansion ─────────────────────────────────────────────────────
@@ -1417,6 +1422,7 @@ def _loc_d(loc):
         "recovery_site_description": loc.recovery_site_description,
         "alternate_location_id": loc.alternate_location_id,
         "is_active": loc.is_active,
+        "capacity_details": getattr(loc, "capacity_details", None),
         "created_at": loc.created_at.isoformat() if loc.created_at else None,
     }
 
@@ -1452,10 +1458,17 @@ def _rec_d(r, db=None):
 def _runbook_d(rb):
     return {
         "id": rb.id, "title": rb.title, "test_type": rb.test_type,
+        "runbook_type": getattr(rb, "runbook_type", None) or rb.test_type,
         "scenario": rb.scenario, "plan_id": rb.plan_id, "test_id": rb.test_id,
         "location_id": rb.location_id, "steps": rb.steps or [],
         "total_estimated_minutes": rb.total_estimated_minutes,
         "generated_by_ai": rb.generated_by_ai,
+        # Campos operacionales DRP (ISO 22301 §8.4.3)
+        "activation_condition": getattr(rb, "activation_condition", None),
+        "credentials_vault_ref": getattr(rb, "credentials_vault_ref", None),
+        "success_criteria": getattr(rb, "success_criteria", None),
+        "responsible_name": getattr(rb, "responsible_name", None),
+        "backup_responsible_name": getattr(rb, "backup_responsible_name", None),
         "created_at": rb.created_at.isoformat() if rb.created_at else None,
     }
 

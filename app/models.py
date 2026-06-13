@@ -1764,6 +1764,8 @@ class BCPPlan(Base):
     backup_policy = Column(JSON, nullable=True)
     # DRP: {rule_321, encryption, retention, offsite_location,
     #        items:[{system,backup_type,frequency,retention,rpo_covered,location,last_test_date,last_test_result}]}
+    crisis_comms = Column(JSON, nullable=True)
+    # {primary_channel, secondary_channel, external_channel, template_internal, template_external}
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
     checklist_template = Column(JSON, nullable=True)
     # [{order,title,description,action_type,action_config}]
@@ -1833,6 +1835,8 @@ class BCMLocation(Base):
     recovery_site_description = Column(Text, nullable=True)
     alternate_location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
     is_active             = Column(Boolean, default=True)
+    capacity_details      = Column(JSON, nullable=True)
+    # {servers, ram_gb, storage_tb, networking, pre_installed_systems, notes}
     created_at            = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at            = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
@@ -1905,6 +1909,13 @@ class BCPTestRunbook(Base):
     steps           = Column(JSON)
     total_estimated_minutes = Column(Integer, nullable=True)
     generated_by_ai = Column(Boolean, default=False)
+    # Campos operacionales DRP (ISO 22301 §8.4.3)
+    runbook_type          = Column(String(32), nullable=True)   # recovery|failover|communication|general
+    activation_condition  = Column(Text, nullable=True)         # Condicion que activa este procedimiento
+    credentials_vault_ref = Column(Text, nullable=True)         # Referencia a boveda de credenciales
+    success_criteria      = Column(Text, nullable=True)         # Criterio de exito / verificacion
+    responsible_name      = Column(String(255), nullable=True)  # Titular del procedimiento
+    backup_responsible_name = Column(String(255), nullable=True) # Suplente
     created_by_id   = Column(Integer, ForeignKey("users.id"))
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))

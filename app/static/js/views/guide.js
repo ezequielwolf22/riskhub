@@ -3,6 +3,8 @@ const ViewGuide = {
 
   _sections: [
     { id: 'intro', title: 'Introduccion', icon: '📖' },
+    { id: 'navigation', title: 'Navegacion por hubs', icon: '🗂️' },
+    { id: 'inbox', title: 'Bandeja de revision', icon: '📥' },
     { id: 'dashboard', title: 'Dashboard ejecutivo', icon: '📊' },
     { id: 'search', title: 'Busqueda global', icon: '🔎' },
     { id: 'context', title: 'Configuracion inicial', icon: '⚙️' },
@@ -152,6 +154,8 @@ const ViewGuide = {
       admin: this._cAdmin,
       security: this._cSecurity,
       methodology: this._cMethodology,
+      inbox: this._cInbox,
+      navigation: this._cNavigation,
     })[id] || '<p>Seccion en construccion.</p>';
   },
 
@@ -1777,6 +1781,60 @@ const ViewGuide = {
       <li>NIST SP 800-30 r1 — Guide for Conducting Risk Assessments</li>
       <li>MITRE ATT&CK — Adversarial Tactics, Techniques and Common Knowledge</li>
     </ul>
+  `;},
+
+  get _cNavigation() { return `
+    ${this._p('RiskHub organiza todas las funcionalidades en <strong>8 hubs</strong> accesibles desde el menu lateral izquierdo. Cada hub agrupa secciones relacionadas en <strong>pestanas internas</strong>, reduciendo el numero de pantallas visibles y facilitando la orientacion.')}
+    ${this._h('Los 8 hubs')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--brand-purple);color:#fff;">
+        <th style="padding:8px 12px;text-align:left;">Hub</th>
+        <th style="padding:8px 12px;text-align:left;">Pestanas incluidas</th>
+        <th style="padding:8px 12px;text-align:left;">Roles</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Inicio','Dashboard · Ejecutivo · Heatmap + Bandeja de revision','Todos'],
+          ['Riesgos y activos','Registro de riesgos · Activos · Amenazas · Vulnerabilidades · MAGERIT','Todos'],
+          ['Vigilancia','CVE Monitor · OSINT · Hallazgos externos · Rev. arquitectura · Predictivo','Analyst, Admin'],
+          ['Cumplimiento','Normativo · Controles · Monitor · SoA · Politicas · Auditorias · Rev. direccion · Cambios','Todos'],
+          ['Eventos','Incidentes · NIS2 · No conformidades · BCP · Proveedores · RGPD','Analyst, Admin'],
+          ['Informes','Informes · Programados · Evidencias · Trust Portal · Calendario · Tareas','Todos'],
+          ['Agente IA','Chat · Documentos','Analyst, Admin'],
+          ['Configuracion','Usuarios · Integraciones · ITSM · Webhooks · Alertas · Awareness · Auditoria · Organizaciones · Modulos','Admin, Superadmin'],
+        ].map(([hub, tabs, roles]) => `
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px 12px;font-weight:600;">${hub}</td>
+            <td style="padding:8px 12px;font-size:12px;color:var(--text-muted);">${tabs}</td>
+            <td style="padding:8px 12px;font-size:12px;">${roles}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Deep-linking')}
+    ${this._p('Cada pestana tiene su propia URL: por ejemplo <code>#/compliance-hub/controls</code> o <code>#/events-hub/incidents</code>. Las URLs antiguas (ej. <code>#/risks</code>) redirigen automaticamente a su hub correspondiente, por lo que todos tus favoritos siguen funcionando.')}
+    ${this._h('Acciones rapidas (FAB)')}
+    ${this._p('El boton <strong>+</strong> en la esquina inferior derecha ofrece tres acciones directas: Nuevo riesgo, Nuevo incidente y Agente IA — las operaciones mas frecuentes sin necesidad de navegar.')}
+    ${this._h('Atajos de teclado')}
+    ${this._p('Pulsa <kbd>?</kbd> en cualquier momento para ver todos los atajos disponibles. Los atajos <kbd>g</kbd>+<kbd>letra</kbd> permiten navegar directamente a los hubs principales (ej. <kbd>g</kbd>+<kbd>r</kbd> = Riesgos).')}
+  `;},
+
+  get _cInbox() { return `
+    ${this._p('La <strong>Bandeja de revision</strong> agrega en un unico lugar todos los elementos que las automatizaciones de RiskHub han generado y que requieren una decision humana. Aparece en la parte superior del Dashboard (Inicio) y tambien es accesible en <code>#/inbox</code>.')}
+    ${this._h('Que aparece en la bandeja')}
+    ${this._steps([
+      '<strong>Riesgos auto-generados</strong> — creados automaticamente por el Agente IA al analizar CVEs, hallazgos OSINT o proveedores con score bajo. Aparecen en estado Identificado/Evaluado pendientes de confirmacion.',
+      '<strong>Incidentes criticos y altos abiertos</strong> — incidentes P1 y P2 en estado Abierto o En investigacion, incluidos los auto-creados por OSINT.',
+      '<strong>Notificaciones NIS2 pendientes</strong> — con indicador de horas restantes de plazo (critico si quedan menos de 12 h).',
+      '<strong>Controles degradados</strong> — controles que el scheduler ha degradado automaticamente a PARTIAL por tener la revision vencida.',
+      '<strong>Tareas vencidas</strong> — tareas de tratamiento de riesgo con fecha limite superada.',
+      '<strong>No conformidades sin accion correctiva</strong> — NC abiertas que aun no tienen definida ninguna accion.',
+    ])}
+    ${this._h('Severidad y orden')}
+    ${this._p('Los elementos se ordenan por severidad (critico > alto > medio > informativo) y luego por fecha. Cada elemento muestra un badge de color con texto descriptivo (no solo color) para accesibilidad.')}
+    ${this._h('Acciones disponibles')}
+    ${this._p('<strong>Revisar</strong> navega directamente al elemento en su vista correspondiente. <strong>Descartar</strong> (requiere rol Analyst o Admin) elimina el elemento de la bandeja de forma auditada — el registro subyacente no se borra, solo deja de aparecer en la bandeja. Todas las acciones de descarte quedan registradas en el Log de Auditoria.')}
+    ${this._h('Automatizacion')}
+    ${this._p('La bandeja se actualiza en cada navegacion. El objetivo es que el usuario visite RiskHub una vez por semana, despache los elementos pendientes en pocos minutos, y la aplicacion se encargue del resto de forma autonoma.')}
   `;},
 
   get _cAiChat() { return `

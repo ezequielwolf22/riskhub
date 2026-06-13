@@ -1506,7 +1506,7 @@ const ViewBcp = (() => {
           <div>
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">RTO (horas)</label>
             <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Recovery Time Objective</div>
-            <input id="pm-rto" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.rto_hours??''}">
+            <input id="pm-rto" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.rto_hours??''}" oninput="ViewBcp._calcBiaImpact()">
           </div>
           <div>
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">RPO (horas)</label>
@@ -1516,7 +1516,7 @@ const ViewBcp = (() => {
           <div>
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">MTPD (horas)</label>
             <div style="font-size:10px;color:var(--text-subtle);margin:2px 0 4px;">Max. Tolerable Period of Disruption</div>
-            <input id="pm-mtpd" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.mtpd_hours??''}">
+            <input id="pm-mtpd" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.mtpd_hours??''}" oninput="ViewBcp._calcBiaImpact()">
           </div>
         </div>
         <div style="display:grid;grid-template-columns:160px 1fr;gap:12px;margin-bottom:14px;">
@@ -1587,7 +1587,7 @@ const ViewBcp = (() => {
           <div>
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Coste indisponibilidad (€/h)</label>
             <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Para calcular impacto economico</div>
-            <input id="pm-cph" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.cost_per_hour??''}" placeholder="Ej: 2500">
+            <input id="pm-cph" class="form-control" type="number" min="0" style="font-size:13px;" value="${proc?.cost_per_hour??''}" placeholder="Ej: 2500" oninput="ViewBcp._calcBiaImpact()">
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <div>
@@ -1613,6 +1613,13 @@ const ViewBcp = (() => {
               <option value="2"${proc?.[fld]===2?' selected':''}>Alto</option>
             </select>
           </div>`).join('')}
+        </div>
+
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-top:4px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.04em;">Calculadora de impacto economico — ISO 22301 §8.2.3</div>
+          <div style="font-family:monospace;font-size:11px;color:var(--text-subtle);background:var(--bg-1);padding:5px 10px;border-radius:3px;margin-bottom:10px;">Impacto (€) = €/h × RTO (h)&nbsp;&nbsp;|&nbsp;&nbsp;Regla: RPO &lt; RTO &lt; MTPD</div>
+          <div id="pm-calc-result" style="font-family:monospace;font-size:14px;font-weight:700;color:var(--text-primary);min-height:20px;"></div>
+          <div id="pm-rto-warn" style="display:none;margin-top:8px;padding:8px 12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:4px;color:#b91c1c;font-size:12px;font-weight:600;">ALERTA: RTO &gt;= MTPD — El plan de recuperacion es INVIABLE. Reduzca el RTO o revise el MTPD.</div>
         </div>
 
       </div>
@@ -2343,6 +2350,41 @@ const ViewBcp = (() => {
       </button>
     </div>
 
+    <!-- SECCION: Comunicacion en crisis -->
+    <div id="pl-comms-section">
+      <div class="form-section-divider"><span>COMUNICACION EN CRISIS — ISO 22301 §8.4.4</span></div>
+      <div style="font-size:12px;color:var(--text-subtle);margin-bottom:12px;">Canales y plantillas de comunicacion para partes interesadas durante una interrupcion. ENS [op.cont.2].</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Canal primario</label>
+          <input id="pl-cc-primary" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.crisis_comms?.primary_channel||'')}" placeholder="Teams / Slack / Signal">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Canal secundario (si TI caido)</label>
+          <input id="pl-cc-secondary" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.crisis_comms?.secondary_channel||'')}" placeholder="WhatsApp / SMS / Telefono">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Canal externo</label>
+          <input id="pl-cc-external" class="form-control" style="font-size:13px;"
+            value="${UI.esc(plan?.crisis_comms?.external_channel||'')}" placeholder="Email institucional / Portal">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Plantilla comunicado interno</label>
+          <textarea id="pl-cc-tpl-int" class="form-control" rows="5" style="font-size:12px;font-family:monospace;"
+            placeholder="[INCIDENTE] Impacto en [SERVICIO] detectado el [FECHA]...">${UI.esc(plan?.crisis_comms?.template_internal||'')}</textarea>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Plantilla comunicado externo</label>
+          <textarea id="pl-cc-tpl-ext" class="form-control" rows="5" style="font-size:12px;font-family:monospace;"
+            placeholder="Estimados usuarios, se ha detectado un incidente que afecta a [SERVICIO]...">${UI.esc(plan?.crisis_comms?.template_external||'')}</textarea>
+        </div>
+      </div>
+    </div>
+
     <!-- SECCION 9: Historial -->
     ${plan ? `<div class="form-section-divider"><span>HISTORIAL Y MANTENIMIENTO</span></div>
     <div style="font-size:12px;color:var(--text-subtle);display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
@@ -2370,10 +2412,12 @@ const ViewBcp = (() => {
     const procSec  = document.getElementById('pl-proc-section');
     const drsiteSec= document.getElementById('pl-drsite-section');
     const bkpSec   = document.getElementById('pl-backup-section');
+    const commsSec = document.getElementById('pl-comms-section');
     if (sysSec)    sysSec.style.display    = ['drp','crp'].includes(type) ? '' : 'none';
     if (procSec)   procSec.style.display   = ['drp','crp','cyber_response'].includes(type) ? '' : 'none';
     if (drsiteSec) drsiteSec.style.display = ['drp','crp','cyber_response'].includes(type) ? '' : 'none';
     if (bkpSec)    bkpSec.style.display    = ['drp','crp'].includes(type) ? '' : 'none';
+    if (commsSec)  commsSec.style.display  = ['bcp','drp','crp','ems','pandemic','cyber_response'].includes(type) ? '' : 'none';
   }
 
   // Helpers tablas inline backup
@@ -2557,6 +2601,14 @@ const ViewBcp = (() => {
         retention:        g('pl-bkp-ret')?.value    || null,
         offsite_location: g('pl-bkp-offsite')?.value || null,
         items:            (window._planBkpItems || []).length ? window._planBkpItems : [],
+      } : null,
+      // Comunicacion en crisis
+      crisis_comms: (g('pl-cc-primary')?.value || g('pl-cc-secondary')?.value || g('pl-cc-external')?.value) ? {
+        primary_channel:   g('pl-cc-primary')?.value   || null,
+        secondary_channel: g('pl-cc-secondary')?.value || null,
+        external_channel:  g('pl-cc-external')?.value  || null,
+        template_internal: g('pl-cc-tpl-int')?.value   || null,
+        template_external: g('pl-cc-tpl-ext')?.value   || null,
       } : null,
     };
 
@@ -5037,13 +5089,27 @@ const ViewBcp = (() => {
                   </div>
                   <div style="flex:1;min-width:0">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                      <strong style="font-size:13px">${UI.esc(rb.name||'Sin nombre')}</strong>
+                      <strong style="font-size:13px">${UI.esc(rb.title||'Sin nombre')}</strong>
                       ${plan ? `<span class="badge badge-secondary" style="font-size:10px">${UI.esc(plan.code||plan.name)}</span>` : ''}
                       <span class="badge" style="font-size:10px;background:${rb.runbook_type==='recovery'?'#16a34a22':rb.runbook_type==='failover'?'#D9770622':'#59008D22'};color:${rb.runbook_type==='recovery'?'#16a34a':rb.runbook_type==='failover'?'#D97706':'#59008D'}">
                         ${rb.runbook_type||'general'}
                       </span>
                     </div>
-                    ${rb.description ? `<div style="font-size:12px;color:var(--text-subtle);margin-top:3px">${UI.esc(rb.description)}</div>` : ''}
+                    ${rb.scenario ? `<div style="font-size:12px;color:var(--text-subtle);margin-top:3px">${UI.esc(rb.scenario)}</div>` : ''}
+                    ${rb.activation_condition ? `
+                      <div style="font-size:11px;margin-top:5px;padding:4px 8px;background:var(--bg-2);border-left:3px solid var(--brand-orange,#D65200);border-radius:0 3px 3px 0;">
+                        <span style="font-weight:700;color:var(--text-subtle)">Activacion:</span>
+                        <span style="color:var(--text-subtle)">&nbsp;${UI.esc(rb.activation_condition.length>100 ? rb.activation_condition.slice(0,100)+'...' : rb.activation_condition)}</span>
+                      </div>` : ''}
+                    ${rb.responsible_name ? `
+                      <div style="font-size:11px;color:var(--text-subtle);margin-top:4px;">
+                        <i class="ti ti-user-check" style="margin-right:3px"></i><strong>Responsable:</strong>&nbsp;${UI.esc(rb.responsible_name)}
+                        ${rb.backup_responsible_name ? `&nbsp;<span style="color:var(--text-muted)">/ ${UI.esc(rb.backup_responsible_name)}</span>` : ''}
+                      </div>` : ''}
+                    ${rb.success_criteria ? `
+                      <div style="font-size:11px;margin-top:4px;color:var(--text-subtle);">
+                        <i class="ti ti-circle-check" style="margin-right:3px;color:#16a34a"></i><strong>Exito:</strong>&nbsp;${UI.esc(rb.success_criteria.length>90 ? rb.success_criteria.slice(0,90)+'...' : rb.success_criteria)}
+                      </div>` : ''}
                     ${steps.length ? `
                       <div style="margin-top:8px">
                         <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-subtle);margin-bottom:4px">
@@ -5090,7 +5156,7 @@ const ViewBcp = (() => {
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:500px;">
+    <div class="modal" style="max-width:640px;">
       <div class="modal-header">
         <h2>Nuevo runbook</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
@@ -5098,7 +5164,7 @@ const ViewBcp = (() => {
       <div class="modal-body" style="display:block;padding:20px 24px;">
         <div style="margin-bottom:14px;">
           ${lbl('Nombre <span style="color:var(--danger)">*</span>')}
-          <input id="rb-name" class="form-control" style="font-size:13px;" placeholder="Ej: Recuperacion servidor de base de datos">
+          <input id="rb-name" class="form-control" style="font-size:13px;" placeholder="Ej: PROC-01 · Recuperacion Active Directory">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
           <div>${lbl('Plan BCP/DRP asociado')}
@@ -5114,8 +5180,29 @@ const ViewBcp = (() => {
           </div>
         </div>
         <div style="margin-bottom:14px;">
-          ${lbl('Descripcion')}
+          ${lbl('Descripcion / Objetivo')}
           <textarea id="rb-desc" class="form-control" rows="2" style="font-size:13px;" placeholder="Objetivo y alcance de este runbook..."></textarea>
+        </div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);letter-spacing:.05em;margin:16px 0 10px;padding-top:12px;border-top:1px solid var(--border);">Campos DRP — ISO 22301 §8.4.3</div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Condicion de activacion')}
+          <textarea id="rb-actcond" class="form-control" rows="2" style="font-size:13px;" placeholder="Ej: Servidor principal inaccesible >15 min o fallo total de autenticacion en red."></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Responsable titular')}
+            <input id="rb-resp" class="form-control" style="font-size:13px;" placeholder="Nombre · Cargo">
+          </div>
+          <div>${lbl('Suplente')}
+            <input id="rb-backup" class="form-control" style="font-size:13px;" placeholder="Nombre · Cargo">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Referencia boveda de credenciales')}
+          <input id="rb-vault" class="form-control" style="font-size:13px;" placeholder="Ej: Boveda: carpeta AD-Recovery · Acceso: Crisis Lead + Tech Lead">
+        </div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Criterio de exito (verificacion)')}
+          <textarea id="rb-success" class="form-control" rows="2" style="font-size:13px;" placeholder="Ej: Login exitoso de 5 usuarios de prueba en 3 segmentos de red distintos."></textarea>
         </div>
       </div>
       <div class="modal-footer-sticky">
@@ -5138,6 +5225,11 @@ const ViewBcp = (() => {
           plan_id: parseInt(modal.querySelector('#rb-plan').value) || null,
           test_type: modal.querySelector('#rb-type').value,
           scenario: modal.querySelector('#rb-desc').value.trim() || null,
+          activation_condition:  modal.querySelector('#rb-actcond').value.trim() || null,
+          credentials_vault_ref: modal.querySelector('#rb-vault').value.trim()   || null,
+          success_criteria:      modal.querySelector('#rb-success').value.trim() || null,
+          responsible_name:      modal.querySelector('#rb-resp').value.trim()    || null,
+          backup_responsible_name: modal.querySelector('#rb-backup').value.trim() || null,
           steps: [],
         });
         UI.toast('Runbook creado', 'success');
@@ -5160,7 +5252,7 @@ const ViewBcp = (() => {
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:500px;">
+    <div class="modal" style="max-width:640px;">
       <div class="modal-header">
         <h2>Editar runbook</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
@@ -5184,8 +5276,29 @@ const ViewBcp = (() => {
           </div>
         </div>
         <div style="margin-bottom:14px;">
-          ${lbl('Descripcion')}
+          ${lbl('Descripcion / Objetivo')}
           <textarea id="rbe-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(rb.scenario||'')}</textarea>
+        </div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);letter-spacing:.05em;margin:16px 0 10px;padding-top:12px;border-top:1px solid var(--border);">Campos DRP — ISO 22301 §8.4.3</div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Condicion de activacion')}
+          <textarea id="rbe-actcond" class="form-control" rows="2" style="font-size:13px;">${UI.esc(rb.activation_condition||'')}</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>${lbl('Responsable titular')}
+            <input id="rbe-resp" class="form-control" style="font-size:13px;" value="${UI.esc(rb.responsible_name||'')}" placeholder="Nombre · Cargo">
+          </div>
+          <div>${lbl('Suplente')}
+            <input id="rbe-backup" class="form-control" style="font-size:13px;" value="${UI.esc(rb.backup_responsible_name||'')}" placeholder="Nombre · Cargo">
+          </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Referencia boveda de credenciales')}
+          <input id="rbe-vault" class="form-control" style="font-size:13px;" value="${UI.esc(rb.credentials_vault_ref||'')}" placeholder="Ej: Boveda: carpeta AD-Recovery · Acceso: Crisis Lead + Tech Lead">
+        </div>
+        <div style="margin-bottom:14px;">
+          ${lbl('Criterio de exito (verificacion)')}
+          <textarea id="rbe-success" class="form-control" rows="2" style="font-size:13px;">${UI.esc(rb.success_criteria||'')}</textarea>
         </div>
       </div>
       <div class="modal-footer-sticky">
@@ -5207,6 +5320,11 @@ const ViewBcp = (() => {
           plan_id: parseInt(modal.querySelector('#rbe-plan').value) || null,
           test_type: modal.querySelector('#rbe-type').value,
           scenario: modal.querySelector('#rbe-desc').value.trim() || null,
+          activation_condition:    modal.querySelector('#rbe-actcond').value.trim() || null,
+          credentials_vault_ref:   modal.querySelector('#rbe-vault').value.trim()   || null,
+          success_criteria:        modal.querySelector('#rbe-success').value.trim() || null,
+          responsible_name:        modal.querySelector('#rbe-resp').value.trim()    || null,
+          backup_responsible_name: modal.querySelector('#rbe-backup').value.trim()  || null,
         });
         UI.toast('Runbook actualizado', 'success');
         modal.remove();
@@ -5358,6 +5476,24 @@ const ViewBcp = (() => {
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
   }
 
+  function _calcBiaImpact() {
+    const cph  = parseFloat(document.getElementById('pm-cph')?.value)  || 0;
+    const rto  = parseFloat(document.getElementById('pm-rto')?.value)  || 0;
+    const mtpd = parseFloat(document.getElementById('pm-mtpd')?.value) || 0;
+    const resultEl = document.getElementById('pm-calc-result');
+    const warnEl   = document.getElementById('pm-rto-warn');
+    if (!resultEl) return;
+    if (cph > 0 && rto > 0) {
+      const impact = cph * rto;
+      resultEl.textContent = `Impacto estimado: ${impact.toLocaleString('es-ES', {style:'currency', currency:'EUR', maximumFractionDigits:0})}`;
+    } else {
+      resultEl.textContent = 'Introduce €/h y RTO para calcular el impacto.';
+    }
+    if (warnEl) {
+      warnEl.style.display = (mtpd > 0 && rto > 0 && rto >= mtpd) ? '' : 'none';
+    }
+  }
+
   return {
     render,
     _switchTab, _setMode, _setStep, _setTile, _setSubTab,
@@ -5385,5 +5521,6 @@ const ViewBcp = (() => {
     _modalActivacion, _closeActModal, _confirmActivacion, _logActivacion, _closeActivacion,
     _newRunbook, _editRunbook, _genAiRunbook,
     _genRecs, _acceptRec,
+    _calcBiaImpact,
   };
 })();

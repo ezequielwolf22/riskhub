@@ -97,8 +97,21 @@ const ViewFeatureFlags = (() => {
     });
   }
 
+  function _publishDisabled(flags) {
+    // Set global consultado por UI.tabs: las pestanas de los hubs declaran
+    // su ruta legacy en `route` y se ocultan si el modulo esta deshabilitado.
+    window.RiskHubFlags = window.RiskHubFlags || { disabled: new Set() };
+    flags.forEach(f => {
+      const route = MODULE_ROUTES[f.name];
+      if (!route) return;
+      if (f.enabled) window.RiskHubFlags.disabled.delete(route);
+      else window.RiskHubFlags.disabled.add(route);
+    });
+  }
+
   function _syncSidebar() {
     // Ocultar/mostrar enlaces del sidebar segun el estado de los flags
+    _publishDisabled(_flags);
     _flags.forEach(f => {
       const route = MODULE_ROUTES[f.name];
       if (!route) return;
@@ -112,6 +125,7 @@ const ViewFeatureFlags = (() => {
   async function applyFlagsToSidebar() {
     try {
       const flags = await Api.featureFlags.list();
+      _publishDisabled(flags);
       flags.forEach(f => {
         const route = MODULE_ROUTES[f.name];
         if (!route) return;

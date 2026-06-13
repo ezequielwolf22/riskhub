@@ -1,60 +1,77 @@
 /* app.js - router SPA y arranque. */
 
 const Routes = {
-  dashboard: ViewDashboard,
-  heatmap: ViewHeatmap,
-  questionnaire: ViewQuestionnaire,
-  assets: ViewAssets,
-  threats: ViewThreats,
-  vulnerabilities: ViewVulns,
-  risks: ViewRisks,
-  calendar: ViewCalendar,
-  controls: ViewControls,
-  reports: ViewReports,
-  alerts: ViewAlerts,
-  integrations: ViewIntegrations,
+  // Hubs con pestanas internas (views/hubs.js)
+  home: ViewHomeHub,
+  'risk-hub': ViewRiskHub,
+  'watch-hub': ViewWatchHub,
+  'compliance-hub': ViewComplianceHub,
+  'events-hub': ViewEventsHub,
+  'reports-hub': ViewReportsHub,
+  'ai-hub': ViewAiHub,
+  'admin-hub': ViewAdminHub,
+  // Rutas independientes (sin entrada propia en el sidebar)
   guide: ViewGuide,
-  context: ViewContext,
-  users: ViewUsers,
-  audit: ViewAudit,
-  incidents: ViewIncidents,
-  suppliers: ViewSuppliers,
-  nonconformities: ViewNonConformities,
-  compliance: ViewCompliance,
-  tasks: ViewTasks,
-  policies: ViewPolicies,
-  'internal-audits': ViewAudits,
-  gdpr: ViewGdpr,
   onboarding: ViewOnboarding,
-  'ai-chat': ViewAiChat,
-  'ai-documents': ViewAiDocuments,
-  'feature-flags': ViewFeatureFlags,
-  cve: ViewCve,
-  osint: ViewOsint,
-  awareness: ViewAwareness,
-  organizations: ViewOrganizations,
-  'architecture-review': ViewArchitectureReview,
+  questionnaire: ViewQuestionnaire,
+  context: ViewContext,
+  inbox: ViewInbox,
   'change-password-required': ViewChangePasswordRequired,
-  executive: ViewExecutive,
-  evidence: ViewEvidence,
-  webhooks: ViewWebhooks,
-  'external-findings': ViewExternalFindings,
-  predictive: ViewPredictive,
-  ccm: ViewCcm,
-  'itsm-config': ViewItsmConfig,
-  'trust-portal': ViewTrustPortal,
-  magerit: ViewMagerit,
-  'management-review': ViewManagementReview,
-  'soa-versions': ViewSoaVersions,
-  'nis2-dashboard': ViewNis2Dashboard,
-  'change-requests': ViewChangeRequests,
-  'report-schedules': ViewReportSchedules,
-  bcp: ViewBcp,
+};
+
+// Mapa explicito de rutas legacy → hub/pestana. Las URLs antiguas siguen
+// funcionando: navigate() las reemplaza (location.replace) conservando query.
+const LegacyRedirects = {
+  dashboard: 'home/dashboard',
+  executive: 'home/executive',
+  heatmap: 'home/heatmap',
+  risks: 'risk-hub/risks',
+  assets: 'risk-hub/assets',
+  threats: 'risk-hub/threats',
+  vulnerabilities: 'risk-hub/vulnerabilities',
+  magerit: 'risk-hub/magerit',
+  cve: 'watch-hub/cve',
+  osint: 'watch-hub/osint',
+  'external-findings': 'watch-hub/external-findings',
+  'architecture-review': 'watch-hub/architecture-review',
+  predictive: 'watch-hub/predictive',
+  compliance: 'compliance-hub/compliance',
+  controls: 'compliance-hub/controls',
+  ccm: 'compliance-hub/ccm',
+  'soa-versions': 'compliance-hub/soa',
+  policies: 'compliance-hub/policies',
+  'internal-audits': 'compliance-hub/audits',
+  'management-review': 'compliance-hub/management-review',
+  'change-requests': 'compliance-hub/change-requests',
+  incidents: 'events-hub/incidents',
+  'nis2-dashboard': 'events-hub/nis2',
+  nonconformities: 'events-hub/nonconformities',
+  bcp: 'events-hub/bcp',
+  suppliers: 'events-hub/suppliers',
+  gdpr: 'events-hub/gdpr',
+  reports: 'reports-hub/reports',
+  'report-schedules': 'reports-hub/schedules',
+  evidence: 'reports-hub/evidence',
+  'trust-portal': 'reports-hub/trust-portal',
+  calendar: 'reports-hub/calendar',
+  tasks: 'reports-hub/tasks',
+  'ai-chat': 'ai-hub/chat',
+  'ai-documents': 'ai-hub/documents',
+  users: 'admin-hub/users',
+  integrations: 'admin-hub/integrations',
+  'itsm-config': 'admin-hub/itsm',
+  webhooks: 'admin-hub/webhooks',
+  alerts: 'admin-hub/alerts',
+  awareness: 'admin-hub/awareness',
+  audit: 'admin-hub/audit',
+  organizations: 'admin-hub/organizations',
+  'feature-flags': 'admin-hub/feature-flags',
 };
 
 function currentRoute() {
-  const h = location.hash.replace(/^#\/?/, '').split('?')[0];
-  return h || 'dashboard';
+  // Primer segmento del hash: '#/risk-hub/assets?x=1' → 'risk-hub'
+  const h = location.hash.replace(/^#\/?/, '').split('?')[0].split('/')[0];
+  return h || 'home';
 }
 
 function setActive(route) {
@@ -66,13 +83,19 @@ function setActive(route) {
 async function navigate() {
   if (!Auth.requireAuth()) return;
   const route = currentRoute();
+  // Redireccion de rutas legacy a su hub/pestana (conservando query string)
+  if (LegacyRedirects[route]) {
+    const query = location.hash.split('?')[1];
+    location.replace('#/' + LegacyRedirects[route] + (query ? '?' + query : ''));
+    return;
+  }
   // Forzar cambio de contrasena OTP si es el primer login
   const u = Auth.user();
   if (u && u.must_change_password && route !== 'change-password-required') {
     location.hash = '/change-password-required';
     return;
   }
-  const view = Routes[route] || Routes.dashboard;
+  const view = Routes[route] || Routes.home;
   setActive(route);
   // Scroll to top on every navigation
   window.scrollTo(0, 0);
@@ -84,6 +107,8 @@ async function navigate() {
   } catch (e) {
     main.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
   }
+  // Montar bandeja de revision en el slot del dashboard (si existe)
+  if (typeof ViewInbox !== 'undefined') ViewInbox.mountIfSlot();
   // Refresh sidebar badges after navigation (risk treatments + control reviews may have changed)
   _loadOverdueBadge();
 }
@@ -241,6 +266,14 @@ function init() {
     document.querySelectorAll('[data-superadmin]').forEach(el => el.style.display = 'none');
   }
 
+  // Visibilidad de hubs por rol (solo UX — la autorizacion real es server-side):
+  // viewer ve Inicio, Riesgos, Cumplimiento e Informes; analyst anade
+  // Vigilancia, Eventos y Agente IA; admin ve ademas Configuracion (data-admin).
+  if (!Auth.canEdit()) {
+    document.querySelectorAll('.sidebar [data-minrole="analyst"]')
+      .forEach(el => el.style.display = 'none');
+  }
+
   // Aplicar feature flags al sidebar (ocultar modulos deshabilitados)
   ViewFeatureFlags.applyFlagsToSidebar();
 
@@ -273,8 +306,9 @@ function init() {
     }
     if (window._gPressed && e.key !== 'g') {
       e.preventDefault();
-      const nav = { d: 'dashboard', h: 'heatmap', a: 'assets', r: 'risks',
-                    c: 'controls', p: 'reports', l: 'alerts', u: 'users' };
+      const nav = { d: 'home/dashboard', h: 'home/heatmap', a: 'risk-hub/assets',
+                    r: 'risk-hub/risks', c: 'compliance-hub/controls',
+                    p: 'reports-hub/reports', l: 'admin-hub/alerts', u: 'admin-hub/users' };
       if (nav[e.key]) location.hash = '/' + nav[e.key];
       window._gPressed = false;
     }
@@ -341,7 +375,9 @@ function init() {
   const currentHash = location.hash.replace(/^#\/?/, '').split('?')[0];
   const skipped = localStorage.getItem('riskhub_onboarding_skipped');
   const onboardingDone = localStorage.getItem('riskhub_onboarding_done');
-  if (!skipped && !onboardingDone && (!currentHash || currentHash === 'dashboard')) {
+  const _isHome = !currentHash || currentHash === 'dashboard' ||
+                  currentHash === 'home' || currentHash === 'home/dashboard';
+  if (!skipped && !onboardingDone && _isHome) {
     // Verificar si ya tiene configuracion completada via API
     Api.aiConfig.get().then(cfg => {
       if (!cfg.setup_completed) {

@@ -401,6 +401,15 @@ def _migrate_columns() -> None:
         # v3.5.0 — Voyage AI embeddings para busqueda semantica multilingue
         ("ALTER TABLE ai_config ADD COLUMN voyage_api_key_encrypted TEXT", "ai_config", "voyage_api_key_encrypted"),
         ("ALTER TABLE ai_document_chunks ADD COLUMN embedding TEXT", "ai_document_chunks", "embedding"),
+        # v3.5.1 — BCM audit: crisis_comms, DR site capacity, campos DRP operacionales en runbooks
+        ("ALTER TABLE bcp_plans ADD COLUMN crisis_comms JSON", "bcp_plans", "crisis_comms"),
+        ("ALTER TABLE bcm_locations ADD COLUMN capacity_details JSON", "bcm_locations", "capacity_details"),
+        ("ALTER TABLE bcp_test_runbooks ADD COLUMN runbook_type VARCHAR(32)", "bcp_test_runbooks", "runbook_type"),
+        ("ALTER TABLE bcp_test_runbooks ADD COLUMN activation_condition TEXT", "bcp_test_runbooks", "activation_condition"),
+        ("ALTER TABLE bcp_test_runbooks ADD COLUMN credentials_vault_ref TEXT", "bcp_test_runbooks", "credentials_vault_ref"),
+        ("ALTER TABLE bcp_test_runbooks ADD COLUMN success_criteria TEXT", "bcp_test_runbooks", "success_criteria"),
+        ("ALTER TABLE bcp_test_runbooks ADD COLUMN responsible_name VARCHAR(255)", "bcp_test_runbooks", "responsible_name"),
+        ("ALTER TABLE bcp_test_runbooks ADD COLUMN backup_responsible_name VARCHAR(255)", "bcp_test_runbooks", "backup_responsible_name"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

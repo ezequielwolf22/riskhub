@@ -17,7 +17,7 @@ setup_logging(env=settings.env)
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
-    cve, documents, evidence, executive, external_findings, feature_flags, gdpr, incidents,
+    cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents,
     integrations_erp, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
     osint, policies, portal, predictive, report_schedules, reports, risks, search, sharepoint,
     soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, users, webhooks,
@@ -191,6 +191,7 @@ app.include_router(integrations_virustotal.router)
 app.include_router(management_review.router)
 app.include_router(soa_versions.router)
 app.include_router(nis2.router)
+app.include_router(inbox.router)
 app.include_router(change_requests.router)
 app.include_router(report_schedules.router)
 app.include_router(bcp.router)

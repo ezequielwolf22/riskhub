@@ -117,6 +117,90 @@ const UI = {
   /* Alias de UI.toast para compatibilidad con modulos que usan UI.message() */
   message(msg, kind) { UI.toast(msg, kind); },
 
+  /* ── Componente de pestanas para vistas hub ──────────────────────────────
+     Renderiza una barra de pestanas accesible (tablist) y monta la View
+     activa en un panel (lazy: solo se renderiza la pestana activa).
+     opts = {
+       hub:   'risk-hub',          // segmento base del hash
+       label: 'Riesgos y activos', // aria-label del tablist
+       tabs: [{
+         id:    'assets',          // segmento anidado del hash (#/risk-hub/assets)
+         label: 'Activos',
+         view:  ViewAssets,        // objeto con render(el) — o bien:
+         render: async (el)=>{},   // render custom (tiene prioridad sobre view)
+         route: 'assets',          // ruta legacy (para feature flags de modulos)
+         visible: () => bool,      // visibilidad opcional (rol)
+       }],
+     }
+  */
+  tabs(container, opts) {
+    const hub = opts.hub;
+    const disabled = (window.RiskHubFlags && window.RiskHubFlags.disabled) || null;
+    const tabs = (opts.tabs || []).filter(t =>
+      (!t.visible || t.visible()) && !(disabled && t.route && disabled.has(t.route)));
+    if (!tabs.length) {
+      container.innerHTML = UI.notice('No hay secciones disponibles en este modulo.');
+      return;
+    }
+
+    const hashPath = location.hash.replace(/^#\/?/, '').split('?')[0];
+    const sub = hashPath.split('/')[1] || '';
+    let active = tabs.find(t => t.id === sub) || tabs[0];
+
+    container.innerHTML = `
+      <div class="hub-tabs" role="tablist" aria-label="${UI.esc(opts.label || hub)}">
+        ${tabs.map(t => `
+          <button type="button" class="hub-tab" role="tab"
+                  id="hubtab-${UI.esc(hub)}-${UI.esc(t.id)}"
+                  data-tab="${UI.esc(t.id)}"
+                  aria-selected="false" aria-controls="hubpanel-${UI.esc(hub)}"
+                  tabindex="-1">${UI.esc(t.label)}</button>`).join('')}
+      </div>
+      <div class="hub-tab-panel" id="hubpanel-${UI.esc(hub)}" role="tabpanel" tabindex="0"></div>`;
+
+    const panel = container.querySelector('.hub-tab-panel');
+    const btns = Array.from(container.querySelectorAll('.hub-tab'));
+
+    async function activate(tab, keepQuery) {
+      active = tab;
+      btns.forEach(b => {
+        const on = b.dataset.tab === tab.id;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+        b.tabIndex = on ? 0 : -1;
+      });
+      // Hash anidado para deep-linking, sin disparar hashchange ni recargar
+      const query = location.hash.split('?')[1];
+      const newHash = '#/' + hub + '/' + tab.id + (keepQuery && query ? '?' + query : '');
+      if (location.hash !== newHash) history.replaceState(null, '', newHash);
+      panel.innerHTML = '';
+      panel.setAttribute('aria-labelledby', 'hubtab-' + hub + '-' + tab.id);
+      try {
+        if (tab.render) await tab.render(panel);
+        else await tab.view.render(panel);
+      } catch (e) {
+        panel.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+      }
+    }
+
+    btns.forEach((b, i) => {
+      b.onclick = () => activate(tabs[i], false);
+      b.onkeydown = (e) => {
+        let target = null;
+        if (e.key === 'ArrowRight') target = (i + 1) % btns.length;
+        else if (e.key === 'ArrowLeft') target = (i - 1 + btns.length) % btns.length;
+        else if (e.key === 'Home') target = 0;
+        else if (e.key === 'End') target = btns.length - 1;
+        if (target === null) return;
+        e.preventDefault();
+        btns[target].focus();
+        activate(tabs[target], false);
+      };
+    });
+
+    activate(active, true);
+  },
+
   // Decoradores helpers
   assetTypeLabel(t) {
     return ({

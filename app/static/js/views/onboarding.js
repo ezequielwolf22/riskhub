@@ -1,498 +1,1086 @@
-/* views/onboarding.js - Configuracion del Agente IA y onboarding de documentos. */
+/* views/onboarding.js - Wizard lineal de setup inicial en 5 pasos.
+ *
+ * Paso 1: Organizacion      -> /api/context/ + /api/ai/config/
+ * Paso 2: Cuestionario IA   -> /api/ai/questionnaire (troceado en sub-pantallas)
+ * Paso 3: Documentos        -> /api/ai/documents/ (drag & drop, vectorizacion automatica)
+ * Paso 4: Revisar propuesta -> /api/ai/analyze/async + polling + /api/ai/import
+ * Paso 5: Automatizaciones  -> tarjetas informativas + API key + setup_completed
+ *
+ * Estado persistente:
+ *   localStorage riskhub_wizard_step     -> paso actual (1-5)
+ *   localStorage riskhub_wizard_substep  -> sub-pantalla del cuestionario
+ *   localStorage riskhub_wizard_answers  -> respuestas del cuestionario (JSON)
+ *   localStorage riskhub_onboarding_done / riskhub_onboarding_skipped (mecanismo existente)
+ */
 
 const ViewOnboarding = (() => {
 
-  const CATEGORIES = [
-    { id: 'architecture',        label: 'Arquitectura y sistemas',
-      desc: 'Diagramas de red, inventarios de sistemas, arquitecturas cloud/on-premise.' },
-    { id: 'normative',           label: 'Normativa y compliance',
-      desc: 'Normas aplicables: ISO 27001, ENS, NIS2, GDPR, PCI-DSS, HIPAA.' },
-    { id: 'policies',            label: 'Politicas y procedimientos',
-      desc: 'Politica de seguridad, gestion de accesos, backups, continuidad de negocio.' },
-    { id: 'assets_inventory',    label: 'Inventario de activos',
-      desc: 'Listado de activos TI, valoracion CIA, clasificacion por criticidad.' },
-    { id: 'risk_assessments',    label: 'Evaluaciones de riesgo previas',
-      desc: 'Informes de analisis de riesgos anteriores, DPIA, auditorias.' },
-    { id: 'critical_suppliers',  label: 'Proveedores criticos',
-      desc: 'Contratos, evaluaciones de terceros, SLA, acuerdos de tratamiento de datos.' },
-    { id: 'incidents_lessons',   label: 'Incidentes y lecciones aprendidas',
-      desc: 'Informes post-incidente, root cause analysis, planes de mejora.' },
-    { id: 'other',               label: 'Otros documentos',
-      desc: 'Cualquier documentacion adicional relevante para el contexto de la organizacion.' },
+  const LS_STEP    = 'riskhub_wizard_step';
+  const LS_SUBSTEP = 'riskhub_wizard_substep';
+  const LS_ANSWERS = 'riskhub_wizard_answers';
+
+  const STEPS = [
+    { n: 1, label: 'Organizacion' },
+    { n: 2, label: 'Cuestionario IA' },
+    { n: 3, label: 'Documentos' },
+    { n: 4, label: 'Revisar propuesta' },
+    { n: 5, label: 'Automatizaciones' },
   ];
 
-  const MODELS = [
-    { value: 'claude-opus-4-5',  label: 'Claude Opus 4.5 (mas potente)' },
-    { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5 (equilibrado)' },
-    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (mas rapido)' },
+  const ACCEPTED_EXTS = ['pdf', 'docx', 'txt', 'csv'];
+
+  const SECTORS = ['Financiero / Banca', 'Sanitario / Salud', 'Industrial / Manufactura',
+    'Tecnologia / Software', 'Administracion publica', 'Educacion',
+    'Energia / Utilities', 'Retail / Comercio', 'Servicios profesionales', 'Otro'];
+
+  const SIZES = ['< 50 empleados', '50-250 empleados', '250-1.000 empleados',
+    '1.000-5.000 empleados', '> 5.000 empleados'];
+
+  const AUTOMATIONS = [
+    { title: 'Escaneo CVE automatico',
+      desc: 'Consulta periodica de la NVD para detectar vulnerabilidades conocidas en tu stack tecnologico y vincularlas a los activos.' },
+    { title: 'Re-escaneo OSINT semanal',
+      desc: 'Revision semanal de exposicion externa (dominios, emails, IPs). Los hallazgos criticos generan incidentes automaticamente.' },
+    { title: 'Informe mensual',
+      desc: 'Generacion automatica de un informe ejecutivo mensual con la evolucion del riesgo y el estado del SGSI.' },
+    { title: 'Escalado de tareas',
+      desc: 'Las tareas vencidas se escalan automaticamente para que ninguna accion de tratamiento quede olvidada.' },
+    { title: 'Revision de politicas',
+      desc: 'Aviso automatico cuando una politica supera su fecha de revision prevista.' },
+    { title: 'Degradacion de controles',
+      desc: 'Deteccion de controles cuya efectividad decae con el tiempo sin evidencias recientes.' },
   ];
 
-  const ANON_LEVELS = [
-    { value: 'low',    label: 'Bajo — solo IPs y emails' },
-    { value: 'medium', label: 'Medio — IPs, emails y dominios (recomendado)' },
-    { value: 'high',   label: 'Alto — IPs, emails, dominios y nombres propios' },
-  ];
+  // ---------- Estado ----------
 
-  let _cfg = null;
-  let _docs = [];
-  let _saving = false;
+  let _step = 1;          // paso actual 1-5
+  let _substep = 0;       // sub-pantalla dentro del paso 2
+  let _cfg = null;        // /api/ai/config/
+  let _ctx = null;        // /api/context/
+  let _questions = null;  // definicion del cuestionario
+  let _groups = [];       // sub-pantallas: [{title, questions}]
+  let _answers = {};      // respuestas acumuladas
+  let _customControls = [];
+  let _docs = [];         // documentos ya subidos
+  let _queue = [];        // cola de subida paso 3: {name, size, status, error}
+  let _uploading = false;
+  let _result = null;     // resultado del analisis IA
+  let _importResult = null;
+  let _analyzing = false;
+  let _busy = false;      // operacion async de navegacion en curso
 
-  // ---------- Render principal ----------
+  // ---------- Entry point ----------
 
   async function render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Configuracion del Agente IA',
-      'Contextualiza el agente con la informacion de tu organizacion para obtener analisis mas precisos.'
-    ) + '<div id="ob-root"></div>';
-    await _load();
-    _render();
+      'Asistente de configuracion',
+      'Configura RiskHub en 5 pasos: organizacion, cuestionario, documentos, propuesta IA y automatizaciones.'
+    ) + '<div id="wz-root">' + UI.notice('Cargando...') + '</div>';
+
+    _restoreLocal();
+    await _loadBase();
+    _renderWizard();
   }
 
-  async function _load() {
+  function _restoreLocal() {
+    const s = parseInt(localStorage.getItem(LS_STEP), 10);
+    _step = (s >= 1 && s <= 5) ? s : 1;
+    const ss = parseInt(localStorage.getItem(LS_SUBSTEP), 10);
+    _substep = (ss >= 0) ? ss : 0;
     try {
-      [_cfg, _docs] = await Promise.all([
-        Api.aiConfig.get(),
-        Api.aiDocuments.list(),
-      ]);
-    } catch (_) {
-      _cfg = { model: 'claude-opus-4-5', anonymization_level: 'medium',
-               setup_completed: false, has_api_key: false };
-      _docs = [];
+      const a = JSON.parse(localStorage.getItem(LS_ANSWERS) || '{}');
+      if (a && typeof a === 'object') _answers = a;
+    } catch (_) { _answers = {}; }
+    if (Array.isArray(_answers.custom_controls)) {
+      _customControls = [..._answers.custom_controls];
     }
   }
 
-  function _render() {
-    const root = document.getElementById('ob-root');
-    if (!root) return;
-
-    const completionPct = _computeCompletion();
-
-    root.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start;">
-
-        <!-- columna izquierda: secciones -->
-        <div>
-          ${_renderWelcome(completionPct)}
-          ${_renderProfileSection()}
-          ${CATEGORIES.map(_renderDocSection).join('')}
-          ${_renderAiConfigSection()}
-        </div>
-
-        <!-- columna derecha: resumen -->
-        <div style="position:sticky;top:80px;">
-          ${_renderSidebar(completionPct)}
-        </div>
-
-      </div>`;
-
-    _wireEvents();
+  function _persistLocal() {
+    localStorage.setItem(LS_STEP, String(_step));
+    localStorage.setItem(LS_SUBSTEP, String(_substep));
+    if (_customControls.length) _answers.custom_controls = [..._customControls];
+    localStorage.setItem(LS_ANSWERS, JSON.stringify(_answers));
   }
 
-  // ---------- Seccion de bienvenida ----------
-
-  function _renderWelcome(pct) {
-    const bar = `<div style="background:var(--border);border-radius:999px;height:6px;margin:8px 0 4px;">
-      <div style="background:var(--brand-purple);height:6px;border-radius:999px;width:${pct}%;transition:width .4s;"></div>
-    </div>`;
-    return `
-      <div class="card" style="margin-bottom:16px;border-left:4px solid var(--brand-purple);">
-        <h3 style="margin:0 0 8px;font-size:16px;color:var(--brand-purple);">
-          Configuracion completada al ${pct}%
-        </h3>
-        ${bar}
-        <p style="font-size:13px;color:var(--text-muted);margin:6px 0 0;line-height:1.5;">
-          Cuantos mas documentos y datos proporciones, mas preciso sera el agente.
-          Puedes volver aqui en cualquier momento para actualizar la informacion.
-        </p>
-        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
-          <a href="#/ai-chat" class="btn btn-primary" style="font-size:13px;">
-            Ir al Chat IA
-          </a>
-          <a href="#/ai-documents" class="btn btn-ghost" style="font-size:13px;">
-            Gestionar documentos
-          </a>
-          ${!_cfg.setup_completed ? `
-            <button class="btn btn-ghost" id="ob-skip" style="font-size:13px;color:var(--text-muted);">
-              Omitir por ahora
-            </button>` : ''}
-        </div>
-      </div>`;
+  async function _loadBase() {
+    const results = await Promise.allSettled([
+      Api.aiConfig.get(),
+      Api.context.get(),
+      Api.aiDocuments.list(),
+    ]);
+    _cfg  = results[0].status === 'fulfilled' ? results[0].value
+          : { model: 'claude-opus-4-5', anonymization_level: 'medium',
+              setup_completed: false, has_api_key: false };
+    _ctx  = results[1].status === 'fulfilled' ? (results[1].value || {}) : {};
+    _docs = results[2].status === 'fulfilled' ? (results[2].value || []) : [];
   }
 
-  // ---------- Perfil de organizacion ----------
-
-  function _renderProfileSection() {
-    const c = _cfg || {};
-    return `
-      <div class="card ob-section" id="ob-sec-profile" style="margin-bottom:16px;">
-        <div class="ob-sec-header" style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-          <div style="width:32px;height:32px;background:var(--brand-purple-4);border-radius:8px;
-                      display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-purple)"
-                 stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/>
-              <path d="M8 7h8M8 12h8M8 17h4"/></svg>
-          </div>
-          <div>
-            <h3 style="margin:0;font-size:15px;">Perfil de la organizacion</h3>
-            <p style="margin:0;font-size:12px;color:var(--text-muted);">
-              Contexto basico para que el agente entienda tu organizacion.
-            </p>
-          </div>
-        </div>
-        <div class="form-grid">
-          <div>
-            <label>Sector de actividad</label>
-            <select id="ob-sector">
-              <option value="">-- Seleccionar --</option>
-              ${['Financiero / Banca','Sanitario / Salud','Industrial / Manufactura',
-                 'Tecnologia / Software','Administracion publica','Educacion',
-                 'Energia / Utilities','Retail / Comercio','Servicios profesionales','Otro']
-                .map(s => `<option value="${s}"${c.org_sector===s?' selected':''}>${s}</option>`)
-                .join('')}
-            </select>
-          </div>
-          <div>
-            <label>Tamano de la organizacion</label>
-            <select id="ob-size">
-              <option value="">-- Seleccionar --</option>
-              ${['< 50 empleados','50-250 empleados','250-1.000 empleados',
-                 '1.000-5.000 empleados','> 5.000 empleados']
-                .map(s => `<option value="${s}"${c.org_size===s?' selected':''}>${s}</option>`)
-                .join('')}
-            </select>
-          </div>
-          <div class="span2">
-            <label>Procesos criticos del negocio</label>
-            <textarea id="ob-processes" rows="3" placeholder="Ej: facturacion, atencion al cliente, produccion industrial, trading...">${c.org_critical_processes || ''}</textarea>
-          </div>
-          <div class="span2">
-            <label>Stack tecnologico principal</label>
-            <textarea id="ob-tech" rows="2" placeholder="Ej: AWS, Active Directory, SAP ERP, Microsoft 365, servidores on-premise...">${c.org_tech_stack || ''}</textarea>
-          </div>
-        </div>
-        <div style="margin-top:12px;">
-          <button class="btn btn-primary" id="ob-save-profile">Guardar perfil</button>
-        </div>
-      </div>`;
-  }
-
-  // ---------- Seccion de carga de documentos ----------
-
-  function _renderDocSection(cat) {
-    const catDocs = _docs.filter(d => d.category === cat.id);
-    const statusIcons = { indexed: '✓', processing: '⟳', pending: '⌛', error: '✗' };
-    const statusColors = { indexed: 'var(--risk-low)', processing: 'var(--brand-orange)',
-                           pending: 'var(--text-muted)', error: 'var(--risk-critical)' };
-    const docsHtml = catDocs.length ? `
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
-        ${catDocs.map(d => `
-          <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;
-                      background:var(--bg-2);border-radius:6px;font-size:12px;">
-            <span style="color:${statusColors[d.status]||'var(--text-muted)'};">
-              ${statusIcons[d.status]||'?'}
-            </span>
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
-                  title="${UI.esc(d.original_name)}">${UI.esc(d.original_name)}</span>
-            ${d.chunk_count ? `<span style="color:var(--text-muted);">${d.chunk_count} frags</span>` : ''}
-            ${d.error_message ? `<span style="color:var(--risk-critical);" title="${UI.esc(d.error_message)}">!</span>` : ''}
-            <button class="btn btn-ghost" style="padding:2px 6px;font-size:11px;"
-                    onclick="ViewOnboarding._deleteDoc(${d.id})" title="Eliminar">x</button>
-          </div>`).join('')}
-      </div>` : `<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;">
-        Sin documentos en esta categoria.</p>`;
-
-    return `
-      <div class="card ob-section" id="ob-sec-${cat.id}" style="margin-bottom:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div style="width:32px;height:32px;background:var(--bg-3);border-radius:8px;
-                        display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                   stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/></svg>
-            </div>
-            <div>
-              <h4 style="margin:0;font-size:14px;">${cat.label}
-                ${catDocs.length ? `<span style="background:var(--brand-purple-4);color:var(--brand-purple);
-                  border-radius:999px;padding:1px 7px;font-size:11px;font-weight:600;margin-left:6px;">
-                  ${catDocs.length}</span>` : ''}
-              </h4>
-              <p style="margin:0;font-size:12px;color:var(--text-muted);">${cat.desc}</p>
-            </div>
-          </div>
-          <label class="btn btn-ghost" style="cursor:pointer;font-size:12px;white-space:nowrap;">
-            Subir archivo
-            <input type="file" accept=".pdf,.docx,.txt,.csv" style="display:none;"
-                   onchange="ViewOnboarding._upload(this, '${cat.id}')">
-          </label>
-        </div>
-        ${docsHtml}
-        <div id="ob-up-status-${cat.id}" style="font-size:12px;margin-top:6px;"></div>
-      </div>`;
-  }
-
-  // ---------- Seccion de configuracion del agente ----------
-
-  function _renderAiConfigSection() {
-    const c = _cfg || {};
-    const keyOk = c.has_api_key;
-    return `
-      <div class="card ob-section" id="ob-sec-ai-config" style="margin-bottom:16px;
-           border: 2px solid ${keyOk ? 'var(--risk-low)' : 'var(--brand-orange)'};">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-          <div style="width:32px;height:32px;background:var(--brand-purple-4);border-radius:8px;
-                      display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--brand-purple)"
-                 stroke-width="2"><circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
-                       a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
-                       A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
-                       l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
-                       A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
-                       l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
-                       a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
-                       l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
-                       a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          </div>
-          <div>
-            <h3 style="margin:0;font-size:15px;">Configuracion del Agente IA</h3>
-            <p style="margin:0;font-size:12px;color:var(--text-muted);">
-              ${keyOk
-                ? '<span style="color:var(--risk-low);">API key configurada</span>'
-                : '<span style="color:var(--brand-orange);">Requiere API key de Anthropic para activar el agente.</span>'}
-            </p>
-          </div>
-        </div>
-        <div class="form-grid">
-          <div class="span2">
-            <label>API Key de Anthropic
-              <a href="https://console.anthropic.com/" target="_blank"
-                 style="font-size:11px;margin-left:6px;color:var(--brand-purple);">
-                Obtener clave
-              </a>
-            </label>
-            <input type="password" id="ob-apikey" placeholder="${keyOk ? '••••••••••••••• (configurada)' : 'sk-ant-api03-...'}" autocomplete="new-password">
-          </div>
-          <div class="span2">
-            <label>API Key de Voyage AI
-              <span style="font-size:11px;margin-left:6px;color:var(--text-muted);">Opcional — activa busqueda semantica multilingue en documentos</span>
-              <a href="https://www.voyageai.com/" target="_blank"
-                 style="font-size:11px;margin-left:6px;color:var(--brand-purple);">
-                Obtener clave gratis
-              </a>
-            </label>
-            <input type="password" id="ob-voyage-key" placeholder="${c.has_voyage_key ? '••••••••••••••• (configurada)' : 'pa-...'}" autocomplete="new-password">
-            ${c.has_voyage_key ? `<p style="font-size:12px;color:var(--risk-low);margin:4px 0 0;">Busqueda semantica activa — el agente entiende preguntas en cualquier idioma.</p>` : '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin esta clave el agente usa busqueda por palabras clave. Con ella entiende preguntas en cualquier idioma aunque el documento este en otro.</p>'}
-          </div>
-          <div>
-            <label>Modelo</label>
-            <select id="ob-model">
-              ${MODELS.map(m =>
-                `<option value="${m.value}"${(c.model||'claude-opus-4-5')===m.value?' selected':''}>${m.label}</option>`
-              ).join('')}
-            </select>
-          </div>
-          <div>
-            <label>Nivel de anonimizacion de datos</label>
-            <select id="ob-anon">
-              ${ANON_LEVELS.map(a =>
-                `<option value="${a.value}"${(c.anonymization_level||'medium')===a.value?' selected':''}>${a.label}</option>`
-              ).join('')}
-            </select>
-          </div>
-        </div>
-        <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
-          <button class="btn btn-primary" id="ob-save-ai">Guardar configuracion</button>
-          <button class="btn btn-ghost" id="ob-test-ai">Probar conexion</button>
-          <span id="ob-test-result" style="font-size:12px;"></span>
-        </div>
-      </div>`;
-  }
-
-  // ---------- Sidebar resumen ----------
-
-  function _renderSidebar(pct) {
-    const docsByCategory = {};
-    CATEGORIES.forEach(c => {
-      docsByCategory[c.id] = _docs.filter(d => d.category === c.id).length;
+  async function _loadQuestions() {
+    if (_questions) return;
+    const data = await Api.get('/api/ai/questionnaire');
+    _questions = data.questions || [];
+    // Respuestas guardadas server-side (de un analisis previo) como base;
+    // las respuestas locales del wizard tienen prioridad por ser mas recientes.
+    if (data.saved_answers && Object.keys(data.saved_answers).length > 0) {
+      _answers = { ...data.saved_answers, ..._answers };
+      if (Array.isArray(_answers.custom_controls) && !_customControls.length) {
+        _customControls = [..._answers.custom_controls];
+      }
+    }
+    // Agrupar por categoria -> sub-pantallas de 2-3 preguntas
+    const byCat = [];
+    _questions.forEach(q => {
+      let g = byCat.find(x => x.title === q.category);
+      if (!g) { g = { title: q.category, questions: [] }; byCat.push(g); }
+      g.questions.push(q);
     });
-    const totalDocs = _docs.length;
-    const indexedDocs = _docs.filter(d => d.status === 'indexed').length;
+    _groups = byCat;
+    if (_substep >= _groups.length) _substep = 0;
+  }
+
+  // ---------- Layout general ----------
+
+  function _renderWizard() {
+    const root = document.getElementById('wz-root');
+    if (!root) return;
+    root.innerHTML = `
+      ${_renderProgress()}
+      <div class="card wizard-card" id="wz-card">
+        <div id="wz-body"></div>
+        <div class="wizard-nav" id="wz-nav"></div>
+      </div>
+      <div class="wizard-later">
+        <button type="button" class="btn btn-ghost" id="wz-later">Completar mas tarde</button>
+      </div>`;
+    document.getElementById('wz-later').onclick = _skipLater;
+    _renderStep();
+  }
+
+  function _renderProgress() {
+    return `
+      <ol class="wizard-progress" aria-label="Progreso del asistente">
+        ${STEPS.map(s => {
+          const state = s.n < _step ? 'done' : (s.n === _step ? 'active' : '');
+          return `
+            <li class="wizard-step ${state}" ${s.n === _step ? 'aria-current="step"' : ''}>
+              <span class="wizard-step-dot">${s.n < _step ? '&#10003;' : s.n}</span>
+              <span class="wizard-step-label">${UI.esc(s.label)}</span>
+            </li>`;
+        }).join('')}
+      </ol>`;
+  }
+
+  function _updateProgress() {
+    const ol = document.querySelector('#wz-root .wizard-progress');
+    if (ol) ol.outerHTML = _renderProgress();
+  }
+
+  async function _renderStep() {
+    _persistLocal();
+    _updateProgress();
+    const body = document.getElementById('wz-body');
+    if (!body) return;
+    try {
+      if (_step === 1) _renderStep1(body);
+      else if (_step === 2) await _renderStep2(body);
+      else if (_step === 3) _renderStep3(body);
+      else if (_step === 4) _renderStep4(body);
+      else _renderStep5(body);
+    } catch (e) {
+      body.innerHTML = `
+        <div class="notice notice-error">${UI.esc(e.message)}</div>
+        <button type="button" class="btn btn-primary" style="margin-top:12px;"
+                onclick="ViewOnboarding._retryStep()">Reintentar</button>`;
+      _renderNav({ nextDisabled: true });
+      return;
+    }
+    // Foco al titulo del paso (accesibilidad)
+    const h = document.getElementById('wz-step-title');
+    if (h) h.focus();
+  }
+
+  function _retryStep() { _renderStep(); }
+
+  function _renderNav(opts = {}) {
+    const nav = document.getElementById('wz-nav');
+    if (!nav) return;
+    const isLast = _step === 5;
+    nav.innerHTML = `
+      <button type="button" class="btn btn-ghost" id="wz-prev"
+              ${(_step === 1 && _substep === 0) || _busy ? 'disabled' : ''}>
+        &larr; Atras
+      </button>
+      <span class="wizard-nav-error" id="wz-nav-error" role="alert"></span>
+      ${isLast ? `
+        <button type="button" class="btn btn-primary" id="wz-finish" ${_busy ? 'disabled' : ''}>
+          Finalizar setup
+        </button>` : `
+        <button type="button" class="btn btn-primary" id="wz-next"
+                ${opts.nextDisabled || _busy ? 'disabled' : ''}>
+          ${UI.esc(opts.nextLabel || 'Siguiente')} &rarr;
+        </button>`}`;
+    const prev = document.getElementById('wz-prev');
+    if (prev) prev.onclick = _prev;
+    const next = document.getElementById('wz-next');
+    if (next) next.onclick = _next;
+    const fin = document.getElementById('wz-finish');
+    if (fin) fin.onclick = _finish;
+  }
+
+  function _navError(msg) {
+    const el = document.getElementById('wz-nav-error');
+    if (el) el.textContent = msg || '';
+  }
+
+  function _setBusy(busy, label) {
+    _busy = busy;
+    ['wz-prev', 'wz-next', 'wz-finish', 'wz-later'].forEach(id => {
+      const b = document.getElementById(id);
+      if (b) b.disabled = busy || (id === 'wz-prev' && _step === 1 && _substep === 0);
+    });
+    const next = document.getElementById('wz-next') || document.getElementById('wz-finish');
+    if (next && label) next.textContent = busy ? label : next.textContent;
+  }
+
+  function _stepTitle(title, hint) {
+    return `
+      <h2 class="wizard-step-title" id="wz-step-title" tabindex="-1">${UI.esc(title)}</h2>
+      ${hint ? `<p class="wizard-step-hint">${hint}</p>` : ''}`;
+  }
+
+  function _skipLater() {
+    // Mismo comportamiento de skip que el onboarding anterior
+    localStorage.setItem('riskhub_onboarding_skipped', '1');
+    _persistLocal();
+    UI.toast('Puedes retomar el asistente desde #/onboarding cuando quieras', 'info');
+    location.hash = '/dashboard';
+  }
+
+  // ---------- Navegacion ----------
+
+  async function _prev() {
+    if (_busy) return;
+    _navError('');
+    if (_step === 2 && _substep > 0) {
+      _collectSubstepAnswers();   // guardar lo escrito antes de retroceder
+      _substep--;
+    } else if (_step > 1) {
+      if (_step === 2) _collectSubstepAnswers();
+      _step--;
+      if (_step === 2 && _groups.length) _substep = _groups.length - 1;
+    }
+    _renderStep();
+  }
+
+  async function _next() {
+    if (_busy) return;
+    _navError('');
+    try {
+      if (_step === 1) {
+        if (!(await _saveStep1())) return;
+        _step = 2; _substep = 0;
+      } else if (_step === 2) {
+        if (!_validateSubstep()) return;
+        _collectSubstepAnswers();
+        if (_substep < _groups.length - 1) {
+          _substep++;
+        } else {
+          _step = 3;
+        }
+      } else if (_step === 3) {
+        _step = 4;
+      } else if (_step === 4) {
+        _step = 5;
+      }
+      _renderStep();
+    } catch (e) {
+      _navError(e.message);
+    }
+  }
+
+  // ============================================================
+  // Paso 1 — Organizacion
+  // ============================================================
+
+  function _renderStep1(body) {
+    const name  = _ctx.organization_name || '';
+    const scope = _ctx.scope || '';
+    body.innerHTML = `
+      ${_stepTitle('Datos de la organizacion',
+        'Lo imprescindible para empezar. El resto del contexto lo completara la IA con el cuestionario y tus documentos.')}
+      <div class="form-grid">
+        <div class="span2">
+          <label for="wz-org-name">Nombre de la organizacion <span class="wizard-req">*</span></label>
+          <input id="wz-org-name" type="text" maxlength="200" value="${UI.esc(name)}"
+                 placeholder="Ej: Acme Iberia S.L.">
+          <div class="wizard-field-error" id="wz-err-org-name" role="alert"></div>
+        </div>
+        <div>
+          <label for="wz-sector">Sector de actividad <span class="wizard-req">*</span></label>
+          <select id="wz-sector">
+            <option value="">-- Seleccionar --</option>
+            ${SECTORS.map(s =>
+              `<option value="${UI.esc(s)}"${_cfg.org_sector === s ? ' selected' : ''}>${UI.esc(s)}</option>`
+            ).join('')}
+          </select>
+          <div class="wizard-field-error" id="wz-err-sector" role="alert"></div>
+        </div>
+        <div>
+          <label for="wz-size">Tamano de la organizacion <span class="wizard-req">*</span></label>
+          <select id="wz-size">
+            <option value="">-- Seleccionar --</option>
+            ${SIZES.map(s =>
+              `<option value="${UI.esc(s)}"${_cfg.org_size === s ? ' selected' : ''}>${UI.esc(s)}</option>`
+            ).join('')}
+          </select>
+          <div class="wizard-field-error" id="wz-err-size" role="alert"></div>
+        </div>
+        <div class="span2">
+          <label for="wz-scope">Alcance del SGSI <span class="wizard-req">*</span></label>
+          <textarea id="wz-scope" rows="3"
+            placeholder="Ej: Sistemas de informacion que soportan la facturacion y la atencion al cliente en la sede central...">${UI.esc(scope)}</textarea>
+          <div class="wizard-field-error" id="wz-err-scope" role="alert"></div>
+        </div>
+      </div>`;
+    _renderNav();
+  }
+
+  function _fieldError(id, msg) {
+    const el = document.getElementById('wz-err-' + id);
+    if (el) el.textContent = msg || '';
+  }
+
+  async function _saveStep1() {
+    const name   = document.getElementById('wz-org-name').value.trim();
+    const sector = document.getElementById('wz-sector').value;
+    const size   = document.getElementById('wz-size').value;
+    const scope  = document.getElementById('wz-scope').value.trim();
+
+    let ok = true;
+    _fieldError('org-name', name ? '' : 'Introduce el nombre de la organizacion.');
+    _fieldError('sector',   sector ? '' : 'Selecciona un sector.');
+    _fieldError('size',     size ? '' : 'Selecciona el tamano.');
+    _fieldError('scope',    scope ? '' : 'Describe brevemente el alcance del SGSI.');
+    if (!name || !sector || !size || !scope) ok = false;
+    if (!ok) { _navError('Completa los campos marcados.'); return false; }
+
+    _setBusy(true, 'Guardando...');
+    try {
+      // Contexto SGSI (mismo endpoint que la vista Contexto)
+      _ctx = await Api.context.update({ organization_name: name, scope: scope });
+      // Perfil en config IA (mismo endpoint que el onboarding anterior)
+      _cfg = { ..._cfg, ...await Api.aiConfig.update({ org_sector: sector, org_size: size }) };
+      return true;
+    } catch (e) {
+      const msg = e.status === 403
+        ? 'Necesitas rol de administrador para guardar el contexto. Pide a un admin que complete el asistente.'
+        : 'No se pudo guardar: ' + e.message;
+      _navError(msg);
+      return false;
+    } finally {
+      _setBusy(false);
+      _renderNav();
+    }
+  }
+
+  // ============================================================
+  // Paso 2 — Cuestionario IA (sub-pantallas por categoria)
+  // ============================================================
+
+  async function _renderStep2(body) {
+    body.innerHTML = '<div class="notice">Cargando cuestionario...</div>';
+    await _loadQuestions();
+    const group = _groups[_substep];
+    if (!group) { _step = 3; _renderStep(); return; }
+
+    const pct = Math.round(((_substep) / _groups.length) * 100);
+
+    body.innerHTML = `
+      ${_stepTitle('Cuestionario IA — ' + group.title,
+        'Tus respuestas alimentan el analisis de riesgos ISO 27005 / MAGERIT del paso 4. Se guardan automaticamente al avanzar.')}
+      <div class="wizard-substep" aria-label="Progreso del cuestionario">
+        <div class="wizard-substep-bar"><div style="width:${pct}%;"></div></div>
+        <span class="wizard-substep-text">Bloque ${_substep + 1} de ${_groups.length}</span>
+      </div>
+      ${group.questions.map(_renderQuestion).join('')}`;
+
+    _prefillSubstep(group);
+    _wireQuestionEvents();
+    _renderNav({ nextLabel: _substep < _groups.length - 1 ? 'Siguiente' : 'Siguiente paso' });
+  }
+
+  function _renderQuestion(q) {
+    const req = q.required ? ' <span class="wizard-req">*</span>' : '';
+    let control = '';
+
+    if (q.type === 'select') {
+      control = `
+        <select id="wzq-${UI.esc(q.id)}">
+          <option value="">-- Selecciona --</option>
+          ${(q.options || []).map(o => `<option value="${UI.esc(o)}">${UI.esc(o)}</option>`).join('')}
+        </select>`;
+    } else if (q.type === 'multiselect') {
+      control = `
+        <div class="wizard-ms-grid" id="wz-ms-${UI.esc(q.id)}">
+          ${(q.options || []).map(o => `
+            <label class="wizard-ms-opt">
+              <input type="checkbox" data-wzq="${UI.esc(q.id)}" value="${UI.esc(o)}">
+              <span>${UI.esc(o)}</span>
+            </label>`).join('')}
+        </div>`;
+      if (q.id === 'regulations') {
+        control += `
+          <div id="wz-ens-wrap" class="wizard-ens-wrap" style="display:none;">
+            <span class="wizard-ens-title">Nivel ENS (RD 311/2022) <span class="wizard-req">*</span></span>
+            <div class="wizard-ens-opts">
+              ${['basico', 'medio', 'alto'].map(lvl => `
+                <label class="wizard-ens-opt">
+                  <input type="radio" name="wz_ens_level" value="${lvl}">
+                  ${lvl.charAt(0).toUpperCase() + lvl.slice(1)}
+                </label>`).join('')}
+            </div>
+          </div>`;
+      }
+      if (q.id === 'controls_existing') {
+        control += `
+          <div class="wizard-custom-ctrl">
+            <label for="wz-custom-ctrl-input">Anadir control adicional (no esta en la lista)</label>
+            <div class="wizard-custom-ctrl-row">
+              <input id="wz-custom-ctrl-input" type="text" maxlength="120"
+                     placeholder="Ej: WAF, PAM, Zero Trust, cifrado de emails...">
+              <button type="button" class="btn" onclick="ViewOnboarding._addCustomControl()">+ Anadir</button>
+            </div>
+            <div id="wz-custom-ctrl-list" class="wizard-custom-ctrl-list"></div>
+          </div>`;
+      }
+    } else { // textarea
+      control = `<textarea id="wzq-${UI.esc(q.id)}" rows="3"
+        placeholder="Opcional — escribe cualquier informacion relevante..."></textarea>`;
+    }
+
+    const extra = q.allow_extra ? `
+      <button type="button" class="btn btn-ghost wizard-extra-btn"
+              onclick="ViewOnboarding._toggleExtra('${UI.esc(q.id)}')">+ Anadir criterio</button>
+      <div id="wz-extra-wrap-${UI.esc(q.id)}" style="display:none;margin-top:8px;">
+        <label for="wz-extra-${UI.esc(q.id)}" class="wizard-extra-label">Criterio adicional para el agente IA</label>
+        <textarea id="wz-extra-${UI.esc(q.id)}" rows="2"
+          placeholder="Contexto, restriccion o requisito relevante sobre este punto..."></textarea>
+      </div>` : '';
 
     return `
-      <div class="card" style="margin-bottom:16px;">
-        <h4 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;
-                   color:var(--text-muted);letter-spacing:.5px;">Resumen</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-          <div style="text-align:center;padding:10px;background:var(--bg-2);border-radius:8px;">
-            <div style="font-size:22px;font-weight:700;color:var(--brand-purple);">${totalDocs}</div>
-            <div style="font-size:11px;color:var(--text-muted);">Documentos</div>
-          </div>
-          <div style="text-align:center;padding:10px;background:var(--bg-2);border-radius:8px;">
-            <div style="font-size:22px;font-weight:700;color:var(--risk-low);">${indexedDocs}</div>
-            <div style="font-size:11px;color:var(--text-muted);">Indexados</div>
-          </div>
-        </div>
+      <div class="wizard-question" id="wz-q-${UI.esc(q.id)}">
+        <label class="wizard-question-label" ${q.type !== 'multiselect' ? `for="wzq-${UI.esc(q.id)}"` : ''}>
+          ${UI.esc(q.question)}${req}
+        </label>
+        ${control}
+        ${extra}
+        <div class="wizard-field-error" id="wz-qerr-${UI.esc(q.id)}" role="alert"></div>
+      </div>`;
+  }
 
-        <h4 style="margin:0 0 8px;font-size:12px;color:var(--text-muted);">Por categoria</h4>
-        ${CATEGORIES.map(c => {
-          const n = docsByCategory[c.id] || 0;
+  function _prefillSubstep(group) {
+    group.questions.forEach(q => {
+      const val = _answers[q.id];
+      if (q.type === 'select' || q.type === 'textarea') {
+        const el = document.getElementById('wzq-' + q.id);
+        if (el && val) el.value = val;
+      } else if (q.type === 'multiselect') {
+        const vals = Array.isArray(val) ? val : (val ? [val] : []);
+        document.querySelectorAll(`input[data-wzq="${q.id}"]`).forEach(cb => {
+          cb.checked = vals.includes(cb.value);
+          _highlightMsOpt(cb);
+        });
+      }
+      if (q.allow_extra && _answers['extra_' + q.id]) {
+        const wrap = document.getElementById('wz-extra-wrap-' + q.id);
+        const inp  = document.getElementById('wz-extra-' + q.id);
+        if (wrap) wrap.style.display = '';
+        if (inp)  inp.value = _answers['extra_' + q.id];
+      }
+    });
+    // ENS
+    const ensWrap = document.getElementById('wz-ens-wrap');
+    if (ensWrap) {
+      const ensChecked = [...document.querySelectorAll('input[data-wzq="regulations"]:checked')]
+        .some(cb => cb.value.startsWith('ENS'));
+      ensWrap.style.display = ensChecked ? '' : 'none';
+      if (_answers.ens_level) {
+        const r = document.querySelector(`input[name="wz_ens_level"][value="${_answers.ens_level}"]`);
+        if (r) r.checked = true;
+      }
+    }
+    _renderCustomControls();
+  }
+
+  function _highlightMsOpt(cb) {
+    const lbl = cb.closest('.wizard-ms-opt');
+    if (lbl) lbl.classList.toggle('checked', cb.checked);
+  }
+
+  function _wireQuestionEvents() {
+    document.querySelectorAll('.wizard-ms-opt input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        _highlightMsOpt(cb);
+        if (cb.dataset.wzq === 'regulations' && cb.value.startsWith('ENS')) {
+          const wrap = document.getElementById('wz-ens-wrap');
+          if (wrap) {
+            wrap.style.display = cb.checked ? '' : 'none';
+            if (!cb.checked) {
+              document.querySelectorAll('input[name="wz_ens_level"]').forEach(r => r.checked = false);
+            }
+          }
+        }
+      });
+    });
+    const ctrlInput = document.getElementById('wz-custom-ctrl-input');
+    if (ctrlInput) {
+      ctrlInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); _addCustomControl(); }
+      });
+    }
+  }
+
+  function _toggleExtra(qId) {
+    const wrap = document.getElementById('wz-extra-wrap-' + qId);
+    if (!wrap) return;
+    const visible = wrap.style.display !== 'none';
+    wrap.style.display = visible ? 'none' : '';
+    if (!visible) document.getElementById('wz-extra-' + qId)?.focus();
+  }
+
+  function _addCustomControl() {
+    const input = document.getElementById('wz-custom-ctrl-input');
+    const val = input ? input.value.trim() : '';
+    if (!val) return;
+    if (_customControls.includes(val)) { UI.toast('Ese control ya esta anadido', 'info'); return; }
+    _customControls.push(val);
+    input.value = '';
+    _renderCustomControls();
+  }
+
+  function _removeCustomControl(idx) {
+    _customControls.splice(idx, 1);
+    _renderCustomControls();
+  }
+
+  function _renderCustomControls() {
+    const list = document.getElementById('wz-custom-ctrl-list');
+    if (!list) return;
+    list.innerHTML = _customControls.map((c, i) => `
+      <span class="wizard-chip">
+        ${UI.esc(c)}
+        <button type="button" aria-label="Quitar ${UI.esc(c)}"
+                onclick="ViewOnboarding._removeCustomControl(${i})">&times;</button>
+      </span>`).join('');
+  }
+
+  function _collectSubstepAnswers() {
+    const group = _groups[_substep];
+    if (!group) return;
+    group.questions.forEach(q => {
+      if (q.type === 'select' || q.type === 'textarea') {
+        const el = document.getElementById('wzq-' + q.id);
+        if (el) _answers[q.id] = el.value;
+      } else if (q.type === 'multiselect') {
+        const grid = document.getElementById('wz-ms-' + q.id);
+        if (grid) {
+          _answers[q.id] = [...grid.querySelectorAll('input:checked')].map(cb => cb.value);
+        }
+      }
+      if (q.allow_extra) {
+        const extra = document.getElementById('wz-extra-' + q.id);
+        if (extra) {
+          const v = extra.value.trim();
+          if (v) _answers['extra_' + q.id] = v;
+          else delete _answers['extra_' + q.id];
+        }
+      }
+    });
+    const ens = document.querySelector('input[name="wz_ens_level"]:checked');
+    if (ens) _answers.ens_level = ens.value;
+    else if (document.getElementById('wz-ens-wrap')) delete _answers.ens_level;
+    if (_customControls.length) _answers.custom_controls = [..._customControls];
+    else delete _answers.custom_controls;
+    _persistLocal();
+  }
+
+  function _validateSubstep() {
+    const group = _groups[_substep];
+    if (!group) return true;
+    let firstBad = null;
+    group.questions.forEach(q => {
+      let bad = false;
+      if (q.required) {
+        if (q.type === 'select') {
+          const el = document.getElementById('wzq-' + q.id);
+          bad = !el || !el.value;
+        } else if (q.type === 'multiselect') {
+          const grid = document.getElementById('wz-ms-' + q.id);
+          bad = !grid || grid.querySelectorAll('input:checked').length === 0;
+        }
+      }
+      const err = document.getElementById('wz-qerr-' + q.id);
+      if (err) err.textContent = bad ? 'Esta pregunta es obligatoria.' : '';
+      if (bad && !firstBad) firstBad = q.id;
+    });
+    // ENS: si se ha marcado ENS hay que elegir nivel
+    const ensWrap = document.getElementById('wz-ens-wrap');
+    if (ensWrap && ensWrap.style.display !== 'none') {
+      const sel = document.querySelector('input[name="wz_ens_level"]:checked');
+      if (!sel) {
+        const err = document.getElementById('wz-qerr-regulations');
+        if (err) err.textContent = 'Selecciona el nivel ENS (basico, medio o alto).';
+        if (!firstBad) firstBad = 'regulations';
+      }
+    }
+    if (firstBad) {
+      _navError('Revisa las preguntas marcadas.');
+      document.getElementById('wz-q-' + firstBad)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return false;
+    }
+    return true;
+  }
+
+  // ============================================================
+  // Paso 3 — Documentos (drag & drop, vectorizacion automatica)
+  // ============================================================
+
+  function _renderStep3(body) {
+    body.innerHTML = `
+      ${_stepTitle('Documentos de contexto',
+        'Sube politicas, inventarios, diagramas o evaluaciones previas (PDF, DOCX, TXT, CSV). ' +
+        'La vectorizacion e indexado son automaticos al subir. Este paso es opcional: puedes continuar sin documentos.')}
+      <div id="wz-dropzone" class="wizard-dropzone" role="button" tabindex="0"
+           aria-label="Zona para arrastrar documentos o pulsar para seleccionar">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <div>Arrastra aqui uno o varios documentos<br>
+          <span class="wizard-dropzone-hint">o pulsa para seleccionar (PDF, DOCX, TXT, CSV)</span>
+        </div>
+        <input type="file" id="wz-file-input" accept=".pdf,.docx,.txt,.csv" multiple
+               style="display:none;" aria-hidden="true">
+      </div>
+      <div id="wz-upload-list"></div>
+      <div id="wz-doc-list"></div>`;
+
+    _wireDropzone();
+    _renderUploadList();
+    _renderDocList();
+    _renderNav();
+  }
+
+  function _wireDropzone() {
+    const dz = document.getElementById('wz-dropzone');
+    const input = document.getElementById('wz-file-input');
+    if (!dz || !input) return;
+    dz.onclick = () => input.click();
+    dz.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } };
+    input.onchange = e => { _enqueueFiles(Array.from(e.target.files)); e.target.value = ''; };
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+    dz.addEventListener('dragleave', e => { if (!dz.contains(e.relatedTarget)) dz.classList.remove('over'); });
+    dz.addEventListener('drop', e => {
+      e.preventDefault();
+      dz.classList.remove('over');
+      _enqueueFiles(Array.from(e.dataTransfer.files));
+    });
+  }
+
+  // Misma heuristica de categoria que la vista de documentos IA
+  function _guessCategory(filename) {
+    const n = filename.toLowerCase().replace(/[_\-\.]/g, ' ');
+    if (/politic|policy|procedur|instruc|manual|proceso|reglamento interno/.test(n)) return 'policies';
+    if (/arquitect|topolog|diagrama|network|infraestruc|red corp|architecture/.test(n)) return 'architecture';
+    if (/normativ|compliance|nis2|gdpr|rgpd|iso\s?27|directiva|reglamento|boe|legisl/.test(n)) return 'normative';
+    if (/incidente|incident|postmortem|leccion|lesson|forense|analisis forense/.test(n)) return 'incidents_lessons';
+    if (/inventario|inventory|activo|asset|cmdb|hardware|software|catalogo/.test(n)) return 'assets_inventory';
+    if (/proveedor|supplier|vendor|tercero|contrato|sla|dpa|acuerdo/.test(n)) return 'critical_suppliers';
+    if (/riesgo|risk|evaluac|assessment|amenaza|vulnerabilid|dpia|impacto/.test(n)) return 'risk_assessments';
+    return 'other';
+  }
+
+  async function _enqueueFiles(files) {
+    const valid = [];
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ACCEPTED_EXTS.includes(ext)) {
+        UI.toast(`${f.name}: formato no soportado. Solo PDF, DOCX, TXT, CSV.`, 'error');
+        continue;
+      }
+      valid.push(f);
+      _queue.push({ name: f.name, size: f.size, status: 'pending', error: null, _file: f });
+    }
+    if (!valid.length) return;
+    _renderUploadList();
+    if (!_uploading) await _processQueue();
+  }
+
+  async function _processQueue() {
+    _uploading = true;
+    _setBusy(true);
+    let item;
+    while ((item = _queue.find(q => q.status === 'pending'))) {
+      item.status = 'uploading';
+      _renderUploadList();
+      try {
+        await Api.aiDocuments.upload(item._file, _guessCategory(item.name));
+        item.status = 'done';
+      } catch (e) {
+        item.status = 'error';
+        item.error = e.message || 'Error desconocido';
+      }
+      _renderUploadList();
+    }
+    _uploading = false;
+    _setBusy(false);
+    try { _docs = await Api.aiDocuments.list(); } catch (_) { /* mantener lista previa */ }
+    _renderDocList();
+    _renderNav();
+    const ok = _queue.filter(q => q.status === 'done').length;
+    const fail = _queue.filter(q => q.status === 'error').length;
+    if (ok && !fail) UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} — indexado automatico iniciado`, 'success');
+    else if (fail) UI.toast(`${ok} subidos, ${fail} con error`, 'error');
+  }
+
+  function _renderUploadList() {
+    const c = document.getElementById('wz-upload-list');
+    if (!c) return;
+    if (!_queue.length) { c.innerHTML = ''; return; }
+    c.innerHTML = `
+      <div class="wizard-upload-list" aria-live="polite">
+        ${_queue.map(q => {
+          const size = q.size < 1024 * 1024
+            ? Math.round(q.size / 1024) + ' KB'
+            : (q.size / 1024 / 1024).toFixed(1) + ' MB';
+          const st = q.status === 'done'
+            ? '<span class="wizard-up-ok">&#10003; Subido</span>'
+            : q.status === 'error'
+            ? `<span class="wizard-up-err" title="${UI.esc(q.error || '')}">&#10007; ${UI.esc(q.error || 'Error')}</span>`
+            : q.status === 'uploading'
+            ? '<span class="wizard-up-busy">Subiendo...</span>'
+            : '<span class="wizard-up-wait">En cola</span>';
           return `
-            <div style="display:flex;justify-content:space-between;align-items:center;
-                        padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);">
-              <span style="color:var(--text-base);">${c.label}</span>
-              <span style="color:${n>0?'var(--risk-low)':'var(--text-muted)'};">
-                ${n > 0 ? n : '-'}
-              </span>
+            <div class="wizard-upload-item">
+              <span class="wizard-upload-name" title="${UI.esc(q.name)}">${UI.esc(q.name)}</span>
+              <span class="wizard-upload-size">${size}</span>
+              ${st}
             </div>`;
         }).join('')}
-
-        <div style="margin-top:14px;">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">
-            Estado de la API
-          </div>
-          <div style="font-size:13px;font-weight:600;
-                      color:${_cfg && _cfg.has_api_key ? 'var(--risk-low)' : 'var(--brand-orange)'};">
-            ${_cfg && _cfg.has_api_key ? 'Conectado' : 'Sin configurar'}
-          </div>
-        </div>
-
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-          <a href="#/ai-chat" class="btn btn-primary" style="width:100%;text-align:center;">
-            Abrir Chat IA
-          </a>
-        </div>
       </div>`;
   }
 
-  // ---------- Calcular porcentaje de completado ----------
-
-  function _computeCompletion() {
-    let score = 0;
-    const total = 10;
-    if (_cfg && (_cfg.org_sector || _cfg.org_size)) score += 2;
-    if (_cfg && _cfg.org_critical_processes) score++;
-    if (_cfg && _cfg.org_tech_stack) score++;
-    if (_cfg && _cfg.has_api_key) score += 2;
-    // +1 por cada categoria con al menos un doc (max 4)
-    const catsWithDocs = new Set(_docs.filter(d => d.status === 'indexed').map(d => d.category));
-    score += Math.min(4, catsWithDocs.size);
-    return Math.round((score / total) * 100);
+  function _renderDocList() {
+    const c = document.getElementById('wz-doc-list');
+    if (!c) return;
+    if (!_docs.length) {
+      c.innerHTML = '<p class="wizard-muted">Aun no hay documentos subidos.</p>';
+      return;
+    }
+    const statusLabels = { indexed: 'Indexado', processing: 'Procesando', pending: 'Pendiente', error: 'Error' };
+    c.innerHTML = `
+      <h3 class="wizard-subhead">Documentos ya disponibles (${_docs.length})</h3>
+      <div class="wizard-upload-list">
+        ${_docs.map(d => `
+          <div class="wizard-upload-item">
+            <span class="wizard-upload-name" title="${UI.esc(d.original_name)}">${UI.esc(d.original_name)}</span>
+            ${d.chunk_count ? `<span class="wizard-upload-size">${d.chunk_count} frags</span>` : ''}
+            <span class="${d.status === 'indexed' ? 'wizard-up-ok' : d.status === 'error' ? 'wizard-up-err' : 'wizard-up-busy'}"
+                  ${d.error_message ? `title="${UI.esc(d.error_message)}"` : ''}>
+              ${statusLabels[d.status] || UI.esc(String(d.status))}
+            </span>
+          </div>`).join('')}
+      </div>`;
   }
 
-  // ---------- Eventos ----------
+  // ============================================================
+  // Paso 4 — Revisar propuesta (analisis IA + aceptacion)
+  // ============================================================
 
-  function _wireEvents() {
-    // Guardar perfil
-    const saveProfile = document.getElementById('ob-save-profile');
-    if (saveProfile) saveProfile.onclick = _saveProfile;
+  function _renderStep4(body) {
+    if (_importResult) { _renderStep4Summary(body); return; }
+    if (_result) { _renderStep4Proposal(body); return; }
 
-    // Guardar config IA
-    const saveAi = document.getElementById('ob-save-ai');
-    if (saveAi) saveAi.onclick = _saveAiConfig;
+    const hasKey = !!(_cfg && _cfg.has_api_key);
+    body.innerHTML = `
+      ${_stepTitle('Analisis y propuesta de la IA',
+        'El agente analizara tus respuestas segun ISO 27005 y MAGERIT v3 y propondra activos, riesgos y controles. Suele tardar entre 30 y 60 segundos.')}
+      ${!hasKey ? `
+        <div class="notice notice-warn" style="margin-bottom:14px;">
+          No hay API key de Anthropic configurada. Puedes introducirla ahora para lanzar el analisis,
+          o saltar este paso y configurarla en el paso 5.
+          <div class="wizard-inline-key">
+            <label for="wz-pre-apikey">API Key de Anthropic</label>
+            <div class="wizard-custom-ctrl-row">
+              <input type="password" id="wz-pre-apikey" placeholder="sk-ant-api03-..." autocomplete="new-password">
+              <button type="button" class="btn" id="wz-pre-apikey-save">Guardar clave</button>
+            </div>
+            <div class="wizard-field-error" id="wz-err-pre-apikey" role="alert"></div>
+          </div>
+        </div>` : ''}
+      <div id="wz-analyze-zone" class="wizard-analyze-zone">
+        <button type="button" class="btn btn-primary wizard-analyze-btn" id="wz-launch"
+                ${!hasKey ? 'disabled' : ''}>
+          Lanzar analisis IA
+        </button>
+        <p class="wizard-muted">Tambien puedes pulsar &ldquo;Siguiente&rdquo; para saltar el analisis y hacerlo mas tarde desde la seccion Agente IA.</p>
+        <div class="wizard-field-error" id="wz-err-analyze" role="alert"></div>
+      </div>`;
 
-    // Probar conexion
-    const testAi = document.getElementById('ob-test-ai');
-    if (testAi) testAi.onclick = _testConnection;
-
-
-    // Skip
-    const skip = document.getElementById('ob-skip');
-    if (skip) skip.onclick = () => {
-      localStorage.setItem('riskhub_onboarding_skipped', '1');
-      location.hash = '/dashboard';
+    const launch = document.getElementById('wz-launch');
+    if (launch) launch.onclick = _launchAnalysis;
+    const saveKey = document.getElementById('wz-pre-apikey-save');
+    if (saveKey) saveKey.onclick = async () => {
+      const key = document.getElementById('wz-pre-apikey').value.trim();
+      if (!key) { _fieldError('pre-apikey', 'Introduce la API key.'); return; }
+      saveKey.disabled = true; saveKey.textContent = 'Guardando...';
+      try {
+        _cfg = { ..._cfg, ...await Api.aiConfig.update({ api_key: key }) };
+        UI.toast('API key guardada', 'success');
+        _renderStep4(document.getElementById('wz-body'));
+      } catch (e) {
+        _fieldError('pre-apikey', 'No se pudo guardar: ' + e.message);
+        saveKey.disabled = false; saveKey.textContent = 'Guardar clave';
+      }
     };
+    _renderNav({ nextLabel: 'Omitir y continuar' });
   }
 
-  async function _saveProfile() {
-    if (_saving) return;
-    _saving = true;
-    const btn = document.getElementById('ob-save-profile');
-    if (btn) btn.disabled = true;
+  function _missingRequired() {
+    if (!_questions) return [];
+    return _questions
+      .filter(q => q.required)
+      .filter(q => {
+        const v = _answers[q.id];
+        return q.type === 'multiselect' ? !(Array.isArray(v) && v.length) : !v;
+      })
+      .map(q => q.question);
+  }
+
+  async function _launchAnalysis() {
+    if (_analyzing) return;
+    const errEl = document.getElementById('wz-err-analyze');
+    try { await _loadQuestions(); } catch (e) {
+      if (errEl) errEl.textContent = 'No se pudo cargar el cuestionario: ' + e.message;
+      return;
+    }
+    const missing = _missingRequired();
+    if (missing.length) {
+      if (errEl) errEl.textContent =
+        'Faltan respuestas obligatorias del cuestionario (paso 2): ' + missing[0].slice(0, 60) + '...';
+      return;
+    }
+
+    _analyzing = true;
+    _setBusy(true);
+    const zone = document.getElementById('wz-analyze-zone');
+    if (zone) zone.innerHTML = `
+      <div class="wizard-spinner" aria-hidden="true"></div>
+      <h3>Analizando el perfil de riesgo...</h3>
+      <p class="wizard-muted">El agente evalua amenazas, vulnerabilidades y controles segun ISO 27005 y MAGERIT v3.</p>
+      <p class="wizard-muted" id="wz-analyze-timer" aria-live="polite"></p>`;
+
     try {
-      const payload = {
-        org_sector: document.getElementById('ob-sector').value || null,
-        org_size: document.getElementById('ob-size').value || null,
-        org_critical_processes: document.getElementById('ob-processes').value || null,
-        org_tech_stack: document.getElementById('ob-tech').value || null,
-      };
-      _cfg = { ..._cfg, ...await Api.aiConfig.update(payload) };
-      UI.toast('Perfil guardado', 'success');
-      _render();
+      // Mismo flujo async + polling que la vista de cuestionario
+      const { job_id } = await Api.post('/api/ai/analyze/async', { answers: _answers });
+      const startMs = Date.now();
+      for (;;) {
+        await new Promise(r => setTimeout(r, 3000));
+        const timer = document.getElementById('wz-analyze-timer');
+        if (timer) timer.textContent = `Tiempo transcurrido: ${Math.round((Date.now() - startMs) / 1000)}s`;
+        const data = await Api.get(`/api/ai/analyze/status/${job_id}`);
+        if (data.status === 'done') { _result = data.result; break; }
+        if (data.status === 'error') throw new Error(data.error || 'Error desconocido en el analisis');
+      }
+      _renderStep4Proposal(document.getElementById('wz-body'));
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      const z = document.getElementById('wz-analyze-zone');
+      if (z) z.innerHTML = `
+        <div class="notice notice-error">${UI.esc(e.message)}</div>
+        <button type="button" class="btn btn-primary" style="margin-top:12px;"
+                onclick="ViewOnboarding._retryStep()">Volver a intentarlo</button>`;
     } finally {
-      _saving = false;
+      _analyzing = false;
+      _setBusy(false);
+      _renderNav({ nextLabel: _result ? 'Siguiente' : 'Omitir y continuar' });
     }
   }
 
-  async function _saveAiConfig() {
-    if (_saving) return;
-    _saving = true;
+  function _renderStep4Proposal(body) {
+    const scenarios = (_result && _result.scenarios) || [];
+    const appetite = _result.risk_appetite ?? 3;
+    body.innerHTML = `
+      ${_stepTitle('Revisar propuesta de la IA',
+        'Revisa los escenarios propuestos. Los marcados se crearan como activos y riesgos en el sistema; ' +
+        'los controles ISO 27002 asociados se vincularan automaticamente.')}
+      ${_result.summary ? `
+        <div class="wizard-summary-box">
+          <strong>Resumen del analisis</strong>
+          <p>${UI.esc(_result.summary)}</p>
+          <span class="wizard-muted">Apetito de riesgo propuesto: ${UI.esc(String(appetite))}/8
+            &middot; Normativas: ${UI.esc(((_result.active_frameworks || []).join(', ') || '-').toUpperCase())}</span>
+        </div>` : ''}
+      <div class="wizard-proposal-head">
+        <label class="wizard-ms-opt" style="display:inline-flex;">
+          <input type="checkbox" id="wz-sel-all" checked>
+          <span>Seleccionar todos (${scenarios.length})</span>
+        </label>
+      </div>
+      <div class="wizard-proposal-list">
+        ${scenarios.map((sc, i) => `
+          <label class="wizard-proposal-item">
+            <input type="checkbox" class="wz-sc-check" data-idx="${i}" checked>
+            <span class="wizard-proposal-text">
+              <strong>${UI.esc(sc.asset_suggestion || '')}</strong>
+              <span class="wizard-muted"> — ${UI.esc(sc.threat_name || '')}</span><br>
+              <span class="wizard-proposal-meta">
+                Inherente ${UI.riskPill(sc.inherent_level)} &rarr; Residual ${UI.riskPill(sc.residual_level)}
+                ${(sc.control_codes || []).slice(0, 4).map(c => `<span class="code-pill">${UI.esc(c)}</span>`).join(' ')}
+                ${(sc.control_codes || []).length > 4 ? `+${sc.control_codes.length - 4}` : ''}
+              </span>
+            </span>
+          </label>`).join('')}
+      </div>
+      <div class="wizard-proposal-actions">
+        <button type="button" class="btn btn-primary" id="wz-accept">Aceptar seleccionados</button>
+        <div class="wizard-field-error" id="wz-err-accept" role="alert"></div>
+      </div>`;
+
+    const selAll = document.getElementById('wz-sel-all');
+    if (selAll) selAll.onchange = () => {
+      document.querySelectorAll('.wz-sc-check').forEach(cb => { cb.checked = selAll.checked; });
+    };
+    const accept = document.getElementById('wz-accept');
+    if (accept) accept.onclick = _acceptSelected;
+    _renderNav({ nextLabel: 'Omitir y continuar' });
+  }
+
+  async function _acceptSelected() {
+    const checks = [...document.querySelectorAll('.wz-sc-check:checked')];
+    const errEl = document.getElementById('wz-err-accept');
+    if (!checks.length) {
+      if (errEl) errEl.textContent = 'Selecciona al menos un escenario o pulsa "Omitir y continuar".';
+      return;
+    }
+    const scenarios = (_result.scenarios || []);
+    const selected = checks.map(cb => scenarios[parseInt(cb.dataset.idx, 10)]).filter(Boolean);
+
+    const btn = document.getElementById('wz-accept');
+    if (btn) { btn.disabled = true; btn.textContent = 'Creando riesgos...'; }
+    _setBusy(true);
     try {
-      const apiKey = document.getElementById('ob-apikey').value.trim();
-      const voyageKey = document.getElementById('ob-voyage-key')?.value.trim();
-      const payload = {
-        model: document.getElementById('ob-model').value,
-        anonymization_level: document.getElementById('ob-anon').value,
-        setup_completed: true,
-      };
-      if (apiKey) payload.api_key = apiKey;
-      if (voyageKey) payload.voyage_api_key = voyageKey;
-      _cfg = { ..._cfg, ...await Api.aiConfig.update(payload) };
-      UI.toast('Configuracion guardada', 'success');
-      _render();
+      const payload = { scenarios: selected };
+      if (_result.risk_appetite !== undefined && _result.risk_appetite !== null) {
+        payload.risk_appetite = _result.risk_appetite;
+      }
+      if (_result.active_frameworks && _result.active_frameworks.length) {
+        payload.active_frameworks = _result.active_frameworks;
+      }
+      if (_result.ens_level) payload.ens_level = _result.ens_level;
+      _importResult = await Api.post('/api/ai/import', payload);
+      _renderStep4Summary(document.getElementById('wz-body'));
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      if (errEl) errEl.textContent = 'No se pudieron crear los riesgos: ' + e.message;
+      if (btn) { btn.disabled = false; btn.textContent = 'Aceptar seleccionados'; }
     } finally {
-      _saving = false;
+      _setBusy(false);
+      _renderNav();
     }
   }
 
-  async function _testConnection() {
-    const el = document.getElementById('ob-test-result');
-    if (el) el.textContent = 'Probando...';
+  function _renderStep4Summary(body) {
+    const created = _importResult?.created ?? 0;
+    const skipped = _importResult?.skipped ?? 0;
+    body.innerHTML = `
+      ${_stepTitle('Propuesta aplicada',
+        'El contexto organizacional, el apetito de riesgo y las normativas quedan guardados para informes y cumplimiento.')}
+      <div class="wizard-result-box">
+        <div class="wizard-result-num">${created}</div>
+        <div>
+          <strong>riesgo${created !== 1 ? 's' : ''} creado${created !== 1 ? 's' : ''} en el registro</strong>
+          ${skipped ? `<div class="wizard-muted">${skipped} escenario${skipped !== 1 ? 's' : ''} omitido${skipped !== 1 ? 's' : ''} (duplicados o sin activo/amenaza valida)</div>` : ''}
+          <div class="wizard-muted">Podras revisarlos en la seccion Riesgos al terminar el asistente.</div>
+        </div>
+      </div>`;
+    _renderNav();
+  }
+
+  // ============================================================
+  // Paso 5 — Automatizaciones + API key + finalizar
+  // ============================================================
+
+  function _renderStep5(body) {
+    const hasKey = !!(_cfg && _cfg.has_api_key);
+    body.innerHTML = `
+      ${_stepTitle('Automatizaciones activas',
+        'RiskHub ejecuta estas tareas de forma automatica mediante su planificador interno. No requieren configuracion.')}
+      <div class="wizard-auto-grid">
+        ${AUTOMATIONS.map(a => `
+          <div class="wizard-auto-card">
+            <div class="wizard-auto-head">
+              <strong>${UI.esc(a.title)}</strong>
+              <span class="wizard-auto-badge">Activado</span>
+            </div>
+            <p>${UI.esc(a.desc)}</p>
+          </div>`).join('')}
+      </div>
+
+      <h3 class="wizard-subhead">Agente IA</h3>
+      ${hasKey ? `
+        <p class="wizard-key-ok">API key de Anthropic configurada. El agente IA esta operativo.</p>
+      ` : `
+        <p class="wizard-muted">Introduce tu API key de Anthropic para activar el agente IA
+          (chat, analisis de documentos y propuestas de riesgo).
+          <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Obtener clave</a>
+        </p>
+        <div class="form-grid">
+          <div class="span2">
+            <label for="wz-apikey">API Key de Anthropic</label>
+            <input type="password" id="wz-apikey" placeholder="sk-ant-api03-..." autocomplete="new-password">
+            <div class="wizard-field-error" id="wz-err-apikey" role="alert"></div>
+          </div>
+        </div>
+      `}
+      <div class="wizard-field-error" id="wz-err-finish" role="alert"></div>`;
+    _renderNav();
+  }
+
+  async function _finish() {
+    if (_busy) return;
+    const errEl = document.getElementById('wz-err-finish');
+    if (errEl) errEl.textContent = '';
+    _setBusy(true);
+    const fin = document.getElementById('wz-finish');
+    if (fin) fin.textContent = 'Finalizando...';
     try {
-      // Guardar primero si hay clave nueva
-      const apiKey = document.getElementById('ob-apikey').value.trim();
-      if (apiKey) await Api.aiConfig.update({ api_key: apiKey });
-      const res = await Api.aiConfig.test();
-      if (el) el.innerHTML = `<span style="color:var(--risk-low);">Conexion OK — modelo: ${UI.esc(String(res.model))}</span>`;
+      const payload = { setup_completed: true };
+      const keyInput = document.getElementById('wz-apikey');
+      if (keyInput && keyInput.value.trim()) payload.api_key = keyInput.value.trim();
+      _cfg = { ..._cfg, ...await Api.aiConfig.update(payload) };
+
+      // Mecanismo existente de app.js: marca el onboarding como hecho
+      localStorage.setItem('riskhub_onboarding_done', '1');
+      localStorage.removeItem('riskhub_onboarding_skipped');
+      localStorage.removeItem(LS_STEP);
+      localStorage.removeItem(LS_SUBSTEP);
+      localStorage.removeItem(LS_ANSWERS);
+
+      UI.toast('Setup completado. Bienvenido a RiskHub.', 'success');
+      location.hash = '/dashboard';
     } catch (e) {
-      if (el) el.innerHTML = `<span style="color:var(--risk-critical);">${e.message}</span>`;
+      const msg = e.status === 403
+        ? 'Necesitas rol de administrador para completar el setup.'
+        : 'No se pudo finalizar: ' + e.message;
+      if (errEl) errEl.textContent = msg;
+      if (fin) fin.textContent = 'Finalizar setup';
+      _setBusy(false);
+      _renderNav();
     }
   }
 
-  async function _upload(input, category) {
-    const file = input.files[0];
-    if (!file) return;
-    const status = document.getElementById('ob-up-status-' + category);
-    if (status) status.innerHTML = `<span style="color:var(--brand-orange);">Subiendo ${UI.esc(file.name)}...</span>`;
-    try {
-      await Api.aiDocuments.upload(file, category);
-      _docs = await Api.aiDocuments.list();
-      _render();
-      UI.toast('Documento indexado correctamente', 'success');
-    } catch (e) {
-      if (status) status.innerHTML = `<span style="color:var(--risk-critical);">Error: ${UI.esc(e.message)}</span>`;
-      UI.toast('Error al subir: ' + e.message, 'error');
-    }
-    input.value = '';
-  }
-
-  async function _deleteDoc(id) {
-    if (!confirm('Eliminar este documento del indice?')) return;
-    try {
-      await Api.aiDocuments.del(id);
-      _docs = await Api.aiDocuments.list();
-      _render();
-      UI.toast('Documento eliminado', 'success');
-    } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
-    }
-  }
-
-  // Exponer metodos que se llaman desde el HTML inline
-  return { render, _upload, _deleteDoc };
+  // Metodos invocados desde HTML inline
+  return { render, _toggleExtra, _addCustomControl, _removeCustomControl, _retryStep };
 
 })();
