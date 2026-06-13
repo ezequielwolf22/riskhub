@@ -1,16 +1,19 @@
 """Cuestionarios de evaluacion de seguridad de proveedores — NIS2 Art. 21.2.d."""
 import secrets
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models import Supplier, SupplierQuestionnaire, User
+from app.database import SessionLocal, get_db
+from app.models import AiConfig, Supplier, SupplierQuestionnaire, User
+from app.routers.ai_config import resolve_api_key
 from app.schemas import SupplierQuestionnaireCreate, SupplierQuestionnaireOut
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
+from app.services import tprm_ai_service
 
 router = APIRouter(prefix="/api/supplier-questionnaires", tags=["supplier-questionnaires"])
 
@@ -73,12 +76,24 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
     if not supplier or not check_org_access(supplier.organization_id, current_user):
         raise HTTPException(404, "Proveedor no encontrado")
     expires = body.expires_at or (datetime.now(timezone.utc) + timedelta(days=30))
+    # TPRM: si se indica una plantilla del sistema, usar sus preguntas (con pesos
+    # y reglas de scoring). Si no, usar el set estandar NIS2/ISO 27001.
+    questions = DEFAULT_QUESTIONS
+    template_code = None
+    if body.template_code:
+        from app.services import tprm_templates
+        tpl = tprm_templates.get_template(body.template_code)
+        if not tpl:
+            raise HTTPException(404, "Plantilla no encontrada")
+        questions = tpl["questions"]
+        template_code = tpl["code"]
     q = SupplierQuestionnaire(
         code=_next_code(db),
         supplier_id=body.supplier_id,
         title=body.title,
         token=secrets.token_urlsafe(32),
-        questions=DEFAULT_QUESTIONS,
+        template_code=template_code,
+        questions=questions,
         expires_at=expires,
         notes=body.notes,
         created_by_id=current_user.id,
@@ -105,6 +120,46 @@ def delete_questionnaire(qid: int, db: Session = Depends(get_db),
     db.commit()
 
 
+@router.post("/{qid}/ai-review")
+def ai_review_questionnaire(
+    qid: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Evalua un cuestionario respondido con IA y almacena el resultado."""
+    q = filter_by_org(
+        db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
+        SupplierQuestionnaire, current_user,
+    ).first()
+    if not q:
+        raise HTTPException(404, "Cuestionario no encontrado")
+    if not q.submitted_at:
+        raise HTTPException(409, "El cuestionario aun no ha sido respondido")
+
+    cfg = (
+        db.query(AiConfig)
+        .filter(AiConfig.organization_id == current_user.organization_id)
+        .first()
+    )
+    key = resolve_api_key(cfg)
+    if not key:
+        raise HTTPException(
+            400,
+            "API key de Claude no configurada en IA -> Configuracion",
+        )
+    model = (cfg.model if cfg else None) or "claude-opus-4-5"
+
+    result = tprm_ai_service.review_questionnaire(db, q, key, model)
+
+    q.ai_review = result
+    q.ai_reviewed_at = datetime.now(timezone.utc)
+    db.commit()
+
+    log_action(db, current_user.id, "ai_review", "supplier_questionnaire", str(q.id))
+
+    return result
+
+
 # ---- Endpoints publicos (sin autenticacion) ----
 
 @router.get("/public/{token}")
@@ -119,11 +174,18 @@ def get_public_questionnaire(token: str, db: Session = Depends(get_db)):
     if q.submitted_at:
         raise HTTPException(409, "Este cuestionario ya fue respondido")
     supplier = q.supplier
+    # Sanitizar: nunca exponer al proveedor las reglas de scoring ni las pistas
+    # de evaluacion / mapeo a controles internos.
+    _public_fields = ("id", "text", "type", "options", "help_text", "requires_evidence", "domain")
+    public_questions = [
+        {k: qq.get(k) for k in _public_fields if k in qq}
+        for qq in (q.questions or [])
+    ]
     return {
         "code": q.code,
         "title": q.title,
         "supplier_name": supplier.name if supplier else "",
-        "questions": q.questions,
+        "questions": public_questions,
         "expires_at": q.expires_at.isoformat() if q.expires_at else None,
     }
 
@@ -140,13 +202,61 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     if q.submitted_at:
         raise HTTPException(409, "Este cuestionario ya fue respondido")
     answers = body.get("answers", {})
-    score = _calculate_score(answers)
+    # TPRM: las plantillas del sistema traen pesos y reglas de scoring; si la
+    # pregunta los incluye, usar el scoring ponderado. Si no, scoring Si/No.
+    if q.template_code or any((qq.get("scoring_rules") or qq.get("weight")) for qq in (q.questions or [])):
+        from app.services.tprm_scoring_service import score_questionnaire
+        result = score_questionnaire(q.questions or [], answers)
+        score = result["score"]
+    else:
+        score = _calculate_score(answers)
     q.answers = answers
     q.score = score
     q.submitted_at = now
-    # Actualizar score del proveedor
+    # Actualizar postura del proveedor y recalcular TPRM
     if q.supplier:
         q.supplier.score = score
+        q.supplier.control_effectiveness = score
         q.supplier.last_assessment_at = now
+        try:
+            from app.services import tprm_scoring_service
+            tprm_scoring_service.recompute_supplier(db, q.supplier, commit=False)
+        except Exception:
+            pass
     db.commit()
+
+    # Best-effort auto-trigger: lanzar evaluacion IA en background si hay API key configurada.
+    # No bloquea la respuesta ni propaga excepciones al proveedor.
+    try:
+        _questionnaire_id = q.id
+        _org_id = q.organization_id
+
+        def _bg_ai_review():
+            try:
+                with SessionLocal() as bg_db:
+                    bg_cfg = (
+                        bg_db.query(AiConfig)
+                        .filter(AiConfig.organization_id == _org_id)
+                        .first()
+                    )
+                    bg_key = resolve_api_key(bg_cfg)
+                    if not bg_key:
+                        return
+                    bg_model = (bg_cfg.model if bg_cfg else None) or "claude-opus-4-5"
+                    bg_q = bg_db.query(SupplierQuestionnaire).filter(
+                        SupplierQuestionnaire.id == _questionnaire_id
+                    ).first()
+                    if not bg_q:
+                        return
+                    result = tprm_ai_service.review_questionnaire(bg_db, bg_q, bg_key, bg_model)
+                    bg_q.ai_review = result
+                    bg_q.ai_reviewed_at = datetime.now(timezone.utc)
+                    bg_db.commit()
+            except Exception:
+                pass
+
+        threading.Thread(target=_bg_ai_review, daemon=True).start()
+    except Exception:
+        pass
+
     return {"success": True, "score": score, "message": "Gracias por completar el cuestionario."}

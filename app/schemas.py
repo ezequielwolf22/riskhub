@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models import (
     AssetType, ThreatOrigin, TreatmentOption,
     RiskStatus, ControlStatus, UserRole,
-    IncidentSeverity, IncidentStatus, SupplierRisk,
+    IncidentSeverity, IncidentStatus, SupplierRisk, SupplierTier, SupplierRelationship,
+    VendorIssueSeverity, VendorIssueStatus, AssessmentRecommendation,
     NCSeverity, NCStatus,
     TaskStatus, TaskPriority,
     PolicyStatus, AuditType, AuditStatus, AuditFindingType,
@@ -615,6 +616,24 @@ class SupplierIn(BaseModel):
     score: int = Field(default=50, ge=0, le=100)  # M1: 0-100
     notes: Optional[str] = None
     owner_id: Optional[int] = None
+    # ---- TPRM ----
+    vendor_type: Optional[str] = None
+    relationship_status: Optional[SupplierRelationship] = None
+    data_sensitivity: Optional[int] = Field(default=None, ge=1, le=5)
+    data_volume: Optional[int] = Field(default=None, ge=1, le=5)
+    system_access_type: Optional[str] = None
+    business_criticality: Optional[int] = Field(default=None, ge=1, le=5)
+    geographic_risk: Optional[int] = Field(default=None, ge=1, le=5)
+    is_data_processor: Optional[bool] = None
+    processes_personal_data: Optional[bool] = None
+    cross_border_transfers: Optional[bool] = None
+    is_nis2: Optional[bool] = None
+    is_dora: Optional[bool] = None
+    is_ens: Optional[bool] = None
+    country_code: Optional[str] = None
+    website: Optional[str] = None
+    tax_id: Optional[str] = None
+    annual_spend: Optional[float] = None
 
 
 class SupplierUpdate(BaseModel):
@@ -634,6 +653,27 @@ class SupplierUpdate(BaseModel):
     score: Optional[int] = Field(default=None, ge=0, le=100)
     notes: Optional[str] = None
     owner_id: Optional[int] = None
+    # ---- TPRM ----
+    relationship_status: Optional[SupplierRelationship] = None
+    vendor_type: Optional[str] = None
+    data_sensitivity: Optional[int] = Field(default=None, ge=1, le=5)
+    data_volume: Optional[int] = Field(default=None, ge=1, le=5)
+    system_access_type: Optional[str] = None
+    business_criticality: Optional[int] = Field(default=None, ge=1, le=5)
+    geographic_risk: Optional[int] = Field(default=None, ge=1, le=5)
+    control_effectiveness: Optional[int] = Field(default=None, ge=0, le=100)
+    is_data_processor: Optional[bool] = None
+    processes_personal_data: Optional[bool] = None
+    cross_border_transfers: Optional[bool] = None
+    is_nis2: Optional[bool] = None
+    is_dora: Optional[bool] = None
+    is_ens: Optional[bool] = None
+    country_code: Optional[str] = None
+    website: Optional[str] = None
+    tax_id: Optional[str] = None
+    annual_spend: Optional[float] = None
+    parent_supplier_id: Optional[int] = None
+    nth_party_depth: Optional[int] = None
 
 
 class SupplierOut(ORMBase):
@@ -657,6 +697,30 @@ class SupplierOut(ORMBase):
     owner_id: Optional[int]
     created_at: datetime
     updated_at: datetime
+    # ---- TPRM ----
+    tier: Optional[SupplierTier] = None
+    relationship_status: Optional[SupplierRelationship] = None
+    vendor_type: Optional[str] = None
+    data_sensitivity: Optional[int] = None
+    data_volume: Optional[int] = None
+    system_access_type: Optional[str] = None
+    business_criticality: Optional[int] = None
+    geographic_risk: Optional[int] = None
+    inherent_risk_score: Optional[int] = None
+    control_effectiveness: Optional[int] = None
+    residual_risk_score: Optional[int] = None
+    is_data_processor: Optional[bool] = None
+    processes_personal_data: Optional[bool] = None
+    cross_border_transfers: Optional[bool] = None
+    is_nis2: Optional[bool] = None
+    is_dora: Optional[bool] = None
+    is_ens: Optional[bool] = None
+    country_code: Optional[str] = None
+    website: Optional[str] = None
+    tax_id: Optional[str] = None
+    annual_spend: Optional[float] = None
+    parent_supplier_id: Optional[int] = None
+    nth_party_depth: Optional[int] = None
 
 
 # ---------- NON-CONFORMITIES ----------
@@ -888,6 +952,7 @@ class SupplierQuestionnaireCreate(BaseModel):
     title: str
     notes: Optional[str] = None
     expires_at: Optional[datetime] = None
+    template_code: Optional[str] = None   # TPRM: plantilla del sistema a usar
 
 
 class SupplierQuestionnaireOut(ORMBase):
@@ -897,13 +962,103 @@ class SupplierQuestionnaireOut(ORMBase):
     supplier_name: Optional[str] = None
     title: str
     token: str
+    template_code: Optional[str] = None
     questions: Optional[list[dict]]
     answers: Optional[dict]
     score: Optional[int]
     submitted_at: Optional[datetime]
     expires_at: Optional[datetime]
     notes: Optional[str]
+    ai_review: Optional[dict] = None
+    ai_reviewed_at: Optional[datetime] = None
     created_at: datetime
+
+
+# ---------- TPRM: VENDOR ASSESSMENTS & ISSUES ----------
+class VendorAssessmentCreate(BaseModel):
+    supplier_id: int
+    period_label: Optional[str] = None
+    summary: Optional[str] = None
+    recommendation: Optional[AssessmentRecommendation] = None
+    questionnaire_ids: Optional[list[int]] = None
+    valid_until: Optional[datetime] = None
+
+
+class VendorAssessmentUpdate(BaseModel):
+    period_label: Optional[str] = None
+    summary: Optional[str] = None
+    recommendation: Optional[AssessmentRecommendation] = None
+    valid_until: Optional[datetime] = None
+    control_effectiveness_score: Optional[int] = Field(default=None, ge=0, le=100)
+
+
+class VendorAssessmentOut(ORMBase):
+    id: int
+    code: str
+    supplier_id: int
+    supplier_name: Optional[str] = None
+    assessment_date: datetime
+    period_label: Optional[str]
+    inherent_risk_score: Optional[int]
+    inherent_risk_level: Optional[str]
+    control_effectiveness_score: Optional[int]
+    residual_risk_score: Optional[int]
+    residual_risk_level: Optional[str]
+    score_by_domain: Optional[dict]
+    summary: Optional[str]
+    recommendation: Optional[AssessmentRecommendation]
+    assessor_user_id: Optional[int]
+    approver_user_id: Optional[int]
+    approved_at: Optional[datetime]
+    valid_until: Optional[datetime]
+    linked_risk_id: Optional[int]
+    questionnaire_ids: Optional[list[int]]
+    created_at: datetime
+
+
+class VendorIssueCreate(BaseModel):
+    supplier_id: int
+    assessment_id: Optional[int] = None
+    title: str
+    description: Optional[str] = None
+    severity: VendorIssueSeverity = VendorIssueSeverity.MEDIUM
+    source: str = "manual"
+    framework_refs: Optional[list[str]] = None
+    assigned_to_user_id: Optional[int] = None
+    remediation_plan: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+
+class VendorIssueUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[VendorIssueSeverity] = None
+    status: Optional[VendorIssueStatus] = None
+    framework_refs: Optional[list[str]] = None
+    assigned_to_user_id: Optional[int] = None
+    remediation_plan: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+
+class VendorIssueOut(ORMBase):
+    id: int
+    code: str
+    supplier_id: int
+    supplier_name: Optional[str] = None
+    assessment_id: Optional[int]
+    source: str
+    title: str
+    description: Optional[str]
+    severity: VendorIssueSeverity
+    status: VendorIssueStatus
+    framework_refs: Optional[list[str]]
+    discovered_at: datetime
+    due_date: Optional[datetime]
+    closed_at: Optional[datetime]
+    assigned_to_user_id: Optional[int]
+    remediation_plan: Optional[str]
+    created_at: datetime
+    updated_at: datetime
 
 
 # ---------- GDPR / DPIA (M6) ----------

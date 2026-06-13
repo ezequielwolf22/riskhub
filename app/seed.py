@@ -22,7 +22,8 @@ DATA_DIR = Path(__file__).parent / "data"
 
 
 def load_json(name: str):
-    with open(DATA_DIR / name, "r", encoding="utf-8") as f:
+    # utf-8-sig tolera ficheros con BOM (editores en Windows) sin romper json.load
+    with open(DATA_DIR / name, "r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 
@@ -410,6 +411,51 @@ def _migrate_columns() -> None:
         ("ALTER TABLE bcp_test_runbooks ADD COLUMN success_criteria TEXT", "bcp_test_runbooks", "success_criteria"),
         ("ALTER TABLE bcp_test_runbooks ADD COLUMN responsible_name VARCHAR(255)", "bcp_test_runbooks", "responsible_name"),
         ("ALTER TABLE bcp_test_runbooks ADD COLUMN backup_responsible_name VARCHAR(255)", "bcp_test_runbooks", "backup_responsible_name"),
+        # v3.6.0 — TPRM: ciclo de vida del proveedor + tiering + inherent/residual risk
+        ("ALTER TABLE suppliers ADD COLUMN tier VARCHAR(16)", "suppliers", "tier"),
+        ("ALTER TABLE suppliers ADD COLUMN relationship_status VARCHAR(32) DEFAULT 'active'", "suppliers", "relationship_status"),
+        ("ALTER TABLE suppliers ADD COLUMN vendor_type VARCHAR(64)", "suppliers", "vendor_type"),
+        ("ALTER TABLE suppliers ADD COLUMN data_sensitivity INTEGER DEFAULT 2", "suppliers", "data_sensitivity"),
+        ("ALTER TABLE suppliers ADD COLUMN data_volume INTEGER DEFAULT 2", "suppliers", "data_volume"),
+        ("ALTER TABLE suppliers ADD COLUMN system_access_type VARCHAR(32)", "suppliers", "system_access_type"),
+        ("ALTER TABLE suppliers ADD COLUMN business_criticality INTEGER DEFAULT 3", "suppliers", "business_criticality"),
+        ("ALTER TABLE suppliers ADD COLUMN geographic_risk INTEGER DEFAULT 1", "suppliers", "geographic_risk"),
+        ("ALTER TABLE suppliers ADD COLUMN inherent_risk_score INTEGER", "suppliers", "inherent_risk_score"),
+        ("ALTER TABLE suppliers ADD COLUMN control_effectiveness INTEGER", "suppliers", "control_effectiveness"),
+        ("ALTER TABLE suppliers ADD COLUMN residual_risk_score INTEGER", "suppliers", "residual_risk_score"),
+        ("ALTER TABLE suppliers ADD COLUMN is_data_processor BOOLEAN DEFAULT 0", "suppliers", "is_data_processor"),
+        ("ALTER TABLE suppliers ADD COLUMN processes_personal_data BOOLEAN DEFAULT 0", "suppliers", "processes_personal_data"),
+        ("ALTER TABLE suppliers ADD COLUMN cross_border_transfers BOOLEAN DEFAULT 0", "suppliers", "cross_border_transfers"),
+        ("ALTER TABLE suppliers ADD COLUMN is_nis2 BOOLEAN DEFAULT 0", "suppliers", "is_nis2"),
+        ("ALTER TABLE suppliers ADD COLUMN is_dora BOOLEAN DEFAULT 0", "suppliers", "is_dora"),
+        ("ALTER TABLE suppliers ADD COLUMN is_ens BOOLEAN DEFAULT 0", "suppliers", "is_ens"),
+        ("ALTER TABLE suppliers ADD COLUMN country_code VARCHAR(2)", "suppliers", "country_code"),
+        ("ALTER TABLE suppliers ADD COLUMN website VARCHAR(255)", "suppliers", "website"),
+        ("ALTER TABLE suppliers ADD COLUMN tax_id VARCHAR(64)", "suppliers", "tax_id"),
+        ("ALTER TABLE suppliers ADD COLUMN annual_spend REAL", "suppliers", "annual_spend"),
+        ("ALTER TABLE suppliers ADD COLUMN parent_supplier_id INTEGER REFERENCES suppliers(id)", "suppliers", "parent_supplier_id"),
+        ("ALTER TABLE suppliers ADD COLUMN nth_party_depth INTEGER DEFAULT 1", "suppliers", "nth_party_depth"),
+        # v3.6.0 — TPRM: cuestionario basado en plantilla del sistema
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN template_code VARCHAR(64)", "supplier_questionnaires", "template_code"),
+        # v3.7.0 — TPRM: evaluacion IA del cuestionario
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN ai_review JSON", "supplier_questionnaires", "ai_review"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN ai_reviewed_at DATETIME", "supplier_questionnaires", "ai_reviewed_at"),
+        # v3.8.0 — BCM: tabla de interconexiones tecnicas en dependencias
+        ("ALTER TABLE bcp_dependencies ADD COLUMN connection_type VARCHAR(32)", "bcp_dependencies", "connection_type"),
+        ("ALTER TABLE bcp_dependencies ADD COLUMN protocol VARCHAR(32)", "bcp_dependencies", "protocol"),
+        ("ALTER TABLE bcp_dependencies ADD COLUMN data_direction VARCHAR(8)", "bcp_dependencies", "data_direction"),
+        ("ALTER TABLE bcp_dependencies ADD COLUMN data_classification VARCHAR(32)", "bcp_dependencies", "data_classification"),
+        # v3.8.0 — BCM: configuracion tecnica IT y monitorizacion en estrategias
+        ("ALTER TABLE bcp_strategies ADD COLUMN it_config JSON", "bcp_strategies", "it_config"),
+        ("ALTER TABLE bcp_strategies ADD COLUMN monitoring_config JSON", "bcp_strategies", "monitoring_config"),
+        # v3.8.0 — BCM: campos de gestion adicionales en planes
+        ("ALTER TABLE bcp_plans ADD COLUMN installation_type VARCHAR(32)", "bcp_plans", "installation_type"),
+        ("ALTER TABLE bcp_plans ADD COLUMN data_classification_level VARCHAR(32)", "bcp_plans", "data_classification_level"),
+        ("ALTER TABLE bcp_plans ADD COLUMN gdpr_data BOOLEAN DEFAULT 0", "bcp_plans", "gdpr_data"),
+        ("ALTER TABLE bcp_plans ADD COLUMN affected_users_count INTEGER", "bcp_plans", "affected_users_count"),
+        ("ALTER TABLE bcp_plans ADD COLUMN documentation_links JSON", "bcp_plans", "documentation_links"),
+        ("ALTER TABLE bcp_plans ADD COLUMN related_documents JSON", "bcp_plans", "related_documents"),
+        ("ALTER TABLE bcp_plans ADD COLUMN authorized_activators JSON", "bcp_plans", "authorized_activators"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
@@ -624,8 +670,20 @@ def init_db() -> None:
         _seed_feature_flags(db)
         _seed_licenses(db)
         seed_default_survey_templates(db, org.id)
+        _seed_regwatch_sources(db)
     finally:
         db.close()
+
+
+def _seed_regwatch_sources(db: Session) -> None:
+    """Siembra el catalogo de fuentes de vigilancia normativa (regwatch §3.1)."""
+    try:
+        from app.services.regwatch_service import seed_sources
+        n = seed_sources(db)
+        if n:
+            print(f"Regwatch: {n} fuentes normativas sembradas.")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Regwatch seed omitido: {exc}")
 
 
 def _seed_feature_flags(db: Session) -> None:

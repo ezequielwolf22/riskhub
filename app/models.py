@@ -643,6 +643,24 @@ class SupplierRisk(str, PyEnum):
     CRITICAL = "critical"
 
 
+class SupplierTier(str, PyEnum):
+    """Tier de criticidad derivado del inherent risk (TPRM)."""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class SupplierRelationship(str, PyEnum):
+    """Estado del ciclo de vida del proveedor (TPRM)."""
+    PROSPECT = "prospect"
+    ACTIVE = "active"
+    UNDER_REVIEW = "under_review"
+    SUSPENDED = "suspended"
+    OFFBOARDING = "offboarding"
+    TERMINATED = "terminated"
+
+
 class Supplier(Base):
     """Proveedor / tercero con evaluacion de riesgo de cadena de suministro."""
     __tablename__ = "suppliers"
@@ -662,13 +680,43 @@ class Supplier(Base):
     contract_expiry = Column(DateTime, nullable=True)
     last_assessment_at = Column(DateTime, nullable=True)
     next_assessment_at = Column(DateTime, nullable=True)
-    score = Column(Integer, default=50)   # 0-100
+    score = Column(Integer, default=50)   # 0-100 (postura: mayor = mejor)
     notes = Column(Text)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # ---- TPRM (Third-Party Risk Management) ----
+    tier = Column(Enum(SupplierTier), nullable=True)          # derivado del inherent risk
+    relationship_status = Column(Enum(SupplierRelationship), default=SupplierRelationship.ACTIVE)
+    vendor_type = Column(String(64), nullable=True)           # technology|cloud_provider|...
+    # Atributos para el calculo de inherent risk (1-5 salvo flags)
+    data_sensitivity = Column(Integer, default=2)            # 1-5
+    data_volume = Column(Integer, default=2)                 # 1-5
+    system_access_type = Column(String(32), nullable=True)   # none|api_only|saas|admin_to_our_systems...
+    business_criticality = Column(Integer, default=3)       # 1-5
+    geographic_risk = Column(Integer, default=1)            # 1-5 (transferencias fuera UE, sanciones)
+    # Scoring TPRM (0-100; inherent/residual: mayor = mas riesgo)
+    inherent_risk_score = Column(Integer, nullable=True)
+    control_effectiveness = Column(Integer, nullable=True)  # 0-100 (mayor = mejor)
+    residual_risk_score = Column(Integer, nullable=True)
+    # Flags regulatorios
+    is_data_processor = Column(Boolean, default=False)       # GDPR art. 28
+    processes_personal_data = Column(Boolean, default=False)
+    cross_border_transfers = Column(Boolean, default=False)
+    is_nis2 = Column(Boolean, default=False)
+    is_dora = Column(Boolean, default=False)
+    is_ens = Column(Boolean, default=False)
+    # Firmographics / nth-party
+    country_code = Column(String(2), nullable=True)
+    website = Column(String(255), nullable=True)
+    tax_id = Column(String(64), nullable=True)
+    annual_spend = Column(Float, nullable=True)
+    parent_supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    nth_party_depth = Column(Integer, default=1)            # 1=directo, 2=subcontratista...
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
     owner = relationship("User")
+    # parent_supplier_id (nth-party) se consulta por id; no se mapea relacion
+    # self-referencial para evitar ambiguedad de mapper.
 
 
 # ---------- NO CONFORMIDADES / ACCIONES CORRECTIVAS (ISO 27001 cl. 10.1) ----------
@@ -876,17 +924,111 @@ class SupplierQuestionnaire(Base):
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
     title = Column(String(255), nullable=False)
     token = Column(String(64), unique=True, nullable=False)  # acceso publico
-    questions = Column(JSON)                 # [{id, text, type}]
+    template_code = Column(String(64), nullable=True)        # plantilla TPRM del sistema usada
+    questions = Column(JSON)                 # [{id, text, type, weight, scoring_rules, control_refs}]
     answers = Column(JSON, nullable=True)    # {question_id: answer}
     score = Column(Integer, nullable=True)   # 0-100
     submitted_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     notes = Column(Text)
+    ai_review = Column(JSON, nullable=True)          # TPRM: salida estructurada de la evaluacion IA
+    ai_reviewed_at = Column(DateTime, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     supplier = relationship("Supplier")
     created_by = relationship("User")
+
+    @property
+    def supplier_name(self) -> str:
+        return self.supplier.name if self.supplier else ""
+
+
+# ---------- TPRM: EVALUACIONES Y HALLAZGOS ----------
+
+class AssessmentRecommendation(str, PyEnum):
+    APPROVE = "approve"
+    APPROVE_WITH_CONDITIONS = "approve_with_conditions"
+    REJECT = "reject"
+    REQUEST_MORE_INFO = "request_more_info"
+
+
+class VendorIssueSeverity(str, PyEnum):
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFORMATIONAL = "informational"
+
+
+class VendorIssueStatus(str, PyEnum):
+    OPEN = "open"
+    ACKNOWLEDGED = "acknowledged"
+    IN_REMEDIATION = "in_remediation"
+    MITIGATED = "mitigated"
+    ACCEPTED = "accepted"
+    CLOSED = "closed"
+    OVERDUE = "overdue"
+
+
+class VendorRiskAssessment(Base):
+    """Evaluacion consolidada de riesgo de un proveedor (TPRM §2.1)."""
+    __tablename__ = "vendor_risk_assessments"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    code = Column(String(32), nullable=False)            # VAS-0001
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    assessment_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    period_label = Column(String(32), nullable=True)     # ej. 2026-Q2
+    inherent_risk_score = Column(Integer, nullable=True)
+    inherent_risk_level = Column(String(16), nullable=True)
+    control_effectiveness_score = Column(Integer, nullable=True)
+    residual_risk_score = Column(Integer, nullable=True)
+    residual_risk_level = Column(String(16), nullable=True)
+    score_by_domain = Column(JSON, nullable=True)        # {governance: 78, ...}
+    summary = Column(Text, nullable=True)
+    recommendation = Column(Enum(AssessmentRecommendation), nullable=True)
+    assessor_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approver_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    valid_until = Column(DateTime, nullable=True)
+    linked_risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)  # push a Risk Register
+    questionnaire_ids = Column(JSON, nullable=True)      # cuestionarios agregados
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    supplier = relationship("Supplier")
+
+    @property
+    def supplier_name(self) -> str:
+        return self.supplier.name if self.supplier else ""
+
+
+class VendorIssue(Base):
+    """Hallazgo / issue de un proveedor con SLA por severidad (TPRM §2.1)."""
+    __tablename__ = "vendor_issues"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    code = Column(String(32), nullable=False)            # VIS-0001
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    assessment_id = Column(Integer, ForeignKey("vendor_risk_assessments.id"), nullable=True)
+    source = Column(String(32), default="manual")        # questionnaire|external_rating|manual|incident|monitoring
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    severity = Column(Enum(VendorIssueSeverity), default=VendorIssueSeverity.MEDIUM)
+    status = Column(Enum(VendorIssueStatus), default=VendorIssueStatus.OPEN)
+    framework_refs = Column(JSON, nullable=True)
+    discovered_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    due_date = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    assigned_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    remediation_plan = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    supplier = relationship("Supplier")
 
     @property
     def supplier_name(self) -> str:
@@ -1703,6 +1845,11 @@ class BCPDependency(Base):
     # Notas adicionales sobre esta dependencia
 
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
+    # v3.5.2 — tabla de interconexiones tecnicas (ISO 22301 §8.2)
+    connection_type     = Column(String(32), nullable=True)  # API|database|network|file_transfer|manual|messaging
+    protocol            = Column(String(32), nullable=True)  # HTTPS|SQL|SMB|SFTP|AMQP|...
+    data_direction      = Column(String(8),  nullable=True)  # in|out|both
+    data_classification = Column(String(32), nullable=True)  # public|internal|confidential|strictly_confidential
 
 
 class BCPStrategy(Base):
@@ -1722,6 +1869,13 @@ class BCPStrategy(Base):
 
     process = relationship("BusinessProcess", foreign_keys=[process_id])
     responsible = relationship("User", foreign_keys=[responsible_id])
+    # v3.5.2 — configuracion tecnica IT y monitorizacion
+    it_config          = Column(JSON, nullable=True)
+    # {availability_pct, compute_vcpus, ram_gb, storage_tb, failover_type (none|active-passive|active-active),
+    #  virtualization_type, min_hosts, backup_rpo_hours, backup_rto_hours, backup_retention_days, offsite_location}
+    monitoring_config  = Column(JSON, nullable=True)
+    # {monitoring_tool, threshold_cpu_pct, threshold_mem_pct, alert_email,
+    #  maintenance_window, security_patch_days, feature_update_days}
 
 
 class BCPPlan(Base):
@@ -1768,6 +1922,14 @@ class BCPPlan(Base):
     # {primary_channel, secondary_channel, external_channel, template_internal, template_external}
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
     checklist_template = Column(JSON, nullable=True)
+    # v3.5.2 — campos adicionales de gestion y clasificacion
+    installation_type       = Column(String(32), nullable=True)   # cloud_saas|cloud_iaas|on_prem|hybrid|enduser_device
+    data_classification_level = Column(String(32), nullable=True) # public|internal|confidential|strictly_confidential
+    gdpr_data               = Column(Boolean, default=False)
+    affected_users_count    = Column(Integer, nullable=True)
+    documentation_links     = Column(JSON, nullable=True)         # [{title, url}]
+    related_documents       = Column(JSON, nullable=True)         # [{title, doc_version, valid_from}]
+    authorized_activators   = Column(JSON, nullable=True)         # [{name, role, email, phone, is_deputy}]
     # [{order,title,description,action_type,action_config}]
     # action_type: manual|notify_users|create_task|log_timeline
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -2133,3 +2295,142 @@ class SurveyResponse(Base):
     ip_address      = Column(String(45), nullable=True)
     user_agent      = Column(String(255), nullable=True)
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- REGWATCH — Vigilancia Normativa Automatica ----------
+# Modulo "set it and forget it": el tenant activa un toggle y RiskHub mantiene
+# su catalogo normativo actualizado. Spec: RISKHUB_REGULATORY_WATCH_MODULE_SPEC.md
+# Dos niveles de catalogo (§3.4): central global (estas tablas globales) +
+# referencia del tenant (settings + inbox de cambios que requieren decision).
+
+class ChangeSeverity(str, PyEnum):
+    """Clasificacion de severidad de un cambio normativo (§3.3)."""
+    COSMETIC = "cosmetic"           # redaccion no sustancial -> auto-apply silencioso
+    CLARIFICATION = "clarification" # guidance que clarifica -> auto-apply, digest
+    SUBSTANTIVE = "substantive"     # control nuevo/eliminado/modificado -> notifica
+    BREAKING = "breaking"           # nueva version mayor -> wizard de migracion
+
+
+class ChangeEventStatus(str, PyEnum):
+    """Estado de un hallazgo del pipeline (§4.1)."""
+    DETECTED = "detected"
+    PARSED = "parsed"
+    AI_ANALYZED = "ai_analyzed"
+    PENDING_INTERNAL_REVIEW = "pending_internal_review"
+    VALIDATED = "validated"
+    PUBLISHED = "published"
+    REJECTED = "rejected"
+
+
+class InboxItemStatus(str, PyEnum):
+    """Estado de un item del inbox del tenant (§4.2)."""
+    PENDING = "pending"
+    REVIEWED = "reviewed"
+    DISMISSED = "dismissed"
+    SNOOZED = "snoozed"
+
+
+class NormativeSource(Base):
+    """Fuente normativa maestra (§4.1). Global, no editable por tenant."""
+    __tablename__ = "regwatch_sources"
+    id = Column(Integer, primary_key=True)
+    code = Column(String(64), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    framework_codes = Column(JSON, nullable=False, default=list)   # ["ISO_27001", ...]
+    connector_class = Column(String(128), nullable=True)           # BaseNormativeWatcher subclass
+    fetch_config_json = Column(JSON, nullable=True)                # URLs, endpoints
+    polling_frequency = Column(String(16), default="weekly")       # daily|weekly|monthly
+    method = Column(String(64), nullable=True)                     # "API + RSS", etc.
+    is_active = Column(Boolean, default=True)
+    last_run_at = Column(DateTime, nullable=True)
+    last_run_status = Column(String(32), nullable=True)            # ok|error|never
+    last_run_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ChangePack(Base):
+    """Conjunto de cambios atomicos agrupados por norma+fecha+severidad (§4.1)."""
+    __tablename__ = "regwatch_change_packs"
+    id = Column(Integer, primary_key=True)
+    framework_code = Column(String(64), nullable=False, index=True)
+    version_from = Column(String(64), nullable=True)
+    version_to = Column(String(64), nullable=True)
+    severity = Column(Enum(ChangeSeverity), default=ChangeSeverity.SUBSTANTIVE, index=True)
+    title_es = Column(String(512), nullable=False)
+    title_en = Column(String(512), nullable=True)
+    description_es = Column(Text, nullable=True)
+    description_en = Column(Text, nullable=True)
+    # Cambios atomicos
+    controls_added_ids = Column(JSON, nullable=True, default=list)
+    controls_modified = Column(JSON, nullable=True, default=list)  # [{control_id, field, before, after}]
+    controls_removed_ids = Column(JSON, nullable=True, default=list)
+    controls_renumbered = Column(JSON, nullable=True, default=list)
+    source_url = Column(String(1024), nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    applied_to_catalog_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class NormativeChangeEvent(Base):
+    """Cada hallazgo del pipeline (§4.1). Cola de validacion interna."""
+    __tablename__ = "regwatch_change_events"
+    id = Column(Integer, primary_key=True)
+    source_id = Column(Integer, ForeignKey("regwatch_sources.id"), nullable=True, index=True)
+    change_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True, index=True)
+    framework_code = Column(String(64), nullable=False, index=True)
+    detected_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    raw_url = Column(String(1024), nullable=True)
+    raw_payload_path = Column(String(512), nullable=True)
+    content_hash = Column(String(64), nullable=True, index=True)   # SHA-256 idempotencia
+    severity = Column(Enum(ChangeSeverity), nullable=True)
+    status = Column(Enum(ChangeEventStatus), default=ChangeEventStatus.DETECTED, index=True)
+    summary_es = Column(Text, nullable=True)
+    summary_en = Column(Text, nullable=True)
+    ai_analysis_json = Column(JSON, nullable=True)
+    ai_confidence = Column(Float, nullable=True)
+    validated_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    validated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    source = relationship("NormativeSource")
+    change_pack = relationship("ChangePack")
+
+
+class TenantRegwatchSettings(Base):
+    """Configuracion de vigilancia normativa por tenant (§4.2). Una fila por org."""
+    __tablename__ = "regwatch_tenant_settings"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), unique=True, nullable=False, index=True)
+    is_enabled = Column(Boolean, default=False)                    # el toggle unico
+    enabled_at = Column(DateTime, nullable=True)
+    enabled_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    notification_email = Column(String(255), nullable=True)
+    digest_frequency = Column(String(16), default="weekly")        # daily|weekly|monthly|never
+    auto_apply_to_clones = Column(Boolean, default=False)
+    muted_frameworks = Column(JSON, nullable=True, default=list)   # frameworks silenciados (§9)
+    last_digest_sent_at = Column(DateTime, nullable=True)
+    last_sweep_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class TenantChangeInboxItem(Base):
+    """Item del inbox del tenant; solo se materializa si requiere atencion (§4.2)."""
+    __tablename__ = "regwatch_inbox_items"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "change_pack_id", name="uq_regwatch_inbox_org_pack"),
+    )
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    change_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    status = Column(Enum(InboxItemStatus), default=InboxItemStatus.PENDING, index=True)
+    snoozed_until = Column(DateTime, nullable=True)
+    reviewed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    impact_summary_json = Column(JSON, nullable=True)   # plantillas/politicas/risks afectados
+    decision_json = Column(JSON, nullable=True)         # decision por elemento del wizard
+    dismiss_reason = Column(Text, nullable=True)
+
+    change_pack = relationship("ChangePack")

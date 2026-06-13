@@ -1964,6 +1964,44 @@ def _cleanup_ai_jobs() -> None:
         logger.warning("AI jobs cleanup error: %s", exc)
 
 
+def _run_regwatch_sweep() -> None:
+    """Barrido periodico de fuentes de vigilancia normativa (regwatch §5.2)."""
+    from app.database import SessionLocal
+    from app.services import regwatch_service
+
+    db = SessionLocal()
+    try:
+        regwatch_service.run_sweep(db)
+    except Exception as exc:
+        logger.exception("Error en regwatch_sweep: %s", exc)
+    finally:
+        db.close()
+
+
+def schedule_first_sweep(delay_minutes: int = 5) -> None:
+    """Programa un barrido unico de regwatch poco despues de activar el toggle.
+
+    Spec §2.3: al activar, se programa el primer barrido para ~5 min despues.
+    No-op silencioso si el scheduler aun no esta iniciado.
+    """
+    from datetime import timedelta
+    if _scheduler is None:
+        return
+    try:
+        run_at = datetime.now(timezone.utc) + timedelta(minutes=max(1, delay_minutes))
+        _scheduler.add_job(
+            func=_run_regwatch_sweep,
+            trigger="date",
+            run_date=run_at,
+            id="regwatch_first_sweep",
+            name="Vigilancia normativa — primer barrido tras activacion",
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
+    except Exception as exc:
+        logger.warning("No se pudo programar el primer barrido regwatch: %s", exc)
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -2195,6 +2233,15 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=CronTrigger(day_of_week="sun", hour=7),
         id="bcm_test_recommendations",
         name="Generar recomendaciones de tests BCM",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Regwatch: barrido diario de fuentes normativas (§5.2)
+    _scheduler.add_job(
+        func=_run_regwatch_sweep,
+        trigger=IntervalTrigger(hours=24),
+        id="regwatch_sweep",
+        name="Vigilancia normativa — barrido de fuentes",
         replace_existing=True,
         misfire_grace_time=3600,
     )

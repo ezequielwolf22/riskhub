@@ -72,6 +72,7 @@ const ViewComplianceHub = {
         { id: 'soa', label: 'SoA', view: ViewSoaVersions },
         { id: 'policies', label: 'Politicas', view: ViewPolicies, route: 'policies' },
         { id: 'gdpr', label: 'RGPD', view: ViewGdpr, route: 'gdpr' },
+        { id: 'regwatch', label: 'Vigilancia normativa', view: ViewRegwatch, route: 'regwatch' },
         { id: 'audits', label: 'Auditorias', view: ViewAudits, route: 'internal-audits' },
         { id: 'management-review', label: 'Rev. direccion', view: ViewManagementReview },
         { id: 'change-requests', label: 'Cambios', view: ViewChangeRequests },
@@ -146,7 +147,10 @@ const ViewSuppliersHub = {
       hub: 'suppliers-hub',
       label: 'Proveedores',
       tabs: [
+        { id: 'tprm', label: 'TPRM Dashboard', view: ViewTprm, route: 'tprm' },
         { id: 'suppliers', label: 'Proveedores', view: ViewSuppliers, route: 'suppliers' },
+        { id: 'assessments', label: 'Evaluaciones', view: ViewVendorAssessments, route: 'vendor-assessments' },
+        { id: 'issues', label: 'Hallazgos', view: ViewVendorIssues, route: 'vendor-issues' },
       ],
     });
   },

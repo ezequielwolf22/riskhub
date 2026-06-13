@@ -990,10 +990,39 @@ const ViewBcp = (() => {
             <td style="font-size:12px;">${(p.process_ids||[]).length}</td>
             <td style="font-size:12px;color:var(--text-subtle);">${UI.esc(p.plan_owner_name||'—')}</td>
             <td style="font-size:12px;">${p.review_date ? new Date(p.review_date).toLocaleDateString('es-ES') : '—'}</td>
-            <td style="display:flex;gap:4px;flex-wrap:nowrap;">
-              <button class="btn btn-sm btn-secondary" onclick="ViewBcp._editPlan(${p.id})">Editar</button>
-              ${['draft','under_review'].includes(p.status) ?
-                `<button class="btn btn-sm btn-primary" onclick="ViewBcp._approvePlan(${p.id})">Aprobar</button>` : ''}
+            <td style="position:relative">
+              <button class="btn btn-sm btn-ghost" style="padding:4px 8px"
+                onclick="ViewBcp._togglePlanMenu(event,${p.id})">
+                <i class="ti ti-dots-vertical"></i>
+              </button>
+              <div id="plan-menu-${p.id}" style="display:none;position:absolute;right:0;top:100%;z-index:200;
+                background:var(--bg-1);border:1px solid var(--border);border-radius:6px;
+                box-shadow:0 4px 16px rgba(0,0,0,.15);min-width:190px;overflow:hidden">
+                <button class="plan-menu-item" onclick="ViewBcp._editPlan(${p.id});ViewBcp._closePlanMenus()">
+                  <i class="ti ti-edit"></i> Editar plan
+                </button>
+                ${['draft','under_review'].includes(p.status) ? `
+                <button class="plan-menu-item" onclick="ViewBcp._approvePlan(${p.id});ViewBcp._closePlanMenus()">
+                  <i class="ti ti-check"></i> Aprobar
+                </button>` : ''}
+                <div style="height:1px;background:var(--border);margin:2px 0"></div>
+                <button class="plan-menu-item plan-menu-danger" onclick="ViewBcp._activatePlanDirect(${p.id});ViewBcp._closePlanMenus()">
+                  <i class="ti ti-alert-triangle"></i> Activar plan
+                </button>
+                <button class="plan-menu-item" onclick="ViewBcp._sendPlanMessage(${p.id});ViewBcp._closePlanMenus()">
+                  <i class="ti ti-send"></i> Mensaje a stakeholders
+                </button>
+                <button class="plan-menu-item" onclick="ViewBcp._scheduleTestForPlan(${p.id});ViewBcp._closePlanMenus()">
+                  <i class="ti ti-calendar-event"></i> Programar test
+                </button>
+                <div style="height:1px;background:var(--border);margin:2px 0"></div>
+                <button class="plan-menu-item" onclick="ViewBcp._viewPlanContext(${p.id});ViewBcp._closePlanMenus()">
+                  <i class="ti ti-layout-grid"></i> Ver contexto completo
+                </button>
+                <button class="plan-menu-item" onclick="ViewBcp._viewPlanActivations(${p.id});ViewBcp._closePlanMenus()">
+                  <i class="ti ti-history"></i> Historial activaciones
+                </button>
+              </div>
             </td>
           </tr>`).join('')}
           </tbody>
@@ -1085,9 +1114,12 @@ const ViewBcp = (() => {
             <td>${t.conducted_at ? new Date(t.conducted_at).toLocaleDateString('es-ES') : '—'}</td>
             <td>${t.result ?
               `<span class="badge badge-${t.result==='passed'?'success':t.result==='partial'?'warning':'danger'}">${t.result}</span>` : '—'}</td>
-            <td>
+            <td style="display:flex;gap:4px;flex-wrap:nowrap">
               <button class="btn btn-sm btn-secondary" onclick="ViewBcp._openTestResultModal(${t.id})">
                 ${t.result ? 'Ver / Editar' : 'Registrar resultado'}
+              </button>
+              <button class="btn btn-sm btn-ghost" title="Generar checklist con IA" onclick="ViewBcp._genAiChecklist(${t.id})" style="padding:4px 7px">
+                <i class="ti ti-sparkles" style="font-size:13px;color:var(--primary)"></i>
               </button>
             </td>
           </tr>`).join('')}
@@ -1890,6 +1922,40 @@ const ViewBcp = (() => {
           <div style="margin-bottom:14px;">${lbl('Notas adicionales')}
             <textarea id="dm-notes" class="form-control" rows="2" style="font-size:13px;">${UI.esc(dep?.notes||'')}</textarea>
           </div>
+
+          <!-- Interconexion tecnica -->
+          <details style="margin-bottom:4px;border:1px solid var(--border);border-radius:6px;overflow:hidden;" ${dep?.connection_type ? 'open' : ''}>
+            <summary style="padding:8px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);cursor:pointer;background:var(--bg-2);user-select:none;">
+              <i class="ti ti-git-branch" style="margin-right:4px"></i> Interconexion tecnica (ISO 22301 §8.2)
+            </summary>
+            <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div>${lbl('Tipo de conexion')}
+                <select id="dm-conn-type" class="form-control" style="font-size:13px;">
+                  <option value="">— Seleccionar —</option>
+                  ${['API','database','network','file_transfer','manual','messaging'].map(v=>
+                    `<option value="${v}"${dep?.connection_type===v?' selected':''}>${v}</option>`).join('')}
+                </select>
+              </div>
+              <div>${lbl('Protocolo')}
+                <input id="dm-protocol" class="form-control" style="font-size:13px;" placeholder="HTTPS, SQL, SMB, SFTP..." value="${UI.esc(dep?.protocol||'')}">
+              </div>
+              <div>${lbl('Direccion del flujo')}
+                <select id="dm-data-dir" class="form-control" style="font-size:13px;">
+                  <option value="">— Seleccionar —</option>
+                  ${[['in','Entrada (in)'],['out','Salida (out)'],['both','Bidireccional (both)']].map(([v,l])=>
+                    `<option value="${v}"${dep?.data_direction===v?' selected':''}>${l}</option>`).join('')}
+                </select>
+              </div>
+              <div>${lbl('Clasificacion del dato')}
+                <select id="dm-data-class" class="form-control" style="font-size:13px;">
+                  <option value="">— Seleccionar —</option>
+                  ${[['public','Publico'],['internal','Interno'],['confidential','Confidencial'],['strictly_confidential','Estrictamente confidencial']].map(([v,l])=>
+                    `<option value="${v}"${dep?.data_classification===v?' selected':''}>${l}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          </details>
+
         </div>
         <div class="modal-footer-sticky">
           ${dep ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delDep(${dep.id})"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
@@ -1934,6 +2000,10 @@ const ViewBcp = (() => {
         alternative: g('dm-alt')?.value || null,
         recovery_sequence: parseInt(g('dm-seq')?.value) || null,
         notes: g('dm-notes')?.value || null,
+        connection_type:     g('dm-conn-type')?.value  || null,
+        protocol:            g('dm-protocol')?.value   || null,
+        data_direction:      g('dm-data-dir')?.value   || null,
+        data_classification: g('dm-data-class')?.value || null,
       };
       if (!body.name) { UI.toast('El nombre del recurso es obligatorio', 'error'); return; }
     }
@@ -2008,6 +2078,82 @@ const ViewBcp = (() => {
         <div style="margin-bottom:14px;">${lbl('Descripcion')}
           <textarea id="sm-desc" class="form-control" rows="3" style="font-size:13px;">${UI.esc(strat?.description||'')}</textarea>
         </div>
+
+        <!-- Seccion colapsable: Configuracion tecnica IT -->
+        <details style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden;" ${strat?.it_config ? 'open' : ''}>
+          <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);cursor:pointer;background:var(--bg-2);user-select:none;">
+            <i class="ti ti-server" style="margin-right:4px"></i> Configuracion tecnica IT (ISO 22301 §8.4)
+          </summary>
+          <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>${lbl('Disponibilidad objetivo (%)')}
+              <input id="sm-avail" class="form-control" type="number" min="0" max="100" step="0.01" style="font-size:13px;" value="${strat?.it_config?.availability_pct??''}">
+            </div>
+            <div>${lbl('Tipo failover')}
+              <select id="sm-failover" class="form-control" style="font-size:13px;">
+                <option value="">— Seleccionar —</option>
+                ${['none','active-passive','active-active'].map(v=>`<option value="${v}"${strat?.it_config?.failover_type===v?' selected':''}>${v}</option>`).join('')}
+              </select>
+            </div>
+            <div>${lbl('vCPUs compute')}
+              <input id="sm-vcpu" class="form-control" type="number" min="0" style="font-size:13px;" value="${strat?.it_config?.compute_vcpus??''}">
+            </div>
+            <div>${lbl('RAM (GB)')}
+              <input id="sm-ram" class="form-control" type="number" min="0" style="font-size:13px;" value="${strat?.it_config?.ram_gb??''}">
+            </div>
+            <div>${lbl('Almacenamiento (TB)')}
+              <input id="sm-stor" class="form-control" type="number" min="0" step="0.1" style="font-size:13px;" value="${strat?.it_config?.storage_tb??''}">
+            </div>
+            <div>${lbl('Virtualizacion')}
+              <input id="sm-virt" class="form-control" style="font-size:13px;" placeholder="VMware / Hyper-V / KVM..." value="${UI.esc(strat?.it_config?.virtualization_type||'')}">
+            </div>
+            <div>${lbl('Hosts minimos')}
+              <input id="sm-hosts" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.it_config?.min_hosts??''}">
+            </div>
+            <div>${lbl('Ubicacion backup offsite')}
+              <input id="sm-offsite" class="form-control" style="font-size:13px;" placeholder="CPD secundario, cloud..." value="${UI.esc(strat?.it_config?.offsite_location||'')}">
+            </div>
+            <div>${lbl('RPO backup (horas)')}
+              <input id="sm-bkp-rpo" class="form-control" type="number" min="0" style="font-size:13px;" value="${strat?.it_config?.backup_rpo_hours??''}">
+            </div>
+            <div>${lbl('RTO backup (horas)')}
+              <input id="sm-bkp-rto" class="form-control" type="number" min="0" style="font-size:13px;" value="${strat?.it_config?.backup_rto_hours??''}">
+            </div>
+            <div style="grid-column:span 2">${lbl('Retencion backup (dias)')}
+              <input id="sm-bkp-ret" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.it_config?.backup_retention_days??''}">
+            </div>
+          </div>
+        </details>
+
+        <!-- Seccion colapsable: Monitorizacion y mantenimiento -->
+        <details style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden;" ${strat?.monitoring_config ? 'open' : ''}>
+          <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);cursor:pointer;background:var(--bg-2);user-select:none;">
+            <i class="ti ti-activity" style="margin-right:4px"></i> Monitorizacion y mantenimiento
+          </summary>
+          <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>${lbl('Herramienta de monitorizacion')}
+              <input id="sm-mon-tool" class="form-control" style="font-size:13px;" placeholder="Zabbix, Nagios, Datadog..." value="${UI.esc(strat?.monitoring_config?.monitoring_tool||'')}">
+            </div>
+            <div>${lbl('Email alertas')}
+              <input id="sm-mon-email" class="form-control" type="email" style="font-size:13px;" value="${UI.esc(strat?.monitoring_config?.alert_email||'')}">
+            </div>
+            <div>${lbl('Umbral CPU (%)')}
+              <input id="sm-thr-cpu" class="form-control" type="number" min="0" max="100" style="font-size:13px;" value="${strat?.monitoring_config?.threshold_cpu_pct??''}">
+            </div>
+            <div>${lbl('Umbral memoria (%)')}
+              <input id="sm-thr-mem" class="form-control" type="number" min="0" max="100" style="font-size:13px;" value="${strat?.monitoring_config?.threshold_mem_pct??''}">
+            </div>
+            <div>${lbl('Ventana mantenimiento')}
+              <input id="sm-maint" class="form-control" style="font-size:13px;" placeholder="Ej: sabados 02:00-04:00 UTC" value="${UI.esc(strat?.monitoring_config?.maintenance_window||'')}">
+            </div>
+            <div>${lbl('Parches de seguridad (dias)')}
+              <input id="sm-patch-sec" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.monitoring_config?.security_patch_days??''}">
+            </div>
+            <div style="grid-column:span 2">${lbl('Actualizaciones de funcionalidad (dias)')}
+              <input id="sm-patch-feat" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.monitoring_config?.feature_update_days??''}">
+            </div>
+          </div>
+        </details>
+
       </div>
       <div class="modal-footer-sticky">
         ${strat ? `<button class="btn btn-danger btn-sm" onclick="ViewBcp._delStrat(${strat.id})"><i class="ti ti-trash"></i> Eliminar</button>` : ''}
@@ -2023,14 +2169,41 @@ const ViewBcp = (() => {
   function _editStrat(id) { _openStratModal(_strats.find(s => s.id === id)); }
 
   async function _saveStrat(id) {
+    const g = i => document.getElementById(i);
+    const itCfg = {
+      availability_pct:      parseFloat(g('sm-avail')?.value)  || null,
+      compute_vcpus:         parseInt(g('sm-vcpu')?.value)      || null,
+      ram_gb:                parseInt(g('sm-ram')?.value)        || null,
+      storage_tb:            parseFloat(g('sm-stor')?.value)    || null,
+      failover_type:         g('sm-failover')?.value            || null,
+      virtualization_type:   g('sm-virt')?.value                || null,
+      min_hosts:             parseInt(g('sm-hosts')?.value)      || null,
+      backup_rpo_hours:      parseInt(g('sm-bkp-rpo')?.value)   || null,
+      backup_rto_hours:      parseInt(g('sm-bkp-rto')?.value)   || null,
+      backup_retention_days: parseInt(g('sm-bkp-ret')?.value)   || null,
+      offsite_location:      g('sm-offsite')?.value             || null,
+    };
+    const monCfg = {
+      monitoring_tool:       g('sm-mon-tool')?.value  || null,
+      threshold_cpu_pct:     parseInt(g('sm-thr-cpu')?.value)  || null,
+      threshold_mem_pct:     parseInt(g('sm-thr-mem')?.value)  || null,
+      alert_email:           g('sm-mon-email')?.value || null,
+      maintenance_window:    g('sm-maint')?.value     || null,
+      security_patch_days:   parseInt(g('sm-patch-sec')?.value)  || null,
+      feature_update_days:   parseInt(g('sm-patch-feat')?.value) || null,
+    };
+    const itHasData  = Object.values(itCfg).some(v => v !== null && v !== '');
+    const monHasData = Object.values(monCfg).some(v => v !== null && v !== '');
     const body = {
-      strategy_type: document.getElementById('sm-type').value,
-      name: document.getElementById('sm-name').value.trim(),
-      process_id: parseInt(document.getElementById('sm-proc').value)||null,
-      implementation_status: document.getElementById('sm-status').value,
-      estimated_cost: parseFloat(document.getElementById('sm-cost').value)||null,
-      target_date: document.getElementById('sm-date').value||null,
-      description: document.getElementById('sm-desc').value||null,
+      strategy_type: g('sm-type').value,
+      name: g('sm-name').value.trim(),
+      process_id: parseInt(g('sm-proc').value)||null,
+      implementation_status: g('sm-status').value,
+      estimated_cost: parseFloat(g('sm-cost').value)||null,
+      target_date: g('sm-date').value||null,
+      description: g('sm-desc').value||null,
+      it_config:         itHasData  ? itCfg  : null,
+      monitoring_config: monHasData ? monCfg : null,
     };
     if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
     try {
@@ -2110,7 +2283,7 @@ const ViewBcp = (() => {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
       <div>${lbl('Fecha proxima revision')}
-        <input id="pl-rev" class="form-control" type="date" style="font-size:13px;" value="${plan?.review_date?plan.review_date.substring(0,10):''}">
+        <input id="pl-rev" class="form-control" type="date" style="font-size:13px;" value="${plan?.review_date ? plan.review_date.substring(0,10) : (() => { const d = new Date(); d.setFullYear(d.getFullYear()+1); return d.toISOString().substring(0,10); })()}">
       </div>
       <div>${lbl('ID documento vinculado')}
         <input id="pl-doc" class="form-control" type="number" style="font-size:13px;" value="${plan?.document_id||''}" placeholder="ID del documento en Agente IA">
@@ -2385,6 +2558,90 @@ const ViewBcp = (() => {
       </div>
     </div>
 
+    <!-- SECCION 10: Clasificacion y gestion -->
+    <div class="form-section-divider"><span>CLASIFICACION Y GESTION</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+      <div>${lbl('Tipo de instalacion')}
+        <select id="pl-inst-type" class="form-control" style="font-size:13px;">
+          <option value="">— Sin clasificar —</option>
+          ${[['cloud_saas','Cloud SaaS'],['cloud_iaas','Cloud IaaS'],['on_prem','On-premise'],['hybrid','Hibrido'],['enduser_device','Dispositivo usuario final']]
+            .map(([v,l])=>`<option value="${v}"${plan?.installation_type===v?' selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div>${lbl('Clasificacion del dato')}
+        <select id="pl-data-class" class="form-control" style="font-size:13px;">
+          <option value="">— Sin clasificar —</option>
+          ${[['public','Publico'],['internal','Interno'],['confidential','Confidencial'],['strictly_confidential','Estrictamente confidencial']]
+            .map(([v,l])=>`<option value="${v}"${plan?.data_classification_level===v?' selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div>${lbl('Usuarios afectados (estimado)')}
+        <input id="pl-users-count" class="form-control" type="number" min="0" style="font-size:13px;" value="${plan?.affected_users_count??''}">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding-top:20px;">
+        <input id="pl-gdpr" type="checkbox" ${plan?.gdpr_data?'checked':''}>
+        <label for="pl-gdpr" style="margin:0;font-size:13px;">Datos GDPR / RGPD implicados</label>
+      </div>
+    </div>
+
+    <!-- Autorizadores -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">Autorizadores de activacion</div>
+    <div class="inline-table-wrap" style="margin-bottom:8px;">
+      <table class="inline-table">
+        <thead><tr><th>Nombre</th><th>Rol</th><th>Email</th><th>Telefono</th><th>Suplente</th><th style="width:30px"></th></tr></thead>
+        <tbody id="pl-auth-tbody">
+          ${(plan?.authorized_activators||[]).map((a,i)=>`<tr>
+            <td><input value="${UI.esc(a.name||'')}" oninput="ViewBcp._updateAuthActivator(${i},'name',this.value)"></td>
+            <td><input value="${UI.esc(a.role||'')}" oninput="ViewBcp._updateAuthActivator(${i},'role',this.value)"></td>
+            <td><input value="${UI.esc(a.email||'')}" oninput="ViewBcp._updateAuthActivator(${i},'email',this.value)"></td>
+            <td><input value="${UI.esc(a.phone||'')}" oninput="ViewBcp._updateAuthActivator(${i},'phone',this.value)"></td>
+            <td style="text-align:center"><input type="checkbox" ${a.is_deputy?'checked':''} onchange="ViewBcp._updateAuthActivator(${i},'is_deputy',this.checked)"></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeAuthActivator(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addAuthActivator()" style="margin-bottom:14px;font-size:12px;">
+      <i class="ti ti-plus"></i> Anadir autorizador
+    </button>
+
+    <!-- Documentacion vinculada -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">Documentacion vinculada (enlaces externos)</div>
+    <div class="inline-table-wrap" style="margin-bottom:8px;">
+      <table class="inline-table">
+        <thead><tr><th>Titulo</th><th>URL / Referencia</th><th style="width:30px"></th></tr></thead>
+        <tbody id="pl-doclinks-tbody">
+          ${(plan?.documentation_links||[]).map((d,i)=>`<tr>
+            <td><input value="${UI.esc(d.title||'')}" oninput="ViewBcp._updateDocLink(${i},'title',this.value)"></td>
+            <td><input value="${UI.esc(d.url||'')}" oninput="ViewBcp._updateDocLink(${i},'url',this.value)" placeholder="https://..."></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeDocLink(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addDocLink()" style="margin-bottom:14px;font-size:12px;">
+      <i class="ti ti-plus"></i> Anadir enlace
+    </button>
+
+    <!-- Documentos relacionados -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">Documentos relacionados (internos)</div>
+    <div class="inline-table-wrap" style="margin-bottom:8px;">
+      <table class="inline-table">
+        <thead><tr><th>Titulo</th><th>Version</th><th>Vigente desde</th><th style="width:30px"></th></tr></thead>
+        <tbody id="pl-reldocs-tbody">
+          ${(plan?.related_documents||[]).map((d,i)=>`<tr>
+            <td><input value="${UI.esc(d.title||'')}" oninput="ViewBcp._updateRelDoc(${i},'title',this.value)"></td>
+            <td><input value="${UI.esc(d.doc_version||'')}" style="width:70px;" oninput="ViewBcp._updateRelDoc(${i},'doc_version',this.value)" placeholder="v1.0"></td>
+            <td><input type="date" value="${d.valid_from||''}" oninput="ViewBcp._updateRelDoc(${i},'valid_from',this.value)"></td>
+            <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeRelDoc(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addRelDoc()" style="margin-bottom:14px;font-size:12px;">
+      <i class="ti ti-plus"></i> Anadir documento
+    </button>
+
     <!-- SECCION 9: Historial -->
     ${plan ? `<div class="form-section-divider"><span>HISTORIAL Y MANTENIMIENTO</span></div>
     <div style="font-size:12px;color:var(--text-subtle);display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
@@ -2400,6 +2657,9 @@ const ViewBcp = (() => {
     window._planContacts = [...contacts];
     window._planKpis     = [...kpis];
     window._planBkpItems = [...(plan?.backup_policy?.items || [])];
+    window._planAuthActivators = [...(plan?.authorized_activators || [])];
+    window._planDocLinks       = [...(plan?.documentation_links   || [])];
+    window._planRelDocs        = [...(plan?.related_documents     || [])];
 
     // Guardar save handler actualizado con el ID
     document.getElementById('plan-drawer-save').onclick = () => _savePlan(_currentPlanId);
@@ -2450,6 +2710,52 @@ const ViewBcp = (() => {
   }
   function _removeBkpItem(i) { (window._planBkpItems||[]).splice(i,1); _rerenderBkpItems(); }
   function _updateBkpItem(i, field, val) { if (window._planBkpItems?.[i]) window._planBkpItems[i][field] = val; }
+
+  // ── Auth activators ──────────────────────────────────────────────────────────
+  function _rerenderAuthActivators() {
+    const tbody = document.getElementById('pl-auth-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (window._planAuthActivators || []).map((a,i) => `<tr>
+      <td><input value="${UI.esc(a.name||'')}" oninput="ViewBcp._updateAuthActivator(${i},'name',this.value)"></td>
+      <td><input value="${UI.esc(a.role||'')}" oninput="ViewBcp._updateAuthActivator(${i},'role',this.value)"></td>
+      <td><input value="${UI.esc(a.email||'')}" oninput="ViewBcp._updateAuthActivator(${i},'email',this.value)"></td>
+      <td><input value="${UI.esc(a.phone||'')}" oninput="ViewBcp._updateAuthActivator(${i},'phone',this.value)"></td>
+      <td style="text-align:center"><input type="checkbox" ${a.is_deputy?'checked':''} onchange="ViewBcp._updateAuthActivator(${i},'is_deputy',this.checked)"></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeAuthActivator(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addAuthActivator() { (window._planAuthActivators = window._planAuthActivators || []).push({name:'',role:'',email:'',phone:'',is_deputy:false}); _rerenderAuthActivators(); }
+  function _removeAuthActivator(i) { (window._planAuthActivators||[]).splice(i,1); _rerenderAuthActivators(); }
+  function _updateAuthActivator(i, field, val) { if (window._planAuthActivators?.[i]) window._planAuthActivators[i][field] = val; }
+
+  // ── Documentation links ──────────────────────────────────────────────────────
+  function _rerenderDocLinks() {
+    const tbody = document.getElementById('pl-doclinks-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (window._planDocLinks || []).map((d,i) => `<tr>
+      <td><input value="${UI.esc(d.title||'')}" oninput="ViewBcp._updateDocLink(${i},'title',this.value)"></td>
+      <td><input value="${UI.esc(d.url||'')}" oninput="ViewBcp._updateDocLink(${i},'url',this.value)" placeholder="https://..."></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeDocLink(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addDocLink() { (window._planDocLinks = window._planDocLinks || []).push({title:'',url:''}); _rerenderDocLinks(); }
+  function _removeDocLink(i) { (window._planDocLinks||[]).splice(i,1); _rerenderDocLinks(); }
+  function _updateDocLink(i, field, val) { if (window._planDocLinks?.[i]) window._planDocLinks[i][field] = val; }
+
+  // ── Related documents ────────────────────────────────────────────────────────
+  function _rerenderRelDocs() {
+    const tbody = document.getElementById('pl-reldocs-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = (window._planRelDocs || []).map((d,i) => `<tr>
+      <td><input value="${UI.esc(d.title||'')}" oninput="ViewBcp._updateRelDoc(${i},'title',this.value)"></td>
+      <td><input value="${UI.esc(d.doc_version||'')}" style="width:70px;" oninput="ViewBcp._updateRelDoc(${i},'doc_version',this.value)" placeholder="v1.0"></td>
+      <td><input type="date" value="${d.valid_from||''}" oninput="ViewBcp._updateRelDoc(${i},'valid_from',this.value)"></td>
+      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._removeRelDoc(${i})" style="padding:2px 6px;"><i class="ti ti-trash" style="font-size:12px;"></i></button></td>
+    </tr>`).join('');
+  }
+  function _addRelDoc() { (window._planRelDocs = window._planRelDocs || []).push({title:'',doc_version:'',valid_from:''}); _rerenderRelDocs(); }
+  function _removeRelDoc(i) { (window._planRelDocs||[]).splice(i,1); _rerenderRelDocs(); }
+  function _updateRelDoc(i, field, val) { if (window._planRelDocs?.[i]) window._planRelDocs[i][field] = val; }
 
   // Helpers para tablas inline del drawer de planes
   function _rerenderSysDeps() {
@@ -2610,6 +2916,14 @@ const ViewBcp = (() => {
         template_internal: g('pl-cc-tpl-int')?.value   || null,
         template_external: g('pl-cc-tpl-ext')?.value   || null,
       } : null,
+      // Clasificacion y gestion (Sprint 5)
+      installation_type:         g('pl-inst-type')?.value  || null,
+      data_classification_level: g('pl-data-class')?.value || null,
+      gdpr_data:                 g('pl-gdpr')?.checked || false,
+      affected_users_count:      parseInt(g('pl-users-count')?.value) || null,
+      authorized_activators: (window._planAuthActivators || []).length ? window._planAuthActivators : null,
+      documentation_links:   (window._planDocLinks       || []).length ? window._planDocLinks       : null,
+      related_documents:     (window._planRelDocs         || []).length ? window._planRelDocs         : null,
     };
 
     if (!body.name) { UI.toast('El nombre del plan es obligatorio', 'error'); return; }
@@ -2662,48 +2976,84 @@ const ViewBcp = (() => {
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
-    <div class="modal" style="max-width:480px;">
-      <div class="modal-header">
+    <div class="modal" style="max-width:520px;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-header" style="flex-shrink:0">
         <h2>Programar test BCM</h2>
-        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
-      <div class="modal-body">
-        <label>Tipo *</label>
-        <select id="tm-type" class="form-control">
-          <option value="tabletop">Tabletop exercise</option>
-          <option value="simulation">Simulacion</option>
-          <option value="full_test">Test completo</option>
-        </select>
-        <label style="margin-top:10px;">Fecha programada *</label>
-        <input id="tm-date" class="form-control" type="datetime-local">
-        <label style="margin-top:10px;">Objetivo</label>
-        <input id="tm-obj" class="form-control" placeholder="Objetivo del test">
-        <label style="margin-top:10px;">Descripcion del alcance</label>
-        <textarea id="tm-scope" class="form-control" rows="2"></textarea>
-        <label style="margin-top:10px;">Procesos a evaluar</label>
-        <div style="max-height:100px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px;">
-          ${_procs.map(p=>`<label style="display:flex;gap:6px;align-items:center;padding:2px;">
-            <input type="checkbox" value="${p.id}" class="tm-pids"> ${UI.esc(p.name)}
-          </label>`).join('')}
+      <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Tipo *</label>
+            <select id="tm-type" class="form-control" style="font-size:13px">
+              <option value="tabletop">Tabletop exercise</option>
+              <option value="simulation">Simulacion</option>
+              <option value="full_test">Test completo</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Fecha programada *</label>
+            <input id="tm-date" class="form-control" type="datetime-local" style="font-size:13px">
+          </div>
         </div>
-        <label style="margin-top:10px;">Facilitador (ID usuario)</label>
-        <input id="tm-fac" class="form-control" type="number">
-        <label style="margin-top:10px;">Frecuencia planificada</label>
-        <select id="tm-freq" class="form-control">
-          <option value="">— Sin definir —</option>
-          <option value="mensual">Mensual</option>
-          <option value="trimestral">Trimestral</option>
-          <option value="semestral">Semestral</option>
-          <option value="anual">Anual</option>
-        </select>
-        <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="btn btn-primary" onclick="ViewBcp._saveTest()">Guardar</button>
-          <button class="btn btn-secondary" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Plan asociado</label>
+          <select id="tm-plan" class="form-control" style="font-size:13px">
+            <option value="">— Sin plan especifico —</option>
+            ${_plans.map(p=>`<option value="${p.id}">${UI.esc(p.code||'')} ${UI.esc(p.name)}</option>`).join('')}
+          </select>
         </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Objetivo</label>
+          <input id="tm-obj" class="form-control" style="font-size:13px" placeholder="Objetivo del test">
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Descripcion del alcance</label>
+          <textarea id="tm-scope" class="form-control" rows="3" style="font-size:13px"></textarea>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Procesos a evaluar</label>
+          <div style="max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px;">
+            ${_procs.map(p=>`<label style="display:flex;gap:6px;align-items:center;padding:3px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" value="${p.id}" class="tm-pids"> ${UI.esc(p.name)}
+            </label>`).join('')}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Facilitador (ID usuario)</label>
+            <input id="tm-fac" class="form-control" type="number" style="font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Frecuencia planificada</label>
+            <select id="tm-freq" class="form-control" style="font-size:13px">
+              <option value="">— Sin definir —</option>
+              <option value="mensual">Mensual</option>
+              <option value="trimestral">Trimestral</option>
+              <option value="semestral">Semestral</option>
+              <option value="anual">Anual</option>
+            </select>
+          </div>
+        </div>
+        <div id="tm-ai-note" style="display:none;padding:8px 12px;background:rgba(89,0,141,.08);border-left:3px solid var(--primary);border-radius:4px;font-size:12px;margin-bottom:12px">
+          <i class="ti ti-sparkles"></i> Tras guardar podras generar un checklist detallado con IA.
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveTest()"><i class="ti ti-check"></i> Guardar test</button>
       </div>
     </div>`;
     document.body.appendChild(modal);
-    // Aplicar prefill de recomendaciones IA
+
+    // Auto-rellenar facilitador con usuario actual
+    const me = Auth.user();
+    if (me?.id) {
+      const facEl = modal.querySelector('#tm-fac');
+      if (facEl && !facEl.value) facEl.value = me.id;
+    }
+
+    // Aplicar prefill (IA recs o plan_id desde menu contextual)
     if (prefill) {
       if (prefill.test_type) {
         const sel = modal.querySelector('#tm-type');
@@ -2712,6 +3062,10 @@ const ViewBcp = (() => {
       if (prefill.scheduled_date) {
         const inp = modal.querySelector('#tm-date');
         if (inp) inp.value = prefill.scheduled_date + 'T09:00';
+      }
+      if (prefill.plan_id) {
+        const planSel = modal.querySelector('#tm-plan');
+        if (planSel) planSel.value = String(prefill.plan_id);
       }
     }
   }
@@ -2726,14 +3080,88 @@ const ViewBcp = (() => {
       process_ids: pids,
       facilitator_id: parseInt(document.getElementById('tm-fac').value)||null,
       frequency: document.getElementById('tm-freq')?.value || null,
+      plan_id: parseInt(document.getElementById('tm-plan')?.value) || null,
     };
     if (!body.scheduled_at) { UI.toast('La fecha es obligatoria', 'error'); return; }
     try {
-      await Api.post('/api/bcp/tests', body);
-      UI.toast('Test programado', 'success');
+      const resp = await Api.post('/api/bcp/tests', body);
       document.querySelector('.modal-bg')?.remove();
+      _tests = [];
       _switchTab('tests');
+      const newId = resp?.id;
+      if (newId && body.plan_id) {
+        // Tiene plan asociado: generar checklist IA automaticamente
+        UI.toast('Test creado. Generando checklist con IA...', 'info');
+        setTimeout(() => _genAiChecklist(newId), 600);
+      } else {
+        UI.toast('Test programado', 'success');
+      }
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+  }
+
+  async function _genAiChecklist(testId) {
+    UI.toast('Generando checklist con IA...', 'info');
+    try {
+      const result = await Api.post(`/api/bcp/tests/${testId}/ai-generate-checklist`);
+      _showAiChecklistModal(testId, result);
+    } catch (e) {
+      UI.toast('Error generando checklist: ' + (e.message || e), 'error');
+    }
+  }
+
+  function _showAiChecklistModal(testId, result) {
+    const cl = result?.checklist || {};
+    const renderPhase = (title, items, color) => {
+      if (!items?.length) return '';
+      return `<div style="margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:${color};margin-bottom:8px;letter-spacing:.04em">${title}</div>
+        ${items.map(item => `
+          <div style="display:flex;gap:8px;padding:6px 10px;background:var(--bg-2);border-radius:4px;margin-bottom:4px;font-size:12px">
+            <span style="flex-shrink:0;width:20px;height:20px;border-radius:50%;background:${color}22;color:${color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${item.order||'?'}</span>
+            <div>
+              <div style="font-weight:600">${UI.esc(item.title||'')}</div>
+              ${item.description ? `<div style="color:var(--text-subtle);margin-top:2px">${UI.esc(item.description)}</div>` : ''}
+              ${item.process ? `<div style="margin-top:2px"><span class="badge badge-secondary" style="font-size:10px">${UI.esc(item.process)}</span></div>` : ''}
+              ${item.expected_rto_h != null ? `<div style="font-size:10px;color:var(--text-subtle)">RTO esperado: ${item.expected_rto_h}h</div>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>`;
+    };
+
+    const notifItems = (cl.notification_list || []).map(n =>
+      `<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <strong>${UI.esc(n.role||'')}</strong>
+        ${n.when ? ` <span style="color:var(--text-subtle)">— ${UI.esc(n.when)}</span>` : ''}
+        ${n.channel ? ` <span class="badge badge-secondary" style="font-size:10px">${UI.esc(n.channel)}</span>` : ''}
+      </div>`).join('');
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:640px;max-height:92vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <h2><i class="ti ti-sparkles" style="color:var(--primary)"></i> Checklist generado por IA — Test #${testId}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;overflow-y:auto;flex:1">
+        <div class="notice notice-info" style="margin-bottom:16px;font-size:12px">
+          Checklist generado segun el contexto del plan BCM. Revisa y ajusta antes de ejecutar el test.
+        </div>
+        ${renderPhase('Pre-test — Preparacion', cl.pre_test, '#059669')}
+        ${renderPhase('Pasos del test', cl.test_steps, '#2563eb')}
+        ${renderPhase('Post-test — Cierre', cl.post_test, '#d65200')}
+        ${notifItems ? `
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Lista de notificacion</div>
+          ${notifItems}` : ''}
+      </div>
+      <div class="modal-footer-sticky">
+        <button class="btn btn-sm" onclick="navigator.clipboard?.writeText(${JSON.stringify(JSON.stringify(cl, null, 2))});UI.toast('Copiado al portapapeles','success')">
+          <i class="ti ti-copy"></i> Copiar JSON
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="this.closest('.modal-bg').remove()">Cerrar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
   }
 
   function _openTestResultModal(id) {
@@ -2798,7 +3226,10 @@ const ViewBcp = (() => {
         </div>
       </div>
       <div class="modal-footer-sticky">
-        <div style="display:flex;gap:8px;margin-left:auto;">
+        <button class="btn btn-ghost btn-sm" onclick="ViewBcp._genAiChecklist(${id});this.closest('.modal-bg').remove()" style="margin-right:auto">
+          <i class="ti ti-sparkles" style="color:var(--primary)"></i> Checklist IA
+        </button>
+        <div style="display:flex;gap:8px;">
           <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
           <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveTestResult(${id})"><i class="ti ti-check"></i> Guardar resultado</button>
         </div>
@@ -3417,47 +3848,53 @@ const ViewBcp = (() => {
     }
 
     container.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div>
           <h3 style="margin:0;font-size:16px">Mapa de dependencias BCM</h3>
-          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">Procesos · Activos · Proveedores · SPOFs en rojo</p>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">Procesos · Activos · Proveedores externos · Rutas criticas — clic en nodo para ver detalle</p>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <select id="graph-loc-filter" class="form-control" style="font-size:12px;width:auto;min-width:140px">
+            <option value="">Todas las localizaciones</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" id="btn-graph-zoom-in" title="Zoom +"><i class="ti ti-zoom-in"></i></button>
+          <button class="btn btn-sm btn-ghost" id="btn-graph-zoom-out" title="Zoom -"><i class="ti ti-zoom-out"></i></button>
+          <button class="btn btn-sm btn-ghost" id="btn-graph-fit" title="Ajustar todo"><i class="ti ti-arrows-maximize"></i></button>
+          <button class="btn btn-sm btn-ghost" id="btn-graph-export" title="Exportar PNG"><i class="ti ti-download"></i></button>
+          <button class="btn btn-sm btn-secondary" id="btn-analyze-graph"><i class="ti ti-brain"></i> Analizar con IA</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:70% 30%;gap:14px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">
+        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+          <input type="checkbox" id="graph-show-assets" checked> <span>Activos IT</span>
+        </label>
+        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+          <input type="checkbox" id="graph-show-suppliers" checked> <span>Proveedores externos</span>
+        </label>
+        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+          <input type="checkbox" id="graph-show-labels" checked> <span>Etiquetas aristas</span>
+        </label>
+        <label style="display:flex;gap:5px;align-items:center;cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+          <input type="checkbox" id="graph-only-critical"> <span>Solo criticos</span>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start">
         <div>
-          <div id="cy-graph" style="width:100%;height:520px;border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--bg-2)"></div>
+          <div id="cy-graph" style="width:100%;height:560px;border:1px solid var(--border);border-radius:var(--radius-lg);background:#0f0f1a;position:relative;"></div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--text-subtle)">
+            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;background:#7c3aed;display:inline-block"></span>Proceso</div>
+            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#D65200;display:inline-block"></span>Activo IT</div>
+            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:#059669;display:inline-block"></span>Proveedor externo</div>
+            <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;border:2px solid #ef4444;display:inline-block"></span>SPOF</div>
+            <div style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:24px;height:2px;background:#ef4444"></span>Dep. critica</div>
+            <div style="display:flex;align-items:center;gap:5px"><span style="display:inline-block;width:24px;height:1px;background:#6b7280;border-top:1px dashed #6b7280"></span>Dep. externa</div>
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;flex-direction:column;gap:10px;">
           <div class="card" style="padding:12px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Filtros</div>
-            <select id="graph-loc-filter" class="form-control" style="font-size:12px;margin-bottom:8px">
-              <option value="">Todas las localizaciones</option>
-            </select>
-            <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;">
-              <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
-                <input type="checkbox" id="graph-show-assets" checked> Mostrar activos
-              </label>
-              <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
-                <input type="checkbox" id="graph-show-suppliers" checked> Mostrar proveedores
-              </label>
-            </div>
-          </div>
-          <div class="card" style="padding:12px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Leyenda</div>
-            <div style="display:flex;flex-direction:column;gap:5px;font-size:12px;">
-              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:50%;background:#5B00AD;flex-shrink:0"></span>Proceso</div>
-              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;background:#E05500;flex-shrink:0"></span>Activo</div>
-              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);background:#1A7A40;flex-shrink:0"></span>Proveedor</div>
-              <div style="display:flex;align-items:center;gap:8px"><span style="width:14px;height:14px;border-radius:50%;border:3px solid #DC2626;flex-shrink:0"></span>SPOF (borde rojo)</div>
-            </div>
-          </div>
-          <div class="card" style="padding:12px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Estadísticas</div>
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Estadisticas</div>
             <div id="graph-stats" style="font-size:12px;color:var(--text-subtle)">Cargando...</div>
           </div>
-          <button class="btn btn-secondary btn-sm" id="btn-analyze-graph">
-            <i class="ti ti-brain"></i> Analizar con IA
-          </button>
           <div id="graph-node-detail" style="display:none"></div>
           <div id="graph-analysis" style="display:none"></div>
         </div>
@@ -3478,12 +3915,14 @@ const ViewBcp = (() => {
       const url = locationId ? `/api/bcp/graph?location_id=${locationId}` : '/api/bcp/graph';
       const data = await Api.get(url).catch(() => ({ nodes: [], edges: [], stats: {} }));
 
-      const showAssets = container.querySelector('#graph-show-assets')?.checked !== false;
+      const showAssets    = container.querySelector('#graph-show-assets')?.checked !== false;
       const showSuppliers = container.querySelector('#graph-show-suppliers')?.checked !== false;
+      const onlyCritical  = container.querySelector('#graph-only-critical')?.checked === true;
 
       const filteredNodes = (data.nodes || []).filter(n => {
-        if (n.type === 'asset' && !showAssets) return false;
+        if (n.type === 'asset'    && !showAssets)    return false;
         if (n.type === 'supplier' && !showSuppliers) return false;
+        if (onlyCritical && !['critical', 'high'].includes(n.criticality) && !n.is_spof) return false;
         return true;
       });
       const nodeIds = new Set(filteredNodes.map(n => String(n.id)));
@@ -3512,56 +3951,163 @@ const ViewBcp = (() => {
 
       if (_cyInstance) { try { _cyInstance.destroy(); } catch (_) {} }
 
+      const showLabels = container.querySelector('#graph-show-labels')?.checked !== false;
       _cyInstance = cytoscape({
         container: cyContainer,
         elements,
         style: [
           { selector: 'node', style: {
-            'label': 'data(label)', 'font-size': '10px', 'color': '#fff',
-            'text-valign': 'bottom', 'text-margin-y': '5px', 'text-outline-width': '1px',
-            'text-outline-color': '#333', 'width': '36px', 'height': '36px',
+            'label': 'data(label)',
+            'font-size': '10px', 'color': '#e2e8f0',
+            'text-valign': 'bottom', 'text-halign': 'center',
+            'text-margin-y': '6px',
+            'text-outline-width': '2px', 'text-outline-color': '#0f0f1a',
+            'text-max-width': '90px', 'text-wrap': 'ellipsis',
+            'width': '40px', 'height': '40px',
+            'border-width': '0px',
+            'transition-property': 'border-color border-width background-color',
+            'transition-duration': '0.15s',
           }},
-          { selector: 'node[type="process"]', style: { 'background-color': '#5B00AD', 'shape': 'ellipse' }},
-          { selector: 'node[type="asset"]',   style: { 'background-color': '#E05500', 'shape': 'rectangle' }},
-          { selector: 'node[type="supplier"]',style: { 'background-color': '#1A7A40', 'shape': 'hexagon' }},
+          // Proceso — circulo purpura con glow
+          { selector: 'node[type="process"]', style: {
+            'background-color': '#7c3aed',
+            'shape': 'ellipse',
+            'width': '44px', 'height': '44px',
+            'border-width': '2px', 'border-color': '#a78bfa',
+          }},
+          { selector: 'node[type="process"][criticality="critical"]', style: {
+            'background-color': '#6d28d9', 'width': '56px', 'height': '56px',
+            'border-width': '3px', 'border-color': '#c4b5fd',
+            'font-size': '11px',
+          }},
+          { selector: 'node[type="process"][criticality="high"]', style: {
+            'width': '50px', 'height': '50px',
+          }},
+          // Activo IT — rectangulo naranja
+          { selector: 'node[type="asset"]', style: {
+            'background-color': '#c2410c', 'shape': 'roundrectangle',
+            'width': '40px', 'height': '32px',
+            'border-width': '2px', 'border-color': '#fb923c',
+          }},
+          { selector: 'node[type="asset"][criticality="critical"]', style: {
+            'background-color': '#9a3412', 'width': '50px', 'height': '40px',
+          }},
+          // Proveedor externo — hexagono verde
+          { selector: 'node[type="supplier"]', style: {
+            'background-color': '#065f46', 'shape': 'hexagon',
+            'width': '44px', 'height': '44px',
+            'border-width': '2px', 'border-color': '#34d399',
+          }},
+          { selector: 'node[type="supplier"][criticality="critical"]', style: {
+            'background-color': '#064e3b', 'width': '54px', 'height': '54px',
+          }},
+          { selector: 'node[type="supplier"][criticality="high"]', style: {
+            'width': '48px', 'height': '48px',
+          }},
+          // SPOF — borde rojo pulsante
           { selector: 'node[?is_spof]', style: {
-            'border-width': '3px', 'border-color': '#DC2626', 'width': '46px', 'height': '46px',
+            'border-width': '3px', 'border-color': '#ef4444',
+            'border-style': 'double',
           }},
-          { selector: 'node[criticality="critical"]', style: { 'width': '46px', 'height': '46px' }},
+          // Nodo seleccionado
+          { selector: 'node:selected', style: {
+            'border-width': '3px', 'border-color': '#fbbf24', 'border-style': 'solid',
+          }},
+          // Aristas base
           { selector: 'edge', style: {
-            'width': '1.5px', 'line-color': '#bebdd0',
-            'target-arrow-shape': 'triangle', 'target-arrow-color': '#bebdd0',
-            'curve-style': 'bezier', 'font-size': '9px',
-            'label': 'data(label)', 'text-rotation': 'autorotate',
-            'text-outline-width': '1px', 'text-outline-color': '#fff', 'color': '#555',
+            'width': '1.5px', 'line-color': '#4b5563',
+            'target-arrow-shape': 'triangle', 'target-arrow-color': '#4b5563',
+            'curve-style': 'bezier', 'font-size': '9px', 'color': '#9ca3af',
+            'label': showLabels ? 'data(label)' : '',
+            'text-rotation': 'autorotate',
+            'text-outline-width': '2px', 'text-outline-color': '#0f0f1a',
           }},
+          // Dependencia critica — rojo
           { selector: 'edge[?is_critical]', style: {
-            'line-color': '#DC2626', 'target-arrow-color': '#DC2626', 'width': '2.5px',
+            'line-color': '#ef4444', 'target-arrow-color': '#ef4444',
+            'width': '2.5px',
+          }},
+          // Proveedor externo — discontinua azul
+          { selector: 'edge[?is_external]', style: {
+            'line-style': 'dashed', 'line-dash-pattern': [6, 4],
+            'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6',
+            'width': '1.5px',
+          }},
+          // Dependencia critica externa (supplier critico)
+          { selector: 'edge[?is_critical][?is_external]', style: {
+            'line-color': '#f97316', 'target-arrow-color': '#f97316',
+            'width': '2.5px',
           }},
         ],
-        layout: { name: 'cose', animate: true, animationDuration: 600, nodeDimensionsIncludeLabels: true },
+        layout: {
+          name: 'cose',
+          animate: true, animationDuration: 700,
+          nodeDimensionsIncludeLabels: true,
+          nodeRepulsion: 8000, edgeElasticity: 100, gravity: 0.3,
+          numIter: 1000, coolingFactor: 0.99,
+        },
+        wheelSensitivity: 0.3,
       });
 
-      // Clic en nodo → panel de detalle
+      // Clic en nodo → panel de detalle enriquecido
       _cyInstance.on('tap', 'node', evt => {
         const raw = evt.target.data('_raw') || {};
         const detail = container.querySelector('#graph-node-detail');
         if (!detail) return;
         detail.style.display = 'block';
-        const typeLabels = { process: 'Proceso', asset: 'Activo', supplier: 'Proveedor' };
-        detail.innerHTML = `<div class="card" style="padding:12px;border-left:3px solid var(--primary)">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">Nodo seleccionado</div>
-          <div style="font-size:14px;font-weight:600;margin-bottom:6px">${UI.esc(raw.label || raw.name || '')}</div>
-          <div style="font-size:12px;color:var(--text-subtle);display:grid;gap:4px">
-            <div>Tipo: <strong>${UI.esc(typeLabels[raw.type] || raw.type || '—')}</strong></div>
-            <div>Criticidad: <strong style="color:${CRIT_COLORS[raw.criticality] || 'inherit'}">${UI.esc(raw.criticality || '—')}</strong></div>
-            <div>RTO: <strong>${raw.rto_hours != null ? raw.rto_hours + 'h' : '—'}</strong></div>
-            <div>Localización: <strong>${UI.esc(raw.location_name || '—')}</strong></div>
-            ${raw.is_spof ? `<div style="color:#DC2626;font-weight:700">⚠ SPOF — Punto único de fallo</div>` : ''}
+        const typeLabels  = { process: 'Proceso de negocio', asset: 'Activo IT', supplier: 'Proveedor externo' };
+        const typeColors  = { process: '#7c3aed', asset: '#c2410c', supplier: '#059669' };
+        const critColor   = CRIT_COLORS[raw.criticality] || '#6b7280';
+        const plans       = raw.plans || [];
+
+        let extraHtml = '';
+        if (raw.type === 'process') {
+          extraHtml = `
+            ${raw.rto_hours   != null ? `<div>RTO: <strong>${raw.rto_hours}h</strong></div>` : ''}
+            ${raw.rpo_hours   != null ? `<div>RPO: <strong>${raw.rpo_hours}h</strong></div>` : ''}
+            ${raw.mtpd_hours  != null ? `<div>MTPD: <strong>${raw.mtpd_hours}h</strong></div>` : ''}
+            ${raw.cost_per_hour != null ? `<div>Coste/h: <strong>${parseFloat(raw.cost_per_hour).toLocaleString('es-ES')} €</strong></div>` : ''}
+            ${raw.location_name ? `<div>Sede: <strong>${UI.esc(raw.location_name)}</strong></div>` : ''}
+            ${plans.length ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:3px">Planes asociados</div>
+              ${plans.map(pl => `<span class="badge badge-secondary" style="font-size:10px;margin:1px 2px">${UI.esc(pl.code||pl.type)}</span>`).join('')}
+            </div>` : ''}
+          `;
+        } else if (raw.type === 'supplier') {
+          extraHtml = `
+            ${raw.contract_sla_hours != null ? `<div>SLA contrato: <strong>${raw.contract_sla_hours}h</strong></div>` : ''}
+            ${raw.rto_impact_hours  != null ? `<div>Impacto RTO: <strong>${raw.rto_impact_hours}h</strong></div>` : ''}
+            <div>Plan contingencia: <strong>${raw.has_contingency ? 'Si' : 'No'}</strong></div>
+          `;
+        }
+
+        detail.innerHTML = `<div class="card" style="padding:12px;border-left:3px solid ${typeColors[raw.type]||'var(--primary)'}">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:${typeColors[raw.type]||'var(--text-subtle)'};margin-bottom:6px">
+            ${typeLabels[raw.type] || raw.type}
           </div>
-          ${raw.type === 'process' ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px;font-size:11px"
-            onclick="ViewBcp._switchTab('processes')"><i class="ti ti-external-link"></i> Ver en Procesos</button>` : ''}
+          <div style="font-size:14px;font-weight:700;margin-bottom:8px;line-height:1.3">${UI.esc(raw.label || raw.name || '')}</div>
+          <div style="font-size:12px;display:grid;gap:4px;color:var(--text-subtle)">
+            <div>Criticidad: <strong style="color:${critColor}">${UI.esc(raw.criticality || '—')}</strong></div>
+            ${extraHtml}
+            ${raw.is_spof ? `<div style="margin-top:6px;padding:5px 8px;background:#fee2e2;border-radius:4px;color:#b91c1c;font-weight:700;font-size:11px">
+              Punto unico de fallo (SPOF) — 3+ dependencias entrantes
+            </div>` : ''}
+          </div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">
+            ${raw.type === 'process' ? `<button class="btn btn-ghost btn-sm" style="font-size:11px"
+              onclick="ViewBcp._switchTab('processes')"><i class="ti ti-external-link"></i> Ver proceso</button>` : ''}
+            ${raw.type === 'supplier' ? `<button class="btn btn-ghost btn-sm" style="font-size:11px"
+              onclick="ViewBcp._setSubTab(3,'suppliers')"><i class="ti ti-external-link"></i> Ver proveedor</button>` : ''}
+          </div>
         </div>`;
+      });
+
+      // Clic en fondo → deseleccionar
+      _cyInstance.on('tap', evt => {
+        if (evt.target === _cyInstance) {
+          const detail = container.querySelector('#graph-node-detail');
+          if (detail) detail.style.display = 'none';
+        }
       });
 
       // Estadísticas
@@ -3576,13 +4122,28 @@ const ViewBcp = (() => {
 
     await loadGraph(_locationFilter);
 
+    const getLocId = () => {
+      const v = container.querySelector('#graph-loc-filter').value;
+      return v ? parseInt(v) : (_locationFilter || null);
+    };
+
     container.querySelector('#graph-loc-filter').onchange = async e => {
       await loadGraph(e.target.value ? parseInt(e.target.value) : null);
     };
-    container.querySelector('#graph-show-assets').onchange = () =>
-      loadGraph(container.querySelector('#graph-loc-filter').value ? parseInt(container.querySelector('#graph-loc-filter').value) : (_locationFilter || null));
-    container.querySelector('#graph-show-suppliers').onchange = () =>
-      loadGraph(container.querySelector('#graph-loc-filter').value ? parseInt(container.querySelector('#graph-loc-filter').value) : (_locationFilter || null));
+    container.querySelector('#graph-show-assets').onchange    = () => loadGraph(getLocId());
+    container.querySelector('#graph-show-suppliers').onchange = () => loadGraph(getLocId());
+    container.querySelector('#graph-only-critical').onchange  = () => loadGraph(getLocId());
+    container.querySelector('#graph-show-labels').onchange    = () => loadGraph(getLocId());
+
+    container.querySelector('#btn-graph-zoom-in').onclick  = () => _cyInstance?.zoom({ level: (_cyInstance.zoom() || 1) * 1.25, renderedPosition: { x: _cyInstance.width()/2, y: _cyInstance.height()/2 } });
+    container.querySelector('#btn-graph-zoom-out').onclick = () => _cyInstance?.zoom({ level: (_cyInstance.zoom() || 1) * 0.8,  renderedPosition: { x: _cyInstance.width()/2, y: _cyInstance.height()/2 } });
+    container.querySelector('#btn-graph-fit').onclick      = () => _cyInstance?.fit(undefined, 30);
+    container.querySelector('#btn-graph-export').onclick   = () => {
+      if (!_cyInstance) return;
+      const png = _cyInstance.png({ full: true, scale: 2, bg: '#0f0f1a' });
+      const a = document.createElement('a');
+      a.href = png; a.download = 'mapa-dependencias-bcm.png'; a.click();
+    };
 
     container.querySelector('#btn-analyze-graph').onclick = async () => {
       const btn = container.querySelector('#btn-analyze-graph');
@@ -4655,7 +5216,7 @@ const ViewBcp = (() => {
     `;
   }
 
-  async function _modalActivacion() {
+  async function _modalActivacion(prefillPlanId) {
     const allPlans = await Api.get('/api/bcp/plans').catch(() => []);
     const plans = allPlans.filter(p => p.status === 'approved');
     const existing = document.getElementById('modal-activacion-dyn');
@@ -4685,14 +5246,30 @@ const ViewBcp = (() => {
             ${plans.map(p => `<option value="${p.id}">${UI.esc(p.code ? p.code+' — ' : '')}${UI.esc(p.name)}</option>`).join('')}
           </select>
         </div>
+
+        <!-- Panel de contexto del plan — se rellena al seleccionar -->
+        <div id="act-plan-ctx" style="display:none;margin-bottom:14px;padding:10px 14px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:6px;font-size:12px;">
+          <div style="font-weight:700;font-size:11px;text-transform:uppercase;color:#DC2626;margin-bottom:8px;letter-spacing:.04em"><i class="ti ti-info-circle"></i> Contexto del plan</div>
+          <div id="act-ctx-comms" style="margin-bottom:8px"></div>
+          <div id="act-ctx-suppliers" style="margin-bottom:8px"></div>
+          <div id="act-ctx-activators"></div>
+        </div>
+
         <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Nombre / descripcion del incidente <span style="color:var(--danger)">*</span></label>
           <input id="act-incident" class="form-control" style="font-size:13px;" placeholder="Ej: Ransomware detectado en servidor de BD">
         </div>
-        <div>
+        <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Notas iniciales</label>
           <textarea id="act-notes" class="form-control" rows="2" style="font-size:13px;" placeholder="Descripcion breve del estado actual..."></textarea>
         </div>
+
+        <!-- Timeline inicial -->
+        <div style="padding:8px 12px;background:var(--bg-2);border-radius:6px;font-size:11px;color:var(--text-subtle)">
+          <i class="ti ti-clock"></i> Hora de activacion: <strong id="act-ts">${new Date().toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'})}</strong>
+          &nbsp;·&nbsp; El sistema registrara esta marca temporal como T=0.
+        </div>
+
       </div>
       <div class="modal-footer-sticky">
         <div style="display:flex;gap:8px;margin-left:auto;">
@@ -4705,6 +5282,64 @@ const ViewBcp = (() => {
     </div>`;
     document.body.appendChild(modal);
     modal.querySelector('#act-confirm-btn').addEventListener('click', () => _confirmActivacion(modal));
+
+    // Pre-seleccionar plan si viene del menu contextual
+    if (prefillPlanId) {
+      const sel = modal.querySelector('#act-plan-sel');
+      if (sel) {
+        sel.value = String(prefillPlanId);
+        sel.dispatchEvent(new Event('change'));
+      }
+    }
+
+    // Cargar contexto del plan al seleccionar
+    modal.querySelector('#act-plan-sel').addEventListener('change', async function() {
+      const pid = parseInt(this.value);
+      const ctxPanel = modal.querySelector('#act-plan-ctx');
+      if (!pid) { ctxPanel.style.display = 'none'; return; }
+      try {
+        const ctx = await Api.get(`/api/bcp/plans/${pid}/context`);
+        const plan = ctx.plan || {};
+        const cr = plan.crisis_comms || {};
+        const activators = plan.authorized_activators || [];
+        const suppliers = (ctx.processes || []).flatMap(p => p.suppliers || []);
+        const uniqSup = [...new Map(suppliers.map(s => [s.supplier_id || s.supplier_name, s])).values()];
+
+        const commsHtml = (cr.primary_channel || cr.secondary_channel)
+          ? `<div style="margin-bottom:4px"><span style="font-weight:600">Canales:</span>
+              ${cr.primary_channel ? `<span class="badge badge-secondary" style="font-size:10px">${UI.esc(cr.primary_channel)}</span>` : ''}
+              ${cr.secondary_channel ? `<span class="badge badge-secondary" style="font-size:10px">${UI.esc(cr.secondary_channel)}</span>` : ''}
+              ${cr.external_channel ? `<span class="badge badge-secondary" style="font-size:10px">${UI.esc(cr.external_channel)}</span>` : ''}
+            </div>
+            ${cr.template_internal ? `<div style="margin-top:4px;font-size:11px;color:var(--text-subtle)">Plantilla interna disponible — aparecera en "Mensaje a stakeholders"</div>` : ''}`
+          : '<div style="color:var(--text-subtle)">Sin canales de comunicacion configurados en el plan.</div>';
+
+        const supHtml = uniqSup.length
+          ? `<div style="font-weight:600;margin-bottom:4px">Proveedores criticos afectados (${uniqSup.length}):</div>
+             <div style="display:flex;flex-wrap:wrap;gap:4px">
+               ${uniqSup.map(s => `<span class="badge badge-secondary" style="font-size:10px">${UI.esc(s.supplier_name || '')}</span>`).join('')}
+             </div>`
+          : '';
+
+        const actHtml = activators.length
+          ? `<div style="font-weight:600;margin-bottom:4px">Autorizadores:</div>
+             <div style="display:flex;flex-wrap:wrap;gap:4px">
+               ${activators.map(a => `<span class="badge" style="font-size:10px;background:rgba(220,38,38,.12);color:#dc2626">${UI.esc(a.name)}${a.is_deputy?' (suplente)':''}</span>`).join('')}
+             </div>`
+          : '';
+
+        modal.querySelector('#act-ctx-comms').innerHTML      = commsHtml;
+        modal.querySelector('#act-ctx-suppliers').innerHTML  = supHtml;
+        modal.querySelector('#act-ctx-activators').innerHTML = actHtml;
+        ctxPanel.style.display = '';
+
+        // Pre-rellenar notas con plantilla interna si existe
+        const notesEl = modal.querySelector('#act-notes');
+        if (cr.template_internal && !notesEl.value) {
+          notesEl.value = cr.template_internal;
+        }
+      } catch { ctxPanel.style.display = 'none'; }
+    });
   }
 
   function _closeActModal() {
@@ -5174,14 +5809,36 @@ const ViewBcp = (() => {
             </select>
           </div>
           <div>${lbl('Tipo')}
-            <select id="rb-type" class="form-control" style="font-size:13px;">
+            <select id="rb-type" class="form-control" style="font-size:13px;" onchange="
+              document.getElementById('rb-tpl-btn').style.display=this.value==='recovery'?'':'none';
+            ">
               ${RB_TYPES.map(t=>`<option value="${t.v}">${t.l}</option>`).join('')}
             </select>
           </div>
         </div>
         <div style="margin-bottom:14px;">
-          ${lbl('Descripcion / Objetivo')}
-          <textarea id="rb-desc" class="form-control" rows="2" style="font-size:13px;" placeholder="Objetivo y alcance de este runbook..."></textarea>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            ${lbl('Descripcion / Objetivo')}
+            <button id="rb-tpl-btn" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;display:none" onclick="
+              document.getElementById('rb-desc').value=
+'FASE 1 — DETECCION Y NOTIFICACION\n' +
+'Criterio de entrada: Alerta recibida o incidente detectado.\n' +
+'Acciones: Notificar al responsable titular y al Crisis Lead. Confirmar el alcance del impacto. Abrir el registro de activacion.\n\n' +
+'FASE 2 — ACTIVACION DEL PLAN\n' +
+'Criterio de entrada: Incidente confirmado y aprobacion del Crisis Lead.\n' +
+'Acciones: Declarar activacion formal. Convocar al equipo de recuperacion. Comunicar a stakeholders internos (canal primario). Acceder a la boveda de credenciales.\n\n' +
+'FASE 3 — RECUPERACION TECNICA\n' +
+'Criterio de entrada: Recursos de recuperacion disponibles.\n' +
+'Acciones: Ejecutar procedimientos tecnicos en el orden definido por secuencia de dependencias. Restaurar backups. Verificar integridad de datos. Activar el DR Site si aplica.\n\n' +
+'FASE 4 — RECONSTITUCION Y VALIDACION\n' +
+'Criterio de entrada: Sistemas tecnicamente operativos.\n' +
+'Acciones: Ejecutar pruebas funcionales con usuarios piloto. Verificar criterio de exito documentado. Comunicar reanudacion a stakeholders. Desactivar el DR Site.\n\n' +
+'FASE 5 — CIERRE Y REVISION POST-INCIDENTE\n' +
+'Criterio de entrada: Servicio restaurado al nivel MBCO o superior.\n' +
+'Acciones: Declarar cierre formal de la activacion. Documentar RTO real. Registrar lecciones aprendidas. Programar revision de plan en los 30 dias siguientes.';
+            "><i class="ti ti-template"></i> Plantilla 5 fases</button>
+          </div>
+          <textarea id="rb-desc" class="form-control" rows="4" style="font-size:13px;" placeholder="Objetivo y alcance de este runbook..."></textarea>
         </div>
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);letter-spacing:.05em;margin:16px 0 10px;padding-top:12px;border-top:1px solid var(--border);">Campos DRP — ISO 22301 §8.4.3</div>
         <div style="margin-bottom:14px;">
@@ -5213,6 +5870,26 @@ const ViewBcp = (() => {
       </div>
     </div>`;
     document.body.appendChild(modal);
+
+    // Pre-seleccionar plan del contexto actual si existe
+    if (_currentPlanId) {
+      const planSel = modal.querySelector('#rb-plan');
+      if (planSel) planSel.value = String(_currentPlanId);
+    }
+
+    // Auto-aplicar plantilla 5 fases cuando tipo=recovery (valor por defecto)
+    const typeSelRb = modal.querySelector('#rb-type');
+    const descAreaRb = modal.querySelector('#rb-desc');
+    const tplBtnRb   = modal.querySelector('#rb-tpl-btn');
+    const _applyTpl = () => {
+      if (typeSelRb.value === 'recovery' && !descAreaRb.value.trim()) {
+        tplBtnRb.click();
+      }
+      tplBtnRb.style.display = typeSelRb.value === 'recovery' ? '' : 'none';
+    };
+    _applyTpl();
+    typeSelRb.addEventListener('change', _applyTpl);
+
     modal.querySelector('#rb-name').focus();
     modal.querySelector('#rb-submit').addEventListener('click', async () => {
       const title = modal.querySelector('#rb-name').value.trim();
@@ -5476,6 +6153,291 @@ const ViewBcp = (() => {
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
   }
 
+  // ── Plan: menu de acciones contextual ────────────────────────────────────────
+
+  function _injectPlanMenuCss() {
+    if (document.getElementById('bcp-plan-menu-style')) return;
+    const s = document.createElement('style');
+    s.id = 'bcp-plan-menu-style';
+    s.textContent = `.plan-menu-item{display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;font-size:13px;
+      background:none;border:none;color:var(--text-primary);cursor:pointer;text-align:left}
+      .plan-menu-item:hover{background:var(--bg-2)}
+      .plan-menu-item i{font-size:14px;color:var(--text-subtle)}
+      .plan-menu-danger{color:#dc2626!important}.plan-menu-danger i{color:#dc2626!important}
+      .plan-menu-danger:hover{background:#fee2e2}`;
+    document.head.appendChild(s);
+  }
+
+  function _togglePlanMenu(e, pid) {
+    e.stopPropagation();
+    _injectPlanMenuCss();
+    const all = document.querySelectorAll('[id^="plan-menu-"]');
+    const menu = document.getElementById(`plan-menu-${pid}`);
+    all.forEach(m => { if (m !== menu) m.style.display = 'none'; });
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    if (menu.style.display === 'block') {
+      const close = () => { menu.style.display = 'none'; document.removeEventListener('click', close); };
+      setTimeout(() => document.addEventListener('click', close), 0);
+    }
+  }
+
+  function _closePlanMenus() {
+    document.querySelectorAll('[id^="plan-menu-"]').forEach(m => { m.style.display = 'none'; });
+  }
+
+  async function _activatePlanDirect(pid) {
+    const plan = _plans.find(p => p.id === pid) || await Api.get(`/api/bcp/plans/${pid}`).catch(() => null);
+    if (!plan) return;
+    if (plan.status !== 'approved') {
+      UI.toast('Solo se pueden activar planes aprobados', 'error'); return;
+    }
+    _setTile('alertas');
+    setTimeout(() => ViewBcp._modalActivacion(pid), 300);
+  }
+
+  async function _sendPlanMessage(pid) {
+    const plan = _plans.find(p => p.id === pid) || await Api.get(`/api/bcp/plans/${pid}`).catch(() => null);
+    if (!plan) return;
+    const contacts = [
+      ...(plan.contact_list || []),
+      ...(plan.authorized_activators || []),
+    ];
+    const cr = plan.crisis_comms || {};
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header">
+        <h2><i class="ti ti-send"></i> Mensaje a stakeholders — ${UI.esc(plan.name)}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;">
+        <div style="font-size:12px;color:var(--text-subtle);margin-bottom:12px">
+          Canal principal: <strong>${UI.esc(cr.primary_channel||'No configurado')}</strong>
+          ${cr.secondary_channel ? ` · Secundario: <strong>${UI.esc(cr.secondary_channel)}</strong>` : ''}
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Destinatarios</label>
+          ${!contacts.length
+            ? '<div class="notice notice-warning" style="font-size:12px">No hay contactos definidos en este plan. Edita el plan para añadir la lista de contactos.</div>'
+            : `<div style="display:flex;flex-wrap:wrap;gap:6px">
+                ${contacts.map(c => `<span class="badge badge-secondary" style="font-size:11px">${UI.esc(c.name||'')} <span style="opacity:.6">${UI.esc(c.role||c.team||'')}</span></span>`).join('')}
+              </div>`}
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Tipo de comunicado</label>
+          <select id="msg-type" class="form-control" style="font-size:13px" onchange="
+            const v=this.value;const ta=document.getElementById('msg-body');
+            if(v==='internal')ta.value=${JSON.stringify(cr.template_internal||'')};
+            if(v==='external')ta.value=${JSON.stringify(cr.template_external||'')};
+          ">
+            <option value="custom">Mensaje personalizado</option>
+            <option value="internal">Plantilla interna</option>
+            <option value="external">Plantilla externa</option>
+          </select>
+        </div>
+        <div style="margin-bottom:4px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Mensaje</label>
+          <textarea id="msg-body" class="form-control" rows="6" style="font-size:13px" placeholder="Escribe el comunicado...">${UI.esc(cr.template_internal||'')}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="font-size:11px;color:var(--text-subtle)">Requiere validacion manual antes de enviar</div>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" onclick="
+            const msg=document.getElementById('msg-body').value.trim();
+            if(!msg){UI.toast('El mensaje no puede estar vacio','error');return;}
+            UI.toast('Comunicado preparado — envia manualmente por el canal configurado','info');
+            this.closest('.modal-bg').remove();
+          "><i class="ti ti-check"></i> Confirmar y cerrar</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+
+  async function _scheduleTestForPlan(pid) {
+    _setSubTab(5, 'tests');
+    setTimeout(() => _openTestModal(null, { plan_id: pid }), 400);
+  }
+
+  async function _viewPlanContext(pid) {
+    const ctx = await Api.get(`/api/bcp/plans/${pid}/context`).catch(() => null);
+    if (!ctx) { UI.toast('Error cargando contexto', 'error'); return; }
+    const plan = ctx.plan;
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    const procRows = (ctx.processes || []).map(proc => {
+      const supBadges = (proc.suppliers || []).map(s => `<span class="badge badge-secondary" style="font-size:10px">${UI.esc(s.supplier_name||'')}</span>`).join(' ');
+      const depList = (proc.dependencies || []).filter(d => d.is_critical).map(d => `<span style="color:#dc2626;font-size:10px">⚠ ${UI.esc(d.name)}</span>`).join(' ');
+      return `<tr>
+        <td><strong>${UI.esc(proc.name)}</strong></td>
+        <td style="font-size:11px">${proc.rto_hours != null ? proc.rto_hours+'h' : '—'}</td>
+        <td style="font-size:11px">${proc.rpo_hours != null ? proc.rpo_hours+'h' : '—'}</td>
+        <td style="font-size:11px">${proc.mtpd_hours != null ? proc.mtpd_hours+'h' : '—'}</td>
+        <td style="font-size:11px">${supBadges||'—'}</td>
+        <td style="font-size:11px">${depList||'—'}</td>
+      </tr>`;
+    }).join('');
+
+    modal.innerHTML = `
+    <div class="modal" style="max-width:780px;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <h2><i class="ti ti-layout-grid"></i> Contexto completo — ${UI.esc(plan.name)}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;overflow-y:auto;flex:1">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+          <div class="card" style="padding:10px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:var(--primary)">${(ctx.processes||[]).length}</div>
+            <div style="font-size:11px;color:var(--text-subtle)">Procesos cubiertos</div>
+          </div>
+          <div class="card" style="padding:10px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#D65200">${(ctx.runbooks||[]).length}</div>
+            <div style="font-size:11px;color:var(--text-subtle)">Runbooks de recuperacion</div>
+          </div>
+          <div class="card" style="padding:10px;text-align:center">
+            <div style="font-size:22px;font-weight:800;color:#059669">${(ctx.processes||[]).reduce((a,p)=>(p.suppliers||[]).length+a,0)}</div>
+            <div style="font-size:11px;color:var(--text-subtle)">Proveedores criticos</div>
+          </div>
+        </div>
+        ${procRows ? `
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Procesos y metricas BIA</div>
+        <div class="table-container" style="margin-bottom:16px">
+          <table class="data-table" style="font-size:12px">
+            <thead><tr><th>Proceso</th><th>RTO</th><th>RPO</th><th>MTPD</th><th>Proveedores</th><th>Deps criticas</th></tr></thead>
+            <tbody>${procRows}</tbody>
+          </table>
+        </div>` : '<div class="notice notice-info">Sin procesos asociados a este plan.</div>'}
+        ${ctx.runbooks?.length ? `
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Runbooks de recuperacion</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+          ${ctx.runbooks.map(rb => `<div style="padding:8px 12px;background:var(--bg-2);border-radius:6px;border-left:3px solid var(--primary);font-size:12px">
+            <strong>${UI.esc(rb.title)}</strong>
+            ${rb.responsible_name ? ` · <span style="color:var(--text-subtle)"><i class="ti ti-user-check"></i> ${UI.esc(rb.responsible_name)}</span>` : ''}
+            ${rb.activation_condition ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:3px">${UI.esc(rb.activation_condition.slice(0,100))}${rb.activation_condition.length>100?'...':''}</div>` : ''}
+          </div>`).join('')}
+        </div>` : ''}
+        ${ctx.location ? `
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Sede de recuperacion (DR Site)</div>
+        <div class="card" style="padding:10px;font-size:12px;margin-bottom:16px">
+          <strong>${UI.esc(ctx.location.name)}</strong>
+          ${ctx.location.address ? ` · ${UI.esc(ctx.location.address)}` : ''}
+          ${ctx.location.recovery_site_type ? ` · Tipo: <strong>${UI.esc(ctx.location.recovery_site_type)}</strong>` : ''}
+        </div>` : ''}
+      </div>
+      <div class="modal-footer-sticky">
+        <button class="btn btn-primary btn-sm" onclick="ViewBcp._activatePlanDirect(${pid});this.closest('.modal-bg').remove()">
+          <i class="ti ti-alert-triangle"></i> Activar plan
+        </button>
+        <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cerrar</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+
+  async function _viewPlanActivations(pid) {
+    const allActs = await Api.get('/api/bcp/activations').catch(() => []);
+    const planActs = allActs.filter(a => (a.activated_plan_ids || []).includes(pid));
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:680px;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <h2><i class="ti ti-history"></i> Historial de activaciones del plan</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;overflow-y:auto;flex:1">
+        ${!planActs.length
+          ? '<div class="notice notice-info">Este plan no tiene activaciones registradas.</div>'
+          : `<div class="table-container">
+              <table class="data-table" style="font-size:12px">
+                <thead><tr><th>Codigo</th><th>Titulo</th><th>Activado</th><th>Cerrado</th><th>RTO real</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                  ${planActs.map(a => {
+                    const dur = a.closed_at && a.activated_at
+                      ? Math.round((new Date(a.closed_at) - new Date(a.activated_at)) / 3600000 * 10) / 10 + 'h'
+                      : '—';
+                    return `<tr>
+                      <td>${UI.codePill(a.code||'—')}</td>
+                      <td><strong>${UI.esc(a.title||'—')}</strong></td>
+                      <td>${a.activated_at ? new Date(a.activated_at).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}) : '—'}</td>
+                      <td>${a.closed_at   ? new Date(a.closed_at  ).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}) : '—'}</td>
+                      <td>${dur}</td>
+                      <td><span class="badge badge-${a.closed_at?'secondary':'danger'}">${a.closed_at?'Cerrada':'Activa'}</span></td>
+                      <td><button class="btn btn-ghost btn-sm" onclick="ViewBcp._viewActivationDetail(${a.id});this.closest('.modal-bg').remove()"><i class="ti ti-eye"></i></button></td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>`}
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+
+  async function _viewActivationDetail(aid) {
+    const allActs = await Api.get('/api/bcp/activations').catch(() => []);
+    const a = allActs.find(x => x.id === aid);
+    if (!a) return;
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    const logEntries = (a.situation_log || []);
+    const checklist  = (a.checklist_items || []);
+    modal.innerHTML = `
+    <div class="modal" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <h2><i class="ti ti-clipboard-check"></i> Activacion ${UI.esc(a.code||'—')} — ${UI.esc(a.title||'')}</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:20px 24px;overflow-y:auto;flex:1">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+          <div class="card" style="padding:10px;text-align:center">
+            <div style="font-size:11px;color:var(--text-subtle)">Activado</div>
+            <div style="font-size:13px;font-weight:700">${a.activated_at ? new Date(a.activated_at).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}) : '—'}</div>
+          </div>
+          <div class="card" style="padding:10px;text-align:center">
+            <div style="font-size:11px;color:var(--text-subtle)">Cerrado</div>
+            <div style="font-size:13px;font-weight:700">${a.closed_at ? new Date(a.closed_at).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'}) : '<span style="color:#dc2626">Activo</span>'}</div>
+          </div>
+          <div class="card" style="padding:10px;text-align:center">
+            <div style="font-size:11px;color:var(--text-subtle)">RTO real</div>
+            <div style="font-size:13px;font-weight:700">${a.rto_actual_hours != null ? a.rto_actual_hours + 'h' : '—'}</div>
+          </div>
+        </div>
+        ${a.lessons_learned ? `
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">Lecciones aprendidas</div>
+          <div class="card" style="padding:10px;font-size:13px;margin-bottom:16px">${UI.esc(a.lessons_learned)}</div>
+        ` : ''}
+        ${checklist.length ? `
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Checklist de activacion</div>
+          <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:16px">
+            ${checklist.map(item => `
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-2);border-radius:4px;font-size:12px">
+                <span style="width:18px;height:18px;border-radius:50%;background:${item.status==='done'?'#16a34a':'var(--border)'};color:${item.status==='done'?'#fff':'var(--text-subtle)'};display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0">${item.status==='done'?'✓':item.order}</span>
+                <span style="${item.status==='done'?'text-decoration:line-through;color:var(--text-subtle)':''}">${UI.esc(item.title||'')}</span>
+                ${item.status==='done'&&item.executed_at?`<span style="margin-left:auto;font-size:10px;color:var(--text-subtle)">${new Date(item.executed_at).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</span>`:''}
+              </div>`).join('')}
+          </div>
+        ` : ''}
+        ${logEntries.length ? `
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px">Timeline de eventos (${logEntries.length})</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            ${logEntries.map(e => `
+              <div style="display:flex;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+                <span style="color:var(--text-subtle);flex-shrink:0;white-space:nowrap;font-size:11px">${new Date(e.timestamp).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'})}</span>
+                <span>${UI.esc(e.text||e.message||'')}</span>
+              </div>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+  }
+
+  // ── Activacion: historial consultable completo ───────────────────────────────
+
   function _calcBiaImpact() {
     const cph  = parseFloat(document.getElementById('pm-cph')?.value)  || 0;
     const rto  = parseFloat(document.getElementById('pm-rto')?.value)  || 0;
@@ -5522,5 +6484,12 @@ const ViewBcp = (() => {
     _newRunbook, _editRunbook, _genAiRunbook,
     _genRecs, _acceptRec,
     _calcBiaImpact,
+    _togglePlanMenu, _closePlanMenus,
+    _activatePlanDirect, _sendPlanMessage, _scheduleTestForPlan,
+    _viewPlanContext, _viewPlanActivations, _viewActivationDetail,
+    _addAuthActivator, _removeAuthActivator, _updateAuthActivator,
+    _addDocLink, _removeDocLink, _updateDocLink,
+    _addRelDoc, _removeRelDoc, _updateRelDoc,
+    _genAiChecklist,
   };
 })();

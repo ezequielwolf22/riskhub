@@ -87,9 +87,26 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
         notes=body.notes,
         owner_id=body.owner_id,
     )
+    # TPRM: aplicar atributos opcionales de riesgo inherente si vienen en el alta
+    _tprm_fields = (
+        "vendor_type", "relationship_status", "data_sensitivity", "data_volume",
+        "system_access_type", "business_criticality", "geographic_risk",
+        "is_data_processor", "processes_personal_data", "cross_border_transfers",
+        "is_nis2", "is_dora", "is_ens", "country_code", "website", "tax_id", "annual_spend",
+    )
+    for _f in _tprm_fields:
+        _v = getattr(body, _f, None)
+        if _v is not None:
+            setattr(s, _f, _v)
     db.add(s)
     db.commit()
     db.refresh(s)
+    # TPRM: calcular inherent/residual risk y tier inicial
+    try:
+        from app.services import tprm_scoring_service
+        tprm_scoring_service.recompute_supplier(db, s)
+    except Exception as _e:
+        logger.warning("TPRM recompute failed for %s: %s", s.code, _e)
     log_action(db, current_user.id, "create", "supplier", str(s.id), {"name": s.name})
     return s
 
@@ -117,6 +134,14 @@ def update_supplier(supplier_id: int, body: SupplierUpdate,
 
     # Recalcular score automaticamente al actualizar campos relevantes para el scoring
     _trigger_supplier_score_update(s.id, s.organization_id)
+
+    # TPRM: recalcular inherent/residual risk y tier tras editar atributos
+    try:
+        from app.services import tprm_scoring_service
+        tprm_scoring_service.recompute_supplier(db, s)
+        db.refresh(s)
+    except Exception as _e:
+        logger.warning("TPRM recompute failed for %s: %s", s.code, _e)
 
     return s
 

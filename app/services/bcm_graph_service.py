@@ -2,14 +2,17 @@
 import logging
 from sqlalchemy.orm import Session
 from app.models import (BusinessProcess, BCPDependency, Asset, Supplier, BCMLocation,
-                        BCPSupplierLink)
+                        BCPSupplierLink, BCPPlan)
 
 logger = logging.getLogger("riskhub.bcm_graph")
 
+CRIT_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+
 NODE_STYLES = {
     "process":  {"color": "#5B00AD", "shape": "ellipse"},
-    "asset":    {"color": "#E05500", "shape": "rectangle"},
+    "asset":    {"color": "#E05500", "shape": "roundrectangle"},
     "supplier": {"color": "#1A7A40", "shape": "hexagon"},
+    "plan":     {"color": "#0369a1", "shape": "diamond"},
 }
 
 
@@ -26,13 +29,31 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
         q = q.filter_by(location_id=location_id)
     procs = q.all()
 
+    # Build plan→process mapping for enriching nodes
+    plans = db.query(BCPPlan).filter_by(organization_id=org_id).all()
+    proc_to_plans = {}
+    for plan in plans:
+        for pid_raw in (plan.process_ids or []):
+            try:
+                pid_int = int(pid_raw)
+                proc_to_plans.setdefault(pid_int, []).append({
+                    "id": plan.id, "name": plan.name, "code": plan.code,
+                    "type": plan.plan_type, "status": plan.status,
+                })
+            except (ValueError, TypeError):
+                pass
+
     for p in procs:
         loc = db.get(BCMLocation, p.location_id) if p.location_id else None
         nodes[f"proc_{p.id}"] = {
             "id": f"proc_{p.id}", "type": "process",
             "label": p.name, "criticality": p.criticality,
-            "rto_hours": p.rto_hours, "location_id": p.location_id,
+            "rto_hours": p.rto_hours, "rpo_hours": getattr(p, "rpo_hours", None),
+            "mtpd_hours": getattr(p, "mtpd_hours", None),
+            "cost_per_hour": getattr(p, "cost_per_hour", None),
+            "location_id": p.location_id,
             "location_name": loc.name if loc else None,
+            "plans": proc_to_plans.get(p.id, []),
             **NODE_STYLES["process"],
         }
 
@@ -71,6 +92,7 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
             "id": f"sup_{sid}", "type": "supplier",
             "label": s.name,
             "criticality": getattr(s, "risk_level", "medium"),
+            "is_external": True,
             **NODE_STYLES["supplier"],
         }
 
@@ -119,11 +141,20 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
                                    "label": a.name, "code": a.code,
                                    **NODE_STYLES["asset"]}
             if tgt in nodes:
+                conn_type = getattr(dep, "connection_type", None)
+                edge_label = dep.dependency_type or "depende de"
+                if conn_type:
+                    edge_label = f"{conn_type}"
                 edges.append({"id": f"e_{src}_a{dep.asset_id}",
                               "source": src, "target": tgt,
                               "type": "asset_dep",
-                              "label": dep.dependency_type or "depende de",
-                              "is_critical": dep.is_critical})
+                              "label": edge_label,
+                              "is_critical": dep.is_critical,
+                              "connection_type": conn_type,
+                              "protocol": getattr(dep, "protocol", None),
+                              "data_direction": getattr(dep, "data_direction", None),
+                              "data_classification": getattr(dep, "data_classification", None),
+                              })
 
     # Include suppliers linked via BCPSupplierLink (the main way to link suppliers to processes)
     slinks = db.query(BCPSupplierLink).filter_by(organization_id=org_id).all()
@@ -138,6 +169,10 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
                 "label": s.name,
                 "criticality": sl.criticality or getattr(s, "risk_level", "medium"),
                 "is_spof": not sl.has_contingency_plan,
+                "is_external": True,
+                "contract_sla_hours": sl.contract_sla_hours,
+                "rto_impact_hours": sl.rto_impact_hours,
+                "has_contingency": sl.has_contingency_plan,
                 **NODE_STYLES["supplier"],
             }
         for pid in (sl.process_ids or []):
@@ -151,8 +186,9 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
             if not any(e["id"] == eid for e in edges):
                 edges.append({
                     "id": eid, "source": pn, "target": nid,
-                    "type": "uses_supplier", "label": "depende de",
+                    "type": "uses_supplier", "label": "proveedor externo",
                     "is_critical": sl.criticality in ("critical", "high"),
+                    "is_external": True,
                 })
 
     in_deg = {}

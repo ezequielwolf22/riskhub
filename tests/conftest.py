@@ -41,10 +41,15 @@ def setup_test_db():
     yield
     app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=_engine)
-    # Limpiar archivo de BD de test
+    # Liberar handles del engine antes de borrar el fichero (Windows bloquea si sigue abierto)
+    _engine.dispose()
+    # Limpiar archivo de BD de test (best-effort; en Windows puede seguir bloqueado)
     import os as _os
     if _os.path.exists("./test_riskhub.db"):
-        _os.remove("./test_riskhub.db")
+        try:
+            _os.remove("./test_riskhub.db")
+        except OSError:
+            pass
 
 
 @pytest.fixture(scope="session")

@@ -40,6 +40,7 @@ const LegacyRedirects = {
   predictive: 'watch-hub/predictive',
   compliance: 'compliance-hub/compliance',
   controls: 'compliance-hub/controls',
+  regwatch: 'compliance-hub/regwatch',
   ccm: 'compliance-hub/ccm',
   'soa-versions': 'compliance-hub/soa',
   policies: 'compliance-hub/policies',

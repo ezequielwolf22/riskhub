@@ -123,16 +123,20 @@ const ViewSuppliers = (() => {
     const rows = data.map(s => {
       const assessed = s.last_assessment_at ? s.last_assessment_at.slice(0, 10) : '-';
       const next = s.next_assessment_at ? s.next_assessment_at.slice(0, 10) : '-';
+      const tier = s.tier ? _badge(RISK_LABELS[s.tier] || s.tier, RISK_COLORS[s.tier] || '#888') : '-';
+      const inh = (s.inherent_risk_score ?? null) !== null ? s.inherent_risk_score : '-';
+      const res = (s.residual_risk_score ?? null) !== null ? s.residual_risk_score : '-';
       return `
         <tr>
           <td><b>${UI.esc(s.code)}</b></td>
           <td>${UI.esc(s.name)}</td>
-          <td>${UI.esc(s.category || '-')}</td>
-          <td>${_badge(RISK_LABELS[s.risk_level] || s.risk_level, RISK_COLORS[s.risk_level] || '#888')}</td>
+          <td>${tier}</td>
+          <td style="text-align:center;font-weight:700;">${inh}</td>
+          <td style="text-align:center;font-weight:700;">${res}</td>
           <td>${assessed}</td>
           <td>${next}</td>
-          <td>${s.is_critical ? '<span style="color:var(--risk-critical);font-weight:700;">Si</span>' : '<span style="color:var(--text-muted);">No</span>'}</td>
           <td>
+            ${Auth.canEdit() ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
             <button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">Eliminar</button>
           </td>
@@ -144,13 +148,23 @@ const ViewSuppliers = (() => {
       <table class="data">
         <thead>
           <tr>
-            <th>Codigo</th><th>Nombre</th><th>Categoria</th><th>Nivel riesgo</th>
-            <th>Ult. evaluacion</th><th>Prox. evaluacion</th><th>Critico</th><th>Acciones</th>
+            <th>Codigo</th><th>Nombre</th><th>Tier</th><th>Inherent</th><th>Residual</th>
+            <th>Ult. evaluacion</th><th>Prox. evaluacion</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     `;
+
+    wrap.querySelectorAll('[data-action="recompute"]').forEach(btn => {
+      btn.onclick = async () => {
+        try {
+          await Api.tprm.recompute(btn.dataset.id);
+          UI.toast('Riesgo recalculado', 'success');
+          await _refresh();
+        } catch (e) { UI.toast(e.message, 'error'); }
+      };
+    });
 
     wrap.querySelectorAll('[data-action="edit"]').forEach(btn => {
       btn.onclick = () => {
@@ -192,6 +206,32 @@ const ViewSuppliers = (() => {
         <div><label>Proxima evaluacion</label><input type="date" id="f-next-assess" class="input" value="${v.next_assessment_at ? v.next_assessment_at.slice(0,10) : ''}"></div>
         <div class="span2"><label>Contrato / referencia</label><input id="f-contract" class="input" value="${UI.esc(v.contract_ref || '')}"></div>
         <div class="span2"><label>Notas / descripcion</label><textarea id="f-notes" class="input" rows="3">${UI.esc(v.notes || '')}</textarea></div>
+
+        <div class="span2" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;">
+          <strong style="font-size:13px;color:var(--brand-purple);">TPRM — Perfil de riesgo inherente</strong>
+          <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">El tier y el inherent/residual risk se recalculan automaticamente al guardar.</p>
+        </div>
+        <div><label>Tipo de proveedor</label>
+          <select id="f-vendor-type" class="input">
+            ${['technology','cloud_provider','professional_services','consultancy','hardware','subcontractor','other'].map(o => `<option value="${o}" ${v.vendor_type===o?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Acceso a sistemas</label>
+          <select id="f-access" class="input">
+            ${['none','api_only','saas','paas','iaas','on_prem','read_write','admin_to_our_systems'].map(o => `<option value="${o}" ${v.system_access_type===o?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Sensibilidad de datos (1-5)</label><input type="number" min="1" max="5" id="f-data-sens" class="input" value="${v.data_sensitivity || 2}"></div>
+        <div><label>Volumen de datos (1-5)</label><input type="number" min="1" max="5" id="f-data-vol" class="input" value="${v.data_volume || 2}"></div>
+        <div><label>Criticidad para el negocio (1-5)</label><input type="number" min="1" max="5" id="f-biz-crit" class="input" value="${v.business_criticality || 3}"></div>
+        <div><label>Riesgo geografico (1-5)</label><input type="number" min="1" max="5" id="f-geo" class="input" value="${v.geographic_risk || 1}"></div>
+        <div class="span2" style="display:flex;flex-wrap:wrap;gap:16px;">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" id="f-proc" ${v.is_data_processor?'checked':''}> Encargado GDPR</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" id="f-pii" ${v.processes_personal_data?'checked':''}> Trata datos personales</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" id="f-nis2" ${v.is_nis2?'checked':''}> NIS2</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" id="f-dora" ${v.is_dora?'checked':''}> DORA</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" id="f-ens" ${v.is_ens?'checked':''}> ENS</label>
+        </div>
       </div>
     `;
   }
@@ -219,6 +259,17 @@ const ViewSuppliers = (() => {
       next_assessment_at: document.getElementById('f-next-assess').value || null,
       contract_ref: document.getElementById('f-contract').value.trim(),
       notes: document.getElementById('f-notes').value.trim(),
+      vendor_type: document.getElementById('f-vendor-type').value,
+      system_access_type: document.getElementById('f-access').value,
+      data_sensitivity: parseInt(document.getElementById('f-data-sens').value) || 2,
+      data_volume: parseInt(document.getElementById('f-data-vol').value) || 2,
+      business_criticality: parseInt(document.getElementById('f-biz-crit').value) || 3,
+      geographic_risk: parseInt(document.getElementById('f-geo').value) || 1,
+      is_data_processor: document.getElementById('f-proc').checked,
+      processes_personal_data: document.getElementById('f-pii').checked,
+      is_nis2: document.getElementById('f-nis2').checked,
+      is_dora: document.getElementById('f-dora').checked,
+      is_ens: document.getElementById('f-ens').checked,
     };
     try {
       if (s) {
@@ -276,7 +327,7 @@ const ViewSuppliers = (() => {
       const now = new Date();
       wrap.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>Codigo</th><th>Titulo</th><th>Proveedor</th><th>Puntuacion</th><th>Respondido</th><th>Expira</th><th></th>
+          <th>Codigo</th><th>Titulo</th><th>Proveedor</th><th>Puntuacion</th><th>Respondido</th><th>Expira</th><th>Evaluacion IA</th><th></th>
         </tr></thead>
         <tbody>
           ${data.map(q => {
@@ -289,6 +340,21 @@ const ViewSuppliers = (() => {
               const color = sc >= 80 ? '#22C55E' : sc >= 60 ? '#F59E0B' : '#EF4444';
               scoreHtml = `<span style="font-weight:700;color:${color};">${sc}/100</span>`;
             }
+            // AI review indicator
+            let aiHtml = '-';
+            if (q.submitted_at) {
+              if (q.ai_review && !q.ai_review.error) {
+                const aiscore = q.ai_review.ai_score;
+                const aicolor = aiscore >= 80 ? '#22C55E' : aiscore >= 60 ? '#F59E0B' : '#EF4444';
+                const reviewedDate = q.ai_reviewed_at ? new Date(q.ai_reviewed_at).toLocaleDateString('es-ES') : '';
+                aiHtml = `<span style="font-weight:700;color:${aicolor};cursor:pointer;" data-id="${q.id}" data-act="view-ai" title="Ver evaluacion IA (${reviewedDate})">${aiscore}/100</span>`;
+                if (Auth.canEdit()) {
+                  aiHtml += ` <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;" data-id="${q.id}" data-act="eval-ai" title="Re-evaluar con IA">Re-evaluar</button>`;
+                }
+              } else if (Auth.canEdit()) {
+                aiHtml = `<button class="btn btn-sm" style="font-size:11px;" data-id="${q.id}" data-act="eval-ai">Evaluar IA</button>`;
+              }
+            }
             return `<tr style="${expired?'opacity:.6;':''}">
               <td>${UI.codePill(q.code)}</td>
               <td><strong>${UI.esc(q.title)}</strong></td>
@@ -296,6 +362,7 @@ const ViewSuppliers = (() => {
               <td>${scoreHtml}</td>
               <td style="font-size:12px;">${submitted ? submitted : (expired ? '<span style="color:#EF4444;font-size:11px;">Expirado</span>' : '<span style="color:#F59E0B;font-size:11px;">Pendiente</span>')}</td>
               <td style="font-size:12px;">${expires}</td>
+              <td style="font-size:12px;">${aiHtml}</td>
               <td>
                 <button class="btn btn-sm" data-id="${q.id}" data-act="link" title="Copiar enlace publico">Copiar enlace</button>
                 ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm btn-danger" data-id="${q.id}" data-act="del">Eliminar</button>` : ''}
@@ -328,17 +395,151 @@ const ViewSuppliers = (() => {
           catch (e) { UI.toast(e.message,'error'); }
         };
       });
+      // AI evaluation buttons
+      wrap.querySelectorAll('[data-act="eval-ai"]').forEach(btn => {
+        btn.onclick = async () => {
+          const q = data.find(x => x.id == btn.dataset.id);
+          if (!q) return;
+          UI.toast('Evaluando con IA... Esto puede tardar unos segundos.', 'info');
+          btn.disabled = true;
+          try {
+            const result = await Api.supplier_questionnaires_ai.triggerReview(q.id);
+            UI.toast('Evaluacion IA completada', 'success');
+            _showAiReviewModal(q.title || q.code, result);
+            await _reloadSeq();
+          } catch (e) {
+            UI.toast(e.message, 'error');
+            btn.disabled = false;
+          }
+        };
+      });
+      // AI score click to view existing review
+      wrap.querySelectorAll('[data-act="view-ai"]').forEach(el => {
+        el.onclick = () => {
+          const q = data.find(x => x.id == el.dataset.id);
+          if (!q || !q.ai_review) return;
+          _showAiReviewModal(q.title || q.code, q.ai_review);
+        };
+      });
     } catch (e) { wrap.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+  }
+
+  // ---- AI Review Modal ----
+
+  const _AI_COVERAGE_LABELS = {
+    fully_covered: 'Cobertura completa',
+    partially_covered: 'Cobertura parcial',
+    not_covered: 'Sin cobertura',
+    unclear: 'No determinado',
+  };
+  const _AI_EVIDENCE_LABELS = {
+    consistent: 'Consistente',
+    partially_consistent: 'Parcialmente consistente',
+    inconsistent: 'Inconsistente',
+    no_evidence: 'Sin evidencia',
+  };
+  const _AI_COVERAGE_COLORS = {
+    fully_covered: '#22C55E',
+    partially_covered: '#F59E0B',
+    not_covered: '#EF4444',
+    unclear: '#6B7280',
+  };
+  const _AI_EVIDENCE_COLORS = {
+    consistent: '#22C55E',
+    partially_consistent: '#F59E0B',
+    inconsistent: '#EF4444',
+    no_evidence: '#6B7280',
+  };
+
+  function _showAiReviewModal(title, review) {
+    if (!review) return;
+    if (review.error) {
+      UI.modal('Evaluacion IA — Error', `
+        <div class="span2">
+          <div class="notice">${UI.esc(review.error)}</div>
+          <p style="font-size:13px;margin-top:8px;">La evaluacion automatica no pudo completarse. Revisa la configuracion de la API key en IA &gt; Configuracion.</p>
+        </div>
+      `, { actions: '<button class="btn btn-primary" id="m-close-ai">Cerrar</button>' });
+      document.getElementById('m-close-ai').onclick = UI.closeModal;
+      return;
+    }
+
+    const score = review.ai_score !== null && review.ai_score !== undefined ? review.ai_score : '-';
+    const scoreColor = typeof score === 'number' ? (score >= 80 ? '#22C55E' : score >= 60 ? '#F59E0B' : '#EF4444') : '#6B7280';
+    const confPct = review.confidence !== null && review.confidence !== undefined
+      ? Math.round(review.confidence * 100) + '%' : '-';
+    const coverage = review.control_coverage_assessment || 'unclear';
+    const evidence = review.evidence_consistency || 'no_evidence';
+    const needsManual = review.needs_manual_review;
+    const rationale = review.rationale || '';
+    const reviewedAt = review.evaluated_at ? new Date(review.evaluated_at).toLocaleString('es-ES') : '';
+
+    const redFlags = Array.isArray(review.red_flags) && review.red_flags.length
+      ? review.red_flags.map(f => `<li style="margin-bottom:4px;">${UI.esc(f)}</li>`).join('')
+      : '<li style="color:var(--text-muted);">Sin alertas detectadas</li>';
+
+    const followUp = Array.isArray(review.follow_up_questions) && review.follow_up_questions.length
+      ? review.follow_up_questions.map(f => `<li style="margin-bottom:4px;">${UI.esc(f)}</li>`).join('')
+      : '<li style="color:var(--text-muted);">Sin preguntas adicionales</li>';
+
+    UI.modal(`Evaluacion IA — ${UI.esc(title)}`, `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="grid-column:1/-1;display:flex;gap:16px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:4px;">
+          <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:800;color:${scoreColor};">${score}<span style="font-size:14px;">/100</span></div>
+            <div style="font-size:11px;color:var(--text-muted);">Puntuacion IA</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:20px;font-weight:700;color:var(--brand-purple);">${confPct}</div>
+            <div style="font-size:11px;color:var(--text-muted);">Confianza</div>
+          </div>
+          ${needsManual ? '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#92400E;">Requiere revision manual</div>' : '<div style="background:#ECFDF5;border:1px solid #22C55E;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#065F46;">Sin alerta de revision</div>'}
+          ${reviewedAt ? `<div style="font-size:11px;color:var(--text-muted);margin-left:auto;">Evaluado: ${reviewedAt}</div>` : ''}
+        </div>
+
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">Cobertura de controles</div>
+          <span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:${_AI_COVERAGE_COLORS[coverage]};color:#fff;">${_AI_COVERAGE_LABELS[coverage] || coverage}</span>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">Consistencia de evidencias</div>
+          <span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:${_AI_EVIDENCE_COLORS[evidence]};color:#fff;">${_AI_EVIDENCE_LABELS[evidence] || evidence}</span>
+        </div>
+
+        <div style="grid-column:1/-1;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">Razonamiento</div>
+          <p style="font-size:13px;line-height:1.5;margin:0;background:var(--bg-alt,var(--bg));padding:8px 10px;border-radius:6px;border:1px solid var(--border);">${UI.esc(rationale)}</p>
+        </div>
+
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">Alertas detectadas</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6;">${redFlags}</ul>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;">Preguntas de seguimiento sugeridas</div>
+          <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6;">${followUp}</ul>
+        </div>
+      </div>
+    `, { actions: '<button class="btn btn-primary" id="m-close-ai">Cerrar</button>' });
+    document.getElementById('m-close-ai').onclick = UI.closeModal;
   }
 
   async function _openSeqForm() {
     let suppliers = [];
+    let templates = [];
     try { suppliers = await Api.suppliers.list(); } catch (_) {}
+    try { templates = await Api.tprm.templates(); } catch (_) {}
     UI.modal('Nuevo cuestionario de seguridad', `
       <div><label>Proveedor *</label>
         <select id="sq-sup">
           <option value="">- Seleccionar -</option>
           ${suppliers.map(s => `<option value="${s.id}">${UI.esc(s.code)} - ${UI.esc(s.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div><label>Plantilla TPRM</label>
+        <select id="sq-template">
+          <option value="">Estandar NIS2/ISO 27001 (10 preguntas)</option>
+          ${templates.map(t => `<option value="${UI.esc(t.code)}">${UI.esc(t.name)} (${t.question_count} preguntas)</option>`).join('')}
         </select>
       </div>
       <div><label>Titulo *</label>
@@ -351,7 +552,7 @@ const ViewSuppliers = (() => {
         <textarea id="sq-notes" rows="2" placeholder="Notas para el equipo interno (no visibles para el proveedor)"></textarea>
       </div>
       <div class="span2 notice">
-        Se enviaran 10 preguntas estandar NIS2 Art.21 + ISO 27001. Tras crear el cuestionario, copia el enlace publico para enviarlo al proveedor.
+        Elige una plantilla del sistema (ISO 27001, NIS2, DORA, GDPR, ISO 42001, offboarding...) o el set estandar. Tras crear el cuestionario, copia el enlace publico para enviarlo al proveedor.
       </div>
     `, {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
@@ -369,6 +570,7 @@ const ViewSuppliers = (() => {
         title,
         expires_at: expires || null,
         notes: document.getElementById('sq-notes').value.trim(),
+        template_code: document.getElementById('sq-template').value || null,
       };
       try {
         const q = await Api.supplier_questionnaires.create(body);

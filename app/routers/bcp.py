@@ -155,6 +155,10 @@ def _dep_d(d: BCPDependency) -> dict:
         "depends_on_process_id": getattr(d, "depends_on_process_id", None),
         "recovery_sequence": getattr(d, "recovery_sequence", None),
         "notes": getattr(d, "notes", None),
+        "connection_type": getattr(d, "connection_type", None),
+        "protocol": getattr(d, "protocol", None),
+        "data_direction": getattr(d, "data_direction", None),
+        "data_classification": getattr(d, "data_classification", None),
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
 
@@ -171,6 +175,8 @@ def _strat_d(s: BCPStrategy) -> dict:
         "implementation_status": s.implementation_status,
         "responsible_id": s.responsible_id,
         "target_date": s.target_date.isoformat() if s.target_date else None,
+        "it_config": getattr(s, "it_config", None),
+        "monitoring_config": getattr(s, "monitoring_config", None),
         "created_at": s.created_at.isoformat() if s.created_at else None,
     }
 
@@ -206,6 +212,13 @@ def _plan_d(p: BCPPlan) -> dict:
         "backup_policy": getattr(p, "backup_policy", None),
         "crisis_comms": getattr(p, "crisis_comms", None),
         "checklist_template": getattr(p, "checklist_template", None),
+        "installation_type": getattr(p, "installation_type", None),
+        "data_classification_level": getattr(p, "data_classification_level", None),
+        "gdpr_data": getattr(p, "gdpr_data", False),
+        "affected_users_count": getattr(p, "affected_users_count", None),
+        "documentation_links": getattr(p, "documentation_links", None),
+        "related_documents": getattr(p, "related_documents", None),
+        "authorized_activators": getattr(p, "authorized_activators", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -349,6 +362,8 @@ class StratIn(BaseModel):
     implementation_status: str = "planned"
     responsible_id: Optional[int] = None
     target_date: Optional[str] = None
+    it_config: Optional[dict] = None
+    monitoring_config: Optional[dict] = None
 
 
 class StratUpdate(BaseModel):
@@ -360,6 +375,8 @@ class StratUpdate(BaseModel):
     implementation_status: Optional[str] = None
     responsible_id: Optional[int] = None
     target_date: Optional[str] = None
+    it_config: Optional[dict] = None
+    monitoring_config: Optional[dict] = None
 
 
 class PlanIn(BaseModel):
@@ -407,6 +424,13 @@ class PlanUpdate(BaseModel):
     dr_site: Optional[dict] = None
     backup_policy: Optional[dict] = None
     crisis_comms: Optional[dict] = None
+    installation_type: Optional[str] = None
+    data_classification_level: Optional[str] = None
+    gdpr_data: Optional[bool] = None
+    affected_users_count: Optional[int] = None
+    documentation_links: Optional[list] = None
+    related_documents: Optional[list] = None
+    authorized_activators: Optional[list] = None
 
 
 class TestIn(BaseModel):
@@ -875,6 +899,144 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
     # Extraer checklist automaticamente en background si hay documento
     _trigger_checklist_extraction(db, p, _org(u))
     return _plan_d(p)
+
+
+# ── Plan context (consolidated for AI + map + activation) ─────────────────────
+
+@router.get("/plans/{pid}/context")
+def plan_context(pid: int, db: Session = Depends(get_db),
+                 u: User = Depends(get_current_user)):
+    """Devuelve el contexto consolidado de un plan: procesos, runbooks, dependencias,
+    proveedores criticos, ubicacion DR y crisis comms. Fuente de verdad para la IA,
+    el mapa y la activacion."""
+    p = db.get(BCPPlan, pid)
+    if not p or p.organization_id != _org(u):
+        raise HTTPException(404)
+
+    proc_ids = [int(x) for x in (p.process_ids or []) if str(x).isdigit()]
+    processes = []
+    for pid_int in proc_ids:
+        proc = db.get(BusinessProcess, pid_int)
+        if not proc or proc.organization_id != _org(u):
+            continue
+        deps = db.query(BCPDependency).filter_by(
+            organization_id=_org(u), process_id=proc.id
+        ).order_by(BCPDependency.recovery_sequence).all()
+        slinks = db.query(BCPSupplierLink).filter_by(organization_id=_org(u)).all()
+        sup_links = [sl for sl in slinks if proc.id in (sl.process_ids or [])]
+        processes.append({
+            "id": proc.id, "name": proc.name, "criticality": proc.criticality,
+            "rto_hours": proc.rto_hours, "rpo_hours": proc.rpo_hours,
+            "mtpd_hours": proc.mtpd_hours, "cost_per_hour": getattr(proc, "cost_per_hour", None),
+            "recovery_owner_id": getattr(proc, "recovery_owner_id", None),
+            "dependencies": [_dep_d(d) for d in deps],
+            "suppliers": [_sl_d(sl, db) for sl in sup_links],
+        })
+
+    runbooks = db.query(BCPTestRunbook).filter_by(
+        organization_id=_org(u), plan_id=p.id
+    ).all()
+
+    tests = db.query(BCPTest).filter_by(organization_id=_org(u)).filter(
+        BCPTest.process_ids.isnot(None)
+    ).order_by(BCPTest.scheduled_at.desc()).limit(10).all()
+
+    location = None
+    if p.location_id:
+        loc = db.get(BCMLocation, p.location_id)
+        if loc:
+            location = _loc_d(loc)
+
+    return {
+        "plan": _plan_d(p),
+        "processes": processes,
+        "runbooks": [_runbook_d(rb) for rb in runbooks],
+        "recent_tests": [_test_d(t) for t in tests],
+        "location": location,
+    }
+
+
+@router.post("/tests/{tid}/ai-generate-checklist")
+def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
+                                u: User = Depends(require_analyst)):
+    """Genera con IA un checklist especifico para el test basado en los procesos,
+    dependencias, runbooks y proveedores del plan asociado."""
+    from app.models import AiConfig
+    from cryptography.fernet import Fernet, InvalidToken
+    import anthropic, json as _json
+
+    t = db.get(BCPTest, tid)
+    if not t or t.organization_id != _org(u):
+        raise HTTPException(404)
+
+    cfg = db.query(AiConfig).filter_by(organization_id=_org(u)).first()
+    if not cfg or not cfg.api_key_encrypted:
+        raise HTTPException(422, "IA no configurada")
+    try:
+        key = cfg.fernet_key.encode() if isinstance(cfg.fernet_key, str) else cfg.fernet_key
+        api_key = Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+    except (InvalidToken, Exception):
+        raise HTTPException(422, "Clave API invalida")
+
+    proc_ids = [int(x) for x in (t.process_ids or []) if str(x).isdigit()]
+    proc_details = []
+    for pid_int in proc_ids:
+        proc = db.get(BusinessProcess, pid_int)
+        if not proc or proc.organization_id != _org(u):
+            continue
+        deps = db.query(BCPDependency).filter_by(
+            organization_id=_org(u), process_id=proc.id
+        ).order_by(BCPDependency.recovery_sequence).all()
+        slinks = [sl for sl in db.query(BCPSupplierLink).filter_by(organization_id=_org(u)).all()
+                  if proc.id in (sl.process_ids or [])]
+        proc_details.append({
+            "name": proc.name, "rto_hours": proc.rto_hours, "rpo_hours": proc.rpo_hours,
+            "deps": [{"name": d.name, "type": d.dependency_type, "rto": d.rto_hours,
+                      "critical": d.is_critical, "seq": d.recovery_sequence} for d in deps],
+            "suppliers": [{"name": sl.supplier_name, "sla_h": sl.contract_sla_hours,
+                           "criticality": sl.criticality} for sl in slinks],
+        })
+
+    test_type_labels = {
+        "tabletop": "simulacro de mesa", "walkthrough": "walkthrough",
+        "functional": "prueba funcional", "full_interruption": "interrupcion completa",
+    }
+    test_label = test_type_labels.get(t.test_type, t.test_type or "prueba")
+
+    prompt = (
+        f"Eres experto en continuidad de negocio ISO 22301. "
+        f"Genera un checklist completo para un {test_label} programado para "
+        f"{t.scheduled_at.strftime('%d/%m/%Y') if t.scheduled_at else 'fecha TBD'}.\n\n"
+        f"PROCESOS A TESTEAR ({len(proc_details)}):\n"
+        + "\n".join(
+            f"- {p['name']} | RTO:{p['rto_hours']}h RPO:{p['rpo_hours']}h | "
+            f"Deps criticas: {[d['name'] for d in p['deps'] if d['critical']]} | "
+            f"Proveedores: {[s['name'] for s in p['suppliers']]}"
+            for p in proc_details
+        )
+        + f"\n\nObjectivo declarado: {t.objective or 'No especificado'}\n\n"
+        "Genera un JSON con esta estructura exacta:\n"
+        '{"pre_test": [{"order":1,"title":"...","description":"..."}], '
+        '"test_steps": [{"order":1,"title":"...","description":"...","process":"...","expected_rto_h":0}], '
+        '"post_test": [{"order":1,"title":"...","description":"..."}], '
+        '"notification_list": [{"role":"...","when":"before|during|after","channel":"..."}]}'
+    )
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=cfg.model or "claude-haiku-4-5-20251001",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = msg.content[0].text
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        checklist = _json.loads(raw[start:end]) if start >= 0 else {}
+    except Exception as exc:
+        raise HTTPException(500, f"Error IA: {exc}")
+
+    return {"test_id": t.id, "checklist": checklist}
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────

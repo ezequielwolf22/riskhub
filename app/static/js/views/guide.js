@@ -18,9 +18,11 @@ const ViewGuide = {
     { id: 'compliance', title: 'Cumplimiento multi-framework', icon: '✅' },
     { id: 'incidents', title: 'Incidentes (NIS2)', icon: '🚨' },
     { id: 'suppliers', title: 'Proveedores (supply chain)', icon: '🔗' },
+    { id: 'tprm', title: 'TPRM (Riesgo de Terceros)', icon: '🏢' },
     { id: 'nonconformities', title: 'No conformidades', icon: '⚠️' },
     { id: 'tasks', title: 'Tareas de tratamiento', icon: '📌' },
     { id: 'gdpr', title: 'RGPD / Privacidad', icon: '🔒' },
+    { id: 'regwatch', title: 'Vigilancia normativa', icon: '📡' },
     { id: 'bowtie', title: 'Diagrama Bow-Tie', icon: '🎀' },
     { id: 'ai-gap', title: 'Analisis de brechas IA', icon: '🧠' },
     { id: 'ai', title: 'Agente IA (cuestionario)', icon: '🤖' },
@@ -122,9 +124,11 @@ const ViewGuide = {
       compliance: this._cCompliance,
       incidents: this._cIncidents,
       suppliers: this._cSuppliers,
+      tprm: this._cTprm,
       nonconformities: this._cNonConformities,
       tasks: this._cTasks,
       gdpr: this._cGdpr,
+      regwatch: this._cRegwatch,
       bowtie: this._cBowtie,
       'ai-gap': this._cAiGap,
       ai: this._cAI,
@@ -1359,6 +1363,34 @@ const ViewGuide = {
     ${this._tip('<strong>Buena practica:</strong> Incluye clausulas contractuales de ciberseguridad en todos los contratos con proveedores criticos: derecho de auditoria, notificacion de incidentes en 24h, cifrado de datos y planes de continuidad.')}
   `;},
 
+  get _cTprm() { return `
+    ${this._p('El <strong>Dashboard TPRM (Third-Party Risk Management)</strong> amplia el modulo de Proveedores con la gestion del ciclo de vida del tercero, el <strong>tiering por criticidad</strong> y el calculo de <strong>inherent risk</strong> e <strong>residual risk</strong>, alineado con NIS2, DORA, ENS y GDPR.')}
+    ${this._h('Inherent risk y tiering')}
+    ${this._p('El inherent risk (0-100, mayor = mas riesgo) se calcula automaticamente a partir del perfil del proveedor: sensibilidad y volumen de datos, tipo de acceso a sistemas, criticidad para el negocio, alcance regulatorio (NIS2/DORA/ENS/GDPR) y riesgo geografico. A partir de ese valor se deriva el <strong>tier</strong>:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Critico</strong> (>= 80): cuestionario completo + DPA + DR/BCP + pentest anual.</li>
+      <li><strong>Alto</strong> (60-79), <strong>Medio</strong> (30-59), <strong>Bajo</strong> (< 30).</li>
+    </ul>
+    ${this._h('Residual risk')}
+    ${this._p('El residual risk = inherent risk x (1 - efectividad de controles / 100). La efectividad de controles se deriva de la puntuacion del cuestionario de seguridad del proveedor. Cuanto mejor responda y evidencie, menor es su riesgo residual.')}
+    ${this._h('Plantillas de cuestionario del sistema')}
+    ${this._p('Al crear un cuestionario puedes elegir una plantilla preestablecida (clonable): ISO 27001 completo, NIS2 art. 21, DORA arts. 28-30, GDPR encargado, declaracion de uso de IA (ISO 42001) o checklist de offboarding. Cada pregunta lleva pesos, reglas de scoring y mapeo a controles del marco correspondiente.')}
+    ${this._h('Recalculo del portfolio')}
+    ${this._steps([
+      'Edita el perfil del proveedor (pestana Proveedores) con los atributos de riesgo inherente.',
+      'El tier y los scores se recalculan automaticamente al guardar; tambien con el boton <strong>Recalcular</strong>.',
+      'Usa <strong>Recalcular portfolio</strong> en el dashboard TPRM para refrescar toda la cartera.',
+      'Consulta el heatmap inherent vs residual y el top 10 de proveedores por riesgo residual.',
+    ])}
+    ${this._h('Evaluaciones consolidadas')}
+    ${this._p('La pestana <strong>Evaluaciones</strong> agrega el riesgo inherente del proveedor, los cuestionarios respondidos (media de puntuaciones) y un desglose por dominio funcional en una unica evaluacion. Cada evaluacion puede <strong>aprobarse</strong> y <strong>enviarse al registro de riesgos ISO 27005</strong> con un clic (boton "Push a riesgos"), creando una entrada de riesgo de cadena de suministro vinculada.')}
+    ${this._h('Evaluacion por IA de los cuestionarios')}
+    ${this._p('Cuando un proveedor responde un cuestionario, RiskHub puede evaluar las respuestas con IA (Claude) y devolver una puntuacion, nivel de confianza, banderas rojas y preguntas de seguimiento. Si la confianza es baja, el cuestionario se marca para revision manual obligatoria. Requiere configurar la API key en IA -> Configuracion. Tambien puedes lanzarla manualmente con el boton "Evaluar IA" en la tabla de cuestionarios.')}
+    ${this._h('Hallazgos y SLA')}
+    ${this._p('La pestana <strong>Hallazgos</strong> registra issues del proveedor con SLA automatico por severidad (critico 7 dias, alto 30, medio 90, bajo 180). Los hallazgos vencidos se marcan automaticamente como "Vencido". Gestiona la remediacion, la asignacion y la aceptacion de riesgo desde aqui.')}
+    ${this._tip('<strong>Nota:</strong> el modulo reutiliza el registro de proveedores y los cuestionarios existentes; no crea un silo paralelo. Los proveedores con riesgo residual alto pueden vincularse al registro de riesgos ISO 27005 central.')}
+  `;},
+
   get _cNonConformities() { return `
     ${this._p('El modulo de <strong>No Conformidades y Acciones Correctivas (CAR)</strong> implementa el proceso de mejora continua requerido por <strong>ISO 27001:2022 clausula 10.1</strong>.')}
     ${this._h('Que es una no conformidad')}
@@ -1476,6 +1508,38 @@ const ViewGuide = {
       'Revisa los resultados en la tabla de cuestionarios.',
     ])}
     ${this._tip('<strong>Privacidad by design (Art. 25):</strong> La vinculacion entre el Registro Art. 30 y las DPIAs Art. 35 facilita demostrar el cumplimiento del principio de privacidad desde el diseno, exigido expresamente por el RGPD.')}
+  `;},
+
+  get _cRegwatch() { return `
+    ${this._p('La <strong>Vigilancia Normativa Automatica</strong> mantiene tu catalogo normativo al dia sin que tengas que hacer nada. Funciona como las actualizaciones automaticas de un sistema operativo: lo activas una vez y RiskHub se encarga del resto, avisandote solo cuando necesita tu confirmacion. Esta en <strong>Cumplimiento &rarr; Vigilancia normativa</strong>.')}
+    ${this._h('Activacion en un clic')}
+    ${this._steps([
+      'Pulsa el interruptor <strong>ON</strong> en la tarjeta de Vigilancia Normativa (solo admin).',
+      'Confirma con una frase en el dialogo: <em>"Vamos a vigilar N marcos normativos que estas usando..."</em>.',
+      'Listo. RiskHub detecta automaticamente los marcos que usas (ISO 27001, NIS2, ENS, RGPD, DORA, ISO 42001...) y empieza a vigilarlos.',
+    ])}
+    ${this._p('Los frameworks vigilados se <strong>derivan solos</strong> de lo que ya usas en RiskHub (modulo Cumplimiento y clasificacion regulatoria de proveedores). Si empiezas a usar uno nuevo, entra en la vigilancia automaticamente. No hay que configurar fuentes, scrapers ni IA.')}
+    ${this._h('Severidad de los cambios')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--brand-purple);color:#fff;">
+        <th style="padding:8px;text-align:left;">Severidad</th><th style="padding:8px;text-align:left;">Que ocurre</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="padding:8px;"><strong>Cosmetico</strong></td><td style="padding:8px;">Cambio de redaccion menor. Se aplica solo; aparece en el historial.</td></tr>
+        <tr style="background:var(--bg-2);"><td style="padding:8px;"><strong>Aclaracion</strong></td><td style="padding:8px;">Guidance que clarifica un control. Se aplica solo; va en el digest.</td></tr>
+        <tr><td style="padding:8px;"><strong>Sustantivo</strong></td><td style="padding:8px;">Control nuevo/eliminado/modificado. Genera un item en tu bandeja para que decidas sobre tus copias.</td></tr>
+        <tr style="background:var(--bg-2);"><td style="padding:8px;"><strong>Version mayor</strong></td><td style="padding:8px;">Nueva version del estandar. Aviso destacado + asistente de revision.</td></tr>
+      </tbody>
+    </table>
+    ${this._h('Bandeja de actualizaciones y revision')}
+    ${this._p('Cuando un cambio sustantivo afecta a un marco que usas, aparece un item con dos botones: <strong>Revisar</strong> (abre un asistente breve con el resumen, el impacto sobre tus politicas y requisitos, y un boton Aplicar) y <strong>Aplazar 7 dias</strong>. El historial es exportable a PDF como evidencia ante auditor.')}
+    ${this._h('Opciones avanzadas (colapsadas, solo admin)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Email de notificaciones:</strong> por defecto, el del primer admin.</li>
+      <li><strong>Frecuencia del digest:</strong> diaria / semanal (def.) / mensual / nunca.</li>
+      <li><strong>Auto-aplicar a copias:</strong> desactivado por defecto; los cambios sustantivos siempre requieren tu confirmacion.</li>
+    </ul>
+    ${this._tip('<strong>No interpreta legalmente las normas ni sustituye a tu consultor o auditor:</strong> detecta y propone cambios sobre documentos publicos. No procesa datos personales de tu organizacion. Desactivar el interruptor no rompe nada y conserva tu configuracion.')}
   `;},
 
   get _cBowtie() { return `
@@ -2198,7 +2262,7 @@ const ViewGuide = {
       '<strong>BIA:</strong> Completa el Analisis de Impacto de Negocio para cada proceso. Un proceso tiene BIA completo cuando rellenas los 10 campos requeridos (RTO, RPO, MTPD, MBCO, 4 impactos, criterios de activacion y registros vitales).',
       '<strong>Dependencias:</strong> Documenta que sistemas IT, personal, instalaciones y proveedores necesita cada proceso para recuperarse.',
       '<strong>Estrategias:</strong> Define al menos una estrategia de recuperacion por proceso critico (hot site, trabajo remoto, procedimiento manual, etc.).',
-      '<strong>Planes BCP/DRP:</strong> Crea planes documentados para los procesos. Usa el drawer de 9 secciones para completar roles, contactos, procedimientos y KPIs.',
+      '<strong>Planes BCP/DRP:</strong> Crea planes documentados para los procesos. Usa el drawer de 10 secciones para completar roles, contactos, procedimientos, KPIs, autorizadores y documentacion vinculada.',
       '<strong>Tests y ejercicios:</strong> Programa tests periodicos (tabletop, simulacion o test completo). Registra resultados y lecciones aprendidas.',
       '<strong>Proveedores BCM:</strong> Vincula proveedores criticos al BCP, define su impacto en RTO y documenta planes de contingencia.',
     ])}
@@ -2227,12 +2291,25 @@ const ViewGuide = {
       <li><strong>Dependencias entre procesos:</strong> relaciones proceso-a-proceso. "El proceso A no puede recuperarse hasta que el proceso B este operativo." Define secuencia de recuperacion y motivo.</li>
       <li><strong>Recursos y dependencias externas:</strong> sistemas IT, personal, instalaciones, proveedores, suministros. Define cantidades en operacion normal y en recuperacion, RTO necesario y si es critico (sin el, la recuperacion no puede comenzar).</li>
     </ul>
+    ${this._p('Cada dependencia de recurso puede incluir campos de <strong>interconexion tecnica</strong> (seccion colapsable en el formulario):')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Tipo de conexion:</strong> API, database, network, file_transfer, manual, messaging.</li>
+      <li><strong>Protocolo:</strong> HTTPS, SQL, SMB, SFTP, AMQP, etc.</li>
+      <li><strong>Direccion del flujo:</strong> entrada, salida o bidireccional.</li>
+      <li><strong>Clasificacion del dato:</strong> publico, interno, confidencial, estrictamente confidencial.</li>
+    </ul>
+    ${this._tip('Los campos de interconexion tecnica enriquecen el mapa de dependencias: las aristas del grafo muestran el tipo de conexion como etiqueta y la clasificacion del dato afecta el color de la arista.')}
 
     ${this._h('Tab Estrategias (ISO 22301 cl. 8.3)')}
     ${this._p('Una estrategia define como se recuperara un proceso. Tipos disponibles: hot site, cold site, warm site, trabajo remoto, outsourcing, procedimiento manual, dual site, cloud failover. Asigna una estrategia global o vinculada a un proceso especifico. Seguimiento del estado: planificado, en progreso, implementado, probado.')}
+    ${this._p('Cada estrategia puede incluir dos secciones colapsables con informacion tecnica detallada:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Configuracion tecnica IT (ISO 22301 §8.4):</strong> disponibilidad objetivo (%), tipo de failover (none/active-passive/active-active), compute (vCPUs, RAM, almacenamiento TB), virtualizacion, hosts minimos, RPO y RTO de backup, retencion de backup y ubicacion offsite.</li>
+      <li><strong>Monitorizacion y mantenimiento:</strong> herramienta de monitorizacion, umbrales de alerta CPU/memoria, email de alertas, ventana de mantenimiento y cadencia de aplicacion de parches (seguridad y funcionalidad).</li>
+    </ul>
 
     ${this._h('Tab Planes BCP/DRP (ISO 22301 cl. 8.4)')}
-    ${this._p('Formulario en drawer lateral con 9 secciones. Solo aparecen las secciones relevantes segun el tipo de plan:')}
+    ${this._p('Formulario en drawer lateral con 10 secciones. Solo aparecen las secciones relevantes segun el tipo de plan:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>Cabecera:</strong> tipo, version, clasificacion (confidencial/interno/restringido), propietario, procesos cubiertos.</li>
       <li><strong>Alcance y objetivos:</strong> alcance, criterios de activacion, resumen ejecutivo.</li>
@@ -2242,9 +2319,22 @@ const ViewGuide = {
       <li><strong>Contactos y escalada:</strong> lista de contactos con backup.</li>
       <li><strong>Contingencia IT y workarounds:</strong> procedimientos manuales y recuperacion de datos.</li>
       <li><strong>KPIs:</strong> tabla editable. Boton "KPIs estandar DRP" precarga metricas recomendadas.</li>
+      <li><strong>Clasificacion y gestion:</strong> tipo de instalacion (cloud SaaS/IaaS, on-premise, hibrido), nivel de clasificacion del dato, flag GDPR, usuarios afectados estimados, autorizadores de activacion (tabla editable con suplentes), enlaces externos a documentacion y documentos internos relacionados con version y fecha de vigencia.</li>
       <li><strong>Historial:</strong> datos de aprobacion y tests vinculados.</li>
     </ul>
     ${this._tip('Para aprobar un plan, haz clic en el boton "Aprobar" de la tabla. Aparece un dialogo de confirmacion. Solo los administradores pueden aprobar planes. Al aprobar, se actualiza automaticamente el estado ISO 27001 A.5.29 y ENS op.cont.2.')}
+
+    ${this._h('Menu de acciones del plan')}
+    ${this._p('Cada fila de la tabla de planes tiene un boton de menu contextual (icono tres puntos) con las siguientes acciones:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Editar plan:</strong> abre el drawer de edicion.</li>
+      <li><strong>Aprobar:</strong> visible solo si el plan esta en estado borrador o revision.</li>
+      <li><strong>Activar plan:</strong> acceso directo al dialogo de activacion de emergencia con el plan preseleccionado.</li>
+      <li><strong>Mensaje a stakeholders:</strong> abre un modal para redactar y revisar un comunicado de crisis usando las plantillas configuradas en el plan (interna / externa). El mensaje se confirma manualmente — no se envia automaticamente.</li>
+      <li><strong>Programar test:</strong> abre el modal de nuevo test con el plan asociado.</li>
+      <li><strong>Ver contexto completo:</strong> panel consolidado con todos los procesos cubiertos (RTO/RPO/MTPD/coste/proveedores/dependencias criticas), runbooks asociados y sede DR. Incluye boton de activacion directa.</li>
+      <li><strong>Historial activaciones:</strong> tabla de todas las activaciones vinculadas a este plan, con RTO real, duracion y acceso al detalle de cada activacion (timeline de eventos, checklist ejecutado, lecciones aprendidas).</li>
+    </ul>
 
     ${this._h('Tab Tests y Ejercicios (ISO 22301 cl. 8.5)')}
     ${this._p('Programa y registra los ejercicios de continuidad. Tres tipos disponibles:')}
@@ -2253,8 +2343,79 @@ const ViewGuide = {
       <li><strong>Simulacion:</strong> ejercicio parcial sin afectar sistemas de produccion.</li>
       <li><strong>Full test:</strong> prueba completa del plan en condiciones reales.</li>
     </ul>
+    ${this._p('Al crear un test puedes asociarlo a un plan BCP/DRP especifico. Tras guardar, el sistema ofrece generar un checklist detallado con IA.')}
     ${this._p('Al registrar el resultado, los campos <em>hallazgos</em> y <em>lecciones aprendidas</em> son obligatorios si el resultado es parcial o fallido. Si el test falla, el sistema ofrece crear una No Conformidad automaticamente (ISO 22301 cl. 10.1).')}
     ${this._tip('Un "full test" en los ultimos 12 meses cuenta como evidencia para la clausula 9.2 (auditoria interna del SGCN). Los tests superados actualizan ISO 27001 A.5.30 y ENS op.cont.3.')}
+
+    ${this._h('Checklist de test generado por IA')}
+    ${this._p('Cada test tiene un boton <em>sparkles</em> que llama al modelo de IA configurado en el sistema para generar un checklist estructurado en tres fases:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Pre-test:</strong> lista de verificacion antes de iniciar el ejercicio (convocatoria, accesos, comunicacion a usuarios).</li>
+      <li><strong>Pasos del test:</strong> secuencia ordenada de acciones con proceso asociado y RTO esperado por paso.</li>
+      <li><strong>Post-test:</strong> cierre, validacion de criterios de exito y comunicacion de resultados.</li>
+    </ul>
+    ${this._p('El resultado incluye ademas una lista de notificacion (rol, momento, canal). Puedes copiar el checklist completo en JSON para usarlo en otras herramientas.')}
+    ${this._warn('El checklist IA consume tokens de la API de Claude. Requiere que la API key este configurada en Ajustes > Agente IA.')}
+
+    ${this._h('Mapa de dependencias (grafo interactivo)')}
+    ${this._p('Vista de grafo interactivo Cytoscape que muestra todos los procesos, activos IT y proveedores externos como nodos conectados por aristas tipadas. Accesible desde la pestana Dependencias.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Nodos proceso (elipse morada):</strong> tamano proporcional a criticidad. Muestra RTO/RPO/MTPD, coste por hora y planes asociados al hacer clic.</li>
+      <li><strong>Nodos activo IT (rectangulo naranja):</strong> activos vinculados a procesos via asset_ids o dependencias.</li>
+      <li><strong>Nodos proveedor (hexagono verde):</strong> proveedores vinculados via supplier_ids o Proveedores BCM. Muestra SLA contractual, RTO de impacto y si tiene plan de contingencia.</li>
+      <li><strong>SPOF (Single Point of Failure):</strong> nodos con 3 o mas dependencias entrantes se marcan con borde rojo doble. Son los puntos de mayor riesgo de fallo en cascada.</li>
+    </ul>
+    ${this._p('Controles disponibles en la barra de herramientas:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Filtro por sede (location) para ver solo los procesos de una ubicacion.</li>
+      <li>Zoom +/- y ajuste automatico al grafo completo.</li>
+      <li>Exportar como PNG.</li>
+      <li>Mostrar/ocultar etiquetas en las aristas (tipo de conexion, protocolo).</li>
+      <li>Filtro "solo criticos" para reducir el ruido visual.</li>
+      <li>Analizar con IA: envia el resumen del grafo al modelo configurado y devuelve un informe con SPOFs priorizados, cadena critica de recuperacion y 3 acciones recomendadas con referencia a clausulas ISO 22301.</li>
+    </ul>
+    ${this._tip('Los proveedores vinculados en "Proveedores BCM" aparecen conectados a los procesos que soportan. Si un proveedor no aparece en el mapa, verifica que tenga procesos asociados en la pestaña Proveedores BCM.')}
+
+    ${this._h('Tab Runbooks de recuperacion (ISO 22301 §8.4.3)')}
+    ${this._p('Los runbooks son los procedimientos operativos ejecutables durante una activacion. A diferencia de los planes (estrategicos), los runbooks son tacticos: paso a paso, con responsable asignado.')}
+    ${this._p('Campos disponibles en el formulario:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Tipo:</strong> Recuperacion, Failover o General.</li>
+      <li><strong>Plan BCP/DRP asociado:</strong> vincula el runbook a un plan para que aparezca en el contexto consolidado del plan.</li>
+      <li><strong>Condicion de activacion:</strong> criterio formal para iniciar este runbook (ej. "servidor principal inaccesible >15 min").</li>
+      <li><strong>Responsable titular / Suplente:</strong> nombre y cargo del responsable de ejecucion.</li>
+      <li><strong>Referencia boveda de credenciales:</strong> ruta o referencia al almacen seguro de credenciales necesarias.</li>
+      <li><strong>Criterio de exito:</strong> prueba objetiva de que la recuperacion fue exitosa.</li>
+    </ul>
+    ${this._p('Al seleccionar tipo <strong>Recuperacion</strong>, aparece el boton <em>"Plantilla 5 fases"</em> que precarga la descripcion con la estructura estandar ISO 22301:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Fase 1 — Deteccion y notificacion:</strong> alertas, confirmacion de alcance, apertura del registro.</li>
+      <li><strong>Fase 2 — Activacion del plan:</strong> declaracion formal, convocatoria de equipo, comunicacion inicial.</li>
+      <li><strong>Fase 3 — Recuperacion tecnica:</strong> ejecucion en orden de dependencias, restauracion de backups, activacion DR Site.</li>
+      <li><strong>Fase 4 — Reconstitucion y validacion:</strong> pruebas funcionales, verificacion del criterio de exito, comunicacion de reanudacion.</li>
+      <li><strong>Fase 5 — Cierre y revision post-incidente:</strong> declaracion formal de cierre, registro de RTO real, lecciones aprendidas.</li>
+    </ul>
+
+    ${this._h('Activacion de planes de continuidad')}
+    ${this._p('El boton rojo "Activar BCP/DRP" o la accion "Activar plan" del menu contextual abre el dialogo de activacion de emergencia. Solo debe usarse ante un incidente real.')}
+    ${this._p('Al seleccionar un plan, el sistema carga automaticamente el contexto:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Canales de comunicacion</strong> configurados en el plan (primario, secundario, externo).</li>
+      <li><strong>Proveedores criticos afectados</strong> por los procesos cubiertos.</li>
+      <li><strong>Autorizadores</strong> definidos en la seccion de clasificacion del plan.</li>
+      <li>Si el plan tiene plantilla de comunicado interno, se precarga en el campo de notas iniciales.</li>
+    </ul>
+    ${this._p('La activacion registra una marca temporal T=0 automaticamente. Una vez confirmada, el sistema abre el checklist de activacion donde cada paso puede marcarse como completado, con hora de ejecucion registrada.')}
+    ${this._warn('Solo los usuarios con rol Analyst o Admin pueden activar planes. Una activacion no puede deshacerse — solo cerrarse mediante "Cerrar activacion" con RTO real y lecciones aprendidas.')}
+
+    ${this._h('Historial de activaciones')}
+    ${this._p('Accesible desde "Historial activaciones" en el menu contextual de cada plan. Muestra todas las activaciones vinculadas a ese plan con:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>Codigo de activacion, titulo del incidente, fechas de inicio y cierre.</li>
+      <li>RTO real (duracion total de la activacion).</li>
+      <li>Estado: activa o cerrada.</li>
+      <li>Acceso al detalle: timeline completo de eventos, checklist con estado de cada paso y hora de ejecucion, lecciones aprendidas registradas.</li>
+    </ul>
 
     ${this._h('Tab Proveedores BCM (ISO 22301 cl. 8.2)')}
     ${this._p('Vincula proveedores criticos al programa de continuidad. Para cada vinculo, define: criticidad BCM, RTO de impacto si el proveedor falla, SLA contractual, proveedor alternativo y si tiene plan de contingencia. Asocia los procesos que dependen del proveedor para tener visibilidad cruzada.')}

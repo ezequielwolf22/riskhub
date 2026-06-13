@@ -19,8 +19,9 @@ from app.routers import (
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
     cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents,
     integrations_erp, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
-    osint, policies, portal, predictive, report_schedules, reports, risks, search, sharepoint,
-    soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, users, webhooks,
+    osint, policies, portal, predictive, regwatch, report_schedules, reports, risks, search, sharepoint,
+    soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, tprm,
+    vendor_assessments, vendor_issues, users, webhooks,
 )
 from app.routers.surveys import public_router as survey_public_router
 from app.seed import init_db
@@ -159,6 +160,9 @@ app.include_router(ai.router)
 app.include_router(search.router)
 app.include_router(incidents.router)
 app.include_router(suppliers.router)
+app.include_router(tprm.router)
+app.include_router(vendor_assessments.router)
+app.include_router(vendor_issues.router)
 app.include_router(nonconformities.router)
 app.include_router(tasks.router)
 app.include_router(policies.router)
@@ -195,6 +199,7 @@ app.include_router(inbox.router)
 app.include_router(change_requests.router)
 app.include_router(report_schedules.router)
 app.include_router(bcp.router)
+app.include_router(regwatch.router)
 app.include_router(surveys.router)
 app.include_router(survey_public_router)
 
