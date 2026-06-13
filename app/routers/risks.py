@@ -228,6 +228,24 @@ def list_risks(
     return q.order_by(Risk.residual_level.desc(), Risk.code).all()
 
 
+@router.get("/methodology")
+def get_methodology(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve la metodologia activa y sus metadatos (para el formulario de riesgos)."""
+    from app.services.risk_engine import MAGERIT_DIMENSIONS, MAGERIT_FREQ_LABELS
+    ctx = _get_context(db, current_user.organization_id)
+    methodology = ctx.methodology if ctx and ctx.methodology else "iso27005"
+    risk_appetite = (ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3)
+    return {
+        "methodology": methodology,
+        "magerit_dimensions": MAGERIT_DIMENSIONS,
+        "magerit_freq_labels": MAGERIT_FREQ_LABELS,
+        "risk_appetite": risk_appetite,
+    }
+
+
 @router.get("/{risk_id}", response_model=RiskOut)
 def get_risk(risk_id: int, db: Session = Depends(get_db),
              current_user: User = Depends(get_current_user)):
@@ -714,24 +732,6 @@ def _trigger_compliance_sync_bg(org_id: int) -> None:
             db2.close()
 
     threading.Thread(target=_sync, daemon=True).start()
-
-
-@router.get("/methodology")
-def get_methodology(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Devuelve la metodologia activa y sus metadatos (para el formulario de riesgos)."""
-    from app.services.risk_engine import MAGERIT_DIMENSIONS, MAGERIT_FREQ_LABELS
-    ctx = _get_context(db, current_user.organization_id)
-    methodology = ctx.methodology if ctx and ctx.methodology else "iso27005"
-    risk_appetite = (ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3)
-    return {
-        "methodology": methodology,
-        "magerit_dimensions": MAGERIT_DIMENSIONS,
-        "magerit_freq_labels": MAGERIT_FREQ_LABELS,
-        "risk_appetite": risk_appetite,
-    }
 
 
 @router.post("/magerit-preview")

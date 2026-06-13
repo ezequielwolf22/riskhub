@@ -53,7 +53,7 @@ def get_compliance_dashboard(
     """Dashboard de cumplimiento multi-framework para la org del usuario."""
     org_id = _filter_org(current_user)
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        return {"frameworks": [], "overall_pct": 0, "message": "Selecciona una organizacion para ver el cumplimiento."}
     return get_multi_framework_dashboard(db, org_id)
 
 
@@ -66,7 +66,7 @@ def get_framework_status(
     """Estado de cumplimiento de un framework específico."""
     org_id = _filter_org(current_user)
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(403, "Se requiere organization_id")
     fw = load_framework(framework_code)
     if not fw:
         raise HTTPException(404, "Framework no encontrado")

@@ -1,4 +1,4 @@
-/* Vistas hub: agrupan las vistas existentes en 8 hubs con pestanas internas
+/* Vistas hub: agrupan las vistas existentes en hubs con pestanas internas
    (progressive disclosure). Cada hub delega el render de cada pestana en la
    View original via UI.tabs — las vistas existentes no se modifican. */
 
@@ -58,7 +58,7 @@ const ViewWatchHub = {
   },
 };
 
-/* 4. Cumplimiento */
+/* 4. Cumplimiento — incluye NIS2 y RGPD */
 const ViewComplianceHub = {
   async render(el) {
     UI.tabs(el, {
@@ -67,9 +67,11 @@ const ViewComplianceHub = {
       tabs: [
         { id: 'compliance', label: 'Normativo', view: ViewCompliance, route: 'compliance' },
         { id: 'controls', label: 'Controles', view: ViewControls, route: 'controls' },
+        { id: 'nis2', label: 'NIS2', view: ViewNis2Dashboard },
         { id: 'ccm', label: 'Monitor', view: ViewCcm },
         { id: 'soa', label: 'SoA', view: ViewSoaVersions },
         { id: 'policies', label: 'Politicas', view: ViewPolicies, route: 'policies' },
+        { id: 'gdpr', label: 'RGPD', view: ViewGdpr, route: 'gdpr' },
         { id: 'audits', label: 'Auditorias', view: ViewAudits, route: 'internal-audits' },
         { id: 'management-review', label: 'Rev. direccion', view: ViewManagementReview },
         { id: 'change-requests', label: 'Cambios', view: ViewChangeRequests },
@@ -78,25 +80,34 @@ const ViewComplianceHub = {
   },
 };
 
-/* 5. Eventos */
+/* 5. Incidentes — solo incidentes y no conformidades */
 const ViewEventsHub = {
   async render(el) {
     UI.tabs(el, {
       hub: 'events-hub',
-      label: 'Eventos',
+      label: 'Incidentes',
       tabs: [
         { id: 'incidents', label: 'Incidentes', view: ViewIncidents, route: 'incidents' },
-        { id: 'nis2', label: 'NIS2', view: ViewNis2Dashboard },
         { id: 'nonconformities', label: 'No conformidades', view: ViewNonConformities, route: 'nonconformities' },
-        { id: 'bcp', label: 'BCP', view: ViewBcp },
-        { id: 'suppliers', label: 'Proveedores', view: ViewSuppliers, route: 'suppliers' },
-        { id: 'gdpr', label: 'RGPD', view: ViewGdpr, route: 'gdpr' },
       ],
     });
   },
 };
 
-/* 6. Informes */
+/* 6. BCP — hub independiente */
+const ViewBcpHub = {
+  async render(el) {
+    UI.tabs(el, {
+      hub: 'bcp-hub',
+      label: 'Continuidad de Negocio',
+      tabs: [
+        { id: 'bcp', label: 'BCP / BCM', view: ViewBcp },
+      ],
+    });
+  },
+};
+
+/* 7. Informes */
 const ViewReportsHub = {
   async render(el) {
     UI.tabs(el, {
@@ -114,7 +125,7 @@ const ViewReportsHub = {
   },
 };
 
-/* 7. Agente IA */
+/* 8. Agente IA */
 const ViewAiHub = {
   async render(el) {
     UI.tabs(el, {
@@ -128,7 +139,25 @@ const ViewAiHub = {
   },
 };
 
-/* 8. Configuracion (solo admin; organizaciones y modulos solo superadmin) */
+/* 9. Setup — configuracion inicial y proveedores */
+const ViewSetupHub = {
+  async render(el) {
+    UI.tabs(el, {
+      hub: 'setup-hub',
+      label: 'Setup',
+      tabs: [
+        {
+          id: 'wizard', label: 'Asistente',
+          render: async (panel) => { await ViewOnboarding.render(panel); },
+        },
+        { id: 'context', label: 'Contexto org.', view: ViewContext, route: 'context' },
+        { id: 'suppliers', label: 'Proveedores', view: ViewSuppliers, route: 'suppliers' },
+      ],
+    });
+  },
+};
+
+/* 10. Configuracion (solo admin; organizaciones y modulos solo superadmin) */
 const ViewAdminHub = {
   async render(el) {
     UI.tabs(el, {
