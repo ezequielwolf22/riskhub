@@ -139,7 +139,20 @@ const ViewAiHub = {
   },
 };
 
-/* 9. Setup — configuracion inicial y proveedores */
+/* 9. Proveedores — hub independiente */
+const ViewSuppliersHub = {
+  async render(el) {
+    UI.tabs(el, {
+      hub: 'suppliers-hub',
+      label: 'Proveedores',
+      tabs: [
+        { id: 'suppliers', label: 'Proveedores', view: ViewSuppliers, route: 'suppliers' },
+      ],
+    });
+  },
+};
+
+/* 10. Setup — asistente de configuracion inicial */
 const ViewSetupHub = {
   async render(el) {
     UI.tabs(el, {
@@ -147,11 +160,10 @@ const ViewSetupHub = {
       label: 'Setup',
       tabs: [
         {
-          id: 'wizard', label: 'Asistente',
+          id: 'wizard', label: 'Asistente de configuracion',
           render: async (panel) => { await ViewOnboarding.render(panel); },
         },
         { id: 'context', label: 'Contexto org.', view: ViewContext, route: 'context' },
-        { id: 'suppliers', label: 'Proveedores', view: ViewSuppliers, route: 'suppliers' },
       ],
     });
   },

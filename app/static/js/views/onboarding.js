@@ -72,6 +72,12 @@ const ViewOnboarding = (() => {
   // ---------- Entry point ----------
 
   async function render(main) {
+    // Resetear estado async entre renders para evitar valores obsoletos
+    _result = null;
+    _importResult = null;
+    _analyzing = false;
+    _busy = false;
+
     main.innerHTML = UI.sectionHeader(
       'Asistente de configuracion',
       'Configura RiskHub en 5 pasos: organizacion, cuestionario, documentos, propuesta IA y automatizaciones.'
@@ -79,6 +85,7 @@ const ViewOnboarding = (() => {
 
     _restoreLocal();
     await _loadBase();
+    if (!document.getElementById('wz-root')) return; // tab desmontado mientras cargaba
     _renderWizard();
   }
 
@@ -250,11 +257,10 @@ const ViewOnboarding = (() => {
   }
 
   function _skipLater() {
-    // Mismo comportamiento de skip que el onboarding anterior
     localStorage.setItem('riskhub_onboarding_skipped', '1');
     _persistLocal();
-    UI.toast('Puedes retomar el asistente desde #/onboarding cuando quieras', 'info');
-    location.hash = '/dashboard';
+    UI.toast('Puedes retomar el asistente desde Setup en el menu lateral', 'info');
+    location.hash = '/home';
   }
 
   // ---------- Navegacion ----------
@@ -1068,7 +1074,7 @@ const ViewOnboarding = (() => {
       localStorage.removeItem(LS_ANSWERS);
 
       UI.toast('Setup completado. Bienvenido a RiskHub.', 'success');
-      location.hash = '/dashboard';
+      location.hash = '/home';
     } catch (e) {
       const msg = e.status === 403
         ? 'Necesitas rol de administrador para completar el setup.'

@@ -10,6 +10,7 @@ const Routes = {
   'bcp-hub': ViewBcpHub,
   'reports-hub': ViewReportsHub,
   'ai-hub': ViewAiHub,
+  'suppliers-hub': ViewSuppliersHub,
   'setup-hub': ViewSetupHub,
   'admin-hub': ViewAdminHub,
   // Rutas independientes (sin entrada propia en el sidebar)
@@ -50,7 +51,7 @@ const LegacyRedirects = {
   bcp: 'bcp-hub/bcp',
   'nis2-dashboard': 'compliance-hub/nis2',
   gdpr: 'compliance-hub/gdpr',
-  suppliers: 'setup-hub/suppliers',
+  suppliers: 'suppliers-hub/suppliers',
   context: 'setup-hub/context',
   reports: 'reports-hub/reports',
   'report-schedules': 'reports-hub/schedules',
