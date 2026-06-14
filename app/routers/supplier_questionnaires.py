@@ -1,9 +1,13 @@
 """Cuestionarios de evaluacion de seguridad de proveedores — NIS2 Art. 21.2.d."""
+import logging
+import re
 import secrets
 import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger("riskhub.questionnaires")
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
@@ -276,6 +280,11 @@ async def upload_public_evidence(
     if q.submitted_at:
         raise HTTPException(409, "Este cuestionario ya fue respondido")
 
+    # OWASP A01 — sanitizar question_id para evitar path traversal en el nombre del fichero
+    question_id = re.sub(r"[^a-zA-Z0-9_\-]", "", question_id)[:64]
+    if not question_id:
+        raise HTTPException(400, "question_id invalido")
+
     fname = (file.filename or "").lower()
     ext = "." + fname.rsplit(".", 1)[-1] if "." in fname else ""
     if ext not in _EVIDENCE_EXT:
@@ -294,11 +303,12 @@ async def upload_public_evidence(
             raise HTTPException(400, "El contenido del fichero no coincide con su extension.")
     except HTTPException:
         raise
-    except Exception:
-        pass  # si el validador no esta disponible, continuar con la allowlist de extension
+    except Exception as _magic_exc:
+        logger.warning("Magic bytes validation unavailable for evidence upload: %s", _magic_exc)
 
     import hashlib
-    stored_name = f"{q.token}_{question_id}_{secrets.token_hex(6)}{ext}"
+    # No incluir el token en el nombre del fichero (evita info leakage en logs/directorios)
+    stored_name = f"ev_{q.id}_{question_id}_{secrets.token_hex(8)}{ext}"
     dest = _evidence_dir() / stored_name
     dest.write_bytes(content)
 
@@ -371,28 +381,41 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     else:
         score = _calculate_score(answers)
 
-    # Conteo de no-conformidades (Major/Minor) segun criticity de cada pregunta
+    # Conteo de no-conformidades (Major/Minor) segun criticity de cada pregunta (spec §7.1)
+    # Solo se cuentan las preguntas efectivamente respondidas; las omitidas no penalizan aqui
+    # (el score ponderado ya refleja el gap). Respuestas "na" no cuentan como NC.
     major_nc = 0
     minor_nc = 0
+    nc_val_set = {"false", "0", "no"}
     for qq in (q.questions or []):
         criticity = qq.get("criticity")
         if not criticity:
             continue
-        answer = answers.get(qq.get("id", ""), "")
-        nc_val = qq.get("nonconformity_value", "no")
+        qid = qq.get("id", "")
+        answer = answers.get(qid)
+        if answer is None:
+            continue  # pregunta sin responder: no penalizar como NC
         answer_str = str(answer).lower()
-        is_nc = answer_str in ("false", "0", "no", str(nc_val).lower())
-        if is_nc:
+        if answer_str == "na":
+            continue  # N/A explicitamente excluido
+        custom_nc_val = str(qq.get("nonconformity_value", "no")).lower()
+        if answer_str in nc_val_set or answer_str == custom_nc_val:
             if criticity == "Major":
                 major_nc += 1
             elif criticity == "Minor":
                 minor_nc += 1
 
     # Residual risk via matriz del spec §7.2
-    residual_risk_level = _compute_residual_risk(
-        getattr(q.supplier, "residual_risk_level", None) or "medium",
-        major_nc, minor_nc,
-    )
+    # Usamos el nivel inherente del proveedor (no el residual) como base de la matriz.
+    try:
+        from app.services.tprm_scoring_service import risk_level_label
+        _inherent_score = getattr(q.supplier, "inherent_risk_score", None)
+        _inherent_level = risk_level_label(_inherent_score) if _inherent_score is not None else "medium"
+        if _inherent_level == "very_low":
+            _inherent_level = "low"
+    except Exception:
+        _inherent_level = "medium"
+    residual_risk_level = _compute_residual_risk(_inherent_level, major_nc, minor_nc)
 
     q.answers = answers
     q.score = score
@@ -439,8 +462,9 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
                     bg_q.ai_review = result
                     bg_q.ai_reviewed_at = datetime.now(timezone.utc)
                     bg_db.commit()
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.exception("Auto AI review failed for questionnaire %s: %s",
+                                 _questionnaire_id, _exc)
 
         threading.Thread(target=_bg_ai_review, daemon=True).start()
     except Exception:
