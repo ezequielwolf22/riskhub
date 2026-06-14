@@ -6,24 +6,46 @@ Cobertura:
 - Rollback seguro → restaura estado original
 - Data loss detection → alerta si hay pérdida
 """
+import os
 import pytest
 from io import BytesIO
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.database import SessionLocal, Base, engine
+from app.database import Base
 from app.models import Asset, Organization, User, UserRole, ImportSession
 from app.services.smart_import_service import smart_import, rollback_import_session
 from app.security import hash_password
 
+# Fichero de BD dedicado y AISLADO para estos tests: no comparte estado con el
+# test_riskhub.db de conftest, evitando danar el resto de la suite. Engine propio
+# sin el listener PRAGMA foreign_keys=ON de la app, por lo que el ciclo
+# organizations<->users no bloquea la limpieza.
+_IMPORT_DB_PATH = "./test_import_integrity.db"
+
 
 @pytest.fixture
 def test_db():
-    """Crea BD temporal para tests."""
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    yield db
-    db.close()
-    Base.metadata.drop_all(bind=engine)
+    """Crea una BD temporal aislada (engine propio, fichero separado) por test."""
+    if os.path.exists(_IMPORT_DB_PATH):
+        os.remove(_IMPORT_DB_PATH)
+    test_engine = create_engine(
+        f"sqlite:///{_IMPORT_DB_PATH}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=test_engine)
+    TestSession = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
+    db = TestSession()
+    try:
+        yield db
+    finally:
+        db.close()
+        test_engine.dispose()
+        if os.path.exists(_IMPORT_DB_PATH):
+            try:
+                os.remove(_IMPORT_DB_PATH)
+            except OSError:
+                pass
 
 
 @pytest.fixture
@@ -35,7 +57,8 @@ def test_org_and_user(test_db):
 
     user = User(
         email="test@example.com",
-        password_hash=hash_password("test123"),
+        full_name="Test User",
+        hashed_password=hash_password("test123"),
         role=UserRole.ANALYST,
         organization_id=org.id,
     )

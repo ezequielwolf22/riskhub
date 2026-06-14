@@ -383,6 +383,7 @@ class PlanIn(BaseModel):
     plan_type: str = "bcp"
     name: str
     version: str = "1.0"
+    code: Optional[str] = None
     scope: Optional[str] = None
     activation_criteria: Optional[str] = None
     content_summary: Optional[str] = None
@@ -400,6 +401,13 @@ class PlanIn(BaseModel):
     dr_site: Optional[dict] = None
     backup_policy: Optional[dict] = None
     crisis_comms: Optional[dict] = None
+    installation_type: Optional[str] = None
+    data_classification_level: Optional[str] = None
+    gdpr_data: Optional[bool] = None
+    affected_users_count: Optional[int] = None
+    documentation_links: Optional[list] = None
+    related_documents: Optional[list] = None
+    authorized_activators: Optional[list] = None
 
 
 class PlanUpdate(BaseModel):
@@ -819,9 +827,10 @@ def create_plan(body: PlanIn, db: Session = Depends(get_db), u: User = Depends(r
         if not doc or doc.organization_id != org:
             raise HTTPException(422, "Documento no encontrado en esta organización")
     from app.services.bcp_service import next_plan_code
+    plan_code = body.code if body.code else next_plan_code(db, org, body.plan_type)
     p = BCPPlan(
         organization_id=org,
-        code=next_plan_code(db, org, body.plan_type),
+        code=plan_code,
         plan_type=body.plan_type,
         name=body.name,
         version=body.version,
@@ -832,6 +841,13 @@ def create_plan(body: PlanIn, db: Session = Depends(get_db), u: User = Depends(r
         process_ids=body.process_ids,
         team_members=body.team_members,
         review_date=_parse_dt(body.review_date, "review_date") if body.review_date else None,
+        installation_type=body.installation_type,
+        data_classification_level=body.data_classification_level,
+        gdpr_data=body.gdpr_data,
+        affected_users_count=body.affected_users_count,
+        documentation_links=body.documentation_links,
+        related_documents=body.related_documents,
+        authorized_activators=body.authorized_activators,
     )
     db.add(p)
     db.commit()
@@ -889,9 +905,31 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
         raise HTTPException(404)
     if p.status not in ("draft", "under_review"):
         raise HTTPException(422, "Solo planes en draft o under_review pueden aprobarse")
+    # Validate required fields before approval (ISO 22301 §8.4)
+    missing = []
+    if not p.name:
+        missing.append("nombre")
+    if not p.scope:
+        missing.append("alcance")
+    if not p.activation_criteria:
+        missing.append("criterios de activacion")
+    if not p.process_ids:
+        missing.append("al menos un proceso asociado")
+    if missing:
+        raise HTTPException(422, f"Campos obligatorios incompletos: {', '.join(missing)}")
     p.status = "approved"
     p.approved_by_id = u.id
     p.approved_at = datetime.now(timezone.utc)
+    # Mark previous approved versions with the same code as obsolete (versioning)
+    if p.code:
+        prev = db.query(BCPPlan).filter(
+            BCPPlan.organization_id == _org(u),
+            BCPPlan.code == p.code,
+            BCPPlan.id != p.id,
+            BCPPlan.status == "approved"
+        ).all()
+        for old in prev:
+            old.status = "obsolete"
     db.commit()
     log_action(db, u.id, "approve", "bcp_plan", str(p.id), {"code": p.code})
     # ISO 27001 A.5.29/A.5.30 + ENS op.cont.2 + NIS2 Art.21.2b

@@ -470,6 +470,7 @@ def rollback_import_session(db, session_id: str, org_id: int, user_id: int) -> d
 
     Returns: {"rolled_back_count": N, "errors": [...]}
     """
+    from datetime import datetime, timezone
     from app.models import ImportSession, Asset
     from sqlalchemy import delete
 

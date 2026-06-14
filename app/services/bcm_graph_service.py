@@ -85,7 +85,11 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
                 pass
 
     for sid in sup_ids_used:
-        s = db.get(Supplier, sid)
+        try:
+            s = db.get(Supplier, sid)
+        except Exception:
+            db.rollback()
+            continue
         if not s or s.organization_id != org_id:
             continue
         nodes[f"sup_{sid}"] = {
@@ -159,7 +163,11 @@ def build_dependency_graph(db: Session, org_id: int, location_id: int = None) ->
     # Include suppliers linked via BCPSupplierLink (the main way to link suppliers to processes)
     slinks = db.query(BCPSupplierLink).filter_by(organization_id=org_id).all()
     for sl in slinks:
-        s = db.get(Supplier, sl.supplier_id)
+        try:
+            s = db.get(Supplier, sl.supplier_id)
+        except Exception:
+            db.rollback()
+            continue
         if not s or s.organization_id != org_id:
             continue
         nid = f"sup_{sl.supplier_id}"

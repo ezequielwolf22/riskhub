@@ -684,8 +684,8 @@ class Supplier(Base):
     notes = Column(Text)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     # ---- TPRM (Third-Party Risk Management) ----
-    tier = Column(Enum(SupplierTier), nullable=True)          # derivado del inherent risk
-    relationship_status = Column(Enum(SupplierRelationship), default=SupplierRelationship.ACTIVE)
+    tier = Column(Enum(SupplierTier, values_callable=lambda x: [e.value for e in x]), nullable=True)
+    relationship_status = Column(Enum(SupplierRelationship, values_callable=lambda x: [e.value for e in x]), default=SupplierRelationship.ACTIVE)
     vendor_type = Column(String(64), nullable=True)           # technology|cloud_provider|...
     # Atributos para el calculo de inherent risk (1-5 salvo flags)
     data_sensitivity = Column(Integer, default=2)            # 1-5

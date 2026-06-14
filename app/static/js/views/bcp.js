@@ -2854,9 +2854,50 @@ const ViewBcp = (() => {
     document.body.style.overflow = '';
   }
 
-  function _editPlan(id) {
-    const plan = _plans.find(p => p.id === id);
-    _openPlanDrawer(plan);
+  async function _editPlan(id) {
+    let plan = _plans.find(p => p.id === id);
+    if (!plan) plan = await Api.get(`/api/bcp/plans/${id}`).catch(() => null);
+    if (!plan) { UI.toast('Plan no encontrado', 'error'); return; }
+    if (plan.status === 'approved') {
+      _openApprovedVersioningModal(plan);
+    } else {
+      _openPlanDrawer(plan);
+    }
+  }
+
+  function _bumpVersion(ver) {
+    const parts = String(ver || '1.0').split('.');
+    return (parseInt(parts[0] || '1') + 1) + '.0';
+  }
+
+  function _openApprovedVersioningModal(plan) {
+    const nextVer = _bumpVersion(plan.version);
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2><i class="ti ti-git-branch"></i> Editar plan aprobado</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom:10px;">El plan <strong>${UI.esc(plan.code)}</strong> esta actualmente <strong>aprobado</strong> (v${UI.esc(plan.version||'1.0')}).</p>
+        <p style="font-size:13px;color:var(--text-subtle);margin-bottom:12px;">Al continuar se creara una nueva version <strong>v${UI.esc(nextVer)}</strong> en borrador con los mismos datos. El plan actual permanecera vigente hasta que la nueva version sea aprobada, momento en que pasara automaticamente a estado <em>obsoleto</em>.</p>
+        <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:8px;">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="btn-confirm-version">
+            <i class="ti ti-copy"></i> Crear version ${UI.esc(nextVer)}
+          </button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#btn-confirm-version').addEventListener('click', () => {
+      modal.remove();
+      window._planVersioningCode = plan.code;
+      const newPlan = Object.assign({}, plan, { id: null, version: nextVer, status: 'draft' });
+      _openPlanDrawer(newPlan);
+    });
   }
 
   async function _savePlan(id) {
@@ -2927,14 +2968,21 @@ const ViewBcp = (() => {
     };
 
     if (!body.name) { UI.toast('El nombre del plan es obligatorio', 'error'); return; }
+    if (!id && window._planVersioningCode) {
+      body.code = window._planVersioningCode;
+    }
     try {
       if (id) await Api.patch(`/api/bcp/plans/${id}`, body);
       else await Api.post('/api/bcp/plans', body);
+      window._planVersioningCode = null;
       UI.toast('Plan guardado', 'success');
       _closePlanDrawer();
       _plans = [];
       _switchTab('plans');
-    } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
+    } catch (e) {
+      window._planVersioningCode = null;
+      UI.toast('Error: ' + (e.message || e), 'error');
+    }
   }
 
   async function _approvePlan(id) {
@@ -3014,9 +3062,7 @@ const ViewBcp = (() => {
         <div style="margin-bottom:12px">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Procesos a evaluar</label>
           <div style="max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px;">
-            ${_procs.map(p=>`<label style="display:flex;gap:6px;align-items:center;padding:3px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" value="${p.id}" class="tm-pids"> ${UI.esc(p.name)}
-            </label>`).join('')}
+            ${_procs.map(p=>`<label style="display:flex;gap:8px;align-items:center;padding:4px 6px;font-size:13px;cursor:pointer;"><input type="checkbox" value="${p.id}" class="tm-pids" style="flex-shrink:0;margin:0;"><span>${UI.esc(p.name)}</span></label>`).join('')}
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -6491,5 +6537,8 @@ const ViewBcp = (() => {
     _addDocLink, _removeDocLink, _updateDocLink,
     _addRelDoc, _removeRelDoc, _updateRelDoc,
     _genAiChecklist,
+    _editPlan,
+    _openApprovedVersioningModal,
+    _bumpVersion,
   };
 })();
