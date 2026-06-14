@@ -504,12 +504,16 @@ class Risk(Base):
     # {"plan_id": 1, "plan_code": "BCP-0001", "plan_type": "bcp", "rto_hours": 4,
     #  "last_tested": "2025-01-01", "coverage_pct": 80}
 
+    # Origen TPRM: si el riesgo fue generado desde una evaluacion de proveedor
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+
     asset = relationship("Asset", back_populates="risks")
     threat = relationship("Threat")
     owner = relationship("User", foreign_keys=[owner_id])
     accepted_by = relationship("User", foreign_keys=[accepted_by_id])
     vulnerabilities = relationship("Vulnerability", secondary=risk_vulnerability_table)
     controls = relationship("ControlImplementation", secondary=risk_control_table)
+    supplier = relationship("Supplier", foreign_keys=[supplier_id])
 
 
 class Questionnaire(Base):

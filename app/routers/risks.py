@@ -187,6 +187,7 @@ def list_risks(
     owner_id: Optional[int] = None,
     treatment: Optional[str] = None,
     group_id: Optional[int] = Query(None, description="-1 = sin grupo, >0 = grupo especifico"),
+    supplier_only: Optional[bool] = Query(None, description="True = solo riesgos originados en TPRM"),
 ):
     now = datetime.now(timezone.utc)
     q = filter_by_org(db.query(Risk), Risk, current_user)
@@ -225,6 +226,8 @@ def list_risks(
             q = q.filter(Risk.treatment_option.is_(None))
         else:
             q = q.filter(Risk.treatment_option == treatment)
+    if supplier_only:
+        q = q.filter(Risk.supplier_id.isnot(None))
     return q.order_by(Risk.residual_level.desc(), Risk.code).all()
 
 
@@ -1038,8 +1041,11 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
         and c.status != ControlStatus.NOT_IMPLEMENTED
     )
 
+    supplier_risks_count = sum(1 for r in risks if r.supplier_id is not None)
+
     return {
         "total_risks": len(risks),
+        "supplier_risks_count": supplier_risks_count,
         "total_assets": db.query(Asset).count(),
         "total_threats": db.query(Threat).count(),
         "total_vulnerabilities": db.query(Vulnerability).count(),

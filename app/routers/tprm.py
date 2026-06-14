@@ -62,11 +62,19 @@ def dashboard_summary(db: Session = Depends(get_db),
         key=lambda s: s.residual_risk_score, reverse=True,
     )[:10]
 
+    from app.models import VendorRiskAssessment, AssessmentRecommendation
+    org_id = current_user.organization_id
+    assessments = filter_by_org(db.query(VendorRiskAssessment), VendorRiskAssessment, current_user).all()
+    pending_assessments   = sum(1 for a in assessments if a.recommendation is None)
+    completed_assessments = sum(1 for a in assessments if a.recommendation is not None)
+
     return {
         "total": len(suppliers),
         "by_tier": by_tier,
         "by_residual_level": by_residual,
         "overdue_assessment": overdue,
+        "pending_assessments": pending_assessments,
+        "completed_assessments": completed_assessments,
         "regulatory_scope": {"nis2": nis2, "dora": dora, "ens": ens, "gdpr_processors": processors},
         "top_residual": [
             {

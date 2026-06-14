@@ -456,6 +456,8 @@ def _migrate_columns() -> None:
         ("ALTER TABLE vendor_risk_assessments ADD COLUMN decision_notes TEXT", "vendor_risk_assessments", "decision_notes"),
         ("ALTER TABLE vendor_risk_assessments ADD COLUMN decision_at DATETIME", "vendor_risk_assessments", "decision_at"),
         ("ALTER TABLE vendor_risk_assessments ADD COLUMN decision_by_id INTEGER", "vendor_risk_assessments", "decision_by_id"),
+        # v3.9.1 — TPRM: origen del riesgo (proveedor que lo genero via push-to-register)
+        ("ALTER TABLE risks ADD COLUMN supplier_id INTEGER", "risks", "supplier_id"),
         # v3.9.0 — BCM: tabla de interconexiones tecnicas en dependencias
         ("ALTER TABLE bcp_dependencies ADD COLUMN connection_type VARCHAR(32)", "bcp_dependencies", "connection_type"),
         ("ALTER TABLE bcp_dependencies ADD COLUMN protocol VARCHAR(32)", "bcp_dependencies", "protocol"),

@@ -1,7 +1,7 @@
 """Esquemas Pydantic para validacion de entrada/salida de la API."""
 from datetime import datetime
 from typing import Literal, Optional, Any
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import (
     AssetType, ThreatOrigin, TreatmentOption,
@@ -474,8 +474,21 @@ class RiskOut(ORMBase):
     magerit_dimension: Optional[str] = None
     degradation_pct: Optional[int] = None
     magerit_impact: Optional[float] = None
+    # Origen TPRM
+    supplier_id: Optional[int] = None
+    supplier_name: Optional[str] = None
     asset: AssetOut
     threat: ThreatOut
+
+    @model_validator(mode='before')
+    @classmethod
+    def _extract_supplier_name(cls, v):
+        if hasattr(v, 'supplier') and v.supplier is not None:
+            try:
+                v.__dict__['supplier_name'] = v.supplier.name
+            except Exception:
+                pass
+        return v
 
 
 # ---------- IMPORT ----------

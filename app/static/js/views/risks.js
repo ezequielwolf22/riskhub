@@ -16,6 +16,7 @@ const ViewRisks = {
     const vulnMatch = location.hash.match(/[?&]vulnerability_id=(\d+)/);
     const ownerParam = (location.hash.match(/[?&]owner=([^&]+)/) || [])[1] || null;
     const overdueParam = /[?&]overdue=1/.test(location.hash);
+    const supplierOnlyParam = /[?&]supplier_only=1/.test(location.hash);
     ViewRisks._assetFilter = null;
     ViewRisks._threatFilter = null;
     ViewRisks._vulnFilter = null;
@@ -67,6 +68,9 @@ const ViewRisks = {
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
             <input type="checkbox" id="r-overdue"> Solo vencidos
           </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
+            <input type="checkbox" id="r-supplier-only"> Solo proveedores (TPRM)
+          </label>
           <button class="btn btn-ghost" id="r-export-csv" title="Exportar tabla como CSV" style="margin-left:auto;">Exportar CSV</button>
           ${canEdit ? `
           <button class="btn btn-ghost" id="r-import-tpl" title="Descargar plantilla CSV de importacion">Plantilla</button>
@@ -106,6 +110,7 @@ const ViewRisks = {
     document.getElementById('r-treatment').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-owner').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-overdue').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
+    document.getElementById('r-supplier-only').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-export-csv').onclick = async () => {
       try { await Api.risks.exportCsv(); UI.toast('CSV descargado', 'success'); }
       catch (e) { UI.toast(e.message, 'error'); }
@@ -198,6 +203,12 @@ const ViewRisks = {
       if (cb) cb.checked = true;
     }
 
+    // Pre-marcar filtro de solo-proveedor si viene de la URL o del dashboard
+    if (supplierOnlyParam) {
+      const cb = document.getElementById('r-supplier-only');
+      if (cb) cb.checked = true;
+    }
+
     await ViewRisks._reload();
 
     // Atajo desde heatmap: ?id=X
@@ -222,6 +233,8 @@ const ViewRisks = {
     const view = document.getElementById('r-group-view');
     view.innerHTML = '<div class="notice">Cargando resumen por grupo...</div>';
     try {
+      // Leer si hay filtro de solo-proveedor activo en la tab de lista
+      const supplierOnlyActive = document.getElementById('r-supplier-only')?.checked;
       const summary = await Api.risks.groupSummary();
       if (!summary.length) {
         view.innerHTML = UI.emptyState('Sin grupos', 'Crea y valida grupos desde la seccion Activos → Agrupacion.');
@@ -235,10 +248,13 @@ const ViewRisks = {
       }[s] || '');
 
       view.innerHTML = `
-        <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
-          Riesgos organizados por grupo de activos.
-          Los riesgos se analizaron individualmente y aqui se presentan agrupados.
-          Los riesgos individuales <strong>no se pierden</strong> al reagrupar.
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;">
+          <span style="font-size:13px;color:var(--text-muted);">
+            Riesgos por grupo de activos. Los riesgos individuales <strong>no se pierden</strong> al reagrupar.
+          </span>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;margin-left:auto;">
+            <input type="checkbox" id="rg-supplier-only" ${supplierOnlyActive ? 'checked' : ''}> Solo proveedores (TPRM)
+          </label>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">
           ${summary.map(g => {
@@ -277,6 +293,15 @@ const ViewRisks = {
           }).join('')}
         </div>
       `;
+      // Sincronizar checkbox grupo → lista principal
+      const rgChk = document.getElementById('rg-supplier-only');
+      if (rgChk) {
+        rgChk.onchange = () => {
+          const mainChk = document.getElementById('r-supplier-only');
+          if (mainChk) { mainChk.checked = rgChk.checked; }
+          ViewRisks._renderGroupView();
+        };
+      }
     } catch (e) {
       view.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
@@ -349,6 +374,7 @@ const ViewRisks = {
     list.innerHTML = '<div class="notice">Cargando...</div>';
     try {
       const overdue = document.getElementById('r-overdue')?.checked;
+      const supplierOnly = document.getElementById('r-supplier-only')?.checked;
       const ownerVal = document.getElementById('r-owner')?.value || '';
       const params = {};
       if (status) params.status = status;
@@ -358,6 +384,7 @@ const ViewRisks = {
       if (ViewRisks._vulnFilter) params.vulnerability_id = ViewRisks._vulnFilter.id;
       if (ViewRisks._groupFilter) params.group_id = ViewRisks._groupFilter.id;
       if (overdue) params.overdue = true;
+      if (supplierOnly) params.supplier_only = true;
       if (ownerVal && ownerVal !== '__unassigned__') params.owner_id = ownerVal;
       if (treatFilter && treatFilter !== '__none__') params.treatment = treatFilter;
       let data = await Api.risks.list(params);
@@ -451,6 +478,7 @@ const ViewRisks = {
               <td>
                 ${UI.codePill(r.code)}
                 ${r.ai_generated ? `<span style="font-size:9px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc(r.ai_rationale||'Generado por el agente IA')}">IA</span>` : ''}
+                ${r.supplier_id ? `<span style="font-size:9px;font-weight:700;background:#FFF3E0;color:#E65100;border-radius:3px;padding:1px 5px;margin-left:3px;vertical-align:middle;" title="Riesgo de proveedor TPRM${r.supplier_name ? ': ' + r.supplier_name : ''}">TPRM</span>` : ''}
               </td>
               <td><strong>${UI.esc(r.asset?.name||'-')}</strong></td>
               <td>${UI.esc(r.threat?.name||'-')}</td>

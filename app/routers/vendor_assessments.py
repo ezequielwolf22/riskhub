@@ -575,6 +575,7 @@ def push_to_risk_register(
         code=code,
         asset_id=asset.id,
         threat_id=threat.id,
+        supplier_id=a.supplier_id,
         description=(
             f"Riesgo de cadena de suministro generado desde evaluacion consolidada.\n"
             f"Proveedor: {supplier_name} — Evaluacion: {a.code}.\n"

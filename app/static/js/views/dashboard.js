@@ -37,7 +37,7 @@ const ViewDashboard = {
 
     try {
       // Cargar datos de todos los modulos en paralelo para minimo tiempo de carga
-      const [s, inc, tsk, pol, gdpr, ctx, bcpRaw] = await Promise.allSettled([
+      const [s, inc, tsk, pol, gdpr, ctx, bcpRaw, tprmRaw] = await Promise.allSettled([
         Api.risks.summary(),
         Api.incidents.summary(),
         Api.tasks.summary(),
@@ -45,6 +45,7 @@ const ViewDashboard = {
         Api.gdpr.summary(),
         Api.context.get(),
         Api.get('/api/bcp/dashboard').catch(() => null),
+        Api.tprm.summary().catch(() => null),
       ]);
 
       const risks    = s.status    === 'fulfilled' ? s.value    : null;
@@ -53,6 +54,7 @@ const ViewDashboard = {
       const policies = pol.status  === 'fulfilled' ? pol.value  : null;
       const gdprData = gdpr.status === 'fulfilled' ? gdpr.value : null;
       const context  = ctx.status  === 'fulfilled' ? ctx.value  : null;
+      const tprmData = tprmRaw.status === 'fulfilled' ? tprmRaw.value : null;
       const bcpData  = bcpRaw.status === 'fulfilled' ? bcpRaw.value : null;
 
       // Exponer metodología activa globalmente para el formulario de riesgos
@@ -237,6 +239,9 @@ const ViewDashboard = {
 
         <!-- PANEL BCP -->
         ${ViewDashboard._bcpPanelHtml(bcpData)}
+
+        <!-- PANEL TPRM -->
+        ${ViewDashboard._tprmPanelHtml(tprmData, risks)}
 
         <!-- TOP 10 RIESGOS -->
         <div class="card" style="margin-top:16px;">
@@ -557,6 +562,71 @@ const ViewDashboard = {
         </div>
       </div>
       ${bcp.last_test_date ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:10px;text-align:right;">Ultimo test: ${new Date(bcp.last_test_date).toLocaleDateString('es-ES')}</div>` : ''}
+    </div>`;
+  },
+
+  /* Panel TPRM (gestion de riesgo de terceros) para el dashboard global. */
+  _tprmPanelHtml(tprm, risks) {
+    if (!tprm) return '';
+    const totalSup   = tprm.total                           ?? 0;
+    const critical   = tprm.by_residual_level?.critical     ?? 0;
+    const high       = tprm.by_residual_level?.high         ?? 0;
+    const pending    = tprm.pending_assessments             ?? 0;
+    const completed  = tprm.completed_assessments           ?? 0;
+    const supRisks   = risks?.supplier_risks_count          ?? 0;
+
+    if (totalSup === 0) return '';
+
+    const critColor = critical > 0 ? '#DC2626' : 'var(--text-muted)';
+    const pendColor = pending  > 0 ? '#D97706' : 'var(--text-muted)';
+
+    const bar = (pct, color) => `
+      <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;margin-top:4px;">
+        <div style="height:100%;width:${Math.min(pct,100)}%;background:${color};border-radius:2px;"></div>
+      </div>`;
+
+    return `
+    <div class="card" style="margin-top:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <h3 style="margin:0;">Gestion de riesgo de terceros (TPRM)</h3>
+          <p style="font-size:12px;color:var(--text-muted);margin:3px 0 0;">ISO 27001 A.5.19 — Seguridad de la cadena de suministro</p>
+        </div>
+        <a href="#/suppliers" style="font-size:12px;color:var(--brand-purple);font-weight:600;text-decoration:none;">
+          Ver modulo TPRM &rarr;
+        </a>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Proveedores</div>
+          <div style="font-size:28px;font-weight:800;color:var(--brand-purple);font-family:var(--font-mono);margin-top:4px;">${totalSup}</div>
+          <div style="font-size:11px;color:var(--text-subtle);">en cartera activa</div>
+        </div>
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);${critical > 0 ? 'border-color:#FCA5A5;background:#FFF5F5;' : ''}">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Riesgo critico</div>
+          <div style="font-size:28px;font-weight:800;color:${critColor};font-family:var(--font-mono);margin-top:4px;">${critical}</div>
+          <div style="font-size:11px;color:var(--text-subtle);">${critical > 0 ? 'proveedores criticos' : 'sin proveedores criticos'}</div>
+          ${bar(totalSup ? critical/totalSup*100 : 0, '#DC2626')}
+        </div>
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Riesgo alto</div>
+          <div style="font-size:28px;font-weight:800;color:${high > 0 ? '#D97706' : 'var(--text-muted)'};font-family:var(--font-mono);margin-top:4px;">${high}</div>
+          <div style="font-size:11px;color:var(--text-subtle);">proveedores nivel alto</div>
+          ${bar(totalSup ? high/totalSup*100 : 0, '#D97706')}
+        </div>
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);${pending > 0 ? 'border-color:#FCD34D;background:#FFFBEB;' : ''}">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Evaluaciones pendientes</div>
+          <div style="font-size:28px;font-weight:800;color:${pendColor};font-family:var(--font-mono);margin-top:4px;">${pending}</div>
+          <div style="font-size:11px;color:var(--text-subtle);">${completed} completadas · <a href="#/suppliers?tab=evaluaciones" style="color:var(--brand-purple);">ver evaluaciones</a></div>
+        </div>
+        ${supRisks > 0 ? `
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);cursor:pointer;"
+             onclick="location.hash='#/risks?supplier_only=1'" title="Ver riesgos de proveedores">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Riesgos de proveedor</div>
+          <div style="font-size:28px;font-weight:800;color:var(--brand-orange);font-family:var(--font-mono);margin-top:4px;">${supRisks}</div>
+          <div style="font-size:11px;color:var(--brand-purple);">clic para filtrar en registro</div>
+        </div>` : ''}
+      </div>
     </div>`;
   },
 
