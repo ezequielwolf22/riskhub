@@ -515,7 +515,12 @@ const ViewVendorAssessments = (() => {
       try {
         const created = await Api.vendor_assessments.create(body);
         UI.closeModal();
-        UI.toast(`Evaluacion ${created.code} creada y email enviado al proveedor`, 'success');
+        if (created.email_sent) {
+          UI.toast(`Evaluacion ${created.code} creada — email enviado al proveedor`, 'success');
+        } else {
+          const warn = created.email_warning || 'Revisa la configuracion SMTP en Alertas.';
+          UI.toast(`Evaluacion ${created.code} creada — email NO enviado: ${warn}`, 'warning');
+        }
         await _refresh();
       } catch (e) {
         UI.toast(e.message, 'error');

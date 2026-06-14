@@ -287,7 +287,7 @@ def download_evidence(
     )
 
 
-@router.post("/", response_model=VendorAssessmentOut, status_code=201)
+@router.post("/", status_code=201)
 def create_assessment(
     body: VendorAssessmentCreate,
     request: Request,
@@ -387,13 +387,15 @@ def create_assessment(
                {"code": a.code, "supplier_id": a.supplier_id, "type": body.assessment_type,
                 "email_sent": email_result.get("sent", False)})
 
-    # Adjuntar warning de email al header si falló
-    # (no rompemos el response — el objeto VendorAssessmentOut no tiene campo libre)
-    # El warning lo ve el frontend en el toast si lo registramos en el log
     if not email_result.get("sent") and email_result.get("warning"):
-        logger.info("Assessment %s created but email not sent: %s", a.code, email_result["warning"])
+        logger.warning("Assessment %s created but email not sent: %s", a.code, email_result["warning"])
 
-    return a
+    # Devolver el assessment + resultado del email para que el frontend muestre el estado correcto
+    from app.schemas import VendorAssessmentOut
+    out = VendorAssessmentOut.model_validate(a).model_dump()
+    out["email_sent"] = email_result.get("sent", False)
+    out["email_warning"] = email_result.get("warning") or email_result.get("link") or None
+    return out
 
 
 @router.post("/{aid}/decide", response_model=VendorAssessmentOut)
