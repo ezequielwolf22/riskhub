@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -52,6 +52,35 @@ def suppliers_summary(db: Session = Depends(get_db), current_user: User = Depend
         "critical_or_high": critical_high,
         "overdue_assessment": overdue_assessment,
     }
+
+
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB
+_ALLOWED_IMPORT_EXT = (".csv", ".xlsx", ".xls", ".ods", ".tsv", ".json")
+
+
+@router.post("/import")
+async def import_suppliers_endpoint(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Importa proveedores desde Excel/CSV/exportaciones de otras herramientas."""
+    fname = (file.filename or "").lower()
+    if not fname.endswith(_ALLOWED_IMPORT_EXT):
+        raise HTTPException(400, "Formato no soportado. Usa CSV, XLSX, XLS, ODS, TSV o JSON.")
+    content = await file.read()
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise HTTPException(413, "El fichero supera el limite de 10 MB.")
+    if not content:
+        raise HTTPException(400, "El fichero esta vacio.")
+    from app.services.supplier_import_service import import_suppliers
+    try:
+        result = import_suppliers(content, file.filename, current_user.organization_id, db)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    log_action(db, current_user.id, "import", "supplier", "*",
+               {"created": result["created"], "skipped": result["skipped"]})
+    return result
 
 
 @router.get("/{supplier_id}", response_model=SupplierOut)

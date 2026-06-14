@@ -4,11 +4,11 @@ import threading
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
-from app.models import AiConfig, Supplier, SupplierQuestionnaire, User
+from app.models import AiConfig, EmailSettings, Supplier, SupplierQuestionnaire, User
 from app.routers.ai_config import resolve_api_key
 from app.schemas import SupplierQuestionnaireCreate, SupplierQuestionnaireOut
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
@@ -158,6 +158,56 @@ def ai_review_questionnaire(
     log_action(db, current_user.id, "ai_review", "supplier_questionnaire", str(q.id))
 
     return result
+
+
+@router.post("/{qid}/send")
+def send_questionnaire(qid: int, request: Request, db: Session = Depends(get_db),
+                       current_user: User = Depends(require_analyst)):
+    """Envia el cuestionario por email al contacto del proveedor con el enlace tokenizado."""
+    q = filter_by_org(
+        db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
+        SupplierQuestionnaire, current_user,
+    ).first()
+    if not q:
+        raise HTTPException(404, "Cuestionario no encontrado")
+    if q.submitted_at:
+        raise HTTPException(409, "Este cuestionario ya fue respondido")
+    supplier = q.supplier
+    recipient = (supplier.contact_email or "").strip() if supplier else ""
+    if not recipient:
+        raise HTTPException(400, "El proveedor no tiene email de contacto configurado")
+
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
+    if not cfg or not cfg.smtp_host:
+        raise HTTPException(400, "Configura el servidor de correo (SMTP) en Alertas -> Configuracion")
+
+    base = str(request.base_url).rstrip("/")
+    link = f"{base}/supplier-q?token={q.token}"
+    expires = q.expires_at.strftime("%d/%m/%Y") if q.expires_at else "-"
+    org_name = current_user.organization.name if getattr(current_user, "organization", None) else "nuestra organizacion"
+    subject = f"Cuestionario de seguridad — {q.title}"
+    body_html = f"""
+    <div style="font-family:Inter,Arial,sans-serif;color:#1f2937;">
+      <p>Estimado/a {supplier.contact_name or supplier.name}:</p>
+      <p>Como parte de nuestro proceso de evaluacion de proveedores ({org_name}),
+      le solicitamos completar el siguiente cuestionario de seguridad:
+      <strong>{q.title}</strong>.</p>
+      <p style="margin:24px 0;">
+        <a href="{link}" style="background:#59008D;color:#fff;padding:12px 24px;
+           border-radius:6px;text-decoration:none;font-weight:600;">Completar cuestionario</a>
+      </p>
+      <p style="font-size:13px;color:#6b7280;">O copie este enlace: <br>{link}</p>
+      <p style="font-size:13px;color:#6b7280;">Fecha limite: {expires}. No necesita crear cuenta.</p>
+    </div>
+    """
+    from app.services import email_service
+    try:
+        email_service.send_email(cfg, recipient, subject, body_html)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"No se pudo enviar el email: {exc}")
+
+    log_action(db, current_user.id, "send", "supplier_questionnaire", str(q.id), {"recipient": recipient})
+    return {"sent": True, "recipient": recipient, "link": link}
 
 
 # ---- Endpoints publicos (sin autenticacion) ----

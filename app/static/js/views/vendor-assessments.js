@@ -47,6 +47,7 @@ const ViewVendorAssessments = (() => {
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+        <label style="font-size:13px;color:var(--text-muted);margin:0;">Filtrar por proveedor:</label>
         <select id="vas-sup-filter" class="input" style="width:240px;">
           <option value="">Todos los proveedores</option>
         </select>

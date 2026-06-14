@@ -208,6 +208,11 @@ const Api = {
     update: (id, d) => Api.patch('/api/suppliers/' + id, d),
     del: (id) => Api.del('/api/suppliers/' + id),
     summary: () => Api.get('/api/suppliers/stats/summary'),
+    importFile: (file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return Api.req('/api/suppliers/import', { method: 'POST', body: fd });
+    },
   },
   nonconformities: {
     list: (q) => Api.get('/api/nonconformities/', q),
@@ -287,6 +292,7 @@ const Api = {
     get: (id) => Api.get('/api/supplier-questionnaires/' + id),
     create: (d) => Api.post('/api/supplier-questionnaires/', d),
     del: (id) => Api.del('/api/supplier-questionnaires/' + id),
+    send: (id) => Api.post('/api/supplier-questionnaires/' + id + '/send', {}),
   },
   tprm: {
     summary: () => Api.get('/api/tprm/dashboard/summary'),

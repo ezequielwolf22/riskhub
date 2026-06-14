@@ -53,8 +53,11 @@ const ViewSuppliers = (() => {
     const actions = document.getElementById('sup-header-actions');
     if (actions) {
       if (tab === 'suppliers') {
-        actions.innerHTML = '<button class="btn btn-primary" id="btn-new-sup">+ Nuevo proveedor</button>';
+        actions.innerHTML = (Auth.canEdit() ? '<button class="btn" id="btn-import-sup">Importar</button> ' : '')
+          + '<button class="btn btn-primary" id="btn-new-sup">+ Nuevo proveedor</button>';
         document.getElementById('btn-new-sup').onclick = () => _openForm(null);
+        const impBtn = document.getElementById('btn-import-sup');
+        if (impBtn) impBtn.onclick = () => _openImport();
       } else {
         actions.innerHTML = Auth.canEdit() ? '<button class="btn btn-primary" id="btn-new-seq">+ Nuevo cuestionario</button>' : '';
         if (Auth.canEdit()) document.getElementById('btn-new-seq').onclick = () => _openSeqForm(null);
@@ -285,6 +288,47 @@ const ViewSuppliers = (() => {
     } catch (e) { UI.toast(e.message, 'error'); }
   }
 
+  function _openImport() {
+    UI.modal('Importar proveedores', `
+      <div class="span2">
+        <p style="font-size:13px;margin-bottom:8px;">Sube un fichero exportado desde Excel u otra herramienta de gestion (OneTrust, ERP, hoja de compras...). Formatos: <strong>CSV, XLSX, XLS, ODS, TSV, JSON</strong>.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Se detectan automaticamente columnas como nombre, categoria, contacto, email, servicios, web, pais y CIF/NIF/VAT (en espanol o ingles). Los proveedores ya existentes (por nombre) se omiten. Se calcula el tier y el riesgo de cada uno tras importar.</p>
+        <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,.ods,.tsv,.json" class="input">
+        <div id="imp-result" style="margin-top:12px;"></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="imp-cancel">Cerrar</button>
+                <button class="btn btn-primary" id="imp-go">Importar</button>`,
+    });
+    document.getElementById('imp-cancel').onclick = UI.closeModal;
+    document.getElementById('imp-go').onclick = async () => {
+      const fileInput = document.getElementById('imp-file');
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) { UI.toast('Selecciona un fichero', 'error'); return; }
+      const resWrap = document.getElementById('imp-result');
+      const btn = document.getElementById('imp-go');
+      btn.disabled = true;
+      resWrap.innerHTML = '<p class="text-muted">Importando...</p>';
+      try {
+        const r = await Api.suppliers.importFile(file);
+        const cols = Object.entries(r.detected_columns || {}).map(([k, v]) => `${k} &larr; "${UI.esc(v)}"`).join(', ');
+        resWrap.innerHTML = `
+          <div class="notice" style="border-color:var(--risk-low);">
+            <strong>${r.created}</strong> proveedores creados, <strong>${r.skipped}</strong> omitidos (de ${r.total} filas).
+            ${cols ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Columnas detectadas: ${cols}</div>` : ''}
+            ${(r.errors && r.errors.length) ? `<div style="font-size:11px;color:var(--risk-high);margin-top:6px;">Errores: ${r.errors.map(UI.esc).join('; ')}</div>` : ''}
+          </div>`;
+        UI.toast(`${r.created} proveedores importados`, 'success');
+        await _loadStats();
+        await _refresh();
+      } catch (e) {
+        resWrap.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
+
   // ======== QUESTIONNAIRES TAB ========
 
   async function _renderQuestionnairesTab() {
@@ -364,6 +408,7 @@ const ViewSuppliers = (() => {
               <td style="font-size:12px;">${expires}</td>
               <td style="font-size:12px;">${aiHtml}</td>
               <td>
+                ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm" data-id="${q.id}" data-act="send" title="Enviar por email al contacto del proveedor">Enviar email</button>` : ''}
                 <button class="btn btn-sm" data-id="${q.id}" data-act="link" title="Copiar enlace publico">Copiar enlace</button>
                 ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm btn-danger" data-id="${q.id}" data-act="del">Eliminar</button>` : ''}
               </td>
@@ -393,6 +438,19 @@ const ViewSuppliers = (() => {
           if (!await UI.confirm('Eliminar este cuestionario?')) return;
           try { await Api.supplier_questionnaires.del(btn.dataset.id); UI.toast('Eliminado','success'); _reloadSeq(); }
           catch (e) { UI.toast(e.message,'error'); }
+        };
+      });
+      wrap.querySelectorAll('[data-act="send"]').forEach(btn => {
+        btn.onclick = async () => {
+          btn.disabled = true;
+          UI.toast('Enviando email al proveedor...', 'info');
+          try {
+            const r = await Api.supplier_questionnaires.send(btn.dataset.id);
+            UI.toast('Cuestionario enviado a ' + r.recipient, 'success');
+          } catch (e) {
+            UI.toast(e.message, 'error');
+            btn.disabled = false;
+          }
         };
       });
       // AI evaluation buttons
