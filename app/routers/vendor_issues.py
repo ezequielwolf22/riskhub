@@ -206,6 +206,11 @@ def create_vendor_issue(
         due_date=due_date,
         assigned_to_user_id=body.assigned_to_user_id,
         remediation_plan=body.remediation_plan,
+        sla_breaches=body.sla_breaches,
+        impact_description=body.impact_description,
+        root_cause=body.root_cause,
+        action_items=body.action_items,
+        evidence_refs=body.evidence_refs,
         created_by_id=current_user.id,
     )
     db.add(issue)

@@ -458,6 +458,14 @@ def _migrate_columns() -> None:
         ("ALTER TABLE vendor_risk_assessments ADD COLUMN decision_by_id INTEGER", "vendor_risk_assessments", "decision_by_id"),
         # v3.9.1 — TPRM: origen del riesgo (proveedor que lo genero via push-to-register)
         ("ALTER TABLE risks ADD COLUMN supplier_id INTEGER", "risks", "supplier_id"),
+        # v3.9.2 — TPRM: SLAs del proveedor y campos extendidos en hallazgos
+        ("ALTER TABLE suppliers ADD COLUMN slas JSON", "suppliers", "slas"),
+        ("ALTER TABLE vendor_issues ADD COLUMN sla_breaches JSON", "vendor_issues", "sla_breaches"),
+        ("ALTER TABLE vendor_issues ADD COLUMN impact_description TEXT", "vendor_issues", "impact_description"),
+        ("ALTER TABLE vendor_issues ADD COLUMN root_cause TEXT", "vendor_issues", "root_cause"),
+        ("ALTER TABLE vendor_issues ADD COLUMN action_items JSON", "vendor_issues", "action_items"),
+        ("ALTER TABLE vendor_issues ADD COLUMN evidence_refs JSON", "vendor_issues", "evidence_refs"),
+        ("ALTER TABLE vendor_issues ADD COLUMN resolution_notes TEXT", "vendor_issues", "resolution_notes"),
         # v3.9.0 — BCM: tabla de interconexiones tecnicas en dependencias
         ("ALTER TABLE bcp_dependencies ADD COLUMN connection_type VARCHAR(32)", "bcp_dependencies", "connection_type"),
         ("ALTER TABLE bcp_dependencies ADD COLUMN protocol VARCHAR(32)", "bcp_dependencies", "protocol"),

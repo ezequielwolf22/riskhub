@@ -718,6 +718,9 @@ class Supplier(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+    # SLAs definidos para este proveedor
+    # [{id, name, metric, category, description}]
+    slas = Column(JSON, nullable=True)
     owner = relationship("User")
     # parent_supplier_id (nth-party) se consulta por id; no se mapea relacion
     # self-referencial para evitar ambiguedad de mapper.
@@ -1044,6 +1047,13 @@ class VendorIssue(Base):
     closed_at = Column(DateTime, nullable=True)
     assigned_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     remediation_plan = Column(Text, nullable=True)
+    # SLAs incumplidos: [{sla_id, sla_name, details}]
+    sla_breaches = Column(JSON, nullable=True)
+    impact_description = Column(Text, nullable=True)
+    root_cause = Column(Text, nullable=True)
+    action_items = Column(JSON, nullable=True)     # [{text, done, due_date}]
+    evidence_refs = Column(JSON, nullable=True)    # [{name, url}]
+    resolution_notes = Column(Text, nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),

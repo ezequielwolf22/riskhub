@@ -647,6 +647,7 @@ class SupplierIn(BaseModel):
     website: Optional[str] = None
     tax_id: Optional[str] = None
     annual_spend: Optional[float] = None
+    slas: Optional[list[dict]] = None
 
 
 class SupplierUpdate(BaseModel):
@@ -687,6 +688,7 @@ class SupplierUpdate(BaseModel):
     annual_spend: Optional[float] = None
     parent_supplier_id: Optional[int] = None
     nth_party_depth: Optional[int] = None
+    slas: Optional[list[dict]] = None
 
 
 class SupplierOut(ORMBase):
@@ -734,6 +736,7 @@ class SupplierOut(ORMBase):
     annual_spend: Optional[float] = None
     parent_supplier_id: Optional[int] = None
     nth_party_depth: Optional[int] = None
+    slas: Optional[list[dict]] = None
 
 
 # ---------- NON-CONFORMITIES ----------
@@ -1089,6 +1092,11 @@ class VendorIssueCreate(BaseModel):
     assigned_to_user_id: Optional[int] = None
     remediation_plan: Optional[str] = None
     due_date: Optional[datetime] = None
+    sla_breaches: Optional[list[dict]] = None
+    impact_description: Optional[str] = None
+    root_cause: Optional[str] = None
+    action_items: Optional[list[dict]] = None
+    evidence_refs: Optional[list[dict]] = None
 
 
 class VendorIssueUpdate(BaseModel):
@@ -1100,6 +1108,12 @@ class VendorIssueUpdate(BaseModel):
     assigned_to_user_id: Optional[int] = None
     remediation_plan: Optional[str] = None
     due_date: Optional[datetime] = None
+    sla_breaches: Optional[list[dict]] = None
+    impact_description: Optional[str] = None
+    root_cause: Optional[str] = None
+    action_items: Optional[list[dict]] = None
+    evidence_refs: Optional[list[dict]] = None
+    resolution_notes: Optional[str] = None
 
 
 class VendorIssueOut(ORMBase):
@@ -1119,6 +1133,12 @@ class VendorIssueOut(ORMBase):
     closed_at: Optional[datetime]
     assigned_to_user_id: Optional[int]
     remediation_plan: Optional[str]
+    sla_breaches: Optional[list[dict]] = None
+    impact_description: Optional[str] = None
+    root_cause: Optional[str] = None
+    action_items: Optional[list[dict]] = None
+    evidence_refs: Optional[list[dict]] = None
+    resolution_notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

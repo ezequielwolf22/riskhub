@@ -205,12 +205,12 @@ const ViewVendorAssessments = (() => {
         const ans = (q.answers || {})[qq.id];
         const evid = (q.evidence || {})[qq.id];
         const ansLabel = ans != null ? String(ans) : '—';
+        const _fn = (evid?.filename || evid?.stored_name || 'evidencia').replace(/'/g, '');
         const evidHtml = evid ? `
-          <a href="${UI.esc(Api.vendor_assessments.evidenceUrl(a.id, qq.id))}"
-             target="_blank" rel="noopener"
-             style="font-size:11px;color:var(--brand-purple);text-decoration:none;">
+          <button onclick="ViewVendorAssessments._dlEvidence(${a.id},'${encodeURIComponent(qq.id)}','${_fn}');event.stopPropagation();"
+             style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--brand-purple);text-decoration:underline;padding:0;">
             Evidencia: ${UI.esc(evid.filename || evid.stored_name || 'fichero')}
-          </a>` : '';
+          </button>` : '';
         return `<tr>
           <td style="font-size:12px;padding:6px 8px;color:var(--text-muted);width:40px;">${UI.esc(qq.id)}</td>
           <td style="font-size:12px;padding:6px 8px;">${UI.esc(qq.text || '')}</td>
@@ -591,5 +591,15 @@ const ViewVendorAssessments = (() => {
     };
   }
 
-  return { render };
+  async function _dlEvidence(aid, questionIdEncoded, filename) {
+    try {
+      const qid = decodeURIComponent(questionIdEncoded);
+      const path = `/api/vendor-assessments/${aid}/evidence/${encodeURIComponent(qid)}`;
+      await Api.download(path, filename || 'evidencia');
+    } catch (e) {
+      UI.toast('Error al descargar evidencia: ' + e.message, 'error');
+    }
+  }
+
+  return { render, _dlEvidence };
 })();

@@ -9,7 +9,7 @@ Reutiliza la infraestructura existente de proveedores y cuestionarios; no crea
 un silo paralelo (ver spec §0).
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -62,20 +62,60 @@ def dashboard_summary(db: Session = Depends(get_db),
         key=lambda s: s.residual_risk_score, reverse=True,
     )[:10]
 
-    from app.models import VendorRiskAssessment, AssessmentRecommendation
-    org_id = current_user.organization_id
+    from app.models import VendorRiskAssessment
     assessments = filter_by_org(db.query(VendorRiskAssessment), VendorRiskAssessment, current_user).all()
+    # IDs de proveedores con al menos una evaluacion completada (decision tomada)
+    assessed_supplier_ids = {a.supplier_id for a in assessments if a.recommendation is not None}
     pending_assessments   = sum(1 for a in assessments if a.recommendation is None)
     completed_assessments = sum(1 for a in assessments if a.recommendation is not None)
 
+    # Proveedores tratados (tienen al menos una evaluacion con decision) vs sin tratar
+    treated_count   = sum(1 for s in suppliers if s.id in assessed_supplier_ids)
+    untreated_count = len(suppliers) - treated_count
+
+    # Riesgo TPRM ponderado del portfolio (0-10): media ponderada por tier
+    # Tier critico peso 4, alto 3, medio 2, bajo 1, sin tier 1
+    tier_weights = {"critical": 4, "high": 3, "medium": 2, "low": 1, "unrated": 1}
+    scored = [s for s in suppliers if s.residual_risk_score is not None]
+    if scored:
+        total_w = sum(tier_weights.get(s.tier.value if s.tier else "unrated", 1) for s in scored)
+        weighted_sum = sum(
+            s.residual_risk_score * tier_weights.get(s.tier.value if s.tier else "unrated", 1)
+            for s in scored
+        )
+        portfolio_score_10 = round((weighted_sum / total_w) / 10, 1)  # 0-10
+    else:
+        portfolio_score_10 = None
+
+    # Proximas revisiones (proximos 90 dias)
+    in_90d = now + timedelta(days=90)
+    upcoming_reviews = sorted(
+        [s for s in suppliers
+         if s.next_assessment_at and s.next_assessment_at.replace(tzinfo=timezone.utc) > now
+         and s.next_assessment_at.replace(tzinfo=timezone.utc) <= in_90d],
+        key=lambda s: s.next_assessment_at,
+    )[:5]
+
     return {
         "total": len(suppliers),
+        "treated_count": treated_count,
+        "untreated_count": untreated_count,
+        "portfolio_score_10": portfolio_score_10,
         "by_tier": by_tier,
         "by_residual_level": by_residual,
         "overdue_assessment": overdue,
         "pending_assessments": pending_assessments,
         "completed_assessments": completed_assessments,
         "regulatory_scope": {"nis2": nis2, "dora": dora, "ens": ens, "gdpr_processors": processors},
+        "upcoming_reviews": [
+            {
+                "id": s.id, "code": s.code, "name": s.name,
+                "next_assessment_at": s.next_assessment_at.isoformat() if s.next_assessment_at else None,
+                "tier": s.tier.value if s.tier else None,
+                "residual_risk_score": s.residual_risk_score,
+            }
+            for s in upcoming_reviews
+        ],
         "top_residual": [
             {
                 "id": s.id, "code": s.code, "name": s.name,

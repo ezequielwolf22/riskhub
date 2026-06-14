@@ -235,17 +235,93 @@ const ViewSuppliers = (() => {
           <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" id="f-dora" ${v.is_dora?'checked':''}> DORA</label>
           <label style="display:flex;align-items:center;gap:6px;margin:0;"><input type="checkbox" id="f-ens" ${v.is_ens?'checked':''}> ENS</label>
         </div>
+
+        <!-- SLAs del proveedor -->
+        <div class="span2" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <strong style="font-size:13px;color:var(--brand-purple);">SLAs del proveedor</strong>
+              <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">Define los acuerdos de nivel de servicio para luego registrar incumplimientos en Hallazgos.</p>
+            </div>
+            <button type="button" id="sup-add-sla" class="btn btn-sm">+ Anadir SLA</button>
+          </div>
+          <div id="sup-sla-list"></div>
+        </div>
       </div>
     `;
   }
 
+  let _currentSlas = [];
+
   function _openForm(s) {
+    _currentSlas = s?.slas ? JSON.parse(JSON.stringify(s.slas)) : [];
     UI.modal(s ? `Editar ${s.code}` : 'Nuevo proveedor', _formHtml(s), {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 <button class="btn btn-primary" id="m-save">Guardar</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = () => _save(s);
+    _renderSlaList();
+    document.getElementById('sup-add-sla').onclick = _addSlaRow;
+  }
+
+  // ---- SLA helpers ----
+
+  function _slaId() {
+    return 'sla_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  }
+
+  function _renderSlaList() {
+    const wrap = document.getElementById('sup-sla-list');
+    if (!wrap) return;
+    if (!_currentSlas.length) {
+      wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin SLAs definidos.</p>';
+      return;
+    }
+    wrap.innerHTML = _currentSlas.map((sla, i) => `
+      <div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--bg-2);">
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <input class="input sla-name" data-idx="${i}" placeholder="Nombre SLA *" value="${UI.esc(sla.name||'')}" style="font-size:12px;">
+            <input class="input sla-metric" data-idx="${i}" placeholder="Metrica / objetivo (ej: 99.9%)" value="${UI.esc(sla.metric||'')}" style="font-size:12px;">
+            <select class="input sla-cat" data-idx="${i}" style="font-size:12px;">
+              ${['availability','support','security','performance','recovery','other'].map(c =>
+                `<option value="${c}" ${(sla.category||'other')===c?'selected':''}>${c}</option>`
+              ).join('')}
+            </select>
+            <input class="input sla-desc" data-idx="${i}" placeholder="Descripcion breve" value="${UI.esc(sla.description||'')}" style="font-size:12px;">
+          </div>
+          <button type="button" class="btn btn-sm btn-danger sla-del" data-idx="${i}" style="padding:3px 8px;font-size:12px;margin-top:2px;">X</button>
+        </div>
+      </div>`).join('');
+
+    // Sync changes back to _currentSlas
+    wrap.querySelectorAll('.sla-name').forEach(inp => {
+      inp.oninput = () => { _currentSlas[parseInt(inp.dataset.idx)].name = inp.value; };
+    });
+    wrap.querySelectorAll('.sla-metric').forEach(inp => {
+      inp.oninput = () => { _currentSlas[parseInt(inp.dataset.idx)].metric = inp.value; };
+    });
+    wrap.querySelectorAll('.sla-cat').forEach(sel => {
+      sel.onchange = () => { _currentSlas[parseInt(sel.dataset.idx)].category = sel.value; };
+    });
+    wrap.querySelectorAll('.sla-desc').forEach(inp => {
+      inp.oninput = () => { _currentSlas[parseInt(inp.dataset.idx)].description = inp.value; };
+    });
+    wrap.querySelectorAll('.sla-del').forEach(btn => {
+      btn.onclick = () => {
+        _currentSlas.splice(parseInt(btn.dataset.idx), 1);
+        _renderSlaList();
+      };
+    });
+  }
+
+  function _addSlaRow() {
+    _currentSlas.push({ id: _slaId(), name: '', metric: '', category: 'other', description: '' });
+    _renderSlaList();
+    // Focus the last name input
+    const inputs = document.querySelectorAll('.sla-name');
+    if (inputs.length) inputs[inputs.length - 1].focus();
   }
 
   async function _save(s) {
@@ -273,6 +349,13 @@ const ViewSuppliers = (() => {
       is_nis2: document.getElementById('f-nis2').checked,
       is_dora: document.getElementById('f-dora').checked,
       is_ens: document.getElementById('f-ens').checked,
+      slas: _currentSlas.filter(sl => sl.name?.trim()).map(sl => ({
+        id: sl.id || _slaId(),
+        name: sl.name.trim(),
+        metric: sl.metric?.trim() || null,
+        category: sl.category || 'other',
+        description: sl.description?.trim() || null,
+      })),
     };
     try {
       if (s) {
