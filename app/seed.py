@@ -446,7 +446,17 @@ def _migrate_columns() -> None:
         ("ALTER TABLE supplier_questionnaires ADD COLUMN major_nc INTEGER", "supplier_questionnaires", "major_nc"),
         ("ALTER TABLE supplier_questionnaires ADD COLUMN minor_nc INTEGER", "supplier_questionnaires", "minor_nc"),
         ("ALTER TABLE supplier_questionnaires ADD COLUMN residual_risk_level VARCHAR(16)", "supplier_questionnaires", "residual_risk_level"),
-        # v3.8.0 — BCM: tabla de interconexiones tecnicas en dependencias
+        # v3.9.0 — TPRM: flujo dos fases (profiling + assessment) y decision
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN phase VARCHAR(16)", "supplier_questionnaires", "phase"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN parent_assessment_id INTEGER", "supplier_questionnaires", "parent_assessment_id"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN next_questionnaire_id INTEGER", "supplier_questionnaires", "next_questionnaire_id"),
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN assessment_type VARCHAR(32) DEFAULT 'direct'", "vendor_risk_assessments", "assessment_type"),
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN profiling_questionnaire_id INTEGER", "vendor_risk_assessments", "profiling_questionnaire_id"),
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN assessment_questionnaire_id INTEGER", "vendor_risk_assessments", "assessment_questionnaire_id"),
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN decision_notes TEXT", "vendor_risk_assessments", "decision_notes"),
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN decision_at DATETIME", "vendor_risk_assessments", "decision_at"),
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN decision_by_id INTEGER", "vendor_risk_assessments", "decision_by_id"),
+        # v3.9.0 — BCM: tabla de interconexiones tecnicas en dependencias
         ("ALTER TABLE bcp_dependencies ADD COLUMN connection_type VARCHAR(32)", "bcp_dependencies", "connection_type"),
         ("ALTER TABLE bcp_dependencies ADD COLUMN protocol VARCHAR(32)", "bcp_dependencies", "protocol"),
         ("ALTER TABLE bcp_dependencies ADD COLUMN data_direction VARCHAR(8)", "bcp_dependencies", "data_direction"),

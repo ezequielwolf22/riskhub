@@ -78,10 +78,7 @@ const ViewOnboarding = (() => {
     _analyzing = false;
     _busy = false;
 
-    main.innerHTML = UI.sectionHeader(
-      'Asistente de configuracion',
-      'Configura RiskHub en 5 pasos: organizacion, cuestionario, documentos, propuesta IA y automatizaciones.'
-    ) + '<div id="wz-root">' + UI.notice('Cargando...') + '</div>';
+    main.innerHTML = '<div id="wz-root">' + UI.notice('Cargando...') + '</div>';
 
     _restoreLocal();
     await _loadBase();

@@ -249,6 +249,82 @@ def send_questionnaire(qid: int, request: Request, db: Session = Depends(get_db)
     return {"sent": True, "recipient": recipient, "link": link}
 
 
+# ---- Flujo dos fases: profiling → assessment ----
+
+def _create_followup_assessment(db, profiling_q, profiling_score: int):
+    """Crea el cuestionario de evaluacion de seguridad correspondiente al nivel de riesgo del proveedor.
+
+    Selecciona la plantilla segun el score del profiling:
+      - score < 40  → CRITICAL  (riesgo inherente alto, evaluacion exhaustiva)
+      - score 40-65 → HIGH
+      - score >= 66 → MEDIUM
+
+    Devuelve (next_token, next_title) o lanza excepcion si falla.
+    """
+    from app.services import tprm_templates
+    from app.models import VendorRiskAssessment
+
+    _ASSESSMENT_BY_SCORE = {
+        "critical": "RH_TPRM_ASSESSMENT_CRITICAL_v1",
+        "high":     "RH_TPRM_ASSESSMENT_HIGH_v1",
+        "medium":   "RH_TPRM_ASSESSMENT_MEDIUM_v1",
+    }
+    _LEVEL_LABELS = {
+        "critical": "Critico",
+        "high":     "Alto",
+        "medium":   "Medio",
+    }
+    if profiling_score < 40:
+        level = "critical"
+    elif profiling_score < 66:
+        level = "high"
+    else:
+        level = "medium"
+
+    template_code = _ASSESSMENT_BY_SCORE[level]
+    tpl = tprm_templates.get_template(template_code)
+    if not tpl:
+        raise ValueError(f"Plantilla {template_code!r} no disponible")
+
+    supplier = profiling_q.supplier
+    level_label = _LEVEL_LABELS[level]
+    title = f"Evaluacion de Seguridad — {supplier.name} (Nivel {level_label})"
+
+    assessment_q = SupplierQuestionnaire(
+        code=_next_code(db),
+        supplier_id=profiling_q.supplier_id,
+        title=title,
+        token=secrets.token_urlsafe(32),
+        template_code=template_code,
+        questions=tpl["questions"],
+        expires_at=profiling_q.expires_at,  # misma fecha limite
+        created_by_id=profiling_q.created_by_id,
+        organization_id=profiling_q.organization_id,
+        phase="assessment",
+        parent_assessment_id=profiling_q.parent_assessment_id,
+    )
+    db.add(assessment_q)
+    db.flush()
+
+    # Vincular en el cuestionario de profiling
+    profiling_q.next_questionnaire_id = assessment_q.id
+
+    # Actualizar VendorRiskAssessment con el id del cuestionario de evaluacion
+    if profiling_q.parent_assessment_id:
+        vas = db.query(VendorRiskAssessment).filter(
+            VendorRiskAssessment.id == profiling_q.parent_assessment_id
+        ).first()
+        if vas:
+            vas.assessment_questionnaire_id = assessment_q.id
+            # Actualizar nivel inherente con lo que revela el profiling
+            vas.inherent_risk_level = level
+
+    db.commit()
+    logger.info("Follow-up assessment Q%s created (level=%s) for profiling Q%s",
+                assessment_q.id, level, profiling_q.id)
+    return assessment_q.token, title
+
+
 # ---- Recoleccion de evidencia (portal del proveedor) ----
 
 _EVIDENCE_EXT = (".pdf", ".docx", ".doc", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".txt", ".csv")
@@ -352,6 +428,7 @@ def get_public_questionnaire(token: str, db: Session = Depends(get_db)):
         "supplier_name": supplier.name if supplier else "",
         "questions": public_questions,
         "expires_at": q.expires_at.isoformat() if q.expires_at else None,
+        "phase": q.phase,
     }
 
 
@@ -435,6 +512,15 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
             pass
     db.commit()
 
+    # --- Flujo dos fases: si es cuestionario de profiling, crear el de assessment ---
+    next_token = None
+    next_title = None
+    if q.phase == "profiling" and q.parent_assessment_id:
+        try:
+            next_token, next_title = _create_followup_assessment(db, q, score)
+        except Exception as _fe:
+            logger.warning("No se pudo crear el cuestionario de seguimiento para Q%s: %s", q.id, _fe)
+
     # Best-effort auto-trigger: lanzar evaluacion IA en background si hay API key configurada.
     # No bloquea la respuesta ni propaga excepciones al proveedor.
     try:
@@ -470,4 +556,9 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     except Exception:
         pass
 
-    return {"success": True, "score": score, "message": "Gracias por completar el cuestionario."}
+    result = {"success": True, "score": score, "message": "Gracias por completar el cuestionario."}
+    if next_token:
+        result["next_token"] = next_token
+        result["next_title"] = next_title
+        result["phase_transition"] = True
+    return result

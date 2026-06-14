@@ -937,6 +937,10 @@ class SupplierQuestionnaire(Base):
     major_nc = Column(Integer, nullable=True)        # TPRM: no-conformidades mayores (criticity=Major con respuesta NC)
     minor_nc = Column(Integer, nullable=True)        # TPRM: no-conformidades menores
     residual_risk_level = Column(String(16), nullable=True)  # TPRM: low|medium|high|critical
+    # v3.9.0 — flujo evaluacion dos fases: profiling + assessment
+    phase = Column(String(16), nullable=True)        # profiling | assessment | None (cuestionario directo)
+    parent_assessment_id = Column(Integer, ForeignKey("vendor_risk_assessments.id"), nullable=True)
+    next_questionnaire_id = Column(Integer, ForeignKey("supplier_questionnaires.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -998,10 +1002,19 @@ class VendorRiskAssessment(Base):
     valid_until = Column(DateTime, nullable=True)
     linked_risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)  # push a Risk Register
     questionnaire_ids = Column(JSON, nullable=True)      # cuestionarios agregados
+    # v3.9.0 — flujo dos fases y decision posterior al envio del proveedor
+    assessment_type = Column(String(32), default="direct")     # risk_analysis | direct
+    profiling_questionnaire_id = Column(Integer, ForeignKey("supplier_questionnaires.id"), nullable=True)
+    assessment_questionnaire_id = Column(Integer, ForeignKey("supplier_questionnaires.id"), nullable=True)
+    decision_notes = Column(Text, nullable=True)
+    decision_at = Column(DateTime, nullable=True)
+    decision_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     supplier = relationship("Supplier")
+    profiling_q = relationship("SupplierQuestionnaire", foreign_keys="VendorRiskAssessment.profiling_questionnaire_id")
+    assessment_q = relationship("SupplierQuestionnaire", foreign_keys="VendorRiskAssessment.assessment_questionnaire_id")
 
     @property
     def supplier_name(self) -> str:

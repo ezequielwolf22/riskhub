@@ -2216,6 +2216,10 @@ table.data td .code-pill {
 /* ============================================================
    Wizard de onboarding (views/onboarding.js)
    ============================================================ */
+#wz-root {
+  max-width: 820px;
+}
+
 .wizard-progress {
   display: flex;
   gap: 4px;

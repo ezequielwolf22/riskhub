@@ -998,30 +998,39 @@ class SupplierQuestionnaireOut(ORMBase):
     submitted_at: Optional[datetime]
     expires_at: Optional[datetime]
     notes: Optional[str]
+    evidence: Optional[dict] = None
     ai_review: Optional[dict] = None
     ai_reviewed_at: Optional[datetime] = None
     major_nc: Optional[int] = None
     minor_nc: Optional[int] = None
     residual_risk_level: Optional[str] = None
+    phase: Optional[str] = None
+    parent_assessment_id: Optional[int] = None
+    next_questionnaire_id: Optional[int] = None
     created_at: datetime
 
 
 # ---------- TPRM: VENDOR ASSESSMENTS & ISSUES ----------
 class VendorAssessmentCreate(BaseModel):
     supplier_id: int
+    assessment_type: str = "direct"   # risk_analysis | direct
+    template_code: Optional[str] = None           # para tipo direct: plantilla del sistema
+    custom_template_id: Optional[int] = None      # para tipo direct: plantilla personalizada
     period_label: Optional[str] = None
-    summary: Optional[str] = None
-    recommendation: Optional[AssessmentRecommendation] = None
-    questionnaire_ids: Optional[list[int]] = None
     valid_until: Optional[datetime] = None
+    notes: Optional[str] = None
 
 
 class VendorAssessmentUpdate(BaseModel):
     period_label: Optional[str] = None
     summary: Optional[str] = None
-    recommendation: Optional[AssessmentRecommendation] = None
     valid_until: Optional[datetime] = None
     control_effectiveness_score: Optional[int] = Field(default=None, ge=0, le=100)
+
+
+class VendorAssessmentDecide(BaseModel):
+    decision: str    # approve | approve_with_conditions | reject | request_more_info
+    notes: Optional[str] = None
 
 
 class VendorAssessmentOut(ORMBase):
@@ -1029,6 +1038,7 @@ class VendorAssessmentOut(ORMBase):
     code: str
     supplier_id: int
     supplier_name: Optional[str] = None
+    assessment_type: Optional[str] = "direct"
     assessment_date: datetime
     period_label: Optional[str]
     inherent_risk_score: Optional[int]
@@ -1039,6 +1049,11 @@ class VendorAssessmentOut(ORMBase):
     score_by_domain: Optional[dict]
     summary: Optional[str]
     recommendation: Optional[AssessmentRecommendation]
+    decision_notes: Optional[str] = None
+    decision_at: Optional[datetime] = None
+    decision_by_id: Optional[int] = None
+    profiling_questionnaire_id: Optional[int] = None
+    assessment_questionnaire_id: Optional[int] = None
     assessor_user_id: Optional[int]
     approver_user_id: Optional[int]
     approved_at: Optional[datetime]

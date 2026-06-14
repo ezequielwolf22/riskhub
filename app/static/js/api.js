@@ -327,11 +327,14 @@ const Api = {
   vendor_assessments: {
     list: (q) => Api.get('/api/vendor-assessments/', q),
     get: (id) => Api.get('/api/vendor-assessments/' + id),
+    detail: (id) => Api.get('/api/vendor-assessments/' + id + '/detail'),
     create: (d) => Api.post('/api/vendor-assessments/', d),
     update: (id, d) => Api.patch('/api/vendor-assessments/' + id, d),
     del: (id) => Api.del('/api/vendor-assessments/' + id),
+    decide: (id, d) => Api.post('/api/vendor-assessments/' + id + '/decide', d),
     approve: (id) => Api.post('/api/vendor-assessments/' + id + '/approve', {}),
     pushToRegister: (id) => Api.post('/api/vendor-assessments/' + id + '/push-to-risk-register', {}),
+    evidenceUrl: (aid, questionId) => `/api/vendor-assessments/${aid}/evidence/${encodeURIComponent(questionId)}`,
   },
   vendor_issues: {
     list: (q) => Api.get('/api/vendor-issues/', q),

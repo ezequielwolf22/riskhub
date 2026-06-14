@@ -1,20 +1,27 @@
-/* Vista de evaluaciones consolidadas de proveedor — TPRM Sprint 4. */
+/* Vista de evaluaciones de proveedor — TPRM v3.9.0.
+   Flujo: nueva evaluacion → seleccionar proveedor → tipo (analisis de riesgo o plantilla directa)
+   → envio automatico por email → proveedor completa portal (2 fases si es risk_analysis)
+   → usuario ve evidencias y toma decision (aprobar / rechazar / etc.)
+*/
 const ViewVendorAssessments = (() => {
 
-  const REC_LABELS = {
-    approve:                'Aprobar',
-    approve_with_conditions:'Aprobar con condiciones',
-    reject:                 'Rechazar',
-    request_more_info:      'Solicitar mas informacion',
+  const DECISION_LABELS = {
+    approve:                 'Aprobar',
+    approve_with_conditions: 'Aprobar con condiciones',
+    reject:                  'Rechazar',
+    request_more_info:       'Solicitar mas informacion',
   };
-
+  const DECISION_COLORS = {
+    approve:                 '#16a34a',
+    approve_with_conditions: '#f59e0b',
+    reject:                  '#ef4444',
+    request_more_info:       '#6366f1',
+  };
   const LEVEL_LABELS = {
-    critical: 'Critico',
-    high:     'Alto',
-    medium:   'Medio',
-    low:      'Bajo',
-    very_low: 'Muy bajo',
-    unknown:  'Desconocido',
+    critical: 'Critico', high: 'Alto', medium: 'Medio', low: 'Bajo', very_low: 'Muy bajo',
+  };
+  const PHASE_LABELS = {
+    profiling: 'Perfil de Riesgo', assessment: 'Evaluacion de Seguridad',
   };
 
   function _riskColor(score) {
@@ -24,16 +31,22 @@ const ViewVendorAssessments = (() => {
     if (score >= 25) return 'var(--risk-medium)';
     return 'var(--risk-low)';
   }
-
-  function _badge(label, color) {
-    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
-  }
-
   function _scorePill(score, level) {
     if (score == null) return '<span style="color:var(--text-muted);">-</span>';
     const color = _riskColor(score);
     const label = LEVEL_LABELS[level] || level || '';
     return `<span style="font-weight:700;color:${color};">${score}</span> <span style="font-size:11px;color:${color};">${UI.esc(label)}</span>`;
+  }
+  function _decisionBadge(rec) {
+    if (!rec) return '<span style="color:var(--text-muted);font-size:12px;">Sin decision</span>';
+    const color = DECISION_COLORS[rec] || 'var(--text-muted)';
+    const label = DECISION_LABELS[rec] || rec;
+    return `<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${color};color:#fff;">${UI.esc(label)}</span>`;
+  }
+  function _statusBadge(q) {
+    if (!q) return '<span style="color:var(--text-muted);font-size:11px;">No creado</span>';
+    if (q.submitted_at) return '<span style="color:#16a34a;font-size:11px;">Respondido</span>';
+    return '<span style="color:#f59e0b;font-size:11px;">Pendiente</span>';
   }
 
   async function render(el) {
@@ -41,37 +54,30 @@ const ViewVendorAssessments = (() => {
       <div class="page-header">
         <div>
           <h1 class="page-title">Evaluaciones de proveedores</h1>
-          <p class="page-sub">Evaluacion consolidada de riesgo por proveedor — TPRM. Agrega cuestionarios y envia al Risk Register ISO 27005.</p>
+          <p class="page-sub">Gestiona el ciclo completo: envio de cuestionarios, recepcion de evidencias y toma de decision.</p>
         </div>
         ${Auth.canEdit() ? '<button class="btn btn-primary" id="btn-new-vas">+ Nueva evaluacion</button>' : ''}
       </div>
-
       <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
         <label style="font-size:13px;color:var(--text-muted);margin:0;">Filtrar por proveedor:</label>
         <select id="vas-sup-filter" class="input" style="width:240px;">
           <option value="">Todos los proveedores</option>
         </select>
       </div>
-
       <div id="vas-table-wrap"><p class="text-muted">Cargando...</p></div>
     `;
 
-    if (Auth.canEdit()) {
-      document.getElementById('btn-new-vas').onclick = () => _openForm();
-    }
+    if (Auth.canEdit()) document.getElementById('btn-new-vas').onclick = () => _openForm();
 
-    // Poblar filtro de proveedores
     try {
       const sups = await Api.suppliers.list();
       const sel = document.getElementById('vas-sup-filter');
-      if (sel) {
-        sups.forEach(s => {
-          const opt = document.createElement('option');
-          opt.value = s.id;
-          opt.textContent = s.code + ' - ' + s.name;
-          sel.appendChild(opt);
-        });
-      }
+      if (sel) sups.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.code + ' - ' + s.name;
+        sel.appendChild(opt);
+      });
     } catch (_) {}
 
     document.getElementById('vas-sup-filter').onchange = _refresh;
@@ -95,37 +101,30 @@ const ViewVendorAssessments = (() => {
 
   function _renderTable(wrap, data) {
     if (!data.length) {
-      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No hay evaluaciones registradas. Crea la primera con el boton "+ Nueva evaluacion".</p>';
+      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No hay evaluaciones. Crea la primera con "+ Nueva evaluacion".</p>';
       return;
     }
-
     const rows = data.map(a => {
       const date = a.assessment_date ? a.assessment_date.slice(0, 10) : '-';
-      const rec = a.recommendation ? (REC_LABELS[a.recommendation] || a.recommendation) : '-';
+      const typeLabel = a.assessment_type === 'risk_analysis' ? 'Analisis de riesgo' : 'Cuestionario directo';
+      const typeBadge = `<span style="font-size:11px;padding:2px 7px;border-radius:4px;background:${a.assessment_type === 'risk_analysis' ? 'rgba(89,0,141,.12)' : 'var(--bg-1)'};color:${a.assessment_type === 'risk_analysis' ? 'var(--brand-purple)' : 'var(--text-muted)'};">${UI.esc(typeLabel)}</span>`;
       const approved = a.approved_at
-        ? `<span style="color:var(--risk-low);font-size:11px;">Aprobado ${a.approved_at.slice(0,10)}</span>`
-        : '<span style="color:var(--text-muted);font-size:11px;">Sin aprobar</span>';
-      const linkedRisk = a.linked_risk_id
-        ? `<span style="color:var(--risk-medium);font-size:11px;">En registro</span>`
+        ? `<span style="color:#16a34a;font-size:11px;">Aprobado ${a.approved_at.slice(0,10)}</span>`
         : '';
-
       return `
         <tr>
           <td>${UI.codePill ? UI.codePill(a.code) : `<b>${UI.esc(a.code)}</b>`}</td>
           <td>${UI.esc(a.supplier_name || '-')}</td>
+          <td>${typeBadge}</td>
           <td style="font-size:12px;">${UI.esc(date)}</td>
-          <td>${_scorePill(a.inherent_risk_score, a.inherent_risk_level)}</td>
-          <td>${_scorePill(a.residual_risk_score, a.residual_risk_level)}</td>
-          <td style="font-size:12px;">${UI.esc(rec)}</td>
+          <td>${_decisionBadge(a.recommendation)}</td>
           <td style="font-size:12px;">${approved}</td>
           <td>
-            <button class="btn btn-sm" data-id="${a.id}" data-act="view">Ver</button>
-            ${Auth.canEdit() && !a.approved_at ? `<button class="btn btn-sm" data-id="${a.id}" data-act="approve">Aprobar</button>` : ''}
-            ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-sm" data-id="${a.id}" data-act="push">Push a riesgos</button>` : linkedRisk}
+            <button class="btn btn-sm" data-id="${a.id}" data-act="detail">Ver detalle</button>
+            ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-sm" data-id="${a.id}" data-act="push">Push riesgos</button>` : (a.linked_risk_id ? `<span style="color:var(--risk-medium);font-size:11px;">En registro</span>` : '')}
             ${Auth.canEdit() ? `<button class="btn btn-sm btn-danger" data-id="${a.id}" data-act="del">Eliminar</button>` : ''}
           </td>
-        </tr>
-      `;
+        </tr>`;
     }).join('');
 
     wrap.innerHTML = `
@@ -133,40 +132,18 @@ const ViewVendorAssessments = (() => {
         <table class="data">
           <thead>
             <tr>
-              <th>Codigo</th>
-              <th>Proveedor</th>
-              <th>Fecha</th>
-              <th>Inherente</th>
-              <th>Residual</th>
-              <th>Recomendacion</th>
-              <th>Estado</th>
-              <th>Acciones</th>
+              <th>Codigo</th><th>Proveedor</th><th>Tipo</th><th>Fecha</th>
+              <th>Decision</th><th>Aprobacion</th><th>Acciones</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>
-    `;
+      </div>`;
 
-    wrap.querySelectorAll('[data-act="view"]').forEach(btn => {
-      btn.onclick = () => {
-        const a = data.find(x => x.id == btn.dataset.id);
-        if (a) _openDetail(a);
-      };
-    });
+    wrap.querySelectorAll('[data-act="detail"]').forEach(btn =>
+      btn.onclick = () => _openDetail(parseInt(btn.dataset.id)));
 
-    wrap.querySelectorAll('[data-act="approve"]').forEach(btn => {
-      btn.onclick = async () => {
-        if (!await UI.confirm('Aprobar esta evaluacion?')) return;
-        try {
-          await Api.vendor_assessments.approve(btn.dataset.id);
-          UI.toast('Evaluacion aprobada', 'success');
-          await _refresh();
-        } catch (e) { UI.toast(e.message, 'error'); }
-      };
-    });
-
-    wrap.querySelectorAll('[data-act="push"]').forEach(btn => {
+    wrap.querySelectorAll('[data-act="push"]').forEach(btn =>
       btn.onclick = async () => {
         if (!await UI.confirm('Enviar esta evaluacion al Risk Register ISO 27005?')) return;
         try {
@@ -174,138 +151,376 @@ const ViewVendorAssessments = (() => {
           UI.toast(`Riesgo ${res.risk_code} creado en el registro`, 'success');
           await _refresh();
         } catch (e) { UI.toast(e.message, 'error'); }
-      };
-    });
+      });
 
-    wrap.querySelectorAll('[data-act="del"]').forEach(btn => {
+    wrap.querySelectorAll('[data-act="del"]').forEach(btn =>
       btn.onclick = async () => {
-        if (!await UI.confirm('Eliminar esta evaluacion?')) return;
+        if (!await UI.confirm('Eliminar esta evaluacion permanentemente?')) return;
         try {
           await Api.vendor_assessments.del(btn.dataset.id);
           UI.toast('Evaluacion eliminada', 'success');
           await _refresh();
         } catch (e) { UI.toast(e.message, 'error'); }
-      };
-    });
+      });
   }
 
-  function _openDetail(a) {
+  // ---- Detalle completo con evidencias y decision ----
+  async function _openDetail(aid) {
+    UI.modal('Cargando evaluacion...', '<p class="text-muted">Cargando...</p>', {});
+    let a;
+    try {
+      a = await Api.vendor_assessments.detail(aid);
+    } catch (e) {
+      UI.modal('Error', `<p class="notice">${UI.esc(e.message)}</p>`, {
+        actions: '<button class="btn" onclick="UI.closeModal()">Cerrar</button>',
+      });
+      return;
+    }
+    _renderDetail(a);
+  }
+
+  function _renderDetail(a) {
+    const profQ = a.profiling_questionnaire;
+    const assQ  = a.assessment_questionnaire;
+
+    // --- Panel de cuestionario ---
+    function _qPanel(q, label) {
+      if (!q) return `<div class="sq-card" style="padding:16px;"><p style="color:var(--text-muted);font-size:13px;">${label}: pendiente de creacion.</p></div>`;
+
+      const submitted = !!q.submitted_at;
+      const statusColor = submitted ? '#16a34a' : '#f59e0b';
+      const statusText  = submitted ? `Respondido el ${q.submitted_at.slice(0,10)}` : 'Pendiente de respuesta del proveedor';
+
+      // NC badges
+      const ncHtml = (q.major_nc != null) ? `
+        <span style="margin-right:6px;font-size:11px;padding:2px 8px;border-radius:4px;background:#fef2f2;color:#dc2626;font-weight:600;">
+          NC Mayores: ${q.major_nc}
+        </span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:#fff7ed;color:#ea580c;font-weight:600;">
+          NC Menores: ${q.minor_nc}
+        </span>` : '';
+
+      // Preguntas + respuestas acordeon
+      const qaRows = (q.questions || []).map(qq => {
+        const ans = (q.answers || {})[qq.id];
+        const evid = (q.evidence || {})[qq.id];
+        const ansLabel = ans != null ? String(ans) : '—';
+        const evidHtml = evid ? `
+          <a href="${UI.esc(Api.vendor_assessments.evidenceUrl(a.id, qq.id))}"
+             target="_blank" rel="noopener"
+             style="font-size:11px;color:var(--brand-purple);text-decoration:none;">
+            Evidencia: ${UI.esc(evid.filename || evid.stored_name || 'fichero')}
+          </a>` : '';
+        return `<tr>
+          <td style="font-size:12px;padding:6px 8px;color:var(--text-muted);width:40px;">${UI.esc(qq.id)}</td>
+          <td style="font-size:12px;padding:6px 8px;">${UI.esc(qq.text || '')}</td>
+          <td style="font-size:12px;padding:6px 8px;font-weight:600;">${UI.esc(ansLabel)}</td>
+          <td style="font-size:12px;padding:6px 8px;">${evidHtml}</td>
+        </tr>`;
+      }).join('');
+
+      // AI review
+      let aiHtml = '';
+      if (q.ai_review) {
+        const r = q.ai_review;
+        if (r.error) {
+          aiHtml = `<p style="font-size:12px;color:var(--text-muted);">Revision IA: ${UI.esc(r.error)}</p>`;
+        } else {
+          const flags = (r.red_flags || []).map(f => `<li style="font-size:12px;">${UI.esc(f)}</li>`).join('');
+          const fups = (r.follow_up_questions || []).map(f => `<li style="font-size:12px;">${UI.esc(f)}</li>`).join('');
+          aiHtml = `
+            <div style="margin-top:12px;padding:12px;background:rgba(89,0,141,.05);border-radius:8px;border:1px solid rgba(89,0,141,.15);">
+              <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--brand-purple);">Evaluacion IA</div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
+                <span style="font-size:12px;">Score IA: <strong>${r.ai_score ?? '-'}/100</strong></span>
+                <span style="font-size:12px;">Confianza: <strong>${r.confidence != null ? Math.round(r.confidence * 100) + '%' : '-'}</strong></span>
+                <span style="font-size:12px;">Cobertura: <strong>${UI.esc(r.control_coverage_assessment || '-')}</strong></span>
+              </div>
+              ${r.rationale ? `<p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">${UI.esc(r.rationale)}</p>` : ''}
+              ${flags ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Alertas:</div><ul style="margin:0 0 8px;padding-left:18px;">${flags}</ul>` : ''}
+              ${fups ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Preguntas de seguimiento:</div><ul style="margin:0;padding-left:18px;">${fups}</ul>` : ''}
+              ${r.needs_manual_review ? `<p style="font-size:11px;color:#f59e0b;margin:8px 0 0;font-weight:600;">Requiere revision manual.</p>` : ''}
+            </div>`;
+        }
+      }
+
+      return `
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;">
+          <div style="background:var(--bg-1);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <span style="font-size:13px;font-weight:600;">${UI.esc(label)}</span>
+              <span style="margin-left:8px;font-size:11px;color:var(--text-muted);">${UI.esc(q.code)}</span>
+              ${q.template_code ? `<span style="margin-left:6px;font-size:10px;color:var(--text-muted);">${UI.esc(q.template_code)}</span>` : ''}
+            </div>
+            <span style="font-size:11px;color:${statusColor};font-weight:600;">${UI.esc(statusText)}</span>
+          </div>
+          ${submitted ? `
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:13px;">Score: <strong>${q.score ?? '-'}/100</strong></span>
+            ${q.residual_risk_level ? `<span style="font-size:12px;">Riesgo residual: <strong>${UI.esc(LEVEL_LABELS[q.residual_risk_level] || q.residual_risk_level)}</strong></span>` : ''}
+            ${ncHtml}
+          </div>
+          <details style="margin:0;">
+            <summary style="padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;color:var(--brand-purple);">
+              Ver respuestas y evidencias (${(q.questions || []).length} preguntas)
+            </summary>
+            <div style="padding:0 16px 16px;">
+              <div class="table-wrap" style="max-height:320px;overflow-y:auto;">
+                <table class="data" style="font-size:12px;">
+                  <thead><tr><th>ID</th><th>Pregunta</th><th>Respuesta</th><th>Evidencia</th></tr></thead>
+                  <tbody>${qaRows}</tbody>
+                </table>
+              </div>
+              ${aiHtml}
+            </div>
+          </details>` : `<div style="padding:12px 16px;font-size:12px;color:var(--text-muted);">
+            El proveedor aun no ha respondido este cuestionario.
+            ${q.token ? `<br><a href="/supplier-q?token=${encodeURIComponent(q.token)}" target="_blank" rel="noopener" style="color:var(--brand-purple);">Ver enlace del portal</a>` : ''}
+          </div>`}
+        </div>`;
+    }
+
+    // --- Panel de decision ---
+    const hasSubmittedQ = (assQ && assQ.submitted_at) || (!profQ && assQ && assQ.submitted_at);
+    const currentDecision = a.recommendation;
+
+    const decisionPanel = hasSubmittedQ ? `
+      <div style="margin-top:16px;padding:16px;background:var(--bg-1);border-radius:8px;border:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Decision del evaluador</div>
+        ${currentDecision ? `
+          <div style="margin-bottom:12px;">
+            ${_decisionBadge(currentDecision)}
+            ${a.decision_at ? `<span style="font-size:11px;color:var(--text-muted);margin-left:8px;">${a.decision_at.slice(0,10)}</span>` : ''}
+            ${a.decision_notes ? `<p style="font-size:12px;margin:8px 0 0;color:var(--text-base);">"${UI.esc(a.decision_notes)}"</p>` : ''}
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);">Puedes cambiar la decision si es necesario.</p>
+        ` : '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Selecciona una decision sobre este proveedor:</p>'}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;" id="vas-decision-btns">
+          ${Object.entries(DECISION_LABELS).map(([k, l]) => `
+            <button class="btn btn-sm" data-decision="${k}"
+              style="border-color:${DECISION_COLORS[k]};color:${DECISION_COLORS[k]};${currentDecision === k ? `background:${DECISION_COLORS[k]};color:#fff;` : ''}">
+              ${UI.esc(l)}
+            </button>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-end;" id="vas-decision-confirm" style="display:none;">
+          <div style="flex:1;">
+            <label style="font-size:12px;color:var(--text-muted);">Notas (opcional)</label>
+            <textarea id="vas-decision-notes" class="input" rows="2" style="margin-top:4px;"
+              placeholder="Condiciones, observaciones o motivo...">${UI.esc(a.decision_notes || '')}</textarea>
+          </div>
+          <button class="btn btn-primary" id="vas-decision-save">Guardar decision</button>
+        </div>
+      </div>` : `
+      <div style="margin-top:16px;padding:16px;background:var(--bg-1);border-radius:8px;border:1px solid var(--border);">
+        <p style="font-size:13px;color:var(--text-muted);margin:0;">
+          La decision estara disponible una vez el proveedor complete el cuestionario de evaluacion de seguridad.
+        </p>
+      </div>`;
+
+    // --- Score por dominio ---
     const domainRows = a.score_by_domain && Object.keys(a.score_by_domain).length
       ? Object.entries(a.score_by_domain).map(([domain, score]) => {
           const pct = Math.max(0, Math.min(100, score));
-          const color = _riskColor(100 - pct); // invertido: postura alta = color bajo riesgo
-          return `
-            <div style="margin-bottom:8px;">
-              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
-                <span>${UI.esc(domain)}</span>
-                <span style="font-weight:600;color:${color};">${pct}/100</span>
-              </div>
-              <div style="background:var(--border);border-radius:4px;height:6px;">
-                <div style="background:${color};width:${pct}%;height:6px;border-radius:4px;"></div>
-              </div>
+          const color = _riskColor(100 - pct);
+          return `<div style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+              <span>${UI.esc(domain)}</span>
+              <span style="font-weight:600;color:${color};">${pct}/100</span>
             </div>
-          `;
+            <div style="background:var(--border);border-radius:4px;height:5px;">
+              <div style="background:${color};width:${pct}%;height:5px;border-radius:4px;"></div>
+            </div>
+          </div>`;
         }).join('')
-      : '<p style="color:var(--text-muted);font-size:12px;">Sin detalle por dominio disponible.</p>';
+      : '';
 
-    const recLabel = a.recommendation ? (REC_LABELS[a.recommendation] || a.recommendation) : 'Sin recomendacion';
-    const approvedLine = a.approved_at
-      ? `<p><strong>Aprobado:</strong> ${a.approved_at.slice(0, 10)} (usuario #${a.approver_user_id})</p>`
-      : '<p style="color:var(--text-muted);">Pendiente de aprobacion.</p>';
-    const riskLine = a.linked_risk_id
-      ? `<p><strong>Riesgo vinculado:</strong> ID ${a.linked_risk_id}</p>`
-      : '<p style="color:var(--text-muted);">Sin riesgo vinculado en el registro.</p>';
-
-    UI.modal(`Evaluacion ${UI.esc(a.code)} — ${UI.esc(a.supplier_name || '')}`, `
-      <div class="form-grid">
+    const bodyHtml = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
         <div>
-          <p><strong>Periodo:</strong> ${UI.esc(a.period_label || '-')}</p>
-          <p><strong>Fecha:</strong> ${a.assessment_date ? a.assessment_date.slice(0, 10) : '-'}</p>
-          <p><strong>Recomendacion:</strong> ${UI.esc(recLabel)}</p>
-          ${approvedLine}
-          ${riskLine}
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Proveedor</p>
+          <p style="margin:0;font-weight:600;">${UI.esc(a.supplier_name || '-')}</p>
         </div>
         <div>
-          <p><strong>Riesgo inherente:</strong> ${_scorePill(a.inherent_risk_score, a.inherent_risk_level)}</p>
-          <p><strong>Eficacia de controles:</strong> <span style="font-weight:700;">${a.control_effectiveness_score ?? '-'}</span></p>
-          <p><strong>Riesgo residual:</strong> ${_scorePill(a.residual_risk_score, a.residual_risk_level)}</p>
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Tipo</p>
+          <p style="margin:0;font-size:13px;">${a.assessment_type === 'risk_analysis' ? 'Analisis de riesgo (2 fases)' : 'Cuestionario directo'}</p>
         </div>
-        <div class="span2">
-          <strong style="font-size:13px;">Score por dominio</strong>
-          <div style="margin-top:8px;">${domainRows}</div>
+        <div>
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Riesgo inherente</p>
+          <p style="margin:0;">${_scorePill(a.inherent_risk_score, a.inherent_risk_level)}</p>
         </div>
-        ${a.summary ? `
-        <div class="span2">
-          <strong style="font-size:13px;">Resumen</strong>
-          <p style="font-size:13px;margin-top:4px;white-space:pre-wrap;">${UI.esc(a.summary)}</p>
-        </div>` : ''}
+        <div>
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Riesgo residual</p>
+          <p style="margin:0;">${_scorePill(a.residual_risk_score, a.residual_risk_level)}</p>
+        </div>
       </div>
-    `, {
-      actions: '<button class="btn btn-primary" id="m-close-vas">Cerrar</button>',
-    });
-    document.getElementById('m-close-vas').onclick = UI.closeModal;
+
+      ${domainRows ? `
+      <details style="margin-bottom:16px;">
+        <summary style="font-size:12px;font-weight:600;cursor:pointer;color:var(--text-muted);">Score por dominio</summary>
+        <div style="margin-top:10px;">${domainRows}</div>
+      </details>` : ''}
+
+      <div style="font-size:13px;font-weight:600;margin:0 0 10px;">Cuestionarios</div>
+
+      ${a.assessment_type === 'risk_analysis'
+        ? _qPanel(profQ, 'Fase 1 — Perfil de Riesgo') + _qPanel(assQ, 'Fase 2 — Evaluacion de Seguridad')
+        : _qPanel(assQ, 'Cuestionario de Evaluacion')}
+
+      ${decisionPanel}
+    `;
+
+    const footerActions = `
+      <button class="btn" id="vas-det-close">Cerrar</button>
+      ${Auth.canEdit() && !a.approved_at ? `<button class="btn" id="vas-det-approve">Aprobar formalmente</button>` : ''}
+      ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-primary" id="vas-det-push">Enviar al Risk Register</button>` : ''}
+    `;
+
+    UI.modal(`Evaluacion ${UI.esc(a.code)}`, bodyHtml, { actions: footerActions });
+
+    document.getElementById('vas-det-close').onclick = UI.closeModal;
+
+    const approveBtn = document.getElementById('vas-det-approve');
+    if (approveBtn) approveBtn.onclick = async () => {
+      if (!await UI.confirm('Aprobar formalmente esta evaluacion?')) return;
+      try {
+        await Api.vendor_assessments.approve(a.id);
+        UI.toast('Evaluacion aprobada formalmente', 'success');
+        UI.closeModal();
+        await _refresh();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+
+    const pushBtn = document.getElementById('vas-det-push');
+    if (pushBtn) pushBtn.onclick = async () => {
+      if (!await UI.confirm('Crear riesgo en el Risk Register ISO 27005 a partir de esta evaluacion?')) return;
+      try {
+        const res = await Api.vendor_assessments.pushToRegister(a.id);
+        UI.toast(`Riesgo ${res.risk_code} creado`, 'success');
+        UI.closeModal();
+        await _refresh();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+
+    // --- Decision interactiva ---
+    if (hasSubmittedQ) {
+      let pendingDecision = currentDecision || null;
+      const confirmDiv = document.getElementById('vas-decision-confirm');
+
+      document.querySelectorAll('#vas-decision-btns [data-decision]').forEach(btn => {
+        btn.onclick = () => {
+          pendingDecision = btn.dataset.decision;
+          // Highlight seleccionado
+          document.querySelectorAll('#vas-decision-btns [data-decision]').forEach(b => {
+            const k = b.dataset.decision;
+            b.style.background = k === pendingDecision ? DECISION_COLORS[k] : '';
+            b.style.color = k === pendingDecision ? '#fff' : DECISION_COLORS[k];
+          });
+          if (confirmDiv) confirmDiv.style.display = 'flex';
+        };
+      });
+
+      const saveBtn = document.getElementById('vas-decision-save');
+      if (saveBtn) saveBtn.onclick = async () => {
+        if (!pendingDecision) return;
+        const notes = document.getElementById('vas-decision-notes')?.value.trim() || null;
+        try {
+          await Api.vendor_assessments.decide(a.id, { decision: pendingDecision, notes });
+          UI.toast(`Decision: "${DECISION_LABELS[pendingDecision]}" guardada`, 'success');
+          UI.closeModal();
+          await _refresh();
+        } catch (e) { UI.toast(e.message, 'error'); }
+      };
+    }
   }
 
+  // ---- Form nueva evaluacion ----
   async function _openForm() {
-    let suppliers = [];
+    let suppliers = [], sysTpls = [], customTpls = [];
     try { suppliers = await Api.suppliers.list(); } catch (_) {}
+    try {
+      const tplData = await Api.tprm.templates();
+      sysTpls = (tplData || []).filter(t => t.is_system_template !== false);
+    } catch (_) {}
+    try { customTpls = await Api.tprm.customTemplates(); } catch (_) {}
+
+    const sysOptions = sysTpls
+      .filter(t => t.code !== 'RH_TPRM_PROFILING_v1')  // el profiling se usa internamente
+      .map(t => `<option value="sys:${UI.esc(t.code)}">${UI.esc(t.name)}</option>`)
+      .join('');
+    const customOptions = customTpls.length
+      ? customTpls.map(t => `<option value="custom:${t.id}">${UI.esc(t.name)}</option>`).join('')
+      : '';
 
     UI.modal('Nueva evaluacion de proveedor', `
       <div class="form-grid">
         <div class="span2">
           <label>Proveedor *</label>
           <select id="vas-f-sup" class="input">
-            <option value="">- Seleccionar -</option>
-            ${suppliers.map(s => `<option value="${s.id}">${UI.esc(s.code)} - ${UI.esc(s.name)}</option>`).join('')}
+            <option value="">- Seleccionar proveedor -</option>
+            ${suppliers.map(s => `<option value="${s.id}">${UI.esc(s.code)} - ${UI.esc(s.name)}${s.contact_email ? ' &lt;' + UI.esc(s.contact_email) + '&gt;' : ''}</option>`).join('')}
           </select>
+        </div>
+        <div class="span2">
+          <label>Tipo de evaluacion *</label>
+          <select id="vas-f-type" class="input">
+            <option value="risk_analysis">Analisis de riesgo completo (Perfil de Riesgo + Evaluacion de Seguridad)</option>
+            <optgroup label="Cuestionario directo — Plantillas del sistema">
+              ${sysOptions || '<option disabled>No hay plantillas del sistema disponibles</option>'}
+            </optgroup>
+            ${customOptions ? `<optgroup label="Cuestionario directo — Plantillas personalizadas">${customOptions}</optgroup>` : ''}
+          </select>
+          <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">
+            El "Analisis de riesgo completo" envía primero el perfil de riesgo (12 preguntas) y luego asigna automaticamente el cuestionario de evaluacion de seguridad correspondiente al nivel de riesgo del proveedor.
+          </p>
         </div>
         <div>
           <label>Periodo</label>
-          <input id="vas-f-period" class="input" placeholder="ej. 2026-Q2" value="">
+          <input id="vas-f-period" class="input" placeholder="ej. 2026-Q2">
         </div>
         <div>
           <label>Valido hasta</label>
           <input type="date" id="vas-f-valid" class="input">
         </div>
-        <div class="span2">
-          <label>Recomendacion</label>
-          <select id="vas-f-rec" class="input">
-            <option value="">Sin recomendacion</option>
-            ${Object.entries(REC_LABELS).map(([k, l]) => `<option value="${k}">${UI.esc(l)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="span2">
-          <label>Resumen / observaciones</label>
-          <textarea id="vas-f-summary" class="input" rows="3" placeholder="Descripcion de los hallazgos principales y conclusion de la evaluacion..."></textarea>
-        </div>
         <div class="span2 notice" style="font-size:12px;">
-          Los scores inherente, de control y residual se calculan automaticamente a partir del perfil TPRM del proveedor y sus cuestionarios enviados.
+          Se enviara un email automaticamente al contacto del proveedor con el enlace del cuestionario. Asegurate de que el proveedor tenga email de contacto configurado y que el servidor SMTP este activo en Alertas.
         </div>
       </div>
     `, {
       actions: `<button class="btn" id="vas-m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="vas-m-save">Crear evaluacion</button>`,
+                <button class="btn btn-primary" id="vas-m-save">Crear y enviar</button>`,
     });
 
     document.getElementById('vas-m-cancel').onclick = UI.closeModal;
     document.getElementById('vas-m-save').onclick = async () => {
       const supId = document.getElementById('vas-f-sup').value;
       if (!supId) { UI.toast('Selecciona un proveedor', 'error'); return; }
+      const typeVal = document.getElementById('vas-f-type').value;
 
       const body = {
         supplier_id: parseInt(supId),
+        assessment_type: typeVal === 'risk_analysis' ? 'risk_analysis' : 'direct',
         period_label: document.getElementById('vas-f-period').value.trim() || null,
         valid_until: document.getElementById('vas-f-valid').value || null,
-        recommendation: document.getElementById('vas-f-rec').value || null,
-        summary: document.getElementById('vas-f-summary').value.trim() || null,
       };
+
+      if (typeVal.startsWith('sys:')) {
+        body.template_code = typeVal.slice(4);
+      } else if (typeVal.startsWith('custom:')) {
+        body.custom_template_id = parseInt(typeVal.slice(7));
+      }
+
+      const saveBtn = document.getElementById('vas-m-save');
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creando...'; }
 
       try {
         const created = await Api.vendor_assessments.create(body);
         UI.closeModal();
-        UI.toast(`Evaluacion ${created.code} creada`, 'success');
+        UI.toast(`Evaluacion ${created.code} creada y email enviado al proveedor`, 'success');
         await _refresh();
-      } catch (e) { UI.toast(e.message, 'error'); }
+      } catch (e) {
+        UI.toast(e.message, 'error');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Crear y enviar'; }
+      }
     };
   }
 
