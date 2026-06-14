@@ -68,30 +68,49 @@ def _score_to_likelihood_consequence(residual_score: int) -> tuple[int, int]:
     return 2, 2
 
 
-def _send_q_email(db: Session, q: SupplierQuestionnaire, supplier: Supplier,
-                  current_user: User, base_url: str) -> dict:
+def _send_q_email(
+    db: Session, q: SupplierQuestionnaire, supplier: Supplier,
+    current_user: User, base_url: str,
+    custom_subject: str = "", custom_message: str = "",
+) -> dict:
     """Envia el enlace del cuestionario al contacto del proveedor. Devuelve {sent, warning}."""
     recipient = (supplier.contact_email or "").strip()
     if not recipient:
-        return {"sent": False, "warning": "El proveedor no tiene email de contacto. Envía el enlace manualmente."}
+        return {"sent": False, "warning": "El proveedor no tiene email de contacto. Envia el enlace manualmente."}
     cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
     if not cfg or not cfg.smtp_host:
-        return {"sent": False, "warning": "SMTP no configurado en Alertas → Configuracion. Envía el enlace manualmente."}
+        return {"sent": False, "warning": "SMTP no configurado en Alertas -> Configuracion. Envia el enlace manualmente."}
+
     link = f"{base_url.rstrip('/')}/supplier-q?token={q.token}"
     expires = q.expires_at.strftime("%d/%m/%Y") if q.expires_at else "-"
     org_name = current_user.organization.name if getattr(current_user, "organization", None) else "nuestra organizacion"
+
     phase_label = ""
     if q.phase == "profiling":
         phase_label = " — Fase 1: Perfil de Riesgo"
     elif q.phase == "assessment":
         phase_label = " — Fase 2: Evaluacion de Seguridad"
-    subject = f"Cuestionario de seguridad{phase_label} — {q.title}"
+
+    subject = custom_subject.strip() if custom_subject and custom_subject.strip() \
+        else f"Cuestionario de seguridad{phase_label} — {q.title}"
+
+    # Cuerpo: si el usuario personalizó el texto, convertir saltos de linea a <br>.
+    # Si no, usar el mensaje por defecto.
+    if custom_message and custom_message.strip():
+        import html as _html
+        safe_msg = _html.escape(custom_message.strip()).replace("\n", "<br>")
+        body_content = f"<p>{safe_msg}</p>"
+    else:
+        body_content = (
+            f"<p>Estimado/a {supplier.contact_name or supplier.name}:</p>"
+            f"<p>Como parte de nuestro proceso de evaluacion de proveedores ({org_name}), "
+            f"le solicitamos completar el siguiente cuestionario de seguridad: "
+            f"<strong>{q.title}</strong>{phase_label}.</p>"
+        )
+
     body_html = f"""
     <div style="font-family:Inter,Arial,sans-serif;color:#1f2937;">
-      <p>Estimado/a {supplier.contact_name or supplier.name}:</p>
-      <p>Como parte de nuestro proceso de evaluacion de proveedores ({org_name}),
-      le solicitamos completar el siguiente cuestionario de seguridad:
-      <strong>{q.title}</strong>{phase_label}.</p>
+      {body_content}
       <p style="margin:24px 0;">
         <a href="{link}" style="background:#59008D;color:#fff;padding:12px 24px;
            border-radius:6px;text-decoration:none;font-weight:600;">Completar cuestionario</a>
@@ -99,6 +118,7 @@ def _send_q_email(db: Session, q: SupplierQuestionnaire, supplier: Supplier,
       <p style="font-size:13px;color:#6b7280;">O copie este enlace: <br>{link}</p>
       <p style="font-size:13px;color:#6b7280;">Fecha limite: {expires}. No necesita crear cuenta.</p>
     </div>"""
+
     from app.services import email_service
     try:
         email_service.send_email(cfg, recipient, subject, body_html)
@@ -337,8 +357,9 @@ def create_assessment(
         )
         a.profiling_questionnaire_id = profiling_q.id
         db.flush()
-        email_result = _send_q_email(db, profiling_q, supplier, current_user, base_url)
-
+        email_result = _send_q_email(db, profiling_q, supplier, current_user, base_url,
+                                     custom_subject=body.email_subject or "",
+                                     custom_message=body.email_message or "")
     else:
         # Tipo directo: enviar cuestionario de plantilla directamente
         template_code = body.template_code
@@ -378,7 +399,9 @@ def create_assessment(
         db.add(direct_q)
         db.flush()
         a.assessment_questionnaire_id = direct_q.id
-        email_result = _send_q_email(db, direct_q, supplier, current_user, base_url)
+        email_result = _send_q_email(db, direct_q, supplier, current_user, base_url,
+                                     custom_subject=body.email_subject or "",
+                                     custom_message=body.email_message or "")
 
     db.commit()
     db.refresh(a)

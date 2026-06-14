@@ -433,23 +433,38 @@ const ViewVendorAssessments = (() => {
     }
   }
 
+  // ---- Mensaje de email por defecto ----
+  function _defaultEmailMessage(supplierName, contactName, orgName) {
+    const to = contactName || supplierName || 'equipo';
+    const org = orgName || 'nuestra organizacion';
+    return `Estimado/a ${to}:\n\nComo parte de nuestro proceso de evaluacion de proveedores en ${org}, le solicitamos que complete el cuestionario de seguridad adjunto.\n\nEl cuestionario es confidencial y sus respuestas seran utilizadas exclusivamente para evaluar el nivel de seguridad en el marco de nuestra relacion contractual.\n\nAnte cualquier duda, puede responder a este correo.\n\nGracias por su colaboracion.`;
+  }
+
   // ---- Form nueva evaluacion ----
   async function _openForm() {
-    let suppliers = [], sysTpls = [], customTpls = [];
+    let suppliers = [], sysTpls = [], customTpls = [], orgName = '';
     try { suppliers = await Api.suppliers.list(); } catch (_) {}
     try {
       const tplData = await Api.tprm.templates();
       sysTpls = (tplData || []).filter(t => t.is_system_template !== false);
     } catch (_) {}
     try { customTpls = await Api.tprm.customTemplates(); } catch (_) {}
+    try {
+      const me = JSON.parse(localStorage.getItem('riskhub_user') || '{}');
+      orgName = me.organization_name || '';
+    } catch (_) {}
 
     const sysOptions = sysTpls
-      .filter(t => t.code !== 'RH_TPRM_PROFILING_v1')  // el profiling se usa internamente
+      .filter(t => t.code !== 'RH_TPRM_PROFILING_v1')
       .map(t => `<option value="sys:${UI.esc(t.code)}">${UI.esc(t.name)}</option>`)
       .join('');
     const customOptions = customTpls.length
       ? customTpls.map(t => `<option value="custom:${t.id}">${UI.esc(t.name)}</option>`).join('')
       : '';
+
+    // Construir mapa de proveedores para el preview de email
+    const supMap = {};
+    suppliers.forEach(s => { supMap[s.id] = s; });
 
     UI.modal('Nueva evaluacion de proveedor', `
       <div class="form-grid">
@@ -457,7 +472,12 @@ const ViewVendorAssessments = (() => {
           <label>Proveedor *</label>
           <select id="vas-f-sup" class="input">
             <option value="">- Seleccionar proveedor -</option>
-            ${suppliers.map(s => `<option value="${s.id}">${UI.esc(s.code)} - ${UI.esc(s.name)}${s.contact_email ? ' &lt;' + UI.esc(s.contact_email) + '&gt;' : ''}</option>`).join('')}
+            ${suppliers.map(s => `<option value="${s.id}"
+              data-email="${UI.esc(s.contact_email || '')}"
+              data-contact="${UI.esc(s.contact_name || '')}"
+              data-name="${UI.esc(s.name || '')}">
+              ${UI.esc(s.code)} - ${UI.esc(s.name)}${s.contact_email ? ' &lt;' + UI.esc(s.contact_email) + '&gt;' : ''}
+            </option>`).join('')}
           </select>
         </div>
         <div class="span2">
@@ -470,7 +490,7 @@ const ViewVendorAssessments = (() => {
             ${customOptions ? `<optgroup label="Cuestionario directo — Plantillas personalizadas">${customOptions}</optgroup>` : ''}
           </select>
           <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">
-            El "Analisis de riesgo completo" envía primero el perfil de riesgo (12 preguntas) y luego asigna automaticamente el cuestionario de evaluacion de seguridad correspondiente al nivel de riesgo del proveedor.
+            "Analisis de riesgo completo": envia primero el Perfil de Riesgo (12 preguntas) y luego asigna automaticamente el nivel de evaluacion de seguridad.
           </p>
         </div>
         <div>
@@ -481,8 +501,26 @@ const ViewVendorAssessments = (() => {
           <label>Valido hasta</label>
           <input type="date" id="vas-f-valid" class="input">
         </div>
-        <div class="span2 notice" style="font-size:12px;">
-          Se enviara un email automaticamente al contacto del proveedor con el enlace del cuestionario. Asegurate de que el proveedor tenga email de contacto configurado y que el servidor SMTP este activo en Alertas.
+
+        <div class="span2" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <label style="margin:0;font-weight:600;">Email que se enviara al proveedor</label>
+            <button type="button" id="vas-f-reset-msg" class="btn btn-sm" style="font-size:11px;">Restaurar mensaje por defecto</button>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);">Asunto</label>
+            <input id="vas-f-subject" class="input" style="margin-bottom:8px;"
+              placeholder="Se generara automaticamente si lo dejas en blanco">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);">Cuerpo del mensaje</label>
+            <textarea id="vas-f-msg" class="input" rows="7"
+              style="font-size:13px;line-height:1.6;margin-top:4px;"
+              placeholder="Escribe aqui el mensaje para el proveedor...">${UI.esc(_defaultEmailMessage('', '', orgName))}</textarea>
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0;">
+            El boton de acceso al cuestionario y el enlace directo se adjuntan automaticamente al final del mensaje.
+          </p>
         </div>
       </div>
     `, {
@@ -490,17 +528,41 @@ const ViewVendorAssessments = (() => {
                 <button class="btn btn-primary" id="vas-m-save">Crear y enviar</button>`,
     });
 
+    // Al cambiar proveedor: actualizar el mensaje con el nombre del contacto
+    const supSel = document.getElementById('vas-f-sup');
+    supSel.onchange = () => {
+      const opt = supSel.options[supSel.selectedIndex];
+      const contact = opt?.dataset?.contact || '';
+      const name    = opt?.dataset?.name || '';
+      const msgArea = document.getElementById('vas-f-msg');
+      if (msgArea) {
+        msgArea.value = _defaultEmailMessage(name, contact, orgName);
+      }
+    };
+
+    document.getElementById('vas-f-reset-msg').onclick = () => {
+      const opt = supSel.options[supSel.selectedIndex];
+      const contact = opt?.dataset?.contact || '';
+      const name    = opt?.dataset?.name || '';
+      document.getElementById('vas-f-msg').value = _defaultEmailMessage(name, contact, orgName);
+      document.getElementById('vas-f-subject').value = '';
+    };
+
     document.getElementById('vas-m-cancel').onclick = UI.closeModal;
     document.getElementById('vas-m-save').onclick = async () => {
       const supId = document.getElementById('vas-f-sup').value;
       if (!supId) { UI.toast('Selecciona un proveedor', 'error'); return; }
-      const typeVal = document.getElementById('vas-f-type').value;
+      const typeVal  = document.getElementById('vas-f-type').value;
+      const emailMsg = document.getElementById('vas-f-msg').value.trim();
+      const emailSub = document.getElementById('vas-f-subject').value.trim();
 
       const body = {
         supplier_id: parseInt(supId),
         assessment_type: typeVal === 'risk_analysis' ? 'risk_analysis' : 'direct',
         period_label: document.getElementById('vas-f-period').value.trim() || null,
         valid_until: document.getElementById('vas-f-valid').value || null,
+        email_message: emailMsg || null,
+        email_subject: emailSub || null,
       };
 
       if (typeVal.startsWith('sys:')) {
@@ -516,7 +578,7 @@ const ViewVendorAssessments = (() => {
         const created = await Api.vendor_assessments.create(body);
         UI.closeModal();
         if (created.email_sent) {
-          UI.toast(`Evaluacion ${created.code} creada — email enviado al proveedor`, 'success');
+          UI.toast(`Evaluacion ${created.code} creada — email enviado a ${created.email_warning || 'proveedor'}`, 'success');
         } else {
           const warn = created.email_warning || 'Revisa la configuracion SMTP en Alertas.';
           UI.toast(`Evaluacion ${created.code} creada — email NO enviado: ${warn}`, 'warning');

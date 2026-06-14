@@ -1019,6 +1019,8 @@ class VendorAssessmentCreate(BaseModel):
     period_label: Optional[str] = None
     valid_until: Optional[datetime] = None
     notes: Optional[str] = None
+    email_subject: Optional[str] = None           # asunto personalizado
+    email_message: Optional[str] = None           # cuerpo personalizado (texto plano)
 
 
 class VendorAssessmentUpdate(BaseModel):
