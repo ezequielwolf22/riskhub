@@ -671,6 +671,30 @@ def seed_default_survey_templates(db: Session, org_id: int) -> None:
     db.commit()
 
 
+def _backfill_risk_supplier_id(db: Session) -> None:
+    """Retrocompatibilidad v3.9.1: asigna supplier_id a riesgos vinculados a evaluaciones TPRM."""
+    try:
+        from app.models import VendorRiskAssessment, Risk as _Risk
+        rows = db.query(VendorRiskAssessment).filter(
+            VendorRiskAssessment.linked_risk_id.isnot(None),
+            VendorRiskAssessment.supplier_id.isnot(None),
+        ).all()
+        updated = 0
+        for va in rows:
+            risk = db.query(_Risk).filter(
+                _Risk.id == va.linked_risk_id,
+                _Risk.supplier_id.is_(None),
+            ).first()
+            if risk:
+                risk.supplier_id = va.supplier_id
+                updated += 1
+        if updated:
+            db.commit()
+            print(f"Backfill: {updated} riesgo(s) TPRM actualizados con supplier_id.")
+    except Exception as exc:
+        print(f"Backfill risk supplier_id omitido: {exc}")
+
+
 def init_db() -> None:
     """Crear tablas y cargar seed inicial."""
     Base.metadata.create_all(bind=engine)
@@ -689,6 +713,7 @@ def init_db() -> None:
         _seed_licenses(db)
         seed_default_survey_templates(db, org.id)
         _seed_regwatch_sources(db)
+        _backfill_risk_supplier_id(db)
     finally:
         db.close()
 

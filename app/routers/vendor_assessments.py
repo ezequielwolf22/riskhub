@@ -520,6 +520,10 @@ def push_to_risk_register(
     if a.linked_risk_id:
         existing_risk = db.query(Risk).filter(Risk.id == a.linked_risk_id).first()
         if existing_risk:
+            # Retrocompatibilidad: si el riesgo existe pero sin supplier_id, actualizarlo
+            if existing_risk.supplier_id is None and a.supplier_id:
+                existing_risk.supplier_id = a.supplier_id
+                db.commit()
             return {"risk_id": existing_risk.id, "risk_code": existing_risk.code}
 
     org_id = a.organization_id
