@@ -931,8 +931,12 @@ class SupplierQuestionnaire(Base):
     submitted_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     notes = Column(Text)
+    evidence = Column(JSON, nullable=True)           # TPRM: {question_id: {filename, stored_name, size, uploaded_at}}
     ai_review = Column(JSON, nullable=True)          # TPRM: salida estructurada de la evaluacion IA
     ai_reviewed_at = Column(DateTime, nullable=True)
+    major_nc = Column(Integer, nullable=True)        # TPRM: no-conformidades mayores (criticity=Major con respuesta NC)
+    minor_nc = Column(Integer, nullable=True)        # TPRM: no-conformidades menores
+    residual_risk_level = Column(String(16), nullable=True)  # TPRM: low|medium|high|critical
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -1033,6 +1037,26 @@ class VendorIssue(Base):
     @property
     def supplier_name(self) -> str:
         return self.supplier.name if self.supplier else ""
+
+
+class TPRMTemplate(Base):
+    """Plantilla de cuestionario editable por el cliente (TPRM §4.5).
+
+    Las plantillas del sistema viven en codigo (services/tprm_templates.py) y son
+    de solo lectura; estas son copias clonables/editables por organizacion.
+    """
+    __tablename__ = "tprm_templates"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    framework_codes = Column(JSON, nullable=True)        # ["ISO_27001", ...]
+    questions = Column(JSON, nullable=False)             # [{id, text, type, weight, scoring_rules, requires_evidence, domain, options}]
+    created_from = Column(String(64), nullable=True)     # codigo de la plantilla del sistema clonada
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
 
 # ---------- GDPR / DPIA (M6) ----------

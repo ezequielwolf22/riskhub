@@ -302,6 +302,11 @@ const Api = {
     recomputeAll: () => Api.post('/api/tprm/vendors/recompute-all', {}),
     templates: () => Api.get('/api/tprm/questionnaire-templates'),
     template: (code) => Api.get('/api/tprm/questionnaire-templates/' + encodeURIComponent(code)),
+    customTemplates: () => Api.get('/api/tprm/custom-templates'),
+    customTemplate: (id) => Api.get('/api/tprm/custom-templates/' + id),
+    createCustomTemplate: (d) => Api.post('/api/tprm/custom-templates', d),
+    updateCustomTemplate: (id, d) => Api.patch('/api/tprm/custom-templates/' + id, d),
+    deleteCustomTemplate: (id) => Api.del('/api/tprm/custom-templates/' + id),
   },
   regwatch: {
     status: () => Api.get('/api/regwatch/status'),

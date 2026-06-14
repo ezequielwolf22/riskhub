@@ -151,6 +151,7 @@ const ViewSuppliersHub = {
         { id: 'suppliers', label: 'Proveedores', view: ViewSuppliers, route: 'suppliers' },
         { id: 'assessments', label: 'Evaluaciones', view: ViewVendorAssessments, route: 'vendor-assessments' },
         { id: 'issues', label: 'Hallazgos', view: ViewVendorIssues, route: 'vendor-issues' },
+        { id: 'templates', label: 'Plantillas', view: ViewVendorTemplates, route: 'vendor-templates' },
       ],
     });
   },

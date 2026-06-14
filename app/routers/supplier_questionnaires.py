@@ -2,9 +2,10 @@
 import secrets
 import threading
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
@@ -45,6 +46,29 @@ def _calculate_score(answers: dict) -> int:
     return round(yes_count / len(DEFAULT_QUESTIONS) * 100)
 
 
+def _compute_residual_risk(inherent_level: str, major_nc: int, minor_nc: int) -> str:
+    """Matriz de riesgo residual segun §7.2 del spec RISKHUB_TPRM_QUESTIONNAIRES."""
+    lvl = (inherent_level or "medium").lower()
+    if lvl == "critical":
+        if major_nc >= 3 or minor_nc >= 6:
+            return "critical"
+        if major_nc >= 1 or minor_nc >= 2:
+            return "high"
+        if minor_nc >= 1:
+            return "medium"
+        return "low"
+    if lvl == "high":
+        if major_nc >= 1 or minor_nc >= 3:
+            return "high"
+        if minor_nc >= 1:
+            return "medium"
+        return "low"
+    # medium or lower
+    if major_nc >= 1 or minor_nc >= 3:
+        return "medium"
+    return "low"
+
+
 @router.get("/", response_model=list[SupplierQuestionnaireOut])
 def list_questionnaires(
     db: Session = Depends(get_db),
@@ -76,11 +100,22 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
     if not supplier or not check_org_access(supplier.organization_id, current_user):
         raise HTTPException(404, "Proveedor no encontrado")
     expires = body.expires_at or (datetime.now(timezone.utc) + timedelta(days=30))
-    # TPRM: si se indica una plantilla del sistema, usar sus preguntas (con pesos
-    # y reglas de scoring). Si no, usar el set estandar NIS2/ISO 27001.
+    # TPRM: prioridad de origen de las preguntas:
+    #  1) preguntas ad-hoc (override editado)  2) plantilla personalizada
+    #  3) plantilla del sistema  4) set estandar NIS2/ISO 27001.
     questions = DEFAULT_QUESTIONS
     template_code = None
-    if body.template_code:
+    if body.questions:
+        questions = body.questions
+        template_code = body.template_code
+    elif body.custom_template_id:
+        from app.models import TPRMTemplate
+        tpl = db.query(TPRMTemplate).filter(TPRMTemplate.id == body.custom_template_id).first()
+        if not tpl or not check_org_access(tpl.organization_id, current_user):
+            raise HTTPException(404, "Plantilla no encontrada")
+        questions = tpl.questions or []
+        template_code = f"custom:{tpl.id}"
+    elif body.template_code:
         from app.services import tprm_templates
         tpl = tprm_templates.get_template(body.template_code)
         if not tpl:
@@ -210,6 +245,76 @@ def send_questionnaire(qid: int, request: Request, db: Session = Depends(get_db)
     return {"sent": True, "recipient": recipient, "link": link}
 
 
+# ---- Recoleccion de evidencia (portal del proveedor) ----
+
+_EVIDENCE_EXT = (".pdf", ".docx", ".doc", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".txt", ".csv")
+_EVIDENCE_MAX_BYTES = 15 * 1024 * 1024  # 15 MB
+
+
+def _evidence_dir() -> Path:
+    root = Path("/srv/data/evidence")
+    if not root.parent.exists():
+        root = Path(__file__).parent.parent.parent / "data" / "evidence"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+@router.post("/public/{token}/upload")
+async def upload_public_evidence(
+    token: str,
+    question_id: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """El proveedor sube un fichero de evidencia para una pregunta (sin auth, por token)."""
+    q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.token == token).first()
+    if not q:
+        raise HTTPException(404, "Enlace no valido")
+    now = datetime.now(timezone.utc)
+    if q.expires_at and q.expires_at.replace(tzinfo=timezone.utc) < now:
+        raise HTTPException(410, "Este enlace ha expirado")
+    if q.submitted_at:
+        raise HTTPException(409, "Este cuestionario ya fue respondido")
+
+    fname = (file.filename or "").lower()
+    ext = "." + fname.rsplit(".", 1)[-1] if "." in fname else ""
+    if ext not in _EVIDENCE_EXT:
+        raise HTTPException(400, "Tipo de fichero no permitido para evidencias.")
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "El fichero esta vacio.")
+    if len(content) > _EVIDENCE_MAX_BYTES:
+        raise HTTPException(413, "El fichero supera el limite de 15 MB.")
+
+    # OWASP A08 — validar contenido real (magic bytes) reutilizando el validador de documentos
+    try:
+        from app.routers.documents import _infer_mime, _validate_magic
+        mime = _infer_mime(file.filename or "", file.content_type or "")
+        if not _validate_magic(mime, content):
+            raise HTTPException(400, "El contenido del fichero no coincide con su extension.")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # si el validador no esta disponible, continuar con la allowlist de extension
+
+    import hashlib
+    stored_name = f"{q.token}_{question_id}_{secrets.token_hex(6)}{ext}"
+    dest = _evidence_dir() / stored_name
+    dest.write_bytes(content)
+
+    evidence = dict(q.evidence or {})
+    evidence[question_id] = {
+        "filename": file.filename,
+        "stored_name": stored_name,
+        "size": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "uploaded_at": now.isoformat(),
+    }
+    q.evidence = evidence
+    db.commit()
+    return {"ok": True, "question_id": question_id, "filename": file.filename}
+
+
 # ---- Endpoints publicos (sin autenticacion) ----
 
 @router.get("/public/{token}")
@@ -224,8 +329,8 @@ def get_public_questionnaire(token: str, db: Session = Depends(get_db)):
     if q.submitted_at:
         raise HTTPException(409, "Este cuestionario ya fue respondido")
     supplier = q.supplier
-    # Sanitizar: nunca exponer al proveedor las reglas de scoring ni las pistas
-    # de evaluacion / mapeo a controles internos.
+    # Sanitizar: nunca exponer al proveedor las reglas de scoring, criticity ni
+    # mapeo a controles internos. Si/no/partial es todo lo que ve.
     _public_fields = ("id", "text", "type", "options", "help_text", "requires_evidence", "domain")
     public_questions = [
         {k: qq.get(k) for k in _public_fields if k in qq}
@@ -252,17 +357,49 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     if q.submitted_at:
         raise HTTPException(409, "Este cuestionario ya fue respondido")
     answers = body.get("answers", {})
-    # TPRM: las plantillas del sistema traen pesos y reglas de scoring; si la
+    # TPRM: incorporar al scoring la evidencia ya subida al portal (evita la
+    # penalizacion por falta de evidencia en preguntas que la requieren).
+    scoring_answers = dict(answers)
+    for qid in (q.evidence or {}):
+        scoring_answers[f"{qid}__evidence"] = True
+    # Las plantillas (sistema/personalizadas) traen pesos y reglas de scoring; si la
     # pregunta los incluye, usar el scoring ponderado. Si no, scoring Si/No.
     if q.template_code or any((qq.get("scoring_rules") or qq.get("weight")) for qq in (q.questions or [])):
         from app.services.tprm_scoring_service import score_questionnaire
-        result = score_questionnaire(q.questions or [], answers)
+        result = score_questionnaire(q.questions or [], scoring_answers)
         score = result["score"]
     else:
         score = _calculate_score(answers)
+
+    # Conteo de no-conformidades (Major/Minor) segun criticity de cada pregunta
+    major_nc = 0
+    minor_nc = 0
+    for qq in (q.questions or []):
+        criticity = qq.get("criticity")
+        if not criticity:
+            continue
+        answer = answers.get(qq.get("id", ""), "")
+        nc_val = qq.get("nonconformity_value", "no")
+        answer_str = str(answer).lower()
+        is_nc = answer_str in ("false", "0", "no", str(nc_val).lower())
+        if is_nc:
+            if criticity == "Major":
+                major_nc += 1
+            elif criticity == "Minor":
+                minor_nc += 1
+
+    # Residual risk via matriz del spec §7.2
+    residual_risk_level = _compute_residual_risk(
+        getattr(q.supplier, "residual_risk_level", None) or "medium",
+        major_nc, minor_nc,
+    )
+
     q.answers = answers
     q.score = score
     q.submitted_at = now
+    q.major_nc = major_nc
+    q.minor_nc = minor_nc
+    q.residual_risk_level = residual_risk_level
     # Actualizar postura del proveedor y recalcular TPRM
     if q.supplier:
         q.supplier.score = score

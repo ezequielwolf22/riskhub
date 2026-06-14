@@ -585,8 +585,10 @@ const ViewSuppliers = (() => {
   async function _openSeqForm() {
     let suppliers = [];
     let templates = [];
+    let customTpls = [];
     try { suppliers = await Api.suppliers.list(); } catch (_) {}
     try { templates = await Api.tprm.templates(); } catch (_) {}
+    try { customTpls = await Api.tprm.customTemplates(); } catch (_) {}
     UI.modal('Nuevo cuestionario de seguridad', `
       <div><label>Proveedor *</label>
         <select id="sq-sup">
@@ -597,7 +599,12 @@ const ViewSuppliers = (() => {
       <div><label>Plantilla TPRM</label>
         <select id="sq-template">
           <option value="">Estandar NIS2/ISO 27001 (10 preguntas)</option>
-          ${templates.map(t => `<option value="${UI.esc(t.code)}">${UI.esc(t.name)} (${t.question_count} preguntas)</option>`).join('')}
+          <optgroup label="Plantillas del sistema">
+          ${templates.map(t => `<option value="sys:${UI.esc(t.code)}">${UI.esc(t.name)} (${t.question_count} preguntas)</option>`).join('')}
+          </optgroup>
+          ${customTpls.length ? `<optgroup label="Mis plantillas">
+          ${customTpls.map(t => `<option value="custom:${t.id}">${UI.esc(t.name)} (${(t.questions||[]).length} preguntas)</option>`).join('')}
+          </optgroup>` : ''}
         </select>
       </div>
       <div><label>Titulo *</label>
@@ -623,12 +630,14 @@ const ViewSuppliers = (() => {
       if (!supId) { UI.toast('Selecciona un proveedor','error'); return; }
       if (!title) { UI.toast('El titulo es obligatorio','error'); return; }
       const expires = document.getElementById('sq-expires').value;
+      const tplVal = document.getElementById('sq-template').value || '';
       const body = {
         supplier_id: parseInt(supId),
         title,
         expires_at: expires || null,
         notes: document.getElementById('sq-notes').value.trim(),
-        template_code: document.getElementById('sq-template').value || null,
+        template_code: tplVal.startsWith('sys:') ? tplVal.slice(4) : null,
+        custom_template_id: tplVal.startsWith('custom:') ? parseInt(tplVal.slice(7)) : null,
       };
       try {
         const q = await Api.supplier_questionnaires.create(body);

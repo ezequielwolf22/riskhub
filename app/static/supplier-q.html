@@ -8,32 +8,66 @@
 <link rel="icon" type="image/svg+xml" href="/img/logo.svg">
 <style>
   body { background: var(--bg-1); color: var(--text-base); font-family: Inter, system-ui, sans-serif; margin: 0; padding: 0; }
-  .sq-shell { max-width: 680px; margin: 40px auto; padding: 0 16px 60px; }
-  .sq-header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
-  .sq-logo { width: 36px; height: 36px; }
-  .sq-brand { font-size: 20px; font-weight: 700; color: var(--brand-purple); }
-  .sq-card { background: var(--bg-0); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 20px; }
-  .sq-title { font-size: 22px; font-weight: 700; margin: 0 0 6px; }
-  .sq-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 20px; }
+  .sq-shell { max-width: 760px; margin: 32px auto; padding: 0 16px 80px; }
+  .sq-header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+  .sq-logo { width: 32px; height: 32px; }
+  .sq-brand { font-size: 18px; font-weight: 700; color: var(--brand-purple); }
+  .sq-card { background: var(--bg-0); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 16px; }
+  /* Progress */
+  .sq-progress-wrap { margin-bottom: 20px; }
+  .sq-progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .sq-progress { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .sq-progress-bar { height: 100%; background: var(--brand-purple); transition: width .4s; }
+  /* Block header */
+  .sq-block-title { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: var(--text-base); }
+  .sq-block-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 20px; }
+  /* Questions */
   .sq-question { padding: 16px 0; border-bottom: 1px solid var(--border); }
   .sq-question:last-child { border-bottom: none; padding-bottom: 0; }
-  .sq-q-text { font-size: 14px; font-weight: 500; margin: 0 0 10px; line-height: 1.5; }
-  .sq-q-num { display: inline-block; background: var(--brand-purple); color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 11px; font-weight: 700; margin-right: 8px; flex-shrink: 0; }
-  .sq-radios { display: flex; gap: 24px; }
-  .sq-radios label { display: flex; align-items: center; gap: 6px; font-size: 14px; cursor: pointer; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); transition: background .15s, border-color .15s; }
-  .sq-radios label:hover { background: var(--brand-purple-4); border-color: var(--brand-purple); }
+  .sq-q-text { font-size: 14px; font-weight: 500; margin: 0 0 10px; line-height: 1.6; display: flex; gap: 10px; }
+  .sq-q-num { display: inline-flex; align-items: center; justify-content: center; background: var(--brand-purple); color: #fff; border-radius: 50%; width: 24px; height: 24px; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .sq-radios { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .sq-radios label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); transition: background .15s, border-color .15s; }
+  .sq-radios label:hover { background: rgba(89,0,141,.06); border-color: var(--brand-purple); }
+  .sq-radios label:has(input[type=radio]:checked) { background: rgba(89,0,141,.1); border-color: var(--brand-purple); }
   .sq-radios input[type=radio]:checked + span { color: var(--brand-purple); font-weight: 600; }
-  .sq-radios label:has(input[type=radio]:checked) { background: var(--brand-purple-4); border-color: var(--brand-purple); }
-  .sq-submit { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; background: var(--brand-purple); color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: opacity .2s; margin-top: 8px; }
-  .sq-submit:disabled { opacity: .5; cursor: not-allowed; }
-  .sq-progress { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 20px; overflow: hidden; }
-  .sq-progress-bar { height: 100%; background: var(--brand-purple); transition: width .3s; }
-  .sq-msg { text-align: center; padding: 40px 20px; }
-  .sq-msg-icon { font-size: 48px; margin-bottom: 16px; }
-  .sq-msg-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-  .sq-msg-sub { font-size: 15px; color: var(--text-muted); }
-  .sq-score-badge { display: inline-block; padding: 8px 24px; border-radius: 8px; font-size: 28px; font-weight: 800; color: #fff; margin: 16px 0; }
-  .sq-expires { font-size: 12px; color: var(--text-muted); margin-top: 8px; }
+  /* Scale */
+  .sq-scale { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sq-scale label { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; cursor: pointer; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); }
+  .sq-scale label:hover { background: rgba(89,0,141,.06); border-color: var(--brand-purple); }
+  .sq-scale label:has(input:checked) { background: rgba(89,0,141,.1); border-color: var(--brand-purple); }
+  .sq-scale .sq-score-val { font-size: 16px; font-weight: 700; }
+  /* Textarea */
+  .sq-textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical; background: var(--bg-0); color: var(--text-base); box-sizing: border-box; }
+  /* Evidence */
+  .sq-evidence-zone { margin-top: 10px; padding: 10px 14px; background: rgba(89,0,141,.04); border: 1px dashed var(--brand-purple); border-radius: 8px; }
+  .sq-evidence-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+  .sq-evidence-label strong { color: var(--brand-purple); }
+  .sq-evidence-file { font-size: 12px; }
+  .sq-evidence-input { display: none; }
+  .sq-evidence-btn { font-size: 12px; padding: 4px 12px; border: 1px solid var(--brand-purple); border-radius: 5px; background: transparent; color: var(--brand-purple); cursor: pointer; }
+  .sq-evidence-btn:hover { background: rgba(89,0,141,.08); }
+  .sq-evidence-status { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .sq-evidence-ok { color: #16a34a; font-size: 11px; margin-top: 4px; }
+  /* Navigation */
+  .sq-nav { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin-top: 4px; }
+  .sq-btn-prev { padding: 10px 22px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-0); color: var(--text-base); font-size: 14px; font-weight: 500; cursor: pointer; }
+  .sq-btn-next { padding: 10px 28px; border: none; border-radius: 8px; background: var(--brand-purple); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .sq-btn-next:disabled, .sq-btn-prev:disabled { opacity: .45; cursor: not-allowed; }
+  /* Messages */
+  .sq-msg { text-align: center; padding: 48px 20px; }
+  .sq-msg-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .sq-msg-sub { font-size: 14px; color: var(--text-muted); }
+  .sq-score-badge { display: inline-block; padding: 10px 28px; border-radius: 10px; font-size: 32px; font-weight: 800; color: #fff; margin: 16px 0; }
+  /* Sidebar (block index) */
+  .sq-layout { display: grid; grid-template-columns: 200px 1fr; gap: 20px; }
+  .sq-sidebar { font-size: 12px; }
+  .sq-sidebar-title { font-weight: 600; color: var(--text-muted); margin-bottom: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .sq-sidebar-item { padding: 6px 10px; border-radius: 6px; margin-bottom: 2px; cursor: default; display: flex; align-items: center; gap: 6px; }
+  .sq-sidebar-item.done { color: #16a34a; }
+  .sq-sidebar-item.active { background: rgba(89,0,141,.1); color: var(--brand-purple); font-weight: 600; }
+  .sq-sidebar-item.pending { color: var(--text-muted); }
+  @media(max-width:640px) { .sq-layout { grid-template-columns: 1fr; } .sq-sidebar { display: none; } }
 </style>
 </head>
 <body>
@@ -41,7 +75,7 @@
   <div class="sq-header">
     <img src="/img/logo.svg" alt="RiskHub" class="sq-logo">
     <span class="sq-brand">RiskHub</span>
-    <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">Cuestionario de evaluacion de seguridad</span>
+    <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">Evaluacion de seguridad de proveedores</span>
   </div>
   <div id="sq-root"></div>
 </div>
@@ -50,135 +84,350 @@
 (function() {
   const root = document.getElementById('sq-root');
 
-  function getToken() {
-    const params = new URLSearchParams(location.search);
-    return params.get('token') || '';
+  // --- Domain -> label mapping ---
+  const DOMAIN_LABELS = {
+    access_control: 'Identidad y Control de Acceso',
+    governance: 'Gobernanza y Formacion',
+    privacy: 'Proteccion de Datos Personales',
+    operations_security: 'Seguridad de Endpoints y Operaciones',
+    incident_management: 'Notificacion de Incidentes',
+    network_security: 'Infraestructura y Red',
+    cryptography: 'Datos y Criptografia',
+    business_continuity: 'Copias de Seguridad y Continuidad',
+    resilience_testing: 'Ejercicios y Pruebas de Resiliencia',
+    compliance_legal: 'Cumplimiento y Normativa',
+    secure_development: 'Desarrollo Seguro',
+    supplier_chain: 'Cadena de Suministro',
+    ai_governance: 'Gobernanza de Inteligencia Artificial',
+    risk_management: 'Gestion del Riesgo',
+    physical_security: 'Seguridad Fisica',
+  };
+
+  function domainLabel(d) {
+    return DOMAIN_LABELS[d] || d || 'General';
   }
 
   function scoreColor(s) {
-    if (s >= 80) return '#22C55E';
-    if (s >= 60) return '#F59E0B';
-    if (s >= 40) return '#EF4444';
-    return '#7C3AED';
+    if (s >= 80) return '#16a34a';
+    if (s >= 60) return '#f59e0b';
+    if (s >= 40) return '#ef4444';
+    return '#7c3aed';
+  }
+
+  function esc(t) {
+    if (t === null || t === undefined) return '';
+    return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function getToken() {
+    return new URLSearchParams(location.search).get('token') || '';
   }
 
   function showError(title, msg) {
-    root.innerHTML = `
-      <div class="sq-card sq-msg">
-        <div class="sq-msg-icon">⚠️</div>
-        <div class="sq-msg-title">${title}</div>
-        <div class="sq-msg-sub">${msg}</div>
-      </div>`;
+    root.innerHTML = `<div class="sq-card sq-msg"><div style="font-size:48px;margin-bottom:12px;">⚠️</div><div class="sq-msg-title">${esc(title)}</div><div class="sq-msg-sub">${esc(msg)}</div></div>`;
   }
 
   function showSuccess(score) {
     root.innerHTML = `
       <div class="sq-card sq-msg">
-        <div class="sq-msg-icon">✅</div>
-        <div class="sq-msg-title">Cuestionario enviado</div>
-        <div class="sq-msg-sub">Gracias por completar la evaluacion de seguridad.</div>
-        <div class="sq-score-badge" style="background:${scoreColor(score)};">${score}/100</div>
-        <div class="sq-msg-sub">Esta puntuacion refleja el nivel de madurez de seguridad reportado.<br>El equipo de seguridad revisara sus respuestas.</div>
+        <div style="font-size:48px;margin-bottom:12px;">✅</div>
+        <div class="sq-msg-title">Cuestionario enviado correctamente</div>
+        <div class="sq-msg-sub">Gracias por completar la evaluacion de seguridad. El equipo revisara sus respuestas.</div>
+        ${score !== null ? `<div class="sq-score-badge" style="background:${scoreColor(score)};">${score}/100</div>` : ''}
+        <div class="sq-msg-sub" style="margin-top:8px;font-size:13px;">Puede cerrar esta ventana.</div>
       </div>`;
   }
 
+  // ---- State ----
+  let _token = '';
+  let _data = null;
+  let _blocks = [];       // [{label, questions:[{id,text,type,...}]}]
+  let _blockIdx = 0;
+  let _answers = {};      // {qid: value}
+  let _evidence = {};     // {qid: {filename, uploaded:true}}
+  let _uploadInProgress = {};
+
+  // ---- Group questions by domain ----
+  function buildBlocks(questions) {
+    const map = new Map();
+    for (const q of questions) {
+      const dom = q.domain || 'general';
+      if (!map.has(dom)) map.set(dom, []);
+      map.get(dom).push(q);
+    }
+    return Array.from(map.entries()).map(([dom, qs]) => ({
+      domain: dom,
+      label: domainLabel(dom),
+      questions: qs,
+    }));
+  }
+
+  // ---- Render sidebar ----
+  function renderSidebar(container) {
+    if (!container) return;
+    container.innerHTML = `
+      <div class="sq-sidebar-title">Bloques</div>
+      ${_blocks.map((b, i) => {
+        const allAnswered = b.questions.every(q => _answers[q.id] !== undefined);
+        const cls = i === _blockIdx ? 'active' : (allAnswered ? 'done' : 'pending');
+        const icon = cls === 'done' ? '✓' : (cls === 'active' ? '▶' : '○');
+        return `<div class="sq-sidebar-item ${cls}">${icon} ${esc(b.label)}</div>`;
+      }).join('')}
+    `;
+  }
+
+  // ---- Render a block of questions ----
+  function renderBlock() {
+    if (!_data) return;
+    const block = _blocks[_blockIdx];
+    const totalBlocks = _blocks.length;
+    const totalAnswered = _blocks.reduce((n, b) => n + b.questions.filter(q => _answers[q.id] !== undefined).length, 0);
+    const totalQs = _blocks.reduce((n, b) => n + b.questions.length, 0);
+    const pct = totalQs ? Math.round(totalAnswered / totalQs * 100) : 0;
+    const expires = _data.expires_at ? new Date(_data.expires_at).toLocaleDateString('es-ES', {day:'2-digit',month:'long',year:'numeric'}) : null;
+
+    root.innerHTML = `
+      <div class="sq-card" style="margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:600;">${esc(_data.title || 'Cuestionario de seguridad')}</div>
+        <div style="font-size:12px;color:var(--text-muted);">Proveedor: <strong>${esc(_data.supplier_name)}</strong>${expires ? ` &nbsp;·&nbsp; Expira: ${esc(expires)}` : ''}</div>
+      </div>
+      <div class="sq-layout" id="sq-layout">
+        <div class="sq-sidebar" id="sq-sidebar"></div>
+        <div>
+          <div class="sq-progress-wrap">
+            <div class="sq-progress-label">
+              <span>Bloque ${_blockIdx + 1} de ${totalBlocks} — ${esc(block.label)}</span>
+              <span>${pct}% completado</span>
+            </div>
+            <div class="sq-progress"><div class="sq-progress-bar" style="width:${pct}%;"></div></div>
+          </div>
+          <div class="sq-card">
+            <div class="sq-block-title">${esc(block.label)}</div>
+            <div class="sq-block-sub">Responda todas las preguntas de este bloque antes de continuar.</div>
+            <div id="sq-questions">
+              ${block.questions.map((q, i) => renderQuestion(q, i)).join('')}
+            </div>
+          </div>
+          <div class="sq-card sq-nav">
+            <button class="sq-btn-prev" id="sq-prev" ${_blockIdx === 0 ? 'disabled' : ''}>← Anterior</button>
+            <button class="sq-btn-next" id="sq-next">
+              ${_blockIdx === totalBlocks - 1 ? 'Enviar respuestas' : 'Siguiente →'}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    renderSidebar(document.getElementById('sq-sidebar'));
+    wireEvents(block);
+  }
+
+  function renderQuestion(q, localIdx) {
+    const globalIdx = _blocks.slice(0, _blockIdx).reduce((n, b) => n + b.questions.length, 0) + localIdx;
+    const evid = _evidence[q.id];
+    let inputHtml = '';
+
+    if (q.type === 'yes_no') {
+      inputHtml = `<div class="sq-radios">
+        ${['yes','no'].map(v => `<label><input type="radio" name="q_${q.id}" value="${v}" ${_answers[q.id] === v ? 'checked' : ''}><span>${v==='yes'?'Sí':'No'}</span></label>`).join('')}
+        <label><input type="radio" name="q_${q.id}" value="na" ${_answers[q.id] === 'na' ? 'checked' : ''}><span>N/A</span></label>
+      </div>`;
+    } else if (q.type === 'yes_no_partial' || !q.type) {
+      inputHtml = `<div class="sq-radios">
+        ${[['yes','Sí'],['partial','Parcialmente'],['no','No']].map(([v,l]) => `<label><input type="radio" name="q_${q.id}" value="${v}" ${_answers[q.id] === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+        <label><input type="radio" name="q_${q.id}" value="na" ${_answers[q.id] === 'na' ? 'checked' : ''}><span>N/A</span></label>
+      </div>`;
+    } else if (q.type === 'scale_1_5') {
+      inputHtml = `<div class="sq-scale">
+        ${['1','2','3','4','5'].map(v => `<label><input type="radio" name="q_${q.id}" value="${v}" ${_answers[q.id] === v ? 'checked' : ''}><span class="sq-score-val">${v}</span><span>${{1:'Muy bajo',2:'Bajo',3:'Medio',4:'Alto',5:'Muy alto'}[v]}</span></label>`).join('')}
+      </div>`;
+    } else if (q.type === 'single_choice' && q.options) {
+      inputHtml = `<div class="sq-radios">
+        ${q.options.map(opt => `<label><input type="radio" name="q_${q.id}" value="${esc(opt)}" ${_answers[q.id] === opt ? 'checked' : ''}><span>${esc(opt)}</span></label>`).join('')}
+      </div>`;
+    } else if (q.type === 'text_long') {
+      inputHtml = `<textarea class="sq-textarea" name="q_${q.id}" rows="3" placeholder="Respuesta...">${esc(_answers[q.id] || '')}</textarea>`;
+    } else {
+      // fallback: yes_no_partial
+      inputHtml = `<div class="sq-radios">
+        ${[['yes','Sí'],['partial','Parcialmente'],['no','No']].map(([v,l]) => `<label><input type="radio" name="q_${q.id}" value="${v}" ${_answers[q.id] === v ? 'checked' : ''}><span>${l}</span></label>`).join('')}
+        <label><input type="radio" name="q_${q.id}" value="na" ${_answers[q.id] === 'na' ? 'checked' : ''}><span>N/A</span></label>
+      </div>`;
+    }
+
+    const evidenceHtml = q.requires_evidence ? `
+      <div class="sq-evidence-zone" id="evid-zone-${esc(q.id)}">
+        <div class="sq-evidence-label"><strong>Evidencia requerida:</strong> adjunte un documento que respalde su respuesta (PDF, DOCX, XLSX, PNG, JPG — max 15 MB).</div>
+        ${evid && evid.uploaded ? `
+          <div class="sq-evidence-ok">✓ Fichero subido: ${esc(evid.filename)}</div>
+          <button class="sq-evidence-btn" style="margin-top:4px;" data-replace="${esc(q.id)}">Reemplazar</button>
+        ` : `
+          <button class="sq-evidence-btn" data-upload="${esc(q.id)}">Adjuntar documento</button>
+          <input type="file" class="sq-evidence-input" id="evid-input-${esc(q.id)}" accept=".pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg,.txt,.csv">
+          <div class="sq-evidence-status" id="evid-status-${esc(q.id)}"></div>
+        `}
+      </div>` : '';
+
+    return `
+      <div class="sq-question" id="qblock-${esc(q.id)}">
+        <div class="sq-q-text"><span class="sq-q-num">${globalIdx + 1}</span><span>${esc(q.text || q.id)}</span></div>
+        ${q.help_text ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${esc(q.help_text)}</div>` : ''}
+        ${inputHtml}
+        ${evidenceHtml}
+      </div>`;
+  }
+
+  // ---- Wire change listeners ----
+  function wireEvents(block) {
+    // Radio/checkbox changes
+    block.questions.forEach(q => {
+      if (q.type === 'text_long') {
+        const ta = document.querySelector(`textarea[name="q_${q.id}"]`);
+        if (ta) ta.oninput = () => { _answers[q.id] = ta.value || undefined; };
+      } else {
+        document.querySelectorAll(`input[name="q_${q.id}"]`).forEach(inp => {
+          inp.onchange = () => { _answers[q.id] = inp.value; };
+        });
+      }
+      // Evidence upload
+      if (q.requires_evidence) {
+        const uploadBtn = document.querySelector(`[data-upload="${q.id}"]`);
+        const replaceBtn = document.querySelector(`[data-replace="${q.id}"]`);
+        if (uploadBtn) uploadBtn.onclick = () => triggerUpload(q.id);
+        if (replaceBtn) replaceBtn.onclick = () => {
+          delete _evidence[q.id];
+          renderBlock();
+        };
+        const fileInput = document.getElementById(`evid-input-${q.id}`);
+        if (fileInput) fileInput.onchange = () => uploadEvidence(q.id, fileInput);
+      }
+    });
+
+    // Prev/Next
+    const prevBtn = document.getElementById('sq-prev');
+    const nextBtn = document.getElementById('sq-next');
+    if (prevBtn) prevBtn.onclick = goBack;
+    if (nextBtn) nextBtn.onclick = goNext;
+  }
+
+  function triggerUpload(qid) {
+    const input = document.getElementById(`evid-input-${qid}`);
+    if (input) input.click();
+  }
+
+  async function uploadEvidence(qid, fileInput) {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById(`evid-status-${qid}`);
+    if (statusEl) statusEl.textContent = 'Subiendo...';
+    _uploadInProgress[qid] = true;
+
+    const fd = new FormData();
+    fd.append('question_id', qid);
+    fd.append('file', file);
+
+    try {
+      const resp = await fetch(`/api/supplier-questionnaires/public/${encodeURIComponent(_token)}/upload`, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        if (statusEl) statusEl.textContent = 'Error: ' + (err.detail || 'No se pudo subir el fichero.');
+        return;
+      }
+      _evidence[qid] = { filename: file.name, uploaded: true };
+      delete _uploadInProgress[qid];
+      renderBlock();
+    } catch (e) {
+      if (statusEl) statusEl.textContent = 'Error de conexion al subir el fichero.';
+      delete _uploadInProgress[qid];
+    }
+  }
+
+  function blockComplete(block) {
+    return block.questions.every(q => _answers[q.id] !== undefined);
+  }
+
+  function goBack() {
+    if (_blockIdx > 0) { _blockIdx--; renderBlock(); scrollTo(0, 0); }
+  }
+
+  function goNext() {
+    const block = _blocks[_blockIdx];
+    // Check all answered
+    const unanswered = block.questions.filter(q => _answers[q.id] === undefined);
+    if (unanswered.length) {
+      const firstId = unanswered[0].id;
+      const el = document.getElementById(`qblock-${firstId}`);
+      if (el) { el.scrollIntoView({behavior:'smooth'}); el.style.outline = '2px solid var(--brand-orange)'; setTimeout(() => el.style.outline = '', 2000); }
+      alert(`Por favor responde todas las preguntas de este bloque antes de continuar. Faltan ${unanswered.length} respuesta(s).`);
+      return;
+    }
+    // Check uploads in progress
+    if (Object.keys(_uploadInProgress).length) {
+      alert('Espera a que terminen todas las subidas de evidencia.');
+      return;
+    }
+    if (_blockIdx < _blocks.length - 1) {
+      _blockIdx++;
+      renderBlock();
+      scrollTo(0, 0);
+    } else {
+      submitAll();
+    }
+  }
+
+  async function submitAll() {
+    const btn = document.getElementById('sq-next');
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+
+    try {
+      const resp = await fetch(`/api/supplier-questionnaires/public/${encodeURIComponent(_token)}/submit`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ answers: _answers }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert(err.detail || 'Error al enviar. Intenta de nuevo.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Enviar respuestas'; }
+        return;
+      }
+      const result = await resp.json();
+      showSuccess(result.score !== undefined ? result.score : null);
+    } catch (e) {
+      alert('Error de conexion. Verifica tu conexion e intenta de nuevo.');
+      if (btn) { btn.disabled = false; btn.textContent = 'Enviar respuestas'; }
+    }
+  }
+
+  // ---- Load ----
   async function loadQuestionnaire(token) {
-    root.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Cargando cuestionario...</div>';
-    let data;
+    _token = token;
+    root.innerHTML = '<div style="text-align:center;padding:48px;color:var(--text-muted);">Cargando cuestionario...</div>';
     try {
       const resp = await fetch('/api/supplier-questionnaires/public/' + encodeURIComponent(token));
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
-        if (resp.status === 404) { showError('Enlace no valido', 'Este enlace de cuestionario no existe o ha sido eliminado.'); return; }
-        if (resp.status === 410) { showError('Enlace expirado', 'Este cuestionario ha expirado. Contacta con tu evaluador para obtener un nuevo enlace.'); return; }
-        if (resp.status === 409) { showError('Ya respondido', 'Este cuestionario ya fue completado anteriormente. No es posible responderlo de nuevo.'); return; }
+        if (resp.status === 404) { showError('Enlace no valido', 'Este enlace no existe o ha sido eliminado.'); return; }
+        if (resp.status === 410) { showError('Enlace expirado', 'Este cuestionario ha expirado. Contacta con el evaluador.'); return; }
+        if (resp.status === 409) { showError('Ya respondido', 'Este cuestionario ya fue completado. No es posible responderlo de nuevo.'); return; }
         showError('Error', err.detail || 'Error al cargar el cuestionario.');
         return;
       }
-      data = await resp.json();
+      _data = await resp.json();
     } catch (e) {
-      showError('Error de conexion', 'No fue posible conectar con el servidor. Verifica tu conexion e intenta de nuevo.');
+      showError('Error de conexion', 'No fue posible conectar con el servidor.');
       return;
     }
 
-    const questions = data.questions || [];
-    const expires = data.expires_at ? new Date(data.expires_at).toLocaleDateString('es-ES', {day:'2-digit',month:'long',year:'numeric'}) : null;
+    const questions = _data.questions || [];
+    if (!questions.length) { showError('Cuestionario vacio', 'Este cuestionario no tiene preguntas.'); return; }
 
-    function answered() {
-      return questions.filter((_, i) => document.querySelector(`input[name="q${i}"]:checked`)).length;
-    }
-
-    function updateProgress() {
-      const pct = Math.round(answered() / questions.length * 100);
-      const bar = document.getElementById('sq-pbar');
-      if (bar) { bar.style.width = pct + '%'; }
-      const btn = document.getElementById('sq-btn');
-      if (btn) { btn.disabled = answered() < questions.length; }
-    }
-
-    root.innerHTML = `
-      <div class="sq-card">
-        <div class="sq-title">${data.title || 'Cuestionario de seguridad'}</div>
-        <div class="sq-sub">
-          Organizacion evaluada: <strong>${data.supplier_name || '-'}</strong>
-          ${expires ? ` &nbsp;|&nbsp; <span class="sq-expires">Expira el ${expires}</span>` : ''}
-        </div>
-        <div class="sq-progress"><div class="sq-progress-bar" id="sq-pbar" style="width:0%;"></div></div>
-        <div id="sq-questions">
-          ${questions.map((q, i) => `
-            <div class="sq-question" id="qblock-${i}">
-              <div class="sq-q-text"><span class="sq-q-num">${i+1}</span>${q.text || q.id}</div>
-              <div class="sq-radios">
-                <label><input type="radio" name="q${i}" value="yes" onchange="sqProgress()"><span>Si</span></label>
-                <label><input type="radio" name="q${i}" value="no" onchange="sqProgress()"><span>No</span></label>
-                <label><input type="radio" name="q${i}" value="partial" onchange="sqProgress()"><span>Parcialmente</span></label>
-              </div>
-            </div>`).join('')}
-        </div>
-      </div>
-      <div class="sq-card">
-        <button class="sq-submit" id="sq-btn" disabled onclick="sqSubmit()">Enviar respuestas</button>
-        <p style="font-size:11px;color:var(--text-muted);text-align:center;margin:10px 0 0;">
-          Responde todas las preguntas antes de enviar. Esta accion no se puede deshacer.
-        </p>
-      </div>`;
-
-    window.sqProgress = updateProgress;
-
-    window.sqSubmit = async function() {
-      if (answered() < questions.length) {
-        alert('Por favor responde todas las preguntas antes de enviar.');
-        return;
-      }
-      const answers = {};
-      questions.forEach((q, i) => {
-        const val = document.querySelector(`input[name="q${i}"]:checked`)?.value;
-        answers[q.id] = val === 'yes' ? true : val === 'partial' ? 'partial' : false;
-      });
-      const btn = document.getElementById('sq-btn');
-      btn.disabled = true;
-      btn.textContent = 'Enviando...';
-      try {
-        const resp = await fetch('/api/supplier-questionnaires/public/' + encodeURIComponent(token) + '/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answers }),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          alert(err.detail || 'Error al enviar. Intenta de nuevo.');
-          btn.disabled = false;
-          btn.textContent = 'Enviar respuestas';
-          return;
-        }
-        const result = await resp.json();
-        showSuccess(result.score || 0);
-      } catch (e) {
-        alert('Error de conexion al enviar. Verifica tu conexion e intenta de nuevo.');
-        btn.disabled = false;
-        btn.textContent = 'Enviar respuestas';
-      }
-    };
+    _blocks = buildBlocks(questions);
+    _blockIdx = 0;
+    renderBlock();
   }
 
   const token = getToken();

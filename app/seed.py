@@ -440,6 +440,12 @@ def _migrate_columns() -> None:
         # v3.7.0 — TPRM: evaluacion IA del cuestionario
         ("ALTER TABLE supplier_questionnaires ADD COLUMN ai_review JSON", "supplier_questionnaires", "ai_review"),
         ("ALTER TABLE supplier_questionnaires ADD COLUMN ai_reviewed_at DATETIME", "supplier_questionnaires", "ai_reviewed_at"),
+        # v3.7.2 — TPRM: recoleccion de evidencia en el portal del proveedor
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN evidence JSON", "supplier_questionnaires", "evidence"),
+        # v3.8.0 — TPRM: scoring no-conformidades y riesgo residual
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN major_nc INTEGER", "supplier_questionnaires", "major_nc"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN minor_nc INTEGER", "supplier_questionnaires", "minor_nc"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN residual_risk_level VARCHAR(16)", "supplier_questionnaires", "residual_risk_level"),
         # v3.8.0 — BCM: tabla de interconexiones tecnicas en dependencias
         ("ALTER TABLE bcp_dependencies ADD COLUMN connection_type VARCHAR(32)", "bcp_dependencies", "connection_type"),
         ("ALTER TABLE bcp_dependencies ADD COLUMN protocol VARCHAR(32)", "bcp_dependencies", "protocol"),

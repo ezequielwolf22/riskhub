@@ -15,7 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Supplier, SupplierTier, User
+from app.models import Supplier, SupplierTier, TPRMTemplate, User
+from app.schemas import TPRMTemplateCreate, TPRMTemplateOut, TPRMTemplateUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services import tprm_scoring_service as scoring
 from app.services import tprm_templates
@@ -155,3 +156,89 @@ def get_questionnaire_template(code: str, current_user: User = Depends(get_curre
     if not tpl:
         raise HTTPException(404, "Plantilla no encontrada")
     return tpl
+
+
+# ---------- Plantillas personalizadas (editables por el cliente) (§4.5) ----------
+
+@router.get("/custom-templates", response_model=list[TPRMTemplateOut])
+def list_custom_templates(db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """Lista las plantillas personalizadas de la organizacion."""
+    return (
+        filter_by_org(db.query(TPRMTemplate), TPRMTemplate, current_user)
+        .order_by(TPRMTemplate.updated_at.desc().nullslast(), TPRMTemplate.id.desc())
+        .all()
+    )
+
+
+@router.get("/custom-templates/{tid}", response_model=TPRMTemplateOut)
+def get_custom_template(tid: int, db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    t = db.query(TPRMTemplate).filter(TPRMTemplate.id == tid).first()
+    if not t or not check_org_access(t.organization_id, current_user):
+        raise HTTPException(404, "Plantilla no encontrada")
+    return t
+
+
+@router.post("/custom-templates", response_model=TPRMTemplateOut, status_code=201)
+def create_custom_template(body: TPRMTemplateCreate, db: Session = Depends(get_db),
+                           current_user: User = Depends(require_analyst)):
+    """Crea una plantilla editable, opcionalmente clonando una del sistema."""
+    name = body.name
+    description = body.description
+    framework_codes = body.framework_codes
+    questions = body.questions
+    created_from = None
+    if body.from_system_code:
+        sys_tpl = tprm_templates.get_template(body.from_system_code)
+        if not sys_tpl:
+            raise HTTPException(404, "Plantilla del sistema no encontrada")
+        created_from = sys_tpl["code"]
+        name = name or f"{sys_tpl['name']} (copia)"
+        description = description or sys_tpl.get("description")
+        framework_codes = framework_codes or sys_tpl.get("framework_codes")
+        # Copia profunda de las preguntas para poder editarlas sin afectar al original
+        questions = questions if questions is not None else [dict(q) for q in sys_tpl["questions"]]
+    if not name:
+        raise HTTPException(400, "El nombre es obligatorio")
+    if questions is None:
+        questions = []
+    t = TPRMTemplate(
+        organization_id=current_user.organization_id,
+        name=name,
+        description=description,
+        framework_codes=framework_codes,
+        questions=questions,
+        created_from=created_from,
+        created_by_id=current_user.id,
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    log_action(db, current_user.id, "create", "tprm_template", str(t.id), {"name": t.name})
+    return t
+
+
+@router.patch("/custom-templates/{tid}", response_model=TPRMTemplateOut)
+def update_custom_template(tid: int, body: TPRMTemplateUpdate, db: Session = Depends(get_db),
+                           current_user: User = Depends(require_analyst)):
+    t = db.query(TPRMTemplate).filter(TPRMTemplate.id == tid).first()
+    if not t or not check_org_access(t.organization_id, current_user):
+        raise HTTPException(404, "Plantilla no encontrada")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(t, field, value)
+    db.commit()
+    db.refresh(t)
+    log_action(db, current_user.id, "update", "tprm_template", str(t.id))
+    return t
+
+
+@router.delete("/custom-templates/{tid}", status_code=204)
+def delete_custom_template(tid: int, db: Session = Depends(get_db),
+                           current_user: User = Depends(require_analyst)):
+    t = db.query(TPRMTemplate).filter(TPRMTemplate.id == tid).first()
+    if not t or not check_org_access(t.organization_id, current_user):
+        raise HTTPException(404, "Plantilla no encontrada")
+    log_action(db, current_user.id, "delete", "tprm_template", str(tid), {"name": t.name})
+    db.delete(t)
+    db.commit()

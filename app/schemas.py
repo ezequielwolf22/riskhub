@@ -952,7 +952,36 @@ class SupplierQuestionnaireCreate(BaseModel):
     title: str
     notes: Optional[str] = None
     expires_at: Optional[datetime] = None
-    template_code: Optional[str] = None   # TPRM: plantilla del sistema a usar
+    template_code: Optional[str] = None       # TPRM: plantilla del sistema a usar
+    custom_template_id: Optional[int] = None  # TPRM: plantilla personalizada (editable) a usar
+    questions: Optional[list[dict]] = None    # TPRM: preguntas ad-hoc (override de la plantilla)
+
+
+# ---------- TPRM: PLANTILLAS EDITABLES ----------
+class TPRMTemplateCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    framework_codes: Optional[list[str]] = None
+    questions: Optional[list[dict]] = None
+    from_system_code: Optional[str] = None   # clona una plantilla del sistema
+
+
+class TPRMTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    framework_codes: Optional[list[str]] = None
+    questions: Optional[list[dict]] = None
+
+
+class TPRMTemplateOut(ORMBase):
+    id: int
+    name: str
+    description: Optional[str]
+    framework_codes: Optional[list[str]]
+    questions: Optional[list[dict]]
+    created_from: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class SupplierQuestionnaireOut(ORMBase):
@@ -971,6 +1000,9 @@ class SupplierQuestionnaireOut(ORMBase):
     notes: Optional[str]
     ai_review: Optional[dict] = None
     ai_reviewed_at: Optional[datetime] = None
+    major_nc: Optional[int] = None
+    minor_nc: Optional[int] = None
+    residual_risk_level: Optional[str] = None
     created_at: datetime
 
 
