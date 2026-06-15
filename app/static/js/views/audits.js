@@ -37,52 +37,65 @@ const ViewAudits = (() => {
           <h1 class="page-title">Auditoria Interna</h1>
           <p class="page-sub">Programa de auditorias — ISO 27001 cl. 9.2</p>
         </div>
-        <button class="btn btn-primary" id="btn-new-aud">+ Nueva auditoria</button>
-      </div>
-
-      <div class="stats-row" id="aud-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;"></div>
-
-      <!-- Zona de importacion de informes siempre visible -->
-      <div style="border:2px dashed var(--brand-purple);border-radius:12px;padding:28px 24px;
-                  margin-bottom:24px;background:var(--bg-2);text-align:center;cursor:pointer;
-                  transition:all .2s;" id="import-zone">
-        <div style="font-size:36px;line-height:1;margin-bottom:10px;color:var(--brand-purple);">&#x2B06;</div>
-        <p style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--fg);">
-          Importar informe de auditoria
-        </p>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">
-          Arrastra aqui un informe (PDF, DOCX o TXT) o haz clic para seleccionarlo.
-          El agente IA extraera las no conformidades y hallazgos automaticamente.
-        </p>
-        <input type="file" id="import-file-input" accept=".pdf,.txt,.docx" style="display:none;">
-        <button class="btn btn-primary" id="import-browse-btn" style="pointer-events:none;">
-          Seleccionar archivo
-        </button>
-        <div id="import-file-label" style="margin-top:10px;font-size:13px;color:var(--brand-purple);
-             font-weight:600;min-height:20px;"></div>
-      </div>
-
-      <div id="import-progress" style="display:none;background:var(--bg-2);border-radius:10px;
-           padding:20px 24px;margin-bottom:24px;border:1px solid var(--border);">
-        <div style="display:flex;align-items:center;gap:14px;">
-          <div style="width:22px;height:22px;border:3px solid var(--brand-purple);
-                      border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;
-                      flex-shrink:0;"></div>
-          <div>
-            <div style="font-size:14px;font-weight:600;">Analizando informe con IA...</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
-              Puede tardar 15-45 segundos segun el tamano del documento.
-            </div>
-          </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" id="btn-toggle-import" title="Importar informe de auditoria con IA">
+            Importar informe
+          </button>
+          <button class="btn btn-primary" id="btn-new-aud">+ Nueva auditoria</button>
         </div>
       </div>
 
-      <div id="import-result"></div>
+      <!-- Zona de importacion colapsable -->
+      <div id="import-panel" style="display:none;margin-bottom:20px;">
+        <div style="border:2px dashed var(--brand-purple);border-radius:12px;padding:24px;
+                    background:var(--bg-2);text-align:center;cursor:pointer;transition:all .2s;"
+             id="import-zone">
+          <div style="font-size:30px;line-height:1;margin-bottom:8px;color:var(--brand-purple);">&#x2B06;</div>
+          <p style="font-size:15px;font-weight:700;margin:0 0 4px;color:var(--fg);">
+            Importar informe de auditoria
+          </p>
+          <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
+            Arrastra un informe (PDF, DOCX o TXT) o haz clic para seleccionarlo.
+            El agente IA extraera las no conformidades y hallazgos automaticamente.
+          </p>
+          <input type="file" id="import-file-input" accept=".pdf,.txt,.docx" style="display:none;">
+          <button class="btn btn-primary" id="import-browse-btn" style="pointer-events:none;">
+            Seleccionar archivo
+          </button>
+          <div id="import-file-label" style="margin-top:8px;font-size:13px;color:var(--brand-purple);
+               font-weight:600;min-height:18px;"></div>
+        </div>
+        <div id="import-progress" style="display:none;background:var(--bg-2);border-radius:10px;
+             padding:16px 20px;margin-top:12px;border:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:20px;height:20px;border:3px solid var(--brand-purple);
+                        border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;
+                        flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:14px;font-weight:600;">Analizando informe con IA...</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+                Puede tardar 15-45 segundos segun el tamano del documento.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="import-result"></div>
+      </div>
+
+      <div class="stats-row" id="aud-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;"></div>
 
       <div id="aud-list"></div>
     `;
 
     document.getElementById('btn-new-aud').onclick = () => _openAuditForm(null);
+    document.getElementById('btn-toggle-import').onclick = () => {
+      const panel = document.getElementById('import-panel');
+      const btn = document.getElementById('btn-toggle-import');
+      const visible = panel.style.display !== 'none';
+      panel.style.display = visible ? 'none' : 'block';
+      btn.classList.toggle('btn-primary', !visible);
+      btn.classList.toggle('btn-ghost', visible);
+    };
     _initImportZone(el);
 
     try {

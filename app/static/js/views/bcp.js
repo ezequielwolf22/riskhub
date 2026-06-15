@@ -2,7 +2,7 @@
 const ViewBcp = (() => {
 
   // ── Estado de navegacion ─────────────────────────────────────────────────────
-  let _currentMode = 'config';
+  let _currentMode = 'operar';
   let _currentStep = 1;
   let _currentTile = 'dashboard';
   let _currentSubTabs = { 2: 'procesos', 3: 'dependencies', 4: 'strategies', 5: 'evidence' };
@@ -107,8 +107,8 @@ const ViewBcp = (() => {
       + '<div style="font-size:11px;color:var(--text-subtle)">ISO 22301 &middot; NIS2 Art.21.2(b) &middot; ISO 27001 A.5.29</div>'
       + '</div></div>'
       + '<div class="bcm-mode-toggle">'
-      + '<button class="bcm-mode-btn active" id="bcm-btn-config" onclick="ViewBcp._setMode(\'config\')"><i class="ti ti-settings-2"></i> Configurar BCP</button>'
-      + '<button class="bcm-mode-btn" id="bcm-btn-operar" onclick="ViewBcp._setMode(\'operar\')"><i class="ti ti-activity"></i> Operar BCP</button>'
+      + '<button class="bcm-mode-btn" id="bcm-btn-config" onclick="ViewBcp._setMode(\'config\')"><i class="ti ti-settings-2"></i> Configurar BCP</button>'
+      + '<button class="bcm-mode-btn active" id="bcm-btn-operar" onclick="ViewBcp._setMode(\'operar\')"><i class="ti ti-activity"></i> Operar BCP</button>'
       + '</div>'
       + '<div style="display:flex;gap:8px;align-items:center">'
       + '<button class="btn btn-ghost btn-sm" id="btn-bcm-wizard" title="Configurar contexto del agente IA">'

@@ -240,6 +240,131 @@ def list_policy_templates(current_user: User = Depends(get_current_user)):
     return get_template_catalog()
 
 
+_DOC_TYPE_LABELS = {
+    "politica":            "Politica de seguridad",
+    "norma":               "Norma",
+    "instruccion_tecnica": "Instruccion tecnica",
+}
+
+_GENERATE_SYSTEM = """Eres un experto en seguridad de la informacion y cumplimiento normativo (ISO 27001, NIS2, DORA, ENS, GDPR, NIST).
+Tu tarea es redactar un documento ISMS (politica, norma o instruccion tecnica) profesional y listo para revision.
+
+El documento debe:
+- Tener estructura clara con secciones numeradas (Objeto, Alcance, Responsabilidades, Requisitos, Control de cambios)
+- Ser coherente con el marco normativo indicado
+- Referenciar clausulas ISO 27001/27002 o articulos de la norma aplicable donde corresponda
+- Estar redactado en castellano formal
+- Tener una longitud adecuada (minimo 600 palabras, maximo 2000 palabras)
+- Adaptarse al nombre y sector de la organizacion si se proporciona
+
+Devuelve UNICAMENTE un objeto JSON valido con esta estructura:
+{
+  "title": "titulo del documento",
+  "category": "politica|norma|instruccion_tecnica",
+  "framework": "marco normativo aplicado",
+  "iso_clauses": ["lista de clausulas ISO relevantes"],
+  "content": "contenido completo del documento en texto plano con saltos de linea"
+}
+"""
+
+
+@router.post("/ai-generate-free")
+async def ai_generate_free(
+    doc_type:     str = Form(...),
+    title:        str = Form(...),
+    framework:    str = Form("ISO 27001"),
+    description:  str = Form(""),
+    context_file: Optional[UploadFile] = File(None),
+    db:           Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Genera un documento ISMS con IA sin depender de templates.
+
+    Acepta opcionalmente un archivo de contexto (PDF/DOCX/imagen) que se usa
+    como referencia adicional para la generacion.
+    """
+    cfg     = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
+    api_key = resolve_api_key(cfg)
+    if not api_key:
+        raise HTTPException(
+            400,
+            "API key no configurada. Ve a Configuracion > Agente IA para anadir una clave.",
+        )
+    model = (cfg.model if cfg else None) or "claude-haiku-4-5"
+
+    # Texto del archivo de contexto opcional
+    context_excerpt = ""
+    if context_file and context_file.filename:
+        ctx_data = await context_file.read()
+        if len(ctx_data) > MAX_SIZE_BYTES:
+            raise HTTPException(400, "Archivo de contexto demasiado grande (maximo 20 MB)")
+        mime = _infer_mime(context_file.filename, context_file.content_type or "")
+        if not _validate_magic(mime, ctx_data):
+            raise HTTPException(400, "El contenido del archivo de contexto no coincide con la extension.")
+        try:
+            if not mime.startswith("image/"):
+                raw_text = extract_text(ctx_data, mime)
+                context_excerpt = raw_text[:6000] if raw_text else ""
+        except Exception:
+            context_excerpt = ""
+
+    # Obtener contexto de organizacion
+    from app.models import RiskContext
+    org_ctx = db.query(RiskContext).filter(
+        RiskContext.organization_id == current_user.organization_id
+    ).first()
+    org_name   = (org_ctx.organization_name if org_ctx else None) or "la organizacion"
+    org_sector = ""
+
+    doc_label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
+    prompt_parts = [
+        f"Redacta un documento de tipo '{doc_label}' para {org_name}"
+        + (f" (sector: {org_sector})" if org_sector else "") + ".",
+        f"Titulo: {title}",
+        f"Marco normativo: {framework}",
+    ]
+    if description:
+        prompt_parts.append(f"Descripcion y alcance: {description}")
+    if context_excerpt:
+        prompt_parts.append(
+            f"Documentacion de referencia aportada por el usuario (extracto):\n{context_excerpt}"
+        )
+    prompt_parts.append("Genera el documento completo siguiendo las instrucciones del sistema.")
+
+    user_message = "\n\n".join(prompt_parts)
+
+    try:
+        import anthropic
+        client   = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=_GENERATE_SYSTEM,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        raw = response.content[0].text if response.content else "{}"
+    except Exception as e:
+        raise HTTPException(500, f"Error llamando al agente IA: {e}")
+
+    try:
+        m       = re.search(r"\{[\s\S]*\}", raw)
+        result  = json.loads(m.group(0)) if m else {}
+    except Exception:
+        result = {"content": raw, "title": title, "category": doc_type}
+
+    log_action(db, current_user.id, "ai_generate_free", "policy", None,
+               {"doc_type": doc_type, "title": title, "framework": framework, "model": model})
+    db.commit()
+
+    return {
+        "title":       result.get("title")      or title,
+        "category":    result.get("category")   or doc_type,
+        "framework":   result.get("framework")  or framework,
+        "iso_clauses": result.get("iso_clauses") or [],
+        "content":     result.get("content")    or raw,
+    }
+
+
 @router.post("/generate")
 async def generate_policy(
     body: dict,

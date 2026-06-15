@@ -43,7 +43,7 @@ const ViewAiDocuments = (() => {
   // Intervalo de polling para documentos en estado "analysing"
   let _pollTimer = null;
 
-  const ACCEPTED_EXTS = ['pdf', 'docx', 'txt', 'csv'];
+  const ACCEPTED_EXTS = ['pdf', 'docx', 'txt', 'csv', 'jpg', 'jpeg', 'png'];
 
   let _docs    = [];
   let _filter  = 'all';
@@ -199,10 +199,10 @@ const ViewAiDocuments = (() => {
           </button>
 ` : ''}
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
-                 title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV)">
+                 title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV, JPG, PNG)">
             + Subir documentos
             <input type="file" id="aid-file-input"
-                   accept=".pdf,.docx,.txt,.csv" multiple style="display:none;">
+                   accept=".pdf,.docx,.txt,.csv,.jpg,.jpeg,.png" multiple style="display:none;">
           </label>
         </div>
       </div>
@@ -221,7 +221,7 @@ const ViewAiDocuments = (() => {
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
         </div>
-        Arrastra aqui uno o varios documentos (PDF, DOCX, TXT, CSV)<br>
+        Arrastra aqui uno o varios documentos (PDF, DOCX, TXT, CSV, JPG, PNG)<br>
         <span style="font-size:11px;">o usa el boton &ldquo;Subir documentos&rdquo;</span>
       </div>
 

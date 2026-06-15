@@ -40,7 +40,7 @@ const ViewTprm = (() => {
     const color = pct >= 0.75 ? 'var(--risk-critical)' : pct >= 0.5 ? 'var(--risk-high)' : pct >= 0.25 ? 'var(--risk-medium)' : 'var(--risk-low)';
     const label = pct >= 0.75 ? 'Critico' : pct >= 0.5 ? 'Alto' : pct >= 0.25 ? 'Medio' : 'Bajo';
     // SVG half-circle gauge
-    const r = 54, cx = 70, cy = 70;
+    const r = 52, cx = 70, cy = 65;
     const startAngle = Math.PI;
     const endAngle = startAngle + pct * Math.PI;
     const x1 = cx + r * Math.cos(startAngle);
@@ -50,13 +50,13 @@ const ViewTprm = (() => {
     const largeArc = pct > 0.5 ? 1 : 0;
     return `
       <div style="display:flex;flex-direction:column;align-items:center;padding:8px 0;">
-        <svg viewBox="0 0 140 80" width="160" style="overflow:visible;">
+        <svg viewBox="0 0 140 80" width="160" style="overflow:hidden;">
           <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="var(--bg-3)" stroke-width="12" stroke-linecap="round"/>
           ${pct > 0 ? `<path d="M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round"/>` : ''}
-          <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="28" font-weight="800" fill="${color}" font-family="var(--font-mono)">${value10.toFixed(1)}</text>
-          <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-size="11" fill="var(--text-muted)">/ 10</text>
+          <text x="${cx}" y="${cy - 8}" text-anchor="middle" font-size="26" font-weight="800" fill="${color}" font-family="var(--font-mono)">${value10.toFixed(1)}</text>
+          <text x="${cx}" y="${cy + 6}" text-anchor="middle" font-size="11" fill="var(--text-muted)">/ 10</text>
         </svg>
-        <div style="font-size:13px;font-weight:700;color:${color};margin-top:-4px;">${label}</div>
+        <div style="font-size:13px;font-weight:700;color:${color};margin-top:6px;">${label}</div>
         <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;">Riesgo TPRM ponderado del portfolio</div>
       </div>`;
   }

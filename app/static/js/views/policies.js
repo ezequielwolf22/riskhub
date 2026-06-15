@@ -1,4 +1,4 @@
-/* Vista Politicas de Seguridad — ISO 27001 cl. 5.2. */
+/* Vista ISMS — Sistema de Gestion de Seguridad de la Informacion — ISO 27001 */
 const ViewPolicies = (() => {
 
   const STATUS_LABELS = {
@@ -10,33 +10,77 @@ const ViewPolicies = (() => {
     approved: 'var(--brand-purple)', published: 'var(--risk-low)', obsolete: '#aaa',
   };
 
-  let _users = [];
+  // Tipos de documento ISMS estandarizados
+  const ISMS_TYPES = {
+    politica:             'Politica',
+    norma:                'Norma',
+    instruccion_tecnica:  'Instruccion tecnica',
+    evidencia:            'Otra evidencia',
+  };
+  const ISMS_TYPE_COLORS = {
+    politica:            'var(--brand-purple)',
+    norma:               'var(--brand-orange)',
+    instruccion_tecnica: '#0891b2',
+    evidencia:           '#6b7280',
+  };
+
+  // Marcos normativos para generacion IA
+  const FRAMEWORKS = [
+    { value: 'ISO 27001', label: 'ISO/IEC 27001:2022' },
+    { value: 'NIS2',      label: 'NIS2 (Directiva UE 2022/2555)' },
+    { value: 'DORA',      label: 'DORA (Reglamento UE 2022/2554)' },
+    { value: 'ENS',       label: 'ENS (Esquema Nacional de Seguridad)' },
+    { value: 'GDPR',      label: 'RGPD / GDPR' },
+    { value: 'NIST CSF',  label: 'NIST Cybersecurity Framework' },
+    { value: 'PCI DSS',   label: 'PCI DSS v4' },
+    { value: 'libre',     label: 'Sin norma especifica' },
+  ];
+
+  let _users      = [];
+  let _activeType = 'all'; // tab activo
 
   function _badge(label, color) {
     return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
+  }
+
+  function _typeBadge(cat) {
+    if (!cat) return '';
+    const label = ISMS_TYPES[cat] || UI.esc(cat);
+    const color = ISMS_TYPE_COLORS[cat] || '#888';
+    return `<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;background:${color}20;color:${color};border:1px solid ${color}40;">${label}</span>`;
   }
 
   async function render(el) {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Politicas de Seguridad</h1>
-          <p class="page-sub">Gestion del ciclo de vida de politicas — ISO 27001 cl. 5.2</p>
+          <h1 class="page-title">ISMS</h1>
+          <p class="page-sub">Sistema de Gestion de Seguridad de la Informacion — ISO 27001 cl. 5.2</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="file" id="pol-ai-input" accept=".pdf,.docx,.txt" style="display:none;">
           <button class="btn" id="btn-ai-extract" title="Cargar un documento PDF/DOCX y extraer los campos con IA">
             Extraer con IA
           </button>
-          <button onclick="ViewPolicies._generateWithAI()" class="btn" style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
-            ✨ Generar con IA
+          <button onclick="ViewPolicies._generateWithAI()" class="btn"
+                  style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
+            Generar con IA
           </button>
-          <button class="btn btn-primary" id="btn-new-pol">+ Nueva politica</button>
+          <button class="btn btn-primary" id="btn-new-pol">+ Nuevo documento</button>
         </div>
       </div>
 
       <div class="stats-row" id="pol-stats" style="margin-bottom:16px;"></div>
 
+      <!-- Tabs de tipo ISMS -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:10px;">
+        <button class="btn btn-primary isms-tab" data-type="all">Todo</button>
+        ${Object.entries(ISMS_TYPES).map(([k, l]) =>
+          `<button class="btn isms-tab" data-type="${k}">${l}</button>`
+        ).join('')}
+      </div>
+
+      <!-- Filtros de busqueda -->
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
         <input type="search" id="pol-search" class="input" style="width:220px;" placeholder="Buscar por titulo...">
         <select id="pol-status" class="input" style="width:160px;">
@@ -48,12 +92,22 @@ const ViewPolicies = (() => {
       <div id="pol-table-wrap"></div>
     `;
 
+    // Tabs
+    el.querySelectorAll('.isms-tab').forEach(btn => {
+      btn.onclick = () => {
+        el.querySelectorAll('.isms-tab').forEach(b => b.classList.remove('active', 'btn-primary'));
+        btn.classList.add('active', 'btn-primary');
+        _activeType = btn.dataset.type;
+        _refresh();
+      };
+    });
+
     document.getElementById('btn-new-pol').onclick = () => _openForm(null);
     document.getElementById('pol-search').oninput = _refresh;
     document.getElementById('pol-status').onchange = _refresh;
 
     // Extraccion IA
-    const aiBtn = document.getElementById('btn-ai-extract');
+    const aiBtn   = document.getElementById('btn-ai-extract');
     const aiInput = document.getElementById('pol-ai-input');
     aiBtn.onclick = () => aiInput.click();
     aiInput.onchange = async () => {
@@ -85,8 +139,8 @@ const ViewPolicies = (() => {
       const wrap = document.getElementById('pol-stats');
       if (!wrap) return;
       wrap.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.by_status.published||0}</div><div class="stat-label">Publicadas</div></div>
+        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total documentos</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.by_status.published||0}</div><div class="stat-label">Publicados</div></div>
         <div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.by_status.review||0}</div><div class="stat-label">En revision</div></div>
         <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.overdue_review}</div><div class="stat-label">Revision vencida</div></div>
       `;
@@ -94,15 +148,16 @@ const ViewPolicies = (() => {
   }
 
   async function _refresh() {
-    const q = document.getElementById('pol-search')?.value || '';
+    const q      = document.getElementById('pol-search')?.value || '';
     const status = document.getElementById('pol-status')?.value || '';
-    const wrap = document.getElementById('pol-table-wrap');
+    const wrap   = document.getElementById('pol-table-wrap');
     if (!wrap) return;
     wrap.innerHTML = '<p class="text-muted">Cargando...</p>';
     try {
       const params = {};
       if (q) params.q = q;
       if (status) params.status = status;
+      if (_activeType !== 'all') params.category = _activeType;
       const data = await Api.policies.list(params);
       _renderTable(wrap, data);
     } catch (e) {
@@ -112,7 +167,7 @@ const ViewPolicies = (() => {
 
   function _renderTable(wrap, data) {
     if (!data.length) {
-      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No se encontraron politicas.</p>';
+      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No se encontraron documentos ISMS.</p>';
       return;
     }
     const now = new Date();
@@ -123,8 +178,9 @@ const ViewPolicies = (() => {
       return `
         <tr style="cursor:pointer;${reviewOverdue?'background:rgba(254,226,226,0.3);':''}" data-id="${p.id}">
           <td>${UI.codePill(p.code)}</td>
-          <td><b>${UI.esc(p.title)}</b>
-            ${p.category ? `<div style="font-size:11px;color:var(--text-muted);">${UI.esc(p.category)}</div>` : ''}
+          <td>
+            <b>${UI.esc(p.title)}</b>
+            ${p.category ? `<div style="margin-top:3px;">${_typeBadge(p.category)}</div>` : ''}
           </td>
           <td style="font-size:12px;font-family:var(--font-mono);">v${UI.esc(p.version)}</td>
           <td>${_badge(STATUS_LABELS[p.status]||p.status, STATUS_COLORS[p.status]||'#888')}</td>
@@ -139,7 +195,7 @@ const ViewPolicies = (() => {
     wrap.innerHTML = `
       <table class="data">
         <thead>
-          <tr><th>Codigo</th><th>Titulo</th><th>Version</th><th>Estado</th><th>Revision</th><th>Responsable</th><th>Acciones</th></tr>
+          <tr><th>Codigo</th><th>Titulo / Tipo</th><th>Version</th><th>Estado</th><th>Revision</th><th>Responsable</th><th>Acciones</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
@@ -151,31 +207,46 @@ const ViewPolicies = (() => {
     wrap.querySelectorAll('[data-action="del"]').forEach(btn =>
       btn.onclick = async (e) => {
         e.stopPropagation();
-        if (!confirm('Eliminar politica?')) return;
+        if (!confirm('Eliminar documento?')) return;
         try {
           await Api.policies.del(btn.dataset.id);
-          UI.toast('Politica eliminada', 'success');
+          UI.toast('Documento eliminado', 'success');
           await _loadStats(); await _refresh();
         } catch (e2) { UI.toast(e2.message, 'error'); }
       });
   }
 
   function _formHtml(p, extracted) {
-    // Valores: primero los extraidos por IA, luego los del objeto existente, luego defecto
     const v = p || {};
     const e = extracted || {};
-    const title = e.title || v.title || '';
+    const title   = e.title   || v.title   || '';
     const version = e.version || v.version || '1.0';
     const category = e.category || v.category || '';
-    const scope = e.scope || v.scope || '';
+    const scope   = e.scope   || v.scope   || '';
     const content = e.content || v.content || '';
-    const review = e.review_date || (v.review_date ? v.review_date.slice(0,10) : '');
+    const review  = e.review_date || (v.review_date ? v.review_date.slice(0,10) : '');
     const clauses = e.iso_clauses ? e.iso_clauses.join(', ') : (v.iso_clauses||[]).join(', ');
-    const notes = e.confidence_notes || '';
+    const notes   = e.confidence_notes || '';
+
+    // Normalizar category: si viene texto libre, intentar mapear a uno de los tipos estandar
+    const normalizedCat = Object.keys(ISMS_TYPES).includes(category) ? category : '';
+
     return `
       <div class="form-grid">
         ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">Nota IA: ${UI.esc(notes)}</div></div>` : ''}
         <div class="span2"><label>Titulo *</label><input id="f-title" class="input" value="${UI.esc(title)}"></div>
+        <div>
+          <label>Tipo de documento ISMS</label>
+          <select id="f-cat" class="input">
+            <option value="">-- Sin clasificar --</option>
+            ${Object.entries(ISMS_TYPES).map(([k, l]) =>
+              `<option value="${k}" ${normalizedCat === k ? 'selected' : ''}>${l}</option>`
+            ).join('')}
+          </select>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">
+            ${category && !normalizedCat ? `Tipo detectado por IA: "${UI.esc(category)}" — selecciona el mas adecuado.` : ''}
+          </div>
+        </div>
         <div>
           <label>Estado</label>
           <select id="f-status" class="input">
@@ -183,7 +254,6 @@ const ViewPolicies = (() => {
           </select>
         </div>
         <div><label>Version</label><input id="f-version" class="input" value="${UI.esc(version)}"></div>
-        <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(category)}"></div>
         <div>
           <label>Responsable</label>
           <select id="f-owner" class="input">
@@ -199,95 +269,174 @@ const ViewPolicies = (() => {
   }
 
   function _openForm(p, extracted) {
-    UI.modal(p ? `Editar ${p.code}` : 'Nueva politica', _formHtml(p, extracted), {
+    UI.modal(p ? `Editar ${p.code}` : 'Nuevo documento ISMS', _formHtml(p, extracted), {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 <button class="btn btn-primary" id="m-save">Guardar</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
-    document.getElementById('m-save').onclick = () => _save(p);
+    document.getElementById('m-save').onclick   = () => _save(p);
   }
 
   async function _save(p) {
     const title = document.getElementById('f-title').value.trim();
     if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
     const clausesRaw = document.getElementById('f-clauses').value.trim();
-    const ownerVal = document.getElementById('f-owner').value;
+    const ownerVal   = document.getElementById('f-owner').value;
     const payload = {
       title,
-      version: document.getElementById('f-version').value.trim() || '1.0',
-      category: document.getElementById('f-cat').value.trim() || null,
-      status: document.getElementById('f-status').value,
+      version:    document.getElementById('f-version').value.trim() || '1.0',
+      category:   document.getElementById('f-cat').value || null,
+      status:     document.getElementById('f-status').value,
       review_date: document.getElementById('f-review').value || null,
       iso_clauses: clausesRaw ? clausesRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
-      scope: document.getElementById('f-scope').value.trim(),
+      scope:   document.getElementById('f-scope').value.trim(),
       content: document.getElementById('f-content').value.trim(),
       owner_id: ownerVal ? parseInt(ownerVal) : null,
     };
     try {
       if (p) {
         await Api.policies.update(p.id, payload);
-        UI.toast('Politica actualizada', 'success');
+        UI.toast('Documento actualizado', 'success');
       } else {
         await Api.policies.create(payload);
-        UI.toast('Politica creada', 'success');
+        UI.toast('Documento creado', 'success');
       }
       UI.closeModal();
       await _loadStats(); await _refresh();
     } catch (e) { UI.toast(e.message, 'error'); }
   }
 
+  // ============================================================
+  // Generacion libre con IA — T7
+  // ============================================================
+
   async function _generateWithAI() {
-    const templates = await Api.policyTemplates.list().catch(() => []);
-    if (!templates.length) { UI.toast('No hay templates disponibles', 'error'); return; }
-    const options = templates.map(t => `
-      <option value="${UI.esc(t.id)}">${UI.esc(t.title)}</option>`).join('');
     UI.openModal(`
-      <h3 style="margin:0 0 16px;color:var(--brand-purple);">Generar política con IA</h3>
-      <p style="font-size:13px;color:#666;margin-bottom:12px;">
-        Claude generará una política personalizada con el nombre de tu organización,
-        activos, amenazas y frameworks activos.
-      </p>
-      <div style="display:grid;gap:12px;">
-        <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Template *</label>
-          <select id="gen-template" class="input-field" style="width:100%;">${options}</select>
+      <div style="max-width:600px;">
+        <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">Generar documento ISMS con IA</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 18px;">
+          El agente IA redactara un borrador adaptado a tu organizacion y al marco normativo elegido.
+        </p>
+
+        <div class="form-grid" style="gap:12px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tipo de documento *</label>
+            <select id="gen-type" class="input" style="width:100%;">
+              <option value="politica">Politica de seguridad</option>
+              <option value="norma">Norma</option>
+              <option value="instruccion_tecnica">Instruccion tecnica</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Marco normativo</label>
+            <select id="gen-framework" class="input" style="width:100%;">
+              ${FRAMEWORKS.map(f => `<option value="${UI.esc(f.value)}">${UI.esc(f.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="span2">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Titulo / asunto *</label>
+            <input id="gen-title" class="input" style="width:100%;" placeholder="Ej: Politica de Gestion de Accesos">
+          </div>
+          <div class="span2">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Descripcion y alcance</label>
+            <textarea id="gen-desc" class="input" rows="3" style="width:100%;"
+                      placeholder="Describe el objetivo, alcance, departamentos afectados, contexto especifico..."></textarea>
+          </div>
+          <div class="span2">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">
+              Documentacion de contexto (opcional)
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;
+                          border:1px dashed var(--border);border-radius:6px;padding:8px 12px;
+                          font-size:12px;color:var(--text-muted);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <span id="gen-file-label">Subir documento de referencia (PDF, DOCX, PNG, JPG)</span>
+              <input type="file" id="gen-context-file" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
+                     style="display:none;" onchange="ViewPolicies._onGenFileChange(this)">
+            </label>
+          </div>
         </div>
-        <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Contexto adicional (opcional)</label>
-          <textarea id="gen-context" class="input-field" rows="3" style="width:100%;"
-                    placeholder="Ej: empresa de 200 empleados, sector financiero, datos de tarjetas..."></textarea>
+
+        <!-- Disclaimer -->
+        <div style="margin-top:16px;background:#fff8e6;border:1px solid #f0c040;border-radius:8px;
+                    padding:10px 14px;font-size:12px;color:#7a5800;line-height:1.5;">
+          <strong>Aviso importante:</strong> El documento generado por IA es un borrador de apoyo.
+          Debe ser revisado, completado y aprobado por una persona responsable de la organizacion
+          antes de su publicacion o uso operativo.
         </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-        <button onclick="UI.closeModal()" class="btn-outline">Cancelar</button>
-        <button onclick="ViewPolicies._submitGenerate()" class="btn-primary">Generar con IA</button>
+
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+          <button onclick="UI.closeModal()" class="btn">Cancelar</button>
+          <button onclick="ViewPolicies._submitGenerate()" class="btn"
+                  style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
+            Generar con IA
+          </button>
+        </div>
       </div>`);
   }
 
+  function _onGenFileChange(input) {
+    const label = document.getElementById('gen-file-label');
+    if (label && input.files[0]) {
+      label.textContent = input.files[0].name + ' (' + (input.files[0].size / 1024).toFixed(0) + ' KB)';
+    }
+  }
+
   async function _submitGenerate() {
-    const templateId = document.getElementById('gen-template').value;
-    const context = document.getElementById('gen-context').value.trim();
+    const title = document.getElementById('gen-title')?.value.trim();
+    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+
+    const docType   = document.getElementById('gen-type')?.value;
+    const framework = document.getElementById('gen-framework')?.value;
+    const desc      = document.getElementById('gen-desc')?.value.trim();
+    const fileInput = document.getElementById('gen-context-file');
+    const file      = fileInput?.files[0] || null;
+
     UI.closeModal();
-    UI.toast('Generando política con IA...', 'info');
+    UI.toast('Generando documento con IA...', 'info');
+
     try {
-      const result = await Api.policyTemplates.generate({
-        template_id: templateId,
-        extra_context: context || null,
-      });
-      // Mostrar el resultado para que el usuario lo revise antes de guardar
+      const fd = new FormData();
+      fd.append('doc_type',  docType);
+      fd.append('title',     title);
+      fd.append('framework', framework);
+      if (desc)  fd.append('description', desc);
+      if (file)  fd.append('context_file', file);
+
+      const result = await Api.req('/api/policies/ai-generate-free', { method: 'POST', body: fd });
+
       UI.openModal(`
         <div style="max-width:700px;">
-          <h3 style="margin:0 0 8px;color:var(--brand-purple);">Política generada: ${UI.esc(result.title)}</h3>
-          <p style="font-size:12px;color:#9d9d9d;margin-bottom:12px;">
-            Revisa el contenido antes de guardar. Puedes editarlo.
+          <h3 style="margin:0 0 4px;color:var(--brand-purple);">${UI.esc(result.title)}</h3>
+          <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+            ${_typeBadge(result.category)}
+            <span style="font-size:11px;color:var(--text-muted);align-self:center;">
+              Marco: ${UI.esc(result.framework || framework)}
+            </span>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+            Revisa el contenido antes de guardar. Puedes editarlo directamente.
           </p>
-          <textarea id="gen-result-content" style="width:100%;height:350px;font-size:12px;
-                    font-family:monospace;border:1px solid #e0e0e0;border-radius:6px;padding:10px;
+          <textarea id="gen-result-content" style="width:100%;height:340px;font-size:12px;
+                    font-family:monospace;border:1px solid var(--border);border-radius:6px;padding:10px;
                     resize:vertical;">${UI.esc(result.content)}</textarea>
+          <div style="margin-top:10px;background:#fff8e6;border:1px solid #f0c040;border-radius:6px;
+                      padding:8px 12px;font-size:11px;color:#7a5800;">
+            Este borrador ha sido generado por IA y debe ser revisado y aprobado por una persona responsable.
+          </div>
           <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-            <button onclick="UI.closeModal()" class="btn-outline">Descartar</button>
-            <button onclick="ViewPolicies._saveGenerated(${JSON.stringify(result).replace(/"/g,'&quot;')})"
-                    class="btn-primary">Guardar como política</button>
+            <button onclick="UI.closeModal()" class="btn">Descartar</button>
+            <button onclick="ViewPolicies._saveGenerated(${JSON.stringify({
+              title: result.title,
+              category: result.category || docType,
+              iso_clauses: result.iso_clauses || [],
+              framework,
+            }).replace(/"/g,'&quot;')})"
+                    class="btn btn-primary">Guardar como borrador</button>
           </div>
         </div>`);
     } catch (e) {
@@ -295,25 +444,27 @@ const ViewPolicies = (() => {
     }
   }
 
-  async function _saveGenerated(result) {
-    const content = document.getElementById('gen-result-content').value;
+  async function _saveGenerated(meta) {
+    const content = document.getElementById('gen-result-content')?.value || '';
     const payload = {
-      title: result.title,
-      content: content,
-      iso_clauses: result.iso_controls || [],
-      scope: 'Generada automáticamente con IA — revisar y adaptar',
-      version: '1.0',
+      title:       meta.title,
+      content,
+      category:    meta.category || null,
+      iso_clauses: meta.iso_clauses || [],
+      scope:       'Generado automaticamente con IA — revisar y adaptar',
+      version:     '1.0',
+      status:      'draft',
       review_cycle_months: 12,
     };
     try {
       await Api.policies.create(payload);
       UI.closeModal();
-      UI.toast('Política guardada correctamente', 'success');
+      UI.toast('Borrador guardado — revisa y aprueba antes de publicar', 'success');
       await _loadStats(); await _refresh();
     } catch (e) {
       UI.toast('Error guardando: ' + e.message, 'error');
     }
   }
 
-  return { render, _generateWithAI, _submitGenerate, _saveGenerated };
+  return { render, _generateWithAI, _onGenFileChange, _submitGenerate, _saveGenerated };
 })();

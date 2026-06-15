@@ -176,8 +176,18 @@ const ViewOnboarding = (() => {
   }
 
   function _updateProgress() {
-    const ol = document.querySelector('#wz-root .wizard-progress');
-    if (ol) ol.outerHTML = _renderProgress();
+    const items = document.querySelectorAll('#wz-root .wizard-step');
+    if (!items.length) return;
+    items.forEach((li, i) => {
+      const n = i + 1;
+      const isDone   = n < _step;
+      const isActive = n === _step;
+      li.className = 'wizard-step' + (isDone ? ' done' : isActive ? ' active' : '');
+      if (isActive) li.setAttribute('aria-current', 'step');
+      else li.removeAttribute('aria-current');
+      const dot = li.querySelector('.wizard-step-dot');
+      if (dot) dot.innerHTML = isDone ? '&#10003;' : String(n);
+    });
   }
 
   async function _renderStep() {
