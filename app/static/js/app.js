@@ -357,7 +357,7 @@ function init() {
   // Badge NIS2 urgente en sidebar
   async function _loadNis2Badge() {
     try {
-      const urgent = await Api.get('/api/nis2/notifications/?status=pending&overdue=true').catch(() => []);
+      const urgent = await Api.get('/api/nis2/notifications?status=pending&overdue=true').catch(() => []);
       const badge = document.getElementById('badge-nis2-urgent');
       if (badge) {
         const count = Array.isArray(urgent) ? urgent.length : 0;
