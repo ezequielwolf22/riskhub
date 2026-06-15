@@ -116,7 +116,7 @@ const ViewSoaVersions = (() => {
     try {
       const versions = await Api.get('/api/soa/versions');
       if (!versions.length) {
-        container.innerHTML = UI.empty('No hay versiones de SoA. Crea una nueva para capturar el estado actual de los controles implementados.');
+        container.innerHTML = UI.emptyState('Sin versiones de SoA', 'Crea una nueva para capturar el estado actual de los controles implementados.');
         return;
       }
       container.innerHTML = `

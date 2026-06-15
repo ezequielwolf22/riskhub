@@ -23,7 +23,7 @@ const ViewManagementReview = (() => {
     try {
       const reviews = await Api.get('/api/management-review');
       if (!reviews.length) {
-        container.innerHTML = UI.empty('No hay revisiones. Prepara la del mes actual con el boton de arriba.');
+        container.innerHTML = UI.emptyState('Sin revisiones de direccion', 'Prepara la del mes actual con el boton de arriba.');
         return;
       }
       container.innerHTML = `

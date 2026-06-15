@@ -52,7 +52,7 @@ const ViewNis2Dashboard = (() => {
       </div>`;
 
       if (!data.incidents.length) {
-        container.innerHTML = html + UI.empty('No hay incidentes con notificacion NIS2 requerida.');
+        container.innerHTML = html + UI.emptyState('Sin incidentes NIS2', 'No hay incidentes con notificacion NIS2 requerida.');
         return;
       }
 

@@ -20,7 +20,7 @@ const ViewChangeRequests = (() => {
     try {
       const changes = await Api.get('/api/change-requests');
       if (!changes.length) {
-        container.innerHTML = UI.empty('No hay solicitudes de cambio. Registra cambios en politicas, controles o activos para mantener trazabilidad.');
+        container.innerHTML = UI.emptyState('Sin solicitudes de cambio', 'Registra cambios en politicas, controles o activos para mantener trazabilidad.');
         return;
       }
       const statuses = ['draft','under_review','approved','implemented','verified'];

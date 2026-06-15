@@ -17,7 +17,7 @@ const ViewReportSchedules = (() => {
     try {
       const scheds = await Api.get('/api/report-schedules');
       if (!scheds.length) {
-        container.innerHTML = UI.empty('No hay informes programados. Configura el envio automatico mensual o semanal para comites y direccion.');
+        container.innerHTML = UI.emptyState('Sin informes programados', 'Configura el envio automatico mensual o semanal para comites y direccion.');
         return;
       }
       container.innerHTML = `
