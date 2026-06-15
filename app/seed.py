@@ -482,6 +482,18 @@ def _migrate_columns() -> None:
         ("ALTER TABLE bcp_plans ADD COLUMN documentation_links JSON", "bcp_plans", "documentation_links"),
         ("ALTER TABLE bcp_plans ADD COLUMN related_documents JSON", "bcp_plans", "related_documents"),
         ("ALTER TABLE bcp_plans ADD COLUMN authorized_activators JSON", "bcp_plans", "authorized_activators"),
+        # v4.0.0 — regwatch: propagacion cross-plataforma de cambios normativos
+        ("ALTER TABLE controls ADD COLUMN deprecated_at DATETIME", "controls", "deprecated_at"),
+        ("ALTER TABLE control_implementations ADD COLUMN regwatch_review_at DATETIME", "control_implementations", "regwatch_review_at"),
+        ("ALTER TABLE control_implementations ADD COLUMN regwatch_pack_id INTEGER REFERENCES regwatch_change_packs(id)", "control_implementations", "regwatch_pack_id"),
+        ("ALTER TABLE policies ADD COLUMN regwatch_review_at DATETIME", "policies", "regwatch_review_at"),
+        ("ALTER TABLE policies ADD COLUMN regwatch_pack_id INTEGER REFERENCES regwatch_change_packs(id)", "policies", "regwatch_pack_id"),
+        ("ALTER TABLE bcp_plans ADD COLUMN regwatch_review_at DATETIME", "bcp_plans", "regwatch_review_at"),
+        ("ALTER TABLE bcp_plans ADD COLUMN regwatch_pack_id INTEGER REFERENCES regwatch_change_packs(id)", "bcp_plans", "regwatch_pack_id"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN regwatch_review_at DATETIME", "supplier_questionnaires", "regwatch_review_at"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN regwatch_pack_id INTEGER REFERENCES regwatch_change_packs(id)", "supplier_questionnaires", "regwatch_pack_id"),
+        ("ALTER TABLE compliance_framework_status ADD COLUMN regwatch_review_at DATETIME", "compliance_framework_status", "regwatch_review_at"),
+        ("ALTER TABLE compliance_framework_status ADD COLUMN regwatch_pack_id INTEGER REFERENCES regwatch_change_packs(id)", "compliance_framework_status", "regwatch_pack_id"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

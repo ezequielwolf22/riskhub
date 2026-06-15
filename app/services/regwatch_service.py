@@ -310,7 +310,18 @@ def review_inbox_item(db: Session, org_id: int, item_id: int,
     it.reviewed_at = _now()
     it.decision_json = decision or {}
     db.flush()
-    return {"id": it.id, "status": it.status.value}
+
+    propagation: dict = {}
+    if decision.get("action") in ("apply", None, ""):
+        try:
+            from app.services import regwatch_propagation as prop
+            pack = it.change_pack
+            if pack:
+                propagation = prop.apply_and_propagate(db, org_id, pack, user, decision)
+        except Exception as exc:
+            logger.warning("regwatch: error en propagacion para item %s: %s", item_id, exc)
+
+    return {"id": it.id, "status": it.status.value, "propagation": propagation}
 
 
 def snooze_inbox_item(db: Session, org_id: int, item_id: int, days: int = 7) -> dict:
@@ -423,42 +434,189 @@ def publish_change_pack(db: Session, pack: ChangePack) -> int:
 def compute_impact(db: Session, org_id: int, pack: ChangePack) -> dict:
     """Calcula que elementos del tenant se ven afectados por un pack (§5.3).
 
-    Best-effort sobre los modelos existentes: politicas, requisitos de
-    compliance del framework y cuestionarios de proveedor del marco.
+    Delegado al modulo de propagacion para un conteo extendido y preciso.
+    Nunca lanza excepciones — degrada a dict vacio ante cualquier error.
     """
-    fc_internal = srcs.to_compliance_code(pack.framework_code)
-    impact = {"policies": 0, "compliance_requirements": 0, "supplier_questionnaires": 0}
     try:
-        from app.models import Policy
-        impact["policies"] = db.query(Policy).filter(
-            Policy.organization_id == org_id
-        ).count()
-    except Exception:
-        pass
+        from app.services import regwatch_propagation as prop
+        return prop.compute_full_impact(db, org_id, pack)
+    except Exception as exc:
+        logger.warning("regwatch: compute_impact fallback (%s)", exc)
+        return {"policies": 0, "compliance_requirements": 0,
+                "control_implementations": 0, "risks": 0, "bcp_plans": 0}
+
+
+# ---------- Pipeline de analisis IA (§7) ----------
+
+def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
+    """Analiza un NormativeChangeEvent con Claude Haiku y actualiza sus campos.
+
+    Clasifica la severidad (cosmetic/clarification/substantive/breaking) y genera
+    resumenes en ES/EN. Confianza < 0.7 -> event.status queda DETECTED (cola manual).
+    Devuelve True si el analisis fue exitoso.
+    """
+    import json as _json
+
+    raw_text = (
+        f"Framework: {event.framework_code}\n"
+        f"URL: {event.raw_url or 'N/A'}\n"
+        f"Resumen previo: {event.summary_es or 'Sin resumen previo'}"
+    )
+
+    api_key = _get_global_api_key(db)
+    if not api_key:
+        return False
+
+    schema = """{
+  "severity": "<cosmetic|clarification|substantive|breaking>",
+  "confidence": <decimal 0.0-1.0>,
+  "summary_es": "<resumen en espanol, max 200 palabras>",
+  "summary_en": "<summary in english, max 200 words>",
+  "controls_affected_hint": ["<ISO control code like 5.1>"],
+  "rationale": "<por que esta severidad>"
+}"""
+
+    system_prompt = (
+        "Eres un experto en normativa de ciberseguridad (ISO 27001/27002, NIS2, GDPR, ENS, DORA). "
+        "Analiza el cambio normativo descrito y clasifica su impacto.\n\n"
+        "Criterios de severidad:\n"
+        "- cosmetic: solo cambios de formato, puntuacion, numero de referencia. Sin cambio de requisitos.\n"
+        "- clarification: aclaracion de un requisito existente sin cambio de obligaciones.\n"
+        "- substantive: cambio real en requisitos existentes o nuevo requisito que requiere accion.\n"
+        "- breaking: cambio mayor de version (ej. nueva edicion ISO), eliminacion de controles, "
+        "plazo de cumplimiento nuevo.\n\n"
+        "CRITICO: devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional.\n"
+        f"Esquema:\n{schema}"
+    )
+
     try:
-        impact["compliance_requirements"] = db.query(ComplianceFrameworkStatus).filter(
-            ComplianceFrameworkStatus.organization_id == org_id,
-            ComplianceFrameworkStatus.framework_code == fc_internal,
-        ).count()
-    except Exception:
-        pass
-    return impact
+        import anthropic
+    except ImportError:
+        return False
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": raw_text}],
+        )
+        raw_out = msg.content[0].text.strip() if msg.content else ""
+        result = _json.loads(raw_out)
+
+        sev_str = result.get("severity", "")
+        try:
+            event.severity = ChangeSeverity(sev_str)
+        except ValueError:
+            event.severity = ChangeSeverity.SUBSTANTIVE
+
+        event.ai_confidence = float(result.get("confidence", 0.5))
+        event.summary_es = (result.get("summary_es") or "")[:2000]
+        event.summary_en = (result.get("summary_en") or "")[:2000]
+        event.ai_analysis_json = result
+
+        if event.ai_confidence >= 0.7:
+            event.status = ChangeEventStatus.VALIDATED
+        # <0.7 queda en DETECTED para cola de revision manual
+
+        return True
+    except Exception as exc:
+        logger.warning("regwatch: ai analysis failed for event %s: %s", event.id, exc)
+        return False
+
+
+def _get_global_api_key(db: Session) -> str | None:
+    """Obtiene la API key global de Anthropic (primer admin con config activa)."""
+    from app.models import AiConfig
+    from app.config import settings
+    from app.security import decrypt_secret
+
+    # Prioridad 1: variable de entorno
+    if settings.anthropic_api_key:
+        return settings.anthropic_api_key
+
+    # Prioridad 2: primera config de IA activa en la BD
+    cfg = db.query(AiConfig).filter(
+        AiConfig.api_key_encrypted.isnot(None)
+    ).first()
+    if cfg and cfg.api_key_encrypted:
+        try:
+            return decrypt_secret(cfg.api_key_encrypted)
+        except Exception:
+            pass
+    return None
 
 
 def run_sweep(db: Session) -> dict:
     """Barrido periodico de todas las fuentes activas (§5.2, scheduler).
 
-    No realiza red saliente garantizada: ejecuta cada conector (que degrada con
-    elegancia) y registra last_run_*. Tras el barrido, actualiza last_sweep_at
-    de los tenants con vigilancia activada.
+    1. Ejecuta cada conector (degrada si no hay red).
+    2. Para cada evento nuevo, dispara pipeline de IA (Claude Haiku).
+    3. Eventos validados con alta confianza se auto-publican como change_packs.
+    4. Actualiza last_sweep_at de tenants activos.
     """
     from app.services import regwatch_connectors as conns
 
     sources = db.query(NormativeSource).filter(NormativeSource.is_active.is_(True)).all()
     summaries = []
+    total_new_events = 0
+
     for src in sources:
-        summaries.append(conns.run_source(db, src))
+        summary = conns.run_source(db, src)
+        summaries.append(summary)
+        total_new_events += summary.get("new_events", 0)
+
     db.commit()
+
+    # Pipeline IA: analizar eventos recien detectados sin severidad asignada
+    if total_new_events > 0:
+        new_events = (
+            db.query(NormativeChangeEvent)
+            .filter(
+                NormativeChangeEvent.status == ChangeEventStatus.DETECTED,
+                NormativeChangeEvent.severity.is_(None),
+                NormativeChangeEvent.ai_analysis_json.is_(None),
+            )
+            .limit(20)  # procesar hasta 20 por barrido para evitar timeouts
+            .all()
+        )
+        ai_ok = 0
+        for ev in new_events:
+            if analyze_event_with_ai(db, ev):
+                ai_ok += 1
+        if ai_ok > 0:
+            db.commit()
+
+        # Auto-publicar eventos validados por IA (confianza alta)
+        validated = (
+            db.query(NormativeChangeEvent)
+            .filter(
+                NormativeChangeEvent.status == ChangeEventStatus.VALIDATED,
+                NormativeChangeEvent.change_pack_id.is_(None),
+                NormativeChangeEvent.ai_confidence >= 0.7,
+                NormativeChangeEvent.severity.isnot(None),
+            )
+            .limit(10)
+            .all()
+        )
+        for ev in validated:
+            try:
+                create_and_publish_pack(
+                    db,
+                    framework_code=ev.framework_code,
+                    severity=ev.severity.value if ev.severity else "substantive",
+                    title_es=ev.summary_es or f"Cambio normativo en {ev.framework_code}",
+                    description_es=ev.summary_es or "",
+                    title_en=ev.summary_en or "",
+                    description_en=ev.summary_en or "",
+                    source_url=ev.raw_url,
+                )
+                ev.status = ChangeEventStatus.PUBLISHED
+            except Exception as exc:
+                logger.warning("regwatch: error auto-publicando evento %s: %s", ev.id, exc)
+        if validated:
+            db.commit()
 
     now = _now()
     db.query(TenantRegwatchSettings).filter(
@@ -466,9 +624,8 @@ def run_sweep(db: Session) -> dict:
     ).update({TenantRegwatchSettings.last_sweep_at: now})
     db.commit()
 
-    total_new = sum(s.get("new_events", 0) for s in summaries)
-    logger.info("regwatch sweep: %d fuentes, %d eventos nuevos", len(sources), total_new)
-    return {"sources": len(sources), "new_events": total_new, "details": summaries}
+    logger.info("regwatch sweep: %d fuentes, %d eventos nuevos", len(sources), total_new_events)
+    return {"sources": len(sources), "new_events": total_new_events, "details": summaries}
 
 
 # ---------- Autoria interna y validacion (§6.2, §3.3) ----------

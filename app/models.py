@@ -393,6 +393,8 @@ class Control(Base):
     cybersec_concepts = Column(JSON)   # identify/protect/detect/respond/recover
     operational = Column(JSON)
     is_custom = Column(Boolean, default=False)
+    # v4.0.0 — regwatch: control retirado en nueva edicion de la norma
+    deprecated_at = Column(DateTime, nullable=True)
 
 
 class ControlImplementation(Base):
@@ -416,6 +418,10 @@ class ControlImplementation(Base):
     evidence_refs = Column(JSON, nullable=True)            # [{title, url}]
     soa_reviewed_at = Column(DateTime, nullable=True)
     soa_reviewed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # v4.0.0 — regwatch: flag de revision requerida por cambio normativo
+    regwatch_review_at = Column(DateTime, nullable=True)
+    regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
 
     control = relationship("Control")
     owner = relationship("User", foreign_keys=[owner_id])
@@ -845,6 +851,10 @@ class Policy(Base):
     source_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
     review_cycle_months = Column(Integer, nullable=True)   # ciclo de revision en meses
 
+    # v4.0.0 — regwatch: cambio normativo requiere revision de esta politica
+    regwatch_review_at = Column(DateTime, nullable=True)
+    regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
+
     owner = relationship("User", foreign_keys=[owner_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     source_document = relationship("AiDocument", foreign_keys=[source_document_id])
@@ -950,6 +960,10 @@ class SupplierQuestionnaire(Base):
     next_questionnaire_id = Column(Integer, ForeignKey("supplier_questionnaires.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # v4.0.0 — regwatch: plantilla desactualizada por cambio normativo
+    regwatch_review_at = Column(DateTime, nullable=True)
+    regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
 
     supplier = relationship("Supplier")
     created_by = relationship("User")
@@ -1454,6 +1468,9 @@ class ComplianceFrameworkStatus(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+    # v4.0.0 — regwatch: requisito afectado por cambio normativo, requiere revision
+    regwatch_review_at = Column(DateTime, nullable=True)
+    regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
 
     responsible = relationship("User", foreign_keys=[responsible_id])
     __table_args__ = (
@@ -1984,6 +2001,10 @@ class BCPPlan(Base):
     # [{order,title,description,action_type,action_config}]
     # action_type: manual|notify_users|create_task|log_timeline
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # v4.0.0 — regwatch: plan requiere revision por cambio normativo
+    regwatch_review_at = Column(DateTime, nullable=True)
+    regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
 
     approved_by = relationship("User", foreign_keys=[approved_by_id])
 

@@ -223,7 +223,7 @@ const ViewRegwatch = (() => {
   function _inboxRow(it) {
     const cc = it.change_counts || {};
     const imp = it.impact || {};
-    const impactTxt = `Afecta a ${imp.policies || 0} politica(s) y ${imp.compliance_requirements || 0} requisito(s) de tu cumplimiento.`;
+    const badges = _impactBadges(imp);
     return `
       <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
@@ -232,12 +232,13 @@ const ViewRegwatch = (() => {
               ${_sevBadge(it.severity)}
               <b>${UI.esc(it.framework)}${it.version_to ? ' — ' + UI.esc(it.version_to) : ''}</b>
             </div>
-            <div style="font-size:13px;margin-bottom:4px;">${UI.esc(it.title)}</div>
-            <div style="font-size:12px;color:var(--text-muted);">
-              ${cc.modified || 0} medida(s) modificada(s), ${cc.added || 0} nueva(s), ${cc.removed || 0} eliminada(s). ${impactTxt}
+            <div style="font-size:13px;margin-bottom:6px;">${UI.esc(it.title)}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">
+              ${cc.modified || 0} medida(s) modificada(s) · ${cc.added || 0} nueva(s) · ${cc.removed || 0} eliminada(s)
             </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;">${badges}</div>
           </div>
-          <div style="display:flex;gap:6px;">
+          <div style="display:flex;gap:6px;flex-shrink:0;">
             <button class="btn btn-primary btn-sm" id="rw-review-${it.id}">Revisar</button>
             <button class="btn btn-sm" id="rw-snooze-${it.id}">Aplazar 7 dias</button>
           </div>
@@ -250,7 +251,8 @@ const ViewRegwatch = (() => {
     let detail = it;
     try { detail = await Api.regwatch.inboxItem(it.id); } catch (_) { /* usa it */ }
     const imp = detail.impact || {};
-    const hasImpact = (imp.policies || 0) + (imp.compliance_requirements || 0) > 0;
+    const totalImpact = (imp.policies || 0) + (imp.compliance_requirements || 0) +
+                        (imp.control_implementations || 0) + (imp.bcp_plans || 0);
     const mods = detail.controls_modified || [];
 
     const techDetail = mods.length ? `
@@ -260,38 +262,93 @@ const ViewRegwatch = (() => {
         </tbody></table>
       </div>` : '';
 
+    const impactBadges = _impactBadges(imp);
+
     const body = `
-      <div class="span2">
+      <div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">${_sevBadge(detail.severity)}<b>${UI.esc(detail.framework)}</b></div>
         <p style="font-size:13px;">${UI.esc(detail.title)}</p>
         <p style="font-size:13px;color:var(--text-muted);">${UI.esc(detail.summary || '')}</p>
         <details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;color:var(--brand-purple);">Ver detalle tecnico</summary>${techDetail || '<p style="font-size:12px;color:var(--text-muted);margin-top:6px;">Sin cambios atomicos detallados.</p>'}</details>
         <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
-        ${hasImpact ? `
-          <p style="font-size:13px;"><b>Tus elementos afectados</b></p>
-          <label style="font-size:13px;display:flex;gap:8px;align-items:center;"><input type="checkbox" id="rw-w-apply" checked> Aplicar el cambio del catalogo central (recomendado)</label>
-          <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0;">${imp.policies || 0} politica(s) y ${imp.compliance_requirements || 0} requisito(s) quedaran marcados como impactados para tu revision.</p>
+        ${totalImpact > 0 ? `
+          <p style="font-size:13px;font-weight:600;margin:0 0 8px;">Elementos que se marcaran para revision</p>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">${impactBadges}</div>
+          <div style="display:flex;gap:12px;flex-direction:column;">
+            <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;">
+              <input type="radio" name="rw-decision" value="apply" checked style="margin-top:3px;">
+              <span><b>Aplicar cambio</b> — actualizar catalogo y marcar elementos impactados para revision (recomendado)</span>
+            </label>
+            <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;">
+              <input type="radio" name="rw-decision" value="keep_my_version" style="margin-top:3px;">
+              <span><b>Mantener mi version</b> — registrar que lo hemos revisado pero no aplicar cambios</span>
+            </label>
+          </div>
         ` : `
-          <p style="font-size:13px;color:var(--text-muted);">No tienes plantillas clonadas ni politicas afectadas. El cambio ya se aplico al catalogo central.</p>
+          <p style="font-size:13px;color:var(--text-muted);">No se detectan elementos directamente afectados. El cambio se aplica al catalogo central.</p>
         `}
+        <div id="rw-w-result" style="display:none;margin-top:12px;padding:10px;background:var(--bg-subtle,#f8fafc);border-radius:6px;font-size:13px;"></div>
       </div>
     `;
     UI.modal('Revisar actualizacion normativa', body, {
       actions: `<button class="btn" id="rw-w-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="rw-w-apply-btn">${hasImpact ? 'Aplicar' : 'Entendido'}</button>`,
+                <button class="btn btn-primary" id="rw-w-apply-btn">Confirmar</button>`,
     });
     document.getElementById('rw-w-cancel').onclick = UI.closeModal;
     document.getElementById('rw-w-apply-btn').onclick = async () => {
-      const applyEl = document.getElementById('rw-w-apply');
-      const decision = { apply_to_clones: applyEl ? applyEl.checked : false };
+      const btn = document.getElementById('rw-w-apply-btn');
+      btn.disabled = true;
+      const radioEl = document.querySelector('input[name="rw-decision"]:checked');
+      const action = radioEl ? radioEl.value : 'apply';
+      const decision = { action };
       try {
-        await Api.regwatch.review(detail.id, decision);
-        UI.toast('Cambio revisado', 'success');
-        UI.closeModal();
-        await _loadInbox();
-        await _refreshStatus();
-      } catch (e) { UI.toast(e.message, 'error'); }
+        const resp = await Api.regwatch.review(detail.id, decision);
+        const prop = resp.propagation || {};
+        if (action === 'apply' && Object.keys(prop).length) {
+          const res = document.getElementById('rw-w-result');
+          res.style.display = 'block';
+          res.innerHTML = `<b>Cambio aplicado correctamente.</b> Resumen de acciones:<br>${_propagationSummary(prop)}`;
+          btn.textContent = 'Cerrar';
+          btn.disabled = false;
+          btn.onclick = async () => { UI.closeModal(); await _loadInbox(); await _refreshStatus(); };
+        } else {
+          UI.toast(action === 'apply' ? 'Cambio aplicado' : 'Decision registrada', 'success');
+          UI.closeModal();
+          await _loadInbox();
+          await _refreshStatus();
+        }
+      } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
     };
+  }
+
+  function _impactBadges(imp) {
+    const items = [
+      { key: 'control_implementations', label: 'Control(es) SoA', color: 'var(--brand-purple)' },
+      { key: 'policies',                label: 'Politica(s)',      color: 'var(--brand-orange)' },
+      { key: 'compliance_requirements', label: 'Requisito(s)',     color: 'var(--risk-high)' },
+      { key: 'bcp_plans',               label: 'Plan(es) BCP',     color: '#0EA5E9' },
+      { key: 'risks',                   label: 'Riesgo(s)',        color: '#F59E0B' },
+    ];
+    return items
+      .filter(i => (imp[i.key] || 0) > 0)
+      .map(i => `<span style="padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:${i.color};color:#fff;">${imp[i.key]} ${i.label}</span>`)
+      .join('') || '<span style="font-size:12px;color:var(--text-muted);">Sin impacto directo detectado</span>';
+  }
+
+  function _propagationSummary(prop) {
+    const map = {
+      catalog_controls_updated:         'Controles del catalogo actualizados',
+      control_implementations_flagged:  'Controles del SoA marcados para revision',
+      policies_flagged:                 'Politicas enviadas a revision',
+      bcp_plans_flagged:                'Planes BCP/DRP marcados',
+      supplier_questionnaires_flagged:  'Cuestionarios de proveedor marcados',
+      compliance_requirements_flagged:  'Requisitos de cumplimiento marcados',
+      tasks_created:                    'Tareas de revision creadas en el registro de riesgos',
+    };
+    const lines = Object.entries(map)
+      .filter(([k]) => (prop[k] || 0) > 0)
+      .map(([k, label]) => `<span style="display:block;padding:2px 0;">&#x2714; ${prop[k]} ${label}</span>`);
+    return lines.length ? lines.join('') : 'Sin cambios adicionales (ningun elemento afectado).';
   }
 
   async function _loadHistory() {
