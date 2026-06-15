@@ -197,12 +197,12 @@ const ViewChangeRequests = (() => {
     });
 
     document.getElementById('md-close').onclick = UI.closeModal;
-    document.getElementById('md-edit')?.onclick = () => { UI.closeModal(); _openForm(c); };
-    document.getElementById('md-submit')?.onclick = () => _action('submit', id);
-    document.getElementById('md-approve')?.onclick = () => _action('approve', id);
-    document.getElementById('md-reject')?.onclick = () => _action('reject', id);
-    document.getElementById('md-implement')?.onclick = () => _action('implement', id);
-    document.getElementById('md-verify')?.onclick = () => _action('verify', id);
+    document.getElementById('md-edit')?.addEventListener('click', () => { UI.closeModal(); _openForm(c); });
+    document.getElementById('md-submit')?.addEventListener('click', () => _action('submit', id));
+    document.getElementById('md-approve')?.addEventListener('click', () => _action('approve', id));
+    document.getElementById('md-reject')?.addEventListener('click', () => _action('reject', id));
+    document.getElementById('md-implement')?.addEventListener('click', () => _action('implement', id));
+    document.getElementById('md-verify')?.addEventListener('click', () => _action('verify', id));
   }
 
   async function _action(action, id) {
