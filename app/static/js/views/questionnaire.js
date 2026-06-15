@@ -121,14 +121,14 @@ const ViewQuestionnaire = {
             ${q.options.map(o => {
               const isEns = (q.id === 'regulations' && o.startsWith('ENS'));
               return `
-              <label class="ms-opt" style="display:block;cursor:pointer;background:var(--bg-2);
+              <label class="ms-opt" style="display:flex;align-items:center;gap:8px;cursor:pointer;background:var(--bg-2);
                      border:1px solid var(--border);border-radius:8px;
                      padding:10px 12px;font-size:13px;line-height:1.5;
                      transition:background .15s,border-color .15s;">
                 <input type="checkbox" data-q="${q.id}" value="${UI.esc(o)}"
-                       style="accent-color:var(--brand-purple);margin-right:8px;vertical-align:middle;flex-shrink:0;"
+                       style="accent-color:var(--brand-purple);flex-shrink:0;"
                        ${isEns ? `onchange="ViewQuestionnaire._toggleEnsLevel(this)"` : ''}>
-                <span style="vertical-align:middle;">${UI.esc(o)}</span>
+                <span>${UI.esc(o)}</span>
               </label>`;
             }).join('')}
           </div>
