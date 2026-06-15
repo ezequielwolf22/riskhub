@@ -37,18 +37,53 @@ const ViewAudits = (() => {
           <h1 class="page-title">Auditoria Interna</h1>
           <p class="page-sub">Programa de auditorias — ISO 27001 cl. 9.2</p>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary" id="btn-analyze-report">Analizar informe con IA</button>
-          <button class="btn btn-primary" id="btn-new-aud">+ Nueva auditoria</button>
+        <button class="btn btn-primary" id="btn-new-aud">+ Nueva auditoria</button>
+      </div>
+
+      <div class="stats-row" id="aud-stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;"></div>
+
+      <!-- Zona de importacion de informes siempre visible -->
+      <div style="border:2px dashed var(--brand-purple);border-radius:12px;padding:28px 24px;
+                  margin-bottom:24px;background:var(--bg-2);text-align:center;cursor:pointer;
+                  transition:all .2s;" id="import-zone">
+        <div style="font-size:36px;line-height:1;margin-bottom:10px;color:var(--brand-purple);">&#x2B06;</div>
+        <p style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--fg);">
+          Importar informe de auditoria
+        </p>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">
+          Arrastra aqui un informe (PDF, DOCX o TXT) o haz clic para seleccionarlo.
+          El agente IA extraera las no conformidades y hallazgos automaticamente.
+        </p>
+        <input type="file" id="import-file-input" accept=".pdf,.txt,.docx" style="display:none;">
+        <button class="btn btn-primary" id="import-browse-btn" style="pointer-events:none;">
+          Seleccionar archivo
+        </button>
+        <div id="import-file-label" style="margin-top:10px;font-size:13px;color:var(--brand-purple);
+             font-weight:600;min-height:20px;"></div>
+      </div>
+
+      <div id="import-progress" style="display:none;background:var(--bg-2);border-radius:10px;
+           padding:20px 24px;margin-bottom:24px;border:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="width:22px;height:22px;border:3px solid var(--brand-purple);
+                      border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;
+                      flex-shrink:0;"></div>
+          <div>
+            <div style="font-size:14px;font-weight:600;">Analizando informe con IA...</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
+              Puede tardar 15-45 segundos segun el tamano del documento.
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="stats-row" id="aud-stats" style="margin-bottom:16px;"></div>
+      <div id="import-result"></div>
+
       <div id="aud-list"></div>
     `;
 
     document.getElementById('btn-new-aud').onclick = () => _openAuditForm(null);
-    document.getElementById('btn-analyze-report').onclick = () => _openAnalyzeReportModal();
+    _initImportZone(el);
 
     try {
       [_users, _nonconformities] = await Promise.all([
@@ -59,6 +94,89 @@ const ViewAudits = (() => {
 
     await _loadStats();
     await _refresh();
+  }
+
+  function _initImportZone(el) {
+    const zone = el.querySelector('#import-zone');
+    const fileInput = el.querySelector('#import-file-input');
+    const fileLabel = el.querySelector('#import-file-label');
+
+    function _selectFile(file) {
+      if (!file) return;
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (!['pdf', 'txt', 'docx'].includes(ext)) {
+        UI.toast('Formato no soportado. Usa PDF, DOCX o TXT.', 'error');
+        return;
+      }
+      fileLabel.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+      zone.style.borderColor = 'var(--brand-purple)';
+      zone.style.background = 'var(--bg-1)';
+      _runImportAnalysis(file);
+    }
+
+    zone.onclick = () => fileInput.click();
+    fileInput.onchange = () => { if (fileInput.files[0]) _selectFile(fileInput.files[0]); };
+
+    zone.ondragover = (e) => {
+      e.preventDefault();
+      zone.style.background = 'var(--bg-1)';
+    };
+    zone.ondragleave = () => {
+      zone.style.background = 'var(--bg-2)';
+    };
+    zone.ondrop = (e) => {
+      e.preventDefault();
+      zone.style.background = 'var(--bg-2)';
+      if (e.dataTransfer.files[0]) _selectFile(e.dataTransfer.files[0]);
+    };
+  }
+
+  async function _runImportAnalysis(file) {
+    const progressEl = document.getElementById('import-progress');
+    const resultEl = document.getElementById('import-result');
+    const zone = document.getElementById('import-zone');
+    const fileLabel = document.getElementById('import-file-label');
+
+    progressEl.style.display = 'block';
+    resultEl.innerHTML = '';
+    zone.style.pointerEvents = 'none';
+    zone.style.opacity = '0.6';
+
+    try {
+      let auditId = null;
+      const today = new Date().toISOString().slice(0, 10);
+      const newAudit = await Api.audits.create({
+        title: `Informe analizado — ${file.name} (${today})`,
+        audit_type: 'internal',
+        status: 'completed',
+        scope: 'Importado y analizado automaticamente por el agente IA',
+      });
+      auditId = newAudit.id;
+
+      const fd = new FormData();
+      fd.append('file', file);
+      const resp = await Api.req(`/api/audits/${auditId}/analyze-report`, {
+        method: 'POST',
+        body: fd,
+      });
+
+      _renderAnalysisResult(resultEl, resp, auditId);
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      await _loadStats();
+      await _refresh();
+    } catch (e) {
+      resultEl.innerHTML = `
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;
+                    padding:16px 20px;margin-bottom:16px;color:var(--risk-critical);">
+          Error al analizar: ${UI.esc(e.message)}
+        </div>`;
+    } finally {
+      progressEl.style.display = 'none';
+      zone.style.pointerEvents = '';
+      zone.style.opacity = '';
+      fileLabel.textContent = '';
+      document.getElementById('import-file-input').value = '';
+    }
   }
 
   async function _loadStats() {
@@ -785,5 +903,5 @@ const ViewAudits = (() => {
     await _refresh();
   }
 
-  return { render, _openAnalyzeReportModal, _runAnalysis, _renderAnalysisResult, _createFindingFromAI, _createAllFindings, _defaultDeadline };
+  return { render, _openAnalyzeReportModal, _runAnalysis, _runImportAnalysis, _renderAnalysisResult, _createFindingFromAI, _createAllFindings, _defaultDeadline };
 })();
