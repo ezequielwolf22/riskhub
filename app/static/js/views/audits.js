@@ -67,11 +67,26 @@ const ViewAudits = (() => {
       const wrap = document.getElementById('aud-stats');
       if (!wrap) return;
       wrap.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${s.total_programs}</div><div class="stat-label">Auditorias</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.by_status.in_progress||0}</div><div class="stat-label">En curso</div></div>
-        <div class="stat-card"><div class="stat-value">${s.total_findings}</div><div class="stat-label">Hallazgos</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.open_major_ncs}</div><div class="stat-label">NC Mayores sin NC</div></div>
+        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;">
+          <div class="stat-value" style="font-size:28px;font-weight:700;">${s.total_programs}</div>
+          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">Auditorias</div>
+        </div>
+        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;">
+          <div class="stat-value" style="font-size:28px;font-weight:700;color:var(--brand-orange);">${s.by_status.in_progress||0}</div>
+          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">En curso</div>
+        </div>
+        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;">
+          <div class="stat-value" style="font-size:28px;font-weight:700;">${s.total_findings}</div>
+          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">Hallazgos</div>
+        </div>
+        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;">
+          <div class="stat-value" style="font-size:28px;font-weight:700;color:var(--risk-critical);">${s.open_major_ncs}</div>
+          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">NC Mayores abiertas</div>
+        </div>
       `;
+      wrap.style.display = 'flex';
+      wrap.style.gap = '12px';
+      wrap.style.flexWrap = 'wrap';
     } catch (_) {}
   }
 
@@ -333,60 +348,76 @@ const ViewAudits = (() => {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-    <div class="modal" style="max-width:720px;">
-      <div class="modal-header">
-        <h2>Analizar informe de auditoria con IA</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">x</button>
+    <div class="modal" style="max-width:700px;max-height:92vh;overflow-y:auto;">
+      <div class="modal-header" style="position:sticky;top:0;background:var(--bg-0);z-index:1;border-bottom:1px solid var(--border);padding-bottom:12px;">
+        <h2 style="margin:0;">Importar informe con IA</h2>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
       </div>
-      <div class="modal-body">
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-          Sube un informe de auditoria (PDF o TXT) y el agente IA identificara
-          automaticamente las no conformidades, observaciones y oportunidades de mejora.
-          Las NC mayores y menores se volcaran automaticamente en No conformidades y Tareas.
-        </p>
+      <div class="modal-body" style="padding-top:16px;">
 
-        <label>Seleccionar auditoria *</label>
-        <select id="ar-audit-sel" class="input" style="margin-bottom:16px;">
-          <option value="">Cargando auditorias...</option>
-        </select>
-
-        <label>Informe de auditoria (PDF o TXT, max. 5MB) *</label>
-        <div id="ar-drop-zone" style="border:2px dashed var(--border);border-radius:8px;
-             padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .2s;
-             margin-bottom:16px;background:var(--bg-2);">
-          <div style="font-size:28px;color:var(--text-muted);margin-bottom:8px;">&#x2191;</div>
-          <p style="margin:0 0 4px;font-size:14px;font-weight:600;">Arrastra el archivo aqui</p>
-          <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted);">o haz clic para buscar — PDF o TXT, max. 5 MB</p>
-          <button type="button" class="btn btn-ghost" style="font-size:12px;" id="ar-browse-btn">Seleccionar archivo</button>
-          <input type="file" id="ar-file" accept=".pdf,.txt" style="display:none;">
-          <div id="ar-file-name" style="margin-top:10px;font-size:12px;color:var(--brand-purple);font-weight:600;display:none;"></div>
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;">
+          Sube cualquier informe de auditoria (PDF, TXT, DOCX) en cualquier idioma.
+          El agente IA extrae automaticamente no conformidades, observaciones y oportunidades
+          y las crea directamente en la seccion <strong>No conformidades</strong>.
         </div>
 
-        <div id="ar-result" style="display:none;"></div>
+        <label style="font-weight:600;font-size:13px;">Informe de auditoria *</label>
+        <div id="ar-drop-zone" style="border:2px dashed var(--border);border-radius:10px;
+             padding:36px 20px;text-align:center;cursor:pointer;transition:all .2s;
+             margin:8px 0 20px;background:var(--bg-2);">
+          <div style="font-size:40px;color:var(--text-muted);line-height:1;margin-bottom:10px;">&#x2B06;</div>
+          <p style="margin:0 0 6px;font-size:15px;font-weight:600;color:var(--fg);">Arrastra el archivo aqui</p>
+          <p style="margin:0 0 14px;font-size:12px;color:var(--text-muted);">PDF, TXT o DOCX — maximo 5 MB</p>
+          <button type="button" class="btn btn-ghost" style="font-size:13px;" id="ar-browse-btn">Seleccionar archivo</button>
+          <input type="file" id="ar-file" accept=".pdf,.txt,.docx" style="display:none;">
+          <div id="ar-file-name" style="margin-top:12px;font-size:13px;color:var(--brand-purple);
+               font-weight:600;display:none;padding:6px 12px;background:var(--bg-1);
+               border-radius:6px;display:inline-block;"></div>
+        </div>
 
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="btn btn-primary" id="ar-btn-analyze">Analizar con IA</button>
+        <details style="margin-bottom:20px;">
+          <summary style="cursor:pointer;font-size:13px;color:var(--text-muted);font-weight:600;
+                          list-style:none;display:flex;align-items:center;gap:6px;">
+            <span id="ar-summary-arrow" style="transition:transform .2s;">&#9656;</span>
+            Vincular a una auditoria existente (opcional)
+          </summary>
+          <div style="margin-top:10px;">
+            <select id="ar-audit-sel" class="input">
+              <option value="">Sin vincular — solo crear No Conformidades</option>
+            </select>
+            <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0;">
+              Si no seleccionas ninguna, se creara una auditoria automaticamente como registro.
+            </p>
+          </div>
+        </details>
+
+        <div id="ar-result"></div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary" id="ar-btn-analyze" style="min-width:140px;">
+            Analizar con IA
+          </button>
           <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <span id="ar-progress" style="font-size:12px;color:var(--text-muted);display:none;">Analizando...</span>
         </div>
       </div>
     </div>`;
     document.body.appendChild(modal);
 
-    // Drag-and-drop handlers
     const dropZone = document.getElementById('ar-drop-zone');
     const fileInput = document.getElementById('ar-file');
     const fileNameDiv = document.getElementById('ar-file-name');
 
     function _showFile(file) {
-      if (file) {
-        fileNameDiv.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
-        fileNameDiv.style.display = 'block';
-        dropZone.style.borderColor = 'var(--brand-purple)';
-      }
+      if (!file) return;
+      fileNameDiv.textContent = '✔ ' + file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+      fileNameDiv.style.display = 'inline-block';
+      dropZone.style.borderColor = 'var(--brand-purple)';
+      dropZone.style.background = 'var(--bg-1)';
     }
 
-    document.getElementById('ar-browse-btn').onclick = () => fileInput.click();
-    dropZone.onclick = (e) => { if (e.target !== document.getElementById('ar-browse-btn')) fileInput.click(); };
+    document.getElementById('ar-browse-btn').onclick = (e) => { e.stopPropagation(); fileInput.click(); };
+    dropZone.onclick = () => fileInput.click();
     fileInput.onchange = () => _showFile(fileInput.files[0]);
 
     dropZone.ondragover = (e) => {
@@ -395,19 +426,18 @@ const ViewAudits = (() => {
       dropZone.style.background = 'var(--bg-1)';
     };
     dropZone.ondragleave = () => {
-      dropZone.style.borderColor = 'var(--border)';
-      dropZone.style.background = 'var(--bg-2)';
+      if (!fileInput.files?.length) {
+        dropZone.style.borderColor = 'var(--border)';
+        dropZone.style.background = 'var(--bg-2)';
+      }
     };
     dropZone.ondrop = (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = 'var(--border)';
-      dropZone.style.background = 'var(--bg-2)';
-      const dt = e.dataTransfer;
-      if (dt.files.length) {
-        const transfer = new DataTransfer();
-        transfer.items.add(dt.files[0]);
-        fileInput.files = transfer.files;
-        _showFile(dt.files[0]);
+      if (e.dataTransfer.files.length) {
+        const dt = new DataTransfer();
+        dt.items.add(e.dataTransfer.files[0]);
+        fileInput.files = dt.files;
+        _showFile(e.dataTransfer.files[0]);
       }
     };
 
@@ -415,36 +445,55 @@ const ViewAudits = (() => {
 
     Api.audits.list({}).then(list => {
       const sel = document.getElementById('ar-audit-sel');
-      if (!sel) return;
-      sel.innerHTML = '<option value="">Selecciona una auditoria...</option>' +
+      if (!sel || !list.length) return;
+      sel.innerHTML = '<option value="">Sin vincular — solo crear No Conformidades</option>' +
         list.map(a => `<option value="${a.id}">${UI.esc(a.title || 'Auditoria ' + a.id)}</option>`).join('');
-    }).catch(() => {
-      const sel = document.getElementById('ar-audit-sel');
-      if (sel) sel.innerHTML = '<option value="">Error al cargar auditorias</option>';
-    });
+    }).catch(() => {});
   }
 
   async function _runAnalysis() {
     const btn = document.getElementById('ar-btn-analyze');
     const resultDiv = document.getElementById('ar-result');
-    const auditId = document.getElementById('ar-audit-sel')?.value;
     const fileInput = document.getElementById('ar-file');
 
-    if (!auditId) { UI.toast('Selecciona una auditoria', 'error'); return; }
-    if (!fileInput?.files?.length) { UI.toast('Selecciona un archivo', 'error'); return; }
+    if (!fileInput?.files?.length) { UI.toast('Selecciona un archivo primero', 'error'); return; }
+
+    const file = fileInput.files[0];
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'txt', 'docx'].includes(ext)) {
+      UI.toast('Formato no soportado. Usa PDF, TXT o DOCX.', 'error'); return;
+    }
 
     btn.disabled = true;
     btn.textContent = 'Analizando...';
-    resultDiv.style.display = 'block';
     resultDiv.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;padding:20px;background:var(--bg-2);border-radius:8px;">
-        <div style="width:20px;height:20px;border:3px solid var(--brand-purple);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-        <span style="font-size:13px;color:var(--text-muted);">El agente IA esta analizando el informe...</span>
+      <div style="display:flex;align-items:center;gap:12px;padding:20px;
+                  background:var(--bg-2);border-radius:8px;margin:16px 0;">
+        <div style="width:20px;height:20px;border:3px solid var(--brand-purple);
+                    border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;
+                    flex-shrink:0;"></div>
+        <div>
+          <div style="font-size:13px;font-weight:600;">El agente IA esta analizando el informe...</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Esto puede tardar entre 15 y 45 segundos segun el tamano del documento.</div>
+        </div>
       </div>`;
 
     try {
+      // Obtener o crear auditoria de soporte
+      let auditId = document.getElementById('ar-audit-sel')?.value || '';
+      if (!auditId) {
+        const today = new Date().toISOString().slice(0, 10);
+        const newAudit = await Api.audits.create({
+          title: `Analisis IA — ${file.name} (${today})`,
+          audit_type: 'internal',
+          status: 'completed',
+          scope: 'Informe analizado automaticamente por el agente IA',
+        });
+        auditId = newAudit.id;
+      }
+
       const fd = new FormData();
-      fd.append('file', fileInput.files[0]);
+      fd.append('file', file);
 
       const resp = await Api.req(`/api/audits/${auditId}/analyze-report`, {
         method: 'POST',
@@ -452,7 +501,7 @@ const ViewAudits = (() => {
       });
       _renderAnalysisResult(resultDiv, resp, auditId);
     } catch (e) {
-      resultDiv.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+      resultDiv.innerHTML = `<div class="notice" style="margin:16px 0;">${UI.esc(e.message)}</div>`;
     } finally {
       btn.disabled = false;
       btn.textContent = 'Analizar con IA';

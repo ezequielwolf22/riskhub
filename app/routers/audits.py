@@ -423,6 +423,14 @@ async def analyze_audit_report(
             text_content = "\n".join(page.extract_text() or "" for page in reader.pages)
         except Exception:
             raise HTTPException(400, "No se pudo leer el PDF. Asegurate de que el archivo no esta corrupto o protegido.")
+    elif filename_lower.endswith('.docx'):
+        try:
+            import io
+            import docx
+            doc = docx.Document(io.BytesIO(content))
+            text_content = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        except Exception:
+            raise HTTPException(400, "No se pudo leer el DOCX. Asegurate de que el archivo no esta corrupto.")
     else:
         text_content = content.decode('utf-8', errors='ignore')
 
@@ -439,23 +447,32 @@ async def analyze_audit_report(
     if not api_key:
         raise HTTPException(400, "API key de IA no configurada. Configura el Agente IA primero.")
 
-    prompt = f"""Eres un auditor ISO 27001 experto. Analiza este informe de auditoria y extrae TODOS los hallazgos.
+    prompt = f"""Eres un auditor ISO 27001 experto. Analiza el siguiente informe de auditoria (puede estar en cualquier idioma) y extrae TODOS los hallazgos identificados.
 
-INFORME DE AUDITORIA:
+Clasifica cada hallazgo en:
+- major_nc: No conformidad mayor (incumplimiento grave de un requisito)
+- minor_nc: No conformidad menor (incumplimiento parcial o puntual)
+- observation: Observacion (area de atencion que no constituye NC)
+- opportunity: Oportunidad de mejora
+- conformity: Punto conforme destacado
+
+Responde SIEMPRE en castellano (espanol), independientemente del idioma del informe.
+
+INFORME:
 {text_excerpt}
 
-Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
+Devuelve EXCLUSIVAMENTE un objeto JSON con esta estructura:
 {{
-  "summary": "Resumen ejecutivo del informe en 2-3 oraciones",
-  "audit_scope": "Alcance identificado",
+  "summary": "Resumen ejecutivo del informe en 2-3 oraciones en castellano",
+  "audit_scope": "Alcance del sistema auditado",
   "findings": [
     {{
-      "type": "major_nc|minor_nc|observation|opportunity|conformity",
-      "title": "Titulo corto del hallazgo",
-      "description": "Descripcion detallada",
-      "iso_clause": "Clausula ISO 27001 relacionada (ej: 9.2, 6.1.3) o null",
-      "recommendation": "Accion correctiva recomendada",
-      "priority": "high|medium|low",
+      "type": "major_nc",
+      "title": "Titulo conciso del hallazgo",
+      "description": "Descripcion detallada de lo encontrado",
+      "iso_clause": "Clausula ISO 27001 o 27002 relacionada, ej: 9.2 o A.12.6.1, o null si no aplica",
+      "recommendation": "Accion correctiva o de mejora recomendada",
+      "priority": "high",
       "estimated_days": 30
     }}
   ],
@@ -465,7 +482,7 @@ Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
   "total_opportunities": 0
 }}
 
-Si no hay hallazgos de algun tipo, pon array vacio. Solo JSON, sin texto adicional."""
+Extrae TODOS los hallazgos del informe. Si no hay hallazgos de un tipo, usa array vacio. Solo JSON, sin texto adicional, sin markdown."""
 
     try:
         import anthropic
