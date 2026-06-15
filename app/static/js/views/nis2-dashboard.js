@@ -91,7 +91,7 @@ const ViewNis2Dashboard = (() => {
       container.innerHTML = html;
       _startCountdowns();
     } catch (e) {
-      container.innerHTML = UI.notice('error', 'Error: ' + e.message);
+      container.innerHTML = UI.notice('Error: ' + e.message, 'error');
     }
   }
 
@@ -125,12 +125,12 @@ const ViewNis2Dashboard = (() => {
     const n = await Api.get(`/api/nis2/notifications/${notifId}`);
     const c = n.content_json || {};
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:560px;">
       <div class="modal-header">
         <h2>NIS2 — ${UI.esc(n.stage_label)}</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
       </div>
       <div class="modal-body">
         <p style="color:#D97706;font-size:12px;">Plazo: <strong>${n.deadline_at ? new Date(n.deadline_at).toLocaleString('es-ES') : '—'}</strong></p>
@@ -172,7 +172,7 @@ const ViewNis2Dashboard = (() => {
     await _saveWizard(id);
     await Api.post(`/api/nis2/notifications/${id}/submit`, {});
     UI.toast('Notificacion marcada como enviada', 'success');
-    document.querySelector('.modal-overlay')?.remove();
+    document.querySelector('.modal-bg')?.remove();
     location.reload();
   }
 

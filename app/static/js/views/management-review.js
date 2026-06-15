@@ -46,7 +46,7 @@ const ViewManagementReview = (() => {
         </table>
       </div>`;
     } catch (e) {
-      container.innerHTML = UI.notice('error', 'Error: ' + e.message);
+      container.innerHTML = UI.notice('Error: ' + e.message, 'error');
     }
   }
 
@@ -67,12 +67,12 @@ const ViewManagementReview = (() => {
     const nc = mr.input_nc_corrections || {};
 
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:680px;max-height:80vh;overflow-y:auto;">
       <div class="modal-header">
         <h2>${UI.esc(mr.code||'')} — Revision por la Direccion</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
       </div>
       <div class="modal-body">
         <div style="display:flex;gap:8px;margin-bottom:16px;">
@@ -130,7 +130,7 @@ const ViewManagementReview = (() => {
     await _saveOutputs(id);
     await Api.post(`/api/management-review/${id}/conduct`, {});
     UI.toast('Revision marcada como celebrada', 'success');
-    document.querySelector('.modal-overlay')?.remove();
+    document.querySelector('.modal-bg')?.remove();
     location.reload();
   }
 

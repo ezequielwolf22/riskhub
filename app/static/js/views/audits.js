@@ -477,12 +477,12 @@ const ViewAudits = (() => {
 
   function _openAnalyzeReportModal() {
     const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:700px;max-height:92vh;overflow-y:auto;">
       <div class="modal-header" style="position:sticky;top:0;background:var(--bg-0);z-index:1;border-bottom:1px solid var(--border);padding-bottom:12px;">
         <h2 style="margin:0;">Importar informe con IA</h2>
-        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&times;</button>
       </div>
       <div class="modal-body" style="padding-top:16px;">
 
@@ -528,7 +528,7 @@ const ViewAudits = (() => {
           <button class="btn btn-primary" id="ar-btn-analyze" style="min-width:140px;">
             Analizar con IA
           </button>
-          <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-ghost" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
           <span id="ar-progress" style="font-size:12px;color:var(--text-muted);display:none;">Analizando...</span>
         </div>
       </div>
@@ -911,7 +911,7 @@ const ViewAudits = (() => {
     if (ncsCreated) extra.push(`${ncsCreated} NC`);
     if (tasksCreated) extra.push(`${tasksCreated} tareas`);
     UI.toast(`${created} hallazgos creados${extra.length ? ' + ' + extra.join(' + ') : ''}`, 'success');
-    document.querySelector('.modal-overlay')?.remove();
+    document.querySelector('.modal-bg')?.remove();
     await _loadStats();
     await _refresh();
   }
