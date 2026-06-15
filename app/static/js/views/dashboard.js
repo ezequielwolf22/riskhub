@@ -1,5 +1,22 @@
 /* Dashboard - resumen ejecutivo multi-modulo. */
 
+/* --- Sistema de widgets personalizables --- */
+const DASHBOARD_WIDGETS = {
+  posture:    { label: 'Postura de seguridad',   icon: 'shield' },
+  risks:      { label: 'Riesgos',                icon: 'bar-chart' },
+  controls:   { label: 'Controles ISO 27002',    icon: 'check-circle' },
+  incidents:  { label: 'Incidentes',             icon: 'alert-triangle' },
+  tasks:      { label: 'Tareas',                 icon: 'list' },
+  policies:   { label: 'Politicas',              icon: 'file-text' },
+  gdpr:       { label: 'RGPD',                   icon: 'lock' },
+  tprm:       { label: 'Proveedores (TPRM)',     icon: 'users' },
+  bcp:        { label: 'Continuidad (BCP)',       icon: 'refresh-cw' },
+  top10:      { label: 'Top 10 riesgos',         icon: 'trending-up' },
+  actions:    { label: 'Acciones rapidas y vencimientos', icon: 'zap' },
+  coverage:   { label: 'Cobertura de controles', icon: 'pie-chart' },
+};
+const DASHBOARD_DEFAULT_LAYOUT = ['posture','risks','controls','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
+
 /**
  * Muestra un banner de bienvenida si el cuestionario IA no se ha completado.
  * Se antepone al contenido principal del dashboard.
@@ -29,10 +46,530 @@ async function _renderOnboardingBanner(container) {
 }
 
 const ViewDashboard = {
+  _editMode: false,
+  _cachedData: null,
+  _cachedMain: null,
+
+  /* Obtiene el layout guardado en localStorage. */
+  _getLayout() {
+    try {
+      const saved = localStorage.getItem('riskhub_dashboard_layout');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_e) { /* silencioso */ }
+    return DASHBOARD_DEFAULT_LAYOUT.slice();
+  },
+
+  /* Guarda el layout en localStorage. */
+  _saveLayout(layout) {
+    localStorage.setItem('riskhub_dashboard_layout', JSON.stringify(layout));
+  },
+
+  /* Restaura el layout por defecto. */
+  _resetLayout() {
+    localStorage.removeItem('riskhub_dashboard_layout');
+    ViewDashboard._exitEdit();
+    if (ViewDashboard._cachedMain && ViewDashboard._cachedData) {
+      ViewDashboard._renderWithData(ViewDashboard._cachedMain, DASHBOARD_DEFAULT_LAYOUT.slice(), ViewDashboard._cachedData);
+    }
+  },
+
+  /* Sale del modo edicion sin guardar cambios adicionales. */
+  _exitEdit() {
+    ViewDashboard._editMode = false;
+    const panel = document.getElementById('dash-edit-panel');
+    if (panel) panel.remove();
+    // Quitar los overlays de edicion de cada widget
+    document.querySelectorAll('[data-widget-id]').forEach(el => {
+      el.draggable = false;
+      el.style.borderTop = '';
+      el.style.opacity = '';
+      const handle = el.querySelector('.dash-widget-handle');
+      if (handle) handle.remove();
+    });
+    // Actualizar texto del boton
+    const btn = document.getElementById('dash-customize-btn');
+    if (btn) btn.textContent = 'Personalizar dashboard';
+  },
+
+  /* Entra en modo edicion mostrando el panel de personalizacion. */
+  _enterEdit() {
+    ViewDashboard._editMode = true;
+    const layout = ViewDashboard._getLayout();
+    const allIds = Object.keys(DASHBOARD_WIDGETS);
+
+    // Construir lista de todos los widgets con toggles y estado actual
+    const pickerItems = allIds.map(id => {
+      const w = DASHBOARD_WIDGETS[id];
+      const active = layout.includes(id);
+      return `
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;
+                      background:var(--bg-2);border:1px solid ${active ? 'var(--brand-purple)' : 'var(--border)'};
+                      border-radius:8px;padding:6px 10px;font-size:12px;font-weight:500;
+                      color:${active ? 'var(--brand-purple)' : 'var(--text-muted)'};
+                      transition:border-color .15s,color .15s;">
+          <input type="checkbox" data-widget-toggle="${id}" ${active ? 'checked' : ''}
+                 style="accent-color:var(--brand-purple);"
+                 onchange="ViewDashboard._onWidgetToggle('${id}', this.checked)">
+          ${UI.esc(w.label)}
+        </label>`;
+    }).join('');
+
+    const panel = document.createElement('div');
+    panel.id = 'dash-edit-panel';
+    panel.style.cssText = 'background:var(--bg-card);border:2px dashed var(--brand-purple);border-radius:10px;padding:16px;margin-bottom:16px;';
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <strong style="font-size:14px;">Personalizar dashboard</strong>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="ViewDashboard._resetLayout()">
+            Restaurar por defecto
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="ViewDashboard._exitEdit()">
+            Listo
+          </button>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
+        Arrastra los widgets para reordenarlos. Activa o desactiva cada widget con los checkboxes.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">${pickerItems}</div>`;
+
+    // Insertar panel antes del contenido del dashboard
+    const content = document.getElementById('dash-content');
+    if (content) content.parentNode.insertBefore(panel, content);
+
+    // Activar drag-and-drop en los widgets visibles
+    ViewDashboard._activateDragDrop(layout);
+
+    // Actualizar boton
+    const btn = document.getElementById('dash-customize-btn');
+    if (btn) btn.textContent = 'Cerrar personalizacion';
+  },
+
+  /* Activa drag-and-drop en los widgets del layout activo. */
+  _activateDragDrop(layout) {
+    document.querySelectorAll('[data-widget-id]').forEach(el => {
+      const id = el.dataset.widgetId;
+      if (!layout.includes(id)) return;
+
+      // Anadir handle si no existe
+      if (!el.querySelector('.dash-widget-handle')) {
+        const handle = document.createElement('div');
+        handle.className = 'dash-widget-handle';
+        handle.title = 'Arrastra para reordenar';
+        handle.style.cssText = 'position:absolute;top:8px;left:-20px;width:18px;height:18px;cursor:grab;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;opacity:0.6;';
+        handle.textContent = '≡'; // triple dash (≡)
+        el.style.position = 'relative';
+        el.appendChild(handle);
+      }
+
+      el.draggable = true;
+      el.style.cursor = 'grab';
+
+      el.ondragstart = (e) => {
+        e.dataTransfer.setData('text/plain', id);
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => { el.style.opacity = '0.5'; }, 0);
+      };
+      el.ondragend = () => {
+        el.style.opacity = '1';
+        el.style.borderTop = '';
+      };
+      el.ondragover = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        el.style.borderTop = '3px solid var(--brand-purple)';
+      };
+      el.ondragleave = () => {
+        el.style.borderTop = '';
+      };
+      el.ondrop = (e) => {
+        e.preventDefault();
+        el.style.borderTop = '';
+        const srcId = e.dataTransfer.getData('text/plain');
+        if (srcId === id) return;
+        const currentLayout = ViewDashboard._getLayout();
+        const srcIdx = currentLayout.indexOf(srcId);
+        const tgtIdx = currentLayout.indexOf(id);
+        if (srcIdx !== -1 && tgtIdx !== -1) {
+          currentLayout.splice(srcIdx, 1);
+          currentLayout.splice(tgtIdx, 0, srcId);
+          ViewDashboard._saveLayout(currentLayout);
+          // Re-renderizar con datos cacheados
+          if (ViewDashboard._cachedMain && ViewDashboard._cachedData) {
+            ViewDashboard._renderWithData(ViewDashboard._cachedMain, currentLayout, ViewDashboard._cachedData);
+            // Re-entrar en modo edicion despues de re-render
+            ViewDashboard._enterEdit();
+          }
+        }
+      };
+    });
+  },
+
+  /* Toggle de visibilidad de un widget desde el picker. */
+  _onWidgetToggle(id, visible) {
+    const layout = ViewDashboard._getLayout();
+    if (visible && !layout.includes(id)) {
+      layout.push(id);
+    } else if (!visible) {
+      const idx = layout.indexOf(id);
+      if (idx !== -1) layout.splice(idx, 1);
+    }
+    ViewDashboard._saveLayout(layout);
+    // Re-renderizar con datos cacheados
+    if (ViewDashboard._cachedMain && ViewDashboard._cachedData) {
+      ViewDashboard._renderWithData(ViewDashboard._cachedMain, layout, ViewDashboard._cachedData);
+      ViewDashboard._enterEdit();
+    }
+  },
+
+  /* Re-renderiza el dashboard con datos ya cargados (sin peticiones al servidor). */
+  _renderWithData(main, layout, data) {
+    const { risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData } = data;
+    const postureScore = ViewDashboard._calcPosture(risks, incidents, tasks, policies, gdprData);
+    const methLabels = { iso27005:'ISO 27005', magerit:'MAGERIT v3', combined:'ISO 27005 + MAGERIT' };
+    const meth = context?.methodology || 'iso27005';
+    const methBadge = ViewDashboard._methBadgeHtml(context, meth, methLabels);
+    const widgetHtml = ViewDashboard._buildWidgetHtml(layout, risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData, postureScore);
+
+    const c = document.getElementById('dash-content');
+    if (!c) return; // dash-content siempre existe tras render() inicial
+    c.innerHTML = methBadge + widgetHtml;
+
+    // Recargar secciones async (los elementos del DOM cambian con cada re-render)
+    ViewDashboard._loadUpcoming();
+    ViewDashboard._loadUpcomingControlReviews();
+    ViewDashboard._loadControlsCoverage();
+    ViewDashboard._loadRecentActivity();
+  },
+
+  /* Genera el HTML del badge de metodologia. */
+  _methBadgeHtml(context, meth, methLabels) {
+    return `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+        <span style="font-size:11px;color:var(--text-muted);">Metodologia activa:</span>
+        <span style="background:var(--brand-purple);color:#fff;border-radius:20px;
+                     padding:3px 12px;font-size:12px;font-weight:700;">
+          ${methLabels[meth] || meth}
+        </span>
+        ${context?.risk_appetite != null ? `
+        <span style="font-size:11px;color:var(--text-muted);">Apetito de riesgo:</span>
+        <span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
+                     padding:3px 12px;font-size:12px;font-weight:700;color:var(--brand-purple);">
+          ${context.risk_appetite} / 8
+        </span>` : ''}
+        ${context?.active_frameworks?.length ? `
+        <span style="font-size:11px;color:var(--text-muted);">Normativas:</span>
+        ${context.active_frameworks.map(f =>
+          `<span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
+                       padding:2px 10px;font-size:11px;">${UI.esc(f.toUpperCase())}</span>`
+        ).join('')}` : ''}
+        <a href="#/context" style="font-size:11px;color:var(--brand-purple);margin-left:4px;">
+          Cambiar en Contexto
+        </a>
+      </div>`;
+  },
+
+  /* Construye el HTML de cada widget segun el layout activo. */
+  _buildWidgetHtml(layout, risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData, postureScore) {
+    const widgets = {
+      posture: () => `
+        <div data-widget-id="posture" style="margin-bottom:4px;">
+          ${ViewDashboard._postureHtml(postureScore, risks, incidents, tasks, policies, gdprData)}
+        </div>`,
+
+      risks: () => `
+        <div data-widget-id="risks" style="margin-bottom:20px;">
+          <div class="card-row" style="margin-bottom:8px;">
+            <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/assets'"
+                 title="Ver inventario de activos">
+              <div class="label">Activos inventariados</div>
+              <div class="value">${risks.total_assets}</div>
+              <div class="hint">clic para ver inventario</div>
+            </div>
+            <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/risks'"
+                 title="Ver todos los riesgos">
+              <div class="label">Riesgos identificados</div>
+              <div class="value">${risks.total_risks}</div>
+              <div class="hint">clic para ver registro</div>
+            </div>
+            <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#FFE6CE,#EDD1FF);"
+                 onclick="location.hash='#/risks?band=high'" title="Ver riesgos altos sin tratar">
+              <div class="label">Riesgos altos sin tratar</div>
+              <div class="value">${risks.by_band.high}</div>
+              <div class="hint">clic para filtrar por nivel alto</div>
+            </div>
+            <div class="kpi" style="cursor:pointer;${risks.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}"
+                 onclick="location.hash='#/risks?owner=__unassigned__'" title="Ver riesgos sin responsable">
+              <div class="label">Sin responsable asignado</div>
+              <div class="value" style="${risks.no_owner > 0 ? 'color:#6D28D9;' : ''}">${risks.no_owner}</div>
+              <div class="hint">clic para ver sin propietario</div>
+            </div>
+          </div>
+          <div class="card-row" style="margin-bottom:8px;">
+            <div class="kpi" style="cursor:pointer;${risks.overdue_treatments > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
+                 onclick="location.hash='#/risks?overdue=1'" title="Ver riesgos con tratamiento vencido">
+              <div class="label">Tratamientos vencidos</div>
+              <div class="value" style="${risks.overdue_treatments > 0 ? 'color:#991B1B;' : ''}">${risks.overdue_treatments}</div>
+              <div class="hint">clic para ver detalle</div>
+            </div>
+            <div class="kpi" style="cursor:pointer;${risks.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}"
+                 onclick="location.hash='#/risks?treatment=__none__&min_level=5'" title="Ver riesgos altos sin plan">
+              <div class="label">Altos sin plan definido</div>
+              <div class="value" style="${risks.no_treatment_high > 0 ? 'color:#92400E;' : ''}">${risks.no_treatment_high}</div>
+              <div class="hint">clic para ver riesgos >= 5 sin tratamiento</div>
+            </div>
+            <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#D1FAE5,#A7F3D0);"
+                 onclick="location.hash='#/heatmap'" title="Ver mapa de calor">
+              <div class="label">Reduccion del riesgo</div>
+              <div class="value" style="color:#065F46;">${risks.risk_reduction_pct}%</div>
+              <div class="hint">clic para ver mapa de calor</div>
+            </div>
+            ${incidents ? `
+            <div class="kpi" style="cursor:pointer;${incidents.p1_p2_open > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
+                 onclick="location.hash='#/incidents?severity=p1'" title="Incidentes P1/P2 abiertos">
+              <div class="label">Incidentes P1/P2</div>
+              <div class="value" style="${incidents.p1_p2_open > 0 ? 'color:#991B1B;' : ''}">${incidents.p1_p2_open}</div>
+              <div class="hint">${incidents.open} abiertos · clic para ver criticos</div>
+            </div>` : ''}
+            ${tasks ? `
+            <div class="kpi" style="cursor:pointer;${tasks.overdue > 0 ? 'background:linear-gradient(45deg,#FFF7ED,#FED7AA);border-color:#FDBA74;' : ''}"
+                 onclick="location.hash='#/tasks?overdue=1'" title="Tareas vencidas">
+              <div class="label">Tareas vencidas</div>
+              <div class="value" style="${tasks.overdue > 0 ? 'color:#9A3412;' : ''}">${tasks.overdue}</div>
+              <div class="hint">${tasks.total} tareas totales · clic para ver vencidas</div>
+            </div>` : ''}
+          </div>
+        </div>`,
+
+      controls: () => `
+        <div data-widget-id="controls" style="margin-bottom:0;">
+          <div class="card-row">
+            <div class="card">
+              <h3>Distribucion por nivel residual</h3>
+              <div style="display:flex;align-items:center;gap:20px;margin-top:12px;">
+                ${ViewDashboard._donut([
+                  { v: risks.by_band.high,   color: 'var(--risk-high)',   label: 'Altos' },
+                  { v: risks.by_band.medium, color: 'var(--risk-medium)', label: 'Medios' },
+                  { v: risks.by_band.low,    color: 'var(--risk-low)',    label: 'Bajos' },
+                ], risks.total_risks)}
+                <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+                  ${[
+                    { key:'high',   label:'Altos (>5)',    color:'var(--risk-high)' },
+                    { key:'medium', label:'Medios (3-5)',  color:'var(--risk-medium)' },
+                    { key:'low',    label:'Bajos (<3)',    color:'var(--risk-low)' },
+                  ].map(b => `
+                    <div>
+                      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                        <span style="color:var(--text-base);">${b.label}</span>
+                        <span style="font-weight:700;color:${b.color};">${risks.by_band[b.key]}</span>
+                      </div>
+                      <div style="height:5px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
+                        <div style="height:100%;width:${risks.total_risks?Math.round(risks.by_band[b.key]/risks.total_risks*100):0}%;background:${b.color};border-radius:3px;transition:width .4s;"></div>
+                      </div>
+                    </div>`).join('')}
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Por estado del ciclo</h3>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
+                ${Object.entries(risks.by_status).filter(([,v]) => v > 0).map(([k, v]) => `
+                  <div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+                      <span>${UI.statusLabel(k)}</span>
+                      <span style="font-weight:600;font-family:var(--font-mono);">${v}</span>
+                    </div>
+                    <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;">
+                      <div style="height:100%;width:${risks.total_risks?Math.round(v/risks.total_risks*100):0}%;background:var(--brand-purple);border-radius:2px;"></div>
+                    </div>
+                  </div>`).join('')}
+              </div>
+            </div>
+            <div class="card">
+              <h3>Por decision de tratamiento</h3>
+              <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
+                ${Object.entries(risks.by_treatment).filter(([,v]) => v > 0).map(([k, v]) => `
+                  <div>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
+                      <span>${UI.treatmentLabel(k)}</span>
+                      <span style="font-weight:600;font-family:var(--font-mono);">${v}</span>
+                    </div>
+                    <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;">
+                      <div style="height:100%;width:${risks.total_risks?Math.round(v/risks.total_risks*100):0}%;background:var(--brand-orange);border-radius:2px;"></div>
+                    </div>
+                  </div>`).join('')
+                  || '<p style="font-size:13px;color:var(--text-subtle);margin:0;">Sin datos de tratamiento.</p>'}
+              </div>
+            </div>
+          </div>
+        </div>`,
+
+      incidents: () => incidents || tasks || policies || gdprData || bcpData ? `
+        <div data-widget-id="incidents" style="margin-top:16px;">
+          ${ViewDashboard._modulesRowHtml(incidents, tasks, policies, gdprData, bcpData)}
+        </div>` : '',
+
+      tasks: () => '',   // fusionado en incidents para mantener la card-row original
+      policies: () => '', // fusionado en incidents
+      gdpr: () => '',    // fusionado en incidents
+
+      bcp: () => `
+        <div data-widget-id="bcp" style="margin-top:4px;">
+          ${ViewDashboard._bcpPanelHtml(bcpData)}
+        </div>`,
+
+      tprm: () => `
+        <div data-widget-id="tprm" style="margin-top:4px;">
+          ${ViewDashboard._tprmPanelHtml(tprmData, risks)}
+        </div>`,
+
+      top10: () => `
+        <div data-widget-id="top10" style="margin-top:16px;">
+          <div class="card">
+            <h3>Top 10 riesgos por nivel residual</h3>
+            ${risks.top_risks.length === 0
+              ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavia. Comienza creando activos y asociandoles amenazas.</p>'
+              : `<div class="table-wrap"><table class="data">
+                  <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th><th>Reduccion</th></tr></thead>
+                  <tbody>
+                    ${risks.top_risks.map(r => {
+                      const red = r.inherent_level > 0
+                        ? Math.round((1 - r.level / r.inherent_level) * 100) : 0;
+                      return `<tr style="cursor:pointer;" onclick="location.hash='#/risks?id=${r.id}'">
+                        <td>${UI.codePill(r.code)}</td>
+                        <td>${UI.esc(r.asset)}</td>
+                        <td>${UI.esc(r.threat)}</td>
+                        <td>${UI.riskPill(r.level)}</td>
+                        <td><span style="font-size:12px;font-weight:600;color:${red>0?'var(--risk-low)':red<0?'var(--risk-high)':'var(--text-muted)'};">${red > 0 ? '-' : red < 0 ? '+' : ''}${Math.abs(red)}%</span></td>
+                      </tr>`;}).join('')}
+                  </tbody>
+                </table></div>`}
+          </div>
+        </div>`,
+
+      actions: () => `
+        <div data-widget-id="actions" style="margin-top:16px;">
+          <div class="card-row">
+            <div class="card">
+              <h3>Acciones rapidas</h3>
+              <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
+                <a href="#/risks?overdue=1" class="quick-action-btn ${risks.overdue_treatments > 0 ? 'urgent' : ''}">
+                  <span>Tratamientos vencidos</span>
+                  <span class="qa-count">${risks.overdue_treatments}</span>
+                </a>
+                <a href="#/risks" class="quick-action-btn ${risks.no_treatment_high > 0 ? 'warn' : ''}">
+                  <span>Altos sin plan</span>
+                  <span class="qa-count">${risks.no_treatment_high}</span>
+                </a>
+                <a href="#/controls" class="quick-action-btn ${risks.controls_overdue_reviews > 0 ? 'urgent' : ''}">
+                  <span>Revisiones controles vencidas</span>
+                  <span class="qa-count">${risks.controls_overdue_reviews}</span>
+                </a>
+                <a href="#/risks?owner=__unassigned__" class="quick-action-btn ${risks.no_owner > 0 ? 'warn' : ''}">
+                  <span>Sin responsable</span>
+                  <span class="qa-count">${risks.no_owner}</span>
+                </a>
+                ${incidents && incidents.nis2_pending_notification > 0 ? `
+                <a href="#/incidents" class="quick-action-btn urgent">
+                  <span>NIS2: notificacion pendiente</span>
+                  <span class="qa-count">${incidents.nis2_pending_notification}</span>
+                </a>` : ''}
+                ${tasks && tasks.overdue > 0 ? `
+                <a href="#/tasks" class="quick-action-btn warn">
+                  <span>Tareas vencidas</span>
+                  <span class="qa-count">${tasks.overdue}</span>
+                </a>` : ''}
+                ${policies && policies.overdue_review > 0 ? `
+                <a href="#/policies" class="quick-action-btn warn">
+                  <span>Politicas: revision vencida</span>
+                  <span class="qa-count">${policies.overdue_review}</span>
+                </a>` : ''}
+                ${gdprData && gdprData.dpias_pending > 0 ? `
+                <a href="#/gdpr" class="quick-action-btn warn">
+                  <span>DPIAs pendientes</span>
+                  <span class="qa-count">${gdprData.dpias_pending}</span>
+                </a>` : ''}
+                <a href="#/calendar" class="quick-action-btn">
+                  <span>Ver calendario</span>
+                  <span style="font-size:12px;color:var(--text-muted);">-></span>
+                </a>
+                <a href="#/heatmap" class="quick-action-btn">
+                  <span>Mapa de calor</span>
+                  <span style="font-size:12px;color:var(--text-muted);">-></span>
+                </a>
+              </div>
+            </div>
+            <div class="card" style="flex:2;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <h3 style="margin:0;">Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
+                <a href="#/calendar" style="font-size:12px;color:var(--brand-purple);">Calendario -></a>
+              </div>
+              <div id="dash-upcoming"></div>
+            </div>
+            <div class="card" style="flex:2;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <h3 style="margin:0;">Revisiones de controles <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
+                <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
+              </div>
+              <div id="dash-ctrl-upcoming"></div>
+            </div>
+            <div class="card" style="flex:2;" id="dash-activity-card" style="display:none;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <h3 style="margin:0;">Actividad reciente</h3>
+                <a href="#/audit" style="font-size:12px;color:var(--brand-purple);">Ver todo -></a>
+              </div>
+              <div id="dash-activity-body">
+                <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
+              </div>
+            </div>
+          </div>
+        </div>`,
+
+      coverage: () => `
+        <div data-widget-id="coverage" style="margin-top:16px;">
+          <div class="card" id="dash-controls-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <h3 style="margin:0;">Cobertura de controles ISO 27002 por tema</h3>
+              <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
+            </div>
+            <div id="dash-controls-body">
+              <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
+            </div>
+          </div>
+        </div>`,
+    };
+
+    // Los widgets incidents/tasks/policies/gdpr se renderizan juntos en la misma card-row
+    // (_modulesRowHtml ya los agrupa). Solo se emite HTML la primera vez que aparece uno del grupo.
+    const groupIds = new Set(['incidents', 'tasks', 'policies', 'gdpr']);
+    let groupRendered = false;
+
+    return layout.map(id => {
+      if (groupIds.has(id)) {
+        if (groupRendered) return '';
+        groupRendered = true;
+        return widgets.incidents();
+      }
+      return widgets[id] ? widgets[id]() : '';
+    }).join('');
+  },
+
   async render(main) {
+    ViewDashboard._cachedMain = main;
+    ViewDashboard._editMode = false;
+
     main.innerHTML = UI.sectionHeader(
       'Vision global del riesgo',
-      'Resumen ejecutivo del estado del SGSI — todos los modulos'
+      'Resumen ejecutivo del estado del SGSI — todos los modulos',
+      `<button id="dash-customize-btn" class="btn btn-outline btn-sm"
+         onclick="ViewDashboard._editMode ? ViewDashboard._exitEdit() : ViewDashboard._enterEdit();"
+         title="Personalizar widgets del dashboard">
+         Personalizar dashboard
+       </button>`
     ) + '<div id="dash-content">' + UI.notice('Cargando datos...') + '</div>';
 
     try {
@@ -57,304 +594,26 @@ const ViewDashboard = {
       const tprmData = tprmRaw.status === 'fulfilled' ? tprmRaw.value : null;
       const bcpData  = bcpRaw.status === 'fulfilled' ? bcpRaw.value : null;
 
-      // Exponer metodología activa globalmente para el formulario de riesgos
+      // Exponer metodologia activa globalmente para el formulario de riesgos
       if (context?.methodology) window._riskMethodology = context.methodology;
 
       if (!risks) throw new Error('No se pudo cargar el resumen de riesgos.');
+
+      // Cachear datos para re-renders sin peticion al servidor
+      ViewDashboard._cachedData = { risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData };
 
       const c = document.getElementById('dash-content');
 
       // Banner de onboarding si el SGSI no esta configurado (v3.0)
       _renderOnboardingBanner(c);
 
-      // --- Calcular puntuacion de postura de seguridad (0-100) ---
+      const layout = ViewDashboard._getLayout();
       const postureScore = ViewDashboard._calcPosture(risks, incidents, tasks, policies, gdprData);
-
-      // Badge de metodología + frameworks activos
       const methLabels = { iso27005:'ISO 27005', magerit:'MAGERIT v3', combined:'ISO 27005 + MAGERIT' };
       const meth = context?.methodology || 'iso27005';
-      const methBadge = `
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-          <span style="font-size:11px;color:var(--text-muted);">Metodología activa:</span>
-          <span style="background:var(--brand-purple);color:#fff;border-radius:20px;
-                       padding:3px 12px;font-size:12px;font-weight:700;">
-            ${methLabels[meth] || meth}
-          </span>
-          ${context?.risk_appetite != null ? `
-          <span style="font-size:11px;color:var(--text-muted);">Apetito de riesgo:</span>
-          <span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
-                       padding:3px 12px;font-size:12px;font-weight:700;color:var(--brand-purple);">
-            ${context.risk_appetite} / 8
-          </span>` : ''}
-          ${context?.active_frameworks?.length ? `
-          <span style="font-size:11px;color:var(--text-muted);">Normativas:</span>
-          ${context.active_frameworks.map(f =>
-            `<span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
-                         padding:2px 10px;font-size:11px;">${UI.esc(f.toUpperCase())}</span>`
-          ).join('')}` : ''}
-          <a href="#/context" style="font-size:11px;color:var(--brand-purple);margin-left:4px;">
-            Cambiar en Contexto
-          </a>
-        </div>`;
 
-      c.innerHTML = methBadge + `
-        <!-- POSTURA DE SEGURIDAD GLOBAL -->
-        ${ViewDashboard._postureHtml(postureScore, risks, incidents, tasks, policies, gdprData)}
-
-        <!-- KPIs DE RIESGO — todos con navegacion al modulo correspondiente -->
-        <div class="card-row" style="margin-bottom:20px;">
-          <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/assets'"
-               title="Ver inventario de activos">
-            <div class="label">Activos inventariados</div>
-            <div class="value">${risks.total_assets}</div>
-            <div class="hint">clic para ver inventario</div>
-          </div>
-          <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/risks'"
-               title="Ver todos los riesgos">
-            <div class="label">Riesgos identificados</div>
-            <div class="value">${risks.total_risks}</div>
-            <div class="hint">clic para ver registro</div>
-          </div>
-          <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/controls'"
-               title="Ver controles ISO 27002">
-            <div class="label">Controles implantados</div>
-            <div class="value">${risks.controls_implemented}<span style="font-size:16px;color:var(--text-muted);">/${risks.total_controls}</span></div>
-            <div class="hint">madurez media: ${risks.controls_avg_maturity}/5 · clic para ver SOA</div>
-          </div>
-          <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#FFE6CE,#EDD1FF);"
-               onclick="location.hash='#/risks?band=high'" title="Ver riesgos altos sin tratar">
-            <div class="label">Riesgos altos sin tratar</div>
-            <div class="value">${risks.by_band.high}</div>
-            <div class="hint">clic para filtrar por nivel alto</div>
-          </div>
-          <div class="kpi" style="cursor:pointer;${risks.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}"
-               onclick="location.hash='#/risks?owner=__unassigned__'" title="Ver riesgos sin responsable">
-            <div class="label">Sin responsable asignado</div>
-            <div class="value" style="${risks.no_owner > 0 ? 'color:#6D28D9;' : ''}">${risks.no_owner}</div>
-            <div class="hint">clic para ver sin propietario</div>
-          </div>
-        </div>
-
-        <div class="card-row" style="margin-bottom:20px;">
-          <div class="kpi" style="cursor:pointer;${risks.overdue_treatments > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
-               onclick="location.hash='#/risks?overdue=1'" title="Ver riesgos con tratamiento vencido">
-            <div class="label">Tratamientos vencidos</div>
-            <div class="value" style="${risks.overdue_treatments > 0 ? 'color:#991B1B;' : ''}">${risks.overdue_treatments}</div>
-            <div class="hint">clic para ver detalle</div>
-          </div>
-          <div class="kpi" style="cursor:pointer;${risks.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}"
-               onclick="location.hash='#/risks?treatment=__none__&min_level=5'" title="Ver riesgos altos sin plan">
-            <div class="label">Altos sin plan definido</div>
-            <div class="value" style="${risks.no_treatment_high > 0 ? 'color:#92400E;' : ''}">${risks.no_treatment_high}</div>
-            <div class="hint">clic para ver riesgos >= 5 sin tratamiento</div>
-          </div>
-          <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#D1FAE5,#A7F3D0);"
-               onclick="location.hash='#/heatmap'" title="Ver mapa de calor">
-            <div class="label">Reduccion del riesgo</div>
-            <div class="value" style="color:#065F46;">${risks.risk_reduction_pct}%</div>
-            <div class="hint">clic para ver mapa de calor</div>
-          </div>
-          <!-- KPIs extra: Incidentes, Tareas, Politicas -->
-          ${incidents ? `
-          <div class="kpi" style="cursor:pointer;${incidents.p1_p2_open > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
-               onclick="location.hash='#/incidents?severity=p1'" title="Incidentes P1/P2 abiertos">
-            <div class="label">Incidentes P1/P2</div>
-            <div class="value" style="${incidents.p1_p2_open > 0 ? 'color:#991B1B;' : ''}">${incidents.p1_p2_open}</div>
-            <div class="hint">${incidents.open} abiertos · clic para ver criticos</div>
-          </div>` : ''}
-          ${tasks ? `
-          <div class="kpi" style="cursor:pointer;${tasks.overdue > 0 ? 'background:linear-gradient(45deg,#FFF7ED,#FED7AA);border-color:#FDBA74;' : ''}"
-               onclick="location.hash='#/tasks?overdue=1'" title="Tareas vencidas">
-            <div class="label">Tareas vencidas</div>
-            <div class="value" style="${tasks.overdue > 0 ? 'color:#9A3412;' : ''}">${tasks.overdue}</div>
-            <div class="hint">${tasks.total} tareas totales · clic para ver vencidas</div>
-          </div>` : ''}
-        </div>
-
-        <!-- FILA DE GRAFICOS DE RIESGO -->
-        <div class="card-row">
-          <div class="card">
-            <h3>Distribucion por nivel residual</h3>
-            <div style="display:flex;align-items:center;gap:20px;margin-top:12px;">
-              ${ViewDashboard._donut([
-                { v: risks.by_band.high,   color: 'var(--risk-high)',   label: 'Altos' },
-                { v: risks.by_band.medium, color: 'var(--risk-medium)', label: 'Medios' },
-                { v: risks.by_band.low,    color: 'var(--risk-low)',    label: 'Bajos' },
-              ], risks.total_risks)}
-              <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
-                ${[
-                  { key:'high',   label:'Altos (>5)',    color:'var(--risk-high)' },
-                  { key:'medium', label:'Medios (3-5)',  color:'var(--risk-medium)' },
-                  { key:'low',    label:'Bajos (<3)',    color:'var(--risk-low)' },
-                ].map(b => `
-                  <div>
-                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-                      <span style="color:var(--text-base);">${b.label}</span>
-                      <span style="font-weight:700;color:${b.color};">${risks.by_band[b.key]}</span>
-                    </div>
-                    <div style="height:5px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
-                      <div style="height:100%;width:${risks.total_risks?Math.round(risks.by_band[b.key]/risks.total_risks*100):0}%;background:${b.color};border-radius:3px;transition:width .4s;"></div>
-                    </div>
-                  </div>`).join('')}
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>Por estado del ciclo</h3>
-            <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
-              ${Object.entries(risks.by_status).filter(([,v]) => v > 0).map(([k, v]) => `
-                <div>
-                  <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
-                    <span>${UI.statusLabel(k)}</span>
-                    <span style="font-weight:600;font-family:var(--font-mono);">${v}</span>
-                  </div>
-                  <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;">
-                    <div style="height:100%;width:${risks.total_risks?Math.round(v/risks.total_risks*100):0}%;background:var(--brand-purple);border-radius:2px;"></div>
-                  </div>
-                </div>`).join('')}
-            </div>
-          </div>
-
-          <div class="card">
-            <h3>Por decision de tratamiento</h3>
-            <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
-              ${Object.entries(risks.by_treatment).filter(([,v]) => v > 0).map(([k, v]) => `
-                <div>
-                  <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
-                    <span>${UI.treatmentLabel(k)}</span>
-                    <span style="font-weight:600;font-family:var(--font-mono);">${v}</span>
-                  </div>
-                  <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;">
-                    <div style="height:100%;width:${risks.total_risks?Math.round(v/risks.total_risks*100):0}%;background:var(--brand-orange);border-radius:2px;"></div>
-                  </div>
-                </div>`).join('')
-                || '<p style="font-size:13px;color:var(--text-subtle);margin:0;">Sin datos de tratamiento.</p>'}
-            </div>
-          </div>
-        </div>
-
-        <!-- MODULOS SECUNDARIOS -->
-        ${ViewDashboard._modulesRowHtml(incidents, tasks, policies, gdprData, bcpData)}
-
-        <!-- PANEL BCP -->
-        ${ViewDashboard._bcpPanelHtml(bcpData)}
-
-        <!-- PANEL TPRM -->
-        ${ViewDashboard._tprmPanelHtml(tprmData, risks)}
-
-        <!-- TOP 10 RIESGOS -->
-        <div class="card" style="margin-top:16px;">
-          <h3>Top 10 riesgos por nivel residual</h3>
-          ${risks.top_risks.length === 0
-            ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavia. Comienza creando activos y asociandoles amenazas.</p>'
-            : `<div class="table-wrap"><table class="data">
-                <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th><th>Reduccion</th></tr></thead>
-                <tbody>
-                  ${risks.top_risks.map(r => {
-                    const red = r.inherent_level > 0
-                      ? Math.round((1 - r.level / r.inherent_level) * 100) : 0;
-                    return `<tr style="cursor:pointer;" onclick="location.hash='#/risks?id=${r.id}'">
-                      <td>${UI.codePill(r.code)}</td>
-                      <td>${UI.esc(r.asset)}</td>
-                      <td>${UI.esc(r.threat)}</td>
-                      <td>${UI.riskPill(r.level)}</td>
-                      <td><span style="font-size:12px;font-weight:600;color:${red>0?'var(--risk-low)':red<0?'var(--risk-high)':'var(--text-muted)'};">${red > 0 ? '-' : red < 0 ? '+' : ''}${Math.abs(red)}%</span></td>
-                    </tr>`;}).join('')}
-                </tbody>
-              </table></div>`}
-        </div>
-
-        <!-- ACCIONES RAPIDAS + PROXIMOS VENCIMIENTOS + REVISIONES CONTROLES + ACTIVIDAD -->
-        <div class="card-row" style="margin-top:16px;">
-          <div class="card">
-            <h3>Acciones rapidas</h3>
-            <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
-              <a href="#/risks?overdue=1" class="quick-action-btn ${risks.overdue_treatments > 0 ? 'urgent' : ''}">
-                <span>Tratamientos vencidos</span>
-                <span class="qa-count">${risks.overdue_treatments}</span>
-              </a>
-              <a href="#/risks" class="quick-action-btn ${risks.no_treatment_high > 0 ? 'warn' : ''}">
-                <span>Altos sin plan</span>
-                <span class="qa-count">${risks.no_treatment_high}</span>
-              </a>
-              <a href="#/controls" class="quick-action-btn ${risks.controls_overdue_reviews > 0 ? 'urgent' : ''}">
-                <span>Revisiones controles vencidas</span>
-                <span class="qa-count">${risks.controls_overdue_reviews}</span>
-              </a>
-              <a href="#/risks?owner=__unassigned__" class="quick-action-btn ${risks.no_owner > 0 ? 'warn' : ''}">
-                <span>Sin responsable</span>
-                <span class="qa-count">${risks.no_owner}</span>
-              </a>
-              ${incidents && incidents.nis2_pending_notification > 0 ? `
-              <a href="#/incidents" class="quick-action-btn urgent">
-                <span>NIS2: notificacion pendiente</span>
-                <span class="qa-count">${incidents.nis2_pending_notification}</span>
-              </a>` : ''}
-              ${tasks && tasks.overdue > 0 ? `
-              <a href="#/tasks" class="quick-action-btn warn">
-                <span>Tareas vencidas</span>
-                <span class="qa-count">${tasks.overdue}</span>
-              </a>` : ''}
-              ${policies && policies.overdue_review > 0 ? `
-              <a href="#/policies" class="quick-action-btn warn">
-                <span>Politicas: revision vencida</span>
-                <span class="qa-count">${policies.overdue_review}</span>
-              </a>` : ''}
-              ${gdprData && gdprData.dpias_pending > 0 ? `
-              <a href="#/gdpr" class="quick-action-btn warn">
-                <span>DPIAs pendientes</span>
-                <span class="qa-count">${gdprData.dpias_pending}</span>
-              </a>` : ''}
-              <a href="#/calendar" class="quick-action-btn">
-                <span>Ver calendario</span>
-                <span style="font-size:12px;color:var(--text-muted);">-></span>
-              </a>
-              <a href="#/heatmap" class="quick-action-btn">
-                <span>Mapa de calor</span>
-                <span style="font-size:12px;color:var(--text-muted);">-></span>
-              </a>
-            </div>
-          </div>
-
-          <div class="card" style="flex:2;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-              <h3 style="margin:0;">Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
-              <a href="#/calendar" style="font-size:12px;color:var(--brand-purple);">Calendario -></a>
-            </div>
-            <div id="dash-upcoming"></div>
-          </div>
-
-          <div class="card" style="flex:2;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-              <h3 style="margin:0;">Revisiones de controles <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
-              <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
-            </div>
-            <div id="dash-ctrl-upcoming"></div>
-          </div>
-
-          <div class="card" style="flex:2;" id="dash-activity-card" style="display:none;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-              <h3 style="margin:0;">Actividad reciente</h3>
-              <a href="#/audit" style="font-size:12px;color:var(--brand-purple);">Ver todo -></a>
-            </div>
-            <div id="dash-activity-body">
-              <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- COBERTURA DE CONTROLES -->
-        <div class="card" style="margin-top:16px;" id="dash-controls-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-            <h3 style="margin:0;">Cobertura de controles ISO 27002 por tema</h3>
-            <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
-          </div>
-          <div id="dash-controls-body">
-            <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
-          </div>
-        </div>
-      `;
+      c.innerHTML = ViewDashboard._methBadgeHtml(context, meth, methLabels) +
+        ViewDashboard._buildWidgetHtml(layout, risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData, postureScore);
 
       // Cargar secciones async adicionales
       ViewDashboard._loadUpcoming();

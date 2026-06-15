@@ -91,16 +91,24 @@ def nis2_dashboard(
 
 @router.get("/notifications")
 def list_notifications(
+    status: Optional[str] = None,
+    overdue: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
-    """Lista todas las notificaciones NIS2 de la organizacion."""
-    notifs = (
+    """Lista notificaciones NIS2 de la organizacion con filtros opcionales."""
+    q = (
         db.query(NIS2Notification)
-        .filter_by(organization_id=current_user.organization_id)
-        .order_by(NIS2Notification.deadline_at.asc())
-        .all()
+        .filter(NIS2Notification.organization_id == current_user.organization_id)
     )
+    if status and overdue is True:
+        from sqlalchemy import or_
+        q = q.filter(or_(NIS2Notification.status == status, NIS2Notification.status == "overdue"))
+    elif status:
+        q = q.filter(NIS2Notification.status == status)
+    elif overdue is True:
+        q = q.filter(NIS2Notification.status == "overdue")
+    notifs = q.order_by(NIS2Notification.deadline_at.asc()).all()
     return [_notif_to_dict(n) for n in notifs]
 
 

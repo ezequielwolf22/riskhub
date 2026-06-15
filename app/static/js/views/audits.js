@@ -38,6 +38,7 @@ const ViewAudits = (() => {
           <p class="page-sub">Programa de auditorias — ISO 27001 cl. 9.2</p>
         </div>
         <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary" id="btn-analyze-report">Analizar informe con IA</button>
           <button class="btn btn-primary" id="btn-new-aud">+ Nueva auditoria</button>
         </div>
       </div>
@@ -47,6 +48,7 @@ const ViewAudits = (() => {
     `;
 
     document.getElementById('btn-new-aud').onclick = () => _openAuditForm(null);
+    document.getElementById('btn-analyze-report').onclick = () => _openAnalyzeReportModal();
 
     try {
       [_users, _nonconformities] = await Promise.all([
@@ -321,5 +323,225 @@ const ViewAudits = (() => {
     } catch (e) { UI.toast(e.message, 'error'); }
   }
 
-  return { render };
+  function _openAnalyzeReportModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:700px;">
+      <div class="modal-header">
+        <h2>Analizar informe de auditoria con IA</h2>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">x</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+          Sube un informe de auditoria (PDF o TXT) y el agente IA identificara
+          automaticamente las no conformidades, observaciones y oportunidades de mejora.
+        </p>
+
+        <label>Seleccionar auditoria *</label>
+        <select id="ar-audit-sel" class="input" style="margin-bottom:12px;">
+          <option value="">Cargando auditorias...</option>
+        </select>
+
+        <label>Archivo del informe (PDF o TXT, max. 5MB) *</label>
+        <input type="file" id="ar-file" accept=".pdf,.txt"
+               class="input" style="margin-bottom:16px;">
+
+        <div id="ar-result" style="display:none;"></div>
+
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button class="btn btn-primary" id="ar-btn-analyze">
+            Analizar con IA
+          </button>
+          <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+
+    // Handler del boton de analisis
+    document.getElementById('ar-btn-analyze').onclick = () => _runAnalysis();
+
+    // Cargar auditorias en el select
+    Api.audits.list({}).then(list => {
+      const sel = document.getElementById('ar-audit-sel');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">Selecciona una auditoria...</option>' +
+        list.map(a => `<option value="${a.id}">${UI.esc(a.title || 'Auditoria ' + a.id)}</option>`).join('');
+    }).catch(() => {
+      const sel = document.getElementById('ar-audit-sel');
+      if (sel) sel.innerHTML = '<option value="">Error al cargar auditorias</option>';
+    });
+  }
+
+  async function _runAnalysis() {
+    const btn = document.getElementById('ar-btn-analyze');
+    const resultDiv = document.getElementById('ar-result');
+    const auditId = document.getElementById('ar-audit-sel')?.value;
+    const fileInput = document.getElementById('ar-file');
+
+    if (!auditId) { UI.toast('Selecciona una auditoria', 'error'); return; }
+    if (!fileInput?.files?.length) { UI.toast('Selecciona un archivo', 'error'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Analizando...';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;padding:20px;background:var(--bg-2);border-radius:8px;">
+        <div style="width:20px;height:20px;border:3px solid var(--brand-purple);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <span style="font-size:13px;color:var(--text-muted);">El agente IA esta analizando el informe...</span>
+      </div>`;
+
+    try {
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+
+      const resp = await Api.req(`/api/audits/${auditId}/analyze-report`, {
+        method: 'POST',
+        body: fd,
+      });
+      _renderAnalysisResult(resultDiv, resp, auditId);
+    } catch (e) {
+      resultDiv.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Analizar con IA';
+    }
+  }
+
+  function _renderAnalysisResult(container, data, auditId) {
+    const typeColors = {
+      major_nc: '#DC2626', minor_nc: '#D97706', observation: '#2563EB',
+      opportunity: '#7C3AED', conformity: '#16a34a',
+    };
+    const typeLabels = {
+      major_nc: 'NC Mayor', minor_nc: 'NC Menor', observation: 'Observacion',
+      opportunity: 'Oportunidad', conformity: 'Conformidad',
+    };
+    const priorityColors = { high: '#DC2626', medium: '#D97706', low: '#16a34a' };
+
+    const findings = data.findings || [];
+
+    const findingsHtml = findings.map((f, idx) => `
+      <div style="background:var(--bg-2);border-left:4px solid ${typeColors[f.type] || '#9D9D9D'};
+                  border-radius:0 8px 8px 0;padding:14px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="background:${typeColors[f.type] || '#9D9D9D'};color:#fff;font-size:10px;font-weight:700;
+                         padding:2px 8px;border-radius:4px;">${typeLabels[f.type] || UI.esc(f.type)}</span>
+            ${f.iso_clause ? `<span style="font-size:11px;color:var(--brand-purple);font-weight:600;">ISO ${UI.esc(f.iso_clause)}</span>` : ''}
+            ${f.priority ? `<span style="color:${priorityColors[f.priority] || '#9D9D9D'};font-size:11px;font-weight:600;">${f.priority.toUpperCase()}</span>` : ''}
+          </div>
+          <button class="btn btn-sm btn-primary" data-ar-idx="${idx}">
+            + Crear hallazgo
+          </button>
+        </div>
+        <div style="margin-bottom:4px;">
+          <input class="input" style="font-size:13px;font-weight:600;padding:4px 8px;width:100%;"
+                 id="ar-title-${idx}" value="${UI.esc(f.title || '')}">
+        </div>
+        <div style="margin-bottom:6px;">
+          <textarea class="input" rows="2" style="font-size:12px;padding:4px 8px;width:100%;"
+                    id="ar-desc-${idx}">${UI.esc(f.description || '')}</textarea>
+        </div>
+        <div>
+          <strong style="font-size:12px;">Recomendacion:</strong>
+          <textarea class="input" rows="2" style="font-size:12px;margin-top:4px;padding:4px 8px;width:100%;"
+                    id="ar-rec-${idx}">${UI.esc(f.recommendation || '')}</textarea>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+          Plazo estimado: ${parseInt(f.estimated_days) || 30} dias
+        </div>
+      </div>`).join('');
+
+    container.innerHTML = `
+      <hr style="border:none;border-top:1px solid var(--border);margin:0 0 16px;">
+      ${data.summary ? `
+        <div style="background:var(--bg-2);border-left:4px solid var(--brand-purple);
+                    padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px;">
+          <strong style="font-size:12px;color:var(--brand-purple);">Resumen IA</strong>
+          <p style="font-size:13px;margin:4px 0 0;">${UI.esc(data.summary)}</p>
+          ${data.audit_scope ? `<p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">Alcance: ${UI.esc(data.audit_scope)}</p>` : ''}
+        </div>` : ''}
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        ${data.total_major_nc ? `<div class="stat-card" style="min-width:100px;text-align:center;"><div class="stat-value" style="color:#DC2626;">${data.total_major_nc}</div><div class="stat-label">NC Mayores</div></div>` : ''}
+        ${data.total_minor_nc ? `<div class="stat-card" style="min-width:100px;text-align:center;"><div class="stat-value" style="color:#D97706;">${data.total_minor_nc}</div><div class="stat-label">NC Menores</div></div>` : ''}
+        ${data.total_observations ? `<div class="stat-card" style="min-width:100px;text-align:center;"><div class="stat-value" style="color:#2563EB;">${data.total_observations}</div><div class="stat-label">Observaciones</div></div>` : ''}
+        ${data.total_opportunities ? `<div class="stat-card" style="min-width:100px;text-align:center;"><div class="stat-value" style="color:#7C3AED;">${data.total_opportunities}</div><div class="stat-label">Oportunidades</div></div>` : ''}
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h4 style="font-size:13px;font-weight:700;margin:0;">
+          ${findings.length} hallazgos identificados
+        </h4>
+        ${findings.length ? `<button class="btn btn-ghost" style="font-size:11px;" id="ar-btn-create-all">
+          + Crear todos los hallazgos
+        </button>` : ''}
+      </div>
+      ${findingsHtml}
+    `;
+
+    // Handler "Crear todos"
+    const btnAll = container.querySelector('#ar-btn-create-all');
+    if (btnAll) {
+      btnAll.onclick = () => _createAllFindings(auditId, findings);
+    }
+
+    // Handlers "Crear hallazgo" individuales — leen los inputs editados
+    container.querySelectorAll('[data-ar-idx]').forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.arIdx);
+        const edited = {
+          type: findings[idx].type,
+          iso_clause: findings[idx].iso_clause,
+          priority: findings[idx].priority,
+          estimated_days: findings[idx].estimated_days,
+          title: document.getElementById(`ar-title-${idx}`)?.value || findings[idx].title,
+          description: document.getElementById(`ar-desc-${idx}`)?.value || findings[idx].description,
+          recommendation: document.getElementById(`ar-rec-${idx}`)?.value || findings[idx].recommendation,
+        };
+        _createFindingFromAI(auditId, edited);
+      };
+    });
+  }
+
+  async function _createFindingFromAI(auditId, finding) {
+    try {
+      await Api.post(`/api/audits/${auditId}/findings`, {
+        finding_type: finding.type,
+        title: finding.title,
+        description: finding.description,
+        iso_clause: finding.iso_clause || null,
+        recommendation: finding.recommendation,
+      });
+      UI.toast('Hallazgo creado correctamente', 'success');
+      await _loadStats();
+      await _refresh();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  async function _createAllFindings(auditId, findings) {
+    let created = 0;
+    for (const f of findings) {
+      try {
+        await Api.post(`/api/audits/${auditId}/findings`, {
+          finding_type: f.type,
+          title: f.title,
+          description: f.description,
+          iso_clause: f.iso_clause || null,
+          recommendation: f.recommendation,
+        });
+        created++;
+      } catch (_) {}
+    }
+    UI.toast(`${created} hallazgos creados`, 'success');
+    document.querySelector('.modal-overlay')?.remove();
+    await _loadStats();
+    await _refresh();
+  }
+
+  return { render, _openAnalyzeReportModal, _runAnalysis, _renderAnalysisResult, _createFindingFromAI, _createAllFindings };
 })();

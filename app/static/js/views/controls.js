@@ -32,6 +32,7 @@ const ViewControls = {
           <input type="checkbox" id="c-overdue" ${ViewControls._overdueOnly?'checked':''}> Solo revision vencida
         </label>
         <button class="btn btn-ghost" id="btn-soa-csv" title="Exportar SoA como CSV">SoA CSV</button>
+        <button class="btn btn-ghost" id="btn-ccm-run" title="Ejecutar tests de cumplimiento continuo (CCM)">Tests CCM</button>
       </div>
       <div id="c-list"></div>
     `;
@@ -52,6 +53,22 @@ const ViewControls = {
     document.getElementById('btn-soa-csv').onclick = async () => {
       try { await Api.controls.exportSoaCsv(); UI.toast('SoA CSV descargado', 'success'); }
       catch (e) { UI.toast(e.message, 'error'); }
+    };
+    document.getElementById('btn-ccm-run').onclick = async () => {
+      if (typeof ViewCcm !== 'undefined' && typeof ViewCcm._runTests === 'function') {
+        ViewCcm._runTests();
+      } else {
+        try {
+          UI.toast('Ejecutando tests CCM...', 'info');
+          const result = await Api.post('/api/ccm/run', {});
+          const passed = result.passed ?? result.tests_passed ?? '?';
+          const failed = result.failed ?? result.tests_failed ?? '?';
+          const total = result.total ?? result.tests_total ?? '?';
+          UI.toast(`CCM: ${passed}/${total} tests OK, ${failed} fallos`, failed > 0 ? 'warning' : 'success');
+        } catch (e) {
+          UI.toast('Error ejecutando CCM: ' + e.message, 'error');
+        }
+      }
     };
 
     ViewControls._catalog = await Api.controls.list({});

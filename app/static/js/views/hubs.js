@@ -58,7 +58,7 @@ const ViewWatchHub = {
   },
 };
 
-/* 4. Cumplimiento — incluye NIS2 y RGPD */
+/* 4. Cumplimiento */
 const ViewComplianceHub = {
   async render(el) {
     UI.tabs(el, {
@@ -67,21 +67,62 @@ const ViewComplianceHub = {
       tabs: [
         { id: 'compliance', label: 'Normativo', view: ViewCompliance, route: 'compliance' },
         { id: 'controls', label: 'Controles', view: ViewControls, route: 'controls' },
-        { id: 'nis2', label: 'NIS2', view: ViewNis2Dashboard },
-        { id: 'ccm', label: 'Monitor', view: ViewCcm },
         { id: 'soa', label: 'SoA', view: ViewSoaVersions },
         { id: 'policies', label: 'Politicas', view: ViewPolicies, route: 'policies' },
-        { id: 'gdpr', label: 'RGPD', view: ViewGdpr, route: 'gdpr' },
-        { id: 'regwatch', label: 'Vigilancia normativa', view: ViewRegwatch, route: 'regwatch' },
+        {
+          id: 'legal',
+          label: 'Cumplimiento legal',
+          render: async (panel) => {
+            panel.innerHTML = `
+              <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border);">
+                <button class="legal-subtab active" data-target="legal-gdpr"
+                  onclick="ViewComplianceHub._legalTab(this,'legal-gdpr')"
+                  style="padding:10px 20px;border:none;background:none;cursor:pointer;font-weight:600;
+                         border-bottom:2px solid var(--brand-purple);margin-bottom:-2px;color:var(--brand-purple);">
+                  RGPD / GDPR
+                </button>
+                <button class="legal-subtab" data-target="legal-nis2"
+                  onclick="ViewComplianceHub._legalTab(this,'legal-nis2')"
+                  style="padding:10px 20px;border:none;background:none;cursor:pointer;font-weight:600;color:var(--text-muted);">
+                  NIS2 - Notificaciones
+                </button>
+              </div>
+              <div id="legal-gdpr"></div>
+              <div id="legal-nis2" style="display:none;"></div>
+            `;
+            await ViewGdpr.render(panel.querySelector('#legal-gdpr'));
+          },
+        },
         { id: 'audits', label: 'Auditorias', view: ViewAudits, route: 'internal-audits' },
-        { id: 'management-review', label: 'Rev. direccion', view: ViewManagementReview },
+        { id: 'nonconformities', label: 'No conformidades', view: ViewNonConformities, route: 'nonconformities' },
         { id: 'change-requests', label: 'Cambios', view: ViewChangeRequests },
       ],
     });
   },
+
+  _legalTab(btn, targetId) {
+    document.querySelectorAll('.legal-subtab').forEach(b => {
+      b.style.color = 'var(--text-muted)';
+      b.style.borderBottom = 'none';
+    });
+    btn.style.color = 'var(--brand-purple)';
+    btn.style.borderBottom = '2px solid var(--brand-purple)';
+    btn.style.marginBottom = '-2px';
+    ['legal-gdpr', 'legal-nis2'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = id === targetId ? '' : 'none';
+    });
+    if (targetId === 'legal-nis2') {
+      const panel = document.getElementById('legal-nis2');
+      if (panel && !panel._loaded) {
+        panel._loaded = true;
+        ViewNis2Dashboard.render(panel);
+      }
+    }
+  },
 };
 
-/* 5. Incidentes — solo incidentes y no conformidades */
+/* 5. Incidentes */
 const ViewEventsHub = {
   async render(el) {
     UI.tabs(el, {
@@ -89,7 +130,6 @@ const ViewEventsHub = {
       label: 'Incidentes',
       tabs: [
         { id: 'incidents', label: 'Incidentes', view: ViewIncidents, route: 'incidents' },
-        { id: 'nonconformities', label: 'No conformidades', view: ViewNonConformities, route: 'nonconformities' },
       ],
     });
   },
@@ -117,6 +157,7 @@ const ViewReportsHub = {
       tabs: [
         { id: 'reports', label: 'Informes', view: ViewReports, route: 'reports' },
         { id: 'schedules', label: 'Programados', view: ViewReportSchedules },
+        { id: 'management-review', label: 'Rev. direccion', view: ViewManagementReview, route: 'management-review' },
         { id: 'evidence', label: 'Evidencias', view: ViewEvidence },
         { id: 'trust-portal', label: 'Trust Portal', view: ViewTrustPortal, visible: () => Auth.isAdmin() },
         { id: 'calendar', label: 'Calendario', view: ViewCalendar },
@@ -169,6 +210,7 @@ const ViewSetupHub = {
           render: async (panel) => { await ViewOnboarding.render(panel); },
         },
         { id: 'context', label: 'Contexto org.', view: ViewContext, route: 'context' },
+        { id: 'regwatch', label: 'Vigilancia normativa', view: ViewRegwatch, route: 'regwatch' },
       ],
     });
   },

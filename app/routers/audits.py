@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -381,3 +381,113 @@ def close_audit_report(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="informe_{a.code}.pdf"'},
     )
+
+
+@router.post("/{audit_id}/analyze-report")
+async def analyze_audit_report(
+    audit_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Analiza un informe de auditoria con IA para extraer NC, observaciones y oportunidades."""
+    import json
+
+    audit = db.get(AuditProgram, audit_id)
+    if not audit or audit.organization_id != current_user.organization_id:
+        raise HTTPException(404, "Auditoria no encontrada")
+
+    # Leer el archivo en chunks para no saturar memoria (max 5MB)
+    MAX_SIZE = 5 * 1024 * 1024
+    chunks = []
+    total = 0
+    while True:
+        chunk = await file.read(65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_SIZE:
+            raise HTTPException(400, "Archivo demasiado grande (max 5MB)")
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
+    # Extraer texto del archivo
+    text_content = ""
+    filename_lower = file.filename.lower() if file.filename else ""
+
+    if filename_lower.endswith('.pdf'):
+        try:
+            import io
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content))
+            text_content = "\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception:
+            raise HTTPException(400, "No se pudo leer el PDF. Asegurate de que el archivo no esta corrupto o protegido.")
+    else:
+        text_content = content.decode('utf-8', errors='ignore')
+
+    if len(text_content.strip()) < 50:
+        raise HTTPException(400, "No se pudo extraer texto del archivo")
+
+    # Truncar a 15000 chars para el prompt
+    text_excerpt = text_content[:15000]
+
+    # Obtener API key usando el mismo patron que iso_clause_extractor
+    from app.services.iso_clause_extractor import _resolve_ai_config
+    api_key, model = _resolve_ai_config(db, current_user.organization_id)
+
+    if not api_key:
+        raise HTTPException(400, "API key de IA no configurada. Configura el Agente IA primero.")
+
+    prompt = f"""Eres un auditor ISO 27001 experto. Analiza este informe de auditoria y extrae TODOS los hallazgos.
+
+INFORME DE AUDITORIA:
+{text_excerpt}
+
+Devuelve EXCLUSIVAMENTE un JSON con esta estructura exacta:
+{{
+  "summary": "Resumen ejecutivo del informe en 2-3 oraciones",
+  "audit_scope": "Alcance identificado",
+  "findings": [
+    {{
+      "type": "major_nc|minor_nc|observation|opportunity|conformity",
+      "title": "Titulo corto del hallazgo",
+      "description": "Descripcion detallada",
+      "iso_clause": "Clausula ISO 27001 relacionada (ej: 9.2, 6.1.3) o null",
+      "recommendation": "Accion correctiva recomendada",
+      "priority": "high|medium|low",
+      "estimated_days": 30
+    }}
+  ],
+  "total_major_nc": 0,
+  "total_minor_nc": 0,
+  "total_observations": 0,
+  "total_opportunities": 0
+}}
+
+Si no hay hallazgos de algun tipo, pon array vacio. Solo JSON, sin texto adicional."""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = response.content[0].text.strip()
+        # Extraer JSON si viene con markdown
+        if '```' in raw:
+            parts = raw.split('```')
+            if len(parts) >= 2:
+                raw = parts[1]
+                if raw.startswith('json'):
+                    raw = raw[4:]
+        result = json.loads(raw.strip())
+    except json.JSONDecodeError:
+        raise HTTPException(500, "El modelo devolvio una respuesta con formato incorrecto. Intenta de nuevo.")
+    except Exception:
+        logger.exception("Error en analyze_audit_report org=%s audit=%s", current_user.organization_id, audit_id)
+        raise HTTPException(500, "Error al procesar el informe con IA. Intenta de nuevo.")
+
+    return result
