@@ -323,11 +323,17 @@ const ViewAudits = (() => {
     } catch (e) { UI.toast(e.message, 'error'); }
   }
 
+  function _defaultDeadline(days) {
+    const d = new Date();
+    d.setDate(d.getDate() + (parseInt(days) || 30));
+    return d.toISOString().slice(0, 10);
+  }
+
   function _openAnalyzeReportModal() {
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
-    <div class="modal" style="max-width:700px;">
+    <div class="modal" style="max-width:720px;">
       <div class="modal-header">
         <h2>Analizar informe de auditoria con IA</h2>
         <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">x</button>
@@ -336,33 +342,77 @@ const ViewAudits = (() => {
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
           Sube un informe de auditoria (PDF o TXT) y el agente IA identificara
           automaticamente las no conformidades, observaciones y oportunidades de mejora.
+          Las NC mayores y menores se volcaran automaticamente en No conformidades y Tareas.
         </p>
 
         <label>Seleccionar auditoria *</label>
-        <select id="ar-audit-sel" class="input" style="margin-bottom:12px;">
+        <select id="ar-audit-sel" class="input" style="margin-bottom:16px;">
           <option value="">Cargando auditorias...</option>
         </select>
 
-        <label>Archivo del informe (PDF o TXT, max. 5MB) *</label>
-        <input type="file" id="ar-file" accept=".pdf,.txt"
-               class="input" style="margin-bottom:16px;">
+        <label>Informe de auditoria (PDF o TXT, max. 5MB) *</label>
+        <div id="ar-drop-zone" style="border:2px dashed var(--border);border-radius:8px;
+             padding:28px 20px;text-align:center;cursor:pointer;transition:border-color .2s;
+             margin-bottom:16px;background:var(--bg-2);">
+          <div style="font-size:28px;color:var(--text-muted);margin-bottom:8px;">&#x2191;</div>
+          <p style="margin:0 0 4px;font-size:14px;font-weight:600;">Arrastra el archivo aqui</p>
+          <p style="margin:0 0 12px;font-size:12px;color:var(--text-muted);">o haz clic para buscar — PDF o TXT, max. 5 MB</p>
+          <button type="button" class="btn btn-ghost" style="font-size:12px;" id="ar-browse-btn">Seleccionar archivo</button>
+          <input type="file" id="ar-file" accept=".pdf,.txt" style="display:none;">
+          <div id="ar-file-name" style="margin-top:10px;font-size:12px;color:var(--brand-purple);font-weight:600;display:none;"></div>
+        </div>
 
         <div id="ar-result" style="display:none;"></div>
 
         <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="btn btn-primary" id="ar-btn-analyze">
-            Analizar con IA
-          </button>
+          <button class="btn btn-primary" id="ar-btn-analyze">Analizar con IA</button>
           <button class="btn btn-ghost" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
         </div>
       </div>
     </div>`;
     document.body.appendChild(modal);
 
-    // Handler del boton de analisis
+    // Drag-and-drop handlers
+    const dropZone = document.getElementById('ar-drop-zone');
+    const fileInput = document.getElementById('ar-file');
+    const fileNameDiv = document.getElementById('ar-file-name');
+
+    function _showFile(file) {
+      if (file) {
+        fileNameDiv.textContent = file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)';
+        fileNameDiv.style.display = 'block';
+        dropZone.style.borderColor = 'var(--brand-purple)';
+      }
+    }
+
+    document.getElementById('ar-browse-btn').onclick = () => fileInput.click();
+    dropZone.onclick = (e) => { if (e.target !== document.getElementById('ar-browse-btn')) fileInput.click(); };
+    fileInput.onchange = () => _showFile(fileInput.files[0]);
+
+    dropZone.ondragover = (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--brand-purple)';
+      dropZone.style.background = 'var(--bg-1)';
+    };
+    dropZone.ondragleave = () => {
+      dropZone.style.borderColor = 'var(--border)';
+      dropZone.style.background = 'var(--bg-2)';
+    };
+    dropZone.ondrop = (e) => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--border)';
+      dropZone.style.background = 'var(--bg-2)';
+      const dt = e.dataTransfer;
+      if (dt.files.length) {
+        const transfer = new DataTransfer();
+        transfer.items.add(dt.files[0]);
+        fileInput.files = transfer.files;
+        _showFile(dt.files[0]);
+      }
+    };
+
     document.getElementById('ar-btn-analyze').onclick = () => _runAnalysis();
 
-    // Cargar auditorias en el select
     Api.audits.list({}).then(list => {
       const sel = document.getElementById('ar-audit-sel');
       if (!sel) return;
@@ -422,6 +472,9 @@ const ViewAudits = (() => {
 
     const findings = data.findings || [];
 
+    const isNc = (type) => type === 'major_nc' || type === 'minor_nc';
+    const usersOpts = _users.map(u => `<option value="${u.id}">${UI.esc(u.full_name || u.email)}</option>`).join('');
+
     const findingsHtml = findings.map((f, idx) => `
       <div style="background:var(--bg-2);border-left:4px solid ${typeColors[f.type] || '#9D9D9D'};
                   border-radius:0 8px 8px 0;padding:14px;margin-bottom:10px;">
@@ -431,6 +484,7 @@ const ViewAudits = (() => {
                          padding:2px 8px;border-radius:4px;">${typeLabels[f.type] || UI.esc(f.type)}</span>
             ${f.iso_clause ? `<span style="font-size:11px;color:var(--brand-purple);font-weight:600;">ISO ${UI.esc(f.iso_clause)}</span>` : ''}
             ${f.priority ? `<span style="color:${priorityColors[f.priority] || '#9D9D9D'};font-size:11px;font-weight:600;">${f.priority.toUpperCase()}</span>` : ''}
+            ${isNc(f.type) ? `<span style="font-size:10px;color:var(--brand-orange);font-weight:600;">[Auto NC + Tarea]</span>` : ''}
           </div>
           <button class="btn btn-sm btn-primary" data-ar-idx="${idx}">
             + Crear hallazgo
@@ -444,13 +498,35 @@ const ViewAudits = (() => {
           <textarea class="input" rows="2" style="font-size:12px;padding:4px 8px;width:100%;"
                     id="ar-desc-${idx}">${UI.esc(f.description || '')}</textarea>
         </div>
-        <div>
+        <div style="margin-bottom:8px;">
           <strong style="font-size:12px;">Recomendacion:</strong>
           <textarea class="input" rows="2" style="font-size:12px;margin-top:4px;padding:4px 8px;width:100%;"
                     id="ar-rec-${idx}">${UI.esc(f.recommendation || '')}</textarea>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
-          Plazo estimado: ${parseInt(f.estimated_days) || 30} dias
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:2px;">Responsable</label>
+            <select id="ar-resp-${idx}" class="input" style="font-size:12px;padding:4px 6px;">
+              <option value="">Sin asignar</option>
+              ${usersOpts}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:2px;">Fecha limite</label>
+            <input type="date" id="ar-dead-${idx}" class="input" style="font-size:12px;padding:4px 6px;"
+                   value="${_defaultDeadline(f.estimated_days)}">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:2px;">Estado</label>
+            <select id="ar-status-${idx}" class="input" style="font-size:12px;padding:4px 6px;">
+              <option value="open">Abierta</option>
+              <option value="in_progress">En curso</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;display:block;margin-bottom:2px;">Evidencia adjunta (opcional)</label>
+          <input type="file" id="ar-ev-${idx}" style="font-size:11px;" accept=".pdf,.docx,.xlsx,.jpg,.png,.txt">
         </div>
       </div>`).join('');
 
@@ -488,10 +564,11 @@ const ViewAudits = (() => {
       btnAll.onclick = () => _createAllFindings(auditId, findings);
     }
 
-    // Handlers "Crear hallazgo" individuales — leen los inputs editados
+    // Handlers "Crear hallazgo" individuales — leen los inputs editados + campos extra
     container.querySelectorAll('[data-ar-idx]').forEach(btn => {
       btn.onclick = () => {
         const idx = parseInt(btn.dataset.arIdx);
+        const evInput = document.getElementById(`ar-ev-${idx}`);
         const edited = {
           type: findings[idx].type,
           iso_clause: findings[idx].iso_clause,
@@ -501,13 +578,24 @@ const ViewAudits = (() => {
           description: document.getElementById(`ar-desc-${idx}`)?.value || findings[idx].description,
           recommendation: document.getElementById(`ar-rec-${idx}`)?.value || findings[idx].recommendation,
         };
-        _createFindingFromAI(auditId, edited);
+        const opts = {
+          responsible: document.getElementById(`ar-resp-${idx}`)?.value || null,
+          deadline: document.getElementById(`ar-dead-${idx}`)?.value || null,
+          status: document.getElementById(`ar-status-${idx}`)?.value || 'open',
+          evidenceFile: evInput?.files?.length ? evInput.files[0] : null,
+        };
+        _createFindingFromAI(auditId, edited, opts);
       };
     });
   }
 
-  async function _createFindingFromAI(auditId, finding) {
+  async function _createFindingFromAI(auditId, finding, opts = {}) {
+    const isNc = finding.type === 'major_nc' || finding.type === 'minor_nc';
+    const ownerInt = opts.responsible ? parseInt(opts.responsible) : null;
+    const dueDateIso = opts.deadline ? new Date(opts.deadline).toISOString() : null;
+
     try {
+      // 1. Crear hallazgo de auditoria
       await Api.post(`/api/audits/${auditId}/findings`, {
         finding_type: finding.type,
         title: finding.title,
@@ -515,7 +603,57 @@ const ViewAudits = (() => {
         iso_clause: finding.iso_clause || null,
         recommendation: finding.recommendation,
       });
-      UI.toast('Hallazgo creado correctamente', 'success');
+
+      const created = [];
+
+      // 2. Auto-crear No Conformidad para NC mayor/menor
+      let ncCreated = false;
+      if (isNc) {
+        try {
+          await Api.nonconformities.create({
+            title: finding.title,
+            description: finding.description || null,
+            source: 'auditoria',
+            severity: finding.type === 'major_nc' ? 'major' : 'minor',
+            iso_clause: finding.iso_clause || null,
+            corrective_action: finding.recommendation || null,
+            due_date: dueDateIso,
+            owner_id: ownerInt,
+          });
+          ncCreated = true;
+          created.push('NC');
+        } catch (_) {}
+      }
+
+      // 3. Auto-crear Tarea para NC mayor/menor
+      if (isNc) {
+        try {
+          await Api.tasks.create({
+            title: `[Auditoria] ${finding.title}`,
+            description: finding.recommendation || finding.description || null,
+            assigned_to_id: ownerInt,
+            due_date: dueDateIso,
+            priority: finding.type === 'major_nc' ? 'high' : 'medium',
+            notes: `Generado desde analisis IA de auditoria #${auditId}`,
+          });
+          created.push('Tarea');
+        } catch (_) {}
+      }
+
+      // 4. Adjuntar evidencia si se proporciono archivo
+      if (opts.evidenceFile) {
+        try {
+          const fd = new FormData();
+          fd.append('file', opts.evidenceFile);
+          fd.append('title', `Evidencia: ${finding.title}`);
+          fd.append('description', `Hallazgo de auditoria #${auditId}`);
+          await Api.evidence.upload(fd);
+          created.push('Evidencia');
+        } catch (_) {}
+      }
+
+      const extra = created.length ? ` + ${created.join(' + ')}` : '';
+      UI.toast(`Hallazgo creado${extra}`, 'success');
       await _loadStats();
       await _refresh();
     } catch (e) {
@@ -525,23 +663,78 @@ const ViewAudits = (() => {
 
   async function _createAllFindings(auditId, findings) {
     let created = 0;
-    for (const f of findings) {
+    let ncsCreated = 0;
+    let tasksCreated = 0;
+    for (let idx = 0; idx < findings.length; idx++) {
+      const f = findings[idx];
+      const isNc = f.type === 'major_nc' || f.type === 'minor_nc';
+      const title = document.getElementById(`ar-title-${idx}`)?.value || f.title;
+      const description = document.getElementById(`ar-desc-${idx}`)?.value || f.description;
+      const recommendation = document.getElementById(`ar-rec-${idx}`)?.value || f.recommendation;
+      const responsible = document.getElementById(`ar-resp-${idx}`)?.value || null;
+      const deadline = document.getElementById(`ar-dead-${idx}`)?.value || null;
+      const evInput = document.getElementById(`ar-ev-${idx}`);
+      const evidenceFile = evInput?.files?.length ? evInput.files[0] : null;
+      const ownerInt = responsible ? parseInt(responsible) : null;
+      const dueDateIso = deadline ? new Date(deadline).toISOString() : null;
+
       try {
         await Api.post(`/api/audits/${auditId}/findings`, {
           finding_type: f.type,
-          title: f.title,
-          description: f.description,
+          title,
+          description: description || null,
           iso_clause: f.iso_clause || null,
-          recommendation: f.recommendation,
+          recommendation: recommendation || null,
         });
         created++;
+
+        if (isNc) {
+          try {
+            await Api.nonconformities.create({
+              title,
+              description: description || null,
+              source: 'auditoria',
+              severity: f.type === 'major_nc' ? 'major' : 'minor',
+              iso_clause: f.iso_clause || null,
+              corrective_action: recommendation || null,
+              due_date: dueDateIso,
+              owner_id: ownerInt,
+            });
+            ncsCreated++;
+          } catch (_) {}
+
+          try {
+            await Api.tasks.create({
+              title: `[Auditoria] ${title}`,
+              description: recommendation || description || null,
+              assigned_to_id: ownerInt,
+              due_date: dueDateIso,
+              priority: f.type === 'major_nc' ? 'high' : 'medium',
+              notes: `Generado desde analisis IA de auditoria #${auditId}`,
+            });
+            tasksCreated++;
+          } catch (_) {}
+        }
+
+        if (evidenceFile) {
+          try {
+            const fd = new FormData();
+            fd.append('file', evidenceFile);
+            fd.append('title', `Evidencia: ${title}`);
+            fd.append('description', `Hallazgo de auditoria #${auditId}`);
+            await Api.evidence.upload(fd);
+          } catch (_) {}
+        }
       } catch (_) {}
     }
-    UI.toast(`${created} hallazgos creados`, 'success');
+    const extra = [];
+    if (ncsCreated) extra.push(`${ncsCreated} NC`);
+    if (tasksCreated) extra.push(`${tasksCreated} tareas`);
+    UI.toast(`${created} hallazgos creados${extra.length ? ' + ' + extra.join(' + ') : ''}`, 'success');
     document.querySelector('.modal-overlay')?.remove();
     await _loadStats();
     await _refresh();
   }
 
-  return { render, _openAnalyzeReportModal, _runAnalysis, _renderAnalysisResult, _createFindingFromAI, _createAllFindings };
+  return { render, _openAnalyzeReportModal, _runAnalysis, _renderAnalysisResult, _createFindingFromAI, _createAllFindings, _defaultDeadline };
 })();
