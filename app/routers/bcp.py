@@ -865,6 +865,14 @@ def get_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(require_
     return _plan_d(p)
 
 
+# Campos administrativos que NO alteran el contenido sustantivo del plan y por
+# tanto pueden editarse aunque el plan ya este aprobado, sin forzar nueva version.
+_PLAN_SAFE_FIELDS_WHEN_APPROVED = {
+    "review_date", "team_members", "authorized_activators",
+    "documentation_links", "related_documents",
+}
+
+
 @router.patch("/plans/{pid}")
 def update_plan(pid: int, body: PlanUpdate, db: Session = Depends(get_db),
                 u: User = Depends(require_analyst)):
@@ -872,6 +880,19 @@ def update_plan(pid: int, body: PlanUpdate, db: Session = Depends(get_db),
     if not p or p.organization_id != _org(u):
         raise HTTPException(404)
     data = body.model_dump(exclude_none=True)
+    # Un plan aprobado es un documento con validez ISO 22301 §8.4: su contenido
+    # no debe poder mutarse por PATCH directo. El cambio de estado a 'approved'
+    # solo puede hacerse mediante /plans/{id}/approve (que valida y obsoleta versiones previas).
+    if data.get("status") == "approved":
+        raise HTTPException(422, "Para aprobar un plan usa POST /plans/{id}/approve")
+    if p.status == "approved":
+        disallowed = set(data.keys()) - _PLAN_SAFE_FIELDS_WHEN_APPROVED
+        if disallowed:
+            raise HTTPException(
+                422,
+                "Este plan esta aprobado y no puede editarse directamente. "
+                "Usa 'Editar plan' para crear una nueva version en borrador.",
+            )
     # B2 — IDOR prevention
     if "document_id" in data and data["document_id"]:
         from app.models import AiDocument

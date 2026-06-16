@@ -448,6 +448,11 @@ def decide_assessment(
     return a
 
 
+# Campos administrativos que no alteran el contenido sustantivo de la evaluacion
+# y por tanto pueden editarse aunque ya este aprobada, sin forzar nueva version.
+_ASSESSMENT_SAFE_FIELDS_WHEN_APPROVED = {"valid_until", "linked_risk_id"}
+
+
 @router.patch("/{aid}", response_model=VendorAssessmentOut)
 def update_assessment(
     aid: int,
@@ -460,6 +465,16 @@ def update_assessment(
         raise HTTPException(404, "Evaluacion no encontrada")
 
     changes = body.model_dump(exclude_none=True)
+    # Una evaluacion aprobada es la base documental para decisiones TPRM (§5.2):
+    # su contenido no debe poder mutarse por PATCH directo una vez aprobada.
+    if a.approved_at:
+        disallowed = set(changes.keys()) - _ASSESSMENT_SAFE_FIELDS_WHEN_APPROVED
+        if disallowed:
+            raise HTTPException(
+                422,
+                "Esta evaluacion ya esta aprobada y no puede editarse directamente. "
+                "Usa 'Nueva version' para crear una re-evaluacion en borrador.",
+            )
     for field, value in changes.items():
         setattr(a, field, value)
 
@@ -473,6 +488,46 @@ def update_assessment(
     db.refresh(a)
     log_action(db, current_user.id, "update", "vendor_assessment", str(a.id))
     return a
+
+
+@router.post("/{aid}/new-version", response_model=VendorAssessmentOut)
+def new_assessment_version(
+    aid: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Crea una nueva re-evaluacion en borrador a partir de una evaluacion aprobada,
+    copiando sus puntuaciones. La evaluacion original permanece vigente hasta que
+    la nueva se apruebe (ver approve_assessment)."""
+    a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
+    if not a or not check_org_access(a.organization_id, current_user):
+        raise HTTPException(404, "Evaluacion no encontrada")
+    if not a.approved_at:
+        raise HTTPException(422, "Solo se puede crear nueva version de una evaluacion aprobada")
+
+    new_a = VendorRiskAssessment(
+        organization_id=a.organization_id,
+        code=_next_code(db, a.organization_id),
+        supplier_id=a.supplier_id,
+        inherent_risk_score=a.inherent_risk_score,
+        inherent_risk_level=a.inherent_risk_level,
+        control_effectiveness_score=a.control_effectiveness_score,
+        residual_risk_score=a.residual_risk_score,
+        residual_risk_level=a.residual_risk_level,
+        score_by_domain=a.score_by_domain,
+        summary=a.summary,
+        assessor_user_id=current_user.id,
+        created_by_id=current_user.id,
+        assessment_type=a.assessment_type,
+        questionnaire_ids=a.questionnaire_ids,
+        previous_version_id=a.id,
+    )
+    db.add(new_a)
+    db.commit()
+    db.refresh(new_a)
+    log_action(db, current_user.id, "new_version", "vendor_assessment", str(new_a.id),
+               {"previous_id": a.id, "previous_code": a.code})
+    return new_a
 
 
 @router.delete("/{aid}", status_code=status.HTTP_204_NO_CONTENT)
@@ -501,6 +556,12 @@ def approve_assessment(
     a.approver_user_id = current_user.id
     a.approved_at = datetime.now(timezone.utc)
     db.commit()
+    # Versionado: al aprobar una re-evaluacion, la version anterior deja de estar vigente
+    if a.previous_version_id:
+        prev = db.get(VendorRiskAssessment, a.previous_version_id)
+        if prev and prev.is_current:
+            prev.is_current = False
+            db.commit()
     db.refresh(a)
     log_action(db, current_user.id, "approve", "vendor_assessment", str(a.id), {"code": a.code})
     return a

@@ -501,6 +501,11 @@ def _migrate_columns() -> None:
         ("ALTER TABLE external_findings ADD COLUMN source_document VARCHAR(512)", "external_findings", "source_document"),
         ("ALTER TABLE external_findings ADD COLUMN iso_control VARCHAR(32)", "external_findings", "iso_control"),
         ("ALTER TABLE external_findings ADD COLUMN incident_id INTEGER REFERENCES incidents(id)", "external_findings", "incident_id"),
+        # v4.1.0 — versionado de politicas (editar aprobada/publicada crea nueva version en draft)
+        ("ALTER TABLE policies ADD COLUMN previous_version_id INTEGER REFERENCES policies(id)", "policies", "previous_version_id"),
+        # v4.1.0 — versionado de evaluaciones de proveedor (TPRM)
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN previous_version_id INTEGER REFERENCES vendor_risk_assessments(id)", "vendor_risk_assessments", "previous_version_id"),
+        ("ALTER TABLE vendor_risk_assessments ADD COLUMN is_current BOOLEAN DEFAULT 1", "vendor_risk_assessments", "is_current"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

@@ -855,9 +855,15 @@ class Policy(Base):
     regwatch_review_at = Column(DateTime, nullable=True)
     regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
 
+    # v4.1.0 — versionado: editar una politica aprobada/publicada crea una nueva
+    # fila en draft enlazada via previous_version_id; al aprobarse, la version
+    # anterior pasa automaticamente a obsoleta (mismo patron que BCPPlan).
+    previous_version_id = Column(Integer, ForeignKey("policies.id"), nullable=True)
+
     owner = relationship("User", foreign_keys=[owner_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     source_document = relationship("AiDocument", foreign_keys=[source_document_id])
+    previous_version = relationship("Policy", remote_side=[id], foreign_keys=[previous_version_id])
 
 
 # ---------- AUDITORIA INTERNA (M5) ----------
@@ -1033,9 +1039,16 @@ class VendorRiskAssessment(Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # v4.1.0 — versionado: re-evaluar un proveedor ya aprobado crea una nueva
+    # evaluacion enlazada via previous_version_id; al aprobarse, la anterior
+    # deja de estar vigente (is_current=False), mismo patron que BCPPlan/Policy.
+    previous_version_id = Column(Integer, ForeignKey("vendor_risk_assessments.id"), nullable=True)
+    is_current = Column(Boolean, default=True)
+
     supplier = relationship("Supplier")
     profiling_q = relationship("SupplierQuestionnaire", foreign_keys="VendorRiskAssessment.profiling_questionnaire_id")
     assessment_q = relationship("SupplierQuestionnaire", foreign_keys="VendorRiskAssessment.assessment_questionnaire_id")
+    previous_version = relationship("VendorRiskAssessment", remote_side=[id], foreign_keys=[previous_version_id])
 
     @property
     def supplier_name(self) -> str:

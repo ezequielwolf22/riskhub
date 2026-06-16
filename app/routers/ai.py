@@ -1212,7 +1212,7 @@ def architecture_review(
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=8192,
             system=_ARCH_REVIEW_PROMPT,
             messages=[{"role": "user", "content": message_content}],
         )
@@ -1223,7 +1223,15 @@ def architecture_review(
             if inner.startswith("json"):
                 inner = inner[4:]
             raw = inner.rsplit("```", 1)[0].strip()
+        if response.stop_reason == "max_tokens":
+            raise HTTPException(
+                502,
+                "La respuesta de la IA se cortó por exceder el límite de tokens. "
+                "Reduce el número de documentos analizados a la vez o su tamaño."
+            )
         result = _json.loads(raw)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(500, f"Error en architecture review IA: {exc}")
 

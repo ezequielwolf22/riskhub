@@ -44,6 +44,19 @@ def _next_code(db: Session, org_id: int) -> str:
     return f"POL-{n:04d}"
 
 
+def _bump_version(ver: str) -> str:
+    try:
+        major = int(str(ver or "1.0").split(".")[0])
+    except ValueError:
+        major = 1
+    return f"{major + 1}.0"
+
+
+# Campos administrativos que no alteran el contenido sustantivo del documento y
+# por tanto pueden editarse aunque ya este aprobado/publicado, sin forzar nueva version.
+_POLICY_SAFE_FIELDS_WHEN_LOCKED = {"review_date", "owner_id", "regwatch_review_at"}
+
+
 @router.get("/", response_model=list[PolicyOut])
 def list_policies(
     db: Session = Depends(get_db),
@@ -120,6 +133,17 @@ def update_policy(policy_id: int, body: PolicyUpdate,
     if not p or not check_org_access(p.organization_id, current_user):
         raise HTTPException(404, "Politica no encontrada")
     update_data = body.model_dump(exclude_none=True)
+    # Un documento aprobado/publicado tiene validez ISO 27001 cl.5.2: su contenido
+    # no debe poder mutarse por PATCH directo. Para modificarlo hay que crear una
+    # nueva version con POST /{policy_id}/new-version.
+    if p.status in (PolicyStatus.APPROVED, PolicyStatus.PUBLISHED):
+        disallowed = set(update_data.keys()) - _POLICY_SAFE_FIELDS_WHEN_LOCKED
+        if disallowed:
+            raise HTTPException(
+                422,
+                "Este documento esta aprobado/publicado y no puede editarse directamente. "
+                "Usa 'Editar' para crear una nueva version en borrador.",
+            )
     # Auto-stamp approved_at when approving
     if update_data.get("status") == PolicyStatus.APPROVED and not p.approved_at:
         update_data.setdefault("approved_at", datetime.now(timezone.utc))
@@ -127,9 +151,51 @@ def update_policy(policy_id: int, body: PolicyUpdate,
     for field, value in update_data.items():
         setattr(p, field, value)
     db.commit()
+    # Versionado: al aprobar una nueva version, la version anterior pasa a obsoleta
+    if update_data.get("status") == PolicyStatus.APPROVED and p.previous_version_id:
+        prev = db.get(Policy, p.previous_version_id)
+        if prev and prev.status in (PolicyStatus.APPROVED, PolicyStatus.PUBLISHED):
+            prev.status = PolicyStatus.OBSOLETE
+            db.commit()
     db.refresh(p)
     log_action(db, current_user.id, "update", "policy", str(p.id))
     return p
+
+
+@router.post("/{policy_id}/new-version", response_model=PolicyOut)
+def new_policy_version(policy_id: int, db: Session = Depends(get_db),
+                       current_user: User = Depends(require_analyst)):
+    """Crea una nueva version en borrador de un documento aprobado/publicado,
+    copiando su contenido. El documento original permanece vigente hasta que
+    la nueva version se apruebe (ver update_policy)."""
+    p = db.query(Policy).filter(Policy.id == policy_id).first()
+    if not p or not check_org_access(p.organization_id, current_user):
+        raise HTTPException(404, "Politica no encontrada")
+    if p.status not in (PolicyStatus.APPROVED, PolicyStatus.PUBLISHED):
+        raise HTTPException(422, "Solo se puede crear nueva version de un documento aprobado o publicado")
+    org_id = p.organization_id
+    new_p = Policy(
+        code=_next_code(db, org_id),
+        organization_id=org_id,
+        title=p.title,
+        version=_bump_version(p.version),
+        category=p.category,
+        status=PolicyStatus.DRAFT,
+        scope=p.scope,
+        content=p.content,
+        iso_clauses=p.iso_clauses,
+        review_date=p.review_date,
+        owner_id=p.owner_id,
+        source_document_id=p.source_document_id,
+        review_cycle_months=p.review_cycle_months,
+        previous_version_id=p.id,
+    )
+    db.add(new_p)
+    db.commit()
+    db.refresh(new_p)
+    log_action(db, current_user.id, "new_version", "policy", str(new_p.id),
+               {"previous_id": p.id, "previous_code": p.code, "version": new_p.version})
+    return new_p
 
 
 @router.delete("/{policy_id}", status_code=204)

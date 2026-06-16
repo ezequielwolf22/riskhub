@@ -372,6 +372,7 @@ const ViewVendorAssessments = (() => {
     const footerActions = `
       <button class="btn" id="vas-det-close">Cerrar</button>
       ${Auth.canEdit() && !a.approved_at ? `<button class="btn" id="vas-det-approve">Aprobar formalmente</button>` : ''}
+      ${Auth.canEdit() && a.approved_at && a.is_current !== false ? `<button class="btn" id="vas-det-newversion">Nueva version (re-evaluar)</button>` : ''}
       ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-primary" id="vas-det-push">Enviar al Risk Register</button>` : ''}
     `;
 
@@ -385,6 +386,20 @@ const ViewVendorAssessments = (() => {
       try {
         await Api.vendor_assessments.approve(a.id);
         UI.toast('Evaluacion aprobada formalmente', 'success');
+        UI.closeModal();
+        await _refresh();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+
+    const newVersionBtn = document.getElementById('vas-det-newversion');
+    if (newVersionBtn) newVersionBtn.onclick = async () => {
+      if (!await UI.confirm(
+        `Se creara una nueva evaluacion en borrador para re-evaluar a ${UI.esc(a.supplier_name||'')} con los mismos datos. ` +
+        `La evaluacion actual (${UI.esc(a.code)}) permanecera vigente hasta que la nueva se apruebe, momento en que pasara a no vigente.`
+      )) return;
+      try {
+        const draft = await Api.vendor_assessments.newVersion(a.id);
+        UI.toast(`Version ${draft.code} creada en borrador`, 'success');
         UI.closeModal();
         await _refresh();
       } catch (e) { UI.toast(e.message, 'error'); }

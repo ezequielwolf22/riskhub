@@ -201,9 +201,9 @@ const ViewPolicies = (() => {
       </table>`;
 
     wrap.querySelectorAll('tr[data-id]').forEach(tr =>
-      tr.onclick = () => { const p = data.find(x => x.id == tr.dataset.id); if (p) _openForm(p); });
+      tr.onclick = () => { const p = data.find(x => x.id == tr.dataset.id); if (p) _editPolicy(p); });
     wrap.querySelectorAll('[data-action="edit"]').forEach(btn =>
-      btn.onclick = (e) => { e.stopPropagation(); const p = data.find(x => x.id == btn.dataset.id); if (p) _openForm(p); });
+      btn.onclick = (e) => { e.stopPropagation(); const p = data.find(x => x.id == btn.dataset.id); if (p) _editPolicy(p); });
     wrap.querySelectorAll('[data-action="del"]').forEach(btn =>
       btn.onclick = async (e) => {
         e.stopPropagation();
@@ -266,6 +266,40 @@ const ViewPolicies = (() => {
         <div class="span2"><label>Alcance</label><textarea id="f-scope" class="input" rows="2">${UI.esc(scope)}</textarea></div>
         <div class="span2"><label>Contenido / resumen</label><textarea id="f-content" class="input" rows="5">${UI.esc(content)}</textarea></div>
       </div>`;
+  }
+
+  function _bumpVersion(ver) {
+    const parts = String(ver || '1.0').split('.');
+    return (parseInt(parts[0] || '1') + 1) + '.0';
+  }
+
+  function _editPolicy(p) {
+    if (p.status === 'approved' || p.status === 'published') {
+      _openVersioningModal(p);
+    } else {
+      _openForm(p);
+    }
+  }
+
+  function _openVersioningModal(p) {
+    const nextVer = _bumpVersion(p.version);
+    UI.modal('Editar documento aprobado', `
+      <p style="margin-bottom:10px;">El documento <strong>${UI.esc(p.code)}</strong> esta actualmente <strong>${STATUS_LABELS[p.status]||p.status}</strong> (v${UI.esc(p.version||'1.0')}).</p>
+      <p style="font-size:13px;color:var(--text-subtle);margin-bottom:4px;">Al continuar se creara una nueva version <strong>v${UI.esc(nextVer)}</strong> en borrador con el mismo contenido. El documento actual permanecera vigente hasta que la nueva version sea aprobada, momento en que pasara automaticamente a estado <em>obsoleta</em>.</p>
+    `, {
+      actions: `<button class="btn" id="m-cancel">Cancelar</button>
+                <button class="btn btn-primary" id="m-confirm-version">Crear version ${UI.esc(nextVer)}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-confirm-version').onclick = async () => {
+      try {
+        const draft = await Api.policies.newVersion(p.id);
+        UI.toast(`Version ${draft.version} creada en borrador`, 'success');
+        UI.closeModal();
+        _openForm(draft);
+        await _loadStats(); await _refresh();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
   }
 
   function _openForm(p, extracted) {

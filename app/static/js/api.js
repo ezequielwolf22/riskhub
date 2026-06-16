@@ -269,6 +269,7 @@ const Api = {
     update: (id, d) => Api.patch('/api/policies/' + id, d),
     del: (id) => Api.del('/api/policies/' + id),
     summary: () => Api.get('/api/policies/stats/summary'),
+    newVersion: (id) => Api.post('/api/policies/' + id + '/new-version', {}),
     aiExtract: (file) => {
       const fd = new FormData();
       fd.append('file', file);
@@ -333,6 +334,7 @@ const Api = {
     del: (id) => Api.del('/api/vendor-assessments/' + id),
     decide: (id, d) => Api.post('/api/vendor-assessments/' + id + '/decide', d),
     approve: (id) => Api.post('/api/vendor-assessments/' + id + '/approve', {}),
+    newVersion: (id) => Api.post('/api/vendor-assessments/' + id + '/new-version', {}),
     pushToRegister: (id) => Api.post('/api/vendor-assessments/' + id + '/push-to-risk-register', {}),
     evidenceUrl: (aid, questionId) => `/api/vendor-assessments/${aid}/evidence/${encodeURIComponent(questionId)}`,
   },
