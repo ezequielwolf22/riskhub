@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from app import __version__
 from app.config import settings
@@ -204,15 +205,27 @@ app.include_router(surveys.router)
 app.include_router(survey_public_router)
 
 
+class RevalidateStaticFiles(StaticFiles):
+    """StaticFiles que obliga al navegador a revalidar (ETag/If-None-Match)
+    en cada carga en lugar de usar cache heuristica, para que los deploys
+    de JS/CSS se reflejen siempre sin necesidad de limpiar cache manualmente."""
+
+    async def get_response(self, path: str, scope: Scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
 # Frontend estatico
 if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets" if (STATIC_DIR / "assets").exists() else STATIC_DIR), name="assets")
-    app.mount("/css", StaticFiles(directory=STATIC_DIR / "css"), name="css")
-    app.mount("/js", StaticFiles(directory=STATIC_DIR / "js"), name="js")
+    app.mount("/assets", RevalidateStaticFiles(directory=STATIC_DIR / "assets" if (STATIC_DIR / "assets").exists() else STATIC_DIR), name="assets")
+    app.mount("/css", RevalidateStaticFiles(directory=STATIC_DIR / "css"), name="css")
+    app.mount("/js", RevalidateStaticFiles(directory=STATIC_DIR / "js"), name="js")
     if (STATIC_DIR / "img").exists():
-        app.mount("/img", StaticFiles(directory=STATIC_DIR / "img"), name="img")
+        app.mount("/img", RevalidateStaticFiles(directory=STATIC_DIR / "img"), name="img")
     if (STATIC_DIR / "vendor").exists():
-        app.mount("/vendor", StaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
+        app.mount("/vendor", RevalidateStaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
 
     _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 

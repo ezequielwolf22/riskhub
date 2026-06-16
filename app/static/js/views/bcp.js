@@ -3926,7 +3926,7 @@ const ViewBcp = (() => {
       </div>
       <div style="display:grid;grid-template-columns:1fr 300px;gap:14px;align-items:start">
         <div>
-          <div id="cy-graph" style="width:100%;height:560px;border:1px solid var(--border);border-radius:var(--radius-lg);background:#0f0f1a;position:relative;"></div>
+          <div id="cy-graph" style="width:100%;height:560px;border:1px solid var(--border);border-radius:var(--radius-lg);position:relative;overflow:hidden;background-color:#0b0b14;background-image:radial-gradient(circle at 15% 12%, rgba(124,58,237,0.14), transparent 45%),radial-gradient(circle at 85% 88%, rgba(5,150,105,0.12), transparent 45%),radial-gradient(circle at 50% 50%, rgba(255,255,255,0.05) 1px, transparent 1.4px);background-size:auto,auto,22px 22px;"></div>
           <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--text-subtle)">
             <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:50%;background:#7c3aed;display:inline-block"></span>Proceso</div>
             <div style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;border-radius:3px;background:#D65200;display:inline-block"></span>Activo IT</div>
@@ -4004,95 +4004,184 @@ const ViewBcp = (() => {
         style: [
           { selector: 'node', style: {
             'label': 'data(label)',
-            'font-size': '10px', 'color': '#e2e8f0',
+            'font-family': 'Inter, -apple-system, sans-serif',
+            'font-size': '10px', 'font-weight': 600, 'color': '#f1f5f9',
             'text-valign': 'bottom', 'text-halign': 'center',
-            'text-margin-y': '6px',
-            'text-outline-width': '2px', 'text-outline-color': '#0f0f1a',
+            'text-margin-y': '8px',
+            'text-background-color': '#0b0b14', 'text-background-opacity': 0.75,
+            'text-background-shape': 'roundrectangle', 'text-background-padding': '3px',
             'text-max-width': '90px', 'text-wrap': 'ellipsis',
             'width': '40px', 'height': '40px',
             'border-width': '0px',
-            'transition-property': 'border-color border-width background-color',
-            'transition-duration': '0.15s',
+            'overlay-opacity': 0,
+            'transition-property': 'border-color border-width background-color opacity',
+            'transition-duration': '0.18s',
           }},
-          // Proceso — circulo purpura con glow
+          // Proceso — esfera purpura con degradado (efecto glossy 3D)
           { selector: 'node[type="process"]', style: {
-            'background-color': '#7c3aed',
             'shape': 'ellipse',
-            'width': '44px', 'height': '44px',
-            'border-width': '2px', 'border-color': '#a78bfa',
+            'background-fill': 'radial-gradient',
+            'background-gradient-stop-colors': '#c4b5fd #7c3aed #4c1d95',
+            'background-gradient-stop-positions': '0 55 100',
+            'width': '46px', 'height': '46px',
+            'border-width': '2px', 'border-color': '#a78bfa', 'border-opacity': 0.9,
           }},
           { selector: 'node[type="process"][criticality="critical"]', style: {
-            'background-color': '#6d28d9', 'width': '56px', 'height': '56px',
+            'background-gradient-stop-colors': '#ddd6fe #6d28d9 #3b0764',
+            'width': '58px', 'height': '58px',
             'border-width': '3px', 'border-color': '#c4b5fd',
             'font-size': '11px',
           }},
           { selector: 'node[type="process"][criticality="high"]', style: {
-            'width': '50px', 'height': '50px',
+            'width': '52px', 'height': '52px',
           }},
-          // Activo IT — rectangulo naranja
+          // Activo IT — rectangulo naranja con degradado
           { selector: 'node[type="asset"]', style: {
-            'background-color': '#c2410c', 'shape': 'roundrectangle',
-            'width': '40px', 'height': '32px',
-            'border-width': '2px', 'border-color': '#fb923c',
+            'shape': 'roundrectangle',
+            'background-fill': 'linear-gradient',
+            'background-gradient-stop-colors': '#fdba74 #c2410c #7c2d12',
+            'background-gradient-stop-positions': '0 55 100',
+            'background-gradient-direction': 'to-bottom-right',
+            'width': '42px', 'height': '34px',
+            'border-width': '2px', 'border-color': '#fb923c', 'border-opacity': 0.9,
           }},
           { selector: 'node[type="asset"][criticality="critical"]', style: {
-            'background-color': '#9a3412', 'width': '50px', 'height': '40px',
+            'background-gradient-stop-colors': '#fed7aa #9a3412 #431407',
+            'width': '52px', 'height': '42px',
           }},
-          // Proveedor externo — hexagono verde
+          // Proveedor externo — hexagono verde con degradado
           { selector: 'node[type="supplier"]', style: {
-            'background-color': '#065f46', 'shape': 'hexagon',
-            'width': '44px', 'height': '44px',
-            'border-width': '2px', 'border-color': '#34d399',
+            'shape': 'hexagon',
+            'background-fill': 'radial-gradient',
+            'background-gradient-stop-colors': '#6ee7b7 #059669 #022c22',
+            'background-gradient-stop-positions': '0 55 100',
+            'width': '46px', 'height': '46px',
+            'border-width': '2px', 'border-color': '#34d399', 'border-opacity': 0.9,
           }},
           { selector: 'node[type="supplier"][criticality="critical"]', style: {
-            'background-color': '#064e3b', 'width': '54px', 'height': '54px',
+            'background-gradient-stop-colors': '#a7f3d0 #064e3b #022c22',
+            'width': '56px', 'height': '56px',
           }},
           { selector: 'node[type="supplier"][criticality="high"]', style: {
-            'width': '48px', 'height': '48px',
+            'width': '50px', 'height': '50px',
           }},
-          // SPOF — borde rojo pulsante
+          // SPOF — halo rojo pulsante (glow)
           { selector: 'node[?is_spof]', style: {
             'border-width': '3px', 'border-color': '#ef4444',
             'border-style': 'double',
+            'underlay-color': '#ef4444', 'underlay-opacity': 0.35,
+            'underlay-padding': '7px', 'underlay-shape': 'ellipse',
+          }},
+          // Criticidad critica — halo ambar sutil
+          { selector: 'node[criticality="critical"]', style: {
+            'underlay-color': '#fbbf24', 'underlay-opacity': 0.18, 'underlay-padding': '5px',
           }},
           // Nodo seleccionado
           { selector: 'node:selected', style: {
             'border-width': '3px', 'border-color': '#fbbf24', 'border-style': 'solid',
+            'underlay-color': '#fbbf24', 'underlay-opacity': 0.3, 'underlay-padding': '8px',
           }},
-          // Aristas base
+          // Dim — atenuado al hacer hover sobre otro nodo
+          { selector: 'node.bcm-dim, edge.bcm-dim', style: { 'opacity': 0.15 } },
+          { selector: 'node.bcm-focus', style: { 'z-index': 999 } },
+          { selector: 'edge.bcm-focus', style: { 'opacity': 1, 'z-index': 998 } },
+          // Aristas base — curva suave con sombra de profundidad
           { selector: 'edge', style: {
-            'width': '1.5px', 'line-color': '#4b5563',
-            'target-arrow-shape': 'triangle', 'target-arrow-color': '#4b5563',
-            'curve-style': 'bezier', 'font-size': '9px', 'color': '#9ca3af',
+            'width': '1.6px', 'line-color': '#64748b',
+            'target-arrow-shape': 'triangle', 'target-arrow-color': '#64748b',
+            'arrow-scale': 1.1,
+            'curve-style': 'unbundled-bezier', 'control-point-distances': 18, 'control-point-weights': 0.5,
+            'font-size': '9px', 'font-family': 'Inter, sans-serif', 'color': '#cbd5e1',
             'label': showLabels ? 'data(label)' : '',
             'text-rotation': 'autorotate',
-            'text-outline-width': '2px', 'text-outline-color': '#0f0f1a',
+            'text-background-color': '#0b0b14', 'text-background-opacity': 0.75,
+            'text-background-shape': 'roundrectangle', 'text-background-padding': '2px',
+            'opacity': 0.85,
+            'transition-property': 'line-color width opacity',
+            'transition-duration': '0.18s',
           }},
-          // Dependencia critica — rojo
+          // Dependencia critica — rojo con mas grosor
           { selector: 'edge[?is_critical]', style: {
             'line-color': '#ef4444', 'target-arrow-color': '#ef4444',
-            'width': '2.5px',
+            'width': '2.6px', 'opacity': 0.95,
           }},
           // Proveedor externo — discontinua azul
           { selector: 'edge[?is_external]', style: {
             'line-style': 'dashed', 'line-dash-pattern': [6, 4],
             'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6',
-            'width': '1.5px',
+            'width': '1.6px',
           }},
           // Dependencia critica externa (supplier critico)
           { selector: 'edge[?is_critical][?is_external]', style: {
             'line-color': '#f97316', 'target-arrow-color': '#f97316',
-            'width': '2.5px',
+            'width': '2.6px',
           }},
         ],
         layout: {
           name: 'cose',
           animate: true, animationDuration: 700,
           nodeDimensionsIncludeLabels: true,
-          nodeRepulsion: 8000, edgeElasticity: 100, gravity: 0.3,
-          numIter: 1000, coolingFactor: 0.99,
+          nodeRepulsion: 9000, edgeElasticity: 110, gravity: 0.25,
+          numIter: 1200, coolingFactor: 0.98, idealEdgeLength: 90,
         },
         wheelSensitivity: 0.3,
+      });
+
+      // Tooltip flotante al pasar el cursor sobre un nodo
+      let tooltipEl = cyContainer.parentElement.querySelector('.bcm-graph-tooltip');
+      if (!tooltipEl) {
+        tooltipEl = document.createElement('div');
+        tooltipEl.className = 'bcm-graph-tooltip';
+        tooltipEl.style.cssText = 'position:absolute;display:none;pointer-events:none;z-index:50;'
+          + 'background:rgba(15,15,26,0.96);border:1px solid rgba(167,139,250,0.4);border-radius:8px;'
+          + 'padding:8px 10px;font-size:11px;color:#e2e8f0;max-width:220px;box-shadow:0 6px 20px rgba(0,0,0,0.45);'
+          + 'backdrop-filter:blur(4px);line-height:1.5;';
+        cyContainer.appendChild(tooltipEl);
+      }
+      const typeLabelsTip = { process: 'Proceso de negocio', asset: 'Activo IT', supplier: 'Proveedor externo' };
+      const typeColorsTip = { process: '#a78bfa', asset: '#fb923c', supplier: '#34d399' };
+
+      _cyInstance.on('mouseover', 'node', evt => {
+        const node = evt.target;
+        const raw = node.data('_raw') || {};
+        const neighborhood = node.closedNeighborhood();
+        _cyInstance.elements().not(neighborhood).addClass('bcm-dim');
+        neighborhood.addClass('bcm-focus');
+
+        const critColor = CRIT_COLORS[raw.criticality] || '#94a3b8';
+        tooltipEl.innerHTML = `
+          <div style="font-weight:700;font-size:12px;color:${typeColorsTip[raw.type] || '#fff'};margin-bottom:3px">${UI.esc(raw.label || raw.name || '')}</div>
+          <div style="color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:5px">${typeLabelsTip[raw.type] || raw.type}</div>
+          <div>Criticidad: <strong style="color:${critColor}">${UI.esc(raw.criticality || '—')}</strong></div>
+          ${raw.rto_hours != null ? `<div>RTO: <strong>${raw.rto_hours}h</strong></div>` : ''}
+          ${raw.rpo_hours != null ? `<div>RPO: <strong>${raw.rpo_hours}h</strong></div>` : ''}
+          ${raw.location_name ? `<div>Sede: <strong>${UI.esc(raw.location_name)}</strong></div>` : ''}
+          ${raw.is_spof ? `<div style="color:#f87171;font-weight:700;margin-top:3px"><i class="ti ti-alert-triangle"></i> Punto unico de fallo</div>` : ''}
+          <div style="color:#64748b;font-size:10px;margin-top:5px">Clic para ver detalle completo</div>
+        `;
+        tooltipEl.style.display = 'block';
+      });
+      _cyInstance.on('mousemove', evt => {
+        if (tooltipEl.style.display !== 'block') return;
+        const pos = evt.renderedPosition || (evt.target.renderedPosition ? evt.target.renderedPosition() : null);
+        if (!pos) return;
+        let left = pos.x + 16, top = pos.y + 12;
+        if (left + 230 > cyContainer.clientWidth) left = pos.x - 236;
+        if (top + 140 > cyContainer.clientHeight) top = pos.y - 140;
+        tooltipEl.style.left = left + 'px';
+        tooltipEl.style.top = top + 'px';
+      });
+      _cyInstance.on('mouseout', 'node', () => {
+        _cyInstance.elements().removeClass('bcm-dim bcm-focus');
+        tooltipEl.style.display = 'none';
+      });
+      _cyInstance.on('mouseover', 'edge', evt => {
+        const edge = evt.target;
+        _cyInstance.elements().not(edge.connectedNodes().union(edge)).addClass('bcm-dim');
+        edge.addClass('bcm-focus');
+      });
+      _cyInstance.on('mouseout', 'edge', () => {
+        _cyInstance.elements().removeClass('bcm-dim bcm-focus');
       });
 
       // Clic en nodo → panel de detalle enriquecido
