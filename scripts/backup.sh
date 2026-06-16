@@ -5,15 +5,21 @@
 
 set -euo pipefail
 
-DB_SOURCE="/var/lib/docker/volumes/riskhub-data/_data/riskhub.db"
+CONTAINER="riskhub"
+DB_IN_CONTAINER="/srv/data/riskhub.db"
 BACKUP_DIR="/srv/data/backups"
 RETENTION_DAYS=30
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="${BACKUP_DIR}/riskhub_${TIMESTAMP}.db.gz"
 
-# Verificar que la BD existe
-if [ ! -f "$DB_SOURCE" ]; then
-    echo "[$(date -Iseconds)] ERROR: No se encontro la BD en $DB_SOURCE"
+# Verificar que el contenedor esta corriendo. Se hace el backup via "docker
+# exec" en lugar de leer el archivo directamente desde el host: el nombre real
+# del volumen Docker depende del project name de Compose (p.ej. el volumen
+# declarado "riskhub-data" en docker-compose.yml termina llamandose en disco
+# "riskhub_riskhub-data", con un prefijo que puede variar) — usar el path
+# dentro del contenedor evita depender de ese detalle.
+if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" >/dev/null 2>&1; then
+    echo "[$(date -Iseconds)] ERROR: El contenedor $CONTAINER no esta corriendo"
     exit 1
 fi
 
@@ -24,7 +30,18 @@ mkdir -p "$BACKUP_DIR"
 echo "[$(date -Iseconds)] Iniciando backup de RiskHub..."
 
 TEMP_COPY=$(mktemp /tmp/riskhub_backup_XXXXXX.db)
-sqlite3 "$DB_SOURCE" ".backup $TEMP_COPY"
+# La imagen (python:3.11-slim) no trae el binario "sqlite3", asi que se usa
+# el modulo sqlite3 de la stdlib de Python (ya presente) en su lugar.
+docker exec "$CONTAINER" python -c "
+import sqlite3
+src = sqlite3.connect('$DB_IN_CONTAINER')
+dst = sqlite3.connect('/tmp/riskhub_backup_tmp.db')
+src.backup(dst)
+dst.close()
+src.close()
+"
+docker cp "${CONTAINER}:/tmp/riskhub_backup_tmp.db" "$TEMP_COPY"
+docker exec "$CONTAINER" rm -f /tmp/riskhub_backup_tmp.db
 
 # Comprimir
 gzip -c "$TEMP_COPY" > "$BACKUP_FILE"

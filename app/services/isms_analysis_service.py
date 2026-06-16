@@ -15,6 +15,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -213,18 +214,23 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             "summary": analysis.get("overall_summary", ""),
         }
 
+        superseded_doc_id = None
         if analysis.get("is_policy") and analysis.get("policy"):
             try:
-                result["policy_id"] = _create_or_update_policy(
+                result["policy_id"], superseded_doc_id = _create_or_update_policy(
                     db, doc, analysis["policy"], owner_id
                 )
+                if superseded_doc_id:
+                    result["superseded_document_id"] = superseded_doc_id
             except Exception as _pe:
                 logger.warning("Policy creation failed doc=%d: %s", doc_id, _pe)
 
         controls = analysis.get("controls_covered") or []
         if controls:
             try:
-                result["controls_updated"] = _update_controls(db, doc, controls, owner_id)
+                result["controls_updated"] = _update_controls(
+                    db, doc, controls, owner_id, obsolete_doc_id=superseded_doc_id
+                )
             except Exception as _ce2:
                 logger.warning("Controls update failed doc=%d: %s", doc_id, _ce2)
 
@@ -505,10 +511,24 @@ def _next_policy_code(db: Session, org_id: int | None) -> str:
     return code
 
 
+def _bump_policy_version(ver: str | None) -> str:
+    try:
+        major = int(str(ver or "1.0").split(".")[0])
+    except ValueError:
+        major = 1
+    return f"{major + 1}.0"
+
+
 def _create_or_update_policy(
     db: Session, doc: AiDocument, pol_data: dict, owner_id: int | None
-) -> int | None:
-    """Crea o actualiza la Policy vinculada a este documento."""
+) -> tuple[int | None, int | None]:
+    """Crea o actualiza la Policy vinculada a este documento.
+
+    Devuelve (policy_id, superseded_document_id). El segundo valor solo es
+    distinto de None cuando este documento reemplaza a una version anterior
+    de la misma politica (mismo titulo, documento distinto) — se usa para que
+    la propagacion a controles sepa que evidencia antigua debe descartarse.
+    """
     existing = db.query(Policy).filter_by(source_document_id=doc.id).first()
 
     # Calcular fecha de revision
@@ -533,13 +553,68 @@ def _create_or_update_policy(
         existing.review_cycle_months = cycle_months
         existing.updated_at = datetime.now(timezone.utc)
         db.commit()
-        return existing.id
+        return existing.id, None
+
+    title = (pol_data.get("title") or doc.original_name or "").strip()
+
+    # Misma politica, version nueva subida como archivo distinto: se detecta
+    # por titulo igual (case-insensitive) dentro de la misma organizacion,
+    # excluyendo versiones ya obsoletas. Si se encuentra, se encadena con
+    # previous_version_id y la version anterior pasa a obsoleta — igual que
+    # el flujo manual de "Nueva version", pero automatico porque este es un
+    # pipeline desatendido en background.
+    superseded = None
+    if title:
+        superseded = (
+            db.query(Policy)
+            .filter(
+                Policy.organization_id == doc.organization_id,
+                Policy.status != PolicyStatus.OBSOLETE,
+                Policy.source_document_id != doc.id,
+            )
+            .filter(func.lower(Policy.title) == title.lower())
+            .order_by(Policy.id.desc())
+            .first()
+        )
+
+    if superseded:
+        new_status = (
+            superseded.status
+            if superseded.status in (PolicyStatus.APPROVED, PolicyStatus.PUBLISHED)
+            else PolicyStatus.DRAFT
+        )
+        pol = Policy(
+            organization_id=doc.organization_id,
+            code=_next_policy_code(db, doc.organization_id),
+            title=title or superseded.title,
+            version=pol_data.get("version") or _bump_policy_version(superseded.version),
+            category=pol_data.get("category") or superseded.category,
+            status=new_status,
+            scope=pol_data.get("scope") or superseded.scope,
+            content=pol_data.get("content") or superseded.content,
+            iso_clauses=pol_data.get("iso_clauses") or superseded.iso_clauses,
+            review_date=review_date,
+            review_cycle_months=cycle_months,
+            owner_id=owner_id,
+            source_document_id=doc.id,
+            previous_version_id=superseded.id,
+        )
+        db.add(pol)
+        superseded_doc_id = superseded.source_document_id
+        superseded.status = PolicyStatus.OBSOLETE
+        db.commit()
+        db.refresh(pol)
+        logger.info(
+            "Policy auto-superseded: old=%d (%s) -> new=%d (doc=%d)",
+            superseded.id, superseded.code, pol.id, doc.id,
+        )
+        return pol.id, superseded_doc_id
 
     code = _next_policy_code(db, doc.organization_id)
     pol = Policy(
         organization_id=doc.organization_id,
         code=code,
-        title=pol_data.get("title") or doc.original_name,
+        title=title or doc.original_name,
         version=pol_data.get("version") or "1.0",
         category=pol_data.get("category") or "General",
         status=PolicyStatus.DRAFT,
@@ -554,7 +629,7 @@ def _create_or_update_policy(
     db.add(pol)
     db.commit()
     db.refresh(pol)
-    return pol.id
+    return pol.id, None
 
 
 # ---------- Actualizacion de controles ----------
@@ -568,10 +643,18 @@ _STATUS_RANK = {
 
 
 def _update_controls(
-    db: Session, doc: AiDocument, controls_covered: list, owner_id: int | None
+    db: Session, doc: AiDocument, controls_covered: list, owner_id: int | None,
+    obsolete_doc_id: int | None = None,
 ) -> int:
-    """Actualiza ControlImplementation para los controles cubiertos por el documento."""
+    """Actualiza ControlImplementation para los controles cubiertos por el documento.
+
+    Si `obsolete_doc_id` viene informado, este documento reemplaza a una version
+    anterior de la misma politica: se descarta la evidencia que referenciaba el
+    documento antiguo y se aplica el nuevo estado/madurez sin la restriccion de
+    "nunca degradar", porque el contenido nuevo debe sustituir, no solo sumarse.
+    """
     updated = 0
+    old_doc_url = f"/api/ai/documents/{obsolete_doc_id}" if obsolete_doc_id else None
     for ctrl_data in controls_covered:
         code = (ctrl_data.get("code") or "").strip()
         if not code:
@@ -613,17 +696,29 @@ def _update_controls(
         ).first()
 
         if impl:
-            # Solo mejorar el estado, nunca degradar
-            if _STATUS_RANK.get(new_status, 0) > _STATUS_RANK.get(impl.status, 0):
-                impl.status = new_status
-            if new_maturity > (impl.maturity or 0):
-                impl.maturity = new_maturity
             refs = list(impl.evidence_refs or [])
+            if old_doc_url:
+                # La version anterior de esta politica ya no es vigente: se
+                # descarta su evidencia y el contenido nuevo sustituye al
+                # estado/madurez derivados de ella (sin restriccion de "nunca
+                # degradar", que solo aplica cuando se acumula evidencia de
+                # documentos distintos e independientes).
+                refs = [r for r in refs if r.get("url") != old_doc_url]
+                impl.status = new_status
+                impl.maturity = new_maturity
+                if note:
+                    impl.evidence = note
+            else:
+                # Solo mejorar el estado, nunca degradar
+                if _STATUS_RANK.get(new_status, 0) > _STATUS_RANK.get(impl.status, 0):
+                    impl.status = new_status
+                if new_maturity > (impl.maturity or 0):
+                    impl.maturity = new_maturity
+                if note and not impl.evidence:
+                    impl.evidence = note
             if not any(r.get("title") == doc_ref["title"] for r in refs):
                 refs.append(doc_ref)
-                impl.evidence_refs = refs
-            if note and not impl.evidence:
-                impl.evidence = note
+            impl.evidence_refs = refs
             # Actualizar gap analysis (sobreescribir siempre con la info mas reciente)
             if gap_note:
                 impl.notes = gap_note

@@ -281,10 +281,12 @@ async def upload_new_version(
     # Marcar anterior como no-current
     ev.is_current = False
 
-    # Crear nueva versión
+    # Crear nueva versión (codigo propio: Evidence.code es unique, no se puede
+    # reutilizar el de la version anterior; la trazabilidad de version la dan
+    # previous_version_id + is_current, no el code)
     new_ev = Evidence(
         organization_id=ev.organization_id,
-        code=ev.code,
+        code=_next_code(db, ev.organization_id),
         title=ev.title,
         description=ev.description,
         evidence_type=ev.evidence_type,

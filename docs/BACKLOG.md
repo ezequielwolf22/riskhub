@@ -31,15 +31,24 @@ version anterior tal cual).
   draft/aprobado equivalente — requiere decision de producto sobre si tiene
   sentido aqui o si el ciclo de "evaluacion -> nueva evaluacion" de
   `VendorRiskAssessment` ya cubre la necesidad real del usuario.
-- [ ] **Evidence**: ya tenia patron de versionado (`previous_version_id`,
-  `is_current`) pero **se detecto un bug latente real**: en
-  `app/routers/evidence.py::upload_new_version` (linea ~285) la nueva fila
-  reutiliza `code=ev.code`, y `Evidence.code` tiene `unique=True` en el
-  modelo → si alguna vez se sube una segunda version de una evidencia,
-  el `INSERT` deberia fallar por violacion de constraint UNIQUE. No se
-  reprodujo en local (no habia filas de evidencia) ni se ha arreglado.
-  **Revisar y corregir** (generar un `code` nuevo por version, igual que se
-  hizo para `Policy`/`VendorRiskAssessment` en esta sesion).
+- [x] **Evidence**: bug corregido. `app/routers/evidence.py::upload_new_version`
+  reutilizaba `code=ev.code` para la nueva fila, violando el `unique=True`
+  de `Evidence.code`. Ahora genera un `code` nuevo via `_next_code()`, igual
+  que `Policy`/`VendorRiskAssessment`. La trazabilidad de version sigue
+  siendo `previous_version_id` + `is_current`, no el `code`.
+- [x] **Politica con mismo nombre, nueva version (pipeline IA)**: antes,
+  `isms_analysis_service.py::_create_or_update_policy` solo reconocia "misma
+  politica" si era el mismo `AiDocument.id` re-analizado; un archivo nuevo
+  con el mismo titulo creaba una `Policy` totalmente nueva y desconectada,
+  sin obsoletar la anterior ni heredar `previous_version_id`. Corregido:
+  ahora, si no hay `Policy` para ese `source_document_id` pero existe una
+  `Policy` no-obsoleta con el mismo titulo (case-insensitive) en la misma
+  organizacion, se trata como nueva version automatica — encadena
+  `previous_version_id`, marca la anterior `OBSOLETE` de inmediato (sin
+  paso manual de aprobacion, porque este pipeline corre desatendido en
+  background) y los controles (`_update_controls`) descartan la evidencia
+  que referenciaba el documento antiguo en lugar de acumularla, para que
+  solo quede vigente el contenido de la version mas nueva.
 - [ ] **Resto de "documentacion" de la plataforma** (el usuario pidio
   aplicar el patron "a lo largo de toda la documentacion"): no se ha
   evaluado exhaustivamente que otras entidades documentales existen
@@ -48,8 +57,17 @@ version anterior tal cual).
 
 ## 3. Infraestructura / deploy
 
-- [ ] **Backup pre-deploy roto en produccion**: cada `deploy.sh` muestra
-  `ERROR: No se encontro la BD en /var/lib/docker/volumes/riskhub-data/_data/riskhub.db`
+- [x] **Backup pre-deploy roto en produccion**: causa raiz confirmada via
+  `docker inspect` — el volumen declarado `riskhub-data` en
+  `docker-compose.yml` se crea en disco como `riskhub_riskhub-data` (Compose
+  antepone el nombre del proyecto), y `scripts/backup.sh` apuntaba al path
+  sin ese prefijo, por lo que **nunca hizo un backup correcto** (carpeta
+  `/srv/data/backups` vacia desde que se monto el servidor). Corregido de
+  forma mas robusta que solo arreglar la ruta: ahora `backup.sh` hace el
+  snapshot via `docker exec riskhub python -c "...sqlite3...backup..."`
+  contra el path interno del contenedor (`/srv/data/riskhub.db`, estable
+  sin importar como Docker nombre el volumen en el host) y lo copia afuera
+  con `docker cp`.
   (visto de nuevo en el deploy de hoy, commit `e21dd7e`). El script
   continua igualmente ("no critico") pero **no hay red de seguridad real**
   antes de aplicar migraciones de esquema en produccion. Hay que localizar
