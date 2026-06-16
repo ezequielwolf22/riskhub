@@ -808,6 +808,30 @@ label { font-size: 12px; font-weight: 500; color: var(--text-muted);
   background: var(--bg-card);
   box-shadow: var(--shadow-xs);
 }
+
+/* Contenedores de tabla con scroll propio (en vez de desplazar toda la pagina)
+   y ultima columna (acciones) fijada a la derecha para que el boton de menu
+   ⋮ nunca quede oculto fuera del viewport. */
+.table-container {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+.table-container table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table-container table.data-table th:last-child,
+.table-container table.data-table td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--bg-card);
+  box-shadow: -6px 0 6px -6px rgba(0,0,0,0.25);
+}
+.table-container table.data-table thead th:last-child {
+  background: var(--bg-2);
+}
 table.data { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 table.data th {
   background: var(--bg-2);

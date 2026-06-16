@@ -990,7 +990,7 @@ const ViewBcp = (() => {
             <td style="font-size:12px;">${(p.process_ids||[]).length}</td>
             <td style="font-size:12px;color:var(--text-subtle);">${UI.esc(p.plan_owner_name||'—')}</td>
             <td style="font-size:12px;">${p.review_date ? new Date(p.review_date).toLocaleDateString('es-ES') : '—'}</td>
-            <td style="position:relative">
+            <td class="bcm-plan-actions-cell">
               <button class="btn btn-sm btn-ghost" style="padding:4px 8px"
                 onclick="ViewBcp._togglePlanMenu(event,${p.id})">
                 <i class="ti ti-dots-vertical"></i>
