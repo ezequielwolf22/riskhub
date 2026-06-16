@@ -244,6 +244,7 @@ const ViewDashboard = {
     ViewDashboard._loadUpcomingControlReviews();
     ViewDashboard._loadControlsCoverage();
     ViewDashboard._loadRecentActivity();
+    ViewDashboard._loadFindingsQuickAction();
   },
 
   /* Genera el HTML del badge de metodologia. */
@@ -501,6 +502,10 @@ const ViewDashboard = {
                   <span>Mapa de calor</span>
                   <span style="font-size:12px;color:var(--text-muted);">-></span>
                 </a>
+                <a href="#/external-findings" class="quick-action-btn" id="dash-findings-link" style="display:none;">
+                  <span>Hallazgos abiertos</span>
+                  <span class="qa-count" id="dash-findings-count">0</span>
+                </a>
               </div>
             </div>
             <div class="card" style="flex:2;">
@@ -620,6 +625,7 @@ const ViewDashboard = {
       ViewDashboard._loadUpcomingControlReviews();
       ViewDashboard._loadControlsCoverage();
       ViewDashboard._loadRecentActivity();
+      ViewDashboard._loadFindingsQuickAction();
     } catch (e) {
       main.innerHTML += `<div class="notice">${UI.esc(e.message)}</div>`;
     }
@@ -1124,6 +1130,20 @@ const ViewDashboard = {
           <span style="font-size:11px;font-weight:600;color:${urgency};white-space:nowrap;">${label}</span>
         </div>`;
       }).join('');
+    } catch (_) { /* silencioso */ }
+  },
+
+  async _loadFindingsQuickAction() {
+    const link = document.getElementById('dash-findings-link');
+    const countEl = document.getElementById('dash-findings-count');
+    if (!link || !countEl) return;
+    try {
+      const s = await Api.findings.summary();
+      const open = s.open || 0;
+      if (!open) { link.style.display = 'none'; return; }
+      countEl.textContent = open;
+      link.classList.toggle('warn', open > 0);
+      link.style.display = '';
     } catch (_) { /* silencioso */ }
   },
 

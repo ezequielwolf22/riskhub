@@ -402,6 +402,122 @@ def auto_generate_risk_from_cve(
         return None
 
 
+def auto_generate_risk_from_finding(
+    db: Session,
+    asset_id: int,
+    title: str,
+    description: str,
+    threat_code: str,
+    inherent_consequence: int = 3,
+    inherent_likelihood: int = 3,
+) -> Optional[Risk]:
+    """Auto-genera riesgo a partir de un hallazgo generico (ExternalFinding).
+
+    Generaliza auto_generate_risk_from_cve/osint para cualquier fuente de
+    hallazgo (revision de arquitectura, futuras integraciones, etc.) sin
+    requerir un CVE o tipo OSINT especifico — solo activo + descripcion.
+    """
+    asset = db.get(Asset, asset_id)
+    if not asset:
+        logger.warning("Asset %s not found, finding risk auto-gen aborted", asset_id)
+        return None
+
+    org_id = asset.organization_id
+    if not org_id:
+        logger.warning("Asset %s sin org_id, finding risk auto-gen aborted", asset.code)
+        return None
+
+    threat = db.query(Threat).filter(Threat.code == threat_code).first()
+
+    if threat:
+        existing = db.query(Risk).filter(
+            Risk.asset_id == asset_id,
+            Risk.threat_id == threat.id,
+            Risk.organization_id == org_id,
+        ).first()
+        if existing:
+            logger.debug("Riesgo duplicado finding=%s asset=%s, saltando", threat_code, asset.code)
+            return existing
+
+    if not threat:
+        from app.models import ThreatOrigin
+        threat = Threat(
+            code=threat_code,
+            name=title[:255],
+            description=description[:2000] if description else title,
+            origin=ThreatOrigin.DELIBERATE,
+            is_custom=False,
+        )
+        db.add(threat)
+        db.flush()
+
+    ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+    matrix = ctx.risk_matrix if ctx and ctx.risk_matrix else None
+
+    risk = Risk(
+        code=_next_code(db, org_id),
+        organization_id=org_id,
+        asset_id=asset_id,
+        threat_id=threat.id,
+        description=f"Riesgo por hallazgo: {title}",
+        consequence_description=description[:2000] if description else title,
+        inherent_likelihood=inherent_likelihood,
+        inherent_consequence=inherent_consequence,
+        status=RiskStatus.IDENTIFIED,
+    )
+
+    risk.inherent_level = calc_level(inherent_consequence, inherent_likelihood, matrix)
+    rl, rc, rlev = calc_residual(inherent_likelihood, inherent_consequence, [], matrix)
+    risk.residual_likelihood = rl
+    risk.residual_consequence = rc
+    risk.residual_level = rlev
+
+    applicable_controls = _inherit_controls(db, asset, threat)
+    controls_dicts = _controls_to_dicts(applicable_controls)
+    if controls_dicts:
+        rl2, rc2, rlev2 = calc_residual(inherent_likelihood, inherent_consequence, controls_dicts, matrix)
+        risk.residual_likelihood = rl2
+        risk.residual_consequence = rc2
+        risk.residual_level = rlev2
+        rlev = rlev2
+    risk.controls = applicable_controls
+
+    if rlev <= appetite:
+        risk.treatment_option = TreatmentOption.RETENTION
+        risk.status = RiskStatus.ACCEPTED
+    else:
+        risk.treatment_option = TreatmentOption.MODIFICATION
+        risk.status = RiskStatus.ASSESSED
+
+    from datetime import timedelta
+    review_days = {0: 365, 1: 365, 2: 180, 3: 90, 4: 60, 5: 30, 6: 14, 7: 7, 8: 7}
+    risk.next_review = datetime.now(timezone.utc) + timedelta(days=review_days.get(rlev, 90))
+    treatment_days = {0: 365, 1: 180, 2: 90, 3: 60, 4: 45, 5: 30, 6: 14, 7: 7, 8: 3}
+    risk.treatment_due_date = datetime.now(timezone.utc) + timedelta(days=treatment_days.get(rlev, 60))
+
+    if not risk.owner_id:
+        owner = db.query(User).filter(
+            User.organization_id == org_id,
+            User.role.in_([UserRole.ADMIN, UserRole.ANALYST]),
+            User.is_active.is_(True),
+        ).first()
+        if owner:
+            risk.owner_id = owner.id
+
+    db.add(risk)
+    try:
+        db.commit()
+        db.refresh(risk)
+        logger.info("Auto-generado riesgo desde hallazgo %s para asset %s: residual=%d",
+                    threat_code, asset.code, risk.residual_level)
+        return risk
+    except Exception as exc:
+        logger.exception("Error creating risk from finding: %s", exc)
+        db.rollback()
+        return None
+
+
 def auto_generate_risk_from_osint(
     db: Session,
     asset_id: int,

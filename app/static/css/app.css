@@ -252,7 +252,7 @@ a:hover { text-decoration: underline; }
 .mono { font-family: var(--font-mono); }
 
 button { font-family: inherit; }
-input, select, textarea {
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   font-family: inherit;
   font-size: 14px;
   width: 100%;
@@ -262,10 +262,14 @@ input, select, textarea {
   background: var(--bg);
   color: var(--text);
 }
-input:focus, select:focus, textarea:focus {
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
   outline: 2px solid var(--brand-purple);
   outline-offset: -1px;
   border-color: var(--brand-purple);
+}
+input[type="checkbox"], input[type="radio"] {
+  width: auto;
+  flex-shrink: 0;
 }
 label { font-size: 12px; font-weight: 500; color: var(--text-muted);
         display: block; margin-bottom: 4px; }

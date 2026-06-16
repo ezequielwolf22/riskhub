@@ -555,7 +555,10 @@ const Api = {
   findings: {
     list:    (q)  => Api.get('/api/findings', q),
     summary: ()   => Api.get('/api/findings/summary'),
+    sourceDocuments: (source) => Api.get('/api/findings/source-documents', source ? { source } : {}),
     resolve: (id) => Api.put(`/api/findings/${id}/resolve`, {}),
+    createIncident: (id) => Api.post(`/api/findings/${id}/create-incident`, {}),
+    createRisk: (id, assetId) => Api.post(`/api/findings/${id}/create-risk`, { asset_id: assetId }),
     import: (fd) => {
       const token = localStorage.getItem('riskhub_token') || '';
       return fetch('/api/findings/import', {

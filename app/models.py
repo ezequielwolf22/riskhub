@@ -1624,6 +1624,7 @@ class ExternalFindingSource(str, PyEnum):
     SIEM = "siem"
     SSL_LABS = "ssl_labs"
     MANUAL = "manual"
+    ARCHITECTURE_REVIEW = "architecture_review"
 
 
 class ExternalFinding(Base):
@@ -1643,15 +1644,21 @@ class ExternalFinding(Base):
     affected_software = Column(String(512), nullable=True)
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # link a asset
     risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)     # risk creado
+    incident_id = Column(Integer, ForeignKey("incidents.id"), nullable=True)  # incidente creado
     status = Column(String(32), default="open")                 # open/resolved/accepted
     raw_data = Column(Text, nullable=True)                      # XML/JSON original
     import_batch_id = Column(String(64), nullable=True)         # agrupa import
+    # Origen del hallazgo cuando proviene de analisis IA (revision de arquitectura, etc.)
+    # — permite filtrar resultados por documento/esquema cuando se analizan varios a la vez.
+    source_document = Column(String(512), nullable=True)
+    iso_control = Column(String(32), nullable=True)             # control ISO 27002 incumplido
     detected_at = Column(DateTime, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     asset = relationship("Asset")
     risk = relationship("Risk")
+    incident = relationship("Incident")
 
 
 # ---------- MANAGEMENT REVIEW (ISO 27001 cl. 9.3) ----------

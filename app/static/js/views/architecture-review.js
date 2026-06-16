@@ -16,6 +16,107 @@ const ViewArchitectureReview = (() => {
 
   let _result = null;
   let _vulnFilter = 'all';
+  let _docFilter = 'all';
+  let _assetsCache = null;
+
+  const STATUS_BADGE = {
+    open: { bg: '#FEF0E3', color: '#c25a1f', label: 'Abierto' },
+    resolved: { bg: '#E8F5E9', color: '#2e7d32', label: 'Resuelto' },
+    accepted: { bg: '#E8F5E9', color: '#2e7d32', label: 'Aceptado' },
+  };
+
+  async function _getAssets() {
+    if (_assetsCache) return _assetsCache;
+    try {
+      _assetsCache = await Api.assets.list();
+    } catch (_) {
+      _assetsCache = [];
+    }
+    return _assetsCache;
+  }
+
+  async function _resolveFinding(findingId, btn) {
+    if (!findingId) return;
+    try {
+      await Api.findings.resolve(findingId);
+      UI.toast('Hallazgo marcado como resuelto', 'success');
+      const v = (_result.vulnerabilities || []).find(x => x.finding_id === findingId);
+      if (v) v.finding_status = 'resolved';
+      _renderResult(document.getElementById('arch-result'), _result);
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  async function _transferToIncident(findingId) {
+    if (!findingId) return;
+    try {
+      const r = await Api.findings.createIncident(findingId);
+      UI.toast(`Incidente ${r.incident_code} creado`, 'success');
+      const v = (_result.vulnerabilities || []).find(x => x.finding_id === findingId);
+      if (v) v.finding_incident_id = r.incident_id;
+      _renderResult(document.getElementById('arch-result'), _result);
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  async function _transferToRiskModal(findingId) {
+    if (!findingId) return;
+    const assets = await _getAssets();
+    if (!assets.length) {
+      UI.toast('No hay activos creados. Crea un activo primero.', 'error');
+      return;
+    }
+    UI.openModal(`
+      <h3 style="margin:0 0 16px;color:var(--brand-purple);">Transferir a riesgo</h3>
+      <p style="font-size:13px;color:#666;margin-bottom:12px;">
+        Selecciona el activo afectado por esta vulnerabilidad. Se creara un riesgo en el
+        registro ISO 27005 vinculado al hallazgo.
+      </p>
+      <select id="arch-risk-asset" class="input-field" style="width:100%;">
+        ${assets.map(a => `<option value="${a.id}">${UI.esc(a.name)}</option>`).join('')}
+      </select>
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+        <button onclick="UI.closeModal()" class="btn-outline">Cancelar</button>
+        <button onclick="ViewArchitectureReview._submitTransferToRisk(${findingId})" class="btn-primary">
+          Crear riesgo
+        </button>
+      </div>`);
+  }
+
+  async function _submitTransferToRisk(findingId) {
+    const assetId = parseInt(document.getElementById('arch-risk-asset').value, 10);
+    try {
+      const r = await Api.findings.createRisk(findingId, assetId);
+      UI.closeModal();
+      UI.toast(`Riesgo ${r.risk_code} creado`, 'success');
+      const v = (_result.vulnerabilities || []).find(x => x.finding_id === findingId);
+      if (v) v.finding_risk_id = r.risk_id;
+      _renderResult(document.getElementById('arch-result'), _result);
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  async function _createTaskFromImprovement(idx, btn) {
+    const imp = (_result.improvements || [])[idx];
+    if (!imp || imp._task_created) return;
+    const priorityMap = { ALTA: 'critical', MEDIA: 'medium', BAJA: 'low' };
+    try {
+      await Api.tasks.create({
+        title: imp.improvement.slice(0, 255),
+        description: imp.justification || imp.improvement,
+        priority: priorityMap[imp.priority] || 'medium',
+        notes: `Generado desde Revision de Arquitectura de Seguridad${imp.source_document ? ` (${imp.source_document})` : ''}.`,
+      });
+      imp._task_created = true;
+      UI.toast('Tarea de tratamiento creada', 'success');
+      _renderResult(document.getElementById('arch-result'), _result);
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
 
   async function render(el) {
     el.innerHTML = `
@@ -71,9 +172,14 @@ const ViewArchitectureReview = (() => {
       <!-- Lista de documentos disponibles -->
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;
                   padding:16px;margin-bottom:20px;">
-        <h3 style="font-size:14px;font-weight:700;margin:0 0 12px;">
-          Documentos de arquitectura disponibles (${archDocs.length})
-        </h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+          <h3 style="font-size:14px;font-weight:700;margin:0;">
+            Documentos de arquitectura disponibles (${archDocs.length})
+          </h3>
+          <a href="#/ai-documents" class="btn btn-outline" style="font-size:12px;padding:5px 12px;">
+            Subir / modificar documentos
+          </a>
+        </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
           ${archDocs.map(d => `
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:6px;
@@ -134,6 +240,7 @@ const ViewArchitectureReview = (() => {
       const d = await Api.ai.architectureReview();
       _result = d;
       _vulnFilter = 'all';
+      _docFilter = 'all';
       _renderResult(resultDiv, d);
     } catch (e) {
       resultDiv.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
@@ -155,32 +262,74 @@ const ViewArchitectureReview = (() => {
     const critCounts = {};
     vulns.forEach(v => { critCounts[v.risk] = (critCounts[v.risk] || 0) + 1; });
 
-    function _vulnsHtml(filter) {
-      const filtered = filter === 'all' ? vulns : vulns.filter(v => v.risk === filter);
+    // Documentos/esquemas distintos presentes en los hallazgos, para poder filtrar
+    // resultados de uno, de otro o de todos cuando se analizan varios a la vez.
+    const docNames = Array.from(new Set(vulns.map(v => v.source_document).filter(Boolean)));
+
+    function _matchesFilters(v) {
+      const sevOk = _vulnFilter === 'all' || v.risk === _vulnFilter;
+      const docOk = _docFilter === 'all' || v.source_document === _docFilter;
+      return sevOk && docOk;
+    }
+
+    function _vulnsHtml() {
+      const filtered = vulns.filter(_matchesFilters);
       if (!filtered.length) {
         return `<p style="color:var(--text-muted);font-size:13px;padding:12px 0;">
           Sin vulnerabilidades en esta categoria.</p>`;
       }
       return filtered.map(v => {
         const rc = RISK_COLORS[v.risk] || RISK_COLORS['BAJO'];
+        const st = STATUS_BADGE[v.finding_status] || STATUS_BADGE.open;
+        const isResolved = v.finding_status === 'resolved' || v.finding_status === 'accepted';
         return `
           <div style="border:1px solid ${rc.border};background:${rc.bg};border-radius:8px;
-                      padding:14px;margin-bottom:10px;">
+                      padding:14px;margin-bottom:10px;${isResolved ? 'opacity:.65;' : ''}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-              <div style="flex:1;">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <div style="flex:1;min-width:240px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                   <span style="background:${rc.color};color:#fff;font-size:10px;font-weight:700;
                                padding:2px 8px;border-radius:4px;white-space:nowrap;">${UI.esc(v.risk || '-')}</span>
+                  ${v.finding_id ? `<span style="background:${st.bg};color:${st.color};font-size:10px;
+                               font-weight:700;padding:2px 8px;border-radius:4px;">${st.label}</span>` : ''}
                   ${v.cve ? `<a href="https://nvd.nist.gov/vuln/detail/${UI.esc(v.cve)}" target="_blank"
                                style="font-size:10px;color:var(--brand-purple);font-weight:600;">
                                ${UI.esc(v.cve)}</a>` : ''}
                   ${v.iso_control_violated ? `<span style="font-size:10px;color:var(--text-muted);">
                     ISO ${UI.esc(v.iso_control_violated)}</span>` : ''}
+                  ${v.source_document ? `<span style="font-size:10px;background:var(--bg-2);
+                    border:1px solid var(--border);border-radius:4px;padding:1px 6px;color:var(--text-muted);">
+                    ${UI.esc(v.source_document)}</span>` : ''}
                 </div>
                 <p style="font-size:13px;margin:0 0 4px;">${UI.esc(v.description || '-')}</p>
                 ${v.affected_component ? `<p style="font-size:11px;color:var(--text-muted);margin:0;">
                   Componente: ${UI.esc(v.affected_component)}</p>` : ''}
               </div>
+              ${v.finding_id ? `
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;">
+                  ${!isResolved ? `
+                    <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;"
+                            onclick="ViewArchitectureReview._resolveFinding(${v.finding_id}, this)">
+                      Marcar resuelto
+                    </button>
+                    ${!v.finding_incident_id ? `
+                    <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;"
+                            onclick="ViewArchitectureReview._transferToIncident(${v.finding_id})">
+                      Transferir a incidente
+                    </button>` : `
+                    <a href="#/incidents" class="btn btn-ghost" style="font-size:11px;padding:3px 8px;">
+                      Ver incidente
+                    </a>`}
+                    ${!v.finding_risk_id ? `
+                    <button class="btn btn-ghost" style="font-size:11px;padding:3px 8px;"
+                            onclick="ViewArchitectureReview._transferToRiskModal(${v.finding_id})">
+                      Crear riesgo
+                    </button>` : `
+                    <a href="#/risks" class="btn btn-ghost" style="font-size:11px;padding:3px 8px;">
+                      Ver riesgo
+                    </a>`}
+                  ` : ''}
+                </div>` : ''}
             </div>
           </div>`;
       }).join('');
@@ -257,7 +406,7 @@ const ViewArchitectureReview = (() => {
         <div style="background:var(--bg-card);border:1px solid var(--border);border-top:none;
                     border-radius:0 0 10px 10px;padding:16px;">
           <!-- Filtros por criticidad -->
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;" id="arch-vuln-filters">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;" id="arch-vuln-filters">
             ${['all', 'CRITICO', 'ALTO', 'MEDIO', 'BAJO'].map(r => {
               const n = r === 'all' ? vulns.length : (critCounts[r] || 0);
               const rc = r === 'all' ? null : RISK_COLORS[r];
@@ -268,7 +417,20 @@ const ViewArchitectureReview = (() => {
               </button>`;
             }).join('')}
           </div>
-          <div id="arch-vuln-list">${_vulnsHtml(_vulnFilter)}</div>
+          ${docNames.length > 1 ? `
+          <!-- Filtro por documento/esquema de origen -->
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+            <span style="font-size:11px;color:var(--text-muted);">Documento:</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="arch-doc-filters">
+              ${['all', ...docNames].map(doc => `
+                <button class="btn ${doc === _docFilter ? 'btn-primary' : 'btn-ghost'}"
+                        style="font-size:11px;padding:3px 10px;"
+                        onclick="ViewArchitectureReview._filterDocs(this, '${UI.esc(doc).replace(/'/g, "\\'")}')">
+                  ${doc === 'all' ? 'Todos' : UI.esc(doc)}
+                </button>`).join('')}
+            </div>
+          </div>` : ''}
+          <div id="arch-vuln-list">${_vulnsHtml()}</div>
         </div>
       </details>
 
@@ -296,10 +458,18 @@ const ViewArchitectureReview = (() => {
                     <span style="background:${effortBadge};font-size:10px;padding:1px 6px;border-radius:3px;">
                       Esfuerzo: ${UI.esc(im.effort || '-')}
                     </span>
+                    ${im.source_document ? `<span style="font-size:10px;background:var(--bg-3);
+                      border-radius:3px;padding:1px 6px;color:var(--text-muted);">
+                      ${UI.esc(im.source_document)}</span>` : ''}
                   </div>
                   <p style="font-size:13px;font-weight:600;margin:0 0 4px;">${UI.esc(im.improvement || '-')}</p>
-                  ${im.justification ? `<p style="font-size:12px;color:var(--text-muted);margin:0;">
+                  ${im.justification ? `<p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">
                     ${UI.esc(im.justification)}</p>` : ''}
+                  <button class="btn ${im._task_created ? 'btn-ghost' : 'btn-primary'}"
+                          style="font-size:11px;padding:3px 10px;" ${im._task_created ? 'disabled' : ''}
+                          onclick="ViewArchitectureReview._createTaskFromImprovement(${idx}, this)">
+                    ${im._task_created ? 'Tarea creada' : 'Crear tarea de tratamiento'}
+                  </button>
                 </div>`;
             }).join('')}
           </div>
@@ -358,35 +528,32 @@ const ViewArchitectureReview = (() => {
       </p>
     `;
 
-    // Expose filter function
+    // Expose filter functions — combinan severidad + documento de origen
     ViewArchitectureReview._filterVulns = (btn, risk) => {
       _vulnFilter = risk;
       document.querySelectorAll('#arch-vuln-filters .btn').forEach(b => b.classList.remove('btn-primary'));
       btn.classList.add('btn-primary');
       const list = document.getElementById('arch-vuln-list');
-      if (list) {
-        const filtered = risk === 'all' ? vulns : vulns.filter(v => v.risk === risk);
-        list.innerHTML = filtered.length
-          ? filtered.map(v => {
-              const rc = RISK_COLORS[v.risk] || RISK_COLORS['BAJO'];
-              return `<div style="border:1px solid ${rc.border};background:${rc.bg};border-radius:8px;
-                          padding:14px;margin-bottom:10px;">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                  <span style="background:${rc.color};color:#fff;font-size:10px;font-weight:700;
-                               padding:2px 8px;border-radius:4px;">${UI.esc(v.risk || '-')}</span>
-                  ${v.cve ? `<a href="https://nvd.nist.gov/vuln/detail/${UI.esc(v.cve)}" target="_blank"
-                               style="font-size:10px;color:var(--brand-purple);font-weight:600;">
-                               ${UI.esc(v.cve)}</a>` : ''}
-                  ${v.iso_control_violated ? `<span style="font-size:10px;color:var(--text-muted);">ISO ${UI.esc(v.iso_control_violated)}</span>` : ''}
-                </div>
-                <p style="font-size:13px;margin:0 0 4px;">${UI.esc(v.description || '-')}</p>
-                ${v.affected_component ? `<p style="font-size:11px;color:var(--text-muted);margin:0;">Componente: ${UI.esc(v.affected_component)}</p>` : ''}
-              </div>`;
-            }).join('')
-          : `<p style="color:var(--text-muted);font-size:13px;">Sin vulnerabilidades en esta categoria.</p>`;
-      }
+      if (list) list.innerHTML = _vulnsHtml();
+    };
+
+    ViewArchitectureReview._filterDocs = (btn, doc) => {
+      _docFilter = doc;
+      document.querySelectorAll('#arch-doc-filters .btn').forEach(b => b.classList.remove('btn-primary'));
+      btn.classList.add('btn-primary');
+      const list = document.getElementById('arch-vuln-list');
+      if (list) list.innerHTML = _vulnsHtml();
     };
   }
 
-  return { render, _filterVulns: () => {} };
+  return {
+    render,
+    _filterVulns: () => {},
+    _filterDocs: () => {},
+    _resolveFinding,
+    _transferToIncident,
+    _transferToRiskModal,
+    _submitTransferToRisk,
+    _createTaskFromImprovement,
+  };
 })();

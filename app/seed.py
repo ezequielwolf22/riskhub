@@ -494,6 +494,13 @@ def _migrate_columns() -> None:
         ("ALTER TABLE supplier_questionnaires ADD COLUMN regwatch_pack_id INTEGER REFERENCES regwatch_change_packs(id)", "supplier_questionnaires", "regwatch_pack_id"),
         ("ALTER TABLE compliance_framework_status ADD COLUMN regwatch_review_at DATETIME", "compliance_framework_status", "regwatch_review_at"),
         ("ALTER TABLE compliance_framework_status ADD COLUMN regwatch_pack_id INTEGER REFERENCES regwatch_change_packs(id)", "compliance_framework_status", "regwatch_pack_id"),
+        # v4.1.0 — hallazgos accionables: revision de arquitectura -> hallazgos persistidos
+        # (generico para cualquier fuente futura: source_document filtra por documento/esquema
+        # origen, iso_control identifica el control incumplido, incident_id permite transferir
+        # el hallazgo a un incidente para su seguimiento y resolucion).
+        ("ALTER TABLE external_findings ADD COLUMN source_document VARCHAR(512)", "external_findings", "source_document"),
+        ("ALTER TABLE external_findings ADD COLUMN iso_control VARCHAR(32)", "external_findings", "iso_control"),
+        ("ALTER TABLE external_findings ADD COLUMN incident_id INTEGER REFERENCES incidents(id)", "external_findings", "incident_id"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

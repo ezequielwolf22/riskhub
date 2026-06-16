@@ -1,7 +1,20 @@
 /* Vista de hallazgos externos (Nessus, Qualys, Burp, OpenVAS). */
 const ViewExternalFindings = (() => {
 
-  let _filters = { severity: '', source: '', status: '' };
+  let _filters = { severity: '', source: '', status: '', source_document: '' };
+  let _assetsCache = null;
+  let _sourceDocsCache = [];
+
+  const SOURCE_LABELS = {
+    nessus: 'Nessus', qualys: 'Qualys', burp: 'Burp', openvas: 'OpenVAS',
+    architecture_review: 'Rev. Arquitectura',
+  };
+
+  async function _getAssets() {
+    if (_assetsCache) return _assetsCache;
+    try { _assetsCache = await Api.assets.list(); } catch (_) { _assetsCache = []; }
+    return _assetsCache;
+  }
 
   function _sevBadge(sev) {
     const m = { CRITICAL: ['#FEE2E2','#a83232'], HIGH: ['#FEF0E3','#c25a1f'],
@@ -82,6 +95,51 @@ const ViewExternalFindings = (() => {
     }
   }
 
+  async function _transferToIncident(id) {
+    try {
+      const r = await Api.findings.createIncident(id);
+      UI.toast(`Incidente ${r.incident_code} creado`, 'success');
+      _load();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
+
+  async function _transferToRiskModal(id) {
+    const assets = await _getAssets();
+    if (!assets.length) {
+      UI.toast('No hay activos creados. Crea un activo primero.', 'error');
+      return;
+    }
+    UI.openModal(`
+      <h3 style="margin:0 0 16px;color:var(--brand-purple);">Transferir a riesgo</h3>
+      <p style="font-size:13px;color:#666;margin-bottom:12px;">
+        Selecciona el activo afectado por este hallazgo. Se creara un riesgo en el
+        registro ISO 27005 vinculado al hallazgo.
+      </p>
+      <select id="fi-risk-asset" class="input-field" style="width:100%;">
+        ${assets.map(a => `<option value="${a.id}">${UI.esc(a.name)}</option>`).join('')}
+      </select>
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+        <button onclick="UI.closeModal()" class="btn-outline">Cancelar</button>
+        <button onclick="ViewExternalFindings._submitTransferToRisk(${id})" class="btn-primary">
+          Crear riesgo
+        </button>
+      </div>`);
+  }
+
+  async function _submitTransferToRisk(id) {
+    const assetId = parseInt(document.getElementById('fi-risk-asset').value, 10);
+    try {
+      const r = await Api.findings.createRisk(id, assetId);
+      UI.closeModal();
+      UI.toast(`Riesgo ${r.risk_code} creado`, 'success');
+      _load();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  }
+
   async function _loadSummary() {
     try {
       const s = await Api.findings.summary();
@@ -119,9 +177,11 @@ const ViewExternalFindings = (() => {
       if (_filters.severity) q.severity = _filters.severity;
       if (_filters.source) q.source = _filters.source;
       if (_filters.status) q.status = _filters.status;
+      if (_filters.source_document) q.source_document = _filters.source_document;
 
       const data = await Api.findings.list(q);
       await _loadSummary();
+      await _loadSourceDocuments();
 
       const items = data.items || [];
       if (!items.length) {
@@ -139,12 +199,14 @@ const ViewExternalFindings = (() => {
             ${f.cve_id ? `<div style="font-size:11px;color:var(--brand-orange);">CVE: ${UI.esc(f.cve_id)}</div>` : ''}
           </td>
           <td style="padding:10px 12px;font-size:12px;color:#666;">
-            <span style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">${UI.esc(f.source)}</span>
+            <span style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">${UI.esc(SOURCE_LABELS[f.source] || f.source)}</span>
+            ${f.source_document ? `<div style="font-size:10px;color:#9d9d9d;margin-top:2px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${UI.esc(f.source_document)}">${UI.esc(f.source_document)}</div>` : ''}
           </td>
           <td style="padding:10px 12px;font-size:12px;color:#666;">${UI.esc(f.affected_host || '—')}</td>
           <td style="padding:10px 12px;font-size:12px;">
             ${f.asset_id ? `<span style="color:var(--brand-purple);">Activo #${f.asset_id}</span>` : '<span style="color:#bbb;">Sin enlazar</span>'}
-            ${f.risk_id ? `<br><span style="color:var(--risk-high);font-size:11px;">Riesgo #${f.risk_id}</span>` : ''}
+            ${f.risk_id ? `<br><a href="#/risks" style="color:var(--risk-high);font-size:11px;">Riesgo #${f.risk_id}</a>` : ''}
+            ${f.incident_id ? `<br><a href="#/incidents" style="color:var(--brand-orange);font-size:11px;">Incidente #${f.incident_id}</a>` : ''}
           </td>
           <td style="padding:10px 12px;">
             <span style="background:${f.status === 'resolved' ? '#E8F5E9' : '#FEF0E3'};
@@ -154,11 +216,23 @@ const ViewExternalFindings = (() => {
             </span>
           </td>
           <td style="padding:10px 12px;">
-            ${f.status !== 'resolved' ? `
-              <button onclick="ViewExternalFindings._resolve(${f.id})"
-                      class="btn-outline" style="font-size:12px;padding:3px 8px;">
-                Resolver
-              </button>` : ''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${f.status !== 'resolved' ? `
+                <button onclick="ViewExternalFindings._resolve(${f.id})"
+                        class="btn-outline" style="font-size:12px;padding:3px 8px;">
+                  Resolver
+                </button>` : ''}
+              ${!f.incident_id ? `
+                <button onclick="ViewExternalFindings._transferToIncident(${f.id})"
+                        class="btn-outline" style="font-size:12px;padding:3px 8px;">
+                  A incidente
+                </button>` : ''}
+              ${!f.risk_id ? `
+                <button onclick="ViewExternalFindings._transferToRiskModal(${f.id})"
+                        class="btn-outline" style="font-size:12px;padding:3px 8px;">
+                  A riesgo
+                </button>` : ''}
+            </div>
           </td>
         </tr>`).join('');
     } catch (e) {
@@ -166,10 +240,26 @@ const ViewExternalFindings = (() => {
     }
   }
 
+  async function _loadSourceDocuments() {
+    try {
+      const r = await Api.findings.sourceDocuments();
+      _sourceDocsCache = r.documents || [];
+      const sel = document.getElementById('fi-filter-doc');
+      if (!sel) return;
+      sel.parentElement.style.display = _sourceDocsCache.length ? '' : 'none';
+      const current = sel.value;
+      sel.innerHTML = `<option value="">Todos</option>` +
+        _sourceDocsCache.map(d => `<option value="${UI.esc(d)}">${UI.esc(d)}</option>`).join('');
+      sel.value = current;
+    } catch (_) {}
+  }
+
   function _applyFilters() {
     _filters.severity = document.getElementById('fi-filter-sev').value;
     _filters.source = document.getElementById('fi-filter-src').value;
     _filters.status = document.getElementById('fi-filter-status').value;
+    const docSel = document.getElementById('fi-filter-doc');
+    _filters.source_document = docSel ? docSel.value : '';
     _load();
   }
 
@@ -214,6 +304,7 @@ const ViewExternalFindings = (() => {
               <option value="qualys">Qualys</option>
               <option value="burp">Burp</option>
               <option value="openvas">OpenVAS</option>
+              <option value="architecture_review">Rev. Arquitectura</option>
             </select>
           </div>
           <div>
@@ -222,6 +313,12 @@ const ViewExternalFindings = (() => {
               <option value="">Todos</option>
               <option value="open">Abierto</option>
               <option value="resolved">Resuelto</option>
+            </select>
+          </div>
+          <div style="display:none;">
+            <label style="font-size:11px;color:#9d9d9d;display:block;margin-bottom:4px;">Documento origen</label>
+            <select id="fi-filter-doc" class="input-field" style="width:160px;">
+              <option value="">Todos</option>
             </select>
           </div>
           <button onclick="ViewExternalFindings._applyFilters()" class="btn-primary" style="padding:6px 14px;">Filtrar</button>
@@ -252,5 +349,8 @@ const ViewExternalFindings = (() => {
     await _loadSummary();
   }
 
-  return { render, _importModal, _submitImport, _resolve, _applyFilters, _load };
+  return {
+    render, _importModal, _submitImport, _resolve, _applyFilters, _load,
+    _transferToIncident, _transferToRiskModal, _submitTransferToRisk,
+  };
 })();

@@ -1091,7 +1091,10 @@ def architecture_review(
     current_user: User = Depends(get_current_user),
 ):
     """Analiza documentos de categoria 'architecture' con Claude Vision + texto."""
-    from app.models import AiConfig, AiDocument, AiDocumentCategory, AiDocumentChunk
+    from app.models import (
+        AiConfig, AiDocument, AiDocumentCategory, AiDocumentChunk,
+        ExternalFinding, ExternalFindingSource,
+    )
     import json as _json
     import base64
 
@@ -1117,6 +1120,7 @@ def architecture_review(
     if not arch_docs:
         raise HTTPException(400, "No hay documentos de arquitectura indexados. Sube documentos en la categoria 'Arquitectura y sistemas'.")
 
+    doc_names_list = [d.original_name for d in arch_docs[:5]]
     _ARCH_REVIEW_PROMPT = (
         "Eres un arquitecto de seguridad senior con experiencia en:\n"
         "- Seguridad en redes (firewalls, segmentacion, DMZ, VLANs, Zero Trust)\n"
@@ -1124,17 +1128,22 @@ def architecture_review(
         "- Cloud security (AWS/Azure/GCP security best practices)\n"
         "- ISO 27001 controles de red (8.20, 8.21, 8.22, 8.23)\n"
         "- NIST SP 800-41, SP 800-125, SP 800-190\n\n"
+        "Se te proporcionan uno o varios documentos/diagramas de arquitectura. Los documentos "
+        f"analizados son exactamente estos (usa el nombre EXACTO como aparece aqui): {doc_names_list}\n\n"
         "Analiza la arquitectura de red/sistemas descrita y proporciona un JSON con esta estructura exacta:\n"
         "{\n"
         '  "components": [\n'
-        '    {"type": "firewall|server|network|endpoint|cloud|other", "name": "...", "description": "..."}\n'
+        '    {"type": "firewall|server|network|endpoint|cloud|other", "name": "...", "description": "...", '
+        '"source_document": "<nombre exacto del documento de origen>"}\n'
         "  ],\n"
         '  "vulnerabilities": [\n'
         '    {"description": "...", "risk": "CRITICO|ALTO|MEDIO|BAJO", "cve": "CVE-...|null", '
-        '"iso_control_violated": "8.20|null", "affected_component": "..."}\n'
+        '"iso_control_violated": "8.20|null", "affected_component": "...", '
+        '"source_document": "<nombre exacto del documento de origen>"}\n'
         "  ],\n"
         '  "improvements": [\n'
-        '    {"improvement": "...", "justification": "...", "priority": "ALTA|MEDIA|BAJA", "effort": "BAJO|MEDIO|ALTO"}\n'
+        '    {"improvement": "...", "justification": "...", "priority": "ALTA|MEDIA|BAJA", "effort": "BAJO|MEDIO|ALTO", '
+        '"source_document": "<nombre exacto del documento de origen>"}\n'
         "  ],\n"
         '  "compliance": {\n'
         '    "iso27002_covered": ["8.20", "8.21"],\n'
@@ -1144,6 +1153,10 @@ def architecture_review(
         "  },\n"
         '  "executive_summary": "..."\n'
         "}\n"
+        "IMPORTANTE: cuando analices varios documentos, cada componente/vulnerabilidad/mejora debe "
+        "llevar el campo source_document con el nombre EXACTO del documento del que proviene (no "
+        "mezcles ni dupliques resultados entre documentos distintos salvo que la vulnerabilidad sea "
+        "comun a varios, en cuyo caso genera una entrada por cada documento afectado).\n"
         "Devuelve SOLO el JSON. Sin texto ni markdown antes ni despues."
     )
 
@@ -1227,11 +1240,58 @@ def architecture_review(
         response_summary=f"Architecture review: {len(arch_docs)} docs, {len(result.get('vulnerabilities', []))} vulns",
     )
     db.add(call_log)
+
+    # Persistir vulnerabilidades como ExternalFinding — esto convierte el informe en un
+    # plan de trabajo operativo: cada hallazgo puede resolverse, transferirse a un
+    # incidente o a un riesgo desde la vista de Hallazgos Externos (generico para
+    # cualquier fuente, no solo revision de arquitectura).
+    import hashlib
+    _SEV_MAP = {"CRITICO": "CRITICAL", "ALTO": "HIGH", "MEDIO": "MEDIUM", "BAJO": "LOW"}
+    for vuln in result.get("vulnerabilities", []):
+        source_document = (vuln.get("source_document") or "").strip() or None
+        description = vuln.get("description") or ""
+        digest = hashlib.sha1(
+            f"{source_document}|{description}|{vuln.get('affected_component', '')}".encode("utf-8")
+        ).hexdigest()[:32]
+
+        existing = db.query(ExternalFinding).filter(
+            ExternalFinding.organization_id == current_user.organization_id,
+            ExternalFinding.source == ExternalFindingSource.ARCHITECTURE_REVIEW.value,
+            ExternalFinding.external_id == digest,
+        ).first()
+        if existing:
+            vuln["finding_id"] = existing.id
+            vuln["finding_status"] = existing.status
+            vuln["finding_incident_id"] = existing.incident_id
+            vuln["finding_risk_id"] = existing.risk_id
+            continue
+
+        ef = ExternalFinding(
+            organization_id=current_user.organization_id,
+            source=ExternalFindingSource.ARCHITECTURE_REVIEW.value,
+            external_id=digest,
+            title=description[:512] or "Vulnerabilidad de arquitectura",
+            description=description[:2000],
+            severity=_SEV_MAP.get((vuln.get("risk") or "").upper(), "MEDIUM"),
+            cve_id=vuln.get("cve") or None,
+            iso_control=vuln.get("iso_control_violated") or None,
+            affected_software=(vuln.get("affected_component") or "")[:512],
+            source_document=source_document,
+            status="open",
+            detected_at=datetime.now(timezone.utc),
+        )
+        db.add(ef)
+        db.flush()
+        vuln["finding_id"] = ef.id
+        vuln["finding_status"] = ef.status
+        vuln["finding_incident_id"] = ef.incident_id
+        vuln["finding_risk_id"] = ef.risk_id
+
     db.commit()
 
     result["_meta"] = {
         "docs_analyzed": len(arch_docs),
-        "doc_names": [d.original_name for d in arch_docs[:5]],
+        "doc_names": doc_names_list,
     }
     return result
 
