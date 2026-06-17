@@ -120,25 +120,30 @@ const ViewVendorTemplates = (() => {
 
   function _questionRowHtml(q, i) {
     return `
-      <div class="tpl-q-row" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;">
-        <div style="display:flex;gap:6px;align-items:flex-start;">
-          <span style="font-weight:700;color:var(--brand-purple);min-width:20px;">${i + 1}</span>
-          <textarea class="input tq-text" rows="2" style="flex:1;" placeholder="Texto de la pregunta">${UI.esc(q.text || '')}</textarea>
-          <div style="display:flex;flex-direction:column;gap:2px;">
-            <button class="btn btn-sm tq-up" title="Subir">&uarr;</button>
-            <button class="btn btn-sm tq-down" title="Bajar">&darr;</button>
-            <button class="btn btn-sm btn-danger tq-del" title="Eliminar">&times;</button>
+      <div class="tpl-q-row" data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px 12px 10px 12px;margin-bottom:8px;background:var(--bg-2,var(--bg));">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="font-weight:700;color:var(--brand-purple);font-size:13px;min-width:20px;">${i + 1}.</span>
+          <div style="display:flex;gap:4px;margin-left:auto;">
+            <button class="btn btn-sm tq-up" title="Subir" style="padding:2px 9px;line-height:1;">&uarr;</button>
+            <button class="btn btn-sm tq-down" title="Bajar" style="padding:2px 9px;line-height:1;">&darr;</button>
+            <button class="btn btn-sm btn-danger tq-del" title="Eliminar" style="padding:2px 9px;line-height:1;">&times;</button>
           </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
-          <select class="input tq-type" style="width:160px;">
+        <textarea class="input tq-text" rows="2"
+          style="width:100%;box-sizing:border-box;resize:vertical;font-size:13px;"
+          placeholder="Texto de la pregunta">${UI.esc(q.text || '')}</textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;">
+          <select class="input tq-type" style="flex:1;min-width:150px;font-size:12px;">
             ${Object.entries(TYPE_LABELS).map(([k, l]) => `<option value="${k}" ${ (q.type || 'yes_no_partial') === k ? 'selected' : '' }>${l}</option>`).join('')}
           </select>
-          <select class="input tq-domain" style="width:170px;">
+          <select class="input tq-domain" style="flex:1;min-width:150px;font-size:12px;">
             ${DOMAINS.map(d => `<option value="${d}" ${ (q.domain || 'governance') === d ? 'selected' : '' }>${d}</option>`).join('')}
           </select>
-          <input type="number" class="input tq-weight" style="width:90px;" min="0" max="5" step="0.5" value="${q.weight != null ? q.weight : 1}" title="Peso">
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;margin:0;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <label style="font-size:11px;color:var(--text-muted);margin:0;white-space:nowrap;">Peso</label>
+            <input type="number" class="input tq-weight" style="width:70px;font-size:12px;" min="0" max="5" step="0.5" value="${q.weight != null ? q.weight : 1}">
+          </div>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;margin:0;white-space:nowrap;cursor:pointer;">
             <input type="checkbox" class="tq-evid" ${q.requires_evidence ? 'checked' : ''}> Evidencia
           </label>
         </div>
