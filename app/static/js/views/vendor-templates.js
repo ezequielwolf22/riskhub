@@ -186,17 +186,15 @@ const ViewVendorTemplates = (() => {
     _editId = tpl ? tpl.id : null;
     _editQuestions = tpl && tpl.questions ? tpl.questions.map(q => Object.assign({}, q)) : [];
     UI.modal(tpl ? `Editar plantilla` : 'Nueva plantilla', `
-      <div class="form-grid">
-        <div class="span2"><label>Nombre *</label><input id="tpl-name" class="input" value="${UI.esc(tpl ? tpl.name : '')}"></div>
-        <div class="span2"><label>Descripcion</label><input id="tpl-desc" class="input" value="${UI.esc(tpl ? (tpl.description || '') : '')}"></div>
-        <div class="span2">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <label style="margin:0;">Preguntas</label>
-            <button class="btn btn-sm" id="tpl-add-q">+ Anadir pregunta</button>
-          </div>
-          <p style="font-size:11px;color:var(--text-muted);margin:4px 0;">El peso pondera la pregunta en la puntuacion. "Evidencia" pide un documento al proveedor (opcional para el; penaliza el score si falta).</p>
-          <div id="tpl-q-list" style="margin-top:8px;max-height:48vh;overflow:auto;"></div>
+      <div class="span2"><label>Nombre *</label><input id="tpl-name" class="input" value="${UI.esc(tpl ? tpl.name : '')}"></div>
+      <div class="span2"><label>Descripcion</label><input id="tpl-desc" class="input" value="${UI.esc(tpl ? (tpl.description || '') : '')}"></div>
+      <div class="span2">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label style="margin:0;">Preguntas</label>
+          <button class="btn btn-sm" id="tpl-add-q">+ Anadir pregunta</button>
         </div>
+        <p style="font-size:11px;color:var(--text-muted);margin:4px 0;">El peso pondera la pregunta en la puntuacion. "Evidencia" pide un documento al proveedor (opcional para el; penaliza el score si falta).</p>
+        <div id="tpl-q-list" style="margin-top:8px;max-height:52vh;overflow-y:auto;"></div>
       </div>
     `, {
       width: '820px',
