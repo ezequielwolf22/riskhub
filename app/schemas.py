@@ -977,7 +977,7 @@ class SupplierQuestionnaireCreate(BaseModel):
 
 # ---------- TPRM: PLANTILLAS EDITABLES ----------
 class TPRMTemplateCreate(BaseModel):
-    name: str
+    name: Optional[str] = None
     description: Optional[str] = None
     framework_codes: Optional[list[str]] = None
     questions: Optional[list[dict]] = None
