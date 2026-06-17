@@ -42,6 +42,7 @@ const ViewCompliance = (() => {
   // Mapa interno de frameworks disponibles
   const _FW_META = {
     iso27001: { label: 'ISO 27001:2022',      dataKey: 'iso27001' },
+    iso22301: { label: 'ISO 22301:2019',      dataKey: 'iso22301' },
     nis2:     { label: 'NIS2',                dataKey: 'nis2' },
     nist_csf: { label: 'NIST CSF 2.0',        dataKey: 'nist_csf' },
     ens:      { label: 'ENS RD 311/2022',     dataKey: 'ens' },
@@ -50,6 +51,9 @@ const ViewCompliance = (() => {
     soc2:     { label: 'SOC 2 Type II',        dataKey: 'soc2' },
     hipaa:    { label: 'HIPAA Security Rule',  dataKey: 'hipaa' },
   };
+
+  // Cache de datos BCP/BCM para ISO 22301
+  let _bcpCompData = null;
 
   function _scoreColor(score) {
     if (score >= 75) return 'var(--risk-low)';
@@ -158,11 +162,17 @@ const ViewCompliance = (() => {
   function _getActiveFrameworkKeys() {
     // Si no hay normativas configuradas → mostrar todos los frameworks disponibles
     const all = Object.keys(_FW_META);
-    if (!_activeFrameworks || _activeFrameworks.length === 0) return all;
+    if (!_activeFrameworks || _activeFrameworks.length === 0) {
+      // ISO 22301 solo si hay datos BCP
+      if (!_bcpCompData) return all.filter(k => k !== 'iso22301');
+      return all;
+    }
     // Filtrar solo los que tienen datos en _FW_META
     const active = _activeFrameworks.filter(k => _FW_META[k]);
     // Siempre garantizar ISO 27001 como base
     if (!active.includes('iso27001')) active.unshift('iso27001');
+    // ISO 22301 siempre visible si hay datos BCP, independiente de active_frameworks
+    if (_bcpCompData && !active.includes('iso22301')) active.push('iso22301');
     return active;
   }
 
@@ -235,6 +245,7 @@ const ViewCompliance = (() => {
   function _detailPanelHtml(key, data) {
     const frameworkLabels = {
       iso27001: 'ISO 27001:2022',
+      iso22301: 'ISO 22301:2019 — Continuidad del negocio',
       nis2:     'NIS2 — Directiva EU 2022/2555',
       nist_csf: 'NIST CSF 2.0',
       ens:      'ENS RD 311/2022',
@@ -248,6 +259,8 @@ const ViewCompliance = (() => {
 
     if (key === 'iso27001') {
       innerHtml = _iso27001PanelHtml(data);
+    } else if (key === 'iso22301') {
+      innerHtml = _iso22301PanelHtml(data);
     } else if (key === 'nis2') {
       innerHtml = _nis2PanelHtml(data);
     } else if (key === 'nist_csf') {
@@ -343,6 +356,109 @@ const ViewCompliance = (() => {
     }).join('');
 
     return themeHtml + _gapsSection(data.iso27001?.gaps);
+  }
+
+  function _iso22301PanelHtml(data) {
+    const d = data.iso22301 || {};
+    const clauses = d.clauses || [];
+    const kpis = d.kpis || {};
+
+    if (!clauses.length) {
+      return `
+        <div style="text-align:center;padding:24px;">
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
+            No hay datos de continuidad de negocio registrados todavia.
+          </p>
+          <button class="btn btn-primary" onclick="App.navigate('bcp');UI.closeModal();">
+            Ir a BCP/BCM para configurar
+          </button>
+        </div>`;
+    }
+
+    const scoreColor = _scoreColor(d.score || 0);
+
+    const clauseRows = clauses.map(c => {
+      const color = _scoreColor(c.score);
+      return `<tr>
+        <td style="font-size:11px;font-weight:700;white-space:nowrap;color:var(--text-muted);">Cl. ${UI.esc(c.id)}</td>
+        <td style="font-size:12px;">${UI.esc(c.title)}</td>
+        <td style="min-width:120px;">
+          <div style="background:var(--border);border-radius:999px;height:7px;overflow:hidden;">
+            <div style="width:${c.score}%;background:${color};height:100%;border-radius:999px;transition:width .4s;"></div>
+          </div>
+        </td>
+        <td style="font-size:12px;font-weight:700;color:${color};white-space:nowrap;">${c.score}%</td>
+      </tr>`;
+    }).join('');
+
+    const kpiItems = [
+      { label: 'Procesos totales',     val: kpis.processes_total || 0 },
+      { label: 'Procesos con BIA',     val: kpis.processes_with_bia || 0, color: 'var(--risk-low)' },
+      { label: 'Planes totales',       val: kpis.plans_total || 0 },
+      { label: 'Planes aprobados',     val: kpis.plans_approved || 0, color: 'var(--risk-low)' },
+      { label: 'Ejercicios 12m',       val: kpis.tests_recent_12m || 0, color: 'var(--brand-purple)' },
+      { label: 'Ejercicios superados', val: kpis.tests_passed || 0, color: 'var(--risk-low)' },
+      { label: 'Estrategias impl.',    val: kpis.strategies_implemented || 0, color: 'var(--risk-low)' },
+      { label: 'Evidencias',           val: kpis.evidence_items || 0 },
+    ];
+
+    const kpiHtml = kpiItems.map(k => `
+      <div class="stat-card" style="text-align:center;min-width:100px;padding:10px 14px;">
+        <div class="stat-value" style="${k.color ? 'color:' + k.color + ';' : ''}">${k.val}</div>
+        <div class="stat-label">${UI.esc(k.label)}</div>
+      </div>`).join('');
+
+    const locHtml = (d.locations || []).length ? `
+      <h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">Sedes / Ubicaciones</h4>
+      <div style="overflow-x:auto;">
+        <table class="data" style="font-size:12px;width:100%;">
+          <thead><tr><th>Sede</th><th>Score</th><th>Estado</th><th>Planes aprobados</th><th>Ultimo ejercicio</th></tr></thead>
+          <tbody>
+            ${(d.locations || []).map(loc => {
+              const sc = loc.score >= 70 ? 'var(--risk-low)' : loc.score >= 40 ? 'var(--risk-medium)' : 'var(--risk-high)';
+              const statusLabel = { green: 'Conforme', yellow: 'Parcial', red: 'Critico' }[loc.status] || loc.status;
+              return `<tr>
+                <td style="font-size:12px;">${UI.esc(loc.name)}</td>
+                <td style="font-size:12px;font-weight:700;color:${sc};">${loc.score}%</td>
+                <td><span style="color:${sc};font-size:11px;font-weight:600;">${UI.esc(statusLabel)}</span></td>
+                <td style="font-size:12px;">${loc.plans_approved} / ${loc.plans_total}</td>
+                <td style="font-size:11px;color:var(--text-muted);">${loc.last_test_date || '-'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>` : '';
+
+    return `
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="text-align:center;min-width:90px;">
+          <div style="font-size:36px;font-weight:800;color:${scoreColor};">${d.score || 0}</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Score global</div>
+        </div>
+        <div style="flex:1;font-size:13px;color:var(--text-muted);min-width:180px;">
+          Puntuacion calculada a partir de los datos de la seccion BCP/BCM (planes, procesos, ejercicios
+          y estrategias de continuidad). Los datos son identicos a los de esa seccion y se
+          actualizan automaticamente al modificar cualquier elemento BCM.
+          <br>
+          <button class="btn btn-ghost" style="margin-top:8px;font-size:12px;"
+                  onclick="App.navigate('bcp');">
+            Ir a BCP/BCM para editar &#8594;
+          </button>
+        </div>
+      </div>
+
+      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">KPIs de continuidad</h4>
+      <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;">${kpiHtml}</div>
+
+      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">Clausulas ISO 22301</h4>
+      <div style="overflow-x:auto;margin-bottom:16px;">
+        <table class="data" style="font-size:12px;width:100%;">
+          <thead><tr><th>Clausula</th><th>Titulo</th><th>Cobertura</th><th>%</th></tr></thead>
+          <tbody>${clauseRows}</tbody>
+        </table>
+      </div>
+      ${locHtml}
+    `;
   }
 
   function _nis2PanelHtml(data) {
@@ -713,7 +829,7 @@ const ViewCompliance = (() => {
       <div class="page-header">
         <div>
           <h1 class="page-title">Dashboard de Cumplimiento</h1>
-          <p class="page-sub">Puntuacion multi-framework: ISO 27001 | NIS2 | NIST CSF 2.0 | ENS</p>
+          <p class="page-sub">Puntuacion multi-framework: ISO 27001 | ISO 22301 | NIS2 | NIST CSF 2.0 | ENS</p>
         </div>
         <button class="btn btn-primary" id="btn-refresh-comp">Actualizar</button>
       </div>
@@ -732,15 +848,27 @@ const ViewCompliance = (() => {
     _implsData = null;
     _activeFrameworks = null;
     _ensLevel = null;
+    _bcpCompData = null;
     try {
-      const [data, implsList, ctx, realStatus] = await Promise.all([
+      const [data, implsList, ctx, realStatus, bcpComp] = await Promise.all([
         Api.compliance.summary().catch(() => ({})),
         Api.impls.list().catch(() => []),
         Api.get('/api/context/').catch(() => null),
         Api.complianceFrameworks.status().catch(() => null),
+        Api.get('/api/bcp/compliance/iso22301').catch(() => null),
       ]);
       _compData = data;
       _implsData = implsList;
+      // Inyectar datos ISO 22301 desde BCP/BCM (fuente de verdad: sección BCP)
+      _bcpCompData = bcpComp;
+      if (bcpComp && typeof bcpComp.score_global === 'number') {
+        _compData.iso22301 = {
+          score: bcpComp.score_global,
+          clauses: bcpComp.clauses || [],
+          kpis: bcpComp.kpis || {},
+          locations: bcpComp.locations || [],
+        };
+      }
       if (ctx?.active_frameworks?.length) {
         _activeFrameworks = ctx.active_frameworks;
       }
