@@ -13,7 +13,7 @@ const ViewHomeHub = {
           id: 'dashboard', label: 'Dashboard',
           // Slot reservado para la bandeja de revision (lo monta otro modulo)
           render: async (panel) => {
-            panel.innerHTML = '<div id="home-inbox-slot"></div><div id="home-dashboard-mount"></div>';
+            panel.innerHTML = '<div id="home-dashboard-mount"></div>';
             await ViewDashboard.render(panel.querySelector('#home-dashboard-mount'));
           },
         },

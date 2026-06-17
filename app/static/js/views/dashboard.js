@@ -1,21 +1,22 @@
 /* Dashboard - resumen ejecutivo multi-modulo. */
 
-/* --- Sistema de widgets personalizables --- */
-const DASHBOARD_WIDGETS = {
-  posture:    { label: 'Postura de seguridad',   icon: 'shield' },
-  risks:      { label: 'Riesgos',                icon: 'bar-chart' },
-  controls:   { label: 'Controles ISO 27002',    icon: 'check-circle' },
-  incidents:  { label: 'Incidentes',             icon: 'alert-triangle' },
-  tasks:      { label: 'Tareas',                 icon: 'list' },
-  policies:   { label: 'Politicas',              icon: 'file-text' },
-  gdpr:       { label: 'RGPD',                   icon: 'lock' },
-  tprm:       { label: 'Proveedores (TPRM)',     icon: 'users' },
-  bcp:        { label: 'Continuidad (BCP)',       icon: 'refresh-cw' },
-  top10:      { label: 'Top 10 riesgos',         icon: 'trending-up' },
-  actions:    { label: 'Acciones rapidas y vencimientos', icon: 'zap' },
-  coverage:   { label: 'Cobertura de controles', icon: 'pie-chart' },
+/* --- Catalogo completo de widgets personalizables --- */
+const DASHBOARD_WIDGET_CATALOG = {
+  posture:   { label: 'Postura de seguridad',    module: 'Seguridad',   desc: 'Score global del SGSI con alertas criticas y estado por modulo.' },
+  risks:     { label: 'KPIs de Riesgos',         module: 'Riesgos',     desc: 'Activos, riesgos identificados, nivel alto, tratamientos vencidos y sin responsable.' },
+  controls:  { label: 'Distribucion de Riesgos', module: 'Riesgos',     desc: 'Graficos por nivel residual, estado del ciclo y decision de tratamiento.' },
+  top10:     { label: 'Top 10 Riesgos',          module: 'Riesgos',     desc: 'Tabla con los 10 riesgos de mayor nivel residual y reduccion porcentual.' },
+  incidents: { label: 'Incidentes',              module: 'Incidentes',  desc: 'Abiertos, P1/P2 criticos y notificaciones NIS2 pendientes.' },
+  tasks:     { label: 'Tareas',                  module: 'Tareas',      desc: 'Vencidas, en progreso, pendientes y completadas.' },
+  policies:  { label: 'Politicas SGSI',          module: 'Politicas',   desc: 'Publicadas, en revision y con revision de ciclo vencida.' },
+  gdpr:      { label: 'RGPD / Privacidad',       module: 'RGPD',        desc: 'Actividades de tratamiento, DPIAs pendientes y transferencias fuera de la UE.' },
+  tprm:      { label: 'Proveedores TPRM',        module: 'Proveedores', desc: 'Panel de gestion de riesgo de terceros: criticos, altos y evaluaciones pendientes.' },
+  bcp:       { label: 'Continuidad (BCP)',        module: 'Continuidad', desc: 'Procesos criticos, planes aprobados, BIA completado y tests ISO 22301.' },
+  actions:   { label: 'Acciones y Vencimientos', module: 'Operaciones', desc: 'Acciones urgentes, proximos vencimientos de tratamientos y revisiones de controles.' },
+  coverage:  { label: 'Cobertura ISO 27002',     module: 'Controles',   desc: 'Cobertura y madurez de controles por tema: organizativo, personas, fisico y tecnologico.' },
+  inbox:     { label: 'Bandeja de revision',     module: 'Operaciones', desc: 'Items pendientes de tu decision: riesgos auto-generados, incidentes, controles degradados y tareas.' },
 };
-const DASHBOARD_DEFAULT_LAYOUT = ['posture','risks','controls','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
+const DASHBOARD_DEFAULT_LAYOUT = ['inbox','posture','risks','controls','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
 
 /**
  * Muestra un banner de bienvenida si el cuestionario IA no se ha completado.
@@ -50,13 +51,21 @@ const ViewDashboard = {
   _cachedData: null,
   _cachedMain: null,
 
-  /* Obtiene el layout guardado en localStorage. */
+  /* Obtiene el layout guardado en localStorage.
+     Migra automaticamente layouts anteriores añadiendo 'inbox' al principio si falta. */
   _getLayout() {
     try {
       const saved = localStorage.getItem('riskhub_dashboard_layout');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Migracion: añadir inbox al principio si el layout no lo incluye
+          if (!parsed.includes('inbox')) {
+            parsed.unshift('inbox');
+            localStorage.setItem('riskhub_dashboard_layout', JSON.stringify(parsed));
+          }
+          return parsed;
+        }
       }
     } catch (_e) { /* silencioso */ }
     return DASHBOARD_DEFAULT_LAYOUT.slice();
@@ -81,70 +90,83 @@ const ViewDashboard = {
     ViewDashboard._editMode = false;
     const panel = document.getElementById('dash-edit-panel');
     if (panel) panel.remove();
-    // Quitar los overlays de edicion de cada widget
     document.querySelectorAll('[data-widget-id]').forEach(el => {
       el.draggable = false;
       el.style.borderTop = '';
       el.style.opacity = '';
+      el.style.cursor = '';
       const handle = el.querySelector('.dash-widget-handle');
       if (handle) handle.remove();
+      const rm = el.querySelector('.dash-widget-remove');
+      if (rm) rm.remove();
     });
-    // Actualizar texto del boton
     const btn = document.getElementById('dash-customize-btn');
     if (btn) btn.textContent = 'Personalizar dashboard';
   },
 
-  /* Entra en modo edicion mostrando el panel de personalizacion. */
+  /* Entra en modo edicion mostrando el panel de personalizacion con catalogo por modulo. */
   _enterEdit() {
+    // FIX: quitar panel duplicado si ya existe antes de crear uno nuevo
+    const existingPanel = document.getElementById('dash-edit-panel');
+    if (existingPanel) existingPanel.remove();
+
     ViewDashboard._editMode = true;
     const layout = ViewDashboard._getLayout();
-    const allIds = Object.keys(DASHBOARD_WIDGETS);
 
-    // Construir lista de todos los widgets con toggles y estado actual
-    const pickerItems = allIds.map(id => {
-      const w = DASHBOARD_WIDGETS[id];
-      const active = layout.includes(id);
-      return `
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;
-                      background:var(--bg-2);border:1px solid ${active ? 'var(--brand-purple)' : 'var(--border)'};
-                      border-radius:8px;padding:6px 10px;font-size:12px;font-weight:500;
-                      color:${active ? 'var(--brand-purple)' : 'var(--text-muted)'};
-                      transition:border-color .15s,color .15s;">
-          <input type="checkbox" data-widget-toggle="${id}" ${active ? 'checked' : ''}
-                 style="accent-color:var(--brand-purple);"
-                 onchange="ViewDashboard._onWidgetToggle('${id}', this.checked)">
-          ${UI.esc(w.label)}
-        </label>`;
-    }).join('');
+    // Orden de modulos en el catalogo
+    const moduleOrder = ['Seguridad', 'Riesgos', 'Incidentes', 'Tareas', 'Politicas', 'RGPD', 'Proveedores', 'Continuidad', 'Controles', 'Operaciones'];
+    const modules = {};
+    for (const [id, w] of Object.entries(DASHBOARD_WIDGET_CATALOG)) {
+      if (!modules[w.module]) modules[w.module] = [];
+      modules[w.module].push({ id, ...w });
+    }
+
+    const checkSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    const plusSvg  = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+
+    const catalogHtml = moduleOrder
+      .filter(m => modules[m])
+      .map(mod => `
+        <div style="margin-bottom:10px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:5px;">${UI.esc(mod)}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            ${modules[mod].map(w => {
+              const active = layout.includes(w.id);
+              return `<button
+                onclick="ViewDashboard._toggleWidget('${w.id}')"
+                title="${UI.esc(w.desc)}"
+                style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;
+                       border:1px solid ${active ? 'var(--brand-purple)' : 'var(--border)'};
+                       background:${active ? 'rgba(89,0,141,.07)' : 'var(--bg-3)'};
+                       color:${active ? 'var(--brand-purple)' : 'var(--text-muted)'};">
+                ${active ? checkSvg : plusSvg}
+                ${UI.esc(w.label)}
+              </button>`;
+            }).join('')}
+          </div>
+        </div>`).join('');
 
     const panel = document.createElement('div');
     panel.id = 'dash-edit-panel';
-    panel.style.cssText = 'background:var(--bg-card);border:2px dashed var(--brand-purple);border-radius:10px;padding:16px;margin-bottom:16px;';
+    panel.style.cssText = 'background:var(--bg-card);border:2px dashed var(--brand-purple);border-radius:10px;padding:16px 18px;margin-bottom:16px;';
     panel.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <strong style="font-size:14px;">Personalizar dashboard</strong>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-outline btn-sm" onclick="ViewDashboard._resetLayout()">
-            Restaurar por defecto
-          </button>
-          <button class="btn btn-primary btn-sm" onclick="ViewDashboard._exitEdit()">
-            Listo
-          </button>
+          <button class="btn btn-outline btn-sm" onclick="ViewDashboard._resetLayout()">Restaurar por defecto</button>
+          <button class="btn btn-primary btn-sm" onclick="ViewDashboard._exitEdit()">Listo</button>
         </div>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
-        Arrastra los widgets para reordenarlos. Activa o desactiva cada widget con los checkboxes.
+      <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+        Activa o desactiva widgets desde el catalogo. Arrastra los widgets activos para reordenarlos. El boton <strong>&times;</strong> en cada widget lo quita del dashboard.
       </p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">${pickerItems}</div>`;
+      <div style="border-top:1px solid var(--border);padding-top:10px;">${catalogHtml}</div>`;
 
-    // Insertar panel antes del contenido del dashboard
     const content = document.getElementById('dash-content');
     if (content) content.parentNode.insertBefore(panel, content);
 
-    // Activar drag-and-drop en los widgets visibles
     ViewDashboard._activateDragDrop(layout);
 
-    // Actualizar boton
     const btn = document.getElementById('dash-customize-btn');
     if (btn) btn.textContent = 'Cerrar personalizacion';
   },
@@ -155,15 +177,25 @@ const ViewDashboard = {
       const id = el.dataset.widgetId;
       if (!layout.includes(id)) return;
 
-      // Anadir handle si no existe
+      el.style.position = 'relative';
+
       if (!el.querySelector('.dash-widget-handle')) {
         const handle = document.createElement('div');
         handle.className = 'dash-widget-handle';
         handle.title = 'Arrastra para reordenar';
         handle.style.cssText = 'position:absolute;top:8px;left:-20px;width:18px;height:18px;cursor:grab;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:14px;opacity:0.6;';
-        handle.textContent = '≡'; // triple dash (≡)
-        el.style.position = 'relative';
+        handle.textContent = '≡';
         el.appendChild(handle);
+      }
+
+      if (!el.querySelector('.dash-widget-remove')) {
+        const rm = document.createElement('button');
+        rm.className = 'dash-widget-remove';
+        rm.title = 'Quitar widget del dashboard';
+        rm.innerHTML = '&times;';
+        rm.style.cssText = 'position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--text-muted);z-index:5;padding:0;';
+        rm.onclick = (e) => { e.stopPropagation(); ViewDashboard._toggleWidget(id); };
+        el.appendChild(rm);
       }
 
       el.draggable = true;
@@ -209,17 +241,13 @@ const ViewDashboard = {
     });
   },
 
-  /* Toggle de visibilidad de un widget desde el picker. */
-  _onWidgetToggle(id, visible) {
+  /* Activa o desactiva un widget del dashboard desde el catalogo o el boton X. */
+  _toggleWidget(id) {
     const layout = ViewDashboard._getLayout();
-    if (visible && !layout.includes(id)) {
-      layout.push(id);
-    } else if (!visible) {
-      const idx = layout.indexOf(id);
-      if (idx !== -1) layout.splice(idx, 1);
-    }
+    const idx = layout.indexOf(id);
+    if (idx !== -1) layout.splice(idx, 1);
+    else layout.push(id);
     ViewDashboard._saveLayout(layout);
-    // Re-renderizar con datos cacheados
     if (ViewDashboard._cachedMain && ViewDashboard._cachedData) {
       ViewDashboard._renderWithData(ViewDashboard._cachedMain, layout, ViewDashboard._cachedData);
       ViewDashboard._enterEdit();
@@ -240,6 +268,7 @@ const ViewDashboard = {
     c.innerHTML = methBadge + widgetHtml;
 
     // Recargar secciones async (los elementos del DOM cambian con cada re-render)
+    ViewDashboard._loadInbox();
     ViewDashboard._loadUpcoming();
     ViewDashboard._loadUpcomingControlReviews();
     ViewDashboard._loadControlsCoverage();
@@ -546,6 +575,13 @@ const ViewDashboard = {
             </div>
           </div>
         </div>`,
+
+      inbox: () => `
+        <div data-widget-id="inbox" style="margin-bottom:16px;">
+          <div id="dash-inbox-body">
+            <div class="card"><p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">Cargando bandeja...</p></div>
+          </div>
+        </div>`,
     };
 
     // Los widgets incidents/tasks/policies/gdpr se renderizan juntos en la misma card-row
@@ -621,6 +657,7 @@ const ViewDashboard = {
         ViewDashboard._buildWidgetHtml(layout, risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData, postureScore);
 
       // Cargar secciones async adicionales
+      ViewDashboard._loadInbox();
       ViewDashboard._loadUpcoming();
       ViewDashboard._loadUpcomingControlReviews();
       ViewDashboard._loadControlsCoverage();
@@ -1095,6 +1132,12 @@ const ViewDashboard = {
       const el2 = document.getElementById('dash-controls-body');
       if (el2) el2.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">No disponible.</p>';
     }
+  },
+
+  async _loadInbox() {
+    const el = document.getElementById('dash-inbox-body');
+    if (!el || typeof ViewInbox === 'undefined') return;
+    await ViewInbox.renderEmbedded(el, { limit: 5 });
   },
 
   async _loadUpcomingControlReviews() {
