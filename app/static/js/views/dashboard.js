@@ -14,7 +14,7 @@ const DASHBOARD_WIDGET_CATALOG = {
   bcp:       { label: 'Continuidad (BCP)',        module: 'Continuidad', desc: 'Procesos criticos, planes aprobados, BIA completado y tests ISO 22301.' },
   actions:   { label: 'Acciones y Vencimientos', module: 'Operaciones', desc: 'Acciones urgentes, proximos vencimientos de tratamientos y revisiones de controles.' },
   coverage:  { label: 'Cobertura ISO 27002',     module: 'Controles',   desc: 'Cobertura y madurez de controles por tema: organizativo, personas, fisico y tecnologico.' },
-  inbox:     { label: 'Bandeja de revision',     module: 'Operaciones', desc: 'Items pendientes de tu decision: riesgos auto-generados, incidentes, controles degradados y tareas.' },
+  inbox:     { label: 'Pendiente de tu revision', module: 'Operaciones', desc: 'Items pendientes de tu decision: riesgos auto-generados, incidentes, controles degradados y tareas.' },
 };
 const DASHBOARD_DEFAULT_LAYOUT = ['inbox','posture','risks','controls','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
 
