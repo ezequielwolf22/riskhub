@@ -18,6 +18,25 @@ const DASHBOARD_WIDGET_CATALOG = {
 };
 const DASHBOARD_DEFAULT_LAYOUT = ['inbox','posture','risks','controls','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
 
+/* Esquema de opciones configurables por tipo de widget.
+   Solo se incluyen widgets con al menos una opcion configurable.
+   Los demas widgets son fijos en su presentacion. */
+const WIDGET_CONFIG_SCHEMA = {
+  inbox: [
+    { key: 'limit',  label: 'Items a mostrar',             type: 'select', opts: [3, 5, 10, 20], def: 5 },
+  ],
+  top10: [
+    { key: 'count',  label: 'Numero de riesgos a mostrar', type: 'select', opts: [5, 10, 15, 20], def: 10 },
+    { key: 'title',  label: 'Titulo personalizado',        type: 'text',   def: '' },
+  ],
+  coverage: [
+    { key: 'title',  label: 'Titulo personalizado',        type: 'text',   def: '' },
+  ],
+  actions: [
+    { key: 'title',  label: 'Titulo personalizado',        type: 'text',   def: '' },
+  ],
+};
+
 /**
  * Muestra un banner de bienvenida si el cuestionario IA no se ha completado.
  * Se antepone al contenido principal del dashboard.
@@ -51,24 +70,32 @@ const ViewDashboard = {
   _cachedData: null,
   _cachedMain: null,
 
-  /* Obtiene el layout guardado en localStorage.
-     Migra automaticamente layouts anteriores añadiendo 'inbox' al principio si falta. */
+  /* Normaliza un item del layout al formato {uid, type, config} */
+  _normalizeItem(item, index) {
+    if (typeof item === 'string') return { uid: `w_${index}_${item}`, type: item, config: {} };
+    return { uid: item.uid || `w_${index}_${item.type}`, type: item.type, config: item.config || {} };
+  },
+
+  /* Obtiene el layout en formato [{uid, type, config}].
+     Migra automaticamente formatos antiguos (string[]) y layouts sin inbox. */
   _getLayout() {
     try {
       const saved = localStorage.getItem('riskhub_dashboard_layout');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Migracion: añadir inbox al principio si el layout no lo incluye
-          if (!parsed.includes('inbox')) {
-            parsed.unshift('inbox');
-            localStorage.setItem('riskhub_dashboard_layout', JSON.stringify(parsed));
+          const items = parsed.map((item, i) => ViewDashboard._normalizeItem(item, i));
+          let dirty = items.some((item, i) => parsed[i] !== item); // detectar migracion de formato
+          if (!items.some(w => w.type === 'inbox')) {
+            items.unshift({ uid: 'w_0_inbox', type: 'inbox', config: {} });
+            dirty = true;
           }
-          return parsed;
+          if (dirty) localStorage.setItem('riskhub_dashboard_layout', JSON.stringify(items));
+          return items;
         }
       }
     } catch (_e) { /* silencioso */ }
-    return DASHBOARD_DEFAULT_LAYOUT.slice();
+    return DASHBOARD_DEFAULT_LAYOUT.map((type, i) => ({ uid: `w_${i}_${type}`, type, config: {} }));
   },
 
   /* Guarda el layout en localStorage. */
@@ -99,6 +126,8 @@ const ViewDashboard = {
       if (handle) handle.remove();
       const rm = el.querySelector('.dash-widget-remove');
       if (rm) rm.remove();
+      const cfg = el.querySelector('.dash-widget-config');
+      if (cfg) cfg.remove();
     });
     const btn = document.getElementById('dash-customize-btn');
     if (btn) btn.textContent = 'Personalizar dashboard';
@@ -124,6 +153,8 @@ const ViewDashboard = {
     const checkSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>';
     const plusSvg  = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
+    const gearSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;" title="Configurable"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+
     const catalogHtml = moduleOrder
       .filter(m => modules[m])
       .map(mod => `
@@ -131,7 +162,8 @@ const ViewDashboard = {
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:5px;">${UI.esc(mod)}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${modules[mod].map(w => {
-              const active = layout.includes(w.id);
+              const active = layout.some(item => item.type === w.id);
+              const hasConfig = !!WIDGET_CONFIG_SCHEMA[w.id];
               return `<button
                 onclick="ViewDashboard._toggleWidget('${w.id}')"
                 title="${UI.esc(w.desc)}"
@@ -141,6 +173,7 @@ const ViewDashboard = {
                        color:${active ? 'var(--brand-purple)' : 'var(--text-muted)'};">
                 ${active ? checkSvg : plusSvg}
                 ${UI.esc(w.label)}
+                ${active && hasConfig ? gearSvg : ''}
               </button>`;
             }).join('')}
           </div>
@@ -174,8 +207,8 @@ const ViewDashboard = {
   /* Activa drag-and-drop en los widgets del layout activo. */
   _activateDragDrop(layout) {
     document.querySelectorAll('[data-widget-id]').forEach(el => {
-      const id = el.dataset.widgetId;
-      if (!layout.includes(id)) return;
+      const type = el.dataset.widgetId;
+      if (!layout.some(w => w.type === type)) return;
 
       el.style.position = 'relative';
 
@@ -194,15 +227,26 @@ const ViewDashboard = {
         rm.title = 'Quitar widget del dashboard';
         rm.innerHTML = '&times;';
         rm.style.cssText = 'position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--text-muted);z-index:5;padding:0;';
-        rm.onclick = (e) => { e.stopPropagation(); ViewDashboard._toggleWidget(id); };
+        rm.onclick = (e) => { e.stopPropagation(); ViewDashboard._toggleWidget(type); };
         el.appendChild(rm);
+      }
+
+      // Boton de configuracion (solo para widgets con opciones configurables)
+      if (!el.querySelector('.dash-widget-config') && WIDGET_CONFIG_SCHEMA[type]) {
+        const cfg = document.createElement('button');
+        cfg.className = 'dash-widget-config';
+        cfg.title = 'Configurar widget';
+        cfg.innerHTML = '&#9881;';
+        cfg.style.cssText = 'position:absolute;top:6px;right:32px;width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--brand-purple);z-index:5;padding:0;';
+        cfg.onclick = (e) => { e.stopPropagation(); ViewDashboard._openConfig(type); };
+        el.appendChild(cfg);
       }
 
       el.draggable = true;
       el.style.cursor = 'grab';
 
       el.ondragstart = (e) => {
-        e.dataTransfer.setData('text/plain', id);
+        e.dataTransfer.setData('text/plain', type);
         e.dataTransfer.effectAllowed = 'move';
         setTimeout(() => { el.style.opacity = '0.5'; }, 0);
       };
@@ -221,19 +265,17 @@ const ViewDashboard = {
       el.ondrop = (e) => {
         e.preventDefault();
         el.style.borderTop = '';
-        const srcId = e.dataTransfer.getData('text/plain');
-        if (srcId === id) return;
+        const srcType = e.dataTransfer.getData('text/plain');
+        if (srcType === type) return;
         const currentLayout = ViewDashboard._getLayout();
-        const srcIdx = currentLayout.indexOf(srcId);
-        const tgtIdx = currentLayout.indexOf(id);
+        const srcIdx = currentLayout.findIndex(w => w.type === srcType);
+        const tgtIdx = currentLayout.findIndex(w => w.type === type);
         if (srcIdx !== -1 && tgtIdx !== -1) {
-          currentLayout.splice(srcIdx, 1);
-          currentLayout.splice(tgtIdx, 0, srcId);
+          const [moved] = currentLayout.splice(srcIdx, 1);
+          currentLayout.splice(tgtIdx, 0, moved);
           ViewDashboard._saveLayout(currentLayout);
-          // Re-renderizar con datos cacheados
           if (ViewDashboard._cachedMain && ViewDashboard._cachedData) {
             ViewDashboard._renderWithData(ViewDashboard._cachedMain, currentLayout, ViewDashboard._cachedData);
-            // Re-entrar en modo edicion despues de re-render
             ViewDashboard._enterEdit();
           }
         }
@@ -242,12 +284,83 @@ const ViewDashboard = {
   },
 
   /* Activa o desactiva un widget del dashboard desde el catalogo o el boton X. */
-  _toggleWidget(id) {
+  _toggleWidget(type) {
     const layout = ViewDashboard._getLayout();
-    const idx = layout.indexOf(id);
-    if (idx !== -1) layout.splice(idx, 1);
-    else layout.push(id);
+    const idx = layout.findIndex(w => w.type === type);
+    if (idx !== -1) {
+      layout.splice(idx, 1);
+    } else {
+      const uid = `w_${type}_${Date.now()}`;
+      layout.push({ uid, type, config: {} });
+    }
     ViewDashboard._saveLayout(layout);
+    if (ViewDashboard._cachedMain && ViewDashboard._cachedData) {
+      ViewDashboard._renderWithData(ViewDashboard._cachedMain, layout, ViewDashboard._cachedData);
+      ViewDashboard._enterEdit();
+    }
+  },
+
+  /* Abre el modal de configuracion de un widget por su tipo. */
+  _openConfig(type) {
+    const layout = ViewDashboard._getLayout();
+    const item = layout.find(w => w.type === type);
+    if (!item) return;
+    const schema = WIDGET_CONFIG_SCHEMA[type];
+    if (!schema) return;
+    const cfg = item.config || {};
+    const catalogEntry = DASHBOARD_WIDGET_CATALOG[type] || {};
+
+    const fieldsHtml = schema.map(field => {
+      const val = cfg[field.key] !== undefined ? cfg[field.key] : field.def;
+      if (field.type === 'select') {
+        return `<label style="display:block;margin-bottom:14px;">
+          <span style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">${UI.esc(field.label)}</span>
+          <select data-cfg-key="${UI.esc(field.key)}"
+                  style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--bg-2);color:var(--text);">
+            ${field.opts.map(o => `<option value="${o}" ${o == val ? 'selected' : ''}>${o}</option>`).join('')}
+          </select>
+        </label>`;
+      }
+      if (field.type === 'text') {
+        return `<label style="display:block;margin-bottom:14px;">
+          <span style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px;">${UI.esc(field.label)}</span>
+          <input type="text" data-cfg-key="${UI.esc(field.key)}" value="${UI.esc(String(val))}"
+                 placeholder="${UI.esc(catalogEntry.label || '')}"
+                 style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--bg-2);color:var(--text);box-sizing:border-box;">
+        </label>`;
+      }
+      return '';
+    }).join('');
+
+    UI.openModal(`
+      <div class="modal-head">
+        <h2 style="font-size:16px;">Configurar: ${UI.esc(catalogEntry.label || type)}</h2>
+        <button class="btn btn-ghost" onclick="UI.closeModal()">x</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;">${UI.esc(catalogEntry.desc || '')}</p>
+        ${fieldsHtml}
+      </div>
+      <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);">
+        <button class="btn btn-outline" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="ViewDashboard._saveConfig('${UI.esc(type)}')">Guardar</button>
+      </div>
+    `);
+  },
+
+  /* Guarda la configuracion del modal al layout y re-renderiza. */
+  _saveConfig(type) {
+    const layout = ViewDashboard._getLayout();
+    const item = layout.find(w => w.type === type);
+    if (!item) { UI.closeModal(); return; }
+    const newCfg = { ...(item.config || {}) };
+    document.querySelectorAll('[data-cfg-key]').forEach(el => {
+      const k = el.dataset.cfgKey;
+      newCfg[k] = el.tagName === 'SELECT' ? (isNaN(el.value) ? el.value : Number(el.value)) : el.value;
+    });
+    item.config = newCfg;
+    ViewDashboard._saveLayout(layout);
+    UI.closeModal();
     if (ViewDashboard._cachedMain && ViewDashboard._cachedData) {
       ViewDashboard._renderWithData(ViewDashboard._cachedMain, layout, ViewDashboard._cachedData);
       ViewDashboard._enterEdit();
@@ -457,16 +570,20 @@ const ViewDashboard = {
           ${ViewDashboard._tprmPanelHtml(tprmData, risks)}
         </div>`,
 
-      top10: () => `
+      top10: (cfg = {}) => {
+        const count = Number(cfg.count) || 10;
+        const title = cfg.title || `Top ${count} riesgos por nivel residual`;
+        const topRisks = risks.top_risks.slice(0, count);
+        return `
         <div data-widget-id="top10" style="margin-top:16px;">
           <div class="card">
-            <h3>Top 10 riesgos por nivel residual</h3>
-            ${risks.top_risks.length === 0
+            <h3>${UI.esc(title)}</h3>
+            ${topRisks.length === 0
               ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavia. Comienza creando activos y asociandoles amenazas.</p>'
               : `<div class="table-wrap"><table class="data">
                   <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th><th>Reduccion</th></tr></thead>
                   <tbody>
-                    ${risks.top_risks.map(r => {
+                    ${topRisks.map(r => {
                       const red = r.inherent_level > 0
                         ? Math.round((1 - r.level / r.inherent_level) * 100) : 0;
                       return `<tr style="cursor:pointer;" onclick="location.hash='#/risks?id=${r.id}'">
@@ -479,7 +596,7 @@ const ViewDashboard = {
                   </tbody>
                 </table></div>`}
           </div>
-        </div>`,
+        </div>`; },
 
       actions: () => `
         <div data-widget-id="actions" style="margin-top:16px;">
@@ -584,18 +701,20 @@ const ViewDashboard = {
         </div>`,
     };
 
-    // Los widgets incidents/tasks/policies/gdpr se renderizan juntos en la misma card-row
-    // (_modulesRowHtml ya los agrupa). Solo se emite HTML la primera vez que aparece uno del grupo.
-    const groupIds = new Set(['incidents', 'tasks', 'policies', 'gdpr']);
+    // Los widgets incidents/tasks/policies/gdpr se renderizan juntos en la misma card-row.
+    const groupTypes = new Set(['incidents', 'tasks', 'policies', 'gdpr']);
     let groupRendered = false;
 
-    return layout.map(id => {
-      if (groupIds.has(id)) {
+    return layout.map(item => {
+      // Soporta formato antiguo (string) y nuevo ({uid,type,config})
+      const type = typeof item === 'string' ? item : item.type;
+      const cfg  = typeof item === 'object' ? (item.config || {}) : {};
+      if (groupTypes.has(type)) {
         if (groupRendered) return '';
         groupRendered = true;
         return widgets.incidents();
       }
-      return widgets[id] ? widgets[id]() : '';
+      return widgets[type] ? widgets[type](cfg) : '';
     }).join('');
   },
 
@@ -1137,7 +1256,10 @@ const ViewDashboard = {
   async _loadInbox() {
     const el = document.getElementById('dash-inbox-body');
     if (!el || typeof ViewInbox === 'undefined') return;
-    await ViewInbox.renderEmbedded(el, { limit: 5 });
+    const layout = ViewDashboard._getLayout();
+    const inboxItem = layout.find(w => w.type === 'inbox');
+    const limit = Number(inboxItem?.config?.limit) || 5;
+    await ViewInbox.renderEmbedded(el, { limit });
   },
 
   async _loadUpcomingControlReviews() {
