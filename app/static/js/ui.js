@@ -45,9 +45,10 @@ const UI = {
 
   modal(title, html, opts = {}) {
     const root = document.getElementById('modal-root');
+    const widthStyle = opts.width ? `max-width:${opts.width};width:95vw;` : '';
     root.innerHTML = `
       <div class="modal-bg" id="modal-bg">
-        <div class="modal">
+        <div class="modal" style="${widthStyle}">
           <div class="modal-head">
             <h2>${UI.esc(title)}</h2>
             <button class="btn btn-ghost" id="modal-close">x</button>
