@@ -552,8 +552,7 @@ const ViewDashboard = {
         </div>`,
 
       incidents: () => incidents ? `
-        <div data-widget-id="incidents" style="margin-top:16px;">
-          <div class="card">
+          <div class="card" data-widget-id="incidents" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
               <h3 style="margin:0;font-size:14px;">Incidentes</h3>
               <a href="#/incidents" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
@@ -564,12 +563,10 @@ const ViewDashboard = {
               <a href="#/incidents?nis2=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('NIS2 pendiente', incidents.nis2_pending_notification, incidents.nis2_pending_notification > 0 ? 'var(--risk-critical)' : 'var(--risk-low)')}</a>
               ${ViewDashboard._moduleStatLine('Total historico', incidents.total, 'var(--text-muted)')}
             </div>
-          </div>
-        </div>` : '',
+          </div>` : '',
 
       tasks: () => tasks ? `
-        <div data-widget-id="tasks" style="margin-top:16px;">
-          <div class="card">
+          <div class="card" data-widget-id="tasks" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
               <h3 style="margin:0;font-size:14px;">Tareas</h3>
               <a href="#/tasks" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
@@ -580,12 +577,10 @@ const ViewDashboard = {
               <a href="#/tasks?status=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Pendientes', tasks.by_status?.pending || 0, 'var(--text-muted)')}</a>
               <a href="#/tasks?status=done" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Completadas', tasks.by_status?.done || 0, 'var(--risk-low)')}</a>
             </div>
-          </div>
-        </div>` : '',
+          </div>` : '',
 
       policies: () => policies ? `
-        <div data-widget-id="policies" style="margin-top:16px;">
-          <div class="card">
+          <div class="card" data-widget-id="policies" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
               <h3 style="margin:0;font-size:14px;">Politicas</h3>
               <a href="#/policies" style="font-size:11px;color:var(--brand-purple);">Ver todas -></a>
@@ -596,12 +591,10 @@ const ViewDashboard = {
               <a href="#/policies?status=review" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('En revision', policies.by_status?.review || 0, 'var(--brand-orange)')}</a>
               <a href="#/policies?status=draft" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Borradores', policies.by_status?.draft || 0, 'var(--text-muted)')}</a>
             </div>
-          </div>
-        </div>` : '',
+          </div>` : '',
 
       gdpr: () => gdprData ? `
-        <div data-widget-id="gdpr" style="margin-top:16px;">
-          <div class="card">
+          <div class="card" data-widget-id="gdpr" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
               <h3 style="margin:0;font-size:14px;">RGPD</h3>
               <a href="#/gdpr" style="font-size:11px;color:var(--brand-purple);">Ver todo -></a>
@@ -612,8 +605,7 @@ const ViewDashboard = {
               <a href="#/gdpr?dpias_pending=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('DPIAs pendientes', gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
               <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Transferencias fuera UE', gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}</a>
             </div>
-          </div>
-        </div>` : '',
+          </div>` : '',
 
       bcp: () => `
         <div data-widget-id="bcp" style="margin-top:4px;">
@@ -756,11 +748,32 @@ const ViewDashboard = {
         </div>`,
     };
 
-    return layout.map(item => {
+    // Module widgets (incidents/tasks/policies/gdpr) are rendered as flex cards in a shared row.
+    // Consecutive module widgets in the layout get grouped together visually.
+    const MODULE_TYPES = new Set(['incidents', 'tasks', 'policies', 'gdpr']);
+    const parts = [];
+    let moduleBuffer = [];
+
+    const flushModuleBuffer = () => {
+      if (moduleBuffer.length === 0) return;
+      parts.push(`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;">${moduleBuffer.join('')}</div>`);
+      moduleBuffer = [];
+    };
+
+    for (const item of layout) {
       const type = typeof item === 'string' ? item : item.type;
       const cfg  = typeof item === 'object' ? (item.config || {}) : {};
-      return widgets[type] ? widgets[type](cfg) : '';
-    }).join('');
+      const html = widgets[type] ? widgets[type](cfg) : '';
+      if (!html) continue;
+      if (MODULE_TYPES.has(type)) {
+        moduleBuffer.push(html);
+      } else {
+        flushModuleBuffer();
+        parts.push(html);
+      }
+    }
+    flushModuleBuffer();
+    return parts.join('');
   },
 
   async render(main) {
