@@ -21,20 +21,51 @@ _FIELD_ALIASES = {
              "empresa", "razon social", "razón social", "company name", "supplier name"],
     "category": ["category", "categoria", "categoría", "tipo", "type", "sector", "rubro"],
     "contact_name": ["contact", "contacto", "contact name", "responsable",
-                     "nombre contacto", "contact person"],
+                     "nombre contacto", "contact person", "nombre de contacto",
+                     "nombre_contacto", "responsable contacto"],
     "contact_email": ["email", "correo", "e-mail", "mail", "contact email",
-                      "correo electronico", "correo electrónico"],
+                      "correo electronico", "correo electrónico",
+                      "email de contacto", "email contacto", "correo de contacto",
+                      "correo_contacto", "email_contacto", "mail contacto"],
+    "risk_level": ["nivel de riesgo", "nivel riesgo", "nivel_riesgo", "risk level",
+                   "risk_level", "riesgo", "nivel", "criticidad", "risk"],
     "services": ["services", "servicios", "service", "servicio", "descripcion",
                  "descripción", "description", "detalle"],
     "website": ["website", "web", "url", "sitio web", "sitio", "dominio", "domain"],
     "country_code": ["country", "pais", "país", "country_code", "country code", "cc"],
     "tax_id": ["tax_id", "cif", "nif", "vat", "rfc", "tax id", "identificacion fiscal"],
+    "annual_spend": ["grand total", "total", "gasto anual", "annual spend", "spend",
+                     "facturacion", "facturación", "importe", "monto anual"],
     "category2": [],
 }
 
 
 def _normalize(s: str) -> str:
     return str(s or "").strip().lower()
+
+
+# Traducciones ES/EN de nivel de riesgo al enum SupplierRisk
+_RISK_LEVEL_MAP = {
+    "critico": "critical", "crítico": "critical", "critical": "critical", "muy alto": "critical",
+    "alto": "high", "high": "high", "elevado": "high",
+    "medio": "medium", "medium": "medium", "moderate": "medium", "moderado": "medium",
+    "bajo": "low", "low": "low", "reducido": "low",
+}
+
+
+def _parse_risk_level(raw: Optional[str]):
+    """Convierte 'Alto'/'High'/etc. al valor del enum SupplierRisk, o None si no reconoce."""
+    from app.models import SupplierRisk
+    if not raw:
+        return None
+    key = _normalize(raw)
+    mapped = _RISK_LEVEL_MAP.get(key)
+    if not mapped:
+        return None
+    try:
+        return SupplierRisk(mapped)
+    except ValueError:
+        return None
 
 
 def _build_header_map(columns) -> dict:
@@ -102,6 +133,14 @@ def import_suppliers(content: bytes, filename: str, org_id: int, db: Session) ->
                 continue
             seen_in_file.add(key)
 
+            explicit_risk = _parse_risk_level(_cell(row, header_map.get("risk_level")))
+
+            annual_spend_raw = _cell(row, header_map.get("annual_spend"))
+            try:
+                annual_spend = float(annual_spend_raw) if annual_spend_raw else None
+            except (ValueError, TypeError):
+                annual_spend = None
+
             supplier = Supplier(
                 organization_id=org_id,
                 code=_next_code(db, org_id),
@@ -113,10 +152,14 @@ def import_suppliers(content: bytes, filename: str, org_id: int, db: Session) ->
                 website=_cell(row, header_map.get("website")),
                 country_code=(_cell(row, header_map.get("country_code")) or "")[:2] or None,
                 tax_id=_cell(row, header_map.get("tax_id")),
+                annual_spend=annual_spend,
             )
             db.add(supplier)
             db.flush()  # asignar id para el scoring
             tprm_scoring_service.recompute_supplier(db, supplier, commit=False)
+            # Si el Excel incluye nivel de riesgo explicito, tiene prioridad sobre el calculado
+            if explicit_risk is not None:
+                supplier.risk_level = explicit_risk
             created += 1
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Fila {idx + 2}: {exc}")

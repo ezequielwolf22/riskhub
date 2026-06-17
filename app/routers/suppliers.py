@@ -83,6 +83,42 @@ async def import_suppliers_endpoint(
     return result
 
 
+from pydantic import BaseModel as _BM
+
+
+class _BulkIds(_BM):
+    ids: list[int]
+
+
+@router.post("/bulk-delete")
+def bulk_delete_suppliers(body: _BulkIds, db: Session = Depends(get_db),
+                          current_user: User = Depends(require_analyst)):
+    deleted = 0
+    for sid in body.ids:
+        s = db.query(Supplier).filter(Supplier.id == sid).first()
+        if s and check_org_access(s.organization_id, current_user):
+            log_action(db, current_user.id, "delete", "supplier", str(sid), {"name": s.name})
+            db.delete(s)
+            deleted += 1
+    db.commit()
+    return {"deleted": deleted}
+
+
+@router.post("/bulk-recompute")
+def bulk_recompute_suppliers(body: _BulkIds, db: Session = Depends(get_db),
+                              current_user: User = Depends(require_analyst)):
+    from app.services import tprm_scoring_service
+    recomputed = 0
+    for sid in body.ids:
+        s = db.query(Supplier).filter(Supplier.id == sid).first()
+        if s and check_org_access(s.organization_id, current_user):
+            tprm_scoring_service.recompute_supplier(db, s, commit=False)
+            recomputed += 1
+    db.commit()
+    log_action(db, current_user.id, "bulk_recompute_tprm", "supplier", "*", {"count": recomputed})
+    return {"recomputed": recomputed}
+
+
 @router.get("/{supplier_id}", response_model=SupplierOut)
 def get_supplier(supplier_id: int, db: Session = Depends(get_db),
                  current_user: User = Depends(get_current_user)):

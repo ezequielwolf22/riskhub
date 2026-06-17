@@ -14,6 +14,7 @@ const ViewSuppliers = (() => {
   }
 
   let _activeSupTab = 'suppliers';
+  let _selectedIds = new Set();
 
   async function render(el) {
     el.innerHTML = `
@@ -63,6 +64,7 @@ const ViewSuppliers = (() => {
         if (Auth.canEdit()) document.getElementById('btn-new-seq').onclick = () => _openSeqForm(null);
       }
     }
+    _selectedIds.clear();
     if (tab === 'suppliers') _renderSuppliersTab();
     else _renderQuestionnairesTab();
   }
@@ -118,19 +120,58 @@ const ViewSuppliers = (() => {
     }
   }
 
+  function _updateBulkBar() {
+    const bar = document.getElementById('sup-bulk-bar');
+    if (!bar) return;
+    const n = _selectedIds.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    const countEl = document.getElementById('sup-sel-count');
+    if (countEl) countEl.textContent = `${n} seleccionado${n !== 1 ? 's' : ''}`;
+  }
+
+  async function _bulkRecompute() {
+    const ids = [..._selectedIds];
+    if (!ids.length) return;
+    try {
+      const r = await Api.suppliers.bulkRecompute(ids);
+      UI.toast(`${r.recomputed} proveedores recalculados`, 'success');
+      _selectedIds.clear();
+      await _refresh();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  }
+
+  async function _bulkDelete() {
+    const ids = [..._selectedIds];
+    if (!ids.length) return;
+    if (!confirm(`Eliminar ${ids.length} proveedor${ids.length !== 1 ? 'es' : ''}?`)) return;
+    try {
+      const r = await Api.suppliers.bulkDelete(ids);
+      UI.toast(`${r.deleted} proveedores eliminados`, 'success');
+      _selectedIds.clear();
+      await _loadStats();
+      await _refresh();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  }
+
   function _renderTable(wrap, data) {
     if (!data.length) {
       wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No se encontraron proveedores.</p>';
       return;
     }
+    const canEdit = Auth.canEdit();
     const rows = data.map(s => {
       const assessed = s.last_assessment_at ? s.last_assessment_at.slice(0, 10) : '-';
       const next = s.next_assessment_at ? s.next_assessment_at.slice(0, 10) : '-';
       const tier = s.tier ? _badge(RISK_LABELS[s.tier] || s.tier, RISK_COLORS[s.tier] || '#888') : '-';
       const inh = (s.inherent_risk_score ?? null) !== null ? s.inherent_risk_score : '-';
       const res = (s.residual_risk_score ?? null) !== null ? s.residual_risk_score : '-';
+      const checked = _selectedIds.has(s.id) ? 'checked' : '';
       return `
         <tr>
+          <td style="width:36px;text-align:center;">
+            <input type="checkbox" class="sup-chk" data-id="${s.id}" ${checked}
+              style="width:15px;height:15px;cursor:pointer;accent-color:var(--brand-purple);">
+          </td>
           <td><b>${UI.esc(s.code)}</b></td>
           <td>${UI.esc(s.name)}</td>
           <td>${tier}</td>
@@ -139,18 +180,33 @@ const ViewSuppliers = (() => {
           <td>${assessed}</td>
           <td>${next}</td>
           <td>
-            ${Auth.canEdit() ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
+            ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
-            <button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">Eliminar</button>
+            ${canEdit ? `<button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">Eliminar</button>` : ''}
           </td>
         </tr>
       `;
     }).join('');
 
+    const allChecked = data.length > 0 && data.every(s => _selectedIds.has(s.id));
     wrap.innerHTML = `
+      <div id="sup-bulk-bar" style="display:none;align-items:center;gap:10px;padding:8px 12px;
+          background:var(--bg-2);border:1px solid var(--brand-purple);border-radius:6px;margin-bottom:10px;">
+        <span id="sup-sel-count" style="font-size:13px;font-weight:600;color:var(--brand-purple);"></span>
+        ${canEdit ? `
+        <button id="btn-bulk-recompute" class="btn btn-sm" style="margin-left:4px;">Recalcular seleccionados</button>
+        <button id="btn-bulk-del" class="btn btn-sm btn-danger">Eliminar seleccionados</button>
+        ` : ''}
+        <button id="btn-bulk-clear" class="btn btn-sm" style="margin-left:auto;">Deseleccionar todo</button>
+      </div>
       <table class="data">
         <thead>
           <tr>
+            <th style="width:36px;text-align:center;">
+              <input type="checkbox" id="sup-chk-all" ${allChecked ? 'checked' : ''}
+                style="width:15px;height:15px;cursor:pointer;accent-color:var(--brand-purple);"
+                title="Seleccionar todo">
+            </th>
             <th>Codigo</th><th>Nombre</th><th>Tier</th><th>Inherent</th><th>Residual</th>
             <th>Ult. evaluacion</th><th>Prox. evaluacion</th><th>Acciones</th>
           </tr>
@@ -158,6 +214,38 @@ const ViewSuppliers = (() => {
         <tbody>${rows}</tbody>
       </table>
     `;
+
+    _updateBulkBar();
+
+    document.getElementById('sup-chk-all').onchange = (e) => {
+      if (e.target.checked) data.forEach(s => _selectedIds.add(s.id));
+      else data.forEach(s => _selectedIds.delete(s.id));
+      wrap.querySelectorAll('.sup-chk').forEach(cb => { cb.checked = e.target.checked; });
+      _updateBulkBar();
+    };
+
+    wrap.querySelectorAll('.sup-chk').forEach(cb => {
+      cb.onchange = () => {
+        const id = parseInt(cb.dataset.id);
+        if (cb.checked) _selectedIds.add(id);
+        else _selectedIds.delete(id);
+        const chkAll = document.getElementById('sup-chk-all');
+        if (chkAll) chkAll.checked = data.every(s => _selectedIds.has(s.id));
+        _updateBulkBar();
+      };
+    });
+
+    const bulkDelBtn = document.getElementById('btn-bulk-del');
+    if (bulkDelBtn) bulkDelBtn.onclick = _bulkDelete;
+    const bulkRcpBtn = document.getElementById('btn-bulk-recompute');
+    if (bulkRcpBtn) bulkRcpBtn.onclick = _bulkRecompute;
+    document.getElementById('btn-bulk-clear').onclick = () => {
+      _selectedIds.clear();
+      wrap.querySelectorAll('.sup-chk').forEach(cb => { cb.checked = false; });
+      const chkAll = document.getElementById('sup-chk-all');
+      if (chkAll) chkAll.checked = false;
+      _updateBulkBar();
+    };
 
     wrap.querySelectorAll('[data-action="recompute"]').forEach(btn => {
       btn.onclick = async () => {
@@ -181,6 +269,7 @@ const ViewSuppliers = (() => {
         try {
           await Api.suppliers.del(btn.dataset.id);
           UI.toast('Proveedor eliminado', 'success');
+          _selectedIds.delete(parseInt(btn.dataset.id));
           await _loadStats();
           await _refresh();
         } catch (e) { UI.toast(e.message, 'error'); }
