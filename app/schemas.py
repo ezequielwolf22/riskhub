@@ -654,6 +654,13 @@ class SupplierIn(BaseModel):
     tax_id: Optional[str] = None
     annual_spend: Optional[float] = None
     slas: Optional[list[dict]] = None
+    # v4.3.0 — contactos multiples, CC, ubicacion, departamento
+    cc_email: Optional[str] = None
+    additional_contacts: Optional[list[dict]] = None
+    location: Optional[str] = None
+    department: Optional[str] = None
+    business_importance: Optional[int] = Field(default=None, ge=1, le=5)
+    internal_owner_id: Optional[int] = None
 
 
 class SupplierUpdate(BaseModel):
@@ -695,6 +702,13 @@ class SupplierUpdate(BaseModel):
     parent_supplier_id: Optional[int] = None
     nth_party_depth: Optional[int] = None
     slas: Optional[list[dict]] = None
+    # v4.3.0 — contactos multiples, CC, ubicacion, departamento
+    cc_email: Optional[str] = None
+    additional_contacts: Optional[list[dict]] = None
+    location: Optional[str] = None
+    department: Optional[str] = None
+    business_importance: Optional[int] = Field(default=None, ge=1, le=5)
+    internal_owner_id: Optional[int] = None
 
 
 class SupplierOut(ORMBase):
@@ -743,6 +757,13 @@ class SupplierOut(ORMBase):
     parent_supplier_id: Optional[int] = None
     nth_party_depth: Optional[int] = None
     slas: Optional[list[dict]] = None
+    # v4.3.0 — contactos multiples, CC, ubicacion, departamento
+    cc_email: Optional[str] = None
+    additional_contacts: Optional[list[dict]] = None
+    location: Optional[str] = None
+    department: Optional[str] = None
+    business_importance: Optional[int] = None
+    internal_owner_id: Optional[int] = None
 
 
 # ---------- NON-CONFORMITIES ----------
@@ -979,6 +1000,7 @@ class SupplierQuestionnaireCreate(BaseModel):
     template_code: Optional[str] = None       # TPRM: plantilla del sistema a usar
     custom_template_id: Optional[int] = None  # TPRM: plantilla personalizada (editable) a usar
     questions: Optional[list[dict]] = None    # TPRM: preguntas ad-hoc (override de la plantilla)
+    notify_email: Optional[str] = None        # v4.3.0: email de notificacion cuando el proveedor responde
 
 
 # ---------- TPRM: PLANTILLAS EDITABLES ----------
@@ -1031,6 +1053,7 @@ class SupplierQuestionnaireOut(ORMBase):
     phase: Optional[str] = None
     parent_assessment_id: Optional[int] = None
     next_questionnaire_id: Optional[int] = None
+    notify_email: Optional[str] = None
     created_at: datetime
 
 

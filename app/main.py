@@ -21,7 +21,7 @@ from app.routers import (
     cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents,
     integrations_erp, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
     osint, policies, portal, predictive, questionnaire_flows, questionnaire_schedules, regwatch, report_schedules,
-    reports, risks, search, sharepoint,
+    report_templates, reports, risks, search, sharepoint,
     soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, tprm,
     vendor_assessments, vendor_issues, users, webhooks,
 )
@@ -202,6 +202,7 @@ app.include_router(nis2.router)
 app.include_router(inbox.router)
 app.include_router(change_requests.router)
 app.include_router(report_schedules.router)
+app.include_router(report_templates.router)
 app.include_router(bcp.router)
 app.include_router(regwatch.router)
 app.include_router(surveys.router)

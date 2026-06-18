@@ -514,6 +514,17 @@ def _migrate_columns() -> None:
         ("ALTER TABLE bcp_plans ADD COLUMN parent_plan_id INTEGER REFERENCES bcp_plans(id)", "bcp_plans", "parent_plan_id"),
         ("ALTER TABLE incidents ADD COLUMN affects_continuity BOOLEAN DEFAULT 0", "incidents", "affects_continuity"),
         ("ALTER TABLE incidents ADD COLUMN bcp_activation_id INTEGER REFERENCES bcm_activations(id)", "incidents", "bcp_activation_id"),
+        # v4.3.0 — Proveedor: multiples contactos, CC email, ubicacion, departamento, importancia negocio, responsable interno
+        ("ALTER TABLE suppliers ADD COLUMN cc_email VARCHAR(255)", "suppliers", "cc_email"),
+        ("ALTER TABLE suppliers ADD COLUMN additional_contacts JSON", "suppliers", "additional_contacts"),
+        ("ALTER TABLE suppliers ADD COLUMN location VARCHAR(255)", "suppliers", "location"),
+        ("ALTER TABLE suppliers ADD COLUMN department VARCHAR(128)", "suppliers", "department"),
+        ("ALTER TABLE suppliers ADD COLUMN business_importance INTEGER", "suppliers", "business_importance"),
+        ("ALTER TABLE suppliers ADD COLUMN internal_owner_id INTEGER REFERENCES users(id)", "suppliers", "internal_owner_id"),
+        # v4.3.0 — Cuestionario: email de notificacion propio del cuestionario
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN notify_email VARCHAR(255)", "supplier_questionnaires", "notify_email"),
+        # v4.3.0 — ExternalFinding: link a proveedor monitorizado
+        ("ALTER TABLE external_findings ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id)", "external_findings", "supplier_id"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

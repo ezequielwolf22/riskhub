@@ -316,12 +316,35 @@ const ViewSuppliers = (() => {
           <input type="checkbox" id="f-critical" ${v.is_critical?'checked':''}>
           <label for="f-critical" style="margin:0;cursor:pointer;">Proveedor critico NIS2</label>
         </div>
-        <div><label>Contacto</label><input id="f-contact" class="input" value="${UI.esc(v.contact_name || '')}"></div>
-        <div><label>Email contacto</label><input id="f-email" class="input" type="email" value="${UI.esc(v.contact_email || '')}"></div>
+        <div><label>Contacto principal</label><input id="f-contact" class="input" value="${UI.esc(v.contact_name || '')}"></div>
+        <div><label>Email principal</label><input id="f-email" class="input" type="email" value="${UI.esc(v.contact_email || '')}"></div>
+        <div><label>CC (alertas y cuestionarios)</label><input id="f-cc-email" class="input" type="email" value="${UI.esc(v.cc_email || '')}" placeholder="responsable@empresa.com"></div>
         <div><label>Ultima evaluacion</label><input type="date" id="f-last-assess" class="input" value="${v.last_assessment_at ? v.last_assessment_at.slice(0,10) : ''}"></div>
         <div><label>Proxima evaluacion</label><input type="date" id="f-next-assess" class="input" value="${v.next_assessment_at ? v.next_assessment_at.slice(0,10) : ''}"></div>
-        <div class="span2"><label>Contrato / referencia</label><input id="f-contract" class="input" value="${UI.esc(v.contract_ref || '')}"></div>
+        <div><label>Contrato / referencia</label><input id="f-contract" class="input" value="${UI.esc(v.contract_ref || '')}"></div>
         <div class="span2"><label>Notas / descripcion</label><textarea id="f-notes" class="input" rows="3">${UI.esc(v.notes || '')}</textarea></div>
+
+        <!-- Contactos adicionales -->
+        <div class="span2" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <strong style="font-size:13px;color:var(--brand-purple);">Contactos adicionales</strong>
+              <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">Responsables tecnicos, legales o de compras. Se incluyen en CC de cuestionarios y alertas.</p>
+            </div>
+            <button type="button" id="sup-add-contact" class="btn btn-sm">+ Anadir</button>
+          </div>
+          <div id="sup-contact-list"></div>
+        </div>
+
+        <!-- Datos internos -->
+        <div class="span2" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;">
+          <strong style="font-size:13px;color:var(--brand-purple);">Datos internos de clasificacion</strong>
+          <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">Informacion interna para filtros avanzados y reportes.</p>
+        </div>
+        <div><label>Ubicacion / sede</label><input id="f-location" class="input" value="${UI.esc(v.location || '')}" placeholder="Madrid, ES"></div>
+        <div><label>Departamento responsable</label><input id="f-department" class="input" value="${UI.esc(v.department || '')}" placeholder="TI, Legal, Compras..."></div>
+        <div><label>Importancia negocio (1-5)</label><input type="number" min="1" max="5" id="f-biz-imp" class="input" value="${v.business_importance || ''}"></div>
+        <div><label>Responsable interno</label><select id="f-internal-owner" class="input"><option value="">- Sin asignar -</option></select></div>
 
         <div class="span2" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px;">
           <strong style="font-size:13px;color:var(--brand-purple);">TPRM — Perfil de riesgo inherente</strong>
@@ -387,19 +410,36 @@ const ViewSuppliers = (() => {
   }
 
   let _currentSlas = [];
+  let _currentContacts = [];
 
   let _docPendingFile = null;
 
   function _openForm(s) {
     _currentSlas = s?.slas ? JSON.parse(JSON.stringify(s.slas)) : [];
+    _currentContacts = s?.additional_contacts ? JSON.parse(JSON.stringify(s.additional_contacts)) : [];
     UI.modal(s ? `Editar ${s.code}` : 'Nuevo proveedor', _formHtml(s), {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 <button class="btn btn-primary" id="m-save">Guardar</button>`,
+      width: '760px',
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = () => _save(s);
     _renderSlaList();
     document.getElementById('sup-add-sla').onclick = _addSlaRow;
+    _renderContactList();
+    document.getElementById('sup-add-contact').onclick = _addContactRow;
+    // Poblar select de responsable interno
+    Api.users.list().then(users => {
+      const sel = document.getElementById('f-internal-owner');
+      if (!sel) return;
+      users.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.id;
+        opt.textContent = u.full_name || u.email;
+        if (s && u.id === s.internal_owner_id) opt.selected = true;
+        sel.appendChild(opt);
+      });
+    }).catch(() => {});
 
     if (s) {
       _loadDocuments(s.id);

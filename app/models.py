@@ -729,7 +729,15 @@ class Supplier(Base):
     # SLAs definidos para este proveedor
     # [{id, name, metric, category, description}]
     slas = Column(JSON, nullable=True)
-    owner = relationship("User")
+    # v4.3.0 — contactos multiples, CC email, ubicacion, departamento, importancia negocio
+    cc_email = Column(String(255), nullable=True)
+    additional_contacts = Column(JSON, nullable=True)   # [{name, email, role, phone}]
+    location = Column(String(255), nullable=True)
+    department = Column(String(128), nullable=True)
+    business_importance = Column(Integer, nullable=True)  # 1-5
+    internal_owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    owner = relationship("User", foreign_keys="[Supplier.owner_id]")
+    internal_owner = relationship("User", foreign_keys="[Supplier.internal_owner_id]")
     # parent_supplier_id (nth-party) se consulta por id; no se mapea relacion
     # self-referencial para evitar ambiguedad de mapper.
 
@@ -969,6 +977,8 @@ class SupplierQuestionnaire(Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # v4.3.0 — email de notificacion especifico para este cuestionario
+    notify_email = Column(String(255), nullable=True)
     # v4.0.0 — regwatch: plantilla desactualizada por cambio normativo
     regwatch_review_at = Column(DateTime, nullable=True)
     regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
@@ -1520,6 +1530,26 @@ class AwarenessBranding(Base):
     updated_by = relationship("User", foreign_keys=[updated_by_id])
 
 
+class ReportBrandingConfig(Base):
+    """Configuracion de marca por tipo de informe para personalizar la salida PDF/Excel."""
+    __tablename__ = "report_branding_configs"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    report_type = Column(String(64), nullable=False)
+    primary_color = Column(String(7), default="#59008D")
+    secondary_color = Column(String(7), default="#D65200")
+    logo_filename = Column(String(255), nullable=True)
+    logo_mime = Column(String(64), nullable=True)
+    company_name = Column(String(255), nullable=True)
+    header_title = Column(String(255), nullable=True)
+    footer_text = Column(String(255), nullable=True)
+    cover_subtitle = Column(String(255), nullable=True)
+    font_family = Column(String(64), default="Helvetica")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
 # ---------- COMPLIANCE FRAMEWORKS ----------
 
 class ComplianceRequirementStatus(str, PyEnum):
@@ -1704,6 +1734,7 @@ class ExternalFindingSource(str, PyEnum):
     SSL_LABS = "ssl_labs"
     MANUAL = "manual"
     ARCHITECTURE_REVIEW = "architecture_review"
+    SUPPLIER_MONITOR = "supplier_monitor"  # v4.3.0 monitoreo periodico de proveedores
 
 
 class ExternalFinding(Base):
@@ -1724,6 +1755,7 @@ class ExternalFinding(Base):
     asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # link a asset
     risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)     # risk creado
     incident_id = Column(Integer, ForeignKey("incidents.id"), nullable=True)  # incidente creado
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)  # v4.3.0 proveedor monitorizado
     status = Column(String(32), default="open")                 # open/resolved/accepted
     raw_data = Column(Text, nullable=True)                      # XML/JSON original
     import_batch_id = Column(String(64), nullable=True)         # agrupa import
@@ -1738,6 +1770,7 @@ class ExternalFinding(Base):
     asset = relationship("Asset")
     risk = relationship("Risk")
     incident = relationship("Incident")
+    supplier_ref = relationship("Supplier", foreign_keys=[supplier_id])
 
 
 # ---------- MANAGEMENT REVIEW (ISO 27001 cl. 9.3) ----------

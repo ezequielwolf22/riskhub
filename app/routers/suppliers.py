@@ -158,6 +158,9 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
         "system_access_type", "business_criticality", "geographic_risk",
         "is_data_processor", "processes_personal_data", "cross_border_transfers",
         "is_nis2", "is_dora", "is_ens", "country_code", "website", "tax_id", "annual_spend",
+        # v4.3.0
+        "cc_email", "additional_contacts", "location", "department",
+        "business_importance", "internal_owner_id",
     )
     for _f in _tprm_fields:
         _v = getattr(body, _f, None)

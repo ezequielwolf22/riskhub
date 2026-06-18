@@ -61,17 +61,28 @@ def create_user(data: UserIn, db: Session = Depends(get_db),
         if error:
             raise HTTPException(400, error)
 
-    # Determinar org: explicit > auto-assign por dominio > org del admin que crea
-    org_id = data.organization_id
-    if not org_id:
-        if "@" in data.email:
+    # Determinar org — SECURITY: admin no-superadmin solo puede crear en su propia org
+    if current_user.role != UserRole.SUPERADMIN:
+        org_id = current_user.organization_id
+        # Si la org tiene dominio configurado, el email debe pertenecer a ese dominio
+        if org_id:
+            org = db.get(Organization, org_id)
+            if org and org.domain:
+                email_domain = data.email.split("@", 1)[-1].lower() if "@" in data.email else ""
+                if email_domain != org.domain.lower():
+                    raise HTTPException(
+                        400,
+                        f"El email debe pertenecer al dominio @{org.domain} de tu organizacion"
+                    )
+    else:
+        # Superadmin: explicit > auto-assign por dominio > None
+        org_id = data.organization_id
+        if not org_id and "@" in data.email:
             domain = data.email.split("@", 1)[-1].lower()
             org_by_domain = db.query(Organization).filter(
                 Organization.domain == domain, Organization.is_active.is_(True)
             ).first()
             org_id = org_by_domain.id if org_by_domain else None
-    if not org_id and current_user.role != UserRole.SUPERADMIN:
-        org_id = current_user.organization_id
 
     u = User(
         email=data.email, full_name=data.full_name, role=data.role,

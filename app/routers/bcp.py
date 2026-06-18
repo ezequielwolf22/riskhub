@@ -1022,21 +1022,25 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
     """Genera con IA un checklist especifico para el test basado en los procesos,
     dependencias, runbooks y proveedores del plan asociado."""
     from app.models import AiConfig
-    from cryptography.fernet import Fernet, InvalidToken
+    from app.security import decrypt_secret
     import anthropic, json as _json
 
     t = db.get(BCPTest, tid)
     if not t or t.organization_id != _org(u):
         raise HTTPException(404)
 
-    cfg = db.query(AiConfig).filter_by(organization_id=_org(u)).first()
-    if not cfg or not cfg.api_key_encrypted:
-        raise HTTPException(422, "IA no configurada")
-    try:
-        key = cfg.fernet_key.encode() if isinstance(cfg.fernet_key, str) else cfg.fernet_key
-        api_key = Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
-    except (InvalidToken, Exception):
-        raise HTTPException(422, "Clave API invalida")
+    org = _org(u)
+    cfg = db.query(AiConfig).filter_by(organization_id=org).first()
+    api_key = None
+    if cfg and cfg.api_key_encrypted:
+        try:
+            api_key = decrypt_secret(cfg.api_key_encrypted)
+        except Exception:
+            pass
+    if not api_key:
+        api_key = settings.anthropic_api_key
+    if not api_key:
+        raise HTTPException(422, "IA no configurada. Configura una API key en Integraciones > Agente IA")
 
     proc_ids = [int(x) for x in (t.process_ids or []) if str(x).isdigit()]
     proc_details = []
@@ -2657,9 +2661,9 @@ def get_iso22301_compliance(
         return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
     tests_recent = [t for t in tests if safe_ts(t.scheduled_at) and safe_ts(t.scheduled_at) >= cutoff_12m]
-    tests_passed = [t for t in tests if t.status == "passed"]
+    tests_passed = [t for t in tests if t.result == "passed"]
     tests_overdue = [t for t in tests if (not safe_ts(t.scheduled_at) or safe_ts(t.scheduled_at) < cutoff_12m)
-                     and t.status not in ("passed", "partial")]
+                     and t.result not in ("passed", "partial")]
     strats_impl = [s for s in strats if s.implementation_status in ("implemented", "tested")]
 
     def pct(n, d): return round(n * 100 / d) if d else 0

@@ -368,10 +368,10 @@ const ViewOrganizations = (() => {
 
           ${expiresAt ? `
             <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);">Vencimiento</div>
-            <div>${isExpired ? '🔴 Expirada' : '⏳ ' + (daysLeft > 0 ? daysLeft + ' días' : 'Próxima a vencer')} ${expiresAt.toLocaleDateString('es-ES')}</div>
+            <div>${isExpired ? 'Expirada' : (daysLeft > 0 ? daysLeft + ' dias' : 'Proxima a vencer')} — ${expiresAt.toLocaleDateString('es-ES')}</div>
           ` : `
             <div style="font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--text-muted);">Vencimiento</div>
-            <div style="color:var(--text-muted);">Sin límite (pago anual o indefinido)</div>
+            <div style="color:var(--text-muted);">Sin limite</div>
           `}
 
           <div style="grid-column:1/-1;font-size:11px;color:var(--text-muted);">
@@ -380,98 +380,123 @@ const ViewOrganizations = (() => {
         </div>
       `;
     } catch (err) {
-      container.innerHTML = `<p class="notice">${UI.esc(err.message)}</p>`;
+      if (err.status === 404) {
+        container.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-2);border:1px dashed var(--border);border-radius:8px;">
+            <span style="font-size:13px;color:var(--text-muted);">Sin licencia asignada</span>
+            <button class="btn btn-sm btn-primary" onclick="ViewOrganizations._openLicenseModal(${orgId})">Asignar licencia</button>
+          </div>`;
+      } else {
+        container.innerHTML = `<p class="notice">${UI.esc(err.message)}</p>`;
+      }
     }
   }
 
   async function _openLicenseModal(orgId) {
+    // Intentar cargar licencia existente; 404 = no existe aun
+    let license = null;
+    let history = [];
     try {
-      const license = await Api.get(`/api/licenses/${orgId}`);
-      const expiresStr = license.expires_at ? license.expires_at.split('T')[0] : '';
-      const history = await Api.get(`/api/licenses/${orgId}/audit`);
+      license = await Api.get(`/api/licenses/${orgId}`);
+      history = await Api.get(`/api/licenses/${orgId}/audit`);
+    } catch (err) {
+      if (err.status !== 404) {
+        UI.toast(err.message, 'error');
+        return;
+      }
+      // license = null => flujo de creacion
+    }
 
-      UI.modal('Gestionar licencia', `
-        <div class="form-grid">
-          <div class="span2">
-            <label>Plan
-              <select class="input" id="license-plan" required>
-                ${['free','starter','pro','enterprise'].map(p =>
-                  `<option value="${p}" ${license.plan === p ? 'selected' : ''}>${(PLAN_COLORS[p] || {label:p}).label}</option>`
-                ).join('')}
-              </select>
-            </label>
-          </div>
-          <div>
-            <label>Estado
-              <select class="input" id="license-status" required>
-                <option value="active" ${license.status === 'active' ? 'selected' : ''}>Activa</option>
-                <option value="suspended" ${license.status === 'suspended' ? 'selected' : ''}>Suspendida</option>
-                <option value="expired" ${license.status === 'expired' ? 'selected' : ''}>Expirada</option>
-              </select>
-            </label>
-          </div>
-          <div>
-            <label>Fecha de vencimiento (opcional)
-              <input class="input" type="date" id="license-expires" value="${expiresStr}" placeholder="Dejar vacío para sin límite">
-            </label>
-          </div>
-          <div class="span2">
-            <label>Razón del cambio (opcional)
-              <input class="input" id="license-reason" placeholder="ej: plan upgrade, payment received, suspension for non-payment">
-            </label>
-          </div>
+    const isNew = !license;
+    const expiresStr = license && license.expires_at ? license.expires_at.split('T')[0] : '';
+    const planOpts = ['free', 'starter', 'pro', 'enterprise'].map(p =>
+      `<option value="${p}" ${license && license.plan === p ? 'selected' : ''}>${(PLAN_COLORS[p] || { label: p }).label}</option>`
+    ).join('');
+
+    UI.modal(isNew ? 'Asignar licencia' : 'Gestionar licencia', `
+      <div class="form-grid">
+        <div class="span2">
+          <label>Plan
+            <select class="input" id="license-plan" required>${planOpts}</select>
+          </label>
         </div>
+        ${!isNew ? `
+        <div>
+          <label>Estado
+            <select class="input" id="license-status" required>
+              <option value="active" ${license.status === 'active' ? 'selected' : ''}>Activa</option>
+              <option value="suspended" ${license.status === 'suspended' ? 'selected' : ''}>Suspendida</option>
+              <option value="expired" ${license.status === 'expired' ? 'selected' : ''}>Expirada</option>
+            </select>
+          </label>
+        </div>` : ''}
+        <div>
+          <label>Fecha de vencimiento (opcional)
+            <input class="input" type="date" id="license-expires" value="${expiresStr}" placeholder="Dejar vacio para sin limite">
+          </label>
+        </div>
+        <div class="span2">
+          <label>Razon ${isNew ? '(opcional)' : '(opcional)'}
+            <input class="input" id="license-reason" placeholder="ej: plan upgrade, pago recibido">
+          </label>
+        </div>
+      </div>
 
+      ${!isNew && history.length ? `
         <hr style="margin:20px 0;">
         <h3 style="font-size:13px;font-weight:600;margin-bottom:12px;">Historial de cambios</h3>
-        ${history.length ? `
-          <table class="table" style="font-size:12px;">
-            <thead><tr><th>Fecha</th><th>Plan</th><th>Estado</th><th>Razón</th></tr></thead>
-            <tbody>
-              ${history.slice(0, 10).map(h => `
-                <tr>
-                  <td>${new Date(h.changed_at).toLocaleDateString('es-ES')}</td>
-                  <td>${h.plan_new || h.plan_old || '-'}</td>
-                  <td><span style="font-size:10px;background:var(--bg-secondary);padding:1px 4px;border-radius:2px;">${h.status_new || h.status_old || '-'}</span></td>
-                  <td>${UI.esc(h.reason || '-')}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        ` : '<p class="muted">Sin cambios registrados</p>'}
-      `, {
-        actions: `
-          <button class="btn" id="m-cancel">Cancelar</button>
-          <button class="btn btn-primary" id="m-save">Guardar cambios</button>
-        `,
-      });
+        <table class="table" style="font-size:12px;">
+          <thead><tr><th>Fecha</th><th>Plan</th><th>Estado</th><th>Razon</th></tr></thead>
+          <tbody>
+            ${history.slice(0, 10).map(h => `
+              <tr>
+                <td>${new Date(h.changed_at).toLocaleDateString('es-ES')}</td>
+                <td>${h.plan_new || h.plan_old || '-'}</td>
+                <td><span style="font-size:10px;background:var(--bg-secondary);padding:1px 4px;border-radius:2px;">${h.status_new || h.status_old || '-'}</span></td>
+                <td>${UI.esc(h.reason || '-')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : (!isNew ? '<hr style="margin:20px 0;"><p class="muted" style="font-size:12px;">Sin cambios registrados</p>' : '')}
+    `, {
+      actions: `
+        <button class="btn" id="m-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="m-save">${isNew ? 'Asignar licencia' : 'Guardar cambios'}</button>
+      `,
+    });
 
-      document.getElementById('m-cancel').onclick = UI.closeModal;
-      document.getElementById('m-save').onclick = async () => {
-        const plan = document.getElementById('license-plan').value;
-        const status = document.getElementById('license-status').value;
-        const expiresAt = document.getElementById('license-expires').value;
-        const reason = document.getElementById('license-reason').value;
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const plan = document.getElementById('license-plan').value;
+      const expiresAt = document.getElementById('license-expires').value;
+      const reason = document.getElementById('license-reason').value;
+      const expiresIso = expiresAt ? new Date(expiresAt + 'T00:00:00Z').toISOString() : null;
 
-        const payload = {
-          plan,
-          status,
-          expires_at: expiresAt ? new Date(expiresAt + 'T00:00:00Z').toISOString() : null,
-          reason: reason || null,
-        };
-
-        try {
-          await Api.patch(`/api/licenses/${orgId}`, payload);
+      try {
+        if (isNew) {
+          await Api.post(`/api/licenses/${orgId}`, {
+            plan,
+            expires_at: expiresIso,
+            reason: reason || 'initial_assignment',
+          });
+          UI.toast('Licencia asignada', 'success');
+        } else {
+          const status = document.getElementById('license-status').value;
+          await Api.patch(`/api/licenses/${orgId}`, {
+            plan,
+            status,
+            expires_at: expiresIso,
+            reason: reason || null,
+          });
           UI.toast('Licencia actualizada', 'success');
-          UI.closeModal();
-          await _renderOrgLicense(orgId);
-        } catch (err) {
-          UI.toast(err.message, 'error');
         }
-      };
-    } catch (err) {
-      UI.toast(err.message, 'error');
-    }
+        UI.closeModal();
+        await _renderOrgLicense(orgId);
+      } catch (err) {
+        UI.toast(err.message, 'error');
+      }
+    };
   }
 
   async function _deactivate(orgId) {

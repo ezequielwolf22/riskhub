@@ -184,7 +184,7 @@ const ViewBcp = (() => {
   }
 
   function _exportBcp() {
-    window.open('/api/reports/bcm?format=pdf', '_blank');
+    window.location.href = '/api/bcp/export';
   }
 
   // Backward compat
@@ -4876,7 +4876,7 @@ const ViewBcp = (() => {
     let subTabsHtml = '<div class="bcm-subtabs">';
     tabs.forEach(t => {
       const activeCls = active === t.id ? ' active' : '';
-      subTabsHtml += '<button class="bcm-subtab' + activeCls + '" onclick="ViewBcp._setSubTab(' + stepN + ',\'' + t.id + '\')">';
+      subTabsHtml += '<button class="bcm-subtab' + activeCls + '" onclick="ViewBcp._setSubTab(\'' + stepN + '\',\'' + t.id + '\')">';
       subTabsHtml += '<i class="ti ' + t.icon + '"></i> ' + t.label + '</button>';
     });
     subTabsHtml += '</div>';

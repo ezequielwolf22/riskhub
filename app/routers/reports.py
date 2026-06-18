@@ -1,5 +1,6 @@
 """Generacion de informes PDF y Excel (Risk Register, SoA, informes IA)."""
 import io
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -19,7 +20,7 @@ from app.database import get_db
 from app.models import (
     AiConfig,
     Asset, Control, ControlImplementation, DPIA, DPIAStatus, Incident, IncidentStatus,
-    Policy, PolicyStatus, ProcessingActivity, Risk, RiskContext, RiskStatus,
+    Policy, PolicyStatus, ProcessingActivity, ReportBrandingConfig, Risk, RiskContext, RiskStatus,
     TreatmentTask, TaskStatus, User,
 )
 from app.security import filter_by_org, get_current_user
@@ -27,7 +28,7 @@ from app.services import report_ai_service
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
-# Colores brand
+# Colores brand por defecto (usados si no hay template configurado)
 BRAND_PURPLE = colors.HexColor("#59008D")
 BRAND_ORANGE = colors.HexColor("#D65200")
 BRAND_GRAY1 = colors.HexColor("#262626")
@@ -35,47 +36,171 @@ BRAND_GRAY3 = colors.HexColor("#9D9D9D")
 BRAND_GRAY5 = colors.HexColor("#E9E9E9")
 
 
-def _styles():
+@dataclass
+class ReportBrand:
+    """Configuracion de marca aplicada a la generacion del informe."""
+    primary_color: str = "#59008D"
+    secondary_color: str = "#D65200"
+    font_family: str = "Helvetica"
+    company_name: str = ""
+    header_title: str = ""
+    footer_text: str = ""
+    cover_subtitle: str = ""
+    logo_path: Optional[str] = None
+
+    @property
+    def primary(self):
+        return colors.HexColor(self.primary_color)
+
+    @property
+    def secondary(self):
+        return colors.HexColor(self.secondary_color)
+
+    @property
+    def font_bold(self):
+        _bold_map = {
+            "Helvetica": "Helvetica-Bold",
+            "Times-Roman": "Times-Bold",
+            "Courier": "Courier-Bold",
+        }
+        return _bold_map.get(self.font_family, "Helvetica-Bold")
+
+
+def _load_brand(db: Session, org_id: int, report_type: str) -> ReportBrand:
+    """Carga el template de marca para un tipo de informe.
+    Prioridad: especifico del tipo > 'all' > defaults."""
+    from pathlib import Path
+
+    def _logo_root():
+        p = Path("/srv/data/branding")
+        if not p.exists():
+            p = Path(__file__).parent.parent.parent / "data" / "branding"
+        return p
+
+    row = None
+    if org_id:
+        row = (
+            db.query(ReportBrandingConfig)
+            .filter(
+                ReportBrandingConfig.organization_id == org_id,
+                ReportBrandingConfig.report_type == report_type,
+            )
+            .first()
+        )
+        if not row:
+            row = (
+                db.query(ReportBrandingConfig)
+                .filter(
+                    ReportBrandingConfig.organization_id == org_id,
+                    ReportBrandingConfig.report_type == "all",
+                )
+                .first()
+            )
+
+    if not row:
+        return ReportBrand()
+
+    logo_path = None
+    if row.logo_filename:
+        p = _logo_root() / row.logo_filename
+        if p.exists():
+            logo_path = str(p)
+
+    return ReportBrand(
+        primary_color=row.primary_color or "#59008D",
+        secondary_color=row.secondary_color or "#D65200",
+        font_family=row.font_family or "Helvetica",
+        company_name=row.company_name or "",
+        header_title=row.header_title or "",
+        footer_text=row.footer_text or "",
+        cover_subtitle=row.cover_subtitle or "",
+        logo_path=logo_path,
+    )
+
+
+def _styles(brand: Optional[ReportBrand] = None):
+    if brand is None:
+        brand = ReportBrand()
     s = getSampleStyleSheet()
-    s.add(ParagraphStyle("TitleBrand", parent=s["Title"], textColor=BRAND_PURPLE,
-                         fontName="Helvetica-Bold", fontSize=22, spaceAfter=6))
-    s.add(ParagraphStyle("SubBrand", parent=s["Normal"], textColor=BRAND_ORANGE,
-                         fontName="Helvetica-Bold", fontSize=12, spaceAfter=12))
-    s.add(ParagraphStyle("H2Brand", parent=s["Heading2"], textColor=BRAND_PURPLE,
-                         fontName="Helvetica-Bold", fontSize=14, spaceBefore=12, spaceAfter=6))
+    s.add(ParagraphStyle("TitleBrand", parent=s["Title"], textColor=brand.primary,
+                         fontName=brand.font_bold, fontSize=22, spaceAfter=6))
+    s.add(ParagraphStyle("SubBrand", parent=s["Normal"], textColor=brand.secondary,
+                         fontName=brand.font_bold, fontSize=12, spaceAfter=12))
+    s.add(ParagraphStyle("H2Brand", parent=s["Heading2"], textColor=brand.primary,
+                         fontName=brand.font_bold, fontSize=14, spaceBefore=12, spaceAfter=6))
     s.add(ParagraphStyle("BodyBrand", parent=s["Normal"], textColor=BRAND_GRAY1,
-                         fontSize=10, leading=13))
+                         fontName=brand.font_family, fontSize=10, leading=13))
     return s
 
 
+def _make_header_footer(brand: Optional[ReportBrand] = None):
+    """Devuelve una funcion de cabecera/pie personalizada con los colores y logo del template."""
+    if brand is None:
+        brand = ReportBrand()
+
+    # Pre-calcular componentes RGB del gradiente
+    try:
+        r1 = int(brand.primary_color[1:3], 16) / 255
+        g1 = int(brand.primary_color[3:5], 16) / 255
+        b1 = int(brand.primary_color[5:7], 16) / 255
+        r2 = int(brand.secondary_color[1:3], 16) / 255
+        g2 = int(brand.secondary_color[3:5], 16) / 255
+        b2 = int(brand.secondary_color[5:7], 16) / 255
+    except (ValueError, IndexError):
+        r1, g1, b1 = 0x59 / 255, 0.0, 0x8D / 255
+        r2, g2, b2 = 0xD6 / 255, 0x52 / 255, 0.0
+
+    footer_label = brand.footer_text or (brand.company_name + " - RiskHub" if brand.company_name else "RiskHub")
+    logo_path = brand.logo_path
+
+    def _header_footer_fn(canvas, doc):
+        canvas.saveState()
+        w, h = A4
+        bar_y = h - 8 * mm
+        steps = 60
+        for i in range(steps):
+            t = i / (steps - 1)
+            canvas.setFillColorRGB(r1 + t * (r2 - r1), g1 + t * (g2 - g1), b1 + t * (b2 - b1))
+            canvas.rect(i * w / steps, bar_y, w / steps + 0.5, 4 * mm, stroke=0, fill=1)
+
+        # Logo en cabecera (esquina superior derecha)
+        if logo_path:
+            try:
+                from reportlab.lib.utils import ImageReader
+                img = ImageReader(logo_path)
+                img_w, img_h = img.getSize()
+                max_h = 6 * mm
+                scale = max_h / img_h
+                canvas.drawImage(
+                    logo_path, w - 20 * mm - img_w * scale, bar_y - 0.5 * mm,
+                    width=img_w * scale, height=img_h * scale,
+                    mask="auto", preserveAspectRatio=True,
+                )
+            except Exception:
+                pass
+
+        canvas.setFont(brand.font_family, 8)
+        canvas.setFillColor(BRAND_GRAY3)
+        canvas.drawString(20 * mm, 10 * mm,
+                          f"{footer_label} - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        canvas.drawRightString(w - 20 * mm, 10 * mm, f"Pagina {doc.page}")
+        canvas.restoreState()
+
+    return _header_footer_fn
+
+
+# Funcion legacy sin brand — para compatibilidad interna
 def _header_footer(canvas, doc):
-    canvas.saveState()
-    # Brand bar superior (gradiente simulado con rectangulos)
-    w, h = A4
-    bar_y = h - 8 * mm
-    steps = 60
-    for i in range(steps):
-        t = i / (steps - 1)
-        r = (1 - t) * 0x59 / 255 + t * 0xD6 / 255
-        g = (1 - t) * 0x00 / 255 + t * 0x52 / 255
-        b = (1 - t) * 0x8D / 255 + t * 0x00 / 255
-        canvas.setFillColorRGB(r, g, b)
-        canvas.rect(i * w / steps, bar_y, w / steps + 0.5, 4 * mm, stroke=0, fill=1)
-    # Texto pie
-    canvas.setFont("Helvetica", 8)
-    canvas.setFillColor(BRAND_GRAY3)
-    canvas.drawString(20 * mm, 10 * mm,
-                      f"RiskHub - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    canvas.drawRightString(w - 20 * mm, 10 * mm, f"Pagina {doc.page}")
-    canvas.restoreState()
+    _make_header_footer()(canvas, doc)
 
 
-def _pdf_response(elements, filename: str):
+def _pdf_response(elements, filename: str, brand: Optional[ReportBrand] = None):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=20*mm, rightMargin=20*mm,
                             topMargin=20*mm, bottomMargin=20*mm)
-    doc.build(elements, onFirstPage=_header_footer, onLaterPages=_header_footer)
+    hf = _make_header_footer(brand)
+    doc.build(elements, onFirstPage=hf, onLaterPages=hf)
     buf.seek(0)
     return StreamingResponse(
         buf, media_type="application/pdf",
@@ -87,7 +212,10 @@ def _pdf_response(elements, filename: str):
 def risk_register(db: Session = Depends(get_db),
                   current_user: User = Depends(get_current_user)):
     """Risk Register (ISO 27005)."""
-    s = _styles()
+    brand = _load_brand(db, current_user.organization_id, "risk_register")
+    BRAND_PURPLE = brand.primary
+    BRAND_ORANGE = brand.secondary
+    s = _styles(brand)
     el = []
     el.append(Paragraph("Risk Register", s["TitleBrand"]))
     el.append(Paragraph("ISO/IEC 27005:2018", s["SubBrand"]))
@@ -186,14 +314,17 @@ def risk_register(db: Session = Depends(get_db),
     ]))
     el.append(t3)
 
-    return _pdf_response(el, "risk_register.pdf")
+    return _pdf_response(el, "risk_register.pdf", brand)
 
 
 @router.get("/soa")
 def statement_of_applicability(db: Session = Depends(get_db),
                                current_user: User = Depends(get_current_user)):
     """Statement of Applicability ISO 27001/27002 — completo con todos los campos normativos."""
-    s = _styles()
+    brand = _load_brand(db, current_user.organization_id, "soa")
+    BRAND_PURPLE = brand.primary
+    BRAND_ORANGE = brand.secondary
+    s = _styles(brand)
     el = []
     now_str = datetime.now().strftime("%d/%m/%Y")
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
@@ -369,7 +500,7 @@ def statement_of_applicability(db: Session = Depends(get_db),
         "Conforme a ISO/IEC 27001:2022 clausula 6.1.3 (Statement of Applicability).</i>",
         s["BodyBrand"]))
 
-    return _pdf_response(el, f"SOA_{org_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf")
+    return _pdf_response(el, f"SOA_{org_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf", brand)
 
 
 # ============================================================
@@ -796,17 +927,21 @@ def management_review(
         },
     ]
 
+    brand = _load_brand(db, current_user.organization_id, "management_review")
     if format == "pdf":
-        return _mgmt_review_pdf(sections, org_name, scope, now_str)
+        return _mgmt_review_pdf(sections, org_name, scope, now_str, brand)
     elif format == "excel":
         return _mgmt_review_excel(sections, org_name, scope, now_str)
     else:
         return _mgmt_review_word(sections, org_name, scope, now_str)
 
 
-def _mgmt_review_pdf(sections, org_name, scope, now_str):
+def _mgmt_review_pdf(sections, org_name, scope, now_str, brand: Optional[ReportBrand] = None):
     """Genera el informe de revision por la direccion en PDF."""
-    s = _styles()
+    if brand is None:
+        brand = ReportBrand()
+    BRAND_PURPLE = brand.primary
+    s = _styles(brand)
     el = []
     el.append(Spacer(1, 20*mm))
     el.append(Paragraph("Informe de Revision por la Direccion", s["TitleBrand"]))
@@ -849,7 +984,7 @@ def _mgmt_review_pdf(sections, org_name, scope, now_str):
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     el.append(ft)
-    return _pdf_response(el, f"revision_direccion_{datetime.now().strftime('%Y%m%d')}.pdf")
+    return _pdf_response(el, f"revision_direccion_{datetime.now().strftime('%Y%m%d')}.pdf", brand)
 
 
 def _mgmt_review_excel(sections, org_name, scope, now_str):
@@ -990,14 +1125,16 @@ REPORT_LABEL = {
 # Informe del Estado del SGSI — multi-modulo, sin IA
 # ============================================================
 
-def _kpi_table(data_rows: list[tuple], s) -> "Table":
+def _kpi_table(data_rows: list[tuple], s, brand: Optional[ReportBrand] = None) -> "Table":
     """Tabla de 2 columnas: etiqueta | valor."""
+    if brand is None:
+        brand = ReportBrand()
     rows = [["Indicador", "Valor"]] + list(data_rows)
     t = Table(rows, colWidths=[110 * mm, 60 * mm])
     style = [
-        ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+        ("BACKGROUND", (0, 0), (-1, 0), brand.primary),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 0), (-1, 0), brand.font_bold),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
         ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
@@ -1016,7 +1153,10 @@ def sgsi_status_report(
 ):
     """Informe del Estado del SGSI — resumen multi-modulo sin IA. Descarga instantanea."""
     from datetime import timezone
-    s = _styles()
+    brand = _load_brand(db, current_user.organization_id, "sgsi_status")
+    BRAND_PURPLE = brand.primary
+    BRAND_ORANGE = brand.secondary
+    s = _styles(brand)
     el = []
 
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
@@ -1056,7 +1196,7 @@ def sgsi_status_report(
         ("Riesgos bajos (nivel < 3)", str(low_r)),
         ("Con plan de tratamiento", str(treated_r)),
         ("Tratamientos vencidos", str(overdue_r)),
-    ], s))
+    ], s, brand))
     el.append(Spacer(1, 8))
 
     # Top riesgos altos
@@ -1109,7 +1249,7 @@ def sgsi_status_report(
         ("Estado: Planificado", str(impl_planned)),
         ("Madurez media (0-5)", f"{avg_mat:.1f}"),
         ("Revisiones vencidas", str(overdue_ctrl)),
-    ], s))
+    ], s, brand))
     el.append(Spacer(1, 10))
 
     # --- Seccion 3: Incidentes ---
@@ -1128,7 +1268,7 @@ def sgsi_status_report(
         ("Incidentes abiertos", str(open_inc)),
         ("Incidentes P1/P2 abiertos (criticos)", str(p1p2)),
         ("Notificaciones NIS2 pendientes", str(nis2_pending)),
-    ], s))
+    ], s, brand))
     el.append(Spacer(1, 10))
 
     # --- Seccion 4: Tareas de tratamiento ---
@@ -1149,7 +1289,7 @@ def sgsi_status_report(
         ("En progreso", str(inprog_t)),
         ("Pendientes", str(pend_t)),
         ("Vencidas sin completar", str(overdue_t)),
-    ], s))
+    ], s, brand))
     el.append(Spacer(1, 10))
 
     # --- Seccion 5: Politicas ---
@@ -1170,7 +1310,7 @@ def sgsi_status_report(
         ("En revision", str(rev_pol)),
         ("Borradores", str(draft_pol)),
         ("Revision vencida", str(overdue_pol)),
-    ], s))
+    ], s, brand))
     el.append(Spacer(1, 10))
 
     # --- Seccion 6: RGPD ---
@@ -1189,7 +1329,7 @@ def sgsi_status_report(
         ("Transferencias fuera de la UE", str(eu_transfer)),
         ("DPIAs totales", str(total_dp)),
         ("DPIAs pendientes de completar", str(pend_dp)),
-    ], s))
+    ], s, brand))
     el.append(Spacer(1, 10))
 
     # --- Seccion 7: Nota metodologica ---
@@ -1224,7 +1364,7 @@ def sgsi_status_report(
     el.append(ref_t)
 
     filename = f"sgsi_status_{now.strftime('%Y%m%d')}.pdf"
-    return _pdf_response(el, filename)
+    return _pdf_response(el, filename, brand)
 
 
 class AiReportIn(BaseModel):
@@ -1257,9 +1397,10 @@ def ai_generate(body: AiReportIn, db: Session = Depends(get_db),
     except Exception as e:
         raise HTTPException(502, f"Error llamando a Claude API: {e}")
 
+    brand = _load_brand(db, current_user.organization_id, body.report_type)
     if body.format == "excel":
         return _ai_report_excel(content, body.report_type)
-    return _ai_report_pdf(content, body.report_type)
+    return _ai_report_pdf(content, body.report_type, brand)
 
 
 def _safe(text, max_chars=None):
@@ -1273,9 +1414,13 @@ def _safe(text, max_chars=None):
     return s.replace("\x00", "").replace("\r", "")
 
 
-def _ai_report_pdf(content: dict, report_type: str):
+def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand] = None):
     """Convierte el JSON de Claude a un PDF con ReportLab."""
-    s = _styles()
+    if brand is None:
+        brand = ReportBrand()
+    BRAND_PURPLE = brand.primary
+    BRAND_ORANGE = brand.secondary
+    s = _styles(brand)
     el = []
     label = REPORT_LABEL.get(report_type, "Informe")
 
@@ -1471,7 +1616,7 @@ def _ai_report_pdf(content: dict, report_type: str):
         add_section("Conclusion", content.get("conclusion"))
 
     fname = f"{report_type}_{datetime.now().strftime('%Y%m%d')}.pdf"
-    return _pdf_response(el, fname)
+    return _pdf_response(el, fname, brand)
 
 
 def _ai_report_excel(content: dict, report_type: str):

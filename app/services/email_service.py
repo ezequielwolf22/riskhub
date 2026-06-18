@@ -37,13 +37,23 @@ def get_settings_for_org(db: Session, org_id: int) -> Optional[EmailSettings]:
     return db.query(EmailSettings).filter_by(organization_id=org_id).first()
 
 
-def send_email(cfg: EmailSettings, recipient: str, subject: str, body_html: str) -> None:
+def send_email(
+    cfg: EmailSettings,
+    recipient: str,
+    subject: str,
+    body_html: str,
+    cc: list[str] | None = None,
+) -> None:
     """Envia un email HTML via SMTP. Lanza RuntimeError si falla."""
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = cfg.smtp_from
     msg["To"] = recipient
+    cc_clean = [a for a in (cc or []) if a and a.strip() and a.strip() != recipient]
+    if cc_clean:
+        msg["Cc"] = ", ".join(cc_clean)
     msg.attach(MIMEText(body_html, "html", "utf-8"))
+    all_recipients = [recipient] + cc_clean
 
     try:
         if cfg.smtp_use_tls:
@@ -57,7 +67,7 @@ def send_email(cfg: EmailSettings, recipient: str, subject: str, body_html: str)
         if cfg.smtp_user:
             srv.login(cfg.smtp_user, _smtp_password(cfg))
 
-        srv.sendmail(cfg.smtp_from, recipient, msg.as_string())
+        srv.sendmail(cfg.smtp_from, all_recipients, msg.as_string())
         srv.quit()
     except Exception as exc:
         raise RuntimeError(f"Error SMTP: {exc}") from exc

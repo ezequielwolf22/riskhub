@@ -2117,7 +2117,13 @@ def _run_questionnaire_schedules() -> None:
 
 
 def _notify_questionnaire_submitted(questionnaire_id: int, org_id: int) -> None:
-    """Notifica por email cuando un proveedor responde un cuestionario planificado."""
+    """Notifica por email cuando un proveedor responde cualquier cuestionario.
+
+    Destinatarios (sin duplicados):
+    1. notify_email del propio cuestionario.
+    2. notify_email de la planificacion activa del mismo proveedor.
+    3. cc_email del proveedor.
+    """
     from app.database import SessionLocal
     from app.models import QuestionnaireSchedule, SupplierQuestionnaire, EmailSettings
 
@@ -2126,7 +2132,13 @@ def _notify_questionnaire_submitted(questionnaire_id: int, org_id: int) -> None:
         q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == questionnaire_id).first()
         if not q:
             return
-        # Buscar si este cuestionario corresponde a alguna planificacion del mismo proveedor
+
+        # Recoger todos los destinatarios relevantes
+        recipients: set[str] = set()
+        if getattr(q, "notify_email", None):
+            recipients.add(q.notify_email.strip())
+
+        # Planificacion activa del proveedor
         sched = (
             db.query(QuestionnaireSchedule)
             .filter(
@@ -2136,12 +2148,22 @@ def _notify_questionnaire_submitted(questionnaire_id: int, org_id: int) -> None:
             )
             .first()
         )
-        if not sched or not sched.notify_email:
+        if sched and sched.notify_email:
+            recipients.add(sched.notify_email.strip())
+
+        # CC del proveedor
+        supplier = q.supplier
+        if supplier and getattr(supplier, "cc_email", None):
+            recipients.add(supplier.cc_email.strip())
+
+        if not recipients:
             return
+
         cfg = db.query(EmailSettings).filter(EmailSettings.organization_id == org_id).first()
         if not cfg or not cfg.smtp_host:
             return
-        supplier_name = q.supplier.name if q.supplier else "proveedor"
+
+        supplier_name = supplier.name if supplier else "proveedor"
         subject = f"RiskHub — {supplier_name} ha respondido el cuestionario {q.code}"
         body_html = f"""
         <div style="font-family:Inter,Arial,sans-serif;color:#1f2937;max-width:600px;">
@@ -2149,18 +2171,55 @@ def _notify_questionnaire_submitted(questionnaire_id: int, org_id: int) -> None:
             <h1 style="color:#fff;margin:0;font-size:18px;">RiskHub — Cuestionario respondido</h1>
           </div>
           <div style="padding:24px;">
-            <p>El proveedor <strong>{UI.esc(supplier_name)}</strong> ha respondido el cuestionario
-            <strong>{UI.esc(q.code)} — {UI.esc(q.title)}</strong>.</p>
+            <p>El proveedor <strong>{supplier_name}</strong> ha respondido el cuestionario
+            <strong>{q.code} — {q.title}</strong>.</p>
             <p>Puntuacion obtenida: <strong>{q.score if q.score is not None else '-'}/100</strong></p>
             <p>Accede a RiskHub para revisar las respuestas y lanzar el analisis de IA.</p>
           </div>
         </div>
         """
         from app.services import email_service
+        recipients_list = list(recipients)
+        primary = recipients_list[0]
+        cc_list = recipients_list[1:] if len(recipients_list) > 1 else None
         try:
-            email_service.send_email(cfg, sched.notify_email, subject, body_html)
+            email_service.send_email(cfg, primary, subject, body_html, cc=cc_list)
         except Exception as exc:
             logger.warning("Error enviando notificacion de respuesta: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_supplier_monitoring() -> None:
+    """Monitorea semanalmente la disponibilidad web, SSL y DNS de todos los proveedores
+    que tienen website o contact_email configurado. Crea ExternalFinding por cada problema
+    detectado, enlazado al proveedor."""
+    from app.database import SessionLocal
+    from app.models import Supplier
+
+    db = SessionLocal()
+    try:
+        suppliers = db.query(Supplier).filter(
+            (Supplier.website != None) | (Supplier.contact_email != None)  # noqa: E711
+        ).all()
+        if not suppliers:
+            return
+
+        from app.services.supplier_monitoring_service import scan_supplier
+
+        total_findings = 0
+        for s in suppliers:
+            try:
+                findings = scan_supplier(db, s, s.organization_id)
+                total_findings += len(findings)
+            except Exception as exc:
+                logger.warning("Error monitorizando proveedor %s: %s", getattr(s, "code", "?"), exc)
+
+        if total_findings:
+            db.commit()
+            logger.info("Monitoreo de proveedores completado: %d hallazgos creados/actualizados.", total_findings)
+        else:
+            logger.debug("Monitoreo de proveedores: todos los proveedores accesibles.")
     finally:
         db.close()
 
@@ -2414,6 +2473,15 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),
         id="questionnaire_schedules",
         name="Envio periodico de cuestionarios planificados",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Monitoreo de proveedores: disponibilidad web, SSL, DNS (semanal)
+    _scheduler.add_job(
+        func=_run_supplier_monitoring,
+        trigger=IntervalTrigger(hours=168),  # semanal
+        id="supplier_monitoring",
+        name="Monitoreo semanal de disponibilidad de proveedores",
         replace_existing=True,
         misfire_grace_time=3600,
     )

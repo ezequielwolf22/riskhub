@@ -135,6 +135,7 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
         questions=questions,
         expires_at=expires,
         notes=body.notes,
+        notify_email=body.notify_email or None,
         created_by_id=current_user.id,
         organization_id=current_user.organization_id,
     )
@@ -239,14 +240,21 @@ def send_questionnaire(qid: int, request: Request, db: Session = Depends(get_db)
       <p style="font-size:13px;color:#6b7280;">Fecha limite: {expires}. No necesita crear cuenta.</p>
     </div>
     """
+    # CC: cc_email del proveedor y notify_email del cuestionario
+    cc_addresses = []
+    if getattr(supplier, "cc_email", None):
+        cc_addresses.append(supplier.cc_email.strip())
+    if getattr(q, "notify_email", None) and q.notify_email.strip() not in cc_addresses + [recipient]:
+        cc_addresses.append(q.notify_email.strip())
     from app.services import email_service
     try:
-        email_service.send_email(cfg, recipient, subject, body_html)
+        email_service.send_email(cfg, recipient, subject, body_html, cc=cc_addresses or None)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"No se pudo enviar el email: {exc}")
 
-    log_action(db, current_user.id, "send", "supplier_questionnaire", str(q.id), {"recipient": recipient})
-    return {"sent": True, "recipient": recipient, "link": link}
+    log_action(db, current_user.id, "send", "supplier_questionnaire", str(q.id),
+               {"recipient": recipient, "cc": cc_addresses})
+    return {"sent": True, "recipient": recipient, "cc": cc_addresses, "link": link}
 
 
 # ---- Flujo dos fases: profiling → assessment ----

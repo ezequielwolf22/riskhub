@@ -1,13 +1,23 @@
-/* Vista Informes — PDF, Excel e informes generados por IA. */
+/* Vista Informes — PDF, Excel, informes IA y plantillas de marca. */
 const ViewReports = {
+
+  _tab: 'reports',  // 'reports' | 'templates'
 
   render(main) {
     main.innerHTML = UI.sectionHeader(
       'Informes',
       'Documentos para auditoría, comités y dirección — PDF y Excel'
     ) + `
-      <div id="reports-content">
+      <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0;">
+        <button id="tab-reports" class="tab-btn tab-btn-active" onclick="ViewReports._switchTab('reports')">
+          Generar informes
+        </button>
+        <button id="tab-templates" class="tab-btn" onclick="ViewReports._switchTab('templates')">
+          Plantillas de marca
+        </button>
+      </div>
 
+      <div id="panel-reports">
         <!-- Informes estaticos -->
         <div class="card" style="margin-bottom:16px;">
           <h3 style="margin-bottom:4px;">Informes del registro</h3>
@@ -158,11 +168,256 @@ const ViewReports = {
             estadísticas del registro y el contexto organizacional configurado.
           </div>
         </div>
+      </div>
 
-      </div>`;
-    // Async: populate BCP post-mortem list
+      <div id="panel-templates" style="display:none;"></div>
+    `;
+
     this._loadBcpActivations();
   },
+
+  _switchTab(tab) {
+    this._tab = tab;
+    document.getElementById('panel-reports').style.display = tab === 'reports' ? '' : 'none';
+    document.getElementById('panel-templates').style.display = tab === 'templates' ? '' : 'none';
+    document.getElementById('tab-reports').className = 'tab-btn' + (tab === 'reports' ? ' tab-btn-active' : '');
+    document.getElementById('tab-templates').className = 'tab-btn' + (tab === 'templates' ? ' tab-btn-active' : '');
+    if (tab === 'templates') this._renderTemplates();
+  },
+
+  // ── PLANTILLAS ──────────────────────────────────────────────
+
+  _REPORT_TYPES: [
+    { id: 'all',                label: 'Global (todos los informes)', desc: 'Se aplica a cualquier informe que no tenga plantilla especifica.' },
+    { id: 'risk_register',      label: 'Risk Register',              desc: 'PDF de riesgos ordenados por nivel residual.' },
+    { id: 'soa',                label: 'Statement of Applicability', desc: 'Declaracion de aplicabilidad ISO 27002:2022.' },
+    { id: 'sgsi_status',        label: 'Estado del SGSI',            desc: 'Informe ejecutivo multi-modulo.' },
+    { id: 'management_review',  label: 'Revision por la Direccion',  desc: 'ISO 27001:2022 clausula 9.3.' },
+    { id: 'treatment_plan',     label: 'Plan de Tratamiento (IA)',   desc: 'Narrativa de tratamiento generada por Claude.' },
+    { id: 'executive_dashboard',label: 'Dashboard Ejecutivo (IA)',   desc: 'Postura de riesgo para la Direccion.' },
+    { id: 'committee_minutes',  label: 'Acta de Comite (IA)',        desc: 'Acta formal del comite de seguridad.' },
+    { id: 'followup_report',    label: 'Seguimiento ISO 27005 (IA)', desc: 'Monitoreo y mejora continua.' },
+  ],
+
+  async _renderTemplates() {
+    const wrap = document.getElementById('panel-templates');
+    wrap.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Cargando...</p>';
+    try {
+      const list = await Api.get('/api/report-templates');
+      const byType = {};
+      list.forEach(t => { byType[t.report_type] = t; });
+
+      wrap.innerHTML = `
+        <div class="card" style="margin-bottom:16px;">
+          <h3 style="margin-bottom:4px;">Plantillas de marca</h3>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+            Personaliza colores, logo, fuente y textos para cada tipo de informe.
+            La plantilla <b>Global</b> se aplica a todos los que no tengan configuracion especifica.
+          </p>
+          <div style="display:grid;gap:10px;">
+            ${this._REPORT_TYPES.map(rt => {
+              const t = byType[rt.id];
+              const hasTemplate = !!t;
+              const primaryColor = t?.primary_color || '#59008D';
+              const secondaryColor = t?.secondary_color || '#D65200';
+              return `
+              <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;
+                          padding:14px 16px;display:flex;align-items:center;gap:14px;">
+                <div style="display:flex;gap:4px;flex-shrink:0;">
+                  <div style="width:14px;height:14px;border-radius:3px;background:${UI.esc(primaryColor)};border:1px solid var(--border);"></div>
+                  <div style="width:14px;height:14px;border-radius:3px;background:${UI.esc(secondaryColor)};border:1px solid var(--border);"></div>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-weight:600;font-size:14px;">${UI.esc(rt.label)}</div>
+                  <div style="font-size:12px;color:var(--text-muted);">${UI.esc(rt.desc)}</div>
+                </div>
+                ${hasTemplate ? `<span class="badge badge-success" style="font-size:10px;flex-shrink:0;">Personalizado</span>` : `<span class="badge badge-muted" style="font-size:10px;flex-shrink:0;">Por defecto</span>`}
+                <button class="btn btn-sm btn-primary" style="flex-shrink:0;" onclick="ViewReports._openTemplateModal('${rt.id}','${UI.esc(rt.label)}')">
+                  Configurar
+                </button>
+                ${hasTemplate ? `<button class="btn btn-sm" style="flex-shrink:0;color:#DC2626;border-color:#DC2626;" onclick="ViewReports._deleteTemplate('${rt.id}')">
+                  Restablecer
+                </button>` : ''}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    } catch (e) {
+      wrap.innerHTML = `<p style="color:var(--danger);">Error al cargar plantillas: ${UI.esc(e.message)}</p>`;
+    }
+  },
+
+  async _openTemplateModal(reportType, label) {
+    let current = {};
+    try {
+      current = await Api.get(`/api/report-templates/${reportType}`);
+    } catch (_) {}
+
+    const modalId = 'modal-report-template';
+    UI.modal({
+      id: modalId,
+      title: `Plantilla: ${label}`,
+      width: 560,
+      body: `
+        <div style="display:grid;gap:16px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label style="font-size:13px;font-weight:600;">
+              Color primario
+              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                <input type="color" id="tpl-primary" value="${current.primary_color || '#59008D'}"
+                       style="width:44px;height:36px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:2px;">
+                <input type="text" id="tpl-primary-hex" value="${current.primary_color || '#59008D'}"
+                       maxlength="7" style="flex:1;font-family:monospace;"
+                       oninput="document.getElementById('tpl-primary').value=this.value">
+              </div>
+            </label>
+            <label style="font-size:13px;font-weight:600;">
+              Color secundario
+              <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                <input type="color" id="tpl-secondary" value="${current.secondary_color || '#D65200'}"
+                       style="width:44px;height:36px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:2px;">
+                <input type="text" id="tpl-secondary-hex" value="${current.secondary_color || '#D65200'}"
+                       maxlength="7" style="font-family:monospace;"
+                       oninput="document.getElementById('tpl-secondary').value=this.value">
+              </div>
+            </label>
+          </div>
+
+          <label style="font-size:13px;font-weight:600;">
+            Fuente
+            <select id="tpl-font" style="width:100%;margin-top:4px;">
+              ${['Helvetica','Times-Roman','Courier'].map(f =>
+                `<option value="${f}" ${(current.font_family||'Helvetica')===f?'selected':''}>${f}</option>`
+              ).join('')}
+            </select>
+          </label>
+
+          <label style="font-size:13px;font-weight:600;">
+            Nombre de empresa (aparece en cabecera y pie)
+            <input type="text" id="tpl-company" value="${UI.esc(current.company_name||'')}"
+                   placeholder="Ej: Acme Corp S.L." style="width:100%;margin-top:4px;">
+          </label>
+
+          <label style="font-size:13px;font-weight:600;">
+            Titulo de cabecera (opcional)
+            <input type="text" id="tpl-header-title" value="${UI.esc(current.header_title||'')}"
+                   placeholder="Ej: Confidencial — Solo uso interno" style="width:100%;margin-top:4px;">
+          </label>
+
+          <label style="font-size:13px;font-weight:600;">
+            Texto de pie de pagina (opcional — sobreescribe el predeterminado)
+            <input type="text" id="tpl-footer" value="${UI.esc(current.footer_text||'')}"
+                   placeholder="Ej: Acme Corp — Clasificado: Confidencial" style="width:100%;margin-top:4px;">
+          </label>
+
+          <label style="font-size:13px;font-weight:600;">
+            Subtitulo de portada (opcional)
+            <input type="text" id="tpl-subtitle" value="${UI.esc(current.cover_subtitle||'')}"
+                   placeholder="Ej: Ejercicio 2025 — Para uso del Comite de Direccion" style="width:100%;margin-top:4px;">
+          </label>
+
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Logo (PNG, JPG o WebP — max 2 MB)</div>
+            ${current.has_logo ? `
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <img src="/api/report-templates/${reportType}/logo" alt="Logo"
+                     style="max-height:40px;max-width:160px;object-fit:contain;border:1px solid var(--border);border-radius:6px;padding:4px;">
+                <button class="btn btn-sm" style="color:#DC2626;border-color:#DC2626;"
+                        onclick="ViewReports._deleteLogo('${reportType}')">Eliminar logo</button>
+              </div>` : ''}
+            <input type="file" id="tpl-logo" accept=".png,.jpg,.jpeg,.webp" style="font-size:13px;">
+          </div>
+
+          <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-muted);">
+            Los cambios se aplican a los proximos informes generados. Los informes ya descargados no se modifican.
+          </div>
+        </div>
+      `,
+      actions: [
+        { label: 'Cancelar', variant: 'secondary', action: () => UI.closeModal(modalId) },
+        { label: 'Guardar plantilla', variant: 'primary', action: () => ViewReports._saveTemplate(reportType, modalId) },
+      ],
+    });
+
+    // Sincronizar color picker <-> hex input
+    document.getElementById('tpl-primary').addEventListener('input', e => {
+      document.getElementById('tpl-primary-hex').value = e.target.value;
+    });
+    document.getElementById('tpl-secondary').addEventListener('input', e => {
+      document.getElementById('tpl-secondary-hex').value = e.target.value;
+    });
+  },
+
+  async _saveTemplate(reportType, modalId) {
+    const primaryColor = document.getElementById('tpl-primary-hex').value.trim();
+    const secondaryColor = document.getElementById('tpl-secondary-hex').value.trim();
+    if (!/^#[0-9A-Fa-f]{6}$/.test(primaryColor)) {
+      UI.toast('Color primario no valido. Usa formato #RRGGBB', 'error'); return;
+    }
+    if (!/^#[0-9A-Fa-f]{6}$/.test(secondaryColor)) {
+      UI.toast('Color secundario no valido. Usa formato #RRGGBB', 'error'); return;
+    }
+    try {
+      await Api.put(`/api/report-templates/${reportType}`, {
+        primary_color: primaryColor,
+        secondary_color: secondaryColor,
+        font_family: document.getElementById('tpl-font').value,
+        company_name: document.getElementById('tpl-company').value.trim() || null,
+        header_title: document.getElementById('tpl-header-title').value.trim() || null,
+        footer_text: document.getElementById('tpl-footer').value.trim() || null,
+        cover_subtitle: document.getElementById('tpl-subtitle').value.trim() || null,
+      });
+
+      // Subir logo si se selecciono uno
+      const logoInput = document.getElementById('tpl-logo');
+      if (logoInput && logoInput.files[0]) {
+        const fd = new FormData();
+        fd.append('file', logoInput.files[0]);
+        const tok = Api.token();
+        const resp = await fetch(`/api/report-templates/${reportType}/logo`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + tok },
+          body: fd,
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+          throw new Error('Error subiendo logo: ' + (err.detail || resp.statusText));
+        }
+      }
+
+      UI.closeModal(modalId);
+      UI.toast('Plantilla guardada correctamente', 'success');
+      this._renderTemplates();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  async _deleteTemplate(reportType) {
+    if (!confirm('Esto restaurara los valores por defecto de RiskHub para este tipo de informe. Continuar?')) return;
+    try {
+      await Api.del(`/api/report-templates/${reportType}`);
+      UI.toast('Plantilla restablecida a valores por defecto', 'success');
+      this._renderTemplates();
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  async _deleteLogo(reportType) {
+    if (!confirm('Eliminar el logo de esta plantilla?')) return;
+    try {
+      await Api.del(`/api/report-templates/${reportType}/logo`);
+      UI.toast('Logo eliminado', 'success');
+      // Reabrir el modal para refrescar
+      const rt = this._REPORT_TYPES.find(r => r.id === reportType);
+      this._openTemplateModal(reportType, rt ? rt.label : reportType);
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  // ── BCP POST-MORTEM ─────────────────────────────────────────
 
   async _loadBcpActivations() {
     const wrap = document.getElementById('bcp-pm-list');
@@ -199,7 +454,6 @@ const ViewReports = {
     if (typeof ViewBcp !== 'undefined' && ViewBcp._openActivationReport) {
       ViewBcp._openActivationReport(actId);
     } else {
-      // Navigate to BCP and open the report there
       if (typeof App !== 'undefined' && App.navigate) {
         App.navigate('bcp');
       } else {
@@ -212,6 +466,8 @@ const ViewReports = {
       }, 500);
     }
   },
+
+  // ── DESCARGAS ───────────────────────────────────────────────
 
   _download(type) {
     const actions = {
@@ -237,12 +493,6 @@ const ViewReports = {
         UI.toast('Generando Statement of Applicability...', 'info');
         const today = new Date().toISOString().slice(0,10);
         Api.download('/api/reports/soa', `SOA_${today}.pdf`)
-           .catch(e => UI.toast(e.message, 'error'));
-      },
-      'rr-excel': () => {
-        UI.toast('Generando Dashboard Ejecutivo Excel...', 'info');
-        const today = new Date().toISOString().slice(0,10);
-        Api.download('/api/reports/risk-register-excel', `dashboard_ejecutivo_${today}.xlsx`)
            .catch(e => UI.toast(e.message, 'error'));
       },
       'mgmt-review-pdf': () => {
