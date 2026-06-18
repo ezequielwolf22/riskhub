@@ -219,6 +219,7 @@ def _plan_d(p: BCPPlan) -> dict:
         "documentation_links": getattr(p, "documentation_links", None),
         "related_documents": getattr(p, "related_documents", None),
         "authorized_activators": getattr(p, "authorized_activators", None),
+        "parent_plan_id": getattr(p, "parent_plan_id", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -1704,19 +1705,29 @@ def _seq_d(s):
 
 
 def _act_d(a):
+    activated_by_name = ""
+    if getattr(a, "activated_by", None):
+        activated_by_name = a.activated_by.email or ""
     return {
         "id": a.id, "code": a.code, "title": a.title, "status": a.status,
         "location_id": a.location_id, "activated_plan_ids": a.activated_plan_ids,
         "incident_id": a.incident_id,
         "activated_at": a.activated_at.isoformat() if a.activated_at else None,
+        "activated_by_id": a.activated_by_id,
+        "activated_by_name": activated_by_name,
         "closed_at": a.closed_at.isoformat() if a.closed_at else None,
         "rto_objective_hours": a.rto_objective_hours,
         "rto_actual_hours": a.rto_actual_hours,
         "systems_status": a.systems_status or [],
         "log_count": len(a.situation_log or []),
-        "situation_log": (a.situation_log or [])[-20:],
+        "situation_log": a.situation_log or [],
         "checklist_items": a.checklist_items or [],
+        "root_cause": a.root_cause,
         "lessons_learned": a.lessons_learned,
+        "improvement_actions": a.improvement_actions,
+        "executive_summary": getattr(a, "executive_summary", None),
+        "affected_services": getattr(a, "affected_services", None) or [],
+        "ai_summary": getattr(a, "ai_summary", None),
         "created_at": a.created_at.isoformat() if a.created_at else None,
     }
 
@@ -2154,15 +2165,23 @@ def add_log_entry(aid: int, body: dict, db: Session = Depends(get_db),
                   u: User = Depends(require_analyst)):
     act = _chk_act(db, aid, _org(u))
     log = list(act.situation_log or [])
-    log.append({
+    valid_types = {"accion", "nota", "escalada", "resolucion", "decision", "comunicacion", "action"}
+    entry_type = body.get("entry_type") or body.get("type", "accion")
+    if entry_type not in valid_types:
+        entry_type = "accion"
+    entry = {
+        "id": len(log) + 1,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_id": u.id, "user_email": u.email,
-        "type": body.get("type", "action"),
-        "text": str(body.get("text", ""))[:2000],
-    })
+        "entry_type": entry_type,
+        "text": str(body.get("text", "") or body.get("message", ""))[:2000],
+    }
+    if body.get("action_owner"):
+        entry["action_owner"] = str(body["action_owner"])[:255]
+    log.append(entry)
     act.situation_log = log
     db.commit()
-    return {"entries": len(log)}
+    return {"entries": len(log), "entry": entry}
 
 
 @router.patch("/activations/{aid}/systems")
@@ -2769,3 +2788,329 @@ def bcm_ai_quick(
         messages=[{"role": "user", "content": body.message}],
     )
     return {"response": msg.content[0].text}
+
+
+# ── ACTIVACIONES: endpoints adicionales ───────────────────────────────────────
+
+@router.get("/activations/{aid}")
+def get_activation(aid: int, db: Session = Depends(get_db),
+                   u: User = Depends(get_current_user)):
+    act = _chk_act(db, aid, _org(u))
+    d = _act_d(act)
+    attachments = db.query(BCMEvidenceItem).filter_by(
+        organization_id=_org(u), linked_activation_id=aid
+    ).order_by(BCMEvidenceItem.created_at.desc()).all()
+    d["attachments"] = [_evid_d(e) for e in attachments]
+    return d
+
+
+@router.patch("/activations/{aid}")
+def update_activation(aid: int, body: dict, db: Session = Depends(get_db),
+                      u: User = Depends(require_analyst)):
+    act = _chk_act(db, aid, _org(u))
+    allowed = {"root_cause", "lessons_learned", "improvement_actions",
+               "executive_summary", "affected_services", "rto_objective_hours"}
+    for k, v in body.items():
+        if k in allowed:
+            setattr(act, k, v)
+    db.commit()
+    return _act_d(act)
+
+
+@router.post("/activations/{aid}/attachments", status_code=201)
+async def upload_activation_attachment(
+    aid: int,
+    title: str,
+    entry_type: str = "file",
+    description: Optional[str] = None,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    u: User = Depends(require_analyst),
+):
+    """Sube un adjunto a la sala de crisis (PDF, DOCX, imagen, Excel)."""
+    import hashlib
+    act = _chk_act(db, aid, _org(u))
+    ALLOWED_MIME = {
+        "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword", "text/plain", "text/csv",
+        "image/png", "image/jpeg", "image/gif", "image/webp",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+    }
+    content = await file.read()
+    if len(content) > 30 * 1024 * 1024:
+        raise HTTPException(413, "Archivo demasiado grande (max 30 MB)")
+    sha256 = hashlib.sha256(content).hexdigest()
+    from pathlib import Path
+    doc_root = Path(settings.document_storage_path)
+    doc_root.mkdir(parents=True, exist_ok=True)
+    safe_name = "".join(c for c in (file.filename or "file") if c.isalnum() or c in "._-")
+    fpath = doc_root / f"act_{aid}_{sha256[:8]}_{safe_name}"
+    fpath.write_bytes(content)
+    item = BCMEvidenceItem(
+        organization_id=_org(u),
+        linked_activation_id=aid,
+        evidence_type=entry_type,
+        title=title,
+        description=description,
+        file_path=str(fpath),
+        file_name=file.filename,
+        file_size=len(content),
+        mime_type=file.content_type,
+        sha256_hash=sha256,
+        tags=[],
+        uploaded_by_id=u.id,
+        is_current=True,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    log_action(db, u.id, "upload", "bcm_activation_attachment", str(item.id),
+               {"activation_id": aid, "title": title})
+    return _evid_d(item)
+
+
+@router.get("/activations/{aid}/attachments")
+def list_activation_attachments(aid: int, db: Session = Depends(get_db),
+                                u: User = Depends(get_current_user)):
+    _chk_act(db, aid, _org(u))
+    items = db.query(BCMEvidenceItem).filter_by(
+        organization_id=_org(u), linked_activation_id=aid
+    ).order_by(BCMEvidenceItem.created_at.desc()).all()
+    return [_evid_d(e) for e in items]
+
+
+@router.delete("/activations/{aid}/attachments/{eid}", status_code=204)
+def delete_activation_attachment(aid: int, eid: int,
+                                  db: Session = Depends(get_db),
+                                  u: User = Depends(require_analyst)):
+    _chk_act(db, aid, _org(u))
+    item = db.get(BCMEvidenceItem, eid)
+    if not item or item.organization_id != _org(u) or item.linked_activation_id != aid:
+        raise HTTPException(404)
+    try:
+        from pathlib import Path
+        if item.file_path:
+            Path(item.file_path).unlink(missing_ok=True)
+    except Exception:
+        pass
+    db.delete(item)
+    db.commit()
+
+
+@router.post("/activations/{aid}/ai-summary")
+def generate_activation_ai_summary(aid: int, db: Session = Depends(get_db),
+                                    u: User = Depends(require_analyst)):
+    """Genera un resumen IA de toda la evidencia y el log de la activacion."""
+    act = _chk_act(db, aid, _org(u))
+    attachments = db.query(BCMEvidenceItem).filter_by(
+        organization_id=_org(u), linked_activation_id=aid
+    ).all()
+
+    log_text = "\n".join(
+        f"[{e.get('timestamp','')[:16]}] ({e.get('entry_type','accion')}) {e.get('text','')}"
+        for e in (act.situation_log or [])
+    )
+    att_text = "\n".join(
+        f"- {a.title} ({a.mime_type or ''}, {round((a.file_size or 0)/1024)}KB): {a.description or ''}"
+        for a in attachments
+    )
+    checklist_text = "\n".join(
+        f"- [{i.get('status','pending')}] {i.get('title','')}"
+        for i in (act.checklist_items or [])
+    )
+
+    prompt = (
+        f"Eres un experto en gestion de incidentes de continuidad de negocio (ISO 22301).\n"
+        f"Analiza la siguiente informacion de la activacion BCM {act.code} - {act.title} "
+        f"y genera un resumen ejecutivo estructurado en castellano con:\n"
+        f"1. Resumen del incidente\n2. Cronologia clave\n3. Estado de la recuperacion\n"
+        f"4. Evidencia adjunta relevante\n5. Acciones pendientes\n\n"
+        f"TIMELINE DE EVENTOS:\n{log_text or 'Sin eventos'}\n\n"
+        f"ADJUNTOS ({len(attachments)}):\n{att_text or 'Sin adjuntos'}\n\n"
+        f"CHECKLIST:\n{checklist_text or 'Sin checklist'}\n\n"
+        f"Activado: {act.activated_at.isoformat()[:16] if act.activated_at else '?'} | "
+        f"Estado: {act.status}"
+    )
+
+    try:
+        import anthropic
+    except ImportError:
+        raise HTTPException(503, "Paquete anthropic no disponible")
+
+    api_key = settings.anthropic_api_key
+    if not api_key:
+        raise HTTPException(503, "API key IA no configurada")
+
+    client = anthropic.Anthropic(api_key=api_key)
+    msg = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1200,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    summary = msg.content[0].text
+    act.ai_summary = summary
+    db.commit()
+    return {"summary": summary}
+
+
+@router.get("/activations/{aid}/report")
+def activation_report(aid: int, db: Session = Depends(get_db),
+                      u: User = Depends(get_current_user)):
+    """Retorna los datos completos para el informe post-mortem de la activacion."""
+    act = _chk_act(db, aid, _org(u))
+    attachments = db.query(BCMEvidenceItem).filter_by(
+        organization_id=_org(u), linked_activation_id=aid
+    ).all()
+    plans = []
+    for pid in (act.activated_plan_ids or []):
+        p = db.get(BCPPlan, pid)
+        if p:
+            plans.append({"id": p.id, "code": p.code, "name": p.name, "plan_type": p.plan_type})
+
+    # Linked incident
+    linked_inc = None
+    if act.incident_id:
+        from app.models import Incident
+        inc = db.get(Incident, act.incident_id)
+        if inc:
+            linked_inc = {
+                "id": inc.id, "code": inc.code, "title": inc.title,
+                "severity": inc.severity.value if hasattr(inc.severity, 'value') else str(inc.severity),
+                "detected_at": inc.detected_at.isoformat() if inc.detected_at else None,
+                "root_cause": inc.root_cause,
+            }
+
+    duration_minutes = None
+    if act.closed_at and act.activated_at:
+        duration_minutes = int(
+            (act.closed_at.replace(tzinfo=timezone.utc) - act.activated_at.replace(tzinfo=timezone.utc)).total_seconds() / 60
+        )
+
+    return {
+        "activation": _act_d(act),
+        "plans": plans,
+        "linked_incident": linked_inc,
+        "attachments": [_evid_d(e) for e in attachments],
+        "duration_minutes": duration_minutes,
+        "log_entries_count": len(act.situation_log or []),
+        "checklist_done": sum(1 for i in (act.checklist_items or []) if i.get("status") == "done"),
+        "checklist_total": len(act.checklist_items or []),
+    }
+
+
+# ── PLAN VERSIONING — crear nueva version editable ───────────────────────────
+
+@router.post("/plans/{pid}/new-version", status_code=201)
+def create_plan_new_version(pid: int, db: Session = Depends(get_db),
+                             u: User = Depends(require_analyst)):
+    """Crea un borrador editable a partir de un plan aprobado u obsoleto."""
+    original = db.get(BCPPlan, pid)
+    if not original or original.organization_id != _org(u):
+        raise HTTPException(404)
+    if original.status not in ("approved", "obsolete", "deprecated", "under_review"):
+        raise HTTPException(422, "Solo se puede crear una nueva version de planes aprobados o en revision")
+
+    # Incrementar version string
+    try:
+        parts = (original.version or "1.0").split(".")
+        new_version = f"{parts[0]}.{int(parts[1]) + 1}" if len(parts) == 2 else f"{original.version}.1"
+    except Exception:
+        new_version = f"{original.version or '1'}.1"
+
+    n = db.query(BCPPlan).filter_by(organization_id=_org(u)).count()
+    new_plan = BCPPlan(
+        organization_id=_org(u),
+        code=original.code,
+        plan_type=original.plan_type,
+        name=original.name,
+        version=new_version,
+        status="draft",
+        scope=original.scope,
+        activation_criteria=original.activation_criteria,
+        content_summary=original.content_summary,
+        process_ids=list(original.process_ids or []),
+        team_members=list(original.team_members or []),
+        sections=list(original.sections or []),
+        roles_matrix=list(original.roles_matrix or []),
+        contact_list=list(original.contact_list or []),
+        system_dependencies=list(original.system_dependencies or []),
+        kpis=list(original.kpis or []),
+        plan_owner_name=original.plan_owner_name,
+        classification=original.classification,
+        dr_site=dict(original.dr_site) if original.dr_site else None,
+        backup_policy=dict(original.backup_policy) if original.backup_policy else None,
+        crisis_comms=dict(original.crisis_comms) if original.crisis_comms else None,
+        location_id=original.location_id,
+        checklist_template=list(original.checklist_template or []),
+        installation_type=original.installation_type,
+        data_classification_level=original.data_classification_level,
+        gdpr_data=original.gdpr_data,
+        affected_users_count=original.affected_users_count,
+        documentation_links=list(original.documentation_links or []),
+        related_documents=list(original.related_documents or []),
+        authorized_activators=list(original.authorized_activators or []),
+        parent_plan_id=pid,
+    )
+    db.add(new_plan)
+    db.commit()
+    db.refresh(new_plan)
+    log_action(db, u.id, "create_version", "bcp_plan", str(new_plan.id),
+               {"code": new_plan.code, "version": new_version, "parent_id": pid})
+    return _plan_d(new_plan)
+
+
+# ── CONTEXT AUTOFILL — sugerencias automaticas para el wizard BCM ─────────────
+
+@router.get("/context/autofill")
+def context_autofill(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Sugiere valores para el wizard BCM a partir de activos, documentos y proveedores."""
+    from app.models import Asset, AiDocument, Supplier
+    org = _org(u)
+
+    # Sistemas criticos desde activos con criticality >= high
+    assets = db.query(Asset).filter_by(organization_id=org).filter(
+        Asset.criticality.in_(["critical", "high"])
+    ).limit(30).all()
+    critical_systems = [
+        f"{a.name} ({a.asset_type or 'sistema'})" for a in assets
+    ]
+
+    # Proveedores criticos
+    suppliers = db.query(Supplier).filter_by(organization_id=org).filter(
+        (Supplier.is_critical == True) |
+        (Supplier.risk_level == "CRITICAL") |
+        (Supplier.tier == "CRITICAL")
+    ).limit(20).all()
+    key_suppliers = [
+        f"{s.name}{' — ' + s.service_type if getattr(s,'service_type',None) else ''}"
+        for s in suppliers
+    ]
+
+    # Arquitectura TI desde documentos analizados
+    docs = db.query(AiDocument).filter_by(organization_id=org).filter(
+        AiDocument.isms_status == "analyzed"
+    ).limit(5).all()
+    it_arch_hint = None
+    if docs:
+        # Heuristic: check if any doc mention cloud/on-premise/hybrid
+        for doc in docs:
+            summary = getattr(doc, 'isms_summary', None) or {}
+            if isinstance(summary, dict):
+                notes = str(summary.get('notes', '') or '')
+                if 'cloud' in notes.lower():
+                    it_arch_hint = 'cloud'
+                    break
+                elif 'on-prem' in notes.lower() or 'on premise' in notes.lower():
+                    it_arch_hint = 'on_prem'
+                    break
+
+    return {
+        "critical_systems": critical_systems,
+        "key_suppliers": key_suppliers,
+        "it_arch_hint": it_arch_hint,
+        "sources": {
+            "assets_found": len(assets),
+            "suppliers_found": len(suppliers),
+        },
+    }

@@ -556,6 +556,17 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     except Exception:
         pass
 
+    # Notificar al responsable si hay una planificacion con notify_email configurado
+    try:
+        _qid = q.id
+        _org = q.organization_id
+        def _bg_notify():
+            from app.services.scheduler import _notify_questionnaire_submitted
+            _notify_questionnaire_submitted(_qid, _org)
+        threading.Thread(target=_bg_notify, daemon=True).start()
+    except Exception:
+        pass
+
     result = {"success": True, "score": score, "message": "Gracias por completar el cuestionario."}
     if next_token:
         result["next_token"] = next_token

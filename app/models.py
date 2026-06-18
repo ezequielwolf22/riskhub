@@ -638,6 +638,8 @@ class Incident(Base):
     response_actions = Column(Text)
     lessons_learned = Column(Text)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    affects_continuity = Column(Boolean, default=False)
+    bcp_activation_id = Column(Integer, ForeignKey("bcm_activations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -1111,6 +1113,70 @@ class TPRMTemplate(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+
+# ---------- SUPPLIER DOCUMENTS ----------
+
+class SupplierDocument(Base):
+    """Documento adjunto a un proveedor (contratos, certificaciones, informes, etc.)."""
+    __tablename__ = "supplier_documents"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)       # nombre original del fichero
+    stored_name = Column(String(255), nullable=False)    # nombre en disco (cifrado)
+    size = Column(Integer, nullable=True)                # bytes
+    description = Column(Text, nullable=True)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    supplier = relationship("Supplier")
+    uploaded_by = relationship("User")
+
+
+# ---------- QUESTIONNAIRE SCHEDULES (envio periodico) ----------
+
+class QuestionnaireSchedule(Base):
+    """Planificacion de envio periodico de cuestionarios a un proveedor."""
+    __tablename__ = "questionnaire_schedules"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    title_template = Column(String(255), nullable=False)     # plantilla de titulo (ej. "Evaluacion anual {year}")
+    template_code = Column(String(64), nullable=True)        # plantilla del sistema
+    custom_template_id = Column(Integer, ForeignKey("tprm_templates.id"), nullable=True)
+    interval_days = Column(Integer, nullable=False, default=365)  # cada cuantos dias
+    expires_days = Column(Integer, nullable=False, default=30)    # dias de validez del cuestionario enviado
+    notify_email = Column(String(255), nullable=True)        # email a quien notificar cuando el proveedor responde
+    notes = Column(Text, nullable=True)
+    enabled = Column(Boolean, default=True)
+    next_send_at = Column(DateTime, nullable=True)           # proxima fecha de envio
+    last_sent_at = Column(DateTime, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    supplier = relationship("Supplier")
+    created_by = relationship("User")
+
+
+# ---------- QUESTIONNAIRE FLOWS (flujos multi-paso) ----------
+
+class QuestionnaireFlow(Base):
+    """Flujo de cuestionarios encadenados segun resultado de la fase anterior."""
+    __tablename__ = "questionnaire_flows"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    # steps: [{id, name, template_code, custom_template_id, expires_days,
+    #          condition: null | {score_lt, score_gte, residual_level}}]
+    # condition null = primer paso (siempre se envia)
+    steps = Column(JSON, nullable=False, default=list)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    created_by = relationship("User")
 
 
 # ---------- GDPR / DPIA (M6) ----------
@@ -2020,6 +2086,7 @@ class BCPPlan(Base):
     authorized_activators   = Column(JSON, nullable=True)         # [{name, role, email, phone, is_deputy}]
     # [{order,title,description,action_type,action_config}]
     # action_type: manual|notify_users|create_task|log_timeline
+    parent_plan_id = Column(Integer, ForeignKey("bcp_plans.id"), nullable=True)  # versioning
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # v4.0.0 — regwatch: plan requiere revision por cambio normativo
@@ -2105,6 +2172,7 @@ class BCMEvidenceItem(Base):
     """Repositorio de evidencias BCM — cifrado con Fernet, hash SHA-256 para integridad."""
     __tablename__ = "bcm_evidence_items"
     id              = Column(Integer, primary_key=True)
+    linked_activation_id = Column(Integer, ForeignKey("bcm_activations.id"), nullable=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
     location_id     = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
     evidence_type   = Column(String(32), nullable=False)
@@ -2213,6 +2281,10 @@ class BCMActivation(Base):
     root_cause          = Column(Text, nullable=True)
     lessons_learned     = Column(Text, nullable=True)
     improvement_actions = Column(JSON, nullable=True)
+    # Post-mortem fields
+    executive_summary   = Column(Text, nullable=True)
+    affected_services   = Column(JSON, nullable=True)   # [{service, impact, status}]
+    ai_summary          = Column(Text, nullable=True)   # AI-generated evidence summary
     created_at          = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at          = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 

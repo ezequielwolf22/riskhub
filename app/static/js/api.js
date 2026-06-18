@@ -215,6 +215,15 @@ const Api = {
       fd.append('file', file);
       return Api.req('/api/suppliers/import', { method: 'POST', body: fd });
     },
+    listDocuments: (id) => Api.get(`/api/suppliers/${id}/documents`),
+    uploadDocument: (id, file, description) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (description) fd.append('description', description);
+      return Api.req(`/api/suppliers/${id}/documents`, { method: 'POST', body: fd });
+    },
+    downloadDocumentUrl: (supplierId, docId) => `/api/suppliers/${supplierId}/documents/${docId}/download`,
+    deleteDocument: (supplierId, docId) => Api.del(`/api/suppliers/${supplierId}/documents/${docId}`),
   },
   nonconformities: {
     list: (q) => Api.get('/api/nonconformities/', q),
@@ -296,6 +305,21 @@ const Api = {
     create: (d) => Api.post('/api/supplier-questionnaires/', d),
     del: (id) => Api.del('/api/supplier-questionnaires/' + id),
     send: (id) => Api.post('/api/supplier-questionnaires/' + id + '/send', {}),
+  },
+  questionnaire_schedules: {
+    list: (q) => Api.get('/api/questionnaire-schedules/', q),
+    get: (id) => Api.get('/api/questionnaire-schedules/' + id),
+    create: (d) => Api.post('/api/questionnaire-schedules/', d),
+    update: (id, d) => Api.patch('/api/questionnaire-schedules/' + id, d),
+    del: (id) => Api.del('/api/questionnaire-schedules/' + id),
+  },
+  questionnaire_flows: {
+    list: () => Api.get('/api/questionnaire-flows/'),
+    get: (id) => Api.get('/api/questionnaire-flows/' + id),
+    create: (d) => Api.post('/api/questionnaire-flows/', d),
+    update: (id, d) => Api.patch('/api/questionnaire-flows/' + id, d),
+    del: (id) => Api.del('/api/questionnaire-flows/' + id),
+    apply: (fid, supplierId) => Api.post(`/api/questionnaire-flows/${fid}/apply/${supplierId}`, {}),
   },
   tprm: {
     summary: () => Api.get('/api/tprm/dashboard/summary'),

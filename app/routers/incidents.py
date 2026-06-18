@@ -97,6 +97,8 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
         response_actions=body.response_actions,
         lessons_learned=body.lessons_learned,
         owner_id=body.owner_id,
+        affects_continuity=body.affects_continuity,
+        bcp_activation_id=body.bcp_activation_id,
     )
     db.add(inc)
     db.commit()

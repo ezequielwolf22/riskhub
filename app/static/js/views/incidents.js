@@ -186,6 +186,13 @@ const ViewIncidents = (() => {
           <input type="checkbox" id="f-nis2-req" ${v.nis2_notification_required?'checked':''}>
           <label for="f-nis2-req" style="margin:0;cursor:pointer;">Requiere notificacion NIS2 (Art. 23)</label>
         </div>
+        <div class="span2" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:6px;">
+          <input type="checkbox" id="f-continuity" ${v.affects_continuity?'checked':''}>
+          <div>
+            <label for="f-continuity" style="margin:0;cursor:pointer;font-weight:600;">Afecta a la continuidad del negocio</label>
+            <div style="font-size:11px;color:var(--text-muted)">Activa el modulo BCP — al guardar podras activar un plan de continuidad directamente.</div>
+          </div>
+        </div>
         <div class="span2"><label>Sistemas afectados (separados por coma)</label><input id="f-affected" class="input" value="${UI.esc((v.affected_systems || []).join(', '))}"></div>
         <div class="span2"><label>Causa raiz</label><textarea id="f-root" class="input" rows="2">${UI.esc(v.root_cause || '')}</textarea></div>
         <div class="span2"><label>Acciones de respuesta tomadas</label><textarea id="f-response" class="input" rows="2">${UI.esc(v.response_actions || '')}</textarea></div>
@@ -207,6 +214,7 @@ const ViewIncidents = (() => {
     const title = document.getElementById('f-title').value.trim();
     if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
     const affectedRaw = document.getElementById('f-affected').value.trim();
+    const affectsContinuity = document.getElementById('f-continuity')?.checked || false;
     const payload = {
       title,
       severity: document.getElementById('f-sev').value,
@@ -219,19 +227,67 @@ const ViewIncidents = (() => {
       root_cause: document.getElementById('f-root').value.trim(),
       response_actions: document.getElementById('f-response').value.trim(),
       lessons_learned: document.getElementById('f-lessons').value.trim(),
+      affects_continuity: affectsContinuity,
     };
     try {
+      let saved;
       if (inc) {
-        await Api.incidents.update(inc.id, payload);
+        saved = await Api.incidents.update(inc.id, payload);
         UI.toast('Incidente actualizado', 'success');
       } else {
-        await Api.incidents.create(payload);
+        saved = await Api.incidents.create(payload);
         UI.toast('Incidente creado', 'success');
       }
       UI.closeModal();
       await _loadStats();
       await _refresh();
+      // If affects continuity, offer redirect to BCP activation
+      if (affectsContinuity && saved) {
+        _offerBcpActivation(saved);
+      }
     } catch (e) { UI.toast(e.message, 'error'); }
+  }
+
+  function _offerBcpActivation(incident) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:440px">
+      <div class="modal-header" style="border-bottom:2px solid #DC2626">
+        <h2 style="color:#DC2626"><i class="ti ti-alert-triangle"></i> Incidente de continuidad</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="padding:20px 24px">
+        <p style="font-size:13px;margin-bottom:16px">El incidente <strong>${UI.esc(incident.code)}</strong> esta marcado como que afecta a la continuidad del negocio.</p>
+        <p style="font-size:13px;color:var(--text-muted)">¿Deseas ir al modulo BCP para activar un plan de continuidad vinculado a este incidente?</p>
+      </div>
+      <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px">
+        <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Ahora no</button>
+        <button class="btn btn-sm" style="background:#DC2626;color:#fff;border-color:#DC2626" id="go-bcp-btn">
+          <i class="ti ti-alert-triangle"></i> Ir a activacion BCP
+        </button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#go-bcp-btn').onclick = () => {
+      modal.remove();
+      // Navigate to BCP section - activaciones tile
+      if (typeof App !== 'undefined' && App.navigate) {
+        App.navigate('bcp');
+      } else {
+        window.location.hash = '#bcp';
+      }
+      // Small delay to let BCP view render, then open the activation modal with incident context
+      setTimeout(() => {
+        if (typeof ViewBcp !== 'undefined' && ViewBcp._modalActivacion) {
+          ViewBcp._setTile?.('activaciones');
+          // Store incident info for the activation modal
+          window._pendingBcpIncidentId = incident.id;
+          window._pendingBcpIncidentTitle = incident.title;
+          ViewBcp._modalActivacion();
+        }
+      }, 400);
+    };
   }
 
   return { render };

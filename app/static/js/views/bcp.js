@@ -2892,11 +2892,17 @@ const ViewBcp = (() => {
       </div>
     </div>`;
     document.body.appendChild(modal);
-    modal.querySelector('#btn-confirm-version').addEventListener('click', () => {
+    modal.querySelector('#btn-confirm-version').addEventListener('click', async () => {
       modal.remove();
-      window._planVersioningCode = plan.code;
-      const newPlan = Object.assign({}, plan, { id: null, version: nextVer, status: 'draft' });
-      _openPlanDrawer(newPlan);
+      try {
+        UI.toast('Creando nueva version...', 'info');
+        const newPlan = await Api.post(`/api/bcp/plans/${plan.id}/new-version`, {});
+        UI.toast(`Version ${newPlan.version} creada en borrador`, 'success');
+        _plans = await Api.get('/api/bcp/plans').catch(() => _plans);
+        _openPlanDrawer(newPlan);
+      } catch (e) {
+        UI.toast('Error: ' + e.message, 'error');
+      }
     });
   }
 
@@ -3266,9 +3272,20 @@ const ViewBcp = (() => {
               value="${test.rpo_achieved_hours??''}" placeholder="Ej: 1">
           </div>
         </div>
-        <div style="margin-bottom:14px;">${lbl('IDs de documentos de evidencia','')}
-          <input id="rm-evidence" class="form-control" style="font-size:13px;" placeholder="1, 2, 3 (IDs separados por coma)"
-            value="${(test.evidence_doc_ids||[]).join(', ')}">
+        <div style="margin-bottom:14px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:6px">Evidencias adjuntas</div>
+          <div id="rm-evidence-list" style="margin-bottom:8px">
+            <div style="font-size:12px;color:var(--text-subtle)">Cargando evidencias...</div>
+          </div>
+          <div style="background:var(--bg-2);border:1px dashed var(--border);border-radius:6px;padding:10px 12px">
+            <div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">Adjuntar nueva evidencia (PDF, imagen, Excel...)</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="rm-ev-title" class="form-control" style="font-size:12px;flex:1" placeholder="Titulo de la evidencia">
+              <input type="file" id="rm-ev-file" class="form-control" style="font-size:12px;flex:1"
+                accept=".pdf,.docx,.doc,.txt,.csv,.png,.jpg,.jpeg,.xlsx,.xls">
+              <button class="btn btn-sm btn-primary" onclick="ViewBcp._testUploadEvidence(${id})"><i class="ti ti-upload"></i></button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer-sticky">
@@ -3289,6 +3306,64 @@ const ViewBcp = (() => {
       const desc = document.getElementById('rm-result-desc');
       if (desc) desc.textContent = RESULT_DESCS[currentResult] || '';
     }
+
+    // Load existing test evidence
+    _loadTestEvidence(id);
+  }
+
+  async function _loadTestEvidence(testId) {
+    const listEl = document.getElementById('rm-evidence-list');
+    if (!listEl) return;
+    try {
+      const items = await Api.get(`/api/bcp/evidence?linked_test_id=${testId}`).catch(() => []);
+      if (!items.length) {
+        listEl.innerHTML = '<div style="font-size:12px;color:var(--text-subtle)">Sin evidencias adjuntas.</div>';
+        return;
+      }
+      listEl.innerHTML = items.map(e => `
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--bg-2)">
+          <i class="ti ti-file" style="font-size:14px;color:var(--primary)"></i>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${UI.esc(e.title||e.file_name||'')}</div>
+            <div style="font-size:10px;color:var(--text-subtle)">${e.file_size?Math.round(e.file_size/1024)+'KB':''} · ${e.evidence_type||''}</div>
+          </div>
+          <a href="/api/bcp/evidence/${e.id}/download" target="_blank" class="btn btn-sm" style="font-size:10px;padding:2px 6px">
+            <i class="ti ti-download"></i>
+          </a>
+        </div>
+      `).join('');
+    } catch (_) {
+      listEl.innerHTML = '<div style="font-size:12px;color:var(--text-subtle)">No se pudieron cargar las evidencias.</div>';
+    }
+  }
+
+  async function _testUploadEvidence(testId) {
+    const title = document.getElementById('rm-ev-title')?.value?.trim();
+    const fileEl = document.getElementById('rm-ev-file');
+    const file = fileEl?.files?.[0];
+    if (!title) { UI.toast('Titulo requerido', 'error'); return; }
+    if (!file) { UI.toast('Selecciona un archivo', 'error'); return; }
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('evidence_type', 'test_evidence');
+    fd.append('linked_test_id', String(testId));
+    fd.append('file', file);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/bcp/evidence', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al subir');
+      }
+      UI.toast('Evidencia adjuntada', 'success');
+      document.getElementById('rm-ev-title').value = '';
+      fileEl.value = '';
+      await _loadTestEvidence(testId);
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
   }
 
   function _onResultChange(val) {
@@ -3303,17 +3378,12 @@ const ViewBcp = (() => {
 
   async function _saveTestResult(id) {
     const result = document.getElementById('rm-result')?.value || null;
-    const evidenceRaw = (document.getElementById('rm-evidence')?.value || '').trim();
-    const evidence = evidenceRaw
-      ? evidenceRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-      : null;
     const body = {
       conducted_at: document.getElementById('rm-date')?.value || null,
       result,
       findings: document.getElementById('rm-findings')?.value || null,
       lessons_learned: document.getElementById('rm-lessons')?.value || null,
       improvement_actions: document.getElementById('rm-actions')?.value || null,
-      evidence_doc_ids: evidence,
       rto_achieved_hours: parseInt(document.getElementById('rm-rto-achieved')?.value) || null,
       rpo_achieved_hours: parseInt(document.getElementById('rm-rpo-achieved')?.value) || null,
     };
@@ -5058,7 +5128,41 @@ const ViewBcp = (() => {
     }
 
     const ws = wizardSteps.find(s => s.n === activeWizardStep) || wizardSteps[0];
-    const fieldsHtml = ws.fields.map(_buildField).join('');
+    let fieldsHtml = ws.fields.map(_buildField).join('');
+
+    // Step 2: Autofill button for infrastructure/suppliers
+    if (activeWizardStep === 2) {
+      fieldsHtml = '<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">'
+        + '<div><div style="font-size:12px;font-weight:700;margin-bottom:2px"><i class="ti ti-sparkles" style="color:var(--primary)"></i> Autocompletar desde la plataforma</div>'
+        + '<div style="font-size:11px;color:var(--text-subtle)">El sistema puede sugerir sistemas criticos desde tus activos y proveedores criticos desde TPRM.</div></div>'
+        + '<button class="btn btn-sm btn-secondary" id="wz-autofill-btn" onclick="ViewBcp._wizardAutofill()"><i class="ti ti-wand"></i> Autocompletar</button>'
+        + '</div>' + fieldsHtml;
+    }
+
+    // Step 3: Add "Otros escenarios" expandable section after risk_scenarios field
+    if (activeWizardStep === 3) {
+      const extraScenarios = (Array.isArray(ctx.risk_scenarios_json)
+        ? ctx.risk_scenarios_json
+        : (ctx.risk_scenarios_json ? JSON.parse(ctx.risk_scenarios_json) : [])
+      ).filter(s => ![
+        'Ciberataque / ransomware','Incendio o inundacion en sede','Fallo del proveedor cloud principal',
+        'Corte de suministro electrico prolongado','Pandemia / ausencia masiva de personal',
+        'Fallo de conectividad / red','Desastre natural en sede principal','Fallo de proveedor critico de TI',
+      ].includes(s));
+      const extraHtml = '<div class="fg" style="margin-top:-4px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<span style="font-size:11px;font-weight:700;color:var(--text-subtle)">OTROS ESCENARIOS PERSONALIZADOS</span>'
+        + '<button class="btn btn-sm" style="font-size:10px;padding:2px 8px" id="wz-otros-toggle" onclick="ViewBcp._wziardToggleOtros()">'
+        + '<i class="ti ti-plus"></i> Anadir otro</button></div>'
+        + '<div id="wz-otros-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">'
+        + extraScenarios.map((s,i) => `<div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:6px;font-size:12px"><input type="checkbox" value="${UI.esc(s)}" class="wz-cb-risk_scenarios" checked><span>${UI.esc(s)}</span><button onclick="this.closest(\'div\').remove()" style="border:none;background:none;cursor:pointer;color:var(--text-subtle);font-size:14px;line-height:1;padding:0 2px">×</button></div>`).join('')
+        + '</div>'
+        + '<div id="wz-otros-input" style="display:none;display:flex;gap:8px">'
+        + '<input id="wz-otro-text" class="form-control" style="font-size:12px" placeholder="Describe el escenario...">'
+        + '<button class="btn btn-sm btn-primary" onclick="ViewBcp._wizardAddOtroScenario()">Agregar</button>'
+        + '</div></div>';
+      fieldsHtml = fieldsHtml + extraHtml;
+    }
 
     let stepsNavHtml = '';
     wizardSteps.forEach((s, i) => {
@@ -5094,6 +5198,56 @@ const ViewBcp = (() => {
       + '<div style="display:flex;flex-direction:column;gap:12px" id="wz-fields">' + fieldsHtml + '</div>'
       + '<div style="display:flex;justify-content:space-between;margin-top:20px">' + prevBtnW + nextBtnW + '</div>'
       + '</div>' + completedNotice + '</div>';
+  }
+
+  async function _wizardAutofill() {
+    const btn = document.getElementById('wz-autofill-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i> Buscando...'; }
+    try {
+      const data = await Api.get('/api/bcp/context/autofill');
+      const infraEl = document.getElementById('wz-critical_infra');
+      const suppEl = document.getElementById('wz-key_suppliers');
+      if (infraEl && data.critical_systems && data.critical_systems.length) {
+        const existing = infraEl.value.trim().split('\n').filter(Boolean);
+        const merged = [...new Set([...existing, ...data.critical_systems])];
+        infraEl.value = merged.join('\n');
+        UI.toast(`${data.critical_systems.length} sistemas criticos importados desde activos`, 'success');
+      } else if (infraEl) {
+        infraEl.placeholder = 'No se encontraron activos criticos/altos en la plataforma. Introducir manualmente.';
+      }
+      if (suppEl && data.key_suppliers && data.key_suppliers.length) {
+        const existing = suppEl.value.trim().split('\n').filter(Boolean);
+        const merged = [...new Set([...existing, ...data.key_suppliers])];
+        suppEl.value = merged.join('\n');
+        UI.toast(`${data.key_suppliers.length} proveedores criticos importados`, 'success');
+      }
+      if (!data.critical_systems?.length && !data.key_suppliers?.length) {
+        UI.toast('No se encontraron datos en la plataforma. Introduce los sistemas manualmente.', 'info');
+      }
+    } catch (e) {
+      UI.toast('Error al autocompletar: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> Autocompletar'; }
+    }
+  }
+
+  function _wziardToggleOtros() {
+    const inp = document.getElementById('wz-otros-input');
+    if (inp) inp.style.display = inp.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  function _wizardAddOtroScenario() {
+    const textEl = document.getElementById('wz-otro-text');
+    const text = textEl?.value?.trim();
+    if (!text) return;
+    const list = document.getElementById('wz-otros-list');
+    if (!list) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:4px;padding:3px 8px;background:var(--bg-3);border:1px solid var(--border);border-radius:6px;font-size:12px';
+    div.innerHTML = `<input type="checkbox" value="${UI.esc(text)}" class="wz-cb-risk_scenarios" checked><span>${UI.esc(text)}</span><button onclick="this.closest('div').remove()" style="border:none;background:none;cursor:pointer;color:var(--text-subtle);font-size:14px;line-height:1;padding:0 2px">×</button>`;
+    list.appendChild(div);
+    textEl.value = '';
+    document.getElementById('wz-otros-input').style.display = 'none';
   }
 
   async function _saveWizardStep(fromStep, toStep) {
@@ -5260,95 +5414,609 @@ const ViewBcp = (() => {
 
   // ── Tile: Activaciones de emergencia ─────────────────────────────────────────
 
-  async function _tileActivaciones(body, activeAct) {
-    const [allActs, plans] = await Promise.all([
-      Api.get('/api/bcp/activations').catch(() => []),
-      Api.get('/api/bcp/plans').catch(() => []),
-    ]);
+  const _ACT_TYPE_LABELS = {
+    accion: 'Accion', nota: 'Nota', escalada: 'Escalada',
+    resolucion: 'Resolucion', decision: 'Decision', comunicacion: 'Comunicacion',
+  };
+  const _ACT_TYPE_COLORS = {
+    accion: '#2563EB', nota: '#6B7280', escalada: '#DC2626',
+    resolucion: '#16a34a', decision: '#D97706', comunicacion: '#7C3AED',
+  };
+
+  async function _tileActivaciones(body) {
+    const allActs = await Api.get('/api/bcp/activations').catch(() => []);
     const active = allActs.find(a => !a.closed_at);
 
-    const approvedPlans = plans.filter(p => p.status === 'approved');
-
     body.innerHTML = `
-      <div class="bcm-act-layout">
-        <div class="bcm-act-left">
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;height:100%">
+        <div>
           ${active ? `
-            <div class="bcm-act-banner">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-                <span class="bcm-act-pulse-dot" style="position:static;width:12px;height:12px"></span>
-                <strong style="font-size:15px;color:#DC2626">BCP ACTIVADO — EN CURSO</strong>
+            <div style="border:2px solid #DC2626;border-radius:10px;overflow:hidden;margin-bottom:12px">
+              <div style="background:#DC262618;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span class="bcm-act-pulse-dot" style="position:static;width:12px;height:12px"></span>
+                  <strong style="font-size:14px;color:#DC2626">BCP ACTIVADO — ${UI.esc(active.code||'')} ${UI.esc(active.title||'')}</strong>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-sm" style="background:#2563EB;color:#fff;font-size:11px"
+                    onclick="ViewBcp._openCrisisRoom(${active.id})">
+                    <i class="ti ti-external-link"></i> Sala de crisis
+                  </button>
+                  <button class="btn btn-sm" style="background:#DC262615;color:#DC2626;border:1px solid #DC262640;font-size:11px"
+                    onclick="ViewBcp._closeActivacion(${active.id})">
+                    <i class="ti ti-lock"></i> Cerrar
+                  </button>
+                </div>
               </div>
-              <div style="font-size:13px;margin-bottom:4px"><strong>Incidente:</strong> ${UI.esc(active.incident_name||'—')}</div>
-              <div style="font-size:12px;color:var(--text-subtle)">Activado: ${new Date(active.activated_at).toLocaleString('es-ES')}</div>
-              <div style="font-size:12px;color:var(--text-subtle)">Plan: ${UI.esc(active.plan_name||'—')} · Responsable: ${UI.esc(active.activated_by_name||'—')}</div>
-              <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-                <button class="btn btn-sm btn-secondary" onclick="ViewBcp._logActivacion(${active.id})">
-                  <i class="ti ti-message-plus"></i> Registrar evento
-                </button>
-                <button class="btn btn-sm" style="background:#DC262615;color:#DC2626;border:1px solid #DC262630"
-                  onclick="ViewBcp._closeActivacion(${active.id})">
-                  <i class="ti ti-lock"></i> Cerrar activacion
-                </button>
-              </div>
-              <div id="act-log-${active.id}" style="margin-top:14px">
-                <div style="font-size:11px;font-weight:700;color:var(--text-subtle);margin-bottom:6px">TIMELINE DE EVENTOS</div>
-                ${(active.log_entries||[]).length === 0
-                  ? '<div style="font-size:12px;color:var(--text-subtle)">Sin eventos registrados todavia.</div>'
-                  : (active.log_entries||[]).map(e => `
-                    <div style="display:flex;gap:8px;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
-                      <span style="color:var(--text-subtle);flex-shrink:0;width:100px">${new Date(e.timestamp).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</span>
-                      <span>${UI.esc(e.message||'')}</span>
-                    </div>
-                  `).join('')
-                }
+              <div style="padding:12px 16px">
+                <div style="display:flex;gap:20px;font-size:12px;color:var(--text-subtle);margin-bottom:10px">
+                  <span><b>Activado:</b> ${new Date(active.activated_at).toLocaleString('es-ES')}</span>
+                  <span><b>Responsable:</b> ${UI.esc(active.activated_by_name||'—')}</span>
+                </div>
+                <div style="font-size:11px;font-weight:700;color:var(--text-subtle);margin-bottom:8px;text-transform:uppercase">Timeline reciente</div>
+                <div style="max-height:180px;overflow-y:auto">
+                  ${(active.situation_log||[]).length === 0
+                    ? '<div style="font-size:12px;color:var(--text-subtle);text-align:center;padding:12px">Sin eventos registrados. Usa la sala de crisis para registrar el progreso.</div>'
+                    : [...(active.situation_log||[])].reverse().slice(0,8).map(e => {
+                        const color = _ACT_TYPE_COLORS[e.entry_type||'accion'] || '#6B7280';
+                        const label = _ACT_TYPE_LABELS[e.entry_type||'accion'] || e.entry_type || 'Accion';
+                        return `<div style="display:flex;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">
+                          <span style="color:var(--text-subtle);flex-shrink:0;font-size:11px;width:38px">${new Date(e.timestamp).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</span>
+                          <span style="flex-shrink:0;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:${color}18;color:${color}">${UI.esc(label)}</span>
+                          <span style="flex:1">${UI.esc(e.text||'')}</span>
+                        </div>`;
+                      }).join('')
+                  }
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                  <button class="btn btn-sm btn-secondary" onclick="ViewBcp._quickLogEntry(${active.id})">
+                    <i class="ti ti-message-plus"></i> Registrar evento rapido
+                  </button>
+                  <button class="btn btn-sm btn-secondary" onclick="ViewBcp._openCrisisRoom(${active.id})">
+                    <i class="ti ti-paperclip"></i> Adjuntar evidencia
+                  </button>
+                </div>
               </div>
             </div>
           ` : `
-            <div class="bcm-act-idle">
-              <div style="text-align:center;padding:32px 20px">
-                <div style="width:60px;height:60px;border-radius:50%;background:#DC262615;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
-                  <i class="ti ti-shield-check" style="font-size:28px;color:#DC2626"></i>
-                </div>
-                <div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin activaciones en curso</div>
-                <div style="font-size:12px;color:var(--text-subtle);margin-bottom:20px">
-                  El BCP no está activado. Usa este botón únicamente cuando se detecte un incidente real que requiera activar los planes de continuidad.
-                </div>
-                <button class="btn" style="background:#DC2626;color:#fff;font-size:14px;font-weight:700;padding:10px 22px"
-                  onclick="ViewBcp._modalActivacion()">
-                  <i class="ti ti-alert-triangle"></i> ACTIVAR BCP / DRP
-                </button>
-                <div style="font-size:11px;color:var(--text-subtle);margin-top:10px">
-                  Requiere seleccionar plan y documentar el incidente
-                </div>
+            <div style="border:2px dashed var(--border);border-radius:10px;padding:32px 20px;text-align:center;margin-bottom:12px">
+              <div style="width:60px;height:60px;border-radius:50%;background:#DC262615;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+                <i class="ti ti-shield-check" style="font-size:28px;color:#DC2626"></i>
               </div>
+              <div style="font-size:15px;font-weight:700;margin-bottom:6px">Sin activaciones en curso</div>
+              <div style="font-size:12px;color:var(--text-subtle);margin-bottom:20px;max-width:380px;margin-left:auto;margin-right:auto">
+                El BCP no esta activado. Usa este boton unicamente cuando se detecte un incidente real que requiera activar los planes de continuidad.
+              </div>
+              <button class="btn" style="background:#DC2626;color:#fff;font-size:14px;font-weight:700;padding:10px 22px"
+                onclick="ViewBcp._modalActivacion()">
+                <i class="ti ti-alert-triangle"></i> ACTIVAR BCP / DRP
+              </button>
             </div>
           `}
         </div>
-        <div class="bcm-act-right">
-          <div style="font-size:13px;font-weight:700;margin-bottom:12px">Historial de activaciones (${allActs.length})</div>
+        <div>
+          <div style="font-size:12px;font-weight:700;margin-bottom:10px;text-transform:uppercase;color:var(--text-subtle)">
+            Historial (${allActs.length})
+          </div>
           ${!allActs.length
-            ? '<div class="notice notice-info">No hay activaciones registradas.</div>'
-            : `<table class="data" style="font-size:12px">
-                <thead><tr><th>Fecha</th><th>Incidente</th><th>Plan</th><th>Duración</th><th>Estado</th></tr></thead>
-                <tbody>
-                  ${allActs.map(a => {
-                    const dur = a.closed_at
-                      ? Math.round((new Date(a.closed_at) - new Date(a.activated_at)) / 60000) + ' min'
-                      : '<span style="color:#DC2626;font-weight:700">ACTIVO</span>';
-                    return `<tr>
-                      <td>${new Date(a.activated_at).toLocaleDateString('es-ES')}</td>
-                      <td>${UI.esc(a.incident_name||'—')}</td>
-                      <td>${UI.esc(a.plan_name||'—')}</td>
-                      <td>${dur}</td>
-                      <td><span class="badge badge-${a.closed_at?'secondary':'danger'}">${a.closed_at?'Cerrada':'Activa'}</span></td>
-                    </tr>`;
-                  }).join('')}
-                </tbody>
-              </table>`
+            ? '<div class="notice notice-info" style="font-size:12px">Sin activaciones registradas.</div>'
+            : allActs.map(a => {
+                const isActive = !a.closed_at;
+                const dur = a.closed_at
+                  ? (() => { const m = Math.round((new Date(a.closed_at)-new Date(a.activated_at))/60000); return m>60?Math.round(m/60)+'h':m+'min'; })()
+                  : null;
+                return `<div style="border:1px solid ${isActive?'#DC2626':'var(--border)'};border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;background:${isActive?'#DC262608':'var(--bg-2)'}"
+                  onclick="ViewBcp._openCrisisRoom(${a.id})">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                    <span style="font-size:12px;font-weight:700;color:${isActive?'#DC2626':'var(--text)'}">${UI.esc(a.code||'')} ${isActive?'<span style="font-size:10px">ACTIVA</span>':''}</span>
+                    <span style="font-size:10px;color:var(--text-subtle)">${new Date(a.activated_at).toLocaleDateString('es-ES')}</span>
+                  </div>
+                  <div style="font-size:11px;color:var(--text-subtle)">${UI.esc(a.title||'—')}</div>
+                  ${dur?`<div style="font-size:10px;color:var(--text-subtle);margin-top:2px">Duracion: ${dur}</div>`:''}
+                  <div style="display:flex;gap:6px;margin-top:6px">
+                    <button class="btn btn-sm" style="font-size:10px;padding:2px 8px"
+                      onclick="event.stopPropagation();ViewBcp._openActivationReport(${a.id})">
+                      <i class="ti ti-file-report"></i> Post-mortem
+                    </button>
+                  </div>
+                </div>`;
+              }).join('')
           }
         </div>
       </div>
     `;
+  }
+
+  async function _quickLogEntry(actId) {
+    const existing = document.getElementById('modal-quicklog-dyn');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'modal-quicklog-dyn';
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header"><h2><i class="ti ti-message-plus"></i> Registrar evento</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div class="modal-body" style="display:block;padding:16px 20px">
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Tipo de entrada</label>
+          <select id="ql-type" class="form-control" style="font-size:13px">
+            <option value="accion">Accion tomada</option>
+            <option value="nota">Nota / observacion</option>
+            <option value="escalada">Escalada</option>
+            <option value="resolucion">Paso de resolucion</option>
+            <option value="decision">Decision tomada</option>
+            <option value="comunicacion">Comunicacion enviada</option>
+          </select>
+        </div>
+        <div style="margin-bottom:12px">
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Descripcion *</label>
+          <textarea id="ql-text" class="form-control" rows="3" style="font-size:13px" placeholder="Describe la accion, decision o evento..."></textarea>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Responsable (opcional)</label>
+          <input id="ql-owner" class="form-control" style="font-size:13px" placeholder="Nombre o cargo del responsable">
+        </div>
+      </div>
+      <div class="modal-footer-sticky">
+        <div style="display:flex;gap:8px;margin-left:auto">
+          <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+          <button class="btn btn-sm btn-primary" id="ql-save-btn">Registrar</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector('#ql-save-btn').onclick = async () => {
+      const text = modal.querySelector('#ql-text').value.trim();
+      if (!text) { UI.toast('Descripcion requerida', 'error'); return; }
+      try {
+        await Api.post(`/api/bcp/activations/${actId}/log`, {
+          entry_type: modal.querySelector('#ql-type').value,
+          text,
+          action_owner: modal.querySelector('#ql-owner').value.trim() || undefined,
+        });
+        modal.remove();
+        UI.toast('Evento registrado', 'success');
+        _setTile('activaciones');
+      } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+    };
+  }
+
+  async function _openCrisisRoom(actId) {
+    const existing = document.getElementById('modal-crisis-room');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'modal-crisis-room';
+    modal.className = 'modal-bg';
+    modal.innerHTML = `<div class="modal" style="max-width:900px;width:96vw;height:88vh;display:flex;flex-direction:column">
+      <div class="modal-header" style="border-bottom:2px solid #DC2626;flex-shrink:0">
+        <h2 style="color:#DC2626"><i class="ti ti-alert-triangle"></i> Sala de Crisis — cargando...</h2>
+        <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+      </div>
+      <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+        <div id="cr-content" style="flex:1;overflow-y:auto;padding:16px 20px">
+          <div style="text-align:center;padding:40px;color:var(--text-subtle)"><i class="ti ti-loader-2 ti-spin"></i></div>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    await _renderCrisisRoomContent(actId, modal);
+  }
+
+  async function _renderCrisisRoomContent(actId, modal) {
+    try {
+      const act = await Api.get(`/api/bcp/activations/${actId}`);
+      const isActive = !act.closed_at;
+
+      modal.querySelector('h2').innerHTML = `<i class="ti ti-alert-triangle"></i> ${UI.esc(act.code)} — ${UI.esc(act.title)} <span style="font-size:11px;font-weight:400;padding:2px 8px;border-radius:4px;background:${isActive?'#DC262620':'var(--bg-3)'};color:${isActive?'#DC2626':'var(--text-subtle)'};margin-left:8px">${isActive?'ACTIVA':'CERRADA'}</span>`;
+
+      const attachments = act.attachments || [];
+      const log = act.situation_log || [];
+      const checklist = act.checklist_items || [];
+
+      const tabBtns = ['timeline','adjuntos','checklist','postmortem'];
+      const tabLabels = { timeline:'Timeline', adjuntos:'Adjuntos (' + attachments.length + ')', checklist:'Checklist (' + checklist.filter(i=>i.status==='done').length + '/' + checklist.length + ')', postmortem:'Post-Mortem' };
+
+      let activeTab = 'timeline';
+
+      const renderTabs = () => `
+        <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-shrink:0">
+          ${tabBtns.map(t => `<button id="cr-tab-${t}" onclick="ViewBcp._crSetTab('${actId}','${t}')"
+            style="padding:6px 14px;font-size:12px;font-weight:600;border:none;background:none;cursor:pointer;color:${t===activeTab?'var(--primary)':'var(--text-subtle)'};border-bottom:2px solid ${t===activeTab?'var(--primary)':'transparent'};transition:.15s">
+            ${tabLabels[t]}
+          </button>`).join('')}
+          ${isActive ? `<div style="margin-left:auto;display:flex;gap:6px;padding-bottom:4px">
+            <button class="btn btn-sm" style="background:#DC2626;color:#fff;font-size:11px" onclick="ViewBcp._closeActivacion(${actId})">
+              <i class="ti ti-lock"></i> Cerrar activacion
+            </button>
+          </div>` : ''}
+        </div>
+      `;
+
+      const renderTimeline = () => {
+        const logRev = [...log].reverse();
+        return `
+          ${isActive ? `<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:700;margin-bottom:10px">Registrar nuevo evento</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <select id="cr-etype" class="form-control" style="font-size:12px">
+                <option value="accion">Accion tomada</option>
+                <option value="nota">Nota / observacion</option>
+                <option value="escalada">Escalada</option>
+                <option value="resolucion">Paso de resolucion</option>
+                <option value="decision">Decision tomada</option>
+                <option value="comunicacion">Comunicacion enviada</option>
+              </select>
+              <input id="cr-eowner" class="form-control" style="font-size:12px" placeholder="Responsable (opcional)">
+            </div>
+            <textarea id="cr-etext" class="form-control" rows="2" style="font-size:12px;margin-bottom:8px" placeholder="Describe la accion, decision o evento..."></textarea>
+            <button class="btn btn-sm btn-primary" onclick="ViewBcp._crAddLog(${actId})"><i class="ti ti-send"></i> Registrar</button>
+          </div>` : ''}
+          <div style="max-height:360px;overflow-y:auto">
+            ${logRev.length === 0
+              ? '<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">Sin eventos registrados.</div>'
+              : logRev.map((e,i) => {
+                  const color = _ACT_TYPE_COLORS[e.entry_type||'accion'] || '#6B7280';
+                  const label = _ACT_TYPE_LABELS[e.entry_type||'accion'] || e.entry_type || 'Accion';
+                  return `<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+                    <div style="flex-shrink:0;width:6px;border-radius:3px;background:${color};align-self:stretch"></div>
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+                        <span style="padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;background:${color}18;color:${color}">${UI.esc(label)}</span>
+                        <span style="font-size:10px;color:var(--text-subtle)">${new Date(e.timestamp).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'})}</span>
+                        ${e.user_email?`<span style="font-size:10px;color:var(--text-subtle)">${UI.esc(e.user_email)}</span>`:''}
+                        ${e.action_owner?`<span style="font-size:10px;color:var(--text-subtle)">Resp: ${UI.esc(e.action_owner)}</span>`:''}
+                      </div>
+                      <div style="font-size:13px">${UI.esc(e.text||'')}</div>
+                    </div>
+                  </div>`;
+                }).join('')
+            }
+          </div>
+        `;
+      };
+
+      const renderAttachments = () => `
+        ${isActive ? `<div style="background:var(--bg-2);border:1px dashed var(--border);border-radius:8px;padding:16px;margin-bottom:14px;text-align:center">
+          <div style="font-size:12px;color:var(--text-subtle);margin-bottom:10px">Adjunta PDFs, documentos, imagenes, hojas de calculo y otros archivos de evidencia</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;text-align:left">
+            <input id="cr-att-title" class="form-control" style="font-size:12px" placeholder="Titulo / descripcion *">
+            <select id="cr-att-type" class="form-control" style="font-size:12px">
+              <option value="log">Log del sistema</option>
+              <option value="screenshot">Captura de pantalla</option>
+              <option value="report">Informe</option>
+              <option value="excel">Hoja de calculo</option>
+              <option value="evidencia">Evidencia general</option>
+              <option value="comunicacion">Comunicacion</option>
+            </select>
+            <input type="file" id="cr-att-file" class="form-control" style="font-size:12px"
+              accept=".pdf,.docx,.doc,.txt,.csv,.png,.jpg,.jpeg,.gif,.xlsx,.xls">
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="ViewBcp._crUploadAttachment(${actId})"><i class="ti ti-upload"></i> Subir adjunto</button>
+        </div>` : ''}
+        ${attachments.length === 0
+          ? '<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">Sin adjuntos. Sube evidencias del incidente.</div>'
+          : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;max-height:360px;overflow-y:auto">
+              ${attachments.map(a => {
+                const icon = (a.mime_type||'').includes('pdf') ? 'ti-file-type-pdf' :
+                  (a.mime_type||'').includes('image') ? 'ti-photo' :
+                  (a.mime_type||'').includes('sheet') || (a.mime_type||'').includes('excel') ? 'ti-table' : 'ti-file';
+                return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg-2)">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <i class="ti ${icon}" style="font-size:18px;color:var(--primary)"></i>
+                    <div style="min-width:0">
+                      <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${UI.esc(a.title||a.file_name||'')}</div>
+                      <div style="font-size:10px;color:var(--text-subtle)">${UI.esc(a.evidence_type||'')} · ${a.file_size ? Math.round(a.file_size/1024)+'KB' : ''}</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:6px">
+                    <a href="/api/bcp/evidence/${a.id}/download" target="_blank" class="btn btn-sm" style="font-size:10px;padding:2px 8px">
+                      <i class="ti ti-download"></i> Descargar
+                    </a>
+                    ${isActive ? `<button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:#DC262615;color:#DC2626;border-color:#DC262640"
+                      onclick="ViewBcp._crDeleteAttachment(${actId},${a.id})">
+                      <i class="ti ti-trash"></i>
+                    </button>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>`
+        }
+        ${isActive ? `<div style="margin-top:14px;padding:10px 12px;background:var(--bg-2);border-radius:8px;font-size:12px">
+          <div style="font-weight:700;margin-bottom:8px"><i class="ti ti-sparkles" style="color:var(--primary)"></i> Resumen IA de evidencia</div>
+          ${act.ai_summary
+            ? `<div style="font-size:12px;max-height:120px;overflow-y:auto">${UI.esc(act.ai_summary).replace(/\n/g,'<br>')}</div>
+               <button class="btn btn-sm btn-ghost" style="margin-top:8px;font-size:11px" onclick="ViewBcp._crGenerateAISummary(${actId})"><i class="ti ti-refresh"></i> Regenerar</button>`
+            : `<div style="font-size:12px;color:var(--text-subtle);margin-bottom:8px">El agente IA puede leer todos los adjuntos y el timeline, y generar un resumen ordenado.</div>
+               <button class="btn btn-sm btn-primary" style="font-size:11px" onclick="ViewBcp._crGenerateAISummary(${actId})"><i class="ti ti-sparkles"></i> Generar resumen IA</button>`
+          }
+        </div>` : (act.ai_summary ? `<div style="margin-top:14px;padding:10px 12px;background:var(--bg-2);border-radius:8px"><div style="font-size:11px;font-weight:700;margin-bottom:6px">Resumen IA</div><div style="font-size:12px">${UI.esc(act.ai_summary).replace(/\n/g,'<br>')}</div></div>` : '')}
+      `;
+
+      const renderChecklist = () => `
+        <div style="max-height:440px;overflow-y:auto">
+          ${checklist.length === 0
+            ? '<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">Sin checklist. Se genera automaticamente al activar el plan.</div>'
+            : checklist.map(item => {
+                const done = item.status === 'done';
+                return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+                  ${isActive
+                    ? `<input type="checkbox" ${done?'checked':''} ${done?'disabled':''} onchange="ViewBcp._crToggleChecklist(${actId},${item.order},this.checked)"
+                         style="margin-top:3px;width:16px;height:16px;flex-shrink:0;cursor:${done?'default':'pointer'}">`
+                    : `<span style="width:16px;height:16px;flex-shrink:0;border-radius:50%;background:${done?'#16a34a':'var(--border)'};display:inline-flex;align-items:center;justify-content:center;margin-top:3px">
+                         ${done?'<i class="ti ti-check" style="font-size:9px;color:#fff"></i>':''}</span>`
+                  }
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:${done?'400':'600'};color:${done?'var(--text-subtle)':'var(--text)'};text-decoration:${done?'line-through':'none'}">${UI.esc(item.title||'')}</div>
+                    ${item.description?`<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(item.description)}</div>`:''}
+                    ${done&&item.executed_by?`<div style="font-size:10px;color:var(--text-subtle)">Por ${UI.esc(item.executed_by)}</div>`:''}
+                  </div>
+                  <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${done?'#16a34a18':'var(--bg-3)'};color:${done?'#16a34a':'var(--text-subtle)'}">${done?'Hecho':'Pendiente'}</span>
+                </div>`;
+              }).join('')
+          }
+        </div>
+      `;
+
+      const renderPostMortem = () => `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Resumen ejecutivo</label>
+            <textarea id="cr-pm-exec" class="form-control" rows="5" style="font-size:12px" ${isActive?'':'readonly'}
+              placeholder="Resumen del incidente para la alta direccion...">${UI.esc(act.executive_summary||'')}</textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Causa raiz</label>
+            <textarea id="cr-pm-root" class="form-control" rows="5" style="font-size:12px" ${isActive?'':'readonly'}
+              placeholder="Analisis de causa raiz...">${UI.esc(act.root_cause||'')}</textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Lecciones aprendidas</label>
+            <textarea id="cr-pm-lessons" class="form-control" rows="4" style="font-size:12px" ${isActive?'':'readonly'}
+              placeholder="Que funcionó, que fallo, como mejorar...">${UI.esc(act.lessons_learned||'')}</textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Acciones correctivas</label>
+            <textarea id="cr-pm-improve" class="form-control" rows="4" style="font-size:12px" ${isActive?'':'readonly'}
+              placeholder="Mejoras a implementar...">${UI.esc(Array.isArray(act.improvement_actions)?act.improvement_actions.join('\n'):act.improvement_actions||'')}</textarea>
+          </div>
+        </div>
+        ${isActive ? `<div style="display:flex;gap:8px;margin-bottom:14px">
+          <button class="btn btn-sm btn-primary" onclick="ViewBcp._crSavePostMortem(${actId})"><i class="ti ti-device-floppy"></i> Guardar borrador</button>
+        </div>` : ''}
+        <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="ViewBcp._openActivationReport(${actId})" style="background:var(--primary);color:#fff">
+            <i class="ti ti-file-report"></i> Generar informe post-mortem
+          </button>
+        </div>
+      `;
+
+      const cr = modal.querySelector('#cr-content');
+      window._crCurrentTab = 'timeline';
+      window._crActId = actId;
+      window._crAct = act;
+      window._crModal = modal;
+
+      const render = () => {
+        const tab = window._crCurrentTab;
+        cr.innerHTML = renderTabs() +
+          (tab === 'timeline' ? renderTimeline() :
+           tab === 'adjuntos' ? renderAttachments() :
+           tab === 'checklist' ? renderChecklist() :
+           renderPostMortem());
+      };
+      window.ViewBcp._crSetTab = (aid, tab) => { window._crCurrentTab = tab; render(); };
+      render();
+    } catch (e) {
+      modal.querySelector('#cr-content').innerHTML = `<div class="notice notice-error">Error: ${UI.esc(e.message)}</div>`;
+    }
+  }
+
+  async function _crAddLog(actId) {
+    const text = document.getElementById('cr-etext')?.value?.trim();
+    if (!text) { UI.toast('Descripcion requerida', 'error'); return; }
+    try {
+      await Api.post(`/api/bcp/activations/${actId}/log`, {
+        entry_type: document.getElementById('cr-etype')?.value || 'accion',
+        text,
+        action_owner: document.getElementById('cr-eowner')?.value?.trim() || undefined,
+      });
+      UI.toast('Evento registrado', 'success');
+      await _renderCrisisRoomContent(actId, window._crModal);
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _crUploadAttachment(actId) {
+    const title = document.getElementById('cr-att-title')?.value?.trim();
+    const fileEl = document.getElementById('cr-att-file');
+    const file = fileEl?.files?.[0];
+    if (!title) { UI.toast('Titulo requerido', 'error'); return; }
+    if (!file) { UI.toast('Selecciona un archivo', 'error'); return; }
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('entry_type', document.getElementById('cr-att-type')?.value || 'evidencia');
+    fd.append('file', file);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/bcp/activations/${actId}/attachments`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error al subir archivo');
+      }
+      UI.toast('Adjunto subido', 'success');
+      await _renderCrisisRoomContent(actId, window._crModal);
+      window._crCurrentTab = 'adjuntos';
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _crDeleteAttachment(actId, eid) {
+    if (!confirm('Eliminar este adjunto?')) return;
+    try {
+      await Api.del(`/api/bcp/activations/${actId}/attachments/${eid}`);
+      UI.toast('Adjunto eliminado', 'success');
+      await _renderCrisisRoomContent(actId, window._crModal);
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _crGenerateAISummary(actId) {
+    UI.toast('El agente IA esta analizando la evidencia...', 'info');
+    try {
+      const r = await Api.post(`/api/bcp/activations/${actId}/ai-summary`, {});
+      UI.toast('Resumen generado', 'success');
+      await _renderCrisisRoomContent(actId, window._crModal);
+      window._crCurrentTab = 'adjuntos';
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _crToggleChecklist(actId, order, checked) {
+    try {
+      await Api.patch(`/api/bcp/activations/${actId}/checklist/${order}`, { status: checked ? 'done' : 'pending' });
+      await _renderCrisisRoomContent(actId, window._crModal);
+      window._crCurrentTab = 'checklist';
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _crSavePostMortem(actId) {
+    const body = {
+      executive_summary: document.getElementById('cr-pm-exec')?.value?.trim() || null,
+      root_cause: document.getElementById('cr-pm-root')?.value?.trim() || null,
+      lessons_learned: document.getElementById('cr-pm-lessons')?.value?.trim() || null,
+      improvement_actions: (document.getElementById('cr-pm-improve')?.value?.trim() || '').split('\n').filter(Boolean),
+    };
+    try {
+      await Api.patch(`/api/bcp/activations/${actId}`, body);
+      UI.toast('Post-mortem guardado', 'success');
+    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+  }
+
+  async function _openActivationReport(actId) {
+    try {
+      const data = await Api.get(`/api/bcp/activations/${actId}/report`);
+      const act = data.activation;
+      const inc = data.linked_incident;
+      const dur = data.duration_minutes != null
+        ? (data.duration_minutes > 60 ? Math.round(data.duration_minutes/60) + ' h ' + (data.duration_minutes%60) + ' min' : data.duration_minutes + ' min')
+        : 'En curso';
+
+      const existing = document.getElementById('modal-postmortem-dyn');
+      if (existing) existing.remove();
+      const modal = document.createElement('div');
+      modal.id = 'modal-postmortem-dyn';
+      modal.className = 'modal-bg';
+      modal.innerHTML = `
+      <div class="modal" style="max-width:780px;width:96vw;max-height:92vh;display:flex;flex-direction:column">
+        <div class="modal-header" style="flex-shrink:0;border-bottom:2px solid var(--primary)">
+          <h2><i class="ti ti-file-report"></i> Post-Mortem — ${UI.esc(act.code)} ${UI.esc(act.title)}</h2>
+          <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:20px 24px">
+          <!-- 1. Resumen ejecutivo -->
+          <div class="pm-section">
+            <div class="pm-section-title">1. Resumen ejecutivo del incidente</div>
+            <div class="pm-grid">
+              <div><span class="pm-label">Codigo</span><span class="pm-val">${UI.esc(act.code||'—')}</span></div>
+              <div><span class="pm-label">Fecha de deteccion</span><span class="pm-val">${act.activated_at?new Date(act.activated_at).toLocaleString('es-ES'):'—'}</span></div>
+              <div><span class="pm-label">Duracion total</span><span class="pm-val">${dur}</span></div>
+              <div><span class="pm-label">Estado final</span><span class="pm-val">${act.status === 'closed' ? 'Recuperado' : 'En curso'}</span></div>
+            </div>
+            ${act.executive_summary ? `<div style="margin-top:10px;font-size:13px">${UI.esc(act.executive_summary).replace(/\n/g,'<br>')}</div>` : '<div style="color:var(--text-subtle);font-size:12px;font-style:italic">Sin resumen ejecutivo. Completa el campo en la pestaña Post-Mortem de la sala de crisis.</div>'}
+          </div>
+          <!-- 2. Cronologia -->
+          <div class="pm-section">
+            <div class="pm-section-title">2. Cronologia detallada</div>
+            ${(act.situation_log||[]).length === 0
+              ? '<div style="color:var(--text-subtle);font-size:12px;font-style:italic">Sin eventos registrados.</div>'
+              : `<table style="width:100%;border-collapse:collapse;font-size:12px">
+                  <thead><tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px;font-size:11px">Hora</th><th style="text-align:left;padding:4px 8px;font-size:11px">Tipo</th><th style="text-align:left;padding:4px 8px;font-size:11px">Descripcion</th><th style="text-align:left;padding:4px 8px;font-size:11px">Responsable</th></tr></thead>
+                  <tbody>
+                    ${(act.situation_log||[]).map(e => `<tr style="border-bottom:1px solid var(--border)">
+                      <td style="padding:4px 8px;white-space:nowrap;font-size:11px">${new Date(e.timestamp).toLocaleString('es-ES',{dateStyle:'short',timeStyle:'short'})}</td>
+                      <td style="padding:4px 8px"><span style="font-size:10px;font-weight:700;color:${_ACT_TYPE_COLORS[e.entry_type||'accion']||'#666'}">${_ACT_TYPE_LABELS[e.entry_type||'accion']||''}</span></td>
+                      <td style="padding:4px 8px">${UI.esc(e.text||'')}</td>
+                      <td style="padding:4px 8px;font-size:11px;color:var(--text-subtle)">${UI.esc(e.action_owner||e.user_email||'')}</td>
+                    </tr>`).join('')}
+                  </tbody>
+                </table>`
+            }
+          </div>
+          <!-- 3. Impacto -->
+          <div class="pm-section">
+            <div class="pm-section-title">3. Impacto en negocio y continuidad</div>
+            <div class="pm-grid">
+              <div><span class="pm-label">Planes activados</span><span class="pm-val">${(data.plans||[]).map(p=>UI.esc(p.name)).join(', ')||'—'}</span></div>
+              <div><span class="pm-label">RTO objetivo</span><span class="pm-val">${act.rto_objective_hours!=null?act.rto_objective_hours+'h':'—'}</span></div>
+              <div><span class="pm-label">RTO real</span><span class="pm-val">${act.rto_actual_hours!=null?act.rto_actual_hours+'h':'—'}</span></div>
+              ${inc?`<div><span class="pm-label">Incidente vinculado</span><span class="pm-val">${UI.esc(inc.code)} — ${UI.esc(inc.title)}</span></div>`:''}
+            </div>
+          </div>
+          <!-- 4. Causa raiz -->
+          <div class="pm-section">
+            <div class="pm-section-title">4. Analisis de causa raiz</div>
+            ${act.root_cause
+              ? `<div style="font-size:13px">${UI.esc(act.root_cause).replace(/\n/g,'<br>')}</div>`
+              : '<div style="color:var(--text-subtle);font-size:12px;font-style:italic">Sin analisis de causa raiz registrado.</div>'
+            }
+          </div>
+          <!-- 5. Evidencias -->
+          <div class="pm-section">
+            <div class="pm-section-title">5. Evidencias y adjuntos (${(data.attachments||[]).length})</div>
+            ${(data.attachments||[]).length === 0
+              ? '<div style="color:var(--text-subtle);font-size:12px;font-style:italic">Sin adjuntos.</div>'
+              : `<div style="display:flex;flex-wrap:wrap;gap:8px">
+                  ${(data.attachments||[]).map(a => `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;background:var(--bg-2)">
+                    <a href="/api/bcp/evidence/${a.id}/download" target="_blank" style="color:var(--primary);font-weight:600">${UI.esc(a.file_name||a.title||'')}</a>
+                    <span style="color:var(--text-subtle)"> (${a.file_size?Math.round(a.file_size/1024)+'KB':''})</span>
+                  </div>`).join('')}
+                </div>`
+            }
+            ${act.ai_summary ? `<div style="margin-top:10px;padding:10px;background:var(--bg-2);border-radius:6px;font-size:12px"><b><i class="ti ti-sparkles"></i> Resumen IA:</b><br>${UI.esc(act.ai_summary).replace(/\n/g,'<br>')}</div>` : ''}
+          </div>
+          <!-- 6. Eficacia respuesta -->
+          <div class="pm-section">
+            <div class="pm-section-title">6. Eficacia de la respuesta</div>
+            <div class="pm-grid">
+              <div><span class="pm-label">Checklist completado</span><span class="pm-val">${data.checklist_done}/${data.checklist_total} items</span></div>
+              <div><span class="pm-label">Eventos registrados</span><span class="pm-val">${data.log_entries_count}</span></div>
+              <div><span class="pm-label">Evidencias adjuntas</span><span class="pm-val">${(data.attachments||[]).length}</span></div>
+            </div>
+            ${act.lessons_learned
+              ? `<div style="margin-top:8px;font-size:13px"><b>Lecciones aprendidas:</b><br>${UI.esc(act.lessons_learned).replace(/\n/g,'<br>')}</div>`
+              : ''
+            }
+          </div>
+          <!-- 7. Medidas correctivas -->
+          <div class="pm-section">
+            <div class="pm-section-title">7. Medidas correctivas y preventivas</div>
+            ${(Array.isArray(act.improvement_actions) && act.improvement_actions.length)
+              ? `<ul style="font-size:13px;margin:0;padding-left:18px">${act.improvement_actions.map(a=>`<li>${UI.esc(String(a))}</li>`).join('')}</ul>`
+              : (act.improvement_actions
+                  ? `<div style="font-size:13px">${UI.esc(String(act.improvement_actions)).replace(/\n/g,'<br>')}</div>`
+                  : '<div style="color:var(--text-subtle);font-size:12px;font-style:italic">Sin acciones correctivas registradas.</div>'
+                )
+            }
+          </div>
+        </div>
+        <div class="modal-footer-sticky" style="flex-shrink:0">
+          <div style="display:flex;gap:8px;margin-left:auto">
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cerrar</button>
+          </div>
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+
+      // Inject post-mortem styles if not present
+      if (!document.getElementById('pm-styles')) {
+        const st = document.createElement('style');
+        st.id = 'pm-styles';
+        st.textContent = `.pm-section{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)}.pm-section:last-child{border-bottom:none}.pm-section-title{font-size:13px;font-weight:700;color:var(--primary);margin-bottom:10px;text-transform:uppercase;letter-spacing:.03em}.pm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}.pm-label{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:2px}.pm-val{font-size:13px;display:block}`;
+        document.head.appendChild(st);
+      }
+    } catch (e) { UI.toast('Error al cargar el informe: ' + e.message, 'error'); }
   }
 
   async function _modalActivacion(prefillPlanId) {
@@ -5390,9 +6058,13 @@ const ViewBcp = (() => {
           <div id="act-ctx-activators"></div>
         </div>
 
+        ${window._pendingBcpIncidentTitle ? `
+        <div style="margin-bottom:14px;padding:8px 12px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);border-radius:6px;font-size:12px;">
+          <i class="ti ti-link"></i> Vinculado al incidente <strong>${UI.esc(window._pendingBcpIncidentTitle)}</strong> — se enlazara automaticamente al activar.
+        </div>` : ''}
         <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Nombre / descripcion del incidente <span style="color:var(--danger)">*</span></label>
-          <input id="act-incident" class="form-control" style="font-size:13px;" placeholder="Ej: Ransomware detectado en servidor de BD">
+          <input id="act-incident" class="form-control" style="font-size:13px;" placeholder="Ej: Ransomware detectado en servidor de BD" value="${UI.esc(window._pendingBcpIncidentTitle || '')}">
         </div>
         <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Notas iniciales</label>
@@ -5486,12 +6158,21 @@ const ViewBcp = (() => {
     const planId = root.querySelector('#act-plan-sel')?.value;
     const incident = root.querySelector('#act-incident')?.value?.trim();
     if (!planId || !incident) { UI.toast('Completa el plan y el nombre del incidente', 'error'); return; }
+    const pendingIncId = window._pendingBcpIncidentId || null;
     try {
-      const act = await Api.post('/api/bcp/activations', {
+      const payload = {
         activated_plan_ids: [parseInt(planId)],
         title: incident,
         notes: root.querySelector('#act-notes')?.value || '',
-      });
+      };
+      if (pendingIncId) payload.incident_id = pendingIncId;
+      const act = await Api.post('/api/bcp/activations', payload);
+      // Back-link: update incident with the new activation id
+      if (pendingIncId && act && act.id) {
+        Api.patch(`/api/incidents/${pendingIncId}`, { bcp_activation_id: act.id }).catch(() => {});
+      }
+      window._pendingBcpIncidentId = null;
+      window._pendingBcpIncidentTitle = null;
       _closeActModal();
       UI.toast('BCP activado.', 'warning');
       _setTile('activaciones');
@@ -6629,5 +7310,20 @@ const ViewBcp = (() => {
     _editPlan,
     _openApprovedVersioningModal,
     _bumpVersion,
+    _openCrisisRoom,
+    _quickLogEntry,
+    _crAddLog,
+    _crUploadAttachment,
+    _crDeleteAttachment,
+    _crGenerateAISummary,
+    _crToggleChecklist,
+    _crSavePostMortem,
+    _openActivationReport,
+    _crSetTab: (aid, tab) => { window._crCurrentTab = tab; if (window._crModal) _renderCrisisRoomContent(aid, window._crModal); },
+    _wizardAutofill,
+    _wziardToggleOtros,
+    _wizardAddOtroScenario,
+    _testUploadEvidence,
+    _loadTestEvidence,
   };
 })();

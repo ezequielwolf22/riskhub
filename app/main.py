@@ -20,7 +20,8 @@ from app.routers import (
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
     cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents,
     integrations_erp, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
-    osint, policies, portal, predictive, regwatch, report_schedules, reports, risks, search, sharepoint,
+    osint, policies, portal, predictive, questionnaire_flows, questionnaire_schedules, regwatch, report_schedules,
+    reports, risks, search, sharepoint,
     soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, tprm,
     vendor_assessments, vendor_issues, users, webhooks,
 )
@@ -169,6 +170,8 @@ app.include_router(tasks.router)
 app.include_router(policies.router)
 app.include_router(audits.router)
 app.include_router(supplier_questionnaires.router)
+app.include_router(questionnaire_schedules.router)
+app.include_router(questionnaire_flows.router)
 app.include_router(gdpr.router)
 app.include_router(documents.router)
 app.include_router(ai_config.router)

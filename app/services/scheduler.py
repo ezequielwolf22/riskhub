@@ -2002,6 +2002,169 @@ def schedule_first_sweep(delay_minutes: int = 5) -> None:
         logger.warning("No se pudo programar el primer barrido regwatch: %s", exc)
 
 
+def _run_questionnaire_schedules() -> None:
+    """Envia cuestionarios planificados a los proveedores cuando llega su fecha."""
+    from app.database import SessionLocal
+    from app.models import QuestionnaireSchedule, SupplierQuestionnaire, EmailSettings
+    import secrets
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        due = (
+            db.query(QuestionnaireSchedule)
+            .filter(
+                QuestionnaireSchedule.enabled.is_(True),
+                QuestionnaireSchedule.next_send_at <= now,
+            )
+            .all()
+        )
+        if not due:
+            return
+
+        from app.services import tprm_templates as _sys_tpls
+        from app.routers.supplier_questionnaires import DEFAULT_QUESTIONS
+
+        for sched in due:
+            try:
+                supplier = sched.supplier
+                if not supplier:
+                    continue
+
+                # Resolver plantilla
+                questions = DEFAULT_QUESTIONS
+                template_code = None
+                if sched.template_code:
+                    tpl = _sys_tpls.get_template(sched.template_code)
+                    if tpl:
+                        questions = tpl["questions"]
+                        template_code = tpl["code"]
+                elif sched.custom_template_id:
+                    from app.models import TPRMTemplate
+                    tpl = db.query(TPRMTemplate).filter(
+                        TPRMTemplate.id == sched.custom_template_id
+                    ).first()
+                    if tpl:
+                        questions = tpl.questions or []
+                        template_code = f"custom:{tpl.id}"
+
+                # Generar titulo
+                title = (sched.title_template or "Evaluacion de seguridad")
+                title = title.replace("{year}", str(now.year)).replace("{month}", str(now.month))
+
+                from datetime import timedelta
+                expires = now + timedelta(days=sched.expires_days or 30)
+
+                n = db.query(SupplierQuestionnaire).count() + 1
+                code = f"SEQ-{n:04d}"
+                q = SupplierQuestionnaire(
+                    code=code,
+                    supplier_id=supplier.id,
+                    title=title,
+                    token=secrets.token_urlsafe(32),
+                    template_code=template_code,
+                    questions=questions,
+                    expires_at=expires,
+                    notes=f"Enviado automaticamente por planificacion (cada {sched.interval_days} dias).",
+                    organization_id=sched.organization_id,
+                )
+                db.add(q)
+                db.flush()
+
+                # Enviar email al proveedor si tiene contacto
+                recipient = (supplier.contact_email or "").strip()
+                if recipient:
+                    cfg = (
+                        db.query(EmailSettings)
+                        .filter(EmailSettings.organization_id == sched.organization_id)
+                        .first()
+                    )
+                    if cfg and cfg.smtp_host:
+                        from app.services import email_service
+                        link = f"http://localhost/supplier-q?token={q.token}"
+                        expires_str = expires.strftime("%d/%m/%Y")
+                        body_html = f"""
+                        <div style="font-family:Inter,Arial,sans-serif;color:#1f2937;">
+                          <p>Estimado/a {UI.esc(supplier.contact_name or supplier.name)}:</p>
+                          <p>Le solicitamos completar el siguiente cuestionario de seguridad:
+                          <strong>{UI.esc(title)}</strong>.</p>
+                          <p style="margin:24px 0;">
+                            <a href="{link}" style="background:#59008D;color:#fff;padding:12px 24px;
+                               border-radius:6px;text-decoration:none;font-weight:600;">Completar cuestionario</a>
+                          </p>
+                          <p style="font-size:13px;color:#6b7280;">Fecha limite: {expires_str}.</p>
+                        </div>
+                        """
+                        try:
+                            email_service.send_email(cfg, recipient, f"Cuestionario de seguridad — {title}", body_html)
+                        except Exception as exc:
+                            logger.warning("Error enviando cuestionario planificado a %s: %s", recipient, exc)
+
+                # Actualizar planificacion
+                from datetime import timedelta
+                sched.last_sent_at = now
+                sched.next_send_at = now + timedelta(days=sched.interval_days or 365)
+                db.commit()
+                logger.info(
+                    "Cuestionario planificado %s enviado a proveedor %s (siguiente: %s)",
+                    q.code, supplier.code, sched.next_send_at.date(),
+                )
+            except Exception as exc:
+                logger.warning("Error procesando planificacion %d: %s", sched.id, exc)
+                db.rollback()
+    finally:
+        db.close()
+
+
+def _notify_questionnaire_submitted(questionnaire_id: int, org_id: int) -> None:
+    """Notifica por email cuando un proveedor responde un cuestionario planificado."""
+    from app.database import SessionLocal
+    from app.models import QuestionnaireSchedule, SupplierQuestionnaire, EmailSettings
+
+    db = SessionLocal()
+    try:
+        q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == questionnaire_id).first()
+        if not q:
+            return
+        # Buscar si este cuestionario corresponde a alguna planificacion del mismo proveedor
+        sched = (
+            db.query(QuestionnaireSchedule)
+            .filter(
+                QuestionnaireSchedule.supplier_id == q.supplier_id,
+                QuestionnaireSchedule.organization_id == org_id,
+                QuestionnaireSchedule.notify_email != None,  # noqa: E711
+            )
+            .first()
+        )
+        if not sched or not sched.notify_email:
+            return
+        cfg = db.query(EmailSettings).filter(EmailSettings.organization_id == org_id).first()
+        if not cfg or not cfg.smtp_host:
+            return
+        supplier_name = q.supplier.name if q.supplier else "proveedor"
+        subject = f"RiskHub — {supplier_name} ha respondido el cuestionario {q.code}"
+        body_html = f"""
+        <div style="font-family:Inter,Arial,sans-serif;color:#1f2937;max-width:600px;">
+          <div style="background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;">
+            <h1 style="color:#fff;margin:0;font-size:18px;">RiskHub — Cuestionario respondido</h1>
+          </div>
+          <div style="padding:24px;">
+            <p>El proveedor <strong>{UI.esc(supplier_name)}</strong> ha respondido el cuestionario
+            <strong>{UI.esc(q.code)} — {UI.esc(q.title)}</strong>.</p>
+            <p>Puntuacion obtenida: <strong>{q.score if q.score is not None else '-'}/100</strong></p>
+            <p>Accede a RiskHub para revisar las respuestas y lanzar el analisis de IA.</p>
+          </div>
+        </div>
+        """
+        from app.services import email_service
+        try:
+            email_service.send_email(cfg, sched.notify_email, subject, body_html)
+        except Exception as exc:
+            logger.warning("Error enviando notificacion de respuesta: %s", exc)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -2242,6 +2405,15 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),
         id="regwatch_sweep",
         name="Vigilancia normativa — barrido de fuentes",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Cuestionarios planificados: verificacion diaria de envios pendientes
+    _scheduler.add_job(
+        func=_run_questionnaire_schedules,
+        trigger=IntervalTrigger(hours=24),
+        id="questionnaire_schedules",
+        name="Envio periodico de cuestionarios planificados",
         replace_existing=True,
         misfire_grace_time=3600,
     )

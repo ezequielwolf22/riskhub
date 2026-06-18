@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -378,4 +378,136 @@ def delete_supplier(supplier_id: int, db: Session = Depends(get_db),
         raise HTTPException(404, "Proveedor no encontrado")
     log_action(db, current_user.id, "delete", "supplier", str(supplier_id), {"name": s.name})
     db.delete(s)
+    db.commit()
+
+
+# ---------- Documentacion adjunta al proveedor ----------
+
+_MAX_DOC_BYTES = 20 * 1024 * 1024  # 20 MB
+_ALLOWED_DOC_EXT = (
+    ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+    ".txt", ".csv", ".png", ".jpg", ".jpeg", ".zip",
+)
+
+
+@router.get("/{supplier_id}/documents")
+def list_supplier_documents(
+    supplier_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models import SupplierDocument
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, "Proveedor no encontrado")
+    docs = (
+        db.query(SupplierDocument)
+        .filter(SupplierDocument.supplier_id == supplier_id)
+        .order_by(SupplierDocument.uploaded_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": d.id,
+            "filename": d.filename,
+            "size": d.size,
+            "description": d.description,
+            "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+            "uploaded_by": d.uploaded_by.full_name if d.uploaded_by else None,
+        }
+        for d in docs
+    ]
+
+
+@router.post("/{supplier_id}/documents")
+async def upload_supplier_document(
+    supplier_id: int,
+    file: UploadFile = File(...),
+    description: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    from app.models import SupplierDocument
+    from app.services.document_service import save_document_file
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, "Proveedor no encontrado")
+    fname = file.filename or "documento"
+    ext = "." + fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    if ext not in _ALLOWED_DOC_EXT:
+        raise HTTPException(400, f"Formato no permitido. Sube: {', '.join(_ALLOWED_DOC_EXT)}")
+    content = await file.read()
+    if len(content) > _MAX_DOC_BYTES:
+        raise HTTPException(413, "El fichero supera el limite de 20 MB.")
+    stored = save_document_file(content, fname)
+    doc = SupplierDocument(
+        organization_id=current_user.organization_id,
+        supplier_id=supplier_id,
+        filename=fname,
+        stored_name=stored,
+        size=len(content),
+        description=description,
+        uploaded_by_id=current_user.id,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    log_action(db, current_user.id, "upload_document", "supplier", str(supplier_id),
+               {"filename": fname})
+    return {"id": doc.id, "filename": doc.filename, "size": doc.size}
+
+
+@router.get("/{supplier_id}/documents/{doc_id}/download")
+def download_supplier_document(
+    supplier_id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models import SupplierDocument
+    from app.services.document_service import decrypt_doc
+    from pathlib import Path
+    from fastapi.responses import Response as _Resp
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, "Proveedor no encontrado")
+    doc = db.query(SupplierDocument).filter(
+        SupplierDocument.id == doc_id,
+        SupplierDocument.supplier_id == supplier_id,
+    ).first()
+    if not doc:
+        raise HTTPException(404, "Documento no encontrado")
+    # Buscar fichero en disco
+    for base in ("/srv/data/documents", "data/documents"):
+        p = Path(base) / doc.stored_name
+        if p.exists():
+            raw = p.read_bytes()
+            content = decrypt_doc(raw)
+            import mimetypes
+            mt = mimetypes.guess_type(doc.filename)[0] or "application/octet-stream"
+            return _Resp(content=content, media_type=mt,
+                         headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'})
+    raise HTTPException(404, "Fichero no disponible en disco")
+
+
+@router.delete("/{supplier_id}/documents/{doc_id}", status_code=204)
+def delete_supplier_document(
+    supplier_id: int,
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    from app.models import SupplierDocument
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, "Proveedor no encontrado")
+    doc = db.query(SupplierDocument).filter(
+        SupplierDocument.id == doc_id,
+        SupplierDocument.supplier_id == supplier_id,
+    ).first()
+    if not doc:
+        raise HTTPException(404, "Documento no encontrado")
+    log_action(db, current_user.id, "delete_document", "supplier", str(supplier_id),
+               {"filename": doc.filename})
+    db.delete(doc)
     db.commit()

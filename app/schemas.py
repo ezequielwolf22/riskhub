@@ -565,6 +565,8 @@ class IncidentIn(BaseModel):
     response_actions: Optional[str] = None
     lessons_learned: Optional[str] = None
     owner_id: Optional[int] = None
+    affects_continuity: bool = False
+    bcp_activation_id: Optional[int] = None
 
 
 class IncidentUpdate(BaseModel):
@@ -585,6 +587,8 @@ class IncidentUpdate(BaseModel):
     response_actions: Optional[str] = None
     lessons_learned: Optional[str] = None
     owner_id: Optional[int] = None
+    affects_continuity: Optional[bool] = None
+    bcp_activation_id: Optional[int] = None
 
 
 class IncidentOut(ORMBase):
@@ -607,6 +611,8 @@ class IncidentOut(ORMBase):
     response_actions: Optional[str]
     lessons_learned: Optional[str]
     owner_id: Optional[int]
+    affects_continuity: Optional[bool] = False
+    bcp_activation_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

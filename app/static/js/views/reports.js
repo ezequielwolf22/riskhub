@@ -78,6 +78,20 @@ const ViewReports = {
           </div>
         </div>
 
+        <!-- Post-Mortem BCP -->
+        <div class="card" style="margin-bottom:16px;border:2px solid #DC2626;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+            <h3 style="margin:0;color:#DC2626;"><i class="ti ti-alert-triangle"></i> Post-Mortem de Continuidad (BCP)</h3>
+            <span class="badge" style="font-size:10px;background:rgba(220,38,38,.12);color:#DC2626;">ISO 22301</span>
+          </div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+            Informe completo de gestion del incidente de continuidad: cronologia, impacto en el negocio, analisis de causa raiz, evidencias, efectividad de la respuesta y acciones correctivas.
+          </p>
+          <div id="bcp-pm-list" style="min-height:40px;">
+            <p style="font-size:12px;color:var(--text-muted);">Cargando activaciones...</p>
+          </div>
+        </div>
+
         <!-- Informes IA -->
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
@@ -146,6 +160,57 @@ const ViewReports = {
         </div>
 
       </div>`;
+    // Async: populate BCP post-mortem list
+    this._loadBcpActivations();
+  },
+
+  async _loadBcpActivations() {
+    const wrap = document.getElementById('bcp-pm-list');
+    if (!wrap) return;
+    try {
+      const closed = await Api.get('/api/bcp/activations?status=closed').catch(() => []);
+      if (!closed.length) {
+        wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">No hay activaciones cerradas. Los post-mortems se generan al cerrar un incidente de continuidad.</p>';
+        return;
+      }
+      wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;">` +
+        closed.map(a => {
+          const dur = a.closed_at && a.activated_at
+            ? Math.round((new Date(a.closed_at) - new Date(a.activated_at)) / 60000) : null;
+          return `<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:14px;">
+            <div style="font-size:11px;font-weight:700;color:#DC2626;margin-bottom:4px;">${UI.esc(a.code)}</div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px;line-height:1.3;">${UI.esc(a.title)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">
+              ${a.activated_at ? new Date(a.activated_at).toLocaleDateString('es-ES') : '-'}
+              ${dur !== null ? ` · ${dur < 60 ? dur+'min' : Math.round(dur/60)+'h'}` : ''}
+            </div>
+            <button class="btn btn-sm" style="width:100%;background:#DC2626;color:#fff;border-color:#DC2626;font-size:12px;"
+                    onclick="ViewReports._openBcpPostMortem(${a.id})">
+              Ver post-mortem
+            </button>
+          </div>`;
+        }).join('') + `</div>`;
+    } catch (e) {
+      wrap.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">Error al cargar activaciones: ${UI.esc(e.message)}</p>`;
+    }
+  },
+
+  _openBcpPostMortem(actId) {
+    if (typeof ViewBcp !== 'undefined' && ViewBcp._openActivationReport) {
+      ViewBcp._openActivationReport(actId);
+    } else {
+      // Navigate to BCP and open the report there
+      if (typeof App !== 'undefined' && App.navigate) {
+        App.navigate('bcp');
+      } else {
+        window.location.hash = '#bcp';
+      }
+      setTimeout(() => {
+        if (typeof ViewBcp !== 'undefined' && ViewBcp._openActivationReport) {
+          ViewBcp._openActivationReport(actId);
+        }
+      }, 500);
+    }
   },
 
   _download(type) {

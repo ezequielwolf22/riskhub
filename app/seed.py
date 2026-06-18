@@ -506,6 +506,14 @@ def _migrate_columns() -> None:
         # v4.1.0 — versionado de evaluaciones de proveedor (TPRM)
         ("ALTER TABLE vendor_risk_assessments ADD COLUMN previous_version_id INTEGER REFERENCES vendor_risk_assessments(id)", "vendor_risk_assessments", "previous_version_id"),
         ("ALTER TABLE vendor_risk_assessments ADD COLUMN is_current BOOLEAN DEFAULT 1", "vendor_risk_assessments", "is_current"),
+        # v4.2.0 — BCP: sala de crisis enriquecida, versionado de planes, sincronizacion incidentes
+        ("ALTER TABLE bcm_evidence_items ADD COLUMN linked_activation_id INTEGER REFERENCES bcm_activations(id)", "bcm_evidence_items", "linked_activation_id"),
+        ("ALTER TABLE bcm_activations ADD COLUMN executive_summary TEXT", "bcm_activations", "executive_summary"),
+        ("ALTER TABLE bcm_activations ADD COLUMN affected_services JSON", "bcm_activations", "affected_services"),
+        ("ALTER TABLE bcm_activations ADD COLUMN ai_summary TEXT", "bcm_activations", "ai_summary"),
+        ("ALTER TABLE bcp_plans ADD COLUMN parent_plan_id INTEGER REFERENCES bcp_plans(id)", "bcp_plans", "parent_plan_id"),
+        ("ALTER TABLE incidents ADD COLUMN affects_continuity BOOLEAN DEFAULT 0", "incidents", "affects_continuity"),
+        ("ALTER TABLE incidents ADD COLUMN bcp_activation_id INTEGER REFERENCES bcm_activations(id)", "incidents", "bcp_activation_id"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
