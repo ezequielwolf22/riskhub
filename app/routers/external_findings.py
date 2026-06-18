@@ -111,6 +111,7 @@ def list_findings(
     source: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     asset_id: Optional[int] = Query(None),
+    supplier_id: Optional[int] = Query(None),
     source_document: Optional[str] = Query(None),
     limit: int = Query(50, le=200),
     offset: int = Query(0),
@@ -129,6 +130,8 @@ def list_findings(
         query = query.filter(ExternalFinding.status == status)
     if asset_id:
         query = query.filter(ExternalFinding.asset_id == asset_id)
+    if supplier_id:
+        query = query.filter(ExternalFinding.supplier_id == supplier_id)
     if source_document:
         query = query.filter(ExternalFinding.source_document == source_document)
 

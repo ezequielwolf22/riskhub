@@ -145,6 +145,7 @@ const Api = {
   },
   audit: {
     list: (q) => Api.get('/api/audit/', q),
+    approvals: (q) => Api.get('/api/audit/approvals', q),
     entityTypes: () => Api.get('/api/audit/entity-types'),
     actions: () => Api.get('/api/audit/actions'),
     exportCsv: () => Api.download('/api/audit/export/csv', 'audit_log.csv'),
@@ -582,6 +583,7 @@ const Api = {
   },
   findings: {
     list:    (q)  => Api.get('/api/findings', q),
+    listBySupplier: (supplierId) => Api.get('/api/findings', { supplier_id: supplierId }),
     summary: ()   => Api.get('/api/findings/summary'),
     sourceDocuments: (source) => Api.get('/api/findings/source-documents', source ? { source } : {}),
     resolve: (id) => Api.put(`/api/findings/${id}/resolve`, {}),

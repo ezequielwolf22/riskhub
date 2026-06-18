@@ -165,6 +165,60 @@ def entity_history(
     ]
 
 
+@router.get("/approvals", response_model=AuditPage)
+def list_approvals(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, le=500),
+    entity_type: Optional[str] = None,
+    user_email: Optional[str] = None,
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_require_admin),
+):
+    """Registro de aprobaciones: todas las acciones que contienen 'approv' o 'approve'."""
+    from datetime import timezone, timedelta, datetime as _dt
+    q = _filter_audit_by_org(db.query(AuditLog), current_user).filter(
+        AuditLog.action.ilike("%approv%")
+    ).order_by(AuditLog.timestamp.desc())
+    if entity_type:
+        q = q.filter(AuditLog.entity_type == entity_type)
+    if user_email:
+        q = q.join(User, AuditLog.user_id == User.id, isouter=True).filter(
+            User.email.ilike(f"%{user_email}%")
+        )
+    if date_from:
+        try:
+            dt_from = _dt.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            q = q.filter(AuditLog.timestamp >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            dt_to = _dt.strptime(date_to, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+            q = q.filter(AuditLog.timestamp < dt_to)
+        except ValueError:
+            pass
+    total = q.count()
+    entries = q.offset(skip).limit(limit).all()
+    return AuditPage(
+        total=total,
+        items=[
+            AuditEntryOut(
+                id=e.id,
+                timestamp=e.timestamp,
+                user_email=e.user.email if e.user else None,
+                user_name=e.user.full_name if e.user else None,
+                action=e.action,
+                entity_type=e.entity_type,
+                entity_id=e.entity_id,
+                detail=e.detail,
+            )
+            for e in entries
+        ],
+    )
+
+
 @router.get("/entity-types")
 def entity_types(
     db: Session = Depends(get_db),

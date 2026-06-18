@@ -83,20 +83,48 @@ const ViewSuppliers = (() => {
   async function _renderSuppliersTab() {
     const wrap = document.getElementById('sup-tab-content');
     wrap.innerHTML = `
-      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-        <select id="f-risk" class="input" style="width:160px;">
+      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
+        <select id="f-risk" class="input" style="width:150px;">
           <option value="">Todos los niveles</option>
           <option value="critical">Critico</option>
           <option value="high">Alto</option>
           <option value="medium">Medio</option>
           <option value="low">Bajo</option>
         </select>
-        <select id="f-critical" class="input" style="width:160px;">
+        <select id="f-critical" class="input" style="width:150px;">
           <option value="">Todos</option>
           <option value="1">Solo criticos</option>
           <option value="0">No criticos</option>
         </select>
-        <input id="f-q" class="input" placeholder="Buscar..." style="width:200px;">
+        <input id="f-q" class="input" placeholder="Buscar por nombre o codigo..." style="width:210px;">
+        <button id="btn-adv-filter" class="btn btn-sm" style="margin-left:auto;">Filtros avanzados</button>
+      </div>
+      <div id="sup-adv-filter" style="display:none;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
+          <div><label style="font-size:12px;">Ubicacion</label><input id="f-adv-location" class="input" placeholder="Madrid, ES"></div>
+          <div><label style="font-size:12px;">Departamento</label><input id="f-adv-dept" class="input" placeholder="TI, Legal..."></div>
+          <div><label style="font-size:12px;">Importancia min.</label>
+            <select id="f-adv-imp" class="input">
+              <option value="">Cualquiera</option>
+              <option value="1">1+</option><option value="2">2+</option>
+              <option value="3">3+</option><option value="4">4+</option><option value="5">5</option>
+            </select>
+          </div>
+          <div><label style="font-size:12px;">Relacion</label>
+            <select id="f-adv-rel" class="input">
+              <option value="">Cualquier estado</option>
+              <option value="active">Activo</option>
+              <option value="onboarding">Onboarding</option>
+              <option value="offboarding">Offboarding</option>
+              <option value="suspended">Suspendido</option>
+              <option value="terminated">Terminado</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button id="btn-adv-apply" class="btn btn-sm btn-primary">Aplicar filtros</button>
+          <button id="btn-adv-clear" class="btn btn-sm">Limpiar</button>
+        </div>
       </div>
       <div id="sup-table-wrap"></div>
     `;
@@ -104,6 +132,22 @@ const ViewSuppliers = (() => {
     document.getElementById('f-critical').onchange = _refresh;
     let debounce;
     document.getElementById('f-q').oninput = () => { clearTimeout(debounce); debounce = setTimeout(_refresh, 300); };
+
+    const advBtn = document.getElementById('btn-adv-filter');
+    const advPanel = document.getElementById('sup-adv-filter');
+    advBtn.onclick = () => {
+      const open = advPanel.style.display !== 'none';
+      advPanel.style.display = open ? 'none' : 'block';
+      advBtn.textContent = open ? 'Filtros avanzados' : 'Ocultar filtros';
+    };
+    document.getElementById('btn-adv-apply').onclick = _refresh;
+    document.getElementById('btn-adv-clear').onclick = () => {
+      ['f-adv-location','f-adv-dept','f-adv-imp','f-adv-rel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      _refresh();
+    };
     await _refresh();
   }
 
@@ -124,6 +168,10 @@ const ViewSuppliers = (() => {
     const riskLevel = document.getElementById('f-risk')?.value || '';
     const criticalFilter = document.getElementById('f-critical')?.value || '';
     const q = document.getElementById('f-q')?.value.trim() || '';
+    const advLocation = document.getElementById('f-adv-location')?.value.trim().toLowerCase() || '';
+    const advDept = document.getElementById('f-adv-dept')?.value.trim().toLowerCase() || '';
+    const advImp = document.getElementById('f-adv-imp')?.value || '';
+    const advRel = document.getElementById('f-adv-rel')?.value || '';
     const wrap = document.getElementById('sup-table-wrap');
     if (!wrap) return;
     wrap.innerHTML = '<p class="text-muted">Cargando...</p>';
@@ -134,6 +182,10 @@ const ViewSuppliers = (() => {
       let data = await Api.suppliers.list(params);
       if (criticalFilter === '1') data = data.filter(s => s.is_critical);
       else if (criticalFilter === '0') data = data.filter(s => !s.is_critical);
+      if (advLocation) data = data.filter(s => (s.location || '').toLowerCase().includes(advLocation));
+      if (advDept) data = data.filter(s => (s.department || '').toLowerCase().includes(advDept));
+      if (advImp) data = data.filter(s => (s.business_importance || 0) >= parseInt(advImp));
+      if (advRel) data = data.filter(s => s.relationship_status === advRel);
       _renderTable(wrap, data);
     } catch (e) {
       wrap.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
@@ -206,6 +258,7 @@ const ViewSuppliers = (() => {
           <td>
             ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
+            <button class="btn btn-sm" data-id="${s.id}" data-name="${UI.esc(s.name)}" data-action="history" title="Historial de cambios">Historial</button>
             ${canEdit ? `<button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">Eliminar</button>` : ''}
           </td>
         </tr>
@@ -297,6 +350,13 @@ const ViewSuppliers = (() => {
           await _loadStats();
           await _refresh();
         } catch (e) { UI.toast(e.message, 'error'); }
+      };
+    });
+    wrap.querySelectorAll('[data-action="history"]').forEach(btn => {
+      btn.onclick = () => {
+        if (typeof ViewAudit !== 'undefined') {
+          ViewAudit.showEntityHistory('supplier', btn.dataset.id, btn.dataset.name);
+        }
       };
     });
   }
@@ -404,6 +464,18 @@ const ViewSuppliers = (() => {
             <button id="sup-doc-confirm" class="btn btn-sm btn-primary">Subir</button>
             <button id="sup-doc-cancel-upload" class="btn btn-sm">Cancelar</button>
           </div>
+        </div>
+
+        <!-- Monitoreo de disponibilidad (solo en edicion) -->
+        <div class="span2" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div>
+              <strong style="font-size:13px;color:var(--brand-purple);">Monitoreo y hallazgos</strong>
+              <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">Resultados del monitoreo periodico de disponibilidad web, SSL y DNS del proveedor.</p>
+            </div>
+            <button type="button" id="sup-reload-findings" class="btn btn-sm">Actualizar</button>
+          </div>
+          <div id="sup-findings-list"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
         </div>` : ''}
       </div>
     `;
@@ -483,6 +555,48 @@ const ViewSuppliers = (() => {
           if (descRow) descRow.style.display = 'none';
         };
       }
+      _loadSupplierFindings(s.id);
+      const reloadFindingsBtn = document.getElementById('sup-reload-findings');
+      if (reloadFindingsBtn) reloadFindingsBtn.onclick = () => _loadSupplierFindings(s.id);
+    }
+  }
+
+  async function _loadSupplierFindings(supplierId) {
+    const wrap = document.getElementById('sup-findings-list');
+    if (!wrap) return;
+    try {
+      const result = await Api.findings.listBySupplier(supplierId);
+      const items = result.items || result || [];
+      if (!items.length) {
+        wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin hallazgos de monitoreo. El sistema escanea semanalmente sitios con website o email configurado.</p>';
+        return;
+      }
+      const sevColor = { CRITICAL: '#DC2626', HIGH: '#D97706', MEDIUM: '#F59E0B', LOW: '#6B7280' };
+      wrap.innerHTML = items.map(f => {
+        const date = f.detected_at ? new Date(f.detected_at).toLocaleDateString('es-ES') : '-';
+        const sev = (f.severity || 'LOW').toUpperCase();
+        const color = sevColor[sev] || '#6B7280';
+        const statusBadge = f.status === 'resolved'
+          ? '<span style="font-size:10px;background:#D1FAE5;color:#065F46;padding:1px 6px;border-radius:999px;font-weight:600;">Resuelto</span>'
+          : f.status === 'accepted'
+          ? '<span style="font-size:10px;background:#EDE9FE;color:#5B21B6;padding:1px 6px;border-radius:999px;font-weight:600;">Aceptado</span>'
+          : '<span style="font-size:10px;background:#FEE2E2;color:#991B1B;padding:1px 6px;border-radius:999px;font-weight:600;">Abierto</span>';
+        return `<div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:4px;background:var(--bg-2);">
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            <span style="font-size:10px;font-weight:700;color:${color};white-space:nowrap;padding:2px 6px;background:${color}18;border-radius:999px;">${sev}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:600;">${UI.esc(f.title)}</div>
+              ${f.description ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${UI.esc(f.description)}</div>` : ''}
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;white-space:nowrap;">
+              ${statusBadge}
+              <span style="font-size:10px;color:var(--text-muted);">${date}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    } catch (e) {
+      wrap.innerHTML = `<p style="font-size:12px;color:var(--risk-high);">${UI.esc(e.message)}</p>`;
     }
   }
 
@@ -576,14 +690,59 @@ const ViewSuppliers = (() => {
   function _addSlaRow() {
     _currentSlas.push({ id: _slaId(), name: '', metric: '', category: 'other', description: '' });
     _renderSlaList();
-    // Focus the last name input
     const inputs = document.querySelectorAll('.sla-name');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }
+
+  // ---- Contactos adicionales helpers ----
+
+  function _renderContactList() {
+    const wrap = document.getElementById('sup-contact-list');
+    if (!wrap) return;
+    if (!_currentContacts.length) {
+      wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin contactos adicionales.</p>';
+      return;
+    }
+    wrap.innerHTML = _currentContacts.map((c, i) => `
+      <div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--bg-2);">
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
+            <input class="input ct-name" data-idx="${i}" placeholder="Nombre *" value="${UI.esc(c.name||'')}" style="font-size:12px;">
+            <input class="input ct-email" data-idx="${i}" placeholder="Email *" type="email" value="${UI.esc(c.email||'')}" style="font-size:12px;">
+            <input class="input ct-role" data-idx="${i}" placeholder="Rol (Tecnico, Legal...)" value="${UI.esc(c.role||'')}" style="font-size:12px;">
+          </div>
+          <button type="button" class="btn btn-sm btn-danger ct-del" data-idx="${i}" style="padding:3px 8px;font-size:12px;margin-top:2px;">X</button>
+        </div>
+      </div>`).join('');
+    wrap.querySelectorAll('.ct-name').forEach(inp => {
+      inp.oninput = () => { _currentContacts[parseInt(inp.dataset.idx)].name = inp.value; };
+    });
+    wrap.querySelectorAll('.ct-email').forEach(inp => {
+      inp.oninput = () => { _currentContacts[parseInt(inp.dataset.idx)].email = inp.value; };
+    });
+    wrap.querySelectorAll('.ct-role').forEach(inp => {
+      inp.oninput = () => { _currentContacts[parseInt(inp.dataset.idx)].role = inp.value; };
+    });
+    wrap.querySelectorAll('.ct-del').forEach(btn => {
+      btn.onclick = () => {
+        _currentContacts.splice(parseInt(btn.dataset.idx), 1);
+        _renderContactList();
+      };
+    });
+  }
+
+  function _addContactRow() {
+    _currentContacts.push({ name: '', email: '', role: '' });
+    _renderContactList();
+    const inputs = document.querySelectorAll('.ct-name');
     if (inputs.length) inputs[inputs.length - 1].focus();
   }
 
   async function _save(s) {
     const name = document.getElementById('f-name').value.trim();
     if (!name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+    const internalOwnerVal = document.getElementById('f-internal-owner')?.value;
+    const bizImpVal = document.getElementById('f-biz-imp')?.value;
     const payload = {
       name,
       category: document.getElementById('f-cat').value.trim(),
@@ -591,6 +750,14 @@ const ViewSuppliers = (() => {
       is_critical: document.getElementById('f-critical').checked,
       contact_name: document.getElementById('f-contact').value.trim(),
       contact_email: document.getElementById('f-email').value.trim(),
+      cc_email: document.getElementById('f-cc-email')?.value.trim() || null,
+      additional_contacts: _currentContacts.filter(c => c.name?.trim() && c.email?.trim()).map(c => ({
+        name: c.name.trim(), email: c.email.trim(), role: c.role?.trim() || null,
+      })),
+      location: document.getElementById('f-location')?.value.trim() || null,
+      department: document.getElementById('f-department')?.value.trim() || null,
+      business_importance: bizImpVal ? (parseInt(bizImpVal) || null) : null,
+      internal_owner_id: internalOwnerVal ? (parseInt(internalOwnerVal) || null) : null,
       last_assessment_at: document.getElementById('f-last-assess').value || null,
       next_assessment_at: document.getElementById('f-next-assess').value || null,
       contract_ref: document.getElementById('f-contract').value.trim(),
@@ -953,6 +1120,9 @@ const ViewSuppliers = (() => {
       <div><label>Fecha de expiracion</label>
         <input type="date" id="sq-expires" value="${new Date(Date.now()+30*86400000).toISOString().slice(0,10)}">
       </div>
+      <div><label>Email de notificacion (cuando el proveedor responde)</label>
+        <input id="sq-notify-email" type="email" class="input" placeholder="gestor@empresa.com (opcional)">
+      </div>
       <div class="span2"><label>Notas internas</label>
         <textarea id="sq-notes" rows="2" placeholder="Notas para el equipo interno (no visibles para el proveedor)"></textarea>
       </div>
@@ -971,6 +1141,7 @@ const ViewSuppliers = (() => {
       if (!title) { UI.toast('El titulo es obligatorio','error'); return; }
       const expires = document.getElementById('sq-expires').value;
       const tplVal = document.getElementById('sq-template').value || '';
+      const notifyEmail = document.getElementById('sq-notify-email')?.value.trim() || null;
       const body = {
         supplier_id: parseInt(supId),
         title,
@@ -978,6 +1149,7 @@ const ViewSuppliers = (() => {
         notes: document.getElementById('sq-notes').value.trim(),
         template_code: tplVal.startsWith('sys:') ? tplVal.slice(4) : null,
         custom_template_id: tplVal.startsWith('custom:') ? parseInt(tplVal.slice(7)) : null,
+        notify_email: notifyEmail || null,
       };
       try {
         const q = await Api.supplier_questionnaires.create(body);
