@@ -1,6 +1,69 @@
 ﻿/* BCP/BIA — Continuidad de negocio (ISO 22301) — Plataforma BCM */
 const ViewBcp = (() => {
 
+  // ── Dashboard editable ────────────────────────────────────────────────────
+  const _BCP_WIDGETS = [
+    { id: 'kpi_score',    label: 'Score ISO 22301',      def: true },
+    { id: 'kpi_bia',      label: 'BIA completado',       def: true },
+    { id: 'kpi_plans',    label: 'Planes aprobados',     def: true },
+    { id: 'kpi_tests',    label: 'Tests vencidos',       def: true },
+    { id: 'clauses',      label: 'Clausulas ISO 22301',  def: true },
+    { id: 'locations',    label: 'Estado por sede',      def: true },
+    { id: 'ai_analysis',  label: 'Analisis IA del BCM',  def: true },
+  ];
+
+  function _bcpDashPrefKey() {
+    const u = Auth.user();
+    return 'riskhub_dash_bcp_' + (u?.id || 'default');
+  }
+
+  function _bcpDashPrefs() {
+    try { return JSON.parse(localStorage.getItem(_bcpDashPrefKey()) || '{}'); } catch (_) { return {}; }
+  }
+
+  function _bcpWidgetVisible(prefs, id) {
+    const w = _BCP_WIDGETS.find(x => x.id === id);
+    if (!w) return true;
+    return prefs[id] !== undefined ? prefs[id] : w.def;
+  }
+
+  function _openBcpDashEditor(onSave) {
+    const prefs = _bcpDashPrefs();
+    const rows = _BCP_WIDGETS.map(w => {
+      const on = _bcpWidgetVisible(prefs, w.id);
+      return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+        <input type="checkbox" data-bcp-wid="${w.id}" ${on ? 'checked' : ''} style="accent-color:var(--brand-purple);width:16px;height:16px;">
+        <span style="font-size:13px;">${w.label}</span>
+      </label>`;
+    }).join('');
+    UI.modal(
+      'Personalizar dashboard BCM',
+      `<div style="padding:4px 0;">${rows}</div>`,
+      {
+        width: '400px',
+        actions: `<button class="btn btn-primary" id="bcp-dash-save">Guardar</button>
+                  <button class="btn" id="bcp-dash-reset">Restablecer</button>
+                  <button class="btn" id="bcp-dash-cancel">Cancelar</button>`,
+      }
+    );
+    document.getElementById('bcp-dash-save').onclick = () => {
+      const newPrefs = {};
+      _BCP_WIDGETS.forEach(w => {
+        const el = document.querySelector(`[data-bcp-wid="${w.id}"]`);
+        if (el) newPrefs[w.id] = el.checked;
+      });
+      localStorage.setItem(_bcpDashPrefKey(), JSON.stringify(newPrefs));
+      UI.closeModal();
+      if (onSave) onSave();
+    };
+    document.getElementById('bcp-dash-reset').onclick = () => {
+      localStorage.removeItem(_bcpDashPrefKey());
+      UI.closeModal();
+      if (onSave) onSave();
+    };
+    document.getElementById('bcp-dash-cancel').onclick = UI.closeModal;
+  }
+
   // ── Estado de navegacion ─────────────────────────────────────────────────────
   let _currentMode = 'operar';
   let _currentStep = 1;
@@ -4981,23 +5044,34 @@ const ViewBcp = (() => {
     const testsOvr = k.tests_overdue || 0;
     const testsOvrColor = testsOvr > 0 ? '#dc2626' : '#16a34a';
 
+    const _bprefs = _bcpDashPrefs();
+    const _bshow = (id) => _bcpWidgetVisible(_bprefs, id);
+
     let kpiHtml = '<div class="bcm-kpi-grid">';
-    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid ' + scoreColor + '">';
-    kpiHtml += '<div class="bcm-kpi-label">Score ISO 22301</div>';
-    kpiHtml += '<div class="bcm-kpi-val" style="color:' + scoreColor + '">' + score + '%</div>';
-    kpiHtml += '<div class="bcm-kpi-sub" style="color:' + scoreColor + '">' + scoreLabel + '</div></div>';
-    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid var(--primary)">';
-    kpiHtml += '<div class="bcm-kpi-label">BIA completado</div>';
-    kpiHtml += '<div class="bcm-kpi-val">' + biaDone + '/' + biaTotal + '</div>';
-    kpiHtml += '<div class="bcm-kpi-sub" style="color:' + biaColor + '">' + biaNote + '</div></div>';
-    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid #16a34a">';
-    kpiHtml += '<div class="bcm-kpi-label">Planes aprobados</div>';
-    kpiHtml += '<div class="bcm-kpi-val">' + plansApp + '/' + plansTotal + '</div>';
-    kpiHtml += '<div class="bcm-kpi-sub">' + (plansTotal - plansApp) + ' en borrador</div></div>';
-    kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid ' + testsOvrColor + '">';
-    kpiHtml += '<div class="bcm-kpi-label">Tests vencidos</div>';
-    kpiHtml += '<div class="bcm-kpi-val" style="color:' + testsOvrColor + '">' + testsOvr + '</div>';
-    kpiHtml += '<div class="bcm-kpi-sub">' + (k.tests_recent_12m || 0) + ' tests en 12 meses</div></div>';
+    if (_bshow('kpi_score')) {
+      kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid ' + scoreColor + '">';
+      kpiHtml += '<div class="bcm-kpi-label">Score ISO 22301</div>';
+      kpiHtml += '<div class="bcm-kpi-val" style="color:' + scoreColor + '">' + score + '%</div>';
+      kpiHtml += '<div class="bcm-kpi-sub" style="color:' + scoreColor + '">' + scoreLabel + '</div></div>';
+    }
+    if (_bshow('kpi_bia')) {
+      kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid var(--primary)">';
+      kpiHtml += '<div class="bcm-kpi-label">BIA completado</div>';
+      kpiHtml += '<div class="bcm-kpi-val">' + biaDone + '/' + biaTotal + '</div>';
+      kpiHtml += '<div class="bcm-kpi-sub" style="color:' + biaColor + '">' + biaNote + '</div></div>';
+    }
+    if (_bshow('kpi_plans')) {
+      kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid #16a34a">';
+      kpiHtml += '<div class="bcm-kpi-label">Planes aprobados</div>';
+      kpiHtml += '<div class="bcm-kpi-val">' + plansApp + '/' + plansTotal + '</div>';
+      kpiHtml += '<div class="bcm-kpi-sub">' + (plansTotal - plansApp) + ' en borrador</div></div>';
+    }
+    if (_bshow('kpi_tests')) {
+      kpiHtml += '<div class="bcm-kpi" style="border-top:3px solid ' + testsOvrColor + '">';
+      kpiHtml += '<div class="bcm-kpi-label">Tests vencidos</div>';
+      kpiHtml += '<div class="bcm-kpi-val" style="color:' + testsOvrColor + '">' + testsOvr + '</div>';
+      kpiHtml += '<div class="bcm-kpi-sub">' + (k.tests_recent_12m || 0) + ' tests en 12 meses</div></div>';
+    }
     kpiHtml += '</div>';
 
     const clausesHtml = (comp.clauses || []).map(c => {
@@ -5026,21 +5100,37 @@ const ViewBcp = (() => {
       locsHtml += '</tbody></table>';
     }
 
-    container.innerHTML = '<div class="bcm-dashboard">'
-      + kpiHtml
-      + '<div class="bcm-dashboard-grid">'
-      + '<div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-checklist"></i> Clausulas ISO 22301</div></div>'
-      + '<div style="display:flex;flex-direction:column;gap:8px;padding-top:4px">' + clausesHtml + '</div></div>'
-      + '<div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-map-pin"></i> Estado por sede</div></div>'
-      + locsHtml + '</div>'
-      + '</div>'
-      + '<div class="card" style="margin-top:14px">'
-      + '<div class="card-header"><div class="card-title"><i class="ti ti-brain"></i> Analisis IA del estado BCM</div>'
-      + '<button class="btn btn-ghost btn-sm" id="btn-dash-ai-analyze"><i class="ti ti-sparkles"></i> Analizar</button></div>'
-      + '<div id="dash-ai-result" style="font-size:12px;color:var(--text-subtle)">Pulsa "Analizar" para que el agente IA evalue el estado actual y proponga acciones de mejora.</div>'
-      + '</div></div>';
+    const gridCards = [];
+    if (_bshow('clauses'))
+      gridCards.push('<div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-checklist"></i> Clausulas ISO 22301</div></div>'
+        + '<div style="display:flex;flex-direction:column;gap:8px;padding-top:4px">' + clausesHtml + '</div></div>');
+    if (_bshow('locations'))
+      gridCards.push('<div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-map-pin"></i> Estado por sede</div></div>'
+        + locsHtml + '</div>');
 
-    container.querySelector('#btn-dash-ai-analyze').onclick = async () => {
+    const aiCard = _bshow('ai_analysis')
+      ? '<div class="card" style="margin-top:14px">'
+        + '<div class="card-header"><div class="card-title"><i class="ti ti-brain"></i> Analisis IA del estado BCM</div>'
+        + '<button class="btn btn-ghost btn-sm" id="btn-dash-ai-analyze"><i class="ti ti-sparkles"></i> Analizar</button></div>'
+        + '<div id="dash-ai-result" style="font-size:12px;color:var(--text-subtle)">Pulsa "Analizar" para que el agente IA evalue el estado actual y proponga acciones de mejora.</div>'
+        + '</div>'
+      : '';
+
+    container.innerHTML = '<div class="bcm-dashboard">'
+      + '<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">'
+      + '<button id="btn-bcp-dash-edit" style="padding:5px 12px;border:1px solid var(--border);border-radius:6px;'
+      + 'background:none;cursor:pointer;font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:5px;">'
+      + '&#9881; Personalizar</button></div>'
+      + kpiHtml
+      + (gridCards.length ? '<div class="bcm-dashboard-grid">' + gridCards.join('') + '</div>' : '')
+      + aiCard
+      + '</div>';
+
+    container.querySelector('#btn-bcp-dash-edit').onclick = () => {
+      _openBcpDashEditor(() => _tileDashboard(container));
+    };
+
+    if (_bshow('ai_analysis')) container.querySelector('#btn-dash-ai-analyze').onclick = async () => {
       const btn = container.querySelector('#btn-dash-ai-analyze');
       const res = container.querySelector('#dash-ai-result');
       btn.disabled = true;

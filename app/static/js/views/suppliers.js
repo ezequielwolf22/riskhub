@@ -13,6 +13,66 @@ const ViewSuppliers = (() => {
     return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
   }
 
+  // ── Dashboard editable ────────────────────────────────────────────────────
+  const _SUP_WIDGETS = [
+    { id: 'total',    label: 'Total proveedores',     def: true },
+    { id: 'active',   label: 'Proveedores activos',   def: true },
+    { id: 'critical', label: 'Criticos / Altos',      def: true },
+    { id: 'overdue',  label: 'Evaluacion vencida',    def: true },
+    { id: 'score',    label: 'Puntuacion media',      def: false },
+    { id: 'pending',  label: 'Cuestionarios pendientes', def: false },
+  ];
+
+  function _supDashPrefKey() {
+    const u = Auth.user();
+    return 'riskhub_dash_suppliers_' + (u?.id || 'default');
+  }
+
+  function _supDashPrefs() {
+    try { return JSON.parse(localStorage.getItem(_supDashPrefKey()) || '{}'); } catch (_) { return {}; }
+  }
+
+  function _isWidgetVisible(prefs, w) {
+    return prefs[w.id] !== undefined ? prefs[w.id] : w.def;
+  }
+
+  function _openSupDashEditor() {
+    const prefs = _supDashPrefs();
+    const rows = _SUP_WIDGETS.map(w => {
+      const on = _isWidgetVisible(prefs, w);
+      return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+        <input type="checkbox" data-sup-wid="${w.id}" ${on ? 'checked' : ''} style="accent-color:var(--brand-purple);width:16px;height:16px;">
+        <span style="font-size:13px;">${w.label}</span>
+      </label>`;
+    }).join('');
+    UI.modal(
+      'Personalizar dashboard de proveedores',
+      `<div style="padding:4px 0;">${rows}</div>`,
+      {
+        width: '400px',
+        actions: `<button class="btn btn-primary" id="sup-dash-save">Guardar</button>
+                  <button class="btn" id="sup-dash-reset">Restablecer</button>
+                  <button class="btn" id="sup-dash-cancel">Cancelar</button>`,
+      }
+    );
+    document.getElementById('sup-dash-save').onclick = () => {
+      const newPrefs = {};
+      _SUP_WIDGETS.forEach(w => {
+        const el = document.querySelector(`[data-sup-wid="${w.id}"]`);
+        if (el) newPrefs[w.id] = el.checked;
+      });
+      localStorage.setItem(_supDashPrefKey(), JSON.stringify(newPrefs));
+      UI.closeModal();
+      _loadStats();
+    };
+    document.getElementById('sup-dash-reset').onclick = () => {
+      localStorage.removeItem(_supDashPrefKey());
+      UI.closeModal();
+      _loadStats();
+    };
+    document.getElementById('sup-dash-cancel').onclick = UI.closeModal;
+  }
+
   let _activeSupTab = 'suppliers';
   let _selectedIds = new Set();
 
@@ -152,16 +212,33 @@ const ViewSuppliers = (() => {
   }
 
   async function _loadStats() {
+    const wrap = document.getElementById('sup-stats');
+    if (!wrap) return;
     try {
       const s = await Api.suppliers.summary();
-      const wrap = document.getElementById('sup-stats');
-      if (!wrap) return;
-      wrap.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total proveedores</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.critical_or_high}</div><div class="stat-label">Criticos / Altos</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.overdue_assessment}</div><div class="stat-label">Evaluacion vencida</div></div>
-      `;
-    } catch (_) {}
+      const prefs = _supDashPrefs();
+      const show = (id) => _isWidgetVisible(prefs, _SUP_WIDGETS.find(w => w.id === id));
+      const cards = [];
+      if (show('total'))
+        cards.push(`<div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total proveedores</div></div>`);
+      if (show('active'))
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:#16a34a;">${s.active ?? s.total}</div><div class="stat-label">Activos</div></div>`);
+      if (show('critical'))
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.critical_or_high}</div><div class="stat-label">Criticos / Altos</div></div>`);
+      if (show('overdue'))
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.overdue_assessment}</div><div class="stat-label">Evaluacion vencida</div></div>`);
+      if (show('score'))
+        cards.push(`<div class="stat-card"><div class="stat-value">${s.avg_score != null ? s.avg_score : '—'}</div><div class="stat-label">Puntuacion media</div></div>`);
+      if (show('pending'))
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${s.pending_questionnaires ?? 0}</div><div class="stat-label">Cuest. pendientes</div></div>`);
+      wrap.innerHTML = cards.join('')
+        + `<button onclick="ViewSuppliers.openDashEditor()" title="Personalizar dashboard"
+            style="margin-left:auto;padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                   background:none;cursor:pointer;color:var(--text-muted);font-size:18px;line-height:1;
+                   display:flex;align-items:center;">&#9881;</button>`;
+    } catch (_) {
+      wrap.innerHTML = '';
+    }
   }
 
   async function _refresh() {
@@ -1657,5 +1734,5 @@ const ViewSuppliers = (() => {
     };
   }
 
-  return { render };
+  return { render, openDashEditor: _openSupDashEditor };
 })();

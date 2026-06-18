@@ -40,6 +40,7 @@ def list_suppliers(
 
 @router.get("/stats/summary")
 def suppliers_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models import SupplierQuestionnaire
     suppliers = filter_by_org(db.query(Supplier), Supplier, current_user).all()
     now = datetime.now(timezone.utc)
     overdue_assessment = sum(
@@ -47,10 +48,22 @@ def suppliers_summary(db: Session = Depends(get_db), current_user: User = Depend
         if s.next_assessment_at and s.next_assessment_at.replace(tzinfo=timezone.utc) < now
     )
     critical_high = sum(1 for s in suppliers if s.risk_level in (SupplierRisk.CRITICAL, SupplierRisk.HIGH))
+    scores = [s.score for s in suppliers if s.score is not None]
+    avg_score = round(sum(scores) / len(scores)) if scores else None
+    inactive_statuses = {"offboarding", "terminated", "inactive"}
+    active_count = sum(1 for s in suppliers if getattr(s, "relationship_status", None) not in inactive_statuses)
+    org_id = current_user.organization_id
+    pending_q = db.query(SupplierQuestionnaire).filter(
+        SupplierQuestionnaire.organization_id == org_id,
+        SupplierQuestionnaire.status == "pending",
+    ).count()
     return {
         "total": len(suppliers),
+        "active": active_count,
         "critical_or_high": critical_high,
         "overdue_assessment": overdue_assessment,
+        "avg_score": avg_score,
+        "pending_questionnaires": pending_q,
     }
 
 
