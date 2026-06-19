@@ -9,6 +9,23 @@ const ViewSuppliers = (() => {
     high: 'var(--risk-high)', critical: 'var(--risk-critical)',
   };
 
+  function _rlBands() {
+    return window.RiskLevels ? RiskLevels.all() : [
+      { code: 'low',      label: 'Bajo',    color: 'var(--risk-low)'      },
+      { code: 'medium',   label: 'Medio',   color: 'var(--risk-medium)'   },
+      { code: 'high',     label: 'Alto',    color: 'var(--risk-high)'     },
+      { code: 'critical', label: 'Critico', color: 'var(--risk-critical)' },
+    ];
+  }
+  function _rlLabel(code) {
+    const b = _rlBands().find(x => x.code === code);
+    return b ? b.label : (RISK_LABELS[code] || code);
+  }
+  function _rlColor(code) {
+    const b = _rlBands().find(x => x.code === code);
+    return b ? b.color : (RISK_COLORS[code] || '#888');
+  }
+
   function _badge(label, color) {
     return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
   }
@@ -146,10 +163,7 @@ const ViewSuppliers = (() => {
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
         <select id="f-risk" class="input" style="width:150px;">
           <option value="">Todos los niveles</option>
-          <option value="critical">Critico</option>
-          <option value="high">Alto</option>
-          <option value="medium">Medio</option>
-          <option value="low">Bajo</option>
+          ${_rlBands().slice().reverse().map(b => `<option value="${b.code}">${UI.esc(b.label)}</option>`).join('')}
         </select>
         <select id="f-critical" class="input" style="width:150px;">
           <option value="">Todos</option>
@@ -446,7 +460,7 @@ const ViewSuppliers = (() => {
         <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(v.category || '')}" placeholder="Software, Hardware, Servicios..."></div>
         <div><label>Nivel de riesgo</label>
           <select id="f-risk-level" class="input">
-            ${Object.entries(RISK_LABELS).map(([k,l]) => `<option value="${k}" ${v.risk_level===k?'selected':''}>${l}</option>`).join('')}
+            ${_rlBands().map(b => `<option value="${b.code}" ${v.risk_level===b.code?'selected':''}>${UI.esc(b.label)}</option>`).join('')}
           </select>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">

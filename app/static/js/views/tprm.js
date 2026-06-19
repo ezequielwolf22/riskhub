@@ -22,10 +22,13 @@ const ViewTprm = (() => {
 
   function _scoreColor(score) {
     if (score === null || score === undefined) return '#9CA3AF';
-    if (score >= 75) return 'var(--risk-critical)';
-    if (score >= 50) return 'var(--risk-high)';
-    if (score >= 25) return 'var(--risk-medium)';
-    return 'var(--risk-low)';
+    if (!window.RiskLevels) {
+      if (score >= 75) return 'var(--risk-critical)';
+      if (score >= 50) return 'var(--risk-high)';
+      if (score >= 25) return 'var(--risk-medium)';
+      return 'var(--risk-low)';
+    }
+    return RiskLevels.colorFor(Math.round(Math.min(100, score) * 8 / 100));
   }
 
   // Convierte score 0-100 a porcentaje de arco SVG para el gauge
@@ -37,8 +40,11 @@ const ViewTprm = (() => {
       </div>`;
     }
     const pct = value10 / 10; // 0-1
-    const color = pct >= 0.75 ? 'var(--risk-critical)' : pct >= 0.5 ? 'var(--risk-high)' : pct >= 0.25 ? 'var(--risk-medium)' : 'var(--risk-low)';
-    const label = pct >= 0.75 ? 'Critico' : pct >= 0.5 ? 'Alto' : pct >= 0.25 ? 'Medio' : 'Bajo';
+    const _isoLvl = Math.round(pct * 8);
+    const color = window.RiskLevels ? RiskLevels.colorFor(_isoLvl)
+      : pct >= 0.75 ? 'var(--risk-critical)' : pct >= 0.5 ? 'var(--risk-high)' : pct >= 0.25 ? 'var(--risk-medium)' : 'var(--risk-low)';
+    const label = window.RiskLevels ? RiskLevels.labelFor(_isoLvl)
+      : pct >= 0.75 ? 'Critico' : pct >= 0.5 ? 'Alto' : pct >= 0.25 ? 'Medio' : 'Bajo';
     // SVG half-circle gauge
     const r = 52, cx = 70, cy = 65;
     const startAngle = Math.PI;
@@ -174,16 +180,20 @@ const ViewTprm = (() => {
       <!-- Distribucion por nivel residual -->
       <div class="card">
         <h3 style="margin:0 0 12px;font-size:14px;">Distribucion por nivel de riesgo</h3>
-        ${['critical','high','medium','low','very_low'].map(l => {
-          const n = br[l] || 0;
+        ${(window.RiskLevels ? RiskLevels.all().slice().reverse() : [
+          { code:'high',   label:'Alto',  color:'var(--risk-high)'   },
+          { code:'medium', label:'Medio', color:'var(--risk-medium)' },
+          { code:'low',    label:'Bajo',  color:'var(--risk-low)'    },
+        ]).map(b => {
+          const n = br[b.code] || 0;
           const pct = total ? Math.round(n / total * 100) : 0;
           return `<div style="margin-bottom:7px;">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
-              <span style="color:${LEVEL_COLORS[l]};font-weight:600;">${LEVEL_LABELS[l]}</span>
+              <span style="color:${b.color};font-weight:600;">${UI.esc(b.label)}</span>
               <span style="font-weight:700;">${n} <span style="color:var(--text-muted);font-weight:400;">${pct}%</span></span>
             </div>
             <div style="height:6px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
-              <div style="height:100%;width:${pct}%;background:${LEVEL_COLORS[l]};border-radius:3px;"></div>
+              <div style="height:100%;width:${pct}%;background:${b.color};border-radius:3px;"></div>
             </div>
           </div>`;
         }).join('')}

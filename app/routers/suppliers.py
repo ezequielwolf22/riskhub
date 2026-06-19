@@ -26,7 +26,7 @@ def _next_code(db: Session, org_id: int) -> str:
 def list_suppliers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    risk_level: Optional[SupplierRisk] = None,
+    risk_level: Optional[str] = None,
     q: Optional[str] = None,
 ):
     query = filter_by_org(db.query(Supplier), Supplier, current_user)

@@ -623,7 +623,7 @@ class SupplierIn(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     services: Optional[str] = None
-    risk_level: SupplierRisk = SupplierRisk.MEDIUM
+    risk_level: str = "medium"
     is_critical: bool = False
     certifications: list[str] = []
     contact_name: Optional[str] = None
@@ -668,7 +668,7 @@ class SupplierUpdate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     services: Optional[str] = None
-    risk_level: Optional[SupplierRisk] = None
+    risk_level: Optional[str] = None
     is_critical: Optional[bool] = None
     certifications: Optional[list[str]] = None
     contact_name: Optional[str] = None
@@ -718,7 +718,7 @@ class SupplierOut(ORMBase):
     category: Optional[str]
     description: Optional[str]
     services: Optional[str]
-    risk_level: SupplierRisk
+    risk_level: str
     is_critical: bool
     certifications: Optional[list[str]]
     contact_name: Optional[str]

@@ -26,15 +26,19 @@ const ViewVendorAssessments = (() => {
 
   function _riskColor(score) {
     if (score == null) return 'var(--text-muted)';
-    if (score >= 75) return 'var(--risk-critical)';
-    if (score >= 50) return 'var(--risk-high)';
-    if (score >= 25) return 'var(--risk-medium)';
-    return 'var(--risk-low)';
+    if (!window.RiskLevels) {
+      if (score >= 75) return 'var(--risk-critical)';
+      if (score >= 50) return 'var(--risk-high)';
+      if (score >= 25) return 'var(--risk-medium)';
+      return 'var(--risk-low)';
+    }
+    return RiskLevels.colorFor(Math.round(Math.min(100, score) * 8 / 100));
   }
   function _scorePill(score, level) {
     if (score == null) return '<span style="color:var(--text-muted);">-</span>';
     const color = _riskColor(score);
-    const label = LEVEL_LABELS[level] || level || '';
+    const band = window.RiskLevels ? RiskLevels.all().find(b => b.code === level) : null;
+    const label = band ? band.label : (LEVEL_LABELS[level] || level || '');
     return `<span style="font-weight:700;color:${color};">${score}</span> <span style="font-size:11px;color:${color};">${UI.esc(label)}</span>`;
   }
   function _decisionBadge(rec) {

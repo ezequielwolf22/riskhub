@@ -684,7 +684,7 @@ class Supplier(Base):
     services = Column(Text)               # servicios que presta
     category = Column(String(128), nullable=True)
     is_critical = Column(Boolean, default=False)
-    risk_level = Column(Enum(SupplierRisk), default=SupplierRisk.MEDIUM)
+    risk_level = Column(String(16), default="medium")
     certifications = Column(JSON)         # ["ISO27001","SOC2",...]
     contact_name = Column(String(255))
     contact_email = Column(String(255))

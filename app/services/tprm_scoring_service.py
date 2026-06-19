@@ -143,13 +143,13 @@ def risk_level_label(score: Optional[int]) -> str:
     return "very_low"
 
 
-def _tier_to_supplier_risk(tier: SupplierTier) -> SupplierRisk:
+def _tier_to_supplier_risk(tier: SupplierTier) -> str:
     return {
-        SupplierTier.CRITICAL: SupplierRisk.CRITICAL,
-        SupplierTier.HIGH: SupplierRisk.HIGH,
-        SupplierTier.MEDIUM: SupplierRisk.MEDIUM,
-        SupplierTier.LOW: SupplierRisk.LOW,
-    }[tier]
+        SupplierTier.CRITICAL: "critical",
+        SupplierTier.HIGH: "high",
+        SupplierTier.MEDIUM: "medium",
+        SupplierTier.LOW: "low",
+    }.get(tier, "medium")
 
 
 def recompute_supplier(db: Session, supplier: Supplier, commit: bool = True) -> dict:

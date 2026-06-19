@@ -20,6 +20,7 @@ from app.schemas import TPRMTemplateCreate, TPRMTemplateOut, TPRMTemplateUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services import tprm_scoring_service as scoring
 from app.services import tprm_templates
+from app.services.risk_engine import band_for_config, get_risk_bands
 from app.services.audit_service import log_action
 
 logger = logging.getLogger(__name__)
@@ -37,15 +38,18 @@ def dashboard_summary(db: Session = Depends(get_db),
     now = datetime.now(timezone.utc)
 
     by_tier = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unrated": 0}
-    by_residual = {"critical": 0, "high": 0, "medium": 0, "low": 0, "very_low": 0, "unknown": 0}
+    _bands = get_risk_bands(db, getattr(current_user, "organization_id", None))
+    by_residual = {b["code"]: 0 for b in _bands}
     overdue = 0
     nis2 = dora = ens = processors = 0
 
     for s in suppliers:
         tier = s.tier.value if s.tier else "unrated"
         by_tier[tier] = by_tier.get(tier, 0) + 1
-        lvl = scoring.risk_level_label(s.residual_risk_score)
-        by_residual[lvl] = by_residual.get(lvl, 0) + 1
+        # Convierte score TPRM 0-100 (mayor=peor) a nivel ISO 27005 0-8 y busca banda
+        iso_lvl = round(min(100, max(0, s.residual_risk_score or 0)) * 8 / 100)
+        bc = band_for_config(iso_lvl, _bands)
+        by_residual[bc["code"]] = by_residual.get(bc["code"], 0) + 1
         if s.next_assessment_at and s.next_assessment_at.replace(tzinfo=timezone.utc) < now:
             overdue += 1
         if s.is_nis2:
