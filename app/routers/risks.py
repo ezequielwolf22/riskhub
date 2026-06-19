@@ -1239,17 +1239,26 @@ def suggest_controls_for_risk(
     if not check_org_access(r.organization_id, current_user):
         raise HTTPException(403)
 
-    # Configuracion IA del tenant
+    # Configuracion IA del tenant — mismo patron de descifrado que ai-explain
     ai_cfg = db.query(AiConfig).filter_by(organization_id=r.organization_id).first()
-    if not ai_cfg or not ai_cfg.api_key_enc:
-        raise HTTPException(400, "Configura la clave API de IA antes de usar esta funcion")
 
-    try:
-        from cryptography.fernet import Fernet
-        from app.config import settings
-        api_key = Fernet(settings.secret_key.encode()).decrypt(ai_cfg.api_key_enc.encode()).decode()
-    except Exception:
-        raise HTTPException(400, "Error al descifrar la clave API de IA")
+    def _resolve_key(cfg):
+        if cfg and cfg.api_key_encrypted:
+            import base64, hashlib
+            from cryptography.fernet import Fernet as _Fernet
+            from app.config import settings as _s
+            key = base64.urlsafe_b64encode(hashlib.sha256(_s.secret_key.encode()).digest())
+            try:
+                return _Fernet(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+            except Exception:
+                return None
+        from app.config import settings as _s
+        return _s.anthropic_api_key
+
+    api_key = _resolve_key(ai_cfg)
+    if not api_key:
+        raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
+    model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5-20251001"
 
     # Contexto del riesgo
     asset_name = r.asset.name if r.asset else "N/A"
@@ -1304,7 +1313,6 @@ Responde SOLO con JSON valido, sin texto adicional:
 
     try:
         import anthropic
-        model = ai_cfg.model or "claude-haiku-4-5-20251001"
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model=model,
