@@ -525,6 +525,10 @@ def _migrate_columns() -> None:
         ("ALTER TABLE supplier_questionnaires ADD COLUMN notify_email VARCHAR(255)", "supplier_questionnaires", "notify_email"),
         # v4.3.0 — ExternalFinding: link a proveedor monitorizado
         ("ALTER TABLE external_findings ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id)", "external_findings", "supplier_id"),
+        # v4.4.0 — Cuestionario: asignacion interna a usuario de la plataforma
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN assigned_user_id INTEGER REFERENCES users(id)", "supplier_questionnaires", "assigned_user_id"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN assignment_type VARCHAR(16)", "supplier_questionnaires", "assignment_type"),
+        ("ALTER TABLE supplier_questionnaires ADD COLUMN assigned_at DATETIME", "supplier_questionnaires", "assigned_at"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

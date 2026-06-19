@@ -1001,6 +1001,8 @@ class SupplierQuestionnaireCreate(BaseModel):
     custom_template_id: Optional[int] = None  # TPRM: plantilla personalizada (editable) a usar
     questions: Optional[list[dict]] = None    # TPRM: preguntas ad-hoc (override de la plantilla)
     notify_email: Optional[str] = None        # v4.3.0: email de notificacion cuando el proveedor responde
+    assigned_user_id: Optional[int] = None    # v4.4.0: asignacion interna
+    assignment_type: Optional[str] = "external"  # external | internal
 
 
 # ---------- TPRM: PLANTILLAS EDITABLES ----------
@@ -1054,6 +1056,10 @@ class SupplierQuestionnaireOut(ORMBase):
     parent_assessment_id: Optional[int] = None
     next_questionnaire_id: Optional[int] = None
     notify_email: Optional[str] = None
+    assigned_user_id: Optional[int] = None
+    assigned_user_name: Optional[str] = None
+    assignment_type: Optional[str] = None
+    assigned_at: Optional[datetime] = None
     created_at: datetime
 
 

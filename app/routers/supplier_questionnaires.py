@@ -126,6 +126,8 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
             raise HTTPException(404, "Plantilla no encontrada")
         questions = tpl["questions"]
         template_code = tpl["code"]
+    now = datetime.now(timezone.utc)
+    assignment_type = body.assignment_type or "external"
     q = SupplierQuestionnaire(
         code=_next_code(db),
         supplier_id=body.supplier_id,
@@ -136,6 +138,9 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
         expires_at=expires,
         notes=body.notes,
         notify_email=body.notify_email or None,
+        assigned_user_id=body.assigned_user_id or None,
+        assignment_type=assignment_type,
+        assigned_at=now if body.assigned_user_id else None,
         created_by_id=current_user.id,
         organization_id=current_user.organization_id,
     )
@@ -575,9 +580,161 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     except Exception:
         pass
 
+    # Notificacion saliente Monday.com si esta configurado
+    try:
+        from app.routers.integrations_forms import notify_monday_if_configured
+        notify_monday_if_configured(db, q.organization_id, q.id)
+    except Exception:
+        pass
+
     result = {"success": True, "score": score, "message": "Gracias por completar el cuestionario."}
     if next_token:
         result["next_token"] = next_token
         result["next_title"] = next_title
         result["phase_transition"] = True
     return result
+
+
+# ── Opcion A: asignacion interna ─────────────────────────────────────────────
+
+@router.get("/my-tasks", response_model=list[SupplierQuestionnaireOut])
+def my_assigned_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lista los cuestionarios asignados al usuario autenticado que estan pendientes."""
+    return (
+        db.query(SupplierQuestionnaire)
+        .filter(
+            SupplierQuestionnaire.assigned_user_id == current_user.id,
+            SupplierQuestionnaire.assignment_type == "internal",
+            SupplierQuestionnaire.submitted_at.is_(None),
+        )
+        .order_by(SupplierQuestionnaire.assigned_at.desc())
+        .all()
+    )
+
+
+@router.post("/{qid}/assign-internal")
+def assign_internal(
+    qid: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Asigna el cuestionario a un usuario interno de la plataforma."""
+    q = filter_by_org(
+        db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
+        SupplierQuestionnaire, current_user,
+    ).first()
+    if not q:
+        raise HTTPException(404, "Cuestionario no encontrado")
+    if q.submitted_at:
+        raise HTTPException(400, "El cuestionario ya ha sido respondido")
+
+    target_user_id = body.get("user_id")
+    if not target_user_id:
+        raise HTTPException(400, "user_id requerido")
+    target_user = db.query(User).filter(
+        User.id == target_user_id,
+        User.organization_id == current_user.organization_id,
+    ).first()
+    if not target_user:
+        raise HTTPException(404, "Usuario no encontrado en esta organizacion")
+
+    now = datetime.now(timezone.utc)
+    q.assigned_user_id = target_user.id
+    q.assignment_type = "internal"
+    q.assigned_at = now
+    db.commit()
+
+    log_action(db, current_user.id, "assign_internal", "supplier_questionnaire", str(q.id),
+               {"assigned_to": target_user.email, "questionnaire": q.code})
+
+    # Notificar al usuario asignado por email si hay SMTP configurado
+    try:
+        cfg = db.query(EmailSettings).filter(
+            EmailSettings.organization_id == current_user.organization_id,
+            EmailSettings.enabled == True,
+        ).first()
+        if cfg and target_user.email:
+            from app.services import email_service
+            body_html = (
+                f"<p>Hola <strong>{target_user.full_name or target_user.email}</strong>,</p>"
+                f"<p>Se te ha asignado el cuestionario de evaluacion de proveedor "
+                f"<strong>{q.code} — {q.title}</strong>.</p>"
+                f"<p>Proveedor: <strong>{q.supplier_name}</strong></p>"
+                f"<p>Accede a la plataforma RiskHub, seccion Proveedores &gt; Cuestionarios, "
+                f"y busca <em>Mis tareas</em> para completarlo.</p>"
+            )
+            email_service.send_email(cfg, target_user.email, f"[RiskHub] Cuestionario asignado: {q.code}", body_html)
+    except Exception:
+        pass
+
+    return {"assigned_to": target_user.email, "questionnaire_code": q.code}
+
+
+@router.post("/{qid}/internal-submit")
+def internal_submit(
+    qid: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """El usuario interno asignado responde el cuestionario directamente en la plataforma."""
+    q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid).first()
+    if not q:
+        raise HTTPException(404, "Cuestionario no encontrado")
+    if q.organization_id != current_user.organization_id:
+        raise HTTPException(403, "Sin acceso")
+    if q.assignment_type != "internal":
+        raise HTTPException(400, "Este cuestionario no es de tipo interno")
+    if q.assigned_user_id != current_user.id:
+        # Admins pueden rellenar cualquier cuestionario interno de su org
+        from app.models import UserRole
+        if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+            raise HTTPException(403, "Solo el usuario asignado puede responder este cuestionario")
+    if q.submitted_at:
+        raise HTTPException(400, "El cuestionario ya ha sido respondido")
+
+    answers = body.get("answers", {})
+    now = datetime.now(timezone.utc)
+
+    from app.services.tprm_scoring_service import score_questionnaire_answers
+    try:
+        score_result = score_questionnaire_answers(q.questions or [], answers)
+        score = score_result.get("score", _calculate_score(answers))
+        major_nc = score_result.get("major_nc", 0)
+        minor_nc = score_result.get("minor_nc", 0)
+    except Exception:
+        score = _calculate_score(answers)
+        major_nc = 0
+        minor_nc = 0
+
+    q.answers = answers
+    q.score = score
+    q.submitted_at = now
+    q.major_nc = major_nc
+    q.minor_nc = minor_nc
+
+    supplier = q.supplier
+    if supplier:
+        inherent = getattr(supplier, "inherent_risk_level", None) or "medium"
+        q.residual_risk_level = _compute_residual_risk(inherent, major_nc, minor_nc)
+
+    db.commit()
+    log_action(db, current_user.id, "internal_submit", "supplier_questionnaire", str(q.id),
+               {"score": score, "supplier": q.supplier_name})
+
+    # Notificaciones y IA review en background (igual que el flujo externo)
+    try:
+        _qid = q.id
+        _org = q.organization_id
+        def _bg_notify():
+            from app.services.scheduler import _notify_questionnaire_submitted
+            _notify_questionnaire_submitted(_qid, _org)
+        threading.Thread(target=_bg_notify, daemon=True).start()
+    except Exception:
+        pass
+
+    return {"success": True, "score": score, "questionnaire_code": q.code}

@@ -306,6 +306,14 @@ const Api = {
     create: (d) => Api.post('/api/supplier-questionnaires/', d),
     del: (id) => Api.del('/api/supplier-questionnaires/' + id),
     send: (id) => Api.post('/api/supplier-questionnaires/' + id + '/send', {}),
+    myTasks: () => Api.get('/api/supplier-questionnaires/my-tasks'),
+    assignInternal: (id, userId) => Api.post('/api/supplier-questionnaires/' + id + '/assign-internal', { user_id: userId }),
+    internalSubmit: (id, answers) => Api.post('/api/supplier-questionnaires/' + id + '/internal-submit', { answers }),
+  },
+  integrations_forms: {
+    getConfig: () => Api.get('/api/integrations/forms/config'),
+    updateConfig: (d) => Api.patch('/api/integrations/forms/config', d),
+    regenerateToken: () => Api.post('/api/integrations/forms/config/regenerate-token', {}),
   },
   questionnaire_schedules: {
     list: (q) => Api.get('/api/questionnaire-schedules/', q),

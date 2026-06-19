@@ -918,13 +918,48 @@ const ViewSuppliers = (() => {
   async function _renderQuestionnairesTab() {
     const wrap = document.getElementById('sup-tab-content');
     wrap.innerHTML = `
+      <div id="seq-my-tasks"></div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
         <select id="seq-sup-filter" class="input" style="width:220px;">
           <option value="">Todos los proveedores</option>
         </select>
+        <select id="seq-type-filter" class="input" style="width:180px;">
+          <option value="">Todos los tipos</option>
+          <option value="external">Externos</option>
+          <option value="internal">Internos</option>
+        </select>
       </div>
       <div id="seq-list">Cargando...</div>
     `;
+    // Mis tareas: cuestionarios asignados al usuario actual
+    try {
+      const tasks = await Api.supplier_questionnaires.myTasks();
+      const tasksWrap = document.getElementById('seq-my-tasks');
+      if (tasksWrap && tasks.length) {
+        tasksWrap.innerHTML = `
+          <div class="card" style="margin-bottom:14px;border-left:3px solid var(--brand-purple);">
+            <div class="card-header">
+              <div class="card-title"><i class="ti ti-clipboard-list"></i> Mis tareas asignadas (${tasks.length})</div>
+            </div>
+            <div class="table-wrap"><table class="data"><thead><tr>
+              <th>Codigo</th><th>Titulo</th><th>Proveedor</th><th>Expira</th><th></th>
+            </tr></thead><tbody>
+              ${tasks.map(q => `<tr>
+                <td>${UI.codePill(q.code)}</td>
+                <td><strong>${UI.esc(q.title)}</strong></td>
+                <td style="font-size:12px;">${UI.esc(q.supplier_name||'-')}</td>
+                <td style="font-size:12px;">${q.expires_at ? new Date(q.expires_at).toLocaleDateString('es-ES') : '-'}</td>
+                <td><button class="btn btn-sm btn-primary" data-task-id="${q.id}">Responder</button></td>
+              </tr>`).join('')}
+            </tbody></table></div>
+          </div>`;
+        tasksWrap.querySelectorAll('[data-task-id]').forEach(btn => {
+          const q = tasks.find(x => x.id == btn.dataset.taskId);
+          if (q) btn.onclick = () => _openInternalFillForm(q);
+        });
+      }
+    } catch (_) {}
+
     // Populate supplier filter
     try {
       const sups = await Api.suppliers.list();
@@ -937,17 +972,20 @@ const ViewSuppliers = (() => {
       });
     } catch (_) {}
     document.getElementById('seq-sup-filter').onchange = _reloadSeq;
+    document.getElementById('seq-type-filter').onchange = _reloadSeq;
     await _reloadSeq();
   }
 
   async function _reloadSeq() {
     const supId = document.getElementById('seq-sup-filter')?.value;
+    const typeFilter = document.getElementById('seq-type-filter')?.value;
     const params = {};
     if (supId) params.supplier_id = supId;
     const wrap = document.getElementById('seq-list');
     if (!wrap) return;
     try {
-      const data = await Api.supplier_questionnaires.list(params);
+      let data = await Api.supplier_questionnaires.list(params);
+      if (typeFilter) data = data.filter(q => (q.assignment_type || 'external') === typeFilter);
       if (!data.length) {
         wrap.innerHTML = '<p style="color:var(--text-muted);margin-top:24px;text-align:center;">Sin cuestionarios enviados. Crea uno para enviar el enlace publico al proveedor.</p>';
         return;
@@ -955,20 +993,25 @@ const ViewSuppliers = (() => {
       const now = new Date();
       wrap.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>Codigo</th><th>Titulo</th><th>Proveedor</th><th>Puntuacion</th><th>Respondido</th><th>Expira</th><th>Evaluacion IA</th><th></th>
+          <th>Codigo</th><th>Titulo</th><th>Proveedor</th><th style="width:70px;">Tipo</th><th>Puntuacion</th><th>Respondido</th><th>Expira</th><th>Evaluacion IA</th><th></th>
         </tr></thead>
         <tbody>
           ${data.map(q => {
             const submitted = q.submitted_at ? new Date(q.submitted_at).toLocaleDateString('es-ES') : null;
             const expired = q.expires_at && new Date(q.expires_at) < now && !q.submitted_at;
             const expires = q.expires_at ? new Date(q.expires_at).toLocaleDateString('es-ES') : '-';
+            const isInternal = q.assignment_type === 'internal';
+            const typeHtml = isInternal
+              ? `<span style="font-size:10px;font-weight:600;background:#EDE9FE;color:#7C3AED;padding:2px 6px;border-radius:4px;">Interno</span>`
+              : `<span style="font-size:10px;font-weight:600;background:#E0F2FE;color:#0369A1;padding:2px 6px;border-radius:4px;">Externo</span>`;
+            const assignedUserLabel = isInternal && q.assigned_user_name
+              ? `<div style="font-size:10px;color:var(--text-muted);">Asignado: ${UI.esc(q.assigned_user_name)}</div>` : '';
             let scoreHtml = '-';
             if (q.score !== null && q.score !== undefined) {
               const sc = q.score;
               const color = sc >= 80 ? '#22C55E' : sc >= 60 ? '#F59E0B' : '#EF4444';
               scoreHtml = `<span style="font-weight:700;color:${color};">${sc}/100</span>`;
             }
-            // AI review indicator
             let aiHtml = '-';
             if (q.submitted_at) {
               if (q.ai_review && !q.ai_review.error) {
@@ -985,15 +1028,18 @@ const ViewSuppliers = (() => {
             }
             return `<tr style="${expired?'opacity:.6;':''}">
               <td>${UI.codePill(q.code)}</td>
-              <td><strong>${UI.esc(q.title)}</strong></td>
+              <td><strong>${UI.esc(q.title)}</strong>${assignedUserLabel}</td>
               <td style="font-size:12px;">${UI.esc(q.supplier_name||'-')}</td>
+              <td>${typeHtml}</td>
               <td>${scoreHtml}</td>
               <td style="font-size:12px;">${submitted ? submitted : (expired ? '<span style="color:#EF4444;font-size:11px;">Expirado</span>' : '<span style="color:#F59E0B;font-size:11px;">Pendiente</span>')}</td>
               <td style="font-size:12px;">${expires}</td>
               <td style="font-size:12px;">${aiHtml}</td>
               <td>
-                ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm" data-id="${q.id}" data-act="send" title="Enviar por email al contacto del proveedor">Enviar email</button>` : ''}
-                <button class="btn btn-sm" data-id="${q.id}" data-act="link" title="Copiar enlace publico">Copiar enlace</button>
+                ${Auth.canEdit() && !q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-id="${q.id}" data-act="send" title="Enviar por email al contacto del proveedor">Enviar</button>` : ''}
+                ${Auth.canEdit() && !q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-id="${q.id}" data-act="link" title="Copiar enlace publico">Enlace</button>` : ''}
+                ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm" data-id="${q.id}" data-act="assign" title="Asignar a usuario interno">Asignar</button>` : ''}
+                ${isInternal && !q.submitted_at ? `<button class="btn btn-sm btn-primary" data-id="${q.id}" data-act="fill-internal" title="Responder internamente">Responder</button>` : ''}
                 ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm btn-danger" data-id="${q.id}" data-act="del">Eliminar</button>` : ''}
               </td>
             </tr>`;
@@ -1063,7 +1109,129 @@ const ViewSuppliers = (() => {
           _showAiReviewModal(q.title || q.code, q.ai_review);
         };
       });
+      // Assign to internal user
+      wrap.querySelectorAll('[data-act="assign"]').forEach(btn => {
+        btn.onclick = async () => {
+          const q = data.find(x => x.id == btn.dataset.id);
+          if (!q) return;
+          await _openAssignModal(q);
+        };
+      });
+      // Fill internal
+      wrap.querySelectorAll('[data-act="fill-internal"]').forEach(btn => {
+        btn.onclick = () => {
+          const q = data.find(x => x.id == btn.dataset.id);
+          if (q) _openInternalFillForm(q);
+        };
+      });
     } catch (e) { wrap.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`; }
+  }
+
+  async function _openAssignModal(q) {
+    let users = [];
+    try { users = await Api.users.list(); } catch (_) {}
+    const opts = users.filter(u => u.is_active !== false).map(u =>
+      `<option value="${u.id}">${UI.esc(u.full_name || u.email)} (${UI.esc(u.email)})</option>`
+    ).join('');
+    UI.modal(
+      `Asignar cuestionario ${q.code} a usuario interno`,
+      `<div style="padding:4px 0;">
+        <p style="font-size:13px;margin-bottom:12px;color:var(--text-muted);">
+          El usuario seleccionado podra responder el cuestionario directamente en la plataforma y recibira un email de notificacion.
+        </p>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Usuario</label>
+        <select id="assign-user-sel" class="input" style="width:100%;">
+          <option value="">Selecciona un usuario...</option>
+          ${opts}
+        </select>
+      </div>`,
+      {
+        width: '480px',
+        actions: `<button class="btn btn-primary" id="assign-confirm">Asignar</button>
+                  <button class="btn" id="assign-cancel">Cancelar</button>`,
+      }
+    );
+    document.getElementById('assign-cancel').onclick = UI.closeModal;
+    document.getElementById('assign-confirm').onclick = async () => {
+      const userId = document.getElementById('assign-user-sel')?.value;
+      if (!userId) { UI.toast('Selecciona un usuario', 'error'); return; }
+      try {
+        const r = await Api.supplier_questionnaires.assignInternal(q.id, parseInt(userId));
+        UI.closeModal();
+        UI.toast(`Cuestionario asignado a ${r.assigned_to}`, 'success');
+        _reloadSeq();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  function _openInternalFillForm(q) {
+    const questions = q.questions || [];
+    const qRows = questions.map((question, i) => {
+      const qid = question.id || `q${i + 1}`;
+      const qtype = (question.type || '').toLowerCase();
+      let inputHtml;
+      if (qtype === 'select' || qtype === 'choice') {
+        const opts = (question.options || ['Si', 'No']).map(o =>
+          `<option value="${UI.esc(o)}">${UI.esc(o)}</option>`
+        ).join('');
+        inputHtml = `<select id="qans-${qid}" class="input" style="width:100%;"><option value="">Seleccionar...</option>${opts}</select>`;
+      } else if (qtype === 'text' || qtype === 'textarea') {
+        inputHtml = `<textarea id="qans-${qid}" class="input" rows="2" style="width:100%;"></textarea>`;
+      } else {
+        // Default: Si/No radio
+        inputHtml = `<div style="display:flex;gap:16px;margin-top:4px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="qans-${qid}" value="Si"> Si
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="qans-${qid}" value="No"> No
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="radio" name="qans-${qid}" value="NA"> No aplica
+          </label>
+        </div>`;
+      }
+      return `<div style="padding:12px 0;border-bottom:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${i + 1}. ${UI.esc(question.text || question.name || '')}</div>
+        ${inputHtml}
+      </div>`;
+    }).join('');
+
+    UI.modal(
+      `Responder: ${q.code} — ${q.title}`,
+      `<div style="padding:4px 0;">
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Proveedor: <strong>${UI.esc(q.supplier_name || '')}</strong></p>
+        ${qRows || '<p class="text-muted">Sin preguntas configuradas.</p>'}
+      </div>`,
+      {
+        width: '680px',
+        actions: `<button class="btn btn-primary" id="ifill-submit">Enviar respuestas</button>
+                  <button class="btn" id="ifill-cancel">Cancelar</button>`,
+      }
+    );
+    document.getElementById('ifill-cancel').onclick = UI.closeModal;
+    document.getElementById('ifill-submit').onclick = async () => {
+      const answers = {};
+      questions.forEach((question, i) => {
+        const qid = question.id || `q${i + 1}`;
+        const sel = document.getElementById('qans-' + qid);
+        if (sel) {
+          answers[qid] = sel.value;
+        } else {
+          const radio = document.querySelector(`input[name="qans-${qid}"]:checked`);
+          if (radio) answers[qid] = radio.value;
+        }
+      });
+      try {
+        const r = await Api.supplier_questionnaires.internalSubmit(q.id, answers);
+        UI.closeModal();
+        UI.toast(`Cuestionario enviado. Puntuacion: ${r.score}/100`, 'success');
+        _reloadSeq();
+        // Reload my tasks section
+        const tasksWrap = document.getElementById('seq-my-tasks');
+        if (tasksWrap) tasksWrap.innerHTML = '';
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
   }
 
   // ---- AI Review Modal ----

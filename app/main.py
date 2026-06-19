@@ -19,7 +19,7 @@ from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
     cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents,
-    integrations_erp, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
+    integrations_erp, integrations_forms, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, organizations,
     osint, policies, portal, predictive, questionnaire_flows, questionnaire_schedules, regwatch, report_schedules,
     report_templates, reports, risks, search, sharepoint,
     soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, tprm,
@@ -172,6 +172,7 @@ app.include_router(audits.router)
 app.include_router(supplier_questionnaires.router)
 app.include_router(questionnaire_schedules.router)
 app.include_router(questionnaire_flows.router)
+app.include_router(integrations_forms.router)
 app.include_router(gdpr.router)
 app.include_router(documents.router)
 app.include_router(ai_config.router)

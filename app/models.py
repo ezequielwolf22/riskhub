@@ -982,13 +982,40 @@ class SupplierQuestionnaire(Base):
     # v4.0.0 — regwatch: plantilla desactualizada por cambio normativo
     regwatch_review_at = Column(DateTime, nullable=True)
     regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
+    # v4.4.0 — asignacion interna: usuario de la plataforma rellena el cuestionario autenticado
+    assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assignment_type = Column(String(16), nullable=True)  # external (default) | internal
+    assigned_at = Column(DateTime, nullable=True)
 
     supplier = relationship("Supplier")
-    created_by = relationship("User")
+    created_by = relationship("User", foreign_keys="[SupplierQuestionnaire.created_by_id]")
+    assigned_user = relationship("User", foreign_keys="[SupplierQuestionnaire.assigned_user_id]")
 
     @property
     def supplier_name(self) -> str:
         return self.supplier.name if self.supplier else ""
+
+    @property
+    def assigned_user_name(self) -> str:
+        if not self.assigned_user:
+            return ""
+        return self.assigned_user.full_name or self.assigned_user.email or ""
+
+
+class FormIntegrationConfig(Base):
+    """Configuracion de integracion de formularios externos (MS Forms inbound, Monday.com outbound)."""
+    __tablename__ = "form_integration_configs"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    # Webhook entrante MS Forms / Power Automate
+    inbound_token = Column(String(64), unique=True, nullable=False)
+    default_template_code = Column(String(64), nullable=True)
+    supplier_field_name = Column(String(255), nullable=True)  # nombre del campo del formulario que identifica al proveedor
+    # Webhook saliente Monday.com
+    monday_webhook_url = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
 
 # ---------- TPRM: EVALUACIONES Y HALLAZGOS ----------

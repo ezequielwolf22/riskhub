@@ -635,6 +635,19 @@ const ViewIntegrations = {
           <div id="erp-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
         </div>
 
+        <!-- MS Forms / Power Automate + Monday.com -->
+        <div class="card" id="forms-card">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+            <div>
+              <b style="font-size:15px;">MS Forms / Power Automate + Monday.com</b>
+              <div style="font-size:11px;color:var(--text-muted);">Recibe respuestas de formularios externos (entrante) y notifica a Monday.com (saliente)</div>
+            </div>
+            <span id="forms-status-badge" style="margin-left:auto;"></span>
+          </div>
+          <div id="forms-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
+        </div>
+
         <!-- VirusTotal — Escaneo de URLs y hashes -->
         <div class="card" id="vt-card">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
@@ -650,7 +663,7 @@ const ViewIntegrations = {
 
       </div>
     `;
-    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initErpWebhooks(), this._initVirusTotal()]);
+    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initErpWebhooks(), this._initVirusTotal(), this._initForms()]);
   },
 
   async _initSharePoint() {
@@ -1589,5 +1602,103 @@ const ViewIntegrations = {
       btn.disabled = false;
       btn.textContent = '🔗 Probar conexion';
     }
+  },
+
+  async _initForms() {
+    const body = document.getElementById('forms-body');
+    const badge = document.getElementById('forms-status-badge');
+    if (!body) return;
+    try {
+      const cfg = await Api.integrations_forms.getConfig();
+      this._renderFormsBody(cfg);
+      if (badge) badge.innerHTML = `<span style="font-size:11px;background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:999px;font-weight:600;">Configurado</span>`;
+    } catch (e) {
+      if (body) body.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _renderFormsBody(cfg) {
+    const body = document.getElementById('forms-body');
+    if (!body) return;
+    const webhookUrl = window.location.origin + '/api/integrations/forms/inbound/' + (cfg.inbound_token || '...');
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px;">
+
+        <!-- Entrante: MS Forms / Power Automate -->
+        <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">MS Forms / Power Automate — Entrante</div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+            Configura un flujo de Power Automate con la accion HTTP que envie un POST JSON a la URL siguiente cuando alguien responda tu formulario de MS Forms.
+          </p>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">URL del webhook</label>
+          <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <input class="input" style="font-family:monospace;font-size:11px;flex:1;" value="${UI.esc(webhookUrl)}" readonly id="forms-webhook-url">
+            <button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('forms-webhook-url').value).then(()=>UI.toast('Copiado','success'))">Copiar</button>
+            <button class="btn btn-sm" id="forms-regen-token" title="Regenerar token (invalida el anterior)">Regenerar</button>
+          </div>
+          <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">Formato del payload JSON esperado:</div>
+            <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
+  "supplier": "Nombre del proveedor",
+  "title": "Titulo del cuestionario (opcional)",
+  "answers": { "Pregunta 1": "Si", "Pregunta 2": "No" },
+  "submitted_by": "email@externo.com"
+}</pre>
+          </div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Campo identificador del proveedor</label>
+          <input class="input" id="forms-supplier-field" placeholder="supplier (nombre del campo JSON con el nombre del proveedor)" value="${UI.esc(cfg.supplier_field_name || '')}" style="width:100%;margin-bottom:10px;">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Plantilla TPRM por defecto</label>
+          <input class="input" id="forms-template" placeholder="codigo de plantilla (p.ej. iso27001_basic)" value="${UI.esc(cfg.default_template_code || '')}" style="width:100%;">
+        </div>
+
+        <!-- Saliente: Monday.com -->
+        <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Monday.com — Saliente</div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+            Cuando se complete un cuestionario (interno o externo), RiskHub enviara un POST JSON a la URL configurada. Usa la URL de webhook de una automatizacion de Monday.com o un elemento de integracion.
+          </p>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">URL del webhook Monday.com</label>
+          <input class="input" id="forms-monday-url" placeholder="https://hooks.monday.com/..." value="${UI.esc(cfg.monday_webhook_url || '')}" style="width:100%;margin-bottom:12px;">
+          <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">Payload enviado a Monday.com:</div>
+            <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
+  "event": "questionnaire_submitted",
+  "questionnaire_code": "SEQ-0001",
+  "supplier_name": "Proveedor S.A.",
+  "score": 85,
+  "residual_risk_level": "low",
+  "submitted_at": "2026-06-19T..."
+}</pre>
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);">
+            En Monday.com: ve a tu tablero, crea una automatizacion "Webhook" o usa "Integraciones" → "Webhooks" para obtener la URL.
+          </p>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+        <button class="btn btn-primary" id="forms-save">Guardar configuracion</button>
+      </div>`;
+
+    document.getElementById('forms-save').onclick = async () => {
+      try {
+        await Api.integrations_forms.updateConfig({
+          supplier_field_name: document.getElementById('forms-supplier-field')?.value.trim() || null,
+          default_template_code: document.getElementById('forms-template')?.value.trim() || null,
+          monday_webhook_url: document.getElementById('forms-monday-url')?.value.trim() || null,
+        });
+        UI.toast('Configuracion guardada', 'success');
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+
+    document.getElementById('forms-regen-token').onclick = async () => {
+      if (!await UI.confirm('Regenerar el token invalida el webhook anterior. Confirmas?')) return;
+      try {
+        const r = await Api.integrations_forms.regenerateToken();
+        const newUrl = window.location.origin + '/api/integrations/forms/inbound/' + r.inbound_token;
+        document.getElementById('forms-webhook-url').value = newUrl;
+        UI.toast('Token regenerado', 'success');
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
   },
 };
