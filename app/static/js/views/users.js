@@ -453,6 +453,7 @@ const ViewUsers = {
             <h3 style="margin:0;">Informacion del sistema</h3>
             <div style="display:flex;gap:8px;">
               ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-vulns">Limpiar vulnerabilidades en riesgos</button>` : ''}
+              ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-ctrls">Limpiar controles en riesgos</button>` : ''}
               ${Auth.isSuperAdmin() ? `<button class="btn btn-ghost" id="btn-backup">Descargar backup DB</button>` : ''}
             </div>
           </div>
@@ -519,6 +520,61 @@ const ViewUsers = {
           } finally {
             btnCleanup.disabled = false;
             btnCleanup.textContent = 'Limpiar vulnerabilidades en riesgos';
+          }
+        };
+      }
+
+      const btnCleanupCtrls = document.getElementById('btn-cleanup-ctrls');
+      if (btnCleanupCtrls) {
+        btnCleanupCtrls.onclick = async () => {
+          if (!await UI.confirm(
+            'Esto reemplazara automaticamente los controles de TODOS los riesgos ' +
+            'con los que corresponden a su amenaza y vulnerabilidades segun ISO 27002.\n\n' +
+            'Se asignaran los 10 controles mas maduros y relevantes por riesgo. Continuar?'
+          )) return;
+          btnCleanupCtrls.disabled = true;
+          btnCleanupCtrls.textContent = 'Procesando...';
+          const resultBox = document.getElementById('cleanup-result');
+          try {
+            const r = await Api.admin.cleanupControls();
+            const fixedRows = r.details
+              .filter(d => d.action === 'fixed')
+              .map(d => `
+                <tr>
+                  <td style="font-family:monospace;font-size:12px;">${UI.esc(d.risk_code)}</td>
+                  <td style="font-size:12px;">${UI.esc(d.threat_code||'')}</td>
+                  <td style="font-size:12px;">${(d.vuln_cats||[]).join(', ')||'—'}</td>
+                  <td style="font-size:12px;color:#DC2626;">${(d.removed||[]).join(', ')||'—'}</td>
+                  <td style="font-size:12px;color:#059669;">${(d.added||[]).join(', ')||'—'}</td>
+                </tr>`).join('');
+            resultBox.style.display = 'block';
+            resultBox.innerHTML = `
+              <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:14px;">
+                <div style="font-weight:600;margin-bottom:10px;">
+                  Limpieza de controles: <span style="color:#059669;">${r.fixed} corregidos</span>
+                  de ${r.checked} riesgos revisados
+                  ${r.already_ok ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.already_ok} ya eran correctos)</span>` : ''}
+                </div>
+                ${fixedRows ? `
+                  <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                      <thead><tr>
+                        <th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Riesgo</th>
+                        <th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Amenaza</th>
+                        <th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Cats. Vuln</th>
+                        <th style="text-align:left;padding:4px 8px;color:#DC2626;">Eliminados</th>
+                        <th style="text-align:left;padding:4px 8px;color:#059669;">Anadidos</th>
+                      </tr></thead>
+                      <tbody>${fixedRows}</tbody>
+                    </table>
+                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">Todos los riesgos ya tenian los controles correctos.</div>'}
+              </div>`;
+            UI.toast(`${r.fixed} riesgos con controles corregidos`, r.fixed > 0 ? 'success' : 'info');
+          } catch (e) {
+            UI.toast('Error en limpieza de controles: ' + e.message, 'error');
+          } finally {
+            btnCleanupCtrls.disabled = false;
+            btnCleanupCtrls.textContent = 'Limpiar controles en riesgos';
           }
         };
       }

@@ -370,3 +370,155 @@ def _do_cleanup_risk_vulnerabilities(db, current_user, _json):
         pass  # el log es best-effort, no falla la operacion
 
     return stats
+
+
+# Mapeo ISO 27005 threat category → temas ISO 27002 (mismo que risk_auto_generator)
+_THREAT_CAT_THEMES: dict[str, list[str]] = {
+    "Physical damage":              ["physical"],
+    "Natural events":               ["physical"],
+    "Loss of essential services":   ["physical", "technological"],
+    "Disturbance due to radiation": ["physical"],
+    "Compromise of information":    ["technological", "organizational"],
+    "Technical failures":           ["technological"],
+    "Unauthorized actions":         ["technological", "organizational", "people"],
+    "Compromise of functions":      ["organizational", "people"],
+}
+
+# Mapeo categoria de vulnerabilidad → prefijos de codigo ISO 27002
+_VULN_CAT_CTRL_PREFIXES: dict[str, list[str]] = {
+    "network":      ["8.20","8.21","8.22","8.23","8.24","5.14","8.5","5.15","5.16","5.17","8.2","8.3","8.26"],
+    "software":     ["8.25","8.26","8.27","8.28","8.29","8.30","8.31","8.32","8.7","8.8","8.9","8.19"],
+    "hardware":     ["8.1","8.12","7.8","7.9","7.12","7.13","8.13"],
+    "personnel":    ["6.1","6.2","6.3","6.4","6.5","6.6","5.9","5.10","5.18"],
+    "site":         ["7.1","7.2","7.3","7.4","7.5","7.6","7.7","7.10","7.11","7.12"],
+    "organization": ["5.1","5.2","5.3","5.4","5.5","5.6","5.7","5.31","5.32","5.33","5.34"],
+}
+
+
+@router.post("/risks/cleanup-controls")
+def cleanup_risk_controls(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Limpieza masiva de controles: reemplaza los controles de cada riesgo por los
+    que corresponden a su amenaza y vulnerabilidades segun el catalogo ISO 27002.
+
+    Logica:
+    1. Obtiene las categorias de las vulnerabilidades vinculadas al riesgo
+    2. Mapea esas categorias a prefijos de codigo ISO 27002
+    3. Filtra los controles implementados del tenant por esos prefijos
+    4. Si no hay match por prefijo, usa el tema de la amenaza como fallback
+    5. Ordena por madurez descendente y limita a 10 controles por riesgo
+
+    Devuelve estadisticas detalladas por riesgo.
+    """
+    from app.models import Control, ControlStatus
+
+    org_id = current_user.organization_id
+    q = db.query(Risk)
+    if current_user.role != UserRole.SUPERADMIN:
+        q = q.filter(Risk.organization_id == org_id)
+    risks = q.all()
+
+    # Cargar todos los controles implementados del tenant con su Control base
+    all_impls = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == org_id,
+        ControlImplementation.status.in_([ControlStatus.IMPLEMENTED, ControlStatus.PARTIAL]),
+        ControlImplementation.maturity > 0,
+    ).all()
+
+    # Indice: prefijo → lista de impl (ej. "8.24" → [...])
+    prefix_index: dict[str, list] = {}
+    theme_index: dict[str, list] = {}
+    for impl in all_impls:
+        ctrl = db.get(Control, impl.control_id) if impl.control_id else None
+        if ctrl:
+            code = ctrl.code or ""
+            # Indexar por prefijo (hasta 2 niveles: "8.24" y "8")
+            for sep_idx in range(len(code)):
+                if code[sep_idx] == '.':
+                    prefix_index.setdefault(code[:sep_idx + 3], []).append(impl)
+                    break
+            prefix_index.setdefault(code, []).append(impl)
+            if ctrl.theme:
+                theme_index.setdefault(ctrl.theme, []).append(impl)
+
+    stats = {"checked": 0, "fixed": 0, "already_ok": 0, "details": []}
+
+    for risk in risks:
+        stats["checked"] += 1
+        threat = db.get(Threat, risk.threat_id) if risk.threat_id else None
+
+        # Determinar prefijos relevantes a partir de las vulnerabilidades del riesgo
+        vuln_cats = list({v.category for v in (risk.vulnerabilities or []) if v.category})
+        prefixes: list[str] = []
+        for cat in vuln_cats:
+            prefixes.extend(_VULN_CAT_CTRL_PREFIXES.get(cat, []))
+
+        # Buscar controles que empiecen con alguno de los prefijos
+        seen: set[int] = set()
+        correct_impls: list = []
+        for impl in all_impls:
+            ctrl = db.get(Control, impl.control_id) if impl.control_id else None
+            if ctrl and prefixes and any(ctrl.code.startswith(p) for p in prefixes if ctrl.code):
+                if impl.id not in seen:
+                    seen.add(impl.id)
+                    correct_impls.append(impl)
+
+        # Fallback: filtrar por tema de amenaza si no hay match por prefijo
+        if not correct_impls and threat:
+            themes = _THREAT_CAT_THEMES.get(threat.category or "", [])
+            for impl in all_impls:
+                ctrl = db.get(Control, impl.control_id) if impl.control_id else None
+                if ctrl and ctrl.theme in themes and impl.id not in seen:
+                    seen.add(impl.id)
+                    correct_impls.append(impl)
+
+        # Ordenar por madurez desc y limitar
+        correct_impls.sort(key=lambda c: c.maturity or 0, reverse=True)
+        correct_impls = correct_impls[:10]
+
+        current_ids = {c.id for c in (risk.controls or [])}
+        correct_ids  = {c.id for c in correct_impls}
+
+        if current_ids == correct_ids:
+            stats["already_ok"] += 1
+            stats["details"].append({"risk_code": risk.code, "action": "ok", "count": len(correct_ids)})
+            continue
+
+        removed = []
+        for c in (risk.controls or []):
+            if c.id not in correct_ids:
+                ctrl = db.get(Control, c.control_id) if c.control_id else None
+                removed.append(ctrl.code if ctrl else str(c.id))
+        added = []
+        for c in correct_impls:
+            if c.id not in current_ids:
+                ctrl = db.get(Control, c.control_id) if c.control_id else None
+                added.append(ctrl.code if ctrl else str(c.id))
+
+        risk.controls = correct_impls
+        stats["fixed"] += 1
+        stats["details"].append({
+            "risk_code": risk.code,
+            "threat_code": threat.code if threat else "?",
+            "action": "fixed",
+            "vuln_cats": vuln_cats,
+            "removed": removed,
+            "added": added,
+        })
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, f"Error al guardar cambios: {exc}") from exc
+
+    try:
+        log_action(db, current_user.id, "admin_cleanup_risk_controls",
+                   "risk", None, {"fixed": stats["fixed"], "checked": stats["checked"]})
+        db.commit()
+    except Exception:
+        pass
+
+    return stats

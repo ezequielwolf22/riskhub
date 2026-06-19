@@ -460,6 +460,7 @@ const Api = {
     backupDb: () => Api.download('/api/admin/backup-db', `riskhub_backup_${new Date().toISOString().slice(0,10)}.db`),
     securityStatus: () => Api.get('/api/admin/security-status'),
     cleanupVulnerabilities: () => Api.post('/api/admin/risks/cleanup-vulnerabilities', {}),
+    cleanupControls: () => Api.post('/api/admin/risks/cleanup-controls', {}),
   },
   alerts: {
     getSettings: () => Api.get('/api/alerts/settings'),

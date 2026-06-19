@@ -1044,7 +1044,7 @@ const ViewRisks = {
       });
     }
 
-    // "Sugerir con IA" — llama al backend para sugerir controles basandose en el contexto del riesgo
+    // "Sugerir con IA" — reemplaza la seleccion con exactamente los controles que la IA indica
     const btnSuggest = document.getElementById('btn-suggest-controls');
     if (btnSuggest && id) {
       btnSuggest.addEventListener('click', async () => {
@@ -1054,26 +1054,35 @@ const ViewRisks = {
           const result = await Api.post(`/api/risks/${id}/suggest-controls`, {});
           const sel = document.getElementById('f-impls');
           if (!sel || !result.suggested_ids?.length) {
-            UI.toast('No se encontraron sugerencias adicionales', 'info');
+            UI.toast('La IA no identifico controles especificos para este riesgo', 'info');
             return;
           }
-          // Mostrar todos los controles y marcar los sugeridos
           const suggestedSet = new Set(result.suggested_ids);
-          const currentSelected = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
-          sel.innerHTML = ViewRisks._impls.map(c => {
-            const isSuggested = suggestedSet.has(c.id);
+          // Mostrar SOLO los controles sugeridos, seleccionados, con "Ver todos" disponible
+          const suggestedControls = ViewRisks._impls.filter(c => suggestedSet.has(c.id));
+          sel.innerHTML = suggestedControls.map(c => {
             const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
-            const label = isSuggested ? `*** ${code}${UI.esc(c.name)}` : `${code}${UI.esc(c.name)}`;
-            const selected = isSuggested || currentSelected.has(c.id);
-            return `<option value="${c.id}" ${selected?'selected':''}>${label} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
-          }).sort((a, b) => {
-            const aS = a.includes('***') ? 0 : 1;
-            const bS = b.includes('***') ? 0 : 1;
-            return aS - bS;
+            return `<option value="${c.id}" selected>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
           }).join('');
-          sel.size = Math.min(ViewRisks._impls.length, 9);
-          if (ctrlShowAll) { ctrlShowAll.textContent = ''; ctrlShowAll.style.pointerEvents = 'none'; }
-          UI.toast(`${result.suggested_ids.length} controles sugeridos por IA${result.rationale ? ': ' + result.rationale.slice(0,80) : ''}`, 'success');
+          sel.size = Math.max(3, Math.min(suggestedControls.length, 8));
+          // Actualizar badge
+          const lbl = sel.closest('.span2')?.querySelector('label span');
+          if (lbl) lbl.innerHTML = `IA: ${suggestedControls.length} de ${ViewRisks._impls.length} &nbsp;<a href="#" id="ctrl-show-all-link" style="color:var(--brand-purple);">Ver todos</a>`;
+          // Re-enlazar "Ver todos" porque se regenero el DOM
+          const newShowAll = document.getElementById('ctrl-show-all-link');
+          if (newShowAll) {
+            newShowAll.addEventListener('click', (e) => {
+              e.preventDefault();
+              const cur = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
+              sel.innerHTML = ViewRisks._impls.map(c => {
+                const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
+                return `<option value="${c.id}" ${cur.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+              }).join('');
+              sel.size = Math.min(ViewRisks._impls.length, 9);
+              newShowAll.remove();
+            });
+          }
+          UI.toast(`${suggestedControls.length} controles asignados por IA. Puedes ajustar antes de guardar.`, 'success');
         } catch (e) {
           UI.toast('Error en sugerencia IA: ' + e.message, 'error');
         } finally {
