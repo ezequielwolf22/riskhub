@@ -999,11 +999,14 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
     """Resumen para el dashboard."""
     now = datetime.now(timezone.utc)
     risks = filter_by_org(db.query(Risk), Risk, current_user).all()
-    by_band = {"low": 0, "medium": 0, "high": 0}
+    from app.services.risk_engine import get_risk_bands, band_for_config
+    _bands = get_risk_bands(db, getattr(current_user, "organization_id", None))
+    # Siempre incluir low/medium/high para compatibilidad con el dashboard
+    by_band: dict = {"low": 0, "medium": 0, "high": 0}
+    by_band.update({b["code"]: 0 for b in _bands})
     for r in risks:
-        if r.residual_level <= 2: by_band["low"] += 1
-        elif r.residual_level <= 5: by_band["medium"] += 1
-        else: by_band["high"] += 1
+        bc = band_for_config(r.residual_level or 0, _bands)
+        by_band[bc["code"]] = by_band.get(bc["code"], 0) + 1
     by_status = {s.value: 0 for s in RiskStatus}
     for r in risks:
         by_status[r.status.value] += 1

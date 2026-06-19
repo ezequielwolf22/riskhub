@@ -240,7 +240,7 @@ const ViewRisks = {
         view.innerHTML = UI.emptyState('Sin grupos', 'Crea y valida grupos desde la seccion Activos → Agrupacion.');
         return;
       }
-      const levelColor = l => l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
+      const levelColor = l => window.RiskLevels ? RiskLevels.colorFor(l) : (l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)');
       const statusBadge = s => ({
         proposed: '<span style="font-size:10px;background:var(--brand-orange);color:#fff;padding:1px 6px;border-radius:8px;">Propuesto</span>',
         validated: '<span style="font-size:10px;background:var(--risk-low);color:#fff;padding:1px 6px;border-radius:8px;">Validado</span>',

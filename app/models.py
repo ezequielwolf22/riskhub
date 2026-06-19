@@ -2658,3 +2658,24 @@ class TenantChangeInboxItem(Base):
     dismiss_reason = Column(Text, nullable=True)
 
     change_pack = relationship("ChangePack")
+
+
+# ---------- RISK LEVEL CONFIG (bandas configurables por organizacion) ----------
+
+class RiskLevelConfig(Base):
+    """Configuracion de bandas de nivel de riesgo por organizacion.
+
+    Permite al admin redefinir etiquetas, colores y umbrales de cada banda
+    (bajo/medio/alto/critico) para la escala 0-8 de ISO 27005.
+    Si no hay configuracion para una org se usan los defaults del motor.
+    """
+    __tablename__ = "risk_level_configs"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    code            = Column(String(32), nullable=False)  # low / medium / high / critical
+    label           = Column(String(64), nullable=False)  # Bajo / Medio / Alto / Critico
+    min_level       = Column(Integer,    nullable=False)  # 0-8 inclusive
+    max_level       = Column(Integer,    nullable=False)  # 0-8 inclusive
+    color           = Column(String(64), nullable=False)  # CSS var o hex
+    order           = Column(Integer,    nullable=False)  # 1=menor riesgo, ..., N=mayor

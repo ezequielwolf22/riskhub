@@ -617,4 +617,9 @@ const Api = {
     deleteConfig: () => Api.delete('/api/integrations/virustotal/config'),
     test: () => Api.post('/api/integrations/virustotal/test', {}),
   },
+  risk_levels: {
+    get:   ()       => Api.get('/api/risk-levels'),
+    put:   (bands)  => Api.put('/api/risk-levels', bands),
+    reset: ()       => Api.delete('/api/risk-levels'),
+  },
 };

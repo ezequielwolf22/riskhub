@@ -12,6 +12,10 @@ const UI = {
 
   riskBand(level) {
     const lvl = Number(level) || 0;
+    if (window.RiskLevels) {
+      const b = RiskLevels.bandFor(lvl);
+      return `<span class="badge" style="background:${b.color};color:#fff;opacity:0.9;">${b.label}</span>`;
+    }
     if (lvl <= 2) return '<span class="badge badge-low">Bajo</span>';
     if (lvl <= 5) return '<span class="badge badge-medium">Medio</span>';
     return '<span class="badge badge-high">Alto</span>';

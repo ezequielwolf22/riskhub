@@ -176,6 +176,34 @@ function _toggleNavSection(sectionId) {
   localStorage.setItem(KEY, JSON.stringify(collapsed));
 }
 
+// ── Bandas de nivel de riesgo configurables ───────────────────────────────────
+window.RiskLevels = {
+  _bands: [
+    { code: 'low',    label: 'Bajo',  min_level: 0, max_level: 2, color: 'var(--risk-low)',    order: 1 },
+    { code: 'medium', label: 'Medio', min_level: 3, max_level: 5, color: 'var(--risk-medium)', order: 2 },
+    { code: 'high',   label: 'Alto',  min_level: 6, max_level: 8, color: 'var(--risk-high)',   order: 3 },
+  ],
+  async load() {
+    try {
+      const data = await Api.risk_levels.get();
+      if (Array.isArray(data) && data.length) {
+        this._bands = data.slice().sort((a, b) => a.order - b.order);
+      }
+    } catch (_) { /* silencioso: se usan defaults */ }
+  },
+  reload() { return this.load(); },
+  bandFor(level) {
+    const l = Math.max(0, Math.min(8, Number(level) || 0));
+    for (const b of this._bands) {
+      if (l >= b.min_level && l <= b.max_level) return b;
+    }
+    return this._bands[this._bands.length - 1];
+  },
+  colorFor(level) { return this.bandFor(level).color; },
+  labelFor(level) { return this.bandFor(level).label; },
+  all() { return [...this._bands]; },
+};
+
 function init() {
   // Manejar SSO callback — llega un code de un solo uso (30s TTL), se intercambia por JWT
   const _ssoParams = new URLSearchParams(window.location.search);
@@ -204,6 +232,7 @@ function init() {
   }
 
   if (!Auth.requireAuth()) return;
+  RiskLevels.load();   // carga config org; las vistas usan RiskLevels.colorFor() / labelFor()
   _initTheme();
 
   // Sidebar collapse toggle

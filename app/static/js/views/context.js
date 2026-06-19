@@ -140,11 +140,23 @@ const ViewContext = {
           ${ViewContext._matrixHtml(ctx.risk_matrix)}
         </div>
 
+        <div class="card" style="margin-top:16px;" id="rl-card">
+          <h3>Niveles de riesgo</h3>
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
+            Configura las bandas de nivel de riesgo (etiquetas, colores y umbrales 0-8)
+            para adaptar la terminología a tu organización.
+          </p>
+          <div id="rl-body">${UI.notice('Cargando...')}</div>
+        </div>
+
         ${isAdmin ? `
         <div style="margin-top:24px;text-align:right;">
           <button class="btn btn-primary" id="btn-save">Guardar cambios</button>
         </div>` : ''}
       `;
+
+      // Cargar y renderizar configuracion de niveles de riesgo
+      ViewContext._loadRiskLevels(isAdmin);
 
       if (isAdmin) {
         document.getElementById('btn-save').onclick = async () => {
@@ -197,6 +209,177 @@ const ViewContext = {
       lbl.style.borderColor = v === val ? 'var(--brand-purple)' : 'var(--border)';
       lbl.style.background  = v === val ? 'var(--brand-purple-4)' : 'var(--bg-2)';
     });
+  },
+
+  async _loadRiskLevels(isAdmin) {
+    const container = document.getElementById('rl-body');
+    if (!container) return;
+    try {
+      const bands = await Api.risk_levels.get();
+      container.innerHTML = ViewContext._rlTableHtml(bands, isAdmin);
+      if (isAdmin) ViewContext._rlBindEvents(container, bands);
+    } catch (e) {
+      container.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  _rlTableHtml(bands, isAdmin) {
+    const ro = isAdmin ? '' : 'disabled';
+    const rows = bands.map((b, i) => `
+      <tr data-rl-idx="${i}">
+        <td style="width:32px;text-align:center;color:var(--text-muted);font-size:12px;">${b.order}</td>
+        <td>
+          <input class="rl-code" value="${UI.esc(b.code)}" ${ro} style="width:90px;font-size:12px;"
+                 placeholder="low">
+        </td>
+        <td>
+          <input class="rl-label" value="${UI.esc(b.label)}" ${ro} style="width:90px;font-size:12px;"
+                 placeholder="Bajo">
+        </td>
+        <td style="display:flex;align-items:center;gap:6px;">
+          <input class="rl-min" type="number" min="0" max="8" value="${b.min_level}" ${ro}
+                 style="width:50px;font-size:12px;">
+          <span style="color:var(--text-muted);">–</span>
+          <input class="rl-max" type="number" min="0" max="8" value="${b.max_level}" ${ro}
+                 style="width:50px;font-size:12px;">
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="rl-swatch" style="display:inline-block;width:18px;height:18px;border-radius:4px;
+                                          background:${b.color};border:1px solid var(--border);flex-shrink:0;"></span>
+            <select class="rl-color" ${ro} style="font-size:12px;">
+              ${[
+                ['var(--risk-low)',      'Verde (Bajo)'],
+                ['var(--risk-medium)',   'Naranja (Medio)'],
+                ['var(--risk-high)',     'Rojo oscuro (Alto)'],
+                ['var(--risk-critical)', 'Rojo critico'],
+                ['var(--brand-purple)',  'Morado (brand)'],
+              ].map(([v, l]) => `<option value="${v}" ${b.color === v ? 'selected' : ''}>${l}</option>`).join('')}
+            </select>
+          </div>
+        </td>
+        ${isAdmin ? `<td>
+          <button class="btn btn-ghost btn-sm rl-del" title="Eliminar banda" data-rl-idx="${i}">&#10005;</button>
+        </td>` : '<td></td>'}
+      </tr>`).join('');
+    return `
+      <div style="overflow-x:auto;">
+        <table class="data" style="min-width:560px;">
+          <thead>
+            <tr>
+              <th style="width:32px;">#</th>
+              <th>Codigo</th>
+              <th>Etiqueta</th>
+              <th>Rango (0-8)</th>
+              <th>Color</th>
+              <th style="width:40px;"></th>
+            </tr>
+          </thead>
+          <tbody id="rl-tbody">${rows}</tbody>
+        </table>
+      </div>
+      ${isAdmin ? `
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="rl-add">+ Anadir banda</button>
+        <button class="btn btn-primary btn-sm" id="rl-save">Guardar niveles</button>
+        <button class="btn btn-ghost btn-sm" id="rl-reset" style="color:var(--text-muted);">
+          Restablecer defaults
+        </button>
+      </div>` : ''}
+    `;
+  },
+
+  _rlBindEvents(container, initialBands) {
+    let bands = initialBands.map(b => ({ ...b }));
+
+    const refresh = () => {
+      const tbody = container.querySelector('#rl-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = ViewContext._rlTableHtml(bands, true)
+        .match(/<tbody id="rl-tbody">([\s\S]*?)<\/tbody>/)?.[1] || '';
+      ViewContext._rlBindInlineEvents(container, bands, refresh);
+    };
+
+    ViewContext._rlBindInlineEvents(container, bands, refresh);
+
+    container.querySelector('#rl-add')?.addEventListener('click', () => {
+      bands.push({
+        code: 'nuevo', label: 'Nuevo', min_level: 0, max_level: 0,
+        color: 'var(--risk-medium)', order: bands.length + 1,
+      });
+      refresh();
+    });
+
+    container.querySelector('#rl-save')?.addEventListener('click', async () => {
+      const updated = ViewContext._rlReadFromDom(container, bands);
+      if (!updated) return;
+      try {
+        const saved = await Api.risk_levels.put(updated);
+        await RiskLevels.load();
+        UI.toast('Niveles de riesgo guardados', 'success');
+        bands = saved;
+        refresh();
+      } catch (e) {
+        UI.toast(e.message, 'error');
+      }
+    });
+
+    container.querySelector('#rl-reset')?.addEventListener('click', async () => {
+      if (!confirm('¿Restablecer los niveles de riesgo a los valores por defecto?')) return;
+      try {
+        await Api.risk_levels.reset();
+        await RiskLevels.load();
+        UI.toast('Niveles de riesgo restablecidos', 'success');
+        const defaults = await Api.risk_levels.get();
+        bands = defaults;
+        container.innerHTML = ViewContext._rlTableHtml(defaults, true);
+        ViewContext._rlBindEvents(container, defaults);
+      } catch (e) {
+        UI.toast(e.message, 'error');
+      }
+    });
+  },
+
+  _rlBindInlineEvents(container, bands, refresh) {
+    container.querySelectorAll('.rl-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.rlIdx);
+        bands.splice(idx, 1);
+        bands.forEach((b, i) => { b.order = i + 1; });
+        refresh();
+      });
+    });
+    container.querySelectorAll('.rl-color').forEach((sel, i) => {
+      sel.addEventListener('change', () => {
+        const swatch = sel.closest('td').querySelector('.rl-swatch');
+        if (swatch) swatch.style.background = sel.value;
+      });
+    });
+  },
+
+  _rlReadFromDom(container, bands) {
+    const rows = container.querySelectorAll('#rl-tbody tr[data-rl-idx]');
+    const updated = [];
+    let valid = true;
+    rows.forEach((tr, i) => {
+      const code  = tr.querySelector('.rl-code')?.value?.trim();
+      const label = tr.querySelector('.rl-label')?.value?.trim();
+      const min   = parseInt(tr.querySelector('.rl-min')?.value);
+      const max   = parseInt(tr.querySelector('.rl-max')?.value);
+      const color = tr.querySelector('.rl-color')?.value;
+      if (!code || !label || isNaN(min) || isNaN(max) || !color) {
+        UI.toast('Rellena todos los campos de cada banda', 'error');
+        valid = false;
+        return;
+      }
+      if (min > max) {
+        UI.toast(`Banda "${label}": el minimo no puede ser mayor que el maximo`, 'error');
+        valid = false;
+        return;
+      }
+      updated.push({ code, label, min_level: min, max_level: max, color, order: i + 1 });
+    });
+    return valid ? updated : null;
   },
 
   _matrixHtml(matrix) {

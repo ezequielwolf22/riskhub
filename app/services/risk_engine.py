@@ -56,6 +56,43 @@ def band_for(level: int) -> str:
     return "high"
 
 
+# Bandas por defecto (se devuelven cuando la org no tiene config personalizada)
+_DEFAULT_BANDS = [
+    {"code": "low",    "label": "Bajo",  "min_level": 0, "max_level": 2, "color": "var(--risk-low)",    "order": 1},
+    {"code": "medium", "label": "Medio", "min_level": 3, "max_level": 5, "color": "var(--risk-medium)", "order": 2},
+    {"code": "high",   "label": "Alto",  "min_level": 6, "max_level": 8, "color": "var(--risk-high)",   "order": 3},
+]
+
+
+def get_risk_bands(db, org_id: int | None) -> list[dict]:
+    """Devuelve la configuracion de bandas para una org (o defaults si no hay custom)."""
+    try:
+        from app.models import RiskLevelConfig
+        rows = (
+            db.query(RiskLevelConfig)
+            .filter(RiskLevelConfig.organization_id == org_id)
+            .order_by(RiskLevelConfig.order)
+            .all()
+        )
+        if rows:
+            return [
+                {"code": r.code, "label": r.label, "min_level": r.min_level,
+                 "max_level": r.max_level, "color": r.color, "order": r.order}
+                for r in rows
+            ]
+    except Exception:
+        pass
+    return [b.copy() for b in _DEFAULT_BANDS]
+
+
+def band_for_config(level: int, bands: list[dict]) -> dict:
+    """Devuelve la banda que corresponde al level dado segun la config."""
+    for b in sorted(bands, key=lambda x: x["order"]):
+        if b["min_level"] <= level <= b["max_level"]:
+            return b
+    return bands[-1] if bands else _DEFAULT_BANDS[-1]
+
+
 def color_for(level: int) -> str:
     """Devuelve un token de color (mapeado en CSS a paleta brand)."""
     return {"low": "brand-low", "medium": "brand-medium", "high": "brand-high"}[band_for(level)]

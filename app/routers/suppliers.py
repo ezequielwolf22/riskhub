@@ -55,7 +55,7 @@ def suppliers_summary(db: Session = Depends(get_db), current_user: User = Depend
     org_id = current_user.organization_id
     pending_q = db.query(SupplierQuestionnaire).filter(
         SupplierQuestionnaire.organization_id == org_id,
-        SupplierQuestionnaire.status == "pending",
+        SupplierQuestionnaire.submitted_at.is_(None),
     ).count()
     return {
         "total": len(suppliers),
