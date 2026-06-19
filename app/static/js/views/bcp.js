@@ -1116,7 +1116,7 @@ const ViewBcp = (() => {
     document.getElementById('btn-new-plan')?.addEventListener('click', () => _openPlanDrawer());
     document.getElementById('plan-drawer-cancel')?.addEventListener('click', () => _closePlanDrawer());
     document.getElementById('plan-drawer-overlay')?.addEventListener('click', () => _closePlanDrawer());
-    document.getElementById('plan-drawer-save')?.addEventListener('click', () => _savePlan(_currentPlanId));
+    // El onclick del boton guardar se asigna en _openPlanDrawer para tener el id correcto en cada apertura.
   }
 
   // ── Tab Tests ────────────────────────────────────────────────────────────────
@@ -2930,7 +2930,8 @@ const ViewBcp = (() => {
 
   function _bumpVersion(ver) {
     const parts = String(ver || '1.0').split('.');
-    return (parseInt(parts[0] || '1') + 1) + '.0';
+    if (parts.length === 2) return parts[0] + '.' + (parseInt(parts[1] || '0') + 1);
+    return (ver || '1') + '.1';
   }
 
   function _openApprovedVersioningModal(plan) {
