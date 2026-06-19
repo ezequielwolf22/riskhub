@@ -268,10 +268,24 @@ def cleanup_risk_vulnerabilities(
     Devuelve estadisticas detalladas por riesgo.
     """
     import json as _json
+    import traceback
 
-    org_id = filter_by_org(current_user)
+    try:
+        return _do_cleanup_risk_vulnerabilities(db, current_user, _json)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, f"Error interno: {type(exc).__name__}: {exc}\n{traceback.format_exc()}") from exc
 
-    risks = db.query(Risk).filter(Risk.organization_id == org_id).all()
+
+def _do_cleanup_risk_vulnerabilities(db, current_user, _json):
+    org_id = current_user.organization_id  # superadmin limpia su org activa
+
+    q = db.query(Risk)
+    if current_user.role != UserRole.SUPERADMIN:
+        q = q.filter(Risk.organization_id == org_id)
+    risks = q.all()
     all_vulns = db.query(Vulnerability).all()
 
     # Indice: threat_code → lista de Vulnerability
@@ -344,10 +358,15 @@ def cleanup_risk_vulnerabilities(
 
     try:
         db.commit()
-        log_action(db, current_user.id, "admin_cleanup_risk_vulns",
-                   "risk", None, {"fixed": stats["fixed"], "checked": stats["checked"]})
     except Exception as exc:
         db.rollback()
         raise HTTPException(500, f"Error al guardar cambios: {exc}") from exc
+
+    try:
+        log_action(db, current_user.id, "admin_cleanup_risk_vulns",
+                   "risk", None, {"fixed": stats["fixed"], "checked": stats["checked"]})
+        db.commit()
+    except Exception:
+        pass  # el log es best-effort, no falla la operacion
 
     return stats
