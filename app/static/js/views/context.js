@@ -244,18 +244,24 @@ const ViewContext = {
                  style="width:50px;font-size:12px;">
         </td>
         <td>
-          <div style="display:flex;align-items:center;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <span class="rl-swatch" style="display:inline-block;width:18px;height:18px;border-radius:4px;
                                           background:${b.color};border:1px solid var(--border);flex-shrink:0;"></span>
-            <select class="rl-color" ${ro} style="font-size:12px;">
-              ${[
-                ['var(--risk-low)',      'Verde (Bajo)'],
-                ['var(--risk-medium)',   'Naranja (Medio)'],
-                ['var(--risk-high)',     'Rojo oscuro (Alto)'],
-                ['var(--risk-critical)', 'Rojo critico'],
-                ['var(--brand-purple)',  'Morado (brand)'],
-              ].map(([v, l]) => `<option value="${v}" ${b.color === v ? 'selected' : ''}>${l}</option>`).join('')}
-            </select>
+            ${(() => {
+              const _PRESET = ['var(--risk-low)','var(--risk-medium)','var(--risk-high)','var(--risk-critical)','var(--brand-purple)'];
+              const _LABELS = ['Verde (Bajo)','Naranja (Medio)','Rojo oscuro (Alto)','Rojo critico','Morado (brand)'];
+              const isCustom = !_PRESET.includes(b.color);
+              const hexVal = isCustom ? b.color : '#16a34a';
+              return `
+                <select class="rl-color" ${ro} style="font-size:12px;">
+                  ${_PRESET.map((v, k) => `<option value="${v}" ${!isCustom && b.color === v ? 'selected' : ''}>${_LABELS[k]}</option>`).join('')}
+                  <option value="__custom__" ${isCustom ? 'selected' : ''}>Personalizado...</option>
+                </select>
+                <input type="color" class="rl-custom-color" value="${isCustom ? b.color : hexVal}"
+                       style="width:32px;height:26px;padding:1px;border:1px solid var(--border);border-radius:4px;cursor:pointer;
+                              ${isCustom ? '' : 'display:none;'}" ${ro}>
+              `;
+            })()}
           </div>
         </td>
         ${isAdmin ? `<td>
@@ -349,11 +355,21 @@ const ViewContext = {
         refresh();
       });
     });
-    container.querySelectorAll('.rl-color').forEach((sel, i) => {
+    container.querySelectorAll('.rl-color').forEach(sel => {
+      const td = sel.closest('td');
+      const customInput = td?.querySelector('.rl-custom-color');
+      const swatch = td?.querySelector('.rl-swatch');
       sel.addEventListener('change', () => {
-        const swatch = sel.closest('td').querySelector('.rl-swatch');
-        if (swatch) swatch.style.background = sel.value;
+        const isCustom = sel.value === '__custom__';
+        if (customInput) customInput.style.display = isCustom ? '' : 'none';
+        const color = isCustom ? (customInput?.value || '#888888') : sel.value;
+        if (swatch) swatch.style.background = color;
       });
+      if (customInput) {
+        customInput.addEventListener('input', () => {
+          if (swatch) swatch.style.background = customInput.value;
+        });
+      }
     });
   },
 
@@ -366,7 +382,10 @@ const ViewContext = {
       const label = tr.querySelector('.rl-label')?.value?.trim();
       const min   = parseInt(tr.querySelector('.rl-min')?.value);
       const max   = parseInt(tr.querySelector('.rl-max')?.value);
-      const color = tr.querySelector('.rl-color')?.value;
+      const sel   = tr.querySelector('.rl-color');
+      const color = sel?.value === '__custom__'
+        ? (tr.querySelector('.rl-custom-color')?.value || '')
+        : (sel?.value || '');
       if (!code || !label || isNaN(min) || isNaN(max) || !color) {
         UI.toast('Rellena todos los campos de cada banda', 'error');
         valid = false;
