@@ -670,6 +670,39 @@ const ViewRisks = {
     // Vulnerabilidades ya guardadas que NO corresponden a la amenaza actual
     const mismatchedVulnIds = new Set(savedVulnIds.filter(vid => !relatedVulnIds.has(vid)));
 
+    // Filtrar controles por categoria de vulnerabilidad + tema de amenaza
+    // Prefijos ISO 27002 relevantes por categoria de vulnerabilidad
+    const VULN_CAT_CTRL_PREFIXES = {
+      network:      ['8.20','8.21','8.22','8.23','8.24','5.14','8.5','5.15','5.16','5.17','8.2','8.3','8.26'],
+      software:     ['8.25','8.26','8.27','8.28','8.29','8.30','8.31','8.32','8.7','8.8','8.9','8.19'],
+      hardware:     ['8.1','8.12','7.8','7.9','7.12','7.13','8.13'],
+      personnel:    ['6.1','6.2','6.3','6.4','6.5','6.6','5.9','5.10','5.18'],
+      site:         ['7.1','7.2','7.3','7.4','7.5','7.6','7.7','7.10','7.11','7.12'],
+      organization: ['5.1','5.2','5.3','5.4','5.5','5.6','5.7','5.31','5.32','5.33','5.34'],
+    };
+    const THREAT_CAT_THEMES = {
+      'Physical damage':              ['physical'],
+      'Natural events':               ['physical'],
+      'Loss of essential services':   ['physical','technological'],
+      'Disturbance due to radiation': ['physical'],
+      'Compromise of information':    ['technological','organizational'],
+      'Technical failures':           ['technological'],
+      'Unauthorized actions':         ['technological','organizational','people'],
+      'Compromise of functions':      ['organizational','people'],
+    };
+
+    // Obtener prefijos de la union de categorias de vulns relacionadas
+    const activeVulnCats = [...new Set((relatedVulns.length ? relatedVulns : ViewRisks._vulns).map(v => v.category).filter(Boolean))];
+    const activePrefixes = activeVulnCats.flatMap(cat => VULN_CAT_CTRL_PREFIXES[cat] || []);
+    const activeThemes   = THREAT_CAT_THEMES[selectedThreat?.category || ''] || [];
+
+    const suggestedImpls = activePrefixes.length
+      ? ViewRisks._impls.filter(c => c.control && activePrefixes.some(p => c.control.code?.startsWith(p)))
+      : (activeThemes.length ? ViewRisks._impls.filter(c => c.control && activeThemes.includes(c.control.theme)) : []);
+    const savedCtrlIds = r.control_implementation_ids || [];
+    // Para nuevo riesgo: pre-seleccionar los sugeridos; para existente: respetar seleccion actual
+    const effectiveCtrlIds = (isNew && suggestedImpls.length) ? suggestedImpls.map(c => c.id) : savedCtrlIds;
+
     UI.modal(id ? `${r.code} - ${r.asset?.name || ''}` : 'Nuevo riesgo', `
       <div class="span2 notice">
         Riesgo = Activo × Amenaza.
@@ -775,11 +808,20 @@ const ViewRisks = {
         </select>
       </div>
       <div class="span2">
-        <label>Controles implementados que mitigan</label>
-        <select id="f-impls" multiple size="5" style="height:auto;">
-          ${ViewRisks._impls.map(c => {
-            const theme = c.control?.theme ? ` [${UI.esc(c.control.theme)}]` : '';
-            return `<option value="${c.id}" ${r.control_implementation_ids?.includes(c.id)?'selected':''}>${UI.esc(c.name)}${theme} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+        <label style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          Controles implementados que mitigan
+          ${suggestedImpls.length < ViewRisks._impls.length
+            ? `<span style="font-size:11px;font-weight:400;color:var(--text-muted);">
+                ${isNew ? 'Pre-seleccionados:' : 'Relevantes para amenaza+vulns:'} ${suggestedImpls.length} de ${ViewRisks._impls.length}
+                <a href="#" id="ctrl-show-all-link" style="margin-left:6px;color:var(--brand-purple);">Ver todos</a>
+               </span>`
+            : ''}
+          ${id ? `<button type="button" id="btn-suggest-controls" class="btn btn-ghost" style="font-size:11px;padding:2px 8px;margin-left:auto;">Sugerir con IA</button>` : ''}
+        </label>
+        <select id="f-impls" multiple size="${Math.max(3, Math.min(suggestedImpls.length || ViewRisks._impls.length, 7))}" style="height:auto;">
+          ${(suggestedImpls.length ? suggestedImpls : ViewRisks._impls).map(c => {
+            const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
+            return `<option value="${c.id}" ${effectiveCtrlIds.includes(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
           }).join('')}
         </select>
       </div>
@@ -983,6 +1025,64 @@ const ViewRisks = {
       try { await Api.risks.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewRisks._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
+    // "Ver todos los controles" — expande al catalogo completo sin filtro
+    const ctrlShowAll = document.getElementById('ctrl-show-all-link');
+    if (ctrlShowAll) {
+      ctrlShowAll.addEventListener('click', (e) => {
+        e.preventDefault();
+        const sel = document.getElementById('f-impls');
+        if (!sel) return;
+        const currentSelected = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
+        sel.innerHTML = ViewRisks._impls.map(c => {
+          const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
+          return `<option value="${c.id}" ${currentSelected.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+        }).join('');
+        sel.size = Math.min(ViewRisks._impls.length, 9);
+        ctrlShowAll.textContent = `(mostrando todos — ${ViewRisks._impls.length})`;
+        ctrlShowAll.style.pointerEvents = 'none';
+        ctrlShowAll.style.color = 'var(--text-muted)';
+      });
+    }
+
+    // "Sugerir con IA" — llama al backend para sugerir controles basandose en el contexto del riesgo
+    const btnSuggest = document.getElementById('btn-suggest-controls');
+    if (btnSuggest && id) {
+      btnSuggest.addEventListener('click', async () => {
+        btnSuggest.disabled = true;
+        btnSuggest.textContent = 'Analizando...';
+        try {
+          const result = await Api.post(`/api/risks/${id}/suggest-controls`, {});
+          const sel = document.getElementById('f-impls');
+          if (!sel || !result.suggested_ids?.length) {
+            UI.toast('No se encontraron sugerencias adicionales', 'info');
+            return;
+          }
+          // Mostrar todos los controles y marcar los sugeridos
+          const suggestedSet = new Set(result.suggested_ids);
+          const currentSelected = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
+          sel.innerHTML = ViewRisks._impls.map(c => {
+            const isSuggested = suggestedSet.has(c.id);
+            const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
+            const label = isSuggested ? `*** ${code}${UI.esc(c.name)}` : `${code}${UI.esc(c.name)}`;
+            const selected = isSuggested || currentSelected.has(c.id);
+            return `<option value="${c.id}" ${selected?'selected':''}>${label} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+          }).sort((a, b) => {
+            const aS = a.includes('***') ? 0 : 1;
+            const bS = b.includes('***') ? 0 : 1;
+            return aS - bS;
+          }).join('');
+          sel.size = Math.min(ViewRisks._impls.length, 9);
+          if (ctrlShowAll) { ctrlShowAll.textContent = ''; ctrlShowAll.style.pointerEvents = 'none'; }
+          UI.toast(`${result.suggested_ids.length} controles sugeridos por IA${result.rationale ? ': ' + result.rationale.slice(0,80) : ''}`, 'success');
+        } catch (e) {
+          UI.toast('Error en sugerencia IA: ' + e.message, 'error');
+        } finally {
+          btnSuggest.disabled = false;
+          btnSuggest.textContent = 'Sugerir con IA';
+        }
+      });
+    }
+
     // Para riesgo nuevo: actualizar lista de vulnerabilidades al cambiar la amenaza
     if (!id) {
       const threatSel = document.getElementById('f-threat');

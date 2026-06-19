@@ -1216,3 +1216,113 @@ def reject_acceptance(
     log_action(db, current_user.id, "reject_acceptance", "risk", str(risk_id),
                {"code": risk.code, "reason": body.reason})
     return {"status": "assessed", "risk_code": risk.code}
+
+
+@router.post("/{risk_id}/suggest-controls")
+def suggest_controls_for_risk(
+    risk_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Usa IA + RAG para sugerir que controles implementados mitigan mejor este riesgo.
+
+    Lee el contexto del riesgo (activo, amenaza, vulnerabilidades), los controles
+    disponibles con su madurez y evidencias, y los documentos indexados del tenant.
+    Devuelve los IDs de los controles sugeridos y una justificacion breve.
+    """
+    from app.models import AiConfig, Control
+    from app.services.rag_service import search_chunks_with_source
+
+    r = db.get(Risk, risk_id)
+    if not r:
+        raise HTTPException(404, "Riesgo no encontrado")
+    if not check_org_access(r.organization_id, current_user):
+        raise HTTPException(403)
+
+    # Configuracion IA del tenant
+    ai_cfg = db.query(AiConfig).filter_by(organization_id=r.organization_id).first()
+    if not ai_cfg or not ai_cfg.api_key_enc:
+        raise HTTPException(400, "Configura la clave API de IA antes de usar esta funcion")
+
+    try:
+        from cryptography.fernet import Fernet
+        from app.config import settings
+        api_key = Fernet(settings.secret_key.encode()).decrypt(ai_cfg.api_key_enc.encode()).decode()
+    except Exception:
+        raise HTTPException(400, "Error al descifrar la clave API de IA")
+
+    # Contexto del riesgo
+    asset_name = r.asset.name if r.asset else "N/A"
+    asset_type = r.asset.asset_type.value if r.asset and r.asset.asset_type else "N/A"
+    threat_name = r.threat.name if r.threat else "N/A"
+    threat_code = r.threat.code if r.threat else "N/A"
+    threat_cat  = r.threat.category if r.threat else "N/A"
+    vuln_lines  = [f"  - [{v.code}] {v.name}: {(v.description or '')[:100]}" for v in (r.vulnerabilities or [])]
+
+    # Controles disponibles en el tenant
+    impls = db.query(ControlImplementation).filter_by(organization_id=r.organization_id).all()
+    impl_lines = []
+    for c in impls:
+        ctrl = db.get(Control, c.control_id) if c.control_id else None
+        code = ctrl.code if ctrl else "?"
+        theme = ctrl.theme if ctrl else "?"
+        impl_lines.append(f"  - ID:{c.id} [{code}][{theme}] {c.name} (madurez:{c.maturity}/5, estado:{c.status.value})")
+
+    # RAG: buscar fragmentos de documentos relevantes
+    rag_query = f"{threat_name} {' '.join(v.name for v in (r.vulnerabilities or []))} controles mitigacion"
+    rag_chunks = []
+    try:
+        chunks = search_chunks_with_source(db, rag_query, r.organization_id, k=6)
+        rag_chunks = [f"  [{c.get('source','')}] {c.get('text','')[:200]}" for c in chunks]
+    except Exception:
+        pass
+
+    prompt = f"""Eres un auditor ISO 27001 experto. Analiza este riesgo y selecciona los controles mas adecuados.
+
+RIESGO:
+- Activo: {asset_name} (tipo: {asset_type})
+- Amenaza: [{threat_code}] {threat_name} (categoria: {threat_cat})
+- Descripcion: {r.description or 'N/A'}
+- Vulnerabilidades especificas:
+{chr(10).join(vuln_lines) if vuln_lines else '  (ninguna)'}
+
+CONTROLES IMPLEMENTADOS DISPONIBLES ({len(impls)} total):
+{chr(10).join(impl_lines)}
+
+CONTEXTO DE DOCUMENTOS INTERNOS:
+{chr(10).join(rag_chunks) if rag_chunks else '  (sin documentos indexados)'}
+
+TAREA: Selecciona SOLO los controles (por su ID) que mitigan directamente las vulnerabilidades y la amenaza listadas.
+Criterios:
+1. El control debe reducir la probabilidad o el impacto de esta amenaza concreta
+2. El control debe abordar alguna de las vulnerabilidades listadas
+3. Excluye controles de temas irrelevantes (ej: no incluir controles fisicos para una amenaza de red)
+4. Prioriza controles con mayor madurez
+
+Responde SOLO con JSON valido, sin texto adicional:
+{{"suggested_ids": [lista de IDs enteros], "rationale": "justificacion de 1-2 frases"}}"""
+
+    try:
+        import anthropic
+        model = ai_cfg.model or "claude-haiku-4-5-20251001"
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        raw = msg.content[0].text.strip()
+        # Limpiar posible markdown
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = _json.loads(raw.strip())
+        suggested_ids = [int(i) for i in data.get("suggested_ids", []) if i]
+        # Validar que los IDs existen en el tenant
+        valid_ids = {c.id for c in impls}
+        suggested_ids = [i for i in suggested_ids if i in valid_ids]
+        return {"suggested_ids": suggested_ids, "rationale": data.get("rationale", "")}
+    except Exception as exc:
+        raise HTTPException(500, f"Error en sugerencia IA: {exc}") from exc
