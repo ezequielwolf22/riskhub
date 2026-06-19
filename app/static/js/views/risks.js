@@ -655,6 +655,21 @@ const ViewRisks = {
     const freqLabels = window._mageritFreqLabels || {0:'Muy Baja',1:'Baja',2:'Media',3:'Alta',4:'Muy Alta'};
     const dims = window._mageritDimensions || {D:'Disponibilidad',I:'Integridad',C:'Confidencialidad',A:'Autenticidad',T:'Trazabilidad'};
 
+    // Filtrar vulnerabilidades por amenaza seleccionada usando related_threats del catalogo
+    const selectedThreat = ViewRisks._threats.find(t => t.id === r.threat_id);
+    const threatCode = selectedThreat?.code;
+    const relatedVulns = threatCode
+      ? ViewRisks._vulns.filter(v => (v.related_threats || []).includes(threatCode))
+      : ViewRisks._vulns;
+    const savedVulnIds = r.vulnerability_ids || [];
+    // Para riesgo nuevo: auto-seleccionar las vulnerabilidades relacionadas con la amenaza
+    // Para riesgo existente: respetar las seleccionadas, pero advertir sobre las incorrectas
+    const isNew = !id && !cloneData;
+    const effectiveVulnIds = (isNew && relatedVulns.length) ? relatedVulns.map(v => v.id) : savedVulnIds;
+    const relatedVulnIds = new Set(relatedVulns.map(v => v.id));
+    // Vulnerabilidades ya guardadas que NO corresponden a la amenaza actual
+    const mismatchedVulnIds = new Set(savedVulnIds.filter(vid => !relatedVulnIds.has(vid)));
+
     UI.modal(id ? `${r.code} - ${r.asset?.name || ''}` : 'Nuevo riesgo', `
       <div class="span2 notice">
         Riesgo = Activo × Amenaza.
@@ -737,15 +752,35 @@ const ViewRisks = {
         <input type="number" min="0" max="4" id="f-ic" value="${r.inherent_consequence}">
       </div>`}
       <div class="span2">
-        <label>Vulnerabilidades asociadas (multi-selección)</label>
-        <select id="f-vulns" multiple size="5" style="height:auto;">
-          ${ViewRisks._vulns.map(v => `<option value="${v.id}" ${r.vulnerability_ids?.includes(v.id)?'selected':''}>${UI.esc(v.code)} - ${UI.esc(v.name)}</option>`).join('')}
+        <label style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          Vulnerabilidades asociadas
+          ${relatedVulns.length < ViewRisks._vulns.length
+            ? `<span style="font-size:11px;font-weight:400;color:var(--text-muted);">
+                ${isNew ? 'Auto-seleccionadas:' : 'Relevantes para amenaza:'} ${relatedVulns.length} de ${ViewRisks._vulns.length}
+                <a href="#" id="vuln-show-all-link" style="margin-left:6px;color:var(--brand-purple);">Ver todas</a>
+               </span>`
+            : ''}
+        </label>
+        ${!isNew && mismatchedVulnIds.size > 0
+          ? `<div style="font-size:11px;color:#B45309;background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-bottom:6px;">
+              Aviso: ${mismatchedVulnIds.size} vulnerabilidad(es) vinculada(s) no corresponde(n) a la amenaza ${UI.esc(threatCode||'')}. Revisa la seleccion para mayor precision.
+             </div>`
+          : ''}
+        <select id="f-vulns" multiple size="${Math.max(3, Math.min(relatedVulns.length || ViewRisks._vulns.length, 6))}" style="height:auto;" data-threat="${UI.esc(threatCode||'')}">
+          ${(relatedVulns.length ? relatedVulns : ViewRisks._vulns).map(v => `<option value="${v.id}" ${effectiveVulnIds.includes(v.id)?'selected':''}>${UI.esc(v.code)} - ${UI.esc(v.name)}</option>`).join('')}
+          ${!isNew && mismatchedVulnIds.size > 0
+            ? ViewRisks._vulns.filter(v => mismatchedVulnIds.has(v.id))
+                .map(v => `<option value="${v.id}" selected>${UI.esc(v.code)} - ${UI.esc(v.name)} [fuera de amenaza]</option>`).join('')
+            : ''}
         </select>
       </div>
       <div class="span2">
-        <label>Controles implementados que mitigan (multi-selección)</label>
+        <label>Controles implementados que mitigan</label>
         <select id="f-impls" multiple size="5" style="height:auto;">
-          ${ViewRisks._impls.map(c => `<option value="${c.id}" ${r.control_implementation_ids?.includes(c.id)?'selected':''}>${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`).join('')}
+          ${ViewRisks._impls.map(c => {
+            const theme = c.control?.theme ? ` [${UI.esc(c.control.theme)}]` : '';
+            return `<option value="${c.id}" ${r.control_implementation_ids?.includes(c.id)?'selected':''}>${UI.esc(c.name)}${theme} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+          }).join('')}
         </select>
       </div>
       <div>
@@ -925,11 +960,54 @@ const ViewRisks = {
       }
     }
 
+    // Enlace "Ver todas las vulnerabilidades" — expande el selector al catalogo completo
+    const vulnShowAll = document.getElementById('vuln-show-all-link');
+    if (vulnShowAll) {
+      vulnShowAll.addEventListener('click', (e) => {
+        e.preventDefault();
+        const sel = document.getElementById('f-vulns');
+        if (!sel) return;
+        const currentSelected = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
+        sel.innerHTML = ViewRisks._vulns.map(v =>
+          `<option value="${v.id}" ${currentSelected.has(v.id)?'selected':''}>${UI.esc(v.code)} - ${UI.esc(v.name)}</option>`
+        ).join('');
+        sel.size = Math.min(ViewRisks._vulns.length, 8);
+        vulnShowAll.textContent = `(mostrando todas — ${ViewRisks._vulns.length})`;
+        vulnShowAll.style.pointerEvents = 'none';
+        vulnShowAll.style.color = 'var(--text-muted)';
+      });
+    }
+
     if (id && canEdit) document.getElementById('m-del').onclick = async () => {
       if (!await UI.confirm('Eliminar este riesgo?')) return;
       try { await Api.risks.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewRisks._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
+    // Para riesgo nuevo: actualizar lista de vulnerabilidades al cambiar la amenaza
+    if (!id) {
+      const threatSel = document.getElementById('f-threat');
+      const vulnSel = document.getElementById('f-vulns');
+      if (threatSel && vulnSel) {
+        threatSel.addEventListener('change', () => {
+          const tCode = ViewRisks._threats.find(t => t.id === parseInt(threatSel.value))?.code;
+          const filtered = tCode
+            ? ViewRisks._vulns.filter(v => (v.related_threats || []).includes(tCode))
+            : ViewRisks._vulns;
+          vulnSel.innerHTML = (filtered.length ? filtered : ViewRisks._vulns).map(v =>
+            `<option value="${v.id}" selected>${UI.esc(v.code)} - ${UI.esc(v.name)}</option>`
+          ).join('');
+          vulnSel.size = Math.max(3, Math.min(filtered.length, 6));
+          // Actualizar badge de info
+          const showAllLink = document.getElementById('vuln-show-all-link');
+          if (showAllLink) {
+            const total = ViewRisks._vulns.length;
+            showAllLink.textContent = filtered.length < total ? `Ver todas (${total})` : '';
+            showAllLink.style.pointerEvents = filtered.length < total ? '' : 'none';
+          }
+        });
+      }
+    }
+
     // Resaltar campo justificacion cuando se selecciona "accepted"
     const statusSel = document.getElementById('f-status');
     if (statusSel) statusSel.addEventListener('change', () => {

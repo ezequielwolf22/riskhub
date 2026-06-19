@@ -451,8 +451,12 @@ const ViewUsers = {
         <div class="card" style="margin-top:24px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
             <h3 style="margin:0;">Informacion del sistema</h3>
-            ${Auth.isSuperAdmin() ? `<button class="btn btn-ghost" id="btn-backup">Descargar backup DB</button>` : ''}
+            <div style="display:flex;gap:8px;">
+              ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-vulns">Limpiar vulnerabilidades en riesgos</button>` : ''}
+              ${Auth.isSuperAdmin() ? `<button class="btn btn-ghost" id="btn-backup">Descargar backup DB</button>` : ''}
+            </div>
           </div>
+          <div id="cleanup-result" style="display:none;margin-bottom:12px;"></div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
             ${ViewUsers._infoChip('Version', s.version)}
             ${ViewUsers._infoChip('Entorno', s.env)}
@@ -465,6 +469,60 @@ const ViewUsers = {
             ${s.next_alert_check ? ViewUsers._infoChip('Prox. alerta', new Date(s.next_alert_check).toLocaleTimeString()) : ''}
           </div>
         </div>`;
+      const btnCleanup = document.getElementById('btn-cleanup-vulns');
+      if (btnCleanup) {
+        btnCleanup.onclick = async () => {
+          if (!await UI.confirm(
+            'Esto reemplazara automaticamente las vulnerabilidades de TODOS los riesgos ' +
+            'con las que corresponden a su amenaza segun el catalogo ISO 27005.\n\n' +
+            'Los controles existentes no se modifican. Continuar?'
+          )) return;
+          btnCleanup.disabled = true;
+          btnCleanup.textContent = 'Procesando...';
+          const resultBox = document.getElementById('cleanup-result');
+          try {
+            const r = await Api.admin.cleanupVulnerabilities();
+            const fixedRows = r.details
+              .filter(d => d.action === 'fixed')
+              .map(d => `
+                <tr>
+                  <td style="font-family:monospace;font-size:12px;">${UI.esc(d.risk_code)}</td>
+                  <td style="font-size:12px;">${UI.esc(d.threat_code)}</td>
+                  <td style="font-size:12px;color:#DC2626;">${(d.removed||[]).join(', ')||'—'}</td>
+                  <td style="font-size:12px;color:#059669;">${(d.added||[]).join(', ')||'—'}</td>
+                </tr>`).join('');
+            resultBox.style.display = 'block';
+            resultBox.innerHTML = `
+              <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:14px;">
+                <div style="font-weight:600;margin-bottom:10px;">
+                  Limpieza completada: <span style="color:#059669;">${r.fixed} corregidos</span>
+                  de ${r.checked} riesgos revisados
+                  ${r.already_correct ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.already_correct} ya eran correctos)</span>` : ''}
+                  ${r.no_catalog_match ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.no_catalog_match} amenazas sin catalogo)</span>` : ''}
+                </div>
+                ${fixedRows ? `
+                  <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                      <thead><tr>
+                        <th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Riesgo</th>
+                        <th style="text-align:left;padding:4px 8px;color:var(--text-muted);">Amenaza</th>
+                        <th style="text-align:left;padding:4px 8px;color:#DC2626;">Eliminadas</th>
+                        <th style="text-align:left;padding:4px 8px;color:#059669;">Anadidas</th>
+                      </tr></thead>
+                      <tbody>${fixedRows}</tbody>
+                    </table>
+                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">Todos los riesgos ya tenian las vulnerabilidades correctas.</div>'}
+              </div>`;
+            UI.toast(`${r.fixed} riesgos corregidos`, r.fixed > 0 ? 'success' : 'info');
+          } catch (e) {
+            UI.toast('Error en limpieza: ' + e.message, 'error');
+          } finally {
+            btnCleanup.disabled = false;
+            btnCleanup.textContent = 'Limpiar vulnerabilidades en riesgos';
+          }
+        };
+      }
+
       const btnBackup = document.getElementById('btn-backup');
       if (btnBackup) {
         btnBackup.onclick = async () => {

@@ -292,6 +292,44 @@ def analyze_pending_documents(
     }
 
 
+@router.get("/{doc_id}/controls")
+def get_document_controls(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve las implementaciones de control actualizadas por este documento (via evidence_refs)."""
+    from app.models import ControlImplementation
+    from sqlalchemy import cast, String
+
+    doc = db.query(AiDocument).filter_by(id=doc_id).first()
+    if not doc or not check_org_access(doc.organization_id, current_user):
+        raise HTTPException(404, "Documento no encontrado")
+
+    doc_url = f"/api/ai/documents/{doc_id}"
+    impls = (
+        db.query(ControlImplementation)
+        .filter(
+            ControlImplementation.organization_id == doc.organization_id,
+            cast(ControlImplementation.evidence_refs, String).like(f"%{doc_url}%"),
+        )
+        .all()
+    )
+
+    out = []
+    for i in impls:
+        ctrl = i.control
+        out.append({
+            "id": i.id,
+            "control_code": ctrl.code if ctrl else None,
+            "control_name": ctrl.name if ctrl else i.name,
+            "maturity": i.maturity or 0,
+            "status": i.status.value if i.status else None,
+            "notes": i.notes or "",
+        })
+    return out
+
+
 @router.post("/analyze-all")
 def analyze_all_documents(
     background_tasks: BackgroundTasks,

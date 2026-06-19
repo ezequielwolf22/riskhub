@@ -329,11 +329,9 @@ const ViewCompliance = (() => {
           <td style="min-width:120px;">${_maturityBar(c.maturity)}</td>
           <td style="font-size:11px;max-width:200px;">
             ${hasGap
-              ? `<span style="color:var(--brand-orange);cursor:pointer;font-size:11px;"
-                       title="${UI.esc(c.notes.slice(0,300))}"
-                       data-notes="${UI.esc(c.notes.slice(0,300))}"
-                       onclick="const el=document.createElement('span');el.style.fontSize='11px';el.textContent=this.dataset.notes;this.parentElement.replaceChild(el,this)">
-                   Ver gap IA &#9660;</span>`
+              ? `<span style="color:var(--brand-purple);cursor:pointer;font-size:11px;text-decoration:underline;"
+                       onclick="ViewCompliance._showGapModal(${c.id})">
+                   Ver analisis IA</span>`
               : '<span style="color:var(--text-subtle);">-</span>'}
           </td>
         </tr>`;
@@ -347,7 +345,7 @@ const ViewCompliance = (() => {
           <div style="overflow-x:auto;">
             <table class="data" style="font-size:12px;width:100%;">
               <thead><tr>
-                <th>Codigo</th><th>Control</th><th>Estado</th><th>Madurez</th><th>Gap IA</th>
+                <th>Codigo</th><th>Control</th><th>Estado</th><th>Madurez</th><th>Analisis IA</th>
               </tr></thead>
               <tbody>${rows}</tbody>
             </table>
@@ -1152,6 +1150,105 @@ const ViewCompliance = (() => {
     }
   }
 
+  // ============================================================
+  // Modal de madurez / gap analysis por control (ISO 27001 panel)
+  // ============================================================
+
+  const _GAP_MATURITY_LABELS = ['Inexistente', 'Inicial', 'Basico', 'Definido', 'Gestionado', 'Optimizado'];
+
+  function _gapMaturityColor(v) {
+    if (v >= 5) return 'var(--risk-low)';
+    if (v >= 4) return '#22c55e';
+    if (v >= 3) return 'var(--risk-medium)';
+    if (v >= 2) return 'var(--risk-high)';
+    return 'var(--risk-critical)';
+  }
+
+  function _gapMaturityBarFull(v) {
+    const color = _gapMaturityColor(v);
+    const bars = Array.from({length: 5}, (_, i) =>
+      `<div style="width:20px;height:12px;border-radius:3px;background:${i < v ? color : 'var(--bg-3)'};"></div>`
+    ).join('');
+    return `<div style="display:flex;gap:4px;align-items:center;">
+      ${bars}
+      <span style="font-size:14px;font-weight:800;color:${color};margin-left:8px;">${v}/5</span>
+      <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">${_GAP_MATURITY_LABELS[v] || ''}</span>
+    </div>`;
+  }
+
+  function _parseGapNotes(notes) {
+    if (!notes) return { rationale: '', gap: '' };
+    const gapSep = '\n\nPara llegar a nivel 5: ';
+    const gapIdx = notes.indexOf(gapSep);
+    let rationale = notes;
+    let gap = '';
+    if (gapIdx >= 0) {
+      rationale = notes.slice(0, gapIdx);
+      gap = notes.slice(gapIdx + gapSep.length);
+    }
+    rationale = rationale.replace(/^Nivel actual \(\d+\/5\): /, '');
+    return { rationale, gap };
+  }
+
+  function _showGapModal(implId) {
+    const raw = (_implsData || []).find(i => i.id === implId);
+    if (!raw) { UI.toast('Sin datos de madurez disponibles para este control', 'info'); return; }
+    const c = _flatImpl(raw);
+    const { rationale, gap } = _parseGapNotes(c.notes);
+    const color = _gapMaturityColor(c.maturity);
+    const hasAnalysis = rationale || gap;
+
+    UI.openModal(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Analisis de madurez</h3>
+        <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">&#10005;</button>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <span style="font-size:11px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);
+                     border-radius:3px;padding:2px 8px;margin-right:8px;">${UI.esc(c.code || '-')}</span>
+        <span style="font-size:14px;font-weight:700;">${UI.esc(c.name || '-')}</span>
+      </div>
+
+      <div style="background:var(--bg-2);border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+        ${_gapMaturityBarFull(c.maturity)}
+      </div>
+
+      ${rationale ? `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                      letter-spacing:.6px;margin-bottom:6px;">Justificacion del nivel actual</div>
+          <div style="font-size:13px;line-height:1.7;color:var(--text-base);background:var(--bg-2);
+                      border-radius:6px;padding:12px 14px;border-left:4px solid ${color};">
+            ${UI.esc(rationale)}
+          </div>
+        </div>` : ''}
+
+      ${gap ? `
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                      letter-spacing:.6px;margin-bottom:6px;">Para llegar a nivel 5 (Optimizado)</div>
+          <div style="font-size:13px;line-height:1.7;color:var(--text-base);
+                      background:rgba(89,0,141,.05);border-radius:6px;padding:12px 14px;
+                      border-left:4px solid var(--brand-purple);">
+            ${UI.esc(gap)}
+          </div>
+        </div>` : (!hasAnalysis ? `
+        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">
+          Este control no tiene analisis de gap generado por IA todavia.<br>
+          <span style="font-size:12px;">Sube un documento relacionado y ejecuta el analisis ISMS para generarlo.</span>
+        </div>` : '')}
+
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);
+                  display:flex;justify-content:flex-end;gap:8px;">
+        <a href="#/controls" onclick="UI.closeModal();" class="btn btn-ghost" style="font-size:12px;">
+          Ver en Controles
+        </a>
+        <button onclick="UI.closeModal();" class="btn btn-primary" style="font-size:12px;">Cerrar</button>
+      </div>
+    `, { width: '620px' });
+  }
+
   function _configureFrameworks() {
     Api.complianceFrameworks.list().then(available => {
       Api.get('/api/context/').then(ctx => {
@@ -1192,5 +1289,5 @@ const ViewCompliance = (() => {
     }
   }
 
-  return { render, _togglePanel, _filterGapTable: () => {}, _configureFrameworks, _saveFrameworks };
+  return { render, _togglePanel, _filterGapTable: () => {}, _configureFrameworks, _saveFrameworks, _showGapModal };
 })();

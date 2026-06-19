@@ -20,7 +20,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Asset, Threat, Risk, RiskStatus, TreatmentOption, RiskContext,
+    Asset, Control, Threat, Risk, RiskStatus, TreatmentOption, RiskContext,
     ControlImplementation, Vulnerability, User, UserRole,
 )
 from app.services.risk_engine import calc_level, calc_residual
@@ -38,22 +38,68 @@ def _controls_to_dicts(controls: list) -> list[dict]:
     return [{"maturity": c.maturity or 0, "contribution": 1.0} for c in controls]
 
 
-def _inherit_controls(db: Session, asset: Asset, threat: Threat) -> list:
-    """Hereda controles del asset type + threat.
+# Mapeo ISO 27005 threat category → temas ISO 27002 relevantes
+_THREAT_CAT_TO_CONTROL_THEMES: dict[str, list[str]] = {
+    "Physical damage":              ["physical"],
+    "Natural events":               ["physical"],
+    "Loss of essential services":   ["physical", "technological"],
+    "Disturbance due to radiation": ["physical"],
+    "Compromise of information":    ["technological", "organizational"],
+    "Technical failures":           ["technological"],
+    "Unauthorized actions":         ["technological", "organizational", "people"],
+    "Compromise of functions":      ["organizational", "people"],
+}
 
-    Busca controles implementados o parcialmente implementados que reducen el residual.
-    Usa maturity (0-5) como indicador de contribucion al tratamiento.
+
+def _vulns_for_threat(db: Session, threat: Threat) -> list:
+    """Devuelve las vulnerabilidades del catalogo cuyo related_threats incluye el codigo de la amenaza."""
+    import json as _json
+    if not threat or not threat.code:
+        return []
+    result = []
+    for v in db.query(Vulnerability).all():
+        rt = v.related_threats or []
+        if isinstance(rt, str):
+            try:
+                rt = _json.loads(rt)
+            except Exception:
+                rt = [rt]
+        if threat.code in rt:
+            result.append(v)
+    return result
+
+
+def _inherit_controls(db: Session, asset: Asset, threat: Threat) -> list:
+    """Hereda controles relevantes para la amenaza concreta.
+
+    Filtra por tema ISO 27002 (organizational/people/physical/technological)
+    segun la categoria de la amenaza, luego ordena por madurez descendente.
+    Sin controles por tema especifico cae al top-5 global como fallback.
     """
-    from app.models import ControlStatus
-    controls = db.query(ControlImplementation).filter(
+    from app.models import ControlStatus, Control
+    themes = _THREAT_CAT_TO_CONTROL_THEMES.get(threat.category or "", [])
+
+    base_q = db.query(ControlImplementation).filter(
         ControlImplementation.organization_id == asset.organization_id,
         ControlImplementation.status.in_([
             ControlStatus.IMPLEMENTED, ControlStatus.PARTIAL
         ]),
         ControlImplementation.maturity > 0,
-    ).order_by(ControlImplementation.maturity.desc()).all()
+    )
 
-    return controls[:5]  # Máximo 5 controles por riesgo para mantener el calculo rapido
+    if themes:
+        themed = (
+            base_q.join(Control, ControlImplementation.control_id == Control.id)
+            .filter(Control.theme.in_(themes))
+            .order_by(ControlImplementation.maturity.desc())
+            .limit(8)
+            .all()
+        )
+        if themed:
+            return themed
+
+    # Fallback: top-5 por madurez si no hay controles para el tema
+    return base_q.order_by(ControlImplementation.maturity.desc()).limit(5).all()
 
 
 def _get_inherent_values_from_ai(db: Session, asset: Asset, threat: Threat) -> tuple[int, int]:
@@ -157,6 +203,9 @@ def auto_generate_risks_for_asset(
             owner_id=user_id,
             status=RiskStatus.IDENTIFIED,
         )
+
+        # Vulnerabilidades del catalogo que corresponden a esta amenaza
+        risk.vulnerabilities = _vulns_for_threat(db, threat)
 
         # Heredar controles ANTES de calcular residual
         inherited = _inherit_controls(db, asset, threat)
@@ -337,6 +386,9 @@ def auto_generate_risk_from_cve(
     risk.residual_consequence = rc
     risk.residual_level = rlev
 
+    # Vulnerabilidades del catalogo que corresponden a esta amenaza
+    risk.vulnerabilities = _vulns_for_threat(db, threat)
+
     # Heredar controles ANTES de decidir tratamiento para residual mas preciso
     applicable_controls = _inherit_controls(db, asset, threat)
     controls_dicts = _controls_to_dicts(applicable_controls)  # list[dict] para calc_residual
@@ -473,6 +525,8 @@ def auto_generate_risk_from_finding(
     risk.residual_consequence = rc
     risk.residual_level = rlev
 
+    risk.vulnerabilities = _vulns_for_threat(db, threat)
+
     applicable_controls = _inherit_controls(db, asset, threat)
     controls_dicts = _controls_to_dicts(applicable_controls)
     if controls_dicts:
@@ -603,6 +657,9 @@ def auto_generate_risk_from_osint(
     risk.residual_likelihood = rl
     risk.residual_consequence = rc
     risk.residual_level = rlev
+
+    # Vulnerabilidades del catalogo que corresponden a esta amenaza
+    risk.vulnerabilities = _vulns_for_threat(db, threat)
 
     # Heredar controles ANTES de decidir tratamiento para residual mas preciso
     applicable_controls = _inherit_controls(db, asset, threat)

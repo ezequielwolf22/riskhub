@@ -265,6 +265,7 @@ const Api = {
     analyze: (id) => Api.post('/api/ai/documents/' + id + '/analyze', {}),
     analyzePending: () => Api.post('/api/ai/documents/analyze-pending', {}),
     analyzeAll: () => Api.post('/api/ai/documents/analyze-all', {}),
+    controls: (id) => Api.get('/api/ai/documents/' + id + '/controls'),
   },
   tasks: {
     list: (q) => Api.get('/api/tasks/', q),
@@ -458,6 +459,7 @@ const Api = {
     systemInfo: () => Api.get('/api/admin/system-info'),
     backupDb: () => Api.download('/api/admin/backup-db', `riskhub_backup_${new Date().toISOString().slice(0,10)}.db`),
     securityStatus: () => Api.get('/api/admin/security-status'),
+    cleanupVulnerabilities: () => Api.post('/api/admin/risks/cleanup-vulnerabilities', {}),
   },
   alerts: {
     getSettings: () => Api.get('/api/alerts/settings'),

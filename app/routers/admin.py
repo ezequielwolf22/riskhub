@@ -252,3 +252,102 @@ def _security_recommendations(key_ok: bool, env: str, docs_on_disk: int) -> list
         "(pg_crypto o Transparent Data Encryption) en despliegues con datos de alta clasificacion."
     )
     return recs
+
+
+@router.post("/risks/cleanup-vulnerabilities")
+def cleanup_risk_vulnerabilities(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Limpieza masiva: reemplaza las vulnerabilidades de cada riesgo por las
+    que corresponden a su amenaza segun el catalogo ISO 27005 (related_threats).
+
+    Solo corrige vulnerabilidades; no toca controles para no alterar decisiones
+    de tratamiento ya aprobadas.
+
+    Devuelve estadisticas detalladas por riesgo.
+    """
+    import json as _json
+
+    org_id = filter_by_org(current_user)
+
+    risks = db.query(Risk).filter(Risk.organization_id == org_id).all()
+    all_vulns = db.query(Vulnerability).all()
+
+    # Indice: threat_code → lista de Vulnerability
+    vuln_index: dict[str, list] = {}
+    for v in all_vulns:
+        rt = v.related_threats or []
+        if isinstance(rt, str):
+            try:
+                rt = _json.loads(rt)
+            except Exception:
+                rt = [rt]
+        for code in rt:
+            vuln_index.setdefault(code, []).append(v)
+
+    stats = {
+        "checked": 0,
+        "fixed": 0,
+        "already_correct": 0,
+        "no_catalog_match": 0,
+        "details": [],
+    }
+
+    for risk in risks:
+        stats["checked"] += 1
+        threat = db.get(Threat, risk.threat_id) if risk.threat_id else None
+        if not threat or not threat.code:
+            stats["details"].append({
+                "risk_code": risk.code,
+                "action": "skipped",
+                "reason": "sin amenaza asignada",
+            })
+            continue
+
+        correct_vulns = vuln_index.get(threat.code, [])
+        current_ids = {v.id for v in (risk.vulnerabilities or [])}
+        correct_ids = {v.id for v in correct_vulns}
+
+        if not correct_vulns:
+            stats["no_catalog_match"] += 1
+            stats["details"].append({
+                "risk_code": risk.code,
+                "threat_code": threat.code,
+                "action": "skipped",
+                "reason": "amenaza sin vulnerabilidades en catalogo",
+            })
+            continue
+
+        if current_ids == correct_ids:
+            stats["already_correct"] += 1
+            stats["details"].append({
+                "risk_code": risk.code,
+                "threat_code": threat.code,
+                "action": "ok",
+                "vuln_count": len(correct_ids),
+            })
+            continue
+
+        removed = [v.code for v in (risk.vulnerabilities or []) if v.id not in correct_ids]
+        added = [v.code for v in correct_vulns if v.id not in current_ids]
+
+        risk.vulnerabilities = correct_vulns
+        stats["fixed"] += 1
+        stats["details"].append({
+            "risk_code": risk.code,
+            "threat_code": threat.code,
+            "action": "fixed",
+            "removed": removed,
+            "added": added,
+        })
+
+    try:
+        db.commit()
+        log_action(db, current_user.id, "admin_cleanup_risk_vulns",
+                   "risk", None, {"fixed": stats["fixed"], "checked": stats["checked"]})
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, f"Error al guardar cambios: {exc}") from exc
+
+    return stats

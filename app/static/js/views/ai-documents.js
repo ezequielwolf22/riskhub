@@ -545,9 +545,17 @@ const ViewAiDocuments = (() => {
         Politica creada</a>`);
     }
     if (d.isms_controls_updated > 0) {
-      parts.push(`<a href="#/controls" style="font-size:11px;color:var(--risk-low);"
-          title="Ver controles actualizados por este documento. Cada control incluye analisis de gap hasta nivel 5.">
-        ${d.isms_controls_updated} control${d.isms_controls_updated !== 1 ? 'es' : ''} actualizados</a>`);
+      const madurezLink = d.isms_status === 'analysed'
+        ? `&nbsp;<span onclick="ViewAiDocuments._showMaturityModal(${d.id})"
+              style="cursor:pointer;font-size:11px;color:var(--brand-purple);text-decoration:underline;"
+              title="Ver nivel de madurez y gap analysis por control">Ver madurez</span>`
+        : '';
+      parts.push(`<span>
+        <a href="#/controls" style="font-size:11px;color:var(--risk-low);"
+           title="Ver controles actualizados por este documento">
+          ${d.isms_controls_updated} control${d.isms_controls_updated !== 1 ? 'es' : ''} actualizados
+        </a>${madurezLink}
+      </span>`);
     }
     if (d.isms_tasks_created > 0) {
       parts.push(`<a href="#/tasks" style="font-size:11px;color:var(--brand-orange);">
@@ -569,6 +577,126 @@ const ViewAiDocuments = (() => {
                                overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                        title="${tooltip}">${tooltip}</div>` : ''}
     </td>`;
+  }
+
+  // ---------- Helpers de madurez ----------
+
+  function _parseGapNotes(notes) {
+    if (!notes) return { rationale: '', gap: '' };
+    const gapSep = '\n\nPara llegar a nivel 5: ';
+    const gapIdx = notes.indexOf(gapSep);
+    let rationale = notes;
+    let gap = '';
+    if (gapIdx >= 0) {
+      rationale = notes.slice(0, gapIdx);
+      gap = notes.slice(gapIdx + gapSep.length);
+    }
+    rationale = rationale.replace(/^Nivel actual \(\d+\/5\): /, '');
+    return { rationale, gap };
+  }
+
+  const _MATURITY_LABELS = ['Inexistente', 'Inicial', 'Basico', 'Definido', 'Gestionado', 'Optimizado'];
+
+  function _maturityColor(v) {
+    if (v >= 5) return 'var(--risk-low)';
+    if (v >= 4) return '#22c55e';
+    if (v >= 3) return 'var(--risk-medium)';
+    if (v >= 2) return 'var(--risk-high)';
+    return 'var(--risk-critical)';
+  }
+
+  function _maturityBarLarge(v) {
+    const color = _maturityColor(v);
+    const bars = Array.from({length: 5}, (_, i) =>
+      `<div style="width:20px;height:12px;border-radius:3px;background:${i < v ? color : 'var(--bg-3)'};"></div>`
+    ).join('');
+    return `<div style="display:flex;gap:4px;align-items:center;">
+      ${bars}
+      <span style="font-size:13px;font-weight:800;color:${color};margin-left:8px;">${v}/5</span>
+      <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">${_MATURITY_LABELS[v] || ''}</span>
+    </div>`;
+  }
+
+  async function _showMaturityModal(docId) {
+    const doc = _docs.find(d => d.id === docId);
+    let controls = [];
+    try {
+      controls = await Api.aiDocuments.controls(docId);
+    } catch (e) {
+      UI.toast('Error cargando datos de madurez: ' + e.message, 'error');
+      return;
+    }
+
+    if (!controls.length) {
+      UI.toast('No se encontraron controles vinculados a este documento. Re-analiza para generar el gap analysis.', 'info');
+      return;
+    }
+
+    const avgMaturity = controls.reduce((s, c) => s + (c.maturity || 0), 0) / controls.length;
+    const avgColor = _maturityColor(Math.round(avgMaturity));
+
+    const rows = controls.map(c => {
+      const { rationale, gap } = _parseGapNotes(c.notes);
+      const color = _maturityColor(c.maturity || 0);
+      const hasAnalysis = rationale || gap;
+      return `
+        <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;">
+          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+            <span style="font-size:11px;font-weight:700;background:var(--brand-purple-4);
+                         color:var(--brand-purple);border-radius:3px;padding:2px 7px;white-space:nowrap;
+                         flex-shrink:0;">${UI.esc(c.control_code || '-')}</span>
+            <span style="font-size:13px;font-weight:600;flex:1;">${UI.esc(c.control_name || '-')}</span>
+          </div>
+          <div style="margin-bottom:${hasAnalysis ? '12px' : '0'};">${_maturityBarLarge(c.maturity || 0)}</div>
+          ${rationale ? `
+            <div style="margin-bottom:8px;">
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                          letter-spacing:.5px;margin-bottom:5px;">Justificacion del nivel actual</div>
+              <div style="font-size:12px;line-height:1.65;color:var(--text-base);background:var(--bg-2);
+                          border-radius:6px;padding:8px 12px;border-left:3px solid ${color};">
+                ${UI.esc(rationale)}
+              </div>
+            </div>` : ''}
+          ${gap ? `
+            <div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                          letter-spacing:.5px;margin-bottom:5px;">Para llegar a nivel 5 (Optimizado)</div>
+              <div style="font-size:12px;line-height:1.65;color:var(--text-base);
+                          background:rgba(89,0,141,.05);border-radius:6px;padding:8px 12px;
+                          border-left:3px solid var(--brand-purple);">
+                ${UI.esc(gap)}
+              </div>
+            </div>` : (!hasAnalysis ? `
+            <div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:4px;">
+              Sin analisis de gap disponible para este control. Re-analiza el documento para generarlo.
+            </div>` : '')}
+        </div>`;
+    }).join('');
+
+    UI.openModal(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Analisis de madurez por control</h3>
+        <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">&#10005;</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+        Documento: <strong>${UI.esc(doc?.original_name || '')}</strong>
+      </p>
+      <div style="background:var(--bg-2);border-radius:8px;padding:12px 16px;margin-bottom:16px;
+                  display:flex;align-items:center;gap:14px;">
+        <div style="font-size:28px;font-weight:800;color:${avgColor};">${avgMaturity.toFixed(1)}</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text-base);">Madurez promedio del documento</div>
+          <div style="font-size:11px;color:var(--text-muted);">
+            Calculada sobre ${controls.length} control${controls.length !== 1 ? 'es' : ''} identificados
+            &nbsp;&middot;&nbsp;
+            <a href="#/controls" onclick="UI.closeModal();" style="color:var(--brand-purple);">Ver todos los controles</a>
+          </div>
+        </div>
+      </div>
+      <div style="overflow-y:auto;max-height:62vh;">
+        ${rows}
+      </div>
+    `, { width: '700px' });
   }
 
   function _showClauses(docId) {
@@ -753,6 +881,6 @@ const ViewAiDocuments = (() => {
     }
   }
 
-  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll, _analyzePending, _showClauses };
+  return { render, _setFilter, _setQueueCat, _removeFromQueue, _reprocess, _delete, _analyze, _analyzeAll, _analyzePending, _showClauses, _showMaturityModal };
 
 })();
