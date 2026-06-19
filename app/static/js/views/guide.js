@@ -2,7 +2,8 @@
 const ViewGuide = {
 
   _sections: [
-    { id: 'intro', title: 'Introduccion', icon: '📖' },
+    { id: 'intro', title: 'Que es RiskHub', icon: '📖' },
+    { id: 'setup', title: 'Puesta en marcha', icon: '🚀' },
     { id: 'navigation', title: 'Navegacion por hubs', icon: '🗂️' },
     { id: 'inbox', title: 'Bandeja de revision', icon: '📥' },
     { id: 'dashboard', title: 'Dashboard ejecutivo', icon: '📊' },
@@ -52,6 +53,8 @@ const ViewGuide = {
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'security', title: 'Seguridad y privacidad', icon: '🔐' },
     { id: 'methodology', title: 'Metodologia ISO 27005', icon: '📐' },
+    { id: 'risk-levels', title: 'Niveles de riesgo', icon: '⚙️' },
+    { id: 'questionnaires', title: 'Cuestionarios internos', icon: '📋' },
   ],
 
   _active: 'intro',
@@ -160,6 +163,9 @@ const ViewGuide = {
       methodology: this._cMethodology,
       inbox: this._cInbox,
       navigation: this._cNavigation,
+      setup: this._cSetup,
+      'risk-levels': this._cRiskLevels,
+      questionnaires: this._cQuestionnaires,
     })[id] || '<p>Seccion en construccion.</p>';
   },
 
@@ -197,56 +203,95 @@ const ViewGuide = {
   },
 
   get _cIntro() { return `
-    ${this._p('RiskHub es una plataforma de <strong>Gobernanza, Riesgo y Cumplimiento (GRC)</strong> diseñada para implementar el proceso de gestión del riesgo de seguridad de la información según <strong>ISO/IEC 27005:2018</strong> con el catálogo de controles de <strong>ISO/IEC 27002:2022</strong>.')}
-    ${this._h('Para qué sirve RiskHub')}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-      ${['Identificar y catalogar activos de información','Asociar amenazas y vulnerabilidades a cada activo','Calcular niveles de riesgo inherente y residual','Definir planes de tratamiento por riesgo','Gestionar controles ISO 27002:2022','Generar informes para auditoría y dirección','Usar IA para análisis de riesgo automatizado','Enviar alertas por email a los responsables','Busqueda global por codigo, nombre o descripcion','Calendario de vencimientos de tratamiento','Exportar datos a CSV y PDF'].map(f =>
-        `<div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:13px;">
-          <span style="color:var(--brand-purple);font-weight:700;">✓</span> ${f}
+    <div style="background:linear-gradient(135deg,var(--brand-purple-4),var(--brand-orange-4));border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:var(--brand-purple);margin-bottom:8px;">RiskHub — Plataforma GRC para ISO/IEC 27005</div>
+      <p style="margin:0;font-size:14px;line-height:1.7;color:var(--text-base);">
+        RiskHub es una plataforma de <strong>Gobernanza, Riesgo y Cumplimiento (GRC)</strong> disenada para implementar de forma rigurosa el proceso de gestion del riesgo de seguridad de la informacion segun <strong>ISO/IEC 27005:2018</strong>, con el catalogo completo de <strong>93 controles ISO/IEC 27002:2022</strong> y soporte para MAGERIT v3, NIS2, ENS, NIST CSF y GDPR. La herramienta cubre el ciclo completo: identificacion de activos, analisis de riesgos, definicion de tratamientos, gestion de cumplimiento, respuesta a incidentes y generacion de informes de auditoria.
+      </p>
+    </div>
+    ${this._h('Modulos incluidos')}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
+      ${[
+        ['Gestion de riesgos','Registro completo ISO 27005, matriz 5x5, heatmap, tratamiento y seguimiento con fechas limite.'],
+        ['Inventario de activos','Catalogo por tipo ISO 27005, valoracion CIA/MAGERIT, jerarquia, agrupacion con IA, importacion CSV masiva.'],
+        ['Controles ISO 27002','93 controles precargados, SoA completo, nivel de madurez CMM, monitor de revisiones vencidas.'],
+        ['Agente IA','Claude (Anthropic): analisis automatico de activos, chat GRC, informes narrativos, extraccion de clausulas ISO.'],
+        ['Cumplimiento multi-marco','ISO 27001 · NIS2 · NIST CSF · ENS · GDPR · DORA: scoring automatico y brechas identificadas.'],
+        ['TPRM','Riesgo de terceros, cuestionarios ponderados, evaluaciones consolidadas, hallazgos con SLA automatico.'],
+        ['Incidentes','Ciclo de vida completo, clasificacion P1-P4, flujo de notificacion NIS2, vinculacion a riesgos.'],
+        ['Continuidad BCP/DRP','Procesos criticos, BIA, planes con 10 secciones, tests, mapa de dependencias interactivo Cytoscape.'],
+        ['CVE Monitor','Conexion NVD/NIST en tiempo real, analisis IA de CVEs contra el inventario, creacion de riesgos con un clic.'],
+        ['OSINT','Escaneo de emails, dominios, IPs y usuarios en fuentes abiertas. Pipeline automatico de riesgos e incidentes.'],
+        ['Vigilancia normativa','Monitorizacion automatica de 11 fuentes regulatorias (EUR-Lex, BOE, ENISA, NIST...) con propagacion.'],
+        ['Informes y evidencias','PDF/Excel con IA, SoA, Trust Portal publico, paquete de auditoria ZIP por framework.'],
+      ].map(([t,d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;">
+          <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin-bottom:4px;">${t}</div>
+          <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">${d}</div>
         </div>`).join('')}
     </div>
-    ${this._h('Dashboard — vision ejecutiva')}
-    ${this._p('La pantalla principal (Dashboard) ofrece una vision global en tiempo real:')}
-    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li><strong>KPIs:</strong> activos, riesgos, controles, tratamientos vencidos, altos sin plan, reduccion media del riesgo.</li>
-      <li><strong>Distribucion por nivel residual:</strong> grafico donut SVG con proporcion alto/medio/bajo y barras de porcentaje.</li>
-      <li><strong>Por estado y por decision:</strong> barras mini con porcentaje del ciclo de vida y opciones de tratamiento.</li>
-      <li><strong>Acciones rapidas:</strong> accesos directos a tratamientos vencidos, riesgos sin plan, calendario y heatmap.</li>
-      <li><strong>Proximos vencimientos (30 dias):</strong> lista de riesgos con fecha limite proxima, con countdown en dias.</li>
-      <li><strong>Top 10 riesgos:</strong> riesgos mas criticos con porcentaje de reduccion. Haz clic para abrir el detalle.</li>
-      <li><strong>Cobertura de controles por tema ISO 27002:</strong> tarjetas con madurez media e implementados/total para Organizacional, Personas, Fisico y Tecnologico.</li>
-      <li><strong>Revisiones de controles (30 dias):</strong> controles ISO 27002 con fecha de proxima revision en los proximos 30 dias o ya vencida. Cada fila muestra codigo, nombre y urgencia (dias restantes o vencidos).</li>
-      <li><strong>KPI Sin responsable:</strong> numero de riesgos activos sin propietario asignado. En purpura si hay alguno, para incitar a asignar responsables.</li>
-      <li><strong>Acciones rapidas:</strong> botones adicionales para <em>Revisiones controles vencidas</em> y <em>Sin responsable</em>. Haz clic en cualquiera para ir directamente al listado filtrado.</li>
-    </ul>
+
     ${this._h('Flujo de trabajo recomendado')}
-    ${this._steps([
-      '<strong>Configura el contexto organizacional</strong> (menú Contexto): nombre de la organización, alcance del SGSI, criterios de probabilidad e impacto.',
-      '<strong>Importa o crea activos</strong> (menú Activos): inventaria todos los sistemas, aplicaciones, datos y procesos del alcance.',
-      '<strong>Revisa el catálogo de amenazas</strong> (menú Amenazas): las 49 amenazas de ISO 27005 Annex C están precargadas. Añade las específicas de tu sector.',
-      '<strong>Revisa el catálogo de vulnerabilidades</strong> (menú Vulnerabilidades): las 67 vulnerabilidades de ISO 27005 Annex D están disponibles.',
-      '<strong>Usa el Agente IA</strong> (menú Agente IA): responde el cuestionario de contexto. El agente genera automáticamente los escenarios de riesgo más relevantes para tu organización.',
-      '<strong>Revisa y ajusta los riesgos</strong> (menú Riesgos): valida los niveles calculados, asigna responsables y define planes de tratamiento.',
-      '<strong>Asocia controles</strong> (menú Controles): vincula controles ISO 27002 implementados a cada riesgo para calcular el nivel residual.',
-      '<strong>Genera informes</strong> (menú Informes): Risk Register PDF/Excel, SoA, y reportes ejecutivos con IA.',
-      '<strong>Configura alertas</strong> (menú Alertas): recibe notificaciones por email cuando un riesgo supere el umbral configurado.',
-    ])}
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px;">
+      ${[
+        ['1','Puesta en marcha','Accede con las credenciales recibidas, cambia la contrasena del admin y configura el contexto organizacional. Consulta la seccion <strong>Puesta en marcha</strong> para el proceso completo de instalacion y configuracion inicial.'],
+        ['2','Inventario de activos','Importa activos via CSV o creallos uno a uno. Clasifica por tipo ISO 27005 y valora las dimensiones CIA. El analisis de riesgos con IA arranca automaticamente (requiere API key del Agente IA).'],
+        ['3','Catalogo de amenazas','Revisa las 49 amenazas y 67 vulnerabilidades precargadas. Anade entradas especificas de tu sector si es necesario.'],
+        ['4','Registro de riesgos','Los riesgos se generan automaticamente por el Agente IA. Revisa los niveles calculados, asigna responsables y define planes de tratamiento con fechas limite.'],
+        ['5','Controles ISO 27002','Registra los controles con estado y nivel de madurez CMM. Vinculalos a los riesgos para calcular el nivel residual real. Documenta evidencias y justificaciones SOA.'],
+        ['6','Cumplimiento y politicas','Activa los frameworks normativos aplicables. Sube politicas y procedimientos al Agente IA para enriquecer automaticamente el SGSI.'],
+        ['7','Informes y seguimiento','Genera informes PDF/Excel. Configura alertas por email. Usa el calendario para controlar vencimientos y el dashboard ejecutivo para comunicar la postura a la direccion.'],
+      ].map(([n,t,d]) => `
+        <div style="display:flex;gap:12px;align-items:flex-start;background:var(--bg-2);border-radius:8px;padding:12px 14px;">
+          <span style="background:var(--brand-purple);color:#fff;border-radius:50%;width:24px;height:24px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-top:1px;">${n}</span>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:3px;">${t}</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">${d}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+
     ${this._h('Roles de usuario')}
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
       <thead><tr style="background:var(--brand-purple);color:#fff;">
         <th style="padding:8px 12px;text-align:left;">Rol</th>
         <th style="padding:8px 12px;text-align:left;">Permisos</th>
+        <th style="padding:8px 12px;text-align:left;">Uso tipico</th>
       </tr></thead>
       <tbody>
-        <tr><td style="padding:8px 12px;font-weight:600;">admin</td>
-            <td style="padding:8px 12px;">Acceso total. Gestión de usuarios, configuración SMTP, todas las funciones.</td></tr>
+        <tr><td style="padding:8px 12px;font-weight:600;">superadmin</td>
+            <td style="padding:8px 12px;">Acceso total a todos los tenants, feature flags y planes de licencia.</td>
+            <td style="padding:8px 12px;color:var(--text-muted);">Administrador de la plataforma.</td></tr>
         <tr style="background:var(--bg-2);">
-            <td style="padding:8px 12px;font-weight:600;">analyst</td>
-            <td style="padding:8px 12px;">Crear y editar riesgos, activos, controles. Usar el Agente IA. Configurar alertas. No puede gestionar usuarios.</td></tr>
-        <tr><td style="padding:8px 12px;font-weight:600;">viewer</td>
-            <td style="padding:8px 12px;">Solo lectura. Puede ver todos los datos y descargar informes pero no modificar nada.</td></tr>
+            <td style="padding:8px 12px;font-weight:600;">admin</td>
+            <td style="padding:8px 12px;">Gestion de usuarios, SMTP, backups, log de auditoria y todas las funciones del SGSI.</td>
+            <td style="padding:8px 12px;color:var(--text-muted);">CISO o responsable de seguridad.</td></tr>
+        <tr><td style="padding:8px 12px;font-weight:600;">analyst</td>
+            <td style="padding:8px 12px;">Crear y editar riesgos, activos, controles, incidentes. Usar el Agente IA. Sin gestion de usuarios.</td>
+            <td style="padding:8px 12px;color:var(--text-muted);">Analista de seguridad o consultor GRC.</td></tr>
+        <tr style="background:var(--bg-2);">
+            <td style="padding:8px 12px;font-weight:600;">viewer</td>
+            <td style="padding:8px 12px;">Solo lectura. Ve todos los datos y descarga informes pero no puede modificar nada.</td>
+            <td style="padding:8px 12px;color:var(--text-muted);">Auditores, direccion, revisores externos.</td></tr>
       </tbody>
     </table>
+
+    ${this._h('Datos tecnicos')}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+      ${[
+        ['Version','RiskHub v2.2.0'],
+        ['Metodologia','ISO/IEC 27005:2018 + MAGERIT v3'],
+        ['Frameworks cubiertos','ISO 27001 · NIS2 · NIST CSF · ENS · GDPR · DORA · ISO 42001'],
+        ['Catalogos incluidos','49 amenazas · 67 vulnerabilidades · 93 controles ISO 27002'],
+        ['Tecnologia','Python 3.11 · FastAPI · SQLite/PostgreSQL · Docker'],
+        ['Despliegue','On-premise (Docker) o instancia gestionada'],
+      ].map(([k,v]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;">
+          <div style="font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;letter-spacing:.5px;margin-bottom:4px;">${k}</div>
+          <div style="font-size:13px;font-weight:600;">${v}</div>
+        </div>`).join('')}
+    </div>
+    ${this._tip('<strong>Primer acceso:</strong> Si acabas de recibir credenciales, ve directamente a la seccion <strong>Puesta en marcha</strong> en el menu de esta guia para completar la configuracion inicial en menos de 30 minutos.')}
   `;},
 
   get _cDashboard() { return `
@@ -1279,9 +1324,20 @@ const ViewGuide = {
         </tr>`).join('')}
       </tbody>
     </table>
+    ${this._h('Configurar frameworks activos')}
+    ${this._steps([
+      'Pulsa <strong>Configurar</strong> en el panel superior del dashboard de cumplimiento.',
+      'Selecciona los frameworks que aplican a tu organizacion: ISO 27001, GDPR, NIS2, HIPAA, NIST CSF, SOC2, ENS, DORA, ISO 42001.',
+      'El sistema inicializa todos los requisitos de los frameworks seleccionados.',
+      'A medida que registras datos en RiskHub (controles, evidencias, riesgos tratados), el cumplimiento se actualiza automaticamente.',
+    ])}
+    ${this._h('Cross-mapping automatico de controles')}
+    ${this._p('Cuando se implementa un control ISO 27002, el sistema propaga automaticamente ese estado a todos los requisitos equivalentes en los frameworks activos. Por ejemplo, implementar el control <strong>8.5 Autenticacion segura</strong> marca simultaneamente ISO 27001 A.8.5, NIST CSF PR.AA, SOC2 CC6.1, HIPAA 164.312(d), NIS2 Art. 21.2.i y ENS op.acc.5. Implementas una vez y el cumplimiento se actualiza en todos los marcos.')}
     ${this._h('Brechas identificadas')}
-    ${this._p('El dashboard muestra las brechas especificas para cada marco con referencia al articulo o clausula normativa afectada. Cada brecha indica que dato falta o que proceso esta incompleto. Usa estas brechas como checklist de mejora.')}
-    ${this._tip('<strong>Nota:</strong> Las puntuaciones son estimaciones basadas en los datos registrados. Una auditoria formal puede revelar brechas adicionales no reflejadas en RiskHub.')}
+    ${this._p('El dashboard muestra las brechas especificas para cada marco con referencia al articulo o clausula normativa afectada. Cada brecha indica que dato falta o que proceso esta incompleto. Usa estas brechas como checklist de mejora antes de una auditoria.')}
+    ${this._h('Paquete de auditoria')}
+    ${this._p('Desde <em>Auditoria → Paquete por framework</em>, genera un ZIP estructurado con el orden oficial del framework: dominios, requisitos, evidencias vinculadas, gaps y attestation SHA-256. Este paquete es el entregable principal para un auditor externo.')}
+    ${this._tip('<strong>Nota:</strong> Las puntuaciones son estimaciones basadas en los datos registrados. Una auditoria formal puede revelar brechas adicionales. Usa el dashboard como herramienta de preparacion y seguimiento, no como certificacion de cumplimiento.')}
   `;},
 
   get _cIncidents() { return `
@@ -2064,21 +2120,6 @@ const ViewGuide = {
     ${this._tip('Las evidencias próximas a vencer reciben alertas automáticas 30 días antes de su expiración.')}
   `;},
 
-  get _cCompliance() { return `
-    ${this._p('El <strong>Dashboard de Cumplimiento</strong> muestra el estado de implementación de cada framework normativo activo, basado en controles implementados y evidencias subidas.')}
-    ${this._h('Configurar frameworks')}
-    ${this._steps([
-      'Pulsa "Configurar" en el panel superior del dashboard de cumplimiento.',
-      'Selecciona los frameworks que aplican a tu organización (ISO27001, GDPR, NIS2, HIPAA, NIST CSF, SOC2, ENS).',
-      'El sistema inicializa todos los requisitos de los frameworks seleccionados.',
-      'A medida que subes documentos y configuras controles, el cumplimiento se actualiza automáticamente.',
-    ])}
-    ${this._h('Cross-mapping automático')}
-    ${this._p('Cuando se implementa un control ISO 27002, el sistema propaga automáticamente ese estado a todos los requisitos equivalentes en los frameworks activos. Por ejemplo, implementar "8.5 Autenticación segura" marca simultáneamente ISO27001 A.8.5, NIST CSF PR.AA, SOC2 CC6.1, HIPAA 164.312(d), NIS2 Art.21.2.i y ENS op.acc.5.')}
-    ${this._h('Paquete de auditoría')}
-    ${this._p('Desde <em>Auditoría → Paquete por framework</em>, genera un ZIP estructurado con el orden oficial del framework: dominios, requisitos, evidencias vinculadas, gaps y attestation SHA-256.')}
-  `;},
-
   get _cMagerit() { return `
     ${this._p('<strong>MAGERIT v3</strong> es la metodología española de análisis y gestión de riesgos desarrollada por el Consejo Superior de Administración Electrónica. RiskHub implementa el catálogo de amenazas MAGERIT y la valoración de activos por dimensiones de seguridad.')}
     ${this._h('Dimensiones de seguridad MAGERIT')}
@@ -2458,4 +2499,348 @@ const ViewGuide = {
     </table>
     ${this._tip('Para ver el estado de cumplimiento detallado, ve a <em>Cumplimiento</em> en el menu lateral y selecciona los frameworks ISO 27001, ENS o NIS2.')}
   `;},
+
+  get _cSetup() { return `
+    <div style="background:linear-gradient(135deg,var(--brand-purple-4),var(--brand-orange-4));border-radius:12px;padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:700;color:var(--brand-purple);margin-bottom:6px;">Guia de instalacion y primera configuracion</div>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:var(--text-base);">
+        Esta seccion explica como acceder a RiskHub por primera vez, como desplegarlo en un servidor propio y como completar la configuracion inicial para empezar a trabajar. Tiempo estimado: <strong>20-30 minutos</strong>.
+      </p>
+    </div>
+
+    ${this._h('Modalidad A — Instancia gestionada (acceso inmediato)')}
+    ${this._p('En esta modalidad, RiskHub corre en un servidor gestionado. El cliente no instala nada: recibe un email con la URL de acceso, el usuario admin y una contrasena temporal.')}
+    ${this._steps([
+      'Abre el email de bienvenida. Contiene: <strong>URL de acceso</strong>, <strong>usuario admin</strong> (tu email) y <strong>contrasena temporal</strong>.',
+      'Abre la URL en tu navegador. Funciona en Chrome, Firefox, Edge y Safari actualizados.',
+      'Introduce el email y la contrasena temporal. Haz clic en <strong>Iniciar sesion</strong>.',
+      'El sistema te pedira que cambies la contrasena en el primer acceso. Elige una contrasena segura (minimo 12 caracteres, con numeros y simbolos).',
+      'Seras redirigido al <strong>Dashboard principal</strong>. La instalacion esta completa — continua en el apartado <em>Configuracion inicial obligatoria</em> de esta misma pagina.',
+    ])}
+    ${this._tip('<strong>Si no recibes el email:</strong> revisa la carpeta de spam. El remitente es noreply@riskhub.io. Si el problema persiste, contacta con el administrador de la plataforma.')}
+
+    ${this._h('Modalidad B — Servidor propio (on-premise con Docker)')}
+    ${this._p('En esta modalidad, RiskHub se instala en un servidor bajo control del cliente. Se necesita acceso root al servidor y Docker instalado. El proceso completo tarda menos de 15 minutos.')}
+
+    <div style="background:var(--bg-2);border-radius:8px;padding:16px;margin-bottom:16px;">
+      <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin-bottom:10px;">Requisitos del servidor</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tbody>
+          ${[
+            ['Sistema operativo','Ubuntu 22.04 LTS o 24.04 LTS (recomendado). Debian 12 tambien es compatible.'],
+            ['CPU','Minimo 2 vCPU. Recomendado: 4 vCPU para entornos con IA activa.'],
+            ['RAM','Minimo 4 GB. Recomendado: 8 GB si se usa el Agente IA con muchos documentos.'],
+            ['Disco','Minimo 20 GB SSD. Recomendado: 40 GB para almacenamiento de documentos del Agente IA.'],
+            ['Red','Puerto 80 (HTTP) y/o 443 (HTTPS) accesible desde los usuarios. Puerto 22 para SSH (administracion).'],
+            ['Software','Docker Engine 24+ y Docker Compose v2. Se instalan en el paso 2.'],
+          ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-3,var(--bg-2));"':''}>
+            <td style="padding:7px 10px;font-weight:600;width:180px;">${r[0]}</td>
+            <td style="padding:7px 10px;color:var(--text-muted);">${r[1]}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px;">Paso 1 — Conectarse al servidor</div>
+    ${this._p('Desde tu ordenador, abre una terminal (Windows: PowerShell o cmd; Mac/Linux: Terminal) y conéctate al servidor:')}
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:13px;margin-bottom:12px;line-height:1.8;">
+      ssh root@IP_DEL_SERVIDOR
+    </div>
+    ${this._p('Sustituye <code>IP_DEL_SERVIDOR</code> por la IP publica de tu servidor. Si usas clave SSH en lugar de contrasena, añade <code>-i ruta/a/tu/clave.pem</code>.')}
+
+    <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px;">Paso 2 — Instalar Docker (si no esta instalado)</div>
+    ${this._p('Ejecuta estos comandos uno a uno en el servidor. Cada uno puede tardar 1-2 minutos:')}
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;margin-bottom:12px;line-height:2;">
+      curl -fsSL https://get.docker.com | sh<br>
+      systemctl enable docker<br>
+      systemctl start docker
+    </div>
+    ${this._p('Verifica que Docker esta funcionando:')}
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:13px;margin-bottom:12px;">
+      docker --version
+    </div>
+
+    <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px;">Paso 3 — Crear la carpeta de la aplicacion</div>
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:13px;margin-bottom:12px;line-height:2;">
+      mkdir -p /opt/riskhub<br>
+      cd /opt/riskhub
+    </div>
+
+    <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px;">Paso 4 — Crear el archivo de configuracion (.env)</div>
+    ${this._p('Crea el archivo <code>.env</code> con la configuracion de tu instalacion. Todos los campos son importantes:')}
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;margin-bottom:4px;line-height:2;">
+      <span style="color:#89b4fa;"># Clave secreta — genera una unica con el comando de abajo</span><br>
+      RISKHUB_SECRET_KEY=<span style="color:#f38ba8;">PON_AQUI_UNA_CLAVE_DE_64_CARACTERES_ALEATORIA</span><br><br>
+      <span style="color:#89b4fa;"># Entorno de produccion (no cambiar)</span><br>
+      RISKHUB_ENV=production<br><br>
+      <span style="color:#89b4fa;"># API key del Agente IA (opcional pero muy recomendado)</span><br>
+      RISKHUB_ANTHROPIC_API_KEY=<span style="color:#f38ba8;">sk-ant-xxxx (obtener en console.anthropic.com)</span>
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Para generar la clave secreta ejecuta: <code style="background:var(--bg-2);padding:2px 6px;border-radius:4px;">python3 -c "import secrets; print(secrets.token_urlsafe(64))"</code></div>
+
+    <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px;">Paso 5 — Descargar y arrancar RiskHub</div>
+    ${this._p('Descarga los archivos de despliegue del repositorio y arranca los contenedores:')}
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;margin-bottom:12px;line-height:2;">
+      <span style="color:#89b4fa;"># Clonar el repositorio</span><br>
+      git clone https://github.com/ezequielwolf22/riskhub.git .<br><br>
+      <span style="color:#89b4fa;"># Arrancar la aplicacion</span><br>
+      docker compose up -d<br><br>
+      <span style="color:#89b4fa;"># Ver que los contenedores estan corriendo</span><br>
+      docker compose ps
+    </div>
+    ${this._p('El primer arranque tarda 2-3 minutos porque descarga las imagenes Docker y crea la base de datos. Cuando veas <code>healthy</code> en el estado, la aplicacion esta lista.')}
+
+    <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px;">Paso 6 — Primer acceso</div>
+    ${this._p('Abre el navegador en <code>http://IP_DEL_SERVIDOR</code>. Aparecera la pantalla de login de RiskHub.')}
+    <div style="background:var(--bg-2);border-radius:8px;padding:14px 16px;margin-bottom:12px;font-size:13px;">
+      <div style="font-weight:700;margin-bottom:8px;">Credenciales del administrador por defecto:</div>
+      <div><strong>Email:</strong> <code>admin@riskhub.local</code></div>
+      <div><strong>Contrasena:</strong> <code>RiskHub2024!</code></div>
+    </div>
+    ${this._warn('<strong>Cambia la contrasena inmediatamente</strong> tras el primer acceso. Haz clic en tu nombre (esquina superior derecha) y selecciona "Cambiar contrasena". La contrasena por defecto es publica y conocida — no la dejes activa en produccion.')}
+
+    ${this._h('Configuracion inicial obligatoria (primeros 30 minutos)')}
+    ${this._p('Una vez dentro de RiskHub, sigue esta lista en orden para dejar la plataforma lista para trabajar:')}
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;">
+      ${[
+        ['Cambiar la contrasena del admin','Nombre de usuario (arriba derecha) → Cambiar contrasena. Elige una contrasena de al menos 12 caracteres.','Obligatorio'],
+        ['Configurar el contexto organizacional','Menu lateral → Contexto. Rellena: nombre de tu organizacion, alcance del SGSI (que sistemas y areas cubre) y apetito de riesgo. Estos datos se usan en todos los informes y calculos.','Obligatorio'],
+        ['Crear usuarios adicionales','Menu lateral → Usuarios → Nuevo usuario. Crea al menos un analista (rol analyst). Asigna roles segun responsabilidades.','Recomendado'],
+        ['Configurar el servidor de email (SMTP)','Menu lateral → Alertas → Configuracion SMTP. Sin esto, las alertas automaticas no llegan. Gmail, Microsoft 365 y Exchange on-premise son compatibles.','Recomendado'],
+        ['Configurar el Agente IA','Menu lateral → Agente IA → Configuracion. Introduce tu API key de Anthropic. Sin esto, los analisis automaticos de activos, los informes con IA y el chat GRC no funcionan.','Recomendado'],
+        ['Activar los frameworks de cumplimiento','Menu lateral → Cumplimiento → Configurar. Selecciona los marcos que aplican a tu organizacion (ISO 27001, NIS2, ENS, GDPR...).','Recomendado'],
+        ['Importar o crear activos','Menu lateral → Activos. Puedes importar desde CSV (boton Importar) o crear activos uno a uno. Con el Agente IA configurado, el analisis de riesgos arranca automaticamente.','Siguiente paso'],
+        ['Configurar niveles de riesgo personalizados','Menu lateral → Contexto → Niveles de riesgo. Personaliza los rangos y colores de los niveles de riesgo para que coincidan con tu politica interna.','Opcional'],
+      ].map(([t,d,badge]) => {
+        const bcolor = badge==='Obligatorio'?'var(--risk-high)':badge==='Recomendado'?'var(--brand-orange)':'var(--brand-purple)';
+        return `<div style="display:flex;gap:12px;align-items:flex-start;background:var(--bg-2);border-radius:8px;padding:12px 14px;">
+          <span style="background:${bcolor};color:#fff;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;white-space:nowrap;margin-top:2px;">${badge}</span>
+          <div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:3px;">${t}</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">${d}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    ${this._h('Actualizacion a una nueva version')}
+    ${this._p('Para actualizar RiskHub a la ultima version, ejecuta en el servidor:')}
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:13px;margin-bottom:12px;line-height:2;">
+      bash /opt/riskhub/deploy.sh
+    </div>
+    ${this._p('El script realiza automaticamente: <code>git pull</code> (descarga los cambios), reconstruye la imagen Docker y reinicia los contenedores. La base de datos y todos los datos se preservan en el volumen Docker <code>riskhub-data</code>. El proceso tarda 2-4 minutos.')}
+    ${this._warn('<strong>No es necesario parar la aplicacion antes de actualizar.</strong> El script gestiona el reinicio sin perdida de datos. Aun asi, se recomienda hacer un backup antes de cualquier actualizacion importante.')}
+
+    ${this._h('Backup y recuperacion')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div style="background:var(--bg-2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin-bottom:8px;">Backup desde la interfaz (recomendado)</div>
+        <div style="font-size:13px;line-height:1.6;">Ve a <strong>Usuarios</strong> → panel <em>Informacion del sistema</em> → boton <strong>Descargar backup DB</strong>. Se descarga un archivo <code>.db</code> con fecha y hora. Guardalo fuera del servidor.</div>
+      </div>
+      <div style="background:var(--bg-2);border-radius:8px;padding:14px;">
+        <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin-bottom:8px;">Backup desde el servidor</div>
+        <div style="font-size:13px;line-height:1.6;">Ejecuta en el servidor:<br><code style="font-size:11px;background:var(--bg-3,var(--bg-2));padding:3px 6px;border-radius:4px;display:block;margin-top:6px;">docker cp riskhub:/app/data/riskhub.db ./backup_$(date +%Y%m%d).db</code></div>
+      </div>
+    </div>
+    ${this._p('Para restaurar un backup: copia el archivo <code>.db</code> al servidor, para los contenedores (<code>docker compose down</code>), reemplaza el archivo de base de datos en el volumen y vuelve a arrancar (<code>docker compose up -d</code>).')}
+    ${this._tip('<strong>Automatiza el backup:</strong> configura un cron job en el servidor para ejecutar el backup diariamente y enviar el archivo a un almacenamiento externo (S3, Azure Blob, Google Drive). El backup incluye todos los datos de RiskHub pero NO los documentos del Agente IA (estos se almacenan en el sistema de archivos del volumen Docker).')}
+
+    ${this._h('Acceso HTTPS (produccion)')}
+    ${this._p('Por defecto, RiskHub corre en HTTP (puerto 80). Para produccion real, se recomienda activar HTTPS con un certificado TLS. La forma mas sencilla es usar nginx como proxy inverso con Let\'s Encrypt (certificado gratuito):')}
+    <div style="background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:14px 16px;font-family:monospace;font-size:12px;margin-bottom:12px;line-height:2;">
+      <span style="color:#89b4fa;"># Instalar nginx y certbot</span><br>
+      apt install -y nginx certbot python3-certbot-nginx<br><br>
+      <span style="color:#89b4fa;"># Obtener certificado TLS (sustituye tu-dominio.com)</span><br>
+      certbot --nginx -d tu-dominio.com
+    </div>
+    ${this._p('Certbot configura automaticamente nginx para redirigir HTTP a HTTPS y renovar el certificado cada 90 dias. RiskHub activa automaticamente la cabecera <code>Strict-Transport-Security (HSTS)</code> cuando detecta que corre detras de un proxy HTTPS.')}
+    ${this._warn('<strong>Si el cliente no tiene dominio propio</strong> puedes usar la IP directa con HTTP para uso interno (dentro de la red corporativa o via VPN). Solo es imprescindible HTTPS si la aplicacion es accesible desde internet.')}
+
+    ${this._h('Verificar que todo funciona')}
+    ${this._p('Despues de la instalacion y configuracion inicial, verifica estos puntos:')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+      ${[
+        ['Login funciona','Puedes entrar con tu usuario y la nueva contrasena.'],
+        ['Dashboard carga','El dashboard muestra KPIs (aunque esten a cero si aun no hay datos).'],
+        ['Email de prueba','Alertas → Configuracion SMTP → boton Enviar email de prueba. Llega el email.'],
+        ['Agente IA responde','Agente IA → Chat → escribe "Hola". El agente responde (requiere API key valida).'],
+        ['Backup descargable','Usuarios → Informacion del sistema → Descargar backup DB. Se descarga el archivo.'],
+        ['Log de auditoria','Auditoria → aparecen los eventos de login y configuracion realizados.'],
+      ].map(([t,d]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;display:flex;gap:10px;align-items:flex-start;">
+          <span style="color:var(--risk-low);font-size:16px;flex-shrink:0;">&#10003;</span>
+          <div>
+            <div style="font-weight:700;font-size:13px;">${t}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${d}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+    ${this._tip('<strong>Problema frecuente:</strong> si la aplicacion no responde despues del arranque, ejecuta <code>docker compose logs -f</code> en el servidor para ver los mensajes de error. Los problemas mas comunes son: puerto 80 ocupado por otro servicio (usa <code>ss -tlnp | grep :80</code> para comprobarlo) o falta de permisos en el directorio de datos.')}
+  `;},
+
+  get _cRiskLevels() { return `
+    ${this._p('RiskHub permite personalizar completamente los <strong>niveles de riesgo</strong> de tu organizacion: nombres, rangos numericos y colores. Esta configuracion afecta a todos los dashboards, heatmaps, tablas de riesgos y modulo TPRM de forma uniforme.')}
+
+    ${this._h('Donde encontrar la configuracion')}
+    ${this._steps([
+      'Ve al menu lateral → <strong>Contexto</strong>.',
+      'Busca la seccion <strong>Niveles de riesgo</strong> dentro de la pantalla de contexto.',
+      'Aparecen los niveles actuales de tu organizacion (por defecto: Bajo, Medio, Alto, Critico).',
+    ])}
+
+    ${this._h('Como funciona el sistema de niveles')}
+    ${this._p('Cada nivel de riesgo tiene tres atributos que puedes editar:')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px 12px;text-align:left;">Atributo</th>
+        <th style="padding:8px 12px;text-align:left;">Descripcion</th>
+        <th style="padding:8px 12px;text-align:left;">Ejemplo</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Nombre','Etiqueta que aparece en toda la plataforma para ese rango de riesgo.','Critico, Alto, Moderado, Bajo'],
+          ['Rango (min - max)','Limite inferior y superior del nivel numerico (escala 0-8 ISO 27005).','7 - 8 para Critico'],
+          ['Color','Color hexadecimal que identifica visualmente el nivel en dashboards y tablas.','#EF4444 para Critico'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          <td style="padding:8px 12px;font-weight:600;">${r[0]}</td>
+          <td style="padding:8px 12px;">${r[1]}</td>
+          <td style="padding:8px 12px;color:var(--text-muted);">${r[2]}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    ${this._h('Niveles por defecto (ISO 27005)')}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+      ${[
+        ['Bajo','0 - 2','#22C55E','Riesgo aceptable. Monitorizar sin accion inmediata.'],
+        ['Medio','3 - 4','#F59E0B','Requiere atencion. Planificar tratamiento en el proximo ciclo.'],
+        ['Alto','5 - 6','#EF4444','Tratamiento prioritario. Asignar responsable y fecha limite.'],
+        ['Critico','7 - 8','#7C3AED','Accion inmediata. Escalar a direccion. No dejar sin plan.'],
+      ].map(([n,r,c,d]) => `
+        <div style="border-left:4px solid ${c};background:var(--bg-2);border-radius:0 8px 8px 0;padding:10px 12px;">
+          <div style="font-weight:700;font-size:14px;color:${c};">${n}</div>
+          <div style="font-size:12px;font-weight:600;margin:2px 0;">${r}</div>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.4;">${d}</div>
+        </div>`).join('')}
+    </div>
+
+    ${this._h('Personalizar los niveles')}
+    ${this._steps([
+      'En la seccion Niveles de riesgo del Contexto, haz clic en el icono de edicion de cualquier nivel.',
+      'Cambia el <strong>nombre</strong> del nivel (ej. cambiar "Alto" por "Severo" o "Grave").',
+      'Ajusta el <strong>rango</strong> numerico si tu politica interna usa limites diferentes.',
+      'Haz clic en el <strong>selector de color</strong> para elegir un color personalizado. Puedes introducir directamente el codigo hexadecimal (#RRGGBB) o usar el selector visual.',
+      'Pulsa <strong>Guardar</strong>. El cambio se aplica inmediatamente a toda la plataforma sin reiniciar.',
+    ])}
+    ${this._warn('<strong>Regla de consistencia:</strong> los rangos de los niveles deben cubrir toda la escala 0-8 sin solapamientos ni huecos. RiskHub valida esto automaticamente al guardar y te avisara si hay un conflicto de rangos.')}
+
+    ${this._h('Donde se aplican los niveles personalizados')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Tabla de riesgos:</strong> la columna "Nivel residual" muestra el badge con el nombre y color del nivel correspondiente.</li>
+      <li><strong>Heatmap:</strong> las celdas de la matriz 5x5 usan el degradado de colores de tus niveles.</li>
+      <li><strong>Dashboard ejecutivo:</strong> los KPIs y graficos de distribucion usan tus colores personalizados.</li>
+      <li><strong>TPRM:</strong> el heatmap de proveedores (inherente vs residual) usa la misma paleta.</li>
+      <li><strong>Informes PDF:</strong> los badges de nivel en los informes reflejan tus nombres y colores.</li>
+      <li><strong>Alertas por email:</strong> las reglas de alerta que usan "nivel alto" o "nivel critico" se mapean a tus rangos personalizados.</li>
+      <li><strong>Dashboard de compliance:</strong> los contadores de riesgos por nivel usan tu configuracion.</li>
+    </ul>
+
+    ${this._h('Ejemplo de configuracion sectorial')}
+    ${this._p('Diferentes sectores usan terminologias distintas para los niveles de riesgo. Aqui algunos ejemplos de personalizacion comunes:')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+      ${[
+        ['Banca / Finanzas','Inaceptable (7-8), Alto (5-6), Moderado (3-4), Aceptable (0-2)'],
+        ['Salud / Sanitario','Extremo (7-8), Significativo (5-6), Moderado (3-4), Residual (0-2)'],
+        ['Administracion Publica (ENS)','Muy alto (7-8), Alto (5-6), Medio (3-4), Bajo (0-2)'],
+        ['Industria / Manufactura','Critico (7-8), Importante (5-6), Tolerable (3-4), Aceptable (0-2)'],
+      ].map(([sector, niveles]) => `
+        <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;">
+          <div style="font-weight:700;font-size:13px;color:var(--brand-purple);margin-bottom:4px;">${sector}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${niveles}</div>
+        </div>`).join('')}
+    </div>
+    ${this._tip('<strong>Buena practica:</strong> Define los niveles de riesgo durante la configuracion inicial del contexto, antes de crear los primeros riesgos. Si cambias los rangos despues de tener riesgos creados, los niveles existentes se recalculan automaticamente con los nuevos rangos.')}
+  `;},
+
+  get _cQuestionnaires() { return `
+    ${this._p('RiskHub ofrece dos modalidades de cuestionario de seguridad para evaluar proveedores: <strong>cuestionarios internos</strong> (gestionados dentro de la plataforma) y <strong>cuestionarios externos</strong> via integraciones con Microsoft Forms o Monday.com. Ambas modalidades se acceden desde el hub de Proveedores.')}
+
+    ${this._h('Opcion A — Cuestionarios internos (recomendado)')}
+    ${this._p('Los cuestionarios internos son la via nativa de RiskHub. El proveedor recibe un enlace unico y responde desde su navegador sin necesidad de tener cuenta en la plataforma. Las respuestas se procesan automaticamente con scoring ponderado y opcionalmente se evaluan con el Agente IA.')}
+
+    ${this._h('Como crear un cuestionario interno')}
+    ${this._steps([
+      'Ve al hub de <strong>Proveedores</strong> y selecciona el proveedor que quieres evaluar.',
+      'Haz clic en la pestana <strong>Cuestionarios</strong> dentro del proveedor y pulsa <strong>+ Nuevo cuestionario</strong>.',
+      'Elige una <strong>plantilla base</strong>: ISO 27001 completo, NIS2 Art. 21, DORA arts. 28-30, GDPR encargado del tratamiento, declaracion de uso de IA (ISO 42001) u offboarding.',
+      'Configura la <strong>fecha de vencimiento</strong> (por defecto 30 dias) y el idioma del cuestionario.',
+      'Pulsa <strong>Crear y copiar enlace</strong>. Se genera un token seguro de un solo uso.',
+      'Envia el enlace al contacto del proveedor por email. El proveedor accede al cuestionario desde su navegador sin necesidad de cuenta en RiskHub.',
+      'Cuando el proveedor envia las respuestas, el sistema calcula automaticamente la puntuacion (0-100) y notifica al responsable.',
+    ])}
+
+    ${this._h('Plantillas de cuestionario disponibles')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--bg-2);">
+        <th style="padding:8px 12px;text-align:left;">Plantilla</th>
+        <th style="padding:8px 12px;text-align:left;">Marco</th>
+        <th style="padding:8px 12px;text-align:left;">Uso tipico</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['ISO 27001 Completo','ISO/IEC 27001:2022','Evaluacion anual de proveedores criticos con acceso a sistemas.'],
+          ['NIS2 Art. 21','Directiva NIS2','Entidades reguladas NIS2: verifica medidas tecnicas y organizativas del proveedor.'],
+          ['DORA Arts. 28-30','DORA (sector financiero)','Evaluacion de terceros de TIC para entidades financieras bajo DORA.'],
+          ['GDPR Encargado','Reglamento GDPR','Proveedores que tratan datos personales en nombre de tu organizacion (DPA).'],
+          ['Declaracion IA','ISO 42001','Proveedores que usan o desarrollan sistemas de inteligencia artificial.'],
+          ['Offboarding','General','Lista de verificacion de baja de un proveedor: accesos revocados, datos eliminados, contratos terminados.'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          ${r.map(c => `<td style="padding:8px 12px;">${c}</td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    ${this._h('Scoring ponderado y evaluacion con IA')}
+    ${this._p('Cada pregunta del cuestionario tiene un peso especifico segun su importancia en el marco normativo. Las respuestas (Si / Parcialmente / No / No aplica) se puntuan en una escala ponderada que produce un <strong>score final de 0 a 100</strong>.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Si:</strong> puntuacion completa del peso de la pregunta.</li>
+      <li><strong>Parcialmente:</strong> el 50% de la puntuacion del peso.</li>
+      <li><strong>No:</strong> 0 puntos. Se registra como brecha.</li>
+      <li><strong>No aplica:</strong> se excluye del calculo del denominador.</li>
+    </ul>
+    ${this._p('Opcionalmente, el Agente IA puede evaluar las respuestas narrativas libres del proveedor y devolver: puntuacion de confianza, banderas rojas detectadas y preguntas de seguimiento recomendadas. Si la confianza es baja, el cuestionario se marca para revision manual obligatoria.')}
+    ${this._tip('<strong>Para lanzar la evaluacion IA:</strong> en la tabla de cuestionarios de un proveedor, haz clic en el boton <strong>Evaluar IA</strong> de la fila. Tambien se puede configurar para que se lance automaticamente cuando el proveedor envia las respuestas.')}
+
+    ${this._h('Interpretacion de la puntuacion')}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+      ${[
+        ['80-100','Bueno','Proveedor con buenas practicas de seguridad.','var(--risk-low)'],
+        ['60-79','Aceptable','Algunas brechas menores. Seguimiento recomendado.','var(--brand-orange)'],
+        ['40-59','Deficiente','Brechas significativas. Plan de mejora requerido.','var(--risk-high)'],
+        ['0-39','Critico','Riesgo alto. Considerar cambio de proveedor o auditoria.','#7C3AED'],
+      ].map(([r,l,d,c]) => `
+        <div style="border-left:4px solid ${c};background:var(--bg-2);border-radius:0 8px 8px 0;padding:10px 12px;">
+          <div style="font-weight:700;font-size:14px;color:${c};">${r}</div>
+          <div style="font-size:12px;font-weight:600;margin:2px 0;">${l}</div>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.4;">${d}</div>
+        </div>`).join('')}
+    </div>
+
+    ${this._h('Opcion B — Cuestionarios externos (Microsoft Forms / Monday.com)')}
+    ${this._p('Si tu organizacion ya usa Microsoft Forms o Monday.com para las evaluaciones de proveedores, puedes enlazarlos desde RiskHub sin necesidad de migrar los cuestionarios existentes.')}
+    ${this._steps([
+      'Ve al proveedor → pestana <strong>Cuestionarios</strong> → boton <strong>Enlazar cuestionario externo</strong>.',
+      'Selecciona la plataforma: <strong>Microsoft Forms</strong> o <strong>Monday.com</strong>.',
+      'Introduce la URL del formulario externo y el identificador del cuestionario.',
+      'RiskHub guarda el enlace y lo muestra en la tabla de cuestionarios junto a los internos.',
+      'Cuando el proveedor completa el formulario externo, importa manualmente los resultados usando el boton <strong>Importar respuestas</strong> (CSV o JSON segun la plataforma).',
+    ])}
+    ${this._warn('<strong>Limitacion de cuestionarios externos:</strong> el scoring automatico y la evaluacion IA no estan disponibles para cuestionarios externos. Las respuestas importadas se almacenan como texto libre y la puntuacion debe introducirse manualmente.')}
+
+    ${this._h('Historial y trazabilidad')}
+    ${this._p('Todos los cuestionarios (respondidos, pendientes y caducados) quedan registrados en la pestana Cuestionarios del proveedor con: fecha de envio, fecha de respuesta, puntuacion obtenida, cambio respecto al anterior y enlace a las respuestas detalladas. Esta trazabilidad es la evidencia documental requerida por NIS2 Art. 21.2.d para la evaluacion de proveedores.')}
+    ${this._tip('<strong>Buena practica:</strong> envia cuestionarios anuales a todos los proveedores con tier Critico y Alto. Usa el dashboard TPRM para ver que proveedores llevan mas de 12 meses sin cuestionario y lanzarlos en bloque.')}
+  `;},
+
 };
