@@ -1032,91 +1032,77 @@ const ViewBcp = (() => {
       Api.get('/api/bcp/plans' + _locParam()).catch(() => []),
     ]);
 
-    const tableHtml = !_plans.length
-      ? UI.emptyState('No hay planes BCP/DRP. ISO 22301 cl. 8.4 requiere planes documentados de continuidad.')
-      : `<div class="table-container">
-        <table class="data-table">
-          <thead><tr>
-            <th>Codigo</th><th>Tipo</th><th>Clasificacion</th><th>Nombre</th><th>Version</th>
-            <th>Estado</th><th>Localiz.</th><th>Procesos</th><th>Propietario</th><th>Revision</th><th></th>
-          </tr></thead>
-          <tbody>
-          ${_plans.map(p => `<tr>
-            <td>${UI.codePill(p.code)}</td>
-            <td><span class="badge ${PLAN_BADGE_CLASS[p.plan_type]||''}" style="font-size:11px;">${PLAN_TYPE_LABELS[p.plan_type]||p.plan_type}</span></td>
-            <td style="font-size:11px;color:var(--text-subtle);">${CLASSIFICATION_LABELS[p.classification]||'—'}</td>
-            <td><strong>${UI.esc(p.name)}</strong></td>
-            <td style="font-size:12px;color:var(--text-subtle);">v${UI.esc(p.version||'1.0')}</td>
-            <td><span class="badge badge-${p.status==='approved'?'success':p.status==='under_review'?'warning':'secondary'}"
-              style="background:${STATUS_COLORS[p.status]||'#666'}22;color:${STATUS_COLORS[p.status]||'#666'};font-size:11px;">${p.status}</span></td>
-            <td style="font-size:11px;color:var(--text-subtle)">${UI.esc(_locationMap[p.location_id]?.name || '—')}</td>
-            <td style="font-size:12px;">${(p.process_ids||[]).length}</td>
-            <td style="font-size:12px;color:var(--text-subtle);">${UI.esc(p.plan_owner_name||'—')}</td>
-            <td style="font-size:12px;">${p.review_date ? new Date(p.review_date).toLocaleDateString('es-ES') : '—'}</td>
-            <td class="bcm-plan-actions-cell">
-              <button class="btn btn-sm btn-ghost" style="padding:4px 8px"
-                onclick="ViewBcp._togglePlanMenu(event,${p.id})">
-                <i class="ti ti-dots-vertical"></i>
-              </button>
-              <div id="plan-menu-${p.id}" style="display:none;position:absolute;right:0;top:100%;z-index:200;
-                background:var(--bg-1);border:1px solid var(--border);border-radius:6px;
-                box-shadow:0 4px 16px rgba(0,0,0,.15);min-width:190px;overflow:hidden">
-                <button class="plan-menu-item" onclick="ViewBcp._editPlan(${p.id});ViewBcp._closePlanMenus()">
-                  <i class="ti ti-edit"></i> Editar plan
-                </button>
-                ${['draft','under_review'].includes(p.status) ? `
-                <button class="plan-menu-item" onclick="ViewBcp._approvePlan(${p.id});ViewBcp._closePlanMenus()">
-                  <i class="ti ti-check"></i> Aprobar
-                </button>` : ''}
-                <div style="height:1px;background:var(--border);margin:2px 0"></div>
-                <button class="plan-menu-item plan-menu-danger" onclick="ViewBcp._activatePlanDirect(${p.id});ViewBcp._closePlanMenus()">
-                  <i class="ti ti-alert-triangle"></i> Activar plan
-                </button>
-                <button class="plan-menu-item" onclick="ViewBcp._sendPlanMessage(${p.id});ViewBcp._closePlanMenus()">
-                  <i class="ti ti-send"></i> Mensaje a stakeholders
-                </button>
-                <button class="plan-menu-item" onclick="ViewBcp._scheduleTestForPlan(${p.id});ViewBcp._closePlanMenus()">
-                  <i class="ti ti-calendar-event"></i> Programar test
-                </button>
-                <div style="height:1px;background:var(--border);margin:2px 0"></div>
-                <button class="plan-menu-item" onclick="ViewBcp._viewPlanContext(${p.id});ViewBcp._closePlanMenus()">
-                  <i class="ti ti-layout-grid"></i> Ver contexto completo
-                </button>
-                <button class="plan-menu-item" onclick="ViewBcp._viewPlanActivations(${p.id});ViewBcp._closePlanMenus()">
-                  <i class="ti ti-history"></i> Historial activaciones
-                </button>
-              </div>
-            </td>
-          </tr>`).join('')}
-          </tbody>
-        </table>
+    _ensurePlanDrawerInDom();
+
+    const PLAN_STATUS_LABELS = { draft:'Borrador', under_review:'En revision', approved:'Aprobado', obsolete:'Obsoleto', deprecated:'Obsoleto' };
+    const active  = _plans.filter(p => p.status !== 'obsolete' && p.status !== 'deprecated');
+    const obsolete = _plans.filter(p => p.status === 'obsolete' || p.status === 'deprecated');
+
+    const renderCard = p => {
+      const sc = STATUS_COLORS[p.status] || '#666';
+      const isApprovable = ['draft','under_review'].includes(p.status);
+      const isObs = p.status === 'obsolete' || p.status === 'deprecated';
+      return `
+      <div class="card" style="cursor:pointer;transition:box-shadow .15s;${isObs ? 'opacity:.55;' : ''}"
+           onmouseenter="this.style.boxShadow='var(--shadow-md)'"
+           onmouseleave="this.style.boxShadow=''"
+           onclick="ViewBcp._editPlan(${p.id})">
+        <div class="card-body">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span class="badge ${PLAN_BADGE_CLASS[p.plan_type]||''}" style="font-size:11px;">
+              <i class="ti ti-file-text" style="font-size:10px;margin-right:3px;"></i>
+              ${PLAN_TYPE_LABELS[p.plan_type]||p.plan_type}
+            </span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-size:11px;color:var(--text-subtle);">v${UI.esc(p.version||'1.0')}</span>
+              <span style="background:${sc}22;color:${sc};font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;">${PLAN_STATUS_LABELS[p.status]||p.status}</span>
+            </div>
+          </div>
+          <strong style="font-size:14px;display:block;margin-bottom:6px;">${UI.esc(p.name)}</strong>
+          <div style="font-size:12px;color:var(--text-subtle);margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            ${UI.codePill(p.code)}
+            ${p.plan_owner_name ? `<span><i class="ti ti-user" style="font-size:11px;"></i> ${UI.esc(p.plan_owner_name)}</span>` : ''}
+          </div>
+          ${p.scope ? `<div style="font-size:12px;color:var(--text-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px;">${UI.esc(p.scope.substring(0,90))}</div>` : ''}
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:.5px solid var(--border);margin-top:4px;">
+            <div style="font-size:11px;color:var(--text-subtle);">
+              <i class="ti ti-sitemap" style="font-size:10px;"></i> ${(p.process_ids||[]).length} proc.
+              ${p.review_date ? ` &nbsp;·&nbsp; <i class="ti ti-calendar" style="font-size:10px;"></i> ${new Date(p.review_date).toLocaleDateString('es-ES')}` : ''}
+            </div>
+            ${isApprovable ? `
+            <button class="btn btn-sm" style="font-size:11px;padding:3px 10px;background:#16a34a22;color:#16a34a;border-color:#16a34a44;"
+              onclick="event.stopPropagation();ViewBcp._approvePlan(${p.id})">
+              <i class="ti ti-shield-check"></i> Aprobar
+            </button>` : p.status === 'approved' ? `
+            <span style="font-size:11px;color:#16a34a;font-weight:600;"><i class="ti ti-check"></i> Vigente</span>` : ''}
+          </div>
+        </div>
       </div>`;
+    };
+
+    const cardsHtml = !active.length && !obsolete.length
+      ? UI.emptyState('No hay planes BCP/DRP. ISO 22301 cl. 8.4 requiere planes documentados de continuidad.')
+      : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;">
+          ${active.map(renderCard).join('')}
+        </div>
+        ${obsolete.length ? `
+        <details style="margin-top:20px;">
+          <summary style="font-size:12px;color:var(--text-subtle);cursor:pointer;margin-bottom:12px;user-select:none;">
+            <i class="ti ti-archive"></i> Versiones obsoletas (${obsolete.length})
+          </summary>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:10px;">
+            ${obsolete.map(renderCard).join('')}
+          </div>
+        </details>` : ''}`;
 
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h3 style="margin:0;">Planes BCP/DRP (${_plans.length})</h3>
       <button class="btn btn-primary" id="btn-new-plan"><i class="ti ti-plus"></i> Nuevo plan</button>
     </div>
-    ${tableHtml}
-    <!-- Drawer para formulario de plan -->
-    <div class="drawer-overlay" id="plan-drawer-overlay"></div>
-    <div class="drawer-panel" id="plan-drawer">
-      <div class="drawer-header">
-        <h3 class="drawer-title" id="plan-drawer-title">Nuevo Plan</h3>
-        <div style="display:flex;gap:8px;margin-left:auto;">
-          <button class="btn btn-sm" id="plan-drawer-cancel">Cancelar</button>
-          <button class="btn btn-primary btn-sm" id="plan-drawer-save">
-            <i class="ti ti-check"></i> Guardar
-          </button>
-        </div>
-      </div>
-      <div class="drawer-body" id="plan-drawer-body"></div>
-    </div>`;
+    ${cardsHtml}`;
 
     document.getElementById('btn-new-plan')?.addEventListener('click', () => _openPlanDrawer());
-    document.getElementById('plan-drawer-cancel')?.addEventListener('click', () => _closePlanDrawer());
-    document.getElementById('plan-drawer-overlay')?.addEventListener('click', () => _closePlanDrawer());
-    // El onclick del boton guardar se asigna en _openPlanDrawer para tener el id correcto en cada apertura.
   }
 
   // ── Tab Tests ────────────────────────────────────────────────────────────────
@@ -2290,6 +2276,28 @@ const ViewBcp = (() => {
 
   // ── Drawer — Plan ────────────────────────────────────────────────────────────
 
+  function _ensurePlanDrawerInDom() {
+    if (document.getElementById('plan-drawer')) return;
+    const frag = document.createElement('div');
+    frag.innerHTML = `
+    <div class="drawer-overlay" id="plan-drawer-overlay"></div>
+    <div class="drawer-panel" id="plan-drawer">
+      <div class="drawer-header">
+        <h3 class="drawer-title" id="plan-drawer-title">Nuevo Plan</h3>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button class="btn btn-sm" id="plan-drawer-cancel">Cancelar</button>
+          <button class="btn btn-primary btn-sm" id="plan-drawer-save">
+            <i class="ti ti-check"></i> Guardar
+          </button>
+        </div>
+      </div>
+      <div class="drawer-body" id="plan-drawer-body"></div>
+    </div>`;
+    while (frag.firstChild) document.body.appendChild(frag.firstChild);
+    document.getElementById('plan-drawer-cancel').addEventListener('click', () => _closePlanDrawer());
+    document.getElementById('plan-drawer-overlay').addEventListener('click', () => _closePlanDrawer());
+  }
+
   let _currentPlanId = null;
 
   function _openPlanDrawer(plan) {
@@ -2970,6 +2978,8 @@ const ViewBcp = (() => {
     });
   }
 
+  let _planSaving = false;
+
   async function _savePlan(id) {
     const g = eid => document.getElementById(eid);
     const pids = [...document.querySelectorAll('.pl-pids:checked')].map(c => parseInt(c.value));
@@ -3038,6 +3048,8 @@ const ViewBcp = (() => {
     };
 
     if (!body.name) { UI.toast('El nombre del plan es obligatorio', 'error'); return; }
+    if (_planSaving) return;
+    _planSaving = true;
     if (!id && window._planVersioningCode) {
       body.code = window._planVersioningCode;
     }
@@ -3048,10 +3060,14 @@ const ViewBcp = (() => {
       UI.toast('Plan guardado', 'success');
       _closePlanDrawer();
       _plans = [];
-      _switchTab('plans');
+      const subtabBody = document.getElementById('bcm-subtab-body-4');
+      if (subtabBody) await _tabPlans(subtabBody);
+      else _switchTab('plans');
     } catch (e) {
       window._planVersioningCode = null;
       UI.toast('Error: ' + (e.message || e), 'error');
+    } finally {
+      _planSaving = false;
     }
   }
 
@@ -3083,7 +3099,9 @@ const ViewBcp = (() => {
         UI.toast('Plan aprobado', 'success');
         modal.remove();
         _plans = [];
-        _switchTab('plans');
+        const subtabBody = document.getElementById('bcm-subtab-body-4');
+        if (subtabBody) await _tabPlans(subtabBody);
+        else _switchTab('plans');
       } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
     });
   }
