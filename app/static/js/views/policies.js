@@ -265,12 +265,118 @@ const ViewPolicies = (() => {
         <div><label>Clausulas ISO (separadas por coma)</label><input id="f-clauses" class="input" value="${UI.esc(clauses)}"></div>
         <div class="span2"><label>Alcance</label><textarea id="f-scope" class="input" rows="2">${UI.esc(scope)}</textarea></div>
         <div class="span2"><label>Contenido / resumen</label><textarea id="f-content" class="input" rows="5">${UI.esc(content)}</textarea></div>
+        ${p && p.source_document_id ? `
+        <div class="span2" style="padding-top:14px;border-top:1px solid var(--border);margin-top:4px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                      letter-spacing:.5px;margin-bottom:8px;">Analisis de madurez SGSI</div>
+          <div id="pol-maturity-panel">
+            <div style="font-size:12px;color:var(--text-muted);">Cargando analisis...</div>
+          </div>
+        </div>` : ''}
       </div>`;
   }
 
   function _bumpVersion(ver) {
     const parts = String(ver || '1.0').split('.');
     return (parseInt(parts[0] || '1') + 1) + '.0';
+  }
+
+  // ---------- Helpers de madurez para el panel inline ----------
+
+  const _POL_MATURITY_COLORS = ['var(--risk-critical)','var(--risk-high)','var(--risk-medium)','var(--brand-orange)','#22c55e','var(--risk-low)'];
+  const _POL_MATURITY_LABELS = ['Inexistente','Inicial','Basico','Definido','Gestionado','Optimizado'];
+
+  function _polMaturityColor(v) { return _POL_MATURITY_COLORS[Math.min(5, Math.max(0, v))] || 'var(--text-muted)'; }
+
+  function _polParseNotes(notes) {
+    if (!notes) return { rationale: '', gap: '' };
+    const sep = '\n\nPara llegar a nivel 5: ';
+    const idx = notes.indexOf(sep);
+    let rationale = notes, gap = '';
+    if (idx >= 0) { rationale = notes.slice(0, idx); gap = notes.slice(idx + sep.length); }
+    rationale = rationale.replace(/^Nivel actual \(\d+\/5\): /, '');
+    return { rationale, gap };
+  }
+
+  const _POL_DEFAULT_GAP = [
+    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable, establecer metricas y revision periodica.',
+    'Formalizar el proceso: crear documentacion oficial, establecer procedimientos escritos, comunicar a los equipos y medir resultados.',
+    'Estandarizar la aplicacion: garantizar consistencia en todos los casos, implementar controles de calidad y medir la eficacia con KPIs.',
+    'Añadir metricas: establecer KPIs, revisar resultados periodicamente, documentar excepciones y reducir variabilidad del proceso.',
+    'Implementar mejora continua: analizar tendencias, automatizar donde sea posible, revisar benchmarks y documentar optimizaciones.',
+    '',
+  ];
+
+  async function _loadPolicyMaturity(docId) {
+    const panel = document.getElementById('pol-maturity-panel');
+    if (!panel) return;
+    let controls = [];
+    try {
+      controls = await Api.aiDocuments.controls(docId);
+    } catch (_) {
+      panel.innerHTML = '';
+      return;
+    }
+    if (!controls.length) {
+      panel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">Sin analisis ISMS disponible para este documento.</p>`;
+      return;
+    }
+    const avg = controls.reduce((s, c) => s + (c.maturity || 0), 0) / controls.length;
+    const avgColor = _polMaturityColor(Math.round(avg));
+    const rows = controls.map(c => {
+      const { rationale, gap } = _polParseNotes(c.notes);
+      const displayGap = gap || _POL_DEFAULT_GAP[Math.min(4, c.maturity || 0)] || '';
+      const color = _polMaturityColor(c.maturity || 0);
+      const detId = `pm-det-${c.id}`;
+      const bars = Array.from({length: 5}, (_, i) =>
+        `<div style="width:10px;height:7px;border-radius:2px;background:${i < c.maturity ? color : 'var(--bg-3)'}"></div>`
+      ).join('');
+      return `
+        <div style="border:1px solid var(--border);border-radius:6px;margin-bottom:5px;overflow:hidden;">
+          <div onclick="const d=document.getElementById('${detId}');d.style.display=d.style.display==='none'?'block':'none';"
+               style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;
+                      background:var(--bg-2);user-select:none;">
+            <span style="font-size:10px;font-weight:700;color:var(--brand-purple);background:var(--brand-purple-4);
+                         border-radius:3px;padding:1px 5px;white-space:nowrap;flex-shrink:0;">${UI.esc(c.control_code||'-')}</span>
+            <span style="font-size:12px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;
+                         white-space:nowrap;" title="${UI.esc(c.control_name||'-')}">${UI.esc(c.control_name||'-')}</span>
+            <div style="display:flex;gap:2px;flex-shrink:0;">${bars}</div>
+            <span style="font-size:11px;font-weight:700;color:${color};white-space:nowrap;min-width:28px;
+                         text-align:right;">${c.maturity||0}/5</span>
+          </div>
+          <div id="${detId}" style="display:none;padding:8px 12px;font-size:12px;line-height:1.6;background:var(--bg-card);">
+            ${rationale ? `
+              <div style="margin-bottom:7px;">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                            letter-spacing:.4px;margin-bottom:3px;">Por que esta en nivel ${c.maturity||0}/5</div>
+                <div style="background:var(--bg-2);border-left:3px solid ${color};
+                            border-radius:0 4px 4px 0;padding:6px 10px;">${UI.esc(rationale)}</div>
+              </div>` : ''}
+            ${displayGap ? `
+              <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                            letter-spacing:.4px;margin-bottom:3px;">Para llegar a nivel 5</div>
+                <div style="background:rgba(89,0,141,.05);border-left:3px solid var(--brand-purple);
+                            border-radius:0 4px 4px 0;padding:6px 10px;">${UI.esc(displayGap)}</div>
+              </div>` : ''}
+            ${(!rationale && !displayGap) ? `
+              <span style="font-size:11px;color:var(--text-muted);font-style:italic;">
+                Re-analiza el documento en Agente IA para obtener el analisis personalizado.
+              </span>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg-2);
+                  border-radius:6px;margin-bottom:8px;">
+        <div style="font-size:20px;font-weight:800;color:${avgColor};">${avg.toFixed(1)}</div>
+        <div>
+          <div style="font-size:12px;font-weight:600;">Madurez SGSI promedio</div>
+          <div style="font-size:11px;color:var(--text-muted);">${controls.length} control${controls.length!==1?'es':''} evaluados — haz clic en cada uno para ver el gap</div>
+        </div>
+      </div>
+      ${rows}`;
   }
 
   function _editPolicy(p) {
@@ -309,6 +415,7 @@ const ViewPolicies = (() => {
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick   = () => _save(p);
+    if (p && p.source_document_id) _loadPolicyMaturity(p.source_document_id);
   }
 
   async function _save(p) {

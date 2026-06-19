@@ -70,7 +70,7 @@ const UI = {
   openModal(innerHtml, opts = {}) {
     /* Renderiza HTML crudo dentro del contenedor modal (sin title fijo). */
     const root = document.getElementById('modal-root');
-    const width = opts.width || '560px';
+    const width = opts.width || '720px';
     root.innerHTML = `
       <div class="modal-bg" id="modal-bg">
         <div class="modal" style="max-width:${width};width:95vw;">

@@ -989,7 +989,7 @@ table.data td .code-pill {
   background: var(--bg-card);
   border-radius: var(--radius-xl);
   padding: 28px;
-  width: 740px; max-width: 95vw; max-height: 88vh;
+  width: min(920px, 95vw); max-height: 88vh;
   overflow-y: auto;
   box-shadow: var(--shadow-xl), 0 0 0 1px var(--border);
   animation: slideUp 180ms ease;

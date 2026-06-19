@@ -320,7 +320,7 @@ const ViewCompliance = (() => {
     const themeHtml = sortedThemes.map(theme => {
       const controls = themes[theme];
       const rows = controls.map(c => {
-        const hasGap = c.notes && c.notes.length > 0;
+        const needsAnalysis = c.maturity < 5;
         return `<tr>
           <td style="font-size:11px;white-space:nowrap;color:var(--text-muted);">${UI.esc(c.code || '-')}</td>
           <td style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
@@ -328,11 +328,11 @@ const ViewCompliance = (() => {
           <td>${_statusBadge(c.status)}</td>
           <td style="min-width:120px;">${_maturityBar(c.maturity)}</td>
           <td style="font-size:11px;max-width:200px;">
-            ${hasGap
+            ${needsAnalysis
               ? `<span style="color:var(--brand-purple);cursor:pointer;font-size:11px;text-decoration:underline;"
                        onclick="ViewCompliance._showGapModal(${c.id})">
-                   Ver analisis IA</span>`
-              : '<span style="color:var(--text-subtle);">-</span>'}
+                   Ver analisis${c.notes ? ' IA' : ''}</span>`
+              : '<span style="color:var(--risk-low);font-size:11px;">Optimo</span>'}
           </td>
         </tr>`;
       }).join('');
@@ -1156,6 +1156,25 @@ const ViewCompliance = (() => {
 
   const _GAP_MATURITY_LABELS = ['Inexistente', 'Inicial', 'Basico', 'Definido', 'Gestionado', 'Optimizado'];
 
+  // Texto generico cuando no hay analisis IA guardado
+  const _GAP_DEFAULT_WHY = [
+    'Este control no existe ni esta configurado en la organizacion. No aporta reduccion del riesgo.',
+    'El control existe de forma ad-hoc, sin proceso formal ni documentacion. Reduccion minima e inconsistente.',
+    'El control esta documentado pero su aplicacion es inconsistente o incompleta. Reduccion parcial del riesgo.',
+    'El control esta implementado de forma estandarizada pero sin revisiones periodicas ni metricas de eficacia.',
+    'El control se mide y gestiona activamente con metricas definidas. Falta implementar mejora continua formal.',
+    '',
+  ];
+
+  const _GAP_DEFAULT_GAP = [
+    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable, establecer metricas y revision periodica.',
+    'Formalizar el proceso: crear documentacion oficial, establecer procedimientos escritos, comunicar a los equipos y medir resultados.',
+    'Estandarizar la aplicacion: garantizar consistencia en todos los casos, implementar controles de calidad y medir la eficacia con KPIs definidos.',
+    'Añadir metricas de eficacia: establecer KPIs, revisar resultados periodicamente, documentar excepciones y reducir la variabilidad del proceso.',
+    'Implementar mejora continua: analizar tendencias, automatizar donde sea posible, revisar benchmarks del sector y documentar las optimizaciones.',
+    '',
+  ];
+
   function _gapMaturityColor(v) {
     if (v >= 5) return 'var(--risk-low)';
     if (v >= 4) return '#22c55e';
@@ -1196,7 +1215,21 @@ const ViewCompliance = (() => {
     const c = _flatImpl(raw);
     const { rationale, gap } = _parseGapNotes(c.notes);
     const color = _gapMaturityColor(c.maturity);
-    const hasAnalysis = rationale || gap;
+    const v = Math.min(5, Math.max(0, c.maturity || 0));
+
+    // Usar texto IA si existe, sino texto generico por nivel
+    const isAI = !!(rationale || gap);
+    const displayRationale = rationale || _GAP_DEFAULT_WHY[v] || '';
+    const displayGap = gap || _GAP_DEFAULT_GAP[v] || '';
+
+    const aiNote = isAI
+      ? `<div style="font-size:10px;color:var(--risk-low);margin-bottom:12px;">
+           Analisis generado por IA a partir del documento fuente
+         </div>`
+      : `<div style="font-size:10px;color:var(--text-muted);margin-bottom:12px;">
+           Descripcion generica por nivel de madurez &mdash;
+           sube el documento al Agente IA para obtener analisis personalizado
+         </div>`;
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
@@ -1204,40 +1237,38 @@ const ViewCompliance = (() => {
         <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">&#10005;</button>
       </div>
 
-      <div style="margin-bottom:14px;">
+      <div style="margin-bottom:12px;">
         <span style="font-size:11px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);
                      border-radius:3px;padding:2px 8px;margin-right:8px;">${UI.esc(c.code || '-')}</span>
         <span style="font-size:14px;font-weight:700;">${UI.esc(c.name || '-')}</span>
       </div>
 
-      <div style="background:var(--bg-2);border-radius:8px;padding:14px 16px;margin-bottom:18px;">
+      <div style="background:var(--bg-2);border-radius:8px;padding:14px 16px;margin-bottom:10px;">
         ${_gapMaturityBarFull(c.maturity)}
       </div>
 
-      ${rationale ? `
+      ${aiNote}
+
+      ${displayRationale ? `
         <div style="margin-bottom:14px;">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                      letter-spacing:.6px;margin-bottom:6px;">Justificacion del nivel actual</div>
+                      letter-spacing:.6px;margin-bottom:6px;">Por que esta en nivel ${v}/5</div>
           <div style="font-size:13px;line-height:1.7;color:var(--text-base);background:var(--bg-2);
                       border-radius:6px;padding:12px 14px;border-left:4px solid ${color};">
-            ${UI.esc(rationale)}
+            ${UI.esc(displayRationale)}
           </div>
         </div>` : ''}
 
-      ${gap ? `
+      ${displayGap ? `
         <div>
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
                       letter-spacing:.6px;margin-bottom:6px;">Para llegar a nivel 5 (Optimizado)</div>
           <div style="font-size:13px;line-height:1.7;color:var(--text-base);
                       background:rgba(89,0,141,.05);border-radius:6px;padding:12px 14px;
                       border-left:4px solid var(--brand-purple);">
-            ${UI.esc(gap)}
+            ${UI.esc(displayGap)}
           </div>
-        </div>` : (!hasAnalysis ? `
-        <div style="padding:16px;text-align:center;color:var(--text-muted);font-size:13px;">
-          Este control no tiene analisis de gap generado por IA todavia.<br>
-          <span style="font-size:12px;">Sube un documento relacionado y ejecuta el analisis ISMS para generarlo.</span>
-        </div>` : '')}
+        </div>` : ''}
 
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);
                   display:flex;justify-content:flex-end;gap:8px;">
@@ -1246,7 +1277,7 @@ const ViewCompliance = (() => {
         </a>
         <button onclick="UI.closeModal();" class="btn btn-primary" style="font-size:12px;">Cerrar</button>
       </div>
-    `, { width: '620px' });
+    `, { width: '640px' });
   }
 
   function _configureFrameworks() {
