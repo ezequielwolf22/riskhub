@@ -48,9 +48,14 @@ const ViewHeatmap = {
               segun la Tabla E.2 de ISO/IEC 27005:2018.
             </p>
             <ul style="font-size:12px;color:var(--text-muted);padding-left:18px;">
-              <li><strong style="color:var(--risk-low);">Bajo (0-2):</strong> retención sin tratamiento adicional.</li>
-              <li><strong style="color:var(--risk-medium);">Medio (3-5):</strong> tratamiento recomendado.</li>
-              <li><strong style="color:var(--risk-high);">Alto (6-8):</strong> tratamiento obligatorio.</li>
+              ${(window.RiskLevels ? RiskLevels.all() : [
+                { label:'Bajo',  color:'var(--risk-low)',    min_level:0, max_level:2 },
+                { label:'Medio', color:'var(--risk-medium)', min_level:3, max_level:5 },
+                { label:'Alto',  color:'var(--risk-high)',   min_level:6, max_level:8 },
+              ]).map((b, i, arr) => `<li><strong style="color:${b.color};">${b.label} (${b.min_level}-${b.max_level}):</strong> ${
+                i === 0 ? 'retención sin tratamiento adicional.' :
+                i === arr.length - 1 ? 'tratamiento obligatorio.' : 'tratamiento recomendado.'
+              }</li>`).join('')}
             </ul>
             <p style="font-size:12px;color:var(--text-subtle);margin-top:12px;">
               Click sobre una celda para listar los riesgos contenidos.

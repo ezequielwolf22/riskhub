@@ -83,8 +83,20 @@ const ViewExecutive = (() => {
 
   function _renderTopRisks(risks) {
     if (!risks || !risks.length) return '<p style="color:#9d9d9d;font-size:13px;">No hay riesgos activos.</p>';
-    const _levelBg = l => l >= 6 ? '#FEE2E2' : l >= 4 ? '#FEF0E3' : '#E8F5E9';
-    const _levelColor = l => l >= 6 ? '#a83232' : l >= 4 ? '#c25a1f' : '#2e7d32';
+    const _levelColor = l => {
+      if (!window.RiskLevels) return l >= 6 ? '#a83232' : l >= 4 ? '#c25a1f' : '#2e7d32';
+      return RiskLevels.colorFor(l);
+    };
+    const _bgMap = {
+      'var(--risk-low)': '#E8F5E9', 'var(--risk-medium)': '#FEF0E3',
+      'var(--risk-high)': '#FEE2E2', 'var(--risk-critical)': '#FDECEA',
+      'var(--brand-purple)': '#F3E8FF',
+    };
+    const _levelBg = l => {
+      if (!window.RiskLevels) return l >= 6 ? '#FEE2E2' : l >= 4 ? '#FEF0E3' : '#E8F5E9';
+      const c = RiskLevels.colorFor(l);
+      return _bgMap[c] || c + '33';
+    };
     return `
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead>

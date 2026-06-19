@@ -123,7 +123,8 @@ const ViewCalendar = {
 
         if (mode !== 'controls') {
           risks.slice(0, maxRiskPills).forEach(r => {
-            const color = r.residual_level >= 6 ? 'var(--risk-high)'
+            const color = window.RiskLevels ? RiskLevels.colorFor(r.residual_level)
+                        : r.residual_level >= 6 ? 'var(--risk-high)'
                         : r.residual_level >= 4 ? 'var(--risk-medium)'
                         : 'var(--risk-low)';
             pills += `<div class="cal-pill" style="background:${color};"

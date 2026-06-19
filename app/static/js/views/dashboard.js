@@ -494,27 +494,25 @@ const ViewDashboard = {
             <div class="card">
               <h3>Distribucion por nivel residual</h3>
               <div style="display:flex;align-items:center;gap:20px;margin-top:12px;">
-                ${ViewDashboard._donut([
-                  { v: risks.by_band.high,   color: 'var(--risk-high)',   label: 'Altos' },
-                  { v: risks.by_band.medium, color: 'var(--risk-medium)', label: 'Medios' },
-                  { v: risks.by_band.low,    color: 'var(--risk-low)',    label: 'Bajos' },
-                ], risks.total_risks)}
-                <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
-                  ${[
-                    { key:'high',   label:'Altos (>5)',    color:'var(--risk-high)' },
-                    { key:'medium', label:'Medios (3-5)',  color:'var(--risk-medium)' },
-                    { key:'low',    label:'Bajos (<3)',    color:'var(--risk-low)' },
-                  ].map(b => `
+                ${(() => {
+                  const _bl = window.RiskLevels ? RiskLevels.all().slice().reverse() : [
+                    { code:'high',   label:'Altos',  color:'var(--risk-high)',   min_level:6, max_level:8 },
+                    { code:'medium', label:'Medios', color:'var(--risk-medium)', min_level:3, max_level:5 },
+                    { code:'low',    label:'Bajos',  color:'var(--risk-low)',    min_level:0, max_level:2 },
+                  ];
+                  const donut = _bl.map(b => ({ v: risks.by_band[b.code] || 0, color: b.color, label: b.label }));
+                  const bars  = _bl.map(b => `
                     <div>
                       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-                        <span style="color:var(--text-base);">${b.label}</span>
-                        <span style="font-weight:700;color:${b.color};">${risks.by_band[b.key]}</span>
+                        <span style="color:var(--text-base);">${b.label} (${b.min_level}-${b.max_level})</span>
+                        <span style="font-weight:700;color:${b.color};">${risks.by_band[b.code] || 0}</span>
                       </div>
                       <div style="height:5px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
-                        <div style="height:100%;width:${risks.total_risks?Math.round(risks.by_band[b.key]/risks.total_risks*100):0}%;background:${b.color};border-radius:3px;transition:width .4s;"></div>
+                        <div style="height:100%;width:${risks.total_risks ? Math.round((risks.by_band[b.code]||0)/risks.total_risks*100) : 0}%;background:${b.color};border-radius:3px;transition:width .4s;"></div>
                       </div>
-                    </div>`).join('')}
-                </div>
+                    </div>`).join('');
+                  return `${ViewDashboard._donut(donut, risks.total_risks)}<div style="flex:1;display:flex;flex-direction:column;gap:8px;">${bars}</div>`;
+                })()}
               </div>
             </div>
             <div class="card">
