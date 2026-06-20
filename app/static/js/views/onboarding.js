@@ -114,7 +114,7 @@ const ViewOnboarding = (() => {
       Api.aiDocuments.list(),
     ]);
     _cfg  = results[0].status === 'fulfilled' ? results[0].value
-          : { model: 'claude-opus-4-5', anonymization_level: 'medium',
+          : { model: 'claude-opus-4-6', anonymization_level: 'medium',
               setup_completed: false, has_api_key: false };
     _ctx  = results[1].status === 'fulfilled' ? (results[1].value || {}) : {};
     _docs = results[2].status === 'fulfilled' ? (results[2].value || []) : [];

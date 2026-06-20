@@ -180,7 +180,126 @@ const ViewAiHub = {
           label: 'Documentos ISMS',
           render: async (_panel) => { location.hash = '/compliance-hub/policies'; },
         },
+        {
+          id: 'ai-settings',
+          label: 'Configuracion',
+          visible: () => Auth.isAdmin(),
+          render: async (panel) => { await ViewAiSettings.render(panel); },
+        },
       ],
+    });
+  },
+};
+
+const _AI_MODELS = [
+  { value: 'claude-opus-4-8',   label: 'Opus 4.8  — maximo rendimiento' },
+  { value: 'claude-opus-4-7',   label: 'Opus 4.7  — muy potente' },
+  { value: 'claude-opus-4-6',   label: 'Opus 4.6  — potente (por defecto)' },
+  { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — equilibrado' },
+  { value: 'claude-haiku-4-5',  label: 'Haiku 4.5  — rapido y economico' },
+];
+
+const ViewAiSettings = {
+  async render(el) {
+    el.innerHTML = '<p class="text-muted" style="padding:24px;">Cargando configuracion...</p>';
+    let cfg;
+    try {
+      cfg = await Api.aiConfig.get();
+    } catch (e) {
+      el.innerHTML = `<p style="color:var(--danger);padding:24px;">Error cargando configuracion: ${UI.esc(e.message)}</p>`;
+      return;
+    }
+
+    const currentModel = cfg.model || 'claude-opus-4-6';
+    const hasKey = !!cfg.has_api_key;
+
+    el.innerHTML = `
+      <div style="max-width:560px;padding:24px;display:grid;gap:24px;">
+
+        <div class="card" style="padding:20px;display:grid;gap:16px;">
+          <h3 style="margin:0;font-size:15px;font-weight:600;">API Key de Anthropic</h3>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;
+              background:${hasKey ? 'var(--success,#22c55e)' : 'var(--danger,#ef4444)'};color:#fff;">
+              ${hasKey ? 'CONFIGURADA' : 'NO CONFIGURADA'}
+            </span>
+            ${hasKey
+              ? '<span style="font-size:13px;color:var(--text-muted);">La clave esta almacenada de forma cifrada.</span>'
+              : '<span style="font-size:13px;color:var(--text-muted);">Sin clave no funcionan las funciones IA.</span>'
+            }
+          </div>
+          <div style="display:grid;gap:8px;">
+            <label for="ai-apikey" style="font-size:13px;font-weight:500;">
+              ${hasKey ? 'Cambiar API key (dejar vacio para mantener la actual)' : 'Introducir API key'}
+            </label>
+            <input type="password" id="ai-apikey" placeholder="sk-ant-api03-..."
+              autocomplete="new-password"
+              style="font-family:monospace;font-size:13px;">
+          </div>
+        </div>
+
+        <div class="card" style="padding:20px;display:grid;gap:16px;">
+          <h3 style="margin:0;font-size:15px;font-weight:600;">Modelo Claude</h3>
+          <p style="margin:0;font-size:13px;color:var(--text-muted);">
+            Todas las funciones IA de la plataforma usaran este modelo.
+            Los cambios se aplican a partir de la siguiente llamada.
+          </p>
+          <div style="display:grid;gap:8px;">
+            <label for="ai-model" style="font-size:13px;font-weight:500;">Modelo activo</label>
+            <select id="ai-model" style="font-size:13px;">
+              ${_AI_MODELS.map(m =>
+                `<option value="${m.value}"${m.value === currentModel ? ' selected' : ''}>${UI.esc(m.label)}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div style="padding:10px 12px;background:var(--bg-2);border-radius:6px;font-size:12px;color:var(--text-muted);">
+            <strong>Guia rapida:</strong><br>
+            <strong>Opus 4.8 / 4.7</strong> — analisis complejos, documentos largos, mayor precision.<br>
+            <strong>Opus 4.6</strong> — excelente calidad, buen equilibrio coste/rendimiento.<br>
+            <strong>Sonnet 4.6</strong> — rapido y capaz, ideal para uso intensivo.<br>
+            <strong>Haiku 4.5</strong> — el mas economico, adecuado para tareas simples y alertas.
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn btn-primary" id="ai-cfg-save">Guardar cambios</button>
+          <button class="btn btn-ghost" id="ai-cfg-test">Probar conexion</button>
+          <span id="ai-cfg-msg" style="font-size:13px;"></span>
+        </div>
+      </div>`;
+
+    document.getElementById('ai-cfg-save').addEventListener('click', async () => {
+      const msg   = document.getElementById('ai-cfg-msg');
+      const model = document.getElementById('ai-model').value;
+      const key   = (document.getElementById('ai-apikey').value || '').trim();
+      const payload = { model };
+      if (key) payload.api_key = key;
+      msg.textContent = 'Guardando...';
+      msg.style.color = 'var(--text-muted)';
+      try {
+        await Api.aiConfig.update(payload);
+        msg.textContent = 'Guardado correctamente.';
+        msg.style.color = 'var(--success,#22c55e)';
+        document.getElementById('ai-apikey').value = '';
+        if (key) await ViewAiSettings.render(el);
+      } catch (e) {
+        msg.textContent = 'Error: ' + e.message;
+        msg.style.color = 'var(--danger,#ef4444)';
+      }
+    });
+
+    document.getElementById('ai-cfg-test').addEventListener('click', async () => {
+      const msg = document.getElementById('ai-cfg-msg');
+      msg.textContent = 'Probando...';
+      msg.style.color = 'var(--text-muted)';
+      try {
+        const res = await Api.aiConfig.test();
+        msg.textContent = `Conexion OK — modelo: ${res.model}`;
+        msg.style.color = 'var(--success,#22c55e)';
+      } catch (e) {
+        msg.textContent = 'Error: ' + e.message;
+        msg.style.color = 'var(--danger,#ef4444)';
+      }
     });
   },
 };
