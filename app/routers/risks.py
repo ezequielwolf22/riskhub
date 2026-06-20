@@ -72,6 +72,7 @@ def _apply_magerit_consequence(risk: Risk, db: Session) -> None:
 
 
 def _recalc(db: Session, risk: Risk) -> None:
+    from sqlalchemy import text as _text
     matrix = _get_matrix(db, risk.organization_id)
 
     # MAGERIT: si aplica, sobrescribir inherent_consequence antes de calcular
@@ -79,7 +80,23 @@ def _recalc(db: Session, risk: Risk) -> None:
 
     risk.inherent_level = calc_level(
         risk.inherent_consequence, risk.inherent_likelihood, matrix)
-    controls = [{"maturity": ci.maturity, "contribution": 1.0} for ci in risk.controls]
+
+    # Obtener contribution real de la tabla de asociacion (no hardcoded 1.0)
+    rows = db.execute(
+        _text("SELECT control_implementation_id, contribution FROM risk_controls WHERE risk_id = :rid"),
+        {"rid": risk.id},
+    ).fetchall()
+    contrib_map = {row[0]: (row[1] if row[1] is not None else 1.0) for row in rows}
+
+    controls = [
+        {
+            "maturity": ci.maturity or 0,
+            "contribution": contrib_map.get(ci.id, 1.0),
+            "nc_penalty_factor": getattr(ci, "nc_penalty_factor", None),
+            "ccm_fail": getattr(ci, "ccm_last_status", None) == "FAIL",
+        }
+        for ci in risk.controls
+    ]
     rl, rc, rlev = calc_residual(
         risk.inherent_likelihood, risk.inherent_consequence, controls, matrix)
     risk.residual_likelihood = rl
@@ -1252,6 +1269,141 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
     }
 
 
+@router.get("/concentration")
+def risk_concentration(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Heatmap de concentracion de riesgos por amenaza, activo, propietario y dominio ISO 27002."""
+    risks = filter_by_org(db.query(Risk), Risk, current_user).filter(
+        Risk.status.notin_([RiskStatus.CLOSED])
+    ).all()
+
+    by_threat: dict[str, dict] = {}
+    by_asset: dict[str, dict] = {}
+    by_owner: dict[str, dict] = {}
+    by_domain: dict[str, dict] = {}
+
+    for r in risks:
+        level = r.residual_level or 0
+        # Por amenaza
+        th_key = (r.threat.name if r.threat else "Sin amenaza")
+        by_threat.setdefault(th_key, {"count": 0, "max_level": 0, "total_level": 0})
+        by_threat[th_key]["count"] += 1
+        by_threat[th_key]["max_level"] = max(by_threat[th_key]["max_level"], level)
+        by_threat[th_key]["total_level"] += level
+        # Por activo
+        ast_key = (r.asset.name if r.asset else "Sin activo")
+        by_asset.setdefault(ast_key, {"count": 0, "max_level": 0, "total_level": 0})
+        by_asset[ast_key]["count"] += 1
+        by_asset[ast_key]["max_level"] = max(by_asset[ast_key]["max_level"], level)
+        by_asset[ast_key]["total_level"] += level
+        # Por propietario
+        own_key = (r.owner.username if r.owner else "Sin propietario")
+        by_owner.setdefault(own_key, {"count": 0, "max_level": 0, "total_level": 0})
+        by_owner[own_key]["count"] += 1
+        by_owner[own_key]["max_level"] = max(by_owner[own_key]["max_level"], level)
+        by_owner[own_key]["total_level"] += level
+        # Por dominio ISO 27002 (theme del control)
+        if r.controls:
+            for ci in r.controls:
+                if ci.control and ci.control.theme:
+                    dom = ci.control.theme
+                    by_domain.setdefault(dom, {"count": 0, "max_level": 0, "total_level": 0})
+                    by_domain[dom]["count"] += 1
+                    by_domain[dom]["max_level"] = max(by_domain[dom]["max_level"], level)
+                    by_domain[dom]["total_level"] += level
+
+    def _format(d: dict, key_name: str) -> list:
+        return sorted(
+            [{"name": k, **v, "avg_level": round(v["total_level"] / v["count"], 2)} for k, v in d.items()],
+            key=lambda x: x["max_level"],
+            reverse=True,
+        )[:20]
+
+    return {
+        "by_threat": _format(by_threat, "threat"),
+        "by_asset": _format(by_asset, "asset"),
+        "by_owner": _format(by_owner, "owner"),
+        "by_iso_domain": _format(by_domain, "domain"),
+        "total_active_risks": len(risks),
+    }
+
+
+@router.get("/portfolio-score")
+def portfolio_score(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Score agregado del portfolio de riesgos: media ponderada de niveles residuales.
+
+    Ponderacion: criticos (nivel 7-8) = peso 3, altos (5-6) = peso 2, resto = peso 1.
+    Devuelve el score (0-8), distribucion por banda y tendencia respecto al mes anterior.
+    """
+    from app.models import RiskSnapshot
+    risks = filter_by_org(db.query(Risk), Risk, current_user).filter(
+        Risk.status.notin_([RiskStatus.CLOSED])
+    ).all()
+
+    if not risks:
+        return {"portfolio_score": 0, "risk_count": 0, "distribution": {}, "trend": 0}
+
+    total_weighted = 0.0
+    total_weight = 0.0
+    distribution: dict[str, int] = {"low": 0, "medium": 0, "high": 0, "critical": 0}
+
+    for r in risks:
+        lev = r.residual_level or 0
+        if lev >= 7:
+            weight = 3.0
+            distribution["critical"] += 1
+        elif lev >= 5:
+            weight = 2.0
+            distribution["high"] += 1
+        elif lev >= 3:
+            weight = 1.5
+            distribution["medium"] += 1
+        else:
+            weight = 1.0
+            distribution["low"] += 1
+        total_weighted += lev * weight
+        total_weight += weight
+
+    score = round(total_weighted / total_weight, 2) if total_weight > 0 else 0
+
+    # Tendencia: comparar con el snapshot del mes anterior
+    org_id = current_user.organization_id
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    prev_month_start = (now.replace(day=1) - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_snapshots = (
+        db.query(RiskSnapshot)
+        .filter(
+            RiskSnapshot.organization_id == org_id,
+            RiskSnapshot.snapshot_date >= prev_month_start,
+            RiskSnapshot.snapshot_date < prev_month_start.replace(month=prev_month_start.month % 12 + 1) if prev_month_start.month < 12 else prev_month_start.replace(year=prev_month_start.year + 1, month=1),
+        )
+        .all()
+    )
+    trend = 0
+    if prev_snapshots:
+        prev_snaps = [s.residual_level or 0 for s in prev_snapshots]
+        prev_score = round(sum(prev_snaps) / len(prev_snaps), 2)
+        trend = round(score - prev_score, 2)
+
+    ctx = _get_context(db, org_id)
+    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+
+    return {
+        "portfolio_score": score,
+        "risk_count": len(risks),
+        "distribution": distribution,
+        "trend": trend,
+        "risk_appetite": appetite,
+        "above_appetite": distribution["high"] + distribution["critical"],
+    }
+
+
 # ── Risk Acceptance Formal Workflow (ISO 27001 cl. 6.1.2e) ───────────────────
 
 class AcceptanceRequestBody(BaseModel):
@@ -1600,3 +1752,423 @@ Responde SOLO con JSON valido:
         }
     except Exception as exc:
         raise HTTPException(500, f"Error en sugerencia IA: {exc}") from exc
+
+
+@router.get("/{risk_id}/history")
+def get_risk_history(
+    risk_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    limit: int = Query(24, ge=1, le=120, description="Numero maximo de snapshots a devolver"),
+):
+    """Devuelve el historico de snapshots mensuales del riesgo (niveles inherente/residual en el tiempo)."""
+    from app.models import RiskSnapshot
+
+    risk = db.get(Risk, risk_id)
+    if not risk:
+        raise HTTPException(404, "Riesgo no encontrado")
+    if not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(403)
+
+    snapshots = (
+        db.query(RiskSnapshot)
+        .filter(RiskSnapshot.risk_id == risk_id)
+        .order_by(RiskSnapshot.snapshot_date.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "risk_id": risk_id,
+        "risk_code": risk.code,
+        "history": [
+            {
+                "snapshot_date": s.snapshot_date.isoformat() if s.snapshot_date else None,
+                "inherent_likelihood": s.inherent_likelihood,
+                "inherent_consequence": s.inherent_consequence,
+                "inherent_level": s.inherent_level,
+                "residual_likelihood": s.residual_likelihood,
+                "residual_consequence": s.residual_consequence,
+                "residual_level": s.residual_level,
+                "control_count": s.control_count,
+                "risk_status": s.risk_status,
+            }
+            for s in snapshots
+        ],
+        "total": len(snapshots),
+    }
+
+
+@router.get("/{risk_id}/simulate")
+def simulate_what_if(
+    risk_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ci_id: Optional[int] = Query(None, description="ID del ControlImplementation a modificar"),
+    new_maturity: Optional[int] = Query(None, ge=0, le=5, description="Nueva madurez simulada (0-5)"),
+    new_contribution: Optional[float] = Query(None, ge=0.0, le=1.0, description="Nueva contribucion simulada (0-1)"),
+    add_ci_id: Optional[int] = Query(None, description="ID de un control adicional a vincular (simulado)"),
+    add_contribution: Optional[float] = Query(0.5, ge=0.0, le=1.0),
+    add_maturity: Optional[int] = Query(3, ge=0, le=5),
+):
+    """Simulacion what-if: calcula el impacto de cambiar/anadir controles sin persistir.
+
+    Retorna: niveles actuales + niveles simulados + delta para apoyar decisiones de tratamiento.
+    """
+    from sqlalchemy import text as _text
+    from app.services.risk_engine import control_reduction
+
+    risk = db.get(Risk, risk_id)
+    if not risk:
+        raise HTTPException(404, "Riesgo no encontrado")
+    if not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(403)
+
+    matrix = _get_matrix(db, risk.organization_id)
+
+    # Controles actuales con sus contribuciones reales
+    rows = db.execute(
+        _text("SELECT control_implementation_id, contribution FROM risk_controls WHERE risk_id = :rid"),
+        {"rid": risk_id},
+    ).fetchall()
+    contrib_map = {row[0]: (row[1] if row[1] is not None else 1.0) for row in rows}
+
+    controls_current = []
+    for ci in (risk.controls or []):
+        controls_current.append({
+            "id": ci.id,
+            "maturity": ci.maturity or 0,
+            "contribution": contrib_map.get(ci.id, 1.0),
+            "nc_penalty_factor": getattr(ci, "nc_penalty_factor", None),
+            "ccm_fail": getattr(ci, "ccm_last_status", None) == "FAIL",
+        })
+
+    # Construir lista simulada
+    controls_simulated = []
+    for c in controls_current:
+        sim = dict(c)
+        if ci_id and c["id"] == ci_id:
+            if new_maturity is not None:
+                sim["maturity"] = new_maturity
+            if new_contribution is not None:
+                sim["contribution"] = new_contribution
+        controls_simulated.append(sim)
+
+    # Anadir control adicional si se solicita
+    if add_ci_id is not None:
+        ci_add = db.get(ControlImplementation, add_ci_id)
+        if ci_add and check_org_access(ci_add.organization_id, current_user):
+            controls_simulated.append({
+                "id": ci_add.id,
+                "maturity": add_maturity,
+                "contribution": add_contribution,
+                "nc_penalty_factor": getattr(ci_add, "nc_penalty_factor", None),
+                "ccm_fail": getattr(ci_add, "ccm_last_status", None) == "FAIL",
+            })
+
+    # Calcular niveles actuales
+    rl_cur, rc_cur, rlev_cur = calc_residual(
+        risk.inherent_likelihood, risk.inherent_consequence, controls_current, matrix
+    )
+
+    # Calcular niveles simulados
+    rl_sim, rc_sim, rlev_sim = calc_residual(
+        risk.inherent_likelihood, risk.inherent_consequence, controls_simulated, matrix
+    )
+
+    ctx = _get_context(db, risk.organization_id)
+    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+
+    return {
+        "risk_id": risk_id,
+        "risk_code": risk.code,
+        "inherent_likelihood": risk.inherent_likelihood,
+        "inherent_consequence": risk.inherent_consequence,
+        "inherent_level": risk.inherent_level,
+        "current": {
+            "residual_likelihood": rl_cur,
+            "residual_consequence": rc_cur,
+            "residual_level": rlev_cur,
+            "within_appetite": rlev_cur <= appetite,
+        },
+        "simulated": {
+            "residual_likelihood": rl_sim,
+            "residual_consequence": rc_sim,
+            "residual_level": rlev_sim,
+            "within_appetite": rlev_sim <= appetite,
+        },
+        "delta": {
+            "likelihood": rl_sim - rl_cur,
+            "consequence": rc_sim - rc_cur,
+            "level": rlev_sim - rlev_cur,
+        },
+        "risk_appetite": appetite,
+        "parameters": {
+            "ci_id": ci_id,
+            "new_maturity": new_maturity,
+            "new_contribution": new_contribution,
+            "add_ci_id": add_ci_id,
+            "add_contribution": add_contribution,
+            "add_maturity": add_maturity,
+        },
+    }
+
+
+def _resolve_ai_key(db: Session, org_id: int) -> Optional[str]:
+    """Resuelve la API key de Claude para la org (Fernet descifrado + fallback a settings)."""
+    from app.models import AiConfig
+    cfg = db.query(AiConfig).filter_by(organization_id=org_id).first()
+    if cfg and cfg.api_key_encrypted:
+        import base64, hashlib
+        from cryptography.fernet import Fernet as _F
+        from app.config import settings as _s
+        key = base64.urlsafe_b64encode(hashlib.sha256(_s.secret_key.encode()).digest())
+        try:
+            return _F(key).decrypt(cfg.api_key_encrypted.encode()).decode()
+        except Exception:
+            return None
+    from app.config import settings as _s
+    return _s.anthropic_api_key
+
+
+@router.post("/ai-discover")
+def ai_discover_risks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """IA detecta riesgos no registrados examinando activos, amenazas y brechas de cobertura.
+
+    Analiza los activos sin riesgos asignados y las amenazas del catalogo no cubiertas,
+    y sugiere una lista priorizadas de nuevos riesgos a registrar.
+    """
+    import anthropic
+    import json as _json
+
+    org_id = current_user.organization_id
+    api_key = _resolve_ai_key(db, org_id)
+    if not api_key:
+        raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
+
+    from app.models import AiConfig, Asset, Threat
+    ai_cfg = db.query(AiConfig).filter_by(organization_id=org_id).first()
+    model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5"
+
+    # Activos sin riesgos vinculados
+    assets_all = db.query(Asset).filter(Asset.organization_id == org_id).all()
+    assets_with_risks = {r.asset_id for r in filter_by_org(db.query(Risk), Risk, current_user).all() if r.asset_id}
+    assets_uncovered = [a for a in assets_all if a.id not in assets_with_risks][:15]
+
+    # Amenazas del catalogo no usadas en riesgos activos
+    threats_all = db.query(Threat).filter(
+        (Threat.organization_id == org_id) | (Threat.organization_id.is_(None))
+    ).all()
+    threats_used = {r.threat_id for r in filter_by_org(db.query(Risk), Risk, current_user).all() if r.threat_id}
+    threats_unused = [t for t in threats_all if t.id not in threats_used][:20]
+
+    asset_lines = "\n".join(
+        f"  - [{a.code}] {a.name} ({getattr(a.asset_type, 'value', 'N/A')}) "
+        f"valor_disponibilidad={a.value_availability} valor_confidencialidad={a.value_confidentiality}"
+        for a in assets_uncovered
+    ) or "  (todos los activos tienen riesgos)"
+
+    threat_lines = "\n".join(
+        f"  - [{t.code}] {t.name} ({t.category})"
+        for t in threats_unused
+    ) or "  (todas las amenazas cubiertas)"
+
+    prompt = f"""Eres un auditor ISO 27005 senior. Analiza las brechas de cobertura de riesgos:
+
+ACTIVOS SIN RIESGOS ASIGNADOS:
+{asset_lines}
+
+AMENAZAS DEL CATALOGO NO CUBIERTAS EN NINGUN RIESGO:
+{threat_lines}
+
+Identifica hasta 10 combinaciones activo+amenaza que representan riesgos no registrados y que deberian ser evaluados.
+Para cada uno indica:
+- asset_code: codigo del activo
+- asset_name: nombre del activo
+- threat_code: codigo de la amenaza
+- threat_name: nombre de la amenaza
+- inherent_likelihood: estimacion 0-4 (ISO 27005 Annex E)
+- inherent_consequence: estimacion 0-4
+- justification: 1-2 frases en castellano explicando el riesgo
+
+Responde SOLO con JSON valido:
+{{"risks": [{{"asset_code":"...","asset_name":"...","threat_code":"...","threat_name":"...","inherent_likelihood":2,"inherent_consequence":3,"justification":"..."}}]}}
+"""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+        data = _json.loads(raw)
+        return {"discovered_risks": data.get("risks", []), "model": model}
+    except Exception as exc:
+        raise HTTPException(500, f"Error en AI discovery: {exc}") from exc
+
+
+@router.post("/{risk_id}/ai-scenario")
+def ai_attack_scenario(
+    risk_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Genera un escenario de ataque detallado para el riesgo usando analisis IA.
+
+    Construye la cadena de kill-chain (MITRE ATT&CK), identifica vectores reales
+    (OSINT/CVE si existen), y estima el impacto economico.
+    """
+    import anthropic
+    import json as _json
+    from app.models import AiConfig
+
+    risk = db.get(Risk, risk_id)
+    if not risk or not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(404, "Riesgo no encontrado")
+
+    org_id = risk.organization_id
+    api_key = _resolve_ai_key(db, org_id)
+    if not api_key:
+        raise HTTPException(400, "API key no configurada.")
+
+    ai_cfg = db.query(AiConfig).filter_by(organization_id=org_id).first()
+    model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5"
+
+    asset = risk.asset
+    threat = risk.threat
+    vulns = risk.vulnerabilities or []
+    estimated_value = (asset.estimated_value if asset and hasattr(asset, "estimated_value") else None) or 0
+
+    prompt = f"""Eres un experto en ciberseguridad ofensiva y analisis de riesgo ISO 27005.
+
+RIESGO: {risk.code} — {risk.name}
+ACTIVO: {asset.name if asset else 'N/A'} (valor estimado: {estimated_value} EUR)
+AMENAZA: {threat.name if threat else 'N/A'} ({getattr(threat, 'category', 'N/A')})
+VULNERABILIDADES: {', '.join(v.name for v in vulns) or 'No especificadas'}
+NIVEL RESIDUAL ACTUAL: {risk.residual_level}/8
+NIVEL INHERENTE: {risk.inherent_level}/8
+
+Genera un escenario de ataque realista con:
+1. kill_chain: lista de pasos (Reconocimiento, Acceso inicial, Escalada, Exfiltracion/Impacto)
+2. mitre_ttps: lista de IDs MITRE ATT&CK relevantes
+3. attack_vector: vector de entrada mas probable
+4. business_impact: descripcion del impacto en el negocio
+5. estimated_loss_eur: estimacion de perdida economica en EUR (rango min-max)
+6. probability_12m_pct: probabilidad de materializacion en los proximos 12 meses (0-100)
+7. early_warning_indicators: 3-5 indicadores tempranos de que el ataque se esta produciendo
+
+Responde SOLO con JSON valido:
+{{"kill_chain":[],"mitre_ttps":[],"attack_vector":"","business_impact":"","estimated_loss_eur":{{"min":0,"max":0}},"probability_12m_pct":0,"early_warning_indicators":[]}}
+"""
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model,
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+        data = _json.loads(raw)
+        data["risk_id"] = risk_id
+        data["risk_code"] = risk.code
+        data["model"] = model
+        return data
+    except Exception as exc:
+        raise HTTPException(500, f"Error en scenario analysis: {exc}") from exc
+
+
+@router.get("/{risk_id}/value-at-risk")
+def value_at_risk(
+    risk_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    simulations: int = Query(10000, ge=1000, le=100000, description="Iteraciones Monte Carlo"),
+):
+    """Calcula el Value at Risk (VaR) economico mediante simulacion Monte Carlo.
+
+    Usa el valor del activo (Asset.estimated_value) y los niveles ISO 27005 para
+    estimar la distribucion de perdidas esperadas con intervalos de confianza.
+    """
+    import random
+    import math
+
+    risk = db.get(Risk, risk_id)
+    if not risk or not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(404, "Riesgo no encontrado")
+
+    asset = risk.asset
+    estimated_value = getattr(asset, "estimated_value", None) if asset else None
+    if not estimated_value or estimated_value <= 0:
+        return {
+            "risk_id": risk_id,
+            "risk_code": risk.code,
+            "error": "El activo no tiene valor estimado configurado (Asset.estimated_value)",
+            "var_95": None,
+            "var_99": None,
+            "expected_loss": None,
+        }
+
+    # Parametros: probabilidad anual y factor de impacto desde niveles ISO 27005
+    # Likelihood (0-4) → probabilidad anual aproximada
+    lik_to_prob = {0: 0.01, 1: 0.05, 2: 0.15, 3: 0.40, 4: 0.75}
+    # Consequence (0-4) → fraccion del valor del activo perdida
+    con_to_impact = {0: 0.02, 1: 0.10, 2: 0.30, 3: 0.60, 4: 0.95}
+
+    inh_prob = lik_to_prob.get(risk.inherent_likelihood or 0, 0.15)
+    inh_impact_frac = con_to_impact.get(risk.inherent_consequence or 0, 0.30)
+    res_prob = lik_to_prob.get(risk.residual_likelihood or 0, 0.05)
+    res_impact_frac = con_to_impact.get(risk.residual_consequence or 0, 0.10)
+
+    def _monte_carlo(prob: float, impact_frac: float, n: int) -> list[float]:
+        losses = []
+        for _ in range(n):
+            if random.random() < prob:
+                # Impacto con variacion triangular (min=10%, mode=100%, max=150%)
+                tri = random.triangular(0.10, 1.50, 1.0)
+                losses.append(estimated_value * impact_frac * tri)
+            else:
+                losses.append(0.0)
+        return sorted(losses)
+
+    inh_losses = _monte_carlo(inh_prob, inh_impact_frac, simulations)
+    res_losses = _monte_carlo(res_prob, res_impact_frac, simulations)
+
+    def _percentile(data: list[float], p: float) -> float:
+        idx = int(len(data) * p / 100)
+        return round(data[min(idx, len(data) - 1)], 2)
+
+    return {
+        "risk_id": risk_id,
+        "risk_code": risk.code,
+        "asset_value_eur": estimated_value,
+        "simulations": simulations,
+        "inherent": {
+            "annual_probability": inh_prob,
+            "impact_fraction": inh_impact_frac,
+            "expected_loss": round(sum(inh_losses) / simulations, 2),
+            "var_95": _percentile(inh_losses, 95),
+            "var_99": _percentile(inh_losses, 99),
+            "max_loss": round(max(inh_losses), 2),
+        },
+        "residual": {
+            "annual_probability": res_prob,
+            "impact_fraction": res_impact_frac,
+            "expected_loss": round(sum(res_losses) / simulations, 2),
+            "var_95": _percentile(res_losses, 95),
+            "var_99": _percentile(res_losses, 99),
+            "max_loss": round(max(res_losses), 2),
+        },
+        "control_value_eur": round(
+            sum(inh_losses) / simulations - sum(res_losses) / simulations, 2
+        ),
+    }

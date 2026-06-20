@@ -423,6 +423,11 @@ class ControlImplementation(Base):
     regwatch_review_at = Column(DateTime, nullable=True)
     regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
 
+    # v5.2.0 — motor de riesgo: penalizaciones automaticas
+    nc_penalty_factor = Column(Float, nullable=True)    # null=sin NC, 0.4=NC major activa
+    ccm_last_status = Column(String(10), nullable=True) # PASS|FAIL|WARNING — ultimo test CCM
+    ccm_tested_at = Column(DateTime, nullable=True)     # timestamp del ultimo test CCM
+
     control = relationship("Control")
     owner = relationship("User", foreign_keys=[owner_id])
     soa_reviewed_by = relationship("User", foreign_keys=[soa_reviewed_by_id])
@@ -513,6 +518,15 @@ class Risk(Base):
     # Origen TPRM: si el riesgo fue generado desde una evaluacion de proveedor
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
 
+    # v5.2.0 — retroalimentacion y seguimiento de tratamiento
+    likelihood_adjusted_reason = Column(Text, nullable=True)  # razon del ultimo ajuste de likelihood
+    target_residual_level = Column(Integer, nullable=True)    # nivel residual objetivo tras tratamiento
+    target_date = Column(DateTime, nullable=True)              # fecha limite para alcanzar el objetivo
+    baseline_residual_level = Column(Integer, nullable=True)  # nivel residual en T0 (fecha de target)
+
+    # v5.2.0 — GDPR Art.35: riesgo generado por actividad que requiere DPIA
+    gdpr_activity_id = Column(Integer, ForeignKey("processing_activities.id"), nullable=True)
+
     asset = relationship("Asset", back_populates="risks")
     threat = relationship("Threat")
     owner = relationship("User", foreign_keys=[owner_id])
@@ -596,6 +610,43 @@ class AlertRule(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_triggered_at = Column(DateTime, nullable=True)
+
+
+# ---------- KRI — KEY RISK INDICATORS (v5.3.0) ----------
+
+class KRIMetricType(str, PyEnum):
+    """Tipo de metrica que el KRI monitoriza."""
+    RESIDUAL_LEVEL = "residual_level"          # nivel residual del riesgo
+    INHERENT_LEVEL = "inherent_level"          # nivel inherente
+    OPEN_INCIDENTS = "open_incidents"          # incidentes abiertos vinculados
+    OPEN_NCS = "open_ncs"                      # no conformidades mayores abiertas
+    CONTROL_MATURITY = "control_maturity"      # madurez media de controles
+    OVERDUE_TASKS = "overdue_tasks"            # tareas de tratamiento vencidas
+
+
+class KRIStatus(str, PyEnum):
+    NORMAL = "normal"
+    WARNING = "warning"
+    BREACH = "breach"
+
+
+class KRI(Base):
+    """Key Risk Indicator: umbral configurable sobre una metrica de riesgo."""
+    __tablename__ = "kris"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    risk_id = Column(Integer, ForeignKey("risks.id", ondelete="CASCADE"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    metric_type = Column(String(64), nullable=False)            # KRIMetricType value
+    warning_threshold = Column(Float, nullable=True)            # umbral de advertencia
+    breach_threshold = Column(Float, nullable=True)             # umbral de incumplimiento
+    current_value = Column(Float, nullable=True)                # ultimo valor calculado
+    status = Column(String(16), default="normal")               # KRIStatus value
+    is_active = Column(Boolean, default=True)
+    last_evaluated_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    alert_on_breach = Column(Boolean, default=True)
+    recipient_email = Column(String(255), nullable=True)        # email adicional para alertas
 
 
 # ---------- INCIDENTES DE SEGURIDAD (NIS2 Art. 23) ----------
@@ -801,6 +852,24 @@ class TaskPriority(str, PyEnum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class RiskSnapshot(Base):
+    """Snapshot mensual del nivel de riesgo para historico y tendencias (v5.2.0)."""
+    __tablename__ = "risk_snapshots"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    risk_id = Column(Integer, ForeignKey("risks.id", ondelete="CASCADE"), nullable=False, index=True)
+    snapshot_date = Column(DateTime, nullable=False, index=True)   # fecha del snapshot (primer dia del mes)
+    inherent_likelihood = Column(Integer, nullable=True)
+    inherent_consequence = Column(Integer, nullable=True)
+    inherent_level = Column(Integer, nullable=True)
+    residual_likelihood = Column(Integer, nullable=True)
+    residual_consequence = Column(Integer, nullable=True)
+    residual_level = Column(Integer, nullable=True)
+    control_count = Column(Integer, nullable=True)                 # num controles vinculados en ese momento
+    risk_status = Column(String(32), nullable=True)                # status en ese momento
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class TreatmentTask(Base):

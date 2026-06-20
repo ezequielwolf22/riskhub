@@ -101,14 +101,20 @@ def color_for(level: int) -> str:
 def control_reduction(controls: Iterable[dict]) -> float:
     """Combina la eficacia de N controles (madurez 0..5 + contribucion 0..1).
 
-    Modelo: efficacy_i = (maturity/5) * contribution
+    Modelo base:  efficacy_i = (maturity/5) * contribution
+    Penalizaciones automaticas (v5.2.0):
+      - nc_penalty_factor: 0.4 si NC major abierta sobre el control (null = sin penalizacion)
+      - ccm_fail: True si el ultimo test CCM arrojo FAIL (aplica factor 0.6)
     Combinacion: 1 - PROD(1 - efficacy_i)
     """
     factor = 1.0
     for c in controls:
         mat = max(0, min(5, int(c.get("maturity", 0))))
         contrib = max(0.0, min(1.0, float(c.get("contribution", 1.0))))
-        eff = (mat / 5.0) * contrib
+        nc_pen = float(c.get("nc_penalty_factor") or 1.0)
+        nc_pen = max(0.1, min(1.0, nc_pen))
+        ccm_pen = 0.6 if c.get("ccm_fail") else 1.0
+        eff = (mat / 5.0) * contrib * nc_pen * ccm_pen
         factor *= (1.0 - eff)
     return 1.0 - factor
 

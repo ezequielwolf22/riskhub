@@ -102,7 +102,53 @@ def create_activity(body: ProcessingActivityIn, db: Session = Depends(get_db),
     db.commit()
     db.refresh(a)
     log_action(db, current_user.id, "create", "processing_activity", str(a.id), {"code": a.code})
+
+    # GDPR Art.35: si la actividad requiere DPIA, crear riesgo de privacidad automaticamente
+    if a.requires_dpia:
+        try:
+            _auto_create_dpia_risk(db, a, current_user.organization_id)
+        except Exception as _exc:
+            import logging
+            logging.getLogger(__name__).warning("GDPR→risk auto-create failed: %s", _exc)
+
     return a
+
+
+def _auto_create_dpia_risk(db: Session, activity: ProcessingActivity, org_id: int) -> None:
+    """Crea un riesgo de privacidad en el registro de riesgos cuando una actividad requiere DPIA (GDPR Art.35)."""
+    from app.models import Risk, RiskStatus, TreatmentOption
+    from app.routers.risks import _recalc
+
+    # Evitar duplicados: buscar riesgo existente vinculado a la misma actividad
+    existing = db.query(Risk).filter(
+        Risk.organization_id == org_id,
+        Risk.gdpr_activity_id == activity.id,
+        Risk.status.notin_([RiskStatus.CLOSED]),
+    ).first()
+    if existing:
+        return
+
+    n = db.query(Risk).filter(Risk.organization_id == org_id).count() + 1
+    risk = Risk(
+        organization_id=org_id,
+        code=f"RSK-{n:04d}",
+        name=f"[DPIA] {activity.title[:100]}",
+        description=(
+            f"Riesgo de privacidad generado automaticamente por actividad de tratamiento "
+            f"{activity.code} que requiere DPIA segun GDPR Art.35. "
+            f"Revisa el impacto sobre los derechos y libertades de los interesados."
+        ),
+        category="privacy",
+        inherent_likelihood=2,
+        inherent_consequence=3,
+        treatment_option=TreatmentOption.MODIFICATION,
+        status=RiskStatus.IDENTIFIED,
+        gdpr_activity_id=activity.id,
+    )
+    db.add(risk)
+    db.flush()
+    _recalc(db, risk)
+    db.commit()
 
 
 @router.patch("/activities/{activity_id}", response_model=ProcessingActivityOut)

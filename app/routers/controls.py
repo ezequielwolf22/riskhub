@@ -163,7 +163,9 @@ def _trigger_compliance_sync(org_id: int) -> None:
 def _trigger_linked_risks_recalc(impl_id: int, org_id: int) -> None:
     """Recalcula residual de todos los riesgos que usan este control.
 
-    Si todos los controles del riesgo llegan a maturity=5 → auto-cierre.
+    Usa _recalc() de risks.py para garantizar logica consistente:
+    - contribution real desde risk_control_table (no hardcoded 1.0)
+    - nc_penalty_factor y ccm_last_status de ControlImplementation
     """
     import threading
     from app.database import SessionLocal
@@ -171,27 +173,14 @@ def _trigger_linked_risks_recalc(impl_id: int, org_id: int) -> None:
     def _recalc_risks():
         db2 = SessionLocal()
         try:
-            from app.models import (
-                Risk, RiskContext, RiskStatus, TreatmentOption,
-                risk_control_table, ControlImplementation,
-            )
-            from app.services.risk_engine import calc_level, calc_residual
-            from datetime import datetime, timezone
+            from app.models import Risk, RiskStatus
+            from app.routers.risks import _recalc
+            import sqlalchemy
 
-            ctx_cache: dict[int, object] = {}
-
-            def _get_ctx(oid):
-                if oid not in ctx_cache:
-                    ctx_cache[oid] = db2.query(RiskContext).filter(
-                        RiskContext.organization_id == oid
-                    ).first()
-                return ctx_cache[oid]
-
-            # Riesgos vinculados a este control
             risk_ids = [
                 row[0]
                 for row in db2.execute(
-                    __import__("sqlalchemy").text(
+                    sqlalchemy.text(
                         "SELECT risk_id FROM risk_controls "
                         "WHERE control_implementation_id = :cid"
                     ),
@@ -207,45 +196,17 @@ def _trigger_linked_risks_recalc(impl_id: int, org_id: int) -> None:
                 Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
             ).all()
 
-            updated = 0
             for risk in risks:
-                controls_dicts = [
-                    {"maturity": c.maturity or 0, "contribution": 1.0}
-                    for c in risk.controls
-                ]
-                ctx = _get_ctx(risk.organization_id)
-                matrix = ctx.risk_matrix if ctx else None
-                appetite = (ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3)
+                _recalc(db2, risk)
 
-                rl, rc, rlev = calc_residual(
-                    risk.inherent_likelihood, risk.inherent_consequence,
-                    controls_dicts, matrix
-                )
-                risk.residual_likelihood = rl
-                risk.residual_consequence = rc
-                risk.residual_level = rlev
-
-                # Auto-aceptar si el nivel residual baja del apetito
-                if rlev <= appetite and risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
-                    risk.treatment_option = TreatmentOption.RETENTION
-                    risk.status = RiskStatus.ACCEPTED
-                    from datetime import timedelta
-                    if not risk.next_review:
-                        risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
-
-                # Auto-cerrar si TODOS los controles del riesgo tienen maturity=5
-                all_max = all((c.maturity or 0) >= 5 for c in risk.controls) if risk.controls else False
-                if all_max and rlev == 0 and risk.status == RiskStatus.ASSESSED:
-                    risk.status = RiskStatus.CLOSED
-                    risk.closed_at = datetime.now(timezone.utc)
-
-                updated += 1
-
-            if updated:
+            if risks:
                 db2.commit()
 
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).warning(
+                "_trigger_linked_risks_recalc failed for impl_id=%d", impl_id, exc_info=True
+            )
         finally:
             db2.close()
 

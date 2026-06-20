@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     ComplianceFrameworkStatus, ComplianceRequirementStatus,
     RiskContext, Evidence, User, ControlImplementation, ControlStatus,
+    Risk, RiskStatus,
 )
 
 logger = logging.getLogger("riskhub.compliance")
@@ -324,3 +325,84 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
             db.rollback()
 
     return updated
+
+
+def apply_high_risk_compliance_penalty(db: Session, org_id: int) -> int:
+    """Degrada requisitos de compliance cubiertos por controles con riesgos residuales altos.
+
+    Si un requisito esta en IMPLEMENTED pero los controles que lo satisfacen tienen
+    riesgos vinculados con residual_level > risk_appetite, se degrada a PARTIAL y se
+    reduce el completion_pct para reflejar la brecha real.
+
+    Retorna el numero de requisitos degradados.
+    """
+    from sqlalchemy import text as _text
+
+    ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+    active_frameworks = (ctx.active_frameworks or []) if ctx else []
+    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+    if not active_frameworks:
+        return 0
+
+    # Obtener todos los control codes con riesgos de residual alto
+    high_risk_rows = db.execute(
+        _text("""
+            SELECT DISTINCT c.code
+            FROM risks r
+            JOIN risk_controls rc ON rc.risk_id = r.id
+            JOIN control_implementations ci ON ci.id = rc.control_implementation_id
+            JOIN controls c ON c.id = ci.control_id
+            WHERE r.organization_id = :org_id
+              AND r.residual_level > :appetite
+              AND r.status NOT IN ('closed', 'accepted')
+        """),
+        {"org_id": org_id, "appetite": appetite},
+    ).fetchall()
+
+    high_risk_codes: set[str] = {row[0].lower() for row in high_risk_rows if row[0]}
+    if not high_risk_codes:
+        return 0
+
+    degraded = 0
+    for framework_code in active_frameworks:
+        framework = load_framework(framework_code)
+        if not framework:
+            continue
+
+        for req in framework.get("requirements", []):
+            req_controls = [c.lower() for c in req.get("controls", [])]
+            if not req_controls:
+                continue
+            # Interseccion: algun control del requisito tiene riesgo residual alto
+            if not any(rc in high_risk_codes for rc in req_controls):
+                continue
+
+            status_rec = db.query(ComplianceFrameworkStatus).filter(
+                ComplianceFrameworkStatus.organization_id == org_id,
+                ComplianceFrameworkStatus.framework_code == framework_code,
+                ComplianceFrameworkStatus.requirement_id == req["id"],
+                ComplianceFrameworkStatus.status.in_([
+                    ComplianceRequirementStatus.IMPLEMENTED,
+                    ComplianceRequirementStatus.AUDITED,
+                ]),
+            ).first()
+            if not status_rec:
+                continue
+
+            # Penalizar: degradar a PARTIAL y reducir completion_pct
+            status_rec.status = ComplianceRequirementStatus.PARTIAL
+            status_rec.completion_pct = max(0, (status_rec.completion_pct or 100) - 30)
+            status_rec.last_reviewed_at = datetime.now(timezone.utc)
+            degraded += 1
+
+    if degraded:
+        try:
+            db.commit()
+            logger.info(
+                "apply_high_risk_compliance_penalty org=%d: %d requisitos degradados",
+                org_id, degraded,
+            )
+        except Exception:
+            db.rollback()
+
+    return degraded

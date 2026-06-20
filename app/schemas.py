@@ -441,6 +441,10 @@ class RiskUpdate(BaseModel):
     # Campos MAGERIT v3
     magerit_dimension: Optional[str] = None
     degradation_pct: Optional[int] = None
+    # v5.2.0 — objetivo de tratamiento cuantificado
+    target_residual_level: Optional[int] = Field(default=None, ge=0, le=8)
+    target_date: Optional[datetime] = None
+    baseline_residual_level: Optional[int] = Field(default=None, ge=0, le=8)
 
 
 class RiskOut(ORMBase):
@@ -477,6 +481,11 @@ class RiskOut(ORMBase):
     # Origen TPRM
     supplier_id: Optional[int] = None
     supplier_name: Optional[str] = None
+    # v5.2.0 — retroalimentacion y objetivo de tratamiento
+    likelihood_adjusted_reason: Optional[str] = None
+    target_residual_level: Optional[int] = None
+    target_date: Optional[datetime] = None
+    baseline_residual_level: Optional[int] = None
     asset: AssetOut
     threat: ThreatOut
 

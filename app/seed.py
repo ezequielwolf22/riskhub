@@ -536,6 +536,58 @@ def _migrate_columns() -> None:
         # v5.1 — Checkout para edicion concurrente + rondas de aprobacion
         ("ALTER TABLE policies ADD COLUMN checked_out_by_id INTEGER REFERENCES users(id)", "policies", "checked_out_by_id"),
         ("ALTER TABLE policies ADD COLUMN checked_out_at DATETIME", "policies", "checked_out_at"),
+        # v5.2.0 — Motor de riesgo: penalizaciones automaticas NC/CCM + retroalimentacion de incidentes
+        ("ALTER TABLE control_implementations ADD COLUMN nc_penalty_factor REAL", "control_implementations", "nc_penalty_factor"),
+        ("ALTER TABLE control_implementations ADD COLUMN ccm_last_status VARCHAR(10)", "control_implementations", "ccm_last_status"),
+        ("ALTER TABLE control_implementations ADD COLUMN ccm_tested_at DATETIME", "control_implementations", "ccm_tested_at"),
+        # v5.2.0 — Risk: razon de ajuste de likelihood + objetivo de tratamiento
+        ("ALTER TABLE risks ADD COLUMN likelihood_adjusted_reason TEXT", "risks", "likelihood_adjusted_reason"),
+        ("ALTER TABLE risks ADD COLUMN target_residual_level INTEGER", "risks", "target_residual_level"),
+        ("ALTER TABLE risks ADD COLUMN target_date DATETIME", "risks", "target_date"),
+        ("ALTER TABLE risks ADD COLUMN baseline_residual_level INTEGER", "risks", "baseline_residual_level"),
+        # v5.2.0 — GDPR Art.35: riesgo vinculado a actividad que requiere DPIA
+        ("ALTER TABLE risks ADD COLUMN gdpr_activity_id INTEGER REFERENCES processing_activities(id)", "risks", "gdpr_activity_id"),
+        # v5.3.0 — KRI: key risk indicators
+        (
+            """CREATE TABLE IF NOT EXISTS kris (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                organization_id INTEGER NOT NULL REFERENCES organizations(id),
+                risk_id INTEGER REFERENCES risks(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                metric_type VARCHAR(64) NOT NULL,
+                warning_threshold REAL,
+                breach_threshold REAL,
+                current_value REAL,
+                status VARCHAR(16) DEFAULT 'normal',
+                is_active BOOLEAN DEFAULT 1,
+                last_evaluated_at DATETIME,
+                created_at DATETIME,
+                alert_on_breach BOOLEAN DEFAULT 1,
+                recipient_email VARCHAR(255)
+            )""",
+            "kris",
+            "id",
+        ),
+        # v5.3.0 — RiskSnapshot: historico mensual de niveles de riesgo
+        (
+            """CREATE TABLE IF NOT EXISTS risk_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                organization_id INTEGER NOT NULL REFERENCES organizations(id),
+                risk_id INTEGER NOT NULL REFERENCES risks(id) ON DELETE CASCADE,
+                snapshot_date DATETIME NOT NULL,
+                inherent_likelihood INTEGER,
+                inherent_consequence INTEGER,
+                inherent_level INTEGER,
+                residual_likelihood INTEGER,
+                residual_consequence INTEGER,
+                residual_level INTEGER,
+                control_count INTEGER,
+                risk_status VARCHAR(32),
+                created_at DATETIME
+            )""",
+            "risk_snapshots",
+            "id",
+        ),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

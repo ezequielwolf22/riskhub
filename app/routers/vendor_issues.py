@@ -218,7 +218,77 @@ def create_vendor_issue(
     db.refresh(issue)
     log_action(db, current_user.id, "create", "vendor_issue", str(issue.id),
                {"code": issue.code, "severity": issue.severity.value})
+
+    # Hallazgo CRITICAL/HIGH en proveedor → notificar a risk owners y crear TreatmentTask
+    if issue.severity in (VendorIssueSeverity.CRITICAL, VendorIssueSeverity.HIGH):
+        try:
+            _notify_vendor_issue_to_risks(db, issue, org_id)
+        except Exception as _exc:
+            import logging
+            logging.getLogger(__name__).warning("VendorIssue→risk notify failed: %s", _exc)
+
     return issue
+
+
+def _notify_vendor_issue_to_risks(
+    db: Session, issue: VendorIssue, org_id: int
+) -> None:
+    """Para hallazgos CRITICAL/HIGH: notifica a owners de riesgos del proveedor y crea tarea."""
+    from app.models import Risk, RiskStatus, TreatmentTask, TaskPriority, TaskStatus
+    from app.services import email_service
+
+    tprm_risks = db.query(Risk).filter(
+        Risk.supplier_id == issue.supplier_id,
+        Risk.organization_id == org_id,
+        Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+    ).all()
+
+    cfg = email_service.get_settings_for_org(db, org_id)
+    now = datetime.now(timezone.utc)
+
+    for r in tprm_risks:
+        # Email al risk owner si tiene email configurado
+        if cfg and cfg.smtp_host and r.owner and r.owner.email:
+            import html as _html
+            sev_label = issue.severity.value.upper()
+            subject = f"[RiskHub] Hallazgo {sev_label} en proveedor — riesgo {r.code} afectado"
+            body_html = (
+                f"<p>Se ha detectado un hallazgo <strong>{sev_label}</strong> en el proveedor "
+                f"vinculado al riesgo <strong>{_html.escape(r.code)}</strong>.</p>"
+                f"<p><strong>Hallazgo:</strong> {_html.escape(issue.title)}</p>"
+                f"<p>Revisa el registro de riesgos y el estado del proveedor en RiskHub.</p>"
+            )
+            try:
+                email_service.send_email(cfg, r.owner.email, subject,
+                                          email_service._wrap_html(subject, body_html, ""))
+            except Exception:
+                pass
+
+        # Crear TreatmentTask si el hallazgo es CRITICAL
+        if issue.severity == VendorIssueSeverity.CRITICAL:
+            task_count_q = db.query(TreatmentTask).filter(
+                TreatmentTask.risk_id == r.id,
+                TreatmentTask.organization_id == org_id,
+                TreatmentTask.status.notin_([TaskStatus.DONE]),
+                TreatmentTask.title.ilike(f"%{issue.code}%"),
+            ).count()
+            if task_count_q == 0:
+                n = db.query(TreatmentTask).filter(
+                    TreatmentTask.organization_id == org_id
+                ).count() + 1
+                task = TreatmentTask(
+                    organization_id=org_id,
+                    code=f"TSK-{n:04d}",
+                    title=f"[{issue.code}] Revisar impacto hallazgo CRITICO en proveedor: {issue.title[:80]}",
+                    risk_id=r.id,
+                    priority=TaskPriority.CRITICAL,
+                    status=TaskStatus.PENDING,
+                    due_date=now + timedelta(days=7),
+                )
+                db.add(task)
+
+    if tprm_risks:
+        db.commit()
 
 
 @router.patch("/{iid}", response_model=VendorIssueOut)

@@ -135,6 +135,45 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
     return inc
 
 
+def _propagate_incident_close_to_risks(db: Session, inc: "Incident") -> None:
+    """Retroalimentacion de materializacion: incidente cerrado → likelihood++ en riesgos vinculados.
+
+    ISO 27005 §8.3: la materializacion de una amenaza es evidencia directa para
+    recalibrar la probabilidad inherente del riesgo asociado.
+    Solo incrementa riesgos activos (no CLOSED/ACCEPTED) que aun no esten al maximo.
+    """
+    from app.models import Risk, RiskStatus
+    from app.routers.risks import _recalc
+
+    risk_ids = inc.related_risk_ids or []
+    if not risk_ids:
+        return
+
+    org_id = inc.organization_id
+    risks = db.query(Risk).filter(
+        Risk.id.in_(risk_ids),
+        Risk.organization_id == org_id,
+        Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+        Risk.inherent_likelihood < 4,
+    ).all()
+
+    for r in risks:
+        old_lik = r.inherent_likelihood
+        r.inherent_likelihood = min(4, r.inherent_likelihood + 1)
+        r.likelihood_adjusted_reason = f"Materializacion confirmada — incidente {inc.code}"
+        _recalc(db, r)
+        log_action(db, None, "risk_likelihood_adjusted", "risk", str(r.id), {
+            "incident_code": inc.code,
+            "incident_id": inc.id,
+            "old_likelihood": old_lik,
+            "new_likelihood": r.inherent_likelihood,
+            "source": "incident_closed",
+        })
+
+    if risks:
+        db.commit()
+
+
 @router.patch("/{incident_id}", response_model=IncidentOut)
 def update_incident(incident_id: int, body: IncidentUpdate,
                     db: Session = Depends(get_db),
@@ -143,6 +182,7 @@ def update_incident(incident_id: int, body: IncidentUpdate,
     if not inc or not check_org_access(inc.organization_id, current_user):
         raise HTTPException(404, "Incidente no encontrado")
 
+    old_status = inc.status
     update_data = body.model_dump(exclude_none=True)
     detected_at_changed = (
         "detected_at" in update_data and
@@ -161,6 +201,14 @@ def update_incident(incident_id: int, body: IncidentUpdate,
             recalculate_nis2_deadlines(db, inc.id)
         except Exception as _e:
             pass  # no bloquear la respuesta si el recalculo falla
+
+    # Retroalimentacion de materializacion al cerrar el incidente
+    if inc.status == IncidentStatus.CLOSED and old_status != IncidentStatus.CLOSED:
+        try:
+            _propagate_incident_close_to_risks(db, inc)
+        except Exception as _e:
+            import logging
+            logging.getLogger(__name__).warning("Incident close→risk propagation failed: %s", _e)
 
     log_action(db, current_user.id, "update", "incident", str(inc.id))
     return inc

@@ -1118,6 +1118,100 @@ def _run_osint_periodic_scan() -> None:
         db.close()
 
 
+def _run_kri_evaluation() -> None:
+    """Evalua todos los KRIs activos de todas las organizaciones y genera alertas si hay breach."""
+    from app.database import SessionLocal
+    from app.models import KRI, Organization
+    from app.routers.kris import evaluate_kri
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        total = 0
+        breaches = 0
+        for org in orgs:
+            kris = db.query(KRI).filter(
+                KRI.organization_id == org.id,
+                KRI.is_active == True,
+            ).all()
+            for kri in kris:
+                from app.models import KRIStatus
+                status = evaluate_kri(db, kri, org.id)
+                total += 1
+                if status == KRIStatus.BREACH:
+                    breaches += 1
+        if total:
+            db.commit()
+            logger.info("KRI evaluation: %d evaluados, %d en breach", total, breaches)
+    except Exception as exc:
+        logger.exception("Error en _run_kri_evaluation: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_risk_snapshots() -> None:
+    """Crea un snapshot mensual del estado de cada riesgo activo el primer dia del mes.
+
+    Estos snapshots alimentan el endpoint GET /api/risks/{id}/history para mostrar
+    la evolucion temporal del riesgo (inherente vs residual).
+    """
+    from app.database import SessionLocal
+    from app.models import Organization, Risk, RiskStatus, RiskSnapshot
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        if now.day != 1:
+            return
+
+        # Fecha canonica del snapshot: primer dia del mes a medianoche UTC
+        snapshot_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        total = 0
+        for org in orgs:
+            risks = db.query(Risk).filter(
+                Risk.organization_id == org.id,
+                Risk.status.notin_([RiskStatus.CLOSED]),
+            ).all()
+
+            for r in risks:
+                # Evitar duplicados: un snapshot por riesgo por mes
+                dup = db.query(RiskSnapshot).filter(
+                    RiskSnapshot.risk_id == r.id,
+                    RiskSnapshot.snapshot_date == snapshot_date,
+                ).first()
+                if dup:
+                    continue
+
+                control_count = len(r.controls or [])
+                snap = RiskSnapshot(
+                    organization_id=org.id,
+                    risk_id=r.id,
+                    snapshot_date=snapshot_date,
+                    inherent_likelihood=r.inherent_likelihood,
+                    inherent_consequence=r.inherent_consequence,
+                    inherent_level=r.inherent_level,
+                    residual_likelihood=r.residual_likelihood,
+                    residual_consequence=r.residual_consequence,
+                    residual_level=r.residual_level,
+                    control_count=control_count,
+                    risk_status=r.status.value if r.status else None,
+                    created_at=now,
+                )
+                db.add(snap)
+                total += 1
+
+        if total:
+            db.commit()
+            logger.info("RiskSnapshot: %d snapshots creados para %s", total, snapshot_date.strftime("%Y-%m"))
+
+    except Exception as exc:
+        logger.exception("Error en _run_risk_snapshots: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_monthly_report() -> None:
     """Genera y envia el informe mensual de seguridad a admins el primer dia de cada mes."""
     from app.database import SessionLocal
@@ -1130,6 +1224,15 @@ def _run_monthly_report() -> None:
         # Solo ejecutar el primer dia del mes
         if now.day != 1:
             return
+
+        # Aplicar penalizacion Risk→Compliance antes del informe mensual
+        from app.models import Organization as _Org
+        from app.services.compliance_service import apply_high_risk_compliance_penalty
+        for _org in db.query(_Org).filter(_Org.is_active.is_(True)).all():
+            try:
+                apply_high_risk_compliance_penalty(db, _org.id)
+            except Exception as _exc:
+                logger.warning("Compliance penalty org=%d error: %s", _org.id, _exc)
 
         # E2: SMTP por org — no global
         from app.models import EmailSettings
@@ -1466,10 +1569,25 @@ def _run_ccm_tests() -> None:
         db.close()
 
 
+def _supplier_score_to_likelihood(score: float) -> int:
+    """Mapea residual_risk_score del proveedor (0-100, mayor=mas riesgo) a likelihood ISO 27005 (0-4)."""
+    if score >= 70:
+        return 3
+    if score >= 50:
+        return 2
+    if score >= 30:
+        return 1
+    return 0
+
+
 def _run_supplier_scoring() -> None:
-    """Actualiza el score de riesgo de todos los proveedores semanalmente."""
+    """Actualiza el score de riesgo de todos los proveedores semanalmente.
+
+    Tras recalcular los scores, propaga cambios significativos (>=10 puntos) al
+    inherent_likelihood de los riesgos TPRM vinculados (Risk.supplier_id).
+    """
     from app.database import SessionLocal
-    from app.models import Organization
+    from app.models import Organization, Supplier, Risk, RiskStatus
     from app.services.supplier_scoring_service import update_all_supplier_scores
 
     db = SessionLocal()
@@ -1477,6 +1595,15 @@ def _run_supplier_scoring() -> None:
         orgs = db.query(Organization).filter(Organization.is_active == True).all()
         for org in orgs:
             try:
+                # Guardar scores anteriores para detectar cambios
+                pre_scores = {
+                    s.id: s.residual_risk_score
+                    for s in db.query(Supplier).filter(
+                        Supplier.organization_id == org.id,
+                        Supplier.residual_risk_score.isnot(None),
+                    ).all()
+                }
+
                 stats = update_all_supplier_scores(db, org.id)
                 if stats["updated"] > 0:
                     logger.info(
@@ -1484,6 +1611,43 @@ def _run_supplier_scoring() -> None:
                         org.id, stats["updated"],
                         stats["high_risk"], stats["medium_risk"], stats["low_risk"]
                     )
+
+                # Propagar cambios significativos a riesgos TPRM vinculados
+                changed_suppliers = db.query(Supplier).filter(
+                    Supplier.organization_id == org.id,
+                    Supplier.residual_risk_score.isnot(None),
+                    Supplier.id.in_(pre_scores.keys()),
+                ).all()
+
+                risk_updates = 0
+                from app.routers.risks import _recalc
+                for supplier in changed_suppliers:
+                    prev = pre_scores.get(supplier.id) or 0
+                    new_score = supplier.residual_risk_score or 0
+                    if abs(new_score - prev) < 10:
+                        continue  # cambio no significativo
+                    new_lik = _supplier_score_to_likelihood(new_score)
+                    tprm_risks = db.query(Risk).filter(
+                        Risk.supplier_id == supplier.id,
+                        Risk.organization_id == org.id,
+                        Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+                    ).all()
+                    for r in tprm_risks:
+                        if r.inherent_likelihood != new_lik:
+                            r.inherent_likelihood = new_lik
+                            r.likelihood_adjusted_reason = (
+                                f"Score TPRM actualizado: {supplier.name} "
+                                f"({prev}→{new_score})"
+                            )
+                            _recalc(db, r)
+                            risk_updates += 1
+                if risk_updates:
+                    db.commit()
+                    logger.info(
+                        "Supplier scoring→risk propagation org=%d: %d riesgos actualizados",
+                        org.id, risk_updates,
+                    )
+
             except Exception as exc:
                 logger.exception("Error en supplier scoring org %d: %s", org.id, exc)
     except Exception as exc:
@@ -1510,8 +1674,12 @@ def _run_cisa_kev_sync() -> None:
             return
         logger.info("CISA KEV: %d vulnerabilidades descargadas", len(vulnerabilities))
 
+        from app.models import Risk, RiskStatus
+        from app.routers.risks import _recalc
+
         orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
         created_count = 0
+        updated_count = 0
         for org in orgs:
             assets = db.query(Asset).filter(
                 Asset.organization_id == org.id,
@@ -1528,6 +1696,7 @@ def _run_cisa_kev_sync() -> None:
                     vendor = vuln.get("vendorProject", "").lower()
                     if any(tag in product or tag in vendor for tag in tags if len(tag) > 3):
                         cve_id = vuln.get("cveID", "UNKNOWN")
+                        # Crear nuevo riesgo si no existe
                         risk = auto_generate_risk_from_cve(
                             db, asset.id, cve_id,
                             affected_software=f"{vuln.get('vendorProject','')} {vuln.get('product','')}".strip(),
@@ -1536,8 +1705,29 @@ def _run_cisa_kev_sync() -> None:
                         )
                         if risk:
                             created_count += 1
-        if created_count:
-            logger.info("CISA KEV: %d nuevos riesgos generados", created_count)
+
+                        # Actualizar riesgos existentes vinculados al mismo activo
+                        existing_risks = db.query(Risk).filter(
+                            Risk.asset_id == asset.id,
+                            Risk.organization_id == org.id,
+                            Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+                        ).all()
+                        for r in existing_risks:
+                            new_lik = max(3, r.inherent_likelihood or 0)
+                            if r.inherent_likelihood != new_lik:
+                                r.inherent_likelihood = new_lik
+                                r.likelihood_adjusted_reason = (
+                                    f"CISA KEV: explotacion activa confirmada — {cve_id}"
+                                )
+                                _recalc(db, r)
+                                updated_count += 1
+
+        if created_count or updated_count:
+            db.commit()
+            logger.info(
+                "CISA KEV: %d nuevos riesgos, %d riesgos existentes actualizados",
+                created_count, updated_count,
+            )
     except Exception as exc:
         logger.exception("Error en CISA KEV sync: %s", exc)
     finally:
@@ -1828,10 +2018,16 @@ def _run_compliance_auto_sync() -> None:
 
 
 def _run_bcp_test_overdue() -> None:
-    """Alerta sobre procesos BCP críticos sin test de continuidad en >12 meses."""
-    from app.models import BusinessProcess, User, UserRole
+    """Alerta sobre procesos BCP criticos sin test de continuidad en >12 meses.
+
+    Ademas incrementa inherent_likelihood de riesgos de disponibilidad vinculados
+    a los activos cubiertos por esos procesos (ISO 22301 cl. 8.5 / ISO 27005).
+    """
+    from app.models import BusinessProcess, Risk, RiskStatus, User, UserRole
     from app.database import SessionLocal
     from app.services import email_service
+    from app.routers.risks import _recalc
+
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
@@ -1848,30 +2044,63 @@ def _run_bcp_test_overdue() -> None:
             )
             if stale:
                 by_org.setdefault(p.organization_id, []).append(p)
+
         for org_id, procs_list in by_org.items():
+            # Notificacion por email al admin
             cfg = email_service.get_settings_for_org(db, org_id)
-            if not cfg or not cfg.smtp_host:
+            if cfg and cfg.smtp_host:
+                admin = db.query(User).filter_by(
+                    organization_id=org_id, role=UserRole.ADMIN, is_active=True
+                ).first()
+                if admin:
+                    names = ", ".join(p.name for p in procs_list[:5])
+                    suffix = "..." if len(procs_list) > 5 else ""
+                    subject = "[RiskHub] Procesos BCM sin test de continuidad"
+                    body_html = (
+                        f"<p>Los siguientes <strong>{len(procs_list)}</strong> proceso(s) critico(s) "
+                        f"no tienen un test de continuidad en los ultimos 12 meses:</p>"
+                        f"<p>{names}{suffix}</p>"
+                        f"<p>ISO 22301 cl. 8.5 requiere ejercicios periodicos. "
+                        f"<a href='#/bcp'>Ir al modulo BCP</a></p>"
+                    )
+                    try:
+                        email_service.send_email(cfg, admin.email, subject,
+                                                  email_service._wrap_html(subject, body_html, ""))
+                    except Exception:
+                        pass
+
+            # Incrementar likelihood de riesgos de disponibilidad en activos cubiertos
+            asset_ids: set[int] = set()
+            for p in procs_list:
+                for asset in getattr(p, "assets", None) or []:
+                    asset_ids.add(asset.id)
+
+            if not asset_ids:
                 continue
-            admin = db.query(User).filter_by(
-                organization_id=org_id, role=UserRole.ADMIN, is_active=True
-            ).first()
-            if not admin:
-                continue
-            names = ", ".join(p.name for p in procs_list[:5])
-            suffix = "..." if len(procs_list) > 5 else ""
-            subject = "[RiskHub] Procesos BCM sin test de continuidad"
-            body_html = (
-                f"<p>Los siguientes <strong>{len(procs_list)}</strong> proceso(s) critico(s) "
-                f"no tienen un test de continuidad en los ultimos 12 meses:</p>"
-                f"<p>{names}{suffix}</p>"
-                f"<p>ISO 22301 cl. 8.5 requiere ejercicios periodicos. "
-                f"<a href='#/bcp'>Ir al modulo BCP</a></p>"
-            )
-            try:
-                email_service.send_email(cfg, admin.email, subject,
-                                         email_service._wrap_html(subject, body_html, ""))
-            except Exception:
-                pass
+
+            availability_risks = db.query(Risk).filter(
+                Risk.asset_id.in_(asset_ids),
+                Risk.organization_id == org_id,
+                Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+                Risk.inherent_likelihood < 4,
+            ).all()
+
+            risk_updates = 0
+            for r in availability_risks:
+                r.inherent_likelihood = min(4, (r.inherent_likelihood or 0) + 1)
+                r.likelihood_adjusted_reason = (
+                    "BCP/BCM sin test >12m — mayor exposicion a interrupcion (ISO 22301)"
+                )
+                _recalc(db, r)
+                risk_updates += 1
+
+            if risk_updates:
+                db.commit()
+                logger.info(
+                    "BCP overdue→risk propagation org=%d: %d riesgos de disponibilidad actualizados",
+                    org_id, risk_updates,
+                )
+
     except Exception as exc:
         logger.exception("bcp_test_overdue error: %s", exc)
     finally:
@@ -2572,6 +2801,22 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Auto-liberacion de documentos en edicion (4h)",
         replace_existing=True,
         misfire_grace_time=300,
+    )
+    _scheduler.add_job(
+        func=_run_risk_snapshots,
+        trigger=CronTrigger(day=1, hour=2),  # primer dia del mes a las 2h UTC
+        id="risk_snapshots",
+        name="Snapshot mensual de niveles de riesgo",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_kri_evaluation,
+        trigger=IntervalTrigger(hours=6),
+        id="kri_evaluation",
+        name="Evaluacion periodica de KRIs (cada 6h)",
+        replace_existing=True,
+        misfire_grace_time=1800,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

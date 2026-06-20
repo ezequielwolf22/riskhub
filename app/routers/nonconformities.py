@@ -6,12 +6,33 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import NCStatus, NonConformity, User
+from app.models import NCStatus, NCSeverity, NonConformity, User
 from app.schemas import NonConformityIn, NonConformityOut, NonConformityUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/nonconformities", tags=["nonconformities"])
+
+
+def _apply_nc_control_penalty(db: Session, control_id: int, org_id: int,
+                               penalty: Optional[float]) -> None:
+    """Aplica o elimina penalizacion de NC major en la implementacion del control.
+
+    penalty=0.4 cuando NC major se abre; penalty=None cuando la NC se cierra.
+    Dispara cascade recalc de todos los riesgos vinculados al control.
+    """
+    from app.models import ControlImplementation
+    from app.routers.controls import _trigger_linked_risks_recalc
+
+    ci = db.query(ControlImplementation).filter(
+        ControlImplementation.control_id == control_id,
+        ControlImplementation.organization_id == org_id,
+    ).first()
+    if not ci:
+        return
+    ci.nc_penalty_factor = penalty
+    db.flush()
+    _trigger_linked_risks_recalc(ci.id, org_id)
 
 
 def _next_code(db: Session, org_id: int) -> str:
@@ -84,6 +105,14 @@ def create_nc(body: NonConformityIn, db: Session = Depends(get_db),
     db.add(nc)
     db.commit()
     db.refresh(nc)
+    # NC major con control relacionado → penalizar contribution para recalculo de residual
+    if nc.severity == NCSeverity.MAJOR and nc.related_control_id:
+        try:
+            _apply_nc_control_penalty(db, nc.related_control_id, org_id, penalty=0.4)
+            db.commit()
+        except Exception as _exc:
+            import logging
+            logging.getLogger(__name__).warning("NC penalty apply failed: %s", _exc)
     # Auto-vincular riesgo relacionado si la NC menciona un control o clausula ISO (v1.7.7)
     try:
         if not nc.related_risk_id:
@@ -133,6 +162,7 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
         raise HTTPException(404, "No conformidad no encontrada")
     update_data = body.model_dump(exclude_none=True)
     # Si se cierra la NC, registrar fecha de cierre
+    old_severity = nc.severity
     closing = update_data.get("status") == NCStatus.CLOSED and not nc.closed_at
     if closing:
         update_data["closed_at"] = datetime.now(timezone.utc)
@@ -140,6 +170,26 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
         setattr(nc, field, value)
     db.commit()
     db.refresh(nc)
+
+    # NC cerrada → restaurar penalizacion del control (quitar factor)
+    if closing and nc.related_control_id:
+        try:
+            _apply_nc_control_penalty(db, nc.related_control_id, nc.organization_id, penalty=None)
+            db.commit()
+        except Exception as _exc:
+            import logging
+            logging.getLogger(__name__).warning("NC penalty restore failed: %s", _exc)
+
+    # NC cambia a major con control → aplicar penalizacion
+    new_severity = update_data.get("severity")
+    if (new_severity == NCSeverity.MAJOR and old_severity != NCSeverity.MAJOR
+            and nc.related_control_id and not closing):
+        try:
+            _apply_nc_control_penalty(db, nc.related_control_id, nc.organization_id, penalty=0.4)
+            db.commit()
+        except Exception as _exc:
+            import logging
+            logging.getLogger(__name__).warning("NC severity→major penalty failed: %s", _exc)
 
     # NC cerrada con control asociado → re-ejecutar CCM en background
     if closing and nc.related_control_id:

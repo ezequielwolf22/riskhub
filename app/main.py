@@ -25,6 +25,7 @@ from app.routers import (
     soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, tprm,
     vendor_assessments, vendor_issues, users, webhooks,
 )
+from app.routers import kris
 from app.routers.surveys import public_router as survey_public_router
 from app.routers.policy_approvals import router as policy_approvals_router, public_router as approvals_public_router
 from app.seed import init_db
@@ -167,6 +168,7 @@ app.include_router(suppliers.router)
 app.include_router(tprm.router)
 app.include_router(vendor_assessments.router)
 app.include_router(vendor_issues.router)
+app.include_router(kris.router)
 app.include_router(nonconformities.router)
 app.include_router(tasks.router)
 app.include_router(policies.router)

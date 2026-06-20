@@ -778,6 +778,13 @@ def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) ->
     total_tests = len(results)
     paginated_results = results[offset:offset+limit]
 
+    # Escribir ccm_last_status en las implementaciones de control para retroalimentar el motor
+    try:
+        _sync_ccm_status_to_controls(db, {"results": results}, org_id)
+        db.commit()
+    except Exception as _exc:
+        logger.warning("CCM→control status sync failed: %s", _exc)
+
     return {
         "org_id": org_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -794,6 +801,41 @@ def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) ->
             f"{counts['FAIL']} FAIL, {counts['SKIP']} SKIP"
         ),
     }
+
+
+def _sync_ccm_status_to_controls(db: Session, ccm_results: dict, org_id: int) -> None:
+    """Escribe el estado del ultimo test CCM en las implementaciones de control.
+
+    Permite al motor de riesgos penalizar controles que fallan en CCM (factor 0.6).
+    Solo actualiza CIs cuyo control_code coincide exactamente con el resultado del test.
+    Dispara cascade recalc de riesgos si el estado cambia a FAIL.
+    """
+    from app.models import Control, ControlImplementation
+    from app.routers.controls import _trigger_linked_risks_recalc
+
+    now = datetime.now(timezone.utc)
+    for result in ccm_results.get("results", []):
+        control_code = (result.get("control_code") or "").strip()
+        status = result.get("status")
+        if not control_code or control_code in ("?", "") or status not in ("PASS", "FAIL", "WARNING"):
+            continue
+
+        control = db.query(Control).filter(Control.code == control_code).first()
+        if not control:
+            continue
+
+        impls = db.query(ControlImplementation).filter(
+            ControlImplementation.control_id == control.id,
+            ControlImplementation.organization_id == org_id,
+        ).all()
+
+        for ci in impls:
+            prev_status = ci.ccm_last_status
+            ci.ccm_last_status = status
+            ci.ccm_tested_at = now
+            if status == "FAIL" and prev_status != "FAIL":
+                # Control degradado por test FAIL → recalcular riesgos vinculados
+                _trigger_linked_risks_recalc(ci.id, org_id)
 
 
 def _sync_passed_tests_to_compliance(db: Session, ccm_results: dict, org_id: int) -> None:
