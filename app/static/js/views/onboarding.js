@@ -816,26 +816,11 @@ const ViewOnboarding = (() => {
     if (_importResult) { _renderStep4Summary(body); return; }
     if (_result) { _renderStep4Proposal(body); return; }
 
-    const hasKey = !!(_cfg && _cfg.has_api_key);
     body.innerHTML = `
       ${_stepTitle('Analisis y propuesta de la IA',
         'El agente analizara tus respuestas segun ISO 27005 y MAGERIT v3 y propondra activos, riesgos y controles. Suele tardar entre 30 y 60 segundos.')}
-      ${!hasKey ? `
-        <div class="notice notice-warn" style="margin-bottom:14px;">
-          No hay API key de Anthropic configurada. Puedes introducirla ahora para lanzar el analisis,
-          o saltar este paso y configurarla en el paso 5.
-          <div class="wizard-inline-key">
-            <label for="wz-pre-apikey">API Key de Anthropic</label>
-            <div class="wizard-custom-ctrl-row">
-              <input type="password" id="wz-pre-apikey" placeholder="sk-ant-api03-..." autocomplete="new-password">
-              <button type="button" class="btn" id="wz-pre-apikey-save">Guardar clave</button>
-            </div>
-            <div class="wizard-field-error" id="wz-err-pre-apikey" role="alert"></div>
-          </div>
-        </div>` : ''}
       <div id="wz-analyze-zone" class="wizard-analyze-zone">
-        <button type="button" class="btn btn-primary wizard-analyze-btn" id="wz-launch"
-                ${!hasKey ? 'disabled' : ''}>
+        <button type="button" class="btn btn-primary wizard-analyze-btn" id="wz-launch">
           Lanzar analisis IA
         </button>
         <p class="wizard-muted">Tambien puedes pulsar &ldquo;Siguiente&rdquo; para saltar el analisis y hacerlo mas tarde desde la seccion Agente IA.</p>
@@ -844,20 +829,6 @@ const ViewOnboarding = (() => {
 
     const launch = document.getElementById('wz-launch');
     if (launch) launch.onclick = _launchAnalysis;
-    const saveKey = document.getElementById('wz-pre-apikey-save');
-    if (saveKey) saveKey.onclick = async () => {
-      const key = document.getElementById('wz-pre-apikey').value.trim();
-      if (!key) { _fieldError('pre-apikey', 'Introduce la API key.'); return; }
-      saveKey.disabled = true; saveKey.textContent = 'Guardando...';
-      try {
-        _cfg = { ..._cfg, ...await Api.aiConfig.update({ api_key: key }) };
-        UI.toast('API key guardada', 'success');
-        _renderStep4(document.getElementById('wz-body'));
-      } catch (e) {
-        _fieldError('pre-apikey', 'No se pudo guardar: ' + e.message);
-        saveKey.disabled = false; saveKey.textContent = 'Guardar clave';
-      }
-    };
     _renderNav({ nextLabel: 'Omitir y continuar' });
   }
 
