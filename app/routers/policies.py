@@ -204,6 +204,114 @@ def new_policy_version(policy_id: int, db: Session = Depends(get_db),
     return new_p
 
 
+@router.get("/{policy_id}/versions")
+def get_policy_versions(policy_id: int, db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """Retorna la cadena de versiones de una politica (anterior a la actual inclusive)."""
+    p = db.query(Policy).filter(Policy.id == policy_id).first()
+    if not p or not check_org_access(p.organization_id, current_user):
+        raise HTTPException(404, "Politica no encontrada")
+
+    chain = []
+    visited = set()
+    node = p
+    while node and node.id not in visited:
+        visited.add(node.id)
+        chain.append({
+            "id": node.id,
+            "code": node.code,
+            "title": node.title,
+            "version": node.version,
+            "status": str(node.status),
+            "approved_at": node.approved_at.isoformat() if node.approved_at else None,
+            "created_at": node.created_at.isoformat() if node.created_at else None,
+            "approved_by": node.approved_by.email if node.approved_by else None,
+            "is_current": node.id == p.id,
+        })
+        if node.previous_version_id:
+            node = db.query(Policy).filter(Policy.id == node.previous_version_id).first()
+        else:
+            node = None
+
+    return chain
+
+
+@router.get("/{policy_id}/hierarchy")
+def get_policy_hierarchy(policy_id: int, db: Session = Depends(get_db),
+                         current_user: User = Depends(get_current_user)):
+    """Retorna los documentos padre (breadcrumb) y los documentos hijo de una politica."""
+    p = db.query(Policy).filter(Policy.id == policy_id).first()
+    if not p or not check_org_access(p.organization_id, current_user):
+        raise HTTPException(404, "Politica no encontrada")
+
+    def _pol_brief(pol):
+        return {
+            "id": pol.id, "code": pol.code, "title": pol.title,
+            "version": pol.version, "status": str(pol.status),
+            "document_level": pol.document_level or 1,
+        }
+
+    # Cadena de padres
+    parents = []
+    node = p
+    visited = set()
+    while node.parent_policy_id and node.parent_policy_id not in visited:
+        visited.add(node.parent_policy_id)
+        parent = db.query(Policy).filter(Policy.id == node.parent_policy_id).first()
+        if not parent:
+            break
+        parents.insert(0, _pol_brief(parent))
+        node = parent
+
+    # Hijos directos
+    children = db.query(Policy).filter(Policy.parent_policy_id == policy_id).all()
+    children_brief = [_pol_brief(c) for c in children]
+
+    return {
+        "current": _pol_brief(p),
+        "parents": parents,
+        "children": children_brief,
+    }
+
+
+@router.post("/{policy_id}/checkout")
+def checkout_policy(policy_id: int, db: Session = Depends(get_db),
+                    current_user: User = Depends(require_analyst)):
+    """Bloquea la politica para edicion exclusiva. Auto-liberacion tras 4h."""
+    from datetime import timedelta
+    p = db.query(Policy).filter(Policy.id == policy_id).first()
+    if not p or not check_org_access(p.organization_id, current_user):
+        raise HTTPException(404, "Politica no encontrada")
+
+    now = datetime.now(timezone.utc)
+    if p.checked_out_by_id and p.checked_out_by_id != current_user.id:
+        # Comprobar si el checkout ha expirado (4h)
+        checked_at = p.checked_out_at
+        if checked_at:
+            if checked_at.tzinfo is None:
+                checked_at = checked_at.replace(tzinfo=timezone.utc)
+            if (now - checked_at).total_seconds() < 4 * 3600:
+                user = db.query(User).filter(User.id == p.checked_out_by_id).first()
+                raise HTTPException(409, f"Documento en edicion por {user.email if user else 'otro usuario'}")
+
+    p.checked_out_by_id = current_user.id
+    p.checked_out_at = now
+    db.commit()
+    return {"checked_out_by": current_user.email, "checked_out_at": now.isoformat()}
+
+
+@router.post("/{policy_id}/checkin", status_code=204)
+def checkin_policy(policy_id: int, db: Session = Depends(get_db),
+                   current_user: User = Depends(require_analyst)):
+    """Libera el bloqueo de edicion."""
+    p = db.query(Policy).filter(Policy.id == policy_id).first()
+    if not p or not check_org_access(p.organization_id, current_user):
+        raise HTTPException(404, "Politica no encontrada")
+    p.checked_out_by_id = None
+    p.checked_out_at = None
+    db.commit()
+
+
 @router.delete("/{policy_id}", status_code=204)
 def delete_policy(policy_id: int, db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):

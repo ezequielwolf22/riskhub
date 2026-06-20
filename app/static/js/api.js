@@ -283,11 +283,20 @@ const Api = {
     del: (id) => Api.del('/api/policies/' + id),
     summary: () => Api.get('/api/policies/stats/summary'),
     newVersion: (id) => Api.post('/api/policies/' + id + '/new-version', {}),
+    versions: (id) => Api.get('/api/policies/' + id + '/versions'),
+    hierarchy: (id) => Api.get('/api/policies/' + id + '/hierarchy'),
+    checkout: (id) => Api.post('/api/policies/' + id + '/checkout', {}),
+    checkin: (id) => Api.post('/api/policies/' + id + '/checkin', {}),
     aiExtract: (file) => {
       const fd = new FormData();
       fd.append('file', file);
       return Api.req('/api/policies/ai-extract', { method: 'POST', body: fd });
     },
+  },
+  approvals: {
+    create: (policyId, d) => Api.post('/api/policy-approvals/' + policyId + '/requests', d),
+    list: (policyId) => Api.get('/api/policy-approvals/' + policyId + '/requests'),
+    cancel: (policyId, reqId) => Api.del('/api/policy-approvals/' + policyId + '/requests/' + reqId),
   },
   audits: {
     list: (q) => Api.get('/api/audits/', q),

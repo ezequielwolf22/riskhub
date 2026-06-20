@@ -533,6 +533,9 @@ def _migrate_columns() -> None:
         ("ALTER TABLE policies ADD COLUMN document_level INTEGER DEFAULT 1", "policies", "document_level"),
         ("ALTER TABLE policies ADD COLUMN parent_policy_id INTEGER REFERENCES policies(id)", "policies", "parent_policy_id"),
         ("ALTER TABLE policies ADD COLUMN intended_controls JSON", "policies", "intended_controls"),
+        # v5.1 — Checkout para edicion concurrente + rondas de aprobacion
+        ("ALTER TABLE policies ADD COLUMN checked_out_by_id INTEGER REFERENCES users(id)", "policies", "checked_out_by_id"),
+        ("ALTER TABLE policies ADD COLUMN checked_out_at DATETIME", "policies", "checked_out_at"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

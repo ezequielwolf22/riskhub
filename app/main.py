@@ -26,6 +26,7 @@ from app.routers import (
     vendor_assessments, vendor_issues, users, webhooks,
 )
 from app.routers.surveys import public_router as survey_public_router
+from app.routers.policy_approvals import router as policy_approvals_router, public_router as approvals_public_router
 from app.seed import init_db
 from app.services import scheduler as sched
 
@@ -209,6 +210,8 @@ app.include_router(bcp.router)
 app.include_router(regwatch.router)
 app.include_router(surveys.router)
 app.include_router(survey_public_router)
+app.include_router(policy_approvals_router)
+app.include_router(approvals_public_router)
 
 
 class RevalidateStaticFiles(StaticFiles):

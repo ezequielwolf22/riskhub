@@ -209,7 +209,7 @@ const ViewIsmsDocuments = (() => {
       try {
         const extracted = await Api.policies.aiExtract(file);
         UI.toast('Extraccion completada. Revisa los campos.', 'success');
-        _openForm(null, extracted);
+        _openFormEnhanced(null, extracted);
       } catch (e) {
         UI.toast('Error al extraer: ' + e.message, 'error');
       } finally {
@@ -217,7 +217,7 @@ const ViewIsmsDocuments = (() => {
       }
     };
 
-    document.getElementById('btn-isms-new-pol').onclick = () => _openForm(null);
+    document.getElementById('btn-isms-new-pol').onclick = () => _openFormEnhanced(null);
 
     try { _users = await Api.listUsers(); } catch (_) { _users = []; }
     await _load();
@@ -809,7 +809,7 @@ const ViewIsmsDocuments = (() => {
     if (policy.status === 'approved' || policy.status === 'published') {
       _openVersioningModal(policy);
     } else {
-      _openForm(policy);
+      _openFormEnhanced(policy);
     }
   }
 
@@ -831,7 +831,7 @@ const ViewIsmsDocuments = (() => {
         const draft = await Api.policies.newVersion(policy.id);
         UI.toast(`Version ${draft.version} creada en borrador`, 'success');
         UI.closeModal();
-        _openForm(draft);
+        _openFormEnhanced(draft);
         await _load(); _renderRoot();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
@@ -1383,6 +1383,484 @@ const ViewIsmsDocuments = (() => {
     } catch (e) { UI.toast('Error guardando: ' + e.message, 'error'); }
   }
 
+  // ============================================================
+  // FASE 1 — Flujo de aprobacion por email
+  // ============================================================
+
+  let _smtpConfigured = null;
+
+  async function _checkSmtp() {
+    if (_smtpConfigured !== null) return _smtpConfigured;
+    try {
+      const cfg = await Api.alerts.getSettings();
+      _smtpConfigured = !!(cfg && cfg.smtp_host);
+    } catch (_) { _smtpConfigured = false; }
+    return _smtpConfigured;
+  }
+
+  async function _openApprovalForm(policy) {
+    const smtpOk = await _checkSmtp();
+    const smtpBanner = smtpOk ? '' : `
+      <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;
+                  padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e;">
+        <strong>SMTP no configurado.</strong> Configura el correo saliente en
+        <a href="#/admin-hub/integrations" onclick="UI.closeModal()"
+           style="color:#59008D;font-weight:600;">Configuracion &rarr; Integraciones</a>
+        para poder enviar los emails de solicitud.
+      </div>`;
+
+    UI.openModal(`
+      <div style="min-width:520px;max-width:600px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <h3 style="margin:0;font-size:16px;color:var(--brand-purple);">Solicitar aprobacion</h3>
+          <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+          Documento: <strong>${UI.esc(policy.code)} — ${UI.esc(policy.title)}</strong> (v${UI.esc(policy.version || '1.0')})
+        </p>
+        ${smtpBanner}
+
+        <div style="margin-bottom:14px;">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Modo de aprobacion</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;
+                          padding:8px 14px;border:2px solid var(--border);border-radius:8px;flex:1;
+                          transition:border-color .15s;" id="mode-parallel-label">
+              <input type="radio" name="appr-mode" value="parallel" checked
+                     onchange="ViewIsmsDocuments._onApprModeChange(this)">
+              <div>
+                <div style="font-weight:600;">Paralelo</div>
+                <div style="font-size:11px;color:var(--text-muted);">Todos reciben el email a la vez</div>
+              </div>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;
+                          padding:8px 14px;border:2px solid var(--border);border-radius:8px;flex:1;
+                          transition:border-color .15s;" id="mode-sequential-label">
+              <input type="radio" name="appr-mode" value="sequential"
+                     onchange="ViewIsmsDocuments._onApprModeChange(this)">
+              <div>
+                <div style="font-weight:600;">Secuencial</div>
+                <div style="font-size:11px;color:var(--text-muted);">Cada uno solo recibe el email cuando el anterior aprueba</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Aprobadores</label>
+          <div id="approver-list"></div>
+          <button onclick="ViewIsmsDocuments._addApproverRow()"
+                  class="btn btn-ghost btn-sm" style="margin-top:6px;">+ Agregar aprobador</button>
+          <div id="order-hint" style="display:none;font-size:11px;color:var(--text-muted);
+               margin-top:8px;padding:6px 10px;background:rgba(89,0,141,.05);border-radius:5px;">
+            En modo secuencial, usa las flechas para definir el orden de aprobacion.
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;
+                    border-top:1px solid var(--border);">
+          <button onclick="UI.closeModal()" class="btn">Cancelar</button>
+          <button onclick="ViewIsmsDocuments._submitApproval(${policy.id})"
+                  class="btn btn-primary" ${smtpOk ? '' : 'style="opacity:.5"'}>
+            Enviar solicitud
+          </button>
+        </div>
+      </div>`);
+
+    _addApproverRow();
+    _onApprModeChange(document.querySelector('[name=appr-mode]'));
+  }
+
+  function _addApproverRow() {
+    const list = document.getElementById('approver-list');
+    if (!list) return;
+    const idx = list.children.length + 1;
+    const row = document.createElement('div');
+    row.className = 'approver-row';
+    row.dataset.order = idx;
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;';
+    row.innerHTML = `
+      <div style="display:none;flex-direction:column;gap:1px;" class="order-arrows">
+        <button onclick="ViewIsmsDocuments._moveApprover(this,-1)"
+                style="border:1px solid var(--border);background:var(--bg-2);border-radius:3px;
+                       width:22px;height:18px;cursor:pointer;font-size:10px;line-height:1;">&#9650;</button>
+        <button onclick="ViewIsmsDocuments._moveApprover(this,1)"
+                style="border:1px solid var(--border);background:var(--bg-2);border-radius:3px;
+                       width:22px;height:18px;cursor:pointer;font-size:10px;line-height:1;">&#9660;</button>
+      </div>
+      <span class="order-num" style="display:none;font-size:12px;font-weight:700;
+            color:var(--brand-purple);min-width:18px;text-align:center;">${idx}</span>
+      <input class="input appr-email" placeholder="email@empresa.com" style="flex:2;">
+      <input class="input appr-name" placeholder="Nombre (opcional)" style="flex:1.5;">
+      <button onclick="this.closest('.approver-row').remove();ViewIsmsDocuments._reorderApprovers()"
+              style="border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:16px;
+                     padding:0 4px;">&#10005;</button>`;
+    list.appendChild(row);
+  }
+
+  function _onApprModeChange(radio) {
+    const mode = document.querySelector('[name=appr-mode]:checked')?.value || 'parallel';
+    document.getElementById('order-hint').style.display = mode === 'sequential' ? '' : 'none';
+    document.querySelectorAll('.order-arrows').forEach(el => {
+      el.style.display = mode === 'sequential' ? 'flex' : 'none';
+    });
+    document.querySelectorAll('.order-num').forEach(el => {
+      el.style.display = mode === 'sequential' ? '' : 'none';
+    });
+    // Highlight selected mode label
+    const pl = document.getElementById('mode-parallel-label');
+    const sl = document.getElementById('mode-sequential-label');
+    if (pl) pl.style.borderColor = mode === 'parallel' ? 'var(--brand-purple)' : 'var(--border)';
+    if (sl) sl.style.borderColor = mode === 'sequential' ? 'var(--brand-purple)' : 'var(--border)';
+  }
+
+  function _moveApprover(btn, dir) {
+    const row = btn.closest('.approver-row');
+    const list = row.parentElement;
+    if (dir === -1 && row.previousElementSibling) {
+      list.insertBefore(row, row.previousElementSibling);
+    } else if (dir === 1 && row.nextElementSibling) {
+      list.insertBefore(row.nextElementSibling, row);
+    }
+    _reorderApprovers();
+  }
+
+  function _reorderApprovers() {
+    document.querySelectorAll('.approver-row').forEach((row, i) => {
+      row.dataset.order = i + 1;
+      const num = row.querySelector('.order-num');
+      if (num) num.textContent = i + 1;
+    });
+  }
+
+  async function _submitApproval(policyId) {
+    const mode = document.querySelector('[name=appr-mode]:checked')?.value || 'parallel';
+    const rows = document.querySelectorAll('.approver-row');
+    const approvers = [];
+    let valid = true;
+    rows.forEach((row, i) => {
+      const email = row.querySelector('.appr-email')?.value.trim();
+      const name = row.querySelector('.appr-name')?.value.trim();
+      if (!email || !email.includes('@')) { valid = false; return; }
+      approvers.push({ email, name: name || null, order_index: i + 1 });
+    });
+    if (!valid || !approvers.length) {
+      UI.toast('Ingresa al menos un email valido', 'error'); return;
+    }
+    try {
+      await Api.approvals.create(policyId, { approvers, mode });
+      UI.closeModal();
+      UI.toast('Solicitud de aprobacion enviada', 'success');
+      await _load(); _renderRoot();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  }
+
+  // ============================================================
+  // FASE 1 — Log de aprobaciones
+  // ============================================================
+
+  async function _showApprovalLog(policy) {
+    let reqs = [];
+    try { reqs = await Api.approvals.list(policy.id); } catch (_) {}
+
+    if (!reqs.length) {
+      UI.toast('No hay rondas de aprobacion para este documento', 'info'); return;
+    }
+
+    const STATUS_ICON = { pending: '⏳', approved: '✅', rejected: '❌', waiting: '⌛', cancelled: '🚫' };
+    const STATUS_COLOR = {
+      pending: 'var(--brand-orange)', approved: 'var(--risk-low)',
+      rejected: 'var(--risk-critical)', waiting: 'var(--text-muted)', cancelled: '#aaa',
+    };
+
+    const reqHtml = reqs.map(r => {
+      const badge = r.status === 'approved' ? '#22c55e' : r.status === 'rejected' ? '#ef4444'
+                  : r.status === 'cancelled' ? '#9ca3af' : 'var(--brand-orange)';
+      const modeLabel = r.mode === 'sequential' ? 'Secuencial' : 'Paralelo';
+      const approversHtml = r.approvals.map(a => `
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;
+                    border-bottom:1px solid var(--border);">
+          <span style="font-size:16px;flex-shrink:0;">${STATUS_ICON[a.status] || '?'}</span>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:500;">${UI.esc(a.email)}</div>
+            ${a.name ? `<div style="font-size:11px;color:var(--text-muted);">${UI.esc(a.name)}</div>` : ''}
+            ${r.mode === 'sequential' ? `<div style="font-size:11px;color:var(--brand-purple);">Orden ${a.order_index}</div>` : ''}
+          </div>
+          <div style="text-align:right;font-size:11px;color:var(--text-muted);">
+            ${a.responded_at ? `Respondio: ${new Date(a.responded_at).toLocaleString('es-ES')}` :
+              a.sent_at ? `Email enviado: ${new Date(a.sent_at).toLocaleString('es-ES')}` : ''}
+            ${a.response_notes ? `<div style="color:var(--text);margin-top:3px;font-style:italic;">"${UI.esc(a.response_notes)}"</div>` : ''}
+            ${a.ip_address ? `<div style="color:#ccc;">IP: ${UI.esc(a.ip_address)}</div>` : ''}
+          </div>
+        </div>`).join('');
+
+      return `
+        <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-2);">
+            <span style="padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;
+                         background:${badge}20;color:${badge};">
+              ${r.status.toUpperCase()}
+            </span>
+            <span style="font-size:12px;font-weight:600;">${modeLabel}</span>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:auto;">
+              ${new Date(r.created_at).toLocaleString('es-ES')}
+            </span>
+            ${r.status === 'pending' ? `
+            <button onclick="ViewIsmsDocuments._cancelApproval(${policy.id},${r.id})"
+                    style="border:1px solid var(--risk-critical);background:none;cursor:pointer;
+                           font-size:11px;color:var(--risk-critical);border-radius:4px;padding:2px 7px;">
+              Cancelar
+            </button>` : ''}
+          </div>
+          <div style="padding:0 14px;">${approversHtml}</div>
+        </div>`;
+    }).join('');
+
+    UI.openModal(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Historial de aprobaciones</h3>
+        <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+        ${UI.esc(policy.code)} — ${UI.esc(policy.title)}
+      </p>
+      <div style="overflow-y:auto;max-height:60vh;">${reqHtml}</div>
+    `, { width: '640px' });
+  }
+
+  async function _cancelApproval(policyId, reqId) {
+    if (!confirm('Cancelar esta solicitud de aprobacion?')) return;
+    try {
+      await Api.approvals.cancel(policyId, reqId);
+      UI.toast('Solicitud cancelada', 'success');
+      await _load(); _renderRoot();
+      UI.closeModal();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  }
+
+  // ============================================================
+  // FASE 2 — Timeline de versiones
+  // ============================================================
+
+  async function _showVersionHistory(policy) {
+    let versions = [];
+    try { versions = await Api.policies.versions(policy.id); } catch (_) {}
+
+    if (!versions.length) {
+      UI.toast('No hay historial de versiones', 'info'); return;
+    }
+
+    const STATUS_COLOR = {
+      approved: '#22c55e', published: '#0891b2', draft: '#9ca3af',
+      review: 'var(--brand-orange)', obsolete: '#9ca3af',
+    };
+    const STATUS_LABEL = {
+      approved: 'Aprobada', published: 'Publicada', draft: 'Borrador',
+      review: 'En revision', obsolete: 'Obsoleta',
+    };
+
+    const timelineHtml = versions.map((v, i) => {
+      const color = STATUS_COLOR[v.status] || '#9ca3af';
+      const isFirst = i === 0;
+      return `
+        <div style="display:flex;gap:14px;margin-bottom:${isFirst ? '0' : '8px'};">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+            <div style="width:14px;height:14px;border-radius:50%;background:${color};
+                        border:2px solid ${color};flex-shrink:0;margin-top:3px;
+                        ${v.is_current ? 'box-shadow:0 0 0 3px ' + color + '30;' : ''}"></div>
+            ${i < versions.length - 1 ? `<div style="width:2px;flex:1;background:var(--border);margin:4px 0;min-height:24px;"></div>` : ''}
+          </div>
+          <div style="flex:1;padding-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;">
+              <span style="font-size:13px;font-weight:700;">v${UI.esc(v.version)}</span>
+              <span style="padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;
+                           background:${color}20;color:${color};">
+                ${STATUS_LABEL[v.status] || v.status}
+              </span>
+              ${v.is_current ? `<span style="font-size:10px;font-weight:700;color:var(--brand-purple);
+                background:var(--brand-purple-4);padding:1px 6px;border-radius:3px;">Actual</span>` : ''}
+            </div>
+            ${v.approved_at ? `<div style="font-size:11px;color:var(--text-muted);">
+              Aprobado el ${new Date(v.approved_at).toLocaleDateString('es-ES', { day:'2-digit', month:'long', year:'numeric' })}
+              ${v.approved_by ? ` por ${UI.esc(v.approved_by)}` : ''}</div>` :
+              v.created_at ? `<div style="font-size:11px;color:var(--text-muted);">
+              Creado el ${new Date(v.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'long', year:'numeric' })}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    UI.openModal(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Historial de versiones</h3>
+        <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:18px;">
+        ${UI.esc(policy.code)} — ${UI.esc(policy.title)}
+      </p>
+      <div style="overflow-y:auto;max-height:60vh;">${timelineHtml}</div>
+    `, { width: '440px' });
+  }
+
+  // ============================================================
+  // FASE 3 — Jerarquia documental
+  // ============================================================
+
+  async function _showHierarchy(policy) {
+    let hier = null;
+    try { hier = await Api.policies.hierarchy(policy.id); } catch (_) {}
+
+    if (!hier) {
+      UI.toast('Error cargando jerarquia', 'error'); return;
+    }
+
+    const DOC_LEVEL_COLOR_MAP = {
+      1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a',
+    };
+    const DOC_LEVEL_NAME = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion' };
+
+    function _hierBadge(level) {
+      const c = DOC_LEVEL_COLOR_MAP[level] || '#9ca3af';
+      return `<span style="padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;
+                            background:${c}18;color:${c};">
+                Niv.${level} ${DOC_LEVEL_NAME[level] || ''}
+              </span>`;
+    }
+
+    // Breadcrumb de padres
+    const breadcrumb = hier.parents.length
+      ? hier.parents.map(p => `
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;">
+            ${_hierBadge(p.document_level)}
+            <a href="#/compliance-hub/policies" onclick="UI.closeModal()"
+               style="color:var(--brand-purple);font-weight:500;">${UI.esc(p.code)}</a>
+            <span style="color:var(--text-muted);">${UI.esc(p.title)}</span>
+          </span>
+          <span style="color:var(--text-muted);margin:0 6px;">/</span>`).join('')
+      : `<span style="font-size:12px;color:var(--text-muted);">Sin documento padre (raiz)</span>`;
+
+    // Hijos
+    const childrenHtml = hier.children.length
+      ? hier.children.map(c => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;
+                      border:1px solid var(--border);border-radius:6px;margin-bottom:6px;">
+            ${_hierBadge(c.document_level)}
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:500;">${UI.esc(c.code)} — ${UI.esc(c.title)}</div>
+              <div style="font-size:11px;color:var(--text-muted);">v${UI.esc(c.version || '1.0')}</div>
+            </div>
+            <span style="font-size:11px;color:var(--text-muted);">${STATUS_LABELS[c.status] || c.status}</span>
+          </div>`).join('')
+      : `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px 0;">Sin documentos hijo</p>`;
+
+    UI.openModal(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Jerarquia documental</h3>
+        <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
+      </div>
+
+      <div style="background:var(--bg-2);border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                    letter-spacing:.5px;margin-bottom:6px;">Camino jerarquico</div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
+          ${breadcrumb}
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;">
+            ${_hierBadge(hier.current.document_level)}
+            <strong>${UI.esc(hier.current.code)}</strong>
+            <span>${UI.esc(hier.current.title)}</span>
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                    letter-spacing:.5px;margin-bottom:8px;">
+          Documentos dependientes (${hier.children.length})
+        </div>
+        <div style="overflow-y:auto;max-height:40vh;">${childrenHtml}</div>
+      </div>
+    `, { width: '560px' });
+  }
+
+  // ============================================================
+  // Actualizacion de _openForm para incluir botones de las 3 fases
+  // ============================================================
+
+  async function _openFormEnhanced(policy, extracted) {
+    // Checkout: intentar bloquear el documento para edicion
+    let checkoutInfo = null;
+    if (policy) {
+      try { checkoutInfo = await Api.policies.checkout(policy.id); }
+      catch (e) {
+        if (e.message && e.message.includes('edicion por')) {
+          UI.toast('Documento bloqueado: ' + e.message, 'error'); return;
+        }
+        // Si el checkout falla por otro motivo lo ignoramos
+      }
+    }
+
+    const isDraftOrReview = !policy || !['approved','published','obsolete'].includes(policy.status);
+    const isExisting = !!policy;
+
+    const extraActions = isExisting ? `
+      <button class="btn btn-ghost btn-sm" id="m-versions"
+              style="margin-right:auto;">Versiones</button>
+      <button class="btn btn-ghost btn-sm" id="m-hierarchy">Jerarquia</button>
+      ${isDraftOrReview ? `<button class="btn btn-ghost btn-sm" id="m-appr-log">Aprobaciones</button>
+      <button class="btn" id="m-request-appr"
+              style="background:var(--brand-orange);color:#fff;border:none;">
+        Solicitar aprobacion
+      </button>` : `<button class="btn btn-ghost btn-sm" id="m-appr-log">Aprobaciones</button>`}
+    ` : '';
+
+    UI.modal(
+      policy ? `Editar ${policy.code}` : 'Nuevo registro ISMS',
+      _formHtml(policy, extracted),
+      {
+        actions: `
+          ${extraActions}
+          <button class="btn" id="m-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="m-save">Guardar</button>`,
+      }
+    );
+
+    document.getElementById('m-cancel').onclick = async () => {
+      if (policy) { try { await Api.policies.checkin(policy.id); } catch (_) {} }
+      UI.closeModal();
+    };
+    document.getElementById('m-save').onclick = async () => {
+      await _save(policy);
+      if (policy) { try { await Api.policies.checkin(policy.id); } catch (_) {} }
+    };
+
+    if (isExisting) {
+      document.getElementById('m-versions').onclick = () => _showVersionHistory(policy);
+      document.getElementById('m-hierarchy').onclick = () => _showHierarchy(policy);
+      const apprLogBtn = document.getElementById('m-appr-log');
+      if (apprLogBtn) apprLogBtn.onclick = () => _showApprovalLog(policy);
+      const apprBtn = document.getElementById('m-request-appr');
+      if (apprBtn) apprBtn.onclick = () => { UI.closeModal(); _openApprovalForm(policy); };
+    }
+
+    const levelSel = document.getElementById('f-doc-level');
+    if (levelSel) _onLevelChange(levelSel);
+    if (policy && policy.source_document_id) _loadPolicyMaturity(policy.source_document_id);
+
+    // Mostrar indicador de checkout
+    if (checkoutInfo && policy) {
+      const modal = document.querySelector('.modal-body') || document.querySelector('[class*="modal"]');
+      if (modal) {
+        const lockBadge = document.createElement('div');
+        lockBadge.style.cssText = 'font-size:11px;color:var(--brand-orange);padding:4px 10px;' +
+          'background:rgba(214,82,0,.08);border-radius:4px;margin-bottom:8px;';
+        lockBadge.textContent = 'Documento bloqueado para edicion exclusiva por ti';
+        modal.prepend(lockBadge);
+      }
+    }
+  }
+
+  // _openFormEnhanced reemplaza a _openForm en los sitios de llamada
+  // dentro del modulo; _editPolicy y _openVersioningModal llaman a _openFormEnhanced
+
   // --- API publica ---
 
   return {
@@ -1394,5 +1872,12 @@ const ViewIsmsDocuments = (() => {
     _showMaturityModal, _showClauses,
     _generateWithAI, _onGenFileChange, _submitGenerate, _saveGenerated,
     _onLevelChange,
+    // Fase 1
+    _openApprovalForm, _addApproverRow, _onApprModeChange, _moveApprover,
+    _reorderApprovers, _submitApproval, _showApprovalLog, _cancelApproval,
+    // Fase 2
+    _showVersionHistory,
+    // Fase 3
+    _showHierarchy,
   };
 })();

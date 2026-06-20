@@ -1044,45 +1044,105 @@ const ViewRisks = {
       });
     }
 
-    // "Sugerir con IA" — reemplaza la seleccion con exactamente los controles que la IA indica
+    // "Sugerir con IA" — analisis por cadena de ataque y seleccion de controles
     const btnSuggest = document.getElementById('btn-suggest-controls');
     if (btnSuggest && id) {
       btnSuggest.addEventListener('click', async () => {
         btnSuggest.disabled = true;
-        btnSuggest.textContent = 'Analizando...';
+        btnSuggest.textContent = 'Analizando cadena de ataque...';
+        // Eliminar panel previo si existe
+        document.getElementById('suggest-ai-panel')?.remove();
         try {
           const result = await Api.post(`/api/risks/${id}/suggest-controls`, {});
           const sel = document.getElementById('f-impls');
-          if (!sel || !result.suggested_ids?.length) {
-            UI.toast('La IA no identifico controles especificos para este riesgo', 'info');
-            return;
-          }
-          const suggestedSet = new Set(result.suggested_ids);
-          // Mostrar SOLO los controles sugeridos, seleccionados, con "Ver todos" disponible
+          if (!sel) return;
+
+          const suggestedSet = new Set(result.suggested_ids || []);
           const suggestedControls = ViewRisks._impls.filter(c => suggestedSet.has(c.id));
-          sel.innerHTML = suggestedControls.map(c => {
-            const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
-            return `<option value="${c.id}" selected>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
-          }).join('');
-          sel.size = Math.max(3, Math.min(suggestedControls.length, 8));
-          // Actualizar badge
-          const lbl = sel.closest('.span2')?.querySelector('label span');
-          if (lbl) lbl.innerHTML = `IA: ${suggestedControls.length} de ${ViewRisks._impls.length} &nbsp;<a href="#" id="ctrl-show-all-link" style="color:var(--brand-purple);">Ver todos</a>`;
-          // Re-enlazar "Ver todos" porque se regenero el DOM
-          const newShowAll = document.getElementById('ctrl-show-all-link');
-          if (newShowAll) {
-            newShowAll.addEventListener('click', (e) => {
-              e.preventDefault();
-              const cur = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
-              sel.innerHTML = ViewRisks._impls.map(c => {
-                const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
-                return `<option value="${c.id}" ${cur.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
-              }).join('');
-              sel.size = Math.min(ViewRisks._impls.length, 9);
-              newShowAll.remove();
-            });
+
+          if (suggestedControls.length) {
+            sel.innerHTML = suggestedControls.map(c => {
+              const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
+              return `<option value="${c.id}" selected>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+            }).join('');
+            sel.size = Math.max(3, Math.min(suggestedControls.length, 8));
+            const lbl = sel.closest('.span2')?.querySelector('label span');
+            if (lbl) lbl.innerHTML = `IA: ${suggestedControls.length} de ${ViewRisks._impls.length} &nbsp;<a href="#" id="ctrl-show-all-link" style="color:var(--brand-purple);">Ver todos</a>`;
+            const newShowAll = document.getElementById('ctrl-show-all-link');
+            if (newShowAll) {
+              newShowAll.addEventListener('click', (e) => {
+                e.preventDefault();
+                const cur = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
+                sel.innerHTML = ViewRisks._impls.map(c => {
+                  const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
+                  return `<option value="${c.id}" ${cur.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+                }).join('');
+                sel.size = Math.min(ViewRisks._impls.length, 9);
+                newShowAll.remove();
+              });
+            }
+          } else {
+            UI.toast('La IA no identifico controles especificos para este riesgo', 'info');
           }
-          UI.toast(`${suggestedControls.length} controles asignados por IA. Puedes ajustar antes de guardar.`, 'success');
+
+          // Panel de razonamiento IA debajo del boton
+          const mappingByStep = {};
+          (result.control_to_step_mapping || []).forEach(m => {
+            if (!mappingByStep[m.attack_step]) mappingByStep[m.attack_step] = [];
+            mappingByStep[m.attack_step].push(m);
+          });
+
+          const missingHtml = (result.missing_controls || []).map(mc => {
+            const priColor = mc.priority === 'alta' ? 'var(--danger)' : mc.priority === 'media' ? 'var(--warning)' : 'var(--text-muted)';
+            return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border-light);">
+              <span style="font-size:10px;font-weight:700;color:${priColor};min-width:40px;margin-top:2px;">${UI.esc(mc.priority?.toUpperCase() || '?')}</span>
+              <div>
+                <span style="font-size:11px;font-weight:600;color:var(--text-main);">[${UI.esc(mc.iso27002_code||'')}] ${UI.esc(mc.name||'')}</span>
+                <div style="font-size:10px;color:var(--text-muted);">Cubre: ${UI.esc(mc.attack_step||'')}</div>
+              </div>
+            </div>`;
+          }).join('');
+
+          const stepsHtml = Object.entries(mappingByStep).map(([step, ctrls]) => {
+            const ctrlsHtml = ctrls.map(m => {
+              const typeColor = m.control_type === 'P' ? 'var(--success)' : m.control_type === 'D' ? 'var(--brand-orange)' : 'var(--brand-purple)';
+              const typeLabel = m.control_type === 'P' ? 'PREV' : m.control_type === 'D' ? 'DET' : 'CORR';
+              const ctrl = ViewRisks._impls.find(c => c.id === m.control_id);
+              const ctrlName = ctrl ? (ctrl.control?.code ? `[${ctrl.control.code}] ${ctrl.name}` : ctrl.name) : `ID:${m.control_id}`;
+              return `<div style="margin:3px 0 3px 8px;font-size:11px;">
+                <span style="display:inline-block;min-width:32px;font-size:9px;font-weight:700;color:${typeColor};border:1px solid ${typeColor};border-radius:3px;padding:0 3px;text-align:center;">${typeLabel}</span>
+                <span style="color:var(--text-main);margin-left:4px;">${UI.esc(ctrlName)}</span>
+                <div style="font-size:10px;color:var(--text-muted);margin-left:36px;">${UI.esc(m.why||'')}</div>
+              </div>`;
+            }).join('');
+            return `<div style="margin-bottom:8px;">
+              <div style="font-size:11px;font-weight:700;color:var(--brand-purple);padding:2px 0;">${UI.esc(step)}</div>
+              ${ctrlsHtml}
+            </div>`;
+          }).join('');
+
+          const panel = document.createElement('div');
+          panel.id = 'suggest-ai-panel';
+          panel.style.cssText = 'margin-top:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;';
+          panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-weight:700;color:var(--brand-purple);font-size:12px;">Razonamiento del agente IA</span>
+              <button onclick="document.getElementById('suggest-ai-panel').remove()" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:14px;padding:0;">&times;</button>
+            </div>
+            ${result.attack_chain_summary ? `<div style="background:var(--bg-alt);border-radius:6px;padding:8px;margin-bottom:10px;font-size:11px;color:var(--text-main);line-height:1.5;">${UI.esc(result.attack_chain_summary)}</div>` : ''}
+            ${stepsHtml ? `<div style="margin-bottom:10px;">
+              <div style="font-size:11px;font-weight:600;color:var(--text-main);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Cobertura por paso de ataque</div>
+              ${stepsHtml}
+            </div>` : ''}
+            ${result.rationale ? `<div style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border-light);padding-top:8px;">${UI.esc(result.rationale)}</div>` : ''}
+            ${missingHtml ? `<div style="margin-top:10px;border-top:1px solid var(--border-light);padding-top:8px;">
+              <div style="font-size:11px;font-weight:600;color:var(--danger);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Controles ausentes detectados</div>
+              ${missingHtml}
+            </div>` : ''}
+          `;
+          btnSuggest.insertAdjacentElement('afterend', panel);
+
+          if (suggestedControls.length) UI.toast(`${suggestedControls.length} controles asignados por IA. Puedes ajustar antes de guardar.`, 'success');
         } catch (e) {
           UI.toast('Error en sugerencia IA: ' + e.message, 'error');
         } finally {
@@ -1528,77 +1588,169 @@ const ViewRisks = {
       const data = await Api.post(`/api/risks/${riskId}/ai-explain`, {});
       const confColor = {'alta':'#166534','media':'#92400E','baja':'#991B1B'}[data.confidence] || '#374151';
       const confBg    = {'alta':'#F0FDF4','media':'#FEF3C7','baja':'#FEE2E2'}[data.confidence] || '#F9FAFB';
+
+      // Cadena de ataque
+      const attackHtml = (data.attack_chain || []).map((step, i) => {
+        const coverageColor = step.coverage_quality === 'alta' ? 'var(--success)'
+          : step.coverage_quality === 'media' ? 'var(--warning)' : 'var(--danger)';
+        const coverageLabel = step.coverage_quality === 'alta' ? 'Cubierto'
+          : step.coverage_quality === 'media' ? 'Parcial' : 'Sin cobertura';
+        const gapHtml = step.gap ? `<div style="margin-top:3px;font-size:10px;color:var(--danger);font-style:italic;">Brecha: ${UI.esc(step.gap)}</div>` : '';
+        const ctrlsHtml = (step.controls_covering || []).length
+          ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Controles: ${step.controls_covering.map(c => UI.esc(c)).join(', ')}</div>` : '';
+        return `<div style="display:flex;gap:10px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border-light);">
+          <div style="min-width:20px;display:flex;flex-direction:column;align-items:center;">
+            <div style="width:20px;height:20px;border-radius:50%;background:${coverageColor};display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700;flex-shrink:0;">${i+1}</div>
+            ${i < (data.attack_chain.length - 1) ? `<div style="width:2px;flex:1;background:var(--border-light);margin-top:3px;"></div>` : ''}
+          </div>
+          <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+              <span style="font-size:11px;font-weight:700;color:var(--text-main);">${UI.esc(step.step || '')} <span style="font-weight:400;color:var(--text-muted);">(${UI.esc(step.phase || '')})</span></span>
+              <span style="font-size:9px;font-weight:700;color:${coverageColor};border:1px solid ${coverageColor};border-radius:3px;padding:1px 5px;white-space:nowrap;margin-left:6px;">${coverageLabel}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-base);margin-top:2px;">${UI.esc(step.description || '')}</div>
+            ${step.vulnerability_exploited ? `<div style="font-size:10px;color:var(--warning);margin-top:2px;">Explota: ${UI.esc(step.vulnerability_exploited)}</div>` : ''}
+            ${ctrlsHtml}
+            ${gapHtml}
+          </div>
+        </div>`;
+      }).join('');
+
+      // Efectividad de controles
+      const ctrlEffHtml = (data.control_effectiveness || []).map(ce => {
+        const typeColor = ce.control_type === 'P' ? 'var(--success)' : ce.control_type === 'D' ? 'var(--brand-orange)' : 'var(--brand-purple)';
+        const typeLabel = ce.control_type === 'P' ? 'PREVENTIVO' : ce.control_type === 'D' ? 'DETECTIVO' : 'CORRECTIVO';
+        const adjDiff = (ce.adjusted_maturity || 0) < (ce.declared_maturity || 0);
+        return `<div style="padding:6px 0;border-bottom:1px solid var(--border-light);">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;font-weight:600;color:var(--text-main);">${UI.esc(ce.control_name || ce.control_code || '')}</span>
+            <span style="font-size:9px;font-weight:700;color:${typeColor};border:1px solid ${typeColor};border-radius:3px;padding:1px 4px;">${typeLabel}</span>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:3px;font-size:10px;color:var(--text-muted);">
+            <span>Madurez declarada: <strong style="color:var(--text-main);">${ce.declared_maturity || 0}/5</strong></span>
+            <span>Ajustada por evidencia: <strong style="color:${adjDiff ? 'var(--danger)' : 'var(--success)'};">${ce.adjusted_maturity || 0}/5</strong></span>
+            <span>Eficacia: <strong style="color:var(--text-main);">${Math.round((ce.efficacy || 0) * 100)}%</strong></span>
+          </div>
+          ${ce.evidence_reliability ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${UI.esc(ce.evidence_reliability)}</div>` : ''}
+        </div>`;
+      }).join('');
+
+      // Controles faltantes
+      const missingHtml = (data.missing_controls || []).map(mc => {
+        const priColor = mc.priority === 'alta' ? 'var(--danger)' : mc.priority === 'media' ? 'var(--warning)' : 'var(--text-muted)';
+        return `<div style="padding:5px 0;border-bottom:1px solid var(--border-light);">
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <span style="font-size:9px;font-weight:700;color:${priColor};border:1px solid ${priColor};border-radius:3px;padding:1px 4px;white-space:nowrap;margin-top:2px;">${(mc.priority||'?').toUpperCase()}</span>
+            <div>
+              <span style="font-size:11px;font-weight:600;color:var(--text-main);">[${UI.esc(mc.iso_code||'')}] ${UI.esc(mc.name||'')}</span>
+              ${mc.why_needed ? `<div style="font-size:10px;color:var(--text-muted);">${UI.esc(mc.why_needed)}</div>` : ''}
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+
+      // Alineacion normativa (objeto por framework)
+      let normHtml = '';
+      if (data.normative_alignment && typeof data.normative_alignment === 'object') {
+        const normEntries = Object.entries(data.normative_alignment).map(([fw, info]) => {
+          if (!info) return '';
+          const st = (typeof info === 'object') ? info.status : null;
+          const stColor = st === 'conforme' ? 'var(--success)' : st === 'parcial' ? 'var(--warning)' : st ? 'var(--danger)' : 'var(--text-muted)';
+          const details = (typeof info === 'object') ? (info.details || info.gaps || '') : info;
+          return `<div style="padding:4px 0;border-bottom:1px solid var(--border-light);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-size:11px;font-weight:600;color:var(--text-main);">${UI.esc(fw)}</span>
+              ${st ? `<span style="font-size:9px;font-weight:700;color:${stColor};">${UI.esc(st.toUpperCase())}</span>` : ''}
+            </div>
+            ${details ? `<div style="font-size:10px;color:var(--text-muted);">${UI.esc(String(details))}</div>` : ''}
+          </div>`;
+        }).filter(Boolean).join('');
+        if (normEntries) normHtml = normEntries;
+      } else if (data.normative_alignment) {
+        normHtml = `<p style="font-size:12px;color:var(--text-base);">${UI.esc(String(data.normative_alignment))}</p>`;
+      }
+
+      // Brechas y recomendaciones
+      const gapsHtml = (data.gaps_and_recommendations || []).map(g => {
+        const text = typeof g === 'object' ? `${g.gap || g.recommendation || ''} ${g.normative_requirement ? `[${g.normative_requirement}]` : ''}` : g;
+        return `<li style="font-size:12px;margin-bottom:5px;line-height:1.5;">${UI.esc(text)}</li>`;
+      }).join('');
+
+      // Veredicto residual
+      const verdict = data.residual_risk_verdict || {};
+      const verdictHtml = verdict.recommended_treatment ? `
+        <div style="background:var(--bg-alt);border-left:3px solid var(--brand-purple);border-radius:4px;padding:10px;margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:700;color:var(--brand-purple);margin-bottom:4px;">Tratamiento recomendado: ${UI.esc(verdict.recommended_treatment.toUpperCase())}</div>
+          ${verdict.justification ? `<div style="font-size:12px;color:var(--text-base);">${UI.esc(verdict.justification)}</div>` : ''}
+        </div>` : '';
+
+      // Problemas de calidad de datos
+      const dqHtml = (data.data_quality_issues || []).length
+        ? `<div style="background:#FEF3C7;border-radius:6px;padding:8px;margin-bottom:10px;">
+            <div style="font-size:11px;font-weight:700;color:#92400E;margin-bottom:4px;">Advertencias de calidad de datos</div>
+            <ul style="margin:0;padding-left:14px;">${data.data_quality_issues.map(d => `<li style="font-size:11px;color:#92400E;">${UI.esc(d)}</li>`).join('')}</ul>
+           </div>` : '';
+
       result.innerHTML = `
         <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <strong style="font-size:13px;">Análisis experto IA</strong>
-            <span style="background:${confBg};color:${confColor};border-radius:4px;
-                         padding:2px 10px;font-size:11px;font-weight:700;">
+            <strong style="font-size:13px;">Analisis experto IA</strong>
+            <span style="background:${confBg};color:${confColor};border-radius:4px;padding:2px 10px;font-size:11px;font-weight:700;">
               Confianza: ${(data.confidence || '').toUpperCase()}
             </span>
           </div>
-          <p style="font-size:13px;line-height:1.6;margin-bottom:10px;">${UI.esc(data.executive_summary || '')}</p>
 
-          ${data.why_inherent_level ? `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
-              Por qué nivel inherente = ${(function(){ const r = document.querySelector('.modal-title'); return ''; })()}
-            </div>
-            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.why_inherent_level)}</p>
+          ${dqHtml}
+          ${verdictHtml}
+
+          <p style="font-size:13px;line-height:1.6;margin-bottom:12px;">${UI.esc(data.executive_summary || '')}</p>
+
+          ${attackHtml ? `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Cadena de ataque</div>
+            ${attackHtml}
           </div>` : ''}
 
-          ${data.why_residual_level ? `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
-              Por qué nivel residual y cómo mitigan los controles
-            </div>
-            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.why_residual_level)}</p>
+          ${ctrlEffHtml ? `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Efectividad de controles</div>
+            ${ctrlEffHtml}
           </div>` : ''}
 
-          ${data.source_analysis ? `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
-              Análisis de fuentes y evidencias
-            </div>
-            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.source_analysis)}</p>
+          ${data.evidence_quality_assessment ? `
+          <div style="margin-bottom:12px;padding:8px;background:var(--bg-alt);border-radius:6px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Evaluacion de calidad de evidencia</div>
+            <p style="font-size:11px;color:var(--text-base);margin:0;">${UI.esc(data.evidence_quality_assessment)}</p>
           </div>` : ''}
 
-          ${data.gaps_and_recommendations?.length ? `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
-              Brechas y recomendaciones
-            </div>
-            <ul style="margin:0;padding-left:16px;">
-              ${data.gaps_and_recommendations.map(g => `<li style="font-size:12px;margin-bottom:4px;">${UI.esc(g)}</li>`).join('')}
-            </ul>
+          ${missingHtml ? `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Controles ausentes</div>
+            ${missingHtml}
           </div>` : ''}
 
-          ${data.soa_implications ? `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
-              Implicaciones SOA (Declaración de Aplicabilidad)
-            </div>
-            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.soa_implications)}</p>
+          ${gapsHtml ? `
+          <div style="margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Brechas y recomendaciones</div>
+            <ul style="margin:0;padding-left:16px;">${gapsHtml}</ul>
           </div>` : ''}
 
-          ${data.normative_alignment ? `
-          <div style="margin-bottom:4px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:3px;">
-              Alineación normativa
-            </div>
-            <p style="font-size:12px;color:var(--text-base);">${UI.esc(data.normative_alignment)}</p>
+          ${normHtml ? `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Alineacion normativa</div>
+            ${normHtml}
           </div>` : ''}
 
           ${data.confidence_reason ? `
-          <div style="margin-top:8px;font-size:11px;color:var(--text-muted);font-style:italic;">
+          <div style="margin-top:8px;font-size:11px;color:var(--text-muted);font-style:italic;border-top:1px solid var(--border-light);padding-top:6px;">
             Nivel de confianza: ${UI.esc(data.confidence_reason)}
           </div>` : ''}
         </div>`;
-      btn.textContent = 'Regenerar análisis IA';
+      btn.textContent = 'Regenerar analisis IA';
       btn.disabled = false;
     } catch (e) {
       result.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
-      btn.textContent = 'Análisis experto con IA';
+      btn.textContent = 'Analisis experto con IA';
       btn.disabled = false;
     }
   },

@@ -839,6 +839,78 @@ def _run_policy_review_tasks() -> None:
         db.close()
 
 
+def _run_policy_review_reminders() -> None:
+    """Envia recordatorio por email cuando una politica vence en 30 dias o menos."""
+    from app.database import SessionLocal
+    from app.models import Policy, PolicyStatus
+    from app.services import email_service
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        threshold = now + timedelta(days=30)
+        upcoming = db.query(Policy).filter(
+            Policy.status.in_([PolicyStatus.APPROVED, PolicyStatus.PUBLISHED]),
+            Policy.review_date.isnot(None),
+            Policy.review_date > now,
+            Policy.review_date <= threshold,
+        ).all()
+
+        orgs_done: set[int] = set()
+        for pol in upcoming:
+            oid = pol.organization_id
+            cfg = email_service.get_settings_for_org(db, oid) if oid else None
+            if not cfg or not cfg.smtp_host:
+                continue
+            if pol.owner_id and pol.owner and pol.owner.email:
+                days_left = (pol.review_date - now).days
+                subject = f"[RiskHub] Recordatorio: revision de {pol.code} en {days_left} dias"
+                body = f"""
+                <p>El documento <strong>{pol.code} — {pol.title}</strong> (v{pol.version or '1.0'})
+                   requiere revision antes del
+                   <strong>{pol.review_date.strftime('%d/%m/%Y')}</strong>
+                   ({days_left} dias).</p>
+                <p>Accede a la seccion <em>Cumplimiento &rarr; Documentos ISMS</em> para revisar y actualizar el documento.</p>
+                """
+                from app.services.approval_service import _wrap_html
+                try:
+                    email_service.send_email(
+                        cfg, pol.owner.email, subject,
+                        _wrap_html(f"Recordatorio de revision: {pol.code}", body, "RiskHub"),
+                    )
+                except Exception:
+                    pass
+    except Exception as exc:
+        logger.exception("Error en policy_review_reminders: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_checkout_auto_release() -> None:
+    """Libera el checkout de documentos que llevan mas de 4h bloqueados."""
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models import Policy
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=4)
+        stale = db.query(Policy).filter(
+            Policy.checked_out_by_id.isnot(None),
+            Policy.checked_out_at < cutoff,
+        ).all()
+        for pol in stale:
+            pol.checked_out_by_id = None
+            pol.checked_out_at = None
+        if stale:
+            db.commit()
+            logger.info("Checkout auto-release: %d documentos liberados.", len(stale))
+    except Exception as exc:
+        logger.exception("Error en checkout_auto_release: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_control_degradation() -> None:
     """Degrada controles IMPLEMENTED sin evidencia nueva en mas de 12 meses."""
     from datetime import timedelta
@@ -2484,6 +2556,22 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Monitoreo semanal de disponibilidad de proveedores",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_policy_review_reminders,
+        trigger=CronTrigger(hour=9),  # diario a las 9h
+        id="policy_review_reminders",
+        name="Recordatorio de revision de politicas (30 dias antes)",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_checkout_auto_release,
+        trigger=IntervalTrigger(hours=1),
+        id="checkout_auto_release",
+        name="Auto-liberacion de documentos en edicion (4h)",
+        replace_existing=True,
+        misfire_grace_time=300,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

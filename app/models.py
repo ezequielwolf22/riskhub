@@ -875,11 +875,67 @@ class Policy(Base):
     parent_policy_id = Column(Integer, ForeignKey("policies.id"), nullable=True)
     intended_controls = Column(JSON, nullable=True)  # codigos ISO 27002 que este doc debe cubrir
 
+    # v5.1 — Checkout para evitar edicion concurrente; auto-release tras 4h
+    checked_out_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    checked_out_at = Column(DateTime, nullable=True)
+
     owner = relationship("User", foreign_keys=[owner_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     source_document = relationship("AiDocument", foreign_keys=[source_document_id])
     previous_version = relationship("Policy", remote_side=[id], foreign_keys=[previous_version_id])
     parent_policy = relationship("Policy", remote_side=[id], foreign_keys=[parent_policy_id])
+    checked_out_by = relationship("User", foreign_keys=[checked_out_by_id])
+    approval_requests = relationship(
+        "ApprovalRequest",
+        back_populates="policy",
+        order_by="desc(ApprovalRequest.created_at)",
+        cascade="all, delete-orphan",
+    )
+
+
+# ---------- APROBACION DOCUMENTAL ----------
+
+class ApprovalRequest(Base):
+    """Ronda de aprobacion para una politica ISMS — paralela o secuencial."""
+    __tablename__ = "approval_requests"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    policy_id = Column(Integer, ForeignKey("policies.id", ondelete="CASCADE"), nullable=False)
+    requested_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    mode = Column(String(20), default="parallel")    # parallel | sequential
+    status = Column(String(20), default="pending")   # pending | approved | rejected | cancelled
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    policy = relationship("Policy", back_populates="approval_requests")
+    requested_by = relationship("User")
+    approvals = relationship(
+        "PolicyApproval",
+        back_populates="request",
+        order_by="PolicyApproval.order_index",
+        cascade="all, delete-orphan",
+    )
+
+
+class PolicyApproval(Base):
+    """Registro de aprobacion individual dentro de una ronda."""
+    __tablename__ = "policy_approvals"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    request_id = Column(Integer, ForeignKey("approval_requests.id", ondelete="CASCADE"), nullable=False)
+    approver_email = Column(String(255), nullable=False)
+    approver_name = Column(String(255), nullable=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    status = Column(String(20), default="waiting")   # waiting | pending | approved | rejected
+    order_index = Column(Integer, default=1)
+    sent_at = Column(DateTime, nullable=True)
+    responded_at = Column(DateTime, nullable=True)
+    response_notes = Column(Text, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+
+    request = relationship("ApprovalRequest", back_populates="approvals")
 
 
 # ---------- AUDITORIA INTERNA (M5) ----------

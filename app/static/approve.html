@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RiskHub — Aprobacion de documento</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <style>
+    :root {
+      --brand-purple: #59008D;
+      --brand-orange: #D65200;
+      --bg: #F5F5F5;
+      --card: #fff;
+      --border: #E9E9E9;
+      --text: #1a1a1a;
+      --text-muted: #6b7280;
+      --risk-low: #22c55e;
+      --risk-high: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px 48px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+      width: 100%;
+      max-width: 600px;
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(90deg, var(--brand-purple), var(--brand-orange));
+      padding: 24px 28px;
+    }
+    .header h1 {
+      color: #fff;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .header p { color: rgba(255,255,255,.75); font-size: 13px; }
+    .body { padding: 28px; }
+    .doc-info {
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .doc-info table { width: 100%; border-collapse: collapse; }
+    .doc-info td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
+    .doc-info td:first-child { color: var(--text-muted); font-weight: 600; font-size: 12px; width: 130px; }
+    .doc-info tr:last-child td { border-bottom: none; }
+    .label { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; display: block; }
+    textarea {
+      width: 100%; border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 12px; font-size: 13px; font-family: inherit;
+      resize: vertical; min-height: 80px; color: var(--text);
+      background: #fff;
+    }
+    textarea:focus { outline: none; border-color: var(--brand-purple); }
+    .actions { display: flex; gap: 12px; margin-top: 20px; }
+    .btn {
+      flex: 1; padding: 13px 20px; border-radius: 8px; font-size: 15px;
+      font-weight: 700; cursor: pointer; border: none; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .88; }
+    .btn-approve { background: var(--risk-low); color: #fff; }
+    .btn-reject  { background: var(--risk-high); color: #fff; }
+    .notice {
+      padding: 12px 16px; border-radius: 8px; font-size: 13px;
+      line-height: 1.55; margin-bottom: 20px;
+    }
+    .notice-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+    .notice-warn { background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; }
+    .notice-ok   { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .notice-err  { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+    #result { display: none; text-align: center; padding: 40px 20px; }
+    #result .icon { font-size: 56px; margin-bottom: 12px; }
+    #result h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    #result p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+    .spinner {
+      border: 3px solid rgba(89,0,141,.15);
+      border-top: 3px solid var(--brand-purple);
+      border-radius: 50%; width: 28px; height: 28px;
+      animation: spin .7s linear infinite; margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .meta { font-size: 11px; color: var(--text-muted); margin-top: 20px; text-align: center; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+      font-weight: 700; background: rgba(89,0,141,.1); color: var(--brand-purple);
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <h1>RiskHub — Aprobacion de documento</h1>
+    <p id="hdr-org">Gestion documental ISMS</p>
+  </div>
+  <div class="body">
+
+    <div id="loading" style="text-align:center;padding:40px 0;">
+      <div class="spinner"></div>
+      <p style="font-size:13px;color:var(--text-muted);">Cargando informacion del documento...</p>
+    </div>
+
+    <div id="main-content" style="display:none;">
+      <div id="already-responded" class="notice notice-info" style="display:none;"></div>
+      <div id="expired-notice" class="notice notice-err" style="display:none;"></div>
+      <div id="waiting-notice" class="notice notice-warn" style="display:none;"></div>
+
+      <div class="doc-info">
+        <table>
+          <tr><td>Documento</td><td id="doc-code-title">—</td></tr>
+          <tr><td>Version</td><td id="doc-version">—</td></tr>
+          <tr><td>Alcance</td><td id="doc-scope">—</td></tr>
+          <tr><td>Solicitado para</td><td id="doc-approver">—</td></tr>
+          <tr><td>Tipo de aprobacion</td><td id="doc-mode">—</td></tr>
+        </table>
+      </div>
+
+      <div id="form-section">
+        <label class="label">Comentarios (opcionales)</label>
+        <textarea id="notes" placeholder="Motivo de aprobacion o rechazo, observaciones, condiciones..."></textarea>
+
+        <div class="actions">
+          <button class="btn btn-reject" id="btn-reject" onclick="decide('rejected')">
+            Rechazar
+          </button>
+          <button class="btn btn-approve" id="btn-approve" onclick="decide('approved')">
+            Aprobar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="result">
+      <div id="result-icon" class="icon"></div>
+      <h2 id="result-title"></h2>
+      <p id="result-msg"></p>
+    </div>
+
+    <p class="meta" id="expiry-meta"></p>
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token') || '';
+
+  async function load() {
+    if (!token) {
+      showError('Token no encontrado en la URL.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/approvals/info/' + token);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showError(err.detail || 'Token invalido o no encontrado.');
+        return;
+      }
+      const info = await res.json();
+      renderInfo(info);
+    } catch (e) {
+      showError('Error de conexion: ' + e.message);
+    }
+  }
+
+  function renderInfo(info) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('main-content').style.display = '';
+
+    document.getElementById('doc-code-title').innerHTML =
+      `<strong>${esc(info.policy_code)} — ${esc(info.policy_title)}</strong>`;
+    document.getElementById('doc-version').textContent = info.policy_version || '1.0';
+    document.getElementById('doc-scope').textContent = info.policy_scope || '—';
+    document.getElementById('doc-approver').innerHTML =
+      `${esc(info.approver_name || info.approver_email)}` +
+      (info.total_approvers > 1 ? ` <span class="badge">Aprobador ${info.order_index} de ${info.total_approvers}</span>` : '');
+
+    const modeLabel = info.mode === 'sequential' ? 'Secuencial (por orden)' : 'Paralela (todos a la vez)';
+    document.getElementById('doc-mode').textContent = modeLabel;
+
+    if (info.expires_at) {
+      const exp = new Date(info.expires_at);
+      document.getElementById('expiry-meta').textContent =
+        'Este enlace caduca el ' + exp.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+    }
+
+    if (info.expired) {
+      document.getElementById('expired-notice').style.display = '';
+      document.getElementById('expired-notice').textContent =
+        'Este enlace de aprobacion ha caducado. Solicita al remitente que genere uno nuevo.';
+      document.getElementById('form-section').style.display = 'none';
+      return;
+    }
+
+    if (info.is_waiting) {
+      document.getElementById('waiting-notice').style.display = '';
+      document.getElementById('waiting-notice').textContent =
+        'Tu turno de aprobacion aun no ha llegado. En modo secuencial, recibiras una notificacion cuando llegue tu momento.';
+      document.getElementById('form-section').style.display = 'none';
+      return;
+    }
+
+    if (info.already_responded) {
+      const statusLabel = info.status === 'approved' ? 'APROBADO' : 'RECHAZADO';
+      document.getElementById('already-responded').style.display = '';
+      document.getElementById('already-responded').textContent =
+        `Ya respondiste a esta solicitud con estado: ${statusLabel}. No es posible cambiar la respuesta.`;
+      document.getElementById('form-section').style.display = 'none';
+      return;
+    }
+  }
+
+  async function decide(decision) {
+    const notes = document.getElementById('notes').value.trim();
+    document.getElementById('btn-approve').disabled = true;
+    document.getElementById('btn-reject').disabled = true;
+
+    try {
+      const res = await fetch('/api/approvals/decide/' + token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, notes }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showError(data.detail || 'Error al procesar la respuesta.');
+        document.getElementById('btn-approve').disabled = false;
+        document.getElementById('btn-reject').disabled = false;
+        return;
+      }
+      showResult(decision, data);
+    } catch (e) {
+      showError('Error de conexion: ' + e.message);
+      document.getElementById('btn-approve').disabled = false;
+      document.getElementById('btn-reject').disabled = false;
+    }
+  }
+
+  function showResult(decision, data) {
+    document.getElementById('main-content').style.display = 'none';
+    const el = document.getElementById('result');
+    el.style.display = '';
+    if (decision === 'approved') {
+      document.getElementById('result-icon').textContent = '✅';
+      document.getElementById('result-title').textContent = 'Documento aprobado';
+      document.getElementById('result-msg').innerHTML =
+        `Has aprobado el documento <strong>${esc(data.policy_title || '')}</strong>.<br>` +
+        (data.status === 'approved'
+          ? 'Todos los aprobadores han respondido. El documento ha sido marcado como Aprobado.'
+          : 'Tu aprobacion ha sido registrada. Se notificara al siguiente aprobador.');
+    } else {
+      document.getElementById('result-icon').textContent = '❌';
+      document.getElementById('result-title').textContent = 'Documento rechazado';
+      document.getElementById('result-msg').innerHTML =
+        `Has rechazado el documento <strong>${esc(data.policy_title || '')}</strong>.<br>` +
+        'El creador ha sido notificado y el documento ha vuelto a estado Borrador.';
+    }
+  }
+
+  function showError(msg) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('main-content').style.display = '';
+    const err = document.createElement('div');
+    err.className = 'notice notice-err';
+    err.textContent = msg;
+    document.getElementById('main-content').prepend(err);
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  load();
+</script>
+</body>
+</html>

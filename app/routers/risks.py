@@ -451,97 +451,277 @@ def risk_ai_explain(
         raise HTTPException(400, "API key no configurada. Ve a Configuración > Agente IA.")
     model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
+    from app.services.risk_analysis_helpers import (
+        get_asset_profile, build_vuln_section, build_control_section,
+        build_document_coverage_section, threat_actor_profile, normative_context,
+        LIKELIHOOD_CRITERIA, CONSEQUENCE_CRITERIA, classify_control, evidence_quality_score,
+        adjusted_maturity, CONTROL_TYPE_LABELS, build_vigilancia_context,
+    )
+
     # Contexto organizacional
     ctx = db.query(RiskContext).filter_by(organization_id=current_user.organization_id).first()
     qa = (ctx.questionnaire_answers or {}) if ctx else {}
     frameworks = (ctx.active_frameworks or []) if ctx else []
+    risk_appetite = (ctx.risk_appetite or 4) if ctx else 4
 
-    # Controles con sus fuentes
+    # Perfil del tipo de activo
+    asset_type_raw = r.asset.asset_type.value if r.asset and r.asset.asset_type else "unknown"
+    asset_profile = get_asset_profile(asset_type_raw)
+
+    # Controles con datos enriquecidos
     rows = db.execute(
         select(risk_control_table.c.control_implementation_id, risk_control_table.c.contribution)
         .where(risk_control_table.c.risk_id == risk_id)
     ).all()
-    ctrl_lines = []
+    ctrl_rows = []
     for row in rows:
         impl = db.get(ControlImplementation, row.control_implementation_id)
         if not impl:
             continue
         mat = impl.maturity or 0
         contrib = float(row.contribution) if row.contribution is not None else 1.0
-        eff = round((mat / 5.0) * contrib * 100)
-        refs = "; ".join(r2.get("title", "") for r2 in (impl.evidence_refs or []))
+        refs = impl.evidence_refs or []
+        ev_factor, ev_desc = evidence_quality_score(refs)
+        adj_mat = adjusted_maturity(mat, refs)
         evd_count = db.query(Evidence).filter_by(control_implementation_id=impl.id, is_current=True).count()
-        ctrl_lines.append(
-            f"  - [{impl.control.code if impl.control else '?'}] {impl.name}: "
-            f"estado={impl.status.value if impl.status else 'N/A'}, madurez={mat}/5, "
-            f"eficacia={eff}%, contribucion={contrib:.0%}"
-            + (f", refs='{refs}'" if refs else "")
-            + (f", evidencias_archivo={evd_count}" if evd_count else "")
-            + (f", razon_inclusion='{impl.inclusion_reason}'" if impl.inclusion_reason else "")
-        )
+        ctrl_rows.append({
+            "id": impl.id,
+            "code": impl.control.code if impl.control else "?",
+            "name": impl.name,
+            "status": impl.status.value if impl.status else "N/A",
+            "maturity": mat,
+            "adj_maturity": adj_mat,
+            "contribution": contrib,
+            "efficacy_pct": round(adj_mat / 5.0 * contrib * 100),
+            "evidence_refs": refs,
+            "evidence_quality": ev_desc,
+            "evidence_file_count": evd_count,
+            "inclusion_reason": impl.inclusion_reason or "",
+        })
 
-    # Vulnerabilidades
-    vuln_lines = [f"  - [{v.code}] {v.name}: {(v.description or '')[:120]}" for v in (r.vulnerabilities or [])]
+    # Vulnerabilidades enriquecidas
+    vuln_section = build_vuln_section(r.vulnerabilities or [])
 
-    # RAG: buscar documentación relevante
-    rag_query = f"{r.asset.name if r.asset else ''} {r.threat.name if r.threat else ''} {r.description or ''}"
-    rag_chunks = search_chunks_with_source(db, rag_query, top_k=4, organization_id=current_user.organization_id)
+    # Seccion de controles enriquecida
+    ctrl_section = build_control_section(ctrl_rows)
+
+    # Trazabilidad documental
+    doc_coverage = build_document_coverage_section(ctrl_rows, [])
+
+    # Perfil del agente de amenaza
+    threat_origin_val = r.threat.origin.value if r.threat and r.threat.origin else "desconocido"
+    actor_profile = threat_actor_profile(threat_origin_val, r.threat.category if r.threat else "")
+
+    # Criterios de nivel
+    lik_criterion = LIKELIHOOD_CRITERIA.get(r.inherent_likelihood, "")
+    con_criterion = CONSEQUENCE_CRITERIA.get(r.inherent_consequence, "")
+
+    # Contexto normativo
+    norm_ctx = normative_context(frameworks)
+
+    # Evidencia real de Vigilancia (OSINT, CVE, Regwatch)
+    vuln_ids = [v.id for v in (r.vulnerabilities or [])]
+    impl_ids = [c["id"] for c in ctrl_rows]
+    vigilancia_section = build_vigilancia_context(
+        db, r.asset_id, vuln_ids, impl_ids, current_user.organization_id
+    )
+
+    # RAG: query enriquecido con tipo de activo y categoria de amenaza
+    asset_name = r.asset.name if r.asset else "activo"
+    threat_name = r.threat.name if r.threat else "amenaza"
+    threat_cat = r.threat.category if r.threat else ""
+    rag_query = (
+        f"{threat_name} {threat_cat} {asset_type_raw} "
+        f"{' '.join(v.name for v in (r.vulnerabilities or []))} "
+        f"controles mitigacion ISO 27002 {r.description or ''}"
+    )
+    rag_chunks = search_chunks_with_source(db, rag_query, top_k=6, organization_id=current_user.organization_id)
     rag_section = ""
     if rag_chunks:
-        rag_section = "\n\nDOCUMENTACIÓN INTERNA RELEVANTE (RAG):\n" + "\n---\n".join(
-            f"[{c['doc_name']}]:\n{c['content'][:600]}" for c in rag_chunks
+        rag_section = "\n\n=== DOCUMENTACION INTERNA INDEXADA (RAG) ===\n" + "\n---\n".join(
+            f"[{c['doc_name']}] (relevancia: {c.get('score', '?')}):\n{c['content'][:700]}"
+            for c in rag_chunks
         )
 
-    prompt = f"""Eres un auditor senior certificado en ISO/IEC 27001:2022 e ISO/IEC 27005:2018,
-con amplia experiencia en análisis de riesgos empresariales y revisiones SOA.
+    # Calculos derivados
+    reduction_pct = round((1 - r.residual_level / r.inherent_level) * 100) if r.inherent_level else 0
+    above_appetite = r.residual_level > risk_appetite
+    cia_c = r.asset.value_confidentiality if r.asset else "N/A"
+    cia_i = r.asset.value_integrity if r.asset else "N/A"
+    cia_a = r.asset.value_availability if r.asset else "N/A"
 
-Analiza el siguiente riesgo de seguridad y proporciona una evaluación experta, rigurosa y completamente
-alineada con la realidad del activo y la organización. NO seas genérico. Usa los datos exactos.
+    prompt = f"""Eres un auditor senior de seguridad de la informacion con:
+- Certificaciones CISSP, CISM, ISO 27001 Lead Auditor, ISO 27005 Risk Manager
+- Especializacion en analisis cuantitativo y cualitativo de riesgos segun ISO/IEC 27005:2018
+- Conocimiento profundo de ISO 27001/27002:2022, MAGERIT v3, NIST CSF 2.0, ENS, DORA, NIS2, GDPR
 
-=== RIESGO ===
-Código: {r.code}
-Activo: {r.asset.name if r.asset else 'N/A'} (tipo: {r.asset.asset_type.value if r.asset and r.asset.asset_type else 'N/A'})
-{"CIA del activo: C=" + str(r.asset.value_confidentiality) + " I=" + str(r.asset.value_integrity) + " A=" + str(r.asset.value_availability) if r.asset else ""}
-Amenaza: {r.threat.name if r.threat else 'N/A'} (código: {r.threat.code if r.threat else 'N/A'}, origen: {r.threat.origin.value if r.threat and r.threat.origin else 'N/A'})
-Descripción del escenario: {r.description or 'Sin descripción'}
-Consecuencia esperada: {r.consequence_description or 'Sin definir'}
-Nivel inherente: {r.inherent_level}/8 (probabilidad={r.inherent_likelihood}, consecuencia={r.inherent_consequence})
-Nivel residual: {r.residual_level}/8 (probabilidad={r.residual_likelihood}, consecuencia={r.residual_consequence})
-Reducción: {round((1 - r.residual_level / r.inherent_level) * 100) if r.inherent_level else 0}%
-Tratamiento: {r.treatment_option.value if r.treatment_option else 'Sin definir'}
-Estado: {r.status.value}
+Tu analisis debe ser DEFENSIBLE ante un auditor externo y ante la direccion de la compania.
+Cada afirmacion debe estar justificada con los datos exactos del riesgo analizado.
+NUNCA hagas afirmaciones genericas. Si faltan datos criticos, explicalo y baja la confianza.
 
-=== VULNERABILIDADES ASOCIADAS ===
-{chr(10).join(vuln_lines) if vuln_lines else '  (ninguna registrada)'}
+# ANALISIS DE RIESGO ISO 27005:2018 — {r.code}
 
-=== CONTROLES MITIGANTES (con fuentes) ===
-{chr(10).join(ctrl_lines) if ctrl_lines else '  (ningún control vinculado)'}
+## 1. ACTIVO A PROTEGER
+- Nombre: {asset_name}
+- Tipo: {asset_profile['label']}
+- Dimensiones CIA: Confidencialidad={cia_c}/4, Integridad={cia_i}/4, Disponibilidad={cia_a}/4
+- Dimensiones criticas para este tipo: {', '.join(asset_profile['primary_dimensions'])}
+- Factores de riesgo tipicos de este tipo de activo: {asset_profile['key_risk_factors']}
+- Controles ISO 27002 clave para este tipo: {', '.join(asset_profile['key_iso_controls'][:6])}
 
-=== CONTEXTO ORGANIZACIONAL ===
-Sector: {qa.get('sector', 'N/A')}
-Empleados: {qa.get('employees', 'N/A')}
-Normativas aplicables: {', '.join(qa.get('regulations', [])) or 'N/A'}
-Sistemas: {', '.join(qa.get('systems', [])) or 'N/A'}
-Tipos de datos: {', '.join(qa.get('data_types', [])) or 'N/A'}
-Acceso remoto: {qa.get('remote_access', 'N/A')}
-Madurez global: {qa.get('maturity', 'N/A')}
-Frameworks activos: {', '.join(frameworks) or 'N/A'}
+## 2. AMENAZA ANALIZADA
+- [{r.threat.code if r.threat else '?'}] {threat_name}
+- Origen: {threat_origin_val}
+- Categoria ISO 27005: {threat_cat}
+- Dimensiones afectadas: {', '.join(getattr(r.threat, 'affects', None) or [])}
+- Activos tipicos objetivo: {', '.join(getattr(r.threat, 'typical_assets', None) or [])}
+- Perfil del agente de amenaza: {actor_profile}
+
+## 3. VULNERABILIDADES ASOCIADAS
+{vuln_section}
+
+## 4. ESCENARIO DE RIESGO (descripcion del analista)
+- Descripcion: {r.description or 'Sin descripcion — ADVERTENCIA: scenario sin contexto especifico'}
+- Consecuencia esperada: {r.consequence_description or 'Sin definir'}
+
+## 5. METRICAS DE RIESGO (ISO 27005 Annex E.2 — matriz 5x5)
+- Nivel INHERENTE: {r.inherent_level}/8
+  - Probabilidad inherente: {r.inherent_likelihood}/4 — Criterio: {lik_criterion}
+  - Consecuencia inherente: {r.inherent_consequence}/4 — Criterio: {con_criterion}
+- Nivel RESIDUAL: {r.residual_level}/8
+  - Probabilidad residual: {r.residual_likelihood}/4
+  - Consecuencia residual: {r.residual_consequence}/4
+- Reduccion lograda: {reduction_pct}%
+- Apetito de riesgo organizacional: {risk_appetite}/8
+- Estado vs. apetito: {'SUPERA EL APETITO — REQUIERE ACCION' if above_appetite else 'DENTRO DEL APETITO'}
+- Tratamiento actual: {r.treatment_option.value if r.treatment_option else 'Sin definir'}
+- Estado del riesgo: {r.status.value}
+
+## 6. CONTROLES MITIGANTES VINCULADOS ({len(ctrl_rows)} controles)
+{ctrl_section}
+
+## 7. TRAZABILIDAD DOCUMENTAL (controles vs. documentacion org.)
+{doc_coverage}
+
+## 8. CONTEXTO ORGANIZACIONAL
+- Sector: {qa.get('sector', 'N/A')} | Empleados: {qa.get('employees', 'N/A')}
+- Sistemas en uso: {', '.join(qa.get('systems', [])) or 'N/A'}
+- Tipos de datos procesados: {', '.join(qa.get('data_types', [])) or 'N/A'}
+- Normativas activas: {', '.join(frameworks) or 'ISO 27001'}
+- Madurez global declarada: {qa.get('maturity', 'N/A')}/5
+- Acceso remoto: {qa.get('remote_access', 'N/A')}
+
+## 9. CONTEXTO NORMATIVO ESPECIFICO
+{norm_ctx}
+
+## 10. EVIDENCIA REAL DE VIGILANCIA (OSINT / CVE / REGWATCH)
+{vigilancia_section}
 {rag_section}
 
-=== INSTRUCCIONES ===
-Devuelve EXCLUSIVAMENTE JSON válido con esta estructura exacta:
+---
+
+# INSTRUCCIONES DE ANALISIS — SIGUE ESTOS PASOS EN ORDEN
+
+Realiza el analisis en 6 pasos estructurados. Sé ESPECIFICO y usa los datos exactos del riesgo.
+El resultado debe ser defensible ante un auditor externo.
+
+PASO 1: Analiza el tipo de activo ({asset_profile['label']}) y su exposicion especifica a [{r.threat.code if r.threat else '?'}].
+PASO 2: Evalua si la amenaza es creible. Si la seccion 10 tiene hallazgos OSINT o CVEs activos,
+         la amenaza es REAL y comprobada, no teorica. Reflejalo en la credibilidad y en la probabilidad.
+PASO 3: Traza la cadena causal amenaza→vulnerabilidad→impacto. Integra hallazgos de la seccion 10
+         como evidencia tecnica real de la cadena de ataque (CVE especificos, brechas OSINT, etc.).
+PASO 4: Analiza cada control: cobertura del ataque, madurez real ajustada por evidencia.
+         Si algun control tiene cambio normativo pendiente (seccion 10 regwatch), su eficacia puede
+         estar sobreestimada porque la norma que lo respalda ha cambiado.
+PASO 5: Valida el nivel residual {r.residual_level}/8. CVEs activos en el activo elevan la probabilidad
+         real respecto a lo declarado. Hallazgos OSINT sin remediar reducen la eficacia de controles.
+PASO 6: Determina implicaciones normativas especificas ({', '.join(frameworks) or 'ISO 27001'}).
+
+Responde con JSON valido sin texto fuera del JSON:
 {{
-  "executive_summary": "Párrafo de 3-5 frases explicando el riesgo, su relevancia para esta organización concreta y por qué el nivel calculado es correcto. Referencia al sector y tipo de activo.",
-  "why_inherent_level": "Explicación técnica de por qué el nivel inherente es {r.inherent_level}. Justifica la probabilidad {r.inherent_likelihood} y la consecuencia {r.inherent_consequence} para este activo y amenaza concretos.",
-  "why_residual_level": "Explicación detallada de cómo los controles existentes reducen el riesgo al nivel residual {r.residual_level}. Cita controles por nombre y eficacia. Si hay brechas, mencionarlas.",
-  "source_analysis": "Análisis de la calidad de las fuentes de evidencia. ¿Las referencias documentales justifican adecuadamente la madurez declarada? ¿Hay controles sin evidencia que debería tenerla?",
-  "gaps_and_recommendations": ["Brecha o recomendación concreta 1", "Brecha o recomendación concreta 2", "..."],
-  "soa_implications": "Cómo este riesgo y sus controles deben reflejarse en la Declaración de Aplicabilidad (SOA). Qué controles ISO 27002:2022 son clave y si están correctamente justificados.",
-  "normative_alignment": "Cómo se alinea este riesgo con las normativas activas ({', '.join(frameworks) or 'ISO 27001'}). Requisitos específicos que aplican.",
+  "executive_summary": "3-5 frases. Que es este riesgo, por que es relevante para esta organizacion concreta ({qa.get('sector','N/A')}), que lo hace critico o manejable segun el nivel {r.residual_level}/8. ESPECIFICO, nunca generico.",
+
+  "asset_exposure_analysis": "Analisis del tipo de activo {asset_profile['label']} y su exposicion a [{r.threat.code if r.threat else '?'}]. Por que las dimensiones CIA de este activo son vulnerables a esta amenaza. Menciona las dimensiones primarias ({', '.join(asset_profile['primary_dimensions'])}) y su relacion con el impacto calculado.",
+
+  "threat_credibility": {{
+    "is_credible": true,
+    "credibility_reason": "Justificacion especifica de por que esta amenaza es o no creible para este activo en el sector {qa.get('sector','N/A')}",
+    "threat_actor_profile": "Descripcion del perfil del agente de amenaza para este escenario concreto",
+    "frequency_assessment": "alta|media|baja",
+    "frequency_justification": "Por que la probabilidad inherente es {r.inherent_likelihood}/4 para este tipo de activo y amenaza"
+  }},
+
+  "attack_chain": [
+    {{
+      "step": 1,
+      "phase": "Reconocimiento|Acceso inicial|Ejecucion|Movimiento lateral|Exfiltracion|Impacto",
+      "description": "Descripcion concreta del paso del ataque",
+      "vulnerability_exploited": "Vulnerabilidad especifica que habilita este paso (si aplica)",
+      "controls_covering": ["codigo-control-1", "codigo-control-2"],
+      "coverage_quality": "completa|parcial|sin_cobertura",
+      "gap": "Descripcion de la brecha si coverage_quality no es completa"
+    }}
+  ],
+
+  "why_inherent_level": "Justificacion tecnica y especifica de Probabilidad={r.inherent_likelihood}/4 ('{lik_criterion}') x Consecuencia={r.inherent_consequence}/4 ('{con_criterion}') = Nivel Inherente {r.inherent_level}/8. Referencia al tipo de activo, sector y perfil de amenaza.",
+
+  "control_effectiveness": [
+    {{
+      "control_code": "codigo ISO 27002",
+      "control_name": "nombre del control",
+      "control_type": "Preventivo|Detectivo|Correctivo",
+      "attack_phase_covered": "fase del ataque que cubre",
+      "declared_maturity": {r.inherent_level},
+      "evidence_reliability": "alta|media|baja",
+      "evidence_analysis": "Analisis critico: es la madurez declarada creible dado las evidencias documentales? Menciona documentos si los hay.",
+      "actual_effectiveness": "estimacion real del aporte de este control a la reduccion del riesgo",
+      "improvement_needed": "que falta para que este control sea mas efectivo"
+    }}
+  ],
+
+  "missing_controls": [
+    {{
+      "iso27002_code": "X.XX",
+      "name": "nombre del control faltante",
+      "why_needed": "que paso del ataque quedaria cubierto y por que es necesario para este riesgo",
+      "priority": "critica|alta|media|baja"
+    }}
+  ],
+
+  "why_residual_level": "Explicacion tecnica de como los controles reducen el riesgo de {r.inherent_level} a {r.residual_level}. La reduccion del {reduction_pct}% esta justificada por controles con evidencia real o es solo declarativa? Sé critico si la evidencia es debil.",
+
+  "evidence_quality_assessment": "Analisis critico de la calidad de las evidencias documentales de los controles vinculados. Cuales tienen evidencia solida (E4-E5) vs declarativa (E1-E2)? El nivel residual {r.residual_level}/8 es defendible ante un auditor externo?",
+
+  "residual_risk_verdict": {{
+    "is_within_appetite": {'true' if not above_appetite else 'false'},
+    "action_required": "{'si' if above_appetite else 'no'}",
+    "recommended_treatment": "retencion|reduccion|transferencia|evitacion",
+    "priority": "critica|alta|media|baja",
+    "justification": "Por que esta recomendacion de tratamiento es la mas adecuada para este riesgo concreto"
+  }},
+
+  "gaps_and_recommendations": [
+    {{
+      "gap": "descripcion especifica de la brecha identificada",
+      "recommendation": "accion concreta y medible para cerrar la brecha",
+      "iso27002_control": "codigo del control ISO 27002 si aplica",
+      "normative_requirement": "requisito normativo especifico si aplica (ej: NIS2 Art.21, GDPR Art.32)",
+      "effort": "alto|medio|bajo",
+      "impact_on_residual_risk": "alto|medio|bajo"
+    }}
+  ],
+
+  "soa_implications": "Controles ISO 27002:2022 que deben incluirse en el SOA por este riesgo, cuales estan justificados para inclusion y cuales podrian excluirse. Especifica si hay controles del catalogo de la organizacion que deberian vincularse pero no estan.",
+
+  "normative_alignment": {{
+    {chr(10).join(f'"{"_".join(fw.lower().split())}": "implicaciones especificas de {fw} para este riesgo",' for fw in (frameworks or ['iso27001']))}
+    "key_requirements": "requisitos normativos mas urgentes que aplican a este riesgo especifico"
+  }},
+
   "confidence": "alta|media|baja",
-  "confidence_reason": "Por qué la confianza en el análisis es alta/media/baja (p.ej. falta de evidencias, controles sin madurez real, etc.)"
-}}
-Sin texto antes ni después del JSON."""
+  "confidence_reason": "Por que la confianza en el analisis es alta/media/baja",
+  "data_quality_issues": ["Lista de datos faltantes o inconsistentes que limitan la fiabilidad del analisis"]
+}}"""
 
     try:
         import anthropic
@@ -1286,30 +1466,105 @@ def suggest_controls_for_risk(
     except Exception:
         pass
 
-    prompt = f"""Eres un auditor ISO 27001 experto. Analiza este riesgo y selecciona los controles mas adecuados.
+    from app.services.risk_analysis_helpers import (
+        get_asset_profile, build_vuln_section, threat_actor_profile,
+        classify_control, evidence_quality_score, adjusted_maturity,
+        build_vigilancia_context,
+    )
 
-RIESGO:
-- Activo: {asset_name} (tipo: {asset_type})
+    asset_profile = get_asset_profile(asset_type)
+    actor_profile = threat_actor_profile(
+        r.threat.origin.value if r.threat and r.threat.origin else "",
+        threat_cat,
+    )
+    vuln_section_text = build_vuln_section(r.vulnerabilities or [])
+
+    # Controles con clasificacion de tipo y calidad de evidencia
+    impl_lines_rich = []
+    for c in impls:
+        ctrl = db.get(Control, c.control_id) if c.control_id else None
+        code = ctrl.code if ctrl else "?"
+        theme = ctrl.theme if ctrl else "?"
+        ctrl_type = classify_control(code, c.name)
+        type_label = {"P": "PREVENTIVO", "D": "DETECTIVO", "C": "CORRECTIVO"}.get(ctrl_type, "?")
+        refs = c.evidence_refs or []
+        _, ev_desc = evidence_quality_score(refs)
+        adj_mat = adjusted_maturity(c.maturity or 0, refs)
+        regwatch_flag = " [REVISION NORMATIVA PENDIENTE]" if c.regwatch_pack_id else ""
+        impl_lines_rich.append(
+            f"  ID:{c.id} [{code}][{theme}] {c.name} | "
+            f"Tipo:{type_label} | Madurez:{c.maturity}/5 | AjustadaEvidencia:{adj_mat}/5 | "
+            f"Estado:{c.status.value} | Evidencia:{ev_desc}{regwatch_flag}"
+        )
+
+    # Evidencia real de Vigilancia (OSINT, CVE, Regwatch)
+    vuln_ids_suggest = [v.id for v in (r.vulnerabilities or [])]
+    impl_ids_suggest = [c.id for c in impls]
+    vigilancia_suggest = build_vigilancia_context(
+        db, r.asset_id, vuln_ids_suggest, impl_ids_suggest, r.organization_id
+    )
+
+    prompt = f"""Eres un auditor ISO 27001 y ISO 27005 experto en gestion de riesgos de seguridad.
+
+Tu tarea es seleccionar los controles que REALMENTE mitigan este riesgo especifico,
+NO los que tienen un nombre relacionado. Piensa en terminos de cadena de ataque.
+
+# RIESGO A ANALIZAR
+- Activo: {asset_name} (tipo: {asset_profile['label']})
 - Amenaza: [{threat_code}] {threat_name} (categoria: {threat_cat})
-- Descripcion: {r.description or 'N/A'}
-- Vulnerabilidades especificas:
-{chr(10).join(vuln_lines) if vuln_lines else '  (ninguna)'}
+- Origen amenaza: {r.threat.origin.value if r.threat and r.threat.origin else 'N/A'}
+- Perfil del agente: {actor_profile}
+- Descripcion del escenario: {r.description or 'Sin descripcion'}
+- Consecuencia esperada: {r.consequence_description or 'Sin definir'}
+- Dimensiones primarias afectadas: {', '.join(asset_profile['primary_dimensions'])}
 
-CONTROLES IMPLEMENTADOS DISPONIBLES ({len(impls)} total):
-{chr(10).join(impl_lines)}
+# VULNERABILIDADES QUE HABILITAN ESTA AMENAZA
+{vuln_section_text}
 
-CONTEXTO DE DOCUMENTOS INTERNOS:
+# EVIDENCIA REAL DE VIGILANCIA (OSINT / CVE / REGWATCH)
+{vigilancia_suggest}
+
+# CONTROLES DISPONIBLES EN LA ORGANIZACION ({len(impls)} total)
+(Tipo P=Preventivo, D=Detectivo, C=Correctivo — Madurez real ajustada por calidad de evidencia)
+(REVISION NORMATIVA PENDIENTE = el control puede estar desactualizado por cambio normativo)
+{chr(10).join(impl_lines_rich)}
+
+# DOCUMENTACION INTERNA RELEVANTE
 {chr(10).join(rag_chunks) if rag_chunks else '  (sin documentos indexados)'}
 
-TAREA: Selecciona SOLO los controles (por su ID) que mitigan directamente las vulnerabilidades y la amenaza listadas.
-Criterios:
-1. El control debe reducir la probabilidad o el impacto de esta amenaza concreta
-2. El control debe abordar alguna de las vulnerabilidades listadas
-3. Excluye controles de temas irrelevantes (ej: no incluir controles fisicos para una amenaza de red)
-4. Prioriza controles con mayor madurez
+# INSTRUCCIONES
 
-Responde SOLO con JSON valido, sin texto adicional:
-{{"suggested_ids": [lista de IDs enteros], "rationale": "justificacion de 1-2 frases"}}"""
+Paso 1 — Construye la cadena de ataque para [{threat_code}] sobre {asset_name}.
+  Si hay hallazgos OSINT o CVEs activos en la seccion de Vigilancia, la amenaza es REAL.
+  Incorporalos en la descripcion de la cadena de ataque con el vector real detectado.
+
+Paso 2 — Para cada paso del ataque, identifica que controles (de la lista disponible)
+  lo bloquean (P), lo detectan (D) o limitan su impacto (C).
+  Si un hallazgo OSINT/CVE corresponde a una vulnerabilidad sin control preventivo, ese paso
+  es una BRECHA CRITICA y debe priorizarse en missing_controls.
+
+Paso 3 — Selecciona los controles con IDs de la lista que cubren los pasos criticos.
+  EXCLUYE controles que no tienen relacion directa con ningun paso del ataque.
+  PRIORIZA controles preventivos sobre detectivos si la madurez ajustada es >= 2/5.
+  INCLUYE controles detectivos cuando no hay preventivos para un paso critico.
+  ADVIERTE si algun control seleccionado tiene [REVISION NORMATIVA PENDIENTE] ya que su eficacia
+  real puede ser menor de lo declarado.
+
+Paso 4 — Identifica hasta 3 controles que FALTAN (no estan en la lista pero deberian estar).
+  Da maxima prioridad a controles que cubririan vulnerabilidades con CVEs o hallazgos OSINT activos.
+
+Responde SOLO con JSON valido:
+{{
+  "attack_chain_summary": "Descripcion en 2-3 frases de la cadena de ataque para este riesgo especifico",
+  "suggested_ids": [lista de IDs enteros de controles que mitigan pasos del ataque],
+  "control_to_step_mapping": [
+    {{"control_id": 123, "attack_step": "nombre del paso que cubre", "control_type": "P|D|C", "why": "por que este control es relevante para este paso especifico"}}
+  ],
+  "missing_controls": [
+    {{"iso27002_code": "X.XX", "name": "nombre", "attack_step": "paso que cubriria", "priority": "alta|media|baja"}}
+  ],
+  "rationale": "Justificacion global de la seleccion en 2-3 frases. Por que estos controles son los mas adecuados para reducir el riesgo residual."
+}}"""
 
     try:
         import anthropic
@@ -1331,6 +1586,17 @@ Responde SOLO con JSON valido, sin texto adicional:
         # Validar que los IDs existen en el tenant
         valid_ids = {c.id for c in impls}
         suggested_ids = [i for i in suggested_ids if i in valid_ids]
-        return {"suggested_ids": suggested_ids, "rationale": data.get("rationale", "")}
+        # Filtrar control_to_step_mapping a IDs validos
+        mapping = [
+            m for m in data.get("control_to_step_mapping", [])
+            if int(m.get("control_id", 0)) in valid_ids
+        ]
+        return {
+            "suggested_ids": suggested_ids,
+            "rationale": data.get("rationale", ""),
+            "attack_chain_summary": data.get("attack_chain_summary", ""),
+            "control_to_step_mapping": mapping,
+            "missing_controls": data.get("missing_controls", []),
+        }
     except Exception as exc:
         raise HTTPException(500, f"Error en sugerencia IA: {exc}") from exc
