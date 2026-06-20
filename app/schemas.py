@@ -833,6 +833,9 @@ class PolicyIn(BaseModel):
     iso_clauses: list[str] = []
     review_date: Optional[datetime] = None
     owner_id: Optional[int] = None
+    document_level: int = 1
+    parent_policy_id: Optional[int] = None
+    intended_controls: Optional[list[str]] = None
 
 
 class PolicyUpdate(BaseModel):
@@ -848,6 +851,9 @@ class PolicyUpdate(BaseModel):
     owner_id: Optional[int] = None
     approved_by_id: Optional[int] = None
     review_cycle_months: Optional[int] = None
+    document_level: Optional[int] = None
+    parent_policy_id: Optional[int] = None
+    intended_controls: Optional[list[str]] = None
 
 
 class PolicyOut(ORMBase):
@@ -871,6 +877,10 @@ class PolicyOut(ORMBase):
     review_cycle_months: Optional[int] = None
     # v4.1.0 — versionado
     previous_version_id: Optional[int] = None
+    # v5.0 — jerarquia documental
+    document_level: int = 1
+    parent_policy_id: Optional[int] = None
+    intended_controls: Optional[list[str]] = None
 
 
 # ---------- AUDIT FINDINGS ----------

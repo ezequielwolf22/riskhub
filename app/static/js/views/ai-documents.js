@@ -537,9 +537,21 @@ const ViewAiDocuments = (() => {
 
   // ---------- Tabla de documentos ----------
 
+  const _AID_LEVEL_LABELS = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion Tecnica' };
+  const _AID_LEVEL_COLORS = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a' };
+
   function _ismsResultCell(d) {
     if (!d.isms_status || d.isms_status === 'analysing') return '<td>-</td>';
     const parts = [];
+
+    // Badge de nivel jerarquico (si el analisis lo determino)
+    const docLevel = d.isms_summary && d.isms_summary.document_level;
+    if (docLevel) {
+      const lvlLabel = _AID_LEVEL_LABELS[docLevel] || 'Documento';
+      const lvlColor = _AID_LEVEL_COLORS[docLevel] || '#888';
+      parts.push(`<span title="Nivel jerarquico: ${lvlLabel}" style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;background:${lvlColor}18;color:${lvlColor};border:1px solid ${lvlColor}40;">${docLevel}. ${lvlLabel}</span>`);
+    }
+
     if (d.isms_policy_id) {
       parts.push(`<a href="#/policies" style="font-size:11px;color:var(--brand-purple);">
         Politica creada</a>`);
@@ -673,27 +685,47 @@ const ViewAiDocuments = (() => {
         </div>`;
     }).join('');
 
+    // Contexto de nivel jerarquico del documento
+    const summary = doc?.isms_summary || {};
+    const docLevel = summary.document_level || 1;
+    const docLevelLabel = summary.document_level_label || _AID_LEVEL_LABELS[docLevel] || 'Politica';
+    const docLevelColor = _AID_LEVEL_COLORS[docLevel] || 'var(--brand-purple)';
+    const levelMaxMaturity = { 1: 2, 2: 3, 3: 4, 4: 5 }[docLevel] || 5;
+
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Analisis de madurez por control</h3>
         <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">&#10005;</button>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-        Documento: <strong>${UI.esc(doc?.original_name || '')}</strong>
-      </p>
-      <div style="background:var(--bg-2);border-radius:8px;padding:12px 16px;margin-bottom:16px;
+
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--text-muted);">Documento:</span>
+        <strong style="font-size:12px;">${UI.esc(doc?.original_name || '')}</strong>
+        <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;
+                     background:${docLevelColor}18;color:${docLevelColor};border:1px solid ${docLevelColor}40;">
+          Nivel ${docLevel}: ${docLevelLabel}
+        </span>
+      </div>
+
+      <div style="background:var(--bg-2);border-radius:8px;padding:12px 16px;margin-bottom:12px;
                   display:flex;align-items:center;gap:14px;">
         <div style="font-size:28px;font-weight:800;color:${avgColor};">${avgMaturity.toFixed(1)}</div>
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text-base);">Madurez promedio del documento</div>
+          <div style="font-size:13px;font-weight:600;color:var(--text-base);">Madurez aportada por este documento</div>
           <div style="font-size:11px;color:var(--text-muted);">
-            Calculada sobre ${controls.length} control${controls.length !== 1 ? 'es' : ''} identificados
+            ${controls.length} control${controls.length !== 1 ? 'es' : ''} en el alcance de este documento
+            &nbsp;&middot;&nbsp; Madurez maxima posible en nivel ${docLevel}: <strong>${levelMaxMaturity}/5</strong>
             &nbsp;&middot;&nbsp;
             <a href="#/controls" onclick="UI.closeModal();" style="color:var(--brand-purple);">Ver todos los controles</a>
           </div>
         </div>
       </div>
-      <div style="overflow-y:auto;max-height:62vh;">
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;padding:7px 10px;
+                  background:rgba(89,0,141,.04);border-radius:5px;border:1px solid rgba(89,0,141,.1);">
+        Un documento de nivel ${docLevel} (${docLevelLabel}) puede aportar hasta ${levelMaxMaturity}/5 de madurez.
+        Para llegar a nivel 5 se necesita cubrir toda la cadena: Politica → Norma → Procedimiento → Instruccion Tecnica.
+      </div>
+      <div style="overflow-y:auto;max-height:56vh;">
         ${rows}
       </div>
     `, { width: '700px' });

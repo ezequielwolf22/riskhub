@@ -85,6 +85,7 @@ def _doc_out(d: AiDocument) -> dict:
         "isms_controls_updated": summary.get("controls_updated", 0),
         "isms_tasks_created": summary.get("tasks_created", 0),
         "isms_summary_text": summary.get("summary") or summary.get("reason") or summary.get("error"),
+        "isms_summary": summary,  # full summary for frontend (document_level, etc.)
         # Auto-categorizacion IA (v1.7.8)
         "auto_categorized": bool(getattr(d, "auto_categorized", False) or summary.get("auto_categorized", False)),
         "detected_category": getattr(d, "detected_category", None) or summary.get("detected_category"),

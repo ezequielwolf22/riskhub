@@ -529,6 +529,10 @@ def _migrate_columns() -> None:
         ("ALTER TABLE supplier_questionnaires ADD COLUMN assigned_user_id INTEGER REFERENCES users(id)", "supplier_questionnaires", "assigned_user_id"),
         ("ALTER TABLE supplier_questionnaires ADD COLUMN assignment_type VARCHAR(16)", "supplier_questionnaires", "assignment_type"),
         ("ALTER TABLE supplier_questionnaires ADD COLUMN assigned_at DATETIME", "supplier_questionnaires", "assigned_at"),
+        # v5.0 — Jerarquia documental ISO: nivel y documento padre en politicas
+        ("ALTER TABLE policies ADD COLUMN document_level INTEGER DEFAULT 1", "policies", "document_level"),
+        ("ALTER TABLE policies ADD COLUMN parent_policy_id INTEGER REFERENCES policies(id)", "policies", "parent_policy_id"),
+        ("ALTER TABLE policies ADD COLUMN intended_controls JSON", "policies", "intended_controls"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

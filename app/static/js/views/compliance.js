@@ -152,6 +152,7 @@ const ViewCompliance = (() => {
       maturity: i.maturity || 0,
       notes:   i.notes || '',
       description: i.description || '',
+      evidence_refs: i.evidence_refs || [],
     };
   }
 
@@ -1209,6 +1210,9 @@ const ViewCompliance = (() => {
     return { rationale, gap };
   }
 
+  const _DOC_LEVEL_LABELS = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion Tecnica' };
+  const _DOC_LEVEL_COLORS = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a' };
+
   function _showGapModal(implId) {
     const raw = (_implsData || []).find(i => i.id === implId);
     if (!raw) { UI.toast('Sin datos de madurez disponibles para este control', 'info'); return; }
@@ -1222,13 +1226,82 @@ const ViewCompliance = (() => {
     const displayRationale = rationale || _GAP_DEFAULT_WHY[v] || '';
     const displayGap = gap || _GAP_DEFAULT_GAP[v] || '';
 
+    // Documentos que contribuyen a este control, agrupados por nivel jerarquico
+    const refs = (c.evidence_refs || []).filter(r => r && r.title);
+    const refsWithLevel = refs.filter(r => r.document_level);
+    const refsLegacy = refs.filter(r => !r.document_level);
+
+    const _refBadge = (level) => {
+      const l = parseInt(level) || 1;
+      const lbl = _DOC_LEVEL_LABELS[l] || 'Doc';
+      const clr = _DOC_LEVEL_COLORS[l] || '#888';
+      return `<span style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;background:${clr}18;color:${clr};border:1px solid ${clr}40;">${l}. ${lbl}</span>`;
+    };
+
+    const _maturityDots = (m, max) => Array.from({length: 5}, (_, i) => {
+      const filled = i < m;
+      const cap = i < max;
+      return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:2px;background:${filled ? color : (cap ? 'var(--bg-3)' : 'var(--bg-3)')};opacity:${cap ? 1 : 0.4};"></span>`;
+    }).join('');
+
+    const docPyramidHtml = refsWithLevel.length > 0 ? (() => {
+      // Ordenar por nivel
+      const sorted = [...refsWithLevel].sort((a, b) => a.document_level - b.document_level);
+      const rows = sorted.map(r => {
+        const lvl = r.document_level || 1;
+        const lm = r.level_maturity || 0;
+        const maxM = { 1: 2, 2: 3, 3: 4, 4: 5 }[lvl] || 5;
+        const docTitle = r.title.replace(/^\[Auto\]\s*/, '');
+        const clr = _DOC_LEVEL_COLORS[lvl] || '#888';
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;
+                      background:var(--bg-2);margin-bottom:5px;border-left:3px solid ${clr};">
+            <div style="flex-shrink:0;">${_refBadge(lvl)}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                   title="${UI.esc(docTitle)}">${UI.esc(docTitle)}</div>
+              ${r.note ? `<div style="font-size:11px;color:var(--text-muted);margin-top:1px;">${UI.esc(r.note.slice(0,100))}${r.note.length>100?'…':''}</div>` : ''}
+            </div>
+            <div style="flex-shrink:0;text-align:right;">
+              <div>${_maturityDots(lm, maxM)}</div>
+              <div style="font-size:11px;font-weight:700;color:${clr};margin-top:2px;">+${lm}/5</div>
+            </div>
+          </div>`;
+      }).join('');
+
+      // Mostrar niveles que faltan para llegar a madurez 5
+      const maxLevelPresent = Math.max(...refsWithLevel.map(r => r.document_level || 1));
+      const missingLevels = [1,2,3,4].filter(l => l > maxLevelPresent)
+        .map(l => `<span style="color:${_DOC_LEVEL_COLORS[l]};font-weight:600;">${_DOC_LEVEL_LABELS[l]}</span>`);
+
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                      letter-spacing:.6px;margin-bottom:8px;">Documentos que contribuyen a este control</div>
+          ${rows}
+          ${missingLevels.length > 0 ? `
+            <div style="margin-top:8px;font-size:11px;color:var(--text-muted);padding:6px 10px;
+                        background:rgba(89,0,141,.04);border-radius:5px;border:1px dashed var(--border);">
+              Faltan para llegar a nivel 5: ${missingLevels.join(' → ')}
+            </div>` : ''}
+        </div>`;
+    })() : (refsLegacy.length > 0 ? `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
+                    letter-spacing:.6px;margin-bottom:6px;">Documentos referenciados</div>
+        ${refsLegacy.map(r => `
+          <div style="font-size:12px;color:var(--text-base);padding:4px 8px;background:var(--bg-2);
+                      border-radius:4px;margin-bottom:4px;">${UI.esc(r.title.replace(/^\[Auto\]\s*/,''))}</div>`
+        ).join('')}
+      </div>` : '');
+
     const aiNote = isAI
       ? `<div style="font-size:10px;color:var(--risk-low);margin-bottom:12px;">
            Analisis generado por IA a partir del documento fuente
          </div>`
       : `<div style="font-size:10px;color:var(--text-muted);margin-bottom:12px;">
            Descripcion generica por nivel de madurez &mdash;
-           sube el documento al Agente IA para obtener analisis personalizado
+           sube documentos al Agente IA para obtener analisis personalizado
          </div>`;
 
     UI.openModal(`
@@ -1243,9 +1316,11 @@ const ViewCompliance = (() => {
         <span style="font-size:14px;font-weight:700;">${UI.esc(c.name || '-')}</span>
       </div>
 
-      <div style="background:var(--bg-2);border-radius:8px;padding:14px 16px;margin-bottom:10px;">
+      <div style="background:var(--bg-2);border-radius:8px;padding:14px 16px;margin-bottom:12px;">
         ${_gapMaturityBarFull(c.maturity)}
       </div>
+
+      ${docPyramidHtml}
 
       ${aiNote}
 
@@ -1277,7 +1352,7 @@ const ViewCompliance = (() => {
         </a>
         <button onclick="UI.closeModal();" class="btn btn-primary" style="font-size:12px;">Cerrar</button>
       </div>
-    `, { width: '640px' });
+    `, { width: '680px' });
   }
 
   function _configureFrameworks() {

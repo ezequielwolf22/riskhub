@@ -35,63 +35,86 @@ _ISMS_EXECUTOR = ThreadPoolExecutor(max_workers=3, thread_name_prefix="isms-bg")
 
 # ---------- Prompt del sistema ----------
 
-_ISMS_SYSTEM_PROMPT = """Eres un experto en seguridad de la informacion (ISO/IEC 27001/27002/27005).
-Analiza el siguiente fragmento de documento y devuelve UNICAMENTE un objeto JSON valido con esta estructura:
+_ISMS_SYSTEM_PROMPT = """Eres un experto senior en seguridad de la informacion (ISO/IEC 27001/27002/27005).
+
+JERARQUIA DOCUMENTAL ISO — CRITICO PARA EL ANALISIS:
+Los documentos del SGSI tienen niveles jerarquicos con responsabilidades y alcance distintos:
+
+  Nivel 1 — POLITICA: Define la intencion y compromiso organizativo. Alto nivel, sin detalles tecnicos.
+    Ejemplos: "Politica de Seguridad de la Informacion", "Politica de Acceso", "Politica de Criptografia"
+    Madurez maxima que puede aportar un control: 2/5
+
+  Nivel 2 — NORMA/ESTANDAR: Define las reglas de obligado cumplimiento para un area especifica.
+    Ejemplos: "Norma de Contrasenas", "Estandar de Clasificacion de la Informacion"
+    Madurez maxima: 3/5
+
+  Nivel 3 — PROCEDIMIENTO: Pasos detallados para ejecutar un proceso en una solucion concreta.
+    Ejemplos: "Procedimiento de Gestion de Incidentes", "Procedimiento de Copias de Seguridad"
+    Madurez maxima: 4/5
+
+  Nivel 4 — INSTRUCCION TECNICA: Configuraciones exactas para un sistema especifico.
+    Ejemplos: "Guia de Hardening Windows Server", "Instruccion de Configuracion de Firewall"
+    Madurez maxima: 5/5
+
+PRINCIPIO FUNDAMENTAL — ALCANCE ESPECIFICO:
+Cada documento aborda un AREA TEMATICA concreta. Solo incluye controles ISO 27002:2022
+que el documento aborda directamente segun su tema principal.
+  - Una politica de contrasenas cubre: 5.17, 8.5 — NO cubre 11.1 (seguridad fisica)
+  - Un procedimiento de backup cubre: 8.13 — NO cubre controles de autenticacion
+  - Una guia de hardening de servidores cubre: 8.8, 8.9 — NO cubre controles de RRHH
+Prefiere 3-8 controles muy relevantes a 20 vagamente relacionados.
+
+ESCALA CMM:
+  1 = Inicial/ad-hoc — practica informal, sin documentacion
+  2 = Basico/documentado — politica que lo respalda
+  3 = Definido/aplicado — norma o proceso definido
+  4 = Gestionado/medido — procedimiento especifico con evidencia de aplicacion
+  5 = Optimizado/continuo — instruccion tecnica + metricas + mejora continua
+
+Devuelve SOLO este JSON valido (sin markdown, sin texto antes ni despues):
 
 {
-  "document_category": "<una de: architecture | normative | policies | assets_inventory | risk_assessments | critical_suppliers | incidents_lessons | other>",
-  "is_policy": <true | false>,
+  "document_level": <1|2|3|4>,
+  "document_level_label": "<Politica|Norma|Procedimiento|Instruccion Tecnica>",
+  "document_category": "<architecture|normative|policies|assets_inventory|risk_assessments|critical_suppliers|incidents_lessons|other>",
+  "is_policy": <true|false>,
   "policy": {
     "title": "<titulo del documento>",
-    "category": "<categoria, ej: Seguridad fisica, Uso aceptable, Gestion de incidentes...>",
-    "version": "<version, ej: '1.0'>",
-    "scope": "<alcance resumido, max 200 palabras>",
+    "category": "<categoria, ej: Acceso, Criptografia, Backup, Incidentes, Continuidad...>",
+    "version": "<version o '1.0'>",
+    "scope": "<alcance, max 200 palabras>",
     "content": "<resumen del contenido, max 400 palabras>",
-    "review_date": "<fecha ISO YYYY-MM-DD o null>",
-    "review_cycle_months": <entero, ej: 12>,
+    "review_date": "<YYYY-MM-DD o null>",
+    "review_cycle_months": <entero>,
     "iso_clauses": ["<clausula ISO 27001>", ...]
   },
   "controls_covered": [
     {
-      "code": "<codigo ISO 27002:2022, ej: 5.1>",
+      "code": "<codigo ISO 27002:2022, ej: 5.17>",
       "name": "<nombre del control>",
-      "coverage": "<full | partial>",
-      "maturity_current": <entero 1..4, nivel de madurez actual segun CMM>,
-      "maturity_rationale": "<Por que el documento solo alcanza este nivel y no el 5. Ser especifico: que aspectos cubre, que le falta.>",
-      "gap_to_5": "<Lista concreta de lo que faltaria para llegar a nivel 5: procedimientos, evidencias, registros, formacion, revision periodica, metricas, etc. Max 3 acciones especificas.>",
-      "evidence_note": "<nota breve de evidencia>"
+      "coverage": "<full|partial>",
+      "maturity_current": <entero — RESPETA EL MAXIMO: Nivel1->max2, Nivel2->max3, Nivel3->max4, Nivel4->max5>,
+      "maturity_rationale": "<Por que este documento en su nivel aporta exactamente esta madurez al control. Que aspectos cubre y que le falta para subir de nivel.>",
+      "gap_to_5": "<Que documentacion adicional se necesita para llegar a nivel 5: que nivel jerarquico falta (norma, procedimiento, instruccion tecnica), que contenido especifico, que evidencias o metricas.>",
+      "evidence_note": "<cita o referencia especifica del documento que respalda este control>"
     }
   ],
-  "threat_categories_addressed": ["<categoria de amenaza>", ...],
-  "overall_summary": "<resumen ejecutivo, max 200 palabras>"
+  "threat_categories_addressed": ["<categoria ISO 27005 Annex C>", ...],
+  "overall_summary": "<resumen ejecutivo del documento y su aportacion al SGSI, max 200 palabras>"
 }
 
-REGLAS:
-- Devuelve SOLO el JSON. Sin texto ni markdown antes ni despues.
-- document_category: clasifica el documento en UNA de estas categorias (obligatorio, nunca null):
-    * "architecture"       — diagramas de red, arquitectura de sistemas, infraestructura IT, topologia
-    * "normative"          — normativas externas, reglamentos, leyes, ISO, NIS2, GDPR, ENS, compliance
-    * "policies"           — politicas de seguridad internas, procedimientos, instrucciones de trabajo
-    * "assets_inventory"   — inventario de activos, CMDB, listados de hardware/software/aplicaciones
-    * "risk_assessments"   — analisis de riesgos, evaluaciones de amenazas, informes de vulnerabilidades, DPIA
-    * "critical_suppliers" — contratos de proveedores, acuerdos SLA, evaluaciones de terceros, DPA
-    * "incidents_lessons"  — informes de incidentes, post-mortems, lecciones aprendidas, registros de incidentes
-    * "other"              — solo si el documento no encaja claramente en ninguna de las anteriores
-- Si el documento ES una politica interna, document_category DEBE ser "policies" e is_policy=true.
-- Si el documento NO es una politica de seguridad, pon is_policy=false y policy=null.
-- controls_covered: SOLO controles ISO 27002:2022 que el documento cubre con confianza alta.
-  Usa los codigos reales del estandar (5.1, 5.2, ... 8.34).
-  NO incluyas controles que no esten claramente respaldados por el contenido del documento.
-  Un documento de criptografia cubre 8.24, 8.26 etc., NO cubre controles legales ni de RRHH.
-- maturity_current: escala CMM 1-5. Un documento bien redactado con procedimientos claros
-  pero sin evidencias de revision ni metricas = 3. Con evidencias y KPIs = 4. Con mejora
-  continua demostrada = 5. Rara vez se llega al 5 solo con un documento.
-- threat_categories_addressed: categorias de amenazas ISO 27005 Annex C que el documento
-  ayuda a mitigar (Physical damage, Natural events, Loss of services, Technical failures,
-  Unauthorised actions, Compromise of functions, etc.).
-- Si encuentras fechas de revision o vigencia en el documento, extrae review_date.
-  Si no hay fecha explicita, pon null.
-- review_cycle_months: ciclo de revision tipico para el tipo de documento (12 si no se indica).
+REGLAS CRITICAS:
+- Devuelve SOLO el JSON valido. Sin texto ni markdown antes ni despues.
+- document_level: clasifica el documento honestamente segun su nivel real en la jerarquia.
+- document_category: clasifica en UNA categoria:
+    architecture, normative, policies, assets_inventory, risk_assessments, critical_suppliers, incidents_lessons, other
+- controls_covered: SOLO controles directamente relacionados con el TEMA PRINCIPAL del documento.
+- maturity_current NUNCA puede superar: Nivel1->max2, Nivel2->max3, Nivel3->max4, Nivel4->max5.
+- gap_to_5: explica especificamente que niveles documentales faltan para completar la cadena hasta nivel 5.
+- is_policy=true SOLO si es una politica de seguridad interna de la organizacion.
+- Si is_policy=false, policy puede ser null.
+- review_date: extraer si aparece en el documento, null si no.
+- review_cycle_months: 12 por defecto si no se especifica.
 """
 
 
@@ -214,22 +237,34 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             "summary": analysis.get("overall_summary", ""),
         }
 
+        # Nivel jerarquico del documento (1=Politica, 2=Norma, 3=Procedimiento, 4=Instruccion)
+        doc_level = max(1, min(4, int(analysis.get("document_level") or 1)))
+        result["document_level"] = doc_level
+        result["document_level_label"] = analysis.get("document_level_label", "Politica")
+
+        # Controles que el documento tiene intencion de cubrir
+        controls = analysis.get("controls_covered") or []
+        intended = [c.get("code") for c in controls if c.get("code")]
+
         superseded_doc_id = None
         if analysis.get("is_policy") and analysis.get("policy"):
             try:
                 result["policy_id"], superseded_doc_id = _create_or_update_policy(
-                    db, doc, analysis["policy"], owner_id
+                    db, doc, analysis["policy"], owner_id,
+                    document_level=doc_level,
+                    intended_controls=intended or None,
                 )
                 if superseded_doc_id:
                     result["superseded_document_id"] = superseded_doc_id
             except Exception as _pe:
                 logger.warning("Policy creation failed doc=%d: %s", doc_id, _pe)
 
-        controls = analysis.get("controls_covered") or []
         if controls:
             try:
                 result["controls_updated"] = _update_controls(
-                    db, doc, controls, owner_id, obsolete_doc_id=superseded_doc_id
+                    db, doc, controls, owner_id,
+                    obsolete_doc_id=superseded_doc_id,
+                    doc_level=doc_level,
                 )
             except Exception as _ce2:
                 logger.warning("Controls update failed doc=%d: %s", doc_id, _ce2)
@@ -520,7 +555,8 @@ def _bump_policy_version(ver: str | None) -> str:
 
 
 def _create_or_update_policy(
-    db: Session, doc: AiDocument, pol_data: dict, owner_id: int | None
+    db: Session, doc: AiDocument, pol_data: dict, owner_id: int | None,
+    document_level: int = 1, intended_controls: list | None = None,
 ) -> tuple[int | None, int | None]:
     """Crea o actualiza la Policy vinculada a este documento.
 
@@ -551,6 +587,9 @@ def _create_or_update_policy(
         existing.iso_clauses = pol_data.get("iso_clauses") or existing.iso_clauses
         existing.review_date = review_date
         existing.review_cycle_months = cycle_months
+        existing.document_level = document_level
+        if intended_controls:
+            existing.intended_controls = intended_controls
         existing.updated_at = datetime.now(timezone.utc)
         db.commit()
         return existing.id, None
@@ -598,6 +637,8 @@ def _create_or_update_policy(
             owner_id=owner_id,
             source_document_id=doc.id,
             previous_version_id=superseded.id,
+            document_level=document_level,
+            intended_controls=intended_controls,
         )
         db.add(pol)
         superseded_doc_id = superseded.source_document_id
@@ -625,6 +666,8 @@ def _create_or_update_policy(
         review_cycle_months=cycle_months,
         owner_id=owner_id,
         source_document_id=doc.id,
+        document_level=document_level,
+        intended_controls=intended_controls,
     )
     db.add(pol)
     db.commit()
@@ -641,20 +684,40 @@ _STATUS_RANK = {
     ControlStatus.IMPLEMENTED: 3,
 }
 
+# Madurez maxima que puede aportar un documento segun su nivel jerarquico
+_LEVEL_MAX_MATURITY: dict[int, int] = {1: 2, 2: 3, 3: 4, 4: 5}
+
+
+def _recalculate_aggregate_maturity(refs: list) -> int | None:
+    """Calcula la madurez agregada de un control a partir de todas sus referencias documentales.
+
+    Cada documento contribuye con su 'level_maturity' (madurez acotada por su nivel jerarquico).
+    La madurez del control = max de todas las contribuciones con datos de nivel.
+    Devuelve None si ningun ref tiene datos de nivel (legacy), para no sobreescribir.
+    """
+    leveled = [r for r in refs if "level_maturity" in r]
+    if not leveled:
+        return None
+    return max(r["level_maturity"] for r in leveled)
+
 
 def _update_controls(
     db: Session, doc: AiDocument, controls_covered: list, owner_id: int | None,
     obsolete_doc_id: int | None = None,
+    doc_level: int = 1,
 ) -> int:
     """Actualiza ControlImplementation para los controles cubiertos por el documento.
 
-    Si `obsolete_doc_id` viene informado, este documento reemplaza a una version
-    anterior de la misma politica: se descarta la evidencia que referenciaba el
-    documento antiguo y se aplica el nuevo estado/madurez sin la restriccion de
-    "nunca degradar", porque el contenido nuevo debe sustituir, no solo sumarse.
+    doc_level: nivel jerarquico del documento (1=Politica, 2=Norma, 3=Procedimiento, 4=Instruccion).
+    La madurez maxima que puede aportar un documento esta limitada por su nivel jerarquico:
+    Nivel1->max2, Nivel2->max3, Nivel3->max4, Nivel4->max5.
+    La madurez final del control se recalcula como el maximo de todas las contribuciones.
     """
     updated = 0
     old_doc_url = f"/api/ai/documents/{obsolete_doc_id}" if obsolete_doc_id else None
+    doc_url = f"/api/ai/documents/{doc.id}"
+    max_for_level = _LEVEL_MAX_MATURITY.get(doc_level, 2)
+
     for ctrl_data in controls_covered:
         code = (ctrl_data.get("code") or "").strip()
         if not code:
@@ -671,9 +734,9 @@ def _update_controls(
 
         coverage = ctrl_data.get("coverage", "partial")
         note = ctrl_data.get("evidence_note", "")
-        # Nivel de madurez: usar el valor del modelo si viene; sino inferir por coverage
-        new_maturity = ctrl_data.get("maturity_current") or (3 if coverage == "full" else 2)
-        new_maturity = max(1, min(5, int(new_maturity)))
+        # Nivel de madurez: usar el valor del modelo; acotarlo al maximo del nivel del documento
+        raw_maturity = ctrl_data.get("maturity_current") or (3 if coverage == "full" else 2)
+        new_maturity = max(1, min(max_for_level, int(raw_maturity)))
         new_status = ControlStatus.IMPLEMENTED if new_maturity >= 3 else ControlStatus.PARTIAL
 
         # Gap analysis: por que no llega al 5 y que falta
@@ -686,8 +749,10 @@ def _update_controls(
 
         doc_ref = {
             "title": f"[Auto] {doc.original_name}",
-            "url": f"/api/ai/documents/{doc.id}",
+            "url": doc_url,
             "note": note[:200] if note else "",
+            "document_level": doc_level,
+            "level_maturity": new_maturity,
         }
 
         impl = db.query(ControlImplementation).filter_by(
@@ -697,31 +762,40 @@ def _update_controls(
 
         if impl:
             refs = list(impl.evidence_refs or [])
+            # Descartar evidencia de la version anterior de este mismo documento
             if old_doc_url:
-                # La version anterior de esta politica ya no es vigente: se
-                # descarta su evidencia y el contenido nuevo sustituye al
-                # estado/madurez derivados de ella (sin restriccion de "nunca
-                # degradar", que solo aplica cuando se acumula evidencia de
-                # documentos distintos e independientes).
                 refs = [r for r in refs if r.get("url") != old_doc_url]
-                impl.status = new_status
+            # Reemplazar o añadir la referencia de este documento (idempotente por URL)
+            refs = [r for r in refs if r.get("url") != doc_url]
+            refs.append(doc_ref)
+            impl.evidence_refs = refs
+
+            # Recalcular madurez agregada: max de todas las contribuciones con nivel
+            aggregate = _recalculate_aggregate_maturity(refs)
+            if aggregate is not None:
+                impl.maturity = aggregate
+                impl.status = ControlStatus.IMPLEMENTED if aggregate >= 3 else ControlStatus.PARTIAL
+            elif old_doc_url:
+                # Version nueva sin refs legacy: aplicar directamente
                 impl.maturity = new_maturity
-                if note:
-                    impl.evidence = note
+                impl.status = new_status
             else:
-                # Solo mejorar el estado, nunca degradar
-                if _STATUS_RANK.get(new_status, 0) > _STATUS_RANK.get(impl.status, 0):
-                    impl.status = new_status
+                # Refs legacy sin datos de nivel: solo mejorar, nunca degradar
                 if new_maturity > (impl.maturity or 0):
                     impl.maturity = new_maturity
-                if note and not impl.evidence:
-                    impl.evidence = note
-            if not any(r.get("title") == doc_ref["title"] for r in refs):
-                refs.append(doc_ref)
-            impl.evidence_refs = refs
-            # Actualizar gap analysis (sobreescribir siempre con la info mas reciente)
+                if _STATUS_RANK.get(new_status, 0) > _STATUS_RANK.get(impl.status, 0):
+                    impl.status = new_status
+
+            if note and not impl.evidence:
+                impl.evidence = note
+            # Actualizar gap analysis con la info del documento mas reciente de mayor nivel
             if gap_note:
-                impl.notes = gap_note
+                existing_level = 0
+                for r in refs:
+                    if r.get("url") != doc_url and r.get("document_level", 0) > existing_level:
+                        existing_level = r["document_level"]
+                if doc_level >= existing_level:
+                    impl.notes = gap_note
         else:
             impl = ControlImplementation(
                 organization_id=doc.organization_id,

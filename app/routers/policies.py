@@ -117,6 +117,9 @@ def create_policy(body: PolicyIn, db: Session = Depends(get_db),
         iso_clauses=body.iso_clauses,
         review_date=body.review_date,
         owner_id=body.owner_id or current_user.id,
+        document_level=body.document_level,
+        parent_policy_id=body.parent_policy_id,
+        intended_controls=body.intended_controls,
     )
     db.add(p)
     db.commit()
@@ -189,6 +192,9 @@ def new_policy_version(policy_id: int, db: Session = Depends(get_db),
         source_document_id=p.source_document_id,
         review_cycle_months=p.review_cycle_months,
         previous_version_id=p.id,
+        document_level=p.document_level,
+        parent_policy_id=p.parent_policy_id,
+        intended_controls=p.intended_controls,
     )
     db.add(new_p)
     db.commit()

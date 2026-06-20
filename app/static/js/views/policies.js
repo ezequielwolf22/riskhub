@@ -24,6 +24,28 @@ const ViewPolicies = (() => {
     evidencia:           '#6b7280',
   };
 
+  // Jerarquia documental ISO: nivel 1-4
+  const DOC_LEVEL_LABELS = {
+    1: 'Politica',
+    2: 'Norma / Estandar',
+    3: 'Procedimiento',
+    4: 'Instruccion Tecnica',
+  };
+  const DOC_LEVEL_COLORS = {
+    1: 'var(--brand-purple)',
+    2: 'var(--brand-orange)',
+    3: '#0891b2',
+    4: '#16a34a',
+  };
+  const DOC_LEVEL_MAX_MATURITY = { 1: 2, 2: 3, 3: 4, 4: 5 };
+
+  function _levelBadge(level) {
+    const l = parseInt(level) || 1;
+    const label = DOC_LEVEL_LABELS[l] || 'Politica';
+    const color = DOC_LEVEL_COLORS[l] || 'var(--brand-purple)';
+    return `<span title="Nivel jerarquico: ${label}" style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;background:${color}18;color:${color};border:1px solid ${color}40;">${l}. ${label}</span>`;
+  }
+
   // Marcos normativos para generacion IA
   const FRAMEWORKS = [
     { value: 'ISO 27001', label: 'ISO/IEC 27001:2022' },
@@ -180,7 +202,10 @@ const ViewPolicies = (() => {
           <td>${UI.codePill(p.code)}</td>
           <td>
             <b>${UI.esc(p.title)}</b>
-            ${p.category ? `<div style="margin-top:3px;">${_typeBadge(p.category)}</div>` : ''}
+            <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">
+              ${_levelBadge(p.document_level || 1)}
+              ${p.category ? _typeBadge(p.category) : ''}
+            </div>
           </td>
           <td style="font-size:12px;font-family:var(--font-mono);">v${UI.esc(p.version)}</td>
           <td>${_badge(STATUS_LABELS[p.status]||p.status, STATUS_COLORS[p.status]||'#888')}</td>
@@ -195,7 +220,7 @@ const ViewPolicies = (() => {
     wrap.innerHTML = `
       <table class="data">
         <thead>
-          <tr><th>Codigo</th><th>Titulo / Tipo</th><th>Version</th><th>Estado</th><th>Revision</th><th>Responsable</th><th>Acciones</th></tr>
+          <tr><th>Codigo</th><th>Titulo / Nivel</th><th>Version</th><th>Estado</th><th>Revision</th><th>Responsable</th><th>Acciones</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
@@ -216,7 +241,7 @@ const ViewPolicies = (() => {
       });
   }
 
-  function _formHtml(p, extracted) {
+  function _formHtml(p, extracted, allPolicies) {
     const v = p || {};
     const e = extracted || {};
     const title   = e.title   || v.title   || '';
@@ -227,14 +252,47 @@ const ViewPolicies = (() => {
     const review  = e.review_date || (v.review_date ? v.review_date.slice(0,10) : '');
     const clauses = e.iso_clauses ? e.iso_clauses.join(', ') : (v.iso_clauses||[]).join(', ');
     const notes   = e.confidence_notes || '';
+    const docLevel = v.document_level || 1;
+    const parentId = v.parent_policy_id || '';
 
     // Normalizar category: si viene texto libre, intentar mapear a uno de los tipos estandar
     const normalizedCat = Object.keys(ISMS_TYPES).includes(category) ? category : '';
+
+    // Construir opciones del selector de documento padre (excluir el propio doc)
+    const parentOptions = (allPolicies || [])
+      .filter(pp => !p || pp.id !== p.id)
+      .map(pp => {
+        const lvl = pp.document_level || 1;
+        return `<option value="${pp.id}" ${parentId == pp.id ? 'selected' : ''}>[${lvl}] ${UI.esc(pp.code)} — ${UI.esc(pp.title)}</option>`;
+      }).join('');
 
     return `
       <div class="form-grid">
         ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">Nota IA: ${UI.esc(notes)}</div></div>` : ''}
         <div class="span2"><label>Titulo *</label><input id="f-title" class="input" value="${UI.esc(title)}"></div>
+
+        <div>
+          <label>Nivel jerarquico
+            <span title="Jerarquia ISO: Politica (alto nivel) > Norma (reglas) > Procedimiento (pasos) > Instruccion Tecnica (configuracion exacta)"
+                  style="cursor:help;color:var(--text-muted);font-weight:400;font-size:11px;"> (?)</span>
+          </label>
+          <select id="f-doc-level" class="input" onchange="ViewPolicies._onLevelChange(this)">
+            ${Object.entries(DOC_LEVEL_LABELS).map(([k, l]) =>
+              `<option value="${k}" ${docLevel == k ? 'selected' : ''}>${k}. ${l} (max madurez ${DOC_LEVEL_MAX_MATURITY[k]}/5)</option>`
+            ).join('')}
+          </select>
+          <div id="f-level-hint" style="font-size:11px;color:var(--text-muted);margin-top:3px;"></div>
+        </div>
+
+        <div>
+          <label>Documento padre (jerarquia)</label>
+          <select id="f-parent" class="input">
+            <option value="">— Ninguno (documento raiz) —</option>
+            ${parentOptions}
+          </select>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Una Norma referencia su Politica padre; un Procedimiento referencia su Norma padre.</div>
+        </div>
+
         <div>
           <label>Tipo de documento ISMS</label>
           <select id="f-cat" class="input">
@@ -279,6 +337,19 @@ const ViewPolicies = (() => {
   function _bumpVersion(ver) {
     const parts = String(ver || '1.0').split('.');
     return (parseInt(parts[0] || '1') + 1) + '.0';
+  }
+
+  function _onLevelChange(sel) {
+    const hint = document.getElementById('f-level-hint');
+    if (!hint) return;
+    const l = parseInt(sel.value) || 1;
+    const hints = {
+      1: 'Define la intencion y compromiso organizativo — alto nivel, sin detalles tecnicos.',
+      2: 'Define las reglas de obligado cumplimiento para un area especifica.',
+      3: 'Describe pasos detallados para ejecutar un proceso en una solucion concreta.',
+      4: 'Proporciona configuraciones exactas y medibles para un sistema especifico.',
+    };
+    hint.textContent = hints[l] || '';
   }
 
   // ---------- Helpers de madurez para el panel inline ----------
@@ -371,10 +442,18 @@ const ViewPolicies = (() => {
       <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg-2);
                   border-radius:6px;margin-bottom:8px;">
         <div style="font-size:20px;font-weight:800;color:${avgColor};">${avg.toFixed(1)}</div>
-        <div>
-          <div style="font-size:12px;font-weight:600;">Madurez SGSI promedio</div>
-          <div style="font-size:11px;color:var(--text-muted);">${controls.length} control${controls.length!==1?'es':''} evaluados — haz clic en cada uno para ver el gap</div>
+        <div style="flex:1;">
+          <div style="font-size:12px;font-weight:600;">Madurez aportada por este documento</div>
+          <div style="font-size:11px;color:var(--text-muted);">
+            ${controls.length} control${controls.length!==1?'es':''} en el alcance especifico de este documento
+            &mdash; haz clic en cada uno para ver el gap
+          </div>
         </div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;padding:5px 8px;
+                  background:rgba(89,0,141,.04);border-radius:4px;border:1px solid rgba(89,0,141,.1);">
+        La madurez global de cada control se calcula agregando las contribuciones de TODOS los documentos del corpus.
+        Este panel muestra solo lo que aporta este documento especifico segun su alcance y nivel.
       </div>
       ${rows}`;
   }
@@ -408,13 +487,20 @@ const ViewPolicies = (() => {
     };
   }
 
-  function _openForm(p, extracted) {
-    UI.modal(p ? `Editar ${p.code}` : 'Nuevo documento ISMS', _formHtml(p, extracted), {
+  async function _openForm(p, extracted) {
+    // Cargar lista de politicas para el selector de documento padre
+    let allPolicies = [];
+    try { allPolicies = await Api.policies.list({}); } catch (_) {}
+
+    UI.modal(p ? `Editar ${p.code}` : 'Nuevo documento ISMS', _formHtml(p, extracted, allPolicies), {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 <button class="btn btn-primary" id="m-save">Guardar</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick   = () => _save(p);
+    // Inicializar hint del nivel actual
+    const levelSel = document.getElementById('f-doc-level');
+    if (levelSel) _onLevelChange(levelSel);
     if (p && p.source_document_id) _loadPolicyMaturity(p.source_document_id);
   }
 
@@ -423,6 +509,8 @@ const ViewPolicies = (() => {
     if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
     const clausesRaw = document.getElementById('f-clauses').value.trim();
     const ownerVal   = document.getElementById('f-owner').value;
+    const parentVal  = document.getElementById('f-parent')?.value;
+    const levelVal   = document.getElementById('f-doc-level')?.value;
     const payload = {
       title,
       version:    document.getElementById('f-version').value.trim() || '1.0',
@@ -433,6 +521,8 @@ const ViewPolicies = (() => {
       scope:   document.getElementById('f-scope').value.trim(),
       content: document.getElementById('f-content').value.trim(),
       owner_id: ownerVal ? parseInt(ownerVal) : null,
+      document_level: levelVal ? parseInt(levelVal) : 1,
+      parent_policy_id: parentVal ? parseInt(parentVal) : null,
     };
     try {
       if (p) {
@@ -607,5 +697,5 @@ const ViewPolicies = (() => {
     }
   }
 
-  return { render, _generateWithAI, _onGenFileChange, _submitGenerate, _saveGenerated };
+  return { render, _generateWithAI, _onGenFileChange, _submitGenerate, _saveGenerated, _onLevelChange };
 })();

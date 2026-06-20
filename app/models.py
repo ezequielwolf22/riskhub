@@ -870,10 +870,16 @@ class Policy(Base):
     # anterior pasa automaticamente a obsoleta (mismo patron que BCPPlan).
     previous_version_id = Column(Integer, ForeignKey("policies.id"), nullable=True)
 
+    # v5.0 — Jerarquia documental ISO: Politica(1) > Norma(2) > Procedimiento(3) > Instruccion Tecnica(4)
+    document_level = Column(Integer, default=1, nullable=False)
+    parent_policy_id = Column(Integer, ForeignKey("policies.id"), nullable=True)
+    intended_controls = Column(JSON, nullable=True)  # codigos ISO 27002 que este doc debe cubrir
+
     owner = relationship("User", foreign_keys=[owner_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
     source_document = relationship("AiDocument", foreign_keys=[source_document_id])
     previous_version = relationship("Policy", remote_side=[id], foreign_keys=[previous_version_id])
+    parent_policy = relationship("Policy", remote_side=[id], foreign_keys=[parent_policy_id])
 
 
 # ---------- AUDITORIA INTERNA (M5) ----------
