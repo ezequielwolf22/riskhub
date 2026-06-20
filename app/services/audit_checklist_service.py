@@ -52,7 +52,7 @@ def _generate_ai_audit_question(api_key: str, model: str,
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model=model,
-            max_tokens=150,
+            max_tokens=1024,
             messages=[{
                 "role": "user",
                 "content": (

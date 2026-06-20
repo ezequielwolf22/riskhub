@@ -46,7 +46,7 @@ def _get_api_key(db: Session, org_id: int | None) -> str | None:
 
 def _get_model(db: Session, org_id: int | None) -> str:
     cfg = db.query(AiConfig).filter_by(organization_id=org_id).first()
-    return cfg.model if cfg and cfg.model else "claude-haiku-4-5-20251001"
+    return cfg.model if cfg and cfg.model else "claude-haiku-4-5"
 
 
 def _strip_fence(raw: str) -> str:
@@ -242,7 +242,7 @@ def propagate_with_ai(
 
     msg = client.messages.create(
         model=model,
-        max_tokens=2048,
+        max_tokens=16384,
         system=_PROPAGATE_SYSTEM,
         messages=[{"role": "user", "content": user_content}],
     )

@@ -144,7 +144,7 @@ def _call_claude(db: Session, org_id: Optional[int], text: str) -> str:
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
         model=model,
-        max_tokens=2048,
+        max_tokens=16384,
         system=_SYSTEM_PROMPT,
         messages=[{
             "role": "user",

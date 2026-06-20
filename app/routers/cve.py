@@ -326,6 +326,7 @@ def analyze_cves(
                 controls=controls_context,
                 rag_context=rag_ctx,
                 api_key=ai_api_key,
+                model=(ai_cfg.model if ai_cfg and ai_cfg.model else None) or "claude-haiku-4-5",
             )
 
             results.append({
@@ -508,6 +509,7 @@ def auto_scan_cves(
             analysis = analyze_cve_asset(
                 cve=cve, asset=asset_dict, controls=controls_context,
                 rag_context=rag_ctx, api_key=ai_api_key,
+                model=(ai_cfg.model if ai_cfg and ai_cfg.model else None) or "claude-haiku-4-5",
             )
             results.append({
                 "cve_id": cve_id,

@@ -264,7 +264,20 @@ Genera JSON (sin markdown):
 }}"""
 
 
-def _call_claude(prompt: str, api_key: str | None = None) -> dict:
+def _get_model(db: Session, org_id: int | None) -> str:
+    """Devuelve el modelo Claude configurado para la org, o el fallback global."""
+    try:
+        from app.models import AiConfig
+        cfg = db.query(AiConfig).filter_by(organization_id=org_id).first() if org_id else None
+        if cfg and cfg.model:
+            return cfg.model
+    except Exception:
+        pass
+    return "claude-opus-4-6"
+
+
+def _call_claude(prompt: str, api_key: str | None = None, org_id: int | None = None,
+                 db: Session | None = None) -> dict:
     effective_key = api_key or settings.anthropic_api_key
     if not effective_key:
         raise ValueError(
@@ -272,11 +285,12 @@ def _call_claude(prompt: str, api_key: str | None = None) -> dict:
             "Configurala en IA -> Configuracion o añade RISKHUB_ANTHROPIC_API_KEY al entorno."
         )
 
+    model = _get_model(db, org_id) if db is not None else "claude-opus-4-6"
     import anthropic
     client = anthropic.Anthropic(api_key=effective_key)
     msg = client.messages.create(
-        model="claude-opus-4-7",
-        max_tokens=4096,
+        model=model,
+        max_tokens=32768,
         messages=[{"role": "user", "content": prompt}],
     )
     text = msg.content[0].text.strip()
@@ -308,7 +322,7 @@ def generate(report_type: str, db: Session, api_key: str | None = None,
         "followup_report": _prompt_followup_report,
     }
     prompt = prompts[report_type](data)
-    content = _call_claude(prompt, api_key=api_key)
+    content = _call_claude(prompt, api_key=api_key, org_id=org_id, db=db)
     content["_meta"] = {
         "report_type": report_type,
         "label": REPORT_TYPES[report_type],

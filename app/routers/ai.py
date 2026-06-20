@@ -95,7 +95,7 @@ def analyze(
         enriched_answers["ens_level"] = ctx_obj.ens_level
 
     try:
-        result = run_analysis(enriched_answers, db, api_key=api_key)
+        result = run_analysis(enriched_answers, db, api_key=api_key, org_id=current_user.organization_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except json.JSONDecodeError as e:
@@ -179,7 +179,7 @@ def analyze_start(
         from app.services.ai_service import _regulations_to_frameworks, _parse_appetite_level
         db_t = SessionLocal()
         try:
-            result = run_analysis(enriched, db_t, api_key=api_key)
+            result = run_analysis(enriched, db_t, api_key=api_key, org_id=org_id)
 
             # Guardar contexto organizacional en RiskContext
             try:
@@ -1035,7 +1035,7 @@ def control_gap_detailed(
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=32768,
             system=system_prompt,
             messages=[{
                 "role": "user",
@@ -1105,7 +1105,7 @@ def architecture_review(
     if not api_key:
         raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
 
-    model = (cfg.model if cfg else None) or "claude-opus-4-5"
+    model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
     # Obtener documentos de arquitectura de la org
     from app.models import AiDocumentStatus
@@ -1212,7 +1212,7 @@ def architecture_review(
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=8192,
+            max_tokens=64000,
             system=_ARCH_REVIEW_PROMPT,
             messages=[{"role": "user", "content": message_content}],
         )
@@ -1416,7 +1416,7 @@ def _resolve_api_key(cfg: AiConfig | None) -> str | None:
     return settings.anthropic_api_key
 
 
-_MAX_TOKENS_CAP = 4096   # tope servidor para evitar abuso de coste de API
+_MAX_TOKENS_CAP = 32000
 _MAX_MESSAGES = 40       # evitar payloads gigantes
 
 
@@ -1427,7 +1427,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
-    max_tokens: int = 2048
+    max_tokens: int = 16384
 
 
 class FeedbackIn(BaseModel):

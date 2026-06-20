@@ -71,7 +71,7 @@ def extract_plan_checklist(db: Session, plan, api_key: str, model: str) -> list:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model=model,
-            max_tokens=2000,
+            max_tokens=16384,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": plan_info}],
         )

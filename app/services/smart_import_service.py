@@ -145,7 +145,7 @@ def _call_claude(prompt: str, api_key: str, model: str) -> dict:
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
         model=model,
-        max_tokens=2048,
+        max_tokens=16384,
         messages=[{"role": "user", "content": prompt}],
     )
     text = msg.content[0].text.strip()

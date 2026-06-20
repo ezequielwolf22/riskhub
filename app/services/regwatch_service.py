@@ -495,10 +495,11 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
         return False
 
     try:
+        model = _get_global_model(db)
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
+            model=model,
+            max_tokens=8192,
             system=system_prompt,
             messages=[{"role": "user", "content": raw_text}],
         )
@@ -546,6 +547,18 @@ def _get_global_api_key(db: Session) -> str | None:
         except Exception:
             pass
     return None
+
+
+def _get_global_model(db: Session) -> str:
+    """Devuelve el modelo Claude de la primera org con config activa, o fallback global."""
+    try:
+        from app.models import AiConfig
+        cfg = db.query(AiConfig).filter(AiConfig.model.isnot(None)).first()
+        if cfg and cfg.model:
+            return cfg.model
+    except Exception:
+        pass
+    return "claude-haiku-4-5"
 
 
 def run_sweep(db: Session) -> dict:

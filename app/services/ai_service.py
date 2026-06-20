@@ -20,6 +20,18 @@ from app.models import Asset, Control, Threat
 from app.services.risk_engine import DEFAULT_MATRIX
 
 
+def _get_model(db: Session, org_id: int | None) -> str:
+    """Devuelve el modelo Claude configurado para la org, o el fallback global."""
+    try:
+        from app.models import AiConfig
+        cfg = db.query(AiConfig).filter_by(organization_id=org_id).first() if org_id else None
+        if cfg and cfg.model:
+            return cfg.model
+    except Exception:
+        pass
+    return "claude-opus-4-6"
+
+
 def _sanitize_prompt_value(v: Any) -> str:
     """Elimina caracteres que confunden a Claude al generar JSON (comillas, backslashes, etc.)."""
     if isinstance(v, list):
@@ -486,7 +498,7 @@ Devuelve EXCLUSIVAMENTE un JSON válido con este esquema:
 
 # ---------- Llamada a Claude API ----------
 
-def run_analysis(answers: dict, db: Session, api_key: str | None = None) -> dict[str, Any]:
+def run_analysis(answers: dict, db: Session, api_key: str | None = None, org_id: int | None = None) -> dict[str, Any]:
     """Llama a Claude API y devuelve el analisis de riesgos estructurado.
 
     El parametro api_key permite usar la clave per-tenant configurada en la UI
@@ -522,21 +534,20 @@ def run_analysis(answers: dict, db: Session, api_key: str | None = None) -> dict
 
     prompt = _build_prompt(answers, assets, threats, controls)
 
+    model = _get_model(db, org_id)
     client = anthropic.Anthropic(api_key=effective_key)
-    # Usar max_tokens alto para evitar truncacion del JSON con muchos escenarios
     try:
         message = client.messages.create(
-            model="claude-opus-4-7",
-            max_tokens=16384,
+            model=model,
+            max_tokens=64000,
             messages=[{"role": "user", "content": prompt}],
         )
     except Exception as exc:
-        # Algunos modelos no soportan 16384; reintentar con 8192
         err_str = str(exc).lower()
         if "max_tokens" in err_str or "maximum" in err_str:
             message = client.messages.create(
-                model="claude-opus-4-7",
-                max_tokens=8192,
+                model=model,
+                max_tokens=32768,
                 messages=[{"role": "user", "content": prompt}],
             )
         else:

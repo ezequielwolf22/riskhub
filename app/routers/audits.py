@@ -489,7 +489,7 @@ Extrae TODOS los hallazgos del informe. Si no hay hallazgos de un tipo, usa arra
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=4000,
+            max_tokens=32000,
             messages=[{"role": "user", "content": prompt}]
         )
         raw = response.content[0].text.strip()

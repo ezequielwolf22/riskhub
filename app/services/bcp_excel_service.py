@@ -339,7 +339,8 @@ def export_org_data(db: Session, org_id: int) -> bytes:
     return buf.getvalue()
 
 
-async def ai_parse_any_format(content: bytes, filename: str, api_key: str) -> dict:
+async def ai_parse_any_format(content: bytes, filename: str, api_key: str,
+                              model: str = "claude-haiku-4-5") -> dict:
     """Usa Claude para parsear cualquier Excel/CSV y mapear a campos BCP."""
     import anthropic
     import csv
@@ -422,8 +423,8 @@ Responde UNICAMENTE con JSON valido en este formato exacto:
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
+        model=model,
+        max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )
 

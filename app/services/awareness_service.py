@@ -62,7 +62,7 @@ def generate_content(
     risks_summary: str,
     api_key: str,
     model: str = "claude-haiku-4-5",
-    max_tokens: int = 1500,
+    max_tokens: int = 8192,
 ) -> dict:
     """Llama al agente IA y devuelve el dict de contenido de la infografia."""
     import anthropic

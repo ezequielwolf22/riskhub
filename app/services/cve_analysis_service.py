@@ -81,8 +81,8 @@ def analyze_cve_asset(
     controls: list[dict],
     rag_context: str,
     api_key: str,
-    model: str = "claude-3-5-haiku-20241022",
-    max_tokens: int = 1500,
+    model: str = "claude-haiku-4-5",
+    max_tokens: int = 8192,
 ) -> dict:
     """Llama a Claude para analizar el impacto de una CVE sobre un activo.
 
@@ -96,7 +96,7 @@ def analyze_cve_asset(
     try:
         resp = client.messages.create(
             model=model,
-            max_tokens=min(max_tokens, 2048),
+            max_tokens=max_tokens,
             system=_ANALYSIS_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )

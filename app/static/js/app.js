@@ -61,7 +61,7 @@ const LegacyRedirects = {
   calendar: 'reports-hub/calendar',
   tasks: 'reports-hub/tasks',
   'ai-chat': 'ai-hub/chat',
-  'ai-documents': 'ai-hub/documents',
+  'ai-documents': 'compliance-hub/policies',
   users: 'admin-hub/users',
   integrations: 'admin-hub/integrations',
   'itsm-config': 'admin-hub/itsm',

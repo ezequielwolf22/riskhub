@@ -117,7 +117,7 @@ def _get_api_key(db: Session, organization_id: int | None) -> str | None:
 
 def _get_model(db: Session, organization_id: int | None) -> str:
     cfg = db.query(AiConfig).filter_by(organization_id=organization_id).first()
-    return cfg.model if cfg and cfg.model else "claude-opus-4-5"
+    return cfg.model if cfg and cfg.model else "claude-opus-4-6"
 
 
 def _org_owner_id(db: Session, org_id: int | None) -> int | None:
@@ -265,7 +265,7 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 
         message = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=32768,
             system=_RISK_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_content}],
         )
@@ -369,7 +369,7 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 
 _BATCH_SIZE    = 10   # activos por llamada API
 _MAX_WORKERS   = 1    # 1 worker serie: evita race condition en codigos RSK + mas simple
-_BATCH_MODEL   = "claude-haiku-4-5-20251001"  # modelo rapido para analisis masivo
+_BATCH_MODEL   = "claude-haiku-4-5"  # conservado como referencia; el modelo activo lo determina AiConfig
 _MAX_RETRIES   = 4    # reintentos en caso de rate limit 429
 _RETRY_BASE_S  = 15   # segundos base entre reintentos (backoff exponencial)
 _MIN_CALL_GAP  = 1.5  # segundos minimos entre llamadas API (rate limiter, con 1 worker es suficiente)
@@ -600,7 +600,7 @@ def _process_batch_isolated(
             try:
                 msg = client.messages.create(
                     model=model,
-                    max_tokens=8192,
+                    max_tokens=32768,
                     system=system,
                     messages=[{"role": "user", "content": user_content}],
                 )
@@ -798,8 +798,7 @@ def analyze_all_org_assets(
         return {"total": 0}
     _analysis_org_lock[org_id] = True
 
-    # Usar haiku para analisis masivo (rapido y barato); mantener config para analisis individual
-    model = _BATCH_MODEL
+    model = _get_model(db, org_id)
 
     active_catalogs = _get_active_catalogs(db, org_id)
     all_threats   = db.query(Threat).filter(Threat.catalog.in_(active_catalogs)).all()

@@ -411,7 +411,7 @@ def ask(prompt: str, org_id: Optional[int] = None) -> Optional[str]:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=50,
+            max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text.strip()

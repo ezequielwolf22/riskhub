@@ -270,7 +270,7 @@ def ai_extract_policy(
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=1024,
+            max_tokens=8192,
             system=_EXTRACT_SYSTEM,
             messages=[{
                 "role": "user",
@@ -410,7 +410,7 @@ async def ai_generate_free(
         client   = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=32768,
             system=_GENERATE_SYSTEM,
             messages=[{"role": "user", "content": user_message}],
         )

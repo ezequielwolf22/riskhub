@@ -1089,8 +1089,8 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model=cfg.model or "claude-haiku-4-5-20251001",
-            max_tokens=2000,
+            model=cfg.model or "claude-haiku-4-5",
+            max_tokens=16384,
             messages=[{"role": "user", "content": prompt}]
         )
         raw = msg.content[0].text
@@ -1378,8 +1378,9 @@ async def import_ai_preview(
     if not api_key:
         raise HTTPException(422, "No hay API key de IA configurada. Configura el agente IA primero.")
     from app.services.bcp_excel_service import ai_parse_any_format
+    bcp_ai_model = (cfg.model if cfg and cfg.model else None) or "claude-haiku-4-5"
     try:
-        result = await ai_parse_any_format(content, file.filename, api_key)
+        result = await ai_parse_any_format(content, file.filename, api_key, model=bcp_ai_model)
         return result
     except Exception as exc:
         logger.error("AI BCP import error: %s", exc)
@@ -1482,8 +1483,8 @@ def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require
         prompt = _BCP_ANALYSIS_PROMPT.format(bcp_summary=summary)
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1500,
+            model=cfg.model or "claude-haiku-4-5",
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         analysis_text = msg.content[0].text.strip()
@@ -1623,7 +1624,7 @@ def _trigger_checklist_extraction(db: Session, plan: BCPPlan, org_id: int) -> No
         return
 
     plan_id = plan.id
-    model = config.model or "claude-haiku-4-5-20251001"
+    model = config.model or "claude-haiku-4-5"
 
     def _extract():
         with SessionLocal() as sess:
@@ -2332,7 +2333,7 @@ def generate_runbook_ai(rid: int, db: Session = Depends(get_db),
     )
     try:
         client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(model=_get_model(db, _org(u)), max_tokens=1500,
+        msg = client.messages.create(model=_get_model(db, _org(u)), max_tokens=8192,
                                       messages=[{"role": "user", "content": prompt}])
         text = msg.content[0].text.replace("```json", "").replace("```", "").strip()
         data = json.loads(text)
@@ -2530,7 +2531,7 @@ def analyze_suppliers_ai(location_id: Optional[int] = None,
     )
     try:
         client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(model=_get_model(db, _org(u)), max_tokens=450,
+        msg = client.messages.create(model=_get_model(db, _org(u)), max_tokens=4096,
                                       messages=[{"role": "user", "content": prompt}])
         return {"analysis": msg.content[0].text}
     except Exception as exc:
@@ -2780,14 +2781,24 @@ def bcm_ai_quick(
     except ImportError:
         raise HTTPException(503, "Paquete anthropic no disponible")
 
-    api_key = settings.anthropic_api_key
+    from app.models import AiConfig
+    from app.security import decrypt_secret
+    _ai_cfg = db.query(AiConfig).filter_by(organization_id=org).first()
+    api_key = None
+    if _ai_cfg and _ai_cfg.api_key_encrypted:
+        try:
+            api_key = decrypt_secret(_ai_cfg.api_key_encrypted)
+        except Exception:
+            pass
+    if not api_key:
+        api_key = settings.anthropic_api_key
     if not api_key:
         raise HTTPException(503, "API key IA no configurada. Configurala en Integraciones > Agente IA.")
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=800,
+        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5",
+        max_tokens=8192,
         system=system_prompt,
         messages=[{"role": "user", "content": body.message}],
     )
@@ -2942,14 +2953,24 @@ def generate_activation_ai_summary(aid: int, db: Session = Depends(get_db),
     except ImportError:
         raise HTTPException(503, "Paquete anthropic no disponible")
 
-    api_key = settings.anthropic_api_key
+    from app.models import AiConfig
+    from app.security import decrypt_secret
+    _ai_cfg = db.query(AiConfig).filter_by(organization_id=_org(u)).first()
+    api_key = None
+    if _ai_cfg and _ai_cfg.api_key_encrypted:
+        try:
+            api_key = decrypt_secret(_ai_cfg.api_key_encrypted)
+        except Exception:
+            pass
+    if not api_key:
+        api_key = settings.anthropic_api_key
     if not api_key:
         raise HTTPException(503, "API key IA no configurada")
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1200,
+        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5",
+        max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )
     summary = msg.content[0].text

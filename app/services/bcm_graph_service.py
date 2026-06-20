@@ -233,7 +233,7 @@ def analyze_graph_with_ai(db: Session, graph: dict, org_id: int,
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model=model, max_tokens=500,
+            model=model, max_tokens=4096,
             messages=[{"role": "user", "content": prompt}]
         )
         return msg.content[0].text

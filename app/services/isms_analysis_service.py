@@ -137,7 +137,7 @@ def _get_api_key(db: Session, organization_id: int | None) -> str | None:
 
 def _get_model(db: Session, organization_id: int | None) -> str:
     cfg = db.query(AiConfig).filter_by(organization_id=organization_id).first()
-    return cfg.model if cfg and cfg.model else "claude-opus-4-5"
+    return cfg.model if cfg and cfg.model else "claude-opus-4-6"
 
 
 def _org_owner(db: Session, organization_id: int | None) -> int | None:
@@ -216,15 +216,16 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         client = anthropic.Anthropic(api_key=api_key)
         model = _get_model(db, doc.organization_id)
 
-        message = client.messages.create(
+        with client.messages.stream(
             model=model,
-            max_tokens=2048,
+            max_tokens=64000,
             system=_ISMS_SYSTEM_PROMPT + fw_hint,
             messages=[{
                 "role": "user",
                 "content": f"Nombre del documento: {doc.original_name}\n\nContenido:\n{text_sample}",
             }],
-        )
+        ) as stream:
+            message = stream.get_final_message()
         raw_json = _strip_fence(message.content[0].text)
 
         analysis = json.loads(raw_json)

@@ -192,7 +192,7 @@ def ai_review_questionnaire(
             400,
             "API key de Claude no configurada en IA -> Configuracion",
         )
-    model = (cfg.model if cfg else None) or "claude-opus-4-5"
+    model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
     result = tprm_ai_service.review_questionnaire(db, q, key, model)
 
@@ -551,7 +551,7 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
                     bg_key = resolve_api_key(bg_cfg)
                     if not bg_key:
                         return
-                    bg_model = (bg_cfg.model if bg_cfg else None) or "claude-opus-4-5"
+                    bg_model = (bg_cfg.model if bg_cfg else None) or "claude-opus-4-6"
                     bg_q = bg_db.query(SupplierQuestionnaire).filter(
                         SupplierQuestionnaire.id == _questionnaire_id
                     ).first()

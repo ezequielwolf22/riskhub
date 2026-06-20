@@ -449,7 +449,7 @@ def risk_ai_explain(
     api_key = _resolve_key(cfg)
     if not api_key:
         raise HTTPException(400, "API key no configurada. Ve a Configuración > Agente IA.")
-    model = (cfg.model if cfg else None) or "claude-opus-4-7"
+    model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
     # Contexto organizacional
     ctx = db.query(RiskContext).filter_by(organization_id=current_user.organization_id).first()
@@ -548,7 +548,7 @@ Sin texto antes ni después del JSON."""
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=model,
-            max_tokens=2048,
+            max_tokens=16384,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
@@ -1258,7 +1258,7 @@ def suggest_controls_for_risk(
     api_key = _resolve_key(ai_cfg)
     if not api_key:
         raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
-    model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5-20251001"
+    model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5"
 
     # Contexto del riesgo
     asset_name = r.asset.name if r.asset else "N/A"
@@ -1316,7 +1316,7 @@ Responde SOLO con JSON valido, sin texto adicional:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model=model,
-            max_tokens=512,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         import json as _json

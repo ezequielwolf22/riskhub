@@ -151,7 +151,7 @@ def _get_api_key(db: Session, organization_id: int | None) -> str | None:
 
 def _get_model(db: Session, organization_id: int | None) -> str:
     cfg = db.query(AiConfig).filter_by(organization_id=organization_id).first()
-    return cfg.model if cfg and cfg.model else "claude-opus-4-5"
+    return cfg.model if cfg and cfg.model else "claude-opus-4-6"
 
 
 def _strip_fence(raw: str) -> str:
@@ -259,7 +259,7 @@ def _call_grouping_batch(
     for attempt in range(4):
         try:
             msg = client.messages.create(
-                model=model, max_tokens=8192,
+                model=model, max_tokens=32768,
                 system=system,
                 messages=[{"role": "user", "content": user_content}],
             )

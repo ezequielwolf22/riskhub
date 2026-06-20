@@ -1326,7 +1326,7 @@ class AiConfig(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     api_key_encrypted = Column(Text, nullable=True)        # Fernet-encrypted Anthropic key
     voyage_api_key_encrypted = Column(Text, nullable=True) # Fernet-encrypted Voyage AI key
-    model = Column(String(64), default="claude-opus-4-5")
+    model = Column(String(64), default="claude-opus-4-6")
     anonymization_level = Column(Enum(AiAnonymizationLevel), default=AiAnonymizationLevel.MEDIUM)
     setup_completed = Column(Boolean, default=False)
     org_sector = Column(String(128), nullable=True)

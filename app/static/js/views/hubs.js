@@ -68,7 +68,7 @@ const ViewComplianceHub = {
         { id: 'compliance', label: 'Normativo', view: ViewCompliance, route: 'compliance' },
         { id: 'controls', label: 'Controles', view: ViewControls, route: 'controls' },
         { id: 'soa', label: 'SoA', view: ViewSoaVersions },
-        { id: 'policies', label: 'Politicas', view: ViewPolicies, route: 'policies' },
+        { id: 'policies', label: 'Documentos ISMS', view: ViewIsmsDocuments, route: 'policies' },
         {
           id: 'legal',
           label: 'Cumplimiento legal',
@@ -175,7 +175,11 @@ const ViewAiHub = {
       label: 'Agente IA',
       tabs: [
         { id: 'chat', label: 'Chat', view: ViewAiChat, route: 'ai-chat' },
-        { id: 'documents', label: 'Documentos', view: ViewAiDocuments },
+        {
+          id: 'documents',
+          label: 'Documentos ISMS',
+          render: async (_panel) => { location.hash = '/compliance-hub/policies'; },
+        },
       ],
     });
   },

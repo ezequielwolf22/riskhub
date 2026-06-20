@@ -150,7 +150,7 @@ def embed_existing_documents(
 
 def _cfg_out(cfg: AiConfig) -> dict:
     return {
-        "model": cfg.model or "claude-opus-4-5",
+        "model": cfg.model or "claude-opus-4-6",
         "anonymization_level": (
             cfg.anonymization_level.value if cfg.anonymization_level else "medium"
         ),
@@ -166,7 +166,7 @@ def _cfg_out(cfg: AiConfig) -> dict:
 
 def _default_out() -> dict:
     return {
-        "model": "claude-opus-4-5",
+        "model": "claude-opus-4-6",
         "anonymization_level": "medium",
         "setup_completed": False,
         "org_sector": None,

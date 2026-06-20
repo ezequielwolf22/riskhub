@@ -287,7 +287,7 @@ Devuelve SOLO el texto de la política en formato Markdown."""
         model = _get_model(db, org_id)
         message = client.messages.create(
             model=model,
-            max_tokens=3000,
+            max_tokens=16384,
             messages=[{"role": "user", "content": prompt}],
         )
         content = message.content[0].text
