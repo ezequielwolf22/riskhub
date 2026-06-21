@@ -1,6 +1,6 @@
 """Router BCP/BIA — Business Continuity Planning (NIS2 Art. 21.2b + ISO 27001 A.5.29 + ISO 22301)."""
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
@@ -956,6 +956,8 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
     log_action(db, u.id, "approve", "bcp_plan", str(p.id), {"code": p.code})
     # ISO 27001 A.5.29/A.5.30 + ENS op.cont.2 + NIS2 Art.21.2b
     _update_compliance_from_bcp(db, _org(u), "plan_approved", {"plan_type": p.plan_type})
+    # NIS2 Art.21(2)(c): planes cyber_response/disaster_recovery actualizan cobertura NIS2
+    _link_bcp_to_nis2(db, p, _org(u))
     # Extraer checklist automaticamente en background si hay documento
     _trigger_checklist_extraction(db, p, _org(u))
     return _plan_d(p)
@@ -1169,6 +1171,11 @@ def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
     # ISO 27001 A.5.30 + ENS op.cont.3 + NIS2 Art.21.2b
     if body.result == "passed":
         _update_compliance_from_bcp(db, _org(u), "test_passed", {})
+        # Bucle cerrado: cerrar NCs abiertas relacionadas con este test
+        _close_nc_on_bcp_pass(db, t, _org(u))
+    elif body.result in ("failed", "partial"):
+        # Auto-crear NC por fallo (ISO 22301 cl. 10.1)
+        _auto_nc_from_bcp_test_failure(db, t, _org(u), u.id)
     return _test_d(t)
 
 
@@ -1495,6 +1502,153 @@ def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require
 
 
 # ── NC desde test fallido (ISO 22301 cl. 10.1) ────────────────────────────────
+
+def _link_bcp_to_nis2(db: Session, plan: BCPPlan, org_id: int) -> None:
+    """Cuando un BCPPlan tipo cyber_response se aprueba, actualiza la cobertura NIS2 Art.21(2)(c).
+
+    Busca la fila ComplianceFrameworkStatus (framework_code='nis2', requirement_id='art21_2c')
+    y la actualiza a 'implemented' con evidencia del plan aprobado.
+    Si no existe la fila, la crea.
+    """
+    from app.models import ComplianceFrameworkStatus, ComplianceRequirementStatus
+
+    CYBER_TYPES = {"cyber_response", "cyber_recovery", "incident_response", "disaster_recovery"}
+    plan_type = str(getattr(plan, "plan_type", "") or "").lower()
+    if plan_type not in CYBER_TYPES:
+        return
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    requirement_id = "art21_2c"
+    framework_code = "nis2"
+
+    nis2_row = db.query(ComplianceFrameworkStatus).filter(
+        ComplianceFrameworkStatus.organization_id == org_id,
+        ComplianceFrameworkStatus.framework_code == framework_code,
+        ComplianceFrameworkStatus.requirement_id == requirement_id,
+    ).first()
+
+    if nis2_row:
+        nis2_row.status = ComplianceRequirementStatus.IMPLEMENTED
+        nis2_row.completion_pct = 100
+        nis2_row.notes = (
+            f"BCPPlan aprobado: {plan.name} (ID:{plan.id}, tipo:{plan.plan_type}). "
+            f"Aprobado: {now.date()}. Cubre NIS2 Art.21(2)(c) — planes de continuidad de negocio."
+        )
+        nis2_row.last_reviewed_at = now
+    else:
+        nis2_row = ComplianceFrameworkStatus(
+            organization_id=org_id,
+            framework_code=framework_code,
+            requirement_id=requirement_id,
+            status=ComplianceRequirementStatus.IMPLEMENTED,
+            completion_pct=100,
+            notes=(
+                f"BCPPlan aprobado: {plan.name} (ID:{plan.id}, tipo:{plan.plan_type}). "
+                f"Aprobado: {now.date()}. Cubre NIS2 Art.21(2)(c) — planes de continuidad de negocio."
+            ),
+            last_reviewed_at=now,
+        )
+        db.add(nis2_row)
+
+    try:
+        db.commit()
+        logger.info(
+            "NIS2 Art.21(2)(c) actualizado a 'implemented' por BCPPlan %s (org %s)",
+            plan.id, org_id,
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.warning("NIS2 BCP link failed: %s", exc)
+
+
+def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user_id: int) -> None:
+    """Crea NC automaticamente cuando un test BCP falla (ISO 22301 cl. 10.1).
+
+    Bucle cerrado: NC cerrada cuando un test posterior pasa (_close_nc_on_bcp_pass).
+    Solo crea una NC por test (evita duplicados por re-PATCH).
+    """
+    from app.models import NonConformity, NCSeverity, NCStatus
+
+    FAIL_STATUSES = {"failed", "partial"}
+    if str(getattr(test, "result", "") or "").lower() not in FAIL_STATUSES:
+        return
+
+    # Evitar duplicado: si ya hay NC abierta para este test, no crear otra
+    existing = db.query(NonConformity).filter(
+        NonConformity.organization_id == org_id,
+        NonConformity.source == "bcp_test",
+        NonConformity.status.notin_(["closed"]),
+    ).filter(
+        NonConformity.description.like(f"%BCPTest ID: {test.id}%")
+    ).first()
+    if existing:
+        return
+
+    severity = NCSeverity.MAJOR if test.result == "failed" else NCSeverity.MINOR
+    now = datetime.now(timezone.utc)
+    nc = NonConformity(
+        organization_id=org_id,
+        code=_next_nc_code(db, org_id),
+        title=f"Test BCP {test.result.upper()}: {test.code or f'ID {test.id}'}",
+        description=(
+            f"El test BCP (tipo: {test.test_type or 'desconocido'}) "
+            f"obtuvo resultado '{test.result}'. "
+            f"Incumplimiento de ISO 22301 §8.5 (tests periodicos de continuidad). "
+            f"BCPTest ID: {test.id}. "
+            f"Para cerrar esta NC: realizar un nuevo test con resultado satisfactorio."
+        ),
+        source="bcp_test",
+        severity=severity,
+        status=NCStatus.OPEN,
+        iso_clause="8.5",
+        owner_id=user_id,
+        due_date=now.replace(tzinfo=None) + timedelta(days=90),
+        created_at=now.replace(tzinfo=None),
+    )
+    db.add(nc)
+    try:
+        db.flush()
+        # Link NC id back to test
+        nc_ids = list(test.nc_ids or [])
+        nc_ids.append(nc.id)
+        test.nc_ids = nc_ids
+        db.commit()
+        logger.info("Auto-NC %s creada para BCPTest %s (result=%s)", nc.code, test.id, test.result)
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Auto-NC from BCP test failed: %s", exc)
+
+
+def _close_nc_on_bcp_pass(db: Session, test: BCPTest, org_id: int) -> None:
+    """Cierra NCs auto-generadas cuando un test posterior pasa (bucle cerrado)."""
+    from app.models import NonConformity
+
+    if str(getattr(test, "result", "") or "").lower() != "passed":
+        return
+
+    # Buscar NCs abiertas de bcp_test para el mismo test (por ID en descripcion)
+    ncs = db.query(NonConformity).filter(
+        NonConformity.organization_id == org_id,
+        NonConformity.source == "bcp_test",
+        NonConformity.status.notin_(["closed"]),
+    ).filter(
+        NonConformity.description.like(f"%BCPTest ID: {test.id}%")
+    ).all()
+
+    if not ncs:
+        return
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for nc in ncs:
+        nc.status = "closed"
+        nc.closed_at = now
+    try:
+        db.commit()
+        logger.info("Cerradas %d NC(s) por BCPTest %s pasado", len(ncs), test.id)
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Error cerrando NCs en bcp pass: %s", exc)
+
 
 def _next_nc_code(db: Session, org_id: int) -> str:
     try:

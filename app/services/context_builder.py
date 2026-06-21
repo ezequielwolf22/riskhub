@@ -199,3 +199,78 @@ def build_context(
             )
 
     return "\n".join(parts)
+
+
+def _build_supplier_context(db: Session, risk) -> str:
+    """Anade contexto del proveedor vinculado al riesgo para el agente IA."""
+    if not getattr(risk, "supplier_id", None):
+        return ""
+    from app.models import Supplier, VendorIssue, VendorIssueStatus, VendorIssueSeverity
+
+    sup = db.get(Supplier, risk.supplier_id)
+    if not sup:
+        return ""
+
+    open_critical = db.query(VendorIssue).filter(
+        VendorIssue.supplier_id == sup.id,
+        VendorIssue.severity == VendorIssueSeverity.CRITICAL,
+        VendorIssue.status.notin_([
+            VendorIssueStatus.CLOSED,
+            VendorIssueStatus.MITIGATED,
+            VendorIssueStatus.ACCEPTED,
+        ]),
+    ).count()
+
+    flags = []
+    if getattr(sup, "is_data_processor", False):
+        flags.append("Procesador GDPR Art.28")
+    if getattr(sup, "is_nis2", False):
+        flags.append("Sujeto NIS2")
+    if getattr(sup, "is_dora", False):
+        flags.append("ICT DORA")
+    if getattr(sup, "concentration_risk_flag", False):
+        flags.append("Concentracion DORA >40%")
+
+    last_assessed = ""
+    if getattr(sup, "last_assessment_at", None):
+        last_assessed = sup.last_assessment_at.strftime("%Y-%m-%d")
+
+    tier_val = sup.tier.value if getattr(sup, "tier", None) else "N/D"
+
+    lines = [
+        f"\n## Proveedor vinculado: {sup.name}",
+        f"- Score residual TPRM: {sup.residual_risk_score or 'N/D'}/100",
+        f"- Tier: {tier_val}",
+        f"- Lifecycle: {getattr(sup, 'lifecycle_stage', None) or 'active'}",
+        f"- Issues criticos abiertos: {open_critical}",
+        f"- Ultima evaluacion: {last_assessed or 'Nunca'}",
+        f"- Flags regulatorios: {', '.join(flags) if flags else 'Ninguno'}",
+        f"- Concentracion de riesgo: "
+        f"{'Si -- supera 40% de procesos criticos' if getattr(sup, 'concentration_risk_flag', False) else 'No'}",
+    ]
+    return "\n".join(lines)
+
+
+def build_risk_context(db: Session, risk, organization_id: int | None = None) -> str:
+    """Construye el bloque de contexto especifico de un riesgo para el agente IA.
+
+    Incluye la informacion del proveedor vinculado si el riesgo tiene supplier_id.
+    """
+    parts: list[str] = []
+
+    desc = (risk.description or "Sin descripcion")
+    parts.append(f"## Riesgo: {risk.code}")
+    parts.append(f"- Descripcion: {desc}")
+    parts.append(f"- Estado: {risk.status.value}")
+    if risk.residual_level is not None:
+        parts.append(f"- Nivel residual: {risk.residual_level}/8")
+    if risk.inherent_score is not None:
+        parts.append(f"- Score inherente: {risk.inherent_score}")
+    if risk.residual_score is not None:
+        parts.append(f"- Score residual: {risk.residual_score}")
+
+    supplier_ctx = _build_supplier_context(db, risk)
+    if supplier_ctx:
+        parts.append(supplier_ctx)
+
+    return "\n".join(parts)

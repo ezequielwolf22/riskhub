@@ -342,6 +342,136 @@ class OSINTEngine:
 
         db.commit()
 
+        # Auto-crear VendorIssue para hallazgos CRITICAL/HIGH que coincidan con dominio de proveedor
+        try:
+            if scan.organization_id and findings_list:
+                _auto_vendor_issue_from_osint_findings(db, scan, findings_list)
+        except Exception as _e:
+            logger.warning("OSINT→VendorIssue auto-create failed: %s", _e)
+
+
+def _auto_vendor_issue_from_osint_findings(db, scan, findings_list: list) -> None:
+    """Para cada finding CRITICAL/HIGH, busca si hay un proveedor con dominio coincidente
+    y crea un VendorIssue automatico si no existe uno previo del mismo finding.
+    """
+    import re
+    from app.models import Supplier, VendorIssue, VendorIssueSeverity, VendorIssueStatus
+    from datetime import datetime, timezone, timedelta
+
+    HIGH_SEVERITIES = {"critical", "high"}
+    org_id = scan.organization_id
+
+    # Solo procesar findings CRITICAL/HIGH
+    severe = [
+        f for f in findings_list
+        if str(f.get("risk_level", "")).lower() in HIGH_SEVERITIES
+    ]
+    if not severe:
+        return
+
+    # Obtener proveedores activos de la org
+    suppliers = db.query(Supplier).filter(
+        Supplier.organization_id == org_id,
+        Supplier.lifecycle_stage.notin_(["terminated"]),
+    ).all()
+    if not suppliers:
+        return
+
+    # Pre-calcular dominio normalizado de cada proveedor
+    def _sup_domain(sup):
+        d = (getattr(sup, "domain", "") or "").lower().strip()
+        if not d:
+            d = (getattr(sup, "website", "") or "").lower()
+            d = re.sub(r"https?://", "", d).split("/")[0]
+        return d
+
+    sup_domains = [(sup, _sup_domain(sup)) for sup in suppliers if _sup_domain(sup)]
+
+    now = datetime.now(timezone.utc)
+
+    for fd in severe:
+        target = scan.target or ""
+        m = re.search(r"(?:https?://)?([^/\s@:]+\.[a-z]{2,})", target, re.IGNORECASE)
+        if not m:
+            continue
+        finding_domain = m.group(1).lower()
+
+        # Buscar proveedor coincidente
+        matched = None
+        for sup, sup_d in sup_domains:
+            if sup_d and (sup_d in finding_domain or finding_domain in sup_d):
+                matched = sup
+                break
+        if not matched:
+            continue
+
+        # Dedup: usar titulo + proveedor como clave de unicidad
+        fd_title = fd.get("title", "")[:120]
+        existing = db.query(VendorIssue).filter(
+            VendorIssue.supplier_id == matched.id,
+            VendorIssue.auto_generated_source == "osint",
+            VendorIssue.title.ilike(f"%{fd_title[:50]}%"),
+            VendorIssue.status.notin_(["closed", "mitigated", "accepted"]),
+        ).first()
+        if existing:
+            continue
+
+        n = db.query(VendorIssue).filter(VendorIssue.organization_id == org_id).count() + 1
+        sev_str = str(fd.get("risk_level", "")).lower()
+        severity = VendorIssueSeverity.CRITICAL if sev_str == "critical" else VendorIssueSeverity.HIGH
+        days = 30 if severity == VendorIssueSeverity.CRITICAL else 60
+
+        issue = VendorIssue(
+            organization_id=org_id,
+            code=f"VIS-{n:04d}",
+            supplier_id=matched.id,
+            source="osint",
+            title=f"OSINT {sev_str.upper()}: {fd_title}",
+            description=(
+                f"Hallazgo OSINT detectado para el dominio {finding_domain} "
+                f"(proveedor: {matched.name}). "
+                f"Fuente: {fd.get('source', '')}. "
+                f"Detalle: {fd.get('description', '')[:300]}. "
+                f"Scan ID: {scan.id}. "
+                f"Para cerrar: revisar y resolver el hallazgo OSINT, "
+                f"luego marcar como mitigado."
+            ),
+            severity=severity,
+            status=VendorIssueStatus.OPEN,
+            auto_generated=True,
+            auto_generated_source="osint",
+            due_date=now + timedelta(days=days),
+            created_at=now,
+        )
+        db.add(issue)
+        try:
+            db.flush()
+        except Exception as _e:
+            db.rollback()
+            logger.warning("OSINT→VendorIssue flush failed for supplier %s: %s", matched.id, _e)
+            continue
+
+    try:
+        db.commit()
+        # Recomputar perfil de riesgo de proveedores afectados
+        affected_sup_ids = {
+            issue.supplier_id
+            for issue in db.query(VendorIssue).filter(
+                VendorIssue.organization_id == org_id,
+                VendorIssue.auto_generated_source == "osint",
+            ).all()
+            if issue.created_at and (now - issue.created_at).total_seconds() < 60
+        }
+        for sid in affected_sup_ids:
+            try:
+                from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
+                recompute_supplier_risk_profile(db, sid, triggered_by="osint_finding")
+            except Exception as _e:
+                logger.warning("recompute_supplier_risk_profile failed for supplier %s: %s", sid, _e)
+    except Exception as _e:
+        db.rollback()
+        logger.warning("OSINT→VendorIssue commit failed: %s", _e)
+
 
 def _auto_create_incident_from_osint(db, scan, findings_list: list) -> None:
     """Crea automaticamente un incidente de seguridad cuando un escaneo OSINT

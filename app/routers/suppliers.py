@@ -188,6 +188,13 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
         tprm_scoring_service.recompute_supplier(db, s)
     except Exception as _e:
         logger.warning("TPRM recompute failed for %s: %s", s.code, _e)
+
+    # GDPR Art.28: crear tarea de DPA si el proveedor trata datos personales
+    try:
+        _auto_gdpr_dpa_task(db, s, current_user.organization_id, current_user.id)
+    except Exception as _e:
+        logger.warning("DPA task creation failed for %s: %s", s.code, _e)
+
     log_action(db, current_user.id, "create", "supplier", str(s.id), {"name": s.name})
     return s
 
@@ -254,6 +261,56 @@ def _trigger_supplier_score_update(supplier_id: int, org_id: int) -> None:
             db2.close()
 
     _SUPPLIER_EXECUTOR.submit(_recalc)
+
+
+def _auto_gdpr_dpa_task(db: Session, supplier: Supplier, org_id: int, created_by_id: int) -> None:
+    """Crea tarea de firma DPA cuando el proveedor es procesador de datos (GDPR Art.28)."""
+    from app.models import TreatmentTask, TaskStatus, TaskPriority
+    from datetime import timedelta
+
+    if not (getattr(supplier, "is_data_processor", False) or getattr(supplier, "processes_personal_data", False)):
+        return
+
+    # Verificar si ya hay tarea de DPA pendiente para este proveedor
+    existing = db.query(TreatmentTask).filter(
+        TreatmentTask.organization_id == org_id,
+        TreatmentTask.description.like(f"%DPA%{supplier.id}%"),
+        TreatmentTask.status.notin_([TaskStatus.DONE]),
+    ).first()
+    if existing:
+        return
+
+    now = datetime.now(timezone.utc)
+    n = db.query(TreatmentTask).filter(TreatmentTask.organization_id == org_id).count() + 1
+    code = f"TSK-{n:04d}"
+    while db.query(TreatmentTask).filter_by(code=code).first():
+        n += 1
+        code = f"TSK-{n:04d}"
+
+    task = TreatmentTask(
+        organization_id=org_id,
+        code=code,
+        title=f"Firmar DPA con proveedor: {supplier.name} (GDPR Art.28)",
+        description=(
+            f"El proveedor {supplier.name} (ID:{supplier.id}) trata datos personales. "
+            f"GDPR Art.28 obliga a formalizar un Acuerdo de Tratamiento de Datos (DPA) "
+            f"antes de iniciar operaciones. "
+            f"Accion: firmar DPA y registrarlo en Proveedores > Ciclo de vida > 'Registrar DPA firmado'. "
+            f"Al registrar el DPA, esta tarea se cerrara automaticamente."
+        ),
+        priority=TaskPriority.HIGH,
+        status=TaskStatus.PENDING,
+        due_date=now + timedelta(days=30),
+        assigned_to_id=created_by_id,
+        created_at=now,
+    )
+    db.add(task)
+    try:
+        db.commit()
+        logger.info("Auto-created DPA task %s for supplier %s (GDPR Art.28)", code, supplier.code)
+    except Exception as _e:
+        db.rollback()
+        logger.warning("DPA task creation failed: %s", _e)
 
 
 # Umbral a partir del cual el proveedor se considera riesgo critico de cadena de suministro
@@ -628,6 +685,15 @@ async def record_sign_off(
         sup.dpa_signed_by = signed_by
         if doc_id:
             sup.dpa_document_id = doc_id
+        # Bucle cerrado: cerrar la tarea GDPR DPA si existe
+        from app.models import TreatmentTask, TaskStatus
+        pending_dpa_task = db.query(TreatmentTask).filter(
+            TreatmentTask.organization_id == sup.organization_id,
+            TreatmentTask.description.like(f"%DPA%{sup.id}%"),
+            TreatmentTask.status.notin_([TaskStatus.DONE]),
+        ).first()
+        if pending_dpa_task:
+            pending_dpa_task.status = TaskStatus.DONE
     elif doc_type == "nda":
         sup.nda_signed_at = now
         if doc_id:
@@ -647,6 +713,83 @@ async def record_sign_off(
     db.commit()
     result = recompute_supplier_risk_profile(db, sid, triggered_by=f"sign_off_{doc_type}")
     return {"type": doc_type, "signed_at": now.isoformat(), "lifecycle_changes": result.get("changes", [])}
+
+
+@router.post("/{sid}/slas-to-kris", status_code=201)
+async def slas_to_kris(
+    sid: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Convierte SLAs de un contrato de proveedor en KRIs monitorizables.
+
+    payload = {
+        "slas": [
+            {"name": "Uptime", "target_pct": 99.9, "direction": "higher_is_better"},
+            {"name": "MTTR", "target_hours": 4, "direction": "lower_is_better"}
+        ]
+    }
+
+    Para cada SLA se crea un KRI con umbrales de warning (98% del target en higher,
+    120% en lower) y breach (95% / 150%) derivados automaticamente del target.
+    """
+    from app.models import KRI
+
+    sup = db.get(Supplier, sid)
+    if not sup or sup.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    slas = payload.get("slas", [])
+    if not slas:
+        raise HTTPException(status_code=400, detail="Proporciona al menos un SLA en 'slas'")
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    created = []
+    for sla in slas:
+        name = sla.get("name") or "SLA sin nombre"
+        direction = sla.get("direction") or "higher_is_better"
+        target = (
+            sla.get("target_pct")
+            or sla.get("target_value")
+            or sla.get("target_hours")
+            or 0
+        )
+
+        if direction == "higher_is_better":
+            warning_threshold = round(float(target) * 0.98, 2)
+            breach_threshold = round(float(target) * 0.95, 2)
+        else:
+            warning_threshold = round(float(target) * 1.2, 2)
+            breach_threshold = round(float(target) * 1.5, 2)
+
+        kri = KRI(
+            organization_id=current_user.organization_id,
+            risk_id=None,
+            name=f"SLA {sup.name}: {name}",
+            metric_type="custom",
+            indicator_type="kri",
+            direction=direction,
+            description=(
+                f"SLA derivado de contrato con {sup.name}. "
+                f"Objetivo: {target}. Proveedor ID: {sid}."
+            ),
+            warning_threshold=warning_threshold,
+            breach_threshold=breach_threshold,
+            is_system=False,
+            is_visible=True,
+            is_active=True,
+            created_at=now,
+        )
+        db.add(kri)
+        created.append({"name": kri.name, "warning": warning_threshold, "breach": breach_threshold})
+
+    db.commit()
+    log_action(
+        db, current_user.id, "create", "kri_from_sla",
+        str(sid), {"supplier": sup.name, "count": len(created)},
+    )
+    return {"created": len(created), "kris": created}
 
 
 @router.patch("/{sid}/concentration-mitigation")
@@ -670,3 +813,39 @@ async def set_concentration_mitigation(
     db.commit()
     result = recompute_supplier_risk_profile(db, sid, triggered_by="concentration_mitigation")
     return {"supplier_id": sid, "lifecycle_changes": result.get("changes", [])}
+
+
+@router.get("/{sid}/audit-log")
+async def get_supplier_audit_log(
+    sid: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Historial de cambios del proveedor desde la tabla de auditoria."""
+    from app.models import AuditLog
+
+    sup = db.get(Supplier, sid)
+    if not sup or sup.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    logs = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.entity_type == "supplier",
+            AuditLog.entity_id == str(sid),
+        )
+        .order_by(AuditLog.timestamp.desc())
+        .limit(100)
+        .all()
+    )
+
+    return [
+        {
+            "id": entry.id,
+            "action": entry.action,
+            "user": entry.user.email if entry.user else entry.user_id,
+            "changes": entry.detail,
+            "created_at": entry.timestamp.isoformat() if entry.timestamp else None,
+        }
+        for entry in logs
+    ]

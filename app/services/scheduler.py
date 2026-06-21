@@ -467,6 +467,13 @@ def _run_alert_rules() -> None:
                 continue
 
             # Reglas compuestas: conditions JSON + logic AND|OR (v5.3.0)
+            # Lista blanca de campos permitidos — previene acceso arbitrario a atributos
+            _ALLOWED_RISK_FIELDS = {
+                "inherent_score", "residual_score", "residual_level",
+                "inherent_likelihood", "inherent_impact",
+                "residual_likelihood", "residual_impact",
+                "treatment_progress", "days_since_review", "owner_id",
+            }
             if not matching and rule.conditions:
                 logic = (getattr(rule, "logic", None) or "AND").upper()
                 for r in risks:
@@ -477,6 +484,12 @@ def _run_alert_rules() -> None:
                         field = cond.get("field", "")
                         op = cond.get("op", "gte")
                         val = cond.get("value")
+                        if field not in _ALLOWED_RISK_FIELDS:
+                            logger.warning(
+                                "Regla compuesta: campo no permitido '%s' — ignorado", field
+                            )
+                            results.append(False)
+                            continue
                         attr = getattr(r, field, None)
                         if attr is None or val is None:
                             results.append(False)
@@ -1047,10 +1060,18 @@ def _match_osint_to_assets(db, finding_type: str, finding_value: str, org_id: in
                 affected.append(asset)
 
         elif finding_type == "url":
-            # Extraer dominio de URL
-            match = re.search(r"https?://([^/]+)", finding_value)
-            if match:
-                domain = match.group(1).lower()
+            # Extraer dominio de URL — soporta URLs con y sin protocolo
+            _URL_RE = re.compile(
+                r'(?:https?://)?'
+                r'(?:www\.)?'
+                r'([a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]?\.'
+                r'(?:[a-zA-Z]{2,63}\.?)+)'
+                r'(?:/[^\s]*)?',
+                re.IGNORECASE,
+            )
+            m = _URL_RE.search(finding_value)
+            if m:
+                domain = m.group(1).lower()
                 if domain in desc or domain in name:
                     affected.append(asset)
 
@@ -1642,12 +1663,12 @@ def _run_supplier_scoring() -> None:
         orgs = db.query(Organization).filter(Organization.is_active == True).all()
         for org in orgs:
             try:
-                # Guardar scores anteriores para detectar cambios
+                # Guardar scores anteriores para detectar cambios (incluir None para
+                # distinguir None→valor de 0→valor — evita falsos positivos)
                 pre_scores = {
                     s.id: s.residual_risk_score
                     for s in db.query(Supplier).filter(
                         Supplier.organization_id == org.id,
-                        Supplier.residual_risk_score.isnot(None),
                     ).all()
                 }
 
@@ -1662,18 +1683,23 @@ def _run_supplier_scoring() -> None:
                 # Propagar cambios significativos a riesgos TPRM vinculados
                 changed_suppliers = db.query(Supplier).filter(
                     Supplier.organization_id == org.id,
-                    Supplier.residual_risk_score.isnot(None),
                     Supplier.id.in_(pre_scores.keys()),
                 ).all()
 
                 risk_updates = 0
                 from app.routers.risks import _recalc
                 for supplier in changed_suppliers:
-                    prev = pre_scores.get(supplier.id) or 0
-                    new_score = supplier.residual_risk_score or 0
-                    if abs(new_score - prev) < 10:
+                    old_score = pre_scores.get(supplier.id)
+                    new_score = supplier.residual_risk_score
+                    # Ambos None: sin cambio
+                    if old_score is None and new_score is None:
+                        continue
+                    # Comparacion robusta: None vs valor, valor vs None, valor vs otro valor
+                    prev = old_score if old_score is not None else 0
+                    cur = new_score if new_score is not None else 0
+                    if abs(cur - prev) < 10:
                         continue  # cambio no significativo
-                    new_lik = _supplier_score_to_likelihood(new_score)
+                    new_lik = _supplier_score_to_likelihood(cur)
                     tprm_risks = db.query(Risk).filter(
                         Risk.supplier_id == supplier.id,
                         Risk.organization_id == org.id,
@@ -1684,7 +1710,7 @@ def _run_supplier_scoring() -> None:
                             r.inherent_likelihood = new_lik
                             r.likelihood_adjusted_reason = (
                                 f"Score TPRM actualizado: {supplier.name} "
-                                f"({prev}→{new_score})"
+                                f"({prev}→{cur})"
                             )
                             _recalc(db, r)
                             risk_updates += 1

@@ -227,10 +227,122 @@ def create_vendor_issue(
         try:
             _notify_vendor_issue_to_risks(db, issue, org_id)
         except Exception as _exc:
-            import logging
-            logging.getLogger(__name__).warning("VendorIssue→risk notify failed: %s", _exc)
+            logger.warning("VendorIssue→risk notify failed: %s", _exc)
+
+    # VendorIssue CRITICAL → crear riesgo ISO 27005 en el registro
+    if issue.severity == VendorIssueSeverity.CRITICAL:
+        try:
+            _auto_risk_from_critical_issue(db, issue, org_id, current_user.id)
+        except Exception as _exc:
+            logger.warning("VendorIssue→Risk auto-create failed: %s", _exc)
 
     return issue
+
+
+def _auto_risk_from_critical_issue(db: Session, issue: VendorIssue, org_id: int, created_by_id: int) -> None:
+    """Crea un riesgo ISO 27005 en el registro cuando un VendorIssue es CRITICAL.
+
+    Bucle cerrado: cuando el VendorIssue se cierra, recompute_supplier_risk_profile
+    reduce el likelihood del riesgo vinculado.
+    """
+    from app.models import Risk, RiskStatus, Threat, Asset
+
+    supplier = db.get(Supplier, issue.supplier_id)
+    if not supplier:
+        return
+
+    # Buscar un activo de la org (requisito del modelo Risk: asset_id NOT NULL)
+    asset = (
+        db.query(Asset)
+        .filter(Asset.organization_id == org_id)
+        .order_by(Asset.value_confidentiality.desc(), Asset.id)
+        .first()
+    )
+    if not asset:
+        logger.info("VendorIssue→Risk: sin activos en org=%s, no se crea riesgo para issue %s", org_id, issue.code)
+        return
+
+    # Buscar amenaza de tipo supply chain en el catalogo
+    threat = (
+        db.query(Threat)
+        .filter(
+            Threat.name.ilike("%supply%")
+            | Threat.name.ilike("%suministro%")
+            | Threat.name.ilike("%proveedor%")
+            | Threat.name.ilike("%third party%")
+            | Threat.category.ilike("%supply%")
+        )
+        .first()
+    )
+    if not threat:
+        threat = db.query(Threat).filter(Threat.category.ilike("%organiz%")).first()
+    if not threat:
+        logger.info("VendorIssue→Risk: sin amenaza supply-chain en catalogo, no se crea riesgo para %s", issue.code)
+        return
+
+    # Comprobar si ya existe un riesgo para este par activo+amenaza
+    existing = db.query(Risk).filter(
+        Risk.organization_id == org_id,
+        Risk.asset_id == asset.id,
+        Risk.threat_id == threat.id,
+    ).first()
+    if existing:
+        # Vincular el issue al riesgo existente si no esta vinculado
+        if not issue.linked_risk_id:
+            issue.linked_risk_id = existing.id
+            db.commit()
+        return
+
+    # Generar codigo RSK-XXXX unico
+    from app.routers.risks import _next_code as _risk_next_code
+    code = _risk_next_code(db, org_id)
+    while db.query(Risk).filter_by(code=code).first():
+        n = int(code.split("-")[1]) + 1
+        code = f"RSK-{n:04d}"
+
+    now = datetime.now(timezone.utc)
+    risk = Risk(
+        organization_id=org_id,
+        code=code,
+        asset_id=asset.id,
+        threat_id=threat.id,
+        supplier_id=supplier.id,
+        description=(
+            f"Riesgo auto-generado a partir de VendorIssue CRITICAL {issue.code} "
+            f"del proveedor {supplier.name}. "
+            f"Descripcion del issue: {(issue.description or '')[:300]}. "
+            f"Para mitigar: resolver el VendorIssue {issue.code} — al cerrarlo, "
+            f"el sistema reducira automaticamente el likelihood de este riesgo."
+        ),
+        inherent_likelihood=4,
+        inherent_consequence=4,
+        inherent_level=8,
+        residual_likelihood=4,
+        residual_consequence=4,
+        residual_level=8,
+        status=RiskStatus.IDENTIFIED,
+        owner_id=created_by_id,
+        ai_generated=True,
+        ai_rationale=f"Creado automaticamente desde VendorIssue CRITICAL {issue.code} del proveedor {supplier.name}.",
+        created_at=now,
+    )
+    db.add(risk)
+    db.flush()
+
+    # Vincular el issue al riesgo creado
+    issue.linked_risk_id = risk.id
+
+    try:
+        from app.routers.risks import _recalc
+        _recalc(db, risk)
+    except Exception:
+        pass
+
+    db.commit()
+    logger.info(
+        "Auto-created supply-chain risk %s from CRITICAL VendorIssue %s (supplier=%s)",
+        code, issue.code, supplier.name,
+    )
 
 
 def _notify_vendor_issue_to_risks(
