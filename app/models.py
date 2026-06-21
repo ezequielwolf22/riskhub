@@ -632,6 +632,11 @@ class KRIMetricType(str, PyEnum):
     OPEN_NCS = "open_ncs"                      # no conformidades mayores abiertas
     CONTROL_MATURITY = "control_maturity"      # madurez media de controles del riesgo
     OVERDUE_TASKS = "overdue_tasks"            # tareas de tratamiento vencidas
+    # --- KRI: señales de alerta temprana a nivel organizacion (v5.7.1) ---
+    KRI_CRITICAL_RISKS = "kri_critical_risks"          # # riesgos activos con residual >= 4
+    KRI_STALE_RISKS = "kri_stale_risks"                # # riesgos sin actualizar en >90 dias
+    KRI_CRITICAL_CVES = "kri_critical_cves"            # # hallazgos CRITICAL/HIGH con CVE sin remediar
+    KRI_HIGH_RISK_SUPPLIERS = "kri_high_risk_suppliers"  # # proveedores tier-1/2 con score residual > 70
     # --- KPI: rendimiento del programa SGSI (nivel organizacion) ---
     # ISO 27001:2022 cl.9.1 — Evaluacion del rendimiento
     KPI_TREATMENT_RATE = "kpi_treatment_rate"           # % riesgos altos con plan de tratamiento

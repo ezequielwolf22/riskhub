@@ -1086,6 +1086,76 @@ def _seed_default_kpis(db: Session, org_id: int) -> None:
         print(f"Seed: {inserted} KPIs de sistema creados para org {org_id}.")
 
 
+def _seed_default_kris(db: Session, org_id: int) -> None:
+    """Siembra los KRIs de sistema por defecto (idempotente via is_system + metric_type)."""
+    from app.models import KRI, KRIMetricType
+    _KRI_CATALOG = [
+        {
+            "name": "Riesgos criticos activos",
+            "metric_type": KRIMetricType.KRI_CRITICAL_RISKS.value,
+            "description": "Numero de riesgos con nivel residual >= 4 que no estan cerrados ni aceptados. ISO 27005:2022 §8.4",
+            "direction": "lower_is_better",
+            "warning_threshold": 4.0,
+            "breach_threshold": 8.0,
+        },
+        {
+            "name": "Riesgos sin revisar (>90 dias)",
+            "metric_type": KRIMetricType.KRI_STALE_RISKS.value,
+            "description": "Numero de riesgos activos no actualizados en los ultimos 90 dias. ISO 27001:2022 cl.9.1",
+            "direction": "lower_is_better",
+            "warning_threshold": 5.0,
+            "breach_threshold": 10.0,
+        },
+        {
+            "name": "CVEs criticos/altos sin remediar",
+            "metric_type": KRIMetricType.KRI_CRITICAL_CVES.value,
+            "description": "Numero de hallazgos externos con CVE de severidad CRITICAL o HIGH en estado abierto. NIST CSF 2.0 ID.RA",
+            "direction": "lower_is_better",
+            "warning_threshold": 1.0,
+            "breach_threshold": 3.0,
+        },
+        {
+            "name": "Proveedores Tier-1/2 con riesgo alto",
+            "metric_type": KRIMetricType.KRI_HIGH_RISK_SUPPLIERS.value,
+            "description": "Numero de proveedores CRITICAL o HIGH tier con score residual > 70. ISO 27036 / NIS2 Art.21.2.d",
+            "direction": "lower_is_better",
+            "warning_threshold": 1.0,
+            "breach_threshold": 2.0,
+        },
+    ]
+    inserted = 0
+    for kri_def in _KRI_CATALOG:
+        existing = db.query(KRI).filter(
+            KRI.organization_id == org_id,
+            KRI.metric_type == kri_def["metric_type"],
+            KRI.is_system == True,
+        ).first()
+        if existing:
+            continue
+        from datetime import datetime, timezone as _tz
+        kri = KRI(
+            organization_id=org_id,
+            risk_id=None,
+            name=kri_def["name"],
+            metric_type=kri_def["metric_type"],
+            description=kri_def.get("description"),
+            direction=kri_def.get("direction", "lower_is_better"),
+            warning_threshold=kri_def["warning_threshold"],
+            breach_threshold=kri_def["breach_threshold"],
+            is_active=True,
+            is_visible=True,
+            is_system=True,
+            indicator_type="kri",
+            alert_on_breach=True,
+            created_at=datetime.now(_tz.utc),
+        )
+        db.add(kri)
+        inserted += 1
+    if inserted:
+        db.commit()
+        print(f"Seed: {inserted} KRIs de sistema creados para org {org_id}.")
+
+
 def init_db() -> None:
     """Crear tablas y cargar seed inicial."""
     Base.metadata.create_all(bind=engine)
@@ -1106,6 +1176,7 @@ def init_db() -> None:
         _seed_regwatch_sources(db)
         _backfill_risk_supplier_id(db)
         _seed_default_kpis(db, org.id)
+        _seed_default_kris(db, org.id)
     finally:
         db.close()
 

@@ -141,6 +141,40 @@ def _compute_kri_value(db: Session, kri: KRI, org_id: int) -> Optional[float]:
             q = q.filter(TreatmentTask.risk_id == risk_id)
         return float(q.count())
 
+    # --- KRI: señales de alerta temprana a nivel organizacion ---
+
+    if mt == KRIMetricType.KRI_CRITICAL_RISKS.value:
+        return float(db.query(Risk).filter(
+            Risk.organization_id == org_id,
+            Risk.residual_level >= 4,
+            Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+        ).count())
+
+    if mt == KRIMetricType.KRI_STALE_RISKS.value:
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+        return float(db.query(Risk).filter(
+            Risk.organization_id == org_id,
+            Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+            Risk.updated_at < cutoff,
+        ).count())
+
+    if mt == KRIMetricType.KRI_CRITICAL_CVES.value:
+        from app.models import ExternalFinding
+        return float(db.query(ExternalFinding).filter(
+            ExternalFinding.organization_id == org_id,
+            ExternalFinding.severity.in_(["CRITICAL", "HIGH"]),
+            ExternalFinding.cve_id.isnot(None),
+            ExternalFinding.status == "open",
+        ).count())
+
+    if mt == KRIMetricType.KRI_HIGH_RISK_SUPPLIERS.value:
+        return float(db.query(Supplier).filter(
+            Supplier.organization_id == org_id,
+            Supplier.tier.in_([SupplierTier.CRITICAL, SupplierTier.HIGH]),
+            Supplier.residual_risk_score > 70,
+        ).count())
+
     # --- KPI: metricas de programa SGSI (nivel organizacion) ---
 
     if mt == KRIMetricType.KPI_TREATMENT_RATE.value:
