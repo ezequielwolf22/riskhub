@@ -308,5 +308,61 @@ const ViewTprm = (() => {
     </svg>`;
   }
 
-  return { render };
+  function _escHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  async function renderConcentrationRisk(container) {
+    container.innerHTML = '<p class="text-muted">Cargando concentracion de riesgo...</p>';
+    let data;
+    try {
+      data = await Api.get('/api/tprm/concentration-risk');
+    } catch (e) {
+      container.innerHTML = '<p class="text-muted">Error al cargar datos: ' + _escHtml(e.message) + '</p>';
+      return;
+    }
+
+    if (!data || !data.length) {
+      container.innerHTML = '<p class="text-muted">No hay concentracion de riesgo significativa (ningun proveedor supera el 40% de procesos criticos).</p>';
+      return;
+    }
+
+    const rows = data.map(d => `
+      <tr class="${d.is_critical ? 'row--warning' : ''}">
+        <td>${_escHtml(d.supplier_name)} <span class="badge badge--tier">${_escHtml(d.tier || '-')}</span></td>
+        <td style="text-align:center;">${d.critical_processes_dependent} / ${d.total_critical_processes}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <div class="progress-bar" style="width:${Math.min(d.concentration_pct, 100)}px;"></div>
+            <span style="font-size:12px;font-weight:600;">${d.concentration_pct}%</span>
+          </div>
+        </td>
+        <td>${d.is_critical
+          ? '<span class="badge badge--danger">DORA: Excede 40%</span>'
+          : '<span class="badge badge--ok">OK</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted);">
+          ${d.mitigation && d.mitigation.notes
+            ? _escHtml(d.mitigation.notes.substring(0, 60)) + (d.mitigation.notes.length > 60 ? '...' : '')
+            : '<span style="color:var(--text-subtle);">Sin notas</span>'}
+        </td>
+      </tr>
+    `).join('');
+
+    container.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Proveedor</th>
+            <th style="text-align:center;">Procesos criticos</th>
+            <th>Concentracion</th>
+            <th>Estado DORA</th>
+            <th>Mitigacion</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  return { render, renderConcentrationRisk };
 })();

@@ -3139,3 +3139,101 @@ def context_autofill(db: Session = Depends(get_db), u: User = Depends(get_curren
             "suppliers_found": len(suppliers),
         },
     }
+
+
+# ── Activacion de crisis (bucle cerrado con registro de riesgos ISO 27005) ──────
+
+@router.post("/plans/{pid}/activate")
+async def activate_bcp_plan(
+    pid: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Activa un plan BCP en modo crisis (cierre de bucle: reduce residual risk vinculado)."""
+    plan = db.get(BCPPlan, pid)
+    if not plan or plan.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    if plan.activation_status == "activated":
+        raise HTTPException(status_code=409, detail="Plan ya esta activado")
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    plan.activation_status = "activated"
+    plan.activated_at = now
+    plan.activated_by_id = current_user.id
+
+    log_entry = {
+        "timestamp": now.isoformat(),
+        "action": "activated",
+        "user": current_user.full_name,
+        "notes": payload.get("notes", ""),
+    }
+    plan.activation_log = (plan.activation_log or []) + [log_entry]
+    db.commit()
+
+    # Bucle cerrado: cuando BCP se activa, reduce el residual de riesgos vinculados
+    if plan.risk_ids:
+        from app.models import Risk
+        for rid in plan.risk_ids:
+            r = db.get(Risk, rid)
+            if r and r.organization_id == current_user.organization_id:
+                if r.residual_likelihood and r.residual_likelihood > 0:
+                    r.residual_likelihood = max(0, r.residual_likelihood - 1)
+                    from app.routers.risks import _recalc
+                    try:
+                        _recalc(db, r)
+                    except Exception:
+                        pass
+        db.commit()
+
+    return {"plan_id": pid, "activation_status": "activated", "activated_at": now.isoformat()}
+
+
+@router.post("/plans/{pid}/deactivate")
+async def deactivate_bcp_plan(
+    pid: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Desactiva un plan BCP de crisis."""
+    plan = db.get(BCPPlan, pid)
+    if not plan or plan.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    plan.activation_status = "standby"
+    plan.deactivated_at = now
+
+    log_entry = {
+        "timestamp": now.isoformat(),
+        "action": "deactivated",
+        "user": current_user.full_name,
+        "notes": payload.get("notes", ""),
+    }
+    plan.activation_log = (plan.activation_log or []) + [log_entry]
+    db.commit()
+    return {"plan_id": pid, "activation_status": "standby"}
+
+
+@router.patch("/plans/{pid}/risk-links")
+async def link_risks_to_bcp(
+    pid: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Vincula/desvincula riesgos ISO 27005 a un plan BCP para bucle cerrado de mitigacion."""
+    plan = db.get(BCPPlan, pid)
+    if not plan or plan.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    risk_ids = payload.get("risk_ids", [])
+    if not isinstance(risk_ids, list):
+        raise HTTPException(status_code=400, detail="risk_ids debe ser lista")
+
+    plan.risk_ids = risk_ids
+    db.commit()
+    return {"plan_id": pid, "risk_ids": risk_ids}

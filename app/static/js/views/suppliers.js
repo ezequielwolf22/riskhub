@@ -567,6 +567,13 @@ const ViewSuppliers = (() => {
             <button type="button" id="sup-reload-findings" class="btn btn-sm">Actualizar</button>
           </div>
           <div id="sup-findings-list"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
+        </div>
+
+        <!-- Ciclo de vida y onboarding (solo en edicion) -->
+        <div class="span2" style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">
+          <strong style="font-size:13px;color:var(--brand-purple);">Ciclo de vida y onboarding</strong>
+          <p style="font-size:11px;color:var(--text-muted);margin:2px 0 8px;">Gestiona el stage del proveedor, el checklist de onboarding y los documentos legales.</p>
+          <div id="sup-lifecycle-container"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
         </div>` : ''}
       </div>
     `;
@@ -649,7 +656,160 @@ const ViewSuppliers = (() => {
       _loadSupplierFindings(s.id);
       const reloadFindingsBtn = document.getElementById('sup-reload-findings');
       if (reloadFindingsBtn) reloadFindingsBtn.onclick = () => _loadSupplierFindings(s.id);
+      _renderLifecycleSection(s.id, s);
     }
+  }
+
+  // ---- Lifecycle / Onboarding helpers ----
+
+  const LIFECYCLE_STAGES = [
+    { id: 'prospect',     label: 'Prospecto'    },
+    { id: 'onboarding',   label: 'Onboarding'   },
+    { id: 'active',       label: 'Activo'        },
+    { id: 'review',       label: 'En revision'   },
+    { id: 'offboarding',  label: 'Offboarding'   },
+    { id: 'terminated',   label: 'Terminado'     },
+  ];
+
+  async function _renderLifecycleSection(supplierId, supplierData) {
+    const wrap = document.getElementById('sup-lifecycle-container');
+    if (!wrap) return;
+
+    // Reload fresh data if not supplied
+    let sup = supplierData;
+    if (!sup) {
+      try {
+        const all = await Api.suppliers.list();
+        sup = all.find(x => x.id == supplierId) || {};
+      } catch (_) { sup = {}; }
+    }
+
+    const stage = sup.lifecycle_stage || 'active';
+    const checklist = sup.onboarding_checklist || [];
+    const dpaSignedAt = sup.dpa_signed_at;
+    const ndaSignedAt = sup.nda_signed_at;
+    const concentrationFlag = sup.concentration_risk_flag;
+
+    const stageButtons = LIFECYCLE_STAGES.map(st => `
+      <button class="lc-stage-btn ${stage === st.id ? 'lc-stage-btn--active' : ''}"
+        onclick="ViewSuppliers._changeStage(${supplierId}, '${st.id}')">
+        ${st.label}
+      </button>
+    `).join('');
+
+    let checklistHtml = '';
+    if (stage === 'onboarding' && checklist.length) {
+      const items = checklist.map(item => `
+        <div class="lc-checklist-item ${item.completed ? 'completed' : ''}">
+          <input type="checkbox" id="lc-item-${UI.esc(item.id)}" ${item.completed ? 'checked' : ''}
+            onchange="ViewSuppliers._toggleChecklistItem(${supplierId}, '${UI.esc(item.id)}', this.checked)">
+          <label for="lc-item-${UI.esc(item.id)}">${UI.esc(item.label || item.id)}</label>
+        </div>
+      `).join('');
+      checklistHtml = `<div class="lc-checklist">
+        <strong style="font-size:12px;color:var(--brand-purple);display:block;margin-bottom:6px;">Checklist de onboarding</strong>
+        ${items}
+      </div>`;
+    } else if (stage === 'onboarding' && !checklist.length) {
+      checklistHtml = `<div class="lc-checklist">
+        <p style="font-size:12px;color:var(--text-muted);">Sin items de checklist configurados para el onboarding.</p>
+      </div>`;
+    }
+
+    const _signoffCard = (type, label, signedAt) => {
+      const signed = !!signedAt;
+      const dateStr = signedAt ? new Date(signedAt).toLocaleDateString('es-ES') : null;
+      return `<div class="lc-signoff-card ${signed ? 'signed' : ''}">
+        <div style="font-size:12px;font-weight:700;margin-bottom:4px;">${label}</div>
+        ${signed
+          ? `<div style="font-size:11px;color:#16a34a;">Firmado el ${dateStr}</div>`
+          : `<div style="font-size:11px;color:var(--text-muted);">Pendiente</div>`}
+        ${Auth.canEdit() && !signed ? `
+          <button class="btn btn-sm" style="margin-top:6px;font-size:11px;"
+            onclick="ViewSuppliers._recordSignOff(${supplierId}, '${type}')">
+            Registrar firma
+          </button>` : ''}
+      </div>`;
+    };
+
+    const concentrationHtml = concentrationFlag ? `
+      <div class="lc-concentration">
+        <div class="alert-box alert-box--warning">
+          <strong>Riesgo de concentracion DORA</strong>
+          <p style="font-size:12px;margin:4px 0 8px;">Este proveedor supera el 40% de dependencia en procesos criticos.</p>
+          <div style="margin-bottom:6px;">
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Notas de mitigacion</label>
+            <textarea id="lc-concentration-notes" class="input" rows="2"
+              placeholder="Notas de mitigacion...">${UI.esc(sup.concentration_mitigation?.notes || '')}</textarea>
+          </div>
+          <div style="margin-bottom:8px;">
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Estrategia de salida (DORA Art.28(8))</label>
+            <textarea id="lc-exit-strategy" class="input" rows="2"
+              placeholder="Estrategia de salida...">${UI.esc(sup.concentration_mitigation?.exit_strategy || '')}</textarea>
+          </div>
+          ${Auth.canEdit() ? `
+          <button class="btn btn-sm btn-primary"
+            onclick="ViewSuppliers._saveConcentrationMitigation(${supplierId})">
+            Guardar mitigacion
+          </button>` : ''}
+        </div>
+      </div>` : '';
+
+    wrap.innerHTML = `
+      <div class="supplier-lifecycle">
+        <div class="lc-header">
+          <span style="font-size:13px;">Stage actual: <strong>${LIFECYCLE_STAGES.find(x => x.id === stage)?.label || stage}</strong></span>
+          ${Auth.canEdit() ? `<div class="lc-stage-buttons">${stageButtons}</div>` : ''}
+        </div>
+        ${checklistHtml}
+        <div class="lc-signoff" style="margin-top:12px;">
+          <h4 style="font-size:12px;font-weight:700;color:var(--brand-purple);margin:0 0 8px;">Documentos legales</h4>
+          <div class="signoff-grid">
+            ${_signoffCard('dpa', 'DPA (Data Processing Agreement)', dpaSignedAt)}
+            ${_signoffCard('nda', 'NDA (Non-Disclosure Agreement)', ndaSignedAt)}
+            ${_signoffCard('contract', 'Contrato', sup.contract_document_id ? true : null)}
+          </div>
+        </div>
+        ${concentrationHtml}
+      </div>
+    `;
+  }
+
+  async function _changeStage(supplierId, stage) {
+    try {
+      await Api.post('/api/suppliers/' + supplierId + '/lifecycle', { stage });
+      UI.toast('Stage actualizado a: ' + (LIFECYCLE_STAGES.find(x => x.id === stage)?.label || stage), 'success');
+      _renderLifecycleSection(supplierId, null);
+    } catch (e) { UI.toast(e.message || 'Error al cambiar stage', 'error'); }
+  }
+
+  async function _toggleChecklistItem(supplierId, itemId, completed) {
+    try {
+      const r = await Api.patch('/api/suppliers/' + supplierId + '/checklist/' + itemId, { completed });
+      if (r && r.lifecycle_changes && r.lifecycle_changes.length) {
+        UI.toast('Checklist: ' + r.lifecycle_changes.join(', '), 'success');
+      }
+      _renderLifecycleSection(supplierId, null);
+    } catch (e) { UI.toast(e.message || 'Error al actualizar checklist', 'error'); }
+  }
+
+  async function _recordSignOff(supplierId, type) {
+    const signedBy = prompt('Nombre del firmante:');
+    if (!signedBy) return;
+    try {
+      await Api.patch('/api/suppliers/' + supplierId + '/sign-off', { type, signed_by: signedBy });
+      UI.toast(type.toUpperCase() + ' registrado', 'success');
+      _renderLifecycleSection(supplierId, null);
+    } catch (e) { UI.toast(e.message || 'Error al registrar firma', 'error'); }
+  }
+
+  async function _saveConcentrationMitigation(supplierId) {
+    const notes = document.getElementById('lc-concentration-notes')?.value.trim() || '';
+    const exitStrategy = document.getElementById('lc-exit-strategy')?.value.trim() || '';
+    try {
+      await Api.patch('/api/suppliers/' + supplierId + '/concentration-mitigation', { notes, exit_strategy: exitStrategy });
+      UI.toast('Mitigacion de concentracion guardada', 'success');
+    } catch (e) { UI.toast(e.message || 'Error al guardar mitigacion', 'error'); }
   }
 
   async function _loadSupplierFindings(supplierId) {
@@ -1916,5 +2076,12 @@ const ViewSuppliers = (() => {
     };
   }
 
-  return { render, openDashEditor: _openSupDashEditor };
+  return {
+    render,
+    openDashEditor: _openSupDashEditor,
+    _changeStage,
+    _toggleChecklistItem,
+    _recordSignOff,
+    _saveConcentrationMitigation,
+  };
 })();

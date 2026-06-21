@@ -652,6 +652,15 @@ class KRIMetricType(str, PyEnum):
     KPI_MTTR_INCIDENTS = "kpi_mttr_incidents"           # MTTR de incidentes (dias promedio)
     # ISO 27036 / TPRM
     KPI_SUPPLIER_COVERAGE = "kpi_supplier_coverage"     # % proveedores tier-1 evaluados
+    # TPRM KPIs adicionales
+    KPI_SUPPLIER_CONTRACT_EXPIRY = "kpi_supplier_contract_expiry"  # % tier-1/2 con contrato exp en 90d
+    KPI_SUPPLIER_CRITICAL_ISSUES = "kpi_supplier_critical_issues"  # # VendorIssues CRITICAL/HIGH abiertos
+    KPI_VENDOR_ISSUE_MTTR = "kpi_vendor_issue_mttr"                # dias medios resolucion VendorIssues
+    KPI_DORA_SUPPLIERS_ASSESSED = "kpi_dora_suppliers_assessed"    # % is_dora evaluados en 12m
+    # BCP KPIs adicionales
+    KPI_BCP_RTO_ACHIEVEMENT = "kpi_bcp_rto_achievement"           # % procesos RTO alcanzado <= objetivo
+    KPI_BCP_TEST_FREQUENCY = "kpi_bcp_test_frequency"             # dias desde ultimo test BCP
+    KPI_CRITICAL_PROCESSES_BCP = "kpi_critical_processes_bcp"    # % procesos criticos con BCP aprobado
 
 
 class KRIStatus(str, PyEnum):
@@ -828,6 +837,28 @@ class Supplier(Base):
     internal_owner = relationship("User", foreign_keys="[Supplier.internal_owner_id]")
     # parent_supplier_id (nth-party) se consulta por id; no se mapea relacion
     # self-referencial para evitar ambiguedad de mapper.
+    # v5.5 — lifecycle y onboarding
+    lifecycle_stage = Column(String(32), default="active")  # prospecting|onboarding|active|under_review|offboarding|terminated
+    lifecycle_changed_at = Column(DateTime, nullable=True)
+    lifecycle_changed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    onboarding_completed_at = Column(DateTime, nullable=True)
+    onboarding_checklist = Column(JSON, nullable=True)  # [{id, title, required, completed, completed_at, completed_by_id, evidence_doc_id, category}]
+    stakeholders = Column(JSON, nullable=True)  # [{role, name, email, phone, user_id, notified_on_assessment, notified_on_issue}]
+    # Firma y documentacion legal
+    dpa_signed_at = Column(DateTime, nullable=True)
+    dpa_signed_by = Column(String(255), nullable=True)
+    dpa_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
+    nda_signed_at = Column(DateTime, nullable=True)
+    nda_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
+    contract_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
+    contract_renewal_reminder_sent_at = Column(DateTime, nullable=True)
+    # DORA compliance
+    ict_service_category = Column(String(16), nullable=True)  # critical|important|other
+    exit_strategy = Column(Text, nullable=True)
+    # Mitigacion de concentracion de riesgo
+    concentration_risk_flag = Column(Boolean, default=False)  # True si >40% procesos criticos dependen de este proveedor
+    concentration_risk_mitigated_at = Column(DateTime, nullable=True)
+    concentration_risk_notes = Column(Text, nullable=True)
 
 
 # ---------- NO CONFORMIDADES / ACCIONES CORRECTIVAS (ISO 27001 cl. 10.1) ----------
@@ -1304,6 +1335,12 @@ class VendorIssue(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+    # v5.5 — auto-generated flag y risk register link
+    auto_generated = Column(Boolean, default=False)      # True si fue creado por OSINT/CVE/scoring
+    auto_generated_source = Column(String(64), nullable=True)  # osint|cve|score_decay|concentration
+    linked_risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)
+    resolved_by_action = Column(String(255), nullable=True)  # descripcion de como se resolvio
 
     supplier = relationship("Supplier")
 
@@ -2332,6 +2369,13 @@ class BCPPlan(Base):
     # v4.0.0 — regwatch: plan requiere revision por cambio normativo
     regwatch_review_at = Column(DateTime, nullable=True)
     regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
+    # v5.5 — Risk Register link + crisis activation
+    risk_ids = Column(JSON, nullable=True)               # IDs de riesgos que este BCP mitiga
+    activation_status = Column(String(16), default="standby")  # standby|activated|deactivated
+    activated_at = Column(DateTime, nullable=True)
+    activated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    deactivated_at = Column(DateTime, nullable=True)
+    activation_log = Column(JSON, nullable=True)         # [{timestamp, action, user, notes}]
 
     approved_by = relationship("User", foreign_keys=[approved_by_id])
 

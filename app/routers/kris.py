@@ -343,6 +343,115 @@ def _compute_kri_value(db: Session, kri: KRI, org_id: int) -> Optional[float]:
                 evaluated_ids.add(sup.id)
         return round(len(evaluated_ids) / len(tier1) * 100, 1)
 
+    # ---- KPI: kpi_supplier_contract_expiry ----
+    if mt == KRIMetricType.KPI_SUPPLIER_CONTRACT_EXPIRY.value:
+        from datetime import timedelta
+        now = datetime.now(timezone.utc)
+        cutoff = now + timedelta(days=90)
+        total = db.query(Supplier).filter(
+            Supplier.organization_id == org_id,
+        ).count()
+        if total == 0:
+            return 0.0
+        expiring = db.query(Supplier).filter(
+            Supplier.organization_id == org_id,
+            Supplier.contract_expiry.isnot(None),
+            Supplier.contract_expiry <= cutoff,
+        ).count()
+        return round(expiring / total * 100, 1)
+
+    # ---- KPI: kpi_supplier_critical_issues ----
+    if mt == KRIMetricType.KPI_SUPPLIER_CRITICAL_ISSUES.value:
+        from app.models import VendorIssue, VendorIssueSeverity, VendorIssueStatus
+        count = db.query(VendorIssue).filter(
+            VendorIssue.organization_id == org_id,
+            VendorIssue.severity.in_([VendorIssueSeverity.CRITICAL, VendorIssueSeverity.HIGH]),
+            VendorIssue.status.notin_([VendorIssueStatus.CLOSED, VendorIssueStatus.MITIGATED, VendorIssueStatus.ACCEPTED]),
+        ).count()
+        return float(count)
+
+    # ---- KPI: kpi_vendor_issue_mttr ----
+    if mt == KRIMetricType.KPI_VENDOR_ISSUE_MTTR.value:
+        from app.models import VendorIssue, VendorIssueStatus
+        closed = db.query(VendorIssue).filter(
+            VendorIssue.organization_id == org_id,
+            VendorIssue.status.in_([VendorIssueStatus.CLOSED, VendorIssueStatus.MITIGATED]),
+            VendorIssue.closed_at.isnot(None),
+            VendorIssue.created_at.isnot(None),
+        ).all()
+        if not closed:
+            return 0.0
+        total_days = sum(
+            (i.closed_at - i.created_at).days
+            for i in closed
+            if i.closed_at and i.created_at
+        )
+        return round(total_days / len(closed), 1)
+
+    # ---- KPI: kpi_dora_suppliers_assessed ----
+    if mt == KRIMetricType.KPI_DORA_SUPPLIERS_ASSESSED.value:
+        now = datetime.now(timezone.utc)
+        dora_sups = db.query(Supplier).filter(
+            Supplier.organization_id == org_id,
+            Supplier.is_dora == True,
+        ).all()
+        if not dora_sups:
+            return 100.0
+        assessed_recent = sum(
+            1 for s in dora_sups
+            if s.last_assessment_at and (
+                now - (s.last_assessment_at.replace(tzinfo=timezone.utc) if s.last_assessment_at.tzinfo is None else s.last_assessment_at)
+            ).days < 365
+        )
+        return round(assessed_recent / len(dora_sups) * 100, 1)
+
+    # ---- KPI: kpi_bcp_rto_achievement ----
+    if mt == KRIMetricType.KPI_BCP_RTO_ACHIEVEMENT.value:
+        from app.models import BCPTest
+        tests = db.query(BCPTest).filter(
+            BCPTest.status == "completed",
+        ).all()
+        if not tests:
+            return 0.0
+        achieved = sum(
+            1 for t in tests
+            if getattr(t, "rto_achieved_hours", None) is not None
+            and t.rto_achieved_hours <= (getattr(t.plan, "rto_hours", 999) or 999)
+        )
+        return round(achieved / len(tests) * 100, 1)
+
+    # ---- KPI: kpi_bcp_test_frequency ----
+    if mt == KRIMetricType.KPI_BCP_TEST_FREQUENCY.value:
+        from app.models import BCPTest
+        last_test = db.query(BCPTest).filter(
+            BCPTest.status == "completed",
+        ).order_by(BCPTest.test_date.desc()).first()
+        if not last_test:
+            return 9999.0
+        last_date = last_test.test_date
+        if hasattr(last_date, "tzinfo") and last_date.tzinfo is None:
+            last_date = last_date.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        return float((now - last_date).days)
+
+    # ---- KPI: kpi_critical_processes_bcp ----
+    if mt == KRIMetricType.KPI_CRITICAL_PROCESSES_BCP.value:
+        from app.models import BusinessProcess, BCPPlan
+        critical = db.query(BusinessProcess).filter(
+            BusinessProcess.organization_id == org_id,
+            BusinessProcess.criticality == "critical",
+        ).count()
+        if critical == 0:
+            return 100.0
+        with_bcp = db.query(BusinessProcess).join(
+            BCPPlan, BCPPlan.process_id == BusinessProcess.id,
+        ).filter(
+            BusinessProcess.organization_id == org_id,
+            BusinessProcess.criticality == "critical",
+            BCPPlan.status == "approved",
+        ).count()
+        return round(with_bcp / critical * 100, 1)
+
     return None
 
 

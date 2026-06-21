@@ -1087,6 +1087,7 @@ def _run_osint_periodic_scan() -> None:
 
         logger.info("OSINT periodic re-scan: %d objetivos a re-escanear.", len(identifiers))
 
+        scan_tasks = []
         for ident in identifiers:
             # Crear registro de scan
             scan = OSINTScan(
@@ -1101,57 +1102,63 @@ def _run_osint_periodic_scan() -> None:
             scan_id = scan.id
             db.commit()
 
-            # Lanzar escaneo en hilo separado segun tipo
-            import threading
             target_val = ident.value
             user_id_val = ident.user_id
             org_id_val = ident.organization_id
             stype_val = ident.identifier_type.value if hasattr(ident.identifier_type, 'value') else str(ident.identifier_type)
 
-            def _do_scan(sid=scan_id, stype=stype_val, tgt=target_val, uid=user_id_val, oid=org_id_val):
+            scan_tasks.append((scan_id, stype_val, target_val, user_id_val, org_id_val))
+
+        def _do_scan(sid, stype, tgt, uid, oid):
+            try:
+                if stype == "email":
+                    osint_engine.run_email_scan(sid, tgt, uid)
+                elif stype == "domain":
+                    osint_engine.run_domain_scan(sid, tgt, uid)
+                elif stype == "ip":
+                    osint_engine.run_ip_scan(sid, tgt, uid)
+                elif stype == "url":
+                    osint_engine.run_url_scan(sid, tgt, uid)
+                elif stype == "username":
+                    osint_engine.run_username_scan(sid, tgt, uid)
+
+                # NUEVO: Auto-generar riesgos si hallazgo es CRITICAL/HIGH
+                # Buscar scan y verificar findings
+                db2 = SessionLocal()
                 try:
-                    if stype == "email":
-                        osint_engine.run_email_scan(sid, tgt, uid)
-                    elif stype == "domain":
-                        osint_engine.run_domain_scan(sid, tgt, uid)
-                    elif stype == "ip":
-                        osint_engine.run_ip_scan(sid, tgt, uid)
-                    elif stype == "url":
-                        osint_engine.run_url_scan(sid, tgt, uid)
-                    elif stype == "username":
-                        osint_engine.run_username_scan(sid, tgt, uid)
+                    scan_obj = db2.get(OSINTScan, sid)
+                    if scan_obj and scan_obj.findings:
+                        from app.services.risk_auto_generator import auto_generate_risk_from_osint
+                        findings = scan_obj.findings if isinstance(scan_obj.findings, list) else [scan_obj.findings]
+                        for finding in findings:
+                            severity = finding.get("severity", "LOW") if isinstance(finding, dict) else "LOW"
+                            if severity in ["CRITICAL", "HIGH"]:
+                                # Correlacionar con assets
+                                affected_assets = _match_osint_to_assets(db2, stype, tgt, oid)
+                                for asset in affected_assets:
+                                    auto_generate_risk_from_osint(
+                                        db2, asset.id,
+                                        osint_finding_type=stype,
+                                        osint_finding_title=finding.get("title", "OSINT hallazgo"),
+                                        inherent_consequence=4,
+                                        inherent_likelihood=4,
+                                    )
+                except Exception as _e2:
+                    logger.debug("OSINT auto-risk generation failed: %s", _e2)
+                finally:
+                    db2.close()
 
-                    # NUEVO: Auto-generar riesgos si hallazgo es CRITICAL/HIGH
-                    # Buscar scan y verificar findings
-                    db2 = SessionLocal()
-                    try:
-                        scan_obj = db2.get(OSINTScan, sid)
-                        if scan_obj and scan_obj.findings:
-                            from app.services.risk_auto_generator import auto_generate_risk_from_osint
-                            findings = scan_obj.findings if isinstance(scan_obj.findings, list) else [scan_obj.findings]
-                            for finding in findings:
-                                severity = finding.get("severity", "LOW") if isinstance(finding, dict) else "LOW"
-                                if severity in ["CRITICAL", "HIGH"]:
-                                    # Correlacionar con assets
-                                    affected_assets = _match_osint_to_assets(db2, stype, tgt, oid)
-                                    for asset in affected_assets:
-                                        auto_generate_risk_from_osint(
-                                            db2, asset.id,
-                                            osint_finding_type=stype,
-                                            osint_finding_title=finding.get("title", "OSINT hallazgo"),
-                                            inherent_consequence=4,
-                                            inherent_likelihood=4,
-                                        )
-                    except Exception as _e2:
-                        logger.debug("OSINT auto-risk generation failed: %s", _e2)
-                    finally:
-                        db2.close()
+            except Exception as _e:
+                logger.warning("OSINT periodic scan failed target=%s: %s", tgt, _e)
 
-                except Exception as _e:
-                    logger.warning("OSINT periodic scan failed target=%s: %s", tgt, _e)
-
-            t = threading.Thread(target=_do_scan, daemon=True)
-            t.start()
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(_do_scan, sid, stype, tgt, uid, oid) for sid, stype, tgt, uid, oid in scan_tasks]
+            for f in futures:
+                try:
+                    f.result(timeout=60)
+                except Exception as exc:
+                    logger.warning("OSINT scan error: %s", exc)
     except Exception as exc:
         logger.exception("Error en osint_periodic_scan: %s", exc)
     finally:
@@ -2565,6 +2572,235 @@ def _run_supplier_monitoring() -> None:
         db.close()
 
 
+def _run_supplier_score_decay() -> None:
+    """Degrada el score residual de proveedores no reevaluados en >12 meses (8% mensual).
+
+    Bucle cerrado: cuando se hace una nueva evaluacion, el score se recupera al recomputar.
+    """
+    from datetime import timezone as _tz, timedelta as _td
+    from app.database import SessionLocal
+    from app.models import Organization, Supplier
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        for org in orgs:
+            org_id = org.id
+            try:
+                now = datetime.now(_tz.utc)
+                cutoff_12m = now - _td(days=365)
+
+                suppliers = db.query(Supplier).filter(
+                    Supplier.organization_id == org_id,
+                    Supplier.residual_risk_score.isnot(None),
+                    Supplier.lifecycle_stage.in_(["active", "under_review"]),
+                ).all()
+
+                for sup in suppliers:
+                    last_assessed = sup.last_assessment_at
+                    if last_assessed:
+                        la = last_assessed if last_assessed.tzinfo else last_assessed.replace(tzinfo=_tz.utc)
+                        if la >= cutoff_12m:
+                            continue  # Evaluado recientemente, sin decay
+
+                    # Decay del 8% mensual
+                    old_score = sup.residual_risk_score or 0
+                    new_score = min(100.0, old_score * 1.08)
+                    if new_score > old_score + 0.5:
+                        sup.residual_risk_score = round(new_score, 1)
+
+                        # Auto-issue si no existe ya
+                        from app.models import VendorIssue, VendorIssueSeverity, VendorIssueStatus
+                        existing = db.query(VendorIssue).filter(
+                            VendorIssue.supplier_id == sup.id,
+                            VendorIssue.auto_generated_source == "score_decay",
+                            VendorIssue.status.notin_([VendorIssueStatus.CLOSED, VendorIssueStatus.MITIGATED]),
+                        ).first()
+                        if not existing and new_score >= 60:
+                            n = db.query(VendorIssue).filter(VendorIssue.organization_id == org_id).count() + 1
+                            days_stale = (now - la).days if last_assessed else 999
+                            issue = VendorIssue(
+                                organization_id=org_id,
+                                code=f"VIS-{n:04d}",
+                                supplier_id=sup.id,
+                                source="monitoring",
+                                title=f"Score degradado por falta de evaluacion: {sup.name} ({days_stale} dias sin re-evaluar)",
+                                description=(
+                                    f"El proveedor {sup.name} no ha sido reevaluado en {days_stale} dias. "
+                                    f"Score residual degradado: {old_score:.1f} -> {new_score:.1f}. "
+                                    f"Accion: realizar nueva evaluacion TPRM para recuperar el score real."
+                                ),
+                                severity=VendorIssueSeverity.HIGH if new_score >= 70 else VendorIssueSeverity.MEDIUM,
+                                status=VendorIssueStatus.OPEN,
+                                auto_generated=True,
+                                auto_generated_source="score_decay",
+                                due_date=now + _td(days=30),
+                                created_at=now,
+                            )
+                            db.add(issue)
+
+                db.commit()
+                logger.info("Score decay completado para org %d", org_id)
+            except Exception as exc:
+                db.rollback()
+                logger.error("Score decay error org %d: %s", org_id, exc, exc_info=True)
+    except Exception as exc:
+        logger.exception("Error en _run_supplier_score_decay: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_contract_expiry_alerts() -> None:
+    """Alerta de contratos de proveedores que expiran en 90 dias.
+
+    Bucle cerrado: cuando contract_expiry se renueva a >90 dias, el issue se cierra automaticamente
+    via recompute_supplier_risk_profile.
+    """
+    from datetime import timezone as _tz, timedelta as _td
+    from app.database import SessionLocal
+    from app.models import Organization, Supplier, VendorIssue, VendorIssueSeverity, VendorIssueStatus
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        for org in orgs:
+            org_id = org.id
+            try:
+                now = datetime.now(_tz.utc)
+                cutoff_90d = now + _td(days=90)
+
+                suppliers = db.query(Supplier).filter(
+                    Supplier.organization_id == org_id,
+                    Supplier.contract_expiry.isnot(None),
+                    Supplier.contract_expiry <= cutoff_90d,
+                    Supplier.lifecycle_stage == "active",
+                ).all()
+
+                for sup in suppliers:
+                    expiry = sup.contract_expiry if sup.contract_expiry.tzinfo else sup.contract_expiry.replace(tzinfo=_tz.utc)
+                    days_to_exp = (expiry - now).days
+                    if days_to_exp < 0:
+                        continue  # ya expirado, otro job
+
+                    # Evitar duplicado
+                    if sup.contract_renewal_reminder_sent_at:
+                        last_sent = sup.contract_renewal_reminder_sent_at
+                        if not last_sent.tzinfo:
+                            last_sent = last_sent.replace(tzinfo=_tz.utc)
+                        if (now - last_sent).days < 30:
+                            continue
+
+                    severity = VendorIssueSeverity.CRITICAL if days_to_exp <= 30 else VendorIssueSeverity.HIGH
+
+                    # VendorIssue auto-generado
+                    existing = db.query(VendorIssue).filter(
+                        VendorIssue.supplier_id == sup.id,
+                        VendorIssue.auto_generated_source == "contract_expiry",
+                        VendorIssue.status.notin_([VendorIssueStatus.CLOSED, VendorIssueStatus.MITIGATED]),
+                    ).first()
+                    if not existing:
+                        n = db.query(VendorIssue).filter(VendorIssue.organization_id == org_id).count() + 1
+                        issue = VendorIssue(
+                            organization_id=org_id,
+                            code=f"VIS-{n:04d}",
+                            supplier_id=sup.id,
+                            source="monitoring",
+                            title=f"Contrato expira en {days_to_exp} dias: {sup.name}",
+                            description=(
+                                f"El contrato con {sup.name} expira el {expiry.strftime('%Y-%m-%d')} "
+                                f"({days_to_exp} dias). Accion: renovar contrato y actualizar 'Expiracion contrato' "
+                                f"en el proveedor para cerrar este aviso automaticamente."
+                            ),
+                            severity=severity,
+                            status=VendorIssueStatus.OPEN,
+                            auto_generated=True,
+                            auto_generated_source="contract_expiry",
+                            due_date=expiry,
+                            created_at=now,
+                        )
+                        db.add(issue)
+                    else:
+                        existing.severity = severity
+
+                    sup.contract_renewal_reminder_sent_at = now
+
+                db.commit()
+                logger.info("Contract expiry alerts completados para org %d", org_id)
+            except Exception as exc:
+                db.rollback()
+                logger.error("Contract expiry alerts error org %d: %s", org_id, exc, exc_info=True)
+    except Exception as exc:
+        logger.exception("Error en _run_contract_expiry_alerts: %s", exc)
+    finally:
+        db.close()
+
+
+def _run_bcp_test_reminder() -> None:
+    """Alerta cuando un BCPPlan aprobado no ha sido testeado en >12 meses.
+
+    Bucle cerrado: cuando se conduce un nuevo test, el KRI kpi_bcp_test_frequency baja
+    automaticamente al ser reevaluado.
+    """
+    from datetime import timezone as _tz, timedelta as _td
+    from app.database import SessionLocal
+    from app.models import Organization, BCPPlan, BCPTest, Alert, AlertSeverity
+
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
+        for org in orgs:
+            org_id = org.id
+            try:
+                now = datetime.now(_tz.utc)
+                cutoff = now - _td(days=365)
+
+                plans = db.query(BCPPlan).filter(
+                    BCPPlan.organization_id == org_id,
+                    BCPPlan.status == "approved",
+                ).all()
+
+                for plan in plans:
+                    last_test = db.query(BCPTest).filter(
+                        BCPTest.plan_id == plan.id,
+                        BCPTest.status == "completed",
+                    ).order_by(BCPTest.test_date.desc()).first()
+
+                    if last_test:
+                        test_date = last_test.test_date
+                        if hasattr(test_date, "tzinfo") and test_date.tzinfo is None:
+                            test_date = test_date.replace(tzinfo=_tz.utc)
+                        if test_date >= cutoff:
+                            continue  # Testeado recientemente
+
+                    days_since = (now - test_date).days if last_test else 999
+                    existing = db.query(Alert).filter(
+                        Alert.organization_id == org_id,
+                        Alert.category == "bcp",
+                        Alert.message.like(f"%BCP%{plan.id}%no_test%"),
+                        Alert.is_resolved == False,
+                    ).first()
+                    if not existing:
+                        alert = Alert(
+                            organization_id=org_id,
+                            severity=AlertSeverity.HIGH,
+                            category="bcp",
+                            message=f"BCP_{plan.id}_no_test: Plan BCP '{plan.name}' aprobado sin test en {days_since} dias (ISO 22301 s.8.5)",
+                            is_resolved=False,
+                            created_at=now,
+                        )
+                        db.add(alert)
+
+                db.commit()
+                logger.info("BCP test reminders completados para org %d", org_id)
+            except Exception as exc:
+                db.rollback()
+                logger.error("BCP test reminder error org %d: %s", org_id, exc, exc_info=True)
+    except Exception as exc:
+        logger.exception("Error en _run_bcp_test_reminder: %s", exc)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -2857,6 +3093,30 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="Evaluacion periodica de KRIs (cada 6h)",
         replace_existing=True,
         misfire_grace_time=1800,
+    )
+    # Decay mensual de scores de proveedores (dia 1 a las 3h)
+    _scheduler.add_job(
+        func=_run_supplier_score_decay,
+        trigger=CronTrigger(day=1, hour=3, minute=0),
+        id="supplier_score_decay",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Alertas de contratos expirando (lunes 8h)
+    _scheduler.add_job(
+        func=_run_contract_expiry_alerts,
+        trigger=CronTrigger(day_of_week="mon", hour=8, minute=0),
+        id="contract_expiry_alerts",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Recordatorios de test BCP (dia 15 a las 9h)
+    _scheduler.add_job(
+        func=_run_bcp_test_reminder,
+        trigger=CronTrigger(day=15, hour=9, minute=0),
+        id="bcp_test_reminder",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

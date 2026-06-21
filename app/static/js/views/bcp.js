@@ -1076,6 +1076,30 @@ const ViewBcp = (() => {
             </button>` : p.status === 'approved' ? `
             <span style="font-size:11px;color:#16a34a;font-weight:600;"><i class="ti ti-check"></i> Vigente</span>` : ''}
           </div>
+          ${!isObs ? `
+          <div class="bcp-activation-control" onclick="event.stopPropagation()">
+            <div class="activation-status ${p.activation_status === 'activated' ? 'activation-status--active' : 'activation-status--standby'}">
+              <strong style="font-size:11px;">Estado de crisis:</strong>
+              <span style="font-size:11px;"> ${p.activation_status === 'activated' ? 'ACTIVADO' : 'En espera'}</span>
+              ${p.activation_status === 'activated' && p.activated_at
+                ? `<small style="display:block;font-size:10px;margin-top:2px;">Activado: ${new Date(p.activated_at).toLocaleString('es-ES')}</small>`
+                : ''}
+            </div>
+            <div class="activation-buttons">
+              ${p.activation_status !== 'activated' ? `
+                <button class="btn btn-sm" style="font-size:11px;background:#fee2e2;color:#991b1b;border-color:#fca5a5;"
+                  onclick="ViewBcp._activateBcpPlan(${p.id})">
+                  Activar plan de crisis
+                </button>
+              ` : `
+                <button class="btn btn-sm" style="font-size:11px;"
+                  onclick="ViewBcp._deactivateBcpPlan(${p.id})">
+                  Desactivar (crisis resuelta)
+                </button>
+              `}
+            </div>
+            ${p.risk_ids && p.risk_ids.length ? `<p style="font-size:10px;color:var(--text-muted);margin:4px 0 0;">Riesgos mitigados: ${p.risk_ids.length} vinculados</p>` : ''}
+          </div>` : ''}
         </div>
       </div>`;
     };
@@ -7381,6 +7405,32 @@ const ViewBcp = (() => {
     }
   }
 
+  // ---- BCP Plan activation / deactivation (nuevos endpoints) ----
+
+  async function _activateBcpPlan(planId) {
+    const notes = prompt('Notas de activacion (motivo de la crisis):');
+    if (notes === null) return;
+    try {
+      await Api.post(`/api/bcp/plans/${planId}/activate`, { notes });
+      UI.toast('Plan BCP activado — riesgos vinculados reducidos automaticamente', 'success');
+      setTimeout(() => window.location.reload(), 800);
+    } catch (e) {
+      UI.toast('Error: ' + (e.message || 'Desconocido'), 'error');
+    }
+  }
+
+  async function _deactivateBcpPlan(planId) {
+    const notes = prompt('Notas de desactivacion (como se resolvio la crisis):');
+    if (notes === null) return;
+    try {
+      await Api.post(`/api/bcp/plans/${planId}/deactivate`, { notes });
+      UI.toast('Plan BCP desactivado', 'success');
+      setTimeout(() => window.location.reload(), 800);
+    } catch (e) {
+      UI.toast('Error: ' + (e.message || 'Desconocido'), 'error');
+    }
+  }
+
   return {
     render,
     _switchTab, _setMode, _setStep, _setTile, _setSubTab,
@@ -7390,6 +7440,7 @@ const ViewBcp = (() => {
     _editDep, _saveDep, _delDep,
     _editStrat, _saveStrat, _delStrat,
     _editPlan, _savePlan, _approvePlan,
+    _activateBcpPlan, _deactivateBcpPlan,
     _openPlanDrawer, _closePlanDrawer,
     _onPlanTypeChange,
     _addSysDep, _removeSysDep, _updateSysDep,

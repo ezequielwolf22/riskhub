@@ -1,4 +1,5 @@
 """Hallazgos / issues de proveedores con SLA por severidad (TPRM Sprint 7)."""
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -10,6 +11,8 @@ from app.models import Supplier, VendorIssue, VendorIssueSeverity, VendorIssueSt
 from app.schemas import VendorIssueCreate, VendorIssueOut, VendorIssueUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/vendor-issues", tags=["vendor-issues"])
 
@@ -315,6 +318,15 @@ def update_vendor_issue(
     db.commit()
     db.refresh(issue)
     log_action(db, current_user.id, "update", "vendor_issue", str(issue.id))
+
+    # Bucle cerrado: si el issue cambia a cerrado/mitigado, recomputar perfil del proveedor
+    if update_data.get("status") in ("closed", "mitigated", "accepted"):
+        try:
+            from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
+            recompute_supplier_risk_profile(db, issue.supplier_id, triggered_by="vendor_issue_resolved")
+        except Exception as _e:
+            logger.warning("recompute after issue close failed: %s", _e)
+
     return issue
 
 

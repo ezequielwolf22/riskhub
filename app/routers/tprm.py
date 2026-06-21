@@ -294,3 +294,15 @@ def delete_custom_template(tid: int, db: Session = Depends(get_db),
     log_action(db, current_user.id, "delete", "tprm_template", str(tid), {"name": t.name})
     db.delete(t)
     db.commit()
+
+
+# ---------- Concentracion de riesgo (DORA Art.28) ----------
+
+@router.get("/concentration-risk")
+async def get_concentration_risk(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """DORA Art.28: proveedores con concentracion de riesgo > 40% en procesos criticos."""
+    from app.services.supplier_lifecycle_service import compute_concentration_risk
+    return compute_concentration_risk(db, current_user.organization_id)

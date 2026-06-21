@@ -2731,3 +2731,34 @@ table.data td .code-pill {
   font-size: 8px;
   padding: 0 3px;
 }
+
+/* ── Supplier lifecycle / onboarding ─────────────────────────────────────── */
+.supplier-lifecycle { padding: 0.75rem 0; }
+.lc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; }
+.lc-stage-buttons { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.lc-stage-btn { padding: 0.2rem 0.65rem; border: 1px solid var(--brand-purple); border-radius: 4px; cursor: pointer; font-size: 0.8rem; background: transparent; color: var(--brand-purple); transition: background 0.15s, color 0.15s; }
+.lc-stage-btn:hover { background: var(--brand-purple); color: #fff; }
+.lc-stage-btn--active { background: var(--brand-purple); color: #fff; }
+.lc-checklist { margin: 0.75rem 0; }
+.lc-checklist-item { display: flex; align-items: center; gap: 0.65rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+.lc-checklist-item input[type=checkbox] { width: 1.1rem; height: 1.1rem; accent-color: var(--brand-purple); flex-shrink: 0; }
+.lc-checklist-item.completed label { text-decoration: line-through; opacity: 0.55; }
+.lc-signoff .signoff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
+.lc-signoff-card { border: 1px solid var(--border); border-radius: 6px; padding: 0.65rem 0.75rem; background: var(--bg-2); }
+.lc-signoff-card.signed { border-color: #2ecc71; background: #f0fdf4; }
+.lc-concentration { margin-top: 1rem; }
+.alert-box--warning { background: #fff8e1; border: 1px solid #f59e0b; border-radius: 6px; padding: 0.85rem 1rem; }
+
+/* ── BCP plan activation control ─────────────────────────────────────────── */
+.bcp-activation-control { margin-top: 0.75rem; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-1); }
+.activation-status { padding: 0.35rem 0.5rem; margin-bottom: 0.5rem; border-radius: 4px; }
+.activation-status--active { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.activation-status--standby { background: var(--bg-2); color: var(--text-muted); }
+.activation-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ── DORA concentration risk table ──────────────────────────────────────── */
+.row--warning { background: #fff8e1; }
+.progress-bar { display: inline-block; height: 8px; background: var(--brand-orange); border-radius: 4px; vertical-align: middle; min-width: 4px; }
+.badge--tier { background: var(--bg-3); color: var(--text-muted); font-size: 0.72rem; padding: 1px 6px; border-radius: 999px; font-weight: 600; }
+.badge--ok { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+.badge--danger { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }

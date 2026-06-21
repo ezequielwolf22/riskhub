@@ -527,3 +527,146 @@ def delete_supplier_document(
                {"filename": doc.filename})
     db.delete(doc)
     db.commit()
+
+
+# ---------- Lifecycle endpoints ----------
+
+@router.post("/{sid}/lifecycle")
+async def change_lifecycle(
+    sid: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Cambia el lifecycle stage de un proveedor con auditoria."""
+    from app.services.supplier_lifecycle_service import generate_onboarding_checklist
+    sup = db.get(Supplier, sid)
+    if not sup or sup.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    valid_stages = {"prospecting", "onboarding", "active", "under_review", "offboarding", "terminated"}
+    new_stage = payload.get("stage", "")
+    if new_stage not in valid_stages:
+        raise HTTPException(status_code=400, detail=f"Stage invalido. Validos: {valid_stages}")
+
+    old_stage = sup.lifecycle_stage or "active"
+    sup.lifecycle_stage = new_stage
+    sup.lifecycle_changed_at = datetime.utcnow()
+    sup.lifecycle_changed_by_id = current_user.id
+
+    # Auto-generar checklist si entra en onboarding
+    if new_stage == "onboarding" and not sup.onboarding_checklist:
+        sup.onboarding_checklist = generate_onboarding_checklist(sup)
+
+    db.commit()
+    return {
+        "supplier_id": sid,
+        "old_stage": old_stage,
+        "new_stage": new_stage,
+        "checklist": sup.onboarding_checklist,
+    }
+
+
+@router.patch("/{sid}/checklist/{item_id}")
+async def update_checklist_item(
+    sid: int,
+    item_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Marca un item del checklist como completado (bucle cerrado: 100% -> active)."""
+    from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
+    sup = db.get(Supplier, sid)
+    if not sup or sup.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    checklist = sup.onboarding_checklist or []
+    item = next((i for i in checklist if i["id"] == item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item no encontrado")
+
+    item["completed"] = payload.get("completed", True)
+    if item["completed"]:
+        item["completed_at"] = datetime.utcnow().isoformat()
+        item["completed_by_id"] = current_user.id
+        if payload.get("evidence_doc_id"):
+            item["evidence_doc_id"] = payload["evidence_doc_id"]
+    else:
+        item["completed_at"] = None
+        item["completed_by_id"] = None
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(sup, "onboarding_checklist")
+    db.commit()
+
+    # Bucle cerrado: si checklist al 100% -> recompute (puede promover a active)
+    result = recompute_supplier_risk_profile(db, sid, triggered_by="checklist_update")
+    return {"item_id": item_id, "completed": item["completed"], "lifecycle_changes": result.get("changes", [])}
+
+
+@router.patch("/{sid}/sign-off")
+async def record_sign_off(
+    sid: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Registra la firma de DPA, NDA o contrato (bucle cerrado: elimina gap de cumplimiento)."""
+    from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
+    sup = db.get(Supplier, sid)
+    if not sup or sup.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    doc_type = payload.get("type", "")
+    signed_by = payload.get("signed_by", current_user.full_name)
+    doc_id = payload.get("document_id")
+    now = datetime.utcnow()
+
+    if doc_type == "dpa":
+        sup.dpa_signed_at = now
+        sup.dpa_signed_by = signed_by
+        if doc_id:
+            sup.dpa_document_id = doc_id
+    elif doc_type == "nda":
+        sup.nda_signed_at = now
+        if doc_id:
+            sup.nda_document_id = doc_id
+    elif doc_type == "contract":
+        if doc_id:
+            sup.contract_document_id = doc_id
+        if payload.get("expiry"):
+            from datetime import datetime as dt
+            try:
+                sup.contract_expiry = dt.fromisoformat(payload["expiry"])
+            except ValueError:
+                pass
+    else:
+        raise HTTPException(status_code=400, detail="type debe ser dpa|nda|contract")
+
+    db.commit()
+    result = recompute_supplier_risk_profile(db, sid, triggered_by=f"sign_off_{doc_type}")
+    return {"type": doc_type, "signed_at": now.isoformat(), "lifecycle_changes": result.get("changes", [])}
+
+
+@router.patch("/{sid}/concentration-mitigation")
+async def set_concentration_mitigation(
+    sid: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Registra notas de mitigacion de riesgo de concentracion (bucle cerrado: puede bajar el KRI)."""
+    from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
+    sup = db.get(Supplier, sid)
+    if not sup or sup.organization_id != current_user.organization_id:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    sup.concentration_risk_notes = payload.get("notes", sup.concentration_risk_notes)
+    sup.exit_strategy = payload.get("exit_strategy", sup.exit_strategy)
+    if payload.get("mitigated"):
+        sup.concentration_risk_mitigated_at = datetime.utcnow()
+
+    db.commit()
+    result = recompute_supplier_risk_profile(db, sid, triggered_by="concentration_mitigation")
+    return {"supplier_id": sid, "lifecycle_changes": result.get("changes", [])}
