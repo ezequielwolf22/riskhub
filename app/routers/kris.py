@@ -77,7 +77,7 @@ def _compute_kri_value(db: Session, kri: KRI, org_id: int) -> Optional[float]:
     from sqlalchemy import text as _text
     from app.models import (
         Asset, BCPPlan, ControlImplementation, ControlStatus,
-        Incident, IncidentStatus, NonConformity, NCSeverity, NcStatus,
+        Incident, IncidentStatus, NonConformity, NCSeverity, NCStatus,
         Policy, PolicyStatus, Supplier, SupplierQuestionnaire, SupplierTier,
         TreatmentTask, TaskStatus,
     )
@@ -114,7 +114,7 @@ def _compute_kri_value(db: Session, kri: KRI, org_id: int) -> Optional[float]:
         q = db.query(NonConformity).filter(
             NonConformity.organization_id == org_id,
             NonConformity.severity == NCSeverity.MAJOR,
-            NonConformity.status.notin_([NcStatus.CLOSED]),
+            NonConformity.status.notin_([NCStatus.CLOSED]),
         )
         return float(q.count())
 
@@ -250,7 +250,7 @@ def _compute_kri_value(db: Session, kri: KRI, org_id: int) -> Optional[float]:
         from datetime import timedelta
         ncs = db.query(NonConformity).filter(
             NonConformity.organization_id == org_id,
-            NonConformity.status == NcStatus.CLOSED,
+            NonConformity.status == NCStatus.CLOSED,
         ).all()
         if not ncs:
             return 100.0
