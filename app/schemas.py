@@ -169,6 +169,7 @@ class ContextOut(ORMBase):
     active_frameworks: Optional[list[str]] = None
     ens_level: Optional[str] = None
     methodology: Optional[str] = "iso27005"
+    questionnaire_answers: Optional[dict] = None
     updated_at: datetime
 
 
