@@ -210,7 +210,19 @@ def close_campaign(cid: int, db=Depends(get_db), u=Depends(require_admin)):
     c.closed_at = datetime.now(timezone.utc)
     db.commit()
     log_action(db, u.id, "close", "survey_campaign", str(cid), {})
-    return {"status": "closed"}
+
+    # Auto-aplicar resultados a riesgos si hay riesgos en scope y respuestas completadas
+    auto_result = {"applied": 0}
+    if c.scope_risk_ids:
+        try:
+            auto_result = survey_service.apply_responses_to_risks(db, cid, u.id)
+            if auto_result.get("applied", 0) > 0:
+                log_action(db, u.id, "auto_apply_survey_results", "survey_campaign", str(cid),
+                           {"auto": True, "changes": auto_result.get("changes", [])})
+        except Exception:
+            pass
+
+    return {"status": "closed", "auto_applied": auto_result.get("applied", 0)}
 
 
 @router.post("/campaigns/{cid}/apply-to-risks")

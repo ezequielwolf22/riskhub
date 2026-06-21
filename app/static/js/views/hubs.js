@@ -36,6 +36,7 @@ const ViewRiskHub = {
         { id: 'threats', label: 'Amenazas', view: ViewThreats },
         { id: 'vulnerabilities', label: 'Vulnerabilidades', view: ViewVulns },
         { id: 'magerit', label: 'MAGERIT', view: ViewMagerit },
+        { id: 'kris', label: 'KRIs / KPIs', view: ViewKRIs, route: 'kris' },
       ],
     });
   },

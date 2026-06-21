@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -110,6 +111,31 @@ def create_control(data: ControlIn, db: Session = Depends(get_db),
 def _next_custom_code(db: Session) -> str:
     n = db.query(Control).filter(Control.code.like("CUS.%")).count() + 1
     return f"CUS.{n:03d}"
+
+
+class ControlPatch(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_mandatory: Optional[bool] = None
+
+
+@catalog_router.patch("/catalog/{cid}", response_model=ControlOut)
+def patch_control(
+    cid: int,
+    body: ControlPatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    c = db.get(Control, cid)
+    if not c:
+        raise HTTPException(404, "Control no encontrado")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(c, field, value)
+    db.commit()
+    db.refresh(c)
+    log_action(db, current_user.id, "update", "control", str(cid),
+               {"is_mandatory": c.is_mandatory})
+    return c
 
 
 # ---------- IMPLEMENTATIONS ----------

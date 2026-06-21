@@ -547,6 +547,25 @@ def _migrate_columns() -> None:
         ("ALTER TABLE risks ADD COLUMN baseline_residual_level INTEGER", "risks", "baseline_residual_level"),
         # v5.2.0 — GDPR Art.35: riesgo vinculado a actividad que requiere DPIA
         ("ALTER TABLE risks ADD COLUMN gdpr_activity_id INTEGER REFERENCES processing_activities(id)", "risks", "gdpr_activity_id"),
+        # v5.3.0 — AlertRule: reglas compuestas multi-condicion
+        ("ALTER TABLE alert_rules ADD COLUMN conditions JSON", "alert_rules", "conditions"),
+        ("ALTER TABLE alert_rules ADD COLUMN logic VARCHAR(3) DEFAULT 'AND'", "alert_rules", "logic"),
+        # v5.3.0 — Control: flag de control obligatorio ISO 27001
+        ("ALTER TABLE controls ADD COLUMN is_mandatory BOOLEAN DEFAULT 0", "controls", "is_mandatory"),
+        # v5.3.0 — RiskCorrelation
+        (
+            """CREATE TABLE IF NOT EXISTS risk_correlations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                organization_id INTEGER NOT NULL REFERENCES organizations(id),
+                risk_id_a INTEGER NOT NULL REFERENCES risks(id) ON DELETE CASCADE,
+                risk_id_b INTEGER NOT NULL REFERENCES risks(id) ON DELETE CASCADE,
+                correlation_factor REAL NOT NULL DEFAULT 0.5,
+                description TEXT,
+                created_at DATETIME
+            )""",
+            "risk_correlations",
+            "id",
+        ),
         # v5.3.0 — KRI: key risk indicators
         (
             """CREATE TABLE IF NOT EXISTS kris (
@@ -568,6 +587,13 @@ def _migrate_columns() -> None:
             "kris",
             "id",
         ),
+        # v5.4.0 — KRI/KPI: campos de edicion, visibilidad y tipo de indicador
+        ("ALTER TABLE kris ADD COLUMN indicator_type VARCHAR(8) DEFAULT 'kri'", "kris", "indicator_type"),
+        ("ALTER TABLE kris ADD COLUMN is_visible BOOLEAN DEFAULT 1", "kris", "is_visible"),
+        ("ALTER TABLE kris ADD COLUMN custom_name VARCHAR(255)", "kris", "custom_name"),
+        ("ALTER TABLE kris ADD COLUMN description TEXT", "kris", "description"),
+        ("ALTER TABLE kris ADD COLUMN is_system BOOLEAN DEFAULT 0", "kris", "is_system"),
+        ("ALTER TABLE kris ADD COLUMN direction VARCHAR(20) DEFAULT 'lower_is_better'", "kris", "direction"),
         # v5.3.0 — RiskSnapshot: historico mensual de niveles de riesgo
         (
             """CREATE TABLE IF NOT EXISTS risk_snapshots (
@@ -809,6 +835,169 @@ def _backfill_risk_supplier_id(db: Session) -> None:
         print(f"Backfill risk supplier_id omitido: {exc}")
 
 
+def _seed_default_kpis(db: Session, org_id: int) -> None:
+    """Siembra los KPIs de sistema por defecto (idempotente via is_system + metric_type)."""
+    from app.models import KRI, KRIMetricType
+    _KPI_CATALOG = [
+        # ISO 27001:2022 cl.9.1 — Evaluacion del rendimiento
+        {
+            "name": "Tasa de tratamiento de riesgos altos",
+            "metric_type": KRIMetricType.KPI_TREATMENT_RATE.value,
+            "description": "% riesgos de nivel alto (>=4) con plan de tratamiento definido. ISO 27001:2022 cl.6.1.3",
+            "direction": "higher_is_better",
+            "warning_threshold": 80.0,
+            "breach_threshold": 60.0,
+        },
+        {
+            "name": "Tiempo medio de tratamiento (dias)",
+            "metric_type": KRIMetricType.KPI_MTTT.value,
+            "description": "Dias medios desde identificacion hasta tratamiento activo. ISO 27001:2022 cl.9.1",
+            "direction": "lower_is_better",
+            "warning_threshold": 60.0,
+            "breach_threshold": 90.0,
+        },
+        {
+            "name": "Cobertura de controles ISO 27002",
+            "metric_type": KRIMetricType.KPI_CONTROL_COVERAGE.value,
+            "description": "% controles del catalogo ISO 27002 con al menos una implementacion. ISO 27001:2022 A.5-8",
+            "direction": "higher_is_better",
+            "warning_threshold": 60.0,
+            "breach_threshold": 40.0,
+        },
+        {
+            "name": "Madurez media de controles",
+            "metric_type": KRIMetricType.KPI_CONTROL_MATURITY_AVG.value,
+            "description": "Promedio de madurez (0-5) de todas las implementaciones de control. ISO 27001:2022 cl.9.1",
+            "direction": "higher_is_better",
+            "warning_threshold": 2.5,
+            "breach_threshold": 1.5,
+        },
+        {
+            "name": "Cumplimiento revision de politicas",
+            "metric_type": KRIMetricType.KPI_POLICY_REVIEW.value,
+            "description": "% politicas publicadas con fecha de revision vigente. ISO 27001:2022 cl.5.2",
+            "direction": "higher_is_better",
+            "warning_threshold": 70.0,
+            "breach_threshold": 50.0,
+        },
+        {
+            "name": "Tasa de cierre de no conformidades",
+            "metric_type": KRIMetricType.KPI_NC_CLOSURE_RATE.value,
+            "description": "% NCs cerradas en <= 90 dias desde su apertura. ISO 27001:2022 cl.10.1",
+            "direction": "higher_is_better",
+            "warning_threshold": 60.0,
+            "breach_threshold": 40.0,
+        },
+        # ISO 27005:2022 — Gestion del riesgo
+        {
+            "name": "Reduccion media del riesgo (%)",
+            "metric_type": KRIMetricType.KPI_RISK_REDUCTION_AVG.value,
+            "description": "Reduccion porcentual promedio de nivel inherente a residual. ISO 27005:2022 §8.6",
+            "direction": "higher_is_better",
+            "warning_threshold": 30.0,
+            "breach_threshold": 15.0,
+        },
+        {
+            "name": "Conformidad con apetito de riesgo (%)",
+            "metric_type": KRIMetricType.KPI_APPETITE_COMPLIANCE.value,
+            "description": "% riesgos con nivel residual dentro del apetito (<=4). ISO 27005:2022 §7.3",
+            "direction": "higher_is_better",
+            "warning_threshold": 70.0,
+            "breach_threshold": 50.0,
+        },
+        {
+            "name": "Cobertura de activos evaluados (%)",
+            "metric_type": KRIMetricType.KPI_ASSET_COVERAGE.value,
+            "description": "% activos con al menos un riesgo evaluado. ISO 27005:2022 §8.2",
+            "direction": "higher_is_better",
+            "warning_threshold": 60.0,
+            "breach_threshold": 40.0,
+        },
+        {
+            "name": "Riesgos sin responsable (%)",
+            "metric_type": KRIMetricType.KPI_RISK_NO_OWNER.value,
+            "description": "% riesgos activos sin owner_id asignado. ISO 27001:2022 cl.5.3",
+            "direction": "lower_is_better",
+            "warning_threshold": 15.0,
+            "breach_threshold": 30.0,
+        },
+        {
+            "name": "Riesgos altos sin plan de tratamiento",
+            "metric_type": KRIMetricType.KPI_HIGH_RISKS_NO_PLAN.value,
+            "description": "Numero de riesgos residual >= 4 sin plan de tratamiento. ISO 27005:2022 §8.4",
+            "direction": "lower_is_better",
+            "warning_threshold": 5.0,
+            "breach_threshold": 10.0,
+        },
+        # NIS2 Art.23 / DORA
+        {
+            "name": "Tasa de notificacion NIS2 en plazo (%)",
+            "metric_type": KRIMetricType.KPI_NIS2_NOTIFICATION.value,
+            "description": "% incidentes NIS2 notificados dentro de 72h. NIS2 Art.23",
+            "direction": "higher_is_better",
+            "warning_threshold": 80.0,
+            "breach_threshold": 60.0,
+        },
+        {
+            "name": "Cobertura BCP aprobados (%)",
+            "metric_type": KRIMetricType.KPI_BCP_COVERAGE.value,
+            "description": "% planes de continuidad (BCP) en estado aprobado sobre el total. ISO 22301 / NIS2",
+            "direction": "higher_is_better",
+            "warning_threshold": 70.0,
+            "breach_threshold": 50.0,
+        },
+        # NIST CSF 2.0 — Respond/Recover
+        {
+            "name": "MTTR de incidentes (dias)",
+            "metric_type": KRIMetricType.KPI_MTTR_INCIDENTS.value,
+            "description": "Tiempo medio de resolucion de incidentes en dias. NIST CSF 2.0 RS/RC",
+            "direction": "lower_is_better",
+            "warning_threshold": 14.0,
+            "breach_threshold": 30.0,
+        },
+        # ISO 27036 / TPRM
+        {
+            "name": "Cobertura evaluacion proveedores Tier-1 (%)",
+            "metric_type": KRIMetricType.KPI_SUPPLIER_COVERAGE.value,
+            "description": "% proveedores tier-1 con cuestionario completado en los ultimos 12 meses. ISO 27036 / TPRM",
+            "direction": "higher_is_better",
+            "warning_threshold": 70.0,
+            "breach_threshold": 50.0,
+        },
+    ]
+    inserted = 0
+    for kpi_def in _KPI_CATALOG:
+        existing = db.query(KRI).filter(
+            KRI.organization_id == org_id,
+            KRI.metric_type == kpi_def["metric_type"],
+            KRI.is_system == True,
+        ).first()
+        if existing:
+            continue
+        from datetime import datetime, timezone as _tz
+        kpi = KRI(
+            organization_id=org_id,
+            risk_id=None,
+            name=kpi_def["name"],
+            metric_type=kpi_def["metric_type"],
+            description=kpi_def.get("description"),
+            direction=kpi_def.get("direction", "lower_is_better"),
+            warning_threshold=kpi_def["warning_threshold"],
+            breach_threshold=kpi_def["breach_threshold"],
+            is_active=True,
+            is_visible=True,
+            is_system=True,
+            indicator_type="kpi",
+            alert_on_breach=True,
+            created_at=datetime.now(_tz.utc),
+        )
+        db.add(kpi)
+        inserted += 1
+    if inserted:
+        db.commit()
+        print(f"Seed: {inserted} KPIs de sistema creados para org {org_id}.")
+
+
 def init_db() -> None:
     """Crear tablas y cargar seed inicial."""
     Base.metadata.create_all(bind=engine)
@@ -828,6 +1017,7 @@ def init_db() -> None:
         seed_default_survey_templates(db, org.id)
         _seed_regwatch_sources(db)
         _backfill_risk_supplier_id(db)
+        _seed_default_kpis(db, org.id)
     finally:
         db.close()
 

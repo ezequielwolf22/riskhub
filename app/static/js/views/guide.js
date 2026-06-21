@@ -12,6 +12,7 @@ const ViewGuide = {
     { id: 'assets', title: 'Inventario de activos', icon: '🗄️' },
     { id: 'threats', title: 'Amenazas y vulnerabilidades', icon: '🔍' },
     { id: 'risks', title: 'Gestion de riesgos', icon: '📊' },
+    { id: 'kris', title: 'KRIs — Indicadores de riesgo', icon: '📈' },
     { id: 'calendar', title: 'Calendario', icon: '📅' },
     { id: 'controls', title: 'Controles ISO 27002', icon: '🛡️' },
     { id: 'policies', title: 'Politicas de seguridad', icon: '📜' },
@@ -120,6 +121,7 @@ const ViewGuide = {
       assets: this._cAssets,
       threats: this._cThreats,
       risks: this._cRisks,
+      kris: this._cKris,
       calendar: this._cCalendar,
       controls: this._cControls,
       policies: this._cPolicies,
@@ -644,6 +646,78 @@ const ViewGuide = {
       'Sube el CSV. El agente detecta patrones CVE (formato CVE-YYYY-NNNNN) y los vincula al activo correspondiente.',
       'Los riesgos importados aparecen en el registro con la etiqueta IA y con la fuente identificada.',
     ])}
+    ${this._h('Panel IA multi-tab — analisis automatico al abrir un riesgo')}
+    ${this._p('Al abrir el detalle de cualquier riesgo, el panel IA se despliega automaticamente con 6 pestanas. El analisis experto y el escenario MITRE se lanzan en paralelo sin que el usuario tenga que hacer nada.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Analisis IA:</strong> explicacion rigurosa del nivel residual, cadena de ataque, efectividad de controles, brechas SOA y alineacion normativa.</li>
+      <li><strong>Escenario MITRE:</strong> kill-chain completo con fases ATT&amp;CK, tecnicas TXX, mitigaciones y brechas criticas. Se precarga en background.</li>
+      <li><strong>What-If:</strong> simulacion interactiva — cambia probabilidad, impacto o madurez de controles y ve el delta residual al instante sin modificar el registro.</li>
+      <li><strong>VaR:</strong> Value at Risk por Monte Carlo (10.000 simulaciones). Muestra la perdida esperada, VaR 95% y VaR 99%.</li>
+      <li><strong>Historial:</strong> evolucion mensual del nivel inherente y residual con sparkline y tabla de snapshots.</li>
+      <li><strong>KRIs:</strong> indicadores clave de riesgo vinculados a este riesgo — estado (OK/Aviso/Alerta) y valor actual con boton de evaluacion directa.</li>
+    </ul>
+    ${this._tip('El boton "Regenerar" en el extremo derecho del panel IA vuelve a lanzar la pestana activa. Util tras anadir nuevos controles para ver si el analisis cambia.')}
+    ${this._h('Descubrir riesgos con IA')}
+    ${this._p('El boton <strong>Descubrir con IA</strong> junto a "Nuevo riesgo" lanza el agente IA para analizar el contexto de la organizacion e identificar riesgos potenciales no registrados. El agente devuelve una lista de sugerencias con nivel estimado, activo, amenaza y referencia ISO 27005.')}
+    ${this._h('KRIs (Key Risk Indicators)')}
+    ${this._p('Los KRIs son metricas configurables que alertan automaticamente cuando un indicador del riesgo supera el umbral. Se evaluan cada 6 horas por el scheduler.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Metricas disponibles:</strong> nivel residual, incidentes abiertos, madurez de controles, tareas de tratamiento vencidas, respuestas de encuesta y puntuacion de proveedor.</li>
+      <li><strong>Dos umbrales:</strong> warning (aviso amarillo) y breach (alerta roja).</li>
+      <li><strong>Alertas:</strong> cuando se supera el umbral breach se envia un email al destinatario configurado.</li>
+      <li><strong>Panel portfolio:</strong> el widget del dashboard muestra el conteo de KRIs en alerta y aviso en tiempo real.</li>
+    </ul>
+    ${this._h('Portfolio de riesgos — widget del dashboard')}
+    ${this._p('El widget <strong>Portfolio de riesgos</strong> del dashboard muestra el score ponderado del portfolio (media ponderada de niveles residuales por importancia del activo), la tendencia mensual y los KRIs en estado de alerta. Haz clic en cualquier KRI en alerta para ir directamente al detalle del riesgo.')}
+  `;},
+
+  get _cKris() { return `
+    ${this._p('La seccion <strong>KRIs / KPIs</strong> (pestana del hub de Riesgos) permite monitorizar dos tipos de indicadores: <strong>KRIs</strong> (exposicion del riesgo individual) y <strong>KPIs</strong> (rendimiento del programa SGSI completo). Ambos se evaluan cada 6 horas por el scheduler y generan alertas automaticas en caso de breach.')}
+    ${this._h('KRIs — Key Risk Indicators (por riesgo individual)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>residual_level:</strong> nivel residual del riesgo (1-8).</li>
+      <li><strong>inherent_level:</strong> nivel inherente del riesgo (1-8).</li>
+      <li><strong>open_incidents:</strong> incidentes abiertos vinculados al riesgo.</li>
+      <li><strong>open_ncs:</strong> no conformidades mayores abiertas (org).</li>
+      <li><strong>control_maturity:</strong> madurez media de controles del riesgo (0-5).</li>
+      <li><strong>overdue_tasks:</strong> tareas de tratamiento vencidas.</li>
+    </ul>
+    ${this._h('KPIs — Key Performance Indicators (nivel organizacion)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Tasa de tratamiento (ISO 27001 cl.6.1.3):</strong> % riesgos altos con plan definido.</li>
+      <li><strong>MTTT (ISO 27001 cl.9.1):</strong> dias medios de tratamiento.</li>
+      <li><strong>Cobertura controles (ISO 27002):</strong> % controles del catalogo implementados o parciales.</li>
+      <li><strong>Madurez media controles (ISO 27001 cl.9.1):</strong> promedio 0-5.</li>
+      <li><strong>Revision de politicas (ISO 27001 cl.5.2):</strong> % politicas publicadas en plazo de revision.</li>
+      <li><strong>Cierre de NCs (ISO 27001 cl.10.1):</strong> % NCs cerradas en &lt;=90 dias.</li>
+      <li><strong>Reduccion del riesgo (ISO 27005 §8.6):</strong> % reduccion inherente → residual.</li>
+      <li><strong>Apetito de riesgo (ISO 27005 §7.3):</strong> % riesgos dentro del apetito (&lt;=4).</li>
+      <li><strong>Cobertura de activos (ISO 27005 §8.2):</strong> % activos con riesgo evaluado.</li>
+      <li><strong>Riesgos sin responsable (ISO 27001 cl.5.3):</strong> % riesgos sin owner.</li>
+      <li><strong>Riesgos altos sin plan (ISO 27005 §8.4):</strong> numero absoluto.</li>
+      <li><strong>Notificacion NIS2 (Art.23):</strong> % incidentes notificados en &lt;72h.</li>
+      <li><strong>Cobertura BCP (ISO 22301 / NIS2):</strong> % planes BCP aprobados.</li>
+      <li><strong>MTTR incidentes (NIST CSF 2.0):</strong> dias medios de resolucion.</li>
+      <li><strong>Cobertura proveedores Tier-1 (ISO 27036 / TPRM):</strong> % evaluados en 12 meses.</li>
+    </ul>
+    ${this._h('Direccion de los umbrales')}
+    ${this._p('<strong>Mayor es mejor</strong> (ej. % cobertura): breach si el valor cae por debajo del umbral breach. <strong>Menor es mejor</strong> (ej. dias, incidentes): breach si el valor supera el umbral breach.')}
+    ${this._h('Estados')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong style="color:var(--success,#22c55e);">NORMAL:</strong> dentro de limites.</li>
+      <li><strong style="color:#f59e0b;">WARNING:</strong> supera el umbral de aviso.</li>
+      <li><strong style="color:var(--brand-orange);">BREACH:</strong> supera el umbral critico — se envia email automatico.</li>
+    </ul>
+    ${this._h('Edicion y personalizacion')}
+    ${this._steps([
+      'Accede a Riesgos → pestana KRIs / KPIs.',
+      'Haz clic en "Inicializar KPIs" para cargar los 15 KPIs de sistema (idempotente).',
+      'Usa "Editar" en cualquier indicador para renombrarlo (nombre personalizado), ajustar umbrales, cambiar email de alerta o descripcion.',
+      'Usa "Ocultar" para retirar de la vista indicadores que no son relevantes para tu organizacion.',
+      'Los indicadores de sistema (marcados como tal) no se pueden eliminar, solo ocultar.',
+      'Puedes crear KRIs personalizados con "Nuevo KRI" y vincularlos a un riesgo concreto.',
+    ])}
+    ${this._tip('Los KPIs de sistema se inicializan automaticamente al arrancar la aplicacion. Evaluar todos desde la vista KRIs / KPIs actualiza todos los valores instantaneamente antes de la siguiente evaluacion automatica del scheduler.')}
   `;},
 
   get _cCalendar() { return `

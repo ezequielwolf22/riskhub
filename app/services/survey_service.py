@@ -175,6 +175,16 @@ def apply_responses_to_risks(db: Session, campaign_id: int,
             avg_c = round(sum(impacts) / len(impacts))
             risk.inherent_consequence = max(0, min(4, avg_c - 1))
         if old_l != risk.inherent_likelihood or old_c != risk.inherent_consequence:
+            risk.likelihood_adjusted_reason = (
+                f"Encuesta {campaign.code}: media de {len(completed)} respuestas "
+                f"(L:{old_l}→{risk.inherent_likelihood}, C:{old_c}→{risk.inherent_consequence})"
+            )
+            # Recalcular niveles residuales tras actualizar parametros inherentes
+            try:
+                from app.routers.risks import _recalc
+                _recalc(db, risk)
+            except Exception:
+                pass
             changes.append({
                 "risk_id": risk_id,
                 "risk_code": risk.code,

@@ -24,7 +24,7 @@ const ViewRisks = {
     main.innerHTML = UI.sectionHeader(
       'Registro de riesgos',
       'ISO/IEC 27005:2018 cl. 8-9 — identificación, análisis, tratamiento',
-      canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nuevo riesgo</button>' : ''
+      canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nuevo riesgo</button><button class="btn btn-ghost" id="btn-discover-ai" style="margin-left:8px;" title="El agente IA identifica riesgos no registrados analizando el contexto de la organizacion">Descubrir con IA</button>' : ''
     ) + `
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
         <button class="risk-tab-btn" data-risk-tab="list"
@@ -103,7 +103,11 @@ const ViewRisks = {
         if (tab === 'groups') ViewRisks._renderGroupView();
       };
     });
-    if (canEdit) document.getElementById('btn-new').onclick = () => ViewRisks._edit();
+    if (canEdit) {
+      document.getElementById('btn-new').onclick = () => ViewRisks._edit();
+      const _dBtn = document.getElementById('btn-discover-ai');
+      if (_dBtn) _dBtn.onclick = () => ViewRisks._discoverRisks();
+    }
     document.getElementById('r-search').oninput = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-status').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-band').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
@@ -1555,22 +1559,11 @@ const ViewRisks = {
         </div>`;
       }
 
-      // --- Botón análisis IA experto ---
-      html += `
-        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;
-                    display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <button class="btn btn-primary" id="btn-ai-explain" style="font-size:13px;">
-            Análisis experto con IA
-          </button>
-          <span style="font-size:12px;color:var(--text-muted);">
-            Explicación rigurosa: por qué este nivel, cómo mitigan los controles, brechas SOA y alineación normativa.
-          </span>
-        </div>
-        <div id="ai-explain-result" style="margin-top:10px;"></div>`;
+      // --- Panel IA multi-tab (auto-lanza análisis al abrir) ---
+      html += `<div id="ai-panel-root" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;"></div>`;
 
       container.innerHTML = html;
-      const explainBtn = document.getElementById('btn-ai-explain');
-      if (explainBtn) explainBtn.onclick = () => ViewRisks._requestAiExplain(riskId);
+      ViewRisks._renderAiTabs(riskId, document.getElementById('ai-panel-root'));
 
     } catch (e) {
       container.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
@@ -1578,11 +1571,10 @@ const ViewRisks = {
   },
 
   async _requestAiExplain(riskId) {
-    const btn = document.getElementById('btn-ai-explain');
-    const result = document.getElementById('ai-explain-result');
-    if (!btn || !result) return;
-    btn.disabled = true;
-    btn.textContent = 'Analizando...';
+    const btn = document.getElementById('btn-ai-explain-refresh');
+    const result = document.getElementById('ai-tab-content-explain');
+    if (!result) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Analizando...'; }
     result.innerHTML = '<div class="notice">El agente IA está analizando el riesgo con toda la información disponible...</div>';
     try {
       const data = await Api.post(`/api/risks/${riskId}/ai-explain`, {});
@@ -1746,13 +1738,429 @@ const ViewRisks = {
             Nivel de confianza: ${UI.esc(data.confidence_reason)}
           </div>` : ''}
         </div>`;
-      btn.textContent = 'Regenerar analisis IA';
-      btn.disabled = false;
+      if (btn) { btn.textContent = 'Regenerar'; btn.disabled = false; }
     } catch (e) {
-      result.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
-      btn.textContent = 'Analisis experto con IA';
-      btn.disabled = false;
+      if (result) result.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+      if (btn) { btn.textContent = 'Analisis IA'; btn.disabled = false; }
     }
+  },
+
+  // ── Panel IA multi-tab ────────────────────────────────────────────────────
+
+  _renderAiTabs(riskId, root) {
+    if (!root) return;
+    const tabs = [
+      { id: 'explain',  label: 'Analisis IA' },
+      { id: 'scenario', label: 'Escenario MITRE' },
+      { id: 'whatif',   label: 'What-If' },
+      { id: 'var',      label: 'VaR' },
+      { id: 'history',  label: 'Historial' },
+      { id: 'kris',     label: 'KRIs' },
+    ];
+    const _tabBtn = (t, active) =>
+      `<button class="ai-tab-btn" data-ai-tab="${t.id}"
+        style="padding:6px 14px;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;
+               color:${active ? 'var(--brand-purple)' : 'var(--text-muted)'};
+               border-bottom:3px solid ${active ? 'var(--brand-purple)' : 'transparent'};
+               margin-bottom:-2px;white-space:nowrap;">${t.label}</button>`;
+    root.innerHTML = `
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:12px;overflow-x:auto;">
+        ${tabs.map((t, i) => _tabBtn(t, i === 0)).join('')}
+        <button id="btn-ai-explain-refresh" title="Regenerar analisis IA"
+          style="margin-left:auto;padding:4px 12px;border:1px solid var(--border);border-radius:6px;
+                 background:none;cursor:pointer;font-size:12px;color:var(--brand-purple);white-space:nowrap;align-self:center;">
+          Regenerar
+        </button>
+      </div>
+      ${tabs.map((t, i) =>
+        `<div id="ai-tab-content-${t.id}" style="display:${i === 0 ? 'block' : 'none'};"></div>`
+      ).join('')}`;
+
+    root.querySelectorAll('.ai-tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        root.querySelectorAll('.ai-tab-btn').forEach(b => {
+          b.style.color = 'var(--text-muted)';
+          b.style.borderBottomColor = 'transparent';
+        });
+        btn.style.color = 'var(--brand-purple)';
+        btn.style.borderBottomColor = 'var(--brand-purple)';
+        tabs.forEach(t => {
+          const el = document.getElementById(`ai-tab-content-${t.id}`);
+          if (el) el.style.display = t.id === btn.dataset.aiTab ? 'block' : 'none';
+        });
+        ViewRisks._loadAiTab(btn.dataset.aiTab, riskId);
+      };
+    });
+
+    const refreshBtn = document.getElementById('btn-ai-explain-refresh');
+    if (refreshBtn) refreshBtn.onclick = () => {
+      const active = root.querySelector('.ai-tab-btn[style*="var(--brand-purple)"]');
+      const tabId = active ? active.dataset.aiTab : 'explain';
+      ViewRisks._forceLoadAiTab(tabId, riskId);
+    };
+
+    // Auto-lanza análisis + escenario en paralelo al abrir
+    ViewRisks._aiTabLoaded = {};
+    ViewRisks._requestAiExplain(riskId);
+    ViewRisks._aiTabLoaded['explain'] = true;
+    // Escenario se carga en background silenciosamente para tenerlo listo
+    ViewRisks._loadAiTabScenario(riskId, true);
+    ViewRisks._aiTabLoaded['scenario'] = true;
+  },
+
+  _loadAiTab(tabId, riskId) {
+    if (ViewRisks._aiTabLoaded && ViewRisks._aiTabLoaded[tabId]) return;
+    ViewRisks._forceLoadAiTab(tabId, riskId);
+  },
+
+  _forceLoadAiTab(tabId, riskId) {
+    if (!ViewRisks._aiTabLoaded) ViewRisks._aiTabLoaded = {};
+    ViewRisks._aiTabLoaded[tabId] = true;
+    if (tabId === 'explain')  ViewRisks._requestAiExplain(riskId);
+    if (tabId === 'scenario') ViewRisks._loadAiTabScenario(riskId, false);
+    if (tabId === 'whatif')   ViewRisks._renderWhatIfTab(riskId);
+    if (tabId === 'var')      ViewRisks._loadAiVaR(riskId);
+    if (tabId === 'history')  ViewRisks._loadSnapshotHistory(riskId);
+    if (tabId === 'kris')     ViewRisks._loadRiskKRIs(riskId);
+  },
+
+  async _loadAiTabScenario(riskId, silent) {
+    const container = document.getElementById('ai-tab-content-scenario');
+    if (!container) return;
+    if (!silent) container.innerHTML = '<div class="notice">Generando escenario MITRE ATT&CK...</div>';
+    try {
+      const data = await Api.post(`/api/risks/${riskId}/ai-scenario`, {});
+      const stepsHtml = (data.steps || []).map((s, i) => {
+        const phaseColor = {'Reconnaissance':'#7C3AED','Resource Development':'#6D28D9',
+          'Initial Access':'#1D4ED8','Execution':'#0369A1','Persistence':'#0F766E',
+          'Privilege Escalation':'#B45309','Defense Evasion':'#92400E','Credential Access':'#9A3412',
+          'Discovery':'#166534','Lateral Movement':'#065F46','Collection':'#1E3A5F',
+          'Command and Control':'#4C1D95','Exfiltration':'#831843','Impact':'#991B1B'}[s.tactic] || '#374151';
+        return `<div style="display:flex;gap:10px;margin-bottom:10px;">
+          <div style="min-width:24px;height:24px;border-radius:50%;background:${phaseColor};display:flex;align-items:center;
+                      justify-content:center;font-size:10px;color:#fff;font-weight:700;flex-shrink:0;">${i+1}</div>
+          <div style="flex:1;background:var(--bg-1);border-radius:8px;padding:8px 12px;border-left:3px solid ${phaseColor};">
+            <div style="font-size:11px;font-weight:700;color:${phaseColor};">${UI.esc(s.tactic||'')} — <code style="font-size:10px;">${UI.esc(s.technique_id||'')}</code> ${UI.esc(s.technique_name||'')}</div>
+            <div style="font-size:12px;color:var(--text-base);margin-top:3px;">${UI.esc(s.description||'')}</div>
+            ${s.mitigations?.length ? `<div style="font-size:11px;color:var(--success);margin-top:3px;">Mitigaciones: ${s.mitigations.map(m=>UI.esc(m)).join(', ')}</div>` : ''}
+            ${s.gaps?.length ? `<div style="font-size:11px;color:var(--danger);margin-top:3px;">Brechas: ${s.gaps.map(g=>UI.esc(g)).join(', ')}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+      const critGapsHtml = (data.critical_gaps || []).map(g =>
+        `<li style="font-size:12px;color:var(--danger);margin-bottom:4px;">${UI.esc(g)}</li>`
+      ).join('');
+      const mitigationsHtml = (data.priority_mitigations || []).map(m =>
+        `<li style="font-size:12px;margin-bottom:4px;">${UI.esc(m)}</li>`
+      ).join('');
+      container.innerHTML = `
+        <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <strong style="font-size:13px;">Kill-chain MITRE ATT&amp;CK</strong>
+            ${data.overall_risk_rating ? `<span style="background:var(--bg-1);border:1px solid var(--border);border-radius:4px;padding:2px 10px;font-size:11px;font-weight:700;color:var(--brand-purple);">Rating: ${UI.esc(data.overall_risk_rating.toUpperCase())}</span>` : ''}
+          </div>
+          ${data.scenario_summary ? `<p style="font-size:13px;line-height:1.6;margin-bottom:12px;">${UI.esc(data.scenario_summary)}</p>` : ''}
+          <div style="margin-bottom:12px;">${stepsHtml}</div>
+          ${critGapsHtml ? `<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;margin-bottom:6px;">Brechas criticas</div><ul style="margin:0;padding-left:14px;">${critGapsHtml}</ul></div>` : ''}
+          ${mitigationsHtml ? `<div><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Mitigaciones prioritarias</div><ul style="margin:0;padding-left:14px;">${mitigationsHtml}</ul></div>` : ''}
+        </div>`;
+    } catch (e) {
+      if (!silent) container.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+      else container.innerHTML = `<div class="notice notice-info" style="font-size:12px;">Haz clic en "Escenario MITRE" para generar el kill-chain con IA.</div>`;
+    }
+  },
+
+  _renderWhatIfTab(riskId) {
+    const container = document.getElementById('ai-tab-content-whatif');
+    if (!container) return;
+    container.innerHTML = `
+      <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+          Simula como cambia el nivel residual si modificas los parametros del riesgo (sin persistir cambios).
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div>
+            <label class="form-label" style="font-size:12px;">Probabilidad inherente (1-5)</label>
+            <input type="number" id="wif-likelihood" class="form-control" min="1" max="5" step="1" value="3">
+          </div>
+          <div>
+            <label class="form-label" style="font-size:12px;">Impacto inherente (1-5)</label>
+            <input type="number" id="wif-consequence" class="form-control" min="1" max="5" step="1" value="3">
+          </div>
+          <div>
+            <label class="form-label" style="font-size:12px;">Madurez de controles (0-5)</label>
+            <input type="number" id="wif-maturity" class="form-control" min="0" max="5" step="1">
+          </div>
+          <div>
+            <label class="form-label" style="font-size:12px;">Objetivo residual (nivel 1-9)</label>
+            <input type="number" id="wif-target" class="form-control" min="1" max="9" step="1">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-wif-run" style="font-size:13px;">Simular</button>
+        <div id="wif-result" style="margin-top:12px;"></div>
+      </div>`;
+    document.getElementById('btn-wif-run').onclick = async () => {
+      const btn = document.getElementById('btn-wif-run');
+      const result = document.getElementById('wif-result');
+      btn.disabled = true; btn.textContent = 'Calculando...';
+      const params = new URLSearchParams();
+      const l = document.getElementById('wif-likelihood').value;
+      const c = document.getElementById('wif-consequence').value;
+      const m = document.getElementById('wif-maturity').value;
+      const t = document.getElementById('wif-target').value;
+      if (l) params.set('override_likelihood', l);
+      if (c) params.set('override_consequence', c);
+      if (m) params.set('override_maturity', m);
+      if (t) params.set('target_level', t);
+      try {
+        const data = await Api.get(`/api/risks/${riskId}/simulate?${params.toString()}`);
+        const levelColor = lvl => lvl >= 8 ? 'var(--risk-critical)' : lvl >= 6 ? 'var(--risk-high)' : lvl >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
+        const delta = (data.residual_level_simulated || 0) - (data.residual_level_current || 0);
+        const deltaStr = delta < 0 ? `▼ ${Math.abs(delta)} menos` : delta > 0 ? `▲ ${delta} mas` : '= sin cambio';
+        const deltaColor = delta < 0 ? 'var(--success)' : delta > 0 ? 'var(--danger)' : 'var(--text-muted)';
+        result.innerHTML = `
+          <div style="background:var(--bg-1);border-radius:8px;padding:12px;border:1px solid var(--border);">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:10px;">
+              <div style="text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Residual actual</div>
+                <div style="font-size:24px;font-weight:800;color:${levelColor(data.residual_level_current)}">${data.residual_level_current}</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Residual simulado</div>
+                <div style="font-size:24px;font-weight:800;color:${levelColor(data.residual_level_simulated)}">${data.residual_level_simulated}</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Delta</div>
+                <div style="font-size:18px;font-weight:700;color:${deltaColor}">${deltaStr}</div>
+              </div>
+            </div>
+            ${data.meets_target !== undefined ? `<div style="padding:6px 10px;background:${data.meets_target ? '#F0FDF4' : '#FEF3C7'};border-radius:6px;font-size:12px;color:${data.meets_target ? '#166534' : '#92400E'};">
+              ${data.meets_target ? 'El escenario simulado alcanza el objetivo residual.' : `No alcanza el objetivo. Brecha: ${data.gap_to_target || 0} puntos.`}
+            </div>` : ''}
+            ${data.control_reduction_pct !== undefined ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Reduccion de controles: <strong>${data.control_reduction_pct}%</strong></div>` : ''}
+            ${data.recommendation ? `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-base);">${UI.esc(data.recommendation)}</div>` : ''}
+          </div>`;
+      } catch (e) {
+        result.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+      }
+      btn.disabled = false; btn.textContent = 'Simular';
+    };
+  },
+
+  async _loadAiVaR(riskId) {
+    const container = document.getElementById('ai-tab-content-var');
+    if (!container) return;
+    container.innerHTML = '<div class="notice">Calculando Value at Risk via Monte Carlo...</div>';
+    try {
+      const data = await Api.get(`/api/risks/${riskId}/value-at-risk`);
+      const fmt = v => v !== undefined && v !== null ? v.toFixed(2) : '-';
+      const barW = v => Math.min(100, Math.round((v / (data.var_99 || 1)) * 100));
+      container.innerHTML = `
+        <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <strong style="font-size:13px;">Value at Risk — Monte Carlo (${(data.simulations||10000).toLocaleString()} simulaciones)</strong>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
+            <div style="background:var(--bg-1);border-radius:8px;padding:10px;text-align:center;border:1px solid var(--border);">
+              <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Esperado</div>
+              <div style="font-size:22px;font-weight:800;color:var(--text-main);">${fmt(data.expected_loss)}</div>
+              <div style="font-size:10px;color:var(--text-muted);">Media</div>
+            </div>
+            <div style="background:#FEF3C7;border-radius:8px;padding:10px;text-align:center;border:1px solid #FDE68A;">
+              <div style="font-size:10px;color:#92400E;text-transform:uppercase;margin-bottom:4px;">VaR 95%</div>
+              <div style="font-size:22px;font-weight:800;color:#92400E;">${fmt(data.var_95)}</div>
+              <div style="font-size:10px;color:#92400E;">Percentil 95</div>
+            </div>
+            <div style="background:#FEE2E2;border-radius:8px;padding:10px;text-align:center;border:1px solid #FECACA;">
+              <div style="font-size:10px;color:#991B1B;text-transform:uppercase;margin-bottom:4px;">VaR 99%</div>
+              <div style="font-size:22px;font-weight:800;color:#991B1B;">${fmt(data.var_99)}</div>
+              <div style="font-size:10px;color:#991B1B;">Percentil 99 (Worst case)</div>
+            </div>
+          </div>
+          ${[{label:'Esperado', v:data.expected_loss, color:'var(--brand-purple)'},
+             {label:'VaR 95%', v:data.var_95, color:'#92400E'},
+             {label:'VaR 99%', v:data.var_99, color:'#991B1B'}].map(({label,v,color}) => `
+          <div style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;">
+              <span>${label}</span><span>${fmt(v)}</span>
+            </div>
+            <div style="background:var(--bg-1);border-radius:4px;height:8px;overflow:hidden;">
+              <div style="width:${barW(v||0)}%;height:100%;background:${color};border-radius:4px;"></div>
+            </div>
+          </div>`).join('')}
+          ${data.probability_of_occurrence !== undefined ? `<div style="margin-top:10px;font-size:12px;color:var(--text-muted);">Probabilidad de ocurrencia estimada: <strong>${Math.round((data.probability_of_occurrence||0)*100)}%</strong></div>` : ''}
+          ${data.note ? `<div style="margin-top:8px;font-size:11px;color:var(--text-muted);font-style:italic;">${UI.esc(data.note)}</div>` : ''}
+        </div>`;
+    } catch (e) {
+      container.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _loadSnapshotHistory(riskId) {
+    const container = document.getElementById('ai-tab-content-history');
+    if (!container) return;
+    container.innerHTML = '<div class="notice">Cargando historial de niveles...</div>';
+    try {
+      const data = await Api.get(`/api/risks/${riskId}/history`);
+      const snaps = Array.isArray(data) ? data : (data.snapshots || []);
+      if (!snaps.length) {
+        container.innerHTML = '<div class="notice notice-info">Sin snapshots mensuales todavia. Se generan automaticamente el dia 1 de cada mes.</div>';
+        return;
+      }
+      // Mini sparkline SVG
+      const inh = snaps.map(s => s.inherent_level || 0);
+      const res = snaps.map(s => s.residual_level || 0);
+      const maxV = Math.max(...inh, ...res, 1);
+      const W = 300, H = 60, pad = 4;
+      const xStep = (W - pad*2) / Math.max(snaps.length - 1, 1);
+      const yScale = v => H - pad - ((v / maxV) * (H - pad*2));
+      const pts = arr => arr.map((v, i) => `${pad + i * xStep},${yScale(v)}`).join(' ');
+      const svgLine = (arr, color) => snaps.length > 1
+        ? `<polyline points="${pts(arr)}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>`
+        : `<circle cx="${W/2}" cy="${yScale(arr[0])}" r="4" fill="${color}"/>`;
+      const sparkline = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:${H}px;margin-bottom:10px;">
+        ${svgLine(inh, '#94A3B8')}${svgLine(res, 'var(--brand-purple)')}
+        ${snaps.map((_, i) => `<circle cx="${pad + i * xStep}" cy="${yScale(res[i])}" r="3" fill="var(--brand-purple)" opacity=".7"/>`).join('')}
+      </svg>`;
+      const rows = snaps.map(s => {
+        const d = s.snapshot_date ? new Date(s.snapshot_date).toLocaleDateString('es-ES',{month:'short',year:'numeric'}) : '-';
+        const levelColor = lvl => lvl >= 8 ? 'var(--risk-critical)' : lvl >= 6 ? 'var(--risk-high)' : lvl >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
+        return `<tr>
+          <td style="font-size:12px;color:var(--text-muted);">${d}</td>
+          <td style="text-align:center;font-weight:700;color:${levelColor(s.inherent_level||0)};">${s.inherent_level||'-'}</td>
+          <td style="text-align:center;font-weight:700;color:${levelColor(s.residual_level||0)};">${s.residual_level||'-'}</td>
+          <td style="text-align:center;font-size:12px;">${s.control_count ?? '-'}</td>
+          <td style="font-size:11px;color:var(--text-muted);">${UI.esc(s.snapshot_reason||'')}</td>
+        </tr>`;
+      }).join('');
+      container.innerHTML = `
+        <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <strong style="font-size:13px;">Evolucion del nivel de riesgo</strong>
+            <div style="display:flex;gap:12px;font-size:11px;color:var(--text-muted);">
+              <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:3px;background:#94A3B8;border-radius:2px;"></span>Inherente</span>
+              <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:3px;background:var(--brand-purple);border-radius:2px;"></span>Residual</span>
+            </div>
+          </div>
+          ${sparkline}
+          <div class="table-wrap"><table class="data" style="font-size:12px;">
+            <thead><tr><th>Periodo</th><th style="text-align:center;">Inherente</th><th style="text-align:center;">Residual</th><th style="text-align:center;">Controles</th><th>Razon</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+        </div>`;
+    } catch (e) {
+      container.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _loadRiskKRIs(riskId) {
+    const container = document.getElementById('ai-tab-content-kris');
+    if (!container) return;
+    container.innerHTML = '<div class="notice">Cargando KRIs vinculados...</div>';
+    try {
+      const kris = await Api.get(`/api/kris?risk_id=${riskId}`);
+      if (!kris.length) {
+        container.innerHTML = `
+          <div class="notice notice-info" style="margin-bottom:12px;">Sin KRIs vinculados a este riesgo.</div>
+          <button class="btn btn-ghost btn-sm" onclick="window.location.hash='kris'">
+            Ir al modulo de KRIs
+          </button>`;
+        return;
+      }
+      const statusColor = s => s === 'breached' ? 'var(--danger)' : s === 'warning' ? 'var(--warning)' : 'var(--success)';
+      const statusLabel = s => s === 'breached' ? 'ALERTA' : s === 'warning' ? 'AVISO' : 'OK';
+      const rows = kris.map(k => `
+        <div style="background:var(--bg-1);border:1px solid var(--border);border-left:4px solid ${statusColor(k.status)};
+                    border-radius:8px;padding:10px 14px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div>
+              <div style="font-size:13px;font-weight:600;">${UI.esc(k.name)}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${UI.esc(k.metric_type||'')} · Umbral: ${k.threshold_warning ?? '-'} / ${k.threshold_breach ?? '-'}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <span style="font-size:9px;font-weight:700;color:${statusColor(k.status)};border:1px solid ${statusColor(k.status)};border-radius:3px;padding:1px 6px;">${statusLabel(k.status)}</span>
+              <div style="font-size:18px;font-weight:800;color:${statusColor(k.status)};margin-top:2px;">${k.current_value ?? '-'}</div>
+            </div>
+          </div>
+          ${k.last_evaluated_at ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Ultima evaluacion: ${new Date(k.last_evaluated_at).toLocaleString('es-ES')}</div>` : ''}
+        </div>`).join('');
+      container.innerHTML = `
+        <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <strong style="font-size:13px;">Indicadores de Riesgo Clave (KRI)</strong>
+            <button class="btn btn-ghost btn-sm" id="btn-eval-kris">Evaluar todos</button>
+          </div>
+          ${rows}
+        </div>`;
+      document.getElementById('btn-eval-kris').onclick = async () => {
+        try {
+          await Promise.all(kris.map(k => Api.post(`/api/kris/${k.id}/evaluate`, {})));
+          ViewRisks._aiTabLoaded && delete ViewRisks._aiTabLoaded['kris'];
+          ViewRisks._loadRiskKRIs(riskId);
+          UI.toast('KRIs evaluados', 'success');
+        } catch (e) { UI.toast(e.message, 'error'); }
+      };
+    } catch (e) {
+      container.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _discoverRisks() {
+    const dBtn = document.getElementById('btn-discover-ai');
+    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Descubriendo...'; }
+    try {
+      const data = await Api.post('/api/risks/ai-discover', {});
+      const discovered = data.discovered || [];
+      if (!discovered.length) {
+        UI.toast('El agente IA no encontro riesgos no registrados en el contexto actual.', 'info');
+        if (dBtn) { dBtn.disabled = false; dBtn.textContent = 'Descubrir con IA'; }
+        return;
+      }
+      // Mostrar modal con riesgos descubiertos
+      const rowsHtml = discovered.map((r, i) => {
+        const lvlColor = l => l >= 8 ? 'var(--risk-critical)' : l >= 6 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
+        return `<div style="background:var(--bg-1);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;">${UI.esc(r.name||r.suggested_name||'')}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${UI.esc(r.description||r.rationale||'')}</div>
+              ${r.asset_name ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Activo: ${UI.esc(r.asset_name)} · Amenaza: ${UI.esc(r.threat_name||'-')}</div>` : ''}
+              ${r.iso_reference ? `<div style="font-size:11px;color:var(--brand-purple);margin-top:2px;">ISO ref: ${UI.esc(r.iso_reference)}</div>` : ''}
+            </div>
+            <div style="text-align:center;flex-shrink:0;">
+              <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Nivel est.</div>
+              <div style="font-size:22px;font-weight:800;color:${lvlColor(r.estimated_level||0)};">${r.estimated_level||'-'}</div>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay active';
+      modal.innerHTML = `
+        <div class="modal" style="max-width:640px;width:100%;">
+          <div class="modal-header">
+            <h3 class="modal-title">Riesgos descubiertos por IA (${discovered.length})</h3>
+            <button class="modal-close" id="disc-close">&times;</button>
+          </div>
+          <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
+            <div class="notice notice-info" style="margin-bottom:12px;font-size:13px;">
+              El agente IA identifico ${discovered.length} riesgo(s) potencial(es) no registrados. Revisalos y crea los que consideres relevantes.
+            </div>
+            ${rowsHtml}
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" id="disc-cancel">Cerrar</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      const close = () => modal.remove();
+      modal.querySelector('#disc-close').onclick = close;
+      modal.querySelector('#disc-cancel').onclick = close;
+      modal.onclick = e => { if (e.target === modal) close(); };
+    } catch (e) {
+      UI.toast('Error al descubrir riesgos: ' + (e.message || ''), 'error');
+    }
+    if (dBtn) { dBtn.disabled = false; dBtn.textContent = 'Descubrir con IA'; }
   },
 
   // ── Sección de encuestas distribuidas ─────────────────────────────────────

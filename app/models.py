@@ -393,6 +393,7 @@ class Control(Base):
     cybersec_concepts = Column(JSON)   # identify/protect/detect/respond/recover
     operational = Column(JSON)
     is_custom = Column(Boolean, default=False)
+    is_mandatory = Column(Boolean, default=False)  # v5.3.0 — control obligatorio ISO 27001 Annex A
     # v4.0.0 — regwatch: control retirado en nueva edicion de la norma
     deprecated_at = Column(DateTime, nullable=True)
 
@@ -598,30 +599,59 @@ class SSOCode(Base):
 
 
 class AlertRule(Base):
-    """Regla de alerta: cuando se cumple el criterio, envia email al destinatario."""
+    """Regla de alerta: cuando se cumple el criterio, envia email al destinatario.
+
+    Soporta reglas simples (event_type + threshold_level) y reglas compuestas
+    (conditions JSON array + logic AND|OR) para condiciones multiples.
+    """
     __tablename__ = "alert_rules"
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
-    # Tipos: risk_high, risk_critical, treatment_overdue, risk_no_treatment
+    # Tipos simples: risk_high, risk_critical, treatment_overdue, risk_no_treatment
     event_type = Column(String(64), nullable=False)
     recipient_email = Column(String(255), nullable=False)
     threshold_level = Column(Integer, default=5)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_triggered_at = Column(DateTime, nullable=True)
+    # v5.3.0 — reglas compuestas
+    conditions = Column(JSON, nullable=True)    # [{"field":"residual_level","op":"gte","value":6}, ...]
+    logic = Column(String(3), default="AND")    # AND | OR
 
 
 # ---------- KRI — KEY RISK INDICATORS (v5.3.0) ----------
 
 class KRIMetricType(str, PyEnum):
-    """Tipo de metrica que el KRI monitoriza."""
+    """Tipo de metrica que el KRI/KPI monitoriza."""
+    # --- KRI: señales de exposicion al riesgo (por riesgo individual) ---
     RESIDUAL_LEVEL = "residual_level"          # nivel residual del riesgo
     INHERENT_LEVEL = "inherent_level"          # nivel inherente
     OPEN_INCIDENTS = "open_incidents"          # incidentes abiertos vinculados
     OPEN_NCS = "open_ncs"                      # no conformidades mayores abiertas
-    CONTROL_MATURITY = "control_maturity"      # madurez media de controles
+    CONTROL_MATURITY = "control_maturity"      # madurez media de controles del riesgo
     OVERDUE_TASKS = "overdue_tasks"            # tareas de tratamiento vencidas
+    # --- KPI: rendimiento del programa SGSI (nivel organizacion) ---
+    # ISO 27001:2022 cl.9.1 — Evaluacion del rendimiento
+    KPI_TREATMENT_RATE = "kpi_treatment_rate"           # % riesgos altos con plan de tratamiento
+    KPI_MTTT = "kpi_mttt"                               # dias medios identificacion → tratado
+    KPI_CONTROL_COVERAGE = "kpi_control_coverage"       # % controles implementados o parciales
+    KPI_CONTROL_MATURITY_AVG = "kpi_control_maturity_avg"  # madurez media de controles (0-5)
+    KPI_POLICY_REVIEW = "kpi_policy_review"             # % politicas publicadas revisadas en plazo
+    KPI_NC_CLOSURE_RATE = "kpi_nc_closure_rate"         # % NCs cerradas en 90 dias
+    # ISO 27005:2022 — Gestion del riesgo
+    KPI_RISK_REDUCTION_AVG = "kpi_risk_reduction_avg"   # % reduccion media inherente→residual
+    KPI_APPETITE_COMPLIANCE = "kpi_appetite_compliance" # % riesgos residual dentro del apetito (<=4)
+    KPI_ASSET_COVERAGE = "kpi_asset_coverage"           # % activos con riesgo evaluado
+    KPI_RISK_NO_OWNER = "kpi_risk_no_owner_rate"        # % riesgos sin responsable asignado
+    KPI_HIGH_RISKS_NO_PLAN = "kpi_high_risks_no_plan"   # # riesgos altos sin plan de tratamiento
+    # NIS2 Art.23 / DORA
+    KPI_NIS2_NOTIFICATION = "kpi_nis2_notification_rate"  # % incidentes NIS2 notificados a tiempo
+    KPI_BCP_COVERAGE = "kpi_bcp_coverage"               # % planes BCP aprobados / total
+    # NIST CSF 2.0 — Respond / Recover
+    KPI_MTTR_INCIDENTS = "kpi_mttr_incidents"           # MTTR de incidentes (dias promedio)
+    # ISO 27036 / TPRM
+    KPI_SUPPLIER_COVERAGE = "kpi_supplier_coverage"     # % proveedores tier-1 evaluados
 
 
 class KRIStatus(str, PyEnum):
@@ -631,7 +661,7 @@ class KRIStatus(str, PyEnum):
 
 
 class KRI(Base):
-    """Key Risk Indicator: umbral configurable sobre una metrica de riesgo."""
+    """Key Risk Indicator / KPI: umbral configurable sobre metrica de riesgo o programa SGSI."""
     __tablename__ = "kris"
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
@@ -647,6 +677,13 @@ class KRI(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     alert_on_breach = Column(Boolean, default=True)
     recipient_email = Column(String(255), nullable=True)        # email adicional para alertas
+    # Campos KPI/edicion v5.4
+    indicator_type = Column(String(8), default="kri")           # 'kri' | 'kpi'
+    is_visible = Column(Boolean, default=True)                  # si se muestra en la UI
+    custom_name = Column(String(255), nullable=True)            # nombre personalizado por el usuario
+    description = Column(Text, nullable=True)                   # descripcion o referencia normativa
+    is_system = Column(Boolean, default=False)                  # True = seed del sistema, no borrable
+    direction = Column(String(20), default="lower_is_better")  # 'higher_is_better' | 'lower_is_better'
 
 
 # ---------- INCIDENTES DE SEGURIDAD (NIS2 Art. 23) ----------
@@ -852,6 +889,18 @@ class TaskPriority(str, PyEnum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class RiskCorrelation(Base):
+    """Par de riesgos correlados: si uno se materializa eleva la prob del otro (v5.3.0)."""
+    __tablename__ = "risk_correlations"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    risk_id_a = Column(Integer, ForeignKey("risks.id", ondelete="CASCADE"), nullable=False, index=True)
+    risk_id_b = Column(Integer, ForeignKey("risks.id", ondelete="CASCADE"), nullable=False, index=True)
+    correlation_factor = Column(Float, nullable=False, default=0.5)  # 0=independientes, 1=perfectamente correlados
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class RiskSnapshot(Base):

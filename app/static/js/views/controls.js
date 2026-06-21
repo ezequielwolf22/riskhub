@@ -97,8 +97,9 @@ const ViewControls = {
     if (q) data = data.filter(c => (c.name + c.code).toLowerCase().includes(q));
     if (theme) data = data.filter(c => c.theme === theme);
 
+    const canEdit = Auth.canEdit();
     list.innerHTML = `<div class="table-wrap"><table class="data">
-      <thead><tr><th>Codigo</th><th>Nombre</th><th>Tema</th><th>Tipo</th><th>Propiedades</th></tr></thead>
+      <thead><tr><th>Codigo</th><th>Nombre</th><th>Tema</th><th>Tipo</th><th>Propiedades</th><th title="Controles cuyo incumplimiento impide reducir el nivel residual más de 1 paso (piso obligatorio)">Obligatorio</th></tr></thead>
       <tbody>
         ${data.map(c => `
           <tr>
@@ -108,9 +109,34 @@ const ViewControls = {
             <td>${UI.esc(c.theme||'-')}</td>
             <td style="font-size:11px;">${(c.control_type||[]).join(', ')}</td>
             <td style="font-size:11px;font-family:var(--font-mono);">${(c.properties||[]).map(p => p[0].toUpperCase()).join(' ')}</td>
+            <td style="text-align:center;">
+              ${canEdit
+                ? `<label title="Marcar como control obligatorio (piso residual)" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                    <input type="checkbox" data-mandatory-id="${c.id}" ${c.is_mandatory ? 'checked' : ''}>
+                    ${c.is_mandatory ? `<span style="font-size:10px;font-weight:700;color:var(--danger);">OBLIGATORIO</span>` : ''}
+                   </label>`
+                : (c.is_mandatory ? `<span style="font-size:10px;font-weight:700;color:var(--danger);">OBLIGATORIO</span>` : '')}
+            </td>
           </tr>`).join('')}
       </tbody>
     </table></div>`;
+
+    if (canEdit) {
+      list.querySelectorAll('[data-mandatory-id]').forEach(chk => {
+        chk.onchange = async () => {
+          const cid = parseInt(chk.dataset.mandatoryId);
+          try {
+            await Api.patch(`/api/controls/catalog/${cid}`, { is_mandatory: chk.checked });
+            const ctrl = ViewControls._catalog.find(c => c.id === cid);
+            if (ctrl) ctrl.is_mandatory = chk.checked;
+            UI.toast(chk.checked ? 'Marcado como obligatorio' : 'Quitada marca de obligatorio', 'success');
+          } catch (e) {
+            chk.checked = !chk.checked;
+            UI.toast(e.message, 'error');
+          }
+        };
+      });
+    }
   },
 
   async _renderImpls() {

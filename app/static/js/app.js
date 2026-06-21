@@ -33,6 +33,7 @@ const LegacyRedirects = {
   threats: 'risk-hub/threats',
   vulnerabilities: 'risk-hub/vulnerabilities',
   magerit: 'risk-hub/magerit',
+  kris: 'risk-hub/kris',
   cve: 'watch-hub/cve',
   osint: 'watch-hub/osint',
   'external-findings': 'watch-hub/external-findings',

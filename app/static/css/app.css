@@ -871,6 +871,30 @@ table.data td .code-pill {
 }
 
 /* ============================================================
+   KRI / KPI grid cards
+   ============================================================ */
+.kri-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  padding: 4px 0 16px;
+}
+.kri-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: 14px 16px;
+  transition: box-shadow 0.15s;
+}
+.kri-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.kri-card__name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.kri-card--hidden { border-style: dashed; }
+
+/* ============================================================
    Badges — estados, riesgo, tratamiento
    ============================================================ */
 .badge {

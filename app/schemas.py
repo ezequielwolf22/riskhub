@@ -366,6 +366,7 @@ class ControlOut(ORMBase):
     cybersec_concepts: Optional[list[str]]
     operational: Optional[list[str]]
     is_custom: bool
+    is_mandatory: bool = False
 
 
 class ControlImplIn(BaseModel):

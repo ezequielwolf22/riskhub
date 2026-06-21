@@ -466,12 +466,52 @@ def _run_alert_rules() -> None:
                         logger.warning("Error enviando alerta task_overdue: %s", exc)
                 continue
 
+            # Reglas compuestas: conditions JSON + logic AND|OR (v5.3.0)
+            if not matching and rule.conditions:
+                logic = (getattr(rule, "logic", None) or "AND").upper()
+                for r in risks:
+                    if r.status in (RiskStatus.ACCEPTED, RiskStatus.CLOSED):
+                        continue
+                    results = []
+                    for cond in rule.conditions:
+                        field = cond.get("field", "")
+                        op = cond.get("op", "gte")
+                        val = cond.get("value")
+                        attr = getattr(r, field, None)
+                        if attr is None or val is None:
+                            results.append(False)
+                            continue
+                        try:
+                            attr_f = float(attr)
+                            val_f = float(val)
+                            if op == "gte":
+                                results.append(attr_f >= val_f)
+                            elif op == "lte":
+                                results.append(attr_f <= val_f)
+                            elif op == "gt":
+                                results.append(attr_f > val_f)
+                            elif op == "lt":
+                                results.append(attr_f < val_f)
+                            elif op == "eq":
+                                results.append(attr_f == val_f)
+                            else:
+                                results.append(str(attr) == str(val))
+                        except (TypeError, ValueError):
+                            results.append(str(attr) == str(val))
+                    if logic == "OR":
+                        if any(results):
+                            matching.append(r)
+                    else:  # AND
+                        if results and all(results):
+                            matching.append(r)
+
             reason_map = {
                 "risk_critical": "supera el umbral critico",
                 "risk_high": "supera el umbral alto configurado",
                 "treatment_overdue": "tiene el plan de tratamiento vencido",
                 "risk_no_treatment": "no tiene plan de tratamiento definido",
                 "treatment_due_soon": "tiene el plan de tratamiento proximo a vencer",
+                "compound": "cumple las condiciones configuradas",
             }
 
             for risk in matching:

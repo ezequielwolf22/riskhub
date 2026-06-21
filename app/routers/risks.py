@@ -99,6 +99,21 @@ def _recalc(db: Session, risk: Risk) -> None:
     ]
     rl, rc, rlev = calc_residual(
         risk.inherent_likelihood, risk.inherent_consequence, controls, matrix)
+
+    # Floor por controles obligatorios con madurez insuficiente (ISO 27001 Annex A)
+    # Si algun control IS_MANDATORY tiene maturity < 2, el residual no puede ser
+    # menor que inherent - 1 (los controles deficientes limitan la reduccion alcanzable)
+    mandatory_gap = any(
+        (ci.control.is_mandatory if ci.control else False) and (ci.maturity or 0) < 2
+        for ci in risk.controls
+    )
+    if mandatory_gap:
+        min_lik = max(0, (risk.inherent_likelihood or 0) - 1)
+        min_con = max(0, (risk.inherent_consequence or 0) - 1)
+        rl = max(rl, min_lik)
+        rc = max(rc, min_con)
+        rlev = calc_level(rc, rl, matrix)
+
     risk.residual_likelihood = rl
     risk.residual_consequence = rc
     risk.residual_level = rlev
@@ -1265,6 +1280,98 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
              "threat": r.threat.name if r.threat else "",
              "level": r.residual_level, "inherent_level": r.inherent_level, "id": r.id}
             for r in sorted(risks, key=lambda x: -x.residual_level)[:10]
+        ],
+    }
+
+
+@router.get("/aggregate-exposure")
+def aggregate_exposure(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    simulations: int = Query(10000, ge=1000, le=50000),
+):
+    """Exposicion economica agregada del portfolio teniendo en cuenta correlaciones entre riesgos.
+
+    Usa Monte Carlo con matriz de correlaciones para calcular VaR conjunto del portfolio,
+    evitando la suma ingenua que sobreestima el riesgo total.
+    """
+    import random
+    from app.models import RiskCorrelation
+
+    org_id = current_user.organization_id
+    risks = filter_by_org(db.query(Risk), Risk, current_user).filter(
+        Risk.status.notin_([RiskStatus.CLOSED])
+    ).all()
+
+    if not risks:
+        return {"portfolio_var_95": 0, "portfolio_var_99": 0, "expected_total_loss": 0, "risks_with_value": 0}
+
+    lik_to_prob = {0: 0.01, 1: 0.05, 2: 0.15, 3: 0.40, 4: 0.75}
+    con_to_impact = {0: 0.02, 1: 0.10, 2: 0.30, 3: 0.60, 4: 0.95}
+
+    risk_params = []
+    for r in risks:
+        val = getattr(r.asset, "estimated_value", None) if r.asset else None
+        if not val or val <= 0:
+            continue
+        risk_params.append({
+            "id": r.id,
+            "code": r.code,
+            "prob": lik_to_prob.get(r.residual_likelihood or 0, 0.05),
+            "impact_frac": con_to_impact.get(r.residual_consequence or 0, 0.10),
+            "asset_value": val,
+        })
+
+    if not risk_params:
+        return {"portfolio_var_95": 0, "portfolio_var_99": 0, "expected_total_loss": 0,
+                "risks_with_value": 0, "note": "Ningun activo tiene valor estimado configurado"}
+
+    # Obtener correlaciones
+    correlations = db.query(RiskCorrelation).filter(
+        RiskCorrelation.organization_id == org_id
+    ).all()
+    corr_map: dict[tuple, float] = {}
+    for c in correlations:
+        corr_map[(c.risk_id_a, c.risk_id_b)] = c.correlation_factor
+        corr_map[(c.risk_id_b, c.risk_id_a)] = c.correlation_factor
+
+    # Monte Carlo con correlacion simple: si riesgo A se materializa, eleva prob de B
+    portfolio_losses = []
+    for _ in range(simulations):
+        total = 0.0
+        materialized_ids: set[int] = set()
+        for rp in risk_params:
+            base_prob = rp["prob"]
+            # Elevar prob si algun riesgo correlado ya se materializó
+            for mid in materialized_ids:
+                cf = corr_map.get((mid, rp["id"]), 0.0)
+                base_prob = min(0.95, base_prob + cf * 0.3)
+            if random.random() < base_prob:
+                materialized_ids.add(rp["id"])
+                tri = random.triangular(0.10, 1.50, 1.0)
+                total += rp["asset_value"] * rp["impact_frac"] * tri
+        portfolio_losses.append(total)
+
+    portfolio_losses.sort()
+    n = len(portfolio_losses)
+
+    def _p(pct: float) -> float:
+        return round(portfolio_losses[int(n * pct / 100)], 2)
+
+    return {
+        "risks_analyzed": len(risk_params),
+        "correlations_applied": len(correlations),
+        "simulations": simulations,
+        "portfolio_var_95": _p(95),
+        "portfolio_var_99": _p(99),
+        "expected_total_loss": round(sum(portfolio_losses) / n, 2),
+        "max_scenario": round(max(portfolio_losses), 2),
+        "individual_expected": [
+            {
+                "risk_code": rp["code"],
+                "expected_loss": round(rp["asset_value"] * rp["impact_frac"] * rp["prob"], 2),
+            }
+            for rp in risk_params
         ],
     }
 

@@ -6,6 +6,7 @@ const DASHBOARD_WIDGET_CATALOG = {
   risks:     { label: 'KPIs de Riesgos',         module: 'Riesgos',     desc: 'Activos, riesgos identificados, nivel alto, tratamientos vencidos y sin responsable.' },
   controls:  { label: 'Distribucion de Riesgos', module: 'Riesgos',     desc: 'Graficos por nivel residual, estado del ciclo y decision de tratamiento.' },
   top10:     { label: 'Top 10 Riesgos',          module: 'Riesgos',     desc: 'Tabla con los 10 riesgos de mayor nivel residual y reduccion porcentual.' },
+  portfolio: { label: 'Portfolio de Riesgos',    module: 'Riesgos',     desc: 'Score ponderado del portfolio, tendencia mensual y KRIs en alerta.' },
   incidents: { label: 'Incidentes',              module: 'Incidentes',  desc: 'Abiertos, P1/P2 criticos y notificaciones NIS2 pendientes.' },
   tasks:     { label: 'Tareas',                  module: 'Tareas',      desc: 'Vencidas, en progreso, pendientes y completadas.' },
   policies:  { label: 'Politicas SGSI',          module: 'Politicas',   desc: 'Publicadas, en revision y con revision de ciclo vencida.' },
@@ -16,7 +17,7 @@ const DASHBOARD_WIDGET_CATALOG = {
   coverage:  { label: 'Cobertura ISO 27002',     module: 'Controles',   desc: 'Cobertura y madurez de controles por tema: organizativo, personas, fisico y tecnologico.' },
   inbox:     { label: 'Pendiente de tu revision', module: 'Operaciones', desc: 'Items pendientes de tu decision: riesgos auto-generados, incidentes, controles degradados y tareas.' },
 };
-const DASHBOARD_DEFAULT_LAYOUT = ['inbox','posture','risks','controls','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
+const DASHBOARD_DEFAULT_LAYOUT = ['inbox','posture','risks','controls','portfolio','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
 
 /* Esquema de opciones configurables por tipo de widget.
    Solo se incluyen widgets con al menos una opcion configurable.
@@ -387,6 +388,7 @@ const ViewDashboard = {
     ViewDashboard._loadControlsCoverage();
     ViewDashboard._loadRecentActivity();
     ViewDashboard._loadFindingsQuickAction();
+    ViewDashboard._loadPortfolio();
   },
 
   /* Genera el HTML del badge de metodologia. */
@@ -608,6 +610,19 @@ const ViewDashboard = {
       bcp: () => `
         <div data-widget-id="bcp" style="margin-top:4px;">
           ${ViewDashboard._bcpPanelHtml(bcpData)}
+        </div>`,
+
+      portfolio: () => `
+        <div data-widget-id="portfolio" style="margin-top:16px;">
+          <div class="card" id="dash-portfolio-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <h3 style="margin:0;">Portfolio de riesgos</h3>
+              <span id="dash-portfolio-badge" style="font-size:12px;color:var(--text-muted);">Cargando...</span>
+            </div>
+            <div id="dash-portfolio-body">
+              <p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">Calculando score del portfolio...</p>
+            </div>
+          </div>
         </div>`,
 
       tprm: () => `
@@ -838,6 +853,7 @@ const ViewDashboard = {
       ViewDashboard._loadControlsCoverage();
       ViewDashboard._loadRecentActivity();
       ViewDashboard._loadFindingsQuickAction();
+      ViewDashboard._loadPortfolio();
     } catch (e) {
       main.innerHTML += `<div class="notice">${UI.esc(e.message)}</div>`;
     }
@@ -1452,5 +1468,98 @@ const ViewDashboard = {
       <text x="${cx}" y="${cy + 12}" text-anchor="middle" dominant-baseline="middle"
             font-size="9" fill="var(--text-muted)" letter-spacing="0.5">RIESGOS</text>
     </svg>`;
+  },
+
+  async _loadPortfolio() {
+    const body = document.getElementById('dash-portfolio-body');
+    const badge = document.getElementById('dash-portfolio-badge');
+    if (!body) return;
+    try {
+      const [ps, krisRaw] = await Promise.allSettled([
+        Api.get('/api/risks/portfolio-score'),
+        Api.get('/api/kris'),
+      ]);
+      const p = ps.status === 'fulfilled' ? ps.value : null;
+      const kris = krisRaw.status === 'fulfilled' ? krisRaw.value : [];
+
+      if (!p) { body.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">No disponible. Configure riesgos para ver el portfolio.</p>'; return; }
+
+      const score = p.portfolio_score ?? 0;
+      const trend = p.trend || 0;
+      const trendIcon = trend < 0 ? '▼' : trend > 0 ? '▲' : '—';
+      const trendColor = trend < 0 ? 'var(--success)' : trend > 0 ? 'var(--danger)' : 'var(--text-muted)';
+      const scoreColor = score >= 7 ? 'var(--risk-critical)' : score >= 5 ? 'var(--risk-high)' : score >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
+
+      const breachedKRIs = kris.filter(k => k.status === 'breached');
+      const warningKRIs  = kris.filter(k => k.status === 'warning');
+
+      if (badge) badge.textContent = `${kris.length} KRIs · ${breachedKRIs.length} en alerta`;
+
+      // Mini tendencia (monthly scores)
+      const monthly = p.monthly_scores || [];
+      let sparkHtml = '';
+      if (monthly.length > 1) {
+        const W = 200, H = 40, pad = 4;
+        const vals = monthly.map(m => m.score || 0);
+        const maxV = Math.max(...vals, 1);
+        const xStep = (W - pad*2) / Math.max(vals.length - 1, 1);
+        const y = v => H - pad - ((v / maxV) * (H - pad*2));
+        const pts = vals.map((v, i) => `${pad + i * xStep},${y(v)}`).join(' ');
+        sparkHtml = `<svg viewBox="0 0 ${W} ${H}" style="width:${W}px;height:${H}px;display:block;margin:8px 0;">
+          <polyline points="${pts}" fill="none" stroke="${scoreColor}" stroke-width="2" stroke-linejoin="round"/>
+          ${vals.map((v, i) => `<circle cx="${pad + i * xStep}" cy="${y(v)}" r="3" fill="${scoreColor}" opacity=".8"/>`).join('')}
+        </svg>`;
+      }
+
+      const kriAlertHtml = breachedKRIs.length
+        ? breachedKRIs.slice(0, 3).map(k => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border-light);">
+            <span style="font-size:12px;">${UI.esc(k.name)}</span>
+            <span style="font-size:11px;font-weight:700;color:var(--danger);">ALERTA ${k.current_value ?? ''}</span>
+          </div>`).join('')
+        : `<div style="font-size:12px;color:var(--success);">Sin KRIs en estado de alerta</div>`;
+
+      body.innerHTML = `
+        <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;">
+          <div style="text-align:center;flex-shrink:0;">
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Score portfolio</div>
+            <div style="font-size:40px;font-weight:900;color:${scoreColor};line-height:1;">${score.toFixed(1)}</div>
+            <div style="font-size:12px;font-weight:700;color:${trendColor};margin-top:4px;">${trendIcon} ${Math.abs(trend).toFixed(1)} vs mes anterior</div>
+            ${sparkHtml}
+          </div>
+          <div style="flex:1;min-width:180px;">
+            <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+              <div style="background:var(--bg-1);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center;flex:1;">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;">KRIs totales</div>
+                <div style="font-size:20px;font-weight:700;">${kris.length}</div>
+              </div>
+              <div style="background:${breachedKRIs.length ? '#FEE2E2' : 'var(--bg-1)'};border:1px solid ${breachedKRIs.length ? '#FECACA' : 'var(--border)'};border-radius:8px;padding:8px 12px;text-align:center;flex:1;">
+                <div style="font-size:10px;color:${breachedKRIs.length ? '#991B1B' : 'var(--text-muted)'};text-transform:uppercase;">En alerta</div>
+                <div style="font-size:20px;font-weight:700;color:${breachedKRIs.length ? '#991B1B' : 'inherit'};">${breachedKRIs.length}</div>
+              </div>
+              <div style="background:${warningKRIs.length ? '#FEF3C7' : 'var(--bg-1)'};border:1px solid ${warningKRIs.length ? '#FDE68A' : 'var(--border)'};border-radius:8px;padding:8px 12px;text-align:center;flex:1;">
+                <div style="font-size:10px;color:${warningKRIs.length ? '#92400E' : 'var(--text-muted)'};text-transform:uppercase;">Aviso</div>
+                <div style="font-size:20px;font-weight:700;color:${warningKRIs.length ? '#92400E' : 'inherit'};">${warningKRIs.length}</div>
+              </div>
+            </div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">KRIs en alerta</div>
+            ${kriAlertHtml}
+            ${breachedKRIs.length > 3 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">... y ${breachedKRIs.length - 3} mas. <a href="#/kris" style="color:var(--brand-purple);">Ver todos</a></div>` : ''}
+          </div>
+        </div>
+        ${p.top_risks?.length ? `
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Riesgos mas relevantes (portfolio ponderado)</div>
+          ${p.top_risks.slice(0, 5).map(r => {
+            const lvlColor = l => l >= 8 ? 'var(--risk-critical)' : l >= 6 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border-light);">
+              <span style="font-size:12px;">${UI.esc(r.code||'')} ${UI.esc(r.name||'')}</span>
+              <span style="font-size:12px;font-weight:700;color:${lvlColor(r.residual_level||0)};">${r.residual_level}</span>
+            </div>`;
+          }).join('')}
+        </div>` : ''}`;
+    } catch (e) {
+      if (body) body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">No disponible: ${UI.esc(e.message)}</p>`;
+    }
   },
 };

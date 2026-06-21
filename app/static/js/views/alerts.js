@@ -104,10 +104,14 @@ const ViewAlerts = {
   // Ocultar/mostrar campo de umbral segun el tipo de evento
   _onTypeChange(sel) {
     const noThreshold = ['daily_digest', 'treatment_overdue', 'control_review_overdue',
-                         'incident_p1p2', 'nis2_pending', 'policy_review_overdue', 'task_overdue'];
+                         'incident_p1p2', 'nis2_pending', 'policy_review_overdue', 'task_overdue', 'compound'];
     const thresholdWrap = document.getElementById('r-threshold-wrap');
     if (thresholdWrap) {
       thresholdWrap.style.display = noThreshold.includes(sel.value) ? 'none' : '';
+    }
+    const compoundWrap = document.getElementById('r-compound-wrap');
+    if (compoundWrap) {
+      compoundWrap.style.display = sel.value === 'compound' ? '' : 'none';
     }
   },
 
@@ -176,6 +180,7 @@ const ViewAlerts = {
               <option value="risk_no_treatment">Riesgo sin plan de tratamiento</option>
               <option value="treatment_due_soon">Tratamiento proximo a vencer</option>
               <option value="daily_digest">Resumen diario del registro de riesgos</option>
+              <option value="compound">Regla compuesta (multiples condiciones)</option>
             </optgroup>
             <optgroup label="Controles">
               <option value="control_review_overdue">Revision de control ISO 27002 vencida</option>
@@ -198,6 +203,26 @@ const ViewAlerts = {
           <label>Email destinatario *</label>
           <input id="r-email" class="input" type="email" placeholder="responsable@company.com">
         </div>
+        <div class="span2" id="r-compound-wrap" style="display:none;">
+          <div style="background:var(--bg-2);border-radius:8px;padding:12px;border:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <strong style="font-size:13px;">Condiciones compuestas</strong>
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+                Logica:
+                <select id="r-logic" class="input" style="width:auto;padding:3px 8px;">
+                  <option value="AND">AND (todas se cumplen)</option>
+                  <option value="OR">OR (alguna se cumple)</option>
+                </select>
+              </div>
+            </div>
+            <div id="r-conditions-list" style="margin-bottom:10px;"></div>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-add-condition">+ Añadir condicion</button>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">
+              Campos: <code>residual_level</code>, <code>inherent_level</code>, <code>control_count</code><br>
+              Operadores: <code>gte</code> (>=), <code>lte</code> (<=), <code>gt</code> (>), <code>lt</code> (<), <code>eq</code> (=)
+            </div>
+          </div>
+        </div>
       </div>
     `, {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
@@ -205,15 +230,54 @@ const ViewAlerts = {
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = () => ViewAlerts._createRule();
+
+    // Compound conditions builder
+    const conditions = [];
+    const renderConditions = () => {
+      const list = document.getElementById('r-conditions-list');
+      if (!list) return;
+      list.innerHTML = conditions.map((c, i) => `
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+          <input type="text" placeholder="campo" value="${UI.esc(c.field||'')}" data-ci="${i}" data-cf="field"
+                 class="input cond-field" style="flex:2;min-width:120px;">
+          <select data-ci="${i}" data-cf="op" class="input cond-field" style="flex:1;min-width:80px;">
+            ${['gte','lte','gt','lt','eq'].map(op => `<option value="${op}" ${c.op===op?'selected':''}>${op}</option>`).join('')}
+          </select>
+          <input type="number" placeholder="valor" value="${c.value??''}" data-ci="${i}" data-cf="value"
+                 class="input cond-field" style="flex:1;min-width:80px;">
+          <button type="button" class="btn btn-ghost btn-sm" data-del-ci="${i}" style="color:var(--danger);">×</button>
+        </div>`).join('');
+      list.querySelectorAll('.cond-field').forEach(inp => {
+        inp.oninput = inp.onchange = () => {
+          const idx = parseInt(inp.dataset.ci);
+          const field = inp.dataset.cf;
+          conditions[idx][field] = field === 'value' ? (parseFloat(inp.value) ?? 0) : inp.value;
+        };
+      });
+      list.querySelectorAll('[data-del-ci]').forEach(btn => {
+        btn.onclick = () => { conditions.splice(parseInt(btn.dataset.delCi), 1); renderConditions(); };
+      });
+    };
+    document.getElementById('btn-add-condition').onclick = () => {
+      conditions.push({ field: 'residual_level', op: 'gte', value: 5 });
+      renderConditions();
+    };
+    // Store for _createRule to read
+    ViewAlerts._pendingConditions = conditions;
   },
 
   async _createRule() {
+    const typeVal = document.getElementById('r-type').value;
     const body = {
       name: document.getElementById('r-name').value.trim(),
-      event_type: document.getElementById('r-type').value,
+      event_type: typeVal === 'compound' ? 'risk_high' : typeVal,
       recipient_email: document.getElementById('r-email').value.trim(),
       threshold_level: parseInt(document.getElementById('r-threshold').value) || 5,
     };
+    if (typeVal === 'compound' && ViewAlerts._pendingConditions?.length) {
+      body.conditions = ViewAlerts._pendingConditions;
+      body.logic = document.getElementById('r-logic')?.value || 'AND';
+    }
     if (!body.name || !body.recipient_email) {
       UI.toast('Nombre y email son obligatorios', 'error'); return;
     }
