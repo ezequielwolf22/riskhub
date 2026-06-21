@@ -2827,6 +2827,102 @@ def _run_bcp_test_reminder() -> None:
         db.close()
 
 
+def _run_questionnaire_expiry_reminders(org_id: int) -> None:
+    """Recordatorio automatico de cuestionarios de proveedor pendientes de respuesta.
+
+    Bucle cerrado: cuando el proveedor responde el cuestionario (submitted_at se rellena),
+    el reminder deja de generarse en la siguiente ejecucion.
+    """
+    from app.models import SupplierQuestionnaire, Supplier, VendorIssue, VendorIssueSeverity, VendorIssueStatus
+    from app.database import SessionLocal
+    from datetime import timezone
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+
+        # Cuestionarios enviados pero sin respuesta y con fecha de expiracion definida
+        pending_q = db.query(SupplierQuestionnaire).join(
+            Supplier, Supplier.id == SupplierQuestionnaire.supplier_id
+        ).filter(
+            Supplier.organization_id == org_id,
+            SupplierQuestionnaire.submitted_at.is_(None),
+            SupplierQuestionnaire.expires_at.isnot(None),
+        ).all()
+
+        for q in pending_q:
+            expires = q.expires_at
+            if hasattr(expires, "tzinfo") and expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+
+            days_to_exp = (expires - now).days
+            is_expired = days_to_exp < 0
+            is_expiring_soon = 0 <= days_to_exp <= 7
+
+            if not (is_expired or is_expiring_soon):
+                continue
+
+            supplier = db.get(Supplier, q.supplier_id)
+            if not supplier:
+                continue
+
+            # Verificar si ya hay un VendorIssue abierto de este tipo para este cuestionario
+            existing = db.query(VendorIssue).filter(
+                VendorIssue.supplier_id == supplier.id,
+                VendorIssue.auto_generated_source == "questionnaire_expiry",
+                VendorIssue.description.like(f"%{q.id}%"),
+                VendorIssue.status.notin_([VendorIssueStatus.CLOSED, VendorIssueStatus.MITIGATED, VendorIssueStatus.ACCEPTED]),
+            ).first()
+            if existing:
+                continue
+
+            n = db.query(VendorIssue).filter(VendorIssue.organization_id == org_id).count() + 1
+            severity = VendorIssueSeverity.HIGH if is_expired else VendorIssueSeverity.MEDIUM
+
+            if is_expired:
+                title = f"Cuestionario de seguridad expirado sin respuesta: {supplier.name}"
+                desc = (
+                    f"El cuestionario TPRM enviado al proveedor {supplier.name} "
+                    f"(ID cuestionario: {q.id}) expiro el {expires.strftime('%Y-%m-%d')} "
+                    f"sin haber sido respondido. "
+                    f"Accion: reenviar el cuestionario o contactar al proveedor. "
+                    f"Este issue se cerrara automaticamente cuando el cuestionario sea respondido."
+                )
+            else:
+                title = f"Cuestionario expira en {days_to_exp} dias: {supplier.name}"
+                desc = (
+                    f"El cuestionario TPRM enviado al proveedor {supplier.name} "
+                    f"(ID cuestionario: {q.id}) expira el {expires.strftime('%Y-%m-%d')} "
+                    f"({days_to_exp} dias). "
+                    f"Accion: hacer seguimiento con el proveedor para obtener respuesta. "
+                    f"Este issue se cerrara automaticamente cuando sea respondido."
+                )
+
+            issue = VendorIssue(
+                organization_id=org_id,
+                code=f"VIS-{n:04d}",
+                supplier_id=supplier.id,
+                source="monitoring",
+                title=title,
+                description=desc,
+                severity=severity,
+                status=VendorIssueStatus.OPEN,
+                auto_generated=True,
+                auto_generated_source="questionnaire_expiry",
+                due_date=expires,
+                created_at=now,
+            )
+            db.add(issue)
+
+        db.commit()
+        logger.info("Questionnaire expiry reminders completados para org %d", org_id)
+    except Exception as exc:
+        db.rollback()
+        logger.error("Questionnaire expiry reminders error org %d: %s", org_id, exc, exc_info=True)
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -3141,6 +3237,26 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         func=_run_bcp_test_reminder,
         trigger=CronTrigger(day=15, hour=9, minute=0),
         id="bcp_test_reminder",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Recordatorios de cuestionarios de proveedor expirados/proximos a expirar (miercoles 9:30h)
+    def _questionnaire_expiry_all_orgs():
+        from app.database import SessionLocal as _SL
+        from app.models import Organization as _Org
+        _db = _SL()
+        try:
+            _orgs = _db.query(_Org).filter(_Org.is_active.is_(True)).all()
+            _org_ids = [o.id for o in _orgs]
+        finally:
+            _db.close()
+        for _oid in _org_ids:
+            _run_questionnaire_expiry_reminders(_oid)
+
+    _scheduler.add_job(
+        func=_questionnaire_expiry_all_orgs,
+        trigger=CronTrigger(day_of_week="wed", hour=9, minute=30),
+        id="questionnaire_expiry_reminders",
         replace_existing=True,
         misfire_grace_time=3600,
     )

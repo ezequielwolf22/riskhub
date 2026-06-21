@@ -42,6 +42,8 @@ const ViewGuide = {
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
+    { id: 'erp-webhooks', title: 'ERP Webhooks', icon: '🔌' },
+    { id: 'clausulas-iso', title: 'Clausulas ISO (IA)', icon: '📋' },
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
     { id: 'external-findings', title: 'Hallazgos Externos', icon: '🔗' },
@@ -151,6 +153,8 @@ const ViewGuide = {
       reports: this._cReports,
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
+      'erp-webhooks': this._cErpWebhooks,
+      'clausulas-iso': this._cClausulasIso,
       cve: this._cCve,
       osint: this._cOsint,
       'external-findings': this._cExternalFindings,
@@ -2267,6 +2271,60 @@ const ViewGuide = {
     ${this._warn('El analisis es generado por IA. Debe ser revisado por el equipo de seguridad antes de implementar cambios en produccion.')}
     ${this._tip('Para obtener mejores resultados, sube diagramas en formato imagen (PNG/JPG) junto con documentos de descripcion en texto. El agente analizara ambos formatos en conjunto.')}
   `;},
+
+  get _cErpWebhooks() {
+    return `
+      <div class="guide-section-content">
+        ${this._h('ERP Webhooks — Integraciones SAP/Jagger/Sphera')}
+        ${this._p('El modulo de <strong>ERP Webhooks</strong> permite recibir eventos de sistemas ERP empresariales (SAP, Jagger, Sphera) de forma segura mediante <strong>HMAC-SHA256</strong> para validar la autenticidad de cada llamada. Los eventos se mapean automaticamente a activos e incidentes de RiskHub.')}
+        ${this._h('Como configurar una integracion ERP')}
+        <ol>
+          <li>Ir a <strong>Integraciones &gt; ERP Webhooks</strong></li>
+          <li>Crear nueva integracion: nombre, tipo de sistema (SAP/Jagger/Sphera) y clave secreta HMAC</li>
+          <li>Copiar la URL del endpoint generado y configurarla en el sistema ERP externo</li>
+          <li>Seleccionar los tipos de eventos a recibir (activos, incidentes, cambios de configuracion)</li>
+        </ol>
+        ${this._h('Seguridad')}
+        ${this._p('Cada webhook entrante se valida con <code>X-Webhook-Signature</code> (HMAC-SHA256 sobre el body con la clave secreta). Las llamadas sin firma valida son rechazadas con HTTP 401. La clave secreta se almacena cifrada con Fernet en la base de datos.')}
+        ${this._h('Log de eventos')}
+        ${this._p('Todos los webhooks recibidos quedan en el log de memoria (ultimos 500 eventos). Incluye timestamp, tipo de evento, payload resumido y estado de procesamiento. Accesible desde Integraciones &gt; ERP Webhooks &gt; Ver log.')}
+        ${this._h('Mapeo de eventos')}
+        <ul>
+          <li><strong>asset_created / asset_updated:</strong> crea o actualiza activo en el inventario</li>
+          <li><strong>incident_reported:</strong> abre incidente de seguridad automaticamente</li>
+          <li><strong>config_change:</strong> registra cambio de configuracion como evento de auditoria</li>
+        </ul>
+        ${this._tip('Usa un secret de al menos 32 caracteres aleatorios para la clave HMAC. Rota la clave periodicamente en Integraciones &gt; ERP Webhooks &gt; Editar &gt; Regenerar secret.')}
+      </div>
+    `;
+  },
+
+  get _cClausulasIso() {
+    return `
+      <div class="guide-section-content">
+        ${this._h('Clausulas ISO — Extraccion automatica con IA')}
+        ${this._p('RiskHub puede extraer automaticamente las <strong>clausulas y controles ISO 27001/27002</strong> referenciados en documentos analizados por el modulo de Documentos IA. Usa <strong>Claude Haiku</strong> para identificar referencias normativas con nivel de confianza.')}
+        ${this._h('Como funciona')}
+        <ol>
+          <li>Subir un documento en <strong>Documentos IA</strong> (politica, procedimiento, contrato, etc.)</li>
+          <li>Hacer clic en <strong>Analizar documento</strong></li>
+          <li>Al terminar el analisis, aparece el boton <strong>Ver clausulas ISO</strong> en el documento</li>
+          <li>El modal muestra cada clausula detectada con: codigo ISO, descripcion, nivel de confianza (alto/medio/bajo) y enlace al control en el catalogo ISO 27002</li>
+        </ol>
+        ${this._h('Campos extraidos')}
+        <ul>
+          <li><strong>Clausulas ISO 27001:</strong> ej. 5.2 Politica, 6.1.2 Evaluacion de riesgos, 9.2 Auditoria interna</li>
+          <li><strong>Controles ISO 27002:2022:</strong> ej. 8.1 Dispositivos de usuario final, 5.23 Seguridad en la nube</li>
+          <li><strong>Nivel de confianza:</strong> porcentaje de certeza del modelo (&gt;80% = alta, 50-80% = media, &lt;50% = baja)</li>
+        </ul>
+        ${this._h('Vinculacion con controles')}
+        ${this._p('Las clausulas detectadas con confianza alta (&gt;80%) se vinculan automaticamente a los controles correspondientes del catalogo ISO 27002. Esto permite ver que documentos implementan cada control desde la vista de Controles.')}
+        ${this._h('Requisitos')}
+        ${this._p('La extraccion de clausulas requiere tener configurada la <strong>clave API de Claude</strong> en Integraciones &gt; Agente IA. Si no hay clave configurada, el boton "Ver clausulas ISO" no aparece.')}
+        ${this._tip('Los documentos con muchas referencias normativas (politicas del SGSI, procedimientos de auditoria) son los que mejor resultado dan. Los contratos con proveedores tambien suelen tener clausulas ISO 27001 implicitas.')}
+      </div>
+    `;
+  },
 
   get _cExecutive() { return `
     ${this._p('El <strong>Dashboard Ejecutivo</strong> proporciona una visión global de la postura de seguridad de la organización en tiempo real: KPIs, tendencia de riesgos, estado de cumplimiento por framework y top riesgos activos.')}

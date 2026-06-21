@@ -525,6 +525,24 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
             pass
     db.commit()
 
+    # Bucle cerrado: cuestionario respondido → cerrar VendorIssues de expiry pendientes
+    try:
+        from app.models import VendorIssue, VendorIssueStatus
+        open_issues = db.query(VendorIssue).filter(
+            VendorIssue.supplier_id == q.supplier_id,
+            VendorIssue.auto_generated_source == "questionnaire_expiry",
+            VendorIssue.description.like(f"%{q.id}%"),
+            VendorIssue.status.notin_([VendorIssueStatus.CLOSED, VendorIssueStatus.MITIGATED]),
+        ).all()
+        for issue in open_issues:
+            issue.status = VendorIssueStatus.CLOSED
+            issue.closed_at = now
+            issue.resolved_by_action = "Cuestionario respondido por el proveedor"
+        if open_issues:
+            db.commit()
+    except Exception as _e:
+        logger.warning("questionnaire→VendorIssue close failed: %s", _e)
+
     # --- Flujo dos fases: si es cuestionario de profiling, crear el de assessment ---
     next_token = None
     next_title = None
@@ -723,6 +741,25 @@ def internal_submit(
         q.residual_risk_level = _compute_residual_risk(inherent, major_nc, minor_nc)
 
     db.commit()
+
+    # Bucle cerrado: cuestionario respondido (interno) → cerrar VendorIssues de expiry pendientes
+    try:
+        from app.models import VendorIssue, VendorIssueStatus
+        open_issues_int = db.query(VendorIssue).filter(
+            VendorIssue.supplier_id == q.supplier_id,
+            VendorIssue.auto_generated_source == "questionnaire_expiry",
+            VendorIssue.description.like(f"%{q.id}%"),
+            VendorIssue.status.notin_([VendorIssueStatus.CLOSED, VendorIssueStatus.MITIGATED]),
+        ).all()
+        for issue in open_issues_int:
+            issue.status = VendorIssueStatus.CLOSED
+            issue.closed_at = now
+            issue.resolved_by_action = "Cuestionario respondido internamente"
+        if open_issues_int:
+            db.commit()
+    except Exception as _e:
+        logger.warning("questionnaire_internal→VendorIssue close failed: %s", _e)
+
     log_action(db, current_user.id, "internal_submit", "supplier_questionnaire", str(q.id),
                {"score": score, "supplier": q.supplier_name})
 
