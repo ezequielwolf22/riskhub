@@ -669,6 +669,31 @@ const ViewGuide = {
     </ul>
     ${this._h('Portfolio de riesgos — widget del dashboard')}
     ${this._p('El widget <strong>Portfolio de riesgos</strong> del dashboard muestra el score ponderado del portfolio (media ponderada de niveles residuales por importancia del activo), la tendencia mensual y los KRIs en estado de alerta. Haz clic en cualquier KRI en alerta para ir directamente al detalle del riesgo.')}
+    ${this._h('Bucle cerrado de riesgos')}
+    ${this._p('El modulo de riesgos implementa retroalimentacion automatica entre todos los modulos del SGSI:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Control implementado → riesgo baja:</strong> al subir la madurez de un control o cambiar su estado a "Implemented", el residual de los riesgos vinculados se recalcula automaticamente.</li>
+      <li><strong>NC mayor creada → riesgo sube:</strong> una NC major aplica una penalizacion del 40% sobre la eficacia del control, elevando el residual de los riesgos vinculados. Al cerrar la NC, la penalizacion se elimina y el residual baja.</li>
+      <li><strong>Tareas de tratamiento → progreso del riesgo:</strong> cada TreatmentTask asociada a un riesgo contribuye al campo <code>treatment_progress</code> (0-100%). Al completar todas las tareas, el riesgo pasa automaticamente a estado "Treated" y su residual_likelihood se reduce en 1 punto.</li>
+      <li><strong>KRI en BREACH → riesgo sube:</strong> si un KRI vinculado a un riesgo cruza el umbral de breach, el residual_likelihood sube +1. Cuando el KRI vuelve a NORMAL o WARNING, el residual_likelihood baja -1 automaticamente.</li>
+      <li><strong>Incidente cerrado → likelihood sube:</strong> cerrar un incidente vinculado a un riesgo incrementa el inherent_likelihood en +1, reflejando que la amenaza se materializo (ISO 27005 §8.3).</li>
+      <li><strong>Plan BCP activado → residual baja:</strong> activar un plan BCP vinculado a riesgos reduce su residual_likelihood en -1 por cada riesgo vinculado.</li>
+    </ul>
+    ${this._tip('El bucle cerrado garantiza que el registro de riesgos refleja en todo momento el estado real del SGSI sin necesidad de actualizaciones manuales. Revisa el historial de cambios de un riesgo para ver que evento disparo cada modificacion automatica.')}
+    <h3>Bucle cerrado de riesgos (v5.5-5.6)</h3>
+    <p>El módulo de riesgos implementa retroalimentación automática en ambas direcciones:</p>
+    <table class="guide-table">
+      <thead><tr><th>Causa (sube el riesgo)</th><th>Mitigación (baja el riesgo)</th></tr></thead>
+      <tbody>
+        <tr><td>NC major creada en control</td><td>NC cerrada → penalización eliminada</td></tr>
+        <tr><td>Incidente cerrado vinculado</td><td>likelihood+1 (evidencia de materialización ISO 27005)</td></tr>
+        <tr><td>KRI pasa a BREACH</td><td>KRI se recupera → residual_likelihood−1</td></tr>
+        <tr><td>VendorIssue CRITICAL creado</td><td>VendorIssue cerrado → likelihood−1</td></tr>
+        <tr><td>Plan BCP desactivado</td><td>Plan BCP activado → residual_likelihood−1</td></tr>
+      </tbody>
+    </table>
+    <h4>Progreso de tratamiento</h4>
+    <p>Cada <strong>TreatmentTask</strong> completada actualiza el campo <code>treatment_progress</code> del riesgo (0-100%). Al completar todas las tareas, el riesgo pasa automáticamente a estado <strong>Treated</strong> y su residual_likelihood se reduce en −1.</p>
   `;},
 
   get _cKris() { return `
@@ -718,6 +743,73 @@ const ViewGuide = {
       'Puedes crear KRIs personalizados con "Nuevo KRI" y vincularlos a un riesgo concreto.',
     ])}
     ${this._tip('Los KPIs de sistema se inicializan automaticamente al arrancar la aplicacion. Evaluar todos desde la vista KRIs / KPIs actualiza todos los valores instantaneamente antes de la siguiente evaluacion automatica del scheduler.')}
+    ${this._h('KPIs del sistema — 15 indicadores detallados')}
+    ${this._p('Cada KPI del sistema mide la eficacia global del programa SGSI, no un riesgo individual. A continuacion se describen los 15 indicadores con sus objetivos recomendados:')}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+      <thead><tr style="background:var(--brand-purple);color:#fff;">
+        <th style="padding:8px 12px;text-align:left;">Indicador</th>
+        <th style="padding:8px 12px;text-align:left;">Marco</th>
+        <th style="padding:8px 12px;text-align:left;">Objetivo</th>
+      </tr></thead>
+      <tbody>
+        ${[
+          ['Tasa de tratamiento','ISO 27001 cl.6.1.3','> 80% riesgos altos con plan activo'],
+          ['MTTT (dias hasta iniciar tratamiento)','ISO 27001 cl.9.1','< 30 dias'],
+          ['Cobertura de controles ISO 27002','ISO 27002','> 70% controles implementados o parciales'],
+          ['Madurez media de controles','ISO 27001 cl.9.1','> 3 sobre 5'],
+          ['Revision de politicas','ISO 27001 cl.5.2','> 90% politicas revisadas en 12 meses'],
+          ['Tasa de cierre de NCs','ISO 27001 cl.10.1','> 85% NCs cerradas en SLA'],
+          ['Reduccion media de riesgo','ISO 27005 §8.6','> 30% inherente → residual'],
+          ['Cumplimiento del apetito','ISO 27005 §7.3','> 80% riesgos dentro del apetito'],
+          ['Cobertura de activos','ISO 27005 §8.2','> 95% activos con riesgo evaluado'],
+          ['Riesgos sin propietario','ISO 27001 cl.5.3','< 5% riesgos sin owner'],
+          ['Riesgos altos sin plan','ISO 27005 §8.4','= 0'],
+          ['Notificacion NIS2 en 72h','NIS2 Art.23','100%'],
+          ['Cobertura BCP','ISO 22301 / NIS2','> 90% procesos criticos con BCP aprobado'],
+          ['MTTR incidentes','NIST CSF 2.0','< 15 dias de resolucion media'],
+          ['Cobertura proveedores Tier-1/2','ISO 27036 / TPRM','100% con evaluacion vigente'],
+        ].map((r,i) => `<tr ${i%2?'style="background:var(--bg-2);"':''}>
+          <td style="padding:8px 12px;font-weight:600;">${r[0]}</td>
+          <td style="padding:8px 12px;font-size:12px;color:var(--text-muted);">${r[1]}</td>
+          <td style="padding:8px 12px;">${r[2]}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${this._h('Como editar un KPI del sistema')}
+    ${this._steps([
+      'Ir a Hub de Riesgos → KRIs / KPIs → pestana KPIs.',
+      'Clic en el icono de edicion del KPI que quieres personalizar.',
+      'Cambiar el nombre visible, los umbrales de warning y breach.',
+      'Ocultar KPIs que no apliquen con el toggle "Visible".',
+    ])}
+    ${this._warn('Los KPIs del sistema no se pueden eliminar, solo ocultar. Ocultarlos no afecta a su calculo interno ni a las alertas de email ya configuradas.')}
+    ${this._h('Bucle cerrado de KPIs')}
+    ${this._p('Los KPIs no son solo informativos: cuando un KPI pasa a estado BREACH, el sistema puede elevar automaticamente el likelihood del riesgo vinculado. Cuando el KPI se recupera a NORMAL, el likelihood baja automaticamente. Este bucle garantiza que el registro de riesgos refleja en todo momento el estado operativo real del programa SGSI.')}
+    <h3>KPIs del programa SGSI</h3>
+    <p>Los KPIs miden la eficacia global del programa, no un riesgo individual. Se inicializan desde Hub de Riesgos &gt; KRIs / KPIs &gt; pestaña KPIs &gt; "Inicializar KPIs".</p>
+    <h4>Cobertura ISO 27001</h4>
+    <ul>
+      <li><strong>Tasa de tratamiento</strong>: % riesgos con plan activo (objetivo &gt;80%)</li>
+      <li><strong>MTTT</strong>: días medios hasta iniciar tratamiento (objetivo &lt;30 días)</li>
+      <li><strong>Cobertura de controles ISO 27002</strong>: % controles implementados (objetivo &gt;70%)</li>
+      <li><strong>Madurez media de controles</strong>: promedio 0-5 (objetivo &gt;3)</li>
+    </ul>
+    <h4>TPRM / Proveedores</h4>
+    <ul>
+      <li><strong>Contratos expirando en 90 días</strong>: % proveedores tier-1/2 (objetivo &lt;10%)</li>
+      <li><strong>Issues críticos abiertos</strong>: # VendorIssues CRITICAL/HIGH (objetivo 0)</li>
+      <li><strong>MTTR de issues</strong>: días medios de resolución (objetivo &lt;30 días)</li>
+      <li><strong>Proveedores DORA evaluados</strong>: % con evaluación en 12 meses (objetivo 100%)</li>
+    </ul>
+    <h4>BCP / Continuidad</h4>
+    <ul>
+      <li><strong>RTO alcanzado</strong>: % tests BCP que cumplen objetivo (objetivo &gt;90%)</li>
+      <li><strong>Días desde último test BCP</strong>: objetivo &lt;365 días (ISO 22301 §8.5)</li>
+      <li><strong>Procesos críticos con BCP aprobado</strong>: objetivo &gt;90%</li>
+    </ul>
+    <h4>Bucle cerrado de KPIs</h4>
+    <p>Cuando un KRI/KPI pasa a <strong>BREACH</strong>, el sistema eleva el <code>residual_likelihood</code> del riesgo vinculado en +1. Cuando el KRI se recupera a NORMAL, el likelihood baja −1 automáticamente.</p>
+    <p>Para editar un KPI: clic en el icono de edición &gt; cambiar nombre, umbrales y visibilidad. Los KPIs del sistema no se pueden eliminar, solo ocultar.</p>
   `;},
 
   get _cCalendar() { return `
@@ -1491,6 +1583,21 @@ const ViewGuide = {
       'Revisa puntuaciones y respuestas desde la tabla de cuestionarios.',
     ])}
     ${this._tip('<strong>Buena practica:</strong> Incluye clausulas contractuales de ciberseguridad en todos los contratos con proveedores criticos: derecho de auditoria, notificacion de incidentes en 24h, cifrado de datos y planes de continuidad.')}
+    <h3>Ciclo de vida del proveedor (v5.5)</h3>
+    <p>Cada proveedor pasa por etapas formales: <strong>prospecting → onboarding → active → under_review → offboarding → terminated</strong>.</p>
+    <p>Para cambiar el stage: Editar proveedor &gt; sección "Ciclo de vida y onboarding" &gt; seleccionar stage.</p>
+    <p>Al entrar en <strong>onboarding</strong>, se genera automáticamente un checklist de items según los flags del proveedor (DPA si procesa datos, cláusula NIS2, items DORA, evaluación tier-1 en 30 días). Al llegar al 100%, el proveedor pasa a <strong>active</strong> automáticamente.</p>
+    <h4>Sign-off legal</h4>
+    <ul>
+      <li><strong>DPA (GDPR Art.28)</strong>: Ciclo de vida &gt; "Registrar DPA firmado". Al registrarlo, la tarea GDPR pendiente se cierra automáticamente.</li>
+      <li><strong>NDA</strong>: Ciclo de vida &gt; "Registrar NDA firmado"</li>
+      <li><strong>Contrato</strong>: Ciclo de vida &gt; "Registrar Contrato"</li>
+    </ul>
+    <h4>Concentración de riesgo DORA (Art.28)</h4>
+    <p>Si &gt;40% de los procesos críticos dependen de un proveedor, se genera alerta y VendorIssue automático. Ver mapa: Hub Proveedores &gt; TPRM &gt; Concentración DORA.</p>
+    <p>Para mitigar: documentar notas y estrategia de salida en el proveedor. Al hacerlo, el VendorIssue se cierra automáticamente.</p>
+    <h4>SLA → KRI</h4>
+    <p>Convierte SLAs de un contrato en KRIs monitorizables: botón "SLA → KRI" en el proveedor. Los umbrales se calculan automáticamente (warning: 98% del objetivo, breach: 95%).</p>
   `;},
 
   get _cTprm() { return `
@@ -1519,6 +1626,15 @@ const ViewGuide = {
     ${this._h('Hallazgos y SLA')}
     ${this._p('La pestana <strong>Hallazgos</strong> registra issues del proveedor con SLA automatico por severidad (critico 7 dias, alto 30, medio 90, bajo 180). Los hallazgos vencidos se marcan automaticamente como "Vencido". Gestiona la remediacion, la asignacion y la aceptacion de riesgo desde aqui.')}
     ${this._tip('<strong>Nota:</strong> el modulo reutiliza el registro de proveedores y los cuestionarios existentes; no crea un silo paralelo. Los proveedores con riesgo residual alto pueden vincularse al registro de riesgos ISO 27005 central.')}
+    <h3>TPRM inteligente (v5.5-5.6)</h3>
+    <h4>Score decay</h4>
+    <p>Si un proveedor no es reevaluado en &gt;12 meses, su score se degrada 8%/mes. Se genera un VendorIssue automático (<code>source=score_decay</code>). Para recuperar: realizar nueva evaluación TPRM.</p>
+    <h4>Contratos expirando</h4>
+    <p>El scheduler comprueba semanalmente contratos que expiren en &lt;90 días y genera un VendorIssue automático. Para cerrar: actualizar la fecha de expiración en el proveedor.</p>
+    <h4>VendorIssue CRITICAL → Riesgo ISO 27005</h4>
+    <p>Al crear un VendorIssue con severidad CRITICAL, el sistema crea automáticamente un riesgo en el registro. Al cerrar el VendorIssue, el riesgo reduce su likelihood automáticamente.</p>
+    <h4>OSINT → VendorIssue</h4>
+    <p>Hallazgos OSINT CRITICAL/HIGH que coincidan con el dominio de un proveedor generan un VendorIssue automático. Al resolver el hallazgo, el issue puede marcarse como mitigado.</p>
   `;},
 
   get _cNonConformities() { return `
@@ -2572,6 +2688,23 @@ const ViewGuide = {
       </tbody>
     </table>
     ${this._tip('Para ver el estado de cumplimiento detallado, ve a <em>Cumplimiento</em> en el menu lateral y selecciona los frameworks ISO 27001, ENS o NIS2.')}
+    <h3>Activación de crisis (v5.5)</h3>
+    <p>Para activar un plan BCP durante una contingencia real: Hub BCP &gt; Plan &gt; "Activar plan de crisis".</p>
+    <ul>
+      <li>El plan queda en estado <strong>ACTIVADO</strong> (rojo)</li>
+      <li>Los riesgos vinculados al plan reducen su <code>residual_likelihood</code> en −1 automáticamente</li>
+      <li>Se registra en el log con timestamp y usuario</li>
+    </ul>
+    <p>Para vincular riesgos: editar el plan &gt; sección "Riesgos vinculados".</p>
+    <p>Al desactivar (crisis resuelta), el plan vuelve a <strong>standby</strong> y se registra la resolución.</p>
+    <h4>Tests BCP y bucle cerrado</h4>
+    <ul>
+      <li>Sin test en &gt;12 meses → alerta automática del scheduler (ISO 22301 §8.5)</li>
+      <li>Test fallido → NonConformidad automática (severity MAJOR)</li>
+      <li>Siguiente test aprobado → NC se cierra automáticamente</li>
+    </ul>
+    <h4>Vinculación NIS2</h4>
+    <p>Si el tipo del plan es <code>cyber_response</code> o <code>cyber_recovery</code> y se aprueba, el sistema actualiza automáticamente el estado del control NIS2 Art.21(2)(c) a "Implementado".</p>
   `;},
 
   get _cSetup() { return `

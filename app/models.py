@@ -487,6 +487,7 @@ class Risk(Base):
     treatment_option = Column(Enum(TreatmentOption), nullable=True)
     treatment_plan = Column(Text)
     treatment_due_date = Column(DateTime, nullable=True)
+    treatment_progress = Column(Integer, default=0)  # 0-100: % de tareas de tratamiento completadas
     accepted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     accepted_at = Column(DateTime, nullable=True)
     acceptance_justification = Column(Text)

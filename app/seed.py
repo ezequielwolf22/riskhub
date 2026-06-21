@@ -541,6 +541,7 @@ def _migrate_columns() -> None:
         ("ALTER TABLE control_implementations ADD COLUMN ccm_last_status VARCHAR(10)", "control_implementations", "ccm_last_status"),
         ("ALTER TABLE control_implementations ADD COLUMN ccm_tested_at DATETIME", "control_implementations", "ccm_tested_at"),
         # v5.2.0 — Risk: razon de ajuste de likelihood + objetivo de tratamiento
+        ("ALTER TABLE risks ADD COLUMN treatment_progress INTEGER DEFAULT 0", "risks", "treatment_progress"),
         ("ALTER TABLE risks ADD COLUMN likelihood_adjusted_reason TEXT", "risks", "likelihood_adjusted_reason"),
         ("ALTER TABLE risks ADD COLUMN target_residual_level INTEGER", "risks", "target_residual_level"),
         ("ALTER TABLE risks ADD COLUMN target_date DATETIME", "risks", "target_date"),

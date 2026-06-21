@@ -14,12 +14,32 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/api/nonconformities", tags=["nonconformities"])
 
 
+def _get_active_major_nc_count(db: Session, control_id: int, exclude_nc_id: int) -> int:
+    """Cuenta cuantas NCs major activas hay en un control, excluyendo la NC actual."""
+    from app.models import NonConformity
+    CLOSED_STATUSES = {"closed", "cancelled"}
+    MAJOR_SEVERITIES = {"major", "critical"}
+    ncs = db.query(NonConformity).filter(
+        NonConformity.related_control_id == control_id,
+        NonConformity.id != exclude_nc_id,
+    ).all()
+    return sum(
+        1 for nc in ncs
+        if str(getattr(nc.severity, "value", nc.severity)).lower() in MAJOR_SEVERITIES
+        and str(getattr(nc.status, "value", nc.status)).lower() not in CLOSED_STATUSES
+    )
+
+
 def _apply_nc_control_penalty(db: Session, control_id: int, org_id: int,
-                               penalty: Optional[float]) -> None:
+                               penalty: Optional[float],
+                               nc_id: Optional[int] = None) -> None:
     """Aplica o elimina penalizacion de NC major en la implementacion del control.
 
     penalty=0.4 cuando NC major se abre; penalty=None cuando la NC se cierra.
     Dispara cascade recalc de todos los riesgos vinculados al control.
+
+    Cuando penalty=None (cierre de NC): solo quita la penalizacion si no quedan
+    otras NCs major abiertas en el mismo control (nc_id es la NC que se esta cerrando).
     """
     from app.models import ControlImplementation
     from app.routers.controls import _trigger_linked_risks_recalc
@@ -30,6 +50,14 @@ def _apply_nc_control_penalty(db: Session, control_id: int, org_id: int,
     ).first()
     if not ci:
         return
+
+    if penalty is None and nc_id is not None:
+        # Solo quitar penalizacion si no quedan otras NCs major abiertas en el mismo control
+        remaining_major = _get_active_major_nc_count(db, control_id, exclude_nc_id=nc_id)
+        if remaining_major > 0:
+            # Mantener la penalizacion: todavia hay otras NCs major activas
+            return
+
     ci.nc_penalty_factor = penalty
     db.flush()
     _trigger_linked_risks_recalc(ci.id, org_id)
@@ -171,17 +199,20 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
     db.commit()
     db.refresh(nc)
 
-    # NC cerrada → restaurar penalizacion del control (quitar factor)
+    # NC cerrada → restaurar penalizacion del control (quitar factor si no hay otras NCs major)
     if closing and nc.related_control_id:
         try:
-            _apply_nc_control_penalty(db, nc.related_control_id, nc.organization_id, penalty=None)
+            _apply_nc_control_penalty(
+                db, nc.related_control_id, nc.organization_id, penalty=None, nc_id=nc.id
+            )
             db.commit()
         except Exception as _exc:
             import logging
             logging.getLogger(__name__).warning("NC penalty restore failed: %s", _exc)
 
-    # NC cambia a major con control → aplicar penalizacion
     new_severity = update_data.get("severity")
+
+    # NC cambia a major con control → aplicar penalizacion
     if (new_severity == NCSeverity.MAJOR and old_severity != NCSeverity.MAJOR
             and nc.related_control_id and not closing):
         try:
@@ -190,6 +221,31 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
         except Exception as _exc:
             import logging
             logging.getLogger(__name__).warning("NC severity→major penalty failed: %s", _exc)
+
+    # NC reabierta y es major → restaurar penalizacion si no la tiene ya
+    CLOSED_STATUSES = {"closed", "cancelled"}
+    MAJOR_SEVERITIES = {"major", "critical"}
+    new_status_val = str(getattr(nc.status, "value", nc.status)).lower()
+    new_severity_val = str(getattr(nc.severity, "value", nc.severity)).lower()
+    if (not closing
+            and new_status_val not in CLOSED_STATUSES
+            and new_severity_val in MAJOR_SEVERITIES
+            and nc.related_control_id):
+        try:
+            from app.models import ControlImplementation
+            ctrl = db.query(ControlImplementation).filter(
+                ControlImplementation.control_id == nc.related_control_id,
+                ControlImplementation.organization_id == nc.organization_id,
+            ).first()
+            if ctrl and not ctrl.nc_penalty_factor:
+                ctrl.nc_penalty_factor = 0.4
+                db.flush()
+                from app.routers.controls import _trigger_linked_risks_recalc
+                _trigger_linked_risks_recalc(ctrl.id, nc.organization_id)
+                db.commit()
+        except Exception as _exc:
+            import logging
+            logging.getLogger(__name__).warning("NC reopen penalty failed: %s", _exc)
 
     # NC cerrada con control asociado → re-ejecutar CCM en background
     if closing and nc.related_control_id:

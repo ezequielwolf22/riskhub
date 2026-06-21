@@ -14,6 +14,62 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
+def _update_risk_treatment_progress(db: Session, task) -> None:
+    """Cuando una tarea cambia de estado, actualiza treatment_progress del riesgo vinculado.
+
+    Bucle cerrado: todas las tareas DONE → risk.treatment_progress=100 → risk.status=TREATED
+    """
+    if not getattr(task, "risk_id", None):
+        return
+    from app.models import Risk, TreatmentTask, RiskStatus
+    risk = db.get(Risk, task.risk_id)
+    if not risk:
+        return
+
+    # Calcular progreso: tareas DONE / total tareas del riesgo
+    all_tasks = db.query(TreatmentTask).filter(
+        TreatmentTask.risk_id == task.risk_id,
+    ).all()
+    if not all_tasks:
+        return
+
+    done_statuses = {"done", "completed", "closed"}
+    # Adaptar a los valores reales del enum TaskStatus
+    done_count = sum(
+        1 for t in all_tasks
+        if str(getattr(t.status, "value", t.status)).lower() in done_statuses
+    )
+    total = len(all_tasks)
+    progress = round(done_count / total * 100)
+    risk.treatment_progress = progress
+
+    # Bucle cerrado: si todas las tareas completadas → cambiar riesgo a TREATED
+    if progress >= 100:
+        treated_statuses = {"treated", "pending_acceptance", "accepted", "closed"}
+        current_status = str(getattr(risk.status, "value", risk.status)).lower()
+        if current_status not in treated_statuses:
+            try:
+                risk.status = RiskStatus.TREATED
+            except Exception:
+                pass  # si el enum no tiene TREATED, no forzar
+
+        # Bucle cerrado: reducir residual_likelihood si hay plan documentado
+        if risk.treatment_plan and risk.residual_likelihood and risk.residual_likelihood > 0:
+            risk.residual_likelihood = max(0, risk.residual_likelihood - 1)
+            try:
+                from app.routers.risks import _recalc
+                _recalc(db, risk)
+            except Exception:
+                pass
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        import logging
+        logging.getLogger(__name__).warning("treatment_progress update failed: %s", e)
+
+
 def _next_code(db: Session, org_id: int) -> str:
     n = db.query(TreatmentTask).filter(TreatmentTask.organization_id == org_id).count() + 1
     return f"TSK-{n:04d}"
@@ -108,6 +164,7 @@ def update_task(task_id: int, body: TaskUpdate,
         setattr(t, field, value)
     db.commit()
     db.refresh(t)
+    _update_risk_treatment_progress(db, t)
     log_action(db, current_user.id, "update", "task", str(t.id))
     return t
 
