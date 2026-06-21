@@ -11,7 +11,7 @@ from app.models import KRI, KRIMetricType, KRIStatus, Risk, RiskStatus, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
 
-router = APIRouter(prefix="/api/kris", tags=["kris"])
+router = APIRouter(prefix="/api/kris", tags=["kris"], redirect_slashes=False)
 
 
 class KRICreate(BaseModel):
@@ -455,6 +455,52 @@ def _compute_kri_value(db: Session, kri: KRI, org_id: int) -> Optional[float]:
     return None
 
 
+def _sync_kri_breach_to_risk(db: Session, kri: KRI, old_state: str, new_state: str) -> None:
+    """Sincroniza el estado del KRI con el riesgo vinculado (bucle cerrado bidireccional).
+
+    BREACH: eleva residual_likelihood del riesgo
+    NORMAL/WARNING: reduce residual_likelihood si venia de BREACH
+    """
+    if not getattr(kri, "risk_id", None):
+        return
+    from app.models import Risk
+    risk = db.get(Risk, kri.risk_id)
+    if not risk:
+        return
+
+    changed = False
+    old_norm = old_state.upper() if old_state else "NORMAL"
+    new_norm = new_state.upper() if new_state else "NORMAL"
+
+    if old_norm != "BREACH" and new_norm == "BREACH":
+        # KRI cruza umbral → elevar likelihood del riesgo
+        if risk.residual_likelihood is not None and risk.residual_likelihood < 4:
+            risk.residual_likelihood = min(4, risk.residual_likelihood + 1)
+            risk.likelihood_adjusted_reason = (
+                f"KRI '{kri.custom_name or kri.name}' en BREACH — elevado automaticamente"
+            )
+            changed = True
+
+    elif old_norm == "BREACH" and new_norm in ("NORMAL", "WARNING"):
+        # KRI se recupera → reducir likelihood si lo habiamos subido
+        if risk.residual_likelihood and risk.residual_likelihood > 0:
+            risk.residual_likelihood = max(0, risk.residual_likelihood - 1)
+            risk.likelihood_adjusted_reason = (
+                f"KRI '{kri.custom_name or kri.name}' recuperado de BREACH — reducido automaticamente"
+            )
+            changed = True
+
+    if changed:
+        try:
+            from app.routers.risks import _recalc
+            _recalc(db, risk)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            import logging
+            logging.getLogger(__name__).warning("KRI->Risk sync failed: %s", e)
+
+
 def evaluate_kri(db: Session, kri: KRI, org_id: int) -> KRIStatus:
     """Evalua el KRI/KPI, actualiza current_value y status, y envia alerta si corresponde."""
     value = _compute_kri_value(db, kri, org_id)
@@ -482,7 +528,7 @@ def evaluate_kri(db: Session, kri: KRI, org_id: int) -> KRIStatus:
         elif kri.warning_threshold is not None and value >= kri.warning_threshold:
             new_status = KRIStatus.WARNING
 
-    prev_status = kri.status
+    prev_status = kri.status  # guardar antes de modificar
     kri.status = new_status.value
 
     if kri.alert_on_breach and new_status == KRIStatus.BREACH and prev_status != KRIStatus.BREACH.value:
@@ -490,6 +536,9 @@ def evaluate_kri(db: Session, kri: KRI, org_id: int) -> KRIStatus:
             _send_kri_alert(db, kri, value, org_id)
         except Exception:
             pass
+
+    # Bucle cerrado bidireccional: sincronizar estado KRI con riesgo vinculado
+    _sync_kri_breach_to_risk(db, kri, str(prev_status), new_status.value)
 
     return new_status
 
@@ -531,7 +580,7 @@ def _send_kri_alert(db: Session, kri: KRI, value: float, org_id: int) -> None:
             pass
 
 
-@router.get("/", response_model=list[KRIOut])
+@router.get("", response_model=list[KRIOut])
 def list_kris(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -567,7 +616,7 @@ def get_kri(
     return kri
 
 
-@router.post("/", response_model=KRIOut, status_code=201)
+@router.post("", response_model=KRIOut, status_code=201)
 def create_kri(
     body: KRICreate,
     db: Session = Depends(get_db),
