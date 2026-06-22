@@ -339,7 +339,7 @@ const ViewSuppliers = (() => {
               style="width:15px;height:15px;cursor:pointer;accent-color:var(--brand-purple);">
           </td>
           <td><b>${UI.esc(s.code)}</b></td>
-          <td>${UI.esc(s.name)}</td>
+          <td><span data-id="${s.id}" data-action="file" style="cursor:pointer;color:var(--brand-purple);font-weight:600;">${UI.esc(s.name)}</span></td>
           <td>${critBadge}</td>
           <td>${tier}</td>
           <td style="text-align:center;font-weight:700;">${inh}</td>
@@ -429,6 +429,12 @@ const ViewSuppliers = (() => {
       btn.onclick = () => {
         const sup = data.find(s => s.id == btn.dataset.id);
         if (sup) _openForm(sup);
+      };
+    });
+    wrap.querySelectorAll('[data-action="file"]').forEach(el => {
+      el.onclick = () => {
+        const sup = data.find(s => s.id == el.dataset.id);
+        if (sup) _openSupplierFile(sup);
       };
     });
     wrap.querySelectorAll('[data-action="del"]').forEach(btn => {
@@ -663,10 +669,10 @@ const ViewSuppliers = (() => {
   // ---- Lifecycle / Onboarding helpers ----
 
   const LIFECYCLE_STAGES = [
-    { id: 'prospect',     label: 'Prospecto'    },
+    { id: 'prospecting',  label: 'Prospecto'    },
     { id: 'onboarding',   label: 'Onboarding'   },
     { id: 'active',       label: 'Activo'        },
-    { id: 'review',       label: 'En revision'   },
+    { id: 'under_review', label: 'En revision'   },
     { id: 'offboarding',  label: 'Offboarding'   },
     { id: 'terminated',   label: 'Terminado'     },
   ];
@@ -1369,6 +1375,316 @@ const ViewSuppliers = (() => {
           onclick="this.closest('.gc-chain-row').remove()">X</button>
       </div>`;
   }
+
+  // ======== EXPEDIENTE COMPLETO DEL PROVEEDOR ========
+
+  let _currentFileSupplier = null;
+  let _currentFileDocPending = null;
+
+  function _openSupplierFile(sup) {
+    _currentFileSupplier = sup;
+    let overlay = document.getElementById('sup-file-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'sup-file-overlay';
+      document.body.appendChild(overlay);
+    }
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:var(--bg-1);display:flex;flex-direction:column;overflow:hidden;';
+    const stageLabel = LIFECYCLE_STAGES.find(x => x.id === sup.lifecycle_stage)?.label || sup.lifecycle_stage || 'Sin definir';
+    const tierColor = RISK_COLORS[sup.tier] || '#888';
+    overlay.innerHTML = `
+      <div style="flex-shrink:0;padding:14px 24px;border-bottom:2px solid var(--border);background:var(--bg-2);display:flex;align-items:center;gap:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Expediente de proveedor</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-size:20px;font-weight:800;color:var(--text-1);">${UI.esc(sup.name)}</span>
+            <span style="font-size:11px;color:var(--text-muted);background:var(--bg-1);padding:2px 8px;border-radius:999px;font-weight:600;border:1px solid var(--border);">${UI.esc(sup.code)}</span>
+            ${sup.tier ? `<span style="font-size:11px;font-weight:700;color:#fff;background:${tierColor};padding:2px 8px;border-radius:999px;">${RISK_LABELS[sup.tier]||sup.tier}</span>` : ''}
+            ${sup.is_critical ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#DC2626;padding:2px 8px;border-radius:999px;">CRITICO</span>` : ''}
+          </div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+            Stage: <strong>${UI.esc(stageLabel)}</strong>
+            ${sup.inherent_risk_score != null ? ` &bull; Inherent: <strong>${sup.inherent_risk_score}</strong>` : ''}
+            ${sup.residual_risk_score != null ? ` &bull; Residual: <strong>${sup.residual_risk_score}</strong>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0;">
+          ${Auth.canEdit() ? `<button class="btn btn-sm btn-primary" onclick="ViewSuppliers._openFormFromFile()">Editar datos</button>` : ''}
+          <button onclick="ViewSuppliers._closeSupplierFile()" class="btn btn-sm" style="font-size:18px;line-height:1;padding:4px 12px;" title="Cerrar">&times;</button>
+        </div>
+      </div>
+      <div style="flex-shrink:0;display:flex;border-bottom:1px solid var(--border);background:var(--bg-2);padding:0 20px;overflow-x:auto;">
+        ${[['perfil','Perfil'],['gate','Onboarding & Gate'],['cuestionarios','Cuestionarios'],['documentos','Documentos'],['hallazgos','Hallazgos']].map(([t,lbl],i) =>
+          `<button id="fbtab-${t}" onclick="ViewSuppliers._setFileTab('${t}')"
+            style="padding:10px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;white-space:nowrap;
+              border-bottom:2px solid ${i===0?'var(--brand-purple)':'transparent'};
+              color:${i===0?'var(--brand-purple)':'var(--text-muted)'};transition:color .15s,border-color .15s;">
+            ${lbl}
+          </button>`).join('')}
+      </div>
+      <div id="sup-file-content" style="flex:1;overflow-y:auto;padding:24px;max-width:1400px;width:100%;margin:0 auto;box-sizing:border-box;"></div>
+    `;
+    _setFileTab('perfil');
+  }
+
+  function _closeSupplierFile() {
+    const overlay = document.getElementById('sup-file-overlay');
+    if (overlay) overlay.style.display = 'none';
+    _currentFileSupplier = null;
+  }
+
+  function _openFormFromFile() {
+    const sup = _currentFileSupplier;
+    if (!sup) return;
+    _closeSupplierFile();
+    _openForm(sup);
+  }
+
+  function _setFileTab(tab) {
+    [['perfil','Perfil'],['gate','Onboarding & Gate'],['cuestionarios','Cuestionarios'],['documentos','Documentos'],['hallazgos','Hallazgos']].forEach(([t]) => {
+      const btn = document.getElementById('fbtab-' + t);
+      if (!btn) return;
+      btn.style.borderBottomColor = t === tab ? 'var(--brand-purple)' : 'transparent';
+      btn.style.color = t === tab ? 'var(--brand-purple)' : 'var(--text-muted)';
+    });
+    const content = document.getElementById('sup-file-content');
+    if (!content || !_currentFileSupplier) return;
+    const sup = _currentFileSupplier;
+    if (tab === 'perfil') _renderFileTabPerfil(content, sup);
+    else if (tab === 'gate') _renderFileTabGate(content, sup);
+    else if (tab === 'cuestionarios') _renderFileTabCuestionarios(content, sup);
+    else if (tab === 'documentos') _renderFileTabDocumentos(content, sup);
+    else if (tab === 'hallazgos') _renderFileTabHallazgos(content, sup);
+  }
+
+  function _infoField(label, value) {
+    return `<div>
+      <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">${label}</div>
+      <div style="font-size:14px;color:var(--text-1);">${value || '<span style="color:var(--text-muted);">—</span>'}</div>
+    </div>`;
+  }
+
+  function _renderFileTabPerfil(wrap, sup) {
+    const flags = [];
+    if (sup.is_nis2) flags.push('<span style="font-size:11px;font-weight:700;background:#EDE9FE;color:#6D28D9;padding:2px 8px;border-radius:999px;">NIS2</span>');
+    if (sup.is_dora) flags.push('<span style="font-size:11px;font-weight:700;background:#DBEAFE;color:#1E40AF;padding:2px 8px;border-radius:999px;">DORA</span>');
+    if (sup.is_ens) flags.push('<span style="font-size:11px;font-weight:700;background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:999px;">ENS</span>');
+    if (sup.is_data_processor) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Encargado GDPR</span>');
+    if (sup.processes_personal_data) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Trata datos personales</span>');
+    if (sup.cross_border_transfers) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Transf. internac.</span>');
+    const slas = sup.slas || [];
+    const contacts = sup.additional_contacts || [];
+    wrap.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-bottom:20px;">
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
+          <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Informacion general</div>
+          <div style="display:grid;gap:12px;">
+            ${_infoField('Nombre', UI.esc(sup.name))}
+            ${_infoField('Codigo', UI.esc(sup.code))}
+            ${_infoField('Categoria', UI.esc(sup.category))}
+            ${_infoField('Tipo', UI.esc(sup.vendor_type))}
+            ${_infoField('Ubicacion', UI.esc(sup.location))}
+            ${_infoField('Departamento', UI.esc(sup.department))}
+            ${_infoField('Referencia contrato', UI.esc(sup.contract_ref))}
+          </div>
+        </div>
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
+          <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Riesgo TPRM</div>
+          <div style="display:grid;gap:12px;">
+            ${_infoField('Tier', sup.tier ? `<span style="font-weight:700;color:${RISK_COLORS[sup.tier]||'#888'}">${RISK_LABELS[sup.tier]||sup.tier}</span>` : null)}
+            ${_infoField('Score inherente', sup.inherent_risk_score != null ? `<span style="font-size:22px;font-weight:800;">${sup.inherent_risk_score}</span><span style="font-size:11px;color:var(--text-muted);">/100</span>` : null)}
+            ${_infoField('Score residual', sup.residual_risk_score != null ? `<span style="font-size:22px;font-weight:800;">${sup.residual_risk_score}</span><span style="font-size:11px;color:var(--text-muted);">/100</span>` : null)}
+            ${_infoField('Acceso a sistemas', UI.esc(sup.system_access_type))}
+            ${_infoField('Sensibilidad datos', sup.data_sensitivity ? `${sup.data_sensitivity}/5` : null)}
+            ${_infoField('Criticidad negocio', sup.business_criticality ? `${sup.business_criticality}/5` : null)}
+          </div>
+        </div>
+        <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
+          <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Contacto principal</div>
+          <div style="display:grid;gap:12px;">
+            ${_infoField('Nombre', UI.esc(sup.contact_name))}
+            ${_infoField('Email', sup.contact_email ? `<a href="mailto:${UI.esc(sup.contact_email)}" style="color:var(--brand-purple);">${UI.esc(sup.contact_email)}</a>` : null)}
+            ${_infoField('CC alertas', sup.cc_email ? `<a href="mailto:${UI.esc(sup.cc_email)}" style="color:var(--brand-purple);">${UI.esc(sup.cc_email)}</a>` : null)}
+            ${_infoField('Prox. evaluacion', sup.next_assessment_at ? sup.next_assessment_at.slice(0,10) : null)}
+            ${_infoField('Ult. evaluacion', sup.last_assessment_at ? sup.last_assessment_at.slice(0,10) : null)}
+          </div>
+        </div>
+      </div>
+      ${flags.length ? `
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Regulacion y clasificacion</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">${flags.join('')}</div>
+      </div>` : ''}
+      ${sup.notes ? `
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">Notas</div>
+        <div style="font-size:13px;color:var(--text-1);white-space:pre-wrap;">${UI.esc(sup.notes)}</div>
+      </div>` : ''}
+      ${contacts.length ? `
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Contactos adicionales</div>
+        ${contacts.map(c => `<div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div style="flex:1;font-size:13px;">${UI.esc(c.name||'')} ${c.role ? `<span style="color:var(--text-muted);font-size:11px;">(${UI.esc(c.role)})</span>` : ''}</div>
+          <div style="font-size:12px;">${c.email ? `<a href="mailto:${UI.esc(c.email)}" style="color:var(--brand-purple);">${UI.esc(c.email)}</a>` : ''}</div>
+        </div>`).join('')}
+      </div>` : ''}
+      ${slas.length ? `
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">SLAs</div>
+        ${slas.map(sla => `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:600;">${UI.esc(sla.name||'')} <span style="font-size:11px;color:var(--text-muted);">(${UI.esc(sla.category||'')})</span></div>
+          ${sla.metric ? `<div style="font-size:12px;color:var(--text-muted);">${UI.esc(sla.metric)}</div>` : ''}
+        </div>`).join('')}
+      </div>` : ''}
+    `;
+  }
+
+  async function _renderFileTabGate(wrap, sup) {
+    wrap.innerHTML = `
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
+        <strong style="font-size:13px;color:var(--brand-purple);">Ciclo de vida y gate de onboarding</strong>
+        <div id="sup-lifecycle-container" style="margin-top:12px;"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
+      </div>
+    `;
+    await _renderLifecycleSection(sup.id, sup);
+  }
+
+  async function _renderFileTabCuestionarios(wrap, sup) {
+    wrap.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <strong style="font-size:15px;">Cuestionarios — ${UI.esc(sup.name)}</strong>
+      </div>
+      <div id="sup-file-qs-list"><p style="color:var(--text-muted);">Cargando...</p></div>
+    `;
+    const qWrap = document.getElementById('sup-file-qs-list');
+    try {
+      const data = await Api.supplier_questionnaires.list({ supplier_id: sup.id });
+      if (!qWrap) return;
+      if (!data.length) {
+        qWrap.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px 0;">Sin cuestionarios para este proveedor. Crea uno desde la pestana Cuestionarios del modulo de Proveedores.</p>';
+        return;
+      }
+      const now = new Date();
+      qWrap.innerHTML = `<div class="table-wrap"><table class="data">
+        <thead><tr><th>Codigo</th><th>Titulo</th><th>Tipo</th><th>Puntuacion</th><th>Respondido</th><th>Expira</th><th>Evaluacion IA</th><th></th></tr></thead>
+        <tbody>
+          ${data.map(q => {
+            const submitted = q.submitted_at ? new Date(q.submitted_at).toLocaleDateString('es-ES') : null;
+            const expired = q.expires_at && new Date(q.expires_at) < now && !q.submitted_at;
+            const expires = q.expires_at ? new Date(q.expires_at).toLocaleDateString('es-ES') : '-';
+            const isInternal = q.assignment_type === 'internal';
+            const typeHtml = isInternal
+              ? '<span style="font-size:10px;font-weight:600;background:#EDE9FE;color:#7C3AED;padding:2px 6px;border-radius:4px;">Interno</span>'
+              : '<span style="font-size:10px;font-weight:600;background:#E0F2FE;color:#0369A1;padding:2px 6px;border-radius:4px;">Externo</span>';
+            let scoreHtml = '-';
+            if (q.score !== null && q.score !== undefined) {
+              const sc = q.score;
+              const c = sc >= 80 ? '#22C55E' : sc >= 60 ? '#F59E0B' : '#EF4444';
+              scoreHtml = `<span style="font-weight:700;color:${c};">${sc}/100</span>`;
+            }
+            let aiHtml = '-';
+            if (q.ai_review && !q.ai_review.error) {
+              const asc = q.ai_review.ai_score;
+              const ac = asc >= 80 ? '#22C55E' : asc >= 60 ? '#F59E0B' : '#EF4444';
+              aiHtml = `<span style="font-weight:700;color:${ac};">${asc}/100</span>`;
+            }
+            return `<tr style="${expired?'opacity:.6;':''}">
+              <td>${UI.codePill(q.code)}</td>
+              <td><strong>${UI.esc(q.title)}</strong></td>
+              <td>${typeHtml}</td>
+              <td>${scoreHtml}</td>
+              <td style="font-size:12px;">${submitted || (expired ? '<span style="color:#EF4444;font-size:11px;">Expirado</span>' : '<span style="color:#F59E0B;font-size:11px;">Pendiente</span>')}</td>
+              <td style="font-size:12px;">${expires}</td>
+              <td style="font-size:12px;">${aiHtml}</td>
+              <td>
+                ${!q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-qid="${q.id}" data-qact="link">Copiar enlace</button>` : ''}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>`;
+      qWrap.querySelectorAll('[data-qact="link"]').forEach(btn => {
+        const q = data.find(x => x.id == btn.dataset.qid);
+        if (!q) return;
+        btn.onclick = () => {
+          const link = location.origin + '/supplier-q?token=' + encodeURIComponent(q.token);
+          navigator.clipboard.writeText(link).then(() => UI.toast('Enlace copiado al portapapeles', 'success')).catch(() => {});
+        };
+      });
+    } catch (e) {
+      if (qWrap) qWrap.innerHTML = `<p style="color:var(--risk-high);">${UI.esc(e.message)}</p>`;
+    }
+  }
+
+  async function _renderFileTabDocumentos(wrap, sup) {
+    wrap.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <strong style="font-size:15px;">Documentacion — ${UI.esc(sup.name)}</strong>
+        ${Auth.canEdit() ? `<label class="btn btn-sm btn-primary" style="cursor:pointer;">
+          + Adjuntar
+          <input type="file" id="file-doc-upload" style="display:none;"
+            accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.txt,.csv,.png,.jpg,.jpeg,.zip">
+        </label>` : ''}
+      </div>
+      <div id="file-doc-desc-row" style="display:none;gap:6px;align-items:center;margin-bottom:12px;">
+        <input id="file-doc-desc" class="input" placeholder="Descripcion del documento (opcional)" style="flex:1;font-size:12px;">
+        <button id="file-doc-confirm" class="btn btn-sm btn-primary">Subir</button>
+        <button id="file-doc-cancel" class="btn btn-sm">Cancelar</button>
+      </div>
+      <div id="sup-doc-list"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
+    `;
+    _loadDocuments(sup.id);
+    const uploadInput = document.getElementById('file-doc-upload');
+    const descRow = document.getElementById('file-doc-desc-row');
+    if (uploadInput) {
+      uploadInput.onchange = () => {
+        _currentFileDocPending = uploadInput.files[0] || null;
+        if (_currentFileDocPending && descRow) descRow.style.display = 'flex';
+      };
+    }
+    const confirmBtn = document.getElementById('file-doc-confirm');
+    if (confirmBtn) {
+      confirmBtn.onclick = async () => {
+        if (!_currentFileDocPending) return;
+        const desc = document.getElementById('file-doc-desc')?.value.trim() || '';
+        confirmBtn.disabled = true; confirmBtn.textContent = 'Subiendo...';
+        try {
+          await Api.suppliers.uploadDocument(sup.id, _currentFileDocPending, desc || undefined);
+          UI.toast('Documento adjuntado', 'success');
+          _currentFileDocPending = null;
+          if (uploadInput) uploadInput.value = '';
+          if (descRow) descRow.style.display = 'none';
+          _loadDocuments(sup.id);
+        } catch (e) { UI.toast(e.message, 'error'); }
+        finally { confirmBtn.disabled = false; confirmBtn.textContent = 'Subir'; }
+      };
+    }
+    const cancelBtn = document.getElementById('file-doc-cancel');
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        _currentFileDocPending = null;
+        if (uploadInput) uploadInput.value = '';
+        if (descRow) descRow.style.display = 'none';
+      };
+    }
+  }
+
+  async function _renderFileTabHallazgos(wrap, sup) {
+    wrap.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <strong style="font-size:15px;">Hallazgos — ${UI.esc(sup.name)}</strong>
+        <button class="btn btn-sm" onclick="ViewSuppliers._reloadFileHallazgos()">Actualizar</button>
+      </div>
+      <div id="sup-findings-list"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
+    `;
+    _loadSupplierFindings(sup.id);
+  }
+
+  function _reloadFileHallazgos() {
+    if (_currentFileSupplier) _loadSupplierFindings(_currentFileSupplier.id);
+  }
+
+  // ======== FIN EXPEDIENTE ========
 
   async function _loadSupplierFindings(supplierId) {
     const wrap = document.getElementById('sup-findings-list');
@@ -2641,5 +2957,22 @@ const ViewSuppliers = (() => {
     _toggleChecklistItem,
     _recordSignOff,
     _saveConcentrationMitigation,
+    // Gate de onboarding
+    _openSignOffDialog,
+    _undoSignOff,
+    _openBypassDialog,
+    _openForceControlsDialog,
+    _clearOverride,
+    _openDecisionDialog,
+    _addDecisionCondition,
+    _renderGateBlock,
+    _openGateConfig,
+    _gateChainItemRow,
+    // Expediente de proveedor
+    _openSupplierFile,
+    _closeSupplierFile,
+    _openFormFromFile,
+    _setFileTab,
+    _reloadFileHallazgos,
   };
 })();
