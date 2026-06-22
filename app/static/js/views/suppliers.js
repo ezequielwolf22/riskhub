@@ -460,66 +460,56 @@ const ViewSuppliers = (() => {
 
   function _formHtml(s) {
     const v = s || {};
-    const full = 'style="grid-column:1/-1"';
+    // grid-column:1/-1 para que el wrapper ocupe todo el ancho del modal-body (que es grid 2col)
     return `
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px 20px;">
+      <div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 24px;">
 
-        <!-- Fila 1: identificacion -->
+        <!-- Fila 1: identificacion basica -->
         <div><label>Nombre *</label><input id="f-name" class="input" value="${UI.esc(v.name || '')}"></div>
-        <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(v.category || '')}" placeholder="Software, Hardware..."></div>
+        <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(v.category || '')}" placeholder="Software, Hardware, Servicios..."></div>
         <div><label>Nivel de riesgo</label>
           <select id="f-risk-level" class="input">
             ${_rlBands().map(b => `<option value="${b.code}" ${v.risk_level===b.code?'selected':''}>${UI.esc(b.label)}</option>`).join('')}
           </select>
         </div>
-        <div style="display:flex;align-items:flex-end;padding-bottom:6px;">
-          <label style="display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;font-size:13px;">
-            <input type="checkbox" id="f-critical" ${v.is_critical?'checked':''}>
-            Proveedor critico NIS2
-          </label>
-        </div>
 
         <!-- Fila 2: contacto -->
         <div><label>Contacto principal</label><input id="f-contact" class="input" value="${UI.esc(v.contact_name || '')}"></div>
         <div><label>Email principal</label><input id="f-email" class="input" type="email" value="${UI.esc(v.contact_email || '')}"></div>
-        <div><label>CC (alertas y cuestionarios)</label><input id="f-cc-email" class="input" type="email" value="${UI.esc(v.cc_email || '')}" placeholder="responsable@empresa.com"></div>
-        <div><label>Contrato / referencia</label><input id="f-contract" class="input" value="${UI.esc(v.contract_ref || '')}"></div>
+        <div><label>CC alertas y cuestionarios</label><input id="f-cc-email" class="input" type="email" value="${UI.esc(v.cc_email || '')}" placeholder="responsable@empresa.com"></div>
 
-        <!-- Fila 3: fechas + responsable -->
+        <!-- Fila 3: fechas + contrato -->
         <div><label>Ultima evaluacion</label><input type="date" id="f-last-assess" class="input" value="${v.last_assessment_at ? v.last_assessment_at.slice(0,10) : ''}"></div>
         <div><label>Proxima evaluacion</label><input type="date" id="f-next-assess" class="input" value="${v.next_assessment_at ? v.next_assessment_at.slice(0,10) : ''}"></div>
-        <div><label>Responsable interno</label><select id="f-internal-owner" class="input"><option value="">- Sin asignar -</option></select></div>
-        <div><label>Importancia negocio (1-5)</label><input type="number" min="1" max="5" id="f-biz-imp" class="input" value="${v.business_importance || ''}"></div>
+        <div><label>Contrato / referencia</label><input id="f-contract" class="input" value="${UI.esc(v.contract_ref || '')}"></div>
 
-        <!-- Notas (ancho completo) -->
-        <div ${full}><label>Notas / descripcion</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes || '')}</textarea></div>
-
-        <!-- Contactos adicionales -->
-        <div ${full} style="margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div>
-              <strong style="font-size:13px;color:var(--brand-purple);">Contactos adicionales</strong>
-              <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">Responsables tecnicos, legales o de compras.</p>
-            </div>
-            <button type="button" id="sup-add-contact" class="btn btn-sm">+ Anadir</button>
-          </div>
-          <div id="sup-contact-list"></div>
-        </div>
-
-        <!-- Datos internos -->
-        <div ${full} style="margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
-          <strong style="font-size:13px;color:var(--brand-purple);">Datos internos de clasificacion</strong>
-        </div>
+        <!-- Fila 4: clasificacion interna -->
         <div><label>Ubicacion / sede</label><input id="f-location" class="input" value="${UI.esc(v.location || '')}" placeholder="Madrid, ES"></div>
         <div><label>Departamento responsable</label><input id="f-department" class="input" value="${UI.esc(v.department || '')}" placeholder="TI, Legal, Compras..."></div>
+        <div><label>Responsable interno</label><select id="f-internal-owner" class="input"><option value="">- Sin asignar -</option></select></div>
 
-        <!-- TPRM header -->
-        <div ${full} style="margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
-          <strong style="font-size:13px;color:var(--brand-purple);">TPRM — Perfil de riesgo inherente</strong>
-          <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">El tier y el inherent/residual risk se recalculan automaticamente al guardar.</p>
+        <!-- Fila 5: flags + importancia (inline) -->
+        <div style="grid-column:1/-1;display:flex;align-items:center;gap:24px;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--border);margin-top:2px;">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-weight:600;"><input type="checkbox" id="f-critical" ${v.is_critical?'checked':''}> Critico NIS2</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-proc" ${v.is_data_processor?'checked':''}> Encargado GDPR</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-pii" ${v.processes_personal_data?'checked':''}> Trata datos personales</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-nis2" ${v.is_nis2?'checked':''}> NIS2</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-dora" ${v.is_dora?'checked':''}> DORA</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-ens" ${v.is_ens?'checked':''}> ENS</label>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+            <label style="font-size:12px;color:var(--text-muted);white-space:nowrap;">Importancia negocio (1-5)</label>
+            <input type="number" min="1" max="5" id="f-biz-imp" class="input" value="${v.business_importance || ''}" style="width:70px;">
+          </div>
         </div>
 
-        <!-- Fila TPRM 1 -->
+        <!-- Notas -->
+        <div style="grid-column:1/-1;"><label>Notas / descripcion</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes || '')}</textarea></div>
+
+        <!-- TPRM -->
+        <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border);padding-top:8px;">
+          <strong style="font-size:13px;color:var(--brand-purple);">TPRM — Perfil de riesgo inherente</strong>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">El tier y el inherent/residual risk se recalculan automaticamente al guardar.</span>
+        </div>
         <div><label>Tipo de proveedor</label>
           <select id="f-vendor-type" class="input">
             ${['technology','cloud_provider','professional_services','consultancy','hardware','subcontractor','other'].map(o => `<option value="${o}" ${v.vendor_type===o?'selected':''}>${o}</option>`).join('')}
@@ -530,29 +520,26 @@ const ViewSuppliers = (() => {
             ${['none','api_only','saas','paas','iaas','on_prem','read_write','admin_to_our_systems'].map(o => `<option value="${o}" ${v.system_access_type===o?'selected':''}>${o}</option>`).join('')}
           </select>
         </div>
-        <div><label>Sensibilidad de datos (1-5)</label><input type="number" min="1" max="5" id="f-data-sens" class="input" value="${v.data_sensitivity || 2}"></div>
-        <div><label>Volumen de datos (1-5)</label><input type="number" min="1" max="5" id="f-data-vol" class="input" value="${v.data_volume || 2}"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div><label>Sensibilidad datos</label><input type="number" min="1" max="5" id="f-data-sens" class="input" value="${v.data_sensitivity || 2}"></div>
+          <div><label>Volumen datos</label><input type="number" min="1" max="5" id="f-data-vol" class="input" value="${v.data_volume || 2}"></div>
+        </div>
+        <div><label>Criticidad para el negocio</label><input type="number" min="1" max="5" id="f-biz-crit" class="input" value="${v.business_criticality || 3}"></div>
+        <div><label>Riesgo geografico</label><input type="number" min="1" max="5" id="f-geo" class="input" value="${v.geographic_risk || 1}"></div>
 
-        <!-- Fila TPRM 2 -->
-        <div><label>Criticidad para el negocio (1-5)</label><input type="number" min="1" max="5" id="f-biz-crit" class="input" value="${v.business_criticality || 3}"></div>
-        <div><label>Riesgo geografico (1-5)</label><input type="number" min="1" max="5" id="f-geo" class="input" value="${v.geographic_risk || 1}"></div>
-
-        <!-- Flags regulatorios -->
-        <div ${full} style="display:flex;flex-wrap:wrap;gap:20px;padding:6px 0;">
-          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-proc" ${v.is_data_processor?'checked':''}> Encargado GDPR</label>
-          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-pii" ${v.processes_personal_data?'checked':''}> Trata datos personales</label>
-          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-nis2" ${v.is_nis2?'checked':''}> NIS2</label>
-          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-dora" ${v.is_dora?'checked':''}> DORA</label>
-          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-ens" ${v.is_ens?'checked':''}> ENS</label>
+        <!-- Contactos adicionales -->
+        <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong style="font-size:13px;color:var(--brand-purple);">Contactos adicionales</strong>
+            <button type="button" id="sup-add-contact" class="btn btn-sm">+ Anadir</button>
+          </div>
+          <div id="sup-contact-list"></div>
         </div>
 
         <!-- SLAs -->
-        <div ${full} style="margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
+        <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div>
-              <strong style="font-size:13px;color:var(--brand-purple);">SLAs del proveedor</strong>
-              <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">Define los acuerdos de nivel de servicio para luego registrar incumplimientos en Hallazgos.</p>
-            </div>
+            <strong style="font-size:13px;color:var(--brand-purple);">SLAs del proveedor</strong>
             <button type="button" id="sup-add-sla" class="btn btn-sm">+ Anadir SLA</button>
           </div>
           <div id="sup-sla-list"></div>
@@ -560,12 +547,9 @@ const ViewSuppliers = (() => {
 
         ${s ? `
         <!-- Documentacion adjunta -->
-        <div ${full} style="margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
+        <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div>
-              <strong style="font-size:13px;color:var(--brand-purple);">Documentacion adjunta</strong>
-              <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">Contratos, certificaciones, informes de auditoria u otros documentos del proveedor.</p>
-            </div>
+            <strong style="font-size:13px;color:var(--brand-purple);">Documentacion adjunta</strong>
             <label class="btn btn-sm" style="cursor:pointer;">
               + Adjuntar
               <input type="file" id="sup-doc-upload" style="display:none;"
@@ -580,8 +564,8 @@ const ViewSuppliers = (() => {
           </div>
         </div>
 
-        <!-- Ciclo de vida y onboarding -->
-        <div ${full} style="margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
+        <!-- Ciclo de vida -->
+        <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;">
           <strong style="font-size:13px;color:var(--brand-purple);">Ciclo de vida y onboarding</strong>
           <p style="font-size:11px;color:var(--text-muted);margin:2px 0 8px;">Gestiona el stage del proveedor, el checklist de onboarding y los documentos legales.</p>
           <div id="sup-lifecycle-container"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
