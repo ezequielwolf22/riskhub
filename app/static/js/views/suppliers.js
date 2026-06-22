@@ -671,11 +671,14 @@ const ViewSuppliers = (() => {
     { id: 'terminated',   label: 'Terminado'     },
   ];
 
+  // Cache del gate actual para evitar recargas innecesarias
+  let _currentGate = null;
+  let _currentSupplierId = null;
+
   async function _renderLifecycleSection(supplierId, supplierData) {
     const wrap = document.getElementById('sup-lifecycle-container');
     if (!wrap) return;
 
-    // Reload fresh data if not supplied
     let sup = supplierData;
     if (!sup) {
       try {
@@ -684,10 +687,17 @@ const ViewSuppliers = (() => {
       } catch (_) { sup = {}; }
     }
 
+    _currentSupplierId = supplierId;
+    wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">Cargando gate de onboarding...</p>';
+
+    // Cargar evaluacion del gate
+    let gate = null;
+    try {
+      gate = await Api.get('/api/onboarding-gate/' + supplierId + '/evaluate');
+      _currentGate = gate;
+    } catch (_) { gate = null; }
+
     const stage = sup.lifecycle_stage || 'active';
-    const checklist = sup.onboarding_checklist || [];
-    const dpaSignedAt = sup.dpa_signed_at;
-    const ndaSignedAt = sup.nda_signed_at;
     const concentrationFlag = sup.concentration_risk_flag;
 
     const stageButtons = LIFECYCLE_STAGES.map(st => `
@@ -697,55 +707,41 @@ const ViewSuppliers = (() => {
       </button>
     `).join('');
 
+    // Checklist legacy (solo si no hay gate activo)
+    const checklist = sup.onboarding_checklist || [];
     let checklistHtml = '';
-    if (stage === 'onboarding' && checklist.length) {
+    if (stage === 'onboarding' && checklist.length && !gate) {
       const items = checklist.map(item => `
         <div class="lc-checklist-item ${item.completed ? 'completed' : ''}">
           <input type="checkbox" id="lc-item-${UI.esc(item.id)}" ${item.completed ? 'checked' : ''}
             onchange="ViewSuppliers._toggleChecklistItem(${supplierId}, '${UI.esc(item.id)}', this.checked)">
-          <label for="lc-item-${UI.esc(item.id)}">${UI.esc(item.label || item.id)}</label>
+          <label for="lc-item-${UI.esc(item.id)}">${UI.esc(item.title || item.label || item.id)}</label>
         </div>
       `).join('');
-      checklistHtml = `<div class="lc-checklist">
+      checklistHtml = `<div class="lc-checklist" style="margin-top:10px;">
         <strong style="font-size:12px;color:var(--brand-purple);display:block;margin-bottom:6px;">Checklist de onboarding</strong>
         ${items}
       </div>`;
-    } else if (stage === 'onboarding' && !checklist.length) {
-      checklistHtml = `<div class="lc-checklist">
-        <p style="font-size:12px;color:var(--text-muted);">Sin items de checklist configurados para el onboarding.</p>
-      </div>`;
     }
 
-    const _signoffCard = (type, label, signedAt) => {
-      const signed = !!signedAt;
-      const dateStr = signedAt ? new Date(signedAt).toLocaleDateString('es-ES') : null;
-      return `<div class="lc-signoff-card ${signed ? 'signed' : ''}">
-        <div style="font-size:12px;font-weight:700;margin-bottom:4px;">${label}</div>
-        ${signed
-          ? `<div style="font-size:11px;color:#16a34a;">Firmado el ${dateStr}</div>`
-          : `<div style="font-size:11px;color:var(--text-muted);">Pendiente</div>`}
-        ${Auth.canEdit() && !signed ? `
-          <button class="btn btn-sm" style="margin-top:6px;font-size:11px;"
-            onclick="ViewSuppliers._recordSignOff(${supplierId}, '${type}')">
-            Registrar firma
-          </button>` : ''}
-      </div>`;
-    };
+    // Bloque del gate de seguridad
+    const gateHtml = gate ? _renderGateBlock(supplierId, gate, sup) : '';
 
+    // Concentracion DORA
     const concentrationHtml = concentrationFlag ? `
-      <div class="lc-concentration">
+      <div style="margin-top:12px;">
         <div class="alert-box alert-box--warning">
           <strong>Riesgo de concentracion DORA</strong>
           <p style="font-size:12px;margin:4px 0 8px;">Este proveedor supera el 40% de dependencia en procesos criticos.</p>
           <div style="margin-bottom:6px;">
             <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Notas de mitigacion</label>
             <textarea id="lc-concentration-notes" class="input" rows="2"
-              placeholder="Notas de mitigacion...">${UI.esc(sup.concentration_mitigation?.notes || '')}</textarea>
+              placeholder="Notas de mitigacion...">${UI.esc(sup.concentration_risk_notes || '')}</textarea>
           </div>
           <div style="margin-bottom:8px;">
             <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Estrategia de salida (DORA Art.28(8))</label>
             <textarea id="lc-exit-strategy" class="input" rows="2"
-              placeholder="Estrategia de salida...">${UI.esc(sup.concentration_mitigation?.exit_strategy || '')}</textarea>
+              placeholder="Estrategia de salida...">${UI.esc(sup.exit_strategy || '')}</textarea>
           </div>
           ${Auth.canEdit() ? `
           <button class="btn btn-sm btn-primary"
@@ -755,24 +751,209 @@ const ViewSuppliers = (() => {
         </div>
       </div>` : '';
 
+    // Admin: enlace config del gate
+    const adminLink = Auth.isAdmin() ? `
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+        <button class="btn btn-sm" onclick="ViewSuppliers._openGateConfig()"
+          style="font-size:11px;">Configurar gate de onboarding</button>
+      </div>` : '';
+
     wrap.innerHTML = `
       <div class="supplier-lifecycle">
-        <div class="lc-header">
-          <span style="font-size:13px;">Stage actual: <strong>${LIFECYCLE_STAGES.find(x => x.id === stage)?.label || stage}</strong></span>
-          ${Auth.canEdit() ? `<div class="lc-stage-buttons">${stageButtons}</div>` : ''}
+        <div class="lc-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          <span style="font-size:13px;">Stage: <strong>${LIFECYCLE_STAGES.find(x => x.id === stage)?.label || stage}</strong></span>
+          ${Auth.canEdit() ? `<div class="lc-stage-buttons" style="display:flex;flex-wrap:wrap;gap:4px;">${stageButtons}</div>` : ''}
         </div>
         ${checklistHtml}
-        <div class="lc-signoff" style="margin-top:12px;">
-          <h4 style="font-size:12px;font-weight:700;color:var(--brand-purple);margin:0 0 8px;">Documentos legales</h4>
-          <div class="signoff-grid">
-            ${_signoffCard('dpa', 'DPA (Data Processing Agreement)', dpaSignedAt)}
-            ${_signoffCard('nda', 'NDA (Non-Disclosure Agreement)', ndaSignedAt)}
-            ${_signoffCard('contract', 'Contrato', sup.contract_document_id ? true : null)}
-          </div>
-        </div>
+        ${gateHtml}
         ${concentrationHtml}
+        ${adminLink}
       </div>
     `;
+  }
+
+  function _renderGateBlock(supplierId, gate, sup) {
+    const levelLabels = { auto: 'Auto-aprobacion', standard: 'Proceso estandar', manual_review: 'Revision manual CISO' };
+    const levelColors = { auto: '#16a34a', standard: '#d97706', manual_review: '#dc2626' };
+    const score = gate.score || 0;
+    const level = gate.gate_level || 'auto';
+    const effectiveLevel = gate.effective_level || level;
+    const bypassed = gate.override?.type === 'bypass';
+    const forcedControls = gate.override?.type === 'force_controls';
+    const thresholds = gate.thresholds || { auto: 30, manual: 60 };
+
+    // Barra de score
+    const scoreColor = score >= thresholds.manual ? '#dc2626' : (score >= thresholds.auto ? '#d97706' : '#16a34a');
+    const scorePct = Math.min(100, score);
+
+    const overrideBadge = gate.override ? `
+      <span style="margin-left:8px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;
+        background:${gate.override.type === 'bypass' ? '#fef3c7' : '#ede9fe'};
+        color:${gate.override.type === 'bypass' ? '#92400e' : '#5b21b6'};">
+        ${gate.override.type === 'bypass' ? 'BYPASS ACTIVO' : 'CONTROLES FORZADOS'}
+      </span>` : '';
+
+    // Gate status header
+    const gateHeader = `
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <div style="flex:1;min-width:180px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="font-size:12px;font-weight:700;color:var(--brand-purple);">Gate de seguridad</span>
+            <span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;
+              background:${levelColors[effectiveLevel]}18;color:${levelColors[effectiveLevel]};">
+              ${levelLabels[effectiveLevel] || effectiveLevel}
+            </span>
+            ${overrideBadge}
+          </div>
+          <div style="height:6px;background:#e5e7eb;border-radius:999px;overflow:hidden;width:100%;max-width:260px;">
+            <div style="height:100%;width:${scorePct}%;background:${scoreColor};border-radius:999px;transition:width 0.3s;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);max-width:260px;margin-top:2px;">
+            <span>Score TPRM: <strong style="color:${scoreColor};">${score}</strong></span>
+            <span>Auto&lt;${thresholds.auto} | Manual&gt;${thresholds.manual}</span>
+          </div>
+        </div>
+        ${Auth.canEdit() ? `
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
+          ${!gate.override ? `
+            <button class="btn btn-sm" onclick="ViewSuppliers._openBypassDialog(${supplierId})"
+              title="Saltarse el gate con justificacion auditada" style="font-size:11px;">
+              Bypass justificado
+            </button>
+            <button class="btn btn-sm" onclick="ViewSuppliers._openForceControlsDialog(${supplierId})"
+              title="Anadir controles extra obligatorios aunque el score sea bajo" style="font-size:11px;">
+              Forzar controles
+            </button>
+          ` : `
+            <button class="btn btn-sm" onclick="ViewSuppliers._clearOverride(${supplierId})"
+              style="font-size:11px;border-color:#dc2626;color:#dc2626;">
+              Quitar override
+            </button>
+          `}
+        </div>` : ''}
+      </div>`;
+
+    // Info del override activo
+    const overrideInfo = gate.override ? `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;">
+        <strong>${gate.override.type === 'bypass' ? 'Bypass activo' : 'Controles adicionales forzados'}</strong>
+        ${gate.override.justification ? `<br><span style="color:var(--text-muted);">Justificacion: ${UI.esc(gate.override.justification)}</span>` : ''}
+        ${gate.override.at ? `<br><span style="color:var(--text-muted);">${new Date(gate.override.at).toLocaleString('es-ES')}</span>` : ''}
+      </div>` : '';
+
+    // Cadena de firmas
+    const chainItems = gate.sign_off_chain || [];
+    let chainHtml = '';
+    if (chainItems.length) {
+      const itemsHtml = chainItems.map(it => {
+        const isDone = it.signed || it.skipped;
+        const isBlocked = !!it.blocked_by;
+        const dotColor = it.skipped ? '#9ca3af' : (it.signed ? '#16a34a' : (it.required ? '#dc2626' : '#d97706'));
+        const dotLabel = it.skipped ? 'Omitido' : (it.signed ? 'Firmado' : (isBlocked ? 'Bloqueado' : (it.required ? 'Pendiente' : 'Opcional')));
+        const signedDate = it.signed_at ? new Date(it.signed_at).toLocaleDateString('es-ES') : null;
+        const forcedBadge = it.forced ? `<span style="font-size:9px;background:#ede9fe;color:#5b21b6;padding:1px 5px;border-radius:999px;margin-left:4px;font-weight:700;">FORZADO</span>` : '';
+        const gateBadge = it.score_gate ? `<span style="font-size:9px;background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:999px;margin-left:4px;">Score&gt;${it.score_gate}</span>` : '';
+        const depBadge = it.depends_on ? `<span style="font-size:9px;color:var(--text-muted);margin-left:4px;">dep: ${it.depends_on}</span>` : '';
+
+        let actionHtml = '';
+        if (Auth.canEdit() && !isDone && !isBlocked) {
+          actionHtml = `
+            <div style="display:flex;gap:4px;margin-top:4px;">
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;"
+                onclick="ViewSuppliers._openSignOffDialog(${supplierId}, '${it.id}', false)">
+                Registrar firma
+              </button>
+              ${it.bypass_allowed ? `
+              <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;color:#9ca3af;border-color:#e5e7eb;"
+                onclick="ViewSuppliers._openSignOffDialog(${supplierId}, '${it.id}', true)">
+                Omitir
+              </button>` : ''}
+            </div>`;
+        } else if (Auth.isAdmin() && isDone) {
+          actionHtml = `
+            <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;margin-top:3px;color:#9ca3af;border-color:#e5e7eb;"
+              onclick="ViewSuppliers._undoSignOff(${supplierId}, '${it.id}')">
+              Revertir
+            </button>`;
+        }
+
+        return `
+          <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #f5f0fa;">
+            <div style="width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;margin-top:5px;"></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:11px;font-weight:600;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
+                ${UI.esc(it.label)}${forcedBadge}${gateBadge}${depBadge}
+              </div>
+              <div style="font-size:10px;color:${dotColor};font-weight:600;">${dotLabel}
+                ${signedDate ? `<span style="color:var(--text-muted);font-weight:400;"> — ${signedDate}${it.signed_by_name ? ' por ' + UI.esc(it.signed_by_name) : ''}</span>` : ''}
+                ${it.skipped && it.skip_justification ? `<span style="color:var(--text-muted);font-weight:400;"> — ${UI.esc(it.skip_justification)}</span>` : ''}
+                ${isBlocked ? `<span style="color:var(--text-muted);font-weight:400;"> — esperando: ${it.blocked_by}</span>` : ''}
+              </div>
+              ${actionHtml}
+            </div>
+          </div>`;
+      }).join('');
+
+      chainHtml = `
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <strong style="font-size:12px;color:var(--brand-purple);">Cadena de firmas</strong>
+            <span style="font-size:10px;color:${gate.sign_offs_complete ? '#16a34a' : '#dc2626'};font-weight:700;">
+              ${gate.sign_offs_complete ? 'Completa' : gate.blocking_items?.length + ' pendiente(s)'}
+            </span>
+          </div>
+          ${itemsHtml}
+        </div>`;
+    } else {
+      chainHtml = `<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Sin items de firma configurados para este proveedor.</p>`;
+    }
+
+    // Decision formal
+    const decision = gate.decision;
+    let decisionHtml = '';
+    if (decision) {
+      const decColors = { approved: '#16a34a', rejected: '#dc2626', conditional: '#d97706' };
+      const decLabels = { approved: 'Aprobado', rejected: 'Rechazado', conditional: 'Condicional' };
+      decisionHtml = `
+        <div style="background:${decColors[decision.status] || '#9ca3af'}10;border:1.5px solid ${decColors[decision.status] || '#9ca3af'};border-radius:6px;padding:8px 10px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+            <div>
+              <span style="font-size:11px;font-weight:700;color:${decColors[decision.status] || '#9ca3af'};">
+                Decision: ${decLabels[decision.status] || decision.status}
+              </span>
+              ${decision.at ? `<span style="font-size:10px;color:var(--text-muted);margin-left:6px;">${new Date(decision.at).toLocaleString('es-ES')}</span>` : ''}
+              ${decision.notes ? `<p style="font-size:11px;color:var(--text-primary);margin:4px 0 0;">${UI.esc(decision.notes)}</p>` : ''}
+            </div>
+            ${Auth.canEdit() ? `
+            <button class="btn btn-sm" style="font-size:10px;flex-shrink:0;"
+              onclick="ViewSuppliers._openDecisionDialog(${supplierId})">Cambiar</button>` : ''}
+          </div>
+          ${decision.conditions && decision.conditions.length ? `
+            <div style="margin-top:6px;">
+              <div style="font-size:10px;font-weight:700;color:var(--text-muted);margin-bottom:3px;">Condiciones:</div>
+              ${decision.conditions.map(c => `
+                <div style="font-size:11px;display:flex;align-items:center;gap:6px;">
+                  <span style="color:#d97706;">&#9679;</span> ${UI.esc(c.description || '')}
+                  ${c.due_days ? `<span style="font-size:10px;color:var(--text-muted);">(${c.due_days}d)</span>` : ''}
+                  ${c.vendor_issue_id ? `<a href="#/vendor-issues" style="font-size:10px;color:var(--brand-purple);">VIS</a>` : ''}
+                </div>`).join('')}
+            </div>` : ''}
+        </div>`;
+    } else if (Auth.canEdit()) {
+      decisionHtml = `
+        <div style="margin-bottom:10px;">
+          <button class="btn btn-sm btn-primary" onclick="ViewSuppliers._openDecisionDialog(${supplierId})"
+            style="font-size:11px;">Registrar decision de seguridad</button>
+        </div>`;
+    }
+
+    return `
+      <div style="border:1.5px solid #ede7f6;border-radius:8px;padding:12px;margin-top:10px;background:#faf8ff;">
+        ${gateHeader}
+        ${overrideInfo}
+        ${decisionHtml}
+        ${chainHtml}
+      </div>`;
   }
 
   async function _changeStage(supplierId, stage) {
@@ -793,6 +974,248 @@ const ViewSuppliers = (() => {
     } catch (e) { UI.toast(e.message || 'Error al actualizar checklist', 'error'); }
   }
 
+  // --- Sign-off dialog (firma o salto con justificacion) ---
+  function _openSignOffDialog(supplierId, itemId, skipMode) {
+    const title = skipMode ? 'Omitir item: ' + itemId : 'Registrar firma: ' + itemId;
+    UI.modal(title, `
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        ${!skipMode ? `
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Firmado por</label>
+            <input id="so-signed-by" class="input" placeholder="Nombre del firmante o responsable">
+          </div>` : ''}
+        ${skipMode ? `
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion para omitir *</label>
+            <textarea id="so-skip-justification" class="input" rows="3"
+              placeholder="Indica por que se omite este requisito..."></textarea>
+          </div>` : ''}
+        ${!skipMode ? `
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion / notas (opcional)</label>
+            <textarea id="so-notes" class="input" rows="2" placeholder="Notas adicionales..."></textarea>
+          </div>` : ''}
+      </div>
+    `, {
+      actions: `
+        <button class="btn" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="so-confirm">
+          ${skipMode ? 'Omitir' : 'Confirmar firma'}
+        </button>`,
+      width: '420px',
+    });
+    document.getElementById('so-confirm').onclick = async () => {
+      const payload = { skipped: skipMode };
+      if (skipMode) {
+        payload.skip_justification = document.getElementById('so-skip-justification')?.value.trim() || '';
+        if (!payload.skip_justification) { UI.toast('La justificacion es obligatoria', 'error'); return; }
+      } else {
+        payload.signed_by = document.getElementById('so-signed-by')?.value.trim() || '';
+      }
+      try {
+        await Api.patch('/api/onboarding-gate/' + supplierId + '/sign-off/' + itemId, payload);
+        UI.closeModal();
+        UI.toast(skipMode ? 'Item omitido' : 'Firma registrada', 'success');
+        _renderLifecycleSection(supplierId, null);
+      } catch (e) { UI.toast(e.message || 'Error', 'error'); }
+    };
+  }
+
+  async function _undoSignOff(supplierId, itemId) {
+    if (!confirm('Revertir la firma de "' + itemId + '"?')) return;
+    try {
+      await Api.del('/api/onboarding-gate/' + supplierId + '/sign-off/' + itemId);
+      UI.toast('Firma revertida', 'success');
+      _renderLifecycleSection(supplierId, null);
+    } catch (e) { UI.toast(e.message || 'Error', 'error'); }
+  }
+
+  // --- Bypass dialog ---
+  function _openBypassDialog(supplierId) {
+    UI.modal('Bypass del gate de seguridad', `
+      <div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px;margin-bottom:12px;font-size:12px;">
+        <strong>Atencion:</strong> El bypass omite los requisitos del gate basados en score.
+        La justificacion quedara registrada en el log de auditoria.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion * (obligatoria)</label>
+          <textarea id="bypass-justification" class="input" rows="3"
+            placeholder="Razones de negocio o tecnicas que justifican el bypass..."></textarea>
+        </div>
+      </div>
+    `, {
+      actions: `
+        <button class="btn" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn" id="bypass-confirm" style="background:#d97706;color:#fff;border-color:#d97706;">
+          Aplicar bypass
+        </button>`,
+      width: '460px',
+    });
+    document.getElementById('bypass-confirm').onclick = async () => {
+      const justification = document.getElementById('bypass-justification')?.value.trim() || '';
+      if (!justification) { UI.toast('La justificacion es obligatoria', 'error'); return; }
+      try {
+        await Api.post('/api/onboarding-gate/' + supplierId + '/override', { type: 'bypass', justification });
+        UI.closeModal();
+        UI.toast('Bypass aplicado — registrado en auditoria', 'success');
+        _renderLifecycleSection(supplierId, null);
+      } catch (e) { UI.toast(e.message || 'Error', 'error'); }
+    };
+  }
+
+  // --- Force controls dialog ---
+  function _openForceControlsDialog(supplierId) {
+    const gate = _currentGate;
+    const existingChain = gate?.sign_off_chain || [];
+    const chainIds = existingChain.map(i => i.id);
+    // Items base que se pueden forzar aunque no apliquen por score/condicion
+    const candidates = [
+      { id: 'nda', label: 'NDA / Confidencialidad' },
+      { id: 'dpa', label: 'DPA Art. 28 GDPR' },
+      { id: 'cross_border', label: 'Clausulas transferencia internacional' },
+      { id: 'nis2_addendum', label: 'Addendum NIS2 Art. 21' },
+      { id: 'dora_exit', label: 'Estrategia de salida DORA' },
+      { id: 'ciso_approval', label: 'Aprobacion CISO' },
+      { id: 'contract', label: 'Contrato principal' },
+    ].filter(c => !existingChain.find(i => i.id === c.id && i.applicable));
+
+    UI.modal('Forzar controles adicionales', `
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+        Marca los controles que deben ser obligatorios para este proveedor,
+        independientemente del score o las condiciones regulatorias.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+        ${candidates.map(c => `
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+            <input type="checkbox" class="force-ctrl-chk" value="${c.id}">
+            ${UI.esc(c.label)}
+          </label>`).join('')}
+        ${!candidates.length ? '<p style="font-size:12px;color:var(--text-muted);">Todos los items ya estan en la cadena.</p>' : ''}
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion</label>
+        <textarea id="force-justification" class="input" rows="2"
+          placeholder="Razon para forzar estos controles..."></textarea>
+      </div>
+    `, {
+      actions: `
+        <button class="btn" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="force-confirm">Aplicar</button>`,
+      width: '460px',
+    });
+    document.getElementById('force-confirm').onclick = async () => {
+      const checked = [...document.querySelectorAll('.force-ctrl-chk:checked')].map(c => c.value);
+      if (!checked.length) { UI.toast('Selecciona al menos un control', 'error'); return; }
+      const justification = document.getElementById('force-justification')?.value.trim() || '';
+      try {
+        await Api.post('/api/onboarding-gate/' + supplierId + '/override', {
+          type: 'force_controls', justification, extra_signoffs: checked,
+        });
+        UI.closeModal();
+        UI.toast('Controles forzados aplicados', 'success');
+        _renderLifecycleSection(supplierId, null);
+      } catch (e) { UI.toast(e.message || 'Error', 'error'); }
+    };
+  }
+
+  // --- Clear override ---
+  async function _clearOverride(supplierId) {
+    if (!confirm('Quitar el override del gate?')) return;
+    try {
+      await Api.post('/api/onboarding-gate/' + supplierId + '/override', { type: 'clear' });
+      UI.toast('Override eliminado', 'success');
+      _renderLifecycleSection(supplierId, null);
+    } catch (e) { UI.toast(e.message || 'Error', 'error'); }
+  }
+
+  // --- Decision dialog ---
+  function _openDecisionDialog(supplierId) {
+    UI.modal('Decision formal de ciberseguridad', `
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Decision *</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
+              padding:6px 12px;border:1.5px solid #e5e7eb;border-radius:6px;flex:1;justify-content:center;">
+              <input type="radio" name="dec-type" value="approved"> Aprobado
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
+              padding:6px 12px;border:1.5px solid #e5e7eb;border-radius:6px;flex:1;justify-content:center;">
+              <input type="radio" name="dec-type" value="conditional"> Condicional
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;
+              padding:6px 12px;border:1.5px solid #e5e7eb;border-radius:6px;flex:1;justify-content:center;">
+              <input type="radio" name="dec-type" value="rejected"> Rechazado
+            </label>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Notas / razonamiento</label>
+          <textarea id="dec-notes" class="input" rows="3"
+            placeholder="Fundamentos de la decision, hallazgos relevantes..."></textarea>
+        </div>
+        <div id="dec-conditions-wrap" style="display:none;">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">
+            Condiciones de alta (se crean como hallazgos VIS)
+          </label>
+          <div id="dec-conditions-list"></div>
+          <button type="button" class="btn btn-sm" onclick="ViewSuppliers._addDecisionCondition()"
+            style="margin-top:4px;">+ Anadir condicion</button>
+        </div>
+      </div>
+    `, {
+      actions: `
+        <button class="btn" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="dec-confirm">Guardar decision</button>`,
+      width: '500px',
+    });
+
+    document.querySelectorAll('input[name="dec-type"]').forEach(r => {
+      r.onchange = () => {
+        const wrap = document.getElementById('dec-conditions-wrap');
+        if (wrap) wrap.style.display = r.value === 'conditional' ? '' : 'none';
+      };
+    });
+
+    document.getElementById('dec-confirm').onclick = async () => {
+      const decision = document.querySelector('input[name="dec-type"]:checked')?.value;
+      if (!decision) { UI.toast('Selecciona una decision', 'error'); return; }
+      const notes = document.getElementById('dec-notes')?.value.trim() || '';
+      const conditions = [...document.querySelectorAll('.dec-condition-row')].map(row => ({
+        description: row.querySelector('.dec-cond-desc')?.value.trim() || '',
+        due_days: parseInt(row.querySelector('.dec-cond-days')?.value || '30', 10),
+      })).filter(c => c.description);
+      if (decision === 'conditional' && !conditions.length) {
+        UI.toast('Anade al menos una condicion', 'error'); return;
+      }
+      try {
+        const r = await Api.post('/api/onboarding-gate/' + supplierId + '/decision', { decision, notes, conditions });
+        UI.closeModal();
+        UI.toast('Decision registrada' + (r.auto_promoted ? ' — proveedor promovido a Activo' : ''), 'success');
+        _renderLifecycleSection(supplierId, null);
+      } catch (e) { UI.toast(e.message || 'Error', 'error'); }
+    };
+  }
+
+  let _decConditionCount = 0;
+  function _addDecisionCondition() {
+    const list = document.getElementById('dec-conditions-list');
+    if (!list) return;
+    _decConditionCount++;
+    const row = document.createElement('div');
+    row.className = 'dec-condition-row';
+    row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center;';
+    row.innerHTML = `
+      <input class="input dec-cond-desc" style="flex:1;font-size:12px;" placeholder="Descripcion de la condicion...">
+      <input class="input dec-cond-days" type="number" min="1" max="365" value="30"
+        style="width:60px;font-size:12px;" title="Dias para cumplir">
+      <button type="button" class="btn btn-sm" style="padding:4px 8px;color:#dc2626;"
+        onclick="this.parentElement.remove()">X</button>`;
+    list.appendChild(row);
+  }
+
+  // --- Legacy sign-off (retrocompat con el endpoint antiguo) ---
   async function _recordSignOff(supplierId, type) {
     const signedBy = prompt('Nombre del firmante:');
     if (!signedBy) return;
@@ -810,6 +1233,141 @@ const ViewSuppliers = (() => {
       await Api.patch('/api/suppliers/' + supplierId + '/concentration-mitigation', { notes, exit_strategy: exitStrategy });
       UI.toast('Mitigacion de concentracion guardada', 'success');
     } catch (e) { UI.toast(e.message || 'Error al guardar mitigacion', 'error'); }
+  }
+
+  // --- Admin: config del gate ---
+  async function _openGateConfig() {
+    let cfg = {};
+    try { cfg = await Api.get('/api/onboarding-gate/config'); } catch (_) {}
+
+    const chain = cfg.sign_off_chain || [];
+
+    UI.modal('Configuracion del gate de onboarding', `
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div>
+          <strong style="font-size:13px;color:var(--brand-purple);display:block;margin-bottom:8px;">Umbrales de score TPRM</strong>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:140px;">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Auto-aprobacion por debajo de</label>
+              <input id="gc-auto-below" type="number" min="0" max="100" class="input" value="${cfg.auto_approve_below ?? 30}">
+              <p style="font-size:10px;color:var(--text-muted);margin:2px 0 0;">Score &lt; X: alta directa sin revisor</p>
+            </div>
+            <div style="flex:1;min-width:140px;">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Revision manual por encima de</label>
+              <input id="gc-manual-above" type="number" min="0" max="100" class="input" value="${cfg.manual_review_above ?? 60}">
+              <p style="font-size:10px;color:var(--text-muted);margin:2px 0 0;">Score &gt; X: revisor CISO obligatorio</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <strong style="font-size:13px;color:var(--brand-purple);display:block;margin-bottom:8px;">Politica de bypass y forzado</strong>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:140px;">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Rol minimo para bypass</label>
+              <select id="gc-bypass-role" class="input">
+                <option value="admin" ${cfg.bypass_min_role === 'admin' ? 'selected' : ''}>Solo admin</option>
+                <option value="analyst" ${cfg.bypass_min_role === 'analyst' ? 'selected' : ''}>Analyst o superior</option>
+              </select>
+            </div>
+            <div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:6px;padding-top:20px;">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+                <input type="checkbox" id="gc-bypass-justif" ${cfg.bypass_requires_justification !== false ? 'checked' : ''}>
+                Justificacion obligatoria
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+                <input type="checkbox" id="gc-force-allowed" ${cfg.force_controls_allowed !== false ? 'checked' : ''}>
+                Permitir forzar controles
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong style="font-size:13px;color:var(--brand-purple);">Cadena de firmas</strong>
+            <button type="button" class="btn btn-sm" id="gc-add-item">+ Anadir item</button>
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
+            Define los documentos/aprobaciones en orden. Cada empresa configura la suya.
+            <em>score_gate</em>: solo aplica si el score supera ese valor.
+            <em>depends_on</em>: ID del item que debe firmarse antes.
+            <em>required_if</em>: is_data_processor, is_nis2, is_dora, cross_border_transfers.
+          </p>
+          <div id="gc-chain-list">
+            ${chain.map((it, i) => _gateChainItemRow(it, i)).join('')}
+          </div>
+        </div>
+      </div>
+    `, {
+      actions: `
+        <button class="btn" onclick="UI.closeModal()">Cancelar</button>
+        <button class="btn btn-primary" id="gc-save">Guardar configuracion</button>`,
+      width: '640px',
+    });
+
+    document.getElementById('gc-add-item').onclick = () => {
+      const list = document.getElementById('gc-chain-list');
+      if (!list) return;
+      const idx = list.children.length;
+      const div = document.createElement('div');
+      div.innerHTML = _gateChainItemRow({ id: '', label: '', required: false, bypass_allowed: true }, idx);
+      list.appendChild(div.firstElementChild);
+    };
+
+    document.getElementById('gc-save').onclick = async () => {
+      const autoBelow = parseInt(document.getElementById('gc-auto-below')?.value || '30', 10);
+      const manualAbove = parseInt(document.getElementById('gc-manual-above')?.value || '60', 10);
+      if (autoBelow >= manualAbove) { UI.toast('auto_approve_below debe ser menor que manual_review_above', 'error'); return; }
+
+      const chainItems = [...document.querySelectorAll('.gc-chain-row')].map(row => ({
+        id: row.querySelector('.gc-item-id')?.value.trim() || '',
+        label: row.querySelector('.gc-item-label')?.value.trim() || '',
+        required: row.querySelector('.gc-item-required')?.checked || false,
+        required_if: row.querySelector('.gc-item-req-if')?.value || null,
+        depends_on: row.querySelector('.gc-item-dep')?.value.trim() || null,
+        score_gate: parseInt(row.querySelector('.gc-item-score-gate')?.value || '0', 10) || null,
+        bypass_allowed: row.querySelector('.gc-item-bypass')?.checked !== false,
+      })).filter(it => it.id && it.label);
+
+      try {
+        await Api.put('/api/onboarding-gate/config', {
+          auto_approve_below: autoBelow,
+          manual_review_above: manualAbove,
+          bypass_min_role: document.getElementById('gc-bypass-role')?.value || 'admin',
+          bypass_requires_justification: document.getElementById('gc-bypass-justif')?.checked !== false,
+          force_controls_allowed: document.getElementById('gc-force-allowed')?.checked !== false,
+          sign_off_chain: chainItems,
+        });
+        UI.closeModal();
+        UI.toast('Configuracion guardada', 'success');
+        if (_currentSupplierId) _renderLifecycleSection(_currentSupplierId, null);
+      } catch (e) { UI.toast(e.message || 'Error al guardar', 'error'); }
+    };
+  }
+
+  function _gateChainItemRow(it, idx) {
+    const reqIfOpts = ['', 'is_data_processor', 'is_nis2', 'is_dora', 'cross_border_transfers', 'is_ens'];
+    return `
+      <div class="gc-chain-row" style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px 24px;gap:4px;align-items:center;margin-bottom:4px;">
+        <input class="input gc-item-id" style="font-size:11px;" placeholder="ID unico" value="${UI.esc(it.id || '')}">
+        <input class="input gc-item-label" style="font-size:11px;" placeholder="Etiqueta visible" value="${UI.esc(it.label || '')}">
+        <select class="input gc-item-req-if" style="font-size:11px;">
+          ${reqIfOpts.map(o => `<option value="${o}" ${it.required_if === o ? 'selected' : ''}>${o || 'siempre'}</option>`).join('')}
+        </select>
+        <input class="input gc-item-dep" style="font-size:11px;" placeholder="dep: ID" value="${UI.esc(it.depends_on || '')}">
+        <input class="input gc-item-score-gate" type="number" min="0" max="100" style="font-size:11px;" placeholder="score>" value="${it.score_gate || ''}">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+          <label title="Obligatorio siempre" style="font-size:9px;cursor:pointer;">
+            <input type="checkbox" class="gc-item-required" ${it.required ? 'checked' : ''}> req
+          </label>
+          <label title="Se puede omitir" style="font-size:9px;cursor:pointer;">
+            <input type="checkbox" class="gc-item-bypass" ${it.bypass_allowed !== false ? 'checked' : ''}> omit
+          </label>
+        </div>
+        <button type="button" style="font-size:11px;background:none;border:none;color:#dc2626;cursor:pointer;padding:0;"
+          onclick="this.closest('.gc-chain-row').remove()">X</button>
+      </div>`;
   }
 
   async function _loadSupplierFindings(supplierId) {

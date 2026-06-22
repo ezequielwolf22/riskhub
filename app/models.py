@@ -865,6 +865,37 @@ class Supplier(Base):
     concentration_risk_flag = Column(Boolean, default=False)  # True si >40% procesos criticos dependen de este proveedor
     concentration_risk_mitigated_at = Column(DateTime, nullable=True)
     concentration_risk_notes = Column(Text, nullable=True)
+    # v5.8 — Gate de onboarding cyber: override, decision formal, cadena de firmas
+    gate_override_type = Column(String(16), nullable=True)          # bypass | force_controls
+    gate_override_justification = Column(Text, nullable=True)
+    gate_override_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    gate_override_at = Column(DateTime, nullable=True)
+    forced_signoffs = Column(JSON, nullable=True)                   # IDs extra forzados independientemente del score
+    onboarding_decision = Column(String(16), nullable=True)         # approved | rejected | conditional
+    onboarding_decision_notes = Column(Text, nullable=True)
+    onboarding_decision_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    onboarding_decision_at = Column(DateTime, nullable=True)
+    onboarding_conditions = Column(JSON, nullable=True)             # [{id, description, due_days, vendor_issue_id}]
+    sign_off_chain_state = Column(JSON, nullable=True)              # [{id, signed_at, signed_by_name, signed_by_user_id, doc_id, skipped, skip_justification}]
+
+
+class OnboardingGateConfig(Base):
+    """Configuracion del gate de onboarding de proveedores — editable por admin."""
+    __tablename__ = "onboarding_gate_configs"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    # Umbrales de score TPRM (0-100): auto-aproba / standard / revision manual
+    auto_approve_below = Column(Integer, default=30)
+    manual_review_above = Column(Integer, default=60)
+    # Cadena de firmas ordenada — [{id, label, required, required_if, depends_on, score_gate, bypass_allowed}]
+    sign_off_chain = Column(JSON, nullable=True)
+    # Politica de bypass y forzado
+    bypass_min_role = Column(String(16), default="admin")           # admin | analyst
+    bypass_requires_justification = Column(Boolean, default=True)
+    force_controls_allowed = Column(Boolean, default=True)
+    updated_at = Column(DateTime, nullable=True)
+    updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
 
 
 # ---------- NO CONFORMIDADES / ACCIONES CORRECTIVAS (ISO 27001 cl. 10.1) ----------
