@@ -49,7 +49,7 @@ const UI = {
 
   modal(title, html, opts = {}) {
     const root = document.getElementById('modal-root');
-    const widthStyle = opts.width ? `max-width:${opts.width};width:95vw;` : '';
+    const widthStyle = `max-width:${opts.width || 'min(1100px, 95vw)'};width:95vw;`;
     root.innerHTML = `
       <div class="modal-bg" id="modal-bg">
         <div class="modal" style="${widthStyle}">
@@ -70,7 +70,7 @@ const UI = {
   openModal(innerHtml, opts = {}) {
     /* Renderiza HTML crudo dentro del contenedor modal (sin title fijo). */
     const root = document.getElementById('modal-root');
-    const width = opts.width || '720px';
+    const width = opts.width || 'min(1100px, 95vw)';
     root.innerHTML = `
       <div class="modal-bg" id="modal-bg">
         <div class="modal" style="max-width:${width};width:95vw;">
