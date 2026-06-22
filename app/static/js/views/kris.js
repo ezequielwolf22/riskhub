@@ -1,6 +1,48 @@
 /* Vista KRIs / KPIs — gestion de indicadores clave de riesgo y rendimiento */
 const ViewKRIs = {
   _showHidden: false,
+  _category: 'all',
+  _statusFilter: 'all',
+
+  // Mapa de categoria -> metric_types que pertenecen a ella
+  _CATEGORIES: {
+    riesgos: [
+      'residual_level', 'inherent_level', 'kri_critical_risks', 'kri_stale_risks',
+      'kpi_treatment_rate', 'kpi_mttt', 'kpi_risk_reduction_avg',
+      'kpi_appetite_compliance', 'kpi_asset_coverage',
+      'kpi_risk_no_owner_rate', 'kpi_high_risks_no_plan',
+    ],
+    controles: [
+      'control_maturity', 'overdue_tasks',
+      'kpi_control_coverage', 'kpi_control_maturity_avg',
+    ],
+    tprm: [
+      'kri_high_risk_suppliers', 'kpi_supplier_coverage',
+      'kpi_supplier_contract_expiry', 'kpi_supplier_critical_issues',
+      'kpi_vendor_issue_mttr', 'kpi_dora_suppliers_assessed',
+    ],
+    bcp: [
+      'kpi_bcp_coverage', 'kpi_bcp_rto_achievement',
+      'kpi_bcp_test_frequency', 'kpi_critical_processes_bcp',
+    ],
+    incidentes: [
+      'open_incidents', 'open_ncs', 'kri_critical_cves',
+      'kpi_mttr_incidents', 'kpi_nis2_notification_rate',
+    ],
+    cumplimiento: [
+      'kpi_policy_review', 'kpi_nc_closure_rate',
+    ],
+  },
+
+  _CATEGORY_LABELS: {
+    all: 'Todos',
+    riesgos: 'Riesgos',
+    controles: 'Controles',
+    tprm: 'TPRM',
+    bcp: 'BCP',
+    incidentes: 'Incidentes / NCs',
+    cumplimiento: 'Cumplimiento',
+  },
 
   async render(el) {
     el.innerHTML = `
@@ -37,7 +79,6 @@ const ViewKRIs = {
   },
 
   async _reload() {
-    // Re-renderiza la pestana activa
     const active = document.querySelector('[data-hub="kri-inner"] .tab-panel:not([hidden])');
     if (active) {
       const type = active.id.includes('kpis') ? 'kpi' : 'kri';
@@ -45,20 +86,112 @@ const ViewKRIs = {
     }
   },
 
+  _filterBar(type) {
+    const cats = Object.entries(ViewKRIs._CATEGORY_LABELS);
+    const statusOpts = [
+      { v: 'all', l: 'Todos los estados' },
+      { v: 'breach', l: 'Breach' },
+      { v: 'warning', l: 'Warning' },
+      { v: 'normal', l: 'Normal' },
+    ];
+
+    const chipStyle = (active) =>
+      `display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.78rem;cursor:pointer;border:1px solid;transition:all .15s;` +
+      (active
+        ? `background:var(--brand-purple);color:#fff;border-color:var(--brand-purple);`
+        : `background:transparent;color:var(--text-muted);border-color:var(--border-color,#ddd);`);
+
+    const statusBadge = (active, v) => {
+      const colors = { breach: 'var(--brand-orange)', warning: '#f59e0b', normal: 'var(--success,#22c55e)', all: 'var(--text-muted)' };
+      return `display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.78rem;cursor:pointer;border:1px solid;transition:all .15s;` +
+        (active
+          ? `background:${colors[v]};color:#fff;border-color:${colors[v]};`
+          : `background:transparent;color:var(--text-muted);border-color:var(--border-color,#ddd);`);
+    };
+
+    return `
+      <div id="kri-filters-${type}" style="margin-bottom:14px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+          <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">Categoria:</span>
+          ${cats.map(([v, l]) => `
+            <span data-kri-cat="${v}" data-kri-type="${type}"
+              style="${chipStyle(ViewKRIs._category === v)}">${l}</span>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">Estado:</span>
+          ${statusOpts.map(({ v, l }) => `
+            <span data-kri-status="${v}" data-kri-type="${type}"
+              style="${statusBadge(ViewKRIs._statusFilter === v, v)}">${l}</span>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  },
+
+  _applyFilters(items) {
+    let result = items;
+    if (ViewKRIs._category !== 'all') {
+      const allowed = ViewKRIs._CATEGORIES[ViewKRIs._category] || [];
+      result = result.filter(k => allowed.includes(k.metric_type));
+    }
+    if (ViewKRIs._statusFilter !== 'all') {
+      result = result.filter(k => k.status === ViewKRIs._statusFilter);
+    }
+    return result;
+  },
+
+  _bindFilterClicks(type) {
+    document.querySelectorAll(`[data-kri-cat][data-kri-type="${type}"]`).forEach(el => {
+      el.onclick = () => {
+        ViewKRIs._category = el.dataset.kriCat;
+        ViewKRIs._reload();
+      };
+    });
+    document.querySelectorAll(`[data-kri-status][data-kri-type="${type}"]`).forEach(el => {
+      el.onclick = () => {
+        ViewKRIs._statusFilter = el.dataset.kriStatus;
+        ViewKRIs._reload();
+      };
+    });
+  },
+
   async _renderList(el, type) {
     el.innerHTML = '<div class="notice">Cargando...</div>';
     try {
       const params = new URLSearchParams({ indicator_type: type, active_only: 'false' });
       if (ViewKRIs._showHidden) params.set('show_hidden', 'true');
-      const items = await Api.get(`/api/kris?${params}`);
-      if (!items.length) {
-        el.innerHTML = `<div class="notice">
-          No hay ${type === 'kpi' ? 'KPIs' : 'KRIs'} configurados.
-          ${type === 'kpi' ? '<br><button class="btn btn-ghost" onclick="ViewKRIs._seedKpis()">Inicializar KPIs por defecto</button>' : ''}
-        </div>`;
+      const allItems = await Api.get(`/api/kris?${params}`);
+
+      const filtered = ViewKRIs._applyFilters(allItems);
+      const totalLabel = filtered.length !== allItems.length
+        ? `${filtered.length} de ${allItems.length}`
+        : `${allItems.length}`;
+
+      if (!allItems.length) {
+        el.innerHTML = `
+          ${ViewKRIs._filterBar(type)}
+          <div class="notice">
+            No hay ${type === 'kpi' ? 'KPIs' : 'KRIs'} configurados.
+            ${type === 'kpi' ? '<br><button class="btn btn-ghost" onclick="ViewKRIs._seedKpis()">Inicializar KPIs por defecto</button>' : ''}
+          </div>`;
+        ViewKRIs._bindFilterClicks(type);
         return;
       }
-      el.innerHTML = `<div class="kri-grid">${items.map(k => ViewKRIs._cardHtml(k)).join('')}</div>`;
+
+      el.innerHTML = `
+        ${ViewKRIs._filterBar(type)}
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">
+          Mostrando ${totalLabel} indicador${filtered.length !== 1 ? 'es' : ''}
+        </div>
+        ${filtered.length
+          ? `<div class="kri-grid">${filtered.map(k => ViewKRIs._cardHtml(k)).join('')}</div>`
+          : `<div class="notice">Ningun indicador coincide con los filtros seleccionados.</div>`
+        }
+      `;
+
+      ViewKRIs._bindFilterClicks(type);
+
       el.querySelectorAll('[data-kri-eval]').forEach(btn => {
         btn.onclick = () => ViewKRIs._evalOne(parseInt(btn.dataset.kriEval));
       });
@@ -203,6 +336,10 @@ const ViewKRIs = {
       { v: 'open_ncs', l: 'No conformidades mayores abiertas', t: 'kri' },
       { v: 'control_maturity', l: 'Madurez media de controles', t: 'kri' },
       { v: 'overdue_tasks', l: 'Tareas de tratamiento vencidas', t: 'kri' },
+      { v: 'kri_critical_risks', l: 'Riesgos criticos activos (#)', t: 'kri' },
+      { v: 'kri_stale_risks', l: 'Riesgos sin revisar >90 dias (#)', t: 'kri' },
+      { v: 'kri_critical_cves', l: 'CVEs criticos/altos sin remediar (#)', t: 'kri' },
+      { v: 'kri_high_risk_suppliers', l: 'Proveedores Tier-1/2 con riesgo alto (#)', t: 'kri' },
       // KPI
       { v: 'kpi_treatment_rate', l: 'Tasa de tratamiento riesgos altos (%)', t: 'kpi' },
       { v: 'kpi_mttt', l: 'Tiempo medio de tratamiento (dias)', t: 'kpi' },
