@@ -10,30 +10,42 @@ class IPOSINTService:
     """Inteligencia sobre direcciones IP usando APIs publicas gratuitas."""
 
     async def get_ip_info(self, ip: str) -> Optional[dict]:
-        """Geolocalizacion, ISP y ASN via ip-api.com (gratis, 45 req/min)."""
+        """Geolocalizacion, ISP y ASN via ipinfo.io (HTTPS, gratuito, 50k req/mes)."""
         try:
-            fields = 'status,message,country,countryCode,region,regionName,city,lat,lon,isp,org,as,query,proxy,hosting'
             async with aiohttp.ClientSession() as session:
-                url = f'http://ip-api.com/json/{ip}?fields={fields}'
+                url = f'https://ipinfo.io/{ip}/json'
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=8)) as resp:
                     if resp.status != 200:
                         return None
                     data = await resp.json()
-                    if data.get('status') != 'success':
+                    if 'bogon' in data or not data.get('country'):
                         return None
+                    # loc viene como "lat,lon"
+                    lat, lon = None, None
+                    loc = data.get('loc', '')
+                    if ',' in loc:
+                        parts = loc.split(',', 1)
+                        try:
+                            lat, lon = float(parts[0]), float(parts[1])
+                        except ValueError:
+                            pass
+                    # org viene como "AS12345 Nombre del ISP"
+                    org_raw = data.get('org', '')
+                    asn = org_raw.split(' ')[0] if org_raw else None
+                    org_name = ' '.join(org_raw.split(' ')[1:]) if org_raw else None
                     return {
-                        'ip': data.get('query', ip),
+                        'ip': data.get('ip', ip),
                         'country': data.get('country'),
-                        'country_code': data.get('countryCode'),
-                        'region': data.get('regionName'),
+                        'country_code': data.get('country'),
+                        'region': data.get('region'),
                         'city': data.get('city'),
-                        'lat': data.get('lat'),
-                        'lon': data.get('lon'),
-                        'isp': data.get('isp'),
-                        'org': data.get('org'),
-                        'asn': data.get('as'),
-                        'is_proxy': data.get('proxy', False),
-                        'is_hosting': data.get('hosting', False)
+                        'lat': lat,
+                        'lon': lon,
+                        'isp': org_name,
+                        'org': org_name,
+                        'asn': asn,
+                        'is_proxy': False,
+                        'is_hosting': False,
                     }
         except Exception:
             return None
