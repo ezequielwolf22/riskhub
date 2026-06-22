@@ -596,7 +596,7 @@ const ViewSuppliers = (() => {
     UI.modal(s ? `Editar ${s.code}` : 'Nuevo proveedor', _formHtml(s), {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 <button class="btn btn-primary" id="m-save">Guardar</button>`,
-      width: '760px',
+      width: 'min(98vw, 1200px)',
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = () => _save(s);
