@@ -79,11 +79,11 @@ const ViewKRIs = {
   },
 
   async _reload() {
-    const active = document.querySelector('[data-hub="kri-inner"] .tab-panel:not([hidden])');
-    if (active) {
-      const type = active.id.includes('kpis') ? 'kpi' : 'kri';
-      await ViewKRIs._renderList(active, type);
-    }
+    const panel = document.getElementById('hubpanel-kri-inner');
+    if (!panel) return;
+    const activeBtn = document.querySelector('#kri-tabs-wrap .hub-tab.active');
+    const type = activeBtn && activeBtn.dataset.tab === 'kpis-tab' ? 'kpi' : 'kri';
+    await ViewKRIs._renderList(panel, type);
   },
 
   _filterBar(type) {
@@ -242,7 +242,7 @@ const ViewKRIs = {
             </div>
             ${k.warning_threshold !== null ? `<div>Aviso: ${k.warning_threshold}</div>` : ''}
             ${k.breach_threshold !== null ? `<div>Breach: ${k.breach_threshold}</div>` : ''}
-            ${k.last_evaluated_at ? `<div style="margin-top:4px;">Eval: ${UI.fmtDate(k.last_evaluated_at)}</div>` : ''}
+            ${k.last_evaluated_at ? `<div style="margin-top:4px;">Eval: ${new Date(k.last_evaluated_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
@@ -424,20 +424,20 @@ const ViewKRIs = {
       </form>
     `;
 
-    UI.modal({
-      title: id ? 'Editar indicador' : 'Nuevo KRI',
-      body: html,
-      actions: [
-        {
-          label: id ? 'Guardar' : 'Crear',
-          primary: true,
-          onclick: async () => {
-            await ViewKRIs._save(id, kri);
-            return true;
-          },
-        },
-      ],
-    });
+    UI.modal(
+      id ? 'Editar indicador' : 'Nuevo KRI',
+      html,
+      {
+        actions: `
+          <button class="btn btn-ghost" onclick="UI.closeModal()">Cancelar</button>
+          <button class="btn btn-primary" id="kri-modal-save">${id ? 'Guardar' : 'Crear'}</button>
+        `,
+      }
+    );
+    document.getElementById('kri-modal-save').onclick = async () => {
+      const ok = await ViewKRIs._save(id, kri);
+      if (ok) UI.closeModal();
+    };
   },
 
   async _save(id, existing) {
