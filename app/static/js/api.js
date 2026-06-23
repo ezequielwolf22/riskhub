@@ -311,6 +311,7 @@ const Api = {
     createFinding: (id, d) => Api.post('/api/audits/' + id + '/findings', d),
     updateFinding: (id, fid, d) => Api.patch('/api/audits/' + id + '/findings/' + fid, d),
     delFinding: (id, fid) => Api.del('/api/audits/' + id + '/findings/' + fid),
+    addComment: (id, fid, text) => Api.post('/api/audits/' + id + '/findings/' + fid + '/comments', { text }),
   },
   supplier_questionnaires: {
     list: (q) => Api.get('/api/supplier-questionnaires/', q),

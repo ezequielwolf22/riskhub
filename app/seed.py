@@ -664,6 +664,14 @@ def _migrate_columns() -> None:
         ("ALTER TABLE audit_programs ADD COLUMN auditee VARCHAR(255)", "audit_programs", "auditee"),
         ("ALTER TABLE audit_programs ADD COLUMN actual_start DATE", "audit_programs", "actual_start"),
         ("ALTER TABLE audit_programs ADD COLUMN actual_end DATE", "audit_programs", "actual_end"),
+        # v5.10.0 — AuditFinding: ciclo de vida completo ISO 27001 cl. 9.2
+        ("ALTER TABLE audit_findings ADD COLUMN status VARCHAR(32) DEFAULT 'open'", "audit_findings", "status"),
+        ("ALTER TABLE audit_findings ADD COLUMN responsible_id INTEGER REFERENCES users(id)", "audit_findings", "responsible_id"),
+        ("ALTER TABLE audit_findings ADD COLUMN action_plan TEXT", "audit_findings", "action_plan"),
+        ("ALTER TABLE audit_findings ADD COLUMN deadline DATETIME", "audit_findings", "deadline"),
+        ("ALTER TABLE audit_findings ADD COLUMN closed_at DATETIME", "audit_findings", "closed_at"),
+        ("ALTER TABLE audit_findings ADD COLUMN comments JSON DEFAULT '[]'", "audit_findings", "comments"),
+        ("ALTER TABLE audit_findings ADD COLUMN resolution_evidence TEXT", "audit_findings", "resolution_evidence"),
         # v5.3.0 — RiskSnapshot: historico mensual de niveles de riesgo
         (
             """CREATE TABLE IF NOT EXISTS risk_snapshots (

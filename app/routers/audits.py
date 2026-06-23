@@ -152,6 +152,12 @@ def create_finding(audit_id: int, body: AuditFindingIn,
         iso_clause=body.iso_clause,
         recommendation=body.recommendation,
         nonconformity_id=body.nonconformity_id,
+        status=body.status or "open",
+        responsible_id=body.responsible_id,
+        action_plan=body.action_plan,
+        deadline=body.deadline,
+        resolution_evidence=body.resolution_evidence,
+        comments=[],
     )
     db.add(f)
     db.commit()
@@ -197,6 +203,37 @@ def delete_finding(audit_id: int, finding_id: int,
         raise HTTPException(404, _t("audits.finding_not_found", lang))
     db.delete(f)
     db.commit()
+
+
+class FindingCommentIn(BaseModel):
+    text: str
+
+
+@router.post("/{audit_id}/findings/{finding_id}/comments", response_model=AuditFindingOut)
+def add_finding_comment(audit_id: int, finding_id: int, body: FindingCommentIn,
+                        request: Request, db: Session = Depends(get_db),
+                        current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
+    audit = filter_by_org(db.query(AuditProgram).filter(AuditProgram.id == audit_id), AuditProgram, current_user).first()
+    if not audit:
+        raise HTTPException(404, _t("audits.not_found", lang))
+    f = db.query(AuditFinding).filter(
+        AuditFinding.id == finding_id, AuditFinding.audit_id == audit_id
+    ).first()
+    if not f:
+        raise HTTPException(404, _t("audits.finding_not_found", lang))
+    from datetime import datetime, timezone as tz
+    comment = {
+        "text": body.text,
+        "author": current_user.full_name or current_user.email,
+        "created_at": datetime.now(tz.utc).isoformat(),
+    }
+    existing = list(f.comments or [])
+    existing.append(comment)
+    f.comments = existing
+    db.commit()
+    db.refresh(f)
+    return f
 
 
 # ── Checklist sub-resource (ISO 27001 cl. 9.2 + AI) ─────────────────────────

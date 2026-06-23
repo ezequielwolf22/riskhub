@@ -1534,7 +1534,7 @@ const ViewBcp = (() => {
     modal.innerHTML = `
     <div class="modal" style="max-width:720px;max-height:92vh;display:flex;flex-direction:column;">
       <div class="modal-header" style="flex-shrink:0;">
-        <h2>${proc ? 'Editar proceso' : (isBia ? 'Nuevo BIA' : 'Nuevo proceso critico')}</h2>
+        <h2>${proc ? t('bcp.proc_edit_title') : (isBia ? t('bcp.proc_new_bia_title') : t('bcp.proc_new_title'))}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
@@ -1711,7 +1711,7 @@ const ViewBcp = (() => {
         <div class="form-section-divider"><span>IMPACTO PROGRESIVO EN EL TIEMPO</span></div>
         <div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px;">¿Como evoluciona el impacto si el proceso sigue sin disponibilidad? (0=Bajo · 1=Medio · 2=Alto)</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px;">
-          ${[['pm-i1h','A la hora 1','impact_1h'],['pm-i24h','A las 24 horas','impact_24h'],['pm-i7d','A los 7 dias','impact_7d']].map(([id,lbl,fld]) => `
+          ${[['pm-i1h',t('bcp.proc_impact_1h'),'impact_1h'],['pm-i24h',t('bcp.proc_impact_24h'),'impact_24h'],['pm-i7d',t('bcp.proc_impact_7d'),'impact_7d']].map(([id,lbl,fld]) => `
           <div>
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${lbl}</label>
             <select id="${id}" class="form-control" style="font-size:13px;">
@@ -1873,11 +1873,11 @@ const ViewBcp = (() => {
       bia_review_date: g('pm-biarev')?.value || null,
       location_id: parseInt(g('pm-location')?.value) || null,
     };
-    if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+    if (!body.name) { UI.toast(t('bcp.proc_name_required'), 'error'); return; }
     try {
       if (id) await Api.patch(`/api/bcp/processes/${id}`, body);
       else await Api.post('/api/bcp/processes', body);
-      UI.toast('Proceso guardado', 'success');
+      UI.toast(t('bcp.proc_saved'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _procs = [];
       _switchTab('processes');
@@ -1888,7 +1888,7 @@ const ViewBcp = (() => {
     if (!confirm(t('bcp.del_proc_confirm'))) return;
     try {
       await Api.del(`/api/bcp/processes/${id}`);
-      UI.toast('Proceso eliminado', 'success');
+      UI.toast(t('bcp.proc_deleted'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _procs = [];
       _switchTab('processes');
@@ -2051,7 +2051,7 @@ const ViewBcp = (() => {
     let body;
     if (isProc) {
       const depProcId = parseInt(g('dm-dep-proc')?.value) || null;
-      if (!depProcId) { UI.toast('Selecciona el proceso del que depende', 'error'); return; }
+      if (!depProcId) { UI.toast(t('bcp.dep_proc_required'), 'error'); return; }
       body = {
         process_id: parseInt(g('dm-proc').value),
         dependency_type: 'process',
@@ -2080,12 +2080,12 @@ const ViewBcp = (() => {
         data_direction:      g('dm-data-dir')?.value   || null,
         data_classification: g('dm-data-class')?.value || null,
       };
-      if (!body.name) { UI.toast('El nombre del recurso es obligatorio', 'error'); return; }
+      if (!body.name) { UI.toast(t('bcp.res_name_required'), 'error'); return; }
     }
     try {
       if (id) await Api.patch(`/api/bcp/dependencies/${id}`, body);
       else await Api.post('/api/bcp/dependencies', body);
-      UI.toast('Dependencia guardada', 'success');
+      UI.toast(t('bcp.dep_saved'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _deps = [];
       _switchTab('dependencies');
@@ -2096,7 +2096,7 @@ const ViewBcp = (() => {
     if (!confirm(t('bcp.del_dep_confirm'))) return;
     try {
       await Api.del(`/api/bcp/dependencies/${id}`);
-      UI.toast('Dependencia eliminada', 'success');
+      UI.toast(t('bcp.dep_deleted'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _switchTab('dependencies');
     } catch (e) { UI.toast('Error al eliminar: ' + (e.message || e), 'error'); }
@@ -2280,21 +2280,21 @@ const ViewBcp = (() => {
       it_config:         itHasData  ? itCfg  : null,
       monitoring_config: monHasData ? monCfg : null,
     };
-    if (!body.name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+    if (!body.name) { UI.toast(t('bcp.strat_name_required'), 'error'); return; }
     try {
       if (id) await Api.patch(`/api/bcp/strategies/${id}`, body);
       else await Api.post('/api/bcp/strategies', body);
-      UI.toast('Estrategia guardada', 'success');
+      UI.toast(t('bcp.strat_saved'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _switchTab('strategies');
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
   }
 
   async function _delStrat(id) {
-    if (!confirm('Eliminar estrategia?')) return;
+    if (!confirm(t('bcp.strat_confirm_del'))) return;
     try {
       await Api.del(`/api/bcp/strategies/${id}`);
-      UI.toast('Estrategia eliminada', 'success');
+      UI.toast(t('bcp.strat_deleted'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _switchTab('strategies');
     } catch (e) { UI.toast('Error al eliminar: ' + (e.message || e), 'error'); }
@@ -2343,7 +2343,7 @@ const ViewBcp = (() => {
     const kpis = plan?.kpis || [];
 
     const titleEl = document.getElementById('plan-drawer-title');
-    if (titleEl) titleEl.textContent = plan ? `Editar plan: ${plan.code}` : 'Nuevo Plan BCP/DRP';
+    if (titleEl) titleEl.textContent = plan ? t('bcp.plan_edit_title', { code: plan.code }) : t('bcp.plan_new_title');
 
     const body = document.getElementById('plan-drawer-body');
     if (!body) return;
@@ -2353,40 +2353,40 @@ const ViewBcp = (() => {
 
     body.innerHTML = `
     <!-- SECCION 1: Cabecera -->
-    <div class="form-section-divider"><span>CABECERA DEL PLAN</span></div>
+    <div class="form-section-divider"><span>${t('bcp.sec_header')}</span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-      <div>${lbl('Tipo de plan','*')}
+      <div>${lbl(t('bcp.plan_label_type'),'*')}
         <select id="pl-type" class="form-control" style="font-size:13px;" onchange="ViewBcp._onPlanTypeChange(this.value)">
           ${TYPES.map(t=>`<option value="${t}"${currType===t?' selected':''}>${PLAN_TYPE_LABELS[t]||t}</option>`).join('')}
         </select>
       </div>
-      <div>${lbl('Version')}
+      <div>${lbl(t('bcp.plan_label_version'))}
         <input id="pl-ver" class="form-control" style="font-size:13px;" value="${UI.esc(plan?.version||'1.0')}">
       </div>
     </div>
-    <div style="margin-bottom:14px;">${lbl('Nombre del plan','*')}
+    <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_name'),'*')}
       <input id="pl-name" class="form-control" style="font-size:13px;" value="${UI.esc(plan?.name||'')}">
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-      <div>${lbl('Clasificacion')}
+      <div>${lbl(t('bcp.plan_label_classification'))}
         <select id="pl-class" class="form-control" style="font-size:13px;">
           <option value="">— Sin clasificar —</option>
           ${CLASSIFS.map(([v,l])=>`<option value="${v}"${plan?.classification===v?' selected':''}>${l}</option>`).join('')}
         </select>
       </div>
-      <div>${lbl('Propietario del plan')}
+      <div>${lbl(t('bcp.plan_label_owner'))}
         <input id="pl-owner" class="form-control" style="font-size:13px;" value="${UI.esc(plan?.plan_owner_name||'')}" placeholder="Nombre del responsable">
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-      <div>${lbl('Fecha proxima revision')}
+      <div>${lbl(t('bcp.plan_label_review_date'))}
         <input id="pl-rev" class="form-control" type="date" style="font-size:13px;" value="${plan?.review_date ? plan.review_date.substring(0,10) : (() => { const d = new Date(); d.setFullYear(d.getFullYear()+1); return d.toISOString().substring(0,10); })()}">
       </div>
-      <div>${lbl('ID documento vinculado')}
+      <div>${lbl(t('bcp.plan_label_doc_id'))}
         <input id="pl-doc" class="form-control" type="number" style="font-size:13px;" value="${plan?.document_id||''}" placeholder="ID del documento en Agente IA">
       </div>
     </div>
-    <div style="margin-bottom:14px;">${lbl('Procesos cubiertos')}
+    <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_processes'))}
       <div style="max-height:120px;overflow-y:auto;border:0.5px solid var(--border);border-radius:var(--radius);padding:8px;">
       ${_procs.map(p => `<label style="display:flex;gap:6px;align-items:center;padding:3px;font-size:13px;cursor:pointer;">
         <input type="checkbox" value="${p.id}" class="pl-pids" ${(plan?.process_ids||[]).includes(p.id)?'checked':''}>
@@ -2397,21 +2397,21 @@ const ViewBcp = (() => {
     </div>
 
     <!-- SECCION 2: Alcance y objetivos -->
-    <div class="form-section-divider"><span>ALCANCE Y OBJETIVOS</span></div>
-    <div style="margin-bottom:14px;">${lbl('Alcance del plan')}
+    <div class="form-section-divider"><span>${t('bcp.sec_scope_goals')}</span></div>
+    <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_scope'))}
       <textarea id="pl-scope" class="form-control" rows="3" style="font-size:13px;" placeholder="¿Que sistemas, procesos y areas cubre este plan?">${UI.esc(plan?.scope||'')}</textarea>
     </div>
-    <div style="margin-bottom:14px;">${lbl('Criterios de activacion')}
+    <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_activation'))}
       <div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">¿Cuando se activa este plan? Incluir condiciones formales.</div>
       <textarea id="pl-activ" class="form-control" rows="3" style="font-size:13px;">${UI.esc(plan?.activation_criteria||'')}</textarea>
     </div>
-    <div style="margin-bottom:14px;">${lbl('Resumen ejecutivo')}
+    <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_summary'))}
       <textarea id="pl-sum" class="form-control" rows="2" style="font-size:13px;">${UI.esc(plan?.content_summary||'')}</textarea>
     </div>
 
     <!-- SECCION 3: RTO/RPO por sistema (solo DRP/CRP) -->
     <div id="pl-sys-section" ${showForTypes(['drp','crp'], currType)}>
-      <div class="form-section-divider"><span>RTO/RPO POR SISTEMA</span></div>
+      <div class="form-section-divider"><span>${t('bcp.sec_rto_rpo')}</span></div>
       <div class="inline-table-wrap" style="margin-bottom:8px;">
         <table class="inline-table">
           <thead><tr><th>Sistema / Servicio</th><th>RTO (h)</th><th>RPO (h)</th><th>Responsable</th><th>Notas</th><th style="width:30px"></th></tr></thead>
@@ -2428,13 +2428,13 @@ const ViewBcp = (() => {
         </table>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addSysDep()" style="margin-bottom:14px;font-size:12px;">
-        <i class="ti ti-plus"></i> Anadir sistema
+        <i class="ti ti-plus"></i> ${t('bcp.plan_add_system')}
       </button>
     </div>
 
     <!-- SECCION 4: Procedimientos de recuperacion (DRP/CRP/Cyber) -->
     <div id="pl-proc-section" ${showForTypes(['drp','crp','cyber_response'], currType)}>
-      <div class="form-section-divider"><span>PROCEDIMIENTOS DE RECUPERACION</span></div>
+      <div class="form-section-divider"><span>${t('bcp.sec_recovery_procs')}</span></div>
       ${[
         ['notification','Notificacion','Quién avisa a quién y como en las primeras horas. Incluir: (1) como se detecta, (2) a quien se notifica, (3) plazo, (4) escalado.'],
         ['activation','Activacion','Quién tiene autoridad para activar, criterios formales, lista de verificacion pre-activacion.'],
@@ -2448,7 +2448,7 @@ const ViewBcp = (() => {
     </div>
 
     <!-- SECCION 5: Roles y responsabilidades -->
-    <div class="form-section-divider"><span>ROLES Y RESPONSABILIDADES</span></div>
+    <div class="form-section-divider"><span>${t('bcp.sec_roles')}</span></div>
     <div class="inline-table-wrap" style="margin-bottom:8px;">
       <table class="inline-table">
         <thead><tr><th>Rol / Equipo</th><th>Responsable (nombre)</th><th>Acciones notificacion</th><th>Acciones recuperacion</th><th style="width:30px"></th></tr></thead>
@@ -2464,12 +2464,12 @@ const ViewBcp = (() => {
       </table>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addRole()" style="font-size:12px;"><i class="ti ti-plus"></i> Anadir rol</button>
-      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._loadDRPRoles()" style="font-size:12px;"><i class="ti ti-template"></i> Plantilla DRP</button>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addRole()" style="font-size:12px;"><i class="ti ti-plus"></i> ${t('bcp.plan_add_role')}</button>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._loadDRPRoles()" style="font-size:12px;"><i class="ti ti-template"></i> ${t('bcp.plan_add_drp_template')}</button>
     </div>
 
     <!-- SECCION 6: Contactos y escalada -->
-    <div class="form-section-divider"><span>LISTA DE CONTACTOS Y ESCALADA</span></div>
+    <div class="form-section-divider"><span>${t('bcp.sec_contacts')}</span></div>
     <div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px;">Incluir todos los contactos necesarios durante una activacion: equipo interno, proveedores criticos y contactos de emergencia.</div>
     <div class="inline-table-wrap" style="margin-bottom:8px;">
       <table class="inline-table">
@@ -2487,21 +2487,21 @@ const ViewBcp = (() => {
         </tbody>
       </table>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addContact()" style="margin-bottom:14px;font-size:12px;"><i class="ti ti-plus"></i> Anadir contacto</button>
+    <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addContact()" style="margin-bottom:14px;font-size:12px;"><i class="ti ti-plus"></i> ${t('bcp.plan_add_contact')}</button>
 
     <!-- SECCION 7: Contingencia IT y workarounds -->
-    <div class="form-section-divider"><span>CONTINGENCIA IT Y WORKAROUNDS</span></div>
-    <div style="margin-bottom:14px;">${lbl('Procedimientos de trabajo temporal')}
+    <div class="form-section-divider"><span>${t('bcp.sec_it_workarounds')}</span></div>
+    <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_workaround'))}
       <div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">¿Como puede el negocio seguir operando sin los sistemas afectados?</div>
       <textarea id="pl-workaround" class="form-control" rows="3" style="font-size:13px;">${UI.esc(plan?.sections?.find?.(s=>s.id==='workaround')?.content||'')}</textarea>
     </div>
-    <div style="margin-bottom:14px;">${lbl('Recuperacion de datos')}
+    <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_backup'))}
       <div style="font-size:10px;color:var(--text-subtle);margin-bottom:4px;">Ubicacion de backups, acceso, validacion de integridad.</div>
       <textarea id="pl-backup" class="form-control" rows="2" style="font-size:13px;">${UI.esc(plan?.sections?.find?.(s=>s.id==='backup')?.content||'')}</textarea>
     </div>
 
     <!-- SECCION 8: KPIs -->
-    <div class="form-section-divider"><span>KPIs Y METRICAS</span></div>
+    <div class="form-section-divider"><span>${t('bcp.sec_kpis')}</span></div>
     <div class="inline-table-wrap" style="margin-bottom:8px;">
       <table class="inline-table">
         <thead><tr><th>Metrica</th><th>Objetivo</th><th>Como medir</th><th style="width:30px"></th></tr></thead>
@@ -2516,15 +2516,15 @@ const ViewBcp = (() => {
       </table>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addKPI()" style="font-size:12px;"><i class="ti ti-plus"></i> Anadir KPI</button>
-      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._loadStandardKPIs()" style="font-size:12px;"><i class="ti ti-template"></i> KPIs estandar DRP</button>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addKPI()" style="font-size:12px;"><i class="ti ti-plus"></i> ${t('bcp.plan_add_kpi')}</button>
+      <button class="btn btn-ghost btn-sm" onclick="ViewBcp._loadStandardKPIs()" style="font-size:12px;"><i class="ti ti-template"></i> ${t('bcp.plan_add_standard_kpis')}</button>
     </div>
 
     <!-- SECCION DR SITE (solo DRP/CRP/cyber_response) -->
     <div id="pl-drsite-section" ${showForTypes(['drp','crp','cyber_response'], currType)}>
-      <div class="form-section-divider"><span>SITIO ALTERNATIVO — DR SITE</span></div>
+      <div class="form-section-divider"><span>${t('bcp.sec_drsite')}</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-        <div>${lbl('Tipo de DR Site')}
+        <div>${lbl(t('bcp.plan_label_drsite_type'))}
           <select id="pl-drsite-type" class="form-control" style="font-size:13px;">
             <option value="">— Sin DR Site —</option>
             ${[['hot','Hot site — Failover automatico (<15 min)'],['warm','Warm site — Failover semi-auto (1-4h)'],
@@ -2532,28 +2532,28 @@ const ViewBcp = (() => {
               .map(([v,l])=>`<option value="${v}"${plan?.dr_site?.site_type===v?' selected':''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div>${lbl('Ubicacion DR Site')}
+        <div>${lbl(t('bcp.plan_label_drsite_loc'))}
           <input id="pl-drsite-loc" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.dr_site?.location||'')}" placeholder="Ciudad · Distancia a sede principal">
         </div>
-        <div>${lbl('Acceso (IP / VPN / ref. boveda)')}
+        <div>${lbl(t('bcp.plan_label_drsite_access'))}
           <input id="pl-drsite-access" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.dr_site?.access_info||'')}" placeholder="IP gestion · ref. boveda credenciales">
         </div>
-        <div>${lbl('RTO de activacion del DR Site (horas)')}
+        <div>${lbl(t('bcp.plan_label_drsite_rto'))}
           <input id="pl-drsite-rto" class="form-control" type="number" min="0" style="font-size:13px;"
             value="${plan?.dr_site?.rto_hours??''}" placeholder="Tiempo hasta que el DR site esta operativo">
         </div>
-        <div>${lbl('Capacidad instalada')}
+        <div>${lbl(t('bcp.plan_label_drsite_capacity'))}
           <input id="pl-drsite-cap" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.dr_site?.capacity||'')}" placeholder="Servidores, almacenamiento, RAM total">
         </div>
-        <div>${lbl('Conectividad')}
+        <div>${lbl(t('bcp.plan_label_drsite_conn'))}
           <input id="pl-drsite-conn" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.dr_site?.connectivity||'')}" placeholder="ISP · ancho de banda · latencia">
         </div>
       </div>
-      <div style="margin-bottom:14px;">${lbl('Infraestructura disponible (notas)')}
+      <div style="margin-bottom:14px;">${lbl(t('bcp.plan_label_drsite_notes'))}
         <textarea id="pl-drsite-notes" class="form-control" rows="3" style="font-size:13px;"
           placeholder="Servidores, VMs, networking, sistemas preinstalados...">${UI.esc(plan?.dr_site?.infrastructure_notes||'')}</textarea>
       </div>
@@ -2561,27 +2561,27 @@ const ViewBcp = (() => {
 
     <!-- SECCION POLITICA DE BACKUPS (solo DRP/CRP) -->
     <div id="pl-backup-section" ${showForTypes(['drp','crp'], currType)}>
-      <div class="form-section-divider"><span>POLITICA DE BACKUPS</span></div>
+      <div class="form-section-divider"><span>${t('bcp.sec_backups')}</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-        <div>${lbl('Regla 3-2-1 aplicada')}
+        <div>${lbl(t('bcp.plan_label_rule321'))}
           <select id="pl-bkp-321" class="form-control" style="font-size:13px;">
             <option value="si"${plan?.backup_policy?.rule_321==='si'?' selected':''}>Si — 3 copias, 2 soportes, 1 offsite</option>
             <option value="parcial"${plan?.backup_policy?.rule_321==='parcial'?' selected':''}>Parcial</option>
             <option value="no"${plan?.backup_policy?.rule_321==='no'?' selected':''}>No — requiere accion</option>
           </select>
         </div>
-        <div>${lbl('Cifrado de backups')}
+        <div>${lbl(t('bcp.plan_label_encryption'))}
           <select id="pl-bkp-enc" class="form-control" style="font-size:13px;">
             <option value="aes256"${plan?.backup_policy?.encryption==='aes256'?' selected':''}>AES-256 en transito y reposo</option>
             <option value="reposo"${plan?.backup_policy?.encryption==='reposo'?' selected':''}>Solo en reposo</option>
             <option value="no"${plan?.backup_policy?.encryption==='no'?' selected':''}>No cifrado — requiere accion</option>
           </select>
         </div>
-        <div>${lbl('Retencion minima')}
+        <div>${lbl(t('bcp.plan_label_retention'))}
           <input id="pl-bkp-ret" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.backup_policy?.retention||'')}" placeholder="Ej: 30 dias diario + 12 meses mensual">
         </div>
-        <div>${lbl('Almacenamiento offsite')}
+        <div>${lbl(t('bcp.plan_label_offsite'))}
           <input id="pl-bkp-offsite" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.backup_policy?.offsite_location||'')}" placeholder="Proveedor cloud · region · distancia">
         </div>
@@ -2616,39 +2616,39 @@ const ViewBcp = (() => {
         </table>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addBkpItem()" style="margin-bottom:14px;font-size:12px;">
-        <i class="ti ti-plus"></i> Anadir sistema
+        <i class="ti ti-plus"></i> ${t('bcp.plan_add_system')}
       </button>
     </div>
 
     <!-- SECCION: Comunicacion en crisis -->
     <div id="pl-comms-section">
-      <div class="form-section-divider"><span>COMUNICACION EN CRISIS — ISO 22301 §8.4.4</span></div>
+      <div class="form-section-divider"><span>${t('bcp.sec_crisis_comms')}</span></div>
       <div style="font-size:12px;color:var(--text-subtle);margin-bottom:12px;">Canales y plantillas de comunicacion para partes interesadas durante una interrupcion. ENS [op.cont.2].</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
         <div>
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Canal primario</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">${t('bcp.plan_cc_primary')}</label>
           <input id="pl-cc-primary" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.crisis_comms?.primary_channel||'')}" placeholder="Teams / Slack / Signal">
         </div>
         <div>
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Canal secundario (si TI caido)</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">${t('bcp.plan_cc_secondary')}</label>
           <input id="pl-cc-secondary" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.crisis_comms?.secondary_channel||'')}" placeholder="WhatsApp / SMS / Telefono">
         </div>
         <div>
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Canal externo</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">${t('bcp.plan_cc_external')}</label>
           <input id="pl-cc-external" class="form-control" style="font-size:13px;"
             value="${UI.esc(plan?.crisis_comms?.external_channel||'')}" placeholder="Email institucional / Portal">
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
         <div>
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Plantilla comunicado interno</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">${t('bcp.plan_cc_tpl_int')}</label>
           <textarea id="pl-cc-tpl-int" class="form-control" rows="5" style="font-size:12px;font-family:monospace;"
             placeholder="[INCIDENTE] Impacto en [SERVICIO] detectado el [FECHA]...">${UI.esc(plan?.crisis_comms?.template_internal||'')}</textarea>
         </div>
         <div>
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">Plantilla comunicado externo</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px;">${t('bcp.plan_cc_tpl_ext')}</label>
           <textarea id="pl-cc-tpl-ext" class="form-control" rows="5" style="font-size:12px;font-family:monospace;"
             placeholder="Estimados usuarios, se ha detectado un incidente que afecta a [SERVICIO]...">${UI.esc(plan?.crisis_comms?.template_external||'')}</textarea>
         </div>
@@ -2656,16 +2656,16 @@ const ViewBcp = (() => {
     </div>
 
     <!-- SECCION 10: Clasificacion y gestion -->
-    <div class="form-section-divider"><span>CLASIFICACION Y GESTION</span></div>
+    <div class="form-section-divider"><span>${t('bcp.sec_classif')}</span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-      <div>${lbl('Tipo de instalacion')}
+      <div>${lbl(t('bcp.plan_label_inst_type'))}
         <select id="pl-inst-type" class="form-control" style="font-size:13px;">
           <option value="">— Sin clasificar —</option>
           ${[['cloud_saas','Cloud SaaS'],['cloud_iaas','Cloud IaaS'],['on_prem','On-premise'],['hybrid','Hibrido'],['enduser_device','Dispositivo usuario final']]
             .map(([v,l])=>`<option value="${v}"${plan?.installation_type===v?' selected':''}>${l}</option>`).join('')}
         </select>
       </div>
-      <div>${lbl('Clasificacion del dato')}
+      <div>${lbl(t('bcp.plan_label_data_class'))}
         <select id="pl-data-class" class="form-control" style="font-size:13px;">
           <option value="">— Sin clasificar —</option>
           ${[['public','Publico'],['internal','Interno'],['confidential','Confidencial'],['strictly_confidential','Estrictamente confidencial']]

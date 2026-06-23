@@ -903,6 +903,11 @@ class AuditFindingIn(BaseModel):
     iso_clause: Optional[str] = None
     recommendation: Optional[str] = None
     nonconformity_id: Optional[int] = None
+    status: Optional[str] = "open"
+    responsible_id: Optional[int] = None
+    action_plan: Optional[str] = None
+    deadline: Optional[datetime] = None
+    resolution_evidence: Optional[str] = None
 
 
 class AuditFindingOut(ORMBase):
@@ -916,6 +921,13 @@ class AuditFindingOut(ORMBase):
     recommendation: Optional[str]
     nonconformity_id: Optional[int]
     created_at: datetime
+    status: Optional[str]
+    responsible_id: Optional[int]
+    action_plan: Optional[str]
+    deadline: Optional[datetime]
+    closed_at: Optional[datetime]
+    comments: Optional[list] = []
+    resolution_evidence: Optional[str]
 
 
 # ---------- AUDIT PROGRAMS ----------

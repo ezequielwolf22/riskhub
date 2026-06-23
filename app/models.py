@@ -1193,9 +1193,18 @@ class AuditFinding(Base):
     recommendation = Column(Text)
     nonconformity_id = Column(Integer, ForeignKey("nonconformities.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # lifecycle fields (v5.10)
+    status = Column(String(32), default="open")
+    responsible_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action_plan = Column(Text, nullable=True)
+    deadline = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    comments = Column(JSON, default=list)
+    resolution_evidence = Column(Text, nullable=True)
 
     audit = relationship("AuditProgram", back_populates="findings")
     nonconformity = relationship("NonConformity")
+    responsible = relationship("User", foreign_keys=[responsible_id])
 
 
 # ---------- EVALUACION DE PROVEEDORES - CUESTIONARIO (M4) ----------
