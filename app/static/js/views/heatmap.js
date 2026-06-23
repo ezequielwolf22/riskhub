@@ -4,10 +4,10 @@ const ViewHeatmap = {
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Mapa de calor',
+      t('heatmap.title'),
       'Distribución de riesgos en la matriz Impacto x Probabilidad (ISO 27005 Annex E.2)',
-      `<button class="btn" data-mode="inherent">Inherente</button>
-       <button class="btn btn-primary" data-mode="residual">Residual</button>`
+      `<button class="btn" data-mode="inherent">${t('heatmap.inherent')}</button>
+       <button class="btn btn-primary" data-mode="residual">${t('heatmap.residual')}</button>`
     );
 
     main.insertAdjacentHTML('beforeend', '<div id="hm-wrap" class="card"></div>');
@@ -26,23 +26,23 @@ const ViewHeatmap = {
 
   async _draw() {
     const wrap = document.getElementById('hm-wrap');
-    wrap.innerHTML = UI.notice('Cargando heatmap...');
+    wrap.innerHTML = UI.notice(t('common.loading'));
     try {
       const data = await Api.risks.heatmap(ViewHeatmap.mode);
       wrap.innerHTML = `
         <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
           <div>
-            <div class="heatmap-axis-y" style="margin-bottom:8px;">Consecuencia</div>
+            <div class="heatmap-axis-y" style="margin-bottom:8px;">${t('heatmap.impact')}</div>
             <div class="heatmap">
               ${ViewHeatmap._rows(data.matrix)}
               <div class="corner"></div>
-              ${['Muy improbable','Improbable','Posible','Probable','Muy probable']
+              ${/* TODO: i18n */ ['Muy improbable','Improbable','Posible','Probable','Muy probable']
                 .map(l => `<div class="col-label">${l}</div>`).join('')}
             </div>
-            <div style="margin-top:8px;text-align:center;" class="heatmap-axis-x">Probabilidad</div>
+            <div style="margin-top:8px;text-align:center;" class="heatmap-axis-x">${t('heatmap.likelihood')}</div>
           </div>
           <div style="flex:1;min-width:280px;">
-            <h3>Como leer la matriz</h3>
+            /* TODO: i18n */<h3>Como leer la matriz</h3>
             <p style="font-size:13px;color:var(--text-muted);">
               El nivel resultante (0 a 8) se obtiene cruzando consecuencia x probabilidad
               segun la Tabla E.2 de ISO/IEC 27005:2018.
@@ -58,7 +58,7 @@ const ViewHeatmap = {
               }</li>`).join('')}
             </ul>
             <p style="font-size:12px;color:var(--text-subtle);margin-top:12px;">
-              Click sobre una celda para listar los riesgos contenidos.
+              ${t('heatmap.click_cell')}
             </p>
           </div>
         </div>
@@ -71,6 +71,7 @@ const ViewHeatmap = {
 
   _rows(matrix) {
     // matrix viene como filas top-down (consecuencia 4..0). columnas 0..4 probabilidad.
+    /* TODO: i18n — no exact keys for consequence row labels */
     const labelsY = ['Critico','Mayor','Moderado','Menor','Insignificante'];
     let html = '';
     matrix.forEach((row, ri) => {
@@ -105,13 +106,13 @@ const ViewHeatmap = {
     const cell = matrix[ri][lik];
     const wrap = document.getElementById('hm-detail');
     if (!cell.risks.length) {
-      wrap.innerHTML = '<p style="color:var(--text-subtle);">No hay riesgos en esa celda.</p>';
+      wrap.innerHTML = `<p style="color:var(--text-subtle);">${t('common.no_results')}</p>`;
       return;
     }
     wrap.innerHTML = `
-      <h3>Riesgos en consecuencia ${cons} / probabilidad ${lik} (nivel ${ViewHeatmap._lvl(cons, lik)})</h3>
+      <h3>${t('heatmap.risks_in_cell')} (${t('heatmap.impact')} ${cons} / ${t('heatmap.likelihood')} ${lik})</h3>
       <div class="table-wrap"><table class="data">
-        <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th></tr></thead>
+        <thead><tr><th>${t('risks.risk_code')}</th><th>${t('common.asset')}</th><th>${t('common.threat')}</th><th>${t('common.level')}</th></tr></thead>
         <tbody>
           ${cell.risks.map(r => `
             <tr style="cursor:pointer;" onclick="location.hash='#/risks?id=${r.id}'">

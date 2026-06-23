@@ -1821,6 +1821,8 @@ class ReportBrandingConfig(Base):
     secondary_color = Column(String(7), default="#D65200")
     logo_filename = Column(String(255), nullable=True)
     logo_mime = Column(String(64), nullable=True)
+    template_filename = Column(String(255), nullable=True)
+    template_mime = Column(String(128), nullable=True)
     company_name = Column(String(255), nullable=True)
     header_title = Column(String(255), nullable=True)
     footer_text = Column(String(255), nullable=True)

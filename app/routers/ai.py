@@ -4,10 +4,12 @@ import threading
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Any, Optional
+
+from app.i18n import get_lang, t as _t
 
 from app.config import settings
 from app.database import get_db
@@ -932,6 +934,7 @@ class DetailedGapRequest(BaseModel):
 @router.post("/control-gap-detailed")
 def control_gap_detailed(
     req: DetailedGapRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -940,6 +943,7 @@ def control_gap_detailed(
     import json as _json
     import hashlib
 
+    lang = get_lang(request)
     impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     if not impls:
         raise HTTPException(400, "No hay controles registrados para analizar.")
@@ -950,7 +954,7 @@ def control_gap_detailed(
     ).first()
     api_key = _resolve_api_key(cfg)
     if not api_key:
-        raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
+        raise HTTPException(400, _t("ai.not_configured", lang))
 
     model = (cfg.model if cfg else None) or "claude-haiku-4-5"
 
@@ -1056,7 +1060,7 @@ def control_gap_detailed(
             raw = inner.rsplit("```", 1)[0].strip()
         result = _json.loads(raw)
     except Exception as exc:
-        raise HTTPException(500, f"Error en gap analysis IA: {exc}")
+        raise HTTPException(500, _t("ai.analysis_failed", lang, detail=str(exc)))
 
     # Log tokens
     tokens_in = response.usage.input_tokens if response.usage else 0
@@ -1087,6 +1091,7 @@ def control_gap_detailed(
 
 @router.post("/architecture-review")
 def architecture_review(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1098,12 +1103,13 @@ def architecture_review(
     import json as _json
     import base64
 
+    lang = get_lang(request)
     cfg = db.query(AiConfig).filter(
         AiConfig.organization_id == current_user.organization_id
     ).first()
     api_key = _resolve_api_key(cfg)
     if not api_key:
-        raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
+        raise HTTPException(400, _t("ai.not_configured", lang))
 
     model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
@@ -1224,16 +1230,12 @@ def architecture_review(
                 inner = inner[4:]
             raw = inner.rsplit("```", 1)[0].strip()
         if response.stop_reason == "max_tokens":
-            raise HTTPException(
-                502,
-                "La respuesta de la IA se cortó por exceder el límite de tokens. "
-                "Reduce el número de documentos analizados a la vez o su tamaño."
-            )
+            raise HTTPException(502, _t("ai.token_limit_exceeded", lang))
         result = _json.loads(raw)
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(500, f"Error en architecture review IA: {exc}")
+        raise HTTPException(500, _t("ai.analysis_failed", lang, detail=str(exc)))
 
     tokens_in = response.usage.input_tokens if response.usage else 0
     tokens_out = response.usage.output_tokens if response.usage else 0
@@ -1440,10 +1442,12 @@ class FeedbackIn(BaseModel):
 @router.post("/chat")
 def chat(
     req: ChatRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Chat conversacional con el agente IA enriquecido con el contexto de la organizacion."""
+    lang = get_lang(request)
     # Aplicar topes de seguridad del lado del servidor
     capped_max_tokens = min(req.max_tokens, _MAX_TOKENS_CAP)
     if len(req.messages) > _MAX_MESSAGES:
@@ -1454,10 +1458,7 @@ def chat(
     ).first()
     api_key = _resolve_api_key(cfg)
     if not api_key:
-        raise HTTPException(
-            400,
-            "API key no configurada. Ve a Configuracion > Agente IA para añadir una clave."
-        )
+        raise HTTPException(400, _t("ai.not_configured", lang))
 
     model = (cfg.model if cfg else None) or "claude-haiku-4-5"
     anon_level_val = (
@@ -1586,7 +1587,7 @@ def chat(
         tokens_in = response.usage.input_tokens if response.usage else 0
         tokens_out = response.usage.output_tokens if response.usage else 0
     except Exception as e:
-        raise HTTPException(500, f"Error llamando al agente IA: {e}")
+        raise HTTPException(500, _t("ai.api_error", lang, detail=str(e)))
 
     call_log = AiCallLog(
         user_id=current_user.id,

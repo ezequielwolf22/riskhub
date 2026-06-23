@@ -2,10 +2,11 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import TreatmentTask, TaskStatus, User
 from app.schemas import TaskIn, TaskOut, TaskUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
@@ -121,11 +122,12 @@ def tasks_summary(db: Session = Depends(get_db), current_user: User = Depends(ge
 
 
 @router.get("/{task_id}", response_model=TaskOut)
-def get_task(task_id: int, db: Session = Depends(get_db),
+def get_task(task_id: int, request: Request, db: Session = Depends(get_db),
              current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     t = db.query(TreatmentTask).filter(TreatmentTask.id == task_id).first()
     if not t or not check_org_access(t.organization_id, current_user):
-        raise HTTPException(404, "Tarea no encontrada")
+        raise HTTPException(404, _t("tasks.not_found", lang))
     return t
 
 
@@ -154,12 +156,13 @@ def create_task(body: TaskIn, db: Session = Depends(get_db),
 
 
 @router.patch("/{task_id}", response_model=TaskOut)
-def update_task(task_id: int, body: TaskUpdate,
+def update_task(task_id: int, body: TaskUpdate, request: Request,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     t = db.query(TreatmentTask).filter(TreatmentTask.id == task_id).first()
     if not t or not check_org_access(t.organization_id, current_user):
-        raise HTTPException(404, "Tarea no encontrada")
+        raise HTTPException(404, _t("tasks.not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(t, field, value)
     db.commit()
@@ -170,11 +173,12 @@ def update_task(task_id: int, body: TaskUpdate,
 
 
 @router.delete("/{task_id}", status_code=204)
-def delete_task(task_id: int, db: Session = Depends(get_db),
+def delete_task(task_id: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     t = db.query(TreatmentTask).filter(TreatmentTask.id == task_id).first()
     if not t or not check_org_access(t.organization_id, current_user):
-        raise HTTPException(404, "Tarea no encontrada")
+        raise HTTPException(404, _t("tasks.not_found", lang))
     log_action(db, current_user.id, "delete", "task", str(task_id), {"code": t.code})
     db.delete(t)
     db.commit()

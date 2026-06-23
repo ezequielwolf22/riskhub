@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from reportlab.lib import colors
@@ -17,6 +17,7 @@ from reportlab.platypus import (
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import (
     AiConfig,
     Asset, Control, ControlImplementation, DPIA, DPIAStatus, Incident, IncidentStatus,
@@ -1373,9 +1374,10 @@ class AiReportIn(BaseModel):
 
 
 @router.post("/ai-generate")
-def ai_generate(body: AiReportIn, db: Session = Depends(get_db),
+def ai_generate(body: AiReportIn, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
     """Genera un informe ejecutivo usando Claude API y lo devuelve como PDF o Excel."""
+    lang = get_lang(request)
     if body.report_type not in REPORT_LABEL:
         raise HTTPException(422, f"report_type no valido. Opciones: {list(REPORT_LABEL)}")
     if body.format not in ("pdf", "excel"):
@@ -1395,7 +1397,7 @@ def ai_generate(body: AiReportIn, db: Session = Depends(get_db),
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, f"Error llamando a Claude API: {e}")
+        raise HTTPException(502, _t("reports.generation_failed", lang))
 
     brand = _load_brand(db, current_user.organization_id, body.report_type)
     if body.format == "excel":

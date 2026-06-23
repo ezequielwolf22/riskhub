@@ -8,13 +8,13 @@ const Api = {
     if (tok) headers['Authorization'] = 'Bearer ' + tok;
     if (opts.body && !headers['Content-Type'] && !(opts.body instanceof FormData))
       headers['Content-Type'] = 'application/json';
+    headers['X-Lang'] = localStorage.getItem('riskhub_lang') || 'es';
 
     let resp;
     try {
       resp = await fetch(path, { ...opts, headers });
     } catch (_netErr) {
-      // Error de red (sin conexion, proxy bloqueando, DNS, etc.)
-      throw new Error('No se pudo conectar con el servidor. Verifica tu conexion de red.');
+      throw new Error(typeof t === 'function' ? t('api.network_error') : 'No se pudo conectar con el servidor.');
     }
 
     if (resp.status === 401) {

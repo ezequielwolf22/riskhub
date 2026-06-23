@@ -14,9 +14,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from app.i18n import get_lang, t as _t
 
 from app.config import settings
 from app.database import get_db
@@ -228,6 +230,7 @@ def search_cves(
 @router.post("/analyze")
 def analyze_cves(
     body: AnalyzeRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -236,6 +239,7 @@ def analyze_cves(
     from app.routers.ai_config import resolve_api_key
     from app.services.cve_analysis_service import analyze_cve_asset, get_rag_context
 
+    lang = get_lang(request)
     if not body.cve_ids:
         raise HTTPException(400, "Se requiere al menos un CVE ID.")
     if len(body.cve_ids) > 20:
@@ -247,7 +251,7 @@ def analyze_cves(
         ai_cfg = db.query(AiConfig).first()
     ai_api_key = resolve_api_key(ai_cfg)
     if not ai_api_key:
-        raise HTTPException(400, "El Agente IA no esta configurado. Ve a Onboarding para configurarlo.")
+        raise HTTPException(400, _t("ai.not_configured", lang))
 
     # Configuracion CVE
     api_key = _get_api_key(db)
@@ -263,7 +267,7 @@ def analyze_cves(
             logger.warning("CVE no encontrado en NVD: %s", cid)
 
     if not cve_data:
-        raise HTTPException(404, "No se encontraron datos para los CVE IDs proporcionados en NVD.")
+        raise HTTPException(404, _t("cve.not_found", lang))
 
     # Obtener activos filtrados por org
     if body.asset_ids:
@@ -358,6 +362,7 @@ def analyze_cves(
 @router.post("/auto-scan")
 def auto_scan_cves(
     body: AutoScanRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -372,12 +377,13 @@ def auto_scan_cves(
     from app.routers.ai_config import resolve_api_key
     from app.services.cve_analysis_service import analyze_cve_asset, get_rag_context
 
+    lang = get_lang(request)
     ai_cfg = db.query(AiConfig).filter_by(organization_id=current_user.organization_id).first()
     if not ai_cfg:
         ai_cfg = db.query(AiConfig).first()
     ai_api_key = resolve_api_key(ai_cfg)
     if not ai_api_key:
-        raise HTTPException(400, "El Agente IA no esta configurado. Ve a Configuracion > Agente IA.")
+        raise HTTPException(400, _t("ai.not_configured", lang))
 
     api_key = _get_api_key(db)
     sev = None if body.severity.upper() == "ALL" else body.severity.upper()

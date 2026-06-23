@@ -2,10 +2,11 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import NCStatus, NCSeverity, NonConformity, User
 from app.schemas import NonConformityIn, NonConformityOut, NonConformityUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
@@ -103,10 +104,11 @@ def nc_summary(db: Session = Depends(get_db), current_user: User = Depends(get_c
 
 
 @router.get("/{nc_id}", response_model=NonConformityOut)
-def get_nc(nc_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_nc(nc_id: int, request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     nc = db.query(NonConformity).filter(NonConformity.id == nc_id).first()
     if not nc or not check_org_access(nc.organization_id, current_user):
-        raise HTTPException(404, "No conformidad no encontrada")
+        raise HTTPException(404, _t("nonconformities.not_found", lang))
     return nc
 
 
@@ -183,11 +185,13 @@ def create_nc(body: NonConformityIn, db: Session = Depends(get_db),
 @router.patch("/{nc_id}", response_model=NonConformityOut)
 def update_nc(nc_id: int, body: NonConformityUpdate,
               background_tasks: BackgroundTasks,
+              request: Request,
               db: Session = Depends(get_db),
               current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     nc = db.query(NonConformity).filter(NonConformity.id == nc_id).first()
     if not nc or not check_org_access(nc.organization_id, current_user):
-        raise HTTPException(404, "No conformidad no encontrada")
+        raise HTTPException(404, _t("nonconformities.not_found", lang))
     update_data = body.model_dump(exclude_none=True)
     # Si se cierra la NC, registrar fecha de cierre
     old_severity = nc.severity
@@ -259,11 +263,12 @@ def update_nc(nc_id: int, body: NonConformityUpdate,
 
 
 @router.delete("/{nc_id}", status_code=204)
-def delete_nc(nc_id: int, db: Session = Depends(get_db),
+def delete_nc(nc_id: int, request: Request, db: Session = Depends(get_db),
               current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     nc = db.query(NonConformity).filter(NonConformity.id == nc_id).first()
     if not nc or not check_org_access(nc.organization_id, current_user):
-        raise HTTPException(404, "No conformidad no encontrada")
+        raise HTTPException(404, _t("nonconformities.not_found", lang))
     log_action(db, current_user.id, "delete", "nonconformity", str(nc_id), {"code": nc.code})
     db.delete(nc)
     db.commit()

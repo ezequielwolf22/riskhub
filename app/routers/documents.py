@@ -3,8 +3,10 @@ import re
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
+
+from app.i18n import get_lang, t as _t
 
 from app.database import get_db, SessionLocal
 from app.models import AiDocument, AiDocumentCategory, AiDocumentStatus, User
@@ -126,23 +128,25 @@ def list_documents(
 
 @router.post("/")
 def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     category: str = Form(...),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
+    lang = get_lang(request)
     data = file.file.read()
     if len(data) > MAX_SIZE_BYTES:
-        raise HTTPException(400, "Archivo demasiado grande (maximo 20 MB)")
+        raise HTTPException(400, _t("documents.too_large", lang, max_mb=50))
 
     mime = _infer_mime(file.filename or "", file.content_type or "")
     if mime not in ALLOWED_MIME:
-        raise HTTPException(400, "Tipo de archivo no soportado. Usa PDF, DOCX, TXT o imagen (PNG/JPG).")
+        raise HTTPException(400, _t("documents.invalid_type", lang, formats="PDF, DOCX, TXT, PNG, JPG"))
 
     # OWASP A08 — validar contenido real mediante magic bytes
     if not _validate_magic(mime, data):
-        raise HTTPException(400, "El contenido del archivo no coincide con la extension declarada.")
+        raise HTTPException(400, _t("documents.invalid_type", lang, formats="PDF, DOCX, TXT, PNG, JPG"))
 
     try:
         cat = AiDocumentCategory(category)
@@ -194,16 +198,18 @@ def upload_document(
 @router.delete("/{doc_id}")
 def remove_document(
     doc_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
+    lang = get_lang(request)
     from app.models import UserRole
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
     if not doc or not check_org_access(doc.organization_id, current_user):
-        raise HTTPException(404, "Documento no encontrado")
+        raise HTTPException(404, _t("documents.not_found", lang))
     # Solo el propietario o un administrador pueden eliminar el documento
     if doc.uploaded_by_id != current_user.id and current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
-        raise HTTPException(403, "No tienes permiso para eliminar este documento")
+        raise HTTPException(403, _t("common.forbidden", lang))
     delete_document(db, doc)
     return {"ok": True}
 
@@ -211,13 +217,15 @@ def remove_document(
 @router.post("/{doc_id}/reprocess")
 def reprocess_document(
     doc_id: int,
+    request: Request,
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
+    lang = get_lang(request)
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
     if not doc or not check_org_access(doc.organization_id, current_user):
-        raise HTTPException(404, "Documento no encontrado")
+        raise HTTPException(404, _t("documents.not_found", lang))
     try:
         process_document(db, doc_id)
     except Exception:
@@ -232,16 +240,18 @@ def reprocess_document(
 @router.post("/{doc_id}/analyze")
 def analyze_document(
     doc_id: int,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
     """Lanza (o relanza) el analisis ISMS del documento en background."""
+    lang = get_lang(request)
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
     if not doc or not check_org_access(doc.organization_id, current_user):
-        raise HTTPException(404, "Documento no encontrado")
+        raise HTTPException(404, _t("documents.not_found", lang))
     if doc.status != AiDocumentStatus.INDEXED:
-        raise HTTPException(400, "El documento debe estar en estado INDEXED para ser analizado")
+        raise HTTPException(400, _t("common.bad_request", lang))
     # Resetear estado para forzar reanalizis
     doc.isms_status = None
     doc.isms_summary = None
@@ -296,16 +306,18 @@ def analyze_pending_documents(
 @router.get("/{doc_id}/controls")
 def get_document_controls(
     doc_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Devuelve las implementaciones de control actualizadas por este documento (via evidence_refs)."""
+    lang = get_lang(request)
     from app.models import ControlImplementation
     from sqlalchemy import cast, String
 
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
     if not doc or not check_org_access(doc.organization_id, current_user):
-        raise HTTPException(404, "Documento no encontrado")
+        raise HTTPException(404, _t("documents.not_found", lang))
 
     doc_url = f"/api/ai/documents/{doc_id}"
     impls = (
@@ -333,6 +345,7 @@ def get_document_controls(
 
 @router.post("/analyze-all")
 def analyze_all_documents(
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
@@ -342,6 +355,7 @@ def analyze_all_documents(
     Solo procesa documentos INDEXED. Los que ya tienen isms_status='analysed' se
     re-analizan para actualizar el gap analysis con el prompt mejorado.
     """
+    lang = get_lang(request)
     docs = (
         db.query(AiDocument)
         .filter(
@@ -351,7 +365,7 @@ def analyze_all_documents(
         .all()
     )
     if not docs:
-        raise HTTPException(400, "No hay documentos indexados para analizar")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     queued = 0
     for doc in docs:

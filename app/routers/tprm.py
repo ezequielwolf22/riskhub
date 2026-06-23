@@ -11,10 +11,11 @@ un silo paralelo (ver spec §0).
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import Supplier, SupplierTier, TPRMTemplate, User
 from app.schemas import TPRMTemplateCreate, TPRMTemplateOut, TPRMTemplateUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
@@ -170,12 +171,13 @@ def portfolio_by_tier(db: Session = Depends(get_db),
 # ---------- Recalculo de scoring ----------
 
 @router.post("/vendors/{supplier_id}/recompute-inherent-risk")
-def recompute_inherent_risk(supplier_id: int, db: Session = Depends(get_db),
+def recompute_inherent_risk(supplier_id: int, request: Request, db: Session = Depends(get_db),
                             current_user: User = Depends(require_analyst)):
     """Recalcula inherent risk, tier y residual risk de un proveedor (§4.2-4.3)."""
+    lang = get_lang(request)
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     result = scoring.recompute_supplier(db, s)
     log_action(db, current_user.id, "recompute_tprm", "supplier", str(s.id), result)
     return result
@@ -202,11 +204,12 @@ def list_questionnaire_templates(current_user: User = Depends(get_current_user))
 
 
 @router.get("/questionnaire-templates/{code}")
-def get_questionnaire_template(code: str, current_user: User = Depends(get_current_user)):
+def get_questionnaire_template(code: str, request: Request, current_user: User = Depends(get_current_user)):
     """Devuelve la estructura completa de una plantilla del sistema."""
+    lang = get_lang(request)
     tpl = tprm_templates.get_template(code)
     if not tpl:
-        raise HTTPException(404, "Plantilla no encontrada")
+        raise HTTPException(404, _t("tprm.template_not_found", lang))
     return tpl
 
 
@@ -224,18 +227,20 @@ def list_custom_templates(db: Session = Depends(get_db),
 
 
 @router.get("/custom-templates/{tid}", response_model=TPRMTemplateOut)
-def get_custom_template(tid: int, db: Session = Depends(get_db),
+def get_custom_template(tid: int, request: Request, db: Session = Depends(get_db),
                         current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     t = db.query(TPRMTemplate).filter(TPRMTemplate.id == tid).first()
     if not t or not check_org_access(t.organization_id, current_user):
-        raise HTTPException(404, "Plantilla no encontrada")
+        raise HTTPException(404, _t("tprm.template_not_found", lang))
     return t
 
 
 @router.post("/custom-templates", response_model=TPRMTemplateOut, status_code=201)
-def create_custom_template(body: TPRMTemplateCreate, db: Session = Depends(get_db),
+def create_custom_template(body: TPRMTemplateCreate, request: Request, db: Session = Depends(get_db),
                            current_user: User = Depends(require_analyst)):
     """Crea una plantilla editable, opcionalmente clonando una del sistema."""
+    lang = get_lang(request)
     name = body.name
     description = body.description
     framework_codes = body.framework_codes
@@ -244,7 +249,7 @@ def create_custom_template(body: TPRMTemplateCreate, db: Session = Depends(get_d
     if body.from_system_code:
         sys_tpl = tprm_templates.get_template(body.from_system_code)
         if not sys_tpl:
-            raise HTTPException(404, "Plantilla del sistema no encontrada")
+            raise HTTPException(404, _t("tprm.template_not_found", lang))
         created_from = sys_tpl["code"]
         name = name or f"{sys_tpl['name']} (copia)"
         description = description or sys_tpl.get("description")
@@ -252,7 +257,7 @@ def create_custom_template(body: TPRMTemplateCreate, db: Session = Depends(get_d
         # Copia profunda de las preguntas para poder editarlas sin afectar al original
         questions = questions if questions is not None else [dict(q) for q in sys_tpl["questions"]]
     if not name:
-        raise HTTPException(400, "El nombre es obligatorio")
+        raise HTTPException(400, _t("common.bad_request", lang))
     if questions is None:
         questions = []
     t = TPRMTemplate(
@@ -272,11 +277,12 @@ def create_custom_template(body: TPRMTemplateCreate, db: Session = Depends(get_d
 
 
 @router.patch("/custom-templates/{tid}", response_model=TPRMTemplateOut)
-def update_custom_template(tid: int, body: TPRMTemplateUpdate, db: Session = Depends(get_db),
+def update_custom_template(tid: int, body: TPRMTemplateUpdate, request: Request, db: Session = Depends(get_db),
                            current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     t = db.query(TPRMTemplate).filter(TPRMTemplate.id == tid).first()
     if not t or not check_org_access(t.organization_id, current_user):
-        raise HTTPException(404, "Plantilla no encontrada")
+        raise HTTPException(404, _t("tprm.template_not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(t, field, value)
     db.commit()
@@ -286,11 +292,12 @@ def update_custom_template(tid: int, body: TPRMTemplateUpdate, db: Session = Dep
 
 
 @router.delete("/custom-templates/{tid}", status_code=204)
-def delete_custom_template(tid: int, db: Session = Depends(get_db),
+def delete_custom_template(tid: int, request: Request, db: Session = Depends(get_db),
                            current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     t = db.query(TPRMTemplate).filter(TPRMTemplate.id == tid).first()
     if not t or not check_org_access(t.organization_id, current_user):
-        raise HTTPException(404, "Plantilla no encontrada")
+        raise HTTPException(404, _t("tprm.template_not_found", lang))
     log_action(db, current_user.id, "delete", "tprm_template", str(tid), {"name": t.name})
     db.delete(t)
     db.commit()

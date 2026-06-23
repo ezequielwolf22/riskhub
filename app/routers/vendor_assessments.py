@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from app.i18n import get_lang, t as _t
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -174,25 +175,29 @@ def list_assessments(
 @router.get("/{aid}", response_model=VendorAssessmentOut)
 def get_assessment(
     aid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
     return a
 
 
 @router.get("/{aid}/detail")
 def get_assessment_detail(
     aid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Retorna la evaluacion junto con los cuestionarios completos (preguntas, respuestas, evidencias, AI)."""
+    lang = get_lang(request)
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
 
     def _q_summary(q: Optional[SupplierQuestionnaire]) -> Optional[dict]:
         if not q:
@@ -258,16 +263,18 @@ def get_assessment_detail(
 def download_evidence(
     aid: int,
     question_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Descarga un fichero de evidencia de la evaluacion (autenticado)."""
+    lang = get_lang(request)
     import re as _re
     question_id = _re.sub(r"[^a-zA-Z0-9_\-]", "", question_id)[:64]
 
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
 
     # Buscar en ambos cuestionarios
     q_ids = []
@@ -276,7 +283,7 @@ def download_evidence(
     if a.profiling_questionnaire_id:
         q_ids.append(a.profiling_questionnaire_id)
     if not q_ids:
-        raise HTTPException(404, "No hay cuestionarios en esta evaluacion")
+        raise HTTPException(404, _t("tprm.questionnaire_not_found", lang))
 
     entry = None
     for qid in q_ids:
@@ -286,19 +293,19 @@ def download_evidence(
             break
 
     if not entry or not entry.get("stored_name"):
-        raise HTTPException(404, "Evidencia no encontrada")
+        raise HTTPException(404, _t("evidence.not_found", lang))
 
     stored = entry["stored_name"]
     # Prevenir path traversal
     if "/" in stored or "\\" in stored or ".." in stored:
-        raise HTTPException(400, "Nombre de fichero invalido")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     evidence_dir = Path("/srv/data/evidence")
     if not evidence_dir.parent.exists():
         evidence_dir = Path(__file__).parent.parent.parent / "data" / "evidence"
     dest = evidence_dir / stored
     if not dest.exists():
-        raise HTTPException(404, "Fichero de evidencia no encontrado en el servidor")
+        raise HTTPException(404, _t("evidence.not_found", lang))
 
     return FileResponse(
         path=str(dest),
@@ -314,11 +321,12 @@ def create_assessment(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     org_id = current_user.organization_id
 
     supplier = db.query(Supplier).filter(Supplier.id == body.supplier_id).first()
     if not supplier or not check_org_access(supplier.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
 
     # Calcular scores base del proveedor (sin cuestionarios vinculados aun)
     scores = build_assessment(db, supplier, [])
@@ -369,14 +377,14 @@ def create_assessment(
             from app.models import TPRMTemplate
             tpl = db.query(TPRMTemplate).filter(TPRMTemplate.id == body.custom_template_id).first()
             if not tpl or not check_org_access(tpl.organization_id, current_user):
-                raise HTTPException(404, "Plantilla personalizada no encontrada")
+                raise HTTPException(404, _t("tprm.template_not_found", lang))
             questions = tpl.questions or []
             template_code = f"custom:{tpl.id}"
         elif template_code:
             from app.services import tprm_templates
             tpl_data = tprm_templates.get_template(template_code)
             if not tpl_data:
-                raise HTTPException(404, f"Plantilla {template_code!r} no encontrada")
+                raise HTTPException(404, _t("tprm.template_not_found", lang))
             questions = tpl_data["questions"]
         else:
             from app.routers.supplier_questionnaires import DEFAULT_QUESTIONS
@@ -425,16 +433,18 @@ def create_assessment(
 def decide_assessment(
     aid: int,
     body: VendorAssessmentDecide,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Registra la decision del evaluador sobre el proveedor (aprobar/rechazar/etc.)."""
+    lang = get_lang(request)
     if body.decision not in _DECISION_VALUES:
-        raise HTTPException(400, f"decision debe ser uno de: {', '.join(sorted(_DECISION_VALUES))}")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
 
     from app.models import AssessmentRecommendation
     a.recommendation = AssessmentRecommendation(body.decision)
@@ -457,12 +467,14 @@ _ASSESSMENT_SAFE_FIELDS_WHEN_APPROVED = {"valid_until", "linked_risk_id"}
 def update_assessment(
     aid: int,
     body: VendorAssessmentUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
 
     changes = body.model_dump(exclude_none=True)
     # Una evaluacion aprobada es la base documental para decisiones TPRM (§5.2):
@@ -472,8 +484,7 @@ def update_assessment(
         if disallowed:
             raise HTTPException(
                 422,
-                "Esta evaluacion ya esta aprobada y no puede editarse directamente. "
-                "Usa 'Nueva version' para crear una re-evaluacion en borrador.",
+                _t("common.bad_request", lang),
             )
     for field, value in changes.items():
         setattr(a, field, value)
@@ -493,17 +504,19 @@ def update_assessment(
 @router.post("/{aid}/new-version", response_model=VendorAssessmentOut)
 def new_assessment_version(
     aid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Crea una nueva re-evaluacion en borrador a partir de una evaluacion aprobada,
     copiando sus puntuaciones. La evaluacion original permanece vigente hasta que
     la nueva se apruebe (ver approve_assessment)."""
+    lang = get_lang(request)
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
     if not a.approved_at:
-        raise HTTPException(422, "Solo se puede crear nueva version de una evaluacion aprobada")
+        raise HTTPException(422, _t("common.bad_request", lang))
 
     new_a = VendorRiskAssessment(
         organization_id=a.organization_id,
@@ -533,12 +546,14 @@ def new_assessment_version(
 @router.delete("/{aid}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_assessment(
     aid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
     log_action(db, current_user.id, "delete", "vendor_assessment", str(aid), {"code": a.code})
     db.delete(a)
     db.commit()
@@ -547,12 +562,14 @@ def delete_assessment(
 @router.post("/{aid}/approve", response_model=VendorAssessmentOut)
 def approve_assessment(
     aid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
     a.approver_user_id = current_user.id
     a.approved_at = datetime.now(timezone.utc)
     db.commit()
@@ -570,13 +587,15 @@ def approve_assessment(
 @router.post("/{aid}/push-to-risk-register")
 def push_to_risk_register(
     aid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Crea un riesgo ISO 27005 en el registro a partir de la evaluacion consolidada."""
+    lang = get_lang(request)
     a = db.query(VendorRiskAssessment).filter(VendorRiskAssessment.id == aid).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Evaluacion no encontrada")
+        raise HTTPException(404, _t("tprm.assessment_not_found", lang))
 
     if a.linked_risk_id:
         existing_risk = db.query(Risk).filter(Risk.id == a.linked_risk_id).first()
@@ -596,7 +615,7 @@ def push_to_risk_register(
         .first()
     )
     if not asset:
-        raise HTTPException(409, "No hay activos registrados. Registra al menos un activo antes de enviar al registro de riesgos.")
+        raise HTTPException(409, _t("common.conflict", lang))
 
     threat = (
         db.query(Threat)
@@ -612,7 +631,7 @@ def push_to_risk_register(
     if not threat:
         threat = db.query(Threat).filter(Threat.category.ilike("%organiz%")).first()
     if not threat:
-        raise HTTPException(409, "No se encontro amenaza de cadena de suministro en el catalogo.")
+        raise HTTPException(409, _t("common.conflict", lang))
 
     existing = db.query(Risk).filter(
         Risk.organization_id == org_id,

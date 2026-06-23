@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,6 +11,7 @@ from app.models import Asset, Risk, RiskStatus, Supplier, SupplierRisk, Threat, 
 from app.schemas import SupplierIn, SupplierOut, SupplierUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
+from app.i18n import get_lang, t as _t
 
 logger = logging.getLogger(__name__)
 
@@ -133,11 +134,12 @@ def bulk_recompute_suppliers(body: _BulkIds, db: Session = Depends(get_db),
 
 
 @router.get("/{supplier_id}", response_model=SupplierOut)
-def get_supplier(supplier_id: int, db: Session = Depends(get_db),
+def get_supplier(supplier_id: int, request: Request, db: Session = Depends(get_db),
                  current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     return s
 
 
@@ -201,11 +203,13 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
 
 @router.patch("/{supplier_id}", response_model=SupplierOut)
 def update_supplier(supplier_id: int, body: SupplierUpdate,
+                    request: Request,
                     db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     old_score = s.score
     old_risk_level = s.risk_level
     for field, value in body.model_dump(exclude_none=True).items():
@@ -444,11 +448,12 @@ def _auto_create_supplier_risk(
 
 
 @router.delete("/{supplier_id}", status_code=204)
-def delete_supplier(supplier_id: int, db: Session = Depends(get_db),
+def delete_supplier(supplier_id: int, request: Request, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     log_action(db, current_user.id, "delete", "supplier", str(supplier_id), {"name": s.name})
     db.delete(s)
     db.commit()
@@ -466,13 +471,15 @@ _ALLOWED_DOC_EXT = (
 @router.get("/{supplier_id}/documents")
 def list_supplier_documents(
     supplier_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     from app.models import SupplierDocument
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     docs = (
         db.query(SupplierDocument)
         .filter(SupplierDocument.supplier_id == supplier_id)
@@ -495,16 +502,18 @@ def list_supplier_documents(
 @router.post("/{supplier_id}/documents")
 async def upload_supplier_document(
     supplier_id: int,
+    request: Request,
     file: UploadFile = File(...),
     description: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     from app.models import SupplierDocument
     from app.services.document_service import save_document_file
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     fname = file.filename or "documento"
     ext = "." + fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     if ext not in _ALLOWED_DOC_EXT:
@@ -534,22 +543,24 @@ async def upload_supplier_document(
 def download_supplier_document(
     supplier_id: int,
     doc_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     from app.models import SupplierDocument
     from app.services.document_service import decrypt_doc
     from pathlib import Path
     from fastapi.responses import Response as _Resp
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     doc = db.query(SupplierDocument).filter(
         SupplierDocument.id == doc_id,
         SupplierDocument.supplier_id == supplier_id,
     ).first()
     if not doc:
-        raise HTTPException(404, "Documento no encontrado")
+        raise HTTPException(404, _t("common.not_found", lang))
     # Buscar fichero en disco
     for base in ("/srv/data/documents", "data/documents"):
         p = Path(base) / doc.stored_name
@@ -560,26 +571,28 @@ def download_supplier_document(
             mt = mimetypes.guess_type(doc.filename)[0] or "application/octet-stream"
             return _Resp(content=content, media_type=mt,
                          headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'})
-    raise HTTPException(404, "Fichero no disponible en disco")
+    raise HTTPException(404, _t("common.not_found", lang))
 
 
 @router.delete("/{supplier_id}/documents/{doc_id}", status_code=204)
 def delete_supplier_document(
     supplier_id: int,
     doc_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     from app.models import SupplierDocument
     s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not s or not check_org_access(s.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("suppliers.not_found", lang))
     doc = db.query(SupplierDocument).filter(
         SupplierDocument.id == doc_id,
         SupplierDocument.supplier_id == supplier_id,
     ).first()
     if not doc:
-        raise HTTPException(404, "Documento no encontrado")
+        raise HTTPException(404, _t("common.not_found", lang))
     log_action(db, current_user.id, "delete_document", "supplier", str(supplier_id),
                {"filename": doc.filename})
     db.delete(doc)
@@ -592,14 +605,16 @@ def delete_supplier_document(
 async def change_lifecycle(
     sid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Cambia el lifecycle stage de un proveedor con auditoria."""
+    lang = get_lang(request)
     from app.services.supplier_lifecycle_service import generate_onboarding_checklist
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=404, detail=_t("suppliers.not_found", lang))
 
     valid_stages = {"prospecting", "onboarding", "active", "under_review", "offboarding", "terminated"}
     new_stage = payload.get("stage", "")
@@ -629,19 +644,21 @@ async def update_checklist_item(
     sid: int,
     item_id: str,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Marca un item del checklist como completado (bucle cerrado: 100% -> active)."""
+    lang = get_lang(request)
     from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=404, detail=_t("suppliers.not_found", lang))
 
     checklist = sup.onboarding_checklist or []
     item = next((i for i in checklist if i["id"] == item_id), None)
     if not item:
-        raise HTTPException(status_code=404, detail="Item no encontrado")
+        raise HTTPException(status_code=404, detail=_t("common.not_found", lang))
 
     item["completed"] = payload.get("completed", True)
     if item["completed"]:
@@ -666,14 +683,16 @@ async def update_checklist_item(
 async def record_sign_off(
     sid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Registra la firma de DPA, NDA o contrato (bucle cerrado: elimina gap de cumplimiento)."""
+    lang = get_lang(request)
     from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=404, detail=_t("suppliers.not_found", lang))
 
     doc_type = payload.get("type", "")
     signed_by = payload.get("signed_by", current_user.full_name)
@@ -719,6 +738,7 @@ async def record_sign_off(
 async def slas_to_kris(
     sid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -734,11 +754,12 @@ async def slas_to_kris(
     Para cada SLA se crea un KRI con umbrales de warning (98% del target en higher,
     120% en lower) y breach (95% / 150%) derivados automaticamente del target.
     """
+    lang = get_lang(request)
     from app.models import KRI
 
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=404, detail=_t("suppliers.not_found", lang))
 
     slas = payload.get("slas", [])
     if not slas:
@@ -796,14 +817,16 @@ async def slas_to_kris(
 async def set_concentration_mitigation(
     sid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Registra notas de mitigacion de riesgo de concentracion (bucle cerrado: puede bajar el KRI)."""
+    lang = get_lang(request)
     from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=404, detail=_t("suppliers.not_found", lang))
 
     sup.concentration_risk_notes = payload.get("notes", sup.concentration_risk_notes)
     sup.exit_strategy = payload.get("exit_strategy", sup.exit_strategy)
@@ -818,15 +841,17 @@ async def set_concentration_mitigation(
 @router.get("/{sid}/audit-log")
 async def get_supplier_audit_log(
     sid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Historial de cambios del proveedor desde la tabla de auditoria."""
+    lang = get_lang(request)
     from app.models import AuditLog
 
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=404, detail=_t("suppliers.not_found", lang))
 
     logs = (
         db.query(AuditLog)

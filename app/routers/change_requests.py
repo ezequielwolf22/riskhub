@@ -2,10 +2,12 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
+
+from app.i18n import get_lang, t as _t
 
 from app.database import get_db
 from app.models import ChangeRequest, User
@@ -100,14 +102,16 @@ def list_changes(
 
 @router.post("", status_code=201)
 def create_change(
+    request: Request,
     body: ChangeRequestCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     if body.change_type not in VALID_TYPES:
-        raise HTTPException(422, f"change_type invalido. Validos: {VALID_TYPES}")
+        raise HTTPException(422, _t("common.bad_request", lang))
     if body.risk_impact and body.risk_impact not in VALID_IMPACTS:
-        raise HTTPException(422, f"risk_impact invalido. Validos: {VALID_IMPACTS}")
+        raise HTTPException(422, _t("common.bad_request", lang))
 
     planned = None
     if body.planned_date:
@@ -143,27 +147,31 @@ def create_change(
 @router.get("/{chg_id}")
 def get_change(
     chg_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     chg = db.get(ChangeRequest, chg_id)
     if not chg or chg.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Cambio no encontrado")
+        raise HTTPException(404, _t("change_requests.not_found", lang))
     return _chg_to_dict(chg)
 
 
 @router.patch("/{chg_id}")
 def update_change(
     chg_id: int,
+    request: Request,
     body: ChangeRequestUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     chg = db.get(ChangeRequest, chg_id)
     if not chg or chg.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Cambio no encontrado")
+        raise HTTPException(404, _t("change_requests.not_found", lang))
     if chg.status in ("approved", "implemented", "verified"):
-        raise HTTPException(400, "No se puede modificar un cambio aprobado o implementado")
+        raise HTTPException(400, _t("change_requests.cannot_modify_approved", lang))
 
     for field in ("title", "change_type", "description", "business_reason",
                   "affected_asset_ids", "affected_control_ids", "affected_policy_ids",

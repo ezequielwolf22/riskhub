@@ -5,12 +5,13 @@ from typing import Optional
 
 logger = logging.getLogger("riskhub.organizations")
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import (
     AiCallLog, Organization, User, UserRole,
 )
@@ -48,15 +49,17 @@ def list_organizations(
 
 @router.get("/current", response_model=OrganizationOut)
 def get_current_org(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Devuelve la organizacion del usuario autenticado."""
+    lang = get_lang(request)
     if not current_user.organization_id:
-        raise HTTPException(404, "El usuario no pertenece a ninguna organizacion")
+        raise HTTPException(404, _t("organizations.not_found", lang))
     org = db.get(Organization, current_user.organization_id)
     if not org:
-        raise HTTPException(404, "Organizacion no encontrada")
+        raise HTTPException(404, _t("organizations.not_found", lang))
     return _to_out(org, db)
 
 

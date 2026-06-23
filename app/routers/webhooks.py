@@ -1,10 +1,11 @@
 """Router de webhooks."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import User, Webhook, WebhookDelivery, WebhookEvent
 from app.security import get_current_user, require_role
 
@@ -97,13 +98,15 @@ def create_webhook(
 def update_webhook(
     webhook_id: int,
     body: WebhookIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """Actualiza webhook."""
+    lang = get_lang(request)
     wh = db.get(Webhook, webhook_id)
     if not wh or wh.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Webhook no encontrado")
+        raise HTTPException(404, _t("webhooks.not_found", lang))
 
     from app.services.webhook_service import validate_webhook_url
     try:
@@ -127,13 +130,15 @@ def update_webhook(
 @router.delete("/{webhook_id}")
 def delete_webhook(
     webhook_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """Elimina webhook."""
+    lang = get_lang(request)
     wh = db.get(Webhook, webhook_id)
     if not wh or wh.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Webhook no encontrado")
+        raise HTTPException(404, _t("webhooks.not_found", lang))
     db.delete(wh)
     db.commit()
     return {"message": "Webhook eliminado"}
@@ -142,13 +147,15 @@ def delete_webhook(
 @router.post("/{webhook_id}/test")
 def test_webhook(
     webhook_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """Envía un payload de prueba al webhook."""
+    lang = get_lang(request)
     wh = db.get(Webhook, webhook_id)
     if not wh or wh.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Webhook no encontrado")
+        raise HTTPException(404, _t("webhooks.not_found", lang))
 
     from app.services.webhook_service import trigger_webhook_sync
     payload = {

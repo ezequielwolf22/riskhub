@@ -2,10 +2,11 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import Asset, Incident, IncidentStatus, Risk, User
 from app.schemas import IncidentIn, IncidentOut, IncidentUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
@@ -57,11 +58,12 @@ def incidents_summary(db: Session = Depends(get_db), current_user: User = Depend
 
 
 @router.get("/{incident_id}", response_model=IncidentOut)
-def get_incident(incident_id: int, db: Session = Depends(get_db),
+def get_incident(incident_id: int, request: Request, db: Session = Depends(get_db),
                  current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc or not check_org_access(inc.organization_id, current_user):
-        raise HTTPException(404, "Incidente no encontrado")
+        raise HTTPException(404, _t("incidents.not_found", lang))
     return inc
 
 
@@ -175,12 +177,13 @@ def _propagate_incident_close_to_risks(db: Session, inc: "Incident") -> None:
 
 
 @router.patch("/{incident_id}", response_model=IncidentOut)
-def update_incident(incident_id: int, body: IncidentUpdate,
+def update_incident(incident_id: int, body: IncidentUpdate, request: Request,
                     db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc or not check_org_access(inc.organization_id, current_user):
-        raise HTTPException(404, "Incidente no encontrado")
+        raise HTTPException(404, _t("incidents.not_found", lang))
 
     old_status = inc.status
     update_data = body.model_dump(exclude_none=True)
@@ -215,11 +218,12 @@ def update_incident(incident_id: int, body: IncidentUpdate,
 
 
 @router.delete("/{incident_id}", status_code=204)
-def delete_incident(incident_id: int, db: Session = Depends(get_db),
+def delete_incident(incident_id: int, request: Request, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc or not check_org_access(inc.organization_id, current_user):
-        raise HTTPException(404, "Incidente no encontrado")
+        raise HTTPException(404, _t("incidents.not_found", lang))
     log_action(db, current_user.id, "delete", "incident", str(incident_id),
                {"code": inc.code})
     db.delete(inc)
@@ -228,16 +232,17 @@ def delete_incident(incident_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/{incident_id}/notify-nis2", response_model=IncidentOut)
-def notify_nis2(incident_id: int, db: Session = Depends(get_db),
+def notify_nis2(incident_id: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     """Marca un incidente como notificado a NIS2 (Art. 23).
 
     Este es el ÚNICO endpoint autorizado para escribir nis2_notification_sent_at.
     Usa timestamp del servidor para garantizar integridad del registro de auditoría.
     """
+    lang = get_lang(request)
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if not inc or not check_org_access(inc.organization_id, current_user):
-        raise HTTPException(404, "Incidente no encontrado")
+        raise HTTPException(404, _t("incidents.not_found", lang))
     if not inc.nis2_notification_required:
         raise HTTPException(400, "Incidente no requiere notificación NIS2")
     if inc.nis2_notification_sent_at:

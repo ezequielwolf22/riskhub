@@ -4,7 +4,7 @@ import io
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ from app.services.risk_engine import (
     calc_level, calc_residual,
     calc_consequence_magerit, primary_dimension_for_threat, MAGERIT_DIM_FIELD,
 )
+from app.i18n import get_lang, t as _t
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
 
@@ -282,17 +283,19 @@ def get_methodology(
 
 
 @router.get("/{risk_id}", response_model=RiskOut)
-def get_risk(risk_id: int, db: Session = Depends(get_db),
+def get_risk(risk_id: int, request: Request, db: Session = Depends(get_db),
              current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     r = db.get(Risk, risk_id)
     if not r or not check_org_access(r.organization_id, current_user):
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
     return r
 
 
 @router.get("/{risk_id}/trace")
 def risk_trace(
     risk_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -303,9 +306,10 @@ def risk_trace(
     from app.models import Evidence, risk_control_table
     from app.services.risk_engine import control_reduction, LIKELIHOOD_LABELS, CONSEQUENCE_LABELS
 
+    lang = get_lang(request)
     r = db.get(Risk, risk_id)
     if not r or not check_org_access(r.organization_id, current_user):
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
 
     # --- Leer controles vinculados con su contribution ---
     rows = db.execute(
@@ -444,6 +448,7 @@ def risk_trace(
 @router.post("/{risk_id}/ai-explain")
 def risk_ai_explain(
     risk_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -460,9 +465,10 @@ def risk_ai_explain(
     from sqlalchemy import select
     import json as _json
 
+    lang = get_lang(request)
     r = db.get(Risk, risk_id)
     if not r or not check_org_access(r.organization_id, current_user):
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
 
     # Resolver API key
     cfg = db.query(AiConfig).filter_by(organization_id=current_user.organization_id).first()
@@ -794,13 +800,14 @@ Responde con JSON valido sin texto fuera del JSON:
 
 
 @router.post("/", response_model=RiskOut, status_code=201)
-def create_risk(data: RiskIn, db: Session = Depends(get_db),
+def create_risk(data: RiskIn, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     asset = db.get(Asset, data.asset_id)
     if not asset or not check_org_access(asset.organization_id, current_user):
-        raise HTTPException(400, "asset_id no existe")
+        raise HTTPException(400, _t("assets.not_found", lang))
     if not db.get(Threat, data.threat_id):
-        raise HTTPException(400, "threat_id no existe")
+        raise HTTPException(400, _t("risks.threat_not_found", lang))
     # Deteccion de duplicado: mismo asset + amenaza en la org (v1.7.7)
     if hasattr(data, 'asset_id') and hasattr(data, 'threat_id') and data.asset_id and data.threat_id:
         from app.models import Risk as _Risk
@@ -812,8 +819,7 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
         if existing_dup:
             raise HTTPException(
                 409,
-                f"Ya existe el riesgo {existing_dup.code} para este activo y amenaza. "
-                f"Edita el riesgo existente en lugar de crear uno nuevo."
+                _t("risks.duplicate_detected", lang, name=existing_dup.code, id=existing_dup.id),
             )
 
     org_id = current_user.organization_id
@@ -895,11 +901,12 @@ def create_risk(data: RiskIn, db: Session = Depends(get_db),
 
 
 @router.patch("/{risk_id}", response_model=RiskOut)
-def update_risk(risk_id: int, data: RiskUpdate, db: Session = Depends(get_db),
+def update_risk(risk_id: int, data: RiskUpdate, request: Request, db: Session = Depends(get_db),
                 user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     r = db.get(Risk, risk_id)
     if not r or not check_org_access(r.organization_id, user):
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
 
     update_data = data.model_dump(exclude_unset=True)
     if "vulnerability_ids" in update_data:
@@ -988,11 +995,12 @@ def magerit_consequence_preview(
 
 
 @router.delete("/{risk_id}", status_code=204)
-def delete_risk(risk_id: int, db: Session = Depends(get_db),
+def delete_risk(risk_id: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     r = db.get(Risk, risk_id)
     if not r or not check_org_access(r.organization_id, current_user):
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
     code = r.code
     db.delete(r)
     log_action(db, current_user.id, "delete", "risk", str(risk_id), {"code": code})
@@ -1526,15 +1534,17 @@ class AcceptanceRejectBody(BaseModel):
 def request_acceptance(
     risk_id: int,
     body: AcceptanceRequestBody,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Analyst propone aceptacion formal del riesgo (PENDING_ACCEPTANCE)."""
+    lang = get_lang(request)
     risk = db.get(Risk, risk_id)
     if not risk:
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
     if not check_org_access(risk.organization_id, current_user):
-        raise HTTPException(403, "No autorizado")
+        raise HTTPException(403, _t("common.unauthorized", lang))
 
     if risk.status not in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED, RiskStatus.TREATED):
         raise HTTPException(400, f"El riesgo en estado '{risk.status.value}' no puede solicitar aceptacion")
@@ -1585,23 +1595,25 @@ def request_acceptance(
 def accept_risk(
     risk_id: int,
     body: AcceptanceRequestBody,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Admin / risk owner aprueba la aceptacion formal del riesgo."""
+    lang = get_lang(request)
     from app.security import require_admin
     from app.models import UserRole
     risk = db.get(Risk, risk_id)
     if not risk:
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
     if not check_org_access(risk.organization_id, current_user):
-        raise HTTPException(403, "No autorizado")
+        raise HTTPException(403, _t("common.unauthorized", lang))
 
     # Solo admin o el owner del riesgo pueden aceptar
     is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERADMIN)
     is_owner = risk.owner_id == current_user.id
     if not (is_admin or is_owner):
-        raise HTTPException(403, "Solo admin o el risk owner pueden aprobar la aceptacion")
+        raise HTTPException(403, _t("common.forbidden", lang))
 
     if risk.status != RiskStatus.PENDING_ACCEPTANCE:
         raise HTTPException(400, "El riesgo no esta en estado PENDING_ACCEPTANCE")
@@ -1628,21 +1640,23 @@ def accept_risk(
 def reject_acceptance(
     risk_id: int,
     body: AcceptanceRejectBody,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Admin / risk owner rechaza la solicitud de aceptacion → vuelve a ASSESSED."""
+    lang = get_lang(request)
     from app.models import UserRole
     risk = db.get(Risk, risk_id)
     if not risk:
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
     if not check_org_access(risk.organization_id, current_user):
-        raise HTTPException(403, "No autorizado")
+        raise HTTPException(403, _t("common.unauthorized", lang))
 
     is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERADMIN)
     is_owner = risk.owner_id == current_user.id
     if not (is_admin or is_owner):
-        raise HTTPException(403, "Solo admin o el risk owner pueden rechazar la aceptacion")
+        raise HTTPException(403, _t("common.forbidden", lang))
 
     if risk.status != RiskStatus.PENDING_ACCEPTANCE:
         raise HTTPException(400, "El riesgo no esta en estado PENDING_ACCEPTANCE")
@@ -1660,6 +1674,7 @@ def reject_acceptance(
 @router.post("/{risk_id}/suggest-controls")
 def suggest_controls_for_risk(
     risk_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1672,11 +1687,12 @@ def suggest_controls_for_risk(
     from app.models import AiConfig, Control
     from app.services.rag_service import search_chunks_with_source
 
+    lang = get_lang(request)
     r = db.get(Risk, risk_id)
     if not r:
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
     if not check_org_access(r.organization_id, current_user):
-        raise HTTPException(403)
+        raise HTTPException(403, _t("common.forbidden", lang))
 
     # Configuracion IA del tenant — mismo patron de descifrado que ai-explain
     ai_cfg = db.query(AiConfig).filter_by(organization_id=r.organization_id).first()

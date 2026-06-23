@@ -1,7 +1,9 @@
 """Configuracion del agente IA — API key, modelo, anonimizacion, perfil org."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from app.i18n import get_lang, t as _t
 
 from app.config import settings
 from app.database import get_db
@@ -92,13 +94,15 @@ def update_config(
 
 @router.post("/test")
 def test_connection(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
+    lang = get_lang(request)
     cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = resolve_api_key(cfg)
     if not api_key:
-        raise HTTPException(400, "No hay API key configurada.")
+        raise HTTPException(400, _t("ai.not_configured", lang))
     try:
         import anthropic
         model = (cfg.model if cfg else None) or "claude-haiku-4-5"
@@ -111,11 +115,12 @@ def test_connection(
         reply = resp.content[0].text if resp.content else ""
         return {"ok": True, "model": model, "reply": reply}
     except Exception as e:
-        raise HTTPException(400, f"Error de conexion con la API: {e}")
+        raise HTTPException(400, _t("ai.api_error", lang, detail=str(e)))
 
 
 @router.post("/embed-existing")
 def embed_existing_documents(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
@@ -124,13 +129,14 @@ def embed_existing_documents(
     Util para activar la busqueda semantica en documentos subidos antes de
     configurar la Voyage API key. Se ejecuta en background para no bloquear.
     """
+    lang = get_lang(request)
     cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     if not cfg or not cfg.voyage_api_key_encrypted:
-        raise HTTPException(400, "Configura primero la Voyage API key.")
+        raise HTTPException(400, _t("ai.not_configured", lang))
     try:
         voyage_key = decrypt_secret(cfg.voyage_api_key_encrypted)
     except Exception:
-        raise HTTPException(400, "No se pudo descifrar la Voyage API key.")
+        raise HTTPException(400, _t("ai.api_error", lang, detail="voyage key decrypt failed"))
 
     org_id = current_user.organization_id
 

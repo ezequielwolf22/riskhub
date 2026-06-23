@@ -12,9 +12,11 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from app.i18n import get_lang, t as _t
 
 from app.config import settings
 from app.database import get_db
@@ -116,13 +118,15 @@ def get_config(
 
 @router.put("/config")
 def save_config(
+    request: Request,
     body: SharePointConfigIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Guarda las credenciales de SharePoint (cifradas). Solo admin."""
+    lang = get_lang(request)
     if not body.tenant_id or not body.client_id or not body.client_secret:
-        raise HTTPException(400, "Todos los campos son obligatorios.")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     encrypted = _encrypt(json.dumps({
         "tenant_id": body.tenant_id.strip(),

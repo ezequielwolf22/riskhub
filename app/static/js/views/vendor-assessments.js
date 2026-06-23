@@ -6,10 +6,10 @@
 const ViewVendorAssessments = (() => {
 
   const DECISION_LABELS = {
-    approve:                 'Aprobar',
-    approve_with_conditions: 'Aprobar con condiciones',
-    reject:                  'Rechazar',
-    request_more_info:       'Solicitar mas informacion',
+    approve:                 () => t('common.approve'),
+    approve_with_conditions: () => t('common.approve'),
+    reject:                  () => t('common.reject'),
+    request_more_info:       () => t('common.review'),
   };
   const DECISION_COLORS = {
     approve:                 '#16a34a',
@@ -18,11 +18,19 @@ const ViewVendorAssessments = (() => {
     request_more_info:       '#6366f1',
   };
   const LEVEL_LABELS = {
-    critical: 'Critico', high: 'Alto', medium: 'Medio', low: 'Bajo', very_low: 'Muy bajo',
+    critical: () => t('common.critical'),
+    high:     () => t('common.high'),
+    medium:   () => t('common.medium'),
+    low:      () => t('common.low'),
+    very_low: () => t('common.low'),
   };
   const PHASE_LABELS = {
-    profiling: 'Perfil de Riesgo', assessment: 'Evaluacion de Seguridad',
+    profiling:  () => t('tprm.questionnaire'),
+    assessment: () => t('tprm.assessment'),
   };
+
+  function _decisionLabel(k) { return DECISION_LABELS[k] ? DECISION_LABELS[k]() : k; }
+  function _levelLabel(k) { return LEVEL_LABELS[k] ? LEVEL_LABELS[k]() : k; }
 
   function _riskColor(score) {
     if (score == null) return 'var(--text-muted)';
@@ -38,37 +46,37 @@ const ViewVendorAssessments = (() => {
     if (score == null) return '<span style="color:var(--text-muted);">-</span>';
     const color = _riskColor(score);
     const band = window.RiskLevels ? RiskLevels.all().find(b => b.code === level) : null;
-    const label = band ? band.label : (LEVEL_LABELS[level] || level || '');
+    const label = band ? band.label : (_levelLabel(level) || level || '');
     return `<span style="font-weight:700;color:${color};">${score}</span> <span style="font-size:11px;color:${color};">${UI.esc(label)}</span>`;
   }
   function _decisionBadge(rec) {
-    if (!rec) return '<span style="color:var(--text-muted);font-size:12px;">Sin decision</span>';
+    if (!rec) return `<span style="color:var(--text-muted);font-size:12px;">${t('common.pending')}</span>`;
     const color = DECISION_COLORS[rec] || 'var(--text-muted)';
-    const label = DECISION_LABELS[rec] || rec;
+    const label = _decisionLabel(rec);
     return `<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:${color};color:#fff;">${UI.esc(label)}</span>`;
   }
   function _statusBadge(q) {
-    if (!q) return '<span style="color:var(--text-muted);font-size:11px;">No creado</span>';
-    if (q.submitted_at) return '<span style="color:#16a34a;font-size:11px;">Respondido</span>';
-    return '<span style="color:#f59e0b;font-size:11px;">Pendiente</span>';
+    if (!q) return `<span style="color:var(--text-muted);font-size:11px;">${t('common.none')}</span>`;
+    if (q.submitted_at) return `<span style="color:#16a34a;font-size:11px;">${t('tprm.assessment_status.submitted')}</span>`;
+    return `<span style="color:#f59e0b;font-size:11px;">${t('common.pending')}</span>`;
   }
 
   async function render(el) {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Evaluaciones de proveedores</h1>
-          <p class="page-sub">Gestiona el ciclo completo: envio de cuestionarios, recepcion de evidencias y toma de decision.</p>
+          <h1 class="page-title">${t('vendor.assessment.title')}</h1>
+          <p class="page-sub">${t('vendor.assessment.subtitle')}</p>
         </div>
-        ${Auth.canEdit() ? '<button class="btn btn-primary" id="btn-new-vas">+ Nueva evaluacion</button>' : ''}
+        ${Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-vas">+ ${t('vendor.assessment.new')}</button>` : ''}
       </div>
       <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-        <label style="font-size:13px;color:var(--text-muted);margin:0;">Filtrar por proveedor:</label>
+        <label style="font-size:13px;color:var(--text-muted);margin:0;">${t('common.filter')}:</label>
         <select id="vas-sup-filter" class="input" style="width:240px;">
-          <option value="">Todos los proveedores</option>
+          <option value="">${t('common.all')}</option>
         </select>
       </div>
-      <div id="vas-table-wrap"><p class="text-muted">Cargando...</p></div>
+      <div id="vas-table-wrap"><p class="text-muted">${t('common.loading')}</p></div>
     `;
 
     if (Auth.canEdit()) document.getElementById('btn-new-vas').onclick = () => _openForm();
@@ -92,7 +100,7 @@ const ViewVendorAssessments = (() => {
     const supplierId = document.getElementById('vas-sup-filter')?.value;
     const wrap = document.getElementById('vas-table-wrap');
     if (!wrap) return;
-    wrap.innerHTML = '<p class="text-muted">Cargando...</p>';
+    wrap.innerHTML = `<p class="text-muted">${t('common.loading')}</p>`;
     try {
       const params = {};
       if (supplierId) params.supplier_id = supplierId;
@@ -105,15 +113,15 @@ const ViewVendorAssessments = (() => {
 
   function _renderTable(wrap, data) {
     if (!data.length) {
-      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No hay evaluaciones. Crea la primera con "+ Nueva evaluacion".</p>';
+      wrap.innerHTML = `<p class="text-muted" style="margin-top:24px;text-align:center;">${t('common.no_results')}. ${t('vendor.assessment.new')}.</p>`;
       return;
     }
     const rows = data.map(a => {
       const date = a.assessment_date ? a.assessment_date.slice(0, 10) : '-';
-      const typeLabel = a.assessment_type === 'risk_analysis' ? 'Analisis de riesgo' : 'Cuestionario directo';
+      const typeLabel = a.assessment_type === 'risk_analysis' ? t('common.analyze') : t('tprm.questionnaire');
       const typeBadge = `<span style="font-size:11px;padding:2px 7px;border-radius:4px;background:${a.assessment_type === 'risk_analysis' ? 'rgba(89,0,141,.12)' : 'var(--bg-1)'};color:${a.assessment_type === 'risk_analysis' ? 'var(--brand-purple)' : 'var(--text-muted)'};">${UI.esc(typeLabel)}</span>`;
       const approved = a.approved_at
-        ? `<span style="color:#16a34a;font-size:11px;">Aprobado ${a.approved_at.slice(0,10)}</span>`
+        ? `<span style="color:#16a34a;font-size:11px;">${t('tprm.assessment_status.approved')} ${a.approved_at.slice(0,10)}</span>`
         : '';
       return `
         <tr>
@@ -124,9 +132,9 @@ const ViewVendorAssessments = (() => {
           <td>${_decisionBadge(a.recommendation)}</td>
           <td style="font-size:12px;">${approved}</td>
           <td>
-            <button class="btn btn-sm" data-id="${a.id}" data-act="detail">Ver detalle</button>
-            ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-sm" data-id="${a.id}" data-act="push">Push riesgos</button>` : (a.linked_risk_id ? `<span style="color:var(--risk-medium);font-size:11px;">En registro</span>` : '')}
-            ${Auth.canEdit() ? `<button class="btn btn-sm btn-danger" data-id="${a.id}" data-act="del">Eliminar</button>` : ''}
+            <button class="btn btn-sm" data-id="${a.id}" data-act="detail">${t('common.view')}</button>
+            ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-sm" data-id="${a.id}" data-act="push">${t('vendor.assessment.push_to_risk')}</button>` : (a.linked_risk_id ? `<span style="color:var(--risk-medium);font-size:11px;">${t('common.approved')}</span>` : '')}
+            ${Auth.canEdit() ? `<button class="btn btn-sm btn-danger" data-id="${a.id}" data-act="del">${t('common.delete')}</button>` : ''}
           </td>
         </tr>`;
     }).join('');
@@ -136,8 +144,8 @@ const ViewVendorAssessments = (() => {
         <table class="data">
           <thead>
             <tr>
-              <th>Codigo</th><th>Proveedor</th><th>Tipo</th><th>Fecha</th>
-              <th>Decision</th><th>Aprobacion</th><th>Acciones</th>
+              <th>${t('common.name')}</th><th>${t('common.supplier')}</th><th>${t('common.type')}</th><th>${t('common.date')}</th>
+              <th>${t('common.result')}</th><th>${t('tprm.assessment_status.approved')}</th><th>${t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -149,20 +157,20 @@ const ViewVendorAssessments = (() => {
 
     wrap.querySelectorAll('[data-act="push"]').forEach(btn =>
       btn.onclick = async () => {
-        if (!await UI.confirm('Enviar esta evaluacion al Risk Register ISO 27005?')) return;
+        if (!await UI.confirm(t('tprm.push_to_risk') + '?')) return;
         try {
           const res = await Api.vendor_assessments.pushToRegister(btn.dataset.id);
-          UI.toast(`Riesgo ${res.risk_code} creado en el registro`, 'success');
+          UI.toast(`${t('common.risk')} ${res.risk_code} ${t('common.success')}`, 'success');
           await _refresh();
         } catch (e) { UI.toast(e.message, 'error'); }
       });
 
     wrap.querySelectorAll('[data-act="del"]').forEach(btn =>
       btn.onclick = async () => {
-        if (!await UI.confirm('Eliminar esta evaluacion permanentemente?')) return;
+        if (!await UI.confirm(t('common.confirm_delete'))) return;
         try {
           await Api.vendor_assessments.del(btn.dataset.id);
-          UI.toast('Evaluacion eliminada', 'success');
+          UI.toast(t('common.success'), 'success');
           await _refresh();
         } catch (e) { UI.toast(e.message, 'error'); }
       });
@@ -170,13 +178,13 @@ const ViewVendorAssessments = (() => {
 
   // ---- Detalle completo con evidencias y decision ----
   async function _openDetail(aid) {
-    UI.modal('Cargando evaluacion...', '<p class="text-muted">Cargando...</p>', {});
+    UI.modal(t('common.loading'), `<p class="text-muted">${t('common.loading')}</p>`, {});
     let a;
     try {
       a = await Api.vendor_assessments.detail(aid);
     } catch (e) {
-      UI.modal('Error', `<p class="notice">${UI.esc(e.message)}</p>`, {
-        actions: '<button class="btn" onclick="UI.closeModal()">Cerrar</button>',
+      UI.modal(t('common.error'), `<p class="notice">${UI.esc(e.message)}</p>`, {
+        actions: `<button class="btn" onclick="UI.closeModal()">${t('common.close')}</button>`,
       });
       return;
     }
@@ -189,19 +197,19 @@ const ViewVendorAssessments = (() => {
 
     // --- Panel de cuestionario ---
     function _qPanel(q, label) {
-      if (!q) return `<div class="sq-card" style="padding:16px;"><p style="color:var(--text-muted);font-size:13px;">${label}: pendiente de creacion.</p></div>`;
+      if (!q) return `<div class="sq-card" style="padding:16px;"><p style="color:var(--text-muted);font-size:13px;">${label}: ${t('common.pending')}.</p></div>`;
 
       const submitted = !!q.submitted_at;
       const statusColor = submitted ? '#16a34a' : '#f59e0b';
-      const statusText  = submitted ? `Respondido el ${q.submitted_at.slice(0,10)}` : 'Pendiente de respuesta del proveedor';
+      const statusText  = submitted ? `${t('tprm.assessment_status.submitted')} ${q.submitted_at.slice(0,10)}` : t('common.pending');
 
       // NC badges
       const ncHtml = (q.major_nc != null) ? `
         <span style="margin-right:6px;font-size:11px;padding:2px 8px;border-radius:4px;background:#fef2f2;color:#dc2626;font-weight:600;">
-          NC Mayores: ${q.major_nc}
+          NC ${t('nonconformities.severity.major')}: ${q.major_nc}
         </span>
         <span style="font-size:11px;padding:2px 8px;border-radius:4px;background:#fff7ed;color:#ea580c;font-weight:600;">
-          NC Menores: ${q.minor_nc}
+          NC ${t('nonconformities.severity.minor')}: ${q.minor_nc}
         </span>` : '';
 
       // Preguntas + respuestas acordeon
@@ -213,7 +221,7 @@ const ViewVendorAssessments = (() => {
         const evidHtml = evid ? `
           <button onclick="ViewVendorAssessments._dlEvidence(${a.id},'${encodeURIComponent(qq.id)}','${_fn}');event.stopPropagation();"
              style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--brand-purple);text-decoration:underline;padding:0;">
-            Evidencia: ${UI.esc(evid.filename || evid.stored_name || 'fichero')}
+            ${t('evidence.title')}: ${UI.esc(evid.filename || evid.stored_name || 'fichero')}
           </button>` : '';
         return `<tr>
           <td style="font-size:12px;padding:6px 8px;color:var(--text-muted);width:40px;">${UI.esc(qq.id)}</td>
@@ -228,22 +236,22 @@ const ViewVendorAssessments = (() => {
       if (q.ai_review) {
         const r = q.ai_review;
         if (r.error) {
-          aiHtml = `<p style="font-size:12px;color:var(--text-muted);">Revision IA: ${UI.esc(r.error)}</p>`;
+          aiHtml = `<p style="font-size:12px;color:var(--text-muted);">${t('tprm.ai_review')}: ${UI.esc(r.error)}</p>`;
         } else {
           const flags = (r.red_flags || []).map(f => `<li style="font-size:12px;">${UI.esc(f)}</li>`).join('');
           const fups = (r.follow_up_questions || []).map(f => `<li style="font-size:12px;">${UI.esc(f)}</li>`).join('');
           aiHtml = `
             <div style="margin-top:12px;padding:12px;background:rgba(89,0,141,.05);border-radius:8px;border:1px solid rgba(89,0,141,.15);">
-              <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--brand-purple);">Evaluacion IA</div>
+              <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--brand-purple);">${t('tprm.ai_review')}</div>
               <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
-                <span style="font-size:12px;">Score IA: <strong>${r.ai_score ?? '-'}/100</strong></span>
-                <span style="font-size:12px;">Confianza: <strong>${r.confidence != null ? Math.round(r.confidence * 100) + '%' : '-'}</strong></span>
-                <span style="font-size:12px;">Cobertura: <strong>${UI.esc(r.control_coverage_assessment || '-')}</strong></span>
+                <span style="font-size:12px;">${t('common.score')}: <strong>${r.ai_score ?? '-'}/100</strong></span>
+                <span style="font-size:12px;">${t('common.level')}: <strong>${r.confidence != null ? Math.round(r.confidence * 100) + '%' : '-'}</strong></span>
+                <span style="font-size:12px;">${t('common.result')}: <strong>${UI.esc(r.control_coverage_assessment || '-')}</strong></span>
               </div>
               ${r.rationale ? `<p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">${UI.esc(r.rationale)}</p>` : ''}
-              ${flags ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Alertas:</div><ul style="margin:0 0 8px;padding-left:18px;">${flags}</ul>` : ''}
-              ${fups ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px;">Preguntas de seguimiento:</div><ul style="margin:0;padding-left:18px;">${fups}</ul>` : ''}
-              ${r.needs_manual_review ? `<p style="font-size:11px;color:#f59e0b;margin:8px 0 0;font-weight:600;">Requiere revision manual.</p>` : ''}
+              ${flags ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px;">${t('common.severity')}:</div><ul style="margin:0 0 8px;padding-left:18px;">${flags}</ul>` : ''}
+              ${fups ? `<div style="font-size:12px;font-weight:600;margin-bottom:4px;">${t('common.notes')}:</div><ul style="margin:0;padding-left:18px;">${fups}</ul>` : ''}
+              ${r.needs_manual_review ? `<p style="font-size:11px;color:#f59e0b;margin:8px 0 0;font-weight:600;">${t('common.review')}.</p>` : ''}
             </div>`;
         }
       }
@@ -260,26 +268,26 @@ const ViewVendorAssessments = (() => {
           </div>
           ${submitted ? `
           <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
-            <span style="font-size:13px;">Score: <strong>${q.score ?? '-'}/100</strong></span>
-            ${q.residual_risk_level ? `<span style="font-size:12px;">Riesgo residual: <strong>${UI.esc(LEVEL_LABELS[q.residual_risk_level] || q.residual_risk_level)}</strong></span>` : ''}
+            <span style="font-size:13px;">${t('common.score')}: <strong>${q.score ?? '-'}/100</strong></span>
+            ${q.residual_risk_level ? `<span style="font-size:12px;">${t('suppliers.residual_risk')}: <strong>${UI.esc(_levelLabel(q.residual_risk_level))}</strong></span>` : ''}
             ${ncHtml}
           </div>
           <details style="margin:0;">
             <summary style="padding:10px 16px;font-size:12px;font-weight:600;cursor:pointer;color:var(--brand-purple);">
-              Ver respuestas y evidencias (${(q.questions || []).length} preguntas)
+              ${t('common.show')} (${(q.questions || []).length})
             </summary>
             <div style="padding:0 16px 16px;">
               <div class="table-wrap" style="max-height:320px;overflow-y:auto;">
                 <table class="data" style="font-size:12px;">
-                  <thead><tr><th>ID</th><th>Pregunta</th><th>Respuesta</th><th>Evidencia</th></tr></thead>
+                  <thead><tr><th>ID</th><th>${t('common.description')}</th><th>${t('common.result')}</th><th>${t('evidence.title')}</th></tr></thead>
                   <tbody>${qaRows}</tbody>
                 </table>
               </div>
               ${aiHtml}
             </div>
           </details>` : `<div style="padding:12px 16px;font-size:12px;color:var(--text-muted);">
-            El proveedor aun no ha respondido este cuestionario.
-            ${q.token ? `<br><a href="/supplier-q?token=${encodeURIComponent(q.token)}" target="_blank" rel="noopener" style="color:var(--brand-purple);">Ver enlace del portal</a>` : ''}
+            ${t('common.pending')}.
+            ${q.token ? `<br><a href="/supplier-q?token=${encodeURIComponent(q.token)}" target="_blank" rel="noopener" style="color:var(--brand-purple);">${t('common.link')}</a>` : ''}
           </div>`}
         </div>`;
     }
@@ -290,34 +298,34 @@ const ViewVendorAssessments = (() => {
 
     const decisionPanel = hasSubmittedQ ? `
       <div style="margin-top:16px;padding:16px;background:var(--bg-1);border-radius:8px;border:1px solid var(--border);">
-        <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Decision del evaluador</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:12px;">${t('common.result')}</div>
         ${currentDecision ? `
           <div style="margin-bottom:12px;">
             ${_decisionBadge(currentDecision)}
             ${a.decision_at ? `<span style="font-size:11px;color:var(--text-muted);margin-left:8px;">${a.decision_at.slice(0,10)}</span>` : ''}
             ${a.decision_notes ? `<p style="font-size:12px;margin:8px 0 0;color:var(--text-base);">"${UI.esc(a.decision_notes)}"</p>` : ''}
           </div>
-          <p style="font-size:12px;color:var(--text-muted);">Puedes cambiar la decision si es necesario.</p>
-        ` : '<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">Selecciona una decision sobre este proveedor:</p>'}
+          <p style="font-size:12px;color:var(--text-muted);">${t('common.change')}.</p>
+        ` : `<p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">${t('common.select')}:</p>`}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;" id="vas-decision-btns">
-          ${Object.entries(DECISION_LABELS).map(([k, l]) => `
+          ${Object.entries(DECISION_LABELS).map(([k]) => `
             <button class="btn btn-sm" data-decision="${k}"
               style="border-color:${DECISION_COLORS[k]};color:${DECISION_COLORS[k]};${currentDecision === k ? `background:${DECISION_COLORS[k]};color:#fff;` : ''}">
-              ${UI.esc(l)}
+              ${UI.esc(_decisionLabel(k))}
             </button>`).join('')}
         </div>
         <div style="display:flex;gap:8px;align-items:flex-end;" id="vas-decision-confirm" style="display:none;">
           <div style="flex:1;">
-            <label style="font-size:12px;color:var(--text-muted);">Notas (opcional)</label>
+            <label style="font-size:12px;color:var(--text-muted);">${t('common.notes')} (${t('common.optional')})</label>
             <textarea id="vas-decision-notes" class="input" rows="2" style="margin-top:4px;"
-              placeholder="Condiciones, observaciones o motivo...">${UI.esc(a.decision_notes || '')}</textarea>
+              placeholder="${t('common.placeholder')}">${UI.esc(a.decision_notes || '')}</textarea>
           </div>
-          <button class="btn btn-primary" id="vas-decision-save">Guardar decision</button>
+          <button class="btn btn-primary" id="vas-decision-save">${t('common.save')}</button>
         </div>
       </div>` : `
       <div style="margin-top:16px;padding:16px;background:var(--bg-1);border-radius:8px;border:1px solid var(--border);">
         <p style="font-size:13px;color:var(--text-muted);margin:0;">
-          La decision estara disponible una vez el proveedor complete el cuestionario de evaluacion de seguridad.
+          ${t('common.pending')}.
         </p>
       </div>`;
 
@@ -341,55 +349,55 @@ const ViewVendorAssessments = (() => {
     const bodyHtml = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
         <div>
-          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Proveedor</p>
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">${t('common.supplier')}</p>
           <p style="margin:0;font-weight:600;">${UI.esc(a.supplier_name || '-')}</p>
         </div>
         <div>
-          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Tipo</p>
-          <p style="margin:0;font-size:13px;">${a.assessment_type === 'risk_analysis' ? 'Analisis de riesgo (2 fases)' : 'Cuestionario directo'}</p>
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">${t('common.type')}</p>
+          <p style="margin:0;font-size:13px;">${a.assessment_type === 'risk_analysis' ? t('common.analyze') : t('tprm.questionnaire')}</p>
         </div>
         <div>
-          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Riesgo inherente</p>
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">${t('suppliers.inherent_risk')}</p>
           <p style="margin:0;">${_scorePill(a.inherent_risk_score, a.inherent_risk_level)}</p>
         </div>
         <div>
-          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">Riesgo residual</p>
+          <p style="margin:0 0 4px;font-size:12px;color:var(--text-muted);">${t('suppliers.residual_risk')}</p>
           <p style="margin:0;">${_scorePill(a.residual_risk_score, a.residual_risk_level)}</p>
         </div>
       </div>
 
       ${domainRows ? `
       <details style="margin-bottom:16px;">
-        <summary style="font-size:12px;font-weight:600;cursor:pointer;color:var(--text-muted);">Score por dominio</summary>
+        <summary style="font-size:12px;font-weight:600;cursor:pointer;color:var(--text-muted);">${t('tprm.domain_scores')}</summary>
         <div style="margin-top:10px;">${domainRows}</div>
       </details>` : ''}
 
-      <div style="font-size:13px;font-weight:600;margin:0 0 10px;">Cuestionarios</div>
+      <div style="font-size:13px;font-weight:600;margin:0 0 10px;">${t('tprm.questionnaire')}</div>
 
       ${a.assessment_type === 'risk_analysis'
-        ? _qPanel(profQ, 'Fase 1 — Perfil de Riesgo') + _qPanel(assQ, 'Fase 2 — Evaluacion de Seguridad')
-        : _qPanel(assQ, 'Cuestionario de Evaluacion')}
+        ? _qPanel(profQ, `${t('common.level')} 1 — ${t('tprm.questionnaire')}`) + _qPanel(assQ, `${t('common.level')} 2 — ${t('tprm.assessment')}`)
+        : _qPanel(assQ, t('tprm.questionnaire'))}
 
       ${decisionPanel}
     `;
 
     const footerActions = `
-      <button class="btn" id="vas-det-close">Cerrar</button>
-      ${Auth.canEdit() && !a.approved_at ? `<button class="btn" id="vas-det-approve">Aprobar formalmente</button>` : ''}
-      ${Auth.canEdit() && a.approved_at && a.is_current !== false ? `<button class="btn" id="vas-det-newversion">Nueva version (re-evaluar)</button>` : ''}
-      ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-primary" id="vas-det-push">Enviar al Risk Register</button>` : ''}
+      <button class="btn" id="vas-det-close">${t('common.close')}</button>
+      ${Auth.canEdit() && !a.approved_at ? `<button class="btn" id="vas-det-approve">${t('vendor.assessment.approve')}</button>` : ''}
+      ${Auth.canEdit() && a.approved_at && a.is_current !== false ? `<button class="btn" id="vas-det-newversion">${t('common.version')}</button>` : ''}
+      ${Auth.canEdit() && !a.linked_risk_id ? `<button class="btn btn-primary" id="vas-det-push">${t('vendor.assessment.push_to_risk')}</button>` : ''}
     `;
 
-    UI.modal(`Evaluacion ${UI.esc(a.code)}`, bodyHtml, { actions: footerActions });
+    UI.modal(`${t('tprm.assessment')} ${UI.esc(a.code)}`, bodyHtml, { actions: footerActions });
 
     document.getElementById('vas-det-close').onclick = UI.closeModal;
 
     const approveBtn = document.getElementById('vas-det-approve');
     if (approveBtn) approveBtn.onclick = async () => {
-      if (!await UI.confirm('Aprobar formalmente esta evaluacion?')) return;
+      if (!await UI.confirm(t('vendor.assessment.approve') + '?')) return;
       try {
         await Api.vendor_assessments.approve(a.id);
-        UI.toast('Evaluacion aprobada formalmente', 'success');
+        UI.toast(t('common.success'), 'success');
         UI.closeModal();
         await _refresh();
       } catch (e) { UI.toast(e.message, 'error'); }
@@ -398,12 +406,11 @@ const ViewVendorAssessments = (() => {
     const newVersionBtn = document.getElementById('vas-det-newversion');
     if (newVersionBtn) newVersionBtn.onclick = async () => {
       if (!await UI.confirm(
-        `Se creara una nueva evaluacion en borrador para re-evaluar a ${UI.esc(a.supplier_name||'')} con los mismos datos. ` +
-        `La evaluacion actual (${UI.esc(a.code)}) permanecera vigente hasta que la nueva se apruebe, momento en que pasara a no vigente.`
+        `${t('common.version')} ${UI.esc(a.supplier_name||'')} — ${UI.esc(a.code)}`
       )) return;
       try {
         const draft = await Api.vendor_assessments.newVersion(a.id);
-        UI.toast(`Version ${draft.code} creada en borrador`, 'success');
+        UI.toast(`${t('common.version')} ${draft.code} ${t('tprm.assessment_status.draft')}`, 'success');
         UI.closeModal();
         await _refresh();
       } catch (e) { UI.toast(e.message, 'error'); }
@@ -411,10 +418,10 @@ const ViewVendorAssessments = (() => {
 
     const pushBtn = document.getElementById('vas-det-push');
     if (pushBtn) pushBtn.onclick = async () => {
-      if (!await UI.confirm('Crear riesgo en el Risk Register ISO 27005 a partir de esta evaluacion?')) return;
+      if (!await UI.confirm(t('tprm.push_to_risk') + '?')) return;
       try {
         const res = await Api.vendor_assessments.pushToRegister(a.id);
-        UI.toast(`Riesgo ${res.risk_code} creado`, 'success');
+        UI.toast(`${t('common.risk')} ${res.risk_code} ${t('common.success')}`, 'success');
         UI.closeModal();
         await _refresh();
       } catch (e) { UI.toast(e.message, 'error'); }
@@ -444,7 +451,7 @@ const ViewVendorAssessments = (() => {
         const notes = document.getElementById('vas-decision-notes')?.value.trim() || null;
         try {
           await Api.vendor_assessments.decide(a.id, { decision: pendingDecision, notes });
-          UI.toast(`Decision: "${DECISION_LABELS[pendingDecision]}" guardada`, 'success');
+          UI.toast(`${t('common.result')}: "${_decisionLabel(pendingDecision)}" ${t('common.success')}`, 'success');
           UI.closeModal();
           await _refresh();
         } catch (e) { UI.toast(e.message, 'error'); }
@@ -474,23 +481,23 @@ const ViewVendorAssessments = (() => {
     } catch (_) {}
 
     const sysOptions = sysTpls
-      .filter(t => t.code !== 'RH_TPRM_PROFILING_v1')
-      .map(t => `<option value="sys:${UI.esc(t.code)}">${UI.esc(t.name)}</option>`)
+      .filter(tpl => tpl.code !== 'RH_TPRM_PROFILING_v1')
+      .map(tpl => `<option value="sys:${UI.esc(tpl.code)}">${UI.esc(tpl.name)}</option>`)
       .join('');
     const customOptions = customTpls.length
-      ? customTpls.map(t => `<option value="custom:${t.id}">${UI.esc(t.name)}</option>`).join('')
+      ? customTpls.map(tpl => `<option value="custom:${tpl.id}">${UI.esc(tpl.name)}</option>`).join('')
       : '';
 
     // Construir mapa de proveedores para el preview de email
     const supMap = {};
     suppliers.forEach(s => { supMap[s.id] = s; });
 
-    UI.modal('Nueva evaluacion de proveedor', `
+    UI.modal(t('vendor.assessment.new'), `
       <div class="form-grid">
         <div class="span2">
-          <label>Proveedor *</label>
+          <label>${t('common.supplier')} *</label>
           <select id="vas-f-sup" class="input">
-            <option value="">- Seleccionar proveedor -</option>
+            <option value="">- ${t('common.select_option')} -</option>
             ${suppliers.map(s => `<option value="${s.id}"
               data-email="${UI.esc(s.contact_email || '')}"
               data-contact="${UI.esc(s.contact_name || '')}"
@@ -500,51 +507,45 @@ const ViewVendorAssessments = (() => {
           </select>
         </div>
         <div class="span2">
-          <label>Tipo de evaluacion *</label>
+          <label>${t('common.type')} *</label>
           <select id="vas-f-type" class="input">
-            <option value="risk_analysis">Analisis de riesgo completo (Perfil de Riesgo + Evaluacion de Seguridad)</option>
-            <optgroup label="Cuestionario directo — Plantillas del sistema">
-              ${sysOptions || '<option disabled>No hay plantillas del sistema disponibles</option>'}
+            <option value="risk_analysis">${t('common.analyze')}</option>
+            <optgroup label="${t('tprm.questionnaire')}">
+              ${sysOptions || `<option disabled>${t('common.no_options')}</option>`}
             </optgroup>
-            ${customOptions ? `<optgroup label="Cuestionario directo — Plantillas personalizadas">${customOptions}</optgroup>` : ''}
+            ${customOptions ? `<optgroup label="${t('vendor.templates.custom_template')}">${customOptions}</optgroup>` : ''}
           </select>
-          <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">
-            "Analisis de riesgo completo": envia primero el Perfil de Riesgo (12 preguntas) y luego asigna automaticamente el nivel de evaluacion de seguridad.
-          </p>
         </div>
         <div>
-          <label>Periodo</label>
+          <label>${t('common.version')}</label>
           <input id="vas-f-period" class="input" placeholder="ej. 2026-Q2">
         </div>
         <div>
-          <label>Valido hasta</label>
+          <label>${t('common.due_date')}</label>
           <input type="date" id="vas-f-valid" class="input">
         </div>
 
         <div class="span2" style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <label style="margin:0;font-weight:600;">Email que se enviara al proveedor</label>
-            <button type="button" id="vas-f-reset-msg" class="btn btn-sm" style="font-size:11px;">Restaurar mensaje por defecto</button>
+            <label style="margin:0;font-weight:600;">${t('common.email')}</label>
+            <button type="button" id="vas-f-reset-msg" class="btn btn-sm" style="font-size:11px;">${t('common.reset')}</button>
           </div>
           <div>
-            <label style="font-size:12px;color:var(--text-muted);">Asunto</label>
+            <label style="font-size:12px;color:var(--text-muted);">${t('common.title')}</label>
             <input id="vas-f-subject" class="input" style="margin-bottom:8px;"
-              placeholder="Se generara automaticamente si lo dejas en blanco">
+              placeholder="${t('common.placeholder')}">
           </div>
           <div>
-            <label style="font-size:12px;color:var(--text-muted);">Cuerpo del mensaje</label>
+            <label style="font-size:12px;color:var(--text-muted);">${t('common.description')}</label>
             <textarea id="vas-f-msg" class="input" rows="7"
               style="font-size:13px;line-height:1.6;margin-top:4px;"
-              placeholder="Escribe aqui el mensaje para el proveedor...">${UI.esc(_defaultEmailMessage('', '', orgName))}</textarea>
+              placeholder="${t('common.placeholder')}">${UI.esc(_defaultEmailMessage('', '', orgName))}</textarea>
           </div>
-          <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0;">
-            El boton de acceso al cuestionario y el enlace directo se adjuntan automaticamente al final del mensaje.
-          </p>
         </div>
       </div>
     `, {
-      actions: `<button class="btn" id="vas-m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="vas-m-save">Crear y enviar</button>`,
+      actions: `<button class="btn" id="vas-m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="vas-m-save">${t('common.create')} & ${t('common.send')}</button>`,
     });
 
     // Al cambiar proveedor: actualizar el mensaje con el nombre del contacto
@@ -570,7 +571,7 @@ const ViewVendorAssessments = (() => {
     document.getElementById('vas-m-cancel').onclick = UI.closeModal;
     document.getElementById('vas-m-save').onclick = async () => {
       const supId = document.getElementById('vas-f-sup').value;
-      if (!supId) { UI.toast('Selecciona un proveedor', 'error'); return; }
+      if (!supId) { UI.toast(t('common.select'), 'error'); return; }
       const typeVal  = document.getElementById('vas-f-type').value;
       const emailMsg = document.getElementById('vas-f-msg').value.trim();
       const emailSub = document.getElementById('vas-f-subject').value.trim();
@@ -591,21 +592,21 @@ const ViewVendorAssessments = (() => {
       }
 
       const saveBtn = document.getElementById('vas-m-save');
-      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Creando...'; }
+      if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = t('common.loading'); }
 
       try {
         const created = await Api.vendor_assessments.create(body);
         UI.closeModal();
         if (created.email_sent) {
-          UI.toast(`Evaluacion ${created.code} creada — email enviado a ${created.email_warning || 'proveedor'}`, 'success');
+          UI.toast(`${t('tprm.assessment')} ${created.code} ${t('common.success')} — ${t('common.email')} ${created.email_warning || t('common.supplier')}`, 'success');
         } else {
-          const warn = created.email_warning || 'Revisa la configuracion SMTP en Alertas.';
-          UI.toast(`Evaluacion ${created.code} creada — email NO enviado: ${warn}`, 'warning');
+          const warn = created.email_warning || t('common.error');
+          UI.toast(`${t('tprm.assessment')} ${created.code} ${t('common.success')} — ${t('common.email')}: ${warn}`, 'warning');
         }
         await _refresh();
       } catch (e) {
         UI.toast(e.message, 'error');
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Crear y enviar'; }
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = `${t('common.create')} & ${t('common.send')}`; }
       }
     };
   }
@@ -616,7 +617,7 @@ const ViewVendorAssessments = (() => {
       const path = `/api/vendor-assessments/${aid}/evidence/${encodeURIComponent(qid)}`;
       await Api.download(path, filename || 'evidencia');
     } catch (e) {
-      UI.toast('Error al descargar evidencia: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   }
 

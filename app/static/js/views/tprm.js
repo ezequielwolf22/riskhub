@@ -2,19 +2,25 @@
    Portfolio de proveedores: KPIs, tiering, distribucion de riesgo, proximas revisiones. */
 const ViewTprm = (() => {
 
-  const TIER_LABELS  = { critical: 'Critico', high: 'Alto', medium: 'Medio', low: 'Bajo', unrated: 'Sin clasificar' };
+  const TIER_LABELS  = {
+    critical: () => t('suppliers.tier.critical'),
+    high:     () => t('suppliers.tier.high'),
+    medium:   () => t('suppliers.tier.medium'),
+    low:      () => t('suppliers.tier.low'),
+    unrated:  () => t('common.not_assigned'),
+  };
   const TIER_COLORS  = {
     critical: 'var(--risk-critical)', high: 'var(--risk-high)',
     medium: 'var(--risk-medium)', low: 'var(--risk-low)', unrated: '#9CA3AF',
-  };
-  const LEVEL_LABELS = {
-    critical: 'Critico', high: 'Alto', medium: 'Medio',
-    low: 'Bajo', very_low: 'Muy bajo', unknown: 'Sin datos',
   };
   const LEVEL_COLORS = {
     critical: 'var(--risk-critical)', high: 'var(--risk-high)',
     medium: 'var(--risk-medium)', low: 'var(--risk-low)', very_low: 'var(--risk-low)', unknown: '#9CA3AF',
   };
+
+  function _tierLabel(tier) {
+    return TIER_LABELS[tier] ? TIER_LABELS[tier]() : tier;
+  }
 
   function _badge(label, color) {
     return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
@@ -35,8 +41,8 @@ const ViewTprm = (() => {
   function _gaugeHtml(value10) {
     if (value10 === null || value10 === undefined) {
       return `<div style="text-align:center;padding:16px;">
-        <div style="font-size:13px;color:var(--text-muted);">Sin scoring calculado</div>
-        <div style="font-size:11px;color:var(--text-subtle);margin-top:4px;">Recalcula el portfolio para generar el indice</div>
+        <div style="font-size:13px;color:var(--text-muted);">${t('common.not_available')}</div>
+        <div style="font-size:11px;color:var(--text-subtle);margin-top:4px;">${t('tprm.score')}</div>
       </div>`;
     }
     const pct = value10 / 10; // 0-1
@@ -44,7 +50,7 @@ const ViewTprm = (() => {
     const color = window.RiskLevels ? RiskLevels.colorFor(_isoLvl)
       : pct >= 0.75 ? 'var(--risk-critical)' : pct >= 0.5 ? 'var(--risk-high)' : pct >= 0.25 ? 'var(--risk-medium)' : 'var(--risk-low)';
     const label = window.RiskLevels ? RiskLevels.labelFor(_isoLvl)
-      : pct >= 0.75 ? 'Critico' : pct >= 0.5 ? 'Alto' : pct >= 0.25 ? 'Medio' : 'Bajo';
+      : pct >= 0.75 ? t('common.critical') : pct >= 0.5 ? t('common.high') : pct >= 0.25 ? t('common.medium') : t('common.low');
     // SVG half-circle gauge
     const r = 52, cx = 70, cy = 65;
     const startAngle = Math.PI;
@@ -63,7 +69,7 @@ const ViewTprm = (() => {
           <text x="${cx}" y="${cy + 6}" text-anchor="middle" font-size="11" fill="var(--text-muted)">/ 10</text>
         </svg>
         <div style="font-size:13px;font-weight:700;color:${color};margin-top:6px;">${label}</div>
-        <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;">Riesgo TPRM ponderado del portfolio</div>
+        <div style="font-size:11px;color:var(--text-subtle);margin-top:2px;">${t('tprm.score')}</div>
       </div>`;
   }
 
@@ -71,24 +77,24 @@ const ViewTprm = (() => {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">TPRM &mdash; Riesgo de Terceros</h1>
-          <p class="page-sub">Ciclo de vida del proveedor, tiering e inherent/residual risk &mdash; NIS2 / DORA / ENS / GDPR</p>
+          <h1 class="page-title">${t('tprm.title')}</h1>
+          <p class="page-sub">${t('tprm.subtitle')}</p>
         </div>
         <div style="display:flex;gap:8px;">
-          ${Auth.canEdit() ? '<button class="btn btn-primary" id="btn-recompute-all">Recalcular portfolio</button>' : ''}
+          ${Auth.canEdit() ? `<button class="btn btn-primary" id="btn-recompute-all">${t('common.calculate')}</button>` : ''}
         </div>
       </div>
-      <div id="tprm-body"><div class="notice">Cargando...</div></div>
+      <div id="tprm-body"><div class="notice">${t('common.loading')}</div></div>
     `;
     const btn = document.getElementById('btn-recompute-all');
     if (btn) btn.onclick = async () => {
-      btn.disabled = true; btn.textContent = 'Recalculando...';
+      btn.disabled = true; btn.textContent = t('common.loading');
       try {
         const r = await Api.tprm.recomputeAll();
-        UI.toast(`Recalculados ${r.recomputed} proveedores`, 'success');
+        UI.toast(`${t('common.total')}: ${r.recomputed}`, 'success');
         await _load();
       } catch (e) { UI.toast(e.message, 'error'); }
-      btn.disabled = false; btn.textContent = 'Recalcular portfolio';
+      btn.disabled = false; btn.textContent = t('common.calculate');
     };
     await _load();
   }
@@ -124,20 +130,20 @@ const ViewTprm = (() => {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px;">
       <div class="card" style="text-align:center;padding:16px 12px;">
         <div style="font-size:32px;font-weight:800;color:var(--brand-purple);font-family:var(--font-mono);">${total}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:600;">Proveedores en cartera</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:600;">${t('common.supplier')}</div>
       </div>
       <div class="card" style="text-align:center;padding:16px 12px;${s.overdue_assessment > 0 ? 'border-color:#FCA5A5;' : ''}">
         <div style="font-size:32px;font-weight:800;color:${s.overdue_assessment > 0 ? 'var(--risk-high)' : 'var(--text-muted)'};font-family:var(--font-mono);">${s.overdue_assessment}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:600;">Evaluaciones vencidas</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:600;">${t('tprm.assessment')}</div>
       </div>
       <div class="card" style="text-align:center;padding:16px 12px;">
         <div style="font-size:32px;font-weight:800;color:${(br.critical||0) > 0 ? 'var(--risk-critical)' : 'var(--text-muted)'};font-family:var(--font-mono);">${br.critical||0}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:600;">Riesgo residual critico</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-weight:600;">${t('suppliers.residual_risk')}</div>
       </div>
       <div class="card" style="text-align:center;padding:16px 12px;">
         <div style="font-size:14px;font-weight:700;color:var(--text-muted);margin-bottom:4px;">${reg.nis2||0} NIS2 &nbsp;·&nbsp; ${reg.dora||0} DORA</div>
         <div style="font-size:14px;font-weight:700;color:var(--text-muted);">${reg.gdpr_processors||0} GDPR &nbsp;·&nbsp; ${reg.ens||0} ENS</div>
-        <div style="font-size:11px;color:var(--text-subtle);margin-top:6px;">Alcance regulatorio</div>
+        <div style="font-size:11px;color:var(--text-subtle);margin-top:6px;">${t('common.type')}</div>
       </div>
     </div>
 
@@ -151,11 +157,11 @@ const ViewTprm = (() => {
 
       <!-- Tratados vs sin tratar -->
       <div class="card">
-        <h3 style="margin:0 0 12px;font-size:14px;">Proveedores tratados vs pendientes</h3>
+        <h3 style="margin:0 0 12px;font-size:14px;">${t('suppliers.title')}</h3>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
           <div style="flex:1;">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-              <span style="color:var(--risk-low);font-weight:600;">Tratados (con decision)</span>
+              <span style="color:var(--risk-low);font-weight:600;">${t('common.approved')}</span>
               <span style="font-weight:700;">${treated} <span style="color:var(--text-muted);font-weight:400;">(${treatedPct}%)</span></span>
             </div>
             <div style="height:8px;border-radius:4px;background:var(--bg-3);overflow:hidden;">
@@ -166,7 +172,7 @@ const ViewTprm = (() => {
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
           <div style="flex:1;">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
-              <span style="color:var(--risk-medium);font-weight:600;">Sin tratar (pendientes)</span>
+              <span style="color:var(--risk-medium);font-weight:600;">${t('common.pending')}</span>
               <span style="font-weight:700;">${untreated} <span style="color:var(--text-muted);font-weight:400;">(${100 - treatedPct}%)</span></span>
             </div>
             <div style="height:8px;border-radius:4px;background:var(--bg-3);overflow:hidden;">
@@ -174,16 +180,16 @@ const ViewTprm = (() => {
             </div>
           </div>
         </div>
-        <div style="font-size:12px;color:var(--text-muted);font-style:italic;">"Tratado" = tiene al menos una evaluacion con decision (aprobado/rechazado).</div>
+        <div style="font-size:12px;color:var(--text-muted);font-style:italic;">"${t('common.approved')}" = ${t('tprm.assessment_status.approved')}.</div>
       </div>
 
       <!-- Distribucion por nivel residual -->
       <div class="card">
-        <h3 style="margin:0 0 12px;font-size:14px;">Distribucion por nivel de riesgo</h3>
+        <h3 style="margin:0 0 12px;font-size:14px;">${t('suppliers.residual_risk')}</h3>
         ${(window.RiskLevels ? RiskLevels.all().slice().reverse() : [
-          { code:'high',   label:'Alto',  color:'var(--risk-high)'   },
-          { code:'medium', label:'Medio', color:'var(--risk-medium)' },
-          { code:'low',    label:'Bajo',  color:'var(--risk-low)'    },
+          { code:'high',   label: t('common.high'),   color:'var(--risk-high)'   },
+          { code:'medium', label: t('common.medium'), color:'var(--risk-medium)' },
+          { code:'low',    label: t('common.low'),    color:'var(--risk-low)'    },
         ]).map(b => {
           const n = br[b.code] || 0;
           const pct = total ? Math.round(n / total * 100) : 0;
@@ -205,19 +211,19 @@ const ViewTprm = (() => {
 
       <!-- Proximas revisiones -->
       <div class="card">
-        <h3 style="margin:0 0 12px;font-size:14px;">Proximas revisiones (90 dias)</h3>
+        <h3 style="margin:0 0 12px;font-size:14px;">${t('tprm.assessment')}</h3>
         ${upcoming.length === 0
-          ? '<p style="font-size:13px;color:var(--text-subtle);">No hay revisiones programadas en los proximos 90 dias.</p>'
+          ? `<p style="font-size:13px;color:var(--text-subtle);">${t('common.no_results')}</p>`
           : `<table class="data" style="font-size:12px;">
-              <thead><tr><th>Proveedor</th><th>Tier</th><th>Fecha</th><th>Score</th></tr></thead>
+              <thead><tr><th>${t('common.name')}</th><th>${t('suppliers.tier.critical')}</th><th>${t('common.date')}</th><th>${t('tprm.score')}</th></tr></thead>
               <tbody>
                 ${upcoming.map(u => {
                   const days = Math.ceil((new Date(u.next_assessment_at) - new Date()) / 86400000);
                   const urgentColor = days <= 14 ? 'var(--risk-high)' : days <= 30 ? 'var(--risk-medium)' : 'var(--text-muted)';
                   return `<tr>
                     <td><strong>${UI.esc(u.name)}</strong><br><span style="color:var(--text-muted);font-size:10px;">${UI.esc(u.code)}</span></td>
-                    <td>${u.tier ? _badge(TIER_LABELS[u.tier], TIER_COLORS[u.tier]) : '—'}</td>
-                    <td style="color:${urgentColor};font-weight:600;">${new Date(u.next_assessment_at).toLocaleDateString('es-ES')}<br><span style="font-size:10px;">en ${days}d</span></td>
+                    <td>${u.tier ? _badge(_tierLabel(u.tier), TIER_COLORS[u.tier]) : '—'}</td>
+                    <td style="color:${urgentColor};font-weight:600;">${new Date(u.next_assessment_at).toLocaleDateString('es-ES')}<br><span style="font-size:10px;">${days}d</span></td>
                     <td style="font-weight:700;color:${_scoreColor(u.residual_risk_score)};">${u.residual_risk_score ?? '—'}</td>
                   </tr>`;
                 }).join('')}
@@ -227,17 +233,17 @@ const ViewTprm = (() => {
 
       <!-- Distribucion por tier -->
       <div class="card">
-        <h3 style="margin:0 0 12px;font-size:14px;">Distribucion por tier</h3>
-        ${['critical','high','medium','low','unrated'].map(t => {
-          const n = bt[t] || 0;
+        <h3 style="margin:0 0 12px;font-size:14px;">${t('common.level')}</h3>
+        ${['critical','high','medium','low','unrated'].map(tier => {
+          const n = bt[tier] || 0;
           const pct = total ? Math.round(n / total * 100) : 0;
           return `<div style="margin-bottom:7px;">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;">
-              <span style="color:${TIER_COLORS[t]};font-weight:600;">${TIER_LABELS[t]}</span>
+              <span style="color:${TIER_COLORS[tier]};font-weight:600;">${_tierLabel(tier)}</span>
               <span style="font-weight:700;">${n} <span style="color:var(--text-muted);font-weight:400;">${pct}%</span></span>
             </div>
             <div style="height:6px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
-              <div style="height:100%;width:${pct}%;background:${TIER_COLORS[t]};border-radius:3px;"></div>
+              <div style="height:100%;width:${pct}%;background:${TIER_COLORS[tier]};border-radius:3px;"></div>
             </div>
           </div>`;
         }).join('')}
@@ -246,17 +252,17 @@ const ViewTprm = (() => {
 
     <!-- FILA 4: Mapa inherent vs residual -->
     <div class="card" style="margin-bottom:16px;">
-      <h3 style="margin:0 0 12px;font-size:14px;">Mapa inherent vs residual (por proveedor)</h3>
+      <h3 style="margin:0 0 12px;font-size:14px;">${t('suppliers.inherent_risk')} vs ${t('suppliers.residual_risk')}</h3>
       <div id="tprm-heatmap-inner"></div>
     </div>
 
     <!-- FILA 5: Top 10 por riesgo residual -->
     <div class="card">
-      <h3 style="margin:0 0 12px;font-size:14px;">Top 10 proveedores por riesgo residual</h3>
+      <h3 style="margin:0 0 12px;font-size:14px;">${t('tprm.heatmap')}</h3>
       ${topRes.length === 0
-        ? '<p style="font-size:13px;color:var(--text-subtle);">Sin datos. Recalcula el portfolio.</p>'
+        ? `<p style="font-size:13px;color:var(--text-subtle);">${t('common.no_results')}</p>`
         : `<table class="data"><thead><tr>
-            <th>Codigo</th><th>Nombre</th><th>Tier</th><th>Inherent</th><th>Residual</th><th>Reduccion</th>
+            <th>${t('common.name')}</th><th>${t('common.name')}</th><th>${t('common.level')}</th><th>${t('suppliers.inherent_risk')}</th><th>${t('suppliers.residual_risk')}</th><th>${t('common.result')}</th>
           </tr></thead><tbody>
           ${topRes.map(v => {
             const red = v.inherent_risk_score > 0
@@ -264,7 +270,7 @@ const ViewTprm = (() => {
             return `<tr>
               <td><strong>${UI.esc(v.code)}</strong></td>
               <td>${UI.esc(v.name)}</td>
-              <td>${v.tier ? _badge(TIER_LABELS[v.tier], TIER_COLORS[v.tier]) : '—'}</td>
+              <td>${v.tier ? _badge(_tierLabel(v.tier), TIER_COLORS[v.tier]) : '—'}</td>
               <td><span style="font-weight:700;color:${_scoreColor(v.inherent_risk_score)};">${v.inherent_risk_score ?? '—'}</span></td>
               <td><span style="font-weight:700;color:${_scoreColor(v.residual_risk_score)};">${v.residual_risk_score ?? '—'}</span></td>
               <td style="font-size:12px;font-weight:700;color:${red > 0 ? 'var(--risk-low)' : red < 0 ? 'var(--risk-high)' : 'var(--text-muted)'};">
@@ -283,7 +289,7 @@ const ViewTprm = (() => {
   function _renderHeatmap(data, wrap) {
     if (!wrap) return;
     if (!data || !data.length) {
-      wrap.innerHTML = '<p style="font-size:13px;color:var(--text-subtle);">Sin proveedores con scoring calculado.</p>';
+      wrap.innerHTML = `<p style="font-size:13px;color:var(--text-subtle);">${t('common.no_results')}</p>`;
       return;
     }
     const W = 460, H = 280, pad = 44;
@@ -301,9 +307,9 @@ const ViewTprm = (() => {
       <line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="var(--border)" stroke-width="1"/>
       <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="var(--border)" stroke-width="1"/>
       <line x1="${refX1}" y1="${refY1}" x2="${refX2}" y2="${refY2}" stroke="var(--border)" stroke-width="1" stroke-dasharray="4,4" opacity=".5"/>
-      <text x="${W/2}" y="${H-6}" font-size="11" text-anchor="middle" fill="var(--text-muted)">Riesgo inherente →</text>
-      <text x="14" y="${H/2}" font-size="11" text-anchor="middle" fill="var(--text-muted)" transform="rotate(-90 14 ${H/2})">Riesgo residual →</text>
-      <text x="${W-8}" y="${H-pad-4}" font-size="9" fill="var(--text-subtle)" text-anchor="end">Sin reduccion</text>
+      <text x="${W/2}" y="${H-6}" font-size="11" text-anchor="middle" fill="var(--text-muted)">${t('suppliers.inherent_risk')} →</text>
+      <text x="14" y="${H/2}" font-size="11" text-anchor="middle" fill="var(--text-muted)" transform="rotate(-90 14 ${H/2})">${t('suppliers.residual_risk')} →</text>
+      <text x="${W-8}" y="${H-pad-4}" font-size="9" fill="var(--text-subtle)" text-anchor="end">${t('common.na')}</text>
       ${pts}
     </svg>`;
   }
@@ -313,17 +319,17 @@ const ViewTprm = (() => {
   }
 
   async function renderConcentrationRisk(container) {
-    container.innerHTML = '<p class="text-muted">Cargando concentracion de riesgo...</p>';
+    container.innerHTML = `<p class="text-muted">${t('common.loading_data')}</p>`;
     let data;
     try {
       data = await Api.get('/api/tprm/concentration-risk');
     } catch (e) {
-      container.innerHTML = '<p class="text-muted">Error al cargar datos: ' + _escHtml(e.message) + '</p>';
+      container.innerHTML = '<p class="text-muted">' + t('common.error') + ': ' + _escHtml(e.message) + '</p>';
       return;
     }
 
     if (!data || !data.length) {
-      container.innerHTML = '<p class="text-muted">No hay concentracion de riesgo significativa (ningun proveedor supera el 40% de procesos criticos).</p>';
+      container.innerHTML = `<p class="text-muted">${t('common.no_results')}</p>`;
       return;
     }
 
@@ -338,12 +344,12 @@ const ViewTprm = (() => {
           </div>
         </td>
         <td>${d.is_critical
-          ? '<span class="badge badge--danger">DORA: Excede 40%</span>'
+          ? `<span class="badge badge--danger">DORA: ${t('common.critical')}</span>`
           : '<span class="badge badge--ok">OK</span>'}</td>
         <td style="font-size:12px;color:var(--text-muted);">
           ${d.mitigation && d.mitigation.notes
             ? _escHtml(d.mitigation.notes.substring(0, 60)) + (d.mitigation.notes.length > 60 ? '...' : '')
-            : '<span style="color:var(--text-subtle);">Sin notas</span>'}
+            : `<span style="color:var(--text-subtle);">${t('common.notes')}</span>`}
         </td>
       </tr>
     `).join('');
@@ -352,11 +358,11 @@ const ViewTprm = (() => {
       <table class="data-table">
         <thead>
           <tr>
-            <th>Proveedor</th>
-            <th style="text-align:center;">Procesos criticos</th>
-            <th>Concentracion</th>
-            <th>Estado DORA</th>
-            <th>Mitigacion</th>
+            <th>${t('common.supplier')}</th>
+            <th style="text-align:center;">${t('common.level')}</th>
+            <th>${t('common.score')}</th>
+            <th>${t('common.status')}</th>
+            <th>${t('common.notes')}</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

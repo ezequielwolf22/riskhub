@@ -2,16 +2,24 @@
 const ViewVendorIssues = (() => {
 
   const SEV_LABELS = {
-    critical: 'Critico', high: 'Alto', medium: 'Medio',
-    low: 'Bajo', informational: 'Informativo',
+    critical:      () => t('common.critical'),
+    high:          () => t('common.high'),
+    medium:        () => t('common.medium'),
+    low:           () => t('common.low'),
+    informational: () => t('common.na'),
   };
   const SEV_COLORS = {
     critical: 'var(--risk-critical)', high: 'var(--risk-high)',
     medium: 'var(--risk-medium)', low: 'var(--risk-low)', informational: '#9CA3AF',
   };
   const STATUS_LABELS = {
-    open: 'Abierto', acknowledged: 'Reconocido', in_remediation: 'En remediacion',
-    mitigated: 'Mitigado', accepted: 'Aceptado', closed: 'Cerrado', overdue: 'Vencido',
+    open:           () => t('tprm.issue_status.open'),
+    acknowledged:   () => t('common.approved'),
+    in_remediation: () => t('common.in_progress'),
+    mitigated:      () => t('common.completed'),
+    accepted:       () => t('tprm.issue_status.accepted'),
+    closed:         () => t('common.cancelled'),
+    overdue:        () => t('tprm.sla_overdue'),
   };
   const STATUS_COLORS = {
     open: 'var(--risk-high)', acknowledged: 'var(--risk-medium)',
@@ -19,8 +27,11 @@ const ViewVendorIssues = (() => {
     accepted: '#9CA3AF', closed: 'var(--text-muted)', overdue: 'var(--risk-critical)',
   };
   const SOURCE_LABELS = {
-    questionnaire: 'Cuestionario', external_rating: 'Calificacion externa',
-    manual: 'Manual', incident: 'Incidente', monitoring: 'Monitoreo',
+    questionnaire:   () => t('tprm.questionnaire'),
+    external_rating: () => t('common.source'),
+    manual:          () => t('common.type'),
+    incident:        () => t('common.incident'),
+    monitoring:      () => t('common.type'),
   };
 
   let _suppliers = [];
@@ -30,34 +41,38 @@ const ViewVendorIssues = (() => {
     return `<span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;background:${color};color:#fff;">${UI.esc(label)}</span>`;
   }
 
+  function _sevLabel(k) { return SEV_LABELS[k] ? SEV_LABELS[k]() : k; }
+  function _statusLabel(k) { return STATUS_LABELS[k] ? STATUS_LABELS[k]() : k; }
+  function _sourceLabel(k) { return SOURCE_LABELS[k] ? SOURCE_LABELS[k]() : k; }
+
   // --------------- RENDER PRINCIPAL ---------------
 
   async function render(el) {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Hallazgos de proveedores</h1>
-          <p class="page-sub">SLA, impacto, causa raiz y plan de remediacion — TPRM §2.1</p>
+          <h1 class="page-title">${t('vendor.issues.title')}</h1>
+          <p class="page-sub">${t('vendor.issues.subtitle')}</p>
         </div>
-        ${Auth.canEdit() ? '<button class="btn btn-primary" id="btn-new-issue">+ Nuevo hallazgo</button>' : ''}
+        ${Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-issue">+ ${t('vendor.issues.new')}</button>` : ''}
       </div>
 
       <div id="vi-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px;"></div>
 
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
         <select id="f-supplier" class="input" style="width:220px;">
-          <option value="">Todos los proveedores</option>
+          <option value="">${t('common.all')}</option>
         </select>
         <select id="f-severity" class="input" style="width:160px;">
-          <option value="">Todas las severidades</option>
-          ${Object.entries(SEV_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}
+          <option value="">${t('common.severity')}</option>
+          ${Object.keys(SEV_LABELS).map(k => `<option value="${k}">${SEV_LABELS[k]()}</option>`).join('')}
         </select>
         <select id="f-status" class="input" style="width:180px;">
-          <option value="">Todos los estados</option>
-          ${Object.entries(STATUS_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}
+          <option value="">${t('common.status')}</option>
+          ${Object.keys(STATUS_LABELS).map(k => `<option value="${k}">${STATUS_LABELS[k]()}</option>`).join('')}
         </select>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap;margin-left:auto;">
-          <input type="checkbox" id="f-overdue"> Solo vencidos
+          <input type="checkbox" id="f-overdue"> ${t('tprm.sla_overdue')}
         </label>
       </div>
 
@@ -100,11 +115,11 @@ const ViewVendorIssues = (() => {
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">${label}</div>
         </div>`;
       wrap.innerHTML =
-        kpi(s.total, 'Total hallazgos') +
-        kpi(s.open, 'Abiertos', s.open > 0 ? 'var(--risk-high)' : '') +
-        kpi(s.overdue, 'Vencidos', s.overdue > 0 ? 'var(--risk-critical)' : '') +
-        kpi(s.by_severity.critical || 0, 'Criticos', (s.by_severity.critical||0) > 0 ? 'var(--risk-critical)' : '') +
-        kpi(s.by_severity.high || 0, 'Altos', (s.by_severity.high||0) > 0 ? 'var(--risk-high)' : '');
+        kpi(s.total, t('common.total')) +
+        kpi(s.open, t('tprm.issue_status.open'), s.open > 0 ? 'var(--risk-high)' : '') +
+        kpi(s.overdue, t('tprm.sla_overdue'), s.overdue > 0 ? 'var(--risk-critical)' : '') +
+        kpi(s.by_severity.critical || 0, t('common.critical'), (s.by_severity.critical||0) > 0 ? 'var(--risk-critical)' : '') +
+        kpi(s.by_severity.high || 0, t('common.high'), (s.by_severity.high||0) > 0 ? 'var(--risk-high)' : '');
     } catch (_) {}
   }
 
@@ -115,7 +130,7 @@ const ViewVendorIssues = (() => {
     const overdueChk = document.getElementById('f-overdue')?.checked;
     const wrap = document.getElementById('vi-list');
     if (!wrap) return;
-    wrap.innerHTML = '<div class="notice">Cargando...</div>';
+    wrap.innerHTML = `<div class="notice">${t('common.loading')}</div>`;
     try {
       const params = {};
       if (supplierId) params.supplier_id = supplierId;
@@ -131,7 +146,7 @@ const ViewVendorIssues = (() => {
 
   function _renderTable(wrap) {
     if (!_allIssues.length) {
-      wrap.innerHTML = '<div class="empty-state" style="padding:40px;text-align:center;color:var(--text-muted);">No se encontraron hallazgos.</div>';
+      wrap.innerHTML = `<div class="empty-state" style="padding:40px;text-align:center;color:var(--text-muted);">${t('common.no_results')}</div>`;
       return;
     }
     const now = new Date();
@@ -152,15 +167,15 @@ const ViewVendorIssues = (() => {
           <td>${UI.esc(issue.supplier_name || '—')}</td>
           <td>
             ${UI.esc(issue.title)}
-            ${slaCount ? `<br><span style="font-size:10px;color:var(--risk-high);font-weight:600;">${slaCount} SLA incumplido${slaCount>1?'s':''}</span>` : ''}
+            ${slaCount ? `<br><span style="font-size:10px;color:var(--risk-high);font-weight:600;">${slaCount} ${t('tprm.sla')}</span>` : ''}
           </td>
-          <td>${_badge(SEV_LABELS[issue.severity] || issue.severity, SEV_COLORS[issue.severity] || '#888')}</td>
-          <td>${_badge(STATUS_LABELS[issue.status] || issue.status, STATUS_COLORS[issue.status] || '#888')}</td>
-          <td style="${isOverdue ? 'color:var(--risk-critical);font-weight:700;' : ''}">${dueDateStr}${isOverdue ? ' VENCIDO' : ''}</td>
-          <td style="font-size:11px;color:var(--text-muted);">${actsTotal ? `${actsDone}/${actsTotal} acciones` : '—'}</td>
+          <td>${_badge(_sevLabel(issue.severity), SEV_COLORS[issue.severity] || '#888')}</td>
+          <td>${_badge(_statusLabel(issue.status), STATUS_COLORS[issue.status] || '#888')}</td>
+          <td style="${isOverdue ? 'color:var(--risk-critical);font-weight:700;' : ''}">${dueDateStr}${isOverdue ? ' ' + t('tprm.sla_overdue') : ''}</td>
+          <td style="font-size:11px;color:var(--text-muted);">${actsTotal ? `${actsDone}/${actsTotal} ${t('common.actions')}` : '—'}</td>
           <td onclick="event.stopPropagation()">
-            ${Auth.canEdit() ? `<button class="btn btn-sm" onclick="ViewVendorIssues._openForm(${issue.id})">Editar</button>
-            <button class="btn btn-sm btn-danger" onclick="ViewVendorIssues._del(${issue.id})">Eliminar</button>` : ''}
+            ${Auth.canEdit() ? `<button class="btn btn-sm" onclick="ViewVendorIssues._openForm(${issue.id})">${t('common.edit')}</button>
+            <button class="btn btn-sm btn-danger" onclick="ViewVendorIssues._del(${issue.id})">${t('common.delete')}</button>` : ''}
           </td>
         </tr>`;
     }).join('');
@@ -169,8 +184,8 @@ const ViewVendorIssues = (() => {
       <div class="table-wrap">
         <table class="data">
           <thead><tr>
-            <th>Codigo</th><th>Proveedor</th><th>Titulo</th>
-            <th>Severidad</th><th>Estado</th><th>Vence</th><th>Acciones</th><th></th>
+            <th>${t('common.name')}</th><th>${t('common.supplier')}</th><th>${t('common.title')}</th>
+            <th>${t('common.severity')}</th><th>${t('common.status')}</th><th>${t('common.due_date')}</th><th>${t('common.actions')}</th><th></th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -188,7 +203,7 @@ const ViewVendorIssues = (() => {
     );
     const slaHtml = (issue.sla_breaches || []).length
       ? `<div style="margin-top:10px;">
-          <strong style="font-size:12px;color:var(--risk-high);">SLAs incumplidos:</strong>
+          <strong style="font-size:12px;color:var(--risk-high);">${t('tprm.sla')}:</strong>
           <ul style="margin:4px 0 0 16px;font-size:13px;">
             ${(issue.sla_breaches||[]).map(b => `<li><strong>${UI.esc(b.sla_name)}</strong>${b.details ? ' — ' + UI.esc(b.details) : ''}</li>`).join('')}
           </ul>
@@ -196,7 +211,7 @@ const ViewVendorIssues = (() => {
 
     const actHtml = (issue.action_items || []).length
       ? `<div style="margin-top:10px;">
-          <strong style="font-size:12px;color:var(--text-muted);">Items de accion:</strong>
+          <strong style="font-size:12px;color:var(--text-muted);">${t('common.actions')}:</strong>
           <ul style="margin:4px 0 0 16px;font-size:13px;">
             ${(issue.action_items||[]).map(a => `<li style="${a.done?'text-decoration:line-through;color:var(--text-subtle);':''}">${UI.esc(a.text)}${a.due_date ? ' <span style="font-size:11px;color:var(--text-muted);">('+a.due_date+')</span>' : ''}</li>`).join('')}
           </ul>
@@ -204,7 +219,7 @@ const ViewVendorIssues = (() => {
 
     const evidHtml = (issue.evidence_refs || []).length
       ? `<div style="margin-top:10px;">
-          <strong style="font-size:12px;color:var(--text-muted);">Evidencias:</strong>
+          <strong style="font-size:12px;color:var(--text-muted);">${t('evidence.title')}:</strong>
           <ul style="margin:4px 0 0 16px;font-size:13px;">
             ${(issue.evidence_refs||[]).map(e => `<li>${e.url ? `<a href="${UI.esc(e.url)}" target="_blank" rel="noopener">${UI.esc(e.name||e.url)}</a>` : UI.esc(e.name||'')}</li>`).join('')}
           </ul>
@@ -212,24 +227,24 @@ const ViewVendorIssues = (() => {
 
     UI.modal(`${UI.esc(issue.code)} — ${UI.esc(issue.title)}`, `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;font-size:13px;">
-        <div><strong>Proveedor:</strong> ${UI.esc(issue.supplier_name||'—')}</div>
-        <div><strong>Fuente:</strong> ${UI.esc(SOURCE_LABELS[issue.source]||issue.source)}</div>
-        <div><strong>Severidad:</strong> ${_badge(SEV_LABELS[issue.severity]||issue.severity, SEV_COLORS[issue.severity]||'#888')}</div>
-        <div><strong>Estado:</strong> ${_badge(STATUS_LABELS[issue.status]||issue.status, STATUS_COLORS[issue.status]||'#888')}${isOverdue ? ' <span style="font-size:10px;color:var(--risk-critical);font-weight:700;">VENCIDO</span>' : ''}</div>
-        <div><strong>Descubierto:</strong> ${new Date(issue.discovered_at).toLocaleDateString('es-ES')}</div>
-        <div><strong>Vence:</strong> ${issue.due_date ? new Date(issue.due_date).toLocaleDateString('es-ES') : '—'}</div>
+        <div><strong>${t('common.supplier')}:</strong> ${UI.esc(issue.supplier_name||'—')}</div>
+        <div><strong>${t('common.source')}:</strong> ${UI.esc(_sourceLabel(issue.source))}</div>
+        <div><strong>${t('common.severity')}:</strong> ${_badge(_sevLabel(issue.severity), SEV_COLORS[issue.severity]||'#888')}</div>
+        <div><strong>${t('common.status')}:</strong> ${_badge(_statusLabel(issue.status), STATUS_COLORS[issue.status]||'#888')}${isOverdue ? ` <span style="font-size:10px;color:var(--risk-critical);font-weight:700;">${t('tprm.sla_overdue')}</span>` : ''}</div>
+        <div><strong>${t('common.date')}:</strong> ${new Date(issue.discovered_at).toLocaleDateString('es-ES')}</div>
+        <div><strong>${t('common.due_date')}:</strong> ${issue.due_date ? new Date(issue.due_date).toLocaleDateString('es-ES') : '—'}</div>
       </div>
-      ${issue.description ? `<div style="font-size:13px;margin-bottom:10px;"><strong>Descripcion:</strong><br>${UI.esc(issue.description)}</div>` : ''}
+      ${issue.description ? `<div style="font-size:13px;margin-bottom:10px;"><strong>${t('common.description')}:</strong><br>${UI.esc(issue.description)}</div>` : ''}
       ${slaHtml}
-      ${issue.impact_description ? `<div style="margin-top:10px;font-size:13px;"><strong>Impacto:</strong><br>${UI.esc(issue.impact_description)}</div>` : ''}
-      ${issue.root_cause ? `<div style="margin-top:10px;font-size:13px;"><strong>Causa raiz:</strong><br>${UI.esc(issue.root_cause)}</div>` : ''}
-      ${issue.remediation_plan ? `<div style="margin-top:10px;font-size:13px;"><strong>Plan de remediacion:</strong><br>${UI.esc(issue.remediation_plan)}</div>` : ''}
+      ${issue.impact_description ? `<div style="margin-top:10px;font-size:13px;"><strong>${t('common.result')}:</strong><br>${UI.esc(issue.impact_description)}</div>` : ''}
+      ${issue.root_cause ? `<div style="margin-top:10px;font-size:13px;"><strong>${t('nonconformities.root_cause')}:</strong><br>${UI.esc(issue.root_cause)}</div>` : ''}
+      ${issue.remediation_plan ? `<div style="margin-top:10px;font-size:13px;"><strong>${t('external_findings.remediation')}:</strong><br>${UI.esc(issue.remediation_plan)}</div>` : ''}
       ${actHtml}
       ${evidHtml}
-      ${issue.resolution_notes ? `<div style="margin-top:10px;font-size:13px;border-top:1px solid var(--border);padding-top:10px;"><strong>Notas de resolucion:</strong><br>${UI.esc(issue.resolution_notes)}</div>` : ''}
+      ${issue.resolution_notes ? `<div style="margin-top:10px;font-size:13px;border-top:1px solid var(--border);padding-top:10px;"><strong>${t('common.notes')}:</strong><br>${UI.esc(issue.resolution_notes)}</div>` : ''}
     `, {
-      actions: `<button class="btn" onclick="UI.closeModal()">Cerrar</button>
-                ${Auth.canEdit() ? `<button class="btn btn-primary" onclick="UI.closeModal();ViewVendorIssues._openForm(${issue.id})">Editar</button>` : ''}`,
+      actions: `<button class="btn" onclick="UI.closeModal()">${t('common.close')}</button>
+                ${Auth.canEdit() ? `<button class="btn btn-primary" onclick="UI.closeModal();ViewVendorIssues._openForm(${issue.id})">${t('common.edit')}</button>` : ''}`,
     });
   }
 
@@ -248,9 +263,9 @@ const ViewVendorIssues = (() => {
     // Items de accion actuales
     let actionItems = issue?.action_items || [];
 
-    UI.modal(issue ? `Editar ${issue.code}` : 'Nuevo hallazgo', _formHtml(issue, supplierSlas, actionItems), {
-      actions: `<button class="btn" onclick="UI.closeModal()">Cancelar</button>
-                <button class="btn btn-primary" id="vi-save-btn">${issue ? 'Guardar cambios' : 'Crear hallazgo'}</button>`,
+    UI.modal(issue ? `${t('vendor.issues.edit')} ${issue.code}` : t('vendor.issues.new'), _formHtml(issue, supplierSlas, actionItems), {
+      actions: `<button class="btn" onclick="UI.closeModal()">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="vi-save-btn">${issue ? t('common.save_changes') : t('vendor.issues.new')}</button>`,
     });
 
     // Actualizar SLAs al cambiar proveedor (solo en creacion)
@@ -291,104 +306,104 @@ const ViewVendorIssues = (() => {
       <!-- Proveedor (solo en creacion) -->
       ${!issue ? `
       <div class="span2">
-        <label>Proveedor *</label>
+        <label>${t('common.supplier')} *</label>
         <select id="vi-f-supplier" class="input">
-          <option value="">— Seleccionar proveedor —</option>
+          <option value="">— ${t('common.select')} —</option>
           ${supOptions}
         </select>
       </div>` : `<input type="hidden" id="vi-f-supplier" value="${issue.supplier_id}">`}
 
       <!-- Titulo y fuente -->
       <div class="span2">
-        <label>Titulo *</label>
-        <input id="vi-f-title" class="input" value="${UI.esc(issue?.title||'')}" placeholder="Describe el hallazgo brevemente">
+        <label>${t('common.title')} *</label>
+        <input id="vi-f-title" class="input" value="${UI.esc(issue?.title||'')}" placeholder="${t('common.placeholder')}">
       </div>
       <div>
-        <label>Severidad</label>
+        <label>${t('common.severity')}</label>
         <select id="vi-f-severity" class="input">
-          ${Object.entries(SEV_LABELS).map(([k, l]) =>
-            `<option value="${k}" ${(issue?.severity||'medium')===k?'selected':''}>${l}</option>`
+          ${Object.keys(SEV_LABELS).map(k =>
+            `<option value="${k}" ${(issue?.severity||'medium')===k?'selected':''}>${_sevLabel(k)}</option>`
           ).join('')}
         </select>
       </div>
       <div>
-        <label>Fuente</label>
+        <label>${t('common.source')}</label>
         <select id="vi-f-source" class="input">
-          ${Object.entries(SOURCE_LABELS).map(([k, l]) =>
-            `<option value="${k}" ${(issue?.source||'manual')===k?'selected':''}>${l}</option>`
+          ${Object.keys(SOURCE_LABELS).map(k =>
+            `<option value="${k}" ${(issue?.source||'manual')===k?'selected':''}>${_sourceLabel(k)}</option>`
           ).join('')}
         </select>
       </div>
 
       ${issue ? `
       <div>
-        <label>Estado</label>
+        <label>${t('common.status')}</label>
         <select id="vi-f-status" class="input">
-          ${Object.entries(STATUS_LABELS).map(([k, l]) =>
-            `<option value="${k}" ${issue.status===k?'selected':''}>${l}</option>`
+          ${Object.keys(STATUS_LABELS).map(k =>
+            `<option value="${k}" ${issue.status===k?'selected':''}>${_statusLabel(k)}</option>`
           ).join('')}
         </select>
       </div>
       <div>
-        <label>Fecha limite</label>
+        <label>${t('common.due_date')}</label>
         <input type="date" id="vi-f-due" class="input" value="${issue.due_date?issue.due_date.slice(0,10):''}">
       </div>` : `<div>
-        <label>Fecha limite (opcional)</label>
+        <label>${t('common.due_date')} (${t('common.optional')})</label>
         <input type="date" id="vi-f-due" class="input">
       </div><div></div>`}
 
       <!-- Descripcion -->
       <div class="span2">
-        <label>Descripcion</label>
-        <textarea id="vi-f-desc" class="input" rows="3" placeholder="Detalla el hallazgo...">${UI.esc(issue?.description||'')}</textarea>
+        <label>${t('common.description')}</label>
+        <textarea id="vi-f-desc" class="input" rows="3" placeholder="${t('common.placeholder')}">${UI.esc(issue?.description||'')}</textarea>
       </div>
 
       <!-- SLA breaches -->
       <div class="span2" id="vi-sla-section">
-        <label style="font-weight:700;">SLAs incumplidos</label>
+        <label style="font-weight:700;">${t('tprm.sla')}</label>
         <div id="vi-sla-breaches">${slaBreachesHtml}</div>
       </div>
 
       <!-- Impacto -->
       <div class="span2">
-        <label>Descripcion del impacto</label>
-        <textarea id="vi-f-impact" class="input" rows="2" placeholder="Impacto operativo, reputacional o regulatorio...">${UI.esc(issue?.impact_description||'')}</textarea>
+        <label>${t('common.result')}</label>
+        <textarea id="vi-f-impact" class="input" rows="2" placeholder="${t('common.placeholder')}">${UI.esc(issue?.impact_description||'')}</textarea>
       </div>
 
       <!-- Causa raiz -->
       <div class="span2">
-        <label>Causa raiz</label>
-        <textarea id="vi-f-root" class="input" rows="2" placeholder="Analisis de causa raiz (5 Whys, Ishikawa...)...">${UI.esc(issue?.root_cause||'')}</textarea>
+        <label>${t('nonconformities.root_cause')}</label>
+        <textarea id="vi-f-root" class="input" rows="2" placeholder="${t('common.placeholder')}">${UI.esc(issue?.root_cause||'')}</textarea>
       </div>
 
       <!-- Plan de remediacion -->
       <div class="span2">
-        <label>Plan de remediacion</label>
-        <textarea id="vi-f-plan" class="input" rows="3" placeholder="Acciones y plazos para resolver el hallazgo...">${UI.esc(issue?.remediation_plan||'')}</textarea>
+        <label>${t('external_findings.remediation')}</label>
+        <textarea id="vi-f-plan" class="input" rows="3" placeholder="${t('common.placeholder')}">${UI.esc(issue?.remediation_plan||'')}</textarea>
       </div>
 
       <!-- Items de accion -->
       <div class="span2">
-        <label style="font-weight:700;">Items de accion</label>
+        <label style="font-weight:700;">${t('common.actions')}</label>
         <div id="vi-action-items">${_actionItemsHtml(actionItems)}</div>
         <div style="display:flex;gap:6px;margin-top:6px;">
-          <input id="vi-new-action-text" class="input" style="flex:1;" placeholder="Nueva accion...">
-          <input type="date" id="vi-new-action-due" class="input" style="width:130px;" title="Fecha limite de la accion">
-          <button type="button" id="vi-add-action" class="btn btn-sm">+ Agregar</button>
+          <input id="vi-new-action-text" class="input" style="flex:1;" placeholder="${t('common.placeholder')}">
+          <input type="date" id="vi-new-action-due" class="input" style="width:130px;" title="${t('common.due_date')}">
+          <button type="button" id="vi-add-action" class="btn btn-sm">+ ${t('common.add')}</button>
         </div>
       </div>
 
       <!-- Evidencias -->
       <div class="span2">
-        <label>Referencias de evidencia (URL o nombre)</label>
-        <textarea id="vi-f-evidence" class="input" rows="2" placeholder="Una por linea: https://... o Nombre del fichero">${(issue?.evidence_refs||[]).map(e=>e.url||e.name||'').join('\n')}</textarea>
+        <label>${t('evidence.title')}</label>
+        <textarea id="vi-f-evidence" class="input" rows="2" placeholder="${t('common.placeholder')}">${(issue?.evidence_refs||[]).map(e=>e.url||e.name||'').join('\n')}</textarea>
       </div>
 
       ${issue ? `
       <!-- Notas de resolucion -->
       <div class="span2">
-        <label>Notas de resolucion</label>
-        <textarea id="vi-f-resolution" class="input" rows="2" placeholder="Comentarios al cerrar o mitigar el hallazgo...">${UI.esc(issue?.resolution_notes||'')}</textarea>
+        <label>${t('common.notes')}</label>
+        <textarea id="vi-f-resolution" class="input" rows="2" placeholder="${t('common.placeholder')}">${UI.esc(issue?.resolution_notes||'')}</textarea>
       </div>` : ''}
     </div>`;
   }
@@ -396,8 +411,8 @@ const ViewVendorIssues = (() => {
   function _slaBreachwesHtml(supplierSlas, currentBreaches) {
     if (!supplierSlas.length) {
       return `<p style="font-size:12px;color:var(--text-muted);margin:4px 0;">
-        El proveedor no tiene SLAs registrados.
-        <a href="#/suppliers" style="color:var(--brand-purple);">Ir a Proveedores → Editar para definir SLAs</a>.
+        ${t('common.no_results')}.
+        <a href="#/suppliers" style="color:var(--brand-purple);">${t('common.supplier')}</a>.
       </p>`;
     }
     return supplierSlas.map(sla => {
@@ -412,7 +427,7 @@ const ViewVendorIssues = (() => {
             </div>
             ${sla.category ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(sla.category)}</div>` : ''}
             <input type="text" class="input vi-sla-details" data-sla-id="${UI.esc(sla.id)}"
-              placeholder="Detalle del incumplimiento (opcional)..."
+              placeholder="${t('common.placeholder')}"
               style="margin-top:6px;font-size:12px;${!breach?'display:none;':''}"
               value="${breach ? UI.esc(breach.details||'') : ''}">
           </div>
@@ -439,7 +454,7 @@ const ViewVendorIssues = (() => {
   }
 
   function _actionItemsHtml(items) {
-    if (!items.length) return '<p style="font-size:12px;color:var(--text-muted);margin:4px 0;">Sin items de accion aun.</p>';
+    if (!items.length) return `<p style="font-size:12px;color:var(--text-muted);margin:4px 0;">${t('common.none')}</p>`;
     return items.map((a, i) => `
       <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);">
         <input type="checkbox" class="vi-act-done" data-idx="${i}" ${a.done?'checked':''}>
@@ -498,8 +513,8 @@ const ViewVendorIssues = (() => {
     const plan       = document.getElementById('vi-f-plan')?.value?.trim() || null;
     const resolution = document.getElementById('vi-f-resolution')?.value?.trim() || null;
 
-    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
-    if (!id && !supplierId) { UI.toast('Selecciona un proveedor', 'error'); return; }
+    if (!title) { UI.toast(t('common.required'), 'error'); return; }
+    if (!id && !supplierId) { UI.toast(t('common.select'), 'error'); return; }
 
     // Recoger SLA breaches del DOM
     const slaBreaches = _collectSlaBreaches();
@@ -526,7 +541,7 @@ const ViewVendorIssues = (() => {
     if (status) body.status = status;
 
     const btn = document.getElementById('vi-save-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('common.loading'); }
     try {
       if (id) {
         await Api.vendor_issues.update(id, body);
@@ -534,20 +549,20 @@ const ViewVendorIssues = (() => {
         await Api.vendor_issues.create(body);
       }
       UI.closeModal();
-      UI.toast(id ? 'Hallazgo actualizado' : 'Hallazgo creado', 'success');
+      UI.toast(id ? t('common.success') : t('common.success'), 'success');
       await _loadStats();
       await _refresh();
     } catch (e) {
       UI.toast(e.message, 'error');
-      if (btn) { btn.disabled = false; btn.textContent = id ? 'Guardar cambios' : 'Crear hallazgo'; }
+      if (btn) { btn.disabled = false; btn.textContent = id ? t('common.save_changes') : t('vendor.issues.new'); }
     }
   }
 
   async function _del(id) {
-    if (!confirm('¿Eliminar este hallazgo? Esta accion es irreversible.')) return;
+    if (!confirm(t('vendor.issues.sla_overdue') + ' ' + t('common.confirm_delete'))) return;
     try {
       await Api.vendor_issues.del(id);
-      UI.toast('Hallazgo eliminado', 'success');
+      UI.toast(t('common.success'), 'success');
       await _loadStats();
       await _refresh();
     } catch (e) { UI.toast(e.message, 'error'); }

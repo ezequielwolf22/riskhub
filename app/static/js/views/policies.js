@@ -1,10 +1,13 @@
 /* Vista ISMS — Sistema de Gestion de Seguridad de la Informacion — ISO 27001 */
 const ViewPolicies = (() => {
 
-  const STATUS_LABELS = {
-    draft: 'Borrador', review: 'En revision', approved: 'Aprobada',
-    published: 'Publicada', obsolete: 'Obsoleta',
-  };
+  const STATUS_LABELS = () => ({
+    draft:    t('policies.status.draft'),
+    review:   t('policies.status.review'),
+    approved: t('policies.status.approved'),
+    published: t('policies.status.published'),
+    obsolete: t('common.archived'), /* TODO: i18n obsolete */
+  });
   const STATUS_COLORS = {
     draft: 'var(--text-muted)', review: 'var(--brand-orange)',
     approved: 'var(--brand-purple)', published: 'var(--risk-low)', obsolete: '#aaa',
@@ -12,7 +15,7 @@ const ViewPolicies = (() => {
 
   // Tipos de documento ISMS estandarizados
   const ISMS_TYPES = {
-    politica:             'Politica',
+    politica:             'Politica',     /* TODO: i18n policy type labels */
     norma:                'Norma',
     instruccion_tecnica:  'Instruccion tecnica',
     evidencia:            'Otra evidencia',
@@ -76,19 +79,19 @@ const ViewPolicies = (() => {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">ISMS</h1>
-          <p class="page-sub">Sistema de Gestion de Seguridad de la Informacion — ISO 27001 cl. 5.2</p>
+          <h1 class="page-title">${t('policies.title')}</h1>
+          <p class="page-sub">${t('policies.subtitle')}</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="file" id="pol-ai-input" accept=".pdf,.docx,.txt" style="display:none;">
-          <button class="btn" id="btn-ai-extract" title="Cargar un documento PDF/DOCX y extraer los campos con IA">
-            Extraer con IA
+          <button class="btn" id="btn-ai-extract" title="${t('ai.analyze_document')}">
+            ${t('ai.analyze_document')}
           </button>
           <button onclick="ViewPolicies._generateWithAI()" class="btn"
                   style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
-            Generar con IA
+            ${t('common.generate')} /* TODO: i18n generate with AI */
           </button>
-          <button class="btn btn-primary" id="btn-new-pol">+ Nuevo documento</button>
+          <button class="btn btn-primary" id="btn-new-pol">+ ${t('policies.new')}</button>
         </div>
       </div>
 
@@ -96,7 +99,7 @@ const ViewPolicies = (() => {
 
       <!-- Tabs de tipo ISMS -->
       <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding-bottom:10px;">
-        <button class="btn btn-primary isms-tab" data-type="all">Todo</button>
+        <button class="btn btn-primary isms-tab" data-type="all">${t('common.all')}</button>
         ${Object.entries(ISMS_TYPES).map(([k, l]) =>
           `<button class="btn isms-tab" data-type="${k}">${l}</button>`
         ).join('')}
@@ -104,10 +107,10 @@ const ViewPolicies = (() => {
 
       <!-- Filtros de busqueda -->
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-        <input type="search" id="pol-search" class="input" style="width:220px;" placeholder="Buscar por titulo...">
+        <input type="search" id="pol-search" class="input" style="width:220px;" placeholder="${t('common.search')}...">
         <select id="pol-status" class="input" style="width:160px;">
-          <option value="">Todos los estados</option>
-          ${Object.entries(STATUS_LABELS).map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}
+          <option value="">${t('common.all')}</option>
+          ${Object.entries(STATUS_LABELS()).map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}
         </select>
       </div>
 
@@ -161,10 +164,10 @@ const ViewPolicies = (() => {
       const wrap = document.getElementById('pol-stats');
       if (!wrap) return;
       wrap.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total documentos</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.by_status.published||0}</div><div class="stat-label">Publicados</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.by_status.review||0}</div><div class="stat-label">En revision</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.overdue_review}</div><div class="stat-label">Revision vencida</div></div>
+        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">${t('common.total')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.by_status.published||0}</div><div class="stat-label">${t('policies.status.published')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.by_status.review||0}</div><div class="stat-label">${t('policies.status.review')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.overdue_review}</div><div class="stat-label">${t('dashboard.overdue_cycle')}</div></div>
       `;
     } catch (_) {}
   }
@@ -174,7 +177,7 @@ const ViewPolicies = (() => {
     const status = document.getElementById('pol-status')?.value || '';
     const wrap   = document.getElementById('pol-table-wrap');
     if (!wrap) return;
-    wrap.innerHTML = '<p class="text-muted">Cargando...</p>';
+    wrap.innerHTML = `<p class="text-muted">${t('common.loading_data')}</p>`;
     try {
       const params = {};
       if (q) params.q = q;
@@ -189,7 +192,7 @@ const ViewPolicies = (() => {
 
   function _renderTable(wrap, data) {
     if (!data.length) {
-      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No se encontraron documentos ISMS.</p>';
+      wrap.innerHTML = `<p class="text-muted" style="margin-top:24px;text-align:center;">${t('common.no_results')}</p>`;
       return;
     }
     const now = new Date();
@@ -212,15 +215,15 @@ const ViewPolicies = (() => {
           <td>${p.review_date ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${p.review_date.slice(0,10)}${reviewOverdue?' (VENCIDA)':''}</span>` : '-'}</td>
           <td style="font-size:12px;">${owner ? UI.esc(owner.full_name||owner.email) : '-'}</td>
           <td onclick="event.stopPropagation()">
-            <button class="btn btn-sm" data-id="${p.id}" data-action="edit">Editar</button>
-            <button class="btn btn-sm btn-danger" data-id="${p.id}" data-action="del">Eliminar</button>
+            <button class="btn btn-sm" data-id="${p.id}" data-action="edit">${t('common.edit')}</button>
+            <button class="btn btn-sm btn-danger" data-id="${p.id}" data-action="del">${t('common.delete')}</button>
           </td>
         </tr>`;
     }).join('');
     wrap.innerHTML = `
       <table class="data">
         <thead>
-          <tr><th>Codigo</th><th>Titulo / Nivel</th><th>Version</th><th>Estado</th><th>Revision</th><th>Responsable</th><th>Acciones</th></tr>
+          <tr><th>${t('controls.control_code')}</th><th>${t('common.title')}</th><th>${t('common.version')}</th><th>${t('common.status')}</th><th>${t('controls.review_date')}</th><th>${t('common.owner')}</th><th>${t('common.actions')}</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
@@ -232,10 +235,10 @@ const ViewPolicies = (() => {
     wrap.querySelectorAll('[data-action="del"]').forEach(btn =>
       btn.onclick = async (e) => {
         e.stopPropagation();
-        if (!confirm('Eliminar documento?')) return;
+        if (!confirm(t('policies.delete_confirm'))) return;
         try {
           await Api.policies.del(btn.dataset.id);
-          UI.toast('Documento eliminado', 'success');
+          UI.toast(t('common.success'), 'success');
           await _loadStats(); await _refresh();
         } catch (e2) { UI.toast(e2.message, 'error'); }
       });
@@ -268,11 +271,11 @@ const ViewPolicies = (() => {
 
     return `
       <div class="form-grid">
-        ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">Nota IA: ${UI.esc(notes)}</div></div>` : ''}
-        <div class="span2"><label>Titulo *</label><input id="f-title" class="input" value="${UI.esc(title)}"></div>
+        ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">/* TODO: i18n */ Nota IA: ${UI.esc(notes)}</div></div>` : ''}
+        <div class="span2"><label>${t('common.title')} *</label><input id="f-title" class="input" value="${UI.esc(title)}"></div>
 
         <div>
-          <label>Nivel jerarquico
+          <label>/* TODO: i18n */ Nivel jerarquico
             <span title="Jerarquia ISO: Politica (alto nivel) > Norma (reglas) > Procedimiento (pasos) > Instruccion Tecnica (configuracion exacta)"
                   style="cursor:help;color:var(--text-muted);font-weight:400;font-size:11px;"> (?)</span>
           </label>
@@ -285,7 +288,7 @@ const ViewPolicies = (() => {
         </div>
 
         <div>
-          <label>Documento padre (jerarquia)</label>
+          <label>/* TODO: i18n */ Documento padre (jerarquia)</label>
           <select id="f-parent" class="input">
             <option value="">— Ninguno (documento raiz) —</option>
             ${parentOptions}
@@ -294,7 +297,7 @@ const ViewPolicies = (() => {
         </div>
 
         <div>
-          <label>Tipo de documento ISMS</label>
+          <label>/* TODO: i18n */ Tipo de documento ISMS</label>
           <select id="f-cat" class="input">
             <option value="">-- Sin clasificar --</option>
             ${Object.entries(ISMS_TYPES).map(([k, l]) =>
@@ -306,29 +309,29 @@ const ViewPolicies = (() => {
           </div>
         </div>
         <div>
-          <label>Estado</label>
+          <label>${t('common.status')}</label>
           <select id="f-status" class="input">
-            ${Object.entries(STATUS_LABELS).map(([k,l]) => `<option value="${k}" ${(v.status||'draft')===k?'selected':''}>${l}</option>`).join('')}
+            ${Object.entries(STATUS_LABELS()).map(([k,l]) => `<option value="${k}" ${(v.status||'draft')===k?'selected':''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div><label>Version</label><input id="f-version" class="input" value="${UI.esc(version)}"></div>
+        <div><label>${t('common.version')}</label><input id="f-version" class="input" value="${UI.esc(version)}"></div>
         <div>
-          <label>Responsable</label>
+          <label>${t('common.owner')}</label>
           <select id="f-owner" class="input">
-            <option value="">— Sin asignar —</option>
+            <option value="">— ${t('common.not_assigned')} —</option>
             ${_users.map(u => `<option value="${u.id}" ${v.owner_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`).join('')}
           </select>
         </div>
-        <div><label>Fecha de revision</label><input type="date" id="f-review" class="input" value="${UI.esc(review)}"></div>
-        <div><label>Clausulas ISO (separadas por coma)</label><input id="f-clauses" class="input" value="${UI.esc(clauses)}"></div>
-        <div class="span2"><label>Alcance</label><textarea id="f-scope" class="input" rows="2">${UI.esc(scope)}</textarea></div>
-        <div class="span2"><label>Contenido / resumen</label><textarea id="f-content" class="input" rows="5">${UI.esc(content)}</textarea></div>
+        <div><label>${t('policies.next_review')}</label><input type="date" id="f-review" class="input" value="${UI.esc(review)}"></div>
+        <div><label>/* TODO: i18n */ Clausulas ISO (separadas por coma)</label><input id="f-clauses" class="input" value="${UI.esc(clauses)}"></div>
+        <div class="span2"><label>${t('audits.audit_scope')}</label><textarea id="f-scope" class="input" rows="2">${UI.esc(scope)}</textarea></div>
+        <div class="span2"><label>${t('common.summary')}</label><textarea id="f-content" class="input" rows="5">${UI.esc(content)}</textarea></div>
         ${p && p.source_document_id ? `
         <div class="span2" style="padding-top:14px;border-top:1px solid var(--border);margin-top:4px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                      letter-spacing:.5px;margin-bottom:8px;">Analisis de madurez SGSI</div>
+                      letter-spacing:.5px;margin-bottom:8px;">/* TODO: i18n */ Analisis de madurez SGSI</div>
           <div id="pol-maturity-panel">
-            <div style="font-size:12px;color:var(--text-muted);">Cargando analisis...</div>
+            <div style="font-size:12px;color:var(--text-muted);">${t('common.loading_data')}</div>
           </div>
         </div>` : ''}
       </div>`;
@@ -389,7 +392,7 @@ const ViewPolicies = (() => {
       return;
     }
     if (!controls.length) {
-      panel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">Sin analisis ISMS disponible para este documento.</p>`;
+      panel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${t('common.no_results')}</p>`;
       return;
     }
     const avg = controls.reduce((s, c) => s + (c.maturity || 0), 0) / controls.length;
@@ -468,18 +471,18 @@ const ViewPolicies = (() => {
 
   function _openVersioningModal(p) {
     const nextVer = _bumpVersion(p.version);
-    UI.modal('Editar documento aprobado', `
+    UI.modal(`${t('policies.edit')}`, `
       <p style="margin-bottom:10px;">El documento <strong>${UI.esc(p.code)}</strong> esta actualmente <strong>${STATUS_LABELS[p.status]||p.status}</strong> (v${UI.esc(p.version||'1.0')}).</p>
       <p style="font-size:13px;color:var(--text-subtle);margin-bottom:4px;">Al continuar se creara una nueva version <strong>v${UI.esc(nextVer)}</strong> en borrador con el mismo contenido. El documento actual permanecera vigente hasta que la nueva version sea aprobada, momento en que pasara automaticamente a estado <em>obsoleta</em>.</p>
     `, {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="m-confirm-version">Crear version ${UI.esc(nextVer)}</button>`,
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-confirm-version">/* TODO: i18n */ Crear version ${UI.esc(nextVer)}</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-confirm-version').onclick = async () => {
       try {
         const draft = await Api.policies.newVersion(p.id);
-        UI.toast(`Version ${draft.version} creada en borrador`, 'success');
+        UI.toast(t('common.success'), 'success');
         UI.closeModal();
         _openForm(draft);
         await _loadStats(); await _refresh();
@@ -492,9 +495,9 @@ const ViewPolicies = (() => {
     let allPolicies = [];
     try { allPolicies = await Api.policies.list({}); } catch (_) {}
 
-    UI.modal(p ? `Editar ${p.code}` : 'Nuevo documento ISMS', _formHtml(p, extracted, allPolicies), {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="m-save">Guardar</button>`,
+    UI.modal(p ? `${t('policies.edit')} ${p.code}` : t('policies.new'), _formHtml(p, extracted, allPolicies), {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick   = () => _save(p);
@@ -506,7 +509,7 @@ const ViewPolicies = (() => {
 
   async function _save(p) {
     const title = document.getElementById('f-title').value.trim();
-    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+    if (!title) { UI.toast(t('common.title') + ' ' + t('common.required').toLowerCase(), 'error'); return; }
     const clausesRaw = document.getElementById('f-clauses').value.trim();
     const ownerVal   = document.getElementById('f-owner').value;
     const parentVal  = document.getElementById('f-parent')?.value;
@@ -527,10 +530,10 @@ const ViewPolicies = (() => {
     try {
       if (p) {
         await Api.policies.update(p.id, payload);
-        UI.toast('Documento actualizado', 'success');
+        UI.toast(t('common.success'), 'success');
       } else {
         await Api.policies.create(payload);
-        UI.toast('Documento creado', 'success');
+        UI.toast(t('common.success'), 'success');
       }
       UI.closeModal();
       await _loadStats(); await _refresh();
@@ -544,7 +547,7 @@ const ViewPolicies = (() => {
   async function _generateWithAI() {
     UI.openModal(`
       <div style="max-width:600px;">
-        <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">Generar documento ISMS con IA</h3>
+        <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">/* TODO: i18n */ Generar documento ISMS con IA</h3>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 18px;">
           El agente IA redactara un borrador adaptado a tu organizacion y al marco normativo elegido.
         </p>
@@ -601,7 +604,7 @@ const ViewPolicies = (() => {
         </div>
 
         <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-          <button onclick="UI.closeModal()" class="btn">Cancelar</button>
+          <button onclick="UI.closeModal()" class="btn">${t('common.cancel')}</button>
           <button onclick="ViewPolicies._submitGenerate()" class="btn"
                   style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
             Generar con IA
@@ -619,7 +622,7 @@ const ViewPolicies = (() => {
 
   async function _submitGenerate() {
     const title = document.getElementById('gen-title')?.value.trim();
-    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+    if (!title) { UI.toast(t('common.title') + ' ' + t('common.required').toLowerCase(), 'error'); return; }
 
     const docType   = document.getElementById('gen-type')?.value;
     const framework = document.getElementById('gen-framework')?.value;
@@ -628,7 +631,7 @@ const ViewPolicies = (() => {
     const file      = fileInput?.files[0] || null;
 
     UI.closeModal();
-    UI.toast('Generando documento con IA...', 'info');
+    UI.toast(t('ai.generating'), 'info');
 
     try {
       const fd = new FormData();
@@ -660,7 +663,7 @@ const ViewPolicies = (() => {
             Este borrador ha sido generado por IA y debe ser revisado y aprobado por una persona responsable.
           </div>
           <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-            <button onclick="UI.closeModal()" class="btn">Descartar</button>
+            <button onclick="UI.closeModal()" class="btn">${t('common.cancel')}</button>
             <button onclick="ViewPolicies._saveGenerated(${JSON.stringify({
               title: result.title,
               category: result.category || docType,

@@ -2,19 +2,19 @@
 const ViewTasks = (() => {
 
   const STATUS_COLS = [
-    { id: 'pending',     label: 'Pendiente',    color: 'var(--text-muted)' },
-    { id: 'in_progress', label: 'En progreso',  color: 'var(--brand-purple)' },
-    { id: 'blocked',     label: 'Bloqueado',    color: 'var(--risk-high)' },
-    { id: 'done',        label: 'Completado',   color: 'var(--risk-low)' },
+    { id: 'pending',     label: () => t('tasks.status.pending'),     color: 'var(--text-muted)' },
+    { id: 'in_progress', label: () => t('tasks.status.in_progress'), color: 'var(--brand-purple)' },
+    { id: 'blocked',     label: () => t('common.pending') /* TODO: i18n blocked */, color: 'var(--risk-high)' },
+    { id: 'done',        label: () => t('tasks.status.completed'),   color: 'var(--risk-low)' },
   ];
 
   const PRIORITY_COLORS = {
     low: 'var(--risk-low)', medium: 'var(--risk-medium)',
     high: 'var(--risk-high)', critical: 'var(--risk-critical)',
   };
-  const PRIORITY_LABELS = {
-    low: 'Baja', medium: 'Media', high: 'Alta', critical: 'Critica',
-  };
+  const PRIORITY_LABELS = () => ({
+    low: t('common.low'), medium: t('common.medium'), high: t('common.high'), critical: t('common.critical'),
+  });
 
   let _tasks = [];
   let _users = [];
@@ -29,14 +29,14 @@ const ViewTasks = (() => {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Plan de Tratamiento — Tareas</h1>
-          <p class="page-sub">Tablero Kanban de tareas de mitigacion de riesgos</p>
+          <h1 class="page-title">${t('tasks.title')}</h1>
+          <p class="page-sub">${t('tasks.subtitle')}</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <select id="t-filter-assignee" class="input" style="width:180px;">
-            <option value="">Todos los responsables</option>
+            <option value="">${t('common.all')}</option>
           </select>
-          <button class="btn btn-primary" id="btn-new-task">+ Nueva tarea</button>
+          <button class="btn btn-primary" id="btn-new-task">+ ${t('tasks.new')}</button>
         </div>
       </div>
 
@@ -77,7 +77,7 @@ const ViewTasks = (() => {
         });
       }
     } catch (e) {
-      UI.toast('Error cargando datos: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   }
 
@@ -87,10 +87,10 @@ const ViewTasks = (() => {
       const wrap = document.getElementById('task-stats');
       if (!wrap) return;
       wrap.innerHTML = `
-        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${s.by_status.in_progress||0}</div><div class="stat-label">En progreso</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.by_status.blocked||0}</div><div class="stat-label">Bloqueadas</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.overdue}</div><div class="stat-label">Vencidas</div></div>
+        <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">${t('common.total')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${s.by_status.in_progress||0}</div><div class="stat-label">${t('tasks.status.in_progress')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.by_status.blocked||0}</div><div class="stat-label">${t('common.pending')} /* TODO: i18n blocked */</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.overdue}</div><div class="stat-label">${t('tasks.overdue')}</div></div>
       `;
     } catch (_) {}
   }
@@ -114,12 +114,12 @@ const ViewTasks = (() => {
             <div style="background:var(--bg-2);border-radius:10px;padding:12px;">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
                 <span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;"></span>
-                <span style="font-weight:600;font-size:13px;">${col.label}</span>
+                <span style="font-weight:600;font-size:13px;">${col.label()}</span>
                 <span style="margin-left:auto;background:var(--bg-3);border-radius:999px;font-size:11px;font-weight:700;padding:2px 8px;color:var(--text-muted);">${colTasks.length}</span>
               </div>
               <div style="display:flex;flex-direction:column;gap:8px;" data-col="${col.id}">
                 ${colTasks.map(t => _taskCard(t, now, canEdit)).join('')}
-                ${canEdit ? `<button class="btn btn-ghost" style="font-size:12px;width:100%;margin-top:4px;" data-add-col="${col.id}">+ Anadir</button>` : ''}
+                ${canEdit ? `<button class="btn btn-ghost" style="font-size:12px;width:100%;margin-top:4px;" data-add-col="${col.id}">+ ${t('common.add')}</button>` : ''}
               </div>
             </div>`;
         }).join('')}
@@ -176,17 +176,17 @@ const ViewTasks = (() => {
            onmouseout="this.style.boxShadow='none'">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
           <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);">${UI.esc(t.code)}</span>
-          ${_badge(PRIORITY_LABELS[t.priority] || t.priority, PRIORITY_COLORS[t.priority] || '#888')}
+          ${_badge(PRIORITY_LABELS()[t.priority] || t.priority, PRIORITY_COLORS[t.priority] || '#888')}
         </div>
         <div style="font-weight:600;font-size:13px;margin:5px 0 3px;">${UI.esc(t.title)}</div>
-        ${riskObj ? `<div style="font-size:11px;color:var(--text-muted);">Riesgo: ${UI.esc(riskObj.code)} — ${UI.esc(riskObj.asset?.name||'')}</div>` : ''}
-        ${assignee ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:3px;">Responsable: ${UI.esc(assignee.full_name||assignee.email)}</div>` : ''}
+        ${riskObj ? `<div style="font-size:11px;color:var(--text-muted);">${t('common.risk')}: ${UI.esc(riskObj.code)} — ${UI.esc(riskObj.asset?.name||'')}</div>` : ''}
+        ${assignee ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:3px;">${t('common.owner')}: ${UI.esc(assignee.full_name||assignee.email)}</div>` : ''}
         ${dueFmt ? `<div style="font-size:11px;margin-top:3px;color:${isOverdue?'var(--risk-critical)':'var(--text-subtle)'};">
-          ${isOverdue ? 'VENCIDA — ' : ''}Vence: ${dueFmt}
+          ${isOverdue ? t('tasks.overdue') + ' — ' : ''}${t('common.due_date')}: ${dueFmt}
         </div>` : ''}
         ${canEdit ? `<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end;" onclick="event.stopPropagation()">
-          ${prevCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${t.id}" data-move-to="${prevCol.id}" title="Mover a ${prevCol.label}">◀</button>` : ''}
-          ${nextCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${t.id}" data-move-to="${nextCol.id}" title="Mover a ${nextCol.label}">▶</button>` : ''}
+          ${prevCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${t.id}" data-move-to="${prevCol.id}" title="${prevCol.label()}">◀</button>` : ''}
+          ${nextCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${t.id}" data-move-to="${nextCol.id}" title="${nextCol.label()}">▶</button>` : ''}
         </div>` : ''}
       </div>`;
   }
@@ -196,54 +196,54 @@ const ViewTasks = (() => {
     const status = v.status || defaultStatus || 'pending';
     return `
       <div class="form-grid">
-        <div class="span2"><label>Titulo *</label><input id="f-title" class="input" value="${UI.esc(v.title||'')}"></div>
+        <div class="span2"><label>${t('tasks.task_name')} *</label><input id="f-title" class="input" value="${UI.esc(v.title||'')}"></div>
         <div>
-          <label>Estado</label>
+          <label>${t('common.status')}</label>
           <select id="f-status" class="input">
-            ${STATUS_COLS.map(c => `<option value="${c.id}" ${status===c.id?'selected':''}>${c.label}</option>`).join('')}
+            ${STATUS_COLS.map(c => `<option value="${c.id}" ${status===c.id?'selected':''}>${c.label()}</option>`).join('')}
           </select>
         </div>
         <div>
-          <label>Prioridad</label>
+          <label>${t('common.priority')}</label>
           <select id="f-prio" class="input">
-            ${Object.entries(PRIORITY_LABELS).map(([k,l]) => `<option value="${k}" ${(v.priority||'medium')===k?'selected':''}>${l}</option>`).join('')}
+            ${Object.entries(PRIORITY_LABELS()).map(([k,l]) => `<option value="${k}" ${(v.priority||'medium')===k?'selected':''}>${l}</option>`).join('')}
           </select>
         </div>
         <div>
-          <label>Responsable</label>
+          <label>${t('common.owner')}</label>
           <select id="f-assignee" class="input">
-            <option value="">— Sin asignar —</option>
+            <option value="">— ${t('common.not_assigned')} —</option>
             ${_users.map(u => `<option value="${u.id}" ${v.assigned_to_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`).join('')}
           </select>
         </div>
         <div>
-          <label>Riesgo vinculado (opcional)</label>
+          <label>${t('tasks.related_risk')} (${t('common.optional')})</label>
           <select id="f-risk" class="input">
-            <option value="">— Ninguno —</option>
+            <option value="">— ${t('common.none')} —</option>
             ${_risks.map(r => `<option value="${r.id}" ${v.risk_id===r.id?'selected':''}>${UI.esc(r.code)} — ${UI.esc(r.asset?.name||'')}</option>`).join('')}
           </select>
         </div>
-        <div><label>Fecha limite</label><input type="datetime-local" id="f-due" class="input" value="${v.due_date ? v.due_date.slice(0,16) : ''}"></div>
-        <div class="span2"><label>Descripcion</label><textarea id="f-desc" class="input" rows="3">${UI.esc(v.description||'')}</textarea></div>
-        <div class="span2"><label>Notas</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes||'')}</textarea></div>
+        <div><label>${t('common.due_date')}</label><input type="datetime-local" id="f-due" class="input" value="${v.due_date ? v.due_date.slice(0,16) : ''}"></div>
+        <div class="span2"><label>${t('common.description')}</label><textarea id="f-desc" class="input" rows="3">${UI.esc(v.description||'')}</textarea></div>
+        <div class="span2"><label>${t('common.notes')}</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes||'')}</textarea></div>
       </div>
     `;
   }
 
   function _openForm(t, defaultStatus) {
-    const title = t ? `Tarea ${t.code}` : 'Nueva tarea';
+    const title = t ? `${t('common.task')} ${t.code}` : t('tasks.new');
     UI.modal(title, _formHtml(t, defaultStatus), {
       actions: `
-        <button class="btn" id="m-cancel">Cancelar</button>
-        ${t ? `<button class="btn btn-danger" id="m-del">Eliminar</button>` : ''}
-        <button class="btn btn-primary" id="m-save">Guardar</button>`,
+        <button class="btn" id="m-cancel">${t('common.cancel')}</button>
+        ${t ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
+        <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     if (t) document.getElementById('m-del').onclick = async () => {
-      if (!confirm('Eliminar tarea?')) return;
+      if (!confirm(t('tasks.delete_confirm'))) return;
       try {
         await Api.tasks.del(t.id);
-        UI.toast('Tarea eliminada', 'success');
+        UI.toast(t('common.success'), 'success');
         UI.closeModal();
         _tasks = _tasks.filter(x => x.id !== t.id);
         _renderBoard();
@@ -255,7 +255,7 @@ const ViewTasks = (() => {
 
   async function _save(t) {
     const title = document.getElementById('f-title').value.trim();
-    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+    if (!title) { UI.toast(t('tasks.task_name') + ' ' + t('common.required').toLowerCase(), 'error'); return; }
     const riskVal = document.getElementById('f-risk').value;
     const assigneeVal = document.getElementById('f-assignee').value;
     const payload = {
@@ -273,11 +273,11 @@ const ViewTasks = (() => {
       if (t) {
         updated = await Api.tasks.update(t.id, payload);
         _tasks = _tasks.map(x => x.id === t.id ? updated : x);
-        UI.toast('Tarea actualizada', 'success');
+        UI.toast(t('common.success'), 'success');
       } else {
         updated = await Api.tasks.create(payload);
         _tasks.unshift(updated);
-        UI.toast('Tarea creada', 'success');
+        UI.toast(t('common.success'), 'success');
       }
       UI.closeModal();
       _renderBoard();

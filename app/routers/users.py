@@ -1,5 +1,5 @@
 """Gestion de usuarios - solo administradores."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from app.routers.auth import _generate_otp_password, _try_send_otp_email, _valid
 from app.schemas import UserIn, UserOut, UserUpdate
 from app.security import filter_by_org, get_current_user, hash_password, require_admin
 from app.services.audit_service import log_action
+from app.i18n import get_lang, t as _t
 
 router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
@@ -45,10 +46,11 @@ def list_users(db: Session = Depends(get_db),
 
 
 @router.post("/", response_model=UserOut, status_code=201)
-def create_user(data: UserIn, db: Session = Depends(get_db),
+def create_user(data: UserIn, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     if db.query(User).filter(User.email == data.email).first():
-        raise HTTPException(400, "Ya existe un usuario con ese email")
+        raise HTTPException(400, _t("users.email_exists", lang))
 
     # Contrasena: si no se proporciona, generar OTP automaticamente
     otp_generated = False
@@ -113,21 +115,22 @@ def create_user(data: UserIn, db: Session = Depends(get_db),
 
 
 @router.patch("/{user_id}", response_model=UserOut)
-def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
+def update_user(user_id: int, data: UserUpdate, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     u = db.get(User, user_id)
     if not u:
-        raise HTTPException(404, "Usuario no encontrado")
+        raise HTTPException(404, _t("users.not_found", lang))
     # OWASP A01 — IDOR: non-superadmin solo puede editar usuarios de su propia org
     if current_user.role != UserRole.SUPERADMIN and u.organization_id != current_user.organization_id:
-        raise HTTPException(403, "No autorizado")
+        raise HTTPException(403, _t("common.forbidden", lang))
     # Privilege escalation: solo superadmin puede asignar rol superadmin;
     # solo admin/superadmin puede asignar rol admin
     if data.role is not None:
         if data.role == UserRole.SUPERADMIN and current_user.role != UserRole.SUPERADMIN:
-            raise HTTPException(403, "Solo superadmin puede asignar el rol superadmin")
+            raise HTTPException(403, _t("common.forbidden", lang))
         if data.role == UserRole.ADMIN and current_user.role not in (UserRole.SUPERADMIN, UserRole.ADMIN):
-            raise HTTPException(403, "Solo admin o superior puede asignar el rol admin")
+            raise HTTPException(403, _t("common.forbidden", lang))
     if data.full_name is not None:
         u.full_name = data.full_name
     if data.role is not None:
@@ -143,10 +146,10 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
     # Solo superadmin puede mover un usuario a otra organizacion
     if data.organization_id is not None:
         if current_user.role != UserRole.SUPERADMIN:
-            raise HTTPException(403, "Solo superadmin puede cambiar la organizacion de un usuario")
+            raise HTTPException(403, _t("common.forbidden", lang))
         dest_org = db.get(Organization, data.organization_id)
         if not dest_org:
-            raise HTTPException(404, "Organizacion destino no encontrada")
+            raise HTTPException(404, _t("organizations.not_found", lang))
         u.organization_id = data.organization_id
     log_action(db, current_user.id, "update", "user", str(user_id),
                {"email": u.email, "role": str(u.role), "is_active": u.is_active})
@@ -156,17 +159,18 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db),
 
 
 @router.delete("/{user_id}", status_code=204)
-def delete_user(user_id: int, db: Session = Depends(get_db),
+def delete_user(user_id: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     # OWASP A01 — impedir autoeliminacion
     if user_id == current_user.id:
-        raise HTTPException(400, "No puedes eliminar tu propia cuenta de administrador")
+        raise HTTPException(400, _t("users.cannot_delete_self", lang))
     u = db.get(User, user_id)
     if not u:
-        raise HTTPException(404, "Usuario no encontrado")
+        raise HTTPException(404, _t("users.not_found", lang))
     # OWASP A01 — IDOR: non-superadmin solo puede eliminar usuarios de su propia org
     if current_user.role != UserRole.SUPERADMIN and u.organization_id != current_user.organization_id:
-        raise HTTPException(403, "No autorizado")
+        raise HTTPException(403, _t("common.forbidden", lang))
     email = u.email
     db.delete(u)
     log_action(db, current_user.id, "delete", "user", str(user_id), {"email": email})
@@ -181,16 +185,18 @@ class MfaRequireIn(BaseModel):
 def set_mfa_required(
     user_id: int,
     body: MfaRequireIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Admin activa/desactiva la obligatoriedad de MFA para la organizacion del usuario."""
+    lang = get_lang(request)
     target = db.get(User, user_id)
     if not target:
-        raise HTTPException(404, "Usuario no encontrado")
+        raise HTTPException(404, _t("users.not_found", lang))
     if (current_user.role != UserRole.SUPERADMIN
             and target.organization_id != current_user.organization_id):
-        raise HTTPException(403, "No autorizado")
+        raise HTTPException(403, _t("common.forbidden", lang))
     # Actualizar el flag org_mfa_required en la organizacion del usuario
     if target.organization_id:
         org = db.get(Organization, target.organization_id)

@@ -3,12 +3,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import AuditFinding, AuditProgram, AuditStatus, AuditChecklist, User
 from app.schemas import (
     AuditFindingIn, AuditFindingOut,
@@ -58,11 +59,12 @@ def audits_summary(db: Session = Depends(get_db), current_user: User = Depends(g
 
 
 @router.get("/{audit_id}", response_model=AuditProgramOut)
-def get_audit(audit_id: int, db: Session = Depends(get_db),
+def get_audit(audit_id: int, request: Request, db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
     return a
 
 
@@ -93,11 +95,13 @@ def create_audit(body: AuditProgramIn, db: Session = Depends(get_db),
 
 @router.patch("/{audit_id}", response_model=AuditProgramOut)
 def update_audit(audit_id: int, body: AuditProgramUpdate,
+                 request: Request,
                  db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(a, field, value)
     db.commit()
@@ -107,11 +111,12 @@ def update_audit(audit_id: int, body: AuditProgramUpdate,
 
 
 @router.delete("/{audit_id}", status_code=204)
-def delete_audit(audit_id: int, db: Session = Depends(get_db),
+def delete_audit(audit_id: int, request: Request, db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
     log_action(db, current_user.id, "delete", "audit", str(audit_id))
     db.delete(a)
     db.commit()
@@ -120,21 +125,24 @@ def delete_audit(audit_id: int, db: Session = Depends(get_db),
 # -- Findings sub-resource --
 
 @router.get("/{audit_id}/findings", response_model=list[AuditFindingOut])
-def list_findings(audit_id: int, db: Session = Depends(get_db),
+def list_findings(audit_id: int, request: Request, db: Session = Depends(get_db),
                   current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
     return db.query(AuditFinding).filter(AuditFinding.audit_id == audit_id).all()
 
 
 @router.post("/{audit_id}/findings", response_model=AuditFindingOut)
 def create_finding(audit_id: int, body: AuditFindingIn,
+                   request: Request,
                    db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
     f = AuditFinding(
         audit_id=audit_id,
         finding_type=body.finding_type,
@@ -154,16 +162,18 @@ def create_finding(audit_id: int, body: AuditFindingIn,
 
 @router.patch("/{audit_id}/findings/{finding_id}", response_model=AuditFindingOut)
 def update_finding(audit_id: int, finding_id: int, body: AuditFindingIn,
+                   request: Request,
                    db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     audit = filter_by_org(db.query(AuditProgram).filter(AuditProgram.id == audit_id), AuditProgram, current_user).first()
     if not audit:
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
     f = db.query(AuditFinding).filter(
         AuditFinding.id == finding_id, AuditFinding.audit_id == audit_id
     ).first()
     if not f:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("audits.finding_not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(f, field, value)
     db.commit()
@@ -173,16 +183,18 @@ def update_finding(audit_id: int, finding_id: int, body: AuditFindingIn,
 
 @router.delete("/{audit_id}/findings/{finding_id}", status_code=204)
 def delete_finding(audit_id: int, finding_id: int,
+                   request: Request,
                    db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     audit = filter_by_org(db.query(AuditProgram).filter(AuditProgram.id == audit_id), AuditProgram, current_user).first()
     if not audit:
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
     f = db.query(AuditFinding).filter(
         AuditFinding.id == finding_id, AuditFinding.audit_id == audit_id
     ).first()
     if not f:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("audits.finding_not_found", lang))
     db.delete(f)
     db.commit()
 
@@ -214,13 +226,15 @@ def _checklist_to_dict(item: AuditChecklist) -> dict:
 @router.post("/{audit_id}/start")
 def start_audit(
     audit_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Cambia estado a IN_PROGRESS y genera checklist automatico desde SoA con IA."""
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
 
     a.status = AuditStatus.IN_PROGRESS
     a.actual_start = datetime.now(timezone.utc)
@@ -242,13 +256,15 @@ def start_audit(
 @router.get("/{audit_id}/checklist")
 def list_checklist(
     audit_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Lista todos los items del checklist de una auditoria."""
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
 
     items = (
         db.query(AuditChecklist)
@@ -277,13 +293,15 @@ def respond_checklist_item(
     audit_id: int,
     item_id: int,
     body: ChecklistItemResponse,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Responde un item del checklist. Si es NC → crea NonConformity automaticamente."""
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
 
     valid_responses = ("pending", "conformant", "minor_nc", "major_nc", "na")
     if body.response not in valid_responses:
@@ -293,7 +311,7 @@ def respond_checklist_item(
         id=item_id, audit_id=audit_id
     ).first()
     if not item:
-        raise HTTPException(404, "Item de checklist no encontrado")
+        raise HTTPException(404, _t("audits.finding_not_found", lang))
 
     item.response = body.response
     if body.auditor_notes is not None:
@@ -354,13 +372,15 @@ def respond_checklist_item(
 @router.post("/{audit_id}/close-report")
 def close_audit_report(
     audit_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Cierra la auditoria y genera el informe PDF."""
+    lang = get_lang(request)
     a = db.query(AuditProgram).filter(AuditProgram.id == audit_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
 
     a.status = AuditStatus.COMPLETED
     a.actual_end = datetime.now(timezone.utc)
@@ -386,16 +406,18 @@ def close_audit_report(
 @router.post("/{audit_id}/analyze-report")
 async def analyze_audit_report(
     audit_id: int,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Analiza un informe de auditoria con IA para extraer NC, observaciones y oportunidades."""
     import json
+    lang = get_lang(request)
 
     audit = db.get(AuditProgram, audit_id)
     if not audit or audit.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Auditoria no encontrada")
+        raise HTTPException(404, _t("audits.not_found", lang))
 
     # Leer el archivo en chunks para no saturar memoria (max 5MB)
     MAX_SIZE = 5 * 1024 * 1024

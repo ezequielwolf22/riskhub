@@ -2,11 +2,12 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import AlertRule, EmailSettings, Risk, UserRole
 from app.security import filter_by_org, get_current_user
 from app.services import email_service
@@ -167,14 +168,15 @@ def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
 
 
 @router.delete("/rules/{rule_id}", status_code=204)
-def delete_rule(rule_id: int, db: Session = Depends(get_db),
+def delete_rule(rule_id: int, request: Request, db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
+    lang = get_lang(request)
     # M1: solo ADMIN puede eliminar reglas
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
-        raise HTTPException(403, "Solo administradores pueden eliminar reglas de alerta")
+        raise HTTPException(403, _t("common.forbidden", lang))
     rule = filter_by_org(db.query(AlertRule).filter(AlertRule.id == rule_id), AlertRule, current_user).first()
     if not rule:
-        raise HTTPException(404, "Regla no encontrada")
+        raise HTTPException(404, _t("alerts.rule_not_found", lang))
     log_action(db, current_user.id, "delete", "alert_rule", str(rule_id),
                {"name": rule.name, "event_type": rule.event_type})
     db.delete(rule)
@@ -182,14 +184,15 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db),
 
 
 @router.patch("/rules/{rule_id}/toggle", response_model=AlertRuleOut)
-def toggle_rule(rule_id: int, db: Session = Depends(get_db),
+def toggle_rule(rule_id: int, request: Request, db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
+    lang = get_lang(request)
     # M1: solo ADMIN puede activar/desactivar reglas
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
-        raise HTTPException(403, "Solo administradores pueden modificar reglas de alerta")
+        raise HTTPException(403, _t("common.forbidden", lang))
     rule = filter_by_org(db.query(AlertRule).filter(AlertRule.id == rule_id), AlertRule, current_user).first()
     if not rule:
-        raise HTTPException(404, "Regla no encontrada")
+        raise HTTPException(404, _t("alerts.rule_not_found", lang))
     rule.is_active = not rule.is_active
     log_action(db, current_user.id, "update", "alert_rule", str(rule_id),
                {"name": rule.name, "is_active": rule.is_active})

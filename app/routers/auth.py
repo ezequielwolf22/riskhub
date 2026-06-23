@@ -25,6 +25,7 @@ from app.services.audit_service import log_action
 from app.services.rate_limiter import (
     check_login_allowed, remaining_lockout_seconds, reset_login_counter,
 )
+from app.i18n import get_lang, t as _t
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -38,22 +39,18 @@ _MFA_TOKEN_MINUTES = 5
 
 # ---------- Helpers de validacion de contrasenas ----------
 
-def _validate_password_strength(password: str) -> str | None:
-    """Valida la fortaleza de la contrasena.
-
-    Devuelve None si cumple todos los requisitos, o un mensaje de error en castellano.
-    """
+def _validate_password_strength(password: str, lang: str = "es") -> str | None:
+    """Validate password strength. Returns None on success or a translated error message."""
     if len(password) < _MIN_PASSWORD_LEN:
-        return f"La contrasena debe tener al menos {_MIN_PASSWORD_LEN} caracteres."
+        return _t("auth.password_min_length", lang, min=_MIN_PASSWORD_LEN)
     if not re.search(r"[A-Z]", password):
-        return "La contrasena debe contener al menos una letra mayuscula."
+        return _t("auth.password_needs_uppercase", lang)
     if not re.search(r"[a-z]", password):
-        return "La contrasena debe contener al menos una letra minuscula."
+        return _t("auth.password_needs_lowercase", lang)
     if not re.search(r"\d", password):
-        return "La contrasena debe contener al menos un digito (0-9)."
+        return _t("auth.password_needs_digit", lang)
     if not re.search(rf"[{_SPECIAL_CHARS}]", password):
-        return ("La contrasena debe contener al menos un caracter especial "
-                "(!@#$%^&*()-_=+[]{}|;:',.<>?/).")
+        return _t("auth.password_needs_special", lang)
     return None
 
 
@@ -128,14 +125,15 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    ip = _client_ip(request)
+    ip  = _client_ip(request)
+    lang = get_lang(request)
 
     # OWASP A07 — comprobar rate limit antes de consultar la BD
     if not check_login_allowed(ip):
         secs = remaining_lockout_seconds(ip)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Demasiados intentos fallidos. Intenta de nuevo en {secs} segundos.",
+            detail=_t("auth.account_locked", lang, seconds=secs),
             headers={"Retry-After": str(secs)},
         )
 
@@ -148,7 +146,7 @@ def login(
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o contrasena incorrectos",
+            detail=_t("auth.invalid_credentials", lang),
         )
     if not user.is_active:
         log_action(
@@ -158,7 +156,7 @@ def login(
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Usuario desactivado",
+            detail=_t("auth.user_disabled", lang),
         )
 
     # Bloquear login si la organizacion del usuario esta desactivada
@@ -172,7 +170,7 @@ def login(
             db.commit()
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="La organizacion esta desactivada. Contacta con el administrador.",
+                detail=_t("auth.user_disabled", lang),
             )
 
     # Login exitoso: resetear contador de intentos

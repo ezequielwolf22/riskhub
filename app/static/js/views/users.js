@@ -6,8 +6,8 @@ const ViewUsers = {
 
   async render(main) {
     if (!Auth.isAdmin()) {
-      main.innerHTML = UI.sectionHeader('Acceso restringido', 'Solo administradores');
-      main.innerHTML += UI.notice('Esta seccion requiere rol de administrador.', 'warn');
+      main.innerHTML = UI.sectionHeader(t('common.error'), t('common.not_available'));
+      main.innerHTML += UI.notice(t('common.not_available') + ' — ' + t('auth.role.admin'), 'warn');
       return;
     }
 
@@ -17,8 +17,8 @@ const ViewUsers = {
       main.innerHTML = `
         <div class="page-header">
           <div>
-            <h1 class="page-title">Usuarios por organizacion</h1>
-            <p class="page-subtitle">Gestion multi-tenant — Solo superadmin</p>
+            <h1 class="page-title">${t('users.title')}</h1>
+            <p class="page-subtitle">${t('users.subtitle')}</p>
           </div>
         </div>
         <div id="u-orgs-list"></div>
@@ -29,11 +29,11 @@ const ViewUsers = {
       main.innerHTML = `
         <div class="page-header">
           <div>
-            <h1 class="page-title">Usuarios</h1>
-            <p class="page-subtitle" id="u-org-subtitle">Cargando...</p>
+            <h1 class="page-title">${t('users.title')}</h1>
+            <p class="page-subtitle" id="u-org-subtitle">${t('common.loading')}</p>
           </div>
           <div class="page-actions">
-            <button class="btn btn-primary" id="btn-new">+ Nuevo usuario</button>
+            <button class="btn btn-primary" id="btn-new">+ ${t('users.new')}</button>
           </div>
         </div>
         <div id="u-list"></div>
@@ -46,14 +46,14 @@ const ViewUsers = {
           const org = await Api.get('/api/organizations/' + me.organization_id);
           ViewUsers._myOrg = org;
           const sub = document.getElementById('u-org-subtitle');
-          if (sub) sub.textContent = 'Gestion de usuarios — ' + (org.name || 'Mi organizacion');
+          if (sub) sub.textContent = t('users.subtitle') + ' — ' + (org.name || t('users.organization'));
         } catch (_) {
           const sub = document.getElementById('u-org-subtitle');
-          if (sub) sub.textContent = 'Gestion de usuarios de mi organizacion';
+          if (sub) sub.textContent = t('users.subtitle');
         }
       } else {
         const sub = document.getElementById('u-org-subtitle');
-        if (sub) sub.textContent = 'Gestion de usuarios de mi organizacion';
+        if (sub) sub.textContent = t('users.subtitle');
       }
       ViewUsers._reload();
     }
@@ -64,7 +64,7 @@ const ViewUsers = {
   async _reloadSuperAdmin() {
     const container = document.getElementById('u-orgs-list');
     if (!container) return;
-    container.innerHTML = '<div class="notice">Cargando...</div>';
+    container.innerHTML = `<div class="notice">${t('common.loading')}</div>`;
     try {
       const [orgs, users] = await Promise.all([
         Api.get('/api/organizations/'),
@@ -84,13 +84,13 @@ const ViewUsers = {
       });
 
       if (!orgs.length) {
-        container.innerHTML = '<p style="color:var(--text-muted);">No hay organizaciones registradas.</p>';
+        container.innerHTML = `<p style="color:var(--text-muted);">${t('common.no_results')}</p>`;
         return;
       }
 
       let html = orgs.map(org => ViewUsers._renderOrgSection(org, usersByOrg[org.id] || [])).join('');
       if (noOrgUsers.length) {
-        html += ViewUsers._renderOrgSection({ id: null, name: 'Sin organizacion' }, noOrgUsers);
+        html += ViewUsers._renderOrgSection({ id: null, name: t('common.not_assigned') }, noOrgUsers);
       }
       container.innerHTML = html;
 
@@ -125,14 +125,14 @@ const ViewUsers = {
         <div class="org-section-header" style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;cursor:pointer;background:var(--bg-2);border-bottom:1px solid var(--border);">
           <div style="display:flex;align-items:center;gap:12px;">
             <span class="org-toggle-icon" style="font-size:11px;color:var(--text-muted);min-width:10px;">▼</span>
-            <strong style="font-size:15px;">${UI.esc(org.name || 'Sin organizacion')}</strong>
+            <strong style="font-size:15px;">${UI.esc(org.name || t('common.not_assigned'))}</strong>
             <span style="background:var(--brand-purple-4);color:var(--brand-purple);padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600;">${count} usuario${count !== 1 ? 's' : ''}</span>
           </div>
-          ${org.id ? `<button class="btn btn-primary" data-new-user-org="${org.id}" style="font-size:12px;padding:5px 14px;">+ Nuevo usuario</button>` : ''}
+          ${org.id ? `<button class="btn btn-primary" data-new-user-org="${org.id}" style="font-size:12px;padding:5px 14px;">+ ${t('users.new')}</button>` : ''}
         </div>
         <div class="org-section-body" style="padding:${count ? '0' : '16px 20px'};">
           ${count === 0
-            ? '<p style="color:var(--text-muted);font-size:13px;margin:0;">Sin usuarios en esta organizacion.</p>'
+            ? `<p style="color:var(--text-muted);font-size:13px;margin:0;">${t('common.no_results')}</p>`
             : ViewUsers._renderUsersTableSuperAdmin(users)
           }
         </div>
@@ -143,8 +143,8 @@ const ViewUsers = {
   _renderUsersTableSuperAdmin(users) {
     return `<div class="table-wrap" style="margin:0;"><table class="data">
       <thead><tr>
-        <th>Email</th><th>Nombre</th><th>Rol</th>
-        <th>Estado</th><th>Ultimo acceso</th><th>MFA</th><th></th>
+        <th>${t('users.email')}</th><th>${t('users.full_name')}</th><th>${t('users.role')}</th>
+        <th>${t('common.status')}</th><th>${t('users.last_login')}</th><th>MFA</th><th></th>
       </tr></thead>
       <tbody>
         ${users.map(u => {
@@ -157,11 +157,11 @@ const ViewUsers = {
             <td><strong>${UI.esc(u.email)}</strong></td>
             <td>${UI.esc(u.full_name)}</td>
             <td><span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">${UI.esc(u.role)}</span></td>
-            <td>${u.is_active ? '<span class="badge badge-low">Activo</span>' : '<span class="badge badge-high">Inactivo</span>'}</td>
+            <td>${u.is_active ? `<span class="badge badge-low">${t('users.active')}</span>` : `<span class="badge badge-high">${t('common.inactive')}</span>`}</td>
             <td style="font-size:12px;">${u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '-'}</td>
             <td>${mfaBadge}</td>
             <td style="white-space:nowrap;">
-              <button class="btn btn-ghost" data-edit-user="${u.id}">Editar</button>
+              <button class="btn btn-ghost" data-edit-user="${u.id}">${t('common.edit')}</button>
               ${u.mfa_enabled ? `<button class="btn btn-ghost" data-mfa-disable-su="${u.id}" style="margin-left:4px;">MFA off</button>` : ''}
             </td>
           </tr>`;
@@ -174,7 +174,7 @@ const ViewUsers = {
   async _reload() {
     const list = document.getElementById('u-list');
     if (!list) return;
-    list.innerHTML = '<div class="notice">Cargando...</div>';
+    list.innerHTML = `<div class="notice">${t('common.loading')}</div>`;
     try {
       let data = await Api.users.list();
       const _sv = u => {
@@ -198,9 +198,9 @@ const ViewUsers = {
       };
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          ${_th('email','Email')}${_th('full_name','Nombre')}${_th('role','Rol')}
-          <th>Estado</th>${_th('last_login_at','Ultimo acceso')}
-          ${_th('risk_count','Riesgos')}<th>MFA</th><th></th>
+          ${_th('email',t('users.email'))}${_th('full_name',t('users.full_name'))}${_th('role',t('users.role'))}
+          <th>${t('common.status')}</th>${_th('last_login_at',t('users.last_login'))}
+          ${_th('risk_count',t('risks.title'))}<th>MFA</th><th></th>
         </tr></thead>
         <tbody>
           ${data.map(u => {
@@ -215,7 +215,7 @@ const ViewUsers = {
               <td><strong>${UI.esc(u.email)}</strong></td>
               <td>${UI.esc(u.full_name)}</td>
               <td><span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">${UI.esc(u.role)}</span></td>
-              <td>${u.is_active ? '<span class="badge badge-low">Activo</span>' : '<span class="badge badge-high">Inactivo</span>'}</td>
+              <td>${u.is_active ? `<span class="badge badge-low">${t('users.active')}</span>` : `<span class="badge badge-high">${t('common.inactive')}</span>`}</td>
               <td style="font-size:12px;">${u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '-'}</td>
               <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;">
                 ${rc > 0
@@ -224,7 +224,7 @@ const ViewUsers = {
               </td>
               <td>${mfaBadge}</td>
               <td style="white-space:nowrap;">
-                <button class="btn btn-ghost" data-edit="${u.id}">Editar</button>
+                <button class="btn btn-ghost" data-edit="${u.id}">${t('common.edit')}</button>
                 ${u.mfa_enabled
                   ? `<button class="btn btn-ghost" data-mfa-disable="${u.id}" style="margin-left:4px;">MFA off</button>`
                   : ''}
@@ -251,7 +251,7 @@ const ViewUsers = {
   },
 
   async _disableMfa(userId) {
-    if (!await UI.confirm('Desactivar MFA para este usuario? El usuario debera volver a configurarlo.')) return;
+    if (!await UI.confirm(/* TODO: i18n */ 'Desactivar MFA para este usuario? El usuario debera volver a configurarlo.')) return;
     try {
       await Api.post('/api/auth/mfa/disable-admin', { user_id: userId });
       UI.toast('MFA desactivado', 'success');
@@ -278,11 +278,11 @@ const ViewUsers = {
     }
 
     const roleOptions = [
-      { value: 'viewer',  label: 'Viewer (solo lectura)' },
-      { value: 'analyst', label: 'Analyst (edicion)' },
-      { value: 'admin',   label: 'Admin (todo)' },
+      { value: 'viewer',  label: `${t('auth.role.viewer')}` },
+      { value: 'analyst', label: `${t('auth.role.analyst')}` },
+      { value: 'admin',   label: `${t('auth.role.admin')}` },
     ];
-    if (isSuperAdmin) roleOptions.push({ value: 'superadmin', label: 'SuperAdmin (licencias)' });
+    if (isSuperAdmin) roleOptions.push({ value: 'superadmin', label: `${t('auth.role.superadmin')}` });
     const roleSelect = roleOptions.map(r =>
       `<option value="${r.value}" ${u.role === r.value ? 'selected' : ''}>${r.label}</option>`
     ).join('');
@@ -294,9 +294,9 @@ const ViewUsers = {
       ).join('');
       orgField = `
         <div class="span2">
-          <label>Organizacion *</label>
+          <label>${t('users.organization')} *</label>
           <select id="f-org" class="input">
-            <option value="">-- Seleccionar organizacion --</option>
+            <option value="">-- ${t('users.organization')} --</option>
             ${orgOptions}
           </select>
         </div>`;
@@ -306,9 +306,9 @@ const ViewUsers = {
       ).join('');
       orgField = `
         <div class="span2">
-          <label>Organizacion</label>
+          <label>${t('users.organization')}</label>
           <select id="f-org" class="input">
-            <option value="">Sin organizacion</option>
+            <option value="">${t('common.not_assigned')}</option>
             ${orgOptions}
           </select>
         </div>`;
@@ -316,12 +316,12 @@ const ViewUsers = {
       // Admin no-superadmin: org no editable, siempre la suya
       const orgName = ViewUsers._myOrg
         ? ViewUsers._myOrg.name
-        : (Auth.user()?.organization_id ? `Org #${Auth.user().organization_id}` : 'Mi organizacion');
+        : (Auth.user()?.organization_id ? `Org #${Auth.user().organization_id}` : t('users.organization'));
       const orgDomain = ViewUsers._myOrg && ViewUsers._myOrg.domain
         ? ` <span style="font-size:11px;color:var(--text-muted);">(@${UI.esc(ViewUsers._myOrg.domain)})</span>` : '';
       orgField = `
         <div class="span2">
-          <label>Organizacion</label>
+          <label>${t('users.organization')}</label>
           <div class="input" style="background:var(--bg-2);color:var(--text-muted);cursor:default;">${UI.esc(orgName)}${orgDomain}</div>
         </div>`;
     }
@@ -338,40 +338,40 @@ const ViewUsers = {
          </div></div>`
       : '';
 
-    UI.modal(id ? `Editar usuario — ${u.email}` : 'Nuevo usuario', `
+    UI.modal(id ? `${t('users.edit')} — ${u.email}` : t('users.new'), `
       ${otpWarning}
-      <div class="span2"><label>Email *</label>
+      <div class="span2"><label>${t('users.email')} *</label>
         <input class="input" id="f-email" value="${UI.esc(u.email)}" ${id ? 'disabled' : ''}></div>
-      <div class="span2"><label>Nombre completo *</label>
+      <div class="span2"><label>${t('users.full_name')} *</label>
         <input class="input" id="f-name" value="${UI.esc(u.full_name)}"></div>
-      <div><label>Rol *</label>
+      <div><label>${t('users.role')} *</label>
         <select class="input" id="f-role">${roleSelect}</select>
       </div>
-      <div><label>Estado</label>
+      <div><label>${t('common.status')}</label>
         <select class="input" id="f-active">
-          <option value="true" ${u.is_active ? 'selected' : ''}>Activo</option>
-          <option value="false" ${!u.is_active ? 'selected' : ''}>Inactivo</option>
+          <option value="true" ${u.is_active ? 'selected' : ''}>${t('users.active')}</option>
+          <option value="false" ${!u.is_active ? 'selected' : ''}>${t('common.inactive')}</option>
         </select>
       </div>
       ${orgField}
       <div class="span2">
-        <label>Contrasena ${passNote}</label>
+        <label>${t('auth.change_password')} ${passNote}</label>
         <input class="input" type="password" id="f-pass" autocomplete="new-password">
         ${passHint}
       </div>
     `, {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                ${id ? '<button class="btn btn-danger" id="m-del">Eliminar</button>' : ''}
-                <button class="btn btn-primary" id="m-save">Guardar</button>`
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                ${id ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`
     });
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
     if (id) document.getElementById('m-del').onclick = async () => {
-      if (!await UI.confirm('Eliminar este usuario?')) return;
+      if (!await UI.confirm(t('users.delete_confirm'))) return;
       try {
         await Api.users.del(id);
         UI.closeModal();
-        UI.toast('Eliminado', 'success');
+        UI.toast(t('common.delete') + ' — ' + t('common.success'), 'success');
         isSuperAdmin ? ViewUsers._reloadSuperAdmin() : ViewUsers._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
@@ -393,7 +393,7 @@ const ViewUsers = {
           }
           await Api.users.update(id, body);
           UI.closeModal();
-          UI.toast('Guardado', 'success');
+          UI.toast(t('common.success'), 'success');
           isSuperAdmin ? ViewUsers._reloadSuperAdmin() : ViewUsers._reload();
         } else {
           if (isSuperAdmin && orgEl && !orgEl.value) {
@@ -414,7 +414,7 @@ const ViewUsers = {
             const emailInfo = created.otp_email_sent
               ? 'La contrasena temporal ha sido enviada al email del usuario.'
               : 'No hay SMTP configurado. Comunica la contrasena manualmente.';
-            UI.modal('Usuario creado — Contrasena temporal', `
+            UI.modal(`${t('users.new')} — OTP`, `
               <div class="span2">
                 <p style="margin-bottom:12px;">
                   El usuario <strong>${UI.esc(created.email)}</strong> ha sido creado con una contrasena temporal.
@@ -430,7 +430,7 @@ const ViewUsers = {
             });
             document.getElementById('m-otp-ok').onclick = UI.closeModal;
           } else {
-            UI.toast('Usuario creado', 'success');
+            UI.toast(t('common.success'), 'success');
           }
         }
       } catch (e) { UI.toast(e.message, 'error'); }

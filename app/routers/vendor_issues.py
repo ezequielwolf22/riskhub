@@ -3,10 +3,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import Supplier, VendorIssue, VendorIssueSeverity, VendorIssueStatus, User
 from app.schemas import VendorIssueCreate, VendorIssueOut, VendorIssueUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
@@ -163,12 +164,14 @@ def list_vendor_issues(
 @router.get("/{iid}", response_model=VendorIssueOut)
 def get_vendor_issue(
     iid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     issue = db.query(VendorIssue).filter(VendorIssue.id == iid).first()
     if not issue or not check_org_access(issue.organization_id, current_user):
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("tprm.issue_not_found", lang))
     return issue
 
 

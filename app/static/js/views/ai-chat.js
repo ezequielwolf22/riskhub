@@ -10,7 +10,7 @@ const ViewAiChat = (() => {
 
   async function render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Agente IA',
+      t('ai.chat_title'),
       'Consulta sobre riesgos, controles, activos e incidentes de tu organizacion.'
     ) + `
       <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;align-items:start;" class="ai-chat-grid">
@@ -28,9 +28,9 @@ const ViewAiChat = (() => {
                 style="flex:1;resize:none;padding:8px 10px;font-size:14px;
                        border:1px solid var(--border);border-radius:6px;
                        background:var(--bg-1);color:var(--text-base);"
-                placeholder="Pregunta sobre riesgos, controles, activos... (Enter para enviar)"></textarea>
+                placeholder="${t('ai.placeholder')}"></textarea>
               <button class="btn btn-primary" id="chat-send"
-                      style="align-self:flex-end;min-width:70px;">Enviar</button>
+                      style="align-self:flex-end;min-width:70px;">${t('ai.send')}</button>
             </div>
           </div>
           <!-- Feedback -->
@@ -85,16 +85,16 @@ const ViewAiChat = (() => {
       </div>
       <div class="card">
         <h4 style="margin:0 0 8px;font-size:12px;text-transform:uppercase;
-                   color:var(--text-muted);letter-spacing:.5px;">Acciones</h4>
+                   color:var(--text-muted);letter-spacing:.5px;">${t('common.actions')}</h4>
         <button class="btn btn-ghost" style="width:100%;font-size:12px;margin-bottom:6px;"
-                onclick="ViewAiChat._clearHistory()">Limpiar conversacion</button>
+                onclick="ViewAiChat._clearHistory()">${t('ai.clear_history')}</button>
         <a href="#/onboarding" class="btn btn-ghost"
            style="display:block;text-align:center;font-size:12px;margin-bottom:6px;">
-          Configuracion IA
+          ${t('common.configure')} IA
         </a>
         <a href="#/ai-documents" class="btn btn-ghost"
            style="display:block;text-align:center;font-size:12px;">
-          Gestionar documentos
+          ${t('ai.documents_title')}
         </a>
       </div>`;
   }
@@ -104,7 +104,7 @@ const ViewAiChat = (() => {
   function _renderFeedback() {
     return `
       <div class="card" style="padding:10px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:12px;color:var(--text-muted);">Fue util esta respuesta?</span>
+        <span style="font-size:12px;color:var(--text-muted);">${t('ai.feedback_positive')}?</span>
         ${[1,2,3,4,5].map(n => `
           <button class="btn btn-ghost" style="padding:3px 8px;font-size:13px;"
                   onclick="ViewAiChat._sendFeedback(${n})" title="${n}/5">
@@ -172,11 +172,11 @@ const ViewAiChat = (() => {
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" style="font-size:11px;padding:5px 14px;"
                 onclick="ViewAiChat._confirmAction(this, ${JSON.stringify(action).replace(/"/g, '&quot;')})">
-          Confirmar
+          ${t('common.confirm')}
         </button>
         <button class="btn btn-ghost" style="font-size:11px;padding:5px 14px;"
                 onclick="ViewAiChat._rejectAction(this)">
-          Rechazar
+          ${t('common.reject')}
         </button>
       </div>`;
     return card;
@@ -184,7 +184,7 @@ const ViewAiChat = (() => {
 
   async function _confirmAction(btn, action) {
     btn.disabled = true;
-    btn.textContent = 'Ejecutando...';
+    btn.textContent = t('common.run') || 'Ejecutando...';
     const card = btn.closest('[data-action-id]');
     try {
       const res = await Api.ai.executeAction({
@@ -195,15 +195,15 @@ const ViewAiChat = (() => {
       const btns = card.querySelector('div:last-child');
       if (btns) btns.innerHTML = `
         <span style="color:var(--risk-low);font-weight:600;font-size:12px;">
-          Realizado: ${UI.esc(res.message || 'OK')}
+          ${t('common.success')}: ${UI.esc(res.message || 'OK')}
         </span>`;
       card.style.borderColor = 'var(--risk-low)';
       card.style.background = 'rgba(46,125,50,.06)';
-      UI.toast(res.message || 'Accion ejecutada', 'success');
+      UI.toast(res.message || t('common.success'), 'success');
     } catch (e) {
       btn.disabled = false;
-      btn.textContent = 'Confirmar';
-      UI.toast('Error: ' + (e.message || 'fallo al ejecutar'), 'error');
+      btn.textContent = t('common.confirm');
+      UI.toast(t('common.error') + ': ' + (e.message || 'fallo al ejecutar'), 'error');
     }
   }
 
@@ -214,7 +214,7 @@ const ViewAiChat = (() => {
       card.style.pointerEvents = 'none';
       const btns = card.querySelector('div:last-child');
       if (btns) btns.innerHTML = `
-        <span style="color:var(--text-muted);font-size:12px;">Accion descartada</span>`;
+        <span style="color:var(--text-muted);font-size:12px;">${t('inbox.dismiss')}</span>`;
     }
   }
 
@@ -255,7 +255,7 @@ const ViewAiChat = (() => {
     el.innerHTML = `
       <div style="padding:10px 14px;border-radius:12px;background:var(--bg-2);
                   font-size:13px;color:var(--text-muted);">
-        Pensando<span id="chat-dots">.</span>
+        ${t('ai.thinking')}<span id="chat-dots">.</span>
       </div>`;
     hist.appendChild(el);
     hist.scrollTop = hist.scrollHeight;
@@ -314,11 +314,11 @@ const ViewAiChat = (() => {
       if (fb && res.response) fb.style.display = 'block';
     } catch (e) {
       _removeThinking();
-      const errMsg = e.message || 'Error desconocido';
+      const errMsg = e.message || t('common.unknown');
       _appendAssistant(
         errMsg.includes('API key') || errMsg.includes('configurada')
-          ? 'No hay API key configurada. Ve a Configuracion > Agente IA para añadir tu clave de Anthropic.'
-          : 'Error al contactar con el agente: ' + errMsg
+          ? t('ai.not_configured')
+          : t('common.error') + ': ' + errMsg
       );
     } finally {
       _sending = false;
@@ -356,7 +356,7 @@ const ViewAiChat = (() => {
         Gracias por tu valoracion (${rating}/5)</p>`;
       UI.toast('Valoracion registrada', 'success');
     } catch (e) {
-      UI.toast('Error al enviar valoracion', 'error');
+      UI.toast(t('common.error'), 'error');
     }
   }
 

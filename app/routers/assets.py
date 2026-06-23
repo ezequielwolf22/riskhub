@@ -3,13 +3,14 @@ import io
 from typing import Optional
 
 import pandas as pd
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db, SessionLocal
 from sqlalchemy import func
+from app.i18n import get_lang, t as _t
 from app.models import Asset, AssetType, AiDocumentStatus, Risk, User
 from app.schemas import AssetIn, AssetOut, ImportResult
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
@@ -67,11 +68,12 @@ def list_assets(
 
 
 @router.get("/{asset_id}", response_model=AssetOut)
-def get_asset(asset_id: int, db: Session = Depends(get_db),
+def get_asset(asset_id: int, request: Request, db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     a = db.get(Asset, asset_id)
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Activo no encontrado")
+        raise HTTPException(404, _t("assets.not_found", lang))
     return _to_out(a)
 
 
@@ -99,12 +101,13 @@ def create_asset(data: AssetIn, background_tasks: BackgroundTasks,
 
 
 @router.put("/{asset_id}", response_model=AssetOut)
-def update_asset(asset_id: int, data: AssetIn, background_tasks: BackgroundTasks,
+def update_asset(asset_id: int, data: AssetIn, request: Request, background_tasks: BackgroundTasks,
                  db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     a = db.get(Asset, asset_id)
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Activo no encontrado")
+        raise HTTPException(404, _t("assets.not_found", lang))
     for k, v in data.model_dump(exclude={"owner_ids", "code"}).items():
         setattr(a, k, v)
     log_action(db, current_user.id, "update", "asset", str(asset_id),
@@ -121,11 +124,12 @@ def update_asset(asset_id: int, data: AssetIn, background_tasks: BackgroundTasks
 
 
 @router.delete("/{asset_id}", status_code=204)
-def delete_asset(asset_id: int, db: Session = Depends(get_db),
+def delete_asset(asset_id: int, request: Request, db: Session = Depends(get_db),
                  current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     a = db.get(Asset, asset_id)
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Activo no encontrado")
+        raise HTTPException(404, _t("assets.not_found", lang))
     code, name = a.code, a.name
     db.query(Risk).filter_by(asset_id=asset_id).update({"asset_id": None}, synchronize_session=False)
     db.delete(a)
@@ -405,14 +409,16 @@ def _run_groups_analysis_bg(org_id: int) -> None:
 @router.post("/{asset_id}/analyze")
 def analyze_asset(
     asset_id: int,
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Lanza el analisis de riesgos con IA para un activo concreto."""
+    lang = get_lang(request)
     a = db.get(Asset, asset_id)
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Activo no encontrado")
+        raise HTTPException(404, _t("assets.not_found", lang))
     a.ai_risk_status = None
     a.ai_risk_summary = None
     db.commit()

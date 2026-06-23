@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -16,6 +16,7 @@ from app.security import check_org_access, filter_by_org, get_current_user, requ
 from app.services.audit_service import log_action
 from app.services.document_service import extract_text
 from app.routers.ai_config import resolve_api_key
+from app.i18n import get_lang, t as _t
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
 
@@ -93,11 +94,12 @@ def policies_summary(db: Session = Depends(get_db), current_user: User = Depends
 
 
 @router.get("/{policy_id}", response_model=PolicyOut)
-def get_policy(policy_id: int, db: Session = Depends(get_db),
+def get_policy(policy_id: int, request: Request, db: Session = Depends(get_db),
                current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
     return p
 
 
@@ -130,11 +132,13 @@ def create_policy(body: PolicyIn, db: Session = Depends(get_db),
 
 @router.patch("/{policy_id}", response_model=PolicyOut)
 def update_policy(policy_id: int, body: PolicyUpdate,
+                  request: Request,
                   db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
     update_data = body.model_dump(exclude_none=True)
     # Un documento aprobado/publicado tiene validez ISO 27001 cl.5.2: su contenido
     # no debe poder mutarse por PATCH directo. Para modificarlo hay que crear una
@@ -166,14 +170,15 @@ def update_policy(policy_id: int, body: PolicyUpdate,
 
 
 @router.post("/{policy_id}/new-version", response_model=PolicyOut)
-def new_policy_version(policy_id: int, db: Session = Depends(get_db),
+def new_policy_version(policy_id: int, request: Request, db: Session = Depends(get_db),
                        current_user: User = Depends(require_analyst)):
     """Crea una nueva version en borrador de un documento aprobado/publicado,
     copiando su contenido. El documento original permanece vigente hasta que
     la nueva version se apruebe (ver update_policy)."""
+    lang = get_lang(request)
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
     if p.status not in (PolicyStatus.APPROVED, PolicyStatus.PUBLISHED):
         raise HTTPException(422, "Solo se puede crear nueva version de un documento aprobado o publicado")
     org_id = p.organization_id
@@ -205,12 +210,13 @@ def new_policy_version(policy_id: int, db: Session = Depends(get_db),
 
 
 @router.get("/{policy_id}/versions")
-def get_policy_versions(policy_id: int, db: Session = Depends(get_db),
+def get_policy_versions(policy_id: int, request: Request, db: Session = Depends(get_db),
                         current_user: User = Depends(get_current_user)):
     """Retorna la cadena de versiones de una politica (anterior a la actual inclusive)."""
+    lang = get_lang(request)
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
 
     chain = []
     visited = set()
@@ -237,12 +243,13 @@ def get_policy_versions(policy_id: int, db: Session = Depends(get_db),
 
 
 @router.get("/{policy_id}/hierarchy")
-def get_policy_hierarchy(policy_id: int, db: Session = Depends(get_db),
+def get_policy_hierarchy(policy_id: int, request: Request, db: Session = Depends(get_db),
                          current_user: User = Depends(get_current_user)):
     """Retorna los documentos padre (breadcrumb) y los documentos hijo de una politica."""
+    lang = get_lang(request)
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
 
     def _pol_brief(pol):
         return {
@@ -275,13 +282,14 @@ def get_policy_hierarchy(policy_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/{policy_id}/checkout")
-def checkout_policy(policy_id: int, db: Session = Depends(get_db),
+def checkout_policy(policy_id: int, request: Request, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     """Bloquea la politica para edicion exclusiva. Auto-liberacion tras 4h."""
+    lang = get_lang(request)
     from datetime import timedelta
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
 
     now = datetime.now(timezone.utc)
     if p.checked_out_by_id and p.checked_out_by_id != current_user.id:
@@ -301,23 +309,25 @@ def checkout_policy(policy_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/{policy_id}/checkin", status_code=204)
-def checkin_policy(policy_id: int, db: Session = Depends(get_db),
+def checkin_policy(policy_id: int, request: Request, db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
     """Libera el bloqueo de edicion."""
+    lang = get_lang(request)
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
     p.checked_out_by_id = None
     p.checked_out_at = None
     db.commit()
 
 
 @router.delete("/{policy_id}", status_code=204)
-def delete_policy(policy_id: int, db: Session = Depends(get_db),
+def delete_policy(policy_id: int, request: Request, db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     p = db.query(Policy).filter(Policy.id == policy_id).first()
     if not p or not check_org_access(p.organization_id, current_user):
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policies.not_found", lang))
     log_action(db, current_user.id, "delete", "policy", str(policy_id), {"title": p.title})
     db.delete(p)
     db.commit()

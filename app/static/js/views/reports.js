@@ -5,12 +5,12 @@ const ViewReports = {
 
   render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Informes',
-      'Documentos para auditoría, comités y dirección — PDF y Excel'
+      t('reports.title'),
+      t('reports.subtitle')
     ) + `
       <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--border);padding-bottom:0;">
         <button id="tab-reports" class="tab-btn tab-btn-active" onclick="ViewReports._switchTab('reports')">
-          Generar informes
+          ${t('reports.generate')}
         </button>
         <button id="tab-templates" class="tab-btn" onclick="ViewReports._switchTab('templates')">
           Plantillas de marca
@@ -48,7 +48,7 @@ const ViewReports = {
                   PDF
                 </button>
                 <button class="btn" style="flex:1;" onclick="ViewReports._download('rr-excel')">
-                  Excel
+                  ${t('reports.download_excel')}
                 </button>
               </div>
             </div>
@@ -80,7 +80,7 @@ const ViewReports = {
               PDF
             </button>
             <button class="btn" onclick="ViewReports._download('mgmt-review-excel')">
-              Excel editable
+              ${t('reports.download_excel')}
             </button>
             <button class="btn" onclick="ViewReports._download('mgmt-review-word')">
               Word (.docx)
@@ -98,7 +98,7 @@ const ViewReports = {
             Informe completo de gestion del incidente de continuidad: cronologia, impacto en el negocio, analisis de causa raiz, evidencias, efectividad de la respuesta y acciones correctivas.
           </p>
           <div id="bcp-pm-list" style="min-height:40px;">
-            <p style="font-size:12px;color:var(--text-muted);">Cargando activaciones...</p>
+            <p style="font-size:12px;color:var(--text-muted);">${t('common.loading')}</p>
           </div>
         </div>
 
@@ -106,7 +106,7 @@ const ViewReports = {
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
             <h3 style="margin:0;">Informes generados por IA</h3>
-            <span class="badge badge-muted" style="font-size:10px;">Claude API requerida</span>
+            <span class="badge badge-muted" style="font-size:10px;">Claude API requerida</span><!-- TODO: i18n -->
           </div>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
             Claude analiza todos los datos del registro de riesgos — activos, amenazas,
@@ -154,11 +154,11 @@ const ViewReports = {
                 <div style="margin-top:auto;display:flex;gap:6px;">
                   <button class="btn btn-primary" style="flex:1;font-size:12px;"
                           onclick="ViewReports._generateAI('${r.id}','pdf')" id="btn-${r.id}-pdf">
-                    Generar PDF
+                    ${t('reports.download_pdf')}
                   </button>
                   ${r.excel ? `<button class="btn" style="flex:1;font-size:12px;"
                           onclick="ViewReports._generateAI('${r.id}','excel')" id="btn-${r.id}-excel">
-                    Generar Excel
+                    ${t('reports.download_excel')}
                   </button>` : ''}
                 </div>
               </div>`).join('')}
@@ -201,11 +201,11 @@ const ViewReports = {
 
   async _renderTemplates() {
     const wrap = document.getElementById('panel-templates');
-    wrap.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Cargando...</p>';
+    wrap.innerHTML = `<p style="color:var(--text-muted);font-size:13px;">${t('common.loading')}</p>`;
     try {
       const list = await Api.get('/api/report-templates');
       const byType = {};
-      list.forEach(t => { byType[t.report_type] = t; });
+      list.forEach(cfg => { byType[cfg.report_type] = cfg; });
 
       wrap.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
@@ -213,13 +213,16 @@ const ViewReports = {
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
             Personaliza colores, logo, fuente y textos para cada tipo de informe.
             La plantilla <b>Global</b> se aplica a todos los que no tengan configuracion especifica.
+            Opcionalmente puedes subir un fichero <b>.docx</b> o <b>.html</b> como plantilla base
+            que la IA rellenara con los datos del sistema.
           </p>
           <div style="display:grid;gap:10px;">
             ${this._REPORT_TYPES.map(rt => {
-              const t = byType[rt.id];
-              const hasTemplate = !!t;
-              const primaryColor = t?.primary_color || '#59008D';
-              const secondaryColor = t?.secondary_color || '#D65200';
+              const cfg = byType[rt.id];
+              const hasTemplate = !!cfg;
+              const primaryColor = cfg?.primary_color || '#59008D';
+              const secondaryColor = cfg?.secondary_color || '#D65200';
+              const hasFile = cfg?.has_template_file;
               return `
               <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;
                           padding:14px 16px;display:flex;align-items:center;gap:14px;">
@@ -229,14 +232,14 @@ const ViewReports = {
                 </div>
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:600;font-size:14px;">${UI.esc(rt.label)}</div>
-                  <div style="font-size:12px;color:var(--text-muted);">${UI.esc(rt.desc)}</div>
+                  <div style="font-size:12px;color:var(--text-muted);">${UI.esc(rt.desc)}${hasFile ? ' <span style="color:var(--brand-purple);">· Plantilla de fichero activa</span>' : ''}</div>
                 </div>
                 ${hasTemplate ? `<span class="badge badge-success" style="font-size:10px;flex-shrink:0;">Personalizado</span>` : `<span class="badge badge-muted" style="font-size:10px;flex-shrink:0;">Por defecto</span>`}
                 <button class="btn btn-sm btn-primary" style="flex-shrink:0;" onclick="ViewReports._openTemplateModal('${rt.id}','${UI.esc(rt.label)}')">
                   Configurar
                 </button>
                 ${hasTemplate ? `<button class="btn btn-sm" style="flex-shrink:0;color:#DC2626;border-color:#DC2626;" onclick="ViewReports._deleteTemplate('${rt.id}')">
-                  Restablecer
+                  Resetear
                 </button>` : ''}
               </div>`;
             }).join('')}
@@ -328,14 +331,35 @@ const ViewReports = {
             <input type="file" id="tpl-logo" accept=".png,.jpg,.jpeg,.webp" style="font-size:13px;">
           </div>
 
+          <div style="border:1px solid var(--border);border-radius:8px;padding:14px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Fichero de plantilla base (.docx o .html — max 10 MB)</div>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+              Sube un documento Word o HTML con los estilos, colores y estructura de tu organizacion.
+              La IA rellenara las secciones marcadas con <code>{{variable}}</code> con los datos reales del sistema.
+              Si no se sube ninguno, se usa la plantilla por defecto de RiskHub.
+            </p>
+            ${current.has_template_file ? `
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;
+                          background:var(--bg-2);border-radius:6px;padding:8px 12px;">
+                <span style="font-size:18px;">${current.template_mime && current.template_mime.includes('html') ? '' : ''}</span>
+                <div style="flex:1;">
+                  <div style="font-size:13px;font-weight:600;">Plantilla activa</div>
+                  <div style="font-size:11px;color:var(--text-muted);">${current.template_mime && current.template_mime.includes('html') ? 'HTML' : 'Word (.docx)'}</div>
+                </div>
+                <button class="btn btn-sm" style="color:#DC2626;border-color:#DC2626;"
+                        onclick="ViewReports._deleteTemplateFile('${reportType}')">Eliminar plantilla</button>
+              </div>` : ''}
+            <input type="file" id="tpl-template-file" accept=".docx,.html,.htm" style="font-size:13px;">
+          </div>
+
           <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-muted);">
             Los cambios se aplican a los proximos informes generados. Los informes ya descargados no se modifican.
           </div>
         </div>
       `,
       actions: [
-        { label: 'Cancelar', variant: 'secondary', action: () => UI.closeModal(modalId) },
-        { label: 'Guardar plantilla', variant: 'primary', action: () => ViewReports._saveTemplate(reportType, modalId) },
+        { label: t('common.cancel'), variant: 'secondary', action: () => UI.closeModal(modalId) },
+        { label: t('common.save'), variant: 'primary', action: () => ViewReports._saveTemplate(reportType, modalId) },
       ],
     });
 
@@ -352,10 +376,10 @@ const ViewReports = {
     const primaryColor = document.getElementById('tpl-primary-hex').value.trim();
     const secondaryColor = document.getElementById('tpl-secondary-hex').value.trim();
     if (!/^#[0-9A-Fa-f]{6}$/.test(primaryColor)) {
-      UI.toast('Color primario no valido. Usa formato #RRGGBB', 'error'); return;
+      UI.toast('Color primario no valido. Usa formato #RRGGBB', 'error'); return; /* TODO: i18n */
     }
     if (!/^#[0-9A-Fa-f]{6}$/.test(secondaryColor)) {
-      UI.toast('Color secundario no valido. Usa formato #RRGGBB', 'error'); return;
+      UI.toast('Color secundario no valido. Usa formato #RRGGBB', 'error'); return; /* TODO: i18n */
     }
     try {
       await Api.put(`/api/report-templates/${reportType}`, {
@@ -368,12 +392,13 @@ const ViewReports = {
         cover_subtitle: document.getElementById('tpl-subtitle').value.trim() || null,
       });
 
+      const tok = Api.token();
+
       // Subir logo si se selecciono uno
       const logoInput = document.getElementById('tpl-logo');
       if (logoInput && logoInput.files[0]) {
         const fd = new FormData();
         fd.append('file', logoInput.files[0]);
-        const tok = Api.token();
         const resp = await fetch(`/api/report-templates/${reportType}/logo`, {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + tok },
@@ -385,8 +410,24 @@ const ViewReports = {
         }
       }
 
+      // Subir fichero de plantilla base si se selecciono uno
+      const tplFileInput = document.getElementById('tpl-template-file');
+      if (tplFileInput && tplFileInput.files[0]) {
+        const fd = new FormData();
+        fd.append('file', tplFileInput.files[0]);
+        const resp = await fetch(`/api/report-templates/${reportType}/template-file`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + tok },
+          body: fd,
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+          throw new Error('Error subiendo plantilla: ' + (err.detail || resp.statusText));
+        }
+      }
+
       UI.closeModal(modalId);
-      UI.toast('Plantilla guardada correctamente', 'success');
+      UI.toast(t('common.success'), 'success');
       this._renderTemplates();
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
@@ -394,10 +435,10 @@ const ViewReports = {
   },
 
   async _deleteTemplate(reportType) {
-    if (!confirm('Esto restaurara los valores por defecto de RiskHub para este tipo de informe. Continuar?')) return;
+    if (!confirm(t('common.confirm_delete'))) return;
     try {
       await Api.del(`/api/report-templates/${reportType}`);
-      UI.toast('Plantilla restablecida a valores por defecto', 'success');
+      UI.toast(t('common.success'), 'success');
       this._renderTemplates();
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
@@ -405,11 +446,22 @@ const ViewReports = {
   },
 
   async _deleteLogo(reportType) {
-    if (!confirm('Eliminar el logo de esta plantilla?')) return;
+    if (!confirm(t('common.confirm_delete'))) return;
     try {
       await Api.del(`/api/report-templates/${reportType}/logo`);
-      UI.toast('Logo eliminado', 'success');
-      // Reabrir el modal para refrescar
+      UI.toast(t('common.success'), 'success');
+      const rt = this._REPORT_TYPES.find(r => r.id === reportType);
+      this._openTemplateModal(reportType, rt ? rt.label : reportType);
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+    }
+  },
+
+  async _deleteTemplateFile(reportType) {
+    if (!confirm('Eliminar el fichero de plantilla base. Los informes usaran la plantilla por defecto de RiskHub.')) return;
+    try {
+      await Api.del(`/api/report-templates/${reportType}/template-file`);
+      UI.toast(t('common.success'), 'success');
       const rt = this._REPORT_TYPES.find(r => r.id === reportType);
       this._openTemplateModal(reportType, rt ? rt.label : reportType);
     } catch (e) {
@@ -441,7 +493,7 @@ const ViewReports = {
             </div>
             <button class="btn btn-sm" style="width:100%;background:#DC2626;color:#fff;border-color:#DC2626;font-size:12px;"
                     onclick="ViewReports._openBcpPostMortem(${a.id})">
-              Ver post-mortem
+              ${t('common.view')}
             </button>
           </div>`;
         }).join('') + `</div>`;
@@ -522,8 +574,8 @@ const ViewReports = {
     };
     const label = labels[reportType] || reportType;
 
-    if (btn) { btn.disabled = true; btn.textContent = 'Generando...'; }
-    UI.toast(`Generando ${label} (${format.toUpperCase()}) con IA... puede tardar 30-60 s.`, 'info');
+    if (btn) { btn.disabled = true; btn.textContent = t('ai.generating'); }
+    UI.toast(`${t('reports.generate')} ${label} (${format.toUpperCase()}) con IA... puede tardar 30-60 s.`, 'info');
 
     const ext = format === 'excel' ? 'xlsx' : 'pdf';
     const filename = `${reportType}_${new Date().toISOString().slice(0,10)}.${ext}`;
@@ -547,13 +599,13 @@ const ViewReports = {
       const a = document.createElement('a');
       a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
-      UI.toast(`${label} generado correctamente`, 'success');
+      UI.toast(`${label} — ${t('common.success')}`, 'success');
     } catch (e) {
       UI.toast('Error al generar el informe: ' + e.message, 'error');
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = format === 'excel' ? 'Generar Excel' : 'Generar PDF';
+        btn.textContent = format === 'excel' ? t('reports.download_excel') : t('reports.download_pdf');
       }
     }
   },

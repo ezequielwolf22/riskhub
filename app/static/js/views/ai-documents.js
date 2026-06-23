@@ -2,7 +2,7 @@
 
 const ViewAiDocuments = (() => {
 
-  const CATEGORY_LABELS = {
+  const CATEGORY_LABELS = () => ({
     architecture:       'Arquitectura y sistemas',
     normative:          'Normativa y compliance',
     policies:           'Politicas y procedimientos',
@@ -11,14 +11,14 @@ const ViewAiDocuments = (() => {
     critical_suppliers: 'Proveedores criticos',
     incidents_lessons:  'Incidentes y lecciones',
     other:              'Otros',
-  };
+  });
 
-  const STATUS_LABELS = {
+  const STATUS_LABELS = () => ({
     indexed:    'Indexado',
-    processing: 'Procesando',
-    pending:    'Pendiente',
-    error:      'Error',
-  };
+    processing: t('common.in_progress'),
+    pending:    t('common.pending'),
+    error:      t('common.error'),
+  });
 
   const STATUS_COLORS = {
     indexed:    'var(--risk-low)',
@@ -28,12 +28,12 @@ const ViewAiDocuments = (() => {
   };
 
   // ISMS analysis status (v1.7.4)
-  const ISMS_LABELS = {
-    analysing: 'Analizando...',
-    analysed:  'Analizado',
+  const ISMS_LABELS = () => ({
+    analysing: t('ai.analyzing'),
+    analysed:  t('isms_documents.status.analyzed') || 'Analizado',
     skipped:   'Sin IA',
-    error:     'Error IA',
-  };
+    error:     t('common.error') + ' IA',
+  });
   const ISMS_COLORS = {
     analysing: 'var(--brand-orange)',
     analysed:  'var(--risk-low)',
@@ -59,8 +59,8 @@ const ViewAiDocuments = (() => {
     // Limpiar timer anterior si el usuario navega fuera y vuelve
     _stopPoll();
     main.innerHTML = UI.sectionHeader(
-      'Documentos del Agente IA',
-      'Gestiona los documentos que alimentan el contexto del agente de seguridad.'
+      t('ai.documents_title'),
+      t('isms_documents.subtitle')
     ) + '<div id="aid-root"></div>';
     await _load();
     _renderRoot();
@@ -141,7 +141,8 @@ const ViewAiDocuments = (() => {
     const root = document.getElementById('aid-root');
     if (!root) return;
 
-    const cats = Object.keys(CATEGORY_LABELS);
+    const catLabels = CATEGORY_LABELS();
+    const cats = Object.keys(catLabels);
     const indexedCount = _docs.filter(d => d.status === 'indexed').length;
     const errorCount   = _docs.filter(d => d.status === 'error').length;
 
@@ -150,7 +151,7 @@ const ViewAiDocuments = (() => {
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
         <div class="card" style="text-align:center;padding:14px;">
           <div style="font-size:24px;font-weight:700;color:var(--brand-purple);">${_docs.length}</div>
-          <div style="font-size:12px;color:var(--text-muted);">Total documentos</div>
+          <div style="font-size:12px;color:var(--text-muted);">${t('common.total')} ${t('common.document').toLowerCase()}s</div>
         </div>
         <div class="card" style="text-align:center;padding:14px;">
           <div style="font-size:24px;font-weight:700;color:var(--risk-low);">${indexedCount}</div>
@@ -175,14 +176,14 @@ const ViewAiDocuments = (() => {
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
         <button class="btn ${_filter === 'all' ? 'btn-primary' : 'btn-ghost'}"
                 style="font-size:12px;" onclick="ViewAiDocuments._setFilter('all')">
-          Todos (${_docs.length})
+          ${t('common.all')} (${_docs.length})
         </button>
         ${cats.map(c => {
           const n = _docs.filter(d => d.category === c).length;
           return n > 0 ? `
             <button class="btn ${_filter === c ? 'btn-primary' : 'btn-ghost'}"
                     style="font-size:12px;" onclick="ViewAiDocuments._setFilter('${c}')">
-              ${CATEGORY_LABELS[c]} (${n})
+              ${catLabels[c]} (${n})
             </button>` : '';
         }).join('')}
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
@@ -200,7 +201,7 @@ const ViewAiDocuments = (() => {
 ` : ''}
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
                  title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV, JPG, PNG)">
-            + Subir documentos
+            + ${t('ai.upload_document')}
             <input type="file" id="aid-file-input"
                    accept=".pdf,.docx,.txt,.csv,.jpg,.jpeg,.png" multiple style="display:none;">
           </label>
@@ -221,8 +222,8 @@ const ViewAiDocuments = (() => {
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
         </div>
-        Arrastra aqui uno o varios documentos (PDF, DOCX, TXT, CSV, JPG, PNG)<br>
-        <span style="font-size:11px;">o usa el boton &ldquo;Subir documentos&rdquo;</span>
+        ${t('common.drop_file')}<br>
+        <span style="font-size:11px;">o usa el boton &ldquo;${t('ai.upload_document')}&rdquo;</span>
       </div>
 
       <!-- Cola de subida (se rellena dinamicamente) -->
@@ -233,13 +234,13 @@ const ViewAiDocuments = (() => {
         <table class="data">
           <thead>
             <tr>
-              <th>Documento</th>
-              <th>Categoria</th>
-              <th>Estado indexado</th>
-              <th>Analisis ISMS</th>
-              <th>Resultado</th>
+              <th>${t('common.document')}</th>
+              <th>${t('common.category')}</th>
+              <th>${t('isms_documents.status.analyzed') || 'Estado indexado'}</th>
+              <th>${t('ai.analyze_document')}</th>
+              <th>${t('common.result')}</th>
               <th>Fragmentos</th>
-              <th>Fecha</th>
+              <th>${t('common.date')}</th>
               <th></th>
             </tr>
           </thead>
@@ -320,7 +321,7 @@ const ViewAiDocuments = (() => {
     for (const file of files) {
       const ext = file.name.split('.').pop().toLowerCase();
       if (!ACCEPTED_EXTS.includes(ext)) {
-        UI.toast(`${file.name}: formato no soportado. Solo PDF, DOCX, TXT, CSV.`, 'error');
+        UI.toast(`${file.name}: ${t('common.invalid_file_type')}`, 'error');
         continue;
       }
       // Evitar duplicados pendientes por nombre
@@ -337,6 +338,7 @@ const ViewAiDocuments = (() => {
     const container = document.getElementById('aid-queue');
     if (!container) return;
 
+    const catLabels = CATEGORY_LABELS();
     const pending  = _queue.filter(q => q.status === 'pending');
     const active   = _queue.filter(q => q.status !== 'pending');
 
@@ -345,7 +347,7 @@ const ViewAiDocuments = (() => {
       return;
     }
 
-    const catOptions = Object.entries(CATEGORY_LABELS)
+    const catOptions = Object.entries(catLabels)
       .map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
 
     container.innerHTML = `
@@ -360,10 +362,10 @@ const ViewAiDocuments = (() => {
           ${pending.length > 0 && !_uploading ? `
             <div style="display:flex;gap:8px;">
               <button class="btn btn-ghost" style="font-size:12px;" id="aid-clear-queue">
-                Limpiar pendientes
+                ${t('common.clear')} pendientes
               </button>
               <button class="btn btn-primary" style="font-size:12px;" id="aid-upload-all">
-                Subir ${pending.length} documento${pending.length !== 1 ? 's' : ''}
+                ${t('common.upload')} ${pending.length} documento${pending.length !== 1 ? 's' : ''}
               </button>
             </div>` : ''}
         </div>
@@ -376,11 +378,11 @@ const ViewAiDocuments = (() => {
             const isPending    = item.status === 'pending';
 
             const statusIcon = isDone
-              ? `<span style="color:var(--risk-low);font-size:13px;">&#10003; Subido</span>`
+              ? `<span style="color:var(--risk-low);font-size:13px;">&#10003; ${t('common.completed')}</span>`
               : isError
-              ? `<span style="color:var(--risk-critical);font-size:12px;" title="${UI.esc(item.error || '')}">&#10007; Error</span>`
+              ? `<span style="color:var(--risk-critical);font-size:12px;" title="${UI.esc(item.error || '')}">&#10007; ${t('common.error')}</span>`
               : isProcessing
-              ? `<span style="color:var(--brand-orange);font-size:12px;">Subiendo...</span>`
+              ? `<span style="color:var(--brand-orange);font-size:12px;">${t('common.loading')}</span>`
               : '';
 
             const ext = item.file.name.split('.').pop().toUpperCase();
@@ -407,7 +409,7 @@ const ViewAiDocuments = (() => {
                           title="El agente IA reclasificara automaticamente tras analizar el contenido"
                           data-qid="${item.id}" onchange="ViewAiDocuments._setQueueCat(${item.id}, this.value)">
                     <option value="other" ${item.category === 'other' ? 'selected' : ''}>Auto (IA detecta categoria)</option>
-                    ${Object.entries(CATEGORY_LABELS).filter(([v]) => v !== 'other').map(([v, l]) =>
+                    ${Object.entries(catLabels).filter(([v]) => v !== 'other').map(([v, l]) =>
                       `<option value="${v}" ${item.category === v ? 'selected' : ''}>${l}</option>`
                     ).join('')}
                     <option value="other" ${item.category === 'other' ? '' : ''}>Otros</option>
@@ -417,7 +419,7 @@ const ViewAiDocuments = (() => {
                           onclick="ViewAiDocuments._removeFromQueue(${item.id})">&#10005;</button>
                 ` : `
                   <span style="font-size:11px;color:var(--text-muted);flex-shrink:0;min-width:160px;">
-                    ${CATEGORY_LABELS[item.category] || item.category}
+                    ${catLabels[item.category] || item.category}
                   </span>
                   <span style="min-width:80px;text-align:right;flex-shrink:0;">${statusIcon}</span>
                 `}
@@ -428,7 +430,7 @@ const ViewAiDocuments = (() => {
         ${!_uploading && active.length > 0 ? `
           <div style="margin-top:10px;text-align:right;">
             <button class="btn btn-ghost" style="font-size:12px;" id="aid-dismiss-done">
-              Limpiar completados
+              ${t('common.clear')} completados
             </button>
           </div>` : ''}
       </div>`;
@@ -479,7 +481,7 @@ const ViewAiDocuments = (() => {
         ok++;
       } catch (e) {
         item.status = 'error';
-        item.error  = e.message || 'Error desconocido';
+        item.error  = e.message || t('common.error');
         fail++;
       }
       _renderQueue();
@@ -498,7 +500,7 @@ const ViewAiDocuments = (() => {
     } else if (ok > 0 && fail > 0) {
       UI.toast(`${ok} subidos, ${fail} con error`, 'error');
     } else {
-      UI.toast('Error al subir los documentos', 'error');
+      UI.toast(t('common.error'), 'error');
     }
     _renderQueue();
     // Iniciar polling si hay documentos en analisis ISMS
@@ -521,11 +523,12 @@ const ViewAiDocuments = (() => {
     // Actualizar filtros de categoria
     const filterBar = document.querySelector('#aid-root > div:nth-child(2)');
     if (filterBar) {
-      const cats = Object.keys(CATEGORY_LABELS);
+      const catLabels = CATEGORY_LABELS();
+      const cats = Object.keys(catLabels);
       cats.forEach(c => {
         const n = _docs.filter(d => d.category === c).length;
         const btn = filterBar.querySelector(`button[onclick*="_setFilter('${c}')"]`);
-        if (btn) btn.textContent = `${CATEGORY_LABELS[c]} (${n})`;
+        if (btn) btn.textContent = `${catLabels[c]} (${n})`;
         else if (n > 0) {
           // El filtro no existia antes — reconstruir root completo
           _renderRoot();
@@ -547,7 +550,7 @@ const ViewAiDocuments = (() => {
     // Badge de nivel jerarquico (si el analisis lo determino)
     const docLevel = d.isms_summary && d.isms_summary.document_level;
     if (docLevel) {
-      const lvlLabel = _AID_LEVEL_LABELS[docLevel] || 'Documento';
+      const lvlLabel = _AID_LEVEL_LABELS[docLevel] || t('common.document');
       const lvlColor = _AID_LEVEL_COLORS[docLevel] || '#888';
       parts.push(`<span title="Nivel jerarquico: ${lvlLabel}" style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;background:${lvlColor}18;color:${lvlColor};border:1px solid ${lvlColor}40;">${docLevel}. ${lvlLabel}</span>`);
     }
@@ -579,12 +582,12 @@ const ViewAiDocuments = (() => {
     const clauses = Array.isArray(d.extracted_clauses) ? d.extracted_clauses : [];
     if (clauses.length > 0) {
       parts.push(`<span style="cursor:pointer;font-size:11px;color:var(--brand-purple);"
-        onclick="ViewAiDocuments._showClauses(${d.id})" title="Ver clausulas ISO extraidas">
+        onclick="ViewAiDocuments._showClauses(${d.id})" title="${t('ai.extracted_clauses')}">
         ${clauses.length} clausula${clauses.length !== 1 ? 's' : ''} ISO</span>`);
     }
 
     return `<td style="font-size:11px;line-height:1.7;" title="${tooltip}">
-      ${parts.length ? parts.join('<br>') : '<span style="color:var(--text-muted);">Sin resultados</span>'}
+      ${parts.length ? parts.join('<br>') : `<span style="color:var(--text-muted);">${t('common.no_results')}</span>`}
       ${tooltip ? `<div style="font-size:10px;color:var(--text-subtle);margin-top:2px;max-width:220px;
                                overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                        title="${tooltip}">${tooltip}</div>` : ''}
@@ -635,7 +638,7 @@ const ViewAiDocuments = (() => {
     try {
       controls = await Api.aiDocuments.controls(docId);
     } catch (e) {
-      UI.toast('Error cargando datos de madurez: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
       return;
     }
 
@@ -694,12 +697,12 @@ const ViewAiDocuments = (() => {
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Analisis de madurez por control</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${t('controls.maturity')} ${t('common.by')} ${t('common.control').toLowerCase()}</h3>
         <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">&#10005;</button>
       </div>
 
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:12px;color:var(--text-muted);">Documento:</span>
+        <span style="font-size:12px;color:var(--text-muted);">${t('common.document')}:</span>
         <strong style="font-size:12px;">${UI.esc(doc?.original_name || '')}</strong>
         <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;
                      background:${docLevelColor}18;color:${docLevelColor};border:1px solid ${docLevelColor}40;">
@@ -716,7 +719,7 @@ const ViewAiDocuments = (() => {
             ${controls.length} control${controls.length !== 1 ? 'es' : ''} en el alcance de este documento
             &nbsp;&middot;&nbsp; Madurez maxima posible en nivel ${docLevel}: <strong>${levelMaxMaturity}/5</strong>
             &nbsp;&middot;&nbsp;
-            <a href="#/controls" onclick="UI.closeModal();" style="color:var(--brand-purple);">Ver todos los controles</a>
+            <a href="#/controls" onclick="UI.closeModal();" style="color:var(--brand-purple);">${t('common.view')} ${t('common.all').toLowerCase()} ${t('common.control').toLowerCase()}es</a>
           </div>
         </div>
       </div>
@@ -735,7 +738,7 @@ const ViewAiDocuments = (() => {
     const doc = _docs.find(d => d.id === docId);
     if (!doc) return;
     const clauses = Array.isArray(doc.extracted_clauses) ? doc.extracted_clauses : [];
-    if (!clauses.length) { UI.toast('No hay clausulas extraidas', 'info'); return; }
+    if (!clauses.length) { UI.toast(t('ai.extracted_clauses') + ': ' + t('common.no_results'), 'info'); return; }
 
     const rows = clauses.map(c => `
       <tr style="border-bottom:1px solid var(--border);">
@@ -743,7 +746,7 @@ const ViewAiDocuments = (() => {
         <td style="padding:8px 12px;font-size:13px;">${UI.esc(c.title || '')}</td>
         <td style="padding:8px 12px;text-align:center;">
           ${c.control_id
-            ? `<a href="#/controls" style="font-size:11px;color:var(--risk-low);">Control #${c.control_id}</a>`
+            ? `<a href="#/controls" style="font-size:11px;color:var(--risk-low);">${t('common.control')} #${c.control_id}</a>`
             : `<span style="font-size:11px;color:var(--text-muted);">-</span>`}
         </td>
         <td style="padding:8px 12px;text-align:center;font-size:11px;color:${c.confidence >= 0.8 ? 'var(--risk-low)' : 'var(--brand-orange)'};">
@@ -754,20 +757,20 @@ const ViewAiDocuments = (() => {
 
     UI.openModal(`
       <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Clausulas ISO extraidas</h3>
-        <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">x</button>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${t('ai.extracted_clauses')}</h3>
+        <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">${t('common.close')}</button>
       </div>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-        Documento: <strong>${UI.esc(doc.original_name)}</strong>
+        ${t('common.document')}: <strong>${UI.esc(doc.original_name)}</strong>
       </p>
       <div style="overflow-y:auto;max-height:60vh;">
         <table style="width:100%;border-collapse:collapse;">
           <thead>
             <tr style="background:var(--bg-2);font-size:11px;text-transform:uppercase;color:var(--text-muted);">
               <th style="padding:8px 12px;text-align:left;">Clausula</th>
-              <th style="padding:8px 12px;text-align:left;">Titulo</th>
-              <th style="padding:8px 12px;text-align:center;">Control</th>
-              <th style="padding:8px 12px;text-align:center;">Confianza</th>
+              <th style="padding:8px 12px;text-align:left;">${t('common.title')}</th>
+              <th style="padding:8px 12px;text-align:center;">${t('common.control')}</th>
+              <th style="padding:8px 12px;text-align:center;">${t('ai.clause_confidence')}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -777,14 +780,17 @@ const ViewAiDocuments = (() => {
   }
 
   function _renderRows() {
+    const catLabels = CATEGORY_LABELS();
+    const statusLabels = STATUS_LABELS();
+    const ismsLabels = ISMS_LABELS();
     const visible = _filter === 'all' ? _docs : _docs.filter(d => d.category === _filter);
     if (!visible.length) {
       return `<tr><td colspan="8" style="text-align:center;padding:24px;
-        color:var(--text-muted);">Sin documentos en esta categoria.</td></tr>`;
+        color:var(--text-muted);">${t('common.no_results')}</td></tr>`;
     }
     return visible.map((d, i) => {
       const ismsColor = ISMS_COLORS[d.isms_status] || 'var(--text-muted)';
-      const ismsLabel = ISMS_LABELS[d.isms_status] || (d.status === 'indexed' ? 'Pendiente' : '-');
+      const ismsLabel = ismsLabels[d.isms_status] || (d.status === 'indexed' ? t('common.pending') : '-');
       const ismsTooltip = d.isms_status === 'error' && d.isms_summary_text
         ? ` title="${UI.esc(d.isms_summary_text)}"` : '';
       return `
@@ -792,7 +798,7 @@ const ViewAiDocuments = (() => {
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
             title="${UI.esc(d.original_name)}">${UI.esc(d.original_name)}</td>
         <td style="font-size:12px;">
-          ${CATEGORY_LABELS[d.category] || d.category}
+          ${catLabels[d.category] || d.category}
           ${d.auto_categorized ? `<span style="display:inline-block;margin-left:4px;font-size:9px;
             background:var(--brand-purple-4);color:var(--brand-purple);
             border-radius:4px;padding:1px 5px;vertical-align:middle;"
@@ -801,10 +807,10 @@ const ViewAiDocuments = (() => {
         <td>
           <span style="font-size:11px;font-weight:600;
                        color:${STATUS_COLORS[d.status] || 'var(--text-muted)'};">
-            ${STATUS_LABELS[d.status] || d.status}
+            ${statusLabels[d.status] || d.status}
           </span>
           ${d.error_message ? `<br><span style="font-size:10px;color:var(--risk-critical);"
-            title="${UI.esc(d.error_message)}">Ver error</span>` : ''}
+            title="${UI.esc(d.error_message)}">${t('common.view')} ${t('common.error').toLowerCase()}</span>` : ''}
         </td>
         <td>
           <span style="font-size:11px;font-weight:600;color:${ismsColor};"${ismsTooltip}>
@@ -820,13 +826,13 @@ const ViewAiDocuments = (() => {
         <td style="white-space:nowrap;">
           ${d.status === 'indexed' && (!d.isms_status || d.isms_status === 'error' || d.isms_status === 'skipped' || d.isms_status === 'analysing') ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
-                    onclick="ViewAiDocuments._analyze(${d.id})">${d.isms_status === 'analysing' ? 'Reintentar analisis' : 'Analizar'}</button>` : ''}
+                    onclick="ViewAiDocuments._analyze(${d.id})">${d.isms_status === 'analysing' ? 'Reintentar analisis' : t('common.analyze')}</button>` : ''}
           ${d.status === 'error' || d.status === 'pending' ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
                     onclick="ViewAiDocuments._reprocess(${d.id})">Reprocesar</button>` : ''}
           <button class="btn btn-ghost"
                   style="font-size:11px;padding:2px 8px;color:var(--risk-critical);"
-                  onclick="ViewAiDocuments._delete(${d.id})">Eliminar</button>
+                  onclick="ViewAiDocuments._delete(${d.id})">${t('common.delete')}</button>
         </td>
       </tr>`;
     }).join('');
@@ -844,21 +850,21 @@ const ViewAiDocuments = (() => {
       await Api.aiDocuments.reprocess(id);
       await _load();
       _renderRoot();
-      UI.toast('Documento reprocesado', 'success');
+      UI.toast(t('common.success'), 'success');
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   }
 
   async function _delete(id) {
-    if (!confirm('Eliminar este documento del indice de contexto?')) return;
+    if (!confirm(t('common.confirm_delete'))) return;
     try {
       await Api.aiDocuments.del(id);
       await _load();
       _renderRoot();
-      UI.toast('Documento eliminado', 'success');
+      UI.toast(t('common.success'), 'success');
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   }
 
@@ -869,16 +875,16 @@ const ViewAiDocuments = (() => {
       await _load();
       const tbody = document.getElementById('aid-tbody');
       if (tbody) tbody.innerHTML = _renderRows();
-      UI.toast('Analisis ISMS iniciado', 'success');
+      UI.toast(t('ai.analyzing'), 'success');
       _startPollIfNeeded();
     } catch (e) {
-      UI.toast('Error al iniciar analisis: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   }
 
   async function _analyzePending() {
     const btn = document.getElementById('aid-analyze-pending-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('common.loading'); }
     try {
       const res = await Api.aiDocuments.analyzePending();
       await _load();
@@ -886,11 +892,11 @@ const ViewAiDocuments = (() => {
       if (tbody) tbody.innerHTML = _renderRows();
       const msg = res.stuck_reset > 0
         ? `${res.stuck_reset} atascados reseteados. ${res.queued} documentos en cola.`
-        : (res.queued > 0 ? `${res.queued} documentos pendientes en cola.` : 'No hay documentos pendientes.');
+        : (res.queued > 0 ? `${res.queued} documentos pendientes en cola.` : t('common.no_results'));
       UI.toast(msg, 'success');
       _startPollIfNeeded();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = 'Analizar pendientes'; }
     }
@@ -898,16 +904,16 @@ const ViewAiDocuments = (() => {
 
   async function _analyzeAll() {
     const btn = document.getElementById('aid-analyze-all-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('common.loading'); }
     try {
       const res = await Api.aiDocuments.analyzeAll();
       await _load();
       const tbody = document.getElementById('aid-tbody');
       if (tbody) tbody.innerHTML = _renderRows();
-      UI.toast(res.message || `Analisis iniciado para ${res.queued} documentos`, 'success');
+      UI.toast(res.message || `${t('ai.analyzing')} ${res.queued} documentos`, 'success');
       _startPollIfNeeded();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = `Re-analizar todos`; }
     }

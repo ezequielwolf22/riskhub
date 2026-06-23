@@ -13,13 +13,13 @@ const ViewCve = {
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
-      'CVE Monitor',
-      'Monitoreo de vulnerabilidades en tiempo real (NVD/NIST) con analisis de riesgo por IA'
+      t('cve.title'),
+      t('cve.subtitle')
     ) + `
       <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
-        <button class="btn" id="cve-tab-config" onclick="ViewCve._showTab('config')">Configuracion</button>
-        <button class="btn btn-primary" id="cve-tab-monitor" onclick="ViewCve._showTab('monitor')">Monitor CVEs</button>
-        <button class="btn" id="cve-tab-analyze" onclick="ViewCve._showTab('analyze')">Analisis IA</button>
+        <button class="btn" id="cve-tab-config" onclick="ViewCve._showTab('config')">${t('cve.config')}</button>
+        <button class="btn btn-primary" id="cve-tab-monitor" onclick="ViewCve._showTab('monitor')">${t('cve.monitor')}</button>
+        <button class="btn" id="cve-tab-analyze" onclick="ViewCve._showTab('analyze')">${t('cve.ai_analysis')}</button>
       </div>
       <div id="cve-config-panel" style="display:none;"></div>
       <div id="cve-monitor-panel" style="display:none;"></div>
@@ -39,10 +39,10 @@ const ViewCve = {
 
   _showTab(tab) {
     this._tab = tab;
-    ['config', 'monitor', 'analyze'].forEach(t => {
-      document.getElementById(`cve-${t}-panel`).style.display = t === tab ? '' : 'none';
-      const btn = document.getElementById(`cve-tab-${t}`);
-      if (btn) btn.className = t === tab ? 'btn btn-primary' : 'btn';
+    ['config', 'monitor', 'analyze'].forEach(t2 => {
+      document.getElementById(`cve-${t2}-panel`).style.display = t2 === tab ? '' : 'none';
+      const btn = document.getElementById(`cve-tab-${t2}`);
+      if (btn) btn.className = t2 === tab ? 'btn btn-primary' : 'btn';
     });
     if (tab === 'config') this._renderConfig();
     else if (tab === 'monitor') this._renderMonitor();
@@ -57,24 +57,22 @@ const ViewCve = {
     const cfg = this._config || {};
     p.innerHTML = `
       <div class="card" style="max-width:680px;">
-        <h3 style="margin:0 0 4px;font-size:15px;">Configuracion CVE Monitor</h3>
+        <h3 style="margin:0 0 4px;font-size:15px;">${t('cve.config_title')}</h3>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 20px;">
-          Fuente de datos: <strong>NVD (NIST National Vulnerability Database) — API v2</strong>.
-          Sin API key funciona con limite de 5 req/30s; con API key aumenta a 50 req/30s.
-          Solicita tu API key gratuita en
+          ${t('cve.config_desc')}
           <a href="https://nvd.nist.gov/developers/request-an-api-key" target="_blank" rel="noopener"
              style="color:var(--brand-purple);">nvd.nist.gov</a>.
         </p>
         <div class="form-grid" style="margin-bottom:16px;">
-          <div class="span2"><label style="font-size:12px;">API Key NVD (opcional)</label>
+          <div class="span2"><label style="font-size:12px;">${t('cve.api_key_label')}</label>
             <input type="password" id="cve-apikey" class="input"
-              placeholder="${cfg.has_api_key ? '(API key guardada — dejar en blanco para no cambiar)' : 'Opcional — mejora el rate limit'}">
+              placeholder="${cfg.has_api_key ? t('cve.api_key_saved') : t('cve.api_key_optional')}">
           </div>
-          <div><label style="font-size:12px;">Ventana de tiempo por defecto (dias)</label>
+          <div><label style="font-size:12px;">${t('cve.default_days')}</label>
             <input type="number" id="cve-days" class="input" min="1" max="90"
               value="${cfg.default_days || 7}">
           </div>
-          <div><label style="font-size:12px;">Severidad minima por defecto</label>
+          <div><label style="font-size:12px;">${t('cve.min_severity')}</label>
             <select id="cve-sev" class="input">
               ${['CRITICAL','HIGH','MEDIUM','LOW','ALL'].map(s =>
                 `<option value="${s}" ${(cfg.default_severity||'HIGH')===s?'selected':''}>${s}</option>`
@@ -88,13 +86,13 @@ const ViewCve = {
               <span class="toggle-slider"></span>
             </label>
             <div>
-              <div style="font-size:13px;font-weight:600;">Escaneo automatico diario</div>
+              <div style="font-size:13px;font-weight:600;">${t('cve.auto_daily_scan')}</div>
               <div style="font-size:11px;color:var(--text-muted);">
-                El scheduler comprueba CVEs nuevas cada 24 horas y las deja disponibles en Monitor.
+                ${t('cve.auto_scan_desc')}
               </div>
             </div>
           </div>
-          <div><label style="font-size:12px;">Severidad para escaneo automatico</label>
+          <div><label style="font-size:12px;">${t('cve.auto_scan_severity')}</label>
             <select id="cve-autosev" class="input">
               ${['CRITICAL','HIGH','MEDIUM','LOW','ALL'].map(s =>
                 `<option value="${s}" ${(cfg.auto_scan_severity||'CRITICAL')===s?'selected':''}>${s}</option>`
@@ -103,32 +101,32 @@ const ViewCve = {
           </div>
         </div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-primary" onclick="ViewCve._saveConfig()">Guardar configuracion</button>
+          <button class="btn btn-primary" onclick="ViewCve._saveConfig()">${t('cve.save_config')}</button>
         </div>
-        ${cfg.updated_at ? `<p style="font-size:11px;color:var(--text-muted);margin:12px 0 0;">Ultima actualizacion: ${cfg.updated_at.slice(0,19).replace('T',' ')}</p>` : ''}
+        ${cfg.updated_at ? `<p style="font-size:11px;color:var(--text-muted);margin:12px 0 0;">${t('common.last_updated')}: ${cfg.updated_at.slice(0,19).replace('T',' ')}</p>` : ''}
       </div>
 
       <div class="card" style="max-width:680px;margin-top:16px;">
-        <h4 style="margin:0 0 12px;font-size:13px;">Proveedores de CVE alternativos</h4>
+        <h4 style="margin:0 0 12px;font-size:13px;">${t('cve.alternative_providers')}</h4>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
-          Ademas de NVD, puedes consultar estas fuentes complementarias manualmente:
+          ${t('cve.alternative_providers_desc')}
         </p>
         <ul style="font-size:12px;padding-left:20px;margin:0;line-height:1.9;">
           <li><strong>CISA KEV (Known Exploited Vulnerabilities):</strong>
             <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener" style="color:var(--brand-purple);">cisa.gov/known-exploited-vulnerabilities-catalog</a>
-            — catalogo de CVEs activamente explotadas.
+            — ${t('cve.cisa_desc')}
           </li>
           <li><strong>CVE.org (MITRE):</strong>
             <a href="https://www.cve.org" target="_blank" rel="noopener" style="color:var(--brand-purple);">cve.org</a>
-            — fuente oficial de asignacion de IDs CVE.
+            — ${t('cve.mitre_desc')}
           </li>
           <li><strong>OSV (Open Source Vulnerabilities):</strong>
             <a href="https://osv.dev" target="_blank" rel="noopener" style="color:var(--brand-purple);">osv.dev</a>
-            — base de datos de vulnerabilidades en software open source.
+            — ${t('cve.osv_desc')}
           </li>
           <li><strong>Exploit-DB:</strong>
             <a href="https://www.exploit-db.com" target="_blank" rel="noopener" style="color:var(--brand-purple);">exploit-db.com</a>
-            — exploits publicos vinculados a CVEs.
+            — ${t('cve.exploitdb_desc')}
           </li>
         </ul>
       </div>
@@ -140,9 +138,9 @@ const ViewCve = {
   async _lookupManual() {
     const input = document.getElementById('cve-manual-input');
     const q = input?.value.trim();
-    if (!q) { UI.toast('Introduce un CVE ID o URL', 'warn'); return; }
+    if (!q) { UI.toast(t('cve.enter_cve_id'), 'warn'); return; }
     const res = document.getElementById('cve-manual-result');
-    if (res) res.innerHTML = '<p class="text-muted" style="font-size:13px;">Buscando en NVD...</p>';
+    if (res) res.innerHTML = `<p class="text-muted" style="font-size:13px;">${t('cve.searching_nvd')}</p>`;
     try {
       const cve = await Api.cve.lookup(q);
       if (res) res.innerHTML = this._cveManualCard(cve);
@@ -157,7 +155,7 @@ const ViewCve = {
     const selBtn = `<button class="btn btn-sm btn-primary"
       data-cve="${UI.esc(JSON.stringify(cve))}"
       onclick="ViewCve._addManualCveToAnalysis(JSON.parse(this.dataset.cve))">
-      Añadir al análisis IA
+      ${t('cve.add_to_ai_analysis')}
     </button>`;
     return `
       <div style="border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg-2);">
@@ -169,16 +167,16 @@ const ViewCve = {
           </div>
           <div style="display:flex;gap:6px;">
             ${selBtn}
-            <button class="btn btn-sm" onclick="ViewCve._selectedCves.add('${UI.esc(cve.id)}');UI.toast('${UI.esc(cve.id)} añadido a la seleccion','success');">
-              Seleccionar
+            <button class="btn btn-sm" onclick="ViewCve._selectedCves.add('${UI.esc(cve.id)}');UI.toast('${UI.esc(cve.id)} ${t('cve.added_to_selection')}','success');">
+              ${t('common.select')}
             </button>
           </div>
         </div>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;line-height:1.5;">${UI.esc(cve.description.slice(0,300))}${cve.description.length>300?'...':''}</p>
         <div style="display:flex;gap:16px;font-size:11px;color:var(--text-muted);">
-          <span>Vector: <code>${UI.esc(cve.cvss_vector||'-')}</code></span>
-          <span>Publicado: ${UI.esc((cve.published||'').slice(0,10))}</span>
-          ${cve.affected_products?.length ? `<span>Productos: ${cve.affected_products.slice(0,4).map(p=>UI.esc(p)).join(', ')}</span>` : ''}
+          <span>${t('cve.vector')}: <code>${UI.esc(cve.cvss_vector||'-')}</code></span>
+          <span>${t('cve.published')}: ${UI.esc((cve.published||'').slice(0,10))}</span>
+          ${cve.affected_products?.length ? `<span>${t('cve.products')}: ${cve.affected_products.slice(0,4).map(p=>UI.esc(p)).join(', ')}</span>` : ''}
         </div>
       </div>`;
   },
@@ -191,7 +189,7 @@ const ViewCve = {
       this._cves.unshift(cve);
     }
     this._showTab('analyze');
-    UI.toast(`${cve.id} añadido al análisis IA`, 'success');
+    UI.toast(`${cve.id} ${t('cve.added_to_ai_analysis')}`, 'success');
   },
 
   async _saveConfig() {
@@ -219,15 +217,15 @@ const ViewCve = {
     p.innerHTML = `
       <!-- Busqueda manual por ID o URL -->
       <div class="card" style="margin-bottom:16px;border-left:4px solid var(--brand-purple);">
-        <h4 style="margin:0 0 8px;font-size:13px;font-weight:600;">Añadir CVE manualmente</h4>
+        <h4 style="margin:0 0 8px;font-size:13px;font-weight:600;">${t('cve.add_manual')}</h4>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
-          Pega un ID CVE o un enlace de NVD / MITRE / CVE.org y pulsa Buscar.
+          ${t('cve.add_manual_desc')}
         </p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input id="cve-manual-input" class="input" style="flex:1;min-width:260px;"
             placeholder="CVE-2024-12345  ó  https://nvd.nist.gov/vuln/detail/CVE-2024-12345"
             onkeydown="if(event.key==='Enter')ViewCve._lookupManual()">
-          <button class="btn btn-primary" onclick="ViewCve._lookupManual()">Buscar</button>
+          <button class="btn btn-primary" onclick="ViewCve._lookupManual()">${t('common.search')}</button>
         </div>
         <div id="cve-manual-result" style="margin-top:12px;"></div>
       </div>
@@ -236,12 +234,12 @@ const ViewCve = {
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
           <div>
-            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Ultimos (dias)</label>
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('cve.last_days')}</label>
             <input type="number" id="cve-f-days" class="input" min="1" max="90"
               value="${cfg.default_days || 7}" style="width:80px;">
           </div>
           <div>
-            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Severidad minima</label>
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('cve.min_severity')}</label>
             <select id="cve-f-sev" class="input" style="width:130px;">
               ${['CRITICAL','HIGH','MEDIUM','LOW','ALL'].map(s =>
                 `<option value="${s}" ${(cfg.default_severity||'HIGH')===s?'selected':''}>${s}</option>`
@@ -249,10 +247,10 @@ const ViewCve = {
             </select>
           </div>
           <div style="flex:1;min-width:160px;">
-            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Busqueda (keyword)</label>
-            <input id="cve-f-kw" class="input" placeholder="ej: apache, linux, openssl, windows..." style="width:100%;">
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('cve.keyword_search')}</label>
+            <input id="cve-f-kw" class="input" placeholder="${t('cve.keyword_placeholder')}" style="width:100%;">
           </div>
-          <button class="btn btn-primary" onclick="ViewCve._fetchCves()">Buscar CVEs</button>
+          <button class="btn btn-primary" onclick="ViewCve._fetchCves()">${t('cve.search_cves')}</button>
         </div>
       </div>
 
@@ -260,11 +258,11 @@ const ViewCve = {
         <span id="cve-results-count" style="font-size:13px;font-weight:600;"></span>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm" id="cve-sel-all-btn" onclick="ViewCve._selectAllCves()" style="display:none;">
-            Seleccionar todas
+            ${t('common.select_all')}
           </button>
           <button class="btn btn-primary btn-sm" id="cve-goto-analyze-btn"
             onclick="ViewCve._showTab('analyze')" style="display:none;">
-            Analizar seleccionadas con IA
+            ${t('cve.analyze_selected_with_ai')}
           </button>
         </div>
       </div>
@@ -278,7 +276,7 @@ const ViewCve = {
     const sev = document.getElementById('cve-f-sev')?.value;
     const kw = document.getElementById('cve-f-kw')?.value.trim();
     const wrap = document.getElementById('cve-table-wrap');
-    if (wrap) wrap.innerHTML = '<p class="text-muted" style="font-size:13px;">Consultando NVD...</p>';
+    if (wrap) wrap.innerHTML = `<p class="text-muted" style="font-size:13px;">${t('cve.querying_nvd')}</p>`;
     try {
       const params = { days, severity: sev, max_results: 100 };
       if (kw) params.keyword = kw;
@@ -300,11 +298,11 @@ const ViewCve = {
     if (!wrap) return;
 
     if (header) header.style.display = 'flex';
-    if (countEl) countEl.textContent = `${this._cves.length} CVEs encontradas`;
+    if (countEl) countEl.textContent = `${this._cves.length} ${t('cve.cves_found')}`;
     if (selAllBtn) selAllBtn.style.display = this._cves.length > 0 ? '' : 'none';
 
     if (!this._cves.length) {
-      wrap.innerHTML = '<div class="notice">No se encontraron CVEs con los filtros aplicados.</div>';
+      wrap.innerHTML = `<div class="notice">${t('cve.no_cves_found')}</div>`;
       return;
     }
 
@@ -332,7 +330,7 @@ const ViewCve = {
               ${UI.esc(c.description || '-')}
             </div>
             ${c.affected_products?.length ? `<div style="margin-top:4px;font-size:11px;color:var(--text-muted);">
-              Productos: ${UI.esc(c.affected_products.slice(0,5).join(', '))}${c.affected_products.length>5?'…':''}
+              ${t('cve.products')}: ${UI.esc(c.affected_products.slice(0,5).join(', '))}${c.affected_products.length>5?'…':''}
             </div>` : ''}
           </td>
           <td style="padding:8px 10px;font-size:11px;color:var(--text-muted);white-space:nowrap;">
@@ -347,11 +345,11 @@ const ViewCve = {
         <table class="data" style="width:100%;font-size:13px;">
           <thead><tr>
             <th style="width:32px;padding:8px 10px;"></th>
-            <th style="padding:8px 10px;">CVE ID</th>
-            <th style="padding:8px 10px;text-align:center;">CVSS</th>
-            <th style="padding:8px 10px;">Descripcion</th>
-            <th style="padding:8px 10px;white-space:nowrap;">Publicada</th>
-            <th style="padding:8px 10px;">Vector</th>
+            <th style="padding:8px 10px;">${t('cve.cve_id')}</th>
+            <th style="padding:8px 10px;text-align:center;">${t('cve.cvss_score')}</th>
+            <th style="padding:8px 10px;">${t('common.description')}</th>
+            <th style="padding:8px 10px;white-space:nowrap;">${t('cve.published')}</th>
+            <th style="padding:8px 10px;">${t('cve.vector')}</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -376,7 +374,7 @@ const ViewCve = {
     if (goBtn) {
       const n = this._selectedCves.size;
       goBtn.style.display = n > 0 ? '' : 'none';
-      goBtn.textContent = n > 0 ? `Analizar ${n} CVE${n>1?'s':''} con IA` : '';
+      goBtn.textContent = n > 0 ? `${t('cve.analyze')} ${n} CVE${n>1?'s':''} ${t('cve.with_ai')}` : '';
     }
   },
 
@@ -402,25 +400,24 @@ const ViewCve = {
       <!-- Seleccion de activos -->
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-          <h4 style="margin:0;font-size:14px;font-weight:700;">Activos a evaluar</h4>
+          <h4 style="margin:0;font-size:14px;font-weight:700;">${t('cve.assets_to_evaluate')}</h4>
           <span id="analyze-asset-sel-count" style="font-size:12px;color:var(--text-muted);
                 background:var(--bg-3);padding:2px 8px;border-radius:10px;">
-            0 seleccionados
+            0 ${t('cve.selected')}
           </span>
           <span style="flex:1;"></span>
-          <button class="btn btn-sm" onclick="ViewCve._selectAllAnalyzeAssets()">Todos</button>
+          <button class="btn btn-sm" onclick="ViewCve._selectAllAnalyzeAssets()">${t('common.all')}</button>
           <button class="btn btn-sm" onclick="ViewCve._selectTaggedAssets()"
-                  title="Solo activos con software tags configurados">Con software tags</button>
-          <button class="btn btn-sm" onclick="ViewCve._clearAnalyzeAssets()">Ninguno</button>
+                  title="${t('cve.tagged_assets_hint')}">${t('cve.with_software_tags')}</button>
+          <button class="btn btn-sm" onclick="ViewCve._clearAnalyzeAssets()">${t('common.none')}</button>
         </div>
         <input id="analyze-asset-search" class="input"
-               placeholder="Buscar activo por nombre, tipo o categoria..."
+               placeholder="${t('cve.search_asset_placeholder')}"
                oninput="ViewCve._filterAnalyzeAssets(this.value)"
                style="margin-bottom:10px;width:100%;max-width:400px;">
         <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">
-          Los activos con <span style="background:#EDE9FE;color:#6D28D9;padding:1px 5px;border-radius:3px;font-size:10px;">tags</span>
-          tienen software identificado y obtienen mejores resultados de escaneo.
-          Si no seleccionas ninguno, se usan los primeros 50.
+          ${t('cve.tags_note')}
+          ${t('cve.no_selection_default')}
         </p>
         <div id="analyze-asset-list" style="max-height:300px;overflow-y:auto;overflow-x:hidden;">
           ${this._renderAssetCheckboxes()}
@@ -431,7 +428,7 @@ const ViewCve = {
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
           <div>
-            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Severidad minima</label>
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('cve.min_severity')}</label>
             <select id="analyze-sev" class="input" style="width:130px;">
               ${['CRITICAL','HIGH','MEDIUM','LOW','ALL'].map(s =>
                 `<option value="${s}" ${(cfg.default_severity||'HIGH')===s?'selected':''}>${s}</option>`
@@ -439,15 +436,15 @@ const ViewCve = {
             </select>
           </div>
           <div>
-            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Ventana (dias)</label>
+            <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('cve.window_days')}</label>
             <input type="number" id="analyze-days" class="input" min="1" max="90"
                    value="${cfg.default_days || 7}" style="width:80px;">
           </div>
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:2px;">
             <input type="checkbox" id="analyze-skip-heuristic"
                    style="accent-color:var(--brand-purple);">
-            Forzar analisis de todos los pares
-            <span style="color:var(--text-muted);">(mas lento)</span>
+            ${t('cve.force_all_pairs')}
+            <span style="color:var(--text-muted);">(${t('cve.slower')})</span>
           </label>
         </div>
 
@@ -455,11 +452,10 @@ const ViewCve = {
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" id="cve-autoscan-btn" onclick="ViewCve._runAutoScan()"
                   style="font-size:14px;padding:10px 22px;font-weight:700;">
-            Escanear CVEs de mis activos
+            ${t('cve.scan_my_assets')}
           </button>
           <div style="font-size:12px;color:var(--text-muted);max-width:340px;">
-            Busca en NVD las CVEs vigentes que afectan a tus activos y analiza el impacto con IA.
-            Mismo proceso que el escaneo automatico programado.
+            ${t('cve.scan_assets_desc')}
           </div>
         </div>
 
@@ -467,7 +463,7 @@ const ViewCve = {
         ${selCveIds.length > 0 ? `
         <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
           <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">
-            O analizar estas CVEs especificas seleccionadas del Monitor:
+            ${t('cve.or_analyze_specific')}
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
             ${selCveIds.slice(0,15).map(id => `
@@ -479,15 +475,14 @@ const ViewCve = {
                         style="border:none;background:none;cursor:pointer;color:var(--text-muted);
                                padding:0;font-size:13px;line-height:1;margin-left:2px;">x</button>
               </span>`).join('')}
-            ${selCveIds.length > 15 ? `<span style="font-size:11px;color:var(--text-muted);align-self:center;">+${selCveIds.length-15} mas</span>` : ''}
+            ${selCveIds.length > 15 ? `<span style="font-size:11px;color:var(--text-muted);align-self:center;">+${selCveIds.length-15} ${t('common.more')}</span>` : ''}
           </div>
           <button class="btn" id="cve-run-specific-btn" onclick="ViewCve._runSpecificAnalysis()">
-            Analizar ${selCveIds.length} CVE${selCveIds.length>1?'s':''} seleccionados
+            ${t('cve.analyze')} ${selCveIds.length} CVE${selCveIds.length>1?'s':''} ${t('cve.selected_label')}
           </button>
         </div>` : `
         <div style="margin-top:10px;font-size:12px;color:var(--text-subtle);">
-          Tambien puedes seleccionar CVEs concretas en la pestana <strong>Monitor CVEs</strong>
-          y analizarlas aqui especificamente.
+          ${t('cve.select_specific_hint')}
         </div>`}
 
         <div id="cve-analyze-status" style="margin-top:12px;display:none;"></div>
@@ -507,19 +502,19 @@ const ViewCve = {
           (a.name || '').toLowerCase().includes(f) ||
           (a.asset_type || '').toLowerCase().includes(f) ||
           (a.category || '').toLowerCase().includes(f) ||
-          (a.software_tags || []).some(t => (t || '').toLowerCase().includes(f))
+          (a.software_tags || []).some(t2 => (t2 || '').toLowerCase().includes(f))
         )
       : this._assets;
 
     if (!assets.length) {
-      return '<div style="padding:12px;font-size:13px;color:var(--text-muted);">Sin activos que coincidan.</div>';
+      return `<div style="padding:12px;font-size:13px;color:var(--text-muted);">${t('cve.no_matching_assets')}</div>`;
     }
 
     const typeLabels = {
-      primary_process: 'Proceso', primary_information: 'Informacion',
-      support_hardware: 'Hardware', support_software: 'Software',
-      support_network: 'Red', support_personnel: 'Personal',
-      support_site: 'Instalacion', support_organization: 'Organizacion',
+      primary_process: t('cve.type_process'), primary_information: t('cve.type_information'),
+      support_hardware: t('cve.type_hardware'), support_software: t('cve.type_software'),
+      support_network: t('cve.type_network'), support_personnel: t('cve.type_personnel'),
+      support_site: t('cve.type_site'), support_organization: t('cve.type_organization'),
     };
 
     const allPageSel = assets.slice(0, 300).every(a => this._selectedAssets.has(a.id));
@@ -527,12 +522,12 @@ const ViewCve = {
     const rows = assets.slice(0, 300).map(a => {
       const isSel   = this._selectedAssets.has(a.id);
       const tags    = (a.software_tags || []).filter(Boolean);
-      const tagBadges = tags.slice(0, 4).map(t => {
-        const short = t.length > 22 ? t.slice(0, 22) + '…' : t;
+      const tagBadges = tags.slice(0, 4).map(t2 => {
+        const short = t2.length > 22 ? t2.slice(0, 22) + '…' : t2;
         return `<span style="display:inline-block;font-size:10px;background:#EDE9FE;color:#6D28D9;
                              padding:1px 6px;border-radius:3px;white-space:nowrap;max-width:120px;
                              overflow:hidden;text-overflow:ellipsis;"
-                      title="${UI.esc(t)}">${UI.esc(short)}</span>`;
+                      title="${UI.esc(t2)}">${UI.esc(short)}</span>`;
       }).join(' ');
       const moreTags = tags.length > 4 ? `<span style="font-size:10px;color:var(--text-muted);">+${tags.length - 4}</span>` : '';
       const tLabel = typeLabels[a.asset_type] || (a.asset_type || '').replace(/_/g, ' ');
@@ -546,7 +541,7 @@ const ViewCve = {
                  style="accent-color:var(--brand-purple);">
         </td>
         <td style="padding:6px 8px;font-size:12px;font-weight:600;max-width:220px;">
-          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${UI.esc(a.name || '(sin nombre)')}</div>
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${UI.esc(a.name || t('cve.no_name'))}</div>
           ${a.category ? `<div style="font-size:10px;color:var(--text-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${UI.esc(a.category)}</div>` : ''}
         </td>
         <td style="padding:6px 8px;white-space:nowrap;">
@@ -555,7 +550,7 @@ const ViewCve = {
         <td style="padding:6px 8px;">
           <div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;">
             ${tagBadges}${moreTags}
-            ${!tags.length ? '<span style="font-size:10px;color:var(--text-subtle);">sin tags</span>' : ''}
+            ${!tags.length ? `<span style="font-size:10px;color:var(--text-subtle);">${t('cve.no_tags')}</span>` : ''}
           </div>
         </td>
       </tr>`;
@@ -569,8 +564,8 @@ const ViewCve = {
                    style="accent-color:var(--brand-purple);"
                    onchange="ViewCve._toggleAllAnalyzeAssets(this.checked, ${JSON.stringify(assets.slice(0,300).map(a=>a.id))})">
           </th>
-          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">Nombre</th>
-          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">Tipo</th>
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">${t('common.name')}</th>
+          <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">${t('common.type')}</th>
           <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--text-muted);">Software tags</th>
         </tr>
       </thead>
@@ -632,7 +627,7 @@ const ViewCve = {
     const el = document.getElementById('analyze-asset-sel-count');
     if (el) {
       const n = this._selectedAssets.size;
-      el.textContent = n === 0 ? 'todos los activos (por defecto)' : `${n} seleccionado${n !== 1 ? 's' : ''}`;
+      el.textContent = n === 0 ? t('cve.all_assets_default') : `${n} ${t('cve.selected_plural')}`;
       el.style.background = n > 0 ? 'rgba(89,0,141,.1)' : 'var(--bg-3)';
       el.style.color = n > 0 ? 'var(--brand-purple)' : 'var(--text-muted)';
     }
@@ -670,11 +665,11 @@ const ViewCve = {
     const btn = document.getElementById('cve-autoscan-btn');
     const statusEl = document.getElementById('cve-analyze-status');
     const { assetIds, days, severity, skipHeuristic } = this._getAnalyzeParams();
-    const nAssets = assetIds.length || 'todos los';
+    const nAssets = assetIds.length || t('cve.all_label');
 
-    if (btn) { btn.disabled = true; btn.textContent = 'Escaneando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('cve.scanning'); }
     this._setAnalyzeLoading(
-      `Buscando CVEs en NVD (ultimos ${days} dias, severidad ${severity}) y analizando contra ${nAssets} activos...`
+      `${t('cve.searching_nvd_msg')} (${t('cve.last_days_msg')} ${days}, ${t('cve.severity_label')} ${severity}) ${t('cve.against_assets')} ${nAssets}...`
     );
 
     try {
@@ -696,7 +691,7 @@ const ViewCve = {
     } catch (e) {
       if (statusEl) statusEl.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Escanear CVEs de mis activos'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('cve.scan_my_assets'); }
     }
   },
 
@@ -704,14 +699,14 @@ const ViewCve = {
     const btn = document.getElementById('cve-run-specific-btn');
     const statusEl = document.getElementById('cve-analyze-status');
     const rawIds = [...this._selectedCves].map(s => s.trim().toUpperCase()).filter(s => s.startsWith('CVE-'));
-    if (!rawIds.length) { UI.toast('No hay CVEs seleccionadas en el Monitor', 'warn'); return; }
-    if (rawIds.length > 20) { UI.toast('Maximo 20 CVEs por analisis especifico', 'error'); return; }
+    if (!rawIds.length) { UI.toast(t('cve.no_cves_selected'), 'warn'); return; }
+    if (rawIds.length > 20) { UI.toast(t('cve.max_20_cves'), 'error'); return; }
 
     const { assetIds, skipHeuristic } = this._getAnalyzeParams();
 
-    if (btn) { btn.disabled = true; btn.textContent = 'Analizando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('cve.analyzing'); }
     this._setAnalyzeLoading(
-      `Analizando ${rawIds.length} CVE${rawIds.length>1?'s':''} seleccionadas contra ${assetIds.length || 'todos los'} activos...`
+      `${t('cve.analyzing')} ${rawIds.length} CVE${rawIds.length>1?'s':''} ${t('cve.against')} ${assetIds.length || t('cve.all_label')} ${t('cve.assets_label')}...`
     );
 
     try {
@@ -722,7 +717,7 @@ const ViewCve = {
     } catch (e) {
       if (statusEl) statusEl.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = `Analizar ${rawIds.length} CVEs seleccionados`; }
+      if (btn) { btn.disabled = false; btn.textContent = `${t('cve.analyze')} ${rawIds.length} CVEs ${t('cve.selected_label')}`; }
     }
   },
 
@@ -735,15 +730,20 @@ const ViewCve = {
       el.innerHTML = `
         <div class="card">
           <p style="font-size:13px;color:var(--text-muted);margin:0;">
-            No se encontraron pares CVE-Activo que superen el umbral de coincidencia heuristico.
-            Activa <em>Analizar todos los pares</em> para forzar el analisis completo.
+            ${t('cve.no_pairs_found')}
           </p>
         </div>`;
       return;
     }
 
     const riskColors = { 5:'#b91c1c', 4:'#c2410c', 3:'#d97706', 2:'#15803d', 1:'#15803d' };
-    const riskLabels = { 5:'Critico', 4:'Alto', 3:'Medio', 2:'Bajo', 1:'Muy bajo' };
+    const riskLabels = {
+      5: t('cve.risk_critical'),
+      4: t('cve.risk_high'),
+      3: t('cve.risk_medium'),
+      2: t('cve.risk_low'),
+      1: t('cve.risk_very_low')
+    };
     const priColors = { alta:'#b91c1c', media:'#d97706', baja:'#15803d' };
 
     const affectsOnly = results.filter(r => r.analysis?.afecta_activo !== false);
@@ -753,20 +753,19 @@ const ViewCve = {
     let html = `
       <div style="display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px;">
         <h3 style="margin:0;font-size:15px;">
-          Resultados del analisis
+          ${t('cve.analysis_results')}
         </h3>
         ${cvesMeta.cves_found ? `<span style="font-size:12px;color:var(--text-muted);">
-          ${cvesMeta.cves_found} CVEs encontradas en NVD
+          ${cvesMeta.cves_found} ${t('cve.cves_found_nvd')}
         </span>` : ''}
-        <span style="font-size:12px;color:var(--text-muted);">${results.length} par${results.length>1?'es':''} evaluados</span>
-        <span style="color:#b91c1c;font-weight:600;font-size:12px;">${affectsOnly.length} con impacto detectado</span>
-        <span style="font-size:12px;color:var(--text-muted);">/ ${notAffects.length} sin impacto</span>
+        <span style="font-size:12px;color:var(--text-muted);">${results.length} ${t('cve.pairs_evaluated')}</span>
+        <span style="color:#b91c1c;font-weight:600;font-size:12px;">${affectsOnly.length} ${t('cve.with_impact')}</span>
+        <span style="font-size:12px;color:var(--text-muted);">/ ${notAffects.length} ${t('cve.without_impact')}</span>
       </div>`;
 
     if (affectsOnly.length === 0) {
       html += `<div class="card" style="margin-bottom:12px;"><p style="font-size:13px;margin:0;color:var(--text-muted);">
-        La IA no ha detectado impacto directo en los activos evaluados con las CVEs seleccionadas.
-        Revisa la seccion de baja confianza a continuacion.
+        ${t('cve.no_direct_impact')}
       </p></div>`;
     }
 
@@ -794,7 +793,7 @@ const ViewCve = {
                 <span style="font-weight:600;">${UI.esc(item.asset_name)}</span>
                 <span class="badge badge-muted" style="font-size:10px;">${UI.esc(item.asset_type.replace(/_/g,' '))}</span>
                 <span class="badge" style="font-size:10px;background:${confianza==='alta'?'var(--risk-low)':confianza==='media'?'#d97706':'#9D9D9D'};color:#fff;">
-                  Confianza: ${confianza}
+                  ${t('cve.confidence')}: ${confianza}
                 </span>
               </div>
               <div style="font-size:12px;color:var(--text-muted);">
@@ -802,7 +801,7 @@ const ViewCve = {
               </div>
             </div>
             <div style="text-align:center;min-width:80px;">
-              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Riesgo residual</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">${t('cve.residual_risk')}</div>
               <div style="font-size:28px;font-weight:800;color:${riskColors[res]||'#9D9D9D'};line-height:1;">${res}</div>
               <div style="font-size:11px;color:${riskColors[res]||'#9D9D9D'};font-weight:600;">${riskLabels[res]||'?'}</div>
             </div>
@@ -811,21 +810,21 @@ const ViewCve = {
           <!-- Metricas -->
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
             <div style="background:var(--bg-2);border-radius:8px;padding:10px 12px;text-align:center;">
-              <div style="font-size:11px;color:var(--text-muted);">Riesgo inherente</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('cve.inherent_risk')}</div>
               <div style="font-size:20px;font-weight:700;color:${riskColors[inh]||'#9D9D9D'};">${inh}</div>
               <div style="font-size:10px;color:var(--text-muted);">${UI.esc(a.riesgo_inherente_justificacion||'').slice(0,60)}</div>
             </div>
             <div style="background:var(--bg-2);border-radius:8px;padding:10px 12px;text-align:center;">
-              <div style="font-size:11px;color:var(--text-muted);">Cobertura controles</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('cve.control_coverage')}</div>
               <div style="font-size:14px;font-weight:700;margin-top:4px;color:${
                 a.cobertura_controles==='suficiente'?'#15803d':
                 a.cobertura_controles==='parcial'?'#d97706':'#b91c1c'};">
-                ${UI.esc(a.cobertura_controles||'ninguna')}
+                ${UI.esc(a.cobertura_controles||t('cve.none'))}
               </div>
               ${controls.length ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${UI.esc(controls.slice(0,2).join(', '))}</div>` : ''}
             </div>
             <div style="background:var(--bg-2);border-radius:8px;padding:10px 12px;text-align:center;">
-              <div style="font-size:11px;color:var(--text-muted);">Riesgo residual</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('cve.residual_risk')}</div>
               <div style="font-size:20px;font-weight:700;color:${riskColors[res]||'#9D9D9D'};">${res}</div>
               <div style="font-size:10px;color:var(--text-muted);">${UI.esc(a.riesgo_residual_justificacion||'').slice(0,60)}</div>
             </div>
@@ -833,13 +832,13 @@ const ViewCve = {
 
           <!-- Justificacion -->
           <div style="font-size:12px;margin-bottom:10px;padding:8px 12px;background:var(--bg-2);border-radius:6px;">
-            <strong>Por que afecta:</strong> ${UI.esc(a.justificacion_afectacion||'')}
+            <strong>${t('cve.why_affects')}:</strong> ${UI.esc(a.justificacion_afectacion||'')}
           </div>
 
           <!-- Acciones de mitigacion -->
           ${actions.length ? `
           <div style="margin-bottom:10px;">
-            <div style="font-size:12px;font-weight:600;margin-bottom:6px;">Acciones de mitigacion propuestas:</div>
+            <div style="font-size:12px;font-weight:600;margin-bottom:6px;">${t('cve.proposed_mitigation_actions')}:</div>
             ${actions.map(ac => `
               <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 10px;
                   background:var(--bg-2);border-radius:6px;margin-bottom:4px;font-size:12px;">
@@ -856,11 +855,11 @@ const ViewCve = {
           <!-- Boton crear riesgo -->
           <div style="display:flex;justify-content:flex-end;gap:8px;">
             ${recCreate ? `<span style="font-size:11px;color:var(--brand-purple);font-weight:600;align-self:center;">
-              Riesgo recomendado
+              ${t('cve.risk_recommended')}
             </span>` : ''}
             <button class="btn btn-sm ${recCreate?'btn-primary':''}"
               onclick="ViewCve._createRisk(${idx})">
-              Crear riesgo en RiskHub
+              ${t('cve.create_risk_in_riskhub')}
             </button>
           </div>
         </div>`;
@@ -872,7 +871,7 @@ const ViewCve = {
         <details style="margin-top:8px;">
           <summary style="font-size:13px;color:var(--text-muted);cursor:pointer;padding:8px 12px;
               background:var(--bg-2);border-radius:8px;">
-            ${notAffects.length} par${notAffects.length>1?'es':''} sin impacto detectado (haz clic para ver)
+            ${notAffects.length} ${t('cve.pairs_no_impact')}
           </summary>
           <div style="margin-top:8px;padding:8px 12px;font-size:12px;color:var(--text-muted);">
             ${notAffects.map(item =>

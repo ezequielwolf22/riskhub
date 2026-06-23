@@ -15,10 +15,15 @@
 
   <script>
     (function() {
-      var t = localStorage.getItem('riskhub_theme') || 'light';
-      document.documentElement.setAttribute('data-theme', t);
+      var theme = localStorage.getItem('riskhub_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+      var lang = localStorage.getItem('riskhub_lang') || 'es';
+      document.documentElement.setAttribute('lang', lang);
     })();
   </script>
+  <script src="/js/i18n/es.js?v=1.0.0"></script>
+  <script src="/js/i18n/en.js?v=1.0.0"></script>
+  <script src="/js/i18n.js?v=1.0.0"></script>
 </head>
 <body>
 
@@ -45,17 +50,17 @@
     <!-- Hero content -->
     <div class="login-hero-content">
       <div class="login-editorial-rule">
-        <span>Seguridad de la información</span>
+        <span data-i18n="login.hero_tag">Seguridad de la información</span>
       </div>
 
-      <h1>Gestión de riesgos<br>de ciberseguridad</h1>
+      <h1 data-i18n="login.hero_title">Gestión de riesgos<br>de ciberseguridad</h1>
 
-      <p>Identifique, analice y trate el riesgo de su organización
+      <p data-i18n="login.hero_desc">Identifique, analice y trate el riesgo de su organización
          con rigor normativo y visibilidad ejecutiva total.</p>
     </div>
 
     <!-- Footer -->
-    <div class="login-hero-footer">Confidencial</div>
+    <div class="login-hero-footer" data-i18n="login.confidential">Confidencial</div>
 
   </div>
 
@@ -66,31 +71,31 @@
     <!-- Paso 1: formulario email + contraseña -->
     <form class="login-form" id="login-form">
 
-      <h2>Iniciar sesión</h2>
-      <p class="subtitle">Usa tus credenciales corporativas</p>
+      <h2 data-i18n="login.form_title">Iniciar sesión</h2>
+      <p class="subtitle" data-i18n="login.subtitle">Usa tus credenciales corporativas</p>
 
       <div id="login-error" class="login-error" style="display:none;"></div>
 
       <div class="form-block">
-        <label for="email">Email</label>
+        <label for="email" data-i18n="login.email">Email</label>
         <input type="email" id="email" name="email"
                required autocomplete="username" autofocus>
       </div>
 
       <div class="form-block">
-        <label for="password">Contraseña</label>
+        <label for="password" data-i18n="login.password">Contraseña</label>
         <input type="password" id="password" name="password"
                required autocomplete="current-password">
       </div>
 
       <button class="btn btn-primary" type="submit"
               style="width:100%; justify-content:center; padding:12px; margin-top:4px;">
-        Acceder
+        <span data-i18n="login.submit">Acceder</span>
       </button>
 
       <!-- SSO: se muestra solo si está configurado -->
       <div id="sso-section" style="display:none; margin-top:16px;">
-        <div class="login-divider"><span>o continúa con</span></div>
+        <div class="login-divider"><span data-i18n="login.sso_or">o continúa con</span></div>
         <a href="/api/sso/login" class="login-sso-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <rect x="3"  y="3"  width="8" height="8" fill="#F25022"/>
@@ -98,12 +103,12 @@
             <rect x="3"  y="13" width="8" height="8" fill="#00A4EF"/>
             <rect x="13" y="13" width="8" height="8" fill="#FFB900"/>
           </svg>
-          Iniciar sesión con SSO
+          <span data-i18n="login.sso_btn">Iniciar sesión con SSO</span>
         </a>
       </div>
 
-      <p class="login-note">
-        ¿Sin acceso? Contacta con el responsable<br>de seguridad de tu unidad.
+      <p class="login-note" data-i18n="login.no_access">
+        ¿Sin acceso? Contacta con el responsable de seguridad de tu unidad.
       </p>
 
     </form>
@@ -112,15 +117,15 @@
     <!-- Paso 2: segundo factor MFA (TOTP) -->
     <form class="login-form" id="mfa-form" style="display:none;">
 
-      <h2>Verificación en dos pasos</h2>
-      <p class="subtitle">
+      <h2 data-i18n="login.mfa_title">Verificación en dos pasos</h2>
+      <p class="subtitle" data-i18n="login.mfa_subtitle">
         Introduce el código de 6 dígitos de tu aplicación de autenticación.
       </p>
 
       <div id="mfa-error" class="login-error" style="display:none;"></div>
 
       <div class="form-block">
-        <label for="mfa-code">Código TOTP</label>
+        <label for="mfa-code" data-i18n="login.mfa_label">Código TOTP</label>
         <input type="text" id="mfa-code" name="mfa-code"
                required autocomplete="one-time-code"
                inputmode="numeric" pattern="[0-9]{6}"
@@ -129,12 +134,12 @@
 
       <button class="btn btn-primary" type="submit"
               style="width:100%; justify-content:center; padding:12px;">
-        Verificar
+        <span data-i18n="login.mfa_verify">Verificar</span>
       </button>
 
       <button type="button" id="mfa-back" class="btn"
               style="width:100%; justify-content:center; padding:12px; margin-top:8px;">
-        Volver al login
+        <span data-i18n="login.mfa_back">Volver al login</span>
       </button>
 
     </form>
@@ -153,20 +158,17 @@ const mfaErr  = document.getElementById('mfa-error');
 let _mfaToken = null;
 let _pendingUser = null;
 
+// Aplicar traducciones al DOM estático de login
+I18n.applyDataAttrs();
+document.title = t('login.page_title');
+
 (function() {
   const params = new URLSearchParams(window.location.search);
   const ssoErr = params.get('sso_error');
   if (ssoErr) {
-    const msgs = {
-      user_not_found: 'Tu cuenta no existe en RiskHub. Contacta con el administrador.',
-      account_disabled: 'Tu cuenta está desactivada. Contacta con el administrador.',
-      domain_not_allowed: 'Tu dominio de correo no está autorizado para acceder via SSO.',
-      invalid_or_expired_state: 'La sesión de SSO ha expirado. Intenta de nuevo.',
-      sso_not_configured: 'SSO no está configurado.',
-      no_email_in_userinfo: 'El proveedor de identidad no devolvió un email válido.',
-      missing_params: 'Respuesta incompleta del proveedor de identidad.',
-    };
-    errBox.textContent = msgs[ssoErr] || decodeURIComponent(ssoErr);
+    const key = 'login.sso_error.' + ssoErr;
+    const msg = t(key);
+    errBox.textContent = (msg !== key) ? msg : decodeURIComponent(ssoErr);
     errBox.style.display = 'block';
     window.history.replaceState({}, '', '/login');
   }
@@ -200,7 +202,7 @@ form.addEventListener('submit', async (e) => {
     });
     if (!resp.ok) {
       const d = await resp.json().catch(() => ({}));
-      throw new Error(d.detail || 'Credenciales no válidas');
+      throw new Error(d.detail || t('login.invalid_credentials'));
     }
     const data = await resp.json();
     if (data.mfa_required && data.mfa_token) {
@@ -230,7 +232,7 @@ mfaForm.addEventListener('submit', async (e) => {
     });
     if (!resp.ok) {
       const d = await resp.json().catch(() => ({}));
-      throw new Error(d.detail || 'Código incorrecto');
+      throw new Error(d.detail || t('login.mfa_wrong_code'));
     }
     const data = await resp.json();
     _finishLogin(data);

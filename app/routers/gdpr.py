@@ -2,10 +2,11 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import DPIA, DPIAStatus, ProcessingActivity, User
 from app.schemas import (
     DPIAIn, DPIAOut, DPIAUpdate,
@@ -69,11 +70,12 @@ def gdpr_summary(db: Session = Depends(get_db), current_user: User = Depends(get
 
 
 @router.get("/activities/{activity_id}", response_model=ProcessingActivityOut)
-def get_activity(activity_id: int, db: Session = Depends(get_db),
+def get_activity(activity_id: int, request: Request, db: Session = Depends(get_db),
                  current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     a = db.query(ProcessingActivity).filter(ProcessingActivity.id == activity_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Actividad de tratamiento no encontrada")
+        raise HTTPException(404, _t("gdpr.activity_not_found", lang))
     return a
 
 
@@ -153,11 +155,13 @@ def _auto_create_dpia_risk(db: Session, activity: ProcessingActivity, org_id: in
 
 @router.patch("/activities/{activity_id}", response_model=ProcessingActivityOut)
 def update_activity(activity_id: int, body: ProcessingActivityUpdate,
+                    request: Request,
                     db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     a = db.query(ProcessingActivity).filter(ProcessingActivity.id == activity_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Actividad de tratamiento no encontrada")
+        raise HTTPException(404, _t("gdpr.activity_not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(a, field, value)
     db.commit()
@@ -167,12 +171,13 @@ def update_activity(activity_id: int, body: ProcessingActivityUpdate,
 
 
 @router.delete("/activities/{activity_id}", status_code=204)
-def delete_activity(activity_id: int, db: Session = Depends(get_db),
+def delete_activity(activity_id: int, request: Request, db: Session = Depends(get_db),
                     current_user: User = Depends(require_admin)):
     # A2: solo admin — GDPR Art.30 exige conservar el registro; analyst no puede borrar
+    lang = get_lang(request)
     a = db.query(ProcessingActivity).filter(ProcessingActivity.id == activity_id).first()
     if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, "Actividad de tratamiento no encontrada")
+        raise HTTPException(404, _t("gdpr.activity_not_found", lang))
     db.delete(a)
     db.commit()
 
@@ -192,25 +197,27 @@ def list_dpias(db: Session = Depends(get_db), current_user: User = Depends(get_c
 
 
 @router.get("/dpias/{dpia_id}", response_model=DPIAOut)
-def get_dpia(dpia_id: int, db: Session = Depends(get_db),
+def get_dpia(dpia_id: int, request: Request, db: Session = Depends(get_db),
              current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     d = db.query(DPIA).filter(DPIA.id == dpia_id).first()
     if not d:
-        raise HTTPException(404, "DPIA no encontrado")
+        raise HTTPException(404, _t("gdpr.dpia_not_found", lang))
     # Verificar acceso via actividad padre
     activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == d.activity_id).first()
     if not activity or not check_org_access(activity.organization_id, current_user):
-        raise HTTPException(404, "DPIA no encontrado")
+        raise HTTPException(404, _t("gdpr.dpia_not_found", lang))
     return d
 
 
 @router.post("/dpias/", response_model=DPIAOut)
-def create_dpia(body: DPIAIn, db: Session = Depends(get_db),
+def create_dpia(body: DPIAIn, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     # Verificar que la actividad de tratamiento pertenece a la org del usuario
     activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == body.activity_id).first()
     if not activity or not check_org_access(activity.organization_id, current_user):
-        raise HTTPException(404, "Actividad de tratamiento no encontrada")
+        raise HTTPException(404, _t("gdpr.activity_not_found", lang))
     d = DPIA(
         code=_next_dpia_code(db, current_user.organization_id),
         activity_id=body.activity_id,
@@ -231,14 +238,16 @@ def create_dpia(body: DPIAIn, db: Session = Depends(get_db),
 
 @router.patch("/dpias/{dpia_id}", response_model=DPIAOut)
 def update_dpia(dpia_id: int, body: DPIAUpdate,
+                request: Request,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     d = db.query(DPIA).filter(DPIA.id == dpia_id).first()
     if not d:
-        raise HTTPException(404, "DPIA no encontrado")
+        raise HTTPException(404, _t("gdpr.dpia_not_found", lang))
     activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == d.activity_id).first()
     if not activity or not check_org_access(activity.organization_id, current_user):
-        raise HTTPException(404, "DPIA no encontrado")
+        raise HTTPException(404, _t("gdpr.dpia_not_found", lang))
     update_data = body.model_dump(exclude_none=True)
     approving = update_data.get("status") == DPIAStatus.APPROVED and not d.reviewed_at
     if approving:
@@ -274,14 +283,15 @@ def update_dpia(dpia_id: int, body: DPIAUpdate,
 
 
 @router.delete("/dpias/{dpia_id}", status_code=204)
-def delete_dpia(dpia_id: int, db: Session = Depends(get_db),
+def delete_dpia(dpia_id: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_admin)):
     # A2: solo admin puede borrar DPIAs — evidencia de cumplimiento GDPR
+    lang = get_lang(request)
     d = db.query(DPIA).filter(DPIA.id == dpia_id).first()
     if not d:
-        raise HTTPException(404, "DPIA no encontrado")
+        raise HTTPException(404, _t("gdpr.dpia_not_found", lang))
     activity = db.query(ProcessingActivity).filter(ProcessingActivity.id == d.activity_id).first()
     if not activity or not check_org_access(activity.organization_id, current_user):
-        raise HTTPException(404, "DPIA no encontrado")
+        raise HTTPException(404, _t("gdpr.dpia_not_found", lang))
     db.delete(d)
     db.commit()

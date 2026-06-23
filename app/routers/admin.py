@@ -5,8 +5,10 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
+
+from app.i18n import get_lang, t as _t
 
 from app.config import settings
 from app.database import get_db

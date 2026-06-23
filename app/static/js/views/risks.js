@@ -22,60 +22,60 @@ const ViewRisks = {
     ViewRisks._vulnFilter = null;
 
     main.innerHTML = UI.sectionHeader(
-      'Registro de riesgos',
-      'ISO/IEC 27005:2018 cl. 8-9 — identificación, análisis, tratamiento',
-      canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nuevo riesgo</button><button class="btn btn-ghost" id="btn-discover-ai" style="margin-left:8px;" title="El agente IA identifica riesgos no registrados analizando el contexto de la organizacion">Descubrir con IA</button>' : ''
+      t('risks.title'),
+      t('risks.subtitle'),
+      canEdit ? `<button class="btn btn-primary" id="btn-new">+ ${t('risks.new')}</button><button class="btn btn-ghost" id="btn-discover-ai" style="margin-left:8px;" title="El agente IA identifica riesgos no registrados analizando el contexto de la organizacion">Descubrir con IA</button>` : ''
     ) + `
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
         <button class="risk-tab-btn" data-risk-tab="list"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--brand-purple);border-bottom:3px solid var(--brand-purple);margin-bottom:-2px;">
-          Todos los riesgos
+          ${t('risks.filter.all')}
         </button>
         <button class="risk-tab-btn" data-risk-tab="groups"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--text-muted);border-bottom:3px solid transparent;margin-bottom:-2px;">
-          Por grupo
+          /* TODO: i18n */ Por grupo
         </button>
       </div>
       <div id="risk-tab-list">
         <div class="toolbar">
-          <input type="search" id="r-search" placeholder="Buscar por activo o amenaza...">
+          <input type="search" id="r-search" placeholder="${t('common.search')}...">
           <select id="r-status">
-            <option value="">Cualquier estado</option>
-            <option value="identified">Identificado</option>
-            <option value="assessed">Evaluado</option>
-            <option value="treated">Tratado</option>
-            <option value="accepted">Aceptado</option>
-            <option value="closed">Cerrado</option>
+            <option value="">${t('common.all')}</option>
+            <option value="identified">${t('risks.status.identified')}</option>
+            <option value="assessed">${t('risks.status.assessed')}</option>
+            <option value="treated">${t('risks.status.treated')}</option>
+            <option value="accepted">${t('risks.status.accepted')}</option>
+            <option value="closed">${t('risks.status.closed')}</option>
           </select>
           <select id="r-band">
-            <option value="">Cualquier nivel</option>
-            <option value="6">Solo altos (6+)</option>
-            <option value="3">Medios y altos (3+)</option>
+            <option value="">${t('common.all')}</option>
+            <option value="6">${t('risks.filter.high')}</option>
+            <option value="3">/* TODO: i18n */ Medios y altos (3+)</option>
           </select>
           <select id="r-treatment">
-            <option value="">Cualquier tratamiento</option>
-            <option value="modification">Mitigar</option>
-            <option value="retention">Aceptar</option>
-            <option value="avoidance">Evitar</option>
-            <option value="sharing">Transferir</option>
-            <option value="__none__">Sin asignar</option>
+            <option value="">${t('common.all')}</option>
+            <option value="modification">${t('risks.treatment_decision.reduce')}</option>
+            <option value="retention">${t('risks.treatment_decision.accept')}</option>
+            <option value="avoidance">${t('risks.treatment_decision.avoid')}</option>
+            <option value="sharing">${t('risks.treatment_decision.transfer')}</option>
+            <option value="__none__">${t('common.not_assigned')}</option>
           </select>
           <select id="r-owner">
-            <option value="">Cualquier responsable</option>
+            <option value="">${t('common.all')}</option>
           </select>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
-            <input type="checkbox" id="r-overdue"> Solo vencidos
+            <input type="checkbox" id="r-overdue"> ${t('risks.filter.overdue')}
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
-            <input type="checkbox" id="r-supplier-only"> Solo proveedores (TPRM)
+            <input type="checkbox" id="r-supplier-only"> ${t('risks.filter.unassigned')} (TPRM)
           </label>
-          <button class="btn btn-ghost" id="r-export-csv" title="Exportar tabla como CSV" style="margin-left:auto;">Exportar CSV</button>
+          <button class="btn btn-ghost" id="r-export-csv" title="${t('common.export')}" style="margin-left:auto;">${t('risks.export_excel')}</button>
           ${canEdit ? `
-          <button class="btn btn-ghost" id="r-import-tpl" title="Descargar plantilla CSV de importacion">Plantilla</button>
+          <button class="btn btn-ghost" id="r-import-tpl" title="Descargar plantilla CSV de importacion">/* TODO: i18n */ Plantilla</button>
           <label class="btn btn-ghost" style="cursor:pointer;margin:0;" title="Importar riesgos desde CSV">
-            Importar CSV
+            ${t('risks.import_csv')}
             <input type="file" id="r-import-file" accept=".csv" style="display:none;">
           </label>` : ''}
         </div>
@@ -83,7 +83,7 @@ const ViewRisks = {
         <div id="r-list"></div>
       </div>
       <div id="risk-tab-groups" style="display:none;">
-        <div id="r-group-view"><div class="notice">Cargando...</div></div>
+        <div id="r-group-view"><div class="notice">${t('common.loading')}</div></div>
       </div>
     `;
 
@@ -235,19 +235,19 @@ const ViewRisks = {
 
   async _renderGroupView() {
     const view = document.getElementById('r-group-view');
-    view.innerHTML = '<div class="notice">Cargando resumen por grupo...</div>';
+    view.innerHTML = `<div class="notice">${t('common.loading')}</div>`;
     try {
       // Leer si hay filtro de solo-proveedor activo en la tab de lista
       const supplierOnlyActive = document.getElementById('r-supplier-only')?.checked;
       const summary = await Api.risks.groupSummary();
       if (!summary.length) {
-        view.innerHTML = UI.emptyState('Sin grupos', 'Crea y valida grupos desde la seccion Activos → Agrupacion.');
+        view.innerHTML = UI.emptyState(t('common.no_results'), 'Crea y valida grupos desde la seccion Activos → Agrupacion.');
         return;
       }
       const levelColor = l => window.RiskLevels ? RiskLevels.colorFor(l) : (l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)');
       const statusBadge = s => ({
-        proposed: '<span style="font-size:10px;background:var(--brand-orange);color:#fff;padding:1px 6px;border-radius:8px;">Propuesto</span>',
-        validated: '<span style="font-size:10px;background:var(--risk-low);color:#fff;padding:1px 6px;border-radius:8px;">Validado</span>',
+        proposed: `<span style="font-size:10px;background:var(--brand-orange);color:#fff;padding:1px 6px;border-radius:8px;">/* TODO: i18n */ Propuesto</span>`,
+        validated: `<span style="font-size:10px;background:var(--risk-low);color:#fff;padding:1px 6px;border-radius:8px;">/* TODO: i18n */ Validado</span>`,
         none: '',
       }[s] || '');
 
@@ -257,7 +257,7 @@ const ViewRisks = {
             Riesgos por grupo de activos. Los riesgos individuales <strong>no se pierden</strong> al reagrupar.
           </span>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;margin-left:auto;">
-            <input type="checkbox" id="rg-supplier-only" ${supplierOnlyActive ? 'checked' : ''}> Solo proveedores (TPRM)
+            <input type="checkbox" id="rg-supplier-only" ${supplierOnlyActive ? 'checked' : ''}> /* TODO: i18n */ Solo proveedores (TPRM)
           </label>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">
@@ -363,7 +363,7 @@ const ViewRisks = {
         // Add "unassigned" option
         const unassigned = document.createElement('option');
         unassigned.value = '__unassigned__';
-        unassigned.textContent = 'Sin responsable';
+        unassigned.textContent = t('common.not_assigned');
         ownerSel.appendChild(unassigned);
       }
     } catch (e) { UI.toast(e.message, 'error'); }
@@ -375,7 +375,7 @@ const ViewRisks = {
     const band = document.getElementById('r-band').value;
     const treatFilter = document.getElementById('r-treatment')?.value || '';
     const list = document.getElementById('r-list');
-    list.innerHTML = '<div class="notice">Cargando...</div>';
+    list.innerHTML = `<div class="notice">${t('common.loading')}</div>`;
     try {
       const overdue = document.getElementById('r-overdue')?.checked;
       const supplierOnly = document.getElementById('r-supplier-only')?.checked;
@@ -402,8 +402,8 @@ const ViewRisks = {
       }
       if (!data.length) {
         list.innerHTML = UI.emptyState(
-          'Sin riesgos',
-          'Crea uno asociando un activo con una amenaza, o ajusta los filtros.');
+          t('common.no_results'),
+          t('risks.new'));
         return;
       }
       // Sort data client-side
@@ -452,21 +452,21 @@ const ViewRisks = {
 
       const pagerHtml = total > ps ? `
         <div style="display:flex;align-items:center;gap:10px;padding:10px 0;font-size:13px;">
-          <button class="btn btn-sm" id="r-prev" ${ViewRisks._page === 0 ? 'disabled' : ''}>← Anterior</button>
+          <button class="btn btn-sm" id="r-prev" ${ViewRisks._page === 0 ? 'disabled' : ''}>← ${t('common.previous')}</button>
           <span style="color:var(--text-muted);">
-            Mostrando ${ViewRisks._page * ps + 1}–${Math.min((ViewRisks._page + 1) * ps, total)} de <strong>${total}</strong> riesgos
+            ${ViewRisks._page * ps + 1}–${Math.min((ViewRisks._page + 1) * ps, total)} ${t('common.of')} <strong>${total}</strong> ${t('common.risk')}
           </span>
-          <button class="btn btn-sm" id="r-next" ${ViewRisks._page >= totalPages - 1 ? 'disabled' : ''}>Siguiente →</button>
-          <span style="font-size:12px;color:var(--text-muted);">Página ${ViewRisks._page + 1} / ${totalPages}</span>
+          <button class="btn btn-sm" id="r-next" ${ViewRisks._page >= totalPages - 1 ? 'disabled' : ''}}>${t('common.next')} →</button>
+          <span style="font-size:12px;color:var(--text-muted);">${ViewRisks._page + 1} / ${totalPages}</span>
         </div>` : `<div style="padding:6px 0;font-size:12px;color:var(--text-muted);">${total} riesgo${total !== 1 ? 's' : ''}</div>`;
 
       list.innerHTML = pagerHtml + `<div class="table-wrap"><table class="data" id="r-table">
         <thead>
           <tr>
             ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
-            ${_th('code','Codigo')}${_th('asset','Activo')}${_th('threat','Amenaza')}
-            ${_th('inherent_level','Inh.','Nivel inherente')}${_th('residual_level','Res.','Nivel residual')}${_th('reduction','Red.','Reduccion inherente → residual')}
-            ${_th('status','Estado')}${_th('treatment','Tratamiento')}${_th('owner','Responsable','width:110px;')}<th style="font-size:10px;white-space:nowrap;">BCP</th><th></th>
+            ${_th('code',t('risks.risk_code'))}${_th('asset',t('common.asset'))}${_th('threat',t('common.threat'))}
+            ${_th('inherent_level',t('risks.inherent_risk'),t('risks.inherent_risk'))}${_th('residual_level',t('risks.residual_risk'),t('risks.residual_risk'))}${_th('reduction','Red.','Reduccion inherente → residual')}
+            ${_th('status',t('common.status'))}${_th('treatment',t('risks.treatment'))}${_th('owner',t('common.owner'),'width:110px;')}<th style="font-size:10px;white-space:nowrap;">BCP</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -501,7 +501,7 @@ const ViewRisks = {
                    title="Plan: ${UI.esc(r.bcp_coverage.plan_code || '')} &middot; RTO: ${r.bcp_coverage.rto_hours != null ? r.bcp_coverage.rto_hours + 'h' : '?'}">
                    <i class="ti ti-shield-check" style="font-size:10px"></i> BCP ${r.bcp_coverage.coverage_pct || 0}%</span>`
                 : '<span style="font-size:10px;color:var(--text-subtle)">—</span>'}</td>
-              <td><button class="btn btn-ghost" data-edit="${r.id}" onclick="event.stopPropagation()">Ver</button></td>
+              <td><button class="btn btn-ghost" data-edit="${r.id}" onclick="event.stopPropagation()">${t('common.view')}</button></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -509,27 +509,27 @@ const ViewRisks = {
       <div id="r-bulk-bar" class="bulk-bar" style="display:none;">
         <span id="r-bulk-count" style="font-weight:600;"></span>
         <select id="r-bulk-status" style="font-size:13px;">
-          <option value="">Cambiar estado a...</option>
-          <option value="identified">Identificado</option>
-          <option value="assessed">Evaluado</option>
-          <option value="treated">Tratado</option>
-          <option value="accepted">Aceptado</option>
-          <option value="closed">Cerrado</option>
+          <option value="">${t('common.all')}</option>
+          <option value="identified">${t('risks.status.identified')}</option>
+          <option value="assessed">${t('risks.status.assessed')}</option>
+          <option value="treated">${t('risks.status.treated')}</option>
+          <option value="accepted">${t('risks.status.accepted')}</option>
+          <option value="closed">${t('risks.status.closed')}</option>
         </select>
         <select id="r-bulk-treat" style="font-size:13px;">
-          <option value="">Cambiar tratamiento a...</option>
-          <option value="modification">Modificacion</option>
-          <option value="retention">Retencion</option>
-          <option value="avoidance">Evitacion</option>
-          <option value="sharing">Transferencia</option>
+          <option value="">${t('common.all')}</option>
+          <option value="modification">${t('risks.treatment_decision.reduce')}</option>
+          <option value="retention">${t('risks.treatment_decision.accept')}</option>
+          <option value="avoidance">${t('risks.treatment_decision.avoid')}</option>
+          <option value="sharing">${t('risks.treatment_decision.transfer')}</option>
         </select>
         <select id="r-bulk-owner" style="font-size:13px;">
-          <option value="">Asignar responsable...</option>
-          <option value="__none__">Sin responsable</option>
+          <option value="">${t('common.assign')}</option>
+          <option value="__none__">${t('common.not_assigned')}</option>
           ${ViewRisks._users.map(u => `<option value="${u.id}">${UI.esc(u.full_name || u.email)}</option>`).join('')}
         </select>
-        <button class="btn btn-primary" id="r-bulk-apply">Aplicar</button>
-        <button class="btn btn-ghost" id="r-bulk-clear">Limpiar seleccion</button>
+        <button class="btn btn-primary" id="r-bulk-apply">${t('common.apply')}</button>
+        <button class="btn btn-ghost" id="r-bulk-clear">${t('common.clear')}</button>
       </div>`;
 
       // Paginación
@@ -600,7 +600,7 @@ const ViewRisks = {
       bar.style.display = 'none';
     } else {
       bar.style.display = 'flex';
-      count.textContent = `${n} riesgo${n > 1 ? 's' : ''} seleccionado${n > 1 ? 's' : ''}`;
+      count.textContent = `${n} ${t('common.risk')}${n > 1 ? 's' : ''} ${t('common.select')}`;
     }
   },
 
@@ -611,7 +611,7 @@ const ViewRisks = {
     const newTreat = document.getElementById('r-bulk-treat').value;
     const newOwner = document.getElementById('r-bulk-owner')?.value || '';
     if (!newStatus && !newTreat && !newOwner) {
-      UI.toast('Selecciona al menos un cambio (estado, tratamiento o responsable)', 'error');
+      UI.toast(t('common.select') + ' ' + t('common.required'), 'error');
       return;
     }
     const body = {};
@@ -707,7 +707,7 @@ const ViewRisks = {
     // Para nuevo riesgo: pre-seleccionar los sugeridos; para existente: respetar seleccion actual
     const effectiveCtrlIds = (isNew && suggestedImpls.length) ? suggestedImpls.map(c => c.id) : savedCtrlIds;
 
-    UI.modal(id ? `${r.code} - ${r.asset?.name || ''}` : 'Nuevo riesgo', `
+    UI.modal(id ? `${r.code} - ${r.asset?.name || ''}` : t('risks.new'), `
       <div class="span2 notice">
         Riesgo = Activo × Amenaza.
         ${isMagerit
@@ -715,23 +715,23 @@ const ViewRisks = {
           : `Nivel calculado como Consecuencia × Probabilidad (matriz 5x5 ISO 27005 Annex E.2).`}
       </div>
       <div>
-        <label>Activo *</label>
+        <label>${t('common.asset')} *</label>
         <select id="f-asset" ${id?'disabled':''} onchange="${isMagerit?'ViewRisks._updateMageritPreview()':''}">
           ${ViewRisks._assets.map(a => `<option value="${a.id}" ${r.asset_id===a.id?'selected':''}>${UI.esc(a.code)} - ${UI.esc(a.name)}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label>Amenaza *</label>
+        <label>${t('common.threat')} *</label>
         <select id="f-threat" ${id?'disabled':''}>
           ${ViewRisks._threats.map(t => `<option value="${t.id}" ${r.threat_id===t.id?'selected':''}>${UI.esc(t.code)} - ${UI.esc(t.name)}</option>`).join('')}
         </select>
       </div>
       <div class="span2">
-        <label>Descripción del escenario</label>
+        <label>${t('common.description')}</label>
         <textarea id="f-desc" rows="2">${UI.esc(r.description||'')}</textarea>
       </div>
       <div class="span2">
-        <label>Consecuencias esperadas</label>
+        <label>${t('risks.treatment_plan')}</label>
         <textarea id="f-cons" rows="2">${UI.esc(r.consequence_description||'')}</textarea>
       </div>
 
@@ -830,14 +830,14 @@ const ViewRisks = {
         </select>
       </div>
       <div>
-        <label>Estado</label>
+        <label>${t('common.status')}</label>
         <select id="f-status">
           ${['identified','assessed','treated','accepted','closed'].map(s =>
             `<option value="${s}" ${r.status===s?'selected':''}>${UI.statusLabel(s)}</option>`).join('')}
         </select>
       </div>
       <div>
-        <label>Decisión de tratamiento</label>
+        <label>${t('risks.treatment')}</label>
         <select id="f-treat">
           <option value="">-</option>
           ${['modification','retention','avoidance','sharing'].map(t =>
@@ -845,24 +845,24 @@ const ViewRisks = {
         </select>
       </div>
       <div class="span2">
-        <label>Plan de tratamiento</label>
+        <label>${t('risks.treatment_plan')}</label>
         <textarea id="f-plan" rows="2">${UI.esc(r.treatment_plan||'')}</textarea>
       </div>
       <div>
-        <label>Responsable del riesgo</label>
+        <label>${t('common.owner')}</label>
         <select id="f-owner">
-          <option value="">- Sin asignar -</option>
+          <option value="">- ${t('common.not_assigned')} -</option>
           ${ViewRisks._users.map(u =>
             `<option value="${u.id}" ${r.owner_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`
           ).join('')}
         </select>
       </div>
       <div>
-        <label>Fecha limite del plan</label>
+        <label>${t('risks.treatment_deadline')}</label>
         <input type="date" id="f-due" value="${r.treatment_due_date ? r.treatment_due_date.slice(0,10) : ''}">
       </div>
       <div class="span2" id="f-just-wrap" style="${r.status==='accepted'?'':'opacity:0.6;'}">
-        <label>Justificación de aceptación ${r.status==='accepted'?'<span style="color:var(--risk-high);">*</span>':'(si aplica)'}</label>
+        <label>${t('risks.notes')} ${r.status==='accepted'?'<span style="color:var(--risk-high);">*</span>':'(si aplica)'}</label>
         <textarea id="f-just" rows="2">${UI.esc(r.acceptance_justification||'')}</textarea>
       </div>
       ${id ? `
@@ -910,12 +910,12 @@ const ViewRisks = {
       </div>` : ''}
     `, {
       actions: canEdit ? `
-        <button class="btn" id="m-cancel">Cerrar</button>
+        <button class="btn" id="m-cancel">${t('common.close')}</button>
         ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie de causas y consecuencias">Bow-Tie</button>' : ''}
-        ${id ? '<button class="btn btn-ghost" id="m-clone" title="Crear una copia de este riesgo">Duplicar</button>' : ''}
-        ${id ? '<button class="btn btn-danger" id="m-del">Eliminar</button>' : ''}
-        <button class="btn btn-primary" id="m-save">Guardar</button>
-      ` : `<button class="btn" id="m-cancel">Cerrar</button>
+        ${id ? `<button class="btn btn-ghost" id="m-clone" title="Crear una copia de este riesgo">${t('common.duplicate')}</button>` : ''}
+        ${id ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
+        <button class="btn btn-primary" id="m-save">${t('common.save')}</button>
+      ` : `<button class="btn" id="m-cancel">${t('common.close')}</button>
         ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie">Bow-Tie</button>' : ''}`
     });
 
@@ -1025,8 +1025,8 @@ const ViewRisks = {
     }
 
     if (id && canEdit) document.getElementById('m-del').onclick = async () => {
-      if (!await UI.confirm('Eliminar este riesgo?')) return;
-      try { await Api.risks.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewRisks._reload(); }
+      if (!await UI.confirm(t('risks.delete_confirm'))) return;
+      try { await Api.risks.del(id); UI.closeModal(); UI.toast(t('common.success'),'success'); ViewRisks._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
     // "Ver todos los controles" — expande al catalogo completo sin filtro
@@ -1233,7 +1233,7 @@ const ViewRisks = {
           body.threat_id = parseInt(document.getElementById('f-threat').value);
           await Api.risks.create(body);
         }
-        UI.closeModal(); UI.toast('Guardado','success'); ViewRisks._reload();
+        UI.closeModal(); UI.toast(t('common.success'),'success'); ViewRisks._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },
@@ -1355,8 +1355,8 @@ const ViewRisks = {
         </table>
       </div>
     `, {
-      actions: `<button class="btn" id="m-cancel">Cerrar</button>
-                <button class="btn btn-ghost" id="m-back">Volver al riesgo</button>`
+      actions: `<button class="btn" id="m-cancel">${t('common.close')}</button>
+                <button class="btn btn-ghost" id="m-back">${t('common.back')}</button>`
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-back').onclick = () => { UI.closeModal(); ViewRisks._edit(r.id); };

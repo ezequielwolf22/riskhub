@@ -5,34 +5,34 @@ const ViewControls = {
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
-      'Controles de seguridad',
-      'ISO/IEC 27002:2022 (93 controles del Anexo A)',
-      canEdit ? '<button class="btn btn-primary" id="btn-new-impl">+ Nueva implementación</button>' : ''
+      t('controls.title'),
+      t('controls.subtitle'),
+      canEdit ? `<button class="btn btn-primary" id="btn-new-impl">+ ${t('controls.new')}</button>` : ''
     ) + `
       <div class="toolbar">
-        <button class="btn ${ViewControls._tab==='impls'?'btn-primary':''}" data-tab="impls">Implementaciónes</button>
-        <button class="btn ${ViewControls._tab==='catalog'?'btn-primary':''}" data-tab="catalog">Catálogo ISO 27002:2022</button>
+        <button class="btn ${ViewControls._tab==='impls'?'btn-primary':''}" data-tab="impls">/* TODO: i18n */ Implementaciónes</button>
+        <button class="btn ${ViewControls._tab==='catalog'?'btn-primary':''}" data-tab="catalog">${t('controls.soa')} ISO 27002:2022</button>
         <span class="spacer"></span>
-        <input type="search" id="c-search" placeholder="Buscar...">
+        <input type="search" id="c-search" placeholder="${t('common.search')}...">
         <select id="c-theme">
-          <option value="">Todos los temas</option>
-          <option value="organizational">Organizaciónal</option>
-          <option value="people">Personas</option>
-          <option value="physical">Fisico</option>
-          <option value="technological">Tecnológico</option>
+          <option value="">${t('common.all')}</option>
+          <option value="organizational">${t('controls.theme_org')}</option>
+          <option value="people">${t('controls.theme_people')}</option>
+          <option value="physical">${t('controls.theme_physical')}</option>
+          <option value="technological">${t('controls.theme_tech')}</option>
         </select>
         <select id="c-status" style="${ViewControls._tab==='impls'?'':'display:none;'}">
-          <option value="">Cualquier estado</option>
-          <option value="implemented">Implementado</option>
-          <option value="partial">Parcial</option>
-          <option value="planned">Planificado</option>
-          <option value="not_implemented">No implementado</option>
+          <option value="">${t('common.all')}</option>
+          <option value="implemented">${t('controls.implementation_status.implemented')}</option>
+          <option value="partial">${t('controls.implementation_status.partial')}</option>
+          <option value="planned">${t('controls.implementation_status.planned')}</option>
+          <option value="not_implemented">${t('controls.implementation_status.not_implemented')}</option>
         </select>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;${ViewControls._tab==='impls'?'':'display:none;'}">
-          <input type="checkbox" id="c-overdue" ${ViewControls._overdueOnly?'checked':''}> Solo revision vencida
+          <input type="checkbox" id="c-overdue" ${ViewControls._overdueOnly?'checked':''}> /* TODO: i18n */ Solo revision vencida
         </label>
-        <button class="btn btn-ghost" id="btn-soa-csv" title="Exportar SoA como CSV">SoA CSV</button>
-        <button class="btn btn-ghost" id="btn-ccm-run" title="Ejecutar tests de cumplimiento continuo (CCM)">Tests CCM</button>
+        <button class="btn btn-ghost" id="btn-soa-csv" title="${t('controls.export_soa')}">${t('controls.soa_short')} CSV</button>
+        <button class="btn btn-ghost" id="btn-ccm-run" title="${t('ccm.title')}">Tests CCM</button>
       </div>
       <div id="c-list"></div>
     `;
@@ -51,7 +51,7 @@ const ViewControls = {
     };
     if (canEdit) document.getElementById('btn-new-impl').onclick = () => ViewControls._editImpl();
     document.getElementById('btn-soa-csv').onclick = async () => {
-      try { await Api.controls.exportSoaCsv(); UI.toast('SoA CSV descargado', 'success'); }
+      try { await Api.controls.exportSoaCsv(); UI.toast(t('controls.export_soa'), 'success'); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
     document.getElementById('btn-ccm-run').onclick = async () => {
@@ -77,7 +77,7 @@ const ViewControls = {
 
   async _reload() {
     const list = document.getElementById('c-list');
-    list.innerHTML = '<div class="notice">Cargando...</div>';
+    list.innerHTML = `<div class="notice">${t('common.loading_data')}</div>`;
     try {
       if (ViewControls._tab === 'catalog') {
         await ViewControls._renderCatalog();
@@ -99,7 +99,7 @@ const ViewControls = {
 
     const canEdit = Auth.canEdit();
     list.innerHTML = `<div class="table-wrap"><table class="data">
-      <thead><tr><th>Codigo</th><th>Nombre</th><th>Tema</th><th>Tipo</th><th>Propiedades</th><th title="Controles cuyo incumplimiento impide reducir el nivel residual más de 1 paso (piso obligatorio)">Obligatorio</th></tr></thead>
+      <thead><tr><th>${t('controls.control_code')}</th><th>${t('controls.control_name')}</th><th>${t('controls.theme')}</th><th>${t('common.type')}</th><th>/* TODO: i18n */ Propiedades</th><th title="Controles cuyo incumplimiento impide reducir el nivel residual más de 1 paso (piso obligatorio)">/* TODO: i18n */ Obligatorio</th></tr></thead>
       <tbody>
         ${data.map(c => `
           <tr>
@@ -129,7 +129,7 @@ const ViewControls = {
             await Api.patch(`/api/controls/catalog/${cid}`, { is_mandatory: chk.checked });
             const ctrl = ViewControls._catalog.find(c => c.id === cid);
             if (ctrl) ctrl.is_mandatory = chk.checked;
-            UI.toast(chk.checked ? 'Marcado como obligatorio' : 'Quitada marca de obligatorio', 'success');
+            UI.toast(t('common.success'), 'success');
           } catch (e) {
             chk.checked = !chk.checked;
             UI.toast(e.message, 'error');
@@ -155,8 +155,8 @@ const ViewControls = {
     }
     if (!data.length) {
       list.innerHTML = UI.emptyState(
-        'Sin implementaciónes',
-        'Crea implementaciónes concretas de los controles para poder asociarlos a riesgos.'
+        t('controls.new'), /* TODO: i18n empty state title */
+        t('common.no_results') /* TODO: i18n empty state hint */
       );
       return;
     }
@@ -188,13 +188,13 @@ const ViewControls = {
       i.next_review && new Date(i.next_review) < now && i.status !== 'not_implemented').length;
     list.innerHTML = `
       ${overdueCount ? `<div style="background:#FEF9C3;border:1px solid #FDE68A;border-radius:6px;padding:10px 14px;font-size:13px;color:#92400E;margin-bottom:12px;">
-        <strong>${overdueCount} control${overdueCount>1?'es':''}</strong> con revision pendiente (fecha proxima revision vencida).
+        <strong>${overdueCount} ${t('common.control')}${overdueCount>1?'es':''}</strong> ${t('controls.degraded')} (${t('controls.review_date')}).
       </div>` : ''}
       <div class="table-wrap"><table class="data">
       <thead><tr>
-        ${_th('control','Control')}${_th('name','Implementación')}${_th('status','Estado')}${_th('maturity','Madurez')}
-        ${_th('risks','Riesgos','width:70px;text-align:center;')}
-        ${_th('next_review','Proxima revisión')}<th></th>
+        ${_th('control',t('common.control'))}${_th('name','/* TODO: i18n */ Implementación')}${_th('status',t('common.status'))}${_th('maturity',t('controls.maturity'))}
+        ${_th('risks',t('common.risk'),'width:70px;text-align:center;')}
+        ${_th('next_review',t('controls.review_date'))}<th></th>
       </tr></thead>
       <tbody>
         ${data.map(i => {
@@ -215,12 +215,12 @@ const ViewControls = {
               ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISION</span>':''}`
               : '-'}</td>
             <td style="white-space:nowrap;" onclick="event.stopPropagation()">
-              ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${i.id}">Editar</button>` : ''}
+              ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${i.id}">${t('common.edit')}</button>` : ''}
               ${Auth.canEdit() && i.status !== 'not_implemented' ? `
                 <button class="btn btn-ghost" data-propagate="${i.id}"
-                        title="Propagar: re-calcula residuales vinculados + IA detecta nuevos riesgos candidatos"
+                        title="/* TODO: i18n */ Propagar: re-calcula residuales vinculados + IA detecta nuevos riesgos candidatos"
                         style="font-size:11px;padding:3px 8px;">
-                  Propagar
+                  /* TODO: i18n */ Propagar
                 </button>` : ''}
             </td>
           </tr>`;
@@ -246,7 +246,7 @@ const ViewControls = {
   async _propagate(id, btn) {
     const origText = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Analizando...';
+    btn.textContent = t('ai.analyzing');
     try {
       const r = await Api.impls.propagate(id);
       const msg = [
@@ -257,7 +257,7 @@ const ViewControls = {
       UI.toast(msg, 'success');
       ViewControls._renderImpls();
     } catch (e) {
-      UI.toast('Error al propagar: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = origText;
@@ -280,33 +280,33 @@ const ViewControls = {
       data = all.find(x => x.id === id) || data;
       data.control_id = data.control?.id || data.control_id;
     }
-    UI.modal(id ? `Editar implementación ${id}` : 'Nueva implementación', `
+    UI.modal(id ? `${t('controls.edit')} ${id}` : t('controls.new'), `
       <div class="span2">
-        <label>Control de referencia *</label>
+        <label>/* TODO: i18n */ Control de referencia *</label>
         <select id="f-control">
           ${ViewControls._catalog.map(c =>
             `<option value="${c.id}" ${data.control_id===c.id?'selected':''}>${UI.esc(c.code)} - ${UI.esc(c.name)}</option>`).join('')}
         </select>
       </div>
-      <div class="span2"><label>Nombre de la implementación *</label>
+      <div class="span2"><label>/* TODO: i18n */ Nombre de la implementación *</label>
         <input id="f-name" value="${UI.esc(data.name)}" placeholder="ej. EDR CrowdStrike en endpoints corporativos"></div>
-      <div class="span2"><label>Descripción</label>
+      <div class="span2"><label>${t('common.description')}</label>
         <textarea id="f-desc" rows="2">${UI.esc(data.description||'')}</textarea></div>
-      <div><label>Estado</label>
+      <div><label>${t('common.status')}</label>
         <select id="f-status">
           ${['planned','implemented','partial','not_implemented'].map(s =>
             `<option value="${s}" ${data.status===s?'selected':''}>${UI.controlStatusLabel(s)}</option>`).join('')}
         </select>
       </div>
-      <div><label>Madurez (0-5)</label>
+      <div><label>${t('controls.maturity')} (0-5)</label>
         <input type="number" min="0" max="5" id="f-mat" value="${data.maturity||0}"></div>
-      <div><label>Ultima revision</label>
+      <div><label>/* TODO: i18n */ Ultima revision</label>
         <input type="date" id="f-last-rev" value="${data.last_review ? data.last_review.slice(0,10) : ''}"></div>
-      <div><label>Proxima revision</label>
+      <div><label>${t('controls.review_date')}</label>
         <input type="date" id="f-next-rev" value="${data.next_review ? data.next_review.slice(0,10) : ''}"></div>
-      <div class="span2"><label>Evidencia / referencia documental</label>
+      <div class="span2"><label>${t('controls.evidence')}</label>
         <textarea id="f-evi" rows="2">${UI.esc(data.evidence||'')}</textarea></div>
-      <div class="span2"><label>Notas</label>
+      <div class="span2"><label>${t('common.notes')}</label>
         <textarea id="f-notes" rows="2">${UI.esc(data.notes||'')}</textarea></div>
       ${data.notes && data.notes.includes('nivel') ? `
       <div class="span2">
@@ -314,7 +314,7 @@ const ViewControls = {
                     border:1px solid rgba(89,0,141,.2);border-radius:8px;padding:12px 14px;margin-top:4px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;
                       color:var(--brand-purple);letter-spacing:.4px;margin-bottom:8px;">
-            Analisis IA de madurez
+            /* TODO: i18n */ Analisis IA de madurez
           </div>
           <div style="font-size:12px;line-height:1.7;color:var(--text-base);white-space:pre-wrap;">${UI.esc(data.notes)}</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">
@@ -323,22 +323,22 @@ const ViewControls = {
         </div>
       </div>` : ''}
       <div class="span2" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
-        <p style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:0 0 8px;letter-spacing:.05em;">Campos SOA — ISO 27001:2022 cl. 6.1.3</p>
+        <p style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:0 0 8px;letter-spacing:.05em;">${t('controls.soa_short')} — ISO 27001:2022 cl. 6.1.3</p>
       </div>
-      <div><label>Razon de inclusion</label>
+      <div><label>/* TODO: i18n */ Razon de inclusion</label>
         <select id="f-incl-reason">
           <option value="">— Seleccionar —</option>
           ${[['legal','Legal / regulatorio'],['contractual','Contractual'],['risk','Gestion de riesgo'],['best_practice','Buena practica']]
             .map(([v,l]) => `<option value="${v}" ${data.inclusion_reason===v?'selected':''}>${l}</option>`).join('')}
         </select>
       </div>
-      <div><label>Ultima revision SOA</label>
+      <div><label>/* TODO: i18n */ Ultima revision SOA</label>
         <input type="date" id="f-soa-rev" value="${data.soa_reviewed_at ? data.soa_reviewed_at.slice(0,10) : ''}">
       </div>
-      <div class="span2"><label>Justificacion de exclusion (si no aplica)</label>
+      <div class="span2"><label>/* TODO: i18n */ Justificacion de exclusion (si no aplica)</label>
         <textarea id="f-excl-just" rows="2">${UI.esc(data.exclusion_justification||'')}</textarea>
       </div>
-      <div class="span2"><label>Referencias de evidencia (una por linea, formato: Titulo | URL)</label>
+      <div class="span2"><label>/* TODO: i18n */ Referencias de evidencia (una por linea, formato: Titulo | URL)</label>
         <textarea id="f-evid-refs" rows="3" placeholder="Politica de seguridad | https://intranet/...&#10;Evidencia CrowdStrike | /docs/evidencias/...">${
           (data.evidence_refs || []).map(r => `${r.title || ''}${r.url ? ' | ' + r.url : ''}`).join('\n')
         }</textarea>
@@ -348,17 +348,17 @@ const ViewControls = {
         <details id="impl-history">
           <summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;
                           list-style:none;display:flex;align-items:center;gap:6px;">
-            <span style="font-size:10px;">&#9654;</span> Historial de cambios
+            <span style="font-size:10px;">&#9654;</span> /* TODO: i18n */ Historial de cambios
           </summary>
           <div id="impl-history-body" style="margin-top:8px;">
-            <div class="notice">Cargando...</div>
+            <div class="notice">${t('common.loading_data')}</div>
           </div>
         </details>
       </div>` : ''}
     `, {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                ${id ? '<button class="btn btn-danger" id="m-del">Eliminar</button>' : ''}
-                <button class="btn btn-primary" id="m-save">Guardar</button>`
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                ${id ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
 
@@ -394,8 +394,8 @@ const ViewControls = {
     }
 
     if (id) document.getElementById('m-del').onclick = async () => {
-      if (!await UI.confirm('Eliminar esta implementación?')) return;
-      try { await Api.impls.del(id); UI.closeModal(); UI.toast('Eliminado','success'); ViewControls._reload(); }
+      if (!await UI.confirm(t('common.confirm_delete'))) return;
+      try { await Api.impls.del(id); UI.closeModal(); UI.toast(t('common.success'),'success'); ViewControls._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
     document.getElementById('m-save').onclick = async () => {
@@ -428,7 +428,7 @@ const ViewControls = {
       try {
         if (id) await Api.impls.update(id, body);
         else await Api.impls.create(body);
-        UI.closeModal(); UI.toast('Guardado','success'); ViewControls._reload();
+        UI.closeModal(); UI.toast(t('common.success'),'success'); ViewControls._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },

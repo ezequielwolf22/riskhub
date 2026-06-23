@@ -654,6 +654,9 @@ def _migrate_columns() -> None:
         ("ALTER TABLE vendor_issues ADD COLUMN auto_generated_source VARCHAR(64)", "vendor_issues", "auto_generated_source"),
         ("ALTER TABLE vendor_issues ADD COLUMN linked_risk_id INTEGER REFERENCES risks(id)", "vendor_issues", "linked_risk_id"),
         ("ALTER TABLE vendor_issues ADD COLUMN resolved_by_action VARCHAR(255)", "vendor_issues", "resolved_by_action"),
+        # v5.9.0 — ReportBrandingConfig: soporte de fichero de plantilla (.docx/.html)
+        ("ALTER TABLE report_branding_configs ADD COLUMN template_filename VARCHAR(255)", "report_branding_configs", "template_filename"),
+        ("ALTER TABLE report_branding_configs ADD COLUMN template_mime VARCHAR(128)", "report_branding_configs", "template_mime"),
         # v5.3.0 — RiskSnapshot: historico mensual de niveles de riesgo
         (
             """CREATE TABLE IF NOT EXISTS risk_snapshots (

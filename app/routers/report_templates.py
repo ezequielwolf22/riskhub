@@ -44,6 +44,13 @@ _ALLOWED_LOGO_MIME = {"image/png", "image/jpeg", "image/webp"}
 _MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
 
 _LOGO_ROOT = None
+_TEMPLATE_ROOT = None
+
+_ALLOWED_TEMPLATE_MIME = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/html",
+}
+_MAX_TEMPLATE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def _logo_root():
@@ -56,6 +63,18 @@ def _logo_root():
         p.mkdir(parents=True, exist_ok=True)
         _LOGO_ROOT = p
     return _LOGO_ROOT
+
+
+def _template_root():
+    global _TEMPLATE_ROOT
+    if _TEMPLATE_ROOT is None:
+        from pathlib import Path
+        p = Path("/srv/data/branding/templates")
+        if not p.exists():
+            p = Path(__file__).parent.parent.parent / "data" / "branding" / "templates"
+        p.mkdir(parents=True, exist_ok=True)
+        _TEMPLATE_ROOT = p
+    return _TEMPLATE_ROOT
 
 
 def _valid_hex(c: str) -> bool:
@@ -75,6 +94,8 @@ def _template_to_dict(t: ReportBrandingConfig) -> dict:
         "font_family": t.font_family or "Helvetica",
         "has_logo": bool(t.logo_filename),
         "logo_mime": t.logo_mime or "",
+        "has_template_file": bool(t.template_filename),
+        "template_mime": t.template_mime or "",
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
     }
 
@@ -137,6 +158,8 @@ def get_template(
             "font_family": "Helvetica",
             "has_logo": False,
             "logo_mime": "",
+            "has_template_file": False,
+            "template_mime": "",
             "updated_at": None,
         }
     return _template_to_dict(row)
@@ -301,6 +324,90 @@ def delete_logo(
         pass
     row.logo_filename = None
     row.logo_mime = None
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{report_type}/template-file")
+def upload_template_file(
+    report_type: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Sube un fichero .docx o .html como plantilla base para la generacion de informes."""
+    if report_type not in VALID_REPORT_TYPES:
+        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+
+    data = file.file.read()
+    if len(data) > _MAX_TEMPLATE_BYTES:
+        raise HTTPException(400, "El fichero de plantilla no puede superar 10 MB")
+
+    # Detectar MIME por nombre de fichero (los .docx son ZIP, .html son texto)
+    filename_lower = (file.filename or "").lower()
+    if filename_lower.endswith(".docx"):
+        mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif filename_lower.endswith(".html") or filename_lower.endswith(".htm"):
+        mime = "text/html"
+    else:
+        raise HTTPException(400, "Solo se admiten ficheros .docx o .html como plantilla base.")
+
+    ext = "docx" if mime.startswith("application/") else "html"
+    fname = f"tpl_{report_type}_{uuid.uuid4().hex}.{ext}"
+    (_template_root() / fname).write_bytes(data)
+
+    row = (
+        filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
+        .filter(ReportBrandingConfig.report_type == report_type)
+        .first()
+    )
+    if not row:
+        row = ReportBrandingConfig(
+            organization_id=current_user.organization_id,
+            report_type=report_type,
+        )
+        db.add(row)
+
+    # Borrar fichero anterior
+    if row.template_filename:
+        old = _template_root() / row.template_filename
+        try:
+            old.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    row.template_filename = fname
+    row.template_mime = mime
+    db.commit()
+
+    log_action(db, current_user, "report_template_file_upload",
+               f"Fichero de plantilla subido para '{report_type}' ({ext})", "report_template")
+    return {"ok": True, "filename": fname, "mime": mime}
+
+
+@router.delete("/{report_type}/template-file")
+def delete_template_file(
+    report_type: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Elimina el fichero de plantilla base del template."""
+    if report_type not in VALID_REPORT_TYPES:
+        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+    row = (
+        filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
+        .filter(ReportBrandingConfig.report_type == report_type)
+        .first()
+    )
+    if not row or not row.template_filename:
+        raise HTTPException(404, "No hay fichero de plantilla configurado")
+    tpl_path = _template_root() / row.template_filename
+    try:
+        tpl_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+    row.template_filename = None
+    row.template_mime = None
     db.commit()
     return {"ok": True}
 

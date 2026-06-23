@@ -19,23 +19,23 @@ const ViewOsint = {
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
-      'OSINT',
-      'Inteligencia de fuentes abiertas: emails, dominios, URLs, usernames, IPs'
+      t('osint.title'),
+      t('osint.subtitle')
     ) + `
       <!-- ── SCAN LAUNCHER (siempre visible) ── -->
       <div id="osint-launcher" class="card" style="margin-bottom:16px;border-left:4px solid var(--brand-purple);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3 style="margin:0;font-size:15px;">Lanzar escaneo</h3>
+          <h3 style="margin:0;font-size:15px;">${t('osint.launch_scan')}</h3>
           <div style="display:flex;gap:8px;">
             <button class="btn btn-sm" id="btn-bulk-toggle"
               onclick="ViewOsint._toggleBulk()"
               style="font-size:12px;">
-              Modo masivo
+              ${t('osint.bulk_mode')}
             </button>
             <button class="btn btn-sm" id="btn-entraid-toggle"
               onclick="ViewOsint._toggleEntraID()"
               style="font-size:12px;background:var(--bg-muted);">
-              Importar de Entra ID
+              ${t('osint.import_entraid')}
             </button>
           </div>
         </div>
@@ -44,24 +44,24 @@ const ViewOsint = {
         <div id="scan-single">
           <div style="display:grid;grid-template-columns:160px 1fr auto;gap:10px;align-items:end;">
             <div>
-              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Tipo</label>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('common.type')}</label>
               <select id="scan-type" onchange="ViewOsint._updatePlaceholder()">
-                <option value="email">Email</option>
-                <option value="domain">Dominio</option>
-                <option value="ip">IP</option>
-                <option value="url">URL</option>
+                <option value="email">${t('osint.target_types.email')}</option>
+                <option value="domain">${t('osint.target_types.domain')}</option>
+                <option value="ip">${t('osint.target_types.ip')}</option>
+                <option value="url">${t('osint.target_types.url')}</option>
                 <option value="username">Username (GitHub)</option>
               </select>
             </div>
             <div>
               <label id="target-label" style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">
-                Email objetivo
+                ${t('osint.email_target')}
               </label>
               <input id="scan-target" type="text" placeholder="usuario@empresa.com"
                 onkeydown="if(event.key==='Enter') ViewOsint._startScan()">
             </div>
             <button class="btn btn-primary" onclick="ViewOsint._startScan()" style="height:38px;min-width:100px;">
-              Escanear
+              ${t('osint.scan')}
             </button>
           </div>
         </div>
@@ -70,35 +70,35 @@ const ViewOsint = {
         <div id="scan-bulk" style="display:none;">
           <div style="display:grid;grid-template-columns:160px 1fr auto;gap:10px;align-items:start;">
             <div>
-              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">Tipo</label>
+              <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('common.type')}</label>
               <select id="bulk-type">
-                <option value="email">Email</option>
-                <option value="domain">Dominio</option>
-                <option value="ip">IP</option>
-                <option value="url">URL</option>
+                <option value="email">${t('osint.target_types.email')}</option>
+                <option value="domain">${t('osint.target_types.domain')}</option>
+                <option value="ip">${t('osint.target_types.ip')}</option>
+                <option value="url">${t('osint.target_types.url')}</option>
                 <option value="username">Username</option>
               </select>
             </div>
             <div>
               <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px;">
-                Objetivos (uno por linea, maximo 50)
+                ${t('osint.bulk_targets_label')}
               </label>
               <textarea id="bulk-targets" rows="4" style="width:100%;font-family:monospace;font-size:12px;"
                 placeholder="usuario1@empresa.com&#10;usuario2@empresa.com&#10;dominio.com&#10;..."></textarea>
             </div>
             <button class="btn btn-primary" onclick="ViewOsint._startBulkScan()" style="margin-top:20px;min-width:100px;">
-              Escanear todos
+              ${t('osint.scan_all')}
             </button>
           </div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
-            Los escaneos se ejecutan en segundo plano. Podras ver el progreso en la pestana Escaneos.
+            ${t('osint.bulk_hint')}
           </div>
         </div>
 
         <!-- Panel Entra ID (oculto por defecto) -->
         <div id="entraid-panel" style="display:none;border-top:1px solid var(--border-color);margin-top:14px;padding-top:14px;">
           <h4 style="margin:0 0 12px;font-size:14px;color:var(--brand-purple);">
-            Importar desde Microsoft Entra ID (Azure AD)
+            ${t('osint.entraid_title')}
           </h4>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
             <div>
@@ -115,17 +115,17 @@ const ViewOsint = {
             </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button class="btn btn-sm" onclick="ViewOsint._entraidTest()">Probar conexion</button>
-            <button class="btn btn-sm" onclick="ViewOsint._entraidPreview()">Ver objetivos</button>
+            <button class="btn btn-sm" onclick="ViewOsint._entraidTest()">${t('osint.test_connection')}</button>
+            <button class="btn btn-sm" onclick="ViewOsint._entraidPreview()">${t('osint.view_targets')}</button>
             <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
-              <input type="checkbox" id="eid-users" checked> Escanear usuarios
+              <input type="checkbox" id="eid-users" checked> ${t('osint.scan_users')}
             </label>
             <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
-              <input type="checkbox" id="eid-domains" checked> Escanear dominios
+              <input type="checkbox" id="eid-domains" checked> ${t('osint.scan_domains')}
             </label>
             <input type="number" id="eid-limit" value="50" min="1" max="200"
-              style="width:70px;font-size:12px;" title="Limite de usuarios">
-            <span style="font-size:11px;color:var(--text-muted);">usuarios max</span>
+              style="width:70px;font-size:12px;" title="${t('osint.user_limit')}">
+            <span style="font-size:11px;color:var(--text-muted);">${t('osint.users_max')}</span>
           </div>
           <div id="entraid-status" style="margin-top:10px;font-size:13px;"></div>
           <div id="entraid-preview" style="margin-top:10px;"></div>
@@ -134,11 +134,11 @@ const ViewOsint = {
 
       <!-- ── TABS ── -->
       <div id="osint-tabs" style="display:flex;gap:4px;border-bottom:2px solid var(--border-color);margin-bottom:16px;">
-        ${['findings','scans','identifiers','stats'].map(t => `
-          <button class="osint-tab" data-tab="${t}" onclick="ViewOsint._tab='${t}';ViewOsint._renderTab();"
+        ${['findings','scans','identifiers','stats'].map(t2 => `
+          <button class="osint-tab" data-tab="${t2}" onclick="ViewOsint._tab='${t2}';ViewOsint._renderTab();"
             style="padding:8px 18px;border:none;border-bottom:2px solid transparent;background:none;
                    cursor:pointer;font-size:14px;margin-bottom:-2px;color:var(--text-muted);">
-            ${{findings:'Hallazgos',scans:'Escaneos',identifiers:'Objetivos',stats:'Estadisticas'}[t]}
+            ${{findings:t('osint.findings'),scans:t('osint.scans'),identifiers:t('osint.identifiers'),stats:t('osint.stats')}[t2]}
           </button>`).join('')}
       </div>
       <div id="osint-content"></div>
@@ -150,7 +150,7 @@ const ViewOsint = {
         <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;
                     border-bottom:1px solid var(--border-color);background:var(--brand-purple);color:white;
                     position:sticky;top:0;z-index:1;">
-          <h3 id="drawer-title" style="margin:0;font-size:16px;">Detalle</h3>
+          <h3 id="drawer-title" style="margin:0;font-size:16px;">${t('common.details')}</h3>
           <button onclick="ViewOsint._closeDrawer()"
             style="background:none;border:none;color:white;font-size:22px;cursor:pointer;padding:0 4px;line-height:1;">
             &times;
@@ -178,7 +178,7 @@ const ViewOsint = {
       this._identifiers = identifiers.items || [];
       this._stats = stats;
     } catch (e) {
-      UI.message('Error cargando OSINT: ' + e.message, 'error');
+      UI.message(t('common.error') + ': ' + e.message, 'error');
     }
   },
 
@@ -229,11 +229,11 @@ const ViewOsint = {
 
   _updatePlaceholder() {
     const labels = {
-      email: 'Email objetivo',
-      domain: 'Dominio (ej: empresa.com)',
-      url: 'URL completa (ej: https://...)',
-      username: 'Username de GitHub',
-      ip: 'Direccion IP (ej: 8.8.8.8)'
+      email: t('osint.email_target'),
+      domain: t('osint.domain_target'),
+      url: t('osint.url_target'),
+      username: t('osint.username_target'),
+      ip: t('osint.ip_target')
     };
     const placeholders = {
       email: 'usuario@empresa.com',
@@ -244,7 +244,7 @@ const ViewOsint = {
     };
     const type = document.getElementById('scan-type')?.value;
     if (type) {
-      document.getElementById('target-label').textContent = labels[type] || 'Objetivo';
+      document.getElementById('target-label').textContent = labels[type] || t('common.target');
       document.getElementById('scan-target').placeholder = placeholders[type] || '';
     }
   },
@@ -259,28 +259,28 @@ const ViewOsint = {
       ${pending.length ? `
       <div style="background:var(--warning-soft);border:1px solid var(--warning);border-radius:8px;
                   padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--warning);">
-        ${pending.length} escaneo(s) en progreso — actualizando automaticamente...
+        ${pending.length} ${t('osint.scans_in_progress')}
       </div>` : ''}
 
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3 style="margin:0;">Historial (${this._scans.length})</h3>
+          <h3 style="margin:0;">${t('osint.history')} (${this._scans.length})</h3>
           <select onchange="ViewOsint._filterStatus=this.value;ViewOsint._renderTab();" style="font-size:12px;">
-            <option value="">Todos los estados</option>
-            <option value="completed">Completados</option>
-            <option value="in_progress">En progreso</option>
-            <option value="pending">Pendientes</option>
-            <option value="failed">Fallidos</option>
+            <option value="">${t('osint.all_statuses')}</option>
+            <option value="completed">${t('osint.status.completed')}</option>
+            <option value="in_progress">${t('common.in_progress')}</option>
+            <option value="pending">${t('common.pending')}</option>
+            <option value="failed">${t('osint.status.failed')}</option>
           </select>
         </div>
         ${filtered.length === 0 ? `
-          <p style="color:var(--text-muted);margin:0;">Sin escaneos todavia. Usa el lanzador de arriba.</p>
+          <p style="color:var(--text-muted);margin:0;">${t('osint.no_scans_yet')}</p>
         ` : `
           <div style="overflow-x:auto;">
             <table class="data">
               <thead><tr>
-                <th>Tipo</th><th>Objetivo</th><th>Estado</th>
-                <th>Hallazgos</th><th>Score</th><th>Fecha</th><th></th>
+                <th>${t('common.type')}</th><th>${t('common.target')}</th><th>${t('common.status')}</th>
+                <th>${t('osint.findings')}</th><th>${t('common.score')}</th><th>${t('common.date')}</th><th></th>
               </tr></thead>
               <tbody>
                 ${filtered.map(s => `
@@ -299,7 +299,7 @@ const ViewOsint = {
                   </td>
                   <td style="text-align:right;">
                     <button class="btn btn-xs" onclick="event.stopPropagation();ViewOsint._openScanDrawer(${s.id})">
-                      Ver
+                      ${t('common.view')}
                     </button>
                   </td>
                 </tr>`).join('')}
@@ -342,42 +342,42 @@ const ViewOsint = {
       ${critical > 0 ? `
       <div style="background:#FEF2F2;border-left:4px solid var(--danger);border-radius:6px;
                   padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--danger);">
-        <strong>${critical} hallazgo(s) CRITICOS pendientes.</strong> Requieren atencion inmediata.
+        <strong>${critical} ${t('osint.critical_findings_pending')}</strong>
       </div>` : pending > 0 ? `
       <div style="background:var(--warning-soft);border-left:4px solid var(--warning);border-radius:6px;
                   padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--brand-orange);">
-        <strong>${pending} pendiente(s)</strong> &nbsp;·&nbsp; ${resolved} resuelto(s).
+        <strong>${pending} ${t('osint.pending_count')}</strong> &nbsp;·&nbsp; ${resolved} ${t('osint.resolved_count')}.
       </div>` : this._findings.length > 0 ? `
       <div style="background:var(--success-soft);border-left:4px solid var(--success);border-radius:6px;
                   padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--success);">
-        Todos los hallazgos estan resueltos.
+        ${t('osint.all_resolved')}
       </div>` : ''}
 
       <!-- Filtros + tabs de estado -->
       <div class="card" style="margin-bottom:12px;padding:12px 16px;">
         <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <input type="text" id="finding-search" placeholder="Buscar..." style="width:170px;"
+            <input type="text" id="finding-search" placeholder="${t('common.search')}..." style="width:170px;"
               value="${UI.esc(this._searchText)}"
               oninput="ViewOsint._searchText=this.value;ViewOsint._renderFindings(document.getElementById('osint-content'));">
             <select onchange="ViewOsint._filterRisk=this.value;ViewOsint._renderFindings(document.getElementById('osint-content'));"
               style="font-size:12px;width:auto;">
-              <option value="">Todo nivel</option>
+              <option value="">${t('osint.all_levels')}</option>
               ${['critical','high','medium','low','info'].map(r =>
                 `<option value="${r}" ${this._filterRisk===r?'selected':''}>${r.toUpperCase()}</option>`
               ).join('')}
             </select>
             <select onchange="ViewOsint._filterSource=this.value;ViewOsint._renderFindings(document.getElementById('osint-content'));"
               style="font-size:12px;width:auto;">
-              <option value="">Toda fuente</option>
+              <option value="">${t('osint.all_sources')}</option>
               ${sources.map(s => `<option value="${s}" ${this._filterSource===s?'selected':''}>${s}</option>`).join('')}
             </select>
             <!-- Tabs Pendientes / Resueltos / Todos -->
             <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--border-strong);flex-shrink:0;">
               ${[
-                ['pending',    `Pendientes (${pending})`],
-                ['remediated', `Resueltos (${resolved})`],
-                ['',           `Todos (${this._findings.length})`],
+                ['pending',    `${t('osint.tab_pending')} (${pending})`],
+                ['remediated', `${t('osint.tab_resolved')} (${resolved})`],
+                ['',           `${t('common.all')} (${this._findings.length})`],
               ].map(([val, lbl]) => `
                 <button onclick="ViewOsint._filterStatus='${val}';ViewOsint._selectedFindings.clear();ViewOsint._renderFindings(document.getElementById('osint-content'));"
                   style="padding:4px 12px;font-size:12px;border:none;cursor:pointer;white-space:nowrap;
@@ -388,8 +388,8 @@ const ViewOsint = {
             </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <span style="font-size:12px;color:var(--text-muted);">${filtered.length} resultado(s)</span>
-            <button class="btn btn-sm" onclick="ViewOsint._exportCSV()">Exportar CSV</button>
+            <span style="font-size:12px;color:var(--text-muted);">${filtered.length} ${t('osint.results_count')}</span>
+            <button class="btn btn-sm" onclick="ViewOsint._exportCSV()">${t('common.export')} CSV</button>
           </div>
         </div>
       </div>
@@ -398,25 +398,25 @@ const ViewOsint = {
       <div id="osint-bulk-bar" style="display:${selCount > 0 ? 'flex' : 'none'};
            align-items:center;gap:10px;background:var(--brand-purple);color:#fff;
            padding:10px 16px;border-radius:8px;margin-bottom:10px;font-size:13px;flex-wrap:wrap;">
-        <strong id="osint-bulk-count">${selCount} seleccionado(s)</strong>
+        <strong id="osint-bulk-count">${selCount} ${t('osint.selected_count')}</strong>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
           ${canEdit ? `
           <button class="btn btn-sm"
             style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3);"
-            onclick="ViewOsint._bulkCreateIncidents()">+ Incidente</button>
+            onclick="ViewOsint._bulkCreateIncidents()">+ ${t('common.incident')}</button>
           <button class="btn btn-sm"
             style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3);"
-            onclick="ViewOsint._bulkResolve()">Resolver</button>
+            onclick="ViewOsint._bulkResolve()">${t('osint.resolve')}</button>
           ` : ''}
           ${isAdmin ? `
           <button class="btn btn-sm"
             style="background:#dc2626;color:#fff;border-color:#dc2626;"
-            onclick="ViewOsint._bulkDelete()">Eliminar</button>
+            onclick="ViewOsint._bulkDelete()">${t('common.delete')}</button>
           ` : ''}
           <button class="btn btn-sm"
             style="background:rgba(255,255,255,0.1);color:#fff;border-color:rgba(255,255,255,0.2);"
             onclick="ViewOsint._selectedFindings.clear();ViewOsint._renderFindings(document.getElementById('osint-content'));">
-            Cancelar
+            ${t('common.cancel')}
           </button>
         </div>
       </div>
@@ -425,19 +425,19 @@ const ViewOsint = {
         ${filtered.length === 0 ? `
           <p style="color:var(--text-muted);margin:0;">
             ${this._findings.length === 0
-              ? 'Sin hallazgos todavia. Lanza un escaneo desde el panel superior.'
-              : 'Sin hallazgos con los filtros actuales.'}
+              ? t('osint.no_findings_yet')
+              : t('osint.no_findings_filter')}
           </p>
         ` : `
           <div style="overflow-x:auto;">
             <table class="data">
               <thead><tr>
                 <th style="width:32px;text-align:center;">
-                  <input type="checkbox" id="bulk-select-all" title="Seleccionar todos"
+                  <input type="checkbox" id="bulk-select-all" title="${t('common.select_all')}"
                     onclick="event.stopPropagation();ViewOsint._selectAll(this.checked);"
                     ${selCount > 0 && selCount === filtered.length ? 'checked' : ''}>
                 </th>
-                <th>Nivel</th><th>Titulo</th><th>Fuente</th><th>Score</th><th>Estado</th>
+                <th>${t('common.level')}</th><th>${t('common.title')}</th><th>${t('common.source')}</th><th>${t('common.score')}</th><th>${t('common.status')}</th>
                 ${canEdit ? '<th></th>' : ''}
               </tr></thead>
               <tbody>
@@ -459,7 +459,7 @@ const ViewOsint = {
                       ${f.is_remediated
                         ? 'background:var(--success-soft);color:var(--success);'
                         : 'background:var(--danger-soft);color:var(--danger);'}">
-                      ${f.is_remediated ? 'Resuelto' : 'Pendiente'}
+                      ${f.is_remediated ? t('osint.resolved') : t('common.pending')}
                     </span>
                   </td>
                   ${canEdit ? `
@@ -467,12 +467,12 @@ const ViewOsint = {
                     ${!f.is_remediated ? `
                       <button class="btn btn-xs" style="margin-right:4px;"
                         onclick="ViewOsint._createIncident(${f.id})"
-                        title="Crear incidente y mover a resueltos">+ Incidente</button>
+                        title="${t('osint.create_incident_hint')}">+ ${t('common.incident')}</button>
                       <button class="btn btn-xs btn-primary"
-                        onclick="ViewOsint._remediate(${f.id})">Resolver</button>
+                        onclick="ViewOsint._remediate(${f.id})">${t('osint.resolve')}</button>
                     ` : `
                       <button class="btn btn-xs"
-                        onclick="ViewOsint._unremediate(${f.id})">Desmarcar</button>
+                        onclick="ViewOsint._unremediate(${f.id})">${t('osint.unmark')}</button>
                     `}
                   </td>` : ''}
                 </tr>`).join('')}
@@ -508,13 +508,13 @@ const ViewOsint = {
     const n = this._selectedFindings.size;
     bar.style.display = n > 0 ? 'flex' : 'none';
     const lbl = document.getElementById('osint-bulk-count');
-    if (lbl) lbl.textContent = `${n} seleccionado(s)`;
+    if (lbl) lbl.textContent = `${n} ${t('osint.selected_count')}`;
   },
 
   async _bulkCreateIncidents() {
     const ids = [...this._selectedFindings];
     if (!ids.length) return;
-    if (!confirm(`Crear incidente para ${ids.length} hallazgo(s) y marcarlos como resueltos?`)) return;
+    if (!confirm(`${t('osint.bulk_create_incident_confirm')} ${ids.length}?`)) return;
     UI.loading(true);
     let ok = 0, err = 0;
     for (const id of ids) {
@@ -526,14 +526,14 @@ const ViewOsint = {
     }
     UI.loading(false);
     this._selectedFindings.clear();
-    UI.message(`${ok} incidente(s) creados${err ? `, ${err} fallaron` : ''}`, ok ? 'success' : 'error');
+    UI.message(`${ok} ${t('osint.incidents_created')}${err ? `, ${err} ${t('osint.failed')}` : ''}`, ok ? 'success' : 'error');
     await this._load(); this._renderTab();
   },
 
   async _bulkResolve() {
     const ids = [...this._selectedFindings];
     if (!ids.length) return;
-    if (!confirm(`Marcar ${ids.length} hallazgo(s) como resueltos?`)) return;
+    if (!confirm(`${t('osint.bulk_resolve_confirm')} ${ids.length}?`)) return;
     UI.loading(true);
     let ok = 0, err = 0;
     for (const id of ids) {
@@ -542,14 +542,14 @@ const ViewOsint = {
     }
     UI.loading(false);
     this._selectedFindings.clear();
-    UI.message(`${ok} resuelto(s)${err ? `, ${err} fallaron` : ''}`, ok ? 'success' : 'error');
+    UI.message(`${ok} ${t('osint.resolved')}${err ? `, ${err} ${t('osint.failed')}` : ''}`, ok ? 'success' : 'error');
     await this._load(); this._renderTab();
   },
 
   async _bulkDelete() {
     const ids = [...this._selectedFindings];
     if (!ids.length) return;
-    if (!confirm(`Eliminar definitivamente ${ids.length} hallazgo(s)? Esta accion no se puede deshacer.`)) return;
+    if (!confirm(`${t('osint.bulk_delete_confirm')} ${ids.length}?`)) return;
     UI.loading(true);
     let ok = 0, err = 0;
     for (const id of ids) {
@@ -558,7 +558,7 @@ const ViewOsint = {
     }
     UI.loading(false);
     this._selectedFindings.clear();
-    UI.message(`${ok} eliminado(s)${err ? `, ${err} fallaron` : ''}`, ok ? 'success' : 'error');
+    UI.message(`${ok} ${t('osint.deleted')}${err ? `, ${err} ${t('osint.failed')}` : ''}`, ok ? 'success' : 'error');
     await this._load(); this._renderTab();
   },
 
@@ -570,23 +570,23 @@ const ViewOsint = {
     c.innerHTML = `
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3 style="margin:0;">Objetivos monitorizados (${this._identifiers.length})</h3>
+          <h3 style="margin:0;">${t('osint.monitored_targets')} (${this._identifiers.length})</h3>
           ${types.length > 1 ? `
           <select onchange="ViewOsint._filterType=this.value;ViewOsint._renderIdentifiers(document.getElementById('osint-content'));"
             style="font-size:12px;">
-            <option value="">Todos los tipos</option>
-            ${types.map(t => `<option value="${t}" ${this._filterType===t?'selected':''}>${t}</option>`).join('')}
+            <option value="">${t('osint.all_types')}</option>
+            ${types.map(t2 => `<option value="${t2}" ${this._filterType===t2?'selected':''}>${t2}</option>`).join('')}
           </select>` : ''}
         </div>
         ${this._identifiers.length === 0 ? `
           <p style="color:var(--text-muted);margin:0;">
-            Sin objetivos todavia. Se registran automaticamente al escanear.
+            ${t('osint.no_identifiers_yet')}
           </p>
         ` : `
           <div style="overflow-x:auto;">
             <table class="data">
               <thead><tr>
-                <th>Tipo</th><th>Valor</th><th>Ultimo escaneo</th><th>Riesgo</th><th style="width:140px;"></th>
+                <th>${t('common.type')}</th><th>${t('common.value')}</th><th>${t('osint.last_scan')}</th><th>${t('common.risk')}</th><th style="width:140px;"></th>
               </tr></thead>
               <tbody>
                 ${this._identifiers
@@ -596,17 +596,17 @@ const ViewOsint = {
                     <td>${this._typeBadge(i.identifier_type)}</td>
                     <td><code style="font-size:12px;">${UI.esc(i.value)}</code></td>
                     <td style="font-size:12px;color:var(--text-muted);">
-                      ${i.last_scanned_at ? new Date(i.last_scanned_at).toLocaleString('es-ES') : 'Nunca'}
+                      ${i.last_scanned_at ? new Date(i.last_scanned_at).toLocaleString('es-ES') : t('osint.never')}
                     </td>
                     <td>${this._riskBadge(i.risk_level)}</td>
                     <td style="text-align:right;white-space:nowrap;">
                       <button class="btn btn-xs"
                         onclick="ViewOsint._rescan('${i.identifier_type}','${UI.esc(i.value)}')">
-                        Re-escanear
+                        ${t('osint.rescan')}
                       </button>
                       <button class="btn btn-xs" style="margin-left:4px;color:var(--danger);"
                         onclick="ViewOsint._deleteIdentifier(${i.id})">
-                        Eliminar
+                        ${t('common.delete')}
                       </button>
                     </td>
                   </tr>`).join('')}
@@ -640,12 +640,12 @@ const ViewOsint = {
     c.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">
         ${[
-          ['Escaneos', s.scans_total||0, 'var(--brand-purple)'],
-          ['Hallazgos', s.findings_total||0, 'var(--danger)'],
-          ['Por remediar', s.findings_pending||0, 'var(--warning)'],
-          ['Remediados', s.findings_remediated||0, 'var(--success)'],
-          ['Tasa remediacion', (s.remediation_rate||0)+'%', 'var(--info)'],
-          ['Score promedio', (s.avg_risk_score||0).toFixed(1), this._scoreColor(s.avg_risk_score||0)]
+          [t('osint.scans'), s.scans_total||0, 'var(--brand-purple)'],
+          [t('osint.findings'), s.findings_total||0, 'var(--danger)'],
+          [t('osint.to_remediate'), s.findings_pending||0, 'var(--warning)'],
+          [t('osint.remediated'), s.findings_remediated||0, 'var(--success)'],
+          [t('osint.remediation_rate'), (s.remediation_rate||0)+'%', 'var(--info)'],
+          [t('osint.avg_score'), (s.avg_risk_score||0).toFixed(1), this._scoreColor(s.avg_risk_score||0)]
         ].map(([label, val, color]) => `
           <div class="card" style="margin:0;text-align:center;padding:16px 12px;">
             <div style="font-size:26px;font-weight:bold;color:${color};">${val}</div>
@@ -655,12 +655,12 @@ const ViewOsint = {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
         <div class="card" style="margin:0;">
-          <h4 style="margin:0 0 14px;">Hallazgos por nivel de riesgo</h4>
+          <h4 style="margin:0 0 14px;">${t('osint.findings_by_risk_level')}</h4>
           ${[
-            ['critical','Critico','#DC2626'],
-            ['high','Alto','#F97316'],
-            ['medium','Medio','#F59E0B'],
-            ['low','Bajo','#10B981'],
+            ['critical',t('common.critical'),'#DC2626'],
+            ['high',t('common.high'),'#F97316'],
+            ['medium',t('common.medium'),'#F59E0B'],
+            ['low',t('common.low'),'#10B981'],
             ['info','Info','#6B7280']
           ].map(([key, label, color]) => `
             <div style="margin-bottom:8px;">
@@ -670,12 +670,12 @@ const ViewOsint = {
         </div>
 
         <div class="card" style="margin:0;">
-          <h4 style="margin:0 0 14px;">Escaneos por tipo</h4>
+          <h4 style="margin:0 0 14px;">${t('osint.scans_by_type')}</h4>
           ${[
-            ['email','Email','var(--brand-purple)'],
-            ['domain','Dominio','var(--brand-orange)'],
-            ['ip','IP','#F59E0B'],
-            ['url','URL','var(--info)'],
+            ['email',t('osint.target_types.email'),'var(--brand-purple)'],
+            ['domain',t('osint.target_types.domain'),'var(--brand-orange)'],
+            ['ip',t('osint.target_types.ip'),'#F59E0B'],
+            ['url',t('osint.target_types.url'),'var(--info)'],
             ['username','Username','#10B981']
           ].map(([key, label, color]) => `
             <div style="margin-bottom:8px;">
@@ -687,7 +687,7 @@ const ViewOsint = {
 
       ${Object.keys(fbs).length > 0 ? `
       <div class="card">
-        <h4 style="margin:0 0 14px;">Hallazgos por fuente</h4>
+        <h4 style="margin:0 0 14px;">${t('osint.findings_by_source')}</h4>
         <div style="display:flex;flex-wrap:wrap;gap:12px;">
           ${Object.entries(fbs).map(([src, count]) => `
             <div style="background:var(--bg-muted);border-radius:8px;padding:12px 16px;text-align:center;min-width:80px;">
@@ -706,8 +706,8 @@ const ViewOsint = {
     const content = document.getElementById('drawer-content');
     const title = document.getElementById('drawer-title');
     drawer.style.display = 'block';
-    title.textContent = 'Cargando...';
-    content.innerHTML = '<div style="color:var(--text-muted);padding:20px 0;">Cargando...</div>';
+    title.textContent = t('common.loading');
+    content.innerHTML = `<div style="color:var(--text-muted);padding:20px 0;">${t('common.loading')}</div>`;
 
     try {
       const data = await Api.get(`/api/v1/osint/scans/${scanId}/findings`);
@@ -722,12 +722,12 @@ const ViewOsint = {
       content.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
           ${[
-            ['Tipo', this._typeBadge(scan.scan_type)],
-            ['Estado', this._statusBadge(scan.status)],
-            ['Hallazgos', `<strong>${scan.findings_count}</strong>`],
-            ['Score', `<strong style="color:${this._scoreColor(scan.risk_score)};">${(scan.risk_score||0).toFixed(1)}</strong>`],
-            ['Iniciado', scan.started_at ? new Date(scan.started_at).toLocaleString('es-ES') : '—'],
-            ['Completado', scan.completed_at ? new Date(scan.completed_at).toLocaleString('es-ES') : '—'],
+            [t('common.type'), this._typeBadge(scan.scan_type)],
+            [t('common.status'), this._statusBadge(scan.status)],
+            [t('osint.findings'), `<strong>${scan.findings_count}</strong>`],
+            [t('common.score'), `<strong style="color:${this._scoreColor(scan.risk_score)};">${(scan.risk_score||0).toFixed(1)}</strong>`],
+            [t('osint.started'), scan.started_at ? new Date(scan.started_at).toLocaleString('es-ES') : '—'],
+            [t('osint.completed'), scan.completed_at ? new Date(scan.completed_at).toLocaleString('es-ES') : '—'],
           ].map(([l,v]) => `
             <div>
               <div style="font-size:11px;color:var(--text-muted);">${l}</div>
@@ -738,13 +738,13 @@ const ViewOsint = {
         ${scan.error_message ? `
           <div style="background:var(--danger-soft);border-radius:6px;padding:10px;
                       font-size:12px;color:var(--danger);margin-bottom:14px;">
-            Error: ${UI.esc(scan.error_message)}
+            ${t('common.error')}: ${UI.esc(scan.error_message)}
           </div>` : ''}
 
-        <h4 style="margin:0 0 10px;font-size:14px;">Hallazgos (${findings.length})</h4>
+        <h4 style="margin:0 0 10px;font-size:14px;">${t('osint.findings')} (${findings.length})</h4>
 
         ${findings.length === 0
-          ? `<p style="color:var(--text-muted);font-size:13px;">Sin hallazgos registrados.</p>`
+          ? `<p style="color:var(--text-muted);font-size:13px;">${t('osint.no_findings_recorded')}</p>`
           : findings.map(f => `
             <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px;
                         margin-bottom:10px;border-left:4px solid ${this._riskColor(f.risk_level)};">
@@ -754,8 +754,8 @@ const ViewOsint = {
                 ${this._riskBadge(f.risk_level)}
               </div>
               <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-                Fuente: ${UI.esc(String(f.source))} | Score: ${f.risk_score.toFixed(1)}
-                ${f.is_remediated ? ' | <span style="color:var(--success);">Remediado</span>' : ''}
+                ${t('common.source')}: ${UI.esc(String(f.source))} | ${t('common.score')}: ${f.risk_score.toFixed(1)}
+                ${f.is_remediated ? ` | <span style="color:var(--success);">${t('osint.remediated')}</span>` : ''}
               </div>
               ${f.description ? `
               <div style="font-size:12px;color:var(--text-muted);white-space:pre-wrap;margin-bottom:8px;">
@@ -763,11 +763,11 @@ const ViewOsint = {
               </div>` : ''}
               ${canAct ? `
               <div style="display:flex;gap:6px;">
-                <button class="btn btn-xs" onclick="ViewOsint._openFindingDrawer(${f.id})">Ver detalle</button>
+                <button class="btn btn-xs" onclick="ViewOsint._openFindingDrawer(${f.id})">${t('osint.view_detail')}</button>
                 <button class="btn btn-xs" onclick="ViewOsint._createIncident(${f.id})"
-                  title="Crear incidente de seguridad">+ Incidente</button>
+                  title="${t('osint.create_security_incident')}">+ ${t('common.incident')}</button>
                 ${!f.is_remediated
-                  ? `<button class="btn btn-xs btn-primary" onclick="ViewOsint._remediateAndRefreshScan(${f.id},${scanId})">Resolver</button>`
+                  ? `<button class="btn btn-xs btn-primary" onclick="ViewOsint._remediateAndRefreshScan(${f.id},${scanId})">${t('osint.resolve')}</button>`
                   : ''}
               </div>` : ''}
             </div>`).join('')}
@@ -776,12 +776,12 @@ const ViewOsint = {
           <div style="border-top:1px solid var(--border-color);padding-top:14px;margin-top:14px;">
             <button class="btn btn-sm" style="background:var(--danger);color:white;"
               onclick="ViewOsint._deleteScan(${scanId})">
-              Eliminar escaneo
+              ${t('osint.delete_scan')}
             </button>
           </div>` : ''}
       `;
     } catch (e) {
-      content.innerHTML = `<p style="color:var(--danger);">Error: ${UI.esc(e.message)}</p>`;
+      content.innerHTML = `<p style="color:var(--danger);">${t('common.error')}: ${UI.esc(e.message)}</p>`;
     }
   },
 
@@ -792,8 +792,8 @@ const ViewOsint = {
     const content = document.getElementById('drawer-content');
     const title = document.getElementById('drawer-title');
     drawer.style.display = 'block';
-    title.textContent = 'Hallazgo OSINT';
-    content.innerHTML = '<div style="color:var(--text-muted);">Cargando...</div>';
+    title.textContent = t('osint.finding_title');
+    content.innerHTML = `<div style="color:var(--text-muted);">${t('common.loading')}</div>`;
 
     try {
       const f = await Api.get(`/api/v1/osint/findings/${findingId}`);
@@ -817,7 +817,7 @@ const ViewOsint = {
         if (rows) {
           metaHtml = `<div style="margin-top:14px;">
             <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">
-              Datos tecnicos
+              ${t('osint.technical_data')}
             </div>
             <table style="width:100%;border-collapse:collapse;">${rows}</table>
           </div>`;
@@ -836,24 +836,24 @@ const ViewOsint = {
             <span class="badge badge-muted" style="font-size:11px;">${UI.esc(f.source)}</span>
             <span class="badge badge-muted" style="font-size:11px;">${UI.esc(f.finding_type)}</span>
             <span style="font-size:12px;font-weight:bold;color:${this._scoreColor(f.risk_score)};">
-              Score: ${f.risk_score.toFixed(1)}
+              ${t('common.score')}: ${f.risk_score.toFixed(1)}
             </span>
           </div>
         </div>
 
         ${f.description ? `
         <div style="margin-bottom:14px;">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">Descripcion</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${t('common.description')}</div>
           <div style="font-size:13px;white-space:pre-wrap;line-height:1.5;">${UI.esc(f.description)}</div>
         </div>` : ''}
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
           ${[
-            ['Estado', f.is_remediated
-              ? '<span style="color:var(--success);">Remediado</span>'
-              : '<span style="color:var(--danger);">Pendiente</span>'],
-            ['Detectado', f.created_at ? new Date(f.created_at).toLocaleString('es-ES') : '—'],
-            ['Remediado el', f.remediated_at ? new Date(f.remediated_at).toLocaleString('es-ES') : '—'],
+            [t('common.status'), f.is_remediated
+              ? `<span style="color:var(--success);">${t('osint.remediated')}</span>`
+              : `<span style="color:var(--danger);">${t('common.pending')}</span>`],
+            [t('osint.detected'), f.created_at ? new Date(f.created_at).toLocaleString('es-ES') : '—'],
+            [t('osint.remediated_on'), f.remediated_at ? new Date(f.remediated_at).toLocaleString('es-ES') : '—'],
           ].map(([l,v]) => `
             <div>
               <div style="font-size:11px;color:var(--text-muted);">${l}</div>
@@ -865,43 +865,43 @@ const ViewOsint = {
 
         ${canEdit ? `
         <div style="border-top:1px solid var(--border-color);padding-top:14px;margin-top:16px;">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">Acciones</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">${t('common.actions')}</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
             ${f.is_remediated
               ? `<button class="btn btn-sm" onclick="ViewOsint._unremediate(${f.id})">
-                   Desmarcar como remediado
+                   ${t('osint.unmark_remediated')}
                  </button>`
               : `<button class="btn btn-sm btn-primary" onclick="ViewOsint._remediate(${f.id})">
-                   Marcar como remediado
+                   ${t('osint.mark_remediated')}
                  </button>`}
             <button class="btn btn-sm" onclick="ViewOsint._createIncident(${f.id})"
               style="background:var(--brand-orange);color:white;">
-              Crear incidente
+              ${t('osint.create_incident')}
             </button>
           </div>
           <!-- Crear riesgo desde hallazgo -->
           <div style="background:var(--bg-muted);border-radius:6px;padding:10px 12px;">
             <div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--brand-purple);">
-              Crear riesgo en el registro
+              ${t('osint.create_risk_register')}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
               <div>
-                <label style="font-size:11px;">Activo afectado</label>
+                <label style="font-size:11px;">${t('osint.affected_asset')}</label>
                 <select id="risk-asset-${f.id}" style="font-size:12px;">
-                  <option value="">Cargando...</option>
+                  <option value="">${t('common.loading')}</option>
                 </select>
               </div>
               <div>
-                <label style="font-size:11px;">Amenaza relacionada</label>
+                <label style="font-size:11px;">${t('osint.related_threat')}</label>
                 <select id="risk-threat-${f.id}" style="font-size:12px;">
-                  <option value="">Cargando...</option>
+                  <option value="">${t('common.loading')}</option>
                 </select>
               </div>
             </div>
             <button class="btn btn-sm"
               style="background:var(--brand-purple);color:white;"
               onclick="ViewOsint._createRisk(${f.id})">
-              Crear riesgo
+              ${t('osint.create_risk')}
             </button>
           </div>
         </div>` : ''}
@@ -911,7 +911,7 @@ const ViewOsint = {
         this._populateRiskSelectors(f.id);
       }
     } catch (e) {
-      content.innerHTML = `<p style="color:var(--danger);">Error: ${UI.esc(e.message)}</p>`;
+      content.innerHTML = `<p style="color:var(--danger);">${t('common.error')}: ${UI.esc(e.message)}</p>`;
     }
   },
 
@@ -928,10 +928,10 @@ const ViewOsint = {
       const threatSel = document.getElementById(`risk-threat-${findingId}`);
       if (!assetSel || !threatSel) return;
 
-      assetSel.innerHTML = `<option value="">-- Seleccionar activo --</option>` +
+      assetSel.innerHTML = `<option value="">-- ${t('osint.select_asset')} --</option>` +
         assets.map(a => `<option value="${a.id}">${UI.esc(a.name)}</option>`).join('');
-      threatSel.innerHTML = `<option value="">-- Seleccionar amenaza --</option>` +
-        threats.map(t => `<option value="${t.id}">${UI.esc(t.name)}</option>`).join('');
+      threatSel.innerHTML = `<option value="">-- ${t('osint.select_threat')} --</option>` +
+        threats.map(t2 => `<option value="${t2.id}">${UI.esc(t2.name)}</option>`).join('');
     } catch (e) {
       // Silencioso — los selects mostrarán error si no cargan
     }
@@ -946,7 +946,7 @@ const ViewOsint = {
   async _startScan() {
     const type = document.getElementById('scan-type')?.value;
     const target = document.getElementById('scan-target')?.value?.trim();
-    if (!target) { UI.message('Ingresa el objetivo del escaneo', 'error'); return; }
+    if (!target) { UI.message(t('osint.enter_target'), 'error'); return; }
 
     const paramKey = { email:'email', url:'url', username:'username', domain:'domain', ip:'ip' }[type] || type;
     const endpoint = `/api/v1/osint/scans/${type}?${paramKey}=${encodeURIComponent(target)}`;
@@ -954,13 +954,13 @@ const ViewOsint = {
     try {
       UI.loading(true);
       await Api.post(endpoint, {});
-      UI.message('Escaneo iniciado. Se ejecuta en segundo plano...', 'success');
+      UI.message(t('osint.scan_started'), 'success');
       document.getElementById('scan-target').value = '';
       await this._load();
       this._tab = 'scans';
       this._renderTab();
     } catch (e) {
-      UI.message('Error: ' + e.message, 'error');
+      UI.message(t('common.error') + ': ' + e.message, 'error');
     } finally {
       UI.loading(false);
     }
@@ -969,7 +969,7 @@ const ViewOsint = {
   async _startBulkScan() {
     const type = document.getElementById('bulk-type')?.value;
     const raw = document.getElementById('bulk-targets')?.value?.trim();
-    if (!raw) { UI.message('Ingresa al menos un objetivo', 'error'); return; }
+    if (!raw) { UI.message(t('osint.enter_at_least_one_target'), 'error'); return; }
 
     try {
       UI.loading(true);
@@ -978,7 +978,7 @@ const ViewOsint = {
         {}
       );
       UI.message(
-        `${result.created} escaneo(s) iniciados${result.skipped ? `, ${result.skipped} omitidos (ya en progreso)` : ''}.`,
+        `${result.created} ${t('osint.scans_started')}${result.skipped ? `, ${result.skipped} ${t('osint.skipped')}` : ''}.`,
         'success'
       );
       document.getElementById('bulk-targets').value = '';
@@ -986,7 +986,7 @@ const ViewOsint = {
       this._tab = 'scans';
       this._renderTab();
     } catch (e) {
-      UI.message('Error: ' + e.message, 'error');
+      UI.message(t('common.error') + ': ' + e.message, 'error');
     } finally {
       UI.loading(false);
     }
@@ -1005,10 +1005,10 @@ const ViewOsint = {
   async _entraidTest() {
     const p = this._entraidParams();
     if (!p.tenant_id || !p.client_id || !p.client_secret) {
-      UI.message('Completa todos los campos de Entra ID', 'error'); return;
+      UI.message(t('osint.fill_entraid_fields'), 'error'); return;
     }
     const status = document.getElementById('entraid-status');
-    status.innerHTML = '<span style="color:var(--text-muted);">Probando conexion...</span>';
+    status.innerHTML = `<span style="color:var(--text-muted);">${t('osint.testing_connection')}</span>`;
     try {
       const r = await Api.post(
         `/api/v1/osint/sources/entraid/test?tenant_id=${encodeURIComponent(p.tenant_id)}&client_id=${encodeURIComponent(p.client_id)}&client_secret=${encodeURIComponent(p.client_secret)}`,
@@ -1016,25 +1016,25 @@ const ViewOsint = {
       );
       if (r.success) {
         status.innerHTML = `<span style="color:var(--success);">
-          Conexion exitosa — Tenant: <strong>${UI.esc(r.tenant_name)}</strong>
+          ${t('osint.connection_ok')} — Tenant: <strong>${UI.esc(r.tenant_name)}</strong>
           ${r.country ? `(${UI.esc(r.country)})` : ''}
         </span>`;
       } else {
-        status.innerHTML = `<span style="color:var(--danger);">Error: ${UI.esc(r.error || 'Fallo de conexion')}</span>`;
+        status.innerHTML = `<span style="color:var(--danger);">${t('common.error')}: ${UI.esc(r.error || t('osint.connection_failed'))}</span>`;
       }
     } catch (e) {
-      status.innerHTML = `<span style="color:var(--danger);">Error: ${UI.esc(e.message)}</span>`;
+      status.innerHTML = `<span style="color:var(--danger);">${t('common.error')}: ${UI.esc(e.message)}</span>`;
     }
   },
 
   async _entraidPreview() {
     const p = this._entraidParams();
     if (!p.tenant_id || !p.client_id || !p.client_secret) {
-      UI.message('Completa todos los campos de Entra ID', 'error'); return;
+      UI.message(t('osint.fill_entraid_fields'), 'error'); return;
     }
     const preview = document.getElementById('entraid-preview');
     const status = document.getElementById('entraid-status');
-    status.innerHTML = '<span style="color:var(--text-muted);">Cargando objetivos del tenant...</span>';
+    status.innerHTML = `<span style="color:var(--text-muted);">${t('osint.loading_tenant_targets')}</span>`;
     preview.innerHTML = '';
     try {
       const r = await Api.post(
@@ -1043,14 +1043,14 @@ const ViewOsint = {
       );
       this._entraidData = r;
       status.innerHTML = `<span style="color:var(--success);">
-        ${r.users_count} usuarios y ${r.domains_count} dominios encontrados.
+        ${r.users_count} ${t('osint.users_found')} ${t('common.and')} ${r.domains_count} ${t('osint.domains_found')}.
       </span>`;
 
       preview.innerHTML = `
         <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
             <div style="font-size:12px;font-weight:600;margin-bottom:6px;">
-              Usuarios (${r.users_count})
+              ${t('osint.users')} (${r.users_count})
             </div>
             <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);
                         border-radius:6px;padding:6px;">
@@ -1059,29 +1059,29 @@ const ViewOsint = {
                   <span style="font-weight:500;">${UI.esc(u.name || u.email)}</span>
                   <br><span style="color:var(--text-muted);font-size:11px;">${UI.esc(u.email)}</span>
                 </div>`).join('')}
-              ${r.users_count > 30 ? `<div style="font-size:11px;color:var(--text-muted);padding:4px;">...y ${r.users_count-30} mas</div>` : ''}
+              ${r.users_count > 30 ? `<div style="font-size:11px;color:var(--text-muted);padding:4px;">...${t('osint.and_more', {n: r.users_count-30})}</div>` : ''}
             </div>
           </div>
           <div>
             <div style="font-size:12px;font-weight:600;margin-bottom:6px;">
-              Dominios verificados (${r.domains_count})
+              ${t('osint.verified_domains')} (${r.domains_count})
             </div>
             <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border-color);
                         border-radius:6px;padding:6px;">
               ${(r.domains || []).map(d => `
                 <div style="font-size:12px;padding:3px 4px;border-bottom:1px solid var(--border-color);">
                   <strong>${UI.esc(d.id)}</strong>
-                  ${d.is_default ? '<span style="color:var(--brand-purple);font-size:10px;margin-left:4px;">Principal</span>' : ''}
+                  ${d.is_default ? `<span style="color:var(--brand-purple);font-size:10px;margin-left:4px;">${t('osint.primary')}</span>` : ''}
                 </div>`).join('')}
             </div>
           </div>
         </div>
         <button class="btn btn-primary" style="margin-top:12px;" onclick="ViewOsint._entraidImport()">
-          Importar e iniciar escaneos
+          ${t('osint.import_start_scans')}
         </button>
       `;
     } catch (e) {
-      status.innerHTML = `<span style="color:var(--danger);">Error: ${UI.esc(e.message)}</span>`;
+      status.innerHTML = `<span style="color:var(--danger);">${t('common.error')}: ${UI.esc(e.message)}</span>`;
     }
   },
 
@@ -1092,10 +1092,10 @@ const ViewOsint = {
     const userLimit = document.getElementById('eid-limit')?.value || 50;
 
     if (!p.tenant_id || !p.client_id || !p.client_secret) {
-      UI.message('Completa todos los campos de Entra ID', 'error'); return;
+      UI.message(t('osint.fill_entraid_fields'), 'error'); return;
     }
     if (!scanUsers && !scanDomains) {
-      UI.message('Selecciona al menos un tipo de objetivo para escanear', 'error'); return;
+      UI.message(t('osint.select_at_least_one_type'), 'error'); return;
     }
 
     try {
@@ -1104,28 +1104,28 @@ const ViewOsint = {
         `/api/v1/osint/sources/entraid/import?tenant_id=${encodeURIComponent(p.tenant_id)}&client_id=${encodeURIComponent(p.client_id)}&client_secret=${encodeURIComponent(p.client_secret)}&scan_users=${scanUsers}&scan_domains=${scanDomains}&user_limit=${userLimit}`,
         {}
       );
-      UI.message(`${r.scans_created} escaneo(s) iniciados desde Entra ID.`, 'success');
+      UI.message(`${r.scans_created} ${t('osint.scans_started_from_entraid')}.`, 'success');
       document.getElementById('entraid-status').innerHTML =
-        `<span style="color:var(--success);">${r.scans_created} escaneos en cola.</span>`;
+        `<span style="color:var(--success);">${r.scans_created} ${t('osint.scans_queued')}.</span>`;
       await this._load();
       this._tab = 'scans';
       this._renderTab();
     } catch (e) {
-      UI.message('Error importando: ' + e.message, 'error');
+      UI.message(t('osint.import_error') + ': ' + e.message, 'error');
     } finally {
       UI.loading(false);
     }
   },
 
   async _deleteIdentifier(id) {
-    if (!confirm('Eliminar este objetivo OSINT y todos sus hallazgos asociados?')) return;
+    if (!confirm(t('osint.delete_identifier_confirm'))) return;
     try {
       UI.loading(true);
       await Api.del(`/api/v1/osint/identifiers/${id}`);
-      UI.message('Objetivo eliminado', 'success');
+      UI.message(t('osint.identifier_deleted'), 'success');
       await this._load();
       this._renderTab();
-    } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('common.error') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
@@ -1135,13 +1135,13 @@ const ViewOsint = {
     try {
       UI.loading(true);
       await Api.patch(`/api/v1/osint/findings/${id}/remediate`, {});
-      UI.message('Hallazgo marcado como remediado', 'success');
+      UI.message(t('osint.finding_remediated'), 'success');
       await this._load();
       this._renderTab();
       if (document.getElementById('osint-drawer').style.display !== 'none') {
         this._openFindingDrawer(id);
       }
-    } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('common.error') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
@@ -1149,13 +1149,13 @@ const ViewOsint = {
     try {
       UI.loading(true);
       await Api.patch(`/api/v1/osint/findings/${id}/unremediate`, {});
-      UI.message('Hallazgo desmarcado', 'success');
+      UI.message(t('osint.finding_unmarked'), 'success');
       await this._load();
       this._renderTab();
       if (document.getElementById('osint-drawer').style.display !== 'none') {
         this._openFindingDrawer(id);
       }
-    } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('common.error') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
@@ -1165,7 +1165,7 @@ const ViewOsint = {
       await Api.patch(`/api/v1/osint/findings/${findingId}/remediate`, {});
       await this._load();
       this._openScanDrawer(scanId);
-    } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('common.error') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
@@ -1174,8 +1174,8 @@ const ViewOsint = {
     const threatSel = document.getElementById(`risk-threat-${findingId}`);
     const assetId = assetSel?.value;
     const threatId = threatSel?.value;
-    if (!assetId) { UI.message('Selecciona un activo', 'error'); return; }
-    if (!threatId) { UI.message('Selecciona una amenaza', 'error'); return; }
+    if (!assetId) { UI.message(t('osint.select_asset'), 'error'); return; }
+    if (!threatId) { UI.message(t('osint.select_threat'), 'error'); return; }
     try {
       UI.loading(true);
       const r = await Api.post(
@@ -1183,11 +1183,11 @@ const ViewOsint = {
         {}
       );
       if (r.already_existed) {
-        UI.message(`Ya existe el riesgo ${r.risk_code} para este activo/amenaza`, 'info');
+        UI.message(`${t('osint.risk_already_exists')} ${r.risk_code}`, 'info');
       } else {
-        UI.message(`Riesgo ${r.risk_code} creado: ${r.title}`, 'success');
+        UI.message(`${t('osint.risk_created')} ${r.risk_code}: ${r.title}`, 'success');
       }
-    } catch (e) { UI.message('Error creando riesgo: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('osint.error_creating_risk') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
@@ -1199,8 +1199,8 @@ const ViewOsint = {
       await Api.patch(`/api/v1/osint/findings/${findingId}/remediate`, {});
       UI.message(
         r.already_existed
-          ? `Incidente ${r.incident_code} ya existia. Hallazgo marcado como resuelto.`
-          : `Incidente ${r.incident_code} creado. Hallazgo movido a Resueltos.`,
+          ? `${t('osint.incident_existed')} ${r.incident_code}.`
+          : `${t('osint.incident_created')} ${r.incident_code}.`,
         r.already_existed ? 'info' : 'success'
       );
       await this._load();
@@ -1209,20 +1209,20 @@ const ViewOsint = {
       if (document.getElementById('osint-drawer')?.style.display !== 'none') {
         this._openFindingDrawer(findingId);
       }
-    } catch (e) { UI.message('Error creando incidente: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('osint.error_creating_incident') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
   async _deleteScan(id) {
-    if (!confirm('Eliminar este escaneo y todos sus hallazgos?')) return;
+    if (!confirm(t('osint.delete_scan_confirm'))) return;
     try {
       UI.loading(true);
       await Api.del(`/api/v1/osint/scans/${id}`);
-      UI.message('Escaneo eliminado', 'success');
+      UI.message(t('osint.scan_deleted'), 'success');
       this._closeDrawer();
       await this._load();
       this._renderTab();
-    } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('common.error') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
@@ -1232,11 +1232,11 @@ const ViewOsint = {
     try {
       UI.loading(true);
       await Api.post(endpoint, {});
-      UI.message('Re-escaneo iniciado...', 'success');
+      UI.message(t('osint.rescan_started'), 'success');
       await this._load();
       this._tab = 'scans';
       this._renderTab();
-    } catch (e) { UI.message('Error: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('common.error') + ': ' + e.message, 'error'); }
     finally { UI.loading(false); }
   },
 
@@ -1253,7 +1253,7 @@ const ViewOsint = {
       a.download = `osint_findings_${new Date().toISOString().slice(0,10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e) { UI.message('Error exportando: ' + e.message, 'error'); }
+    } catch (e) { UI.message(t('osint.export_error') + ': ' + e.message, 'error'); }
   },
 
   // ── HELPERS VISUALES ──────────────────────────────────────────────────────
@@ -1276,15 +1276,21 @@ const ViewOsint = {
                          font-weight:600;background:${c}20;color:${c};">${l.toUpperCase()}</span>`;
   },
   _typeBadge(type) {
-    const map = {email:'Email',domain:'Dominio',url:'URL',username:'Usuario',ip:'IP'};
+    const map = {
+      email: t('osint.target_types.email'),
+      domain: t('osint.target_types.domain'),
+      url: t('osint.target_types.url'),
+      username: t('osint.target_types.username'),
+      ip: t('osint.target_types.ip')
+    };
     return `<span class="badge badge-muted" style="font-size:11px;">${map[type]||type}</span>`;
   },
   _statusBadge(status) {
     const map = {
-      completed: ['var(--success-soft)','var(--success)','Completado'],
-      in_progress: ['var(--warning-soft)','var(--warning)','En progreso'],
-      pending: ['var(--border-color)','var(--text-muted)','Pendiente'],
-      failed: ['var(--danger-soft)','var(--danger)','Fallido']
+      completed: ['var(--success-soft)','var(--success)', t('osint.status.completed')],
+      in_progress: ['var(--warning-soft)','var(--warning)', t('common.in_progress')],
+      pending: ['var(--border-color)','var(--text-muted)', t('common.pending')],
+      failed: ['var(--danger-soft)','var(--danger)', t('osint.status.failed')]
     };
     const [bg, color, label] = map[status] || ['var(--border-color)','var(--text-muted)', status];
     return `<span style="padding:2px 8px;border-radius:4px;font-size:11px;background:${bg};color:${color};">${label}</span>`;

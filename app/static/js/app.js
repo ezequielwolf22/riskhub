@@ -132,6 +132,18 @@ function _initTheme() {
   };
 }
 
+function _initLang() {
+  const lang = I18n.lang();
+  const btn   = document.getElementById('btn-lang');
+  const label = document.getElementById('lang-label');
+  if (!btn || !label) return;
+  // El botón muestra el idioma AL QUE SE CAMBIARÁ (toggle)
+  label.textContent = lang === 'es' ? 'EN' : 'ES';
+  btn.title = t('shell.change_lang');
+  btn.setAttribute('aria-label', t('shell.change_lang'));
+  btn.onclick = () => I18n.setLang(lang === 'es' ? 'en' : 'es');
+}
+
 function _updateThemeIcon(theme) {
   document.getElementById('theme-icon-dark').style.display = theme === 'light' ? '' : 'none';
   document.getElementById('theme-icon-light').style.display = theme === 'dark' ? '' : 'none';
@@ -235,6 +247,8 @@ function init() {
   if (!Auth.requireAuth()) return;
   RiskLevels.load();   // carga config org; las vistas usan RiskLevels.colorFor() / labelFor()
   _initTheme();
+  _initLang();
+  I18n.applyDataAttrs();
 
   // Sidebar collapse toggle
   const sidebar = document.getElementById('sidebar');

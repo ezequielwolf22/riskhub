@@ -18,29 +18,29 @@ const ViewAssets = {
     ViewAssets._selectedIds = new Set();
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
-      'Inventario de activos',
-      'Activos primarios y de soporte (ISO 27005 Annex B)',
+      t('assets.title'),
+      t('assets.subtitle'),
       canEdit ? `
         <span id="inv-actions">
-          <button class="btn" id="btn-export">Exportar CSV</button>
-          <button class="btn" id="btn-template">Plantilla</button>
+          <button class="btn" id="btn-export">${t('common.export')} CSV</button>
+          <button class="btn" id="btn-template">/* TODO: i18n */ Plantilla</button>
           <label class="btn" id="lbl-import" title="Acepta cualquier formato: CSV, XLSX, JSON, etc. La IA normaliza las columnas automaticamente">
-            Importar (cualquier formato)
+            ${t('common.import')} (${t('common.all')})
             <input type="file" id="file-import" accept="*" multiple style="display:none;">
           </label>
           <button class="btn btn-ghost" id="btn-analyze-pending"
                   title="Analiza activos sin analizar y los que tuvieron error (no toca los ya analizados)">
-            Analizar pendientes
+            /* TODO: i18n */ Analizar pendientes
           </button>
           <button class="btn btn-ghost" id="btn-analyze-cia"
                   title="Re-analiza solo los activos con todas las dimensiones ENS a 0 para que la IA las estime">
-            Estimar dimensiones ENS
+            /* TODO: i18n */ Estimar dimensiones ENS
           </button>
           <button class="btn btn-ghost" id="btn-analyze-all"
                   title="Fuerza el re-analisis de TODOS los activos con IA">
-            Re-analizar todos
+            /* TODO: i18n */ Re-analizar todos
           </button>
-          <button class="btn btn-primary" id="btn-new">+ Nuevo activo</button>
+          <button class="btn btn-primary" id="btn-new">+ ${t('assets.new')}</button>
         </span>
       ` : ''
     ) + `
@@ -49,34 +49,34 @@ const ViewAssets = {
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--brand-purple);
                  border-bottom:3px solid var(--brand-purple);margin-bottom:-2px;">
-          Inventario
+          /* TODO: i18n */ Inventario
         </button>
         <button class="asset-tab" data-tab="groups-results"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--text-muted);
                  border-bottom:3px solid transparent;margin-bottom:-2px;">
-          Grupos
+          /* TODO: i18n */ Grupos
         </button>
         <button class="asset-tab" data-tab="grouping"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--text-muted);
                  border-bottom:3px solid transparent;margin-bottom:-2px;">
-          Agrupacion con IA
+          /* TODO: i18n */ Agrupacion con IA
         </button>
       </div>
       <div id="tab-inventory">
         <div class="toolbar">
-          <input type="search" id="asset-search" placeholder="Buscar por nombre o codigo...">
+          <input type="search" id="asset-search" placeholder="${t('common.search')}...">
           <select id="asset-type-filter">
-            <option value="">Todos los tipos</option>
-            <option value="primary_process">Proceso</option>
-            <option value="primary_information">Informacion</option>
-            <option value="support_hardware">Hardware</option>
-            <option value="support_software">Software</option>
-            <option value="support_network">Red</option>
-            <option value="support_personnel">Personal</option>
-            <option value="support_site">Instalacion</option>
-            <option value="support_organization">Organizacion</option>
+            <option value="">${t('common.all')}</option>
+            <option value="primary_process">${t('assets.type.primary')}</option>
+            <option value="primary_information">${t('assets.type.information')}</option>
+            <option value="support_hardware">${t('assets.type.hardware')}</option>
+            <option value="support_software">${t('assets.type.software')}</option>
+            <option value="support_network">/* TODO: i18n */ Red</option>
+            <option value="support_personnel">${t('assets.type.people')}</option>
+            <option value="support_site">${t('assets.type.facilities')}</option>
+            <option value="support_organization">/* TODO: i18n */ Organizacion</option>
           </select>
           <span class="spacer"></span>
           <span id="asset-count" style="color:var(--text-subtle);font-size:12px;"></span>
@@ -298,7 +298,7 @@ const ViewAssets = {
     ViewAssets._updateAnalysisBanner();
 
     if (!total) {
-      list.innerHTML = UI.emptyState('Sin activos', 'Crea uno nuevo o importa el inventario desde un CSV.');
+      list.innerHTML = UI.emptyState(t('common.no_results'), t('assets.new'));
       return;
     }
 
@@ -348,16 +348,16 @@ const ViewAssets = {
                    style="accent-color:var(--brand-purple);cursor:pointer;"
                    title="Seleccionar todos en esta pagina">
           </th>
-          ${_th('code', 'Codigo')}${_th('name', 'Nombre')}${_th('type', 'Tipo')}
-          <th title="Confidencialidad">C</th>
-          <th title="Integridad">I</th>
-          <th title="Disponibilidad">D</th>
-          <th title="Autenticidad (ENS Annex I)" style="color:var(--brand-orange)">Au</th>
+          ${_th('code', t('risks.risk_code'))}${_th('name', t('common.name'))}${_th('type', t('common.type'))}
+          <th title="${t('assets.confidentiality')}">C</th>
+          <th title="${t('assets.integrity')}">I</th>
+          <th title="${t('assets.availability')}">D</th>
+          <th title="${t('assets.confidentiality')} (ENS Annex I)" style="color:var(--brand-orange)">Au</th>
           <th title="Trazabilidad (ENS Annex I)" style="color:var(--brand-orange)">Tr</th>
-          ${_th('value_max', 'Max', 'Valor maximo de las 5 dimensiones ENS')}
-          ${_th('category', 'Categoria')}
-          ${_th('risks', 'Riesgos', 'Numero de riesgos asociados', 'width:70px;text-align:center;')}
-          <th style="white-space:nowrap;">Analisis IA</th>
+          ${_th('value_max', 'Max', t('assets.asset_value'))}
+          ${_th('category', t('common.category'))}
+          ${_th('risks', t('common.risk'), t('assets.linked_risks'), 'width:70px;text-align:center;')}
+          <th style="white-space:nowrap;">${t('common.analyze')} IA</th>
           <th></th>
         </tr>
       </thead>
@@ -392,7 +392,7 @@ const ViewAssets = {
               ${_aiStatusBadge(a)}
             </td>
             <td style="white-space:nowrap;" onclick="event.stopPropagation()">
-              ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">Editar</button>` : ''}
+              ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${a.id}">${t('common.edit')}</button>` : ''}
               ${Auth.canEdit() && (!a.ai_risk_status || a.ai_risk_status === 'error' || a.ai_risk_status === 'skipped')
                 ? `<button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
                            data-analyze="${a.id}"
@@ -407,17 +407,17 @@ const ViewAssets = {
       <button class="btn btn-ghost" id="pg-first" ${page <= 1 ? 'disabled' : ''}
               style="padding:4px 10px;font-size:13px;">«</button>
       <button class="btn btn-ghost" id="pg-prev" ${page <= 1 ? 'disabled' : ''}
-              style="padding:4px 12px;font-size:13px;">← Anterior</button>
+              style="padding:4px 12px;font-size:13px;">← ${t('common.previous')}</button>
       <span style="font-size:13px;color:var(--text-muted);white-space:nowrap;">
-        Pagina <strong>${page}</strong> de <strong>${totalPages}</strong>
+        ${page} ${t('common.of')} <strong>${totalPages}</strong>
       </span>
       <button class="btn btn-ghost" id="pg-next" ${page >= totalPages ? 'disabled' : ''}
-              style="padding:4px 12px;font-size:13px;">Siguiente →</button>
+              style="padding:4px 12px;font-size:13px;">${t('common.next')} →</button>
       <button class="btn btn-ghost" id="pg-last" ${page >= totalPages ? 'disabled' : ''}
               style="padding:4px 10px;font-size:13px;">»</button>
       <span style="flex:1;"></span>
       <label style="font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:6px;white-space:nowrap;">
-        Por pagina:
+        ${t('common.rows_per_page')}:
         <select id="page-size-sel"
                 style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;background:var(--bg-2);">
           <option value="25"  ${ps ===  25 ? 'selected' : ''}>25</option>
@@ -613,18 +613,18 @@ const ViewAssets = {
 
     bar.innerHTML = `
       <span style="font-size:14px;font-weight:700;">
-        ${n} activo${n !== 1 ? 's' : ''} seleccionado${n !== 1 ? 's' : ''}
+        ${n} ${t('common.asset')}${n !== 1 ? 's' : ''} ${t('common.select')}
       </span>
       <button id="sel-deselect" class="btn"
               style="background:rgba(255,255,255,.2);color:#fff;border-color:rgba(255,255,255,.3);
                      font-size:13px;padding:4px 14px;">
-        Deseleccionar todo
+        ${t('common.clear')}
       </button>
       <span style="flex:1;"></span>
       <button id="sel-delete" class="btn"
               style="background:#dc2626;color:#fff;border-color:#dc2626;
                      font-size:13px;padding:6px 18px;font-weight:700;">
-        Eliminar ${n} activo${n !== 1 ? 's' : ''}
+        ${t('common.delete')} ${n} ${t('common.asset')}${n !== 1 ? 's' : ''}
       </button>`;
 
     document.getElementById('sel-deselect').onclick = () => {
@@ -1480,13 +1480,13 @@ const ViewAssets = {
       try { a = await Api.assets.get(id); }
       catch (e) { UI.toast(e.message, 'error'); return; }
     }
-    UI.modal(id ? `Editar ${a.code}` : 'Nuevo activo', `
+    UI.modal(id ? `${t('assets.edit')} ${a.code}` : t('assets.new'), `
       <div class="span2">
-        <label>Nombre *</label>
+        <label>${t('common.name')} *</label>
         <input id="f-name" value="${UI.esc(a.name)}" required>
       </div>
       <div>
-        <label>Tipo *</label>
+        <label>${t('common.type')} *</label>
         <select id="f-type">
           ${['primary_process','primary_information','support_hardware','support_software',
              'support_network','support_personnel','support_site','support_organization'].map(t =>
@@ -1494,23 +1494,23 @@ const ViewAssets = {
         </select>
       </div>
       <div>
-        <label>Categoria</label>
+        <label>${t('common.category')}</label>
         <input id="f-cat" value="${UI.esc(a.category||'')}">
       </div>
       <div class="span2">
-        <label>Descripcion</label>
+        <label>${t('common.description')}</label>
         <textarea id="f-desc" rows="2">${UI.esc(a.description||'')}</textarea>
       </div>
       <div>
-        <label>Localizacion</label>
+        <label>${t('assets.location')}</label>
         <input id="f-loc" value="${UI.esc(a.location||'')}">
       </div>
       <div>
-        <label>Proceso de negocio</label>
+        <label>/* TODO: i18n */ Proceso de negocio</label>
         <input id="f-proc" value="${UI.esc(a.business_process||'')}">
       </div>
       <div>
-        <label>Clasificacion</label>
+        <label>${t('assets.classification')}</label>
         <select id="f-class">
           ${['','Publico','Interno','Confidencial','Secreto'].map(c =>
             `<option value="${c}" ${a.classification===c?'selected':''}>${c||'-'}</option>`).join('')}
@@ -1585,10 +1585,10 @@ const ViewAssets = {
       </div>` : ''}
     `, {
       actions: `
-        <button class="btn" id="m-cancel">Cancelar</button>
-        ${id ? `<button class="btn btn-danger" id="m-del">Eliminar</button>` : ''}
-        ${id ? `<button class="btn btn-ghost" id="m-ai-suggest" title="Sugerir riesgos basados en amenazas ISO 27005">IA: Sugerir riesgos</button>` : ''}
-        <button class="btn btn-primary" id="m-save">Guardar</button>`
+        <button class="btn" id="m-cancel">${t('common.cancel')}</button>
+        ${id ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
+        ${id ? `<button class="btn btn-ghost" id="m-ai-suggest" title="Sugerir riesgos basados en amenazas ISO 27005">IA: ${t('common.analyze')}</button>` : ''}
+        <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`
     });
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
@@ -1629,10 +1629,10 @@ const ViewAssets = {
     }
 
     if (id) document.getElementById('m-del').onclick = async () => {
-      if (!await UI.confirm('Eliminar este activo?')) return;
+      if (!await UI.confirm(t('assets.delete_confirm'))) return;
       try {
         await Api.assets.del(id);
-        UI.closeModal(); UI.toast('Eliminado', 'success');
+        UI.closeModal(); UI.toast(t('common.success'), 'success');
         ViewAssets._allAssets = ViewAssets._allAssets.filter(a => a.id !== id);
         ViewAssets._applyFiltersAndRender();
       } catch (e) { UI.toast(e.message, 'error'); }

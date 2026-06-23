@@ -19,10 +19,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from app.i18n import get_lang, t as _t
 
 from app.database import get_db
 from app.models import (
@@ -178,16 +180,18 @@ def delete_logo(
 
 @router.get("/branding/logo")
 def get_logo(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Devuelve el logo como base64 para embeber en el frontend."""
+    lang = get_lang(request)
     brand = filter_by_org(db.query(AwarenessBranding), AwarenessBranding, current_user).first()
     if not brand or not brand.logo_filename:
-        raise HTTPException(404, "No hay logo configurado")
+        raise HTTPException(404, _t("common.not_found", lang))
     p = _logo_root() / brand.logo_filename
     if not p.exists():
-        raise HTTPException(404, "Archivo de logo no encontrado")
+        raise HTTPException(404, _t("common.not_found", lang))
     data = p.read_bytes()
     encoded = base64.b64encode(data).decode()
     return {"mime": brand.logo_mime, "data": encoded}
@@ -204,18 +208,20 @@ class GenerateRequest(BaseModel):
 
 @router.post("/generate")
 def generate_content(
+    request: Request,
     body: GenerateRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Genera el contenido de una infografia usando el agente IA."""
+    lang = get_lang(request)
     if not body.prompt or len(body.prompt.strip()) < 5:
-        raise HTTPException(400, "La descripcion es demasiado corta.")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     ai_cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = resolve_api_key(ai_cfg)
     if not api_key:
-        raise HTTPException(400, "El Agente IA no esta configurado. Ve a Onboarding.")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5"
 
@@ -329,31 +335,35 @@ def create_item(
 @router.get("/{item_id}")
 def get_item(
     item_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     item = filter_by_org(
         db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
         AwarenessItem, current_user
     ).first()
     if not item:
-        raise HTTPException(404, "Infografia no encontrada")
+        raise HTTPException(404, _t("awareness.campaign_not_found", lang))
     return _item_out(item)
 
 
 @router.put("/{item_id}")
 def update_item(
     item_id: int,
+    request: Request,
     body: ItemIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     item = filter_by_org(
         db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
         AwarenessItem, current_user
     ).first()
     if not item:
-        raise HTTPException(404, "Infografia no encontrada")
+        raise HTTPException(404, _t("awareness.campaign_not_found", lang))
     item.title = body.title[:255]
     item.template_type = body.template_type
     item.content_json = json.dumps(body.content, ensure_ascii=False)
@@ -368,15 +378,17 @@ def update_item(
 @router.delete("/{item_id}")
 def delete_item(
     item_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     item = filter_by_org(
         db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
         AwarenessItem, current_user
     ).first()
     if not item:
-        raise HTTPException(404, "Infografia no encontrada")
+        raise HTTPException(404, _t("awareness.campaign_not_found", lang))
     log_action(db, current_user.id, "delete", "awareness", item_id, {"title": item.title})
     db.delete(item)
     db.commit()
@@ -390,15 +402,17 @@ def delete_item(
 @router.get("/{item_id}/export-pdf")
 def export_pdf(
     item_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     item = filter_by_org(
         db.query(AwarenessItem).filter(AwarenessItem.id == item_id),
         AwarenessItem, current_user
     ).first()
     if not item:
-        raise HTTPException(404, "Infografia no encontrada")
+        raise HTTPException(404, _t("awareness.campaign_not_found", lang))
 
     content = json.loads(item.content_json) if item.content_json else {}
 

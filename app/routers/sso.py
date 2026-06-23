@@ -15,10 +15,12 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from app.i18n import get_lang, t as _t
 
 from app.database import get_db
 from app.models import IntegrationConfig, SSOCode, SSOState, User, UserRole
@@ -227,17 +229,19 @@ def get_sso_config(
 
 @router.put("/config")
 def save_sso_config(
+    request: Request,
     body: SsoConfigIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Guarda la configuracion SSO cifrada. Solo admin."""
+    lang = get_lang(request)
     if not all([body.issuer_url, body.client_id, body.client_secret, body.redirect_uri]):
-        raise HTTPException(400, "issuer_url, client_id, client_secret y redirect_uri son obligatorios.")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     valid_roles = [r.value for r in UserRole]
     if body.default_role not in valid_roles:
-        raise HTTPException(400, f"default_role debe ser uno de: {valid_roles}")
+        raise HTTPException(400, _t("common.bad_request", lang))
 
     encrypted = encrypt_secret(json.dumps({
         "issuer_url": body.issuer_url.strip().rstrip("/"),
@@ -269,16 +273,18 @@ def save_sso_config(
 
 @router.delete("/config")
 def delete_sso_config(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Elimina la configuracion SSO. Solo admin."""
+    lang = get_lang(request)
     ic = db.query(IntegrationConfig).filter(
         IntegrationConfig.name == _INTEGRATION_NAME,
         IntegrationConfig.organization_id == current_user.organization_id,
     ).first()
     if not ic:
-        raise HTTPException(404, "SSO no configurado.")
+        raise HTTPException(404, _t("auth.sso_not_configured", lang))
     db.delete(ic)
     log_action(db, current_user.id, "delete", "integration_config", _INTEGRATION_NAME, {})
     db.commit()
@@ -287,13 +293,15 @@ def delete_sso_config(
 
 @router.post("/test")
 def test_sso_config(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Verifica la conectividad con el proveedor OIDC."""
+    lang = get_lang(request)
     cfg = _get_config(db, current_user.organization_id)
     if not cfg:
-        raise HTTPException(400, "SSO no configurado.")
+        raise HTTPException(400, _t("auth.sso_not_configured", lang))
     try:
         doc = _oidc_discovery(cfg["issuer_url"])
         return {
@@ -470,16 +478,17 @@ class SsoExchangeIn(BaseModel):
 
 
 @router.post("/exchange")
-def sso_exchange(body: SsoExchangeIn, db: Session = Depends(get_db)):
+def sso_exchange(request: Request, body: SsoExchangeIn, db: Session = Depends(get_db)):
     """Intercambia un SSO code de un solo uso por el JWT de sesion.
     El code caduca en 30 segundos para minimizar la ventana de exposicion."""
+    lang = get_lang(request)
     record = db.query(SSOCode).filter(SSOCode.code == body.code).first()
     if not record:
-        raise HTTPException(400, "Codigo SSO invalido o ya utilizado.")
+        raise HTTPException(400, _t("auth.sso_invalid_state", lang))
     if record.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         db.delete(record)
         db.commit()
-        raise HTTPException(400, "Codigo SSO expirado. Vuelve a iniciar sesion.")
+        raise HTTPException(400, _t("auth.sso_invalid_state", lang))
     token = record.token
     db.delete(record)
     db.commit()

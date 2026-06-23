@@ -4,7 +4,7 @@ import io
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -17,6 +17,7 @@ from app.schemas import (
 )
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
+from app.i18n import get_lang, t as _t
 
 catalog_router = APIRouter(prefix="/api/controls", tags=["controls"])
 impl_router = APIRouter(prefix="/api/control-implementations",
@@ -123,12 +124,14 @@ class ControlPatch(BaseModel):
 def patch_control(
     cid: int,
     body: ControlPatch,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     c = db.get(Control, cid)
     if not c:
-        raise HTTPException(404, "Control no encontrado")
+        raise HTTPException(404, _t("controls.not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(c, field, value)
     db.commit()
@@ -256,11 +259,13 @@ def create_impl(data: ControlImplIn, db: Session = Depends(get_db),
 
 @impl_router.put("/{impl_id}", response_model=ControlImplOut)
 def update_impl(impl_id: int, data: ControlImplIn,
+                request: Request,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     impl = db.get(ControlImplementation, impl_id)
     if not impl or not check_org_access(impl.organization_id, current_user):
-        raise HTTPException(404, "Implementacion no encontrada")
+        raise HTTPException(404, _t("controls.implementation_not_found", lang))
     for k, v in data.model_dump().items():
         setattr(impl, k, v)
     log_action(db, current_user.id, "update", "control_impl", str(impl_id),
@@ -276,6 +281,7 @@ def update_impl(impl_id: int, data: ControlImplIn,
 @impl_router.post("/{impl_id}/propagate")
 def propagate_impl(
     impl_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -283,9 +289,10 @@ def propagate_impl(
     Paso 1 (sin IA): recalcula residual de riesgos ya vinculados.
     Paso 2 (IA): detecta hasta 50 riesgos candidatos no vinculados, estima contribucion y los vincula.
     """
+    lang = get_lang(request)
     impl = db.get(ControlImplementation, impl_id)
     if not impl or not check_org_access(impl.organization_id, current_user):
-        raise HTTPException(404, "Implementacion no encontrada")
+        raise HTTPException(404, _t("controls.implementation_not_found", lang))
     if impl.status == ControlStatus.NOT_IMPLEMENTED:
         raise HTTPException(400, "El control no esta implementado, no puede propagarse")
     from app.services.control_propagation_service import propagate_control
@@ -298,11 +305,12 @@ def propagate_impl(
 
 
 @impl_router.delete("/{impl_id}", status_code=204)
-def delete_impl(impl_id: int, db: Session = Depends(get_db),
+def delete_impl(impl_id: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     impl = db.get(ControlImplementation, impl_id)
     if not impl or not check_org_access(impl.organization_id, current_user):
-        raise HTTPException(404, "Implementacion no encontrada")
+        raise HTTPException(404, _t("controls.implementation_not_found", lang))
     name = impl.name
     db.delete(impl)
     log_action(db, current_user.id, "delete", "control_impl", str(impl_id), {"name": name})

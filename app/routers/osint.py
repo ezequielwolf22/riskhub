@@ -3,9 +3,11 @@ import csv
 import io
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+
+from app.i18n import get_lang, t as _t
 
 from app.database import get_db
 from app.models import (
@@ -185,31 +187,35 @@ def list_scans(
 @router.get("/scans/{scan_id}", response_model=OSINTScanResponse)
 def get_scan(
     scan_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*_ROLES))
 ):
+    lang = get_lang(request)
     scan = filter_by_org(
         db.query(OSINTScan).filter(OSINTScan.id == scan_id),
         OSINTScan, current_user
     ).first()
     if not scan:
-        raise HTTPException(404, "Escaneo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     return scan
 
 
 @router.get("/scans/{scan_id}/findings")
 def get_scan_findings(
     scan_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*_ROLES))
 ):
     """Hallazgos detallados de un escaneo especifico."""
+    lang = get_lang(request)
     scan = filter_by_org(
         db.query(OSINTScan).filter(OSINTScan.id == scan_id),
         OSINTScan, current_user
     ).first()
     if not scan:
-        raise HTTPException(404, "Escaneo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     findings = db.query(OSINTFinding).filter(OSINTFinding.scan_id == scan_id).all()
     return {
         'scan': {
@@ -302,9 +308,11 @@ def export_findings_csv(
 @router.get("/findings/{finding_id}")
 def get_finding(
     finding_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*_ROLES))
 ):
+    lang = get_lang(request)
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
     ]
@@ -313,7 +321,7 @@ def get_finding(
         OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     return {
         'id': finding.id, 'scan_id': finding.scan_id, 'source': finding.source,
         'finding_type': finding.finding_type, 'title': finding.title,
@@ -327,9 +335,11 @@ def get_finding(
 @router.patch("/findings/{finding_id}/remediate")
 def remediate_finding(
     finding_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*_ROLES))
 ):
+    lang = get_lang(request)
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
     ]
@@ -338,7 +348,7 @@ def remediate_finding(
         OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     finding.is_remediated = True
     finding.remediated_at = datetime.now(timezone.utc)
     db.commit()
@@ -348,9 +358,11 @@ def remediate_finding(
 @router.patch("/findings/{finding_id}/unremediate")
 def unremediate_finding(
     finding_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*_ROLES))
 ):
+    lang = get_lang(request)
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
     ]
@@ -359,7 +371,7 @@ def unremediate_finding(
         OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     finding.is_remediated = False
     finding.remediated_at = None
     db.commit()
@@ -369,9 +381,11 @@ def unremediate_finding(
 @router.delete("/findings/{finding_id}", status_code=204)
 def delete_finding(
     finding_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['admin', 'superadmin']))
 ):
+    lang = get_lang(request)
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
     ]
@@ -380,7 +394,7 @@ def delete_finding(
         OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     db.delete(finding)
     db.commit()
 
@@ -388,15 +402,17 @@ def delete_finding(
 @router.delete("/scans/{scan_id}", status_code=204)
 def delete_scan(
     scan_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['admin', 'superadmin']))
 ):
+    lang = get_lang(request)
     scan = filter_by_org(
         db.query(OSINTScan).filter(OSINTScan.id == scan_id),
         OSINTScan, current_user
     ).first()
     if not scan:
-        raise HTTPException(404, "Escaneo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     db.delete(scan)
     db.commit()
 
@@ -404,16 +420,18 @@ def delete_scan(
 @router.delete("/identifiers/{identifier_id}", status_code=204)
 def delete_identifier(
     identifier_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(['admin', 'analyst', 'superadmin']))
 ):
     """Elimina un identificador OSINT (y sus escaneos/hallazgos en cascada)."""
+    lang = get_lang(request)
     identifier = filter_by_org(
         db.query(OSINTIdentifier).filter(OSINTIdentifier.id == identifier_id),
         OSINTIdentifier, current_user
     ).first()
     if not identifier:
-        raise HTTPException(404, "Identificador no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
     db.delete(identifier)
     db.commit()
 
@@ -529,10 +547,12 @@ async def import_from_entraid(
 @router.post("/findings/{finding_id}/create-incident")
 def create_incident_from_finding(
     finding_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(*_ROLES))
 ):
     """Genera un incidente de seguridad a partir de un hallazgo OSINT."""
+    lang = get_lang(request)
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
     ]
@@ -541,7 +561,7 @@ def create_incident_from_finding(
         OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
 
     # Verificar si ya existe un incidente con este titulo OSINT en la misma org
     existing_title = f"[OSINT] {finding.title}"
@@ -602,6 +622,7 @@ def create_incident_from_finding(
 @router.post("/findings/{finding_id}/create-risk")
 def create_risk_from_osint_finding(
     finding_id: int,
+    request: Request,
     asset_id: int = Query(..., description="ID del activo afectado"),
     threat_id: int = Query(..., description="ID de la amenaza relacionada"),
     db: Session = Depends(get_db),
@@ -613,6 +634,7 @@ def create_risk_from_osint_finding(
     from app.routers.risks import _next_code as _risk_next_code
     from app.security import check_org_access
 
+    lang = get_lang(request)
     org_scan_ids = [
         s.id for s in filter_by_org(db.query(OSINTScan), OSINTScan, current_user).all()
     ]
@@ -621,15 +643,15 @@ def create_risk_from_osint_finding(
         OSINTFinding.scan_id.in_(org_scan_ids)
     ).first()
     if not finding:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("osint.not_found", lang))
 
     asset = db.query(Asset).filter(Asset.id == asset_id).first()
     if not asset or not check_org_access(asset.organization_id, current_user):
-        raise HTTPException(404, "Activo no encontrado")
+        raise HTTPException(404, _t("common.not_found", lang))
 
     threat = db.query(Threat).filter(Threat.id == threat_id).first()
     if not threat:
-        raise HTTPException(404, "Amenaza no encontrada")
+        raise HTTPException(404, _t("common.not_found", lang))
 
     # Verificar si ya existe un riesgo para este par activo/amenaza en la misma org
     existing = db.query(Risk).filter(
