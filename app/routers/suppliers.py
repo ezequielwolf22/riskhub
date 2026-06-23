@@ -536,6 +536,32 @@ def delete_supplier(supplier_id: int, request: Request, db: Session = Depends(ge
     db.commit()
 
 
+# ---------- Trust Portal IA ----------
+
+@router.post("/{supplier_id}/scrape-trust-portal")
+def scrape_trust_portal(
+    supplier_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Descarga el trust portal del proveedor, analiza con IA y vuelca los datos a la ficha."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+
+    from app.services.trust_portal_scraper import scrape_and_fill
+    result = scrape_and_fill(db, s)
+
+    if result.get("ok"):
+        log_action(db, current_user.id, "scrape_trust_portal", "supplier", str(s.id), {
+            "updated_fields": result.get("updated_fields", []),
+        })
+
+    return result
+
+
 # ---------- Documentacion adjunta al proveedor ----------
 
 _MAX_DOC_BYTES = 20 * 1024 * 1024  # 20 MB

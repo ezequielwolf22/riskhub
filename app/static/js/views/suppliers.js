@@ -488,6 +488,12 @@ const ViewSuppliers = (() => {
         <div><label>Departamento responsable</label><input id="f-department" class="input" value="${UI.esc(v.department || '')}" placeholder="TI, Legal, Compras..."></div>
         <div><label>Responsable interno</label><select id="f-internal-owner" class="input"><option value="">- Sin asignar -</option></select></div>
 
+        <!-- Fila 4b: trust portal -->
+        <div style="grid-column:1/-1;">
+          <label>Trust Portal URL <span style="font-size:11px;color:var(--text-muted);font-weight:400;">(el agente IA analizara esta web para autocompletar la ficha)</span></label>
+          <input id="f-trust-portal-url" class="input" type="url" value="${UI.esc(v.trust_portal_url || '')}" placeholder="https://trust.proveedor.com">
+        </div>
+
         <!-- Fila 5: flags + importancia (inline) -->
         <div style="grid-column:1/-1;display:flex;align-items:center;gap:24px;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--border);margin-top:2px;">
           <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-weight:600;"><input type="checkbox" id="f-critical" ${v.is_critical?'checked':''}> Critico NIS2</label>
@@ -1504,6 +1510,21 @@ const ViewSuppliers = (() => {
         <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Regulacion y clasificacion</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">${flags.join('')}</div>
       </div>` : ''}
+      <!-- Trust Portal IA -->
+      <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;">Trust Portal IA</div>
+          ${sup.trust_portal_url ? `<button id="btn-scrape-tp" class="btn btn-sm btn-primary" style="font-size:12px;">Analizar Trust Portal</button>` : ''}
+        </div>
+        ${sup.trust_portal_url ? `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <a href="${UI.esc(sup.trust_portal_url)}" target="_blank" rel="noopener noreferrer" style="font-size:13px;color:var(--brand-purple);word-break:break-all;">${UI.esc(sup.trust_portal_url)}</a>
+          </div>
+          ${sup.trust_portal_last_scraped_at ? `<div style="font-size:11px;color:var(--text-muted);">Ultimo analisis: ${sup.trust_portal_last_scraped_at.slice(0,10)}</div>` : '<div style="font-size:11px;color:var(--text-muted);">Sin analizar todavia. Pulsa "Analizar Trust Portal" para que el agente IA extraiga la informacion.</div>'}
+        ` : `<div style="font-size:12px;color:var(--text-muted);">Configura una URL de Trust Portal en la edicion del proveedor para activar el analisis automatico por IA.</div>`}
+        <div id="tp-scrape-result" style="margin-top:8px;"></div>
+      </div>
+
       ${sup.notes ? `
       <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
         <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;">Notas</div>
@@ -1526,6 +1547,44 @@ const ViewSuppliers = (() => {
         </div>`).join('')}
       </div>` : ''}
     `;
+
+    // Boton de analisis IA del trust portal
+    const btnScrape = document.getElementById('btn-scrape-tp');
+    if (btnScrape) {
+      btnScrape.onclick = async () => {
+        const resultEl = document.getElementById('tp-scrape-result');
+        btnScrape.disabled = true;
+        btnScrape.textContent = 'Analizando...';
+        if (resultEl) resultEl.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">El agente esta descargando y analizando el trust portal. Esto puede tardar unos segundos...</span>';
+        try {
+          const res = await API.post(`/api/suppliers/${sup.id}/scrape-trust-portal`, {});
+          if (res.ok) {
+            const fields = (res.updated_fields || []).join(', ');
+            if (resultEl) resultEl.innerHTML = `
+              <div style="background:#D1FAE5;color:#065F46;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">
+                <strong>Analisis completado.</strong> ${UI.esc(res.message)}<br>
+                ${fields ? `<span style="opacity:.8;">Campos actualizados: ${UI.esc(fields)}</span>` : ''}
+              </div>`;
+            // Refrescar la ficha para mostrar los datos nuevos
+            setTimeout(async () => {
+              try {
+                const updated = await API.get(`/api/suppliers/${sup.id}`);
+                _currentFileSupplier = updated;
+                _renderFileTabPerfil(wrap, updated);
+              } catch (_) {}
+            }, 1200);
+          } else {
+            if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">${UI.esc(res.message || 'Error en el analisis')}</div>`;
+            btnScrape.disabled = false;
+            btnScrape.textContent = 'Analizar Trust Portal';
+          }
+        } catch (err) {
+          if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">Error de conexion: ${UI.esc(String(err))}</div>`;
+          btnScrape.disabled = false;
+          btnScrape.textContent = 'Analizar Trust Portal';
+        }
+      };
+    }
   }
 
   async function _renderFileTabGate(wrap, sup) {
@@ -1894,6 +1953,7 @@ const ViewSuppliers = (() => {
         category: sl.category || 'other',
         description: sl.description?.trim() || null,
       })),
+      trust_portal_url: document.getElementById('f-trust-portal-url')?.value.trim() || null,
     };
     try {
       if (s) {
