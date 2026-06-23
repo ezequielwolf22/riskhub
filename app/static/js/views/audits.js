@@ -177,7 +177,7 @@ const ViewAudits = (() => {
         title: `Informe analizado — ${file.name} (${today})`,
         audit_type: 'internal',
         status: 'completed',
-        scope: 'Importado y analizado automaticamente por el agente IA',
+        scope: t('audits.import_scope_default'),
       });
       const auditId = newAudit.id;
 
@@ -221,13 +221,17 @@ const ViewAudits = (() => {
           <div class="stat-value" style="font-size:28px;font-weight:700;color:var(--brand-orange);">${s.by_status.in_progress||0}</div>
           <div class="stat-label" style="font-size:12px;color:var(--text-muted);">${t('audits.stat_in_progress')}</div>
         </div>
-        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;">
+        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;cursor:pointer;"
+             title="${t('audits.stat_findings_hint')}"
+             onclick="location.hash='#nonconformities'">
           <div class="stat-value" style="font-size:28px;font-weight:700;">${s.total_findings}</div>
-          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">${t('audits.stat_findings')}</div>
+          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">${t('audits.stat_findings')} &#x2192;</div>
         </div>
-        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;">
+        <div class="stat-card" style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;padding:16px 20px;min-width:110px;cursor:pointer;"
+             title="${t('audits.stat_open_major_nc_hint')}"
+             onclick="location.hash='#nonconformities'">
           <div class="stat-value" style="font-size:28px;font-weight:700;color:var(--risk-critical);">${s.open_major_ncs}</div>
-          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">${t('audits.stat_open_major_nc')}</div>
+          <div class="stat-label" style="font-size:12px;color:var(--text-muted);">${t('audits.stat_open_major_nc')} &#x2192;</div>
         </div>
       `;
       wrap.style.display = 'flex';
@@ -305,7 +309,17 @@ const ViewAudits = (() => {
         ${data.scope ? `<div><strong>${t('audits.detail_scope')}</strong><br><span style="font-size:13px;">${UI.esc(data.scope)}</span></div>` : ''}
         ${data.objectives ? `<div><strong>${t('audits.detail_objectives')}</strong><br><span style="font-size:13px;">${UI.esc(data.objectives)}</span></div>` : ''}
         ${data.criteria ? `<div><strong>${t('audits.detail_criteria')}</strong><br><span style="font-size:13px;">${UI.esc(data.criteria)}</span></div>` : ''}
-        ${data.auditor_lead ? `<div style="font-size:13px;"><strong>${t('audits.detail_lead')}</strong> ${UI.esc(data.auditor_lead)}</div>` : ''}
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
+          ${data.auditor_lead ? `<div><strong>${t('audits.detail_lead')}</strong> ${UI.esc(data.auditor_lead)}</div>` : ''}
+          ${data.auditee ? `<div><strong>${t('audits.detail_auditee')}</strong> ${UI.esc(data.auditee)}</div>` : ''}
+          ${data.auditor_team && data.auditor_team.length ? `<div><strong>${t('audits.detail_team')}</strong> ${UI.esc(Array.isArray(data.auditor_team)?data.auditor_team.join(', '):data.auditor_team)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
+          ${data.planned_start ? `<div><strong>${t('audits.detail_planned_start')}</strong> ${data.planned_start.slice(0,10)}</div>` : ''}
+          ${data.planned_end ? `<div><strong>${t('audits.detail_planned_end')}</strong> ${data.planned_end.slice(0,10)}</div>` : ''}
+          ${data.actual_start ? `<div><strong>${t('audits.detail_actual_start')}</strong> ${data.actual_start.slice(0,10)}</div>` : ''}
+          ${data.actual_end ? `<div><strong>${t('audits.detail_actual_end')}</strong> ${data.actual_end.slice(0,10)}</div>` : ''}
+        </div>
         ${data.conclusion ? `<div style="background:var(--bg-2);border-radius:6px;padding:10px;"><strong>${t('audits.detail_conclusion')}</strong><br><span style="font-size:13px;">${UI.esc(data.conclusion)}</span></div>` : ''}
 
         <div>
@@ -437,6 +451,8 @@ const ViewAudits = (() => {
           </select>
         </div>
         <div><label>${t('audits.field_lead')}</label><input id="fa-lead" class="input" value="${UI.esc(v.auditor_lead||'')}"></div>
+        <div><label>${t('audits.field_auditee')}</label><input id="fa-auditee" class="input" placeholder="${t('audits.field_auditee_placeholder')}" value="${UI.esc(v.auditee||'')}"></div>
+        <div class="span2"><label>${t('audits.field_team')}</label><input id="fa-team" class="input" placeholder="${t('audits.field_team_placeholder')}" value="${UI.esc(Array.isArray(v.auditor_team)?v.auditor_team.join(', '):(v.auditor_team||''))}"></div>
         <div>
           <label>${t('audits.field_owner')}</label>
           <select id="fa-owner" class="input">
@@ -444,8 +460,11 @@ const ViewAudits = (() => {
             ${_users.map(u => `<option value="${u.id}" ${v.owner_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`).join('')}
           </select>
         </div>
+        <div></div>
         <div><label>${t('audits.field_start')}</label><input type="date" id="fa-start" class="input" value="${v.planned_start?v.planned_start.slice(0,10):''}"></div>
         <div><label>${t('audits.field_end')}</label><input type="date" id="fa-end" class="input" value="${v.planned_end?v.planned_end.slice(0,10):''}"></div>
+        <div><label>${t('audits.field_actual_start')}</label><input type="date" id="fa-actual-start" class="input" value="${v.actual_start?v.actual_start.slice(0,10):''}"></div>
+        <div><label>${t('audits.field_actual_end')}</label><input type="date" id="fa-actual-end" class="input" value="${v.actual_end?v.actual_end.slice(0,10):''}"></div>
         <div class="span2"><label>${t('audits.audit_scope')}</label><textarea id="fa-scope" class="input" rows="2">${UI.esc(v.scope||'')}</textarea></div>
         <div class="span2"><label>${t('audits.field_objectives')}</label><textarea id="fa-obj" class="input" rows="2">${UI.esc(v.objectives||'')}</textarea></div>
         <div class="span2"><label>${t('audits.field_criteria')}</label><textarea id="fa-crit" class="input" rows="2">${UI.esc(v.criteria||'')}</textarea></div>
@@ -471,9 +490,13 @@ const ViewAudits = (() => {
       audit_type: document.getElementById('fa-type').value,
       status: document.getElementById('fa-status').value,
       auditor_lead: document.getElementById('fa-lead').value.trim() || null,
+      auditee: document.getElementById('fa-auditee').value.trim() || null,
+      auditor_team: document.getElementById('fa-team').value.trim() ? document.getElementById('fa-team').value.split(',').map(s => s.trim()).filter(Boolean) : [],
       owner_id: ownerVal ? parseInt(ownerVal) : null,
       planned_start: document.getElementById('fa-start').value || null,
       planned_end: document.getElementById('fa-end').value || null,
+      actual_start: document.getElementById('fa-actual-start').value || null,
+      actual_end: document.getElementById('fa-actual-end').value || null,
       scope: document.getElementById('fa-scope').value.trim(),
       objectives: document.getElementById('fa-obj').value.trim(),
       criteria: document.getElementById('fa-crit').value.trim(),

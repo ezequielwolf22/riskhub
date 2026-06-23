@@ -1165,6 +1165,7 @@ class AuditProgram(Base):
     criteria = Column(Text)                     # normas o requisitos auditados
     auditor_lead = Column(String(255))
     auditor_team = Column(JSON)                 # [nombre, ...]
+    auditee = Column(String(255), nullable=True)     # entidad / departamento auditado
     planned_start = Column(DateTime, nullable=True)
     planned_end = Column(DateTime, nullable=True)
     actual_start = Column(DateTime, nullable=True)

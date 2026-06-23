@@ -660,6 +660,10 @@ def _migrate_columns() -> None:
         # v4.4.0 — Supplier: resultado de monitoreo periodico
         ("ALTER TABLE suppliers ADD COLUMN last_monitored_at DATETIME", "suppliers", "last_monitored_at"),
         ("ALTER TABLE suppliers ADD COLUMN monitoring_status VARCHAR(16)", "suppliers", "monitoring_status"),
+        # v5.10.0 — AuditProgram: auditado (entidad auditada) + equipo auditor
+        ("ALTER TABLE audit_programs ADD COLUMN auditee VARCHAR(255)", "audit_programs", "auditee"),
+        ("ALTER TABLE audit_programs ADD COLUMN actual_start DATE", "audit_programs", "actual_start"),
+        ("ALTER TABLE audit_programs ADD COLUMN actual_end DATE", "audit_programs", "actual_end"),
         # v5.3.0 — RiskSnapshot: historico mensual de niveles de riesgo
         (
             """CREATE TABLE IF NOT EXISTS risk_snapshots (

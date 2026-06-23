@@ -927,6 +927,7 @@ class AuditProgramIn(BaseModel):
     criteria: Optional[str] = None
     auditor_lead: Optional[str] = None
     auditor_team: list[str] = []
+    auditee: Optional[str] = None
     planned_start: Optional[datetime] = None
     planned_end: Optional[datetime] = None
     owner_id: Optional[int] = None
@@ -941,6 +942,7 @@ class AuditProgramUpdate(BaseModel):
     criteria: Optional[str] = None
     auditor_lead: Optional[str] = None
     auditor_team: Optional[list[str]] = None
+    auditee: Optional[str] = None
     planned_start: Optional[datetime] = None
     planned_end: Optional[datetime] = None
     actual_start: Optional[datetime] = None
@@ -960,6 +962,7 @@ class AuditProgramOut(ORMBase):
     criteria: Optional[str]
     auditor_lead: Optional[str]
     auditor_team: Optional[list[str]]
+    auditee: Optional[str]
     planned_start: Optional[datetime]
     planned_end: Optional[datetime]
     actual_start: Optional[datetime]

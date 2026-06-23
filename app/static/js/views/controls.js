@@ -105,37 +105,174 @@ const ViewControls = {
     }
   },
 
+  _FRAMEWORK_GROUPS: {
+    iso27001: null,
+    ens: [
+      { id: 'identificacion', label: 'Identificación — Marco organizativo y gestión de riesgos', keywords: ['organizational', 'risk', 'governance', 'policy'] },
+      { id: 'proteccion',     label: 'Protección — Medidas técnicas y organizativas (Anexo II)',  keywords: ['access', 'cryptography', 'physical', 'network', 'human', 'asset'] },
+      { id: 'deteccion',      label: 'Detección — Monitorización y detección de incidentes',      keywords: ['monitoring', 'detection', 'audit', 'log'] },
+      { id: 'respuesta',      label: 'Respuesta — Gestión de incidentes y comunicación',           keywords: ['incident', 'response', 'communication'] },
+      { id: 'recuperacion',   label: 'Recuperación — Continuidad y recuperación',                 keywords: ['recovery', 'continuity', 'backup', 'resilience'] },
+    ],
+    nist_csf: [
+      { id: 'GOVERN',   label: 'GV — Govern',   concepts: ['govern'] },
+      { id: 'IDENTIFY',  label: 'ID — Identify',  concepts: ['identify'] },
+      { id: 'PROTECT',   label: 'PR — Protect',   concepts: ['protect'] },
+      { id: 'DETECT',    label: 'DE — Detect',    concepts: ['detect'] },
+      { id: 'RESPOND',   label: 'RS — Respond',   concepts: ['respond'] },
+      { id: 'RECOVER',   label: 'RC — Recover',   concepts: ['recover'] },
+    ],
+    nis2: [
+      { id: 'a', label: 'Art. 21.2.a — Políticas de análisis de riesgos y seguridad',          keywords: ['risk', 'policy', 'organizational'] },
+      { id: 'b', label: 'Art. 21.2.b — Gestión de incidentes',                                  keywords: ['incident', 'response', 'detect'] },
+      { id: 'c', label: 'Art. 21.2.c — Continuidad del negocio y gestión de crisis',            keywords: ['continuity', 'backup', 'recovery'] },
+      { id: 'd', label: 'Art. 21.2.d — Seguridad de la cadena de suministro',                   keywords: ['supplier', 'supply', 'third'] },
+      { id: 'e', label: 'Art. 21.2.e — Seguridad en desarrollo y mantenimiento',                keywords: ['development', 'change', 'vulnerability'] },
+      { id: 'f', label: 'Art. 21.2.f — Políticas para evaluar eficacia de medidas',             keywords: ['audit', 'review', 'assessment'] },
+      { id: 'g', label: 'Art. 21.2.g — Ciberhigiene y formación',                              keywords: ['awareness', 'training', 'human'] },
+      { id: 'h', label: 'Art. 21.2.h — Políticas de criptografía',                             keywords: ['cryptography', 'encryption'] },
+      { id: 'i', label: 'Art. 21.2.i — Seguridad RRHH, control de acceso y activos',           keywords: ['access', 'asset', 'human'] },
+      { id: 'j', label: 'Art. 21.2.j — MFA y comunicaciones seguras',                          keywords: ['authentication', 'network', 'secure'] },
+    ],
+    gdpr: [
+      { id: 'art5',   label: 'Art. 5 — Principios de tratamiento (minimización, integridad)',   keywords: ['data', 'privacy', 'integrity'] },
+      { id: 'art25',  label: 'Art. 25 — Privacidad por diseño',                                keywords: ['design', 'privacy', 'data'] },
+      { id: 'art32',  label: 'Art. 32 — Seguridad del tratamiento',                            keywords: ['encryption', 'access', 'network', 'backup'] },
+      { id: 'art33',  label: 'Art. 33/34 — Notificación de violaciones',                       keywords: ['incident', 'response', 'detect'] },
+    ],
+    pcidss: null,
+    iso22301: [
+      { id: 'cl6', label: 'Cl. 6 — Planificación (BIA, análisis de riesgos)',  keywords: ['risk', 'assessment', 'continuity'] },
+      { id: 'cl8', label: 'Cl. 8 — Operación (BCP, DR, comunicación)',         keywords: ['continuity', 'backup', 'recovery', 'communication'] },
+      { id: 'cl9', label: 'Cl. 9 — Evaluación del desempeño',                  keywords: ['audit', 'review', 'monitoring'] },
+    ],
+  },
+
   async _renderCatalog() {
-    const q = document.getElementById('c-search').value.toLowerCase();
-    const theme = document.getElementById('c-theme').value;
+    const q = document.getElementById('c-search')?.value.toLowerCase() || '';
+    const theme = document.getElementById('c-theme')?.value || '';
+    const fw = ViewControls._framework || 'iso27001';
     const list = document.getElementById('c-list');
     let data = ViewControls._catalog;
-    if (q) data = data.filter(c => (c.name + c.code).toLowerCase().includes(q));
+    if (q) data = data.filter(c => (c.name + c.code + (c.description || '')).toLowerCase().includes(q));
     if (theme) data = data.filter(c => c.theme === theme);
 
     const canEdit = Auth.canEdit();
-    list.innerHTML = `<div class="table-wrap"><table class="data">
-      <thead><tr><th>${t('controls.control_code')}</th><th>${t('controls.control_name')}</th><th>${t('controls.theme')}</th><th>${t('common.type')}</th><th>${t('controls.properties')}</th><th>${t('controls.mandatory')}</th></tr></thead>
-      <tbody>
-        ${data.map(c => `
-          <tr>
-            <td>${UI.codePill(c.code)}</td>
-            <td><strong>${UI.esc(c.name)}</strong>
-                ${c.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(c.description)}</div>` : ''}</td>
-            <td>${UI.esc(c.theme||'-')}</td>
-            <td style="font-size:11px;">${(c.control_type||[]).join(', ')}</td>
-            <td style="font-size:11px;font-family:var(--font-mono);">${(c.properties||[]).map(p => p[0].toUpperCase()).join(' ')}</td>
-            <td style="text-align:center;">
-              ${canEdit
-                ? `<label title="Marcar como control obligatorio (piso residual)" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
-                    <input type="checkbox" data-mandatory-id="${c.id}" ${c.is_mandatory ? 'checked' : ''}>
-                    ${c.is_mandatory ? `<span style="font-size:10px;font-weight:700;color:var(--danger);">OBLIGATORIO</span>` : ''}
-                   </label>`
-                : (c.is_mandatory ? `<span style="font-size:10px;font-weight:700;color:var(--danger);">OBLIGATORIO</span>` : '')}
-            </td>
-          </tr>`).join('')}
-      </tbody>
+
+    const _fwLabel = {
+      iso27001: 'ISO 27001:2022 / ISO 27002:2022',
+      ens: 'ENS RD 311/2022',
+      nist_csf: 'NIST CSF 2.0',
+      nis2: 'NIS2 — Art. 21',
+      gdpr: 'GDPR / RGPD',
+      pcidss: 'PCI-DSS v4.0',
+      iso22301: 'ISO 22301:2019',
+    }[fw] || fw;
+
+    const _controlRow = (c) => `
+      <tr>
+        <td>${UI.codePill(c.code)}</td>
+        <td><strong>${UI.esc(c.name)}</strong>
+            ${c.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(c.description.slice(0,120))}${c.description.length>120?'…':''}</div>` : ''}</td>
+        <td><span style="font-size:11px;color:var(--text-muted);">${UI.esc(c.theme||'-')}</span></td>
+        <td style="font-size:11px;">${(c.control_type||[]).join(', ')}</td>
+        <td style="font-size:11px;font-family:var(--font-mono);">${(c.properties||[]).map(p => p[0].toUpperCase()).join(' ')}</td>
+        <td style="text-align:center;">
+          ${canEdit
+            ? `<label title="Marcar como control obligatorio (piso residual)" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                <input type="checkbox" data-mandatory-id="${c.id}" ${c.is_mandatory ? 'checked' : ''}>
+                ${c.is_mandatory ? `<span style="font-size:10px;font-weight:700;color:var(--danger);">OBLIGATORIO</span>` : ''}
+               </label>`
+            : (c.is_mandatory ? `<span style="font-size:10px;font-weight:700;color:var(--danger);">OBLIGATORIO</span>` : '')}
+        </td>
+      </tr>`;
+
+    const _tableHtml = (rows) => `<div class="table-wrap"><table class="data">
+      <thead><tr>
+        <th>${t('controls.control_code')}</th>
+        <th>${t('controls.control_name')}</th>
+        <th>${t('controls.theme')}</th>
+        <th>${t('common.type')}</th>
+        <th>${t('controls.properties')}</th>
+        <th>${t('controls.mandatory')}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
     </table></div>`;
+
+    const groups = ViewControls._FRAMEWORK_GROUPS[fw];
+
+    let html = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <span style="font-size:13px;font-weight:700;color:var(--brand-purple);">${UI.esc(_fwLabel)}</span>
+      <span style="font-size:12px;color:var(--text-muted);">${t('controls.catalog_controls_count', { n: data.length })}</span>
+    </div>`;
+
+    if (!groups) {
+      // ISO 27001 / PCI-DSS: tabla plana agrupada por tema ISO 27002
+      const byTheme = {};
+      data.forEach(c => {
+        const k = c.theme || 'other';
+        if (!byTheme[k]) byTheme[k] = [];
+        byTheme[k].push(c);
+      });
+      const order = ['organizational','people','physical','technological'];
+      const keys = [...order.filter(k => byTheme[k]), ...Object.keys(byTheme).filter(k => !order.includes(k))];
+      const themeLabel = { organizational: t('controls.theme_org'), people: t('controls.theme_people'), physical: t('controls.theme_physical'), technological: t('controls.theme_tech') };
+      if (!data.length) {
+        html += `<p style="color:var(--text-muted);font-size:13px;padding:16px 0;">${t('controls.no_results')}</p>`;
+      } else {
+        html += keys.map(k => {
+          const items = byTheme[k];
+          return `<details open style="margin-bottom:12px;">
+            <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;color:var(--text-base);">
+              ${UI.esc(themeLabel[k] || k)} <span style="font-weight:400;color:var(--text-muted);">(${items.length})</span>
+            </summary>
+            ${_tableHtml(items.map(_controlRow).join(''))}
+          </details>`;
+        }).join('');
+      }
+    } else if (fw === 'nist_csf') {
+      // NIST CSF: agrupar por cybersec_concepts
+      groups.forEach(g => {
+        const matched = data.filter(c => (c.cybersec_concepts || []).some(cc => g.concepts.includes(cc.toLowerCase())));
+        if (!matched.length) return;
+        html += `<details open style="margin-bottom:12px;">
+          <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;color:var(--brand-purple);">
+            ${UI.esc(g.label)} <span style="font-weight:400;color:var(--text-muted);">(${matched.length})</span>
+          </summary>
+          ${_tableHtml(matched.map(_controlRow).join(''))}
+        </details>`;
+      });
+      const ungrouped = data.filter(c => !groups.some(g => (c.cybersec_concepts || []).some(cc => g.concepts.includes(cc.toLowerCase()))));
+      if (ungrouped.length) {
+        html += `<details style="margin-bottom:12px;">
+          <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;color:var(--text-muted);">
+            ${t('controls.catalog_others')} (${ungrouped.length})
+          </summary>
+          ${_tableHtml(ungrouped.map(_controlRow).join(''))}
+        </details>`;
+      }
+    } else {
+      // ENS, NIS2, GDPR, ISO 22301: agrupar por keyword matching
+      groups.forEach(g => {
+        const matched = data.filter(c => {
+          const haystack = ((c.name || '') + ' ' + (c.description || '') + ' ' + (c.theme || '') + ' ' + (c.code || '')).toLowerCase();
+          return g.keywords.some(k => haystack.includes(k));
+        });
+        if (!matched.length) return;
+        html += `<details open style="margin-bottom:12px;">
+          <summary style="cursor:pointer;font-weight:700;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;color:var(--brand-purple);">
+            ${UI.esc(g.label)} <span style="font-weight:400;color:var(--text-muted);">(${matched.length})</span>
+          </summary>
+          ${_tableHtml(matched.map(_controlRow).join(''))}
+        </details>`;
+      });
+    }
+
+    if (!data.length && !groups) {
+      html = `<p style="color:var(--text-muted);font-size:13px;padding:16px 0;">${t('controls.no_results')}</p>`;
+    }
+
+    list.innerHTML = html;
 
     if (canEdit) {
       list.querySelectorAll('[data-mandatory-id]').forEach(chk => {
