@@ -2,6 +2,8 @@
 const ViewControls = {
   _tab: 'impls', _catalog: [], _sortCol: 'id', _sortAsc: false, _overdueOnly: false,
 
+  _framework: 'iso27001',
+
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
@@ -11,10 +13,20 @@ const ViewControls = {
     ) + `
       <div class="toolbar">
         <button class="btn ${ViewControls._tab==='impls'?'btn-primary':''}" data-tab="impls">${t('controls.implementations')}</button>
-        <button class="btn ${ViewControls._tab==='catalog'?'btn-primary':''}" data-tab="catalog">${t('controls.soa')} ISO 27002:2022</button>
+        <button class="btn ${ViewControls._tab==='catalog'?'btn-primary':''}" data-tab="catalog">${t('controls.catalog_tab')}</button>
         <span class="spacer"></span>
+        ${ViewControls._tab === 'catalog' ? `
+          <select id="c-framework" style="font-size:13px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-1);font-weight:600;color:var(--brand-purple);">
+            <option value="iso27001" ${ViewControls._framework==='iso27001'?'selected':''}>ISO 27001 / ISO 27002:2022</option>
+            <option value="ens"      ${ViewControls._framework==='ens'?'selected':''}>ENS RD 311/2022</option>
+            <option value="nist_csf" ${ViewControls._framework==='nist_csf'?'selected':''}>NIST CSF 2.0</option>
+            <option value="nis2"     ${ViewControls._framework==='nis2'?'selected':''}>NIS2 — Art. 21</option>
+            <option value="gdpr"     ${ViewControls._framework==='gdpr'?'selected':''}>GDPR / RGPD</option>
+            <option value="pcidss"   ${ViewControls._framework==='pcidss'?'selected':''}>PCI-DSS v4.0</option>
+            <option value="iso22301" ${ViewControls._framework==='iso22301'?'selected':''}>ISO 22301:2019</option>
+          </select>` : ''}
         <input type="search" id="c-search" placeholder="${t('common.search')}...">
-        <select id="c-theme">
+        <select id="c-theme" ${ViewControls._tab==='catalog'?'':'style=""'}>
           <option value="">${t('common.all')}</option>
           <option value="organizational">${t('controls.theme_org')}</option>
           <option value="people">${t('controls.theme_people')}</option>
@@ -40,6 +52,10 @@ const ViewControls = {
     document.querySelectorAll('.toolbar [data-tab]').forEach(b => b.onclick = () => {
       ViewControls._tab = b.dataset.tab;
       ViewControls.render(main);
+    });
+    document.getElementById('c-framework')?.addEventListener('change', (e) => {
+      ViewControls._framework = e.target.value;
+      ViewControls._reload();
     });
     document.getElementById('c-search').oninput = () => ViewControls._reload();
     document.getElementById('c-theme').onchange = () => ViewControls._reload();

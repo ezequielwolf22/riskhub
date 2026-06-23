@@ -657,6 +657,9 @@ def _migrate_columns() -> None:
         # v5.9.0 — ReportBrandingConfig: soporte de fichero de plantilla (.docx/.html)
         ("ALTER TABLE report_branding_configs ADD COLUMN template_filename VARCHAR(255)", "report_branding_configs", "template_filename"),
         ("ALTER TABLE report_branding_configs ADD COLUMN template_mime VARCHAR(128)", "report_branding_configs", "template_mime"),
+        # v4.4.0 — Supplier: resultado de monitoreo periodico
+        ("ALTER TABLE suppliers ADD COLUMN last_monitored_at DATETIME", "suppliers", "last_monitored_at"),
+        ("ALTER TABLE suppliers ADD COLUMN monitoring_status VARCHAR(16)", "suppliers", "monitoring_status"),
         # v5.3.0 — RiskSnapshot: historico mensual de niveles de riesgo
         (
             """CREATE TABLE IF NOT EXISTS risk_snapshots (

@@ -16,7 +16,8 @@ function _getWidgetCatalog() {
     bcp:       { label: t('dashboard.widget.bcp'),       module: 'continuity',  desc: t('dashboard.widget_desc.bcp') },
     actions:   { label: t('dashboard.widget.actions'),   module: 'operations',  desc: t('dashboard.widget_desc.actions') },
     coverage:  { label: t('dashboard.widget.coverage'),  module: 'controls',    desc: t('dashboard.widget_desc.coverage') },
-    inbox:     { label: t('dashboard.widget.inbox'),     module: 'operations',  desc: t('dashboard.widget_desc.inbox') },
+    inbox:      { label: t('dashboard.widget.inbox'),      module: 'operations',  desc: t('dashboard.widget_desc.inbox') },
+    riskgroups: { label: t('dashboard.widget.riskgroups'), module: 'risks',       desc: t('dashboard.widget_desc.riskgroups') },
   };
 }
 
@@ -404,6 +405,7 @@ const ViewDashboard = {
     ViewDashboard._loadRecentActivity();
     ViewDashboard._loadFindingsQuickAction();
     ViewDashboard._loadPortfolio();
+    ViewDashboard._loadRiskGroups();
   },
 
   /* Genera el HTML del badge de metodologia. */
@@ -778,6 +780,19 @@ const ViewDashboard = {
         <div data-widget-id="inbox" style="margin-bottom:16px;">
           <div id="dash-inbox-body">
             <div class="card"><p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">${UI.esc(t('dashboard.loading_inbox'))}</p></div>
+          </div>
+        </div>`,
+
+      riskgroups: () => `
+        <div data-widget-id="riskgroups" style="margin-top:16px;">
+          <div class="card" id="dash-riskgroups-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <h3 style="margin:0;">${UI.esc(t('dashboard.riskgroups_title'))}</h3>
+              <a href="#/risks?tab=groups" style="font-size:12px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all'))}</a>
+            </div>
+            <div id="dash-riskgroups-body">
+              <p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">${UI.esc(t('dashboard.loading_data'))}</p>
+            </div>
           </div>
         </div>`,
     };
@@ -1496,6 +1511,46 @@ const ViewDashboard = {
         </div>` : ''}`;
     } catch (e) {
       if (body) body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${UI.esc(t('dashboard.portfolio_unavail_detail'))} ${UI.esc(e.message)}</p>`;
+    }
+  },
+
+  async _loadRiskGroups() {
+    const body = document.getElementById('dash-riskgroups-body');
+    if (!body) return;
+    try {
+      const summary = await Api.risks.groupSummary();
+      if (!summary || !summary.length) {
+        body.innerHTML = `<p style="font-size:13px;color:var(--text-muted);">${UI.esc(t('dashboard.riskgroups_empty'))}</p>`;
+        return;
+      }
+      const levelColor = l => window.RiskLevels ? RiskLevels.colorFor(l)
+        : (l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)');
+      const sorted = summary.slice().sort((a, b) => (b.max_residual || 0) - (a.max_residual || 0));
+      const maxCount = Math.max(...sorted.map(g => g.risk_count || 0), 1);
+      body.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${sorted.slice(0, 10).map(g => {
+            const lvl = g.max_residual || 0;
+            const col = levelColor(lvl);
+            const pct = Math.round((g.risk_count || 0) / maxCount * 100);
+            return `
+              <div style="cursor:pointer;" onclick="location.hash='#/risks?tab=groups'">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px;">
+                  <span style="color:var(--text-base);font-weight:500;">${UI.esc(g.group_name)}</span>
+                  <span style="display:flex;align-items:center;gap:8px;">
+                    <span style="color:var(--text-muted);">${g.risk_count} ${t('common.risk')}</span>
+                    ${lvl > 0 ? `<span style="font-weight:700;color:${col};font-size:11px;background:${col}18;padding:1px 7px;border-radius:8px;">L${lvl}</span>` : ''}
+                  </span>
+                </div>
+                <div style="height:5px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
+                  <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;transition:width .4s;"></div>
+                </div>
+              </div>`;
+          }).join('')}
+          ${sorted.length > 10 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${t('dashboard.portfolio_and_more', {n: sorted.length - 10})}</div>` : ''}
+        </div>`;
+    } catch (e) {
+      body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${UI.esc(e.message)}</p>`;
     }
   },
 };

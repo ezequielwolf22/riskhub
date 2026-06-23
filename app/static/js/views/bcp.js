@@ -1958,43 +1958,43 @@ const ViewBcp = (() => {
                 ${_procs.map(p=>`<option value="${p.id}"${dep?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
               </select>
             </div>
-            <div>${lbl('Tipo de dependencia', true)}
+            <div>${lbl(t('bcp.dep_dep_type'), true)}
               <select id="dm-type" class="form-control" style="font-size:13px;">
                 ${DEP_TYPES.map(t=>`<option value="${t}"${dep?.dependency_type===t?' selected':''}>${DEP_LABELS[t]||t}</option>`).join('')}
               </select>
             </div>
           </div>
-          <div style="margin-bottom:14px;">${lbl('Nombre del recurso', true)}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_resource_name'), true)}
             <input id="dm-name" class="form-control" style="font-size:13px;" value="${UI.esc(dep?.name||'')}" placeholder="Ej: ERP SAP, Equipo tecnico de red">
           </div>
-          <div style="margin-bottom:14px;">${lbl('Descripcion')}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_description'))}
             <textarea id="dm-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(dep?.description||'')}</textarea>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
-            <div>${lbl('Qty operacion normal')}
+            <div>${lbl(t('bcp.dep_qty_normal'))}
               <input id="dm-qn" class="form-control" type="number" style="font-size:13px;" value="${dep?.qty_normal??''}">
             </div>
-            <div>${lbl('Qty minima recuperacion')}
+            <div>${lbl(t('bcp.dep_qty_min'))}
               <input id="dm-qr" class="form-control" type="number" style="font-size:13px;" value="${dep?.qty_recovery??''}">
             </div>
-            <div>${lbl('RTO necesario (horas)')}
+            <div>${lbl(t('bcp.dep_rto_needed'))}
               <input id="dm-rto" class="form-control" type="number" style="font-size:13px;" value="${dep?.rto_hours??''}">
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-            <div>${lbl('Secuencia de recuperacion')}
+            <div>${lbl(t('bcp.dep_recovery_seq'))}
               <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">Orden (1 = primero que debe estar)</div>
               <input id="dm-seq" class="form-control" type="number" min="1" style="font-size:13px;" value="${dep?.recovery_sequence??''}">
             </div>
             <div style="display:flex;align-items:center;gap:8px;padding-top:26px;">
               <input id="dm-crit" type="checkbox" ${dep?.is_critical?' checked':''}>
-              <label for="dm-crit" style="margin:0;font-size:13px;">Es critico (sin el, la recuperacion no puede comenzar)</label>
+              <label for="dm-crit" style="margin:0;font-size:13px;">${UI.esc(t('bcp.dep_is_critical'))}</label>
             </div>
           </div>
-          <div style="margin-bottom:14px;">${lbl('Procedimiento alternativo')}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_alt_procedure'))}
             <textarea id="dm-alt" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Que se hace si no esta disponible?">${UI.esc(dep?.alternative||'')}</textarea>
           </div>
-          <div style="margin-bottom:14px;">${lbl('Notas adicionales')}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_notes'))}
             <textarea id="dm-notes" class="form-control" rows="2" style="font-size:13px;">${UI.esc(dep?.notes||'')}</textarea>
           </div>
 
@@ -2004,27 +2004,27 @@ const ViewBcp = (() => {
               <i class="ti ti-git-branch" style="margin-right:4px"></i> Interconexion tecnica (ISO 22301 §8.2)
             </summary>
             <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div>${lbl('Tipo de conexion')}
+              <div>${lbl(t('bcp.dep_conn_type'))}
                 <select id="dm-conn-type" class="form-control" style="font-size:13px;">
                   <option value="">— Seleccionar —</option>
                   ${['API','database','network','file_transfer','manual','messaging'].map(v=>
                     `<option value="${v}"${dep?.connection_type===v?' selected':''}>${v}</option>`).join('')}
                 </select>
               </div>
-              <div>${lbl('Protocolo')}
+              <div>${lbl(t('bcp.dep_protocol'))}
                 <input id="dm-protocol" class="form-control" style="font-size:13px;" placeholder="HTTPS, SQL, SMB, SFTP..." value="${UI.esc(dep?.protocol||'')}">
               </div>
-              <div>${lbl('Direccion del flujo')}
+              <div>${lbl(t('bcp.dep_data_dir'))}
                 <select id="dm-data-dir" class="form-control" style="font-size:13px;">
                   <option value="">— Seleccionar —</option>
-                  ${[['in','Entrada (in)'],['out','Salida (out)'],['both','Bidireccional (both)']].map(([v,l])=>
+                  ${[['in',t('bcp.dep_dir_in')],['out',t('bcp.dep_dir_out')],['both',t('bcp.dep_dir_both')]].map(([v,l])=>
                     `<option value="${v}"${dep?.data_direction===v?' selected':''}>${l}</option>`).join('')}
                 </select>
               </div>
-              <div>${lbl('Clasificacion del dato')}
+              <div>${lbl(t('bcp.dep_data_class'))}
                 <select id="dm-data-class" class="form-control" style="font-size:13px;">
                   <option value="">— Seleccionar —</option>
-                  ${[['public','Publico'],['internal','Interno'],['confidential','Confidencial'],['strictly_confidential','Estrictamente confidencial']].map(([v,l])=>
+                  ${[['public',t('bcp.dep_data_public')],['internal',t('bcp.dep_data_internal')],['confidential',t('bcp.dep_data_confidential')],['strictly_confidential',t('bcp.dep_data_strict')]].map(([v,l])=>
                     `<option value="${v}"${dep?.data_classification===v?' selected':''}>${l}</option>`).join('')}
                 </select>
               </div>
@@ -2093,7 +2093,7 @@ const ViewBcp = (() => {
   }
 
   async function _delDep(id) {
-    if (!confirm('Eliminar dependencia?')) return;
+    if (!confirm(t('bcp.del_dep_confirm'))) return;
     try {
       await Api.del(`/api/bcp/dependencies/${id}`);
       UI.toast('Dependencia eliminada', 'success');
@@ -2175,25 +2175,25 @@ const ViewBcp = (() => {
             <div>${lbl('RAM (GB)')}
               <input id="sm-ram" class="form-control" type="number" min="0" style="font-size:13px;" value="${strat?.it_config?.ram_gb??''}">
             </div>
-            <div>${lbl('Almacenamiento (TB)')}
+            <div>${lbl(t('bcp.strat_storage'))}
               <input id="sm-stor" class="form-control" type="number" min="0" step="0.1" style="font-size:13px;" value="${strat?.it_config?.storage_tb??''}">
             </div>
-            <div>${lbl('Virtualizacion')}
+            <div>${lbl(t('bcp.strat_virtualization'))}
               <input id="sm-virt" class="form-control" style="font-size:13px;" placeholder="VMware / Hyper-V / KVM..." value="${UI.esc(strat?.it_config?.virtualization_type||'')}">
             </div>
-            <div>${lbl('Hosts minimos')}
+            <div>${lbl(t('bcp.strat_min_hosts'))}
               <input id="sm-hosts" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.it_config?.min_hosts??''}">
             </div>
-            <div>${lbl('Ubicacion backup offsite')}
+            <div>${lbl(t('bcp.strat_offsite'))}
               <input id="sm-offsite" class="form-control" style="font-size:13px;" placeholder="CPD secundario, cloud..." value="${UI.esc(strat?.it_config?.offsite_location||'')}">
             </div>
-            <div>${lbl('RPO backup (horas)')}
+            <div>${lbl(t('bcp.strat_backup_rpo'))}
               <input id="sm-bkp-rpo" class="form-control" type="number" min="0" style="font-size:13px;" value="${strat?.it_config?.backup_rpo_hours??''}">
             </div>
-            <div>${lbl('RTO backup (horas)')}
+            <div>${lbl(t('bcp.strat_backup_rto'))}
               <input id="sm-bkp-rto" class="form-control" type="number" min="0" style="font-size:13px;" value="${strat?.it_config?.backup_rto_hours??''}">
             </div>
-            <div style="grid-column:span 2">${lbl('Retencion backup (dias)')}
+            <div style="grid-column:span 2">${lbl(t('bcp.strat_backup_retention'))}
               <input id="sm-bkp-ret" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.it_config?.backup_retention_days??''}">
             </div>
           </div>
@@ -2202,28 +2202,28 @@ const ViewBcp = (() => {
         <!-- Seccion colapsable: Monitorizacion y mantenimiento -->
         <details style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden;" ${strat?.monitoring_config ? 'open' : ''}>
           <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);cursor:pointer;background:var(--bg-2);user-select:none;">
-            <i class="ti ti-activity" style="margin-right:4px"></i> Monitorizacion y mantenimiento
+            <i class="ti ti-activity" style="margin-right:4px"></i> ${t('bcp.strat_monitoring_section')}
           </summary>
           <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>${lbl('Herramienta de monitorizacion')}
+            <div>${lbl(t('bcp.strat_monitor_tool'))}
               <input id="sm-mon-tool" class="form-control" style="font-size:13px;" placeholder="Zabbix, Nagios, Datadog..." value="${UI.esc(strat?.monitoring_config?.monitoring_tool||'')}">
             </div>
-            <div>${lbl('Email alertas')}
+            <div>${lbl(t('bcp.strat_alert_email'))}
               <input id="sm-mon-email" class="form-control" type="email" style="font-size:13px;" value="${UI.esc(strat?.monitoring_config?.alert_email||'')}">
             </div>
-            <div>${lbl('Umbral CPU (%)')}
+            <div>${lbl(t('bcp.strat_cpu_threshold'))}
               <input id="sm-thr-cpu" class="form-control" type="number" min="0" max="100" style="font-size:13px;" value="${strat?.monitoring_config?.threshold_cpu_pct??''}">
             </div>
-            <div>${lbl('Umbral memoria (%)')}
+            <div>${lbl(t('bcp.strat_mem_threshold'))}
               <input id="sm-thr-mem" class="form-control" type="number" min="0" max="100" style="font-size:13px;" value="${strat?.monitoring_config?.threshold_mem_pct??''}">
             </div>
-            <div>${lbl('Ventana mantenimiento')}
+            <div>${lbl(t('bcp.strat_maint_window'))}
               <input id="sm-maint" class="form-control" style="font-size:13px;" placeholder="Ej: sabados 02:00-04:00 UTC" value="${UI.esc(strat?.monitoring_config?.maintenance_window||'')}">
             </div>
-            <div>${lbl('Parches de seguridad (dias)')}
+            <div>${lbl(t('bcp.strat_security_patches'))}
               <input id="sm-patch-sec" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.monitoring_config?.security_patch_days??''}">
             </div>
-            <div style="grid-column:span 2">${lbl('Actualizaciones de funcionalidad (dias)')}
+            <div style="grid-column:span 2">${lbl(t('bcp.strat_feature_updates'))}
               <input id="sm-patch-feat" class="form-control" type="number" min="1" style="font-size:13px;" value="${strat?.monitoring_config?.feature_update_days??''}">
             </div>
           </div>
@@ -5047,9 +5047,9 @@ const ViewBcp = (() => {
 
   async function _stepTests(body) {
     const tabs = [
-      { id:'lista',     label:'Lista de tests',    icon:'ti-clipboard-check' },
-      { id:'calendario',label:'Calendario',         icon:'ti-calendar-event' },
-      { id:'evidence',  label:'Evidencias',         icon:'ti-files' },
+      { id:'lista',     label:t('bcp.tab_test_list'),    icon:'ti-clipboard-check' },
+      { id:'calendario',label:t('bcp.tab_calendar'),      icon:'ti-calendar-event' },
+      { id:'evidence',  label:t('bcp.tab_evidence'),      icon:'ti-files' },
     ];
     _buildSubTabs('tests', tabs, body, async (subBody, active) => {
       if (active === 'lista')      await _tabTests(subBody);
@@ -5207,28 +5207,28 @@ const ViewBcp = (() => {
     const ctx = _bcmContext || {};
     const activeWizardStep = parseInt(ctx.wizard_step) || 1;
     const wizardSteps = [
-      { n:1, title:'Organizacion', fields:[
-        { id:'sector', label:'Sector de actividad *', type:'select', options:['Banca/Finanzas','Seguros','Salud','Industria/Manufactura','Energia/Utilities','Telecomunicaciones','Tecnologia/TI','Retail/Comercio','Administracion Publica','Logistica/Transporte','Educacion','Otro'] },
-        { id:'employees_range', label:'Empleados', type:'select', options:['1-50','51-200','201-500','501-2000','2001-10000','Mas de 10000'] },
-        { id:'geographic_scope', label:'Alcance geografico', type:'select', options:['Local (ciudad/provincia)','Nacional','Internacional (Europa)','Global'] },
-        { id:'annual_loss_estimate', label:'Impacto economico estimado por hora de caida (EUR)', type:'text', placeholder:'p.ej. 50000' },
+      { n:1, title:t('bcp.wizard_step1'), fields:[
+        { id:'sector', label:t('bcp.wizard_sector') + ' *', type:'select', options:['Banca/Finanzas','Seguros','Salud','Industria/Manufactura','Energia/Utilities','Telecomunicaciones','Tecnologia/TI','Retail/Comercio','Administracion Publica','Logistica/Transporte','Educacion','Otro'] },
+        { id:'employees_range', label:t('bcp.wizard_employees'), type:'select', options:['1-50','51-200','201-500','501-2000','2001-10000','Mas de 10000'] },
+        { id:'geographic_scope', label:t('bcp.wizard_geo_scope'), type:'select', options:['Local (ciudad/provincia)','Nacional','Internacional (Europa)','Global'] },
+        { id:'annual_loss_estimate', label:t('bcp.wizard_annual_loss'), type:'text', placeholder:'p.ej. 50000' },
       ]},
-      { n:2, title:'Infraestructura y sistemas criticos', fields:[
-        { id:'it_architecture', label:'Arquitectura TI', type:'select', options:['100% On-premise','Mayoritariamente On-premise + algo cloud','Hibrido equilibrado','Mayoritariamente cloud','100% Cloud (SaaS/IaaS)'] },
-        { id:'critical_infra', label:'Sistemas criticos (uno por linea)', type:'textarea', placeholder:'ERP SAP\nCRM Salesforce\n...', isJson:true },
-        { id:'key_suppliers', label:'Proveedores clave de TI/servicios criticos (uno por linea)', type:'textarea', placeholder:'AWS - infraestructura cloud\n...', isJson:true },
+      { n:2, title:t('bcp.wizard_step2'), fields:[
+        { id:'it_architecture', label:t('bcp.wizard_it_arch'), type:'select', options:['100% On-premise','Mayoritariamente On-premise + algo cloud','Hibrido equilibrado','Mayoritariamente cloud','100% Cloud (SaaS/IaaS)'] },
+        { id:'critical_infra', label:t('bcp.wizard_critical_infra'), type:'textarea', placeholder:'ERP SAP\nCRM Salesforce\n...', isJson:true },
+        { id:'key_suppliers', label:t('bcp.wizard_key_suppliers'), type:'textarea', placeholder:'AWS - infraestructura cloud\n...', isJson:true },
       ]},
-      { n:3, title:'Escenarios de riesgo y regulacion', fields:[
-        { id:'risk_scenarios', label:'Escenarios de continuidad relevantes', type:'checkboxes',
+      { n:3, title:t('bcp.wizard_step3'), fields:[
+        { id:'risk_scenarios', label:t('bcp.wizard_risk_scenarios'), type:'checkboxes',
           options:['Ciberataque / ransomware','Incendio o inundacion en sede','Fallo del proveedor cloud principal','Corte de suministro electrico prolongado','Pandemia / ausencia masiva de personal','Fallo de conectividad / red','Desastre natural en sede principal','Fallo de proveedor critico de TI'] },
-        { id:'regulations', label:'Regulaciones/normativas aplicables', type:'checkboxes',
+        { id:'regulations', label:t('bcp.wizard_regulations'), type:'checkboxes',
           options:['ISO 22301','NIS2 (Directiva europea)','DORA (sector financiero UE)','GDPR','ENS (Esquema Nacional de Seguridad)','PCI-DSS','SOC 2','Otra regulacion sectorial'] },
-        { id:'incident_history', label:'Incidentes de continuidad recientes (resumen)', type:'textarea', placeholder:'p.ej. En 2023 sufrimos un ransomware que afecto 4h al ERP.' },
+        { id:'incident_history', label:t('bcp.wizard_incident_history'), type:'textarea', placeholder:'p.ej. En 2023 sufrimos un ransomware que afecto 4h al ERP.' },
       ]},
-      { n:4, title:'Objetivos de recuperacion', fields:[
-        { id:'rto_target', label:'RTO objetivo global', type:'select', options:['15 minutos','30 minutos','1 hora','2 horas','4 horas','8 horas','24 horas','48 horas','72 horas'] },
-        { id:'rpo_target', label:'RPO objetivo global', type:'select', options:['Cero (tiempo real)','15 minutos','1 hora','4 horas','24 horas','48 horas','72 horas'] },
-        { id:'max_tolerable_downtime', label:'MTD - Maximo tiempo de interrupcion tolerable', type:'select', options:['1 hora','4 horas','8 horas','24 horas','48 horas','72 horas','1 semana'] },
+      { n:4, title:t('bcp.wizard_step4'), fields:[
+        { id:'rto_target', label:t('bcp.wizard_rto_target'), type:'select', options:['15 minutos','30 minutos','1 hora','2 horas','4 horas','8 horas','24 horas','48 horas','72 horas'] },
+        { id:'rpo_target', label:t('bcp.wizard_rpo_target'), type:'select', options:['Cero (tiempo real)','15 minutos','1 hora','4 horas','24 horas','48 horas','72 horas'] },
+        { id:'max_tolerable_downtime', label:t('bcp.wizard_mtd'), type:'select', options:['1 hora','4 horas','8 horas','24 horas','48 horas','72 horas','1 semana'] },
       ]},
     ];
 
@@ -5550,8 +5550,8 @@ const ViewBcp = (() => {
   // ── Tile: Activaciones de emergencia ─────────────────────────────────────────
 
   const _ACT_TYPE_LABELS = {
-    accion: 'Accion', nota: 'Nota', escalada: 'Escalada',
-    resolucion: 'Resolucion', decision: 'Decision', comunicacion: 'Comunicacion',
+    accion: t('bcp.act_accion'), nota: t('bcp.act_nota'), escalada: t('bcp.act_escalada'),
+    resolucion: t('bcp.act_resolucion'), decision: t('bcp.act_decision'), comunicacion: t('bcp.act_comunicacion'),
   };
   const _ACT_TYPE_COLORS = {
     accion: '#2563EB', nota: '#6B7280', escalada: '#DC2626',

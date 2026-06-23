@@ -2589,11 +2589,11 @@ def _run_supplier_monitoring() -> None:
             except Exception as exc:
                 logger.warning("Error monitorizando proveedor %s: %s", getattr(s, "code", "?"), exc)
 
-        if total_findings:
-            db.commit()
-            logger.info("Monitoreo de proveedores completado: %d hallazgos creados/actualizados.", total_findings)
-        else:
-            logger.debug("Monitoreo de proveedores: todos los proveedores accesibles.")
+        db.commit()
+        logger.info(
+            "Monitoreo de proveedores completado: %d escaneados, %d hallazgos creados/actualizados.",
+            len(suppliers), total_findings,
+        )
     finally:
         db.close()
 

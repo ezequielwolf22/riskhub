@@ -211,6 +211,8 @@ const Api = {
     bulkDelete: (ids) => Api.post('/api/suppliers/bulk-delete', { ids }),
     bulkRecompute: (ids) => Api.post('/api/suppliers/bulk-recompute', { ids }),
     summary: () => Api.get('/api/suppliers/stats/summary'),
+    monitoring: () => Api.get('/api/suppliers/monitoring'),
+    rescan: (id) => Api.post(`/api/suppliers/${id}/rescan`, {}),
     importFile: (file) => {
       const fd = new FormData();
       fd.append('file', file);

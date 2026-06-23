@@ -210,6 +210,7 @@ def _generate_soa_pdf(soa: SoAVersion) -> bytes:
         import io
 
         buf = io.BytesIO()
+        # A4 con margenes 2cm cada lado → ancho util = 17cm
         doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm,
                                 topMargin=2*cm, bottomMargin=2*cm)
         styles = getSampleStyleSheet()
@@ -218,6 +219,10 @@ def _generate_soa_pdf(soa: SoAVersion) -> bytes:
         normal = styles["Normal"]
         h1 = ParagraphStyle("H1", parent=styles["Heading1"], textColor=PURPLE, fontSize=14)
         h2 = ParagraphStyle("H2", parent=styles["Heading2"], textColor=ORANGE, fontSize=11)
+        # Estilos para celdas de tabla — Paragraph wrapping evita desbordamiento
+        cell = ParagraphStyle("cell", parent=normal, fontSize=7, leading=9)
+        cell_hdr = ParagraphStyle("cellhdr", parent=normal, fontSize=7, leading=9,
+                                  textColor=colors.white, fontName="Helvetica-Bold")
 
         approved_str = soa.approved_at.strftime("%d/%m/%Y") if soa.approved_at else "-"
         story = [
@@ -229,29 +234,49 @@ def _generate_soa_pdf(soa: SoAVersion) -> bytes:
             Paragraph(f"<b>Aprobada el:</b> {approved_str}", normal),
         ]
         if soa.approval_notes:
-            story.append(Paragraph(f"<b>Notas:</b> {soa.approval_notes}", normal))
+            story.append(Paragraph(f"<b>Notas de aprobacion:</b> {soa.approval_notes}", normal))
         story.append(Spacer(1, 0.5*cm))
 
         controls = soa.snapshot_json or []
         if controls:
             story.append(Paragraph(f"CONTROLES ({len(controls)} entradas)", h2))
-            data = [["Codigo", "Control", "Estado", "Madurez", "Razon inclusion"]]
+
+            STATUS_ES = {
+                "implemented": "Implementado",
+                "partial": "Parcial",
+                "planned": "Planificado",
+                "not_implemented": "No implementado",
+            }
+
+            # colWidths suma exacta: 1.8+5.2+2.5+1.5+6.0 = 17.0cm
+            COL_W = [1.8*cm, 5.2*cm, 2.5*cm, 1.5*cm, 6.0*cm]
+            data = [[
+                Paragraph("Codigo", cell_hdr),
+                Paragraph("Control", cell_hdr),
+                Paragraph("Estado", cell_hdr),
+                Paragraph("Mad.", cell_hdr),
+                Paragraph("Razon inclusion / Justif. exclusion", cell_hdr),
+            ]]
             for c in controls:
+                status_raw = c.get("status", "") or ""
+                reason = (c.get("inclusion_reason") or c.get("exclusion_justification") or "—").strip()
                 data.append([
-                    c.get("control_code") or "-",
-                    (c.get("control_name") or "")[:45],
-                    c.get("status", "-"),
-                    str(c.get("maturity", 0)),
-                    (c.get("inclusion_reason") or c.get("exclusion_justification") or "")[:30],
+                    Paragraph(c.get("control_code") or "—", cell),
+                    Paragraph(c.get("control_name") or "—", cell),
+                    Paragraph(STATUS_ES.get(status_raw, status_raw), cell),
+                    Paragraph(str(c.get("maturity") or 0), cell),
+                    Paragraph(reason, cell),
                 ])
-            t = Table(data, colWidths=[1.8*cm, 7*cm, 2.5*cm, 1.5*cm, 4*cm], repeatRows=1)
+            t = Table(data, colWidths=COL_W, repeatRows=1)
             t.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), PURPLE),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F5F5F5")]),
                 ("GRID", (0, 0), (-1, -1), 0.3, colors.lightgrey),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
-                ("PADDING", (0, 0), (-1, -1), 3),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
             ]))
             story.append(t)
 

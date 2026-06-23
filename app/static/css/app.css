@@ -1038,8 +1038,8 @@ table.data td .code-pill {
 .modal-body .span2 { grid-column: 1 / -1; }
 
 /* Grid de formulario reutilizable (fuera de modales: wizard, vistas inline) */
-.form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.form-grid .span2 { grid-column: span 2; }
+.form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 24px; }
+.form-grid .span2 { grid-column: 1 / -1; }
 .modal-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;
               padding-top: 16px; border-top: 1px solid var(--border); }
 
@@ -2646,7 +2646,7 @@ table.data td .code-pill {
 @media (max-width: 720px) {
   .wizard-step-label { display: none; }
   .wizard-ms-grid, .wizard-auto-grid, .form-grid { grid-template-columns: 1fr; }
-  .form-grid .span2 { grid-column: span 1; }
+  .form-grid .span2 { grid-column: 1 / -1; }
 }
 
 /* ============================================================

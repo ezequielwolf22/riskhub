@@ -132,6 +132,10 @@ def scan_supplier(db, supplier, org_id: int) -> list:
         or not dns_res["ok"]
     )
 
+    # Registrar siempre la fecha y estado del escaneo en el proveedor
+    supplier.last_monitored_at = now
+    supplier.monitoring_status = "issue" if has_issue else "ok"
+
     if not has_issue:
         logger.debug("Supplier %s OK (HTTP %s, SSL %s dias, DNS %s)",
                      supplier.code, http_res.get("status"), ssl_res.get("days_remaining"), dns_res.get("ip"))

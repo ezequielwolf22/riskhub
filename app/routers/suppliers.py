@@ -68,6 +68,83 @@ def suppliers_summary(db: Session = Depends(get_db), current_user: User = Depend
     }
 
 
+@router.get("/monitoring")
+def supplier_monitoring_dashboard(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Dashboard de monitoreo periodico: estado HTTP/SSL/DNS de todos los proveedores."""
+    from app.models import ExternalFinding, ExternalFindingSource
+
+    suppliers = filter_by_org(db.query(Supplier), Supplier, current_user).filter(
+        (Supplier.website.isnot(None)) | (Supplier.contact_email.isnot(None))
+    ).order_by(Supplier.name).all()
+
+    # Ultima finding de tipo SUPPLIER_MONITOR por proveedor (open)
+    latest_findings: dict[int, ExternalFinding] = {}
+    org_id = current_user.organization_id
+    if org_id:
+        findings = db.query(ExternalFinding).filter(
+            ExternalFinding.organization_id == org_id,
+            ExternalFinding.source == ExternalFindingSource.SUPPLIER_MONITOR,
+            ExternalFinding.supplier_id.isnot(None),
+        ).order_by(ExternalFinding.detected_at.desc()).all()
+        for f in findings:
+            if f.supplier_id not in latest_findings:
+                latest_findings[f.supplier_id] = f
+
+    result = []
+    for s in suppliers:
+        f = latest_findings.get(s.id)
+        result.append({
+            "id": s.id,
+            "code": s.code,
+            "name": s.name,
+            "website": s.website,
+            "contact_email": s.contact_email,
+            "tier": s.tier.value if s.tier else None,
+            "last_monitored_at": s.last_monitored_at.isoformat() if s.last_monitored_at else None,
+            "monitoring_status": s.monitoring_status or "unknown",
+            "finding": {
+                "id": f.id,
+                "title": f.title,
+                "description": f.description,
+                "severity": f.severity,
+                "detected_at": f.detected_at.isoformat() if f.detected_at else None,
+                "status": f.status,
+            } if f and f.status == "open" else None,
+        })
+    return result
+
+
+@router.post("/{supplier_id}/rescan")
+def rescan_supplier(
+    supplier_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Lanza un escaneo manual inmediato de un proveedor."""
+    supplier = filter_by_org(db.query(Supplier), Supplier, current_user).filter(
+        Supplier.id == supplier_id
+    ).first()
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    domain = supplier.website or supplier.contact_email
+    if not domain:
+        raise HTTPException(status_code=400, detail="El proveedor no tiene website ni email configurado")
+
+    from app.services.supplier_monitoring_service import scan_supplier
+    findings = scan_supplier(db, supplier, current_user.organization_id)
+    db.commit()
+    return {
+        "supplier_id": supplier.id,
+        "last_monitored_at": supplier.last_monitored_at.isoformat() if supplier.last_monitored_at else None,
+        "monitoring_status": supplier.monitoring_status,
+        "findings_created": len(findings),
+    }
+
+
 _MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB
 _ALLOWED_IMPORT_EXT = (".csv", ".xlsx", ".xls", ".ods", ".tsv", ".json")
 
