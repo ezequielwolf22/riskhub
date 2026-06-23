@@ -5,20 +5,20 @@ const ViewVulns = {
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
-      'Catalogo de vulnerabilidades',
-      'ISO/IEC 27005:2018 Annex D + vulnerabilidades personalizadas',
-      canEdit ? '<button class="btn btn-primary" id="btn-new">+ Nueva vulnerabilidad</button>' : ''
+      t('vulnerabilities.title'),
+      t('vulnerabilities.subtitle'),
+      canEdit ? `<button class="btn btn-primary" id="btn-new">+ ${t('vulnerabilities.new')}</button>` : ''
     ) + `
       <div class="toolbar">
-        <input type="search" id="v-search" placeholder="Buscar...">
+        <input type="search" id="v-search" placeholder="${t('vulnerabilities.search_placeholder')}">
         <select id="v-cat">
-          <option value="">Todas</option>
-          <option value="hardware">Hardware</option>
-          <option value="software">Software</option>
-          <option value="network">Red</option>
-          <option value="personnel">Personal</option>
-          <option value="site">Instalaciones</option>
-          <option value="organization">Organizacion</option>
+          <option value="">${t('vulnerabilities.all_categories')}</option>
+          <option value="hardware">${t('vulnerabilities.cat_hardware')}</option>
+          <option value="software">${t('vulnerabilities.cat_software')}</option>
+          <option value="network">${t('vulnerabilities.cat_network')}</option>
+          <option value="personnel">${t('vulnerabilities.cat_personnel')}</option>
+          <option value="site">${t('vulnerabilities.cat_site')}</option>
+          <option value="organization">${t('vulnerabilities.cat_organization')}</option>
         </select>
       </div>
       <div id="v-list"></div>
@@ -33,7 +33,7 @@ const ViewVulns = {
     const q = document.getElementById('v-search').value;
     const cat = document.getElementById('v-cat').value;
     const list = document.getElementById('v-list');
-    list.innerHTML = '<div class="notice">Cargando...</div>';
+    list.innerHTML = `<div class="notice">${t('common.loading')}</div>`;
     try {
       const params = {};
       if (q) params.q = q;
@@ -41,7 +41,7 @@ const ViewVulns = {
       const data = await Api.vulns.list(params);
       const canEdit = Auth.canEdit();
       if (!data.length) {
-        list.innerHTML = UI.emptyState('Sin resultados', 'Ajusta los filtros.');
+        list.innerHTML = UI.emptyState(t('vulnerabilities.no_results'), t('vulnerabilities.adjust_filters'));
         return;
       }
 
@@ -68,9 +68,9 @@ const ViewVulns = {
 
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          ${_th('code','Codigo')}${_th('name','Nombre')}${_th('category','Categoria')}
-          <th>Amenazas relacionadas</th>
-          ${_th('risks','Riesgos','width:70px;text-align:center;')}<th></th>
+          ${_th('code',t('vulnerabilities.col_code'))}${_th('name',t('vulnerabilities.col_name'))}${_th('category',t('vulnerabilities.col_category'))}
+          <th>${t('vulnerabilities.col_related_threats')}</th>
+          ${_th('risks',t('vulnerabilities.col_risks'),'width:70px;text-align:center;')}<th></th>
         </tr></thead>
         <tbody>
           ${data.map(v => {
@@ -84,7 +84,7 @@ const ViewVulns = {
               <td>${UI.esc(v.category||'-')}</td>
               <td style="font-size:11px;font-family:var(--font-mono);">${(v.related_threats||[]).join(', ')||'-'}</td>
               <td style="text-align:center;">
-                <a href="#/risks?vulnerability_id=${v.id}" title="Ver riesgos con esta vulnerabilidad"
+                <a href="#/risks?vulnerability_id=${v.id}" title="${t('vulnerabilities.view_risks_title')}"
                    style="font-weight:700;font-family:var(--font-mono);font-size:13px;
                           color:${rcColor};text-decoration:none;">${rc}</a>
               </td>
@@ -93,9 +93,9 @@ const ViewVulns = {
                   ? `<span class="badge badge-muted">Custom</span>
                      ${canEdit ? `
                        <button class="btn btn-sm" style="margin-left:4px;"
-                         onclick="ViewVulns._edit(${JSON.stringify(v).replace(/"/g,'&quot;')})">Editar</button>
+                         onclick="ViewVulns._edit(${JSON.stringify(v).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
                        <button class="btn btn-sm btn-danger" style="margin-left:2px;"
-                         onclick="ViewVulns._del(${v.id},'${UI.esc(v.name)}')">Eliminar</button>
+                         onclick="ViewVulns._del(${v.id},'${UI.esc(v.name)}')">${t('common.delete')}</button>
                      ` : ''}
                   `
                   : '<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO</span>'
@@ -119,29 +119,29 @@ const ViewVulns = {
 
   _edit(v) {
     const isNew = !v;
-    UI.modal(isNew ? 'Nueva vulnerabilidad personalizada' : 'Editar vulnerabilidad personalizada', `
-      <div><label>Codigo (vacio para auto)</label>
+    UI.modal(isNew ? t('vulnerabilities.new_custom_title') : t('vulnerabilities.edit_custom_title'), `
+      <div><label>${t('vulnerabilities.form_code')}</label>
         <input id="f-code" value="${isNew ? '' : UI.esc(v.code)}"></div>
-      <div><label>Categoria *</label>
+      <div><label>${t('vulnerabilities.form_category')}</label>
         <select id="f-cat">
-          <option value="hardware" ${!isNew && v.category==='hardware' ? 'selected':''}>Hardware</option>
-          <option value="software" ${!isNew && v.category==='software' ? 'selected':''}>Software</option>
-          <option value="network" ${!isNew && v.category==='network' ? 'selected':''}>Red</option>
-          <option value="personnel" ${!isNew && v.category==='personnel' ? 'selected':''}>Personal</option>
-          <option value="site" ${!isNew && v.category==='site' ? 'selected':''}>Instalaciones</option>
-          <option value="organization" ${!isNew && v.category==='organization' ? 'selected':''}>Organizacion</option>
+          <option value="hardware" ${!isNew && v.category==='hardware' ? 'selected':''}>${t('vulnerabilities.cat_hardware')}</option>
+          <option value="software" ${!isNew && v.category==='software' ? 'selected':''}>${t('vulnerabilities.cat_software')}</option>
+          <option value="network" ${!isNew && v.category==='network' ? 'selected':''}>${t('vulnerabilities.cat_network')}</option>
+          <option value="personnel" ${!isNew && v.category==='personnel' ? 'selected':''}>${t('vulnerabilities.cat_personnel')}</option>
+          <option value="site" ${!isNew && v.category==='site' ? 'selected':''}>${t('vulnerabilities.cat_site')}</option>
+          <option value="organization" ${!isNew && v.category==='organization' ? 'selected':''}>${t('vulnerabilities.cat_organization')}</option>
         </select>
       </div>
-      <div class="span2"><label>Nombre *</label>
+      <div class="span2"><label>${t('vulnerabilities.form_name')}</label>
         <input id="f-name" value="${isNew ? '' : UI.esc(v.name)}"></div>
-      <div class="span2"><label>Descripcion</label>
+      <div class="span2"><label>${t('vulnerabilities.form_description')}</label>
         <textarea id="f-desc" rows="2">${isNew ? '' : UI.esc(v.description||'')}</textarea></div>
-      <div class="span2"><label>Amenazas relacionadas (codigos separados por coma)</label>
+      <div class="span2"><label>${t('vulnerabilities.form_related_threats')}</label>
         <input id="f-rel" placeholder="T.CYB.01, T.UNA.04"
           value="${isNew ? '' : (v.related_threats||[]).join(', ')}"></div>
     `, {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="m-save">Guardar</button>`
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = async () => {
@@ -156,10 +156,10 @@ const ViewVulns = {
       try {
         if (isNew) {
           await Api.vulns.create(payload);
-          UI.toast('Vulnerabilidad creada', 'success');
+          UI.toast(t('vulnerabilities.created'), 'success');
         } else {
           await Api.vulns.update(v.id, payload);
-          UI.toast('Vulnerabilidad actualizada', 'success');
+          UI.toast(t('vulnerabilities.updated'), 'success');
         }
         UI.closeModal(); ViewVulns._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
@@ -167,10 +167,10 @@ const ViewVulns = {
   },
 
   async _del(id, name) {
-    if (!confirm(`Eliminar la vulnerabilidad personalizada "${name}"?`)) return;
+    if (!await UI.confirm(t('vulnerabilities.delete_confirm', {name}))) return;
     try {
       await Api.vulns.del(id);
-      UI.toast('Vulnerabilidad eliminada', 'success');
+      UI.toast(t('vulnerabilities.deleted'), 'success');
       ViewVulns._reload();
     } catch (e) { UI.toast(e.message, 'error'); }
   },

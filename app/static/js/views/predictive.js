@@ -23,10 +23,10 @@ const ViewPredictive = (() => {
     el.innerHTML = `
       <div style="max-width:1100px;margin:0 auto;padding:24px 0;">
         <div style="margin-bottom:24px;">
-          <h1 style="font-size:22px;font-weight:700;color:var(--brand-purple);margin:0;">Análisis Predictivo</h1>
-          <p style="color:#9d9d9d;font-size:13px;margin:4px 0 0;">Forecasting de riesgos, madurez y amenazas</p>
+          <h1 style="font-size:22px;font-weight:700;color:var(--brand-purple);margin:0;">${t('predictive.dashboard_title')}</h1>
+          <p style="color:#9d9d9d;font-size:13px;margin:4px 0 0;">${t('predictive.dashboard_subtitle')}</p>
         </div>
-        <div id="pred-content"><div style="text-align:center;padding:60px;color:#9d9d9d;">Cargando...</div></div>
+        <div id="pred-content"><div style="text-align:center;padding:60px;color:#9d9d9d;">${t('predictive.loading')}</div></div>
       </div>`;
     await _load();
   }
@@ -48,7 +48,7 @@ const ViewPredictive = (() => {
           <section style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:20px;">
             <h2 style="font-size:15px;font-weight:700;color:var(--brand-purple);margin:0 0 14px;
                        padding-bottom:8px;border-bottom:2px solid var(--brand-orange);">
-              Trend de Riesgos (90 días) ${_trendIcon(trend.trend_direction)}
+              ${t('predictive.trend_section')} ${_trendIcon(trend.trend_direction)}
             </h2>
             <div style="font-size:20px;font-weight:700;color:var(--brand-purple);margin-bottom:4px;">
               ${trend.trend_label}
@@ -56,22 +56,22 @@ const ViewPredictive = (() => {
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0;">
               <div style="text-align:center;background:#f9f9f9;border-radius:6px;padding:10px;">
                 <div style="font-size:20px;font-weight:700;color:var(--brand-purple);">${trend.total_risks}</div>
-                <div style="font-size:11px;color:#9d9d9d;">Total periodo</div>
+                <div style="font-size:11px;color:#9d9d9d;">${t('predictive.total_period')}</div>
               </div>
               <div style="text-align:center;background:#f9f9f9;border-radius:6px;padding:10px;">
                 <div style="font-size:20px;font-weight:700;color:${trend.total_change_pct > 0 ? 'var(--risk-critical)' : 'var(--risk-low)'};">
                   ${trend.total_change_pct > 0 ? '+' : ''}${trend.total_change_pct}%
                 </div>
-                <div style="font-size:11px;color:#9d9d9d;">Cambio</div>
+                <div style="font-size:11px;color:#9d9d9d;">${t('predictive.change')}</div>
               </div>
               <div style="text-align:center;background:#f9f9f9;border-radius:6px;padding:10px;">
                 <div style="font-size:20px;font-weight:700;color:var(--brand-orange);">${trend.forecast_30d_total}</div>
-                <div style="font-size:11px;color:#9d9d9d;">Forecast 30d</div>
+                <div style="font-size:11px;color:#9d9d9d;">${t('predictive.forecast_30d')}</div>
               </div>
             </div>
             <div style="font-size:12px;color:#9d9d9d;margin-top:8px;">
-              Velocidad: <strong>${trend.velocity_per_day}</strong> riesgos/día |
-              Altos forecast: <strong>${trend.forecast_30d_high}</strong>
+              ${t('predictive.velocity')} <strong>${trend.velocity_per_day}</strong> ${t('predictive.risks_per_day')} |
+              ${t('predictive.high_forecast')} <strong>${trend.forecast_30d_high}</strong>
             </div>
           </section>
 
@@ -79,32 +79,32 @@ const ViewPredictive = (() => {
           <section style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:20px;">
             <h2 style="font-size:15px;font-weight:700;color:var(--brand-purple);margin:0 0 14px;
                        padding-bottom:8px;border-bottom:2px solid var(--brand-orange);">
-              Camino de Madurez
+              ${t('predictive.maturity_section')}
             </h2>
             <div style="margin-bottom:12px;">
               <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                <span style="font-size:12px;color:#666;">Implementación actual</span>
+                <span style="font-size:12px;color:#666;">${t('predictive.current_impl')}</span>
                 <span style="font-size:12px;font-weight:700;">${maturity.current_implementation_pct}%</span>
               </div>
               ${_progressBar(maturity.current_implementation_pct, 'var(--brand-purple)')}
             </div>
             <div style="margin-bottom:12px;">
               <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-                <span style="font-size:12px;color:#666;">Objetivo alcanzable</span>
+                <span style="font-size:12px;color:#666;">${t('predictive.target')}</span>
                 <span style="font-size:12px;font-weight:700;color:var(--risk-low);">${maturity.target_pct}%</span>
               </div>
               ${_progressBar(maturity.target_pct, 'var(--risk-low)')}
             </div>
             <div style="font-size:12px;color:#9d9d9d;margin-bottom:10px;">
-              ${maturity.implemented}/${maturity.total_controls} controles implementados |
-              ${maturity.partial} parciales
+              ${t('predictive.controls_count', {implemented: maturity.implemented, total: maturity.total_controls})} |
+              ${maturity.partial} ${t('predictive.partial')}
             </div>
             <div style="max-height:160px;overflow-y:auto;">
               ${(maturity.recommendations || []).slice(0, 4).map(r => `
                 <div style="border-left:3px solid ${r.priority === 'high' ? 'var(--brand-orange)' : '#ddd'};
                             padding:6px 10px;margin-bottom:6px;background:#f9f9f9;border-radius:0 4px 4px 0;">
                   <div style="font-size:12px;font-weight:600;">${UI.esc(r.title)}</div>
-                  <div style="font-size:11px;color:#9d9d9d;">~${r.estimated_days}d esfuerzo</div>
+                  <div style="font-size:11px;color:#9d9d9d;">${t('predictive.effort_days', {n: r.estimated_days})}</div>
                 </div>`).join('')}
             </div>
           </section>
@@ -116,20 +116,20 @@ const ViewPredictive = (() => {
           <section style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:20px;">
             <h2 style="font-size:15px;font-weight:700;color:var(--brand-purple);margin:0 0 14px;
                        padding-bottom:8px;border-bottom:2px solid var(--brand-orange);">
-              Activos con Mayor Riesgo
+              ${t('predictive.high_risk_assets')}
             </h2>
             ${(highRiskAssets || []).length === 0
-              ? '<p style="color:#9d9d9d;font-size:13px;">No hay datos suficientes.</p>'
+              ? `<p style="color:#9d9d9d;font-size:13px;">${t('predictive.no_data')}</p>`
               : (highRiskAssets || []).map(a => `
                 <div style="display:flex;justify-content:space-between;align-items:center;
                             padding:8px 0;border-bottom:1px solid #f5f5f5;">
                   <div style="flex:1;">
                     <div style="font-size:13px;font-weight:600;">${UI.esc(a.asset_name)}</div>
-                    <div style="font-size:11px;color:#9d9d9d;">${UI.esc(a.asset_type)} | ${a.high_risk_count} riesgos altos</div>
+                    <div style="font-size:11px;color:#9d9d9d;">${UI.esc(a.asset_type)} | ${a.high_risk_count} ${t('predictive.high_risks')}</div>
                   </div>
                   <div style="text-align:right;">
                     <span style="background:#FEE2E2;color:#a83232;padding:2px 8px;border-radius:10px;
-                                 font-size:12px;font-weight:700;">Nivel ${a.max_residual_level}</span>
+                                 font-size:12px;font-weight:700;">${t('predictive.level')} ${a.max_residual_level}</span>
                   </div>
                 </div>`).join('')}
           </section>
@@ -138,10 +138,10 @@ const ViewPredictive = (() => {
           <section style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:20px;">
             <h2 style="font-size:15px;font-weight:700;color:var(--brand-purple);margin:0 0 14px;
                        padding-bottom:8px;border-bottom:2px solid var(--brand-orange);">
-              Forecast de Amenazas
+              ${t('predictive.threat_forecast')}
             </h2>
             ${(forecast || []).length === 0
-              ? '<p style="color:#9d9d9d;font-size:13px;">No hay datos suficientes de amenazas.</p>'
+              ? `<p style="color:#9d9d9d;font-size:13px;">${t('predictive.no_threat_data')}</p>`
               : (forecast || []).map(f => `
                 <div style="display:flex;justify-content:space-between;align-items:center;
                             padding:8px 0;border-bottom:1px solid #f5f5f5;">
@@ -150,7 +150,7 @@ const ViewPredictive = (() => {
                                 text-overflow:ellipsis;white-space:nowrap;" title="${UI.esc(f.threat_name)}">
                       ${UI.esc(f.threat_name)}
                     </div>
-                    <div style="font-size:11px;color:#9d9d9d;">${f.risk_count} riesgos | L avg: ${f.avg_likelihood}</div>
+                    <div style="font-size:11px;color:#9d9d9d;">${t('predictive.risks_count', {n: f.risk_count})} | ${t('predictive.avg_likelihood')} ${f.avg_likelihood}</div>
                   </div>
                   <div>${_signalBadge(f.signal)}</div>
                 </div>`).join('')}
@@ -158,7 +158,7 @@ const ViewPredictive = (() => {
         </div>`;
 
     } catch (e) {
-      el.innerHTML = `<div style="color:var(--risk-critical);padding:24px;">Error: ${UI.esc(e.message)}</div>`;
+      el.innerHTML = `<div style="color:var(--risk-critical);padding:24px;">${t('predictive.error')} ${UI.esc(e.message)}</div>`;
     }
   }
 

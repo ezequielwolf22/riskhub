@@ -5,7 +5,7 @@ const ViewHeatmap = {
   async render(main) {
     main.innerHTML = UI.sectionHeader(
       t('heatmap.title'),
-      'Distribución de riesgos en la matriz Impacto x Probabilidad (ISO 27005 Annex E.2)',
+      t('heatmap.subtitle'),
       `<button class="btn" data-mode="inherent">${t('heatmap.inherent')}</button>
        <button class="btn btn-primary" data-mode="residual">${t('heatmap.residual')}</button>`
     );
@@ -36,16 +36,14 @@ const ViewHeatmap = {
             <div class="heatmap">
               ${ViewHeatmap._rows(data.matrix)}
               <div class="corner"></div>
-              ${/* TODO: i18n */ ['Muy improbable','Improbable','Posible','Probable','Muy probable']
-                .map(l => `<div class="col-label">${l}</div>`).join('')}
+              ${[0,1,2,3,4].map(i => `<div class="col-label">${t(`heatmap.likelihood_${i}`)}</div>`).join('')}
             </div>
             <div style="margin-top:8px;text-align:center;" class="heatmap-axis-x">${t('heatmap.likelihood')}</div>
           </div>
           <div style="flex:1;min-width:280px;">
-            /* TODO: i18n */<h3>Como leer la matriz</h3>
+            <h3>${t('heatmap.how_to_read')}</h3>
             <p style="font-size:13px;color:var(--text-muted);">
-              El nivel resultante (0 a 8) se obtiene cruzando consecuencia x probabilidad
-              segun la Tabla E.2 de ISO/IEC 27005:2018.
+              ${t('heatmap.how_to_read_body')}
             </p>
             <ul style="font-size:12px;color:var(--text-muted);padding-left:18px;">
               ${(window.RiskLevels ? RiskLevels.all() : [
@@ -53,8 +51,8 @@ const ViewHeatmap = {
                 { label:'Medio', color:'var(--risk-medium)', min_level:3, max_level:5 },
                 { label:'Alto',  color:'var(--risk-high)',   min_level:6, max_level:8 },
               ]).map((b, i, arr) => `<li><strong style="color:${b.color};">${b.label} (${b.min_level}-${b.max_level}):</strong> ${
-                i === 0 ? 'retención sin tratamiento adicional.' :
-                i === arr.length - 1 ? 'tratamiento obligatorio.' : 'tratamiento recomendado.'
+                i === 0 ? t('heatmap.level_low_action') :
+                i === arr.length - 1 ? t('heatmap.level_high_action') : t('heatmap.level_medium_action')
               }</li>`).join('')}
             </ul>
             <p style="font-size:12px;color:var(--text-subtle);margin-top:12px;">
@@ -71,8 +69,7 @@ const ViewHeatmap = {
 
   _rows(matrix) {
     // matrix viene como filas top-down (consecuencia 4..0). columnas 0..4 probabilidad.
-    /* TODO: i18n — no exact keys for consequence row labels */
-    const labelsY = ['Critico','Mayor','Moderado','Menor','Insignificante'];
+    const labelsY = [0,1,2,3,4].map(i => t(`heatmap.consequence_${i}`));
     let html = '';
     matrix.forEach((row, ri) => {
       html += `<div class="row-label">${labelsY[ri]}</div>`;

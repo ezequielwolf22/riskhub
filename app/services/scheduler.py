@@ -3104,6 +3104,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         replace_existing=True,
         misfire_grace_time=3600,
     )
+    _scheduler.add_job(
+        func=lambda: __import__("app.services.crypto_license", fromlist=["load_and_validate"]).load_and_validate(),
+        trigger=IntervalTrigger(hours=6),
+        id="crypto_license_revalidate",
+        name="Revalidacion periodica de licencia criptografica",
+        replace_existing=True,
+        misfire_grace_time=1800,
+    )
     # BCP: test overdue (semanal lunes 8h)
     _scheduler.add_job(
         func=_run_bcp_test_overdue,

@@ -31,19 +31,19 @@ const ViewCcm = (() => {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
           <div>
             <h1 style="font-size:22px;font-weight:700;color:var(--brand-purple);margin:0;">
-              Monitorización Continua de Controles
+              ${t('ccm.dashboard_title')}
             </h1>
             <p style="color:#9d9d9d;font-size:13px;margin:4px 0 0;">
-              Tests automáticos sobre el estado real de los controles del SGSI
+              ${t('ccm.dashboard_subtitle')}
             </p>
           </div>
           <button onclick="ViewCcm._runTests()" class="btn-primary" id="ccm-run-btn">
-            Ejecutar tests
+            ${t('ccm.run_tests')}
           </button>
         </div>
         <div id="ccm-content">
           <div style="text-align:center;padding:60px;color:#9d9d9d;">
-            Pulsa "Ejecutar tests" para analizar el estado de los controles
+            ${t('ccm.run_prompt')}
           </div>
         </div>
       </div>`;
@@ -53,13 +53,13 @@ const ViewCcm = (() => {
     const btn = document.getElementById('ccm-run-btn');
     const el = document.getElementById('ccm-content');
     if (btn) btn.disabled = true;
-    el.innerHTML = `<div style="text-align:center;padding:60px;color:#9d9d9d;">Ejecutando tests...</div>`;
+    el.innerHTML = `<div style="text-align:center;padding:60px;color:#9d9d9d;">${t('ccm.running')}</div>`;
 
     try {
       const data = await Api.post('/api/ccm/run', {});
       _renderResults(el, data);
     } catch (e) {
-      el.innerHTML = `<div style="color:var(--risk-critical);padding:24px;">Error: ${UI.esc(e.message)}</div>`;
+      el.innerHTML = `<div style="color:var(--risk-critical);padding:24px;">${t('ccm.error')} ${UI.esc(e.message)}</div>`;
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -78,7 +78,7 @@ const ViewCcm = (() => {
         <div style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:24px;">
           ${_scoreGauge(data.score || 0)}
           <div style="text-align:center;margin-top:12px;font-size:12px;color:#666;">
-            CCM Score
+            ${t('ccm.score_label')}
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
@@ -99,7 +99,7 @@ const ViewCcm = (() => {
       <section style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;
                       margin-bottom:16px;overflow:hidden;">
         <div style="background:#FEE2E2;padding:12px 16px;border-bottom:1px solid #f5c6c6;">
-          <strong style="color:#a83232;">✗ ${fails.length} control(es) fallando — requieren acción</strong>
+          <strong style="color:#a83232;">✗ ${t('ccm.fails_heading', {n: fails.length})}</strong>
         </div>
         ${fails.map(r => _testRow(r)).join('')}
       </section>` : ''}
@@ -109,7 +109,7 @@ const ViewCcm = (() => {
       <section style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;
                       margin-bottom:16px;overflow:hidden;">
         <div style="background:#FEF0E3;padding:12px 16px;border-bottom:1px solid #f5ddb4;">
-          <strong style="color:#c25a1f;">⚠ ${warnings.length} control(es) con advertencias</strong>
+          <strong style="color:#c25a1f;">⚠ ${t('ccm.warnings_heading', {n: warnings.length})}</strong>
         </div>
         ${warnings.map(r => _testRow(r)).join('')}
       </section>` : ''}
@@ -117,13 +117,13 @@ const ViewCcm = (() => {
       <!-- PASSes -->
       <section style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;overflow:hidden;">
         <div style="background:#E8F5E9;padding:12px 16px;border-bottom:1px solid #c8e6c9;">
-          <strong style="color:#2e7d32;">✓ ${passes.length} control(es) verificados correctamente</strong>
+          <strong style="color:#2e7d32;">✓ ${t('ccm.passes_heading', {n: passes.length})}</strong>
         </div>
         ${passes.map(r => _testRow(r)).join('')}
       </section>
 
       <div style="margin-top:12px;font-size:12px;color:#9d9d9d;text-align:right;">
-        Ejecutado: ${data.timestamp ? data.timestamp.slice(0,16).replace('T',' ') : '—'} UTC
+        ${t('ccm.executed_at')} ${data.timestamp ? data.timestamp.slice(0,16).replace('T',' ') : '—'} UTC
       </div>`;
   }
 

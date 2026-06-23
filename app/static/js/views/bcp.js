@@ -2,15 +2,17 @@
 const ViewBcp = (() => {
 
   // ── Dashboard editable ────────────────────────────────────────────────────
-  const _BCP_WIDGETS = [
-    { id: 'kpi_score',    label: 'Score ISO 22301',      def: true },
-    { id: 'kpi_bia',      label: 'BIA completado',       def: true },
-    { id: 'kpi_plans',    label: 'Planes aprobados',     def: true },
-    { id: 'kpi_tests',    label: 'Tests vencidos',       def: true },
-    { id: 'clauses',      label: 'Clausulas ISO 22301',  def: true },
-    { id: 'locations',    label: 'Estado por sede',      def: true },
-    { id: 'ai_analysis',  label: 'Analisis IA del BCM',  def: true },
-  ];
+  function _getBcpWidgets() {
+    return [
+      { id: 'kpi_score',   label: t('bcp.widget_score'),     def: true },
+      { id: 'kpi_bia',     label: t('bcp.widget_bia'),       def: true },
+      { id: 'kpi_plans',   label: t('bcp.widget_plans'),     def: true },
+      { id: 'kpi_tests',   label: t('bcp.widget_tests'),     def: true },
+      { id: 'clauses',     label: t('bcp.widget_clauses'),   def: true },
+      { id: 'locations',   label: t('bcp.widget_locations'), def: true },
+      { id: 'ai_analysis', label: t('bcp.widget_ai'),        def: true },
+    ];
+  }
 
   function _bcpDashPrefKey() {
     const u = Auth.user();
@@ -22,14 +24,14 @@ const ViewBcp = (() => {
   }
 
   function _bcpWidgetVisible(prefs, id) {
-    const w = _BCP_WIDGETS.find(x => x.id === id);
+    const w = _getBcpWidgets().find(x => x.id === id);
     if (!w) return true;
     return prefs[id] !== undefined ? prefs[id] : w.def;
   }
 
   function _openBcpDashEditor(onSave) {
     const prefs = _bcpDashPrefs();
-    const rows = _BCP_WIDGETS.map(w => {
+    const rows = _getBcpWidgets().map(w => {
       const on = _bcpWidgetVisible(prefs, w.id);
       return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
         <input type="checkbox" data-bcp-wid="${w.id}" ${on ? 'checked' : ''} style="accent-color:var(--brand-purple);width:16px;height:16px;">
@@ -37,18 +39,18 @@ const ViewBcp = (() => {
       </label>`;
     }).join('');
     UI.modal(
-      'Personalizar dashboard BCM',
+      t('bcp.customize_dashboard'),
       `<div style="padding:4px 0;">${rows}</div>`,
       {
         width: '400px',
-        actions: `<button class="btn btn-primary" id="bcp-dash-save">Guardar</button>
-                  <button class="btn" id="bcp-dash-reset">Restablecer</button>
-                  <button class="btn" id="bcp-dash-cancel">Cancelar</button>`,
+        actions: `<button class="btn btn-primary" id="bcp-dash-save">${UI.esc(t('bcp.btn_save'))}</button>
+                  <button class="btn" id="bcp-dash-reset">${UI.esc(t('bcp.btn_reset'))}</button>
+                  <button class="btn" id="bcp-dash-cancel">${UI.esc(t('bcp.btn_cancel'))}</button>`,
       }
     );
     document.getElementById('bcp-dash-save').onclick = () => {
       const newPrefs = {};
-      _BCP_WIDGETS.forEach(w => {
+      _getBcpWidgets().forEach(w => {
         const el = document.querySelector(`[data-bcp-wid="${w.id}"]`);
         if (el) newPrefs[w.id] = el.checked;
       });
@@ -157,7 +159,7 @@ const ViewBcp = (() => {
     _container = container;
     _bcmContext = await Api.get('/api/bcp/context').catch(() => null);
 
-    const wizardLabel = (_bcmContext && _bcmContext.wizard_completed) ? 'Contexto IA' : 'Configurar IA';
+    const wizardLabel = (_bcmContext && _bcmContext.wizard_completed) ? t('bcp.wizard_label_complete') : t('bcp.wizard_label_setup');
     const wizardDot = (!_bcmContext || !_bcmContext.wizard_completed) ? '<span class="bcm-badge-dot"></span>' : '';
 
     container.innerHTML = '<div class="bcm-platform">'
@@ -576,13 +578,13 @@ const ViewBcp = (() => {
         <!-- KPIs compactos -->
         <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px;">
           ${[
-            ['Criticos', critCount, '#DC2626'],
-            ['Altos', highCount, '#D97706'],
+            [t('bcp.kpi_critical'), critCount, '#DC2626'],
+            [t('bcp.kpi_high'), highCount, '#D97706'],
             ['BIA ≥80%', bia80 + '/' + procs.length, '#16a34a'],
-            ['Con plan', withPlan + '/' + procs.length, '#16a34a'],
-            ['Test OK', withTest + '/' + procs.length, '#16a34a'],
-            ['Dep. proc.', procDepCnt, '#2563EB'],
-            ['Dep. recursos', resCnt, '#6B7280'],
+            [t('bcp.kpi_with_plan'), withPlan + '/' + procs.length, '#16a34a'],
+            [t('bcp.kpi_test_ok'), withTest + '/' + procs.length, '#16a34a'],
+            [t('bcp.kpi_proc_deps'), procDepCnt, '#2563EB'],
+            [t('bcp.kpi_res_deps'), resCnt, '#6B7280'],
           ].map(([l,v,c]) => `
           <div style="text-align:center;padding:8px 4px;background:var(--bg-2);border-radius:8px;">
             <div style="font-size:16px;font-weight:800;color:${c};">${v}</div>
@@ -638,10 +640,10 @@ const ViewBcp = (() => {
             <i class="ti ti-x"></i>
           </button>
         </div>
-        <div class="card-body" style="font-size:13px;line-height:1.6;">${rendered || 'Sin analisis disponible'}</div>
+        <div class="card-body" style="font-size:13px;line-height:1.6;">${rendered || UI.esc(t('bcp.ai_no_analysis'))}</div>
       </div>`;
     } catch (e) {
-      resultEl.innerHTML = UI.notice('Error en analisis IA: ' + e.message + '. Asegurate de tener la API key de IA configurada.');
+      resultEl.innerHTML = UI.notice(t('bcp.ai_error', { error: e.message }));
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="ti ti-brain"></i> Analizar gaps con IA';
@@ -680,7 +682,7 @@ const ViewBcp = (() => {
       </button>
     </div>`;
 
-    const CRIT_LABELS = { critical: 'Critica', high: 'Alta', medium: 'Media', low: 'Baja' };
+    const CRIT_LABELS = { critical: t('bcp.crit_critical'), high: t('bcp.crit_high'), medium: t('bcp.crit_medium'), low: t('bcp.crit_low') };
 
     function renderTable(list) {
       if (!list.length) return `<div style="padding:24px;text-align:center;color:var(--text-subtle);">Sin resultados para este filtro.</div>`;
@@ -745,7 +747,7 @@ const ViewBcp = (() => {
 
   async function _tabBIA(el) {
     if (!_procs.length) _procs = await Api.get('/api/bcp/processes').catch(() => []);
-    const IMPACT_LABELS = ['Ninguno','Bajo','Medio','Alto'];
+    const IMPACT_LABELS = [t('bcp.impact_0'),t('bcp.impact_1'),t('bcp.impact_2'),t('bcp.impact_3')];
     const IMPACT_COLORS = ['#6B7280','#16a34a','#D97706','#DC2626'];
     // IMPORTANTE: construir todo el HTML antes de asignarlo para evitar que
     // innerHTML += destruya los event listeners adjuntados previamente.
@@ -789,8 +791,8 @@ const ViewBcp = (() => {
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-            ${[['Financiero', p.financial_impact], ['Reputacional', p.reputational_impact],
-               ['Legal', p.legal_impact], ['Operacional', p.operational_impact]].map(([lbl, val]) =>
+            ${[[t('bcp.impact_financial'), p.financial_impact], [t('bcp.impact_reputational'), p.reputational_impact],
+               [t('bcp.impact_legal'), p.legal_impact], [t('bcp.impact_operational'), p.operational_impact]].map(([lbl, val]) =>
               `<span style="padding:3px 8px;border-radius:12px;font-size:11px;background:${IMPACT_COLORS[val??0]}22;color:${IMPACT_COLORS[val??0]};border:1px solid ${IMPACT_COLORS[val??0]}44;">
                 ${lbl}: ${IMPACT_LABELS[val??0]}
               </span>`
@@ -833,9 +835,9 @@ const ViewBcp = (() => {
     transport: 'ti-car', external_service: 'ti-world', process: 'ti-sitemap',
   };
   const DEP_LABELS = {
-    IT_system: 'Sistema IT', personnel: 'Personal', facility: 'Instalacion',
-    supplier: 'Proveedor', utility: 'Suministro', communication: 'Comunicacion',
-    transport: 'Transporte', external_service: 'Servicio externo', process: 'Proceso',
+    IT_system: t('bcp.res_it_system'), personnel: t('bcp.res_personnel'), facility: t('bcp.res_facility'),
+    supplier: t('bcp.res_supplier'), utility: t('bcp.res_utility'), communication: t('bcp.res_communication'),
+    transport: t('bcp.res_transport'), external_service: t('bcp.res_external_service'), process: t('bcp.res_process'),
   };
 
   async function _tabDependencies(el) {
@@ -931,7 +933,7 @@ const ViewBcp = (() => {
         const res = await Api.post('/api/bcp/locations/sync-all-deps', {});
         UI.toast(res.created > 0
           ? res.created + ' dependencia(s) creada(s) de ' + res.locations_processed + ' sede(s) con alternativa'
-          : 'No hay dependencias nuevas que crear', res.created > 0 ? 'success' : 'info');
+          : t('bcp.no_new_deps'), res.created > 0 ? 'success' : 'info');
         if (res.created > 0) _renderContent();
       } catch (e) {
         UI.toast('Error: ' + (e.message || e), 'error');
@@ -944,14 +946,14 @@ const ViewBcp = (() => {
   // ── Tab Estrategias ──────────────────────────────────────────────────────────
 
   const IMPL_LABELS = {
-    planned: 'Planificado', in_progress: 'En progreso',
-    implemented: 'Implementado', tested: 'Probado',
+    planned: t('bcp.impl_planned'), in_progress: t('bcp.impl_in_progress'),
+    implemented: t('bcp.impl_implemented'), tested: t('bcp.impl_tested'),
   };
   const STRAT_TYPE_LABELS = {
-    hot_site: 'Hot site', cold_site: 'Cold site', warm_site: 'Warm site',
-    work_from_home: 'Trabajo remoto', outsourcing: 'Outsourcing',
-    manual_workaround: 'Procedimiento manual', dual_site: 'Dual site',
-    cloud_failover: 'Cloud failover',
+    hot_site: t('bcp.strat_hot_site'), cold_site: t('bcp.strat_cold_site'), warm_site: t('bcp.strat_warm_site'),
+    work_from_home: t('bcp.strat_work_from_home'), outsourcing: t('bcp.strat_outsourcing'),
+    manual_workaround: t('bcp.strat_manual'), dual_site: t('bcp.strat_dual_site'),
+    cloud_failover: t('bcp.strat_cloud_failover'),
   };
 
   async function _tabStrategies(el) {
@@ -965,7 +967,7 @@ const ViewBcp = (() => {
     // Construir TODO el HTML antes de asignar (evita que innerHTML += destruya listeners)
     const bodyHtml = !_strats.length
       ? UI.emptyState(
-          'Sin estrategias de recuperacion',
+          t('bcp.no_strategies'),
           'ISO 22301 cl. 8.3 requiere al menos una estrategia por proceso critico. Tipos: hot site, trabajo remoto, procedimiento manual, cloud failover...'
         )
       : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;">
@@ -1016,15 +1018,15 @@ const ViewBcp = (() => {
     ems: 'plan-badge-ems', supply_chain: 'plan-badge-supply',
   };
   const PLAN_TYPE_LABELS = {
-    bcp: 'Plan de Continuidad de Negocio (BCP)',
-    drp: 'Plan de Recuperacion ante Desastres (DRP)',
-    crp: 'Plan de Respuesta a Crisis (CRP)',
-    cyber_response: 'Plan de Respuesta Cibernetica',
-    pandemic: 'Plan de Continuidad ante Pandemia',
-    ems: 'Sistema de Gestion de Emergencias (EMS)',
-    supply_chain: 'Plan de Continuidad de Cadena de Suministro',
+    bcp: t('bcp.plan_type_bcp'),
+    drp: t('bcp.plan_type_drp'),
+    crp: t('bcp.plan_type_crp'),
+    cyber_response: t('bcp.plan_type_cyber_response'),
+    pandemic: t('bcp.plan_type_pandemic'),
+    ems: t('bcp.plan_type_ems'),
+    supply_chain: t('bcp.plan_type_supply_chain'),
   };
-  const CLASSIFICATION_LABELS = { confidential: 'Confidencial', internal: 'Uso interno', restricted: 'Restringido' };
+  const CLASSIFICATION_LABELS = { confidential: t('bcp.classification_confidential'), internal: t('bcp.classification_internal'), restricted: t('bcp.classification_restricted') };
 
   async function _tabPlans(el) {
     [_procs, _plans] = await Promise.all([
@@ -1034,7 +1036,7 @@ const ViewBcp = (() => {
 
     _ensurePlanDrawerInDom();
 
-    const PLAN_STATUS_LABELS = { draft:'Borrador', under_review:'En revision', approved:'Aprobado', obsolete:'Obsoleto', deprecated:'Obsoleto' };
+    const PLAN_STATUS_LABELS = { draft: t('bcp.status.draft'), under_review: t('bcp.plan_status_under_review'), approved: t('bcp.status.approved'), obsolete: t('bcp.plan_status_obsolete'), deprecated: t('bcp.plan_status_obsolete') };
     const active  = _plans.filter(p => p.status !== 'obsolete' && p.status !== 'deprecated');
     const obsolete = _plans.filter(p => p.status === 'obsolete' || p.status === 'deprecated');
 
@@ -1080,7 +1082,7 @@ const ViewBcp = (() => {
           <div class="bcp-activation-control" onclick="event.stopPropagation()">
             <div class="activation-status ${p.activation_status === 'activated' ? 'activation-status--active' : 'activation-status--standby'}">
               <strong style="font-size:11px;">Estado de crisis:</strong>
-              <span style="font-size:11px;"> ${p.activation_status === 'activated' ? 'ACTIVADO' : 'En espera'}</span>
+              <span style="font-size:11px;"> ${p.activation_status === 'activated' ? UI.esc(t('bcp.plan_activated')) : UI.esc(t('bcp.plan_waiting'))}</span>
               ${p.activation_status === 'activated' && p.activated_at
                 ? `<small style="display:block;font-size:10px;margin-top:2px;">Activado: ${new Date(p.activated_at).toLocaleString('es-ES')}</small>`
                 : ''}
@@ -1156,7 +1158,7 @@ const ViewBcp = (() => {
               <div style="margin-bottom:10px;">
                 <strong>${p.year}</strong>
                 <span class="badge badge-${p.status==='approved'?'success':'warning'}" style="margin-left:6px;">${p.status}</span>
-                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${p.overall_objective ? UI.esc(p.overall_objective.substring(0,80)) : 'Sin objetivo definido'}</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${p.overall_objective ? UI.esc(p.overall_objective.substring(0,80)) : UI.esc(t('bcp.no_objective'))}</div>
                 ${p.exercises ? `<div style="font-size:12px;margin-top:4px;">${(p.exercises||[]).length} ejercicio(s) planificado(s)</div>` : ''}
               </div>`).join('') :
               `<p style="color:var(--text-muted);font-size:13px;">Sin programa de ejercicios para ${year}.</p>
@@ -1189,7 +1191,7 @@ const ViewBcp = (() => {
               `<span class="badge badge-${t.result==='passed'?'success':t.result==='partial'?'warning':'danger'}">${t.result}</span>` : '—'}</td>
             <td style="display:flex;gap:4px;flex-wrap:nowrap">
               <button class="btn btn-sm btn-secondary" onclick="ViewBcp._openTestResultModal(${t.id})">
-                ${t.result ? 'Ver / Editar' : 'Registrar resultado'}
+                ${t.result ? UI.esc(window.t('bcp.test_view_edit')) : UI.esc(window.t('bcp.test_register_result'))}
               </button>
               <button class="btn btn-sm btn-ghost" title="Generar checklist con IA" onclick="ViewBcp._genAiChecklist(${t.id})" style="padding:4px 7px">
                 <i class="ti ti-sparkles" style="font-size:13px;color:var(--primary)"></i>
@@ -1205,7 +1207,7 @@ const ViewBcp = (() => {
 
   // ── Tab Proveedores BCM ──────────────────────────────────────────────────────
 
-  const CRIT_LABELS_BCM = { critical: 'Critica', high: 'Alta', medium: 'Media', low: 'Baja' };
+  const CRIT_LABELS_BCM = { critical: t('bcp.crit_critical'), high: t('bcp.crit_high'), medium: t('bcp.crit_medium'), low: t('bcp.crit_low') };
 
   async function _tabSuppliers(el) {
     [_procs, _slinks, _suppliers] = await Promise.all([
@@ -1217,7 +1219,7 @@ const ViewBcp = (() => {
     // Construir TODO el HTML antes de asignar (evita que innerHTML += destruya listeners)
     const bodyHtml = !_slinks.length
       ? UI.emptyState(
-          'Sin proveedores BCM vinculados',
+          t('bcp.no_bcm_suppliers'),
           'ISO 22301 cl. 8.2 requiere identificar los proveedores criticos y su impacto en la continuidad.'
         )
       : `<div class="table-container">
@@ -1365,7 +1367,7 @@ const ViewBcp = (() => {
     const desc = document.getElementById('import-mode-desc');
     if (desc) desc.textContent = mode === 'ai'
       ? 'Claude analizara la estructura de tu Excel y mapeara automaticamente los campos BCP, aunque no siga la plantilla exacta.'
-      : 'Usa la plantilla descargada arriba. El sistema valida la estructura exacta.';
+      : t('bcp.import_hint');
   }
 
   function _handleDrop(event) {
@@ -1406,7 +1408,7 @@ const ViewBcp = (() => {
       const preview = await res.json();
       _renderImportPreview(preview, file);
     } catch (e) {
-      if (area) area.innerHTML = UI.notice('Error al analizar: ' + e.message);
+      if (area) area.innerHTML = UI.notice(t('bcp.import_error_analyze', { error: e.message }));
     }
   }
 
@@ -1426,7 +1428,7 @@ const ViewBcp = (() => {
       aiInfo = `
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header"><h4><i class="ti ti-brain"></i> Mapeo detectado por IA (confianza: ${conf}%)</h4></div>
-        <div class="card-body">${mapped || 'No se detecto ningun mapeo'}</div>
+        <div class="card-body">${mapped || UI.esc(t('bcp.import_no_map'))}</div>
       </div>`;
     }
 
@@ -1470,7 +1472,7 @@ const ViewBcp = (() => {
   async function _confirmImport(file) {
     if (!confirm(`Importar ${window._bcpLastPreview?.summary?.processes_found || 0} procesos?`)) return;
     const btn = document.getElementById('btn-confirm-import');
-    if (btn) { btn.disabled = true; btn.textContent = 'Importando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('bcp.importing'); }
 
     const formData = new FormData();
     const inputFile = document.getElementById('import-file-input');
@@ -1498,7 +1500,7 @@ const ViewBcp = (() => {
       _switchTab('processes');
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
-      if (btn) { btn.disabled = false; btn.textContent = 'Confirmar importacion'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('bcp.confirm_import'); }
     }
   }
 
@@ -1550,7 +1552,7 @@ const ViewBcp = (() => {
           <div>
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Criticidad <span style="color:var(--danger)">*</span></label>
             <select id="pm-crit" class="form-control" style="font-size:13px;">
-              ${['critical','high','medium','low'].map(c=>`<option value="${c}"${proc?.criticality===c?' selected':''}>${{critical:'Critica',high:'Alta',medium:'Media',low:'Baja'}[c]}</option>`).join('')}
+              ${['critical','high','medium','low'].map(c=>`<option value="${c}"${proc?.criticality===c?' selected':''}>${UI.esc({critical:t('bcp.crit_critical'),high:t('bcp.crit_high'),medium:t('bcp.crit_medium'),low:t('bcp.crit_low')}[c])}</option>`).join('')}
             </select>
           </div>
           <div>
@@ -1589,9 +1591,9 @@ const ViewBcp = (() => {
           const missing = proc.bia_missing || [];
           const fieldLabels = {
             rto_hours:'RTO', rpo_hours:'RPO', mtpd_hours:'MTPD', mbco:'MBCO',
-            financial_impact:'Impacto financiero', reputational_impact:'Impacto reputacional',
-            legal_impact:'Impacto legal', operational_impact:'Impacto operacional',
-            activation_criteria:'Criterios activacion', vital_records:'Registros vitales',
+            financial_impact: t('bcp.field_financial_impact'), reputational_impact: t('bcp.field_reputational_impact'),
+            legal_impact: t('bcp.field_legal_impact'), operational_impact: t('bcp.field_operational_impact'),
+            activation_criteria: t('bcp.field_activation_criteria'), vital_records: t('bcp.field_vital_records'),
           };
           return `<div style="padding:10px 14px;background:${color}14;border:1px solid ${color}44;border-radius:var(--radius);margin-bottom:14px;display:flex;align-items:center;gap:14px;">
             <div style="flex:1;">
@@ -1639,8 +1641,8 @@ const ViewBcp = (() => {
 
         <div class="form-section-divider"><span>EVALUACION DE IMPACTO BIA</span></div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
-          ${[['pm-fi','Financiero','financial_impact'],['pm-ri','Reputacional','reputational_impact'],
-             ['pm-li','Legal/Reg.','legal_impact'],['pm-oi','Operacional','operational_impact']].map(([id,lbl,fld])=>`
+          ${[['pm-fi',t('bcp.impact_financial'),'financial_impact'],['pm-ri',t('bcp.impact_reputational'),'reputational_impact'],
+             ['pm-li',t('bcp.impact_legal'),'legal_impact'],['pm-oi',t('bcp.impact_operational'),'operational_impact']].map(([id,lbl,fld])=>`
           <div>
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${lbl}</label>
             <select id="${id}" class="form-control" style="font-size:12px;">
@@ -1804,9 +1806,9 @@ const ViewBcp = (() => {
       try { missing = JSON.parse(opt.dataset.missing || '[]'); } catch (_) {}
       const fieldLabels = {
         rto_hours: 'RTO', rpo_hours: 'RPO', mtpd_hours: 'MTPD', mbco: 'MBCO',
-        financial_impact: 'Impacto financiero', reputational_impact: 'Impacto reputacional',
-        legal_impact: 'Impacto legal', operational_impact: 'Impacto operacional',
-        activation_criteria: 'Criterios de activacion', vital_records: 'Registros vitales',
+        financial_impact: t('bcp.field_financial_impact'), reputational_impact: t('bcp.field_reputational_impact'),
+        legal_impact: t('bcp.field_legal_impact'), operational_impact: t('bcp.field_operational_impact'),
+        activation_criteria: t('bcp.field_activation_criteria'), vital_records: t('bcp.field_vital_records'),
       };
       preview.style.display = 'block';
       preview.innerHTML = `
@@ -1883,7 +1885,7 @@ const ViewBcp = (() => {
   }
 
   async function _delProc(id) {
-    if (!confirm('Eliminar proceso? Esta accion no se puede deshacer.')) return;
+    if (!confirm(t('bcp.del_proc_confirm'))) return;
     try {
       await Api.del(`/api/bcp/processes/${id}`);
       UI.toast('Proceso eliminado', 'success');
@@ -1908,28 +1910,28 @@ const ViewBcp = (() => {
       modal.innerHTML = `
       <div class="modal" style="max-width:520px;">
         <div class="modal-header">
-          <h2>${dep ? 'Editar dependencia de proceso' : 'Nueva dependencia proceso-proceso'}</h2>
+          <h2>${dep ? t('bcp.dep_edit_proc') : t('bcp.dep_new_proc')}</h2>
           <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
         </div>
         <div style="display:block;padding:20px;overflow-y:auto;">
-          <div style="margin-bottom:14px;">${lbl('Proceso origen', true)}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_proc_origin'), true)}
             <select id="dm-proc" class="form-control" style="font-size:13px;">
               ${_procs.map(p=>`<option value="${p.id}"${dep?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
             </select>
           </div>
-          <div style="margin-bottom:14px;">${lbl('Depende de (proceso)', true)}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_depends_on'), true)}
             <select id="dm-dep-proc" class="form-control" style="font-size:13px;">
               <option value="">— Seleccionar proceso dependiente —</option>
               ${_procs.map(p=>`<option value="${p.id}"${dep?.depends_on_process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
             </select>
           </div>
-          <div style="margin-bottom:14px;">${lbl('Motivo / descripcion')}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_reason'))}
             <textarea id="dm-name" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Por que depende este proceso del otro?">${UI.esc(dep?.description || dep?.name || '')}</textarea>
           </div>
-          <div style="margin-bottom:14px;">${lbl('Secuencia de recuperacion')}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_recovery_seq'))}
             <input id="dm-seq" class="form-control" type="number" min="1" style="font-size:13px;" value="${dep?.recovery_sequence??''}" placeholder="Orden (1 = primero que debe estar disponible)">
           </div>
-          <div style="margin-bottom:14px;">${lbl('Impacto si no esta disponible')}
+          <div style="margin-bottom:14px;">${lbl(t('bcp.dep_impact_unavail'))}
             <textarea id="dm-alt" class="form-control" rows="2" style="font-size:13px;" placeholder="¿Que pasa si este proceso dependiente no esta disponible?">${UI.esc(dep?.alternative||'')}</textarea>
           </div>
         </div>
@@ -1946,12 +1948,12 @@ const ViewBcp = (() => {
       modal.innerHTML = `
       <div class="modal" style="max-width:580px;max-height:90vh;display:flex;flex-direction:column;">
         <div class="modal-header" style="flex-shrink:0;">
-          <h2>${dep ? 'Editar recurso/dependencia' : 'Nueva dependencia de recurso'}</h2>
+          <h2>${dep ? t('bcp.dep_edit_res') : t('bcp.dep_new_res')}</h2>
           <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
         </div>
         <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px;display:block;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-            <div>${lbl('Proceso critico', true)}
+            <div>${lbl(t('bcp.dep_critical_proc'), true)}
               <select id="dm-proc" class="form-control" style="font-size:13px;">
                 ${_procs.map(p=>`<option value="${p.id}"${dep?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
               </select>
@@ -2104,64 +2106,64 @@ const ViewBcp = (() => {
 
   function _openStratModal(strat) {
     const TYPES = ['hot_site','cold_site','warm_site','work_from_home','outsourcing','manual_workaround','dual_site','cloud_failover'];
-    const TYPE_LABELS = {hot_site:'Hot site',cold_site:'Cold site',warm_site:'Warm site',
-      work_from_home:'Trabajo remoto',outsourcing:'Outsourcing',manual_workaround:'Procedimiento manual',
-      dual_site:'Dual site',cloud_failover:'Cloud failover'};
-    const STATUS_OPTS = [{v:'planned',l:'Planificado'},{v:'in_progress',l:'En progreso'},
-      {v:'implemented',l:'Implementado'},{v:'tested',l:'Probado'}];
-    const lbl = t => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${t}</label>`;
+    const TYPE_LABELS = {hot_site:t('bcp.strat_hot_site'),cold_site:t('bcp.strat_cold_site'),warm_site:t('bcp.strat_warm_site'),
+      work_from_home:t('bcp.strat_work_from_home'),outsourcing:t('bcp.strat_outsourcing'),manual_workaround:t('bcp.strat_manual'),
+      dual_site:t('bcp.strat_dual_site'),cloud_failover:t('bcp.strat_cloud_failover')};
+    const STATUS_OPTS = [{v:'planned',l:t('bcp.impl_planned')},{v:'in_progress',l:t('bcp.impl_in_progress')},
+      {v:'implemented',l:t('bcp.impl_implemented')},{v:'tested',l:t('bcp.impl_tested')}];
+    const lbl = s => `<label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;display:block;margin-bottom:4px;">${s}</label>`;
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:520px;max-height:90vh;display:flex;flex-direction:column;">
       <div class="modal-header" style="flex-shrink:0;">
-        <h2>${strat ? 'Editar estrategia' : 'Nueva estrategia de recuperacion'}</h2>
+        <h2>${strat ? t('bcp.strat_edit') : t('bcp.strat_new')}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <div>${lbl('Tipo *')}
+          <div>${lbl(t('bcp.strat_type_label') + ' *')}
             <select id="sm-type" class="form-control" style="font-size:13px;">
-              ${TYPES.map(t=>`<option value="${t}"${strat?.strategy_type===t?' selected':''}>${TYPE_LABELS[t]||t}</option>`).join('')}
+              ${TYPES.map(ty=>`<option value="${ty}"${strat?.strategy_type===ty?' selected':''}>${TYPE_LABELS[ty]||ty}</option>`).join('')}
             </select>
           </div>
-          <div>${lbl('Estado')}
+          <div>${lbl(t('bcp.strat_status_label'))}
             <select id="sm-status" class="form-control" style="font-size:13px;">
               ${STATUS_OPTS.map(s=>`<option value="${s.v}"${strat?.implementation_status===s.v?' selected':''}>${s.l}</option>`).join('')}
             </select>
           </div>
         </div>
-        <div style="margin-bottom:14px;">${lbl('Nombre *')}
+        <div style="margin-bottom:14px;">${lbl(t('bcp.strat_name_label') + ' *')}
           <input id="sm-name" class="form-control" style="font-size:13px;" value="${UI.esc(strat?.name||'')}">
         </div>
-        <div style="margin-bottom:14px;">${lbl('Proceso vinculado (opcional)')}
+        <div style="margin-bottom:14px;">${lbl(t('bcp.strat_proc_link'))}
           <select id="sm-proc" class="form-control" style="font-size:13px;">
-            <option value="">— Global (aplica a todos los procesos) —</option>
+            <option value="">— ${UI.esc(t('bcp.strat_global'))} —</option>
             ${_procs.map(p=>`<option value="${p.id}"${strat?.process_id===p.id?' selected':''}>${UI.esc(p.name)}</option>`).join('')}
           </select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <div>${lbl('Coste estimado (€)')}
+          <div>${lbl(t('bcp.strat_cost'))}
             <input id="sm-cost" class="form-control" type="number" style="font-size:13px;" value="${strat?.estimated_cost??''}">
           </div>
-          <div>${lbl('Fecha objetivo')}
+          <div>${lbl(t('bcp.strat_target_date'))}
             <input id="sm-date" class="form-control" type="date" style="font-size:13px;" value="${strat?.target_date?strat.target_date.substring(0,10):''}">
           </div>
         </div>
-        <div style="margin-bottom:14px;">${lbl('Descripcion')}
+        <div style="margin-bottom:14px;">${lbl(t('bcp.dep_description'))}
           <textarea id="sm-desc" class="form-control" rows="3" style="font-size:13px;">${UI.esc(strat?.description||'')}</textarea>
         </div>
 
         <!-- Seccion colapsable: Configuracion tecnica IT -->
         <details style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden;" ${strat?.it_config ? 'open' : ''}>
           <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);cursor:pointer;background:var(--bg-2);user-select:none;">
-            <i class="ti ti-server" style="margin-right:4px"></i> Configuracion tecnica IT (ISO 22301 §8.4)
+            <i class="ti ti-server" style="margin-right:4px"></i> ${t('bcp.strat_it_config')}
           </summary>
           <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div>${lbl('Disponibilidad objetivo (%)')}
+            <div>${lbl(t('bcp.strat_availability'))}
               <input id="sm-avail" class="form-control" type="number" min="0" max="100" step="0.01" style="font-size:13px;" value="${strat?.it_config?.availability_pct??''}">
             </div>
-            <div>${lbl('Tipo failover')}
+            <div>${lbl(t('bcp.strat_failover_type'))}
               <select id="sm-failover" class="form-control" style="font-size:13px;">
                 <option value="">— Seleccionar —</option>
                 ${['none','active-passive','active-active'].map(v=>`<option value="${v}"${strat?.it_config?.failover_type===v?' selected':''}>${v}</option>`).join('')}

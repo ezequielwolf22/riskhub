@@ -27,13 +27,12 @@ const ViewFeatureFlags = (() => {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Control de Modulos</h1>
-          <p class="page-sub">Activa o desactiva secciones de la aplicacion — solo superadmin</p>
+          <h1 class="page-title">${t('feature_flags.page_title')}</h1>
+          <p class="page-sub">${t('feature_flags.page_subtitle')}</p>
         </div>
       </div>
       <div class="notice" style="margin-bottom:16px;">
-        Los cambios son inmediatos. Los usuarios activos veran los modulos ocultarse/aparecer en su
-        proxima recarga de pagina.
+        ${t('feature_flags.notice')}
       </div>
       <div id="ff-wrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;"></div>
     `;
@@ -53,14 +52,14 @@ const ViewFeatureFlags = (() => {
 
   function _render(wrap) {
     if (!_flags.length) {
-      wrap.innerHTML = '<p class="text-muted">No hay modulos configurados.</p>';
+      wrap.innerHTML = `<p class="text-muted">${t('feature_flags.no_modules')}</p>`;
       return;
     }
     wrap.innerHTML = _flags.map(f => `
       <div class="card" style="display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <b style="font-size:14px;">${UI.esc(f.label)}</b>
-          <label class="toggle-switch" title="${f.enabled ? 'Desactivar' : 'Activar'} modulo">
+          <label class="toggle-switch" title="${f.enabled ? t('feature_flags.disable_module') : t('feature_flags.enable_module')}">
             <input type="checkbox" data-name="${UI.esc(f.name)}" ${f.enabled ? 'checked' : ''}>
             <span class="toggle-slider"></span>
           </label>
@@ -68,10 +67,10 @@ const ViewFeatureFlags = (() => {
         <p style="font-size:12px;color:var(--text-muted);margin:0;">${UI.esc(f.description||'')}</p>
         <div style="display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-subtle);">
           <span>${f.enabled
-            ? '<span style="color:var(--risk-low);font-weight:600;">Activo</span>'
-            : '<span style="color:var(--text-muted);">Inactivo</span>'}</span>
-          ${f.updated_at ? `<span>— ultima actualizacion: ${f.updated_at.slice(0,10)}</span>` : ''}
-          ${f.updated_by ? `<span>por ${UI.esc(f.updated_by)}</span>` : ''}
+            ? `<span style="color:var(--risk-low);font-weight:600;">${t('feature_flags.active')}</span>`
+            : `<span style="color:var(--text-muted);">${t('feature_flags.inactive')}</span>`}</span>
+          ${f.updated_at ? `<span>${t('feature_flags.last_updated')} ${f.updated_at.slice(0,10)}</span>` : ''}
+          ${f.updated_by ? `<span>${t('feature_flags.by')} ${UI.esc(f.updated_by)}</span>` : ''}
         </div>
       </div>
     `).join('');
@@ -85,7 +84,7 @@ const ViewFeatureFlags = (() => {
           await Api.featureFlags.update(name, enabled);
           const flag = _flags.find(f => f.name === name);
           if (flag) flag.enabled = enabled;
-          UI.toast(`Modulo ${enabled ? 'activado' : 'desactivado'}`, 'success');
+          UI.toast(enabled ? t('feature_flags.module_activated') : t('feature_flags.module_deactivated'), 'success');
           // Sincronizar el sidebar inmediatamente
           _syncSidebar();
         } catch (e) {

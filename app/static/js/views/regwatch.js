@@ -4,10 +4,15 @@
    Spec: RISKHUB_REGULATORY_WATCH_MODULE_SPEC.md */
 const ViewRegwatch = (() => {
 
-  const SEV_LABELS = {
-    cosmetic: 'Cosmetico', clarification: 'Aclaracion',
-    substantive: 'Sustantivo', breaking: 'Version mayor',
-  };
+  function _getSevLabels() {
+    return {
+      cosmetic:      t('regwatch.sev_cosmetic'),
+      clarification: t('regwatch.sev_clarification'),
+      substantive:   t('regwatch.sev_substantive'),
+      breaking:      t('regwatch.sev_breaking'),
+    };
+  }
+
   const SEV_COLORS = {
     cosmetic: '#9CA3AF', clarification: 'var(--risk-low)',
     substantive: 'var(--risk-high)', breaking: 'var(--risk-critical)',
@@ -15,23 +20,23 @@ const ViewRegwatch = (() => {
 
   function _sevBadge(sev) {
     const c = SEV_COLORS[sev] || '#9CA3AF';
-    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${c};color:#fff;">${SEV_LABELS[sev] || sev}</span>`;
+    const labels = _getSevLabels();
+    return `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:${c};color:#fff;">${labels[sev] || sev}</span>`;
   }
 
   async function render(el) {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Vigilancia Normativa Automatica</h1>
-          <p class="page-sub">RiskHub mantiene tu catalogo normativo al dia. Solo te avisamos si necesitamos tu confirmacion.</p>
+          <h1 class="page-title">${t('regwatch.title')}</h1>
+          <p class="page-sub">${t('regwatch.subtitle')}</p>
         </div>
       </div>
       <div id="rw-card"></div>
       <div id="rw-inbox" style="margin-top:16px;"></div>
       <div id="rw-history" style="margin-top:16px;"></div>
       <p style="font-size:12px;color:var(--text-muted);margin-top:18px;">
-        Esta funcion detecta y propone cambios; no interpreta legalmente las normas ni sustituye a tu consultor o auditor.
-        No procesa datos personales de tu organizacion.
+        ${t('regwatch.disclaimer')}
       </p>
     `;
     await _load();
@@ -63,30 +68,29 @@ const ViewRegwatch = (() => {
       <div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;">
           <div style="flex:1;min-width:260px;">
-            <h3 style="margin:0 0 6px;">Vigilancia Normativa Automatica</h3>
+            <h3 style="margin:0 0 6px;">${t('regwatch.card_title')}</h3>
             <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;max-width:560px;">
-              RiskHub vigilara automaticamente los marcos normativos que utilizas y aplicara las actualizaciones a tu catalogo.
-              Te avisaremos solo si necesitamos tu confirmacion.
+              ${t('regwatch.card_desc')}
             </p>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
               <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};display:inline-block;"></span>
               <span><b>${UI.esc(status.headline)}</b></span>
-              ${status.pending_count > 0 ? `<button class="btn btn-sm" id="rw-goto-inbox">Ver bandeja</button>` : ''}
+              ${status.pending_count > 0 ? `<button class="btn btn-sm" id="rw-goto-inbox">${t('regwatch.goto_inbox')}</button>` : ''}
             </div>
-            ${la ? `<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;">Ultima actualizacion aplicada: ${UI.esc(la.framework)} — ${UI.esc(la.title)}${la.applied_at ? ' · ' + _fmtDate(la.applied_at) : ''}</p>` : ''}
+            ${la ? `<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;">${t('regwatch.last_update')} ${UI.esc(la.framework)} — ${UI.esc(la.title)}${la.applied_at ? ' · ' + _fmtDate(la.applied_at) : ''}</p>` : ''}
           </div>
           <div style="text-align:right;">
-            <label class="rw-switch" title="${canEdit ? 'Activar / desactivar' : 'Solo admin'}">
+            <label class="rw-switch" title="${canEdit ? t('regwatch.toggle_title_admin') : t('regwatch.toggle_title_readonly')}">
               <input type="checkbox" id="rw-toggle" ${on ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
               <span class="rw-slider"></span>
             </label>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${on ? 'Activo' : 'Inactivo'}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${on ? t('regwatch.toggle_active') : t('regwatch.toggle_inactive')}</div>
           </div>
         </div>
 
         <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
           <a href="#" id="rw-adv-toggle" style="font-size:13px;color:var(--brand-purple);text-decoration:none;">
-            &#9656; Opciones avanzadas</a>
+            &#9656; ${t('regwatch.adv_options')}</a>
           <div id="rw-adv" style="display:none;margin-top:12px;"></div>
         </div>
       </div>
@@ -121,22 +125,27 @@ const ViewRegwatch = (() => {
       const adv = document.getElementById('rw-adv');
       const open = adv.style.display === 'none';
       adv.style.display = open ? 'block' : 'none';
-      advToggle.innerHTML = (open ? '&#9662; ' : '&#9656; ') + 'Opciones avanzadas';
+      advToggle.innerHTML = (open ? '&#9662; ' : '&#9656; ') + t('regwatch.adv_options');
       if (open && !adv.dataset.loaded) { _renderAdvanced(adv, settings, watched, canEdit); adv.dataset.loaded = '1'; }
     };
   }
 
   function _renderAdvanced(adv, settings, watched, canEdit) {
     const freqOpts = ['daily', 'weekly', 'monthly', 'never'];
-    const freqLabel = { daily: 'Diaria', weekly: 'Semanal (lun 09:00)', monthly: 'Mensual', never: 'Nunca (solo criticas)' };
+    const freqLabel = {
+      daily:   t('regwatch.freq_daily'),
+      weekly:  t('regwatch.freq_weekly'),
+      monthly: t('regwatch.freq_monthly'),
+      never:   t('regwatch.freq_never'),
+    };
     adv.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
         <div>
-          <label style="font-size:12px;font-weight:600;">Email para notificaciones</label>
+          <label style="font-size:12px;font-weight:600;">${t('regwatch.adv_email_label')}</label>
           <input type="email" id="rw-email" value="${UI.esc(settings.notification_email || '')}" ${canEdit ? '' : 'disabled'} style="width:100%;">
         </div>
         <div>
-          <label style="font-size:12px;font-weight:600;">Frecuencia del digest</label>
+          <label style="font-size:12px;font-weight:600;">${t('regwatch.adv_freq_label')}</label>
           <select id="rw-freq" ${canEdit ? '' : 'disabled'} style="width:100%;">
             ${freqOpts.map(f => `<option value="${f}" ${settings.digest_frequency === f ? 'selected' : ''}>${freqLabel[f]}</option>`).join('')}
           </select>
@@ -144,20 +153,20 @@ const ViewRegwatch = (() => {
         <div class="span2">
           <label style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;">
             <input type="checkbox" id="rw-autoapply" ${settings.auto_apply_to_clones ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
-            Auto-aplicar cambios no sustanciales a mis plantillas clonadas y politicas
+            ${t('regwatch.adv_autoapply_label')}
           </label>
-          <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">Por defecto desactivado. Los cambios sustanciales siempre requieren tu confirmacion.</p>
+          <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">${t('regwatch.adv_autoapply_desc')}</p>
         </div>
       </div>
       <div style="margin-top:14px;">
-        <label style="font-size:12px;font-weight:600;">Frameworks vigilados (derivado automaticamente, solo lectura)</label>
+        <label style="font-size:12px;font-weight:600;">${t('regwatch.adv_frameworks_label')}</label>
         <div id="rw-frameworks" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
           ${watched.length ? watched.map(f => `
             <span class="badge badge-muted" title="${UI.esc((f.sources || []).join(', '))}" style="${f.muted ? 'opacity:.5;' : ''}">${UI.esc(f.label)}</span>
-          `).join('') : '<span style="font-size:12px;color:var(--text-muted);">Aun no se detectan frameworks en uso. Empieza a usar el modulo Compliance o clasifica proveedores (NIS2/DORA/ENS/RGPD).</span>'}
+          `).join('') : `<span style="font-size:12px;color:var(--text-muted);">${t('regwatch.adv_no_frameworks')}</span>`}
         </div>
       </div>
-      ${canEdit ? `<div style="margin-top:14px;text-align:right;"><button class="btn btn-primary btn-sm" id="rw-save-adv">Guardar opciones</button></div>` : ''}
+      ${canEdit ? `<div style="margin-top:14px;text-align:right;"><button class="btn btn-primary btn-sm" id="rw-save-adv">${t('regwatch.adv_save')}</button></div>` : ''}
     `;
     const save = document.getElementById('rw-save-adv');
     if (save) save.onclick = async () => {
@@ -168,7 +177,7 @@ const ViewRegwatch = (() => {
           digest_frequency: document.getElementById('rw-freq').value,
           auto_apply_to_clones: document.getElementById('rw-autoapply').checked,
         });
-        UI.toast('Opciones guardadas', 'success');
+        UI.toast(t('regwatch.adv_saved'), 'success');
       } catch (e) { UI.toast(e.message, 'error'); }
       save.disabled = false;
     };
@@ -176,14 +185,11 @@ const ViewRegwatch = (() => {
 
   async function _confirmEnable(toggle, watched) {
     const n = watched.length;
-    const ok = await UI.confirm(
-      `Vamos a vigilar ${n} marco(s) normativo(s) que estas usando y a actualizar tu catalogo cuando haya cambios. ` +
-      `Recibiras notificaciones solo si necesitamos tu confirmacion. ¿Activamos?`
-    );
+    const ok = await UI.confirm(t('regwatch.enable_confirm', {n}));
     if (!ok) { toggle.checked = false; return; }
     try {
       const r = await Api.regwatch.enable();
-      UI.toast(`Vigilancia activada. Estas monitorizando ${r.watched_count} marco(s) normativo(s).`, 'success');
+      UI.toast(t('regwatch.enabled_toast', {n: r.watched_count}), 'success');
       await _load();
     } catch (e) { UI.toast(e.message, 'error'); toggle.checked = false; }
   }
@@ -191,7 +197,7 @@ const ViewRegwatch = (() => {
   async function _doDisable(toggle) {
     try {
       await Api.regwatch.disable();
-      UI.toast('Vigilancia desactivada. Tu configuracion se conserva.', 'info');
+      UI.toast(t('regwatch.disabled_toast'), 'info');
       await _load();
     } catch (e) { UI.toast(e.message, 'error'); toggle.checked = true; }
   }
@@ -204,7 +210,7 @@ const ViewRegwatch = (() => {
       if (!items.length) { wrap.innerHTML = ''; return; }
       wrap.innerHTML = `
         <div class="card">
-          <h3 style="margin-top:0;">Actualizaciones normativas pendientes (${items.length})</h3>
+          <h3 style="margin-top:0;">${t('regwatch.inbox_title', {n: items.length})}</h3>
           ${items.map(_inboxRow).join('')}
         </div>
       `;
@@ -213,7 +219,7 @@ const ViewRegwatch = (() => {
         const snz = document.getElementById('rw-snooze-' + it.id);
         if (rev) rev.onclick = () => _openWizard(it);
         if (snz) snz.onclick = async () => {
-          try { await Api.regwatch.snooze(it.id, 7); UI.toast('Aplazado 7 dias', 'info'); await _loadInbox(); await _refreshStatus(); }
+          try { await Api.regwatch.snooze(it.id, 7); UI.toast(t('regwatch.inbox_snoozed'), 'info'); await _loadInbox(); await _refreshStatus(); }
           catch (e) { UI.toast(e.message, 'error'); }
         };
       });
@@ -234,13 +240,13 @@ const ViewRegwatch = (() => {
             </div>
             <div style="font-size:13px;margin-bottom:6px;">${UI.esc(it.title)}</div>
             <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">
-              ${cc.modified || 0} medida(s) modificada(s) · ${cc.added || 0} nueva(s) · ${cc.removed || 0} eliminada(s)
+              ${t('regwatch.inbox_modified', {n: cc.modified || 0})} · ${t('regwatch.inbox_added', {n: cc.added || 0})} · ${t('regwatch.inbox_removed', {n: cc.removed || 0})}
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;">${badges}</div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0;">
-            <button class="btn btn-primary btn-sm" id="rw-review-${it.id}">Revisar</button>
-            <button class="btn btn-sm" id="rw-snooze-${it.id}">Aplazar 7 dias</button>
+            <button class="btn btn-primary btn-sm" id="rw-review-${it.id}">${t('regwatch.inbox_review')}</button>
+            <button class="btn btn-sm" id="rw-snooze-${it.id}">${t('regwatch.inbox_snooze')}</button>
           </div>
         </div>
       </div>
@@ -257,7 +263,10 @@ const ViewRegwatch = (() => {
 
     const techDetail = mods.length ? `
       <div style="margin-top:8px;font-size:12px;">
-        <table class="data" style="width:100%;"><thead><tr><th>Control</th><th>Campo</th><th>Antes</th><th>Despues</th></tr></thead><tbody>
+        <table class="data" style="width:100%;"><thead><tr>
+          <th>${t('regwatch.col_control')}</th><th>${t('regwatch.col_field')}</th>
+          <th>${t('regwatch.col_before')}</th><th>${t('regwatch.col_after')}</th>
+        </tr></thead><tbody>
         ${mods.slice(0, 20).map(m => `<tr><td>${UI.esc(m.control_id || '')}</td><td>${UI.esc(m.field || '')}</td><td>${UI.esc(String(m.before || '').slice(0, 60))}</td><td>${UI.esc(String(m.after || '').slice(0, 60))}</td></tr>`).join('')}
         </tbody></table>
       </div>` : '';
@@ -269,30 +278,30 @@ const ViewRegwatch = (() => {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">${_sevBadge(detail.severity)}<b>${UI.esc(detail.framework)}</b></div>
         <p style="font-size:13px;">${UI.esc(detail.title)}</p>
         <p style="font-size:13px;color:var(--text-muted);">${UI.esc(detail.summary || '')}</p>
-        <details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;color:var(--brand-purple);">Ver detalle tecnico</summary>${techDetail || '<p style="font-size:12px;color:var(--text-muted);margin-top:6px;">Sin cambios atomicos detallados.</p>'}</details>
+        <details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;color:var(--brand-purple);">${t('regwatch.wizard_tech_detail')}</summary>${techDetail || `<p style="font-size:12px;color:var(--text-muted);margin-top:6px;">${t('regwatch.wizard_tech_none')}</p>`}</details>
         <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
         ${totalImpact > 0 ? `
-          <p style="font-size:13px;font-weight:600;margin:0 0 8px;">Elementos que se marcaran para revision</p>
+          <p style="font-size:13px;font-weight:600;margin:0 0 8px;">${t('regwatch.wizard_impact_heading')}</p>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">${impactBadges}</div>
           <div style="display:flex;gap:12px;flex-direction:column;">
             <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;">
               <input type="radio" name="rw-decision" value="apply" checked style="margin-top:3px;">
-              <span><b>Aplicar cambio</b> — actualizar catalogo y marcar elementos impactados para revision (recomendado)</span>
+              <span><b>${t('regwatch.wizard_apply')}</b> — ${t('regwatch.wizard_apply_desc')}</span>
             </label>
             <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;">
               <input type="radio" name="rw-decision" value="keep_my_version" style="margin-top:3px;">
-              <span><b>Mantener mi version</b> — registrar que lo hemos revisado pero no aplicar cambios</span>
+              <span><b>${t('regwatch.wizard_keep')}</b> — ${t('regwatch.wizard_keep_desc')}</span>
             </label>
           </div>
         ` : `
-          <p style="font-size:13px;color:var(--text-muted);">No se detectan elementos directamente afectados. El cambio se aplica al catalogo central.</p>
+          <p style="font-size:13px;color:var(--text-muted);">${t('regwatch.wizard_no_impact')}</p>
         `}
         <div id="rw-w-result" style="display:none;margin-top:12px;padding:10px;background:var(--bg-subtle,#f8fafc);border-radius:6px;font-size:13px;"></div>
       </div>
     `;
-    UI.modal('Revisar actualizacion normativa', body, {
-      actions: `<button class="btn" id="rw-w-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="rw-w-apply-btn">Confirmar</button>`,
+    UI.modal(t('regwatch.wizard_title'), body, {
+      actions: `<button class="btn" id="rw-w-cancel">${t('regwatch.wizard_cancel')}</button>
+                <button class="btn btn-primary" id="rw-w-apply-btn">${t('regwatch.wizard_confirm')}</button>`,
     });
     document.getElementById('rw-w-cancel').onclick = UI.closeModal;
     document.getElementById('rw-w-apply-btn').onclick = async () => {
@@ -307,12 +316,12 @@ const ViewRegwatch = (() => {
         if (action === 'apply' && Object.keys(prop).length) {
           const res = document.getElementById('rw-w-result');
           res.style.display = 'block';
-          res.innerHTML = `<b>Cambio aplicado correctamente.</b> Resumen de acciones:<br>${_propagationSummary(prop)}`;
-          btn.textContent = 'Cerrar';
+          res.innerHTML = `<b>${t('regwatch.wizard_applied')}</b><br>${_propagationSummary(prop)}`;
+          btn.textContent = t('regwatch.wizard_close');
           btn.disabled = false;
           btn.onclick = async () => { UI.closeModal(); await _loadInbox(); await _refreshStatus(); };
         } else {
-          UI.toast(action === 'apply' ? 'Cambio aplicado' : 'Decision registrada', 'success');
+          UI.toast(action === 'apply' ? t('regwatch.wizard_toast_apply') : t('regwatch.wizard_toast_keep'), 'success');
           UI.closeModal();
           await _loadInbox();
           await _refreshStatus();
@@ -323,46 +332,52 @@ const ViewRegwatch = (() => {
 
   function _impactBadges(imp) {
     const items = [
-      { key: 'control_implementations', label: 'Control(es) SoA', color: 'var(--brand-purple)' },
-      { key: 'policies',                label: 'Politica(s)',      color: 'var(--brand-orange)' },
-      { key: 'compliance_requirements', label: 'Requisito(s)',     color: 'var(--risk-high)' },
-      { key: 'bcp_plans',               label: 'Plan(es) BCP',     color: '#0EA5E9' },
-      { key: 'risks',                   label: 'Riesgo(s)',        color: '#F59E0B' },
+      { key: 'control_implementations', label: t('regwatch.impact_controls'), color: 'var(--brand-purple)' },
+      { key: 'policies',                label: t('regwatch.impact_policies'),  color: 'var(--brand-orange)' },
+      { key: 'compliance_requirements', label: t('regwatch.impact_requirements'), color: 'var(--risk-high)' },
+      { key: 'bcp_plans',               label: t('regwatch.impact_bcp'),       color: '#0EA5E9' },
+      { key: 'risks',                   label: t('regwatch.impact_risks'),      color: '#F59E0B' },
     ];
     return items
       .filter(i => (imp[i.key] || 0) > 0)
       .map(i => `<span style="padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:${i.color};color:#fff;">${imp[i.key]} ${i.label}</span>`)
-      .join('') || '<span style="font-size:12px;color:var(--text-muted);">Sin impacto directo detectado</span>';
+      .join('') || `<span style="font-size:12px;color:var(--text-muted);">${t('regwatch.impact_none')}</span>`;
   }
 
   function _propagationSummary(prop) {
     const map = {
-      catalog_controls_updated:         'Controles del catalogo actualizados',
-      control_implementations_flagged:  'Controles del SoA marcados para revision',
-      policies_flagged:                 'Politicas enviadas a revision',
-      bcp_plans_flagged:                'Planes BCP/DRP marcados',
-      supplier_questionnaires_flagged:  'Cuestionarios de proveedor marcados',
-      compliance_requirements_flagged:  'Requisitos de cumplimiento marcados',
-      tasks_created:                    'Tareas de revision creadas en el registro de riesgos',
+      catalog_controls_updated:         t('regwatch.prop_controls'),
+      control_implementations_flagged:  t('regwatch.prop_soa'),
+      policies_flagged:                 t('regwatch.prop_policies'),
+      bcp_plans_flagged:                t('regwatch.prop_bcp'),
+      supplier_questionnaires_flagged:  t('regwatch.prop_questionnaires'),
+      compliance_requirements_flagged:  t('regwatch.prop_compliance'),
+      tasks_created:                    t('regwatch.prop_tasks'),
     };
     const lines = Object.entries(map)
       .filter(([k]) => (prop[k] || 0) > 0)
       .map(([k, label]) => `<span style="display:block;padding:2px 0;">&#x2714; ${prop[k]} ${label}</span>`);
-    return lines.length ? lines.join('') : 'Sin cambios adicionales (ningun elemento afectado).';
+    return lines.length ? lines.join('') : t('regwatch.prop_none');
   }
 
   async function _loadHistory() {
     const wrap = document.getElementById('rw-history');
+    const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
     try {
       const rows = await Api.regwatch.history();
       wrap.innerHTML = `
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <h3 style="margin:0;">Historial de cambios aplicados</h3>
-            ${rows.length ? `<button class="btn btn-sm" id="rw-pdf">Exportar PDF</button>` : ''}
+            <h3 style="margin:0;">${t('regwatch.history_title')}</h3>
+            ${rows.length ? `<button class="btn btn-sm" id="rw-pdf">${t('regwatch.history_export')}</button>` : ''}
           </div>
           ${rows.length ? `
-            <table class="data" style="margin-top:10px;"><thead><tr><th>Fecha</th><th>Marco</th><th>Severidad</th><th>Cambio</th></tr></thead><tbody>
+            <table class="data" style="margin-top:10px;"><thead><tr>
+              <th>${t('regwatch.col_date')}</th>
+              <th>${t('regwatch.col_framework')}</th>
+              <th>${t('regwatch.col_severity')}</th>
+              <th>${t('regwatch.col_change')}</th>
+            </tr></thead><tbody>
             ${rows.map(r => `<tr>
               <td>${_fmtDate(r.applied_at || r.published_at)}</td>
               <td>${UI.esc(r.framework)}</td>
@@ -370,7 +385,7 @@ const ViewRegwatch = (() => {
               <td>${UI.esc(r.title)}</td>
             </tr>`).join('')}
             </tbody></table>
-          ` : '<p class="text-muted" style="margin-top:8px;">Aun no se han aplicado cambios. Cuando RiskHub detecte una actualizacion de tus marcos, aparecera aqui.</p>'}
+          ` : `<p class="text-muted" style="margin-top:8px;">${t('regwatch.history_none')}</p>`}
         </div>
       `;
       const pdf = document.getElementById('rw-pdf');
@@ -389,7 +404,8 @@ const ViewRegwatch = (() => {
 
   function _fmtDate(iso) {
     if (!iso) return '-';
-    try { return new Date(iso).toLocaleDateString('es-ES'); } catch (_) { return iso.slice(0, 10); }
+    const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
+    try { return new Date(iso).toLocaleDateString(_locale); } catch (_) { return iso.slice(0, 10); }
   }
 
   return { render };

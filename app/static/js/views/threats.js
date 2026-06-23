@@ -6,18 +6,18 @@ const ViewThreats = {
   async render(main) {
     const canEdit = Auth.canEdit();
     main.innerHTML = UI.sectionHeader(
-      'Catalogo de amenazas',
-      'ISO 27005 Annex C + MAGERIT v3 + personalizadas'
+      t('threats.title'),
+      t('threats.subtitle')
     ) + `
       <div class="toolbar" style="gap:12px;flex-wrap:wrap;align-items:center;">
-        <input type="search" id="t-search" placeholder="Buscar codigo, nombre...">
-        <select id="t-category"><option value="">Todas las categorias</option></select>
+        <input type="search" id="t-search" placeholder="${t('threats.search_placeholder')}">
+        <select id="t-category"><option value="">${t('threats.all_categories')}</option></select>
 
         <!-- Multi-select de catalogos -->
         <div id="catalog-dropdown" style="position:relative;">
           <button class="btn" id="catalog-btn"
                   style="display:flex;align-items:center;gap:6px;min-width:200px;justify-content:space-between;">
-            <span id="catalog-btn-label">Todos los catalogos</span>
+            <span id="catalog-btn-label">${t('threats.all_catalogs')}</span>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div id="catalog-menu" style="
@@ -27,12 +27,12 @@ const ViewThreats = {
               box-shadow:0 8px 24px rgba(0,0,0,.18);">
             <div style="padding:10px 14px 8px;font-size:11px;text-transform:uppercase;
                         color:#64748b;font-weight:700;letter-spacing:.6px;border-bottom:1px solid #f1f5f9;margin-bottom:4px;">
-              Catalogos de amenazas activos
+              ${t('threats.catalogs_heading')}
             </div>
             ${[
-              ['iso27005', 'ISO/IEC 27005:2018', '#7C3AED', 'Catalogo estandar internacional (49 amenazas)'],
-              ['magerit',  'MAGERIT v3',          '#D97706', 'Metodologia espanola ENS/CCN (51 amenazas)'],
-              ['custom',   'Amenazas personalizadas', '#16A34A', 'Creadas manualmente por tu equipo'],
+              ['iso27005', t('threats.catalog_iso'),    '#7C3AED', t('threats.catalog_iso_desc')],
+              ['magerit',  t('threats.catalog_magerit'), '#D97706', t('threats.catalog_magerit_desc')],
+              ['custom',   t('threats.catalog_custom'),  '#16A34A', t('threats.catalog_custom_desc')],
             ].map(([val, label, color, desc]) => `
               <label style="display:flex;align-items:flex-start;gap:10px;padding:9px 14px;
                             cursor:pointer;background:#fff;transition:background .1s;" class="catalog-opt"
@@ -48,21 +48,20 @@ const ViewThreats = {
             `).join('')}
             <div style="margin:8px 14px 0;padding:8px 10px;background:#f0fdf4;
                         border:1px solid #bbf7d0;border-radius:6px;font-size:11px;color:#166534;">
-              <strong>Efecto:</strong> La seleccion determina que amenazas usa el analisis IA de riesgos
-              en Activos. Cambia los catalogos y vuelve a lanzar el analisis de activos.
+              <strong>${t('threats.catalog_effect_label')}</strong> ${t('threats.catalog_effect_body')}
             </div>
             ${canEdit ? `
               <div style="padding:8px 14px 0;">
                 <button class="btn btn-ghost" id="btn-magerit-seed"
                         style="font-size:12px;padding:5px 12px;width:100%;text-align:left;">
-                  + Cargar catalogo MAGERIT v3 (si no esta cargado)
+                  ${t('threats.load_magerit_btn')}
                 </button>
               </div>
             ` : ''}
           </div>
         </div>
 
-        ${canEdit ? `<button class="btn btn-primary" id="btn-new">+ Nueva amenaza</button>` : ''}
+        ${canEdit ? `<button class="btn btn-primary" id="btn-new">${t('threats.new_btn')}</button>` : ''}
       </div>
       <div id="catalog-info-banner" style="margin-bottom:12px;"></div>
       <div id="t-list"></div>
@@ -93,12 +92,12 @@ const ViewThreats = {
 
       const mageritBtn = document.getElementById('btn-magerit-seed');
       if (mageritBtn) mageritBtn.onclick = async () => {
-        mageritBtn.disabled = true; mageritBtn.textContent = 'Cargando...';
+        mageritBtn.disabled = true; mageritBtn.textContent = t('threats.magerit_loading');
         try {
           const r = await Api.magerit.seed();
           const msg = r.created > 0
-            ? `${r.created} amenazas MAGERIT v3 cargadas`
-            : 'El catalogo MAGERIT ya estaba cargado';
+            ? t('threats.magerit_loaded', {n: r.created})
+            : t('threats.magerit_already');
           UI.toast(msg, 'success');
           // Activar magerit automaticamente si no estaba
           if (!ViewThreats._activeCatalogs.includes('magerit')) {
@@ -109,7 +108,7 @@ const ViewThreats = {
         } catch (e) {
           UI.toast('Error: ' + e.message, 'error');
         } finally {
-          mageritBtn.disabled = false; mageritBtn.textContent = '+ Cargar catalogo MAGERIT v3';
+          mageritBtn.disabled = false; mageritBtn.textContent = t('threats.magerit_btn_reset');
         }
       };
     }
@@ -140,9 +139,13 @@ const ViewThreats = {
     const label = document.getElementById('catalog-btn-label');
     if (!label) return;
     const active = ViewThreats._activeCatalogs;
-    const _NAMES = { iso27005: 'ISO 27005', magerit: 'MAGERIT v3', custom: 'Personalizadas' };
+    const _NAMES = {
+      iso27005: t('threats.custom_name_iso'),
+      magerit:  t('threats.custom_name_magerit'),
+      custom:   t('threats.custom_name_custom'),
+    };
     if (active.length === 3 || active.length === 0) {
-      label.textContent = 'Todos los catalogos';
+      label.textContent = t('threats.all_catalogs');
     } else {
       label.textContent = active.map(c => _NAMES[c] || c).join(' + ');
     }
@@ -153,7 +156,11 @@ const ViewThreats = {
     const banner = document.getElementById('catalog-info-banner');
     if (!banner) return;
     const active = ViewThreats._activeCatalogs;
-    const _NAMES = { iso27005: 'ISO 27005', magerit: 'MAGERIT v3', custom: 'Personalizadas' };
+    const _NAMES = {
+      iso27005: t('threats.custom_name_iso'),
+      magerit:  t('threats.custom_name_magerit'),
+      custom:   t('threats.custom_name_custom'),
+    };
     const _COLORS = { iso27005: '#7C3AED', magerit: '#D97706', custom: '#16A34A' };
     const badges = active.map(c =>
       `<span style="display:inline-block;padding:2px 8px;background:${_COLORS[c]}22;
@@ -166,18 +173,18 @@ const ViewThreats = {
                   background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
                   font-size:13px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span style="color:#475569;font-weight:600;">Catalogos activos:</span>
+          <span style="color:#475569;font-weight:600;">${t('threats.active_catalogs_label')}</span>
           ${badges}
         </div>
         <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span style="font-size:12px;color:#64748b;">
-            El analisis IA de riesgos en Activos usara solo estas amenazas.
+            ${t('threats.catalog_info_body')}
           </span>
           <a href="#!/assets" style="
               display:inline-flex;align-items:center;gap:4px;padding:5px 12px;
               background:#7C3AED;color:#fff;border-radius:6px;font-size:12px;
               font-weight:600;text-decoration:none;">
-            → Ir a Activos y relanzar analisis
+            ${t('threats.goto_assets')}
           </a>
         </div>
       </div>`;
@@ -188,7 +195,7 @@ const ViewThreats = {
     if (checked.length === 0) {
       // Al menos uno debe estar activo — revertir
       ViewThreats._syncCheckboxes();
-      UI.toast('Debes tener al menos un catalogo activo', 'warn');
+      UI.toast(t('threats.min_one_catalog'), 'warn');
       return;
     }
     ViewThreats._activeCatalogs = checked;
@@ -207,7 +214,7 @@ const ViewThreats = {
     const q = document.getElementById('t-search').value;
     const cat = document.getElementById('t-category').value;
     const list = document.getElementById('t-list');
-    list.innerHTML = '<div class="notice">Cargando...</div>';
+    list.innerHTML = `<div class="notice">${t('threats.loading')}</div>`;
     try {
       const params = {};
       if (q) params.q = q;
@@ -228,19 +235,19 @@ const ViewThreats = {
       }
 
       if (!data.length) {
-        list.innerHTML = UI.emptyState('Sin amenazas', 'No se encontraron resultados para los catalogos seleccionados.');
+        list.innerHTML = UI.emptyState(t('threats.no_results'), t('threats.no_results_body'));
         return;
       }
 
       // Client-side sort
-      const _sv = t => {
+      const _sv = th => {
         const k = ViewThreats._sortCol;
-        if (k === 'code') return t.code || '';
-        if (k === 'name') return (t.name || '').toLowerCase();
-        if (k === 'origin') return t.origin || '';
-        if (k === 'category') return (t.category || '').toLowerCase();
-        if (k === 'catalog') return t.catalog || '';
-        if (k === 'risks') return t.risk_count || 0;
+        if (k === 'code') return th.code || '';
+        if (k === 'name') return (th.name || '').toLowerCase();
+        if (k === 'origin') return th.origin || '';
+        if (k === 'category') return (th.category || '').toLowerCase();
+        if (k === 'catalog') return th.catalog || '';
+        if (k === 'risks') return th.risk_count || 0;
         return '';
       };
       data.sort((a, b) => {
@@ -256,49 +263,49 @@ const ViewThreats = {
                     data-sort="${col}">${label}${arrow}</th>`;
       };
 
-      const _catalogBadge = (t) => {
-        if (t.catalog === 'magerit')
+      const _catalogBadge = (th) => {
+        if (th.catalog === 'magerit')
           return `<span class="badge" style="background:#FEF0E3;color:#D97706;border:1px solid #FDE68A;">MAGERIT</span>`;
-        if (t.catalog === 'custom' || t.is_custom)
+        if (th.catalog === 'custom' || th.is_custom)
           return `<span class="badge" style="background:#DCFCE7;color:#16A34A;border:1px solid #BBF7D0;">Custom</span>`;
         return `<span class="badge" style="background:var(--brand-purple-4);color:var(--brand-purple);">ISO 27005</span>`;
       };
 
       list.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          ${_th('code','Codigo')}${_th('name','Nombre')}
-          ${_th('catalog','Catalogo','width:90px;')}
-          ${_th('origin','Origen')}${_th('category','Categoria')}
-          <th>Afecta</th><th>Aplica a</th>
-          ${_th('risks','Riesgos','width:70px;text-align:center;')}<th></th>
+          ${_th('code', t('threats.col_code'))}${_th('name', t('threats.col_name'))}
+          ${_th('catalog', t('threats.col_catalog'), 'width:90px;')}
+          ${_th('origin', t('threats.col_origin'))}${_th('category', t('threats.col_category'))}
+          <th>${t('threats.col_affects')}</th><th>${t('threats.col_assets')}</th>
+          ${_th('risks', t('threats.col_risks'), 'width:70px;text-align:center;')}<th></th>
         </tr></thead>
         <tbody>
-          ${data.map(t => {
-            const rc = t.risk_count || 0;
+          ${data.map(th => {
+            const rc = th.risk_count || 0;
             const rcColor = rc === 0 ? 'var(--text-subtle)' : rc >= 5 ? 'var(--risk-high)' : 'var(--brand-purple)';
-            const isEditable = t.catalog === 'custom' || t.is_custom;
+            const isEditable = th.catalog === 'custom' || th.is_custom;
             return `
             <tr>
-              <td>${UI.codePill(t.code)}</td>
+              <td>${UI.codePill(th.code)}</td>
               <td>
-                <strong>${UI.esc(t.name)}</strong>
-                ${t.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(t.description.substring(0,80))}${t.description.length>80?'…':''}</div>` : ''}
+                <strong>${UI.esc(th.name)}</strong>
+                ${th.description ? `<div style="font-size:11px;color:var(--text-subtle);">${UI.esc(th.description.substring(0,80))}${th.description.length>80?'…':''}</div>` : ''}
               </td>
-              <td>${_catalogBadge(t)}</td>
-              <td>${UI.threatOriginLabel(t.origin)}</td>
-              <td>${UI.esc(t.category||'-')}</td>
-              <td>${(t.affects||[]).join(', ')||'-'}</td>
-              <td style="font-size:11px;color:var(--text-subtle);">${(t.typical_assets||[]).map(UI.assetTypeLabel).join(', ')||'-'}</td>
+              <td>${_catalogBadge(th)}</td>
+              <td>${UI.threatOriginLabel(th.origin)}</td>
+              <td>${UI.esc(th.category||'-')}</td>
+              <td>${(th.affects||[]).join(', ')||'-'}</td>
+              <td style="font-size:11px;color:var(--text-subtle);">${(th.typical_assets||[]).map(UI.assetTypeLabel).join(', ')||'-'}</td>
               <td style="text-align:center;">
-                <a href="#/risks?threat_id=${t.id}" title="Ver riesgos de esta amenaza"
+                <a href="#/risks?threat_id=${th.id}" title="${t('threats.view_risks_title')}"
                    style="font-weight:700;font-family:var(--font-mono);font-size:13px;
                           color:${rcColor};text-decoration:none;">${rc}</a>
               </td>
               <td style="white-space:nowrap;">
                 ${isEditable && canEdit ? `
-                  <button class="btn btn-sm" onclick="ViewThreats._edit(${JSON.stringify(t).replace(/"/g,'&quot;')})">Editar</button>
+                  <button class="btn btn-sm" onclick="ViewThreats._edit(${JSON.stringify(th).replace(/"/g,'&quot;')})">${t('common.edit')}</button>
                   <button class="btn btn-sm btn-danger" style="margin-left:2px;"
-                    onclick="ViewThreats._del(${t.id},'${UI.esc(t.name)}')">Eliminar</button>
+                    onclick="ViewThreats._del(${th.id},'${UI.esc(th.name)}')">${t('common.delete')}</button>
                 ` : ''}
               </td>
             </tr>`;
@@ -306,8 +313,9 @@ const ViewThreats = {
         </tbody>
       </table></div>
       <div style="font-size:12px;color:var(--text-muted);padding:8px 4px;">
-        ${data.length} amenazas
-        ${ViewThreats._activeCatalogs.length < 3 ? `(filtrando: ${ViewThreats._activeCatalogs.join(', ')})` : '(todos los catalogos)'}
+        ${ViewThreats._activeCatalogs.length < 3
+          ? t('threats.count_filtered', {n: data.length, catalogs: ViewThreats._activeCatalogs.join(', ')})
+          : t('threats.count_all', {n: data.length})}
       </div>`;
 
       list.querySelectorAll('th[data-sort]').forEach(th => {
@@ -323,31 +331,31 @@ const ViewThreats = {
     }
   },
 
-  _edit(t) {
-    const isNew = !t;
-    UI.modal(isNew ? 'Nueva amenaza personalizada' : 'Editar amenaza personalizada', `
-      <div><label>Codigo (vacio para auto)</label>
-        <input id="f-code" value="${isNew ? '' : UI.esc(t.code)}"></div>
-      <div><label>Origen *</label>
+  _edit(th) {
+    const isNew = !th;
+    UI.modal(isNew ? t('threats.new_custom_title') : t('threats.edit_custom_title'), `
+      <div><label>${t('threats.form_code')}</label>
+        <input id="f-code" value="${isNew ? '' : UI.esc(th.code)}"></div>
+      <div><label>${t('threats.form_origin')}</label>
         <select id="f-origin">
-          <option value="D" ${(!isNew && t.origin==='D')||isNew ? 'selected':''}>Deliberada</option>
-          <option value="A" ${!isNew && t.origin==='A' ? 'selected':''}>Accidental</option>
-          <option value="E" ${!isNew && t.origin==='E' ? 'selected':''}>Ambiental</option>
+          <option value="D" ${(!isNew && th.origin==='D')||isNew ? 'selected':''}>${t('threats.origin_deliberate')}</option>
+          <option value="A" ${!isNew && th.origin==='A' ? 'selected':''}>${t('threats.origin_accidental')}</option>
+          <option value="E" ${!isNew && th.origin==='E' ? 'selected':''}>${t('threats.origin_environmental')}</option>
         </select>
       </div>
-      <div class="span2"><label>Nombre *</label>
-        <input id="f-name" value="${isNew ? '' : UI.esc(t.name)}"></div>
-      <div class="span2"><label>Descripcion</label>
-        <textarea id="f-desc" rows="2">${isNew ? '' : UI.esc(t.description||'')}</textarea></div>
-      <div><label>Categoria</label>
+      <div class="span2"><label>${t('threats.form_name')}</label>
+        <input id="f-name" value="${isNew ? '' : UI.esc(th.name)}"></div>
+      <div class="span2"><label>${t('threats.form_description')}</label>
+        <textarea id="f-desc" rows="2">${isNew ? '' : UI.esc(th.description||'')}</textarea></div>
+      <div><label>${t('threats.form_category')}</label>
         <input id="f-cat" placeholder="Compromise of information"
-          value="${isNew ? '' : UI.esc(t.category||'')}"></div>
-      <div><label>Afecta a (separado por coma)</label>
+          value="${isNew ? '' : UI.esc(th.category||'')}"></div>
+      <div><label>${t('threats.form_affects')}</label>
         <input id="f-affects" placeholder="C, I, A"
-          value="${isNew ? '' : (t.affects||[]).join(', ')}"></div>
+          value="${isNew ? '' : (th.affects||[]).join(', ')}"></div>
     `, {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="m-save">Guardar</button>`
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = async () => {
@@ -358,16 +366,16 @@ const ViewThreats = {
         category: document.getElementById('f-cat').value,
         origin: document.getElementById('f-origin').value,
         affects: document.getElementById('f-affects').value.split(',').map(s=>s.trim()).filter(Boolean),
-        typical_assets: isNew ? [] : (t.typical_assets||[]),
+        typical_assets: isNew ? [] : (th.typical_assets||[]),
         catalog: 'custom',
       };
       try {
         if (isNew) {
           await Api.threats.create(payload);
-          UI.toast('Amenaza creada', 'success');
+          UI.toast(t('threats.created'), 'success');
         } else {
-          await Api.threats.update(t.id, payload);
-          UI.toast('Amenaza actualizada', 'success');
+          await Api.threats.update(th.id, payload);
+          UI.toast(t('threats.updated'), 'success');
         }
         UI.closeModal(); ViewThreats._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
@@ -375,10 +383,10 @@ const ViewThreats = {
   },
 
   async _del(id, name) {
-    if (!confirm(`Eliminar la amenaza "${name}"?`)) return;
+    if (!await UI.confirm(t('threats.delete_confirm', {name}))) return;
     try {
       await Api.threats.del(id);
-      UI.toast('Amenaza eliminada', 'success');
+      UI.toast(t('threats.deleted'), 'success');
       ViewThreats._reload();
     } catch (e) { UI.toast(e.message, 'error'); }
   },

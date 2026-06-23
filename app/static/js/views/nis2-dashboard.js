@@ -4,24 +4,32 @@ const ViewNis2Dashboard = (() => {
   let _countdownInterval = null;
 
   function _stageLabel(s) {
-    return { early_warning: 'Alerta temprana (24h)', initial_report: 'Notif. inicial (72h)', final_report: 'Informe final (30d)' }[s] || s;
+    return {
+      early_warning:  t('nis2.stage_early'),
+      initial_report: t('nis2.stage_initial'),
+      final_report:   t('nis2.stage_final'),
+    }[s] || s;
   }
 
   function _statusLabel(s) {
-    return { pending: 'Pendiente', submitted: 'Enviado', acknowledged: 'Confirmado', overdue: 'VENCIDO' }[s] || s;
+    return {
+      pending:      t('nis2.status_pending'),
+      submitted:    t('nis2.status_submitted'),
+      acknowledged: t('nis2.status_acknowledged'),
+      overdue:      t('nis2.status_overdue'),
+    }[s] || s;
   }
 
   async function render(container) {
     if (_countdownInterval) clearInterval(_countdownInterval);
     container.innerHTML = UI.sectionHeader(
-      'NIS2 — Centro de Notificaciones',
-      'Directiva (UE) 2022/2555 Art. 23 — Plazos obligatorios: 24h / 72h / 30 dias'
+      t('nis2.dashboard_title'),
+      t('nis2.dashboard_subtitle')
     );
     const wrap = document.createElement('div');
     container.appendChild(wrap);
     await _load(wrap);
 
-    // CSS para stage cards
     if (!document.getElementById('nis2-css')) {
       const s = document.createElement('style');
       s.id = 'nis2-css';
@@ -44,30 +52,39 @@ const ViewNis2Dashboard = (() => {
 
       let html = `
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
-        <div class="stat-card"><div class="stat-value">${data.incidents_requiring_notification}</div><div class="stat-label">Incidentes NIS2</div></div>
-        <div class="stat-card ${data.pending_notifications>0?'stat-warning':''}">
-          <div class="stat-value">${data.pending_notifications}</div><div class="stat-label">Pendientes</div></div>
-        <div class="stat-card ${data.overdue_notifications>0?'stat-danger':''}">
-          <div class="stat-value">${data.overdue_notifications}</div><div class="stat-label">Vencidas</div></div>
+        <div class="stat-card">
+          <div class="stat-value">${data.incidents_requiring_notification}</div>
+          <div class="stat-label">${t('nis2.stat_incidents')}</div>
+        </div>
+        <div class="stat-card ${data.pending_notifications > 0 ? 'stat-warning' : ''}">
+          <div class="stat-value">${data.pending_notifications}</div>
+          <div class="stat-label">${t('nis2.stat_pending')}</div>
+        </div>
+        <div class="stat-card ${data.overdue_notifications > 0 ? 'stat-danger' : ''}">
+          <div class="stat-value">${data.overdue_notifications}</div>
+          <div class="stat-label">${t('nis2.stat_overdue')}</div>
+        </div>
       </div>`;
 
       if (!data.incidents.length) {
-        container.innerHTML = html + UI.emptyState('Sin incidentes NIS2', 'No hay incidentes con notificacion NIS2 requerida.');
+        container.innerHTML = html + UI.emptyState(t('nis2.empty_title'), t('nis2.empty_body'));
         return;
       }
 
       const stages = ['early_warning', 'initial_report', 'final_report'];
+      const locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
+
       data.incidents.forEach(inc => {
         const notifCards = stages.map(stage => {
-          const n = (inc.notifications||[]).find(x => x.stage === stage);
-          if (!n) return `<div class="nis2-sc nis2-missing"><div class="nis2-sc-label">${_stageLabel(stage)}</div><div class="nis2-sc-status">Sin crear</div></div>`;
+          const n = (inc.notifications || []).find(x => x.stage === stage);
+          if (!n) return `<div class="nis2-sc nis2-missing"><div class="nis2-sc-label">${_stageLabel(stage)}</div><div class="nis2-sc-status">${t('nis2.not_created')}</div></div>`;
           const cls = { pending: 'nis2-pending', submitted: 'nis2-done', overdue: 'nis2-overdue' }[n.status] || '';
           const btnAction = (n.status === 'pending' || n.status === 'overdue')
-            ? `<button class="btn btn-sm btn-primary" style="margin-top:4px;" onclick="ViewNis2Dashboard._wizard(${n.id})">Completar</button>` : '';
+            ? `<button class="btn btn-sm btn-primary" style="margin-top:4px;" onclick="ViewNis2Dashboard._wizard(${n.id})">${t('nis2.complete_btn')}</button>` : '';
           return `
           <div class="nis2-sc ${cls}">
             <div class="nis2-sc-label">${n.stage_label}</div>
-            <div class="nis2-cntdwn" data-deadline="${n.deadline_at||''}">${n.hours_left!=null ? Math.round(Math.max(0,n.hours_left))+'h' : '—'}</div>
+            <div class="nis2-cntdwn" data-deadline="${n.deadline_at || ''}">${n.hours_left != null ? Math.round(Math.max(0, n.hours_left)) + 'h' : '—'}</div>
             <div class="nis2-sc-status">${_statusLabel(n.status)}</div>
             ${btnAction}
             <a href="/api/nis2/notifications/${n.id}/pdf" target="_blank" class="btn btn-sm btn-outline" style="margin-top:4px;">PDF</a>
@@ -80,7 +97,7 @@ const ViewNis2Dashboard = (() => {
             ${UI.codePill(inc.incident_code)} ${UI.esc(inc.incident_title)}
             <span style="margin-left:8px;font-size:11px;color:#9D9D9D;">${inc.incident_status}</span>
             <button class="btn btn-sm btn-secondary" style="float:right;"
-              onclick="ViewNis2Dashboard._createChain(${inc.incident_id})">Crear cadena NIS2</button>
+              onclick="ViewNis2Dashboard._createChain(${inc.incident_id})">${t('nis2.create_chain_btn')}</button>
           </div>
           <div class="card-body">
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">${notifCards}</div>
@@ -101,7 +118,7 @@ const ViewNis2Dashboard = (() => {
       document.querySelectorAll('[data-deadline]').forEach(el => {
         if (!el.dataset.deadline) return;
         const diff = new Date(el.dataset.deadline) - new Date();
-        if (diff <= 0) { el.textContent = 'VENCIDO'; el.style.color = '#DC2626'; return; }
+        if (diff <= 0) { el.textContent = t('nis2.status_overdue'); el.style.color = '#DC2626'; return; }
         const h = Math.floor(diff / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
         el.textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -114,7 +131,7 @@ const ViewNis2Dashboard = (() => {
   async function _createChain(incidentId) {
     try {
       const res = await Api.post(`/api/nis2/incidents/${incidentId}/create-chain`, {});
-      UI.toast(`${res.created} notificaciones NIS2 creadas`, 'success');
+      UI.toast(t('nis2.notifications_created', { n: res.created }), 'success');
       location.reload();
     } catch (e) {
       UI.toast('Error: ' + (e.message || e), 'error');
@@ -124,6 +141,7 @@ const ViewNis2Dashboard = (() => {
   async function _wizard(notifId) {
     const n = await Api.get(`/api/nis2/notifications/${notifId}`);
     const c = n.content_json || {};
+    const locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
     const modal = document.createElement('div');
     modal.className = 'modal-bg';
     modal.innerHTML = `
@@ -133,20 +151,20 @@ const ViewNis2Dashboard = (() => {
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">×</button>
       </div>
       <div class="modal-body">
-        <p style="color:#D97706;font-size:12px;">Plazo: <strong>${n.deadline_at ? new Date(n.deadline_at).toLocaleString('es-ES') : '—'}</strong></p>
-        <label>Autoridad receptora</label>
-        <input id="nw-auth" class="form-control" value="${UI.esc(n.recipient_authority||'INCIBE-CERT')}">
-        <label style="margin-top:10px;">Referencia expediente</label>
-        <input id="nw-ref" class="form-control" placeholder="Numero de expediente..." value="${UI.esc(n.notification_ref||'')}">
-        <label style="margin-top:10px;">Descripcion del incidente</label>
-        <textarea id="nw-desc" class="form-control" rows="3" style="width:100%">${UI.esc(c.description||'')}</textarea>
-        <label style="margin-top:10px;">Sistemas afectados</label>
-        <input id="nw-sys" class="form-control" value="${UI.esc(c.affected_systems||'')}">
-        <label style="margin-top:10px;">Medidas adoptadas</label>
-        <textarea id="nw-measures" class="form-control" rows="2" style="width:100%">${UI.esc(c.measures||'')}</textarea>
+        <p style="color:#D97706;font-size:12px;">${t('nis2.deadline_label')}: <strong>${n.deadline_at ? new Date(n.deadline_at).toLocaleString(locale) : '—'}</strong></p>
+        <label>${t('nis2.authority_label')}</label>
+        <input id="nw-auth" class="form-control" value="${UI.esc(n.recipient_authority || 'INCIBE-CERT')}">
+        <label style="margin-top:10px;">${t('nis2.ref_label')}</label>
+        <input id="nw-ref" class="form-control" placeholder="${t('nis2.ref_placeholder')}" value="${UI.esc(n.notification_ref || '')}">
+        <label style="margin-top:10px;">${t('nis2.desc_label')}</label>
+        <textarea id="nw-desc" class="form-control" rows="3" style="width:100%">${UI.esc(c.description || '')}</textarea>
+        <label style="margin-top:10px;">${t('nis2.systems_label')}</label>
+        <input id="nw-sys" class="form-control" value="${UI.esc(c.affected_systems || '')}">
+        <label style="margin-top:10px;">${t('nis2.measures_label')}</label>
+        <textarea id="nw-measures" class="form-control" rows="2" style="width:100%">${UI.esc(c.measures || '')}</textarea>
         <div style="display:flex;gap:8px;margin-top:14px;">
-          <button class="btn btn-secondary" onclick="ViewNis2Dashboard._saveWizard(${notifId})">Guardar borrador</button>
-          <button class="btn btn-primary" onclick="ViewNis2Dashboard._submitWizard(${notifId})">Marcar como enviada</button>
+          <button class="btn btn-secondary" onclick="ViewNis2Dashboard._saveWizard(${notifId})">${t('nis2.save_draft_btn')}</button>
+          <button class="btn btn-primary" onclick="ViewNis2Dashboard._submitWizard(${notifId})">${t('nis2.submit_wizard_btn')}</button>
         </div>
       </div>
     </div>`;
@@ -164,14 +182,14 @@ const ViewNis2Dashboard = (() => {
       },
     };
     await Api.patch(`/api/nis2/notifications/${id}`, body);
-    UI.toast('Borrador guardado', 'success');
+    UI.toast(t('nis2.draft_saved'), 'success');
   }
 
   async function _submitWizard(id) {
-    if (!confirm('Marcar como enviada? El timestamp quedara registrado de forma inmutable.')) return;
+    if (!await UI.confirm(t('nis2.submit_confirm'))) return;
     await _saveWizard(id);
     await Api.post(`/api/nis2/notifications/${id}/submit`, {});
-    UI.toast('Notificacion marcada como enviada', 'success');
+    UI.toast(t('nis2.submitted_toast'), 'success');
     document.querySelector('.modal-bg')?.remove();
     location.reload();
   }

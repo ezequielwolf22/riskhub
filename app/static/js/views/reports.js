@@ -106,7 +106,7 @@ const ViewReports = {
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
             <h3 style="margin:0;">Informes generados por IA</h3>
-            <span class="badge badge-muted" style="font-size:10px;">Claude API requerida</span><!-- TODO: i18n -->
+            <span class="badge badge-muted" style="font-size:10px;">${t('reports.claude_api_required')}</span>
           </div>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
             Claude analiza todos los datos del registro de riesgos — activos, amenazas,
@@ -117,29 +117,29 @@ const ViewReports = {
             ${[
               {
                 id: 'treatment_plan',
-                title: 'Plan de Tratamiento de Riesgos',
-                desc: 'Narrativa detallada por riesgo: acciones concretas, prioridades (inmediato/corto/medio/largo plazo), métricas de éxito y hoja de ruta de implementación en 3 fases.',
+                title: t('reports.ai_treatment_plan_title'),
+                desc: t('reports.ai_treatment_plan_desc'),
                 icon: '📋',
                 excel: true,
               },
               {
                 id: 'executive_dashboard',
-                title: 'Dashboard Ejecutivo',
-                desc: 'Postura de riesgo para la Dirección: hallazgos clave, acciones críticas, análisis de KPIs, efectividad de controles y estado de cumplimiento ISO 27001.',
+                title: t('reports.ai_executive_dashboard_title'),
+                desc: t('reports.ai_executive_dashboard_desc'),
                 icon: '📊',
                 excel: true,
               },
               {
                 id: 'committee_minutes',
-                title: 'Acta de Comite de Seguridad',
-                desc: 'Acta formal con orden del día, riesgos aceptados con justificación, decisiones adoptadas y acciones acordadas. Lista para que el Comité la firme.',
+                title: t('reports.ai_committee_minutes_title'),
+                desc: t('reports.ai_committee_minutes_desc'),
                 icon: '🏛️',
                 excel: true,
               },
               {
                 id: 'followup_report',
-                title: 'Informe de Seguimiento ISO 27005',
-                desc: 'Evaluación del proceso según ISO 27005 cláusula 12: monitorización, revisión, mejora continua, tendencias, fortalezas/debilidades y recomendaciones.',
+                title: t('reports.ai_followup_report_title'),
+                desc: t('reports.ai_followup_report_desc'),
                 icon: '📈',
                 excel: true,
               },
@@ -376,10 +376,10 @@ const ViewReports = {
     const primaryColor = document.getElementById('tpl-primary-hex').value.trim();
     const secondaryColor = document.getElementById('tpl-secondary-hex').value.trim();
     if (!/^#[0-9A-Fa-f]{6}$/.test(primaryColor)) {
-      UI.toast('Color primario no valido. Usa formato #RRGGBB', 'error'); return; /* TODO: i18n */
+      UI.toast(t('reports.invalid_primary_color'), 'error'); return;
     }
     if (!/^#[0-9A-Fa-f]{6}$/.test(secondaryColor)) {
-      UI.toast('Color secundario no valido. Usa formato #RRGGBB', 'error'); return; /* TODO: i18n */
+      UI.toast(t('reports.invalid_secondary_color'), 'error'); return;
     }
     try {
       await Api.put(`/api/report-templates/${reportType}`, {

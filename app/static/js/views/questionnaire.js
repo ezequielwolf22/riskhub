@@ -1,4 +1,4 @@
-/* Vista Agente IA — Cuestionario de contexto + análisis de riesgos ISO 27005 / MAGERIT. */
+/* Vista Agente IA — Cuestionario de contexto + analisis de riesgos ISO 27005 / MAGERIT. */
 const ViewQuestionnaire = {
   _questions: null,
   _answers: {},
@@ -6,8 +6,8 @@ const ViewQuestionnaire = {
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Agente IA — Análisis de riesgos',
-      'Cuestionario de contexto organizacional · ISO 27005 + MAGERIT v3'
+      t('questionnaire_view.title'),
+      t('questionnaire_view.subtitle')
     ) + '<div id="ai-content"></div>';
     await this._loadQuestionnaire();
   },
@@ -88,13 +88,8 @@ const ViewQuestionnaire = {
     let html = `
       <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,var(--brand-purple-4),var(--brand-orange-4));border:1px solid var(--brand-purple-3);">
         <p style="margin:0;font-size:14px;color:var(--text-base);">
-          <strong>¿Cómo funciona?</strong> Responde las preguntas sobre tu organización.
-          El agente IA analizará el perfil de riesgo siguiendo <strong>ISO/IEC 27005:2018</strong> y
-          <strong>MAGERIT v3</strong>, creará automáticamente los riesgos en el sistema y guardará el
-          contexto organizacional para adaptar informes, cumplimiento y respuestas del agente.
-          <br><span style="font-size:12px;color:var(--text-muted);">
-            Puedes añadir criterios adicionales con el botón <strong>"+ Añadir criterio"</strong>.
-          </span>
+          <strong>${t('questionnaire_view.intro_strong')}</strong> ${t('questionnaire_view.intro_desc')}
+          <br><span style="font-size:12px;color:var(--text-muted);">${t('questionnaire_view.intro_hint')}</span>
         </p>
       </div>`;
 
@@ -108,12 +103,12 @@ const ViewQuestionnaire = {
         html += `<div class="span2"><label style="display:flex;justify-content:space-between;align-items:baseline;">
           <span>${UI.esc(q.question)} ${req}</span>
           ${q.allow_extra ? `<button type="button" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;"
-            onclick="ViewQuestionnaire._toggleExtra('${q.id}')">+ Añadir criterio</button>` : ''}
+            onclick="ViewQuestionnaire._toggleExtra('${q.id}')">${t('questionnaire_view.add_criteria_btn')}</button>` : ''}
         </label>`;
 
         if (q.type === 'select') {
           html += `<select id="q-${q.id}" style="width:100%;">
-            <option value="">— Selecciona —</option>
+            <option value="">— ${I18n.lang() === 'en' ? 'Select' : 'Selecciona'} —</option>
             ${q.options.map(o => `<option value="${UI.esc(o)}">${UI.esc(o)}</option>`).join('')}
           </select>`;
         } else if (q.type === 'multiselect') {
@@ -136,7 +131,7 @@ const ViewQuestionnaire = {
             <div id="ens-level-wrap" style="display:none;margin-top:8px;padding:12px;
                  background:var(--brand-purple-4);border:1px solid var(--brand-purple-3);border-radius:8px;">
               <label style="font-size:12px;font-weight:600;color:var(--brand-purple);display:block;margin-bottom:8px;">
-                Nivel ENS (RD 311/2022) *
+                ${t('questionnaire_view.ens_level_label')}
               </label>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 ${['basico','medio','alto'].map(lvl => `
@@ -151,34 +146,32 @@ const ViewQuestionnaire = {
                     ${lvl.charAt(0).toUpperCase() + lvl.slice(1)}
                   </label>`).join('')}
               </div>
-              <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">
-                Básico: sistemas de categoría BAJA · Medio: categoría MEDIA · Alto: categoría ALTA
-              </p>
+              <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0;">${t('questionnaire_view.ens_hint')}</p>
             </div>` : ''}
           ${q.id === 'controls_existing' ? `
             <div style="margin-top:10px;border-top:1px dashed var(--border);padding-top:10px;">
               <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px;">
-                Añadir control adicional (no está en la lista)
+                ${t('questionnaire_view.add_control_label')}
               </label>
               <div style="display:flex;gap:8px;align-items:center;">
                 <input id="custom-ctrl-input" class="input" style="flex:1;"
-                  placeholder="Ej: WAF, PAM, Zero Trust, cifrado de emails..."
+                  placeholder="${t('questionnaire_view.custom_ctrl_placeholder')}"
                   onkeydown="if(event.key==='Enter'){event.preventDefault();ViewQuestionnaire._addCustomControl();}">
-                <button type="button" class="btn btn-sm" onclick="ViewQuestionnaire._addCustomControl()">+ Añadir</button>
+                <button type="button" class="btn btn-sm" onclick="ViewQuestionnaire._addCustomControl()">${t('questionnaire_view.add_custom_btn')}</button>
               </div>
               <div id="custom-ctrl-list" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;"></div>
             </div>` : ''}`;
         } else if (q.type === 'textarea') {
           html += `<textarea id="q-${q.id}" rows="3" style="width:100%;"
-                    placeholder="Opcional — escribe cualquier información relevante..."></textarea>`;
+                    placeholder="${UI.esc(t('questionnaire_view.textarea_placeholder'))}"></textarea>`;
         }
 
         if (q.allow_extra) {
           html += `
             <div id="extra-wrap-${q.id}" style="display:none;margin-top:8px;">
-              <label style="font-size:11px;color:var(--text-muted);">Criterio adicional para el agente IA</label>
+              <label style="font-size:11px;color:var(--text-muted);">${t('questionnaire_view.extra_criteria_label')}</label>
               <textarea id="extra-${q.id}" rows="2" class="input" style="width:100%;font-size:12px;"
-                placeholder="Describe cualquier contexto, restriccion, requisito normativo o detalle relevante sobre este punto..."></textarea>
+                placeholder="${t('questionnaire_view.extra_criteria_placeholder')}"></textarea>
             </div>`;
         }
 
@@ -191,7 +184,7 @@ const ViewQuestionnaire = {
     html += `
       <div style="text-align:right;margin-top:8px;">
         <button class="btn btn-primary" id="btn-analyze" style="font-size:15px;padding:12px 32px;">
-          Analizar con IA
+          ${t('questionnaire_view.analyze_btn')}
         </button>
       </div>`;
 
@@ -238,7 +231,7 @@ const ViewQuestionnaire = {
     const val = input?.value.trim();
     if (!val) return;
     if (this._customControls.includes(val)) {
-      UI.toast('Ese control ya está añadido', 'warn'); return;
+      UI.toast(t('questionnaire_view.custom_ctrl_exists'), 'warn'); return;
     }
     this._customControls.push(val);
     input.value = '';
@@ -335,26 +328,24 @@ const ViewQuestionnaire = {
 
   _updateSpinnerTimer(elapsed) {
     const el = document.getElementById('spinner-timer');
-    if (el) el.textContent = `Tiempo transcurrido: ${elapsed}s`;
+    if (el) el.textContent = t('questionnaire_view.elapsed_time', { n: elapsed });
   },
 
-  // Polling de /api/ai/analyze/status/{jobId} cada 3 segundos
   async _pollAnalysis(jobId) {
     const startMs = Date.now();
     for (;;) {
       await new Promise(r => setTimeout(r, 3000));
       this._updateSpinnerTimer(Math.round((Date.now() - startMs) / 1000));
       const data = await Api.get(`/api/ai/analyze/status/${jobId}`);
-      if (data.status === 'done')   return data.result;
-      if (data.status === 'error')  throw new Error(data.error || 'Error desconocido en el análisis');
-      // 'running' → seguir esperando
+      if (data.status === 'done')  return data.result;
+      if (data.status === 'error') throw new Error(data.error || t('questionnaire_view.error_poll'));
     }
   },
 
   async _submit() {
     const { answers, missing } = this._collectAnswers();
     if (missing.length > 0) {
-      UI.toast(`Completa los campos obligatorios: ${missing.slice(0,2).join(', ')}...`, 'error');
+      UI.toast(t('questionnaire_view.required_fields_error', { fields: missing.slice(0, 2).join(', ') }), 'error');
       return;
     }
 
@@ -362,49 +353,38 @@ const ViewQuestionnaire = {
     const c = document.getElementById('ai-content');
 
     this._showSpinner(
-      'Analizando el perfil de riesgo...',
-      'El agente evalúa amenazas, vulnerabilidades y controles según <strong>ISO 27005</strong> y <strong>MAGERIT v3</strong>.<br>Esto puede tardar entre 30 y 60 segundos.'
+      t('questionnaire_view.spinner_analysis_title'),
+      t('questionnaire_view.spinner_analysis_sub')
     );
 
     try {
-      // 1. Lanzar análisis en background — devuelve job_id inmediatamente (< 1 s)
       const { job_id } = await Api.post('/api/ai/analyze/async', { answers });
-
-      // 2. Polling hasta que el hilo de fondo termine
       const result = await this._pollAnalysis(job_id);
       this._result = result;
 
-      // 3. Actualizar spinner y auto-aplicar riesgos
       const title = document.getElementById('spinner-title');
       const sub   = document.getElementById('spinner-sub');
-      if (title) title.textContent = 'Aplicando riesgos al sistema...';
-      if (sub)   sub.innerHTML = 'Creando escenarios en el registro y guardando el contexto organizacional.';
+      if (title) title.textContent = t('questionnaire_view.spinner_import_title');
+      if (sub)   sub.innerHTML = t('questionnaire_view.spinner_import_sub');
 
       let importResult = null;
       try {
         const payload = { scenarios: result.scenarios || [] };
-        if (result.risk_appetite !== undefined && result.risk_appetite !== null) {
-          payload.risk_appetite = result.risk_appetite;
-        }
-        if (result.active_frameworks?.length) {
-          payload.active_frameworks = result.active_frameworks;
-        }
-        if (result.ens_level) {
-          payload.ens_level = result.ens_level;
-        }
+        if (result.risk_appetite !== undefined && result.risk_appetite !== null) payload.risk_appetite = result.risk_appetite;
+        if (result.active_frameworks?.length) payload.active_frameworks = result.active_frameworks;
+        if (result.ens_level) payload.ens_level = result.ens_level;
         importResult = await Api.post('/api/ai/import', payload);
       } catch (importErr) {
         console.warn('Auto-aplicación de riesgos con advertencia:', importErr.message);
       }
 
-      // 4. Mostrar análisis ejecutivo
       this._renderResults(c, result, importResult);
     } catch (e) {
       c.innerHTML = `
         <div class="notice notice-error" style="margin-bottom:16px;">${UI.esc(e.message)}</div>
         <div style="text-align:center;margin-top:16px;">
           <button class="btn btn-primary" onclick="ViewQuestionnaire.render(document.getElementById('main'))">
-            Volver al cuestionario
+            ${t('questionnaire_view.new_analysis_btn')}
           </button>
         </div>`;
     }
@@ -419,65 +399,59 @@ const ViewQuestionnaire = {
     const created = importResult?.created ?? 0;
     const skipped = importResult?.skipped ?? 0;
 
-    const treatmentLabel = t => ({
-      modification: '<span style="color:#D97706;font-size:10px;font-weight:700;">MITIGAR</span>',
-      retention:    '<span style="color:#059669;font-size:10px;font-weight:700;">ACEPTAR</span>',
-      avoidance:    '<span style="color:#B91C1C;font-size:10px;font-weight:700;">EVITAR</span>',
-      sharing:      '<span style="color:#2563EB;font-size:10px;font-weight:700;">TRANSFERIR</span>',
-    }[t] || '');
+    function _treatmentLabel(treatment) {
+      const map = {
+        modification: `<span style="color:#D97706;font-size:10px;font-weight:700;">${t('questionnaire_view.treatment_modify')}</span>`,
+        retention:    `<span style="color:#059669;font-size:10px;font-weight:700;">${t('questionnaire_view.treatment_retain')}</span>`,
+        avoidance:    `<span style="color:#B91C1C;font-size:10px;font-weight:700;">${t('questionnaire_view.treatment_avoid')}</span>`,
+        sharing:      `<span style="color:#2563EB;font-size:10px;font-weight:700;">${t('questionnaire_view.treatment_share')}</span>`,
+      };
+      return map[treatment] || '';
+    }
 
-    // Normativas aplicadas
     const frameworks = (result.active_frameworks || []).join(', ').toUpperCase() || '—';
+    const createdS = created !== 1 ? 's' : '';
 
     let html = `
-      <!-- Cabecera de análisis ejecutivo -->
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
         <div>
-          <h2 style="margin:0;font-size:18px;">Análisis ejecutivo</h2>
-          <span style="font-size:12px;color:var(--text-muted);">Contexto organizacional guardado · Normativas: ${UI.esc(frameworks)}</span>
+          <h2 style="margin:0;font-size:18px;">${t('questionnaire_view.results_title')}</h2>
+          <span style="font-size:12px;color:var(--text-muted);">${t('questionnaire_view.results_sub', { frameworks: UI.esc(frameworks) })}</span>
         </div>
         <button class="btn btn-primary" onclick="App.navigate('risks')"
           style="display:flex;align-items:center;gap:6px;font-size:14px;">
-          Ver riesgos en sección Riesgos &rarr;
+          ${t('questionnaire_view.view_risks_btn')}
         </button>
       </div>
 
-      <!-- Estado de aplicación -->
       <div class="card" style="margin-bottom:16px;background:${created > 0 ? 'var(--bg-success,#f0fdf4)' : 'var(--bg-2)'};border:1px solid ${created > 0 ? '#86efac' : 'var(--border)'};">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <div style="font-size:28px;">${created > 0 ? '✓' : '⚠'}</div>
           <div>
-            <strong style="font-size:15px;">${created > 0 ? `${created} riesgo${created !== 1 ? 's' : ''} creado${created !== 1 ? 's' : ''} en el sistema` : 'Riesgos ya existentes en el sistema'}</strong>
-            ${skipped > 0 ? `<div style="font-size:12px;color:var(--text-muted);">${skipped} escenario${skipped !== 1 ? 's' : ''} omitido${skipped !== 1 ? 's' : ''} (ya existentes o sin activo/amenaza válida)</div>` : ''}
-            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
-              Apetito de riesgo (<strong>${appetite}</strong>/8) y normativas guardados en el contexto organizacional.
-              El agente IA, los informes y el cumplimiento reflejarán este perfil.
-            </div>
+            <strong style="font-size:15px;">${created > 0 ? t('questionnaire_view.risks_created', { n: created, s: createdS }) : t('questionnaire_view.risks_existing')}</strong>
+            ${skipped > 0 ? `<div style="font-size:12px;color:var(--text-muted);">${t('questionnaire_view.scenarios_skipped', { n: skipped, s: skipped !== 1 ? 's' : '' })}</div>` : ''}
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${t('questionnaire_view.context_saved', { appetite })}</div>
           </div>
         </div>
       </div>
 
-      <!-- Resumen ejecutivo -->
       <div class="card" style="margin-bottom:16px;border-left:4px solid var(--brand-purple);">
-        <h3>Resumen</h3>
+        <h3>${t('questionnaire_view.summary_title')}</h3>
         <p style="margin-top:8px;line-height:1.6;">${UI.esc(result.summary || '')}</p>
         ${result.top_risks?.length ? `
           <div style="margin-top:12px;">
-            <strong style="font-size:12px;text-transform:uppercase;color:var(--text-muted);">
-              Riesgos críticos identificados
-            </strong>
+            <strong style="font-size:12px;text-transform:uppercase;color:var(--text-muted);">${t('questionnaire_view.top_risks_label')}</strong>
             <ul style="margin-top:6px;padding-left:20px;">
               ${result.top_risks.map(r => `<li style="margin-bottom:4px;">${UI.esc(r)}</li>`).join('')}
             </ul>
           </div>` : ''}
       </div>
 
-      <!-- Apetito de riesgo -->
       <div class="card" style="margin-bottom:16px;background:var(--bg-2);">
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
           <div style="text-align:center;">
             <div style="font-size:28px;font-weight:700;color:var(--brand-purple);">${appetite}</div>
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Apetito de riesgo<br>(escala 0-8)</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">${t('questionnaire_view.appetite_label').replace('\n', '<br>')}</div>
           </div>
           <div style="flex:1;min-width:160px;">
             <div style="height:10px;border-radius:5px;background:linear-gradient(90deg,#059669,#D97706,#B91C1C);position:relative;margin-bottom:4px;">
@@ -485,38 +459,37 @@ const ViewQuestionnaire = {
                            border-radius:50%;background:#fff;border:3px solid var(--brand-purple);transform:translateX(-50%);"></div>
             </div>
             <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">
-              <span>0 Mínimo</span><span>4 Moderado</span><span>8 Máximo</span>
+              <span>0</span><span>4</span><span>8</span>
             </div>
           </div>
           <div style="display:flex;gap:16px;text-align:center;">
             <div>
               <div style="font-size:20px;font-weight:700;color:#B91C1C;">${aboveAppetite}</div>
-              <div style="font-size:11px;color:var(--text-muted);">Sobre apetito<br><small>requieren mitigación</small></div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('questionnaire_view.above_appetite_label')}<br><small>${t('questionnaire_view.above_appetite_sub')}</small></div>
             </div>
             <div>
               <div style="font-size:20px;font-weight:700;color:#059669;">${belowAppetite}</div>
-              <div style="font-size:11px;color:var(--text-muted);">Dentro de apetito<br><small>se pueden aceptar</small></div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('questionnaire_view.below_appetite_label')}<br><small>${t('questionnaire_view.below_appetite_sub')}</small></div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Escenarios generados (solo lectura, expandibles) -->
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3>Escenarios de riesgo analizados (${scenarios.length})</h3>
-          <span style="font-size:12px;color:var(--text-muted);">Haz clic en una fila para ver el detalle</span>
+          <h3>${t('questionnaire_view.scenarios_title', { n: scenarios.length })}</h3>
+          <span style="font-size:12px;color:var(--text-muted);">${t('questionnaire_view.scenarios_hint')}</span>
         </div>
         <div style="overflow-x:auto;">
           <table class="data">
             <thead>
               <tr>
-                <th>Activo</th>
-                <th>Amenaza</th>
-                <th style="width:60px;text-align:center;">Inh.</th>
-                <th style="width:80px;text-align:center;">Controles</th>
-                <th style="width:60px;text-align:center;">Res.</th>
-                <th style="width:80px;text-align:center;">Tratamiento</th>
+                <th>${t('questionnaire_view.col_asset')}</th>
+                <th>${t('questionnaire_view.col_threat')}</th>
+                <th style="width:60px;text-align:center;">${t('questionnaire_view.col_inherent')}</th>
+                <th style="width:80px;text-align:center;">${t('questionnaire_view.col_controls')}</th>
+                <th style="width:60px;text-align:center;">${t('questionnaire_view.col_residual')}</th>
+                <th style="width:80px;text-align:center;">${t('questionnaire_view.col_treatment')}</th>
               </tr>
             </thead>
             <tbody>
@@ -534,18 +507,17 @@ const ViewQuestionnaire = {
                   </td>
                   <td style="text-align:center;">${UI.riskPill(sc.inherent_level)}</td>
                   <td style="text-align:center;font-size:11px;">
-                    ${(sc.control_codes || []).slice(0,3).map(c =>
-                      `<span class="badge badge-muted">${UI.esc(c)}</span>`).join(' ')}
+                    ${(sc.control_codes || []).slice(0,3).map(c => `<span class="badge badge-muted">${UI.esc(c)}</span>`).join(' ')}
                     ${(sc.control_codes || []).length > 3 ? `+${sc.control_codes.length - 3}` : ''}
                   </td>
                   <td style="text-align:center;">${UI.riskPill(sc.residual_level)}</td>
-                  <td style="text-align:center;">${treatmentLabel(sc.treatment_option)}</td>
+                  <td style="text-align:center;">${_treatmentLabel(sc.treatment_option)}</td>
                 </tr>
                 <tr id="sc-detail-${i}" style="display:none;background:var(--bg-2);">
                   <td colspan="6" style="padding:8px 12px;font-size:12px;color:var(--text-muted);border-top:none;">
-                    <strong>Vulnerabilidad:</strong> ${UI.esc(sc.vulnerability_description || '')}<br>
-                    <strong>Justificación:</strong> ${UI.esc(sc.rationale || '')}
-                    ${sc.control_rationale ? `<br><strong>Controles aplicables:</strong> ${UI.esc(sc.control_rationale)}` : ''}
+                    <strong>${t('questionnaire_view.vuln_label')}</strong> ${UI.esc(sc.vulnerability_description || '')}<br>
+                    <strong>${t('questionnaire_view.rationale_label')}</strong> ${UI.esc(sc.rationale || '')}
+                    ${sc.control_rationale ? `<br><strong>${t('questionnaire_view.controls_label')}</strong> ${UI.esc(sc.control_rationale)}` : ''}
                   </td>
                 </tr>`).join('')}
             </tbody>
@@ -555,11 +527,10 @@ const ViewQuestionnaire = {
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
         <button class="btn" onclick="ViewQuestionnaire.render(document.getElementById('main'))">
-          ← Nuevo análisis
+          ${t('questionnaire_view.new_analysis_btn')}
         </button>
-        <button class="btn btn-primary" onclick="App.navigate('risks')"
-          style="font-size:15px;padding:12px 28px;">
-          Ver riesgos en sección Riesgos &rarr;
+        <button class="btn btn-primary" onclick="App.navigate('risks')" style="font-size:15px;padding:12px 28px;">
+          ${t('questionnaire_view.view_risks_btn')}
         </button>
       </div>`;
 

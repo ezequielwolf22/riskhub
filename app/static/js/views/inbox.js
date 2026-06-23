@@ -32,20 +32,24 @@ const ViewInbox = {
     .inbox-embed-head h3 { margin: 0; font-size: 14px; }
   </style>`,
 
-  _SEV_META: {
-    critical: { label: 'Critico', icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>' },
-    high: { label: 'Alto', icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg>' },
-    medium: { label: 'Medio', icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>' },
-    info: { label: 'Info', icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>' },
+  get _SEV_META() {
+    return {
+      critical: { label: t('inbox.sev_critical'), icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>' },
+      high: { label: t('inbox.sev_high'), icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg>' },
+      medium: { label: t('inbox.sev_medium'), icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>' },
+      info: { label: t('inbox.sev_info'), icon: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>' },
+    };
   },
 
-  _TYPE_LABELS: {
-    risk: 'Riesgo auto-generado',
-    incident: 'Incidente',
-    nis2: 'Notificacion NIS2',
-    control: 'Control',
-    task: 'Tarea vencida',
-    nonconformity: 'No conformidad',
+  get _TYPE_LABELS() {
+    return {
+      risk: t('inbox.type_risk'),
+      incident: t('inbox.type_incident'),
+      nis2: t('inbox.type_nis2'),
+      control: t('inbox.type_control'),
+      task: t('inbox.type_task'),
+      nonconformity: t('inbox.type_nonconformity'),
+    };
   },
 
   /* ---------- helpers ---------- */
@@ -60,20 +64,20 @@ const ViewInbox = {
     const then = new Date(iso).getTime();
     if (isNaN(then)) return '';
     const mins = Math.floor((Date.now() - then) / 60000);
-    if (mins < 1) return 'hace un momento';
-    if (mins < 60) return `hace ${mins} min`;
+    if (mins < 1) return t('inbox.time_moment');
+    if (mins < 60) return t('inbox.time_mins', {n: mins});
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `hace ${hours} h`;
+    if (hours < 24) return t('inbox.time_hours', {n: hours});
     const days = Math.floor(hours / 24);
-    if (days < 30) return `hace ${days} d`;
+    if (days < 30) return t('inbox.time_days', {n: days});
     const months = Math.floor(days / 30);
-    return `hace ${months} mes${months > 1 ? 'es' : ''}`;
+    return months > 1 ? t('inbox.time_months_plural', {n: months}) : t('inbox.time_months', {n: months});
   },
 
   _itemHtml(item, canEdit) {
     const typeLabel = this._TYPE_LABELS[item.type] || item.type;
     const dismissBtn = canEdit
-      ? `<button class="btn btn-ghost" data-inbox-dismiss="${UI.esc(item.id)}" title="Descartar de la bandeja">Descartar</button>`
+      ? `<button class="btn btn-ghost" data-inbox-dismiss="${UI.esc(item.id)}" title="${t('inbox.dismiss_title')}">${t('inbox.dismiss')}</button>`
       : '';
     return `<div class="inbox-item" data-inbox-item="${UI.esc(item.id)}">
       ${this._sevBadge(item.severity)}
@@ -83,7 +87,7 @@ const ViewInbox = {
         <div class="inbox-item-meta">${UI.esc(typeLabel)} &middot; ${UI.esc(this._timeAgo(item.created_at))}</div>
       </div>
       <div class="inbox-item-actions">
-        <button class="btn btn-primary" data-inbox-review="${UI.esc(item.link)}">Revisar</button>
+        <button class="btn btn-primary" data-inbox-review="${UI.esc(item.link)}">${t('inbox.review')}</button>
         ${dismissBtn}
       </div>
     </div>`;
@@ -108,16 +112,16 @@ const ViewInbox = {
     container.querySelectorAll('[data-inbox-dismiss]').forEach(btn => {
       btn.onclick = async () => {
         const key = btn.getAttribute('data-inbox-dismiss');
-        const ok = await UI.confirm('¿Descartar este elemento de la bandeja de revision? El registro original no se elimina.');
+        const ok = await UI.confirm(t('inbox.dismiss_confirm'));
         if (!ok) return;
         btn.disabled = true;
         try {
           await Api.post(`/api/inbox/${encodeURIComponent(key)}/dismiss`, {});
-          UI.toast('Elemento descartado', 'success');
+          UI.toast(t('inbox.dismissed'), 'success');
           reloadFn();
         } catch (e) {
           btn.disabled = false;
-          UI.toast(e.message || 'Error al descartar', 'error');
+          UI.toast(e.message || t('inbox.dismiss_error'), 'error');
         }
       };
     });
@@ -131,9 +135,9 @@ const ViewInbox = {
 
   async render(main) {
     main.innerHTML = this._CSS + UI.sectionHeader(
-      'Bandeja de revision',
-      'Elementos generados por las automatizaciones pendientes de tu decision'
-    ) + `<div class="card" id="inbox-full"><div class="inbox-loading">Cargando bandeja...</div></div>`;
+      t('inbox.title'),
+      t('inbox.subtitle')
+    ) + `<div class="card" id="inbox-full"><div class="inbox-loading">${t('inbox.loading')}</div></div>`;
     await this._renderInto(document.getElementById('inbox-full'), null);
   },
 
@@ -143,7 +147,7 @@ const ViewInbox = {
     try {
       data = await this._fetch();
     } catch (e) {
-      container.innerHTML = `<div class="inbox-empty">No se pudo cargar la bandeja: ${UI.esc(e.message || '')}</div>`;
+      container.innerHTML = `<div class="inbox-empty">${t('inbox.cannot_load')} ${UI.esc(e.message || '')}</div>`;
       return;
     }
     const canEdit = typeof Auth !== 'undefined' && Auth.canEdit();
@@ -152,12 +156,12 @@ const ViewInbox = {
     if (limit) items = items.slice(0, limit);
 
     if (!total) {
-      container.innerHTML = `<div class="inbox-empty"><strong>Todo al dia</strong><br>No hay elementos pendientes de revision.</div>`;
+      container.innerHTML = `<div class="inbox-empty"><strong>${t('inbox.all_done_title')}</strong><br>${t('inbox.no_pending')}</div>`;
       return;
     }
     const more = limit && total > limit
       ? `<div class="inbox-item-meta" style="margin-top:8px;text-align:right;">
-           <a href="#/inbox">Ver los ${total} elementos</a></div>`
+           <a href="#/inbox">${t('inbox.view_more', {n: total})}</a></div>`
       : '';
     container.innerHTML = this._countsHtml(data.counts || {}) +
       `<div class="inbox-list">${items.map(i => this._itemHtml(i, canEdit)).join('')}</div>` + more;
@@ -171,10 +175,10 @@ const ViewInbox = {
     const limit = (opts && opts.limit) || 5;
     containerEl.innerHTML = this._CSS + `<div class="card">
       <div class="inbox-embed-head">
-        <h3>Pendiente de tu revision</h3>
-        <a href="#/inbox" style="font-size:12px;">Ver todo</a>
+        <h3>${t('inbox.pending_heading')}</h3>
+        <a href="#/inbox" style="font-size:12px;">${t('inbox.view_all')}</a>
       </div>
-      <div id="inbox-embed-body"><div class="inbox-loading">Cargando...</div></div>
+      <div id="inbox-embed-body"><div class="inbox-loading">${t('inbox.loading_short')}</div></div>
     </div>`;
     await this._renderInto(containerEl.querySelector('#inbox-embed-body'), limit);
   },

@@ -10,7 +10,7 @@ const ViewControls = {
       canEdit ? `<button class="btn btn-primary" id="btn-new-impl">+ ${t('controls.new')}</button>` : ''
     ) + `
       <div class="toolbar">
-        <button class="btn ${ViewControls._tab==='impls'?'btn-primary':''}" data-tab="impls">/* TODO: i18n */ Implementaciónes</button>
+        <button class="btn ${ViewControls._tab==='impls'?'btn-primary':''}" data-tab="impls">${t('controls.implementations')}</button>
         <button class="btn ${ViewControls._tab==='catalog'?'btn-primary':''}" data-tab="catalog">${t('controls.soa')} ISO 27002:2022</button>
         <span class="spacer"></span>
         <input type="search" id="c-search" placeholder="${t('common.search')}...">
@@ -29,7 +29,7 @@ const ViewControls = {
           <option value="not_implemented">${t('controls.implementation_status.not_implemented')}</option>
         </select>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;${ViewControls._tab==='impls'?'':'display:none;'}">
-          <input type="checkbox" id="c-overdue" ${ViewControls._overdueOnly?'checked':''}> /* TODO: i18n */ Solo revision vencida
+          <input type="checkbox" id="c-overdue" ${ViewControls._overdueOnly?'checked':''}> ${t('controls.overdue_only')}
         </label>
         <button class="btn btn-ghost" id="btn-soa-csv" title="${t('controls.export_soa')}">${t('controls.soa_short')} CSV</button>
         <button class="btn btn-ghost" id="btn-ccm-run" title="${t('ccm.title')}">Tests CCM</button>
@@ -99,7 +99,7 @@ const ViewControls = {
 
     const canEdit = Auth.canEdit();
     list.innerHTML = `<div class="table-wrap"><table class="data">
-      <thead><tr><th>${t('controls.control_code')}</th><th>${t('controls.control_name')}</th><th>${t('controls.theme')}</th><th>${t('common.type')}</th><th>/* TODO: i18n */ Propiedades</th><th title="Controles cuyo incumplimiento impide reducir el nivel residual más de 1 paso (piso obligatorio)">/* TODO: i18n */ Obligatorio</th></tr></thead>
+      <thead><tr><th>${t('controls.control_code')}</th><th>${t('controls.control_name')}</th><th>${t('controls.theme')}</th><th>${t('common.type')}</th><th>${t('controls.properties')}</th><th>${t('controls.mandatory')}</th></tr></thead>
       <tbody>
         ${data.map(c => `
           <tr>
@@ -155,8 +155,8 @@ const ViewControls = {
     }
     if (!data.length) {
       list.innerHTML = UI.emptyState(
-        t('controls.new'), /* TODO: i18n empty state title */
-        t('common.no_results') /* TODO: i18n empty state hint */
+        t('controls.empty_title'),
+        t('controls.empty_hint')
       );
       return;
     }
@@ -192,7 +192,7 @@ const ViewControls = {
       </div>` : ''}
       <div class="table-wrap"><table class="data">
       <thead><tr>
-        ${_th('control',t('common.control'))}${_th('name','/* TODO: i18n */ Implementación')}${_th('status',t('common.status'))}${_th('maturity',t('controls.maturity'))}
+        ${_th('control',t('common.control'))}${_th('name',t('controls.implementation'))}${_th('status',t('common.status'))}${_th('maturity',t('controls.maturity'))}
         ${_th('risks',t('common.risk'),'width:70px;text-align:center;')}
         ${_th('next_review',t('controls.review_date'))}<th></th>
       </tr></thead>
@@ -218,9 +218,9 @@ const ViewControls = {
               ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${i.id}">${t('common.edit')}</button>` : ''}
               ${Auth.canEdit() && i.status !== 'not_implemented' ? `
                 <button class="btn btn-ghost" data-propagate="${i.id}"
-                        title="/* TODO: i18n */ Propagar: re-calcula residuales vinculados + IA detecta nuevos riesgos candidatos"
+                        title="${t('controls.propagate_title')}"
                         style="font-size:11px;padding:3px 8px;">
-                  /* TODO: i18n */ Propagar
+                  ${t('controls.propagate')}
                 </button>` : ''}
             </td>
           </tr>`;
@@ -282,13 +282,13 @@ const ViewControls = {
     }
     UI.modal(id ? `${t('controls.edit')} ${id}` : t('controls.new'), `
       <div class="span2">
-        <label>/* TODO: i18n */ Control de referencia *</label>
+        <label>${t('controls.reference_control')} *</label>
         <select id="f-control">
           ${ViewControls._catalog.map(c =>
             `<option value="${c.id}" ${data.control_id===c.id?'selected':''}>${UI.esc(c.code)} - ${UI.esc(c.name)}</option>`).join('')}
         </select>
       </div>
-      <div class="span2"><label>/* TODO: i18n */ Nombre de la implementación *</label>
+      <div class="span2"><label>${t('controls.impl_name')} *</label>
         <input id="f-name" value="${UI.esc(data.name)}" placeholder="ej. EDR CrowdStrike en endpoints corporativos"></div>
       <div class="span2"><label>${t('common.description')}</label>
         <textarea id="f-desc" rows="2">${UI.esc(data.description||'')}</textarea></div>
@@ -300,7 +300,7 @@ const ViewControls = {
       </div>
       <div><label>${t('controls.maturity')} (0-5)</label>
         <input type="number" min="0" max="5" id="f-mat" value="${data.maturity||0}"></div>
-      <div><label>/* TODO: i18n */ Ultima revision</label>
+      <div><label>${t('controls.last_review')}</label>
         <input type="date" id="f-last-rev" value="${data.last_review ? data.last_review.slice(0,10) : ''}"></div>
       <div><label>${t('controls.review_date')}</label>
         <input type="date" id="f-next-rev" value="${data.next_review ? data.next_review.slice(0,10) : ''}"></div>
@@ -314,7 +314,7 @@ const ViewControls = {
                     border:1px solid rgba(89,0,141,.2);border-radius:8px;padding:12px 14px;margin-top:4px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;
                       color:var(--brand-purple);letter-spacing:.4px;margin-bottom:8px;">
-            /* TODO: i18n */ Analisis IA de madurez
+            ${t('controls.ai_maturity_analysis')}
           </div>
           <div style="font-size:12px;line-height:1.7;color:var(--text-base);white-space:pre-wrap;">${UI.esc(data.notes)}</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">
@@ -325,20 +325,20 @@ const ViewControls = {
       <div class="span2" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
         <p style="font-size:11px;text-transform:uppercase;color:var(--text-muted);margin:0 0 8px;letter-spacing:.05em;">${t('controls.soa_short')} — ISO 27001:2022 cl. 6.1.3</p>
       </div>
-      <div><label>/* TODO: i18n */ Razon de inclusion</label>
+      <div><label>${t('controls.inclusion_reason')}</label>
         <select id="f-incl-reason">
           <option value="">— Seleccionar —</option>
           ${[['legal','Legal / regulatorio'],['contractual','Contractual'],['risk','Gestion de riesgo'],['best_practice','Buena practica']]
             .map(([v,l]) => `<option value="${v}" ${data.inclusion_reason===v?'selected':''}>${l}</option>`).join('')}
         </select>
       </div>
-      <div><label>/* TODO: i18n */ Ultima revision SOA</label>
+      <div><label>${t('controls.last_review_soa')}</label>
         <input type="date" id="f-soa-rev" value="${data.soa_reviewed_at ? data.soa_reviewed_at.slice(0,10) : ''}">
       </div>
-      <div class="span2"><label>/* TODO: i18n */ Justificacion de exclusion (si no aplica)</label>
+      <div class="span2"><label>${t('controls.exclusion_justification')}</label>
         <textarea id="f-excl-just" rows="2">${UI.esc(data.exclusion_justification||'')}</textarea>
       </div>
-      <div class="span2"><label>/* TODO: i18n */ Referencias de evidencia (una por linea, formato: Titulo | URL)</label>
+      <div class="span2"><label>${t('controls.evidence_refs')}</label>
         <textarea id="f-evid-refs" rows="3" placeholder="Politica de seguridad | https://intranet/...&#10;Evidencia CrowdStrike | /docs/evidencias/...">${
           (data.evidence_refs || []).map(r => `${r.title || ''}${r.url ? ' | ' + r.url : ''}`).join('\n')
         }</textarea>
@@ -348,7 +348,7 @@ const ViewControls = {
         <details id="impl-history">
           <summary style="cursor:pointer;font-size:13px;color:var(--text-muted);padding:6px 0;
                           list-style:none;display:flex;align-items:center;gap:6px;">
-            <span style="font-size:10px;">&#9654;</span> /* TODO: i18n */ Historial de cambios
+            <span style="font-size:10px;">&#9654;</span> ${t('controls.change_history')}
           </summary>
           <div id="impl-history-body" style="margin-top:8px;">
             <div class="notice">${t('common.loading_data')}</div>

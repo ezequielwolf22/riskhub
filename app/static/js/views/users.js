@@ -251,7 +251,7 @@ const ViewUsers = {
   },
 
   async _disableMfa(userId) {
-    if (!await UI.confirm(/* TODO: i18n */ 'Desactivar MFA para este usuario? El usuario debera volver a configurarlo.')) return;
+    if (!await UI.confirm(t('users.disable_mfa_confirm'))) return;
     try {
       await Api.post('/api/auth/mfa/disable-admin', { user_id: userId });
       UI.toast('MFA desactivado', 'success');

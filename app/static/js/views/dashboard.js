@@ -1,46 +1,49 @@
 /* Dashboard - resumen ejecutivo multi-modulo. */
 
 /* --- Catalogo completo de widgets personalizables --- */
-const DASHBOARD_WIDGET_CATALOG = {
-  posture:   { label: 'Postura de seguridad',    module: 'Seguridad',   desc: 'Score global del SGSI con alertas criticas y estado por modulo.' },
-  risks:     { label: 'KPIs de Riesgos',         module: 'Riesgos',     desc: 'Activos, riesgos identificados, nivel alto, tratamientos vencidos y sin responsable.' },
-  controls:  { label: 'Distribucion de Riesgos', module: 'Riesgos',     desc: 'Graficos por nivel residual, estado del ciclo y decision de tratamiento.' },
-  top10:     { label: 'Top 10 Riesgos',          module: 'Riesgos',     desc: 'Tabla con los 10 riesgos de mayor nivel residual y reduccion porcentual.' },
-  portfolio: { label: 'Portfolio de Riesgos',    module: 'Riesgos',     desc: 'Score ponderado del portfolio, tendencia mensual y KRIs en alerta.' },
-  incidents: { label: 'Incidentes',              module: 'Incidentes',  desc: 'Abiertos, P1/P2 criticos y notificaciones NIS2 pendientes.' },
-  tasks:     { label: 'Tareas',                  module: 'Tareas',      desc: 'Vencidas, en progreso, pendientes y completadas.' },
-  policies:  { label: 'Politicas SGSI',          module: 'Politicas',   desc: 'Publicadas, en revision y con revision de ciclo vencida.' },
-  gdpr:      { label: 'RGPD / Privacidad',       module: 'RGPD',        desc: 'Actividades de tratamiento, DPIAs pendientes y transferencias fuera de la UE.' },
-  tprm:      { label: 'Proveedores TPRM',        module: 'Proveedores', desc: 'Panel de gestion de riesgo de terceros: criticos, altos y evaluaciones pendientes.' },
-  bcp:       { label: 'Continuidad (BCP)',        module: 'Continuidad', desc: 'Procesos criticos, planes aprobados, BIA completado y tests ISO 22301.' },
-  actions:   { label: 'Acciones y Vencimientos', module: 'Operaciones', desc: 'Acciones urgentes, proximos vencimientos de tratamientos y revisiones de controles.' },
-  coverage:  { label: 'Cobertura ISO 27002',     module: 'Controles',   desc: 'Cobertura y madurez de controles por tema: organizativo, personas, fisico y tecnologico.' },
-  inbox:     { label: 'Pendiente de tu revision', module: 'Operaciones', desc: 'Items pendientes de tu decision: riesgos auto-generados, incidentes, controles degradados y tareas.' },
-};
+function _getWidgetCatalog() {
+  return {
+    posture:   { label: t('dashboard.widget.posture'),   module: 'security',    desc: t('dashboard.widget_desc.posture') },
+    risks:     { label: t('dashboard.widget.risks'),     module: 'risks',       desc: t('dashboard.widget_desc.risks') },
+    controls:  { label: t('dashboard.widget.controls'),  module: 'risks',       desc: t('dashboard.widget_desc.controls') },
+    top10:     { label: t('dashboard.widget.top10'),     module: 'risks',       desc: t('dashboard.widget_desc.top10') },
+    portfolio: { label: t('dashboard.widget.portfolio'), module: 'risks',       desc: t('dashboard.widget_desc.portfolio') },
+    incidents: { label: t('dashboard.widget.incidents'), module: 'incidents',   desc: t('dashboard.widget_desc.incidents') },
+    tasks:     { label: t('dashboard.widget.tasks'),     module: 'tasks',       desc: t('dashboard.widget_desc.tasks') },
+    policies:  { label: t('dashboard.widget.policies'),  module: 'policies',    desc: t('dashboard.widget_desc.policies') },
+    gdpr:      { label: t('dashboard.widget.gdpr'),      module: 'gdpr',        desc: t('dashboard.widget_desc.gdpr') },
+    tprm:      { label: t('dashboard.widget.tprm'),      module: 'suppliers',   desc: t('dashboard.widget_desc.tprm') },
+    bcp:       { label: t('dashboard.widget.bcp'),       module: 'continuity',  desc: t('dashboard.widget_desc.bcp') },
+    actions:   { label: t('dashboard.widget.actions'),   module: 'operations',  desc: t('dashboard.widget_desc.actions') },
+    coverage:  { label: t('dashboard.widget.coverage'),  module: 'controls',    desc: t('dashboard.widget_desc.coverage') },
+    inbox:     { label: t('dashboard.widget.inbox'),     module: 'operations',  desc: t('dashboard.widget_desc.inbox') },
+  };
+}
+
 const DASHBOARD_DEFAULT_LAYOUT = ['inbox','posture','risks','controls','portfolio','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
 
 /* Esquema de opciones configurables por tipo de widget.
-   Solo se incluyen widgets con al menos una opcion configurable.
-   Los demas widgets son fijos en su presentacion. */
-const WIDGET_CONFIG_SCHEMA = {
-  inbox: [
-    { key: 'limit',  label: 'Items a mostrar',             type: 'select', opts: [3, 5, 10, 20], def: 5 },
-  ],
-  top10: [
-    { key: 'count',  label: 'Numero de riesgos a mostrar', type: 'select', opts: [5, 10, 15, 20], def: 10 },
-    { key: 'title',  label: 'Titulo personalizado',        type: 'text',   def: '' },
-  ],
-  coverage: [
-    { key: 'title',  label: 'Titulo personalizado',        type: 'text',   def: '' },
-  ],
-  actions: [
-    { key: 'title',  label: 'Titulo personalizado',        type: 'text',   def: '' },
-  ],
-};
+   Solo se incluyen widgets con al menos una opcion configurable. */
+function _getWidgetConfigSchema() {
+  return {
+    inbox: [
+      { key: 'limit', label: t('dashboard.widget_options.items_to_show'),  type: 'select', opts: [3, 5, 10, 20], def: 5 },
+    ],
+    top10: [
+      { key: 'count', label: t('dashboard.widget_options.risks_to_show'),  type: 'select', opts: [5, 10, 15, 20], def: 10 },
+      { key: 'title', label: t('dashboard.widget_options.custom_title'),    type: 'text',   def: '' },
+    ],
+    coverage: [
+      { key: 'title', label: t('dashboard.widget_options.custom_title'),    type: 'text',   def: '' },
+    ],
+    actions: [
+      { key: 'title', label: t('dashboard.widget_options.custom_title'),    type: 'text',   def: '' },
+    ],
+  };
+}
 
 /**
  * Muestra un banner de bienvenida si el cuestionario IA no se ha completado.
- * Se antepone al contenido principal del dashboard.
  */
 async function _renderOnboardingBanner(container) {
   try {
@@ -55,11 +58,11 @@ async function _renderOnboardingBanner(container) {
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       </div>
       <div class="banner-text">
-        <h3>Bienvenido a RiskHub &mdash; Empieza aqui</h3>
-        <p>Completa el cuestionario IA para que la plataforma genere automaticamente tu analisis de riesgos, compliance y recomendaciones personalizadas.</p>
+        <h3>${UI.esc(t('dashboard.onboarding_title'))}</h3>
+        <p>${UI.esc(t('dashboard.onboarding_desc'))}</p>
       </div>
       <button class="btn btn-white" onclick="location.hash='/questionnaire'">
-        Completar Cuestionario IA &rarr;
+        ${UI.esc(t('dashboard.onboarding_btn'))}
       </button>
     `;
     container.prepend(banner);
@@ -86,7 +89,7 @@ const ViewDashboard = {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const items = parsed.map((item, i) => ViewDashboard._normalizeItem(item, i));
-          let dirty = items.some((item, i) => parsed[i] !== item); // detectar migracion de formato
+          let dirty = items.some((item, i) => parsed[i] !== item);
           if (!items.some(w => w.type === 'inbox')) {
             items.unshift({ uid: 'w_0_inbox', type: 'inbox', config: {} });
             dirty = true;
@@ -131,40 +134,51 @@ const ViewDashboard = {
       if (cfg) cfg.remove();
     });
     const btn = document.getElementById('dash-customize-btn');
-    if (btn) btn.textContent = 'Personalizar dashboard';
+    if (btn) btn.textContent = t('dashboard.customize_btn');
   },
 
   /* Entra en modo edicion mostrando el panel de personalizacion con catalogo por modulo. */
   _enterEdit() {
-    // FIX: quitar panel duplicado si ya existe antes de crear uno nuevo
     const existingPanel = document.getElementById('dash-edit-panel');
     if (existingPanel) existingPanel.remove();
 
     ViewDashboard._editMode = true;
     const layout = ViewDashboard._getLayout();
+    const CATALOG = _getWidgetCatalog();
 
-    // Orden de modulos en el catalogo
-    const moduleOrder = ['Seguridad', 'Riesgos', 'Incidentes', 'Tareas', 'Politicas', 'RGPD', 'Proveedores', 'Continuidad', 'Controles', 'Operaciones'];
+    const moduleOrder = ['security','risks','incidents','tasks','policies','gdpr','suppliers','continuity','controls','operations'];
+    const modGroupLabels = {
+      security:   t('dashboard.mod_group_security'),
+      risks:      t('dashboard.mod_group_risks'),
+      incidents:  t('dashboard.mod_group_incidents'),
+      tasks:      t('dashboard.mod_group_tasks'),
+      policies:   t('dashboard.mod_group_policies'),
+      gdpr:       t('dashboard.mod_group_gdpr'),
+      suppliers:  t('dashboard.mod_group_suppliers'),
+      continuity: t('dashboard.mod_group_continuity'),
+      controls:   t('dashboard.mod_group_controls'),
+      operations: t('dashboard.mod_group_operations'),
+    };
     const modules = {};
-    for (const [id, w] of Object.entries(DASHBOARD_WIDGET_CATALOG)) {
+    for (const [id, w] of Object.entries(CATALOG)) {
       if (!modules[w.module]) modules[w.module] = [];
       modules[w.module].push({ id, ...w });
     }
 
     const checkSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>';
     const plusSvg  = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+    const gearSvg  = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;" title="Configurable"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
-    const gearSvg = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink:0;" title="Configurable"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-
+    const SCHEMA = _getWidgetConfigSchema();
     const catalogHtml = moduleOrder
       .filter(m => modules[m])
       .map(mod => `
         <div style="margin-bottom:10px;">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:5px;">${UI.esc(mod)}</div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:5px;">${UI.esc(modGroupLabels[mod] || mod)}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${modules[mod].map(w => {
               const active = layout.some(item => item.type === w.id);
-              const hasConfig = !!WIDGET_CONFIG_SCHEMA[w.id];
+              const hasConfig = !!SCHEMA[w.id];
               return `<button
                 onclick="ViewDashboard._toggleWidget('${w.id}')"
                 title="${UI.esc(w.desc)}"
@@ -185,14 +199,14 @@ const ViewDashboard = {
     panel.style.cssText = 'background:var(--bg-card);border:2px dashed var(--brand-purple);border-radius:10px;padding:16px 18px;margin-bottom:16px;';
     panel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
-        <strong style="font-size:14px;">Personalizar dashboard</strong>
+        <strong style="font-size:14px;">${UI.esc(t('dashboard.customize_title'))}</strong>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-outline btn-sm" onclick="ViewDashboard._resetLayout()">Restaurar por defecto</button>
-          <button class="btn btn-primary btn-sm" onclick="ViewDashboard._exitEdit()">Listo</button>
+          <button class="btn btn-outline btn-sm" onclick="ViewDashboard._resetLayout()">${UI.esc(t('dashboard.customize_restore'))}</button>
+          <button class="btn btn-primary btn-sm" onclick="ViewDashboard._exitEdit()">${UI.esc(t('dashboard.customize_done'))}</button>
         </div>
       </div>
       <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
-        Activa o desactiva widgets desde el catalogo. Arrastra los widgets activos para reordenarlos. El boton <strong>&times;</strong> en cada widget lo quita del dashboard.
+        ${UI.esc(t('dashboard.customize_desc'))}
       </p>
       <div style="border-top:1px solid var(--border);padding-top:10px;">${catalogHtml}</div>`;
 
@@ -202,11 +216,12 @@ const ViewDashboard = {
     ViewDashboard._activateDragDrop(layout);
 
     const btn = document.getElementById('dash-customize-btn');
-    if (btn) btn.textContent = 'Cerrar personalizacion';
+    if (btn) btn.textContent = t('dashboard.customize_close');
   },
 
   /* Activa drag-and-drop en los widgets del layout activo. */
   _activateDragDrop(layout) {
+    const SCHEMA = _getWidgetConfigSchema();
     document.querySelectorAll('[data-widget-id]').forEach(el => {
       const type = el.dataset.widgetId;
       if (!layout.some(w => w.type === type)) return;
@@ -232,8 +247,7 @@ const ViewDashboard = {
         el.appendChild(rm);
       }
 
-      // Boton de configuracion (solo para widgets con opciones configurables)
-      if (!el.querySelector('.dash-widget-config') && WIDGET_CONFIG_SCHEMA[type]) {
+      if (!el.querySelector('.dash-widget-config') && SCHEMA[type]) {
         const cfg = document.createElement('button');
         cfg.className = 'dash-widget-config';
         cfg.title = 'Configurar widget';
@@ -306,10 +320,12 @@ const ViewDashboard = {
     const layout = ViewDashboard._getLayout();
     const item = layout.find(w => w.type === type);
     if (!item) return;
-    const schema = WIDGET_CONFIG_SCHEMA[type];
+    const SCHEMA = _getWidgetConfigSchema();
+    const schema = SCHEMA[type];
     if (!schema) return;
     const cfg = item.config || {};
-    const catalogEntry = DASHBOARD_WIDGET_CATALOG[type] || {};
+    const CATALOG = _getWidgetCatalog();
+    const catalogEntry = CATALOG[type] || {};
 
     const fieldsHtml = schema.map(field => {
       const val = cfg[field.key] !== undefined ? cfg[field.key] : field.def;
@@ -335,7 +351,7 @@ const ViewDashboard = {
 
     UI.openModal(`
       <div class="modal-head">
-        <h2 style="font-size:16px;">Configurar: ${UI.esc(catalogEntry.label || type)}</h2>
+        <h2 style="font-size:16px;">${UI.esc(t('dashboard.config_modal_title', { label: catalogEntry.label || type }))}</h2>
         <button class="btn btn-ghost" onclick="UI.closeModal()">x</button>
       </div>
       <div class="modal-body">
@@ -343,8 +359,8 @@ const ViewDashboard = {
         ${fieldsHtml}
       </div>
       <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--border);">
-        <button class="btn btn-outline" onclick="UI.closeModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="ViewDashboard._saveConfig('${UI.esc(type)}')">Guardar</button>
+        <button class="btn btn-outline" onclick="UI.closeModal()">${UI.esc(t('common.cancel'))}</button>
+        <button class="btn btn-primary" onclick="ViewDashboard._saveConfig('${UI.esc(type)}')">${UI.esc(t('common.save'))}</button>
       </div>
     `);
   },
@@ -378,10 +394,9 @@ const ViewDashboard = {
     const widgetHtml = ViewDashboard._buildWidgetHtml(layout, risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData, postureScore);
 
     const c = document.getElementById('dash-content');
-    if (!c) return; // dash-content siempre existe tras render() inicial
+    if (!c) return;
     c.innerHTML = methBadge + widgetHtml;
 
-    // Recargar secciones async (los elementos del DOM cambian con cada re-render)
     ViewDashboard._loadInbox();
     ViewDashboard._loadUpcoming();
     ViewDashboard._loadUpcomingControlReviews();
@@ -395,25 +410,25 @@ const ViewDashboard = {
   _methBadgeHtml(context, meth, methLabels) {
     return `
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-        <span style="font-size:11px;color:var(--text-muted);">Metodologia activa:</span>
+        <span style="font-size:11px;color:var(--text-muted);">${UI.esc(t('dashboard.meth_active'))}</span>
         <span style="background:var(--brand-purple);color:#fff;border-radius:20px;
                      padding:3px 12px;font-size:12px;font-weight:700;">
           ${methLabels[meth] || meth}
         </span>
         ${context?.risk_appetite != null ? `
-        <span style="font-size:11px;color:var(--text-muted);">Apetito de riesgo:</span>
+        <span style="font-size:11px;color:var(--text-muted);">${UI.esc(t('dashboard.meth_appetite'))}</span>
         <span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
                      padding:3px 12px;font-size:12px;font-weight:700;color:var(--brand-purple);">
           ${context.risk_appetite} / 8
         </span>` : ''}
         ${context?.active_frameworks?.length ? `
-        <span style="font-size:11px;color:var(--text-muted);">Normativas:</span>
+        <span style="font-size:11px;color:var(--text-muted);">${UI.esc(t('dashboard.meth_normatives'))}</span>
         ${context.active_frameworks.map(f =>
           `<span style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;
                        padding:2px 10px;font-size:11px;">${UI.esc(f.toUpperCase())}</span>`
         ).join('')}` : ''}
         <a href="#/context" style="font-size:11px;color:var(--brand-purple);margin-left:4px;">
-          Cambiar en Contexto
+          ${UI.esc(t('dashboard.meth_change'))}
         </a>
       </div>`;
   },
@@ -430,62 +445,62 @@ const ViewDashboard = {
         <div data-widget-id="risks" style="margin-bottom:20px;">
           <div class="card-row" style="margin-bottom:8px;">
             <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/assets'"
-                 title="Ver inventario de activos">
-              <div class="label">Activos inventariados</div>
+                 title="${UI.esc(t('dashboard.kpi_assets_label'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_assets_label'))}</div>
               <div class="value">${risks.total_assets}</div>
-              <div class="hint">clic para ver inventario</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_assets_hint'))}</div>
             </div>
             <div class="kpi" style="cursor:pointer;" onclick="location.hash='#/risks'"
-                 title="Ver todos los riesgos">
-              <div class="label">Riesgos identificados</div>
+                 title="${UI.esc(t('dashboard.kpi_risks_label'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_risks_label'))}</div>
               <div class="value">${risks.total_risks}</div>
-              <div class="hint">clic para ver registro</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_risks_hint'))}</div>
             </div>
             <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#FFE6CE,#EDD1FF);"
-                 onclick="location.hash='#/risks?band=high'" title="Ver riesgos altos sin tratar">
-              <div class="label">Riesgos altos sin tratar</div>
+                 onclick="location.hash='#/risks?band=high'" title="${UI.esc(t('dashboard.kpi_high_untreated'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_high_untreated'))}</div>
               <div class="value">${risks.by_band.high}</div>
-              <div class="hint">clic para filtrar por nivel alto</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_high_hint'))}</div>
             </div>
             <div class="kpi" style="cursor:pointer;${risks.no_owner > 0 ? 'background:linear-gradient(45deg,#EDE9FE,#DDD6FE);border-color:#C4B5FD;' : ''}"
-                 onclick="location.hash='#/risks?owner=__unassigned__'" title="Ver riesgos sin responsable">
-              <div class="label">Sin responsable asignado</div>
+                 onclick="location.hash='#/risks?owner=__unassigned__'" title="${UI.esc(t('dashboard.kpi_no_owner'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_no_owner'))}</div>
               <div class="value" style="${risks.no_owner > 0 ? 'color:#6D28D9;' : ''}">${risks.no_owner}</div>
-              <div class="hint">clic para ver sin propietario</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_no_owner_hint'))}</div>
             </div>
           </div>
           <div class="card-row" style="margin-bottom:8px;">
             <div class="kpi" style="cursor:pointer;${risks.overdue_treatments > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
-                 onclick="location.hash='#/risks?overdue=1'" title="Ver riesgos con tratamiento vencido">
-              <div class="label">Tratamientos vencidos</div>
+                 onclick="location.hash='#/risks?overdue=1'" title="${UI.esc(t('dashboard.kpi_overdue_treat'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_overdue_treat'))}</div>
               <div class="value" style="${risks.overdue_treatments > 0 ? 'color:#991B1B;' : ''}">${risks.overdue_treatments}</div>
-              <div class="hint">clic para ver detalle</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_overdue_hint'))}</div>
             </div>
             <div class="kpi" style="cursor:pointer;${risks.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}"
-                 onclick="location.hash='#/risks?treatment=__none__&min_level=5'" title="Ver riesgos altos sin plan">
-              <div class="label">Altos sin plan definido</div>
+                 onclick="location.hash='#/risks?treatment=__none__&min_level=5'" title="${UI.esc(t('dashboard.kpi_high_no_plan'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_high_no_plan'))}</div>
               <div class="value" style="${risks.no_treatment_high > 0 ? 'color:#92400E;' : ''}">${risks.no_treatment_high}</div>
-              <div class="hint">clic para ver riesgos >= 5 sin tratamiento</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_high_no_plan_hint'))}</div>
             </div>
             <div class="kpi" style="cursor:pointer;background:linear-gradient(45deg,#D1FAE5,#A7F3D0);"
-                 onclick="location.hash='#/heatmap'" title="Ver mapa de calor">
-              <div class="label">Reduccion del riesgo</div>
+                 onclick="location.hash='#/heatmap'" title="${UI.esc(t('dashboard.kpi_risk_reduction'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_risk_reduction'))}</div>
               <div class="value" style="color:#065F46;">${risks.risk_reduction_pct}%</div>
-              <div class="hint">clic para ver mapa de calor</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_reduction_hint'))}</div>
             </div>
             ${incidents ? `
             <div class="kpi" style="cursor:pointer;${incidents.p1_p2_open > 0 ? 'background:linear-gradient(45deg,#FEE2E2,#FECACA);border-color:#FCA5A5;' : ''}"
-                 onclick="location.hash='#/incidents?severity=p1'" title="Incidentes P1/P2 abiertos">
-              <div class="label">Incidentes P1/P2</div>
+                 onclick="location.hash='#/incidents?severity=p1'" title="${UI.esc(t('dashboard.kpi_p1p2'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_p1p2'))}</div>
               <div class="value" style="${incidents.p1_p2_open > 0 ? 'color:#991B1B;' : ''}">${incidents.p1_p2_open}</div>
-              <div class="hint">${incidents.open} abiertos · clic para ver criticos</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_p1p2_hint', { open: incidents.open }))}</div>
             </div>` : ''}
             ${tasks ? `
             <div class="kpi" style="cursor:pointer;${tasks.overdue > 0 ? 'background:linear-gradient(45deg,#FFF7ED,#FED7AA);border-color:#FDBA74;' : ''}"
-                 onclick="location.hash='#/tasks?overdue=1'" title="Tareas vencidas">
-              <div class="label">Tareas vencidas</div>
+                 onclick="location.hash='#/tasks?overdue=1'" title="${UI.esc(t('dashboard.kpi_overdue_tasks'))}">
+              <div class="label">${UI.esc(t('dashboard.kpi_overdue_tasks'))}</div>
               <div class="value" style="${tasks.overdue > 0 ? 'color:#9A3412;' : ''}">${tasks.overdue}</div>
-              <div class="hint">${tasks.total} tareas totales · clic para ver vencidas</div>
+              <div class="hint">${UI.esc(t('dashboard.kpi_tasks_hint', { total: tasks.total }))}</div>
             </div>` : ''}
           </div>
         </div>`,
@@ -494,13 +509,13 @@ const ViewDashboard = {
         <div data-widget-id="controls" style="margin-bottom:0;">
           <div class="card-row">
             <div class="card">
-              <h3>Distribucion por nivel residual</h3>
+              <h3>${UI.esc(t('dashboard.dist_by_level'))}</h3>
               <div style="display:flex;align-items:center;gap:20px;margin-top:12px;">
                 ${(() => {
                   const _bl = window.RiskLevels ? RiskLevels.all().slice().reverse() : [
-                    { code:'high',   label:'Altos',  color:'var(--risk-high)',   min_level:6, max_level:8 },
-                    { code:'medium', label:'Medios', color:'var(--risk-medium)', min_level:3, max_level:5 },
-                    { code:'low',    label:'Bajos',  color:'var(--risk-low)',    min_level:0, max_level:2 },
+                    { code:'high',   label: t('risks.level.high'),   color:'var(--risk-high)',   min_level:6, max_level:8 },
+                    { code:'medium', label: t('risks.level.medium'), color:'var(--risk-medium)', min_level:3, max_level:5 },
+                    { code:'low',    label: t('risks.level.low'),    color:'var(--risk-low)',    min_level:0, max_level:2 },
                   ];
                   const donut = _bl.map(b => ({ v: risks.by_band[b.code] || 0, color: b.color, label: b.label }));
                   const bars  = _bl.map(b => `
@@ -518,7 +533,7 @@ const ViewDashboard = {
               </div>
             </div>
             <div class="card">
-              <h3>Por estado del ciclo</h3>
+              <h3>${UI.esc(t('dashboard.dist_by_status'))}</h3>
               <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
                 ${Object.entries(risks.by_status).filter(([,v]) => v > 0).map(([k, v]) => `
                   <div>
@@ -533,7 +548,7 @@ const ViewDashboard = {
               </div>
             </div>
             <div class="card">
-              <h3>Por decision de tratamiento</h3>
+              <h3>${UI.esc(t('dashboard.dist_by_treatment'))}</h3>
               <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
                 ${Object.entries(risks.by_treatment).filter(([,v]) => v > 0).map(([k, v]) => `
                   <div>
@@ -545,7 +560,7 @@ const ViewDashboard = {
                       <div style="height:100%;width:${risks.total_risks?Math.round(v/risks.total_risks*100):0}%;background:var(--brand-orange);border-radius:2px;"></div>
                     </div>
                   </div>`).join('')
-                  || '<p style="font-size:13px;color:var(--text-subtle);margin:0;">Sin datos de tratamiento.</p>'}
+                  || `<p style="font-size:13px;color:var(--text-subtle);margin:0;">${UI.esc(t('dashboard.no_treatment_data'))}</p>`}
               </div>
             </div>
           </div>
@@ -554,56 +569,56 @@ const ViewDashboard = {
       incidents: () => incidents ? `
           <div class="card" data-widget-id="incidents" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h3 style="margin:0;font-size:14px;">Incidentes</h3>
-              <a href="#/incidents" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
+              <h3 style="margin:0;font-size:14px;">${UI.esc(t('dashboard.widget.incidents'))}</h3>
+              <a href="#/incidents" style="font-size:11px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all'))}</a>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <a href="#/incidents?status=open" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Abiertos', incidents.open, incidents.open > 0 ? 'var(--risk-medium)' : 'var(--risk-low)')}</a>
-              <a href="#/incidents?severity=p1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('P1 / P2', incidents.p1_p2_open, incidents.p1_p2_open > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-              <a href="#/incidents?nis2=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('NIS2 pendiente', incidents.nis2_pending_notification, incidents.nis2_pending_notification > 0 ? 'var(--risk-critical)' : 'var(--risk-low)')}</a>
-              ${ViewDashboard._moduleStatLine('Total historico', incidents.total, 'var(--text-muted)')}
+              <a href="#/incidents?status=open" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_open'), incidents.open, incidents.open > 0 ? 'var(--risk-medium)' : 'var(--risk-low)')}</a>
+              <a href="#/incidents?severity=p1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_p1p2'), incidents.p1_p2_open, incidents.p1_p2_open > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+              <a href="#/incidents?nis2=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_nis2_pending'), incidents.nis2_pending_notification, incidents.nis2_pending_notification > 0 ? 'var(--risk-critical)' : 'var(--risk-low)')}</a>
+              ${ViewDashboard._moduleStatLine(t('dashboard.module_history'), incidents.total, 'var(--text-muted)')}
             </div>
           </div>` : '',
 
       tasks: () => tasks ? `
           <div class="card" data-widget-id="tasks" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h3 style="margin:0;font-size:14px;">Tareas</h3>
-              <a href="#/tasks" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
+              <h3 style="margin:0;font-size:14px;">${UI.esc(t('dashboard.widget.tasks'))}</h3>
+              <a href="#/tasks" style="font-size:11px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all'))}</a>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <a href="#/tasks?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Vencidas', tasks.overdue, tasks.overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-              <a href="#/tasks?status=in_progress" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('En progreso', tasks.by_status?.in_progress || 0, 'var(--brand-purple)')}</a>
-              <a href="#/tasks?status=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Pendientes', tasks.by_status?.pending || 0, 'var(--text-muted)')}</a>
-              <a href="#/tasks?status=done" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Completadas', tasks.by_status?.done || 0, 'var(--risk-low)')}</a>
+              <a href="#/tasks?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.overdue'), tasks.overdue, tasks.overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+              <a href="#/tasks?status=in_progress" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_in_progress'), tasks.by_status?.in_progress || 0, 'var(--brand-purple)')}</a>
+              <a href="#/tasks?status=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_pending'), tasks.by_status?.pending || 0, 'var(--text-muted)')}</a>
+              <a href="#/tasks?status=done" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_completed'), tasks.by_status?.done || 0, 'var(--risk-low)')}</a>
             </div>
           </div>` : '',
 
       policies: () => policies ? `
           <div class="card" data-widget-id="policies" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h3 style="margin:0;font-size:14px;">Politicas</h3>
-              <a href="#/policies" style="font-size:11px;color:var(--brand-purple);">Ver todas -></a>
+              <h3 style="margin:0;font-size:14px;">${UI.esc(t('dashboard.widget.policies'))}</h3>
+              <a href="#/policies" style="font-size:11px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all_f'))}</a>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <a href="#/policies?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Revision vencida', policies.overdue_review, policies.overdue_review > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-              <a href="#/policies?status=published" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Publicadas', policies.by_status?.published || 0, 'var(--risk-low)')}</a>
-              <a href="#/policies?status=review" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('En revision', policies.by_status?.review || 0, 'var(--brand-orange)')}</a>
-              <a href="#/policies?status=draft" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Borradores', policies.by_status?.draft || 0, 'var(--text-muted)')}</a>
+              <a href="#/policies?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_overdue_review'), policies.overdue_review, policies.overdue_review > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+              <a href="#/policies?status=published" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_published'), policies.by_status?.published || 0, 'var(--risk-low)')}</a>
+              <a href="#/policies?status=review" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_in_review'), policies.by_status?.review || 0, 'var(--brand-orange)')}</a>
+              <a href="#/policies?status=draft" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_drafts'), policies.by_status?.draft || 0, 'var(--text-muted)')}</a>
             </div>
           </div>` : '',
 
       gdpr: () => gdprData ? `
           <div class="card" data-widget-id="gdpr" style="flex:1;min-width:180px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h3 style="margin:0;font-size:14px;">RGPD</h3>
-              <a href="#/gdpr" style="font-size:11px;color:var(--brand-purple);">Ver todo -></a>
+              <h3 style="margin:0;font-size:14px;">${UI.esc(t('dashboard.widget.gdpr'))}</h3>
+              <a href="#/gdpr" style="font-size:11px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all_n'))}</a>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;">
-              <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Actividades de tratamiento', gdprData.total_activities, 'var(--text-muted)')}</a>
-              <a href="#/gdpr?requires_dpia=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Requieren DPIA', gdprData.requires_dpia, gdprData.requires_dpia > 0 ? 'var(--brand-orange)' : 'var(--text-muted)')}</a>
-              <a href="#/gdpr?dpias_pending=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('DPIAs pendientes', gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-              <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Transferencias fuera UE', gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}</a>
+              <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_treatment_acts'), gdprData.total_activities, 'var(--text-muted)')}</a>
+              <a href="#/gdpr?requires_dpia=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_dpia_required'), gdprData.requires_dpia, gdprData.requires_dpia > 0 ? 'var(--brand-orange)' : 'var(--text-muted)')}</a>
+              <a href="#/gdpr?dpias_pending=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_dpia_pending'), gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
+              <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine(t('dashboard.module_transfers_eu'), gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}</a>
             </div>
           </div>` : '',
 
@@ -616,11 +631,11 @@ const ViewDashboard = {
         <div data-widget-id="portfolio" style="margin-top:16px;">
           <div class="card" id="dash-portfolio-card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-              <h3 style="margin:0;">Portfolio de riesgos</h3>
-              <span id="dash-portfolio-badge" style="font-size:12px;color:var(--text-muted);">Cargando...</span>
+              <h3 style="margin:0;">${UI.esc(t('dashboard.portfolio_title'))}</h3>
+              <span id="dash-portfolio-badge" style="font-size:12px;color:var(--text-muted);">${UI.esc(t('dashboard.portfolio_loading'))}</span>
             </div>
             <div id="dash-portfolio-body">
-              <p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">Calculando score del portfolio...</p>
+              <p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">${UI.esc(t('dashboard.portfolio_calculating'))}</p>
             </div>
           </div>
         </div>`,
@@ -632,16 +647,22 @@ const ViewDashboard = {
 
       top10: (cfg = {}) => {
         const count = Number(cfg.count) || 10;
-        const title = cfg.title || `Top ${count} riesgos por nivel residual`;
+        const title = cfg.title || t('dashboard.top10_default_title', { count });
         const topRisks = risks.top_risks.slice(0, count);
         return `
         <div data-widget-id="top10" style="margin-top:16px;">
           <div class="card">
             <h3>${UI.esc(title)}</h3>
             ${topRisks.length === 0
-              ? '<p style="color:var(--text-subtle);">No hay riesgos registrados todavia. Comienza creando activos y asociandoles amenazas.</p>'
+              ? `<p style="color:var(--text-subtle);">${UI.esc(t('dashboard.top10_no_risks'))}</p>`
               : `<div class="table-wrap"><table class="data">
-                  <thead><tr><th>Codigo</th><th>Activo</th><th>Amenaza</th><th>Nivel</th><th>Reduccion</th></tr></thead>
+                  <thead><tr>
+                    <th>${UI.esc(t('dashboard.top10_col_code'))}</th>
+                    <th>${UI.esc(t('dashboard.top10_col_asset'))}</th>
+                    <th>${UI.esc(t('dashboard.top10_col_threat'))}</th>
+                    <th>${UI.esc(t('dashboard.top10_col_level'))}</th>
+                    <th>${UI.esc(t('dashboard.top10_col_reduction'))}</th>
+                  </tr></thead>
                   <tbody>
                     ${topRisks.map(r => {
                       const red = r.inherent_level > 0
@@ -662,79 +683,79 @@ const ViewDashboard = {
         <div data-widget-id="actions" style="margin-top:16px;">
           <div class="card-row">
             <div class="card">
-              <h3>Acciones rapidas</h3>
+              <h3>${UI.esc(t('dashboard.actions_quick'))}</h3>
               <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;">
                 <a href="#/risks?overdue=1" class="quick-action-btn ${risks.overdue_treatments > 0 ? 'urgent' : ''}">
-                  <span>Tratamientos vencidos</span>
+                  <span>${UI.esc(t('dashboard.actions_overdue'))}</span>
                   <span class="qa-count">${risks.overdue_treatments}</span>
                 </a>
                 <a href="#/risks" class="quick-action-btn ${risks.no_treatment_high > 0 ? 'warn' : ''}">
-                  <span>Altos sin plan</span>
+                  <span>${UI.esc(t('dashboard.actions_high_no_plan'))}</span>
                   <span class="qa-count">${risks.no_treatment_high}</span>
                 </a>
                 <a href="#/controls" class="quick-action-btn ${risks.controls_overdue_reviews > 0 ? 'urgent' : ''}">
-                  <span>Revisiones controles vencidas</span>
+                  <span>${UI.esc(t('dashboard.actions_ctrl_overdue'))}</span>
                   <span class="qa-count">${risks.controls_overdue_reviews}</span>
                 </a>
                 <a href="#/risks?owner=__unassigned__" class="quick-action-btn ${risks.no_owner > 0 ? 'warn' : ''}">
-                  <span>Sin responsable</span>
+                  <span>${UI.esc(t('dashboard.actions_no_owner'))}</span>
                   <span class="qa-count">${risks.no_owner}</span>
                 </a>
                 ${incidents && incidents.nis2_pending_notification > 0 ? `
                 <a href="#/incidents" class="quick-action-btn urgent">
-                  <span>NIS2: notificacion pendiente</span>
+                  <span>${UI.esc(t('dashboard.actions_nis2'))}</span>
                   <span class="qa-count">${incidents.nis2_pending_notification}</span>
                 </a>` : ''}
                 ${tasks && tasks.overdue > 0 ? `
                 <a href="#/tasks" class="quick-action-btn warn">
-                  <span>Tareas vencidas</span>
+                  <span>${UI.esc(t('dashboard.actions_tasks_overdue'))}</span>
                   <span class="qa-count">${tasks.overdue}</span>
                 </a>` : ''}
                 ${policies && policies.overdue_review > 0 ? `
                 <a href="#/policies" class="quick-action-btn warn">
-                  <span>Politicas: revision vencida</span>
+                  <span>${UI.esc(t('dashboard.actions_policies_overdue'))}</span>
                   <span class="qa-count">${policies.overdue_review}</span>
                 </a>` : ''}
                 ${gdprData && gdprData.dpias_pending > 0 ? `
                 <a href="#/gdpr" class="quick-action-btn warn">
-                  <span>DPIAs pendientes</span>
+                  <span>${UI.esc(t('dashboard.actions_dpia'))}</span>
                   <span class="qa-count">${gdprData.dpias_pending}</span>
                 </a>` : ''}
                 <a href="#/calendar" class="quick-action-btn">
-                  <span>Ver calendario</span>
+                  <span>${UI.esc(t('dashboard.actions_calendar'))}</span>
                   <span style="font-size:12px;color:var(--text-muted);">-></span>
                 </a>
                 <a href="#/heatmap" class="quick-action-btn">
-                  <span>Mapa de calor</span>
+                  <span>${UI.esc(t('dashboard.actions_heatmap'))}</span>
                   <span style="font-size:12px;color:var(--text-muted);">-></span>
                 </a>
                 <a href="#/external-findings" class="quick-action-btn" id="dash-findings-link" style="display:none;">
-                  <span>Hallazgos abiertos</span>
+                  <span>${UI.esc(t('dashboard.actions_findings'))}</span>
                   <span class="qa-count" id="dash-findings-count">0</span>
                 </a>
               </div>
             </div>
             <div class="card" style="flex:2;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <h3 style="margin:0;">Proximos vencimientos <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
-                <a href="#/calendar" style="font-size:12px;color:var(--brand-purple);">Calendario -></a>
+                <h3 style="margin:0;">${UI.esc(t('dashboard.upcoming_title'))} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">${UI.esc(t('dashboard.upcoming_30d'))}</span></h3>
+                <a href="#/calendar" style="font-size:12px;color:var(--brand-purple);">${UI.esc(t('dashboard.actions_calendar'))} -></a>
               </div>
               <div id="dash-upcoming"></div>
             </div>
             <div class="card" style="flex:2;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <h3 style="margin:0;">Revisiones de controles <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(30 dias)</span></h3>
-                <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
+                <h3 style="margin:0;">${UI.esc(t('dashboard.ctrl_reviews_title'))} <span style="font-size:12px;font-weight:400;color:var(--text-muted);">${UI.esc(t('dashboard.upcoming_30d'))}</span></h3>
+                <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all'))}</a>
               </div>
               <div id="dash-ctrl-upcoming"></div>
             </div>
             <div class="card" style="flex:2;" id="dash-activity-card" style="display:none;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-                <h3 style="margin:0;">Actividad reciente</h3>
-                <a href="#/audit" style="font-size:12px;color:var(--brand-purple);">Ver todo -></a>
+                <h3 style="margin:0;">${UI.esc(t('dashboard.activity_title'))}</h3>
+                <a href="#/audit" style="font-size:12px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all_n'))}</a>
               </div>
               <div id="dash-activity-body">
-                <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
+                <p style="color:var(--text-subtle);font-size:13px;">${UI.esc(t('dashboard.loading_data'))}</p>
               </div>
             </div>
           </div>
@@ -744,11 +765,11 @@ const ViewDashboard = {
         <div data-widget-id="coverage" style="margin-top:16px;">
           <div class="card" id="dash-controls-card">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-              <h3 style="margin:0;">Cobertura de controles ISO 27002 por tema</h3>
-              <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">Ver todos -></a>
+              <h3 style="margin:0;">${UI.esc(t('dashboard.widget.coverage'))}</h3>
+              <a href="#/controls" style="font-size:12px;color:var(--brand-purple);">${UI.esc(t('dashboard.module_view_all'))}</a>
             </div>
             <div id="dash-controls-body">
-              <p style="color:var(--text-subtle);font-size:13px;">Cargando...</p>
+              <p style="color:var(--text-subtle);font-size:13px;">${UI.esc(t('dashboard.loading_data'))}</p>
             </div>
           </div>
         </div>`,
@@ -756,13 +777,12 @@ const ViewDashboard = {
       inbox: () => `
         <div data-widget-id="inbox" style="margin-bottom:16px;">
           <div id="dash-inbox-body">
-            <div class="card"><p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">Cargando bandeja...</p></div>
+            <div class="card"><p style="color:var(--text-subtle);font-size:13px;padding:4px 0;">${UI.esc(t('dashboard.loading_inbox'))}</p></div>
           </div>
         </div>`,
     };
 
     // Module widgets (incidents/tasks/policies/gdpr) are rendered as flex cards in a shared row.
-    // Consecutive module widgets in the layout get grouped together visually.
     const MODULE_TYPES = new Set(['incidents', 'tasks', 'policies', 'gdpr']);
     const parts = [];
     let moduleBuffer = [];
@@ -791,20 +811,19 @@ const ViewDashboard = {
 
   async render(main) {
     ViewDashboard._cachedMain = main;
-    ViewDashboard._editMode = false;
+    const locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
 
     main.innerHTML = UI.sectionHeader(
-      'Vision global del riesgo',
-      'Resumen ejecutivo del estado del SGSI — todos los modulos',
+      t('dashboard.section_title'),
+      t('dashboard.section_subtitle'),
       `<button id="dash-customize-btn" class="btn btn-outline btn-sm"
          onclick="ViewDashboard._editMode ? ViewDashboard._exitEdit() : ViewDashboard._enterEdit();"
-         title="Personalizar widgets del dashboard">
-         Personalizar dashboard
+         title="${UI.esc(t('dashboard.customize_btn'))}">
+         ${UI.esc(t('dashboard.customize_btn'))}
        </button>`
-    ) + '<div id="dash-content">' + UI.notice('Cargando datos...') + '</div>';
+    ) + '<div id="dash-content">' + UI.notice(t('dashboard.loading_data')) + '</div>';
 
     try {
-      // Cargar datos de todos los modulos en paralelo para minimo tiempo de carga
       const [s, inc, tsk, pol, gdpr, ctx, bcpRaw, tprmRaw] = await Promise.allSettled([
         Api.risks.summary(),
         Api.incidents.summary(),
@@ -825,17 +844,14 @@ const ViewDashboard = {
       const tprmData = tprmRaw.status === 'fulfilled' ? tprmRaw.value : null;
       const bcpData  = bcpRaw.status === 'fulfilled' ? bcpRaw.value : null;
 
-      // Exponer metodologia activa globalmente para el formulario de riesgos
       if (context?.methodology) window._riskMethodology = context.methodology;
 
-      if (!risks) throw new Error('No se pudo cargar el resumen de riesgos.');
+      if (!risks) throw new Error(t('dashboard.no_data'));
 
-      // Cachear datos para re-renders sin peticion al servidor
       ViewDashboard._cachedData = { risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData };
 
       const c = document.getElementById('dash-content');
 
-      // Banner de onboarding si el SGSI no esta configurado (v3.0)
       _renderOnboardingBanner(c);
 
       const layout = ViewDashboard._getLayout();
@@ -846,7 +862,6 @@ const ViewDashboard = {
       c.innerHTML = ViewDashboard._methBadgeHtml(context, meth, methLabels) +
         ViewDashboard._buildWidgetHtml(layout, risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData, postureScore);
 
-      // Cargar secciones async adicionales
       ViewDashboard._loadInbox();
       ViewDashboard._loadUpcoming();
       ViewDashboard._loadUpcomingControlReviews();
@@ -864,36 +879,28 @@ const ViewDashboard = {
     let score = 100;
     const r = risks || {};
 
-    // Penalizaciones por riesgos
     const totalR = r.total_risks || 0;
     if (totalR > 0) {
       const highPct = (r.by_band?.high || 0) / totalR;
-      score -= Math.round(highPct * 25); // hasta -25 por % de riesgos altos
+      score -= Math.round(highPct * 25);
     }
     if ((r.overdue_treatments || 0) > 0) score -= Math.min(15, r.overdue_treatments * 3);
     if ((r.no_treatment_high || 0) > 0) score -= Math.min(10, r.no_treatment_high * 2);
     if ((r.no_owner || 0) > 0) score -= Math.min(5, r.no_owner);
 
-    // Bonificacion por controles implementados
     const totalC = r.total_controls || 0;
     if (totalC > 0) {
       const implPct = (r.controls_implemented || 0) / totalC;
-      score += Math.round(implPct * 10); // hasta +10 por cobertura de controles
+      score += Math.round(implPct * 10);
     }
 
-    // Penalizacion por incidentes
     if (incidents) {
       if ((incidents.p1_p2_open || 0) > 0) score -= Math.min(10, incidents.p1_p2_open * 5);
       if ((incidents.nis2_pending_notification || 0) > 0) score -= 5;
     }
 
-    // Penalizacion por tareas vencidas
     if (tasks && (tasks.overdue || 0) > 0) score -= Math.min(8, tasks.overdue * 2);
-
-    // Penalizacion por politicas sin revisar
     if (policies && (policies.overdue_review || 0) > 0) score -= Math.min(5, policies.overdue_review);
-
-    // Penalizacion por DPIAs pendientes
     if (gdpr && (gdpr.dpias_pending || 0) > 0) score -= Math.min(5, gdpr.dpias_pending * 2);
 
     return Math.max(0, Math.min(100, score));
@@ -907,10 +914,10 @@ const ViewDashboard = {
     return 'var(--risk-critical)';
   },
   _postureLabel(score) {
-    if (score >= 80) return 'Buena';
-    if (score >= 60) return 'Aceptable';
-    if (score >= 40) return 'Deficiente';
-    return 'Critica';
+    if (score >= 80) return t('dashboard.posture_good');
+    if (score >= 60) return t('dashboard.posture_acceptable');
+    if (score >= 40) return t('dashboard.posture_poor');
+    return t('dashboard.posture_critical');
   },
 
   /* HTML del panel de postura de seguridad. */
@@ -920,18 +927,33 @@ const ViewDashboard = {
     const circ = 2 * Math.PI * 30;
     const dash = (score / 100) * circ;
 
-    // Cuenta de alertas criticas para mostrar en el banner
     const critItems = [];
-    if (risks?.overdue_treatments > 0) critItems.push(`${risks.overdue_treatments} tratamiento${risks.overdue_treatments>1?'s':''} vencido${risks.overdue_treatments>1?'s':''}`);
-    if (incidents?.p1_p2_open > 0) critItems.push(`${incidents.p1_p2_open} incidente${incidents.p1_p2_open>1?'s':''} P1/P2 abierto${incidents.p1_p2_open>1?'s':''}`);
-    if (incidents?.nis2_pending_notification > 0) critItems.push(`${incidents.nis2_pending_notification} notificacion NIS2 pendiente`);
-    if (tasks?.overdue > 0) critItems.push(`${tasks.overdue} tarea${tasks.overdue>1?'s':''} vencida${tasks.overdue>1?'s':''}`);
-    if (policies?.overdue_review > 0) critItems.push(`${policies.overdue_review} politica${policies.overdue_review>1?'s':''} con revision vencida`);
-    if (gdprData?.dpias_pending > 0) critItems.push(`${gdprData.dpias_pending} DPIA pendiente${gdprData.dpias_pending>1?'s':''}`);
+    if (risks?.overdue_treatments > 0) {
+      const n = risks.overdue_treatments;
+      critItems.push(t(n > 1 ? 'dashboard.posture_overdue_treatments_pl' : 'dashboard.posture_overdue_treatments', { n }));
+    }
+    if (incidents?.p1_p2_open > 0) {
+      const n = incidents.p1_p2_open;
+      critItems.push(t(n > 1 ? 'dashboard.posture_incidents_p1_pl' : 'dashboard.posture_incidents_p1', { n }));
+    }
+    if (incidents?.nis2_pending_notification > 0) {
+      critItems.push(t('dashboard.posture_nis2', { n: incidents.nis2_pending_notification }));
+    }
+    if (tasks?.overdue > 0) {
+      const n = tasks.overdue;
+      critItems.push(t(n > 1 ? 'dashboard.posture_tasks_overdue_pl' : 'dashboard.posture_tasks_overdue', { n }));
+    }
+    if (policies?.overdue_review > 0) {
+      const n = policies.overdue_review;
+      critItems.push(t(n > 1 ? 'dashboard.posture_policies_overdue_pl' : 'dashboard.posture_policies_overdue', { n }));
+    }
+    if (gdprData?.dpias_pending > 0) {
+      const n = gdprData.dpias_pending;
+      critItems.push(t(n > 1 ? 'dashboard.posture_dpia_pl' : 'dashboard.posture_dpia', { n }));
+    }
 
     return `
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
-        <!-- Indicador circular de postura -->
         <div style="flex-shrink:0;text-align:center;">
           <svg width="90" height="90" viewBox="0 0 70 70">
             <circle cx="35" cy="35" r="30" fill="none" stroke="var(--border)" stroke-width="7"/>
@@ -941,37 +963,35 @@ const ViewDashboard = {
             <text x="35" y="32" text-anchor="middle" dominant-baseline="middle" font-size="16" font-weight="800" fill="${color}">${score}</text>
             <text x="35" y="46" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="var(--text-muted)">/100</text>
           </svg>
-          <div style="font-size:12px;font-weight:700;color:${color};margin-top:2px;">${label}</div>
-          <div style="font-size:10px;color:var(--text-subtle);">Postura global</div>
+          <div style="font-size:12px;font-weight:700;color:${color};margin-top:2px;">${UI.esc(label)}</div>
+          <div style="font-size:10px;color:var(--text-subtle);">${UI.esc(t('dashboard.posture_global'))}</div>
         </div>
 
-        <!-- Resumen rapido por modulo -->
         <div style="flex:1;min-width:260px;">
-          <div style="font-size:14px;font-weight:700;color:var(--text-base);margin-bottom:10px;">Estado del SGSI</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text-base);margin-bottom:10px;">${UI.esc(t('dashboard.posture_isms'))}</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
-            ${ViewDashboard._moduleChipHtml('Riesgos', risks?.total_risks ?? '-', risks?.by_band?.high > 0 ? 'warn' : 'ok', '#/risks')}
-            ${ViewDashboard._moduleChipHtml('Controles', (risks?.controls_implemented ?? '-') + '/' + (risks?.total_controls ?? '-'), 'neutral', '#/controls')}
-            ${incidents ? ViewDashboard._moduleChipHtml('Incidentes', incidents.open + ' abiertos', incidents.p1_p2_open > 0 ? 'crit' : incidents.open > 0 ? 'warn' : 'ok', '#/incidents') : ''}
-            ${tasks ? ViewDashboard._moduleChipHtml('Tareas', tasks.overdue + ' vencidas', tasks.overdue > 0 ? 'warn' : 'ok', '#/tasks') : ''}
-            ${policies ? ViewDashboard._moduleChipHtml('Politicas', policies.total + ' total', policies.overdue_review > 0 ? 'warn' : 'ok', '#/policies') : ''}
-            ${gdprData ? ViewDashboard._moduleChipHtml('RGPD', gdprData.dpias_pending + ' DPIAs', gdprData.dpias_pending > 0 ? 'warn' : 'ok', '#/gdpr') : ''}
+            ${ViewDashboard._moduleChipHtml(t('dashboard.mod_risks'), risks?.total_risks ?? '-', risks?.by_band?.high > 0 ? 'warn' : 'ok', '#/risks')}
+            ${ViewDashboard._moduleChipHtml(t('dashboard.mod_controls'), (risks?.controls_implemented ?? '-') + '/' + (risks?.total_controls ?? '-'), 'neutral', '#/controls')}
+            ${incidents ? ViewDashboard._moduleChipHtml(t('dashboard.mod_incidents'), t('dashboard.mod_open', { n: incidents.open }), incidents.p1_p2_open > 0 ? 'crit' : incidents.open > 0 ? 'warn' : 'ok', '#/incidents') : ''}
+            ${tasks ? ViewDashboard._moduleChipHtml(t('dashboard.mod_tasks'), t('dashboard.mod_overdue', { n: tasks.overdue }), tasks.overdue > 0 ? 'warn' : 'ok', '#/tasks') : ''}
+            ${policies ? ViewDashboard._moduleChipHtml(t('dashboard.mod_policies'), t('dashboard.mod_total', { n: policies.total }), policies.overdue_review > 0 ? 'warn' : 'ok', '#/policies') : ''}
+            ${gdprData ? ViewDashboard._moduleChipHtml(t('dashboard.mod_gdpr'), t('dashboard.mod_dpia', { n: gdprData.dpias_pending }), gdprData.dpias_pending > 0 ? 'warn' : 'ok', '#/gdpr') : ''}
           </div>
         </div>
 
-        <!-- Alertas criticas (si las hay) -->
         ${critItems.length ? `
         <div style="flex:1;min-width:220px;border-left:3px solid ${score < 60 ? 'var(--risk-high)' : 'var(--risk-medium)'};padding-left:16px;">
-          <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">Requiere atencion</div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px;">${UI.esc(t('dashboard.posture_attention'))}</div>
           ${critItems.slice(0, 5).map(item => `
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:12px;">
               <span style="width:6px;height:6px;border-radius:50%;background:${score < 60 ? 'var(--risk-high)' : 'var(--risk-medium)'};flex-shrink:0;"></span>
               <span>${UI.esc(item)}</span>
             </div>`).join('')}
-          ${critItems.length > 5 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">+${critItems.length - 5} alertas mas</div>` : ''}
+          ${critItems.length > 5 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${UI.esc(t('dashboard.posture_more', { n: critItems.length - 5 }))}</div>` : ''}
         </div>` : `
         <div style="flex:1;min-width:180px;border-left:3px solid var(--risk-low);padding-left:16px;">
-          <div style="font-size:12px;font-weight:700;color:var(--risk-low);margin-bottom:4px;">Sin alertas criticas</div>
-          <div style="font-size:12px;color:var(--text-muted);">Todos los indicadores dentro de rangos aceptables.</div>
+          <div style="font-size:12px;font-weight:700;color:var(--risk-low);margin-bottom:4px;">${UI.esc(t('dashboard.posture_ok'))}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${UI.esc(t('dashboard.posture_ok_desc'))}</div>
         </div>`}
       </div>
     `;
@@ -984,7 +1004,7 @@ const ViewDashboard = {
     const c = colors[state] || colors.neutral;
     const b = bg[state] || bg.neutral;
     return `
-      <a href="${href}" style="text-decoration:none;display:block;background:${b};border:1px solid ${c}20;border-radius:8px;padding:8px 10px;transition:box-shadow .15s;" title="Ir a ${label}">
+      <a href="${href}" style="text-decoration:none;display:block;background:${b};border:1px solid ${c}20;border-radius:8px;padding:8px 10px;transition:box-shadow .15s;" title="${UI.esc(label)}">
         <div style="font-size:11px;font-weight:700;color:${c};text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;">${UI.esc(label)}</div>
         <div style="font-size:13px;font-weight:600;color:var(--text-base);">${UI.esc(String(value))}</div>
       </a>
@@ -1000,12 +1020,15 @@ const ViewDashboard = {
     const critical = bcp.critical_processes ?? 0;
     const testsDone= bcp.tests_done ?? 0;
     const total    = bcp.total_processes ?? 0;
+    const locale   = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
 
-    // Calcular semaforo BCP
-    const bcpOk = approved > 0 && biaPct >= 60 && overdue === 0;
+    const bcpOk   = approved > 0 && biaPct >= 60 && overdue === 0;
     const bcpWarn = approved === 0 || biaPct < 60 || overdue > 0;
     const statusColor = bcpOk ? 'var(--risk-low)' : bcpWarn ? 'var(--risk-medium)' : 'var(--risk-critical)';
-    const statusLabel = bcpOk ? 'Operativo' : approved === 0 ? 'Sin planes' : biaPct < 40 ? 'BIA incompleto' : 'Revision necesaria';
+    const statusLabel = bcpOk ? t('dashboard.bcp_operative')
+      : approved === 0 ? t('dashboard.bcp_no_plans')
+      : biaPct < 40 ? t('dashboard.bcp_bia_incomplete')
+      : t('dashboard.bcp_review_needed');
 
     const bar = (pct, col) => `
       <div style="height:4px;border-radius:2px;background:var(--bg-3);overflow:hidden;margin-top:2px;">
@@ -1017,44 +1040,44 @@ const ViewDashboard = {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;">
           <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};flex-shrink:0;box-shadow:0 0 0 3px ${statusColor}22;"></div>
-          <h3 style="margin:0;font-size:14px;">Continuidad de Negocio <span style="font-size:11px;font-weight:400;color:var(--text-subtle);">ISO 22301</span></h3>
-          <span style="font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;background:${statusColor}22;color:${statusColor};">${statusLabel}</span>
+          <h3 style="margin:0;font-size:14px;">${UI.esc(t('dashboard.bcp_title'))} <span style="font-size:11px;font-weight:400;color:var(--text-subtle);">ISO 22301</span></h3>
+          <span style="font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;background:${statusColor}22;color:${statusColor};">${UI.esc(statusLabel)}</span>
         </div>
-        <a href="#/bcp" style="font-size:11px;color:var(--brand-purple);">Ver modulo BCP -></a>
+        <a href="#/bcp" style="font-size:11px;color:var(--brand-purple);">${UI.esc(t('dashboard.bcp_link'))}</a>
       </div>
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;">
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:800;color:var(--text);">${total}</div>
-          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Procesos</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">${UI.esc(t('dashboard.bcp_processes'))}</div>
           ${bar(total ? 100 : 0, 'var(--brand-purple)')}
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:800;color:${critical > 0 ? 'var(--risk-critical)' : 'var(--text)'};">${critical}</div>
-          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Criticos</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">${UI.esc(t('dashboard.bcp_critical'))}</div>
           ${bar(total ? critical/total*100 : 0, 'var(--risk-critical)')}
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:800;color:${biaPct < 60 ? 'var(--risk-medium)' : 'var(--risk-low)'};">${biaPct}%</div>
-          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">BIA media</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">${UI.esc(t('dashboard.bcp_bia_avg'))}</div>
           ${bar(biaPct, biaPct >= 80 ? 'var(--risk-low)' : biaPct >= 50 ? 'var(--risk-medium)' : 'var(--risk-critical)')}
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:800;color:${approved === 0 ? 'var(--risk-critical)' : 'var(--risk-low)'};">${approved}</div>
-          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Planes aprobados</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">${UI.esc(t('dashboard.bcp_plans_approved'))}</div>
           ${bar(approved > 0 ? 100 : 0, 'var(--risk-low)')}
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:800;color:${testsDone === 0 ? 'var(--risk-medium)' : 'var(--risk-low)'};">${testsDone}</div>
-          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Tests OK</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">${UI.esc(t('dashboard.bcp_tests_ok'))}</div>
           ${bar(testsDone > 0 ? 100 : 0, 'var(--risk-low)')}
         </div>
         <div style="text-align:center;">
           <div style="font-size:22px;font-weight:800;color:${overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)'};">${overdue}</div>
-          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">Sin test 12m</div>
+          <div style="font-size:10px;color:var(--text-subtle);text-transform:uppercase;font-weight:600;letter-spacing:.04em;">${UI.esc(t('dashboard.bcp_no_test_12m'))}</div>
           ${bar(overdue > 0 ? Math.min(overdue/Math.max(total,1)*100, 100) : 0, 'var(--risk-high)')}
         </div>
       </div>
-      ${bcp.last_test_date ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:10px;text-align:right;">Ultimo test: ${new Date(bcp.last_test_date).toLocaleDateString('es-ES')}</div>` : ''}
+      ${bcp.last_test_date ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:10px;text-align:right;">${UI.esc(t('dashboard.bcp_last_test'))} ${new Date(bcp.last_test_date).toLocaleDateString(locale)}</div>` : ''}
     </div>`;
   },
 
@@ -1082,141 +1105,45 @@ const ViewDashboard = {
     <div class="card" style="margin-top:16px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
         <div>
-          <h3 style="margin:0;">Gestion de riesgo de terceros (TPRM)</h3>
-          <p style="font-size:12px;color:var(--text-muted);margin:3px 0 0;">ISO 27001 A.5.19 — Seguridad de la cadena de suministro</p>
+          <h3 style="margin:0;">${UI.esc(t('dashboard.tprm_title'))}</h3>
+          <p style="font-size:12px;color:var(--text-muted);margin:3px 0 0;">${UI.esc(t('dashboard.tprm_subtitle'))}</p>
         </div>
         <a href="#/suppliers" style="font-size:12px;color:var(--brand-purple);font-weight:600;text-decoration:none;">
-          Ver modulo TPRM &rarr;
+          ${UI.esc(t('dashboard.tprm_link'))}
         </a>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
         <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);">
-          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Proveedores</div>
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">${UI.esc(t('dashboard.tprm_suppliers'))}</div>
           <div style="font-size:28px;font-weight:800;color:var(--brand-purple);font-family:var(--font-mono);margin-top:4px;">${totalSup}</div>
-          <div style="font-size:11px;color:var(--text-subtle);">en cartera activa</div>
+          <div style="font-size:11px;color:var(--text-subtle);">${UI.esc(t('dashboard.tprm_in_portfolio'))}</div>
         </div>
         <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);${critical > 0 ? 'border-color:#FCA5A5;background:#FFF5F5;' : ''}">
-          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Riesgo critico</div>
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">${UI.esc(t('dashboard.tprm_critical_risk'))}</div>
           <div style="font-size:28px;font-weight:800;color:${critColor};font-family:var(--font-mono);margin-top:4px;">${critical}</div>
-          <div style="font-size:11px;color:var(--text-subtle);">${critical > 0 ? 'proveedores criticos' : 'sin proveedores criticos'}</div>
+          <div style="font-size:11px;color:var(--text-subtle);">${UI.esc(critical > 0 ? t('dashboard.tprm_critical_sups') : t('dashboard.tprm_no_critical'))}</div>
           ${bar(totalSup ? critical/totalSup*100 : 0, '#DC2626')}
         </div>
         <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);">
-          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Riesgo alto</div>
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">${UI.esc(t('dashboard.tprm_high_risk'))}</div>
           <div style="font-size:28px;font-weight:800;color:${high > 0 ? '#D97706' : 'var(--text-muted)'};font-family:var(--font-mono);margin-top:4px;">${high}</div>
-          <div style="font-size:11px;color:var(--text-subtle);">proveedores nivel alto</div>
+          <div style="font-size:11px;color:var(--text-subtle);">${UI.esc(t('dashboard.tprm_high_sups'))}</div>
           ${bar(totalSup ? high/totalSup*100 : 0, '#D97706')}
         </div>
         <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);${pending > 0 ? 'border-color:#FCD34D;background:#FFFBEB;' : ''}">
-          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Evaluaciones pendientes</div>
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">${UI.esc(t('dashboard.tprm_pending_evals'))}</div>
           <div style="font-size:28px;font-weight:800;color:${pendColor};font-family:var(--font-mono);margin-top:4px;">${pending}</div>
-          <div style="font-size:11px;color:var(--text-subtle);">${completed} completadas · <a href="#/suppliers?tab=evaluaciones" style="color:var(--brand-purple);">ver evaluaciones</a></div>
+          <div style="font-size:11px;color:var(--text-subtle);">${UI.esc(t('dashboard.tprm_completed_n', { n: completed }))} · <a href="#/suppliers?tab=evaluaciones" style="color:var(--brand-purple);">${UI.esc(t('dashboard.tprm_view_evals'))}</a></div>
         </div>
         ${supRisks > 0 ? `
         <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;border:1px solid var(--border);cursor:pointer;"
-             onclick="location.hash='#/risks?supplier_only=1'" title="Ver riesgos de proveedores">
-          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Riesgos de proveedor</div>
+             onclick="location.hash='#/risks?supplier_only=1'" title="${UI.esc(t('dashboard.tprm_supplier_risks'))}">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;">${UI.esc(t('dashboard.tprm_supplier_risks'))}</div>
           <div style="font-size:28px;font-weight:800;color:var(--brand-orange);font-family:var(--font-mono);margin-top:4px;">${supRisks}</div>
-          <div style="font-size:11px;color:var(--brand-purple);">clic para filtrar en registro</div>
+          <div style="font-size:11px;color:var(--brand-purple);">${UI.esc(t('dashboard.tprm_filter_hint'))}</div>
         </div>` : ''}
       </div>
     </div>`;
-  },
-
-  /* Fila de tarjetas de modulos secundarios (incidentes, tareas, politicas, GDPR, BCP). */
-  _modulesRowHtml(incidents, tasks, policies, gdprData, bcpData) {
-    const cards = [];
-
-    if (incidents) {
-      cards.push(`
-        <div class="card" style="flex:1;min-width:200px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:14px;">Incidentes</h3>
-            <a href="#/incidents" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <a href="#/incidents?status=open" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Abiertos', incidents.open, incidents.open > 0 ? 'var(--risk-medium)' : 'var(--risk-low)')}</a>
-            <a href="#/incidents?severity=p1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('P1 / P2', incidents.p1_p2_open, incidents.p1_p2_open > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-            <a href="#/incidents?nis2=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('NIS2 pendiente', incidents.nis2_pending_notification, incidents.nis2_pending_notification > 0 ? 'var(--risk-critical)' : 'var(--risk-low)')}</a>
-            ${ViewDashboard._moduleStatLine('Total historico', incidents.total, 'var(--text-muted)')}
-          </div>
-        </div>`);
-    }
-
-    if (tasks) {
-      const done = tasks.by_status?.done || 0;
-      const inProgress = tasks.by_status?.in_progress || 0;
-      const pending = tasks.by_status?.pending || 0;
-      cards.push(`
-        <div class="card" style="flex:1;min-width:200px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:14px;">Tareas</h3>
-            <a href="#/tasks" style="font-size:11px;color:var(--brand-purple);">Ver todos -></a>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <a href="#/tasks?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Vencidas', tasks.overdue, tasks.overdue > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-            <a href="#/tasks?status=in_progress" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('En progreso', inProgress, 'var(--brand-purple)')}</a>
-            <a href="#/tasks?status=pending" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Pendientes', pending, 'var(--text-muted)')}</a>
-            <a href="#/tasks?status=done" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Completadas', done, 'var(--risk-low)')}</a>
-          </div>
-        </div>`);
-    }
-
-    if (policies) {
-      const pub = policies.by_status?.published || 0;
-      const rev = policies.by_status?.review || 0;
-      const draft = policies.by_status?.draft || 0;
-      cards.push(`
-        <div class="card" style="flex:1;min-width:200px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:14px;">Politicas</h3>
-            <a href="#/policies" style="font-size:11px;color:var(--brand-purple);">Ver todas -></a>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <a href="#/policies?overdue=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Revision vencida', policies.overdue_review, policies.overdue_review > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-            <a href="#/policies?status=published" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Publicadas', pub, 'var(--risk-low)')}</a>
-            <a href="#/policies?status=review" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('En revision', rev, 'var(--brand-orange)')}</a>
-            <a href="#/policies?status=draft" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Borradores', draft, 'var(--text-muted)')}</a>
-          </div>
-        </div>`);
-    }
-
-    if (gdprData) {
-      cards.push(`
-        <div class="card" style="flex:1;min-width:200px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:14px;">RGPD</h3>
-            <a href="#/gdpr" style="font-size:11px;color:var(--brand-purple);">Ver todo -></a>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Actividades de tratamiento', gdprData.total_activities, 'var(--text-muted)')}</a>
-            <a href="#/gdpr?requires_dpia=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Requieren DPIA', gdprData.requires_dpia, gdprData.requires_dpia > 0 ? 'var(--brand-orange)' : 'var(--text-muted)')}</a>
-            <a href="#/gdpr?dpias_pending=1" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('DPIAs pendientes', gdprData.dpias_pending, gdprData.dpias_pending > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}</a>
-            <a href="#/gdpr" style="text-decoration:none;color:inherit;">${ViewDashboard._moduleStatLine('Transferencias fuera UE', gdprData.transfers_outside_eu, gdprData.transfers_outside_eu > 0 ? 'var(--risk-medium)' : 'var(--text-muted)')}</a>
-          </div>
-        </div>`);
-    }
-
-    if (bcpData && (bcpData.total_processes > 0 || bcpData.approved_plans > 0)) {
-      const biaPct = bcpData.bia_avg_pct ?? 0;
-      const ovrd = bcpData.processes_overdue_test ?? 0;
-      cards.push(`
-        <div class="card" style="flex:1;min-width:200px;cursor:pointer;" onclick="location.hash='#/bcp'">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="margin:0;font-size:14px;">Continuidad BCP</h3>
-            <a href="#/bcp" style="font-size:11px;color:var(--brand-purple);" onclick="event.stopPropagation()">Ver -></a>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            ${ViewDashboard._moduleStatLine('Procesos registrados', bcpData.total_processes ?? 0, 'var(--text-muted)')}
-            ${ViewDashboard._moduleStatLine('Planes aprobados', bcpData.approved_plans ?? 0, (bcpData.approved_plans ?? 0) === 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('BIA completado (media)', biaPct + '%', biaPct < 60 ? 'var(--risk-medium)' : 'var(--risk-low)')}
-            ${ViewDashboard._moduleStatLine('Sin test en 12 meses', ovrd, ovrd > 0 ? 'var(--risk-high)' : 'var(--risk-low)')}
-          </div>
-        </div>`);
-    }
-
-    if (!cards.length) return '';
-    return `<div class="card-row" style="margin-top:16px;">${cards.join('')}</div>`;
   },
 
   /* Linea de stat dentro de una tarjeta de modulo. */
@@ -1229,31 +1156,34 @@ const ViewDashboard = {
   },
 
   async _loadRecentActivity() {
-    // Solo visible para admins (endpoint de auditoria requiere admin)
     const u = Auth.user();
     const card = document.getElementById('dash-activity-card');
     if (!card) return;
     if (!u || (u.role !== 'admin' && u.role !== 'superadmin')) { card.style.display = 'none'; return; }
     card.style.display = '';
     const el = document.getElementById('dash-activity-body');
+    const locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
     try {
       const data = await Api.audit.list({ limit: 8 });
       const items = data.items || [];
       if (!items.length) {
-        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin actividad registrada.</p>';
+        el.innerHTML = `<p style="color:var(--text-subtle);font-size:13px;">${UI.esc(t('dashboard.activity_none'))}</p>`;
         return;
       }
       const actionColors = {
         create: '#065F46', update: '#1E40AF', delete: '#991B1B', login: '#5B21B6',
       };
       const entityLabel = {
-        risk: 'Riesgo', asset: 'Activo', control: 'Control', user: 'Usuario',
-        threat: 'Amenaza', vulnerability: 'Vuln.', context: 'Contexto',
-        alert_rule: 'Alerta', email_settings: 'SMTP', control_impl: 'Control impl.',
-        incident: 'Incidente', policy: 'Politica', task: 'Tarea', supplier: 'Proveedor',
+        risk: t('dashboard.entity_risk'), asset: t('dashboard.entity_asset'),
+        control: t('dashboard.entity_control'), user: t('dashboard.entity_user'),
+        threat: t('dashboard.entity_threat'), vulnerability: t('dashboard.entity_vuln'),
+        context: t('dashboard.entity_context'), alert_rule: t('dashboard.entity_alert_rule'),
+        email_settings: t('dashboard.entity_email_settings'), control_impl: t('dashboard.entity_control_impl'),
+        incident: t('dashboard.entity_incident'), policy: t('dashboard.entity_policy'),
+        task: t('dashboard.entity_task'), supplier: t('dashboard.entity_supplier'),
       };
       el.innerHTML = items.map(e => {
-        const ts = new Date(e.timestamp).toLocaleString('es-ES', {
+        const ts = new Date(e.timestamp).toLocaleString(locale, {
           day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
         });
         const actionColor = actionColors[e.action] || '#6B7280';
@@ -1263,7 +1193,7 @@ const ViewDashboard = {
           <span style="width:6px;height:6px;border-radius:50%;background:${actionColor};flex-shrink:0;"></span>
           <span style="color:var(--text-muted);min-width:60px;">${UI.esc(entityLabel[e.entity_type] || e.entity_type)}</span>
           <span style="color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            ${UI.esc(e.user_name || e.user_email || 'Sistema')}
+            ${UI.esc(e.user_name || e.user_email || t('dashboard.entity_system'))}
           </span>
         </div>`;
       }).join('');
@@ -1278,7 +1208,7 @@ const ViewDashboard = {
     try {
       const themes = await Api.controls.statsByTheme();
       if (!themes.length) {
-        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin controles implementados todavia. Accede a Controles para empezar.</p>';
+        el.innerHTML = `<p style="color:var(--text-subtle);font-size:13px;">${UI.esc(t('dashboard.coverage_no_controls'))}</p>`;
         return;
       }
       const themeColors = {
@@ -1289,19 +1219,19 @@ const ViewDashboard = {
       };
       el.innerHTML = `
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
-          ${themes.map(t => {
-            const matPct = Math.round((t.avg_maturity / 5) * 100);
-            const implPct = t.count ? Math.round((t.implemented / t.count) * 100) : 0;
-            const color = themeColors[t.theme] || 'var(--brand-purple)';
+          ${themes.map(th => {
+            const matPct = Math.round((th.avg_maturity / 5) * 100);
+            const implPct = th.count ? Math.round((th.implemented / th.count) * 100) : 0;
+            const color = themeColors[th.theme] || 'var(--brand-purple)';
             return `
               <div style="padding:14px;border-radius:8px;background:var(--bg-2);border:1px solid var(--border);">
                 <div style="font-size:13px;font-weight:600;color:${color};margin-bottom:10px;">
-                  ${UI.esc(t.label)}
+                  ${UI.esc(th.label)}
                 </div>
                 <div style="margin-bottom:8px;">
                   <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;">
-                    <span>Madurez media</span>
-                    <span style="font-weight:700;color:var(--text);">${t.avg_maturity}/5</span>
+                    <span>${UI.esc(t('dashboard.coverage_maturity'))}</span>
+                    <span style="font-weight:700;color:var(--text);">${th.avg_maturity}/5</span>
                   </div>
                   <div style="height:6px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
                     <div style="height:100%;width:${matPct}%;background:${color};border-radius:3px;transition:width .5s;"></div>
@@ -1309,8 +1239,8 @@ const ViewDashboard = {
                 </div>
                 <div>
                   <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:3px;">
-                    <span>Implementados</span>
-                    <span style="font-weight:700;color:var(--text);">${t.implemented}/${t.count}</span>
+                    <span>${UI.esc(t('dashboard.coverage_implemented'))}</span>
+                    <span style="font-weight:700;color:var(--text);">${th.implemented}/${th.count}</span>
                   </div>
                   <div style="height:6px;border-radius:3px;background:var(--bg-3);overflow:hidden;">
                     <div style="height:100%;width:${implPct}%;background:${color};opacity:0.5;border-radius:3px;transition:width .5s;"></div>
@@ -1321,7 +1251,7 @@ const ViewDashboard = {
         </div>`;
     } catch (_) {
       const el2 = document.getElementById('dash-controls-body');
-      if (el2) el2.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">No disponible.</p>';
+      if (el2) el2.innerHTML = `<p style="color:var(--text-subtle);font-size:13px;">${UI.esc(t('dashboard.coverage_unavailable'))}</p>`;
     }
   },
 
@@ -1341,7 +1271,6 @@ const ViewDashboard = {
       const all = await Api.impls.list();
       const now = new Date();
       const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-      // Incluir vencidas y proximas revisiones (excluir not_implemented)
       const reviews = all
         .filter(c => c.next_review && c.status !== 'not_implemented')
         .map(c => ({ ...c, _due: new Date(c.next_review) }))
@@ -1350,7 +1279,7 @@ const ViewDashboard = {
         .slice(0, 8);
 
       if (!reviews.length) {
-        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin revisiones programadas en los proximos 30 dias.</p>';
+        el.innerHTML = `<p style="color:var(--text-subtle);font-size:13px;">${UI.esc(t('dashboard.ctrl_reviews_none'))}</p>`;
         return;
       }
       el.innerHTML = reviews.map(c => {
@@ -1358,13 +1287,15 @@ const ViewDashboard = {
         const overdue = days < 0;
         const urgency = overdue ? 'var(--risk-high)' : days <= 7 ? 'var(--risk-medium)' : 'var(--text-muted)';
         const label = overdue
-          ? `${Math.abs(days)} dias vencido`
-          : days === 0 ? 'Hoy' : days === 1 ? 'Manana' : `en ${days} dias`;
+          ? t('dashboard.due_overdue', { n: Math.abs(days) })
+          : days === 0 ? t('dashboard.due_today')
+          : days === 1 ? t('dashboard.due_tomorrow')
+          : t('dashboard.due_in_days', { n: days });
         return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);">
           ${UI.codePill(c.control?.code || '-')}
           <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
                 title="${UI.esc(c.name)}">${UI.esc(c.name)}</span>
-          <span style="font-size:11px;font-weight:600;color:${urgency};white-space:nowrap;">${label}</span>
+          <span style="font-size:11px;font-weight:600;color:${urgency};white-space:nowrap;">${UI.esc(label)}</span>
         </div>`;
       }).join('');
     } catch (_) { /* silencioso */ }
@@ -1399,17 +1330,20 @@ const ViewDashboard = {
         .slice(0, 8);
 
       if (!upcoming.length) {
-        el.innerHTML = '<p style="color:var(--text-subtle);font-size:13px;">Sin vencimientos en los proximos 30 dias.</p>';
+        el.innerHTML = `<p style="color:var(--text-subtle);font-size:13px;">${UI.esc(t('dashboard.upcoming_none'))}</p>`;
         return;
       }
       el.innerHTML = upcoming.map(r => {
         const days = Math.ceil((r._due - now) / (1000 * 60 * 60 * 24));
         const urgency = days <= 7 ? 'var(--risk-high)' : days <= 14 ? 'var(--risk-medium)' : 'var(--risk-low)';
+        const label = days === 0 ? t('dashboard.due_today')
+          : days === 1 ? t('dashboard.due_tomorrow')
+          : t('dashboard.due_in_days', { n: days });
         return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);">
           ${UI.codePill(r.code)}
           <span style="flex:1;font-size:13px;">${UI.esc(r.asset?.name||'-')}</span>
           <span style="font-size:12px;font-weight:600;color:${urgency};white-space:nowrap;">
-            ${days === 0 ? 'Hoy' : days === 1 ? 'Manana' : 'en ' + days + ' dias'}
+            ${UI.esc(label)}
           </span>
         </div>`;
       }).join('');
@@ -1460,13 +1394,13 @@ const ViewDashboard = {
     }
 
     return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"
-                style="flex-shrink:0;" role="img" aria-label="Distribucion de riesgo">
+                style="flex-shrink:0;" role="img" aria-label="${UI.esc(t('dashboard.dist_by_level'))}">
       <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--bg-3)" stroke-width="18"/>
       ${paths}
       <text x="${cx}" y="${cy - 7}" text-anchor="middle" dominant-baseline="middle"
             font-size="20" font-weight="700" fill="var(--text)">${total}</text>
       <text x="${cx}" y="${cy + 12}" text-anchor="middle" dominant-baseline="middle"
-            font-size="9" fill="var(--text-muted)" letter-spacing="0.5">RIESGOS</text>
+            font-size="9" fill="var(--text-muted)" letter-spacing="0.5">${UI.esc(t('nav.risks').toUpperCase())}</text>
     </svg>`;
   },
 
@@ -1482,7 +1416,10 @@ const ViewDashboard = {
       const p = ps.status === 'fulfilled' ? ps.value : null;
       const kris = krisRaw.status === 'fulfilled' ? krisRaw.value : [];
 
-      if (!p) { body.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">No disponible. Configure riesgos para ver el portfolio.</p>'; return; }
+      if (!p) {
+        body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${UI.esc(t('dashboard.portfolio_unavailable'))}</p>`;
+        return;
+      }
 
       const score = p.portfolio_score ?? 0;
       const trend = p.trend || 0;
@@ -1493,9 +1430,8 @@ const ViewDashboard = {
       const breachedKRIs = kris.filter(k => k.status === 'breached');
       const warningKRIs  = kris.filter(k => k.status === 'warning');
 
-      if (badge) badge.textContent = `${kris.length} KRIs · ${breachedKRIs.length} en alerta`;
+      if (badge) badge.textContent = `${kris.length} KRIs · ${breachedKRIs.length} ${t('dashboard.portfolio_in_alert').toLowerCase()}`;
 
-      // Mini tendencia (monthly scores)
       const monthly = p.monthly_scores || [];
       let sparkHtml = '';
       if (monthly.length > 1) {
@@ -1515,41 +1451,41 @@ const ViewDashboard = {
         ? breachedKRIs.slice(0, 3).map(k => `
           <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border-light);">
             <span style="font-size:12px;">${UI.esc(k.name)}</span>
-            <span style="font-size:11px;font-weight:700;color:var(--danger);">ALERTA ${k.current_value ?? ''}</span>
+            <span style="font-size:11px;font-weight:700;color:var(--danger);">${UI.esc(t('dashboard.portfolio_in_alert').toUpperCase())} ${k.current_value ?? ''}</span>
           </div>`).join('')
-        : `<div style="font-size:12px;color:var(--success);">Sin KRIs en estado de alerta</div>`;
+        : `<div style="font-size:12px;color:var(--success);">${UI.esc(t('dashboard.portfolio_no_kri_alerts'))}</div>`;
 
       body.innerHTML = `
         <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;">
           <div style="text-align:center;flex-shrink:0;">
-            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Score portfolio</div>
+            <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">${UI.esc(t('dashboard.portfolio_score_label'))}</div>
             <div style="font-size:40px;font-weight:900;color:${scoreColor};line-height:1;">${score.toFixed(1)}</div>
-            <div style="font-size:12px;font-weight:700;color:${trendColor};margin-top:4px;">${trendIcon} ${Math.abs(trend).toFixed(1)} vs mes anterior</div>
+            <div style="font-size:12px;font-weight:700;color:${trendColor};margin-top:4px;">${trendIcon} ${Math.abs(trend).toFixed(1)} ${UI.esc(t('dashboard.portfolio_vs_prev'))}</div>
             ${sparkHtml}
           </div>
           <div style="flex:1;min-width:180px;">
             <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
               <div style="background:var(--bg-1);border:1px solid var(--border);border-radius:8px;padding:8px 12px;text-align:center;flex:1;">
-                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;">KRIs totales</div>
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;">${UI.esc(t('dashboard.portfolio_kris_total'))}</div>
                 <div style="font-size:20px;font-weight:700;">${kris.length}</div>
               </div>
               <div style="background:${breachedKRIs.length ? '#FEE2E2' : 'var(--bg-1)'};border:1px solid ${breachedKRIs.length ? '#FECACA' : 'var(--border)'};border-radius:8px;padding:8px 12px;text-align:center;flex:1;">
-                <div style="font-size:10px;color:${breachedKRIs.length ? '#991B1B' : 'var(--text-muted)'};text-transform:uppercase;">En alerta</div>
+                <div style="font-size:10px;color:${breachedKRIs.length ? '#991B1B' : 'var(--text-muted)'};text-transform:uppercase;">${UI.esc(t('dashboard.portfolio_in_alert'))}</div>
                 <div style="font-size:20px;font-weight:700;color:${breachedKRIs.length ? '#991B1B' : 'inherit'};">${breachedKRIs.length}</div>
               </div>
               <div style="background:${warningKRIs.length ? '#FEF3C7' : 'var(--bg-1)'};border:1px solid ${warningKRIs.length ? '#FDE68A' : 'var(--border)'};border-radius:8px;padding:8px 12px;text-align:center;flex:1;">
-                <div style="font-size:10px;color:${warningKRIs.length ? '#92400E' : 'var(--text-muted)'};text-transform:uppercase;">Aviso</div>
+                <div style="font-size:10px;color:${warningKRIs.length ? '#92400E' : 'var(--text-muted)'};text-transform:uppercase;">${UI.esc(t('dashboard.portfolio_warning'))}</div>
                 <div style="font-size:20px;font-weight:700;color:${warningKRIs.length ? '#92400E' : 'inherit'};">${warningKRIs.length}</div>
               </div>
             </div>
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">KRIs en alerta</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">${UI.esc(t('dashboard.portfolio_kris_in_alert'))}</div>
             ${kriAlertHtml}
-            ${breachedKRIs.length > 3 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">... y ${breachedKRIs.length - 3} mas. <a href="#/kris" style="color:var(--brand-purple);">Ver todos</a></div>` : ''}
+            ${breachedKRIs.length > 3 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${UI.esc(t('dashboard.portfolio_and_more', { n: breachedKRIs.length - 3 }))} <a href="#/kris" style="color:var(--brand-purple);">${UI.esc(t('dashboard.portfolio_see_all'))}</a></div>` : ''}
           </div>
         </div>
         ${p.top_risks?.length ? `
         <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
-          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Riesgos mas relevantes (portfolio ponderado)</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">${UI.esc(t('dashboard.portfolio_top_risks'))}</div>
           ${p.top_risks.slice(0, 5).map(r => {
             const lvlColor = l => l >= 8 ? 'var(--risk-critical)' : l >= 6 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)';
             return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border-light);">
@@ -1559,7 +1495,7 @@ const ViewDashboard = {
           }).join('')}
         </div>` : ''}`;
     } catch (e) {
-      if (body) body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">No disponible: ${UI.esc(e.message)}</p>`;
+      if (body) body.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${UI.esc(t('dashboard.portfolio_unavail_detail'))} ${UI.esc(e.message)}</p>`;
     }
   },
 };

@@ -23,22 +23,22 @@ const ViewAssets = {
       canEdit ? `
         <span id="inv-actions">
           <button class="btn" id="btn-export">${t('common.export')} CSV</button>
-          <button class="btn" id="btn-template">/* TODO: i18n */ Plantilla</button>
+          <button class="btn" id="btn-template">${t('assets.template_btn')}</button>
           <label class="btn" id="lbl-import" title="Acepta cualquier formato: CSV, XLSX, JSON, etc. La IA normaliza las columnas automaticamente">
             ${t('common.import')} (${t('common.all')})
             <input type="file" id="file-import" accept="*" multiple style="display:none;">
           </label>
           <button class="btn btn-ghost" id="btn-analyze-pending"
                   title="Analiza activos sin analizar y los que tuvieron error (no toca los ya analizados)">
-            /* TODO: i18n */ Analizar pendientes
+            ${t('assets.analyze_pending')}
           </button>
           <button class="btn btn-ghost" id="btn-analyze-cia"
                   title="Re-analiza solo los activos con todas las dimensiones ENS a 0 para que la IA las estime">
-            /* TODO: i18n */ Estimar dimensiones ENS
+            ${t('assets.estimate_ens')}
           </button>
           <button class="btn btn-ghost" id="btn-analyze-all"
                   title="Fuerza el re-analisis de TODOS los activos con IA">
-            /* TODO: i18n */ Re-analizar todos
+            ${t('assets.reanalyze_all')}
           </button>
           <button class="btn btn-primary" id="btn-new">+ ${t('assets.new')}</button>
         </span>
@@ -49,19 +49,19 @@ const ViewAssets = {
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--brand-purple);
                  border-bottom:3px solid var(--brand-purple);margin-bottom:-2px;">
-          /* TODO: i18n */ Inventario
+          ${t('assets.inventory_tab')}
         </button>
         <button class="asset-tab" data-tab="groups-results"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--text-muted);
                  border-bottom:3px solid transparent;margin-bottom:-2px;">
-          /* TODO: i18n */ Grupos
+          ${t('assets.groups_tab')}
         </button>
         <button class="asset-tab" data-tab="grouping"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--text-muted);
                  border-bottom:3px solid transparent;margin-bottom:-2px;">
-          /* TODO: i18n */ Agrupacion con IA
+          ${t('assets.ai_grouping')}
         </button>
       </div>
       <div id="tab-inventory">
@@ -73,10 +73,10 @@ const ViewAssets = {
             <option value="primary_information">${t('assets.type.information')}</option>
             <option value="support_hardware">${t('assets.type.hardware')}</option>
             <option value="support_software">${t('assets.type.software')}</option>
-            <option value="support_network">/* TODO: i18n */ Red</option>
+            <option value="support_network">${t('assets.type.support_network')}</option>
             <option value="support_personnel">${t('assets.type.people')}</option>
             <option value="support_site">${t('assets.type.facilities')}</option>
-            <option value="support_organization">/* TODO: i18n */ Organizacion</option>
+            <option value="support_organization">${t('assets.type.support_organization')}</option>
           </select>
           <span class="spacer"></span>
           <span id="asset-count" style="color:var(--text-subtle);font-size:12px;"></span>
@@ -1506,7 +1506,7 @@ const ViewAssets = {
         <input id="f-loc" value="${UI.esc(a.location||'')}">
       </div>
       <div>
-        <label>/* TODO: i18n */ Proceso de negocio</label>
+        <label>${t('assets.business_process')}</label>
         <input id="f-proc" value="${UI.esc(a.business_process||'')}">
       </div>
       <div>

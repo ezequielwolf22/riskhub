@@ -35,7 +35,7 @@ const ViewRisks = {
         <button class="risk-tab-btn" data-risk-tab="groups"
           style="padding:8px 18px;border:none;background:none;cursor:pointer;font-size:14px;
                  font-weight:600;color:var(--text-muted);border-bottom:3px solid transparent;margin-bottom:-2px;">
-          /* TODO: i18n */ Por grupo
+          ${t('risks.group_by')}
         </button>
       </div>
       <div id="risk-tab-list">
@@ -52,7 +52,7 @@ const ViewRisks = {
           <select id="r-band">
             <option value="">${t('common.all')}</option>
             <option value="6">${t('risks.filter.high')}</option>
-            <option value="3">/* TODO: i18n */ Medios y altos (3+)</option>
+            <option value="3">${t('risks.medium_high_filter')}</option>
           </select>
           <select id="r-treatment">
             <option value="">${t('common.all')}</option>
@@ -69,11 +69,11 @@ const ViewRisks = {
             <input type="checkbox" id="r-overdue"> ${t('risks.filter.overdue')}
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;">
-            <input type="checkbox" id="r-supplier-only"> ${t('risks.filter.unassigned')} (TPRM)
+            <input type="checkbox" id="r-supplier-only"> ${t('risks.supplier_only')}
           </label>
           <button class="btn btn-ghost" id="r-export-csv" title="${t('common.export')}" style="margin-left:auto;">${t('risks.export_excel')}</button>
           ${canEdit ? `
-          <button class="btn btn-ghost" id="r-import-tpl" title="Descargar plantilla CSV de importacion">/* TODO: i18n */ Plantilla</button>
+          <button class="btn btn-ghost" id="r-import-tpl" title="${t('risks.template_csv')}">${t('risks.template_csv')}</button>
           <label class="btn btn-ghost" style="cursor:pointer;margin:0;" title="Importar riesgos desde CSV">
             ${t('risks.import_csv')}
             <input type="file" id="r-import-file" accept=".csv" style="display:none;">
@@ -246,8 +246,8 @@ const ViewRisks = {
       }
       const levelColor = l => window.RiskLevels ? RiskLevels.colorFor(l) : (l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)');
       const statusBadge = s => ({
-        proposed: `<span style="font-size:10px;background:var(--brand-orange);color:#fff;padding:1px 6px;border-radius:8px;">/* TODO: i18n */ Propuesto</span>`,
-        validated: `<span style="font-size:10px;background:var(--risk-low);color:#fff;padding:1px 6px;border-radius:8px;">/* TODO: i18n */ Validado</span>`,
+        proposed: `<span style="font-size:10px;background:var(--brand-orange);color:#fff;padding:1px 6px;border-radius:8px;">${t('risks.ai_proposed')}</span>`,
+        validated: `<span style="font-size:10px;background:var(--risk-low);color:#fff;padding:1px 6px;border-radius:8px;">${t('risks.ai_validated')}</span>`,
         none: '',
       }[s] || '');
 
@@ -257,7 +257,7 @@ const ViewRisks = {
             Riesgos por grupo de activos. Los riesgos individuales <strong>no se pierden</strong> al reagrupar.
           </span>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;margin-left:auto;">
-            <input type="checkbox" id="rg-supplier-only" ${supplierOnlyActive ? 'checked' : ''}> /* TODO: i18n */ Solo proveedores (TPRM)
+            <input type="checkbox" id="rg-supplier-only" ${supplierOnlyActive ? 'checked' : ''}> ${t('risks.supplier_only')}
           </label>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">
@@ -1188,10 +1188,10 @@ const ViewRisks = {
       const lbl = wrap?.querySelector('label');
       if (statusSel.value === 'accepted') {
         if (wrap) wrap.style.opacity = '1';
-        if (lbl) lbl.innerHTML = 'Justificación de aceptación <span style="color:var(--risk-high);">*</span>';
+        if (lbl) lbl.innerHTML = UI.esc(t('risks.justification_required')) + ' <span style="color:var(--risk-high);">*</span>';
       } else {
         if (wrap) wrap.style.opacity = '0.6';
-        if (lbl) lbl.textContent = 'Justificación de aceptación (si aplica)';
+        if (lbl) lbl.textContent = t('risks.justification_optional');
       }
     });
 
@@ -1385,7 +1385,7 @@ const ViewRisks = {
       document.getElementById('magerit-cons-val').textContent = res.consequence;
       document.getElementById('magerit-ic-display').textContent = res.consequence;
 
-      const consLabels = ['Insignificante','Menor','Moderado','Mayor','Crítico'];
+      const consLabels = [t('risks.magerit_cons_0'),t('risks.magerit_cons_1'),t('risks.magerit_cons_2'),t('risks.magerit_cons_3'),t('risks.magerit_cons_4')];
       document.getElementById('magerit-cons-lbl').textContent = consLabels[res.consequence] || '-';
       document.getElementById('magerit-impact-val').textContent = res.magerit_impact;
 
@@ -1575,7 +1575,7 @@ const ViewRisks = {
     const result = document.getElementById('ai-tab-content-explain');
     if (!result) return;
     if (btn) { btn.disabled = true; btn.textContent = 'Analizando...'; }
-    result.innerHTML = '<div class="notice">El agente IA está analizando el riesgo con toda la información disponible...</div>';
+    result.innerHTML = `<div class="notice">${UI.esc(t('risks.ai_analyzing'))}</div>`;
     try {
       const data = await Api.post(`/api/risks/${riskId}/ai-explain`, {});
       const confColor = {'alta':'#166534','media':'#92400E','baja':'#991B1B'}[data.confidence] || '#374151';
@@ -2261,7 +2261,7 @@ const ViewRisks = {
           <div class="form-group">
             <label class="form-label">Título de la campaña</label>
             <input type="text" id="srv-title" class="form-control"
-                   value="Evaluación de riesgo: ${UI.esc(risk.name).slice(0, 60)}">
+                   value="${UI.esc(t('risks.survey_default_title', { name: risk.name.slice(0, 60) }))}">
           </div>
           <div class="form-group">
             <label class="form-label">Plantilla</label>

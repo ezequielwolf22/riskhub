@@ -34,27 +34,29 @@ const ViewKRIs = {
     ],
   },
 
-  _CATEGORY_LABELS: {
-    all: 'Todos',
-    riesgos: 'Riesgos',
-    controles: 'Controles',
-    tprm: 'TPRM',
-    bcp: 'BCP',
-    incidentes: 'Incidentes / NCs',
-    cumplimiento: 'Cumplimiento',
+  get _CATEGORY_LABELS() {
+    return {
+      all: t('kris.cat_all'),
+      riesgos: t('kris.cat_riesgos'),
+      controles: t('kris.cat_controles'),
+      tprm: t('kris.cat_tprm'),
+      bcp: t('kris.cat_bcp'),
+      incidentes: t('kris.cat_incidentes'),
+      cumplimiento: t('kris.cat_cumplimiento'),
+    };
   },
 
   async render(el) {
     el.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-        <h2 style="margin:0;font-size:1.2rem;">KRIs / KPIs</h2>
+        <h2 style="margin:0;font-size:1.2rem;">${t('kris.title')}</h2>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
           <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer;">
-            <input type="checkbox" id="kri-show-hidden"> Mostrar ocultos
+            <input type="checkbox" id="kri-show-hidden"> ${t('kris.show_hidden')}
           </label>
-          <button class="btn btn-ghost" id="kri-btn-seed" title="Inicializar KPIs de sistema por defecto">Inicializar KPIs</button>
-          <button class="btn btn-ghost" id="kri-btn-eval-all">Evaluar todos</button>
-          <button class="btn btn-primary" id="kri-btn-new">+ Nuevo KRI</button>
+          <button class="btn btn-ghost" id="kri-btn-seed" title="${t('kris.seed_hint')}">${t('kris.seed_btn')}</button>
+          <button class="btn btn-ghost" id="kri-btn-eval-all">${t('kris.eval_all_btn')}</button>
+          <button class="btn btn-primary" id="kri-btn-new">${t('kris.new_btn')}</button>
         </div>
       </div>
       <div id="kri-tabs-wrap"></div>
@@ -72,8 +74,8 @@ const ViewKRIs = {
       hub: 'kri-inner',
       label: 'KRIs/KPIs',
       tabs: [
-        { id: 'kris-tab', label: 'KRIs', render: (p) => ViewKRIs._renderList(p, 'kri') },
-        { id: 'kpis-tab', label: 'KPIs', render: (p) => ViewKRIs._renderList(p, 'kpi') },
+        { id: 'kris-tab', label: t('kris.tab_kris'), render: (p) => ViewKRIs._renderList(p, 'kri') },
+        { id: 'kpis-tab', label: t('kris.tab_kpis'), render: (p) => ViewKRIs._renderList(p, 'kpi') },
       ],
     });
   },
@@ -89,10 +91,10 @@ const ViewKRIs = {
   _filterBar(type) {
     const cats = Object.entries(ViewKRIs._CATEGORY_LABELS);
     const statusOpts = [
-      { v: 'all', l: 'Todos los estados' },
-      { v: 'breach', l: 'Breach' },
-      { v: 'warning', l: 'Warning' },
-      { v: 'normal', l: 'Normal' },
+      { v: 'all', l: t('kris.status_all') },
+      { v: 'breach', l: t('kris.status_breach') },
+      { v: 'warning', l: t('kris.status_warning') },
+      { v: 'normal', l: t('kris.status_normal') },
     ];
 
     const chipStyle = (active) =>
@@ -112,14 +114,14 @@ const ViewKRIs = {
     return `
       <div id="kri-filters-${type}" style="margin-bottom:14px;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-          <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">Categoria:</span>
+          <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">${t('kris.filter_category')}</span>
           ${cats.map(([v, l]) => `
             <span data-kri-cat="${v}" data-kri-type="${type}"
               style="${chipStyle(ViewKRIs._category === v)}">${l}</span>
           `).join('')}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">Estado:</span>
+          <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">${t('kris.filter_status')}</span>
           ${statusOpts.map(({ v, l }) => `
             <span data-kri-status="${v}" data-kri-type="${type}"
               style="${statusBadge(ViewKRIs._statusFilter === v, v)}">${l}</span>
@@ -157,7 +159,7 @@ const ViewKRIs = {
   },
 
   async _renderList(el, type) {
-    el.innerHTML = '<div class="notice">Cargando...</div>';
+    el.innerHTML = `<div class="notice">${t('kris.loading')}</div>`;
     try {
       const params = new URLSearchParams({ indicator_type: type, active_only: 'false' });
       if (ViewKRIs._showHidden) params.set('show_hidden', 'true');
@@ -165,28 +167,32 @@ const ViewKRIs = {
 
       const filtered = ViewKRIs._applyFilters(allItems);
       const totalLabel = filtered.length !== allItems.length
-        ? `${filtered.length} de ${allItems.length}`
+        ? t('kris.count_of', { filtered: filtered.length, total: allItems.length })
         : `${allItems.length}`;
 
       if (!allItems.length) {
         el.innerHTML = `
           ${ViewKRIs._filterBar(type)}
           <div class="notice">
-            No hay ${type === 'kpi' ? 'KPIs' : 'KRIs'} configurados.
-            ${type === 'kpi' ? '<br><button class="btn btn-ghost" onclick="ViewKRIs._seedKpis()">Inicializar KPIs por defecto</button>' : ''}
+            ${type === 'kpi' ? t('kris.no_kpis') : t('kris.no_kris')}
+            ${type === 'kpi' ? `<br><button class="btn btn-ghost" onclick="ViewKRIs._seedKpis()">${t('kris.seed_hint')}</button>` : ''}
           </div>`;
         ViewKRIs._bindFilterClicks(type);
         return;
       }
 
+      const countLabel = filtered.length !== 1
+        ? t('kris.showing_plural', { n: totalLabel })
+        : t('kris.showing', { n: totalLabel });
+
       el.innerHTML = `
         ${ViewKRIs._filterBar(type)}
         <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">
-          Mostrando ${totalLabel} indicador${filtered.length !== 1 ? 'es' : ''}
+          ${countLabel}
         </div>
         ${filtered.length
           ? `<div class="kri-grid">${filtered.map(k => ViewKRIs._cardHtml(k)).join('')}</div>`
-          : `<div class="notice">Ningun indicador coincide con los filtros seleccionados.</div>`
+          : `<div class="notice">${t('kris.none_match')}</div>`
         }
       `;
 
@@ -210,11 +216,12 @@ const ViewKRIs = {
   },
 
   _cardHtml(k) {
+    const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
     const displayName = k.custom_name || k.name;
     const statusColor = k.status === 'breach' ? 'var(--brand-orange)' : k.status === 'warning' ? '#f59e0b' : 'var(--success,#22c55e)';
     const statusLabel = k.status === 'breach' ? 'BREACH' : k.status === 'warning' ? 'WARNING' : 'NORMAL';
     const dirIcon = k.direction === 'higher_is_better' ? '&#8593;' : '&#8595;';
-    const dirTitle = k.direction === 'higher_is_better' ? 'Mayor es mejor' : 'Menor es mejor';
+    const dirTitle = k.direction === 'higher_is_better' ? t('kris.dir_higher') : t('kris.dir_lower');
     const valueStr = k.current_value !== null && k.current_value !== undefined
       ? (Number.isInteger(k.current_value) ? k.current_value : k.current_value.toFixed(1))
       : '—';
@@ -233,28 +240,28 @@ const ViewKRIs = {
         <div style="display:flex;gap:16px;margin:10px 0;align-items:center;flex-wrap:wrap;">
           <div style="text-align:center;">
             <div style="font-size:1.5rem;font-weight:700;color:${statusColor};">${valueStr}</div>
-            <div style="font-size:0.72rem;color:var(--text-muted);">Valor actual</div>
+            <div style="font-size:0.72rem;color:var(--text-muted);">${t('kris.current_value')}</div>
           </div>
           <div style="font-size:0.82rem;color:var(--text-muted);flex:1;">
             <div title="${dirTitle}" style="margin-bottom:2px;">
               <span style="font-size:1rem;">${dirIcon}</span>
               <span style="font-size:0.78rem;">${dirTitle}</span>
             </div>
-            ${k.warning_threshold !== null ? `<div>Aviso: ${k.warning_threshold}</div>` : ''}
-            ${k.breach_threshold !== null ? `<div>Breach: ${k.breach_threshold}</div>` : ''}
-            ${k.last_evaluated_at ? `<div style="margin-top:4px;">Eval: ${new Date(k.last_evaluated_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>` : ''}
+            ${k.warning_threshold !== null ? `<div>${t('kris.warn_label')} ${k.warning_threshold}</div>` : ''}
+            ${k.breach_threshold !== null ? `<div>${t('kris.breach_label')} ${k.breach_threshold}</div>` : ''}
+            ${k.last_evaluated_at ? `<div style="margin-top:4px;">${t('kris.eval_label')} ${new Date(k.last_evaluated_at).toLocaleDateString(_locale, { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-          <button class="btn btn-ghost btn-sm" data-kri-eval="${k.id}">Evaluar</button>
-          <button class="btn btn-ghost btn-sm" data-kri-edit="${k.id}">Editar</button>
+          <button class="btn btn-ghost btn-sm" data-kri-eval="${k.id}">${t('kris.btn_eval')}</button>
+          <button class="btn btn-ghost btn-sm" data-kri-edit="${k.id}">${t('kris.btn_edit')}</button>
           <button class="btn btn-ghost btn-sm" data-kri-hide="${k.id}" data-kri-visible="${k.is_visible}"
-            title="${isHidden ? 'Mostrar' : 'Ocultar'}">
-            ${isHidden ? 'Mostrar' : 'Ocultar'}
+            title="${isHidden ? t('kris.btn_show') : t('kris.btn_hide')}">
+            ${isHidden ? t('kris.btn_show') : t('kris.btn_hide')}
           </button>
-          ${!k.is_system ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger,#ef4444);" data-kri-del="${k.id}" data-kri-system="false">Eliminar</button>` : ''}
+          ${!k.is_system ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger,#ef4444);" data-kri-del="${k.id}" data-kri-system="false">${t('kris.btn_delete')}</button>` : ''}
         </div>
-        ${k.is_system ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">Indicador de sistema</div>` : ''}
+        ${k.is_system ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">${t('kris.system_indicator')}</div>` : ''}
       </div>
     `;
   },
@@ -263,7 +270,7 @@ const ViewKRIs = {
     try {
       await Api.post(`/api/kris/${id}/evaluate`, {});
       ViewKRIs._reload();
-      UI.toast('Evaluacion completada');
+      UI.toast(t('kris.eval_done'));
     } catch (e) {
       UI.toast(e.message, 'error');
     }
@@ -271,29 +278,29 @@ const ViewKRIs = {
 
   async _evalAll() {
     const btn = document.getElementById('kri-btn-eval-all');
-    if (btn) { btn.disabled = true; btn.textContent = 'Evaluando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('kris.eval_all_loading'); }
     try {
       const r = await Api.post('/api/kris/evaluate-all', {});
       await ViewKRIs._reload();
-      UI.toast(`Evaluados ${r.evaluated}: ${r.normal} normales, ${r.warning} aviso, ${r.breach} breach`);
+      UI.toast(t('kris.eval_all_done', { evaluated: r.evaluated, normal: r.normal, warning: r.warning, breach: r.breach }));
     } catch (e) {
       UI.toast(e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Evaluar todos'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('kris.eval_all_btn'); }
     }
   },
 
   async _seedKpis() {
     const btn = document.getElementById('kri-btn-seed');
-    if (btn) { btn.disabled = true; btn.textContent = 'Inicializando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('kris.seed_btn_loading'); }
     try {
       const r = await Api.post('/api/kris/seed-kpis', {});
       await ViewKRIs._reload();
-      UI.toast(`KPIs inicializados. Total: ${r.total_kpis}`);
+      UI.toast(t('kris.seed_done', { total: r.total_kpis }));
     } catch (e) {
       UI.toast(e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Inicializar KPIs'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('kris.seed_btn'); }
     }
   },
 
@@ -301,7 +308,7 @@ const ViewKRIs = {
     try {
       await Api.patch(`/api/kris/${id}`, { is_visible: !currentlyVisible });
       ViewKRIs._reload();
-      UI.toast(currentlyVisible ? 'Indicador ocultado' : 'Indicador mostrado');
+      UI.toast(currentlyVisible ? t('kris.hidden_ok') : t('kris.shown_ok'));
     } catch (e) {
       UI.toast(e.message, 'error');
     }
@@ -309,14 +316,14 @@ const ViewKRIs = {
 
   async _delete(id, isSystem) {
     if (isSystem) {
-      UI.toast('Los indicadores de sistema no se pueden eliminar. Puedes ocultarlos.', 'error');
+      UI.toast(t('kris.cannot_delete_system'), 'error');
       return;
     }
-    if (!confirm('Eliminar este indicador?')) return;
+    if (!await UI.confirm(t('kris.delete_confirm'))) return;
     try {
       await Api.delete(`/api/kris/${id}`);
       ViewKRIs._reload();
-      UI.toast('Indicador eliminado');
+      UI.toast(t('kris.deleted_ok'));
     } catch (e) {
       UI.toast(e.message, 'error');
     }
@@ -330,107 +337,107 @@ const ViewKRIs = {
 
     const metricOptions = [
       // KRI
-      { v: 'residual_level', l: 'Nivel residual del riesgo', t: 'kri' },
-      { v: 'inherent_level', l: 'Nivel inherente del riesgo', t: 'kri' },
-      { v: 'open_incidents', l: 'Incidentes abiertos', t: 'kri' },
-      { v: 'open_ncs', l: 'No conformidades mayores abiertas', t: 'kri' },
-      { v: 'control_maturity', l: 'Madurez media de controles', t: 'kri' },
-      { v: 'overdue_tasks', l: 'Tareas de tratamiento vencidas', t: 'kri' },
-      { v: 'kri_critical_risks', l: 'Riesgos criticos activos (#)', t: 'kri' },
-      { v: 'kri_stale_risks', l: 'Riesgos sin revisar >90 dias (#)', t: 'kri' },
-      { v: 'kri_critical_cves', l: 'CVEs criticos/altos sin remediar (#)', t: 'kri' },
-      { v: 'kri_high_risk_suppliers', l: 'Proveedores Tier-1/2 con riesgo alto (#)', t: 'kri' },
+      { v: 'residual_level', l: I18n.lang() === 'en' ? 'Residual risk level' : 'Nivel residual del riesgo', t: 'kri' },
+      { v: 'inherent_level', l: I18n.lang() === 'en' ? 'Inherent risk level' : 'Nivel inherente del riesgo', t: 'kri' },
+      { v: 'open_incidents', l: I18n.lang() === 'en' ? 'Open incidents' : 'Incidentes abiertos', t: 'kri' },
+      { v: 'open_ncs', l: I18n.lang() === 'en' ? 'Open major non-conformities' : 'No conformidades mayores abiertas', t: 'kri' },
+      { v: 'control_maturity', l: I18n.lang() === 'en' ? 'Average control maturity' : 'Madurez media de controles', t: 'kri' },
+      { v: 'overdue_tasks', l: I18n.lang() === 'en' ? 'Overdue treatment tasks' : 'Tareas de tratamiento vencidas', t: 'kri' },
+      { v: 'kri_critical_risks', l: I18n.lang() === 'en' ? 'Active critical risks (#)' : 'Riesgos criticos activos (#)', t: 'kri' },
+      { v: 'kri_stale_risks', l: I18n.lang() === 'en' ? 'Risks unreviewed >90 days (#)' : 'Riesgos sin revisar >90 dias (#)', t: 'kri' },
+      { v: 'kri_critical_cves', l: I18n.lang() === 'en' ? 'Unremediated critical/high CVEs (#)' : 'CVEs criticos/altos sin remediar (#)', t: 'kri' },
+      { v: 'kri_high_risk_suppliers', l: I18n.lang() === 'en' ? 'Tier-1/2 suppliers with high risk (#)' : 'Proveedores Tier-1/2 con riesgo alto (#)', t: 'kri' },
       // KPI
-      { v: 'kpi_treatment_rate', l: 'Tasa de tratamiento riesgos altos (%)', t: 'kpi' },
-      { v: 'kpi_mttt', l: 'Tiempo medio de tratamiento (dias)', t: 'kpi' },
-      { v: 'kpi_control_coverage', l: 'Cobertura controles ISO 27002 (%)', t: 'kpi' },
-      { v: 'kpi_control_maturity_avg', l: 'Madurez media de controles (0-5)', t: 'kpi' },
-      { v: 'kpi_policy_review', l: 'Cumplimiento revision politicas (%)', t: 'kpi' },
-      { v: 'kpi_nc_closure_rate', l: 'Tasa cierre no conformidades (%)', t: 'kpi' },
-      { v: 'kpi_risk_reduction_avg', l: 'Reduccion media del riesgo (%)', t: 'kpi' },
-      { v: 'kpi_appetite_compliance', l: 'Conformidad apetito de riesgo (%)', t: 'kpi' },
-      { v: 'kpi_asset_coverage', l: 'Cobertura activos evaluados (%)', t: 'kpi' },
-      { v: 'kpi_risk_no_owner_rate', l: 'Riesgos sin responsable (%)', t: 'kpi' },
-      { v: 'kpi_high_risks_no_plan', l: 'Riesgos altos sin plan (#)', t: 'kpi' },
-      { v: 'kpi_nis2_notification_rate', l: 'Tasa notificacion NIS2 (%)', t: 'kpi' },
-      { v: 'kpi_bcp_coverage', l: 'Cobertura BCP aprobados (%)', t: 'kpi' },
-      { v: 'kpi_mttr_incidents', l: 'MTTR incidentes (dias)', t: 'kpi' },
-      { v: 'kpi_supplier_coverage', l: 'Cobertura evaluacion proveedores Tier-1 (%)', t: 'kpi' },
+      { v: 'kpi_treatment_rate', l: I18n.lang() === 'en' ? 'High risk treatment rate (%)' : 'Tasa de tratamiento riesgos altos (%)', t: 'kpi' },
+      { v: 'kpi_mttt', l: I18n.lang() === 'en' ? 'Mean time to treat (days)' : 'Tiempo medio de tratamiento (dias)', t: 'kpi' },
+      { v: 'kpi_control_coverage', l: I18n.lang() === 'en' ? 'ISO 27002 control coverage (%)' : 'Cobertura controles ISO 27002 (%)', t: 'kpi' },
+      { v: 'kpi_control_maturity_avg', l: I18n.lang() === 'en' ? 'Average control maturity (0-5)' : 'Madurez media de controles (0-5)', t: 'kpi' },
+      { v: 'kpi_policy_review', l: I18n.lang() === 'en' ? 'Policy review compliance (%)' : 'Cumplimiento revision politicas (%)', t: 'kpi' },
+      { v: 'kpi_nc_closure_rate', l: I18n.lang() === 'en' ? 'Non-conformity closure rate (%)' : 'Tasa cierre no conformidades (%)', t: 'kpi' },
+      { v: 'kpi_risk_reduction_avg', l: I18n.lang() === 'en' ? 'Average risk reduction (%)' : 'Reduccion media del riesgo (%)', t: 'kpi' },
+      { v: 'kpi_appetite_compliance', l: I18n.lang() === 'en' ? 'Risk appetite compliance (%)' : 'Conformidad apetito de riesgo (%)', t: 'kpi' },
+      { v: 'kpi_asset_coverage', l: I18n.lang() === 'en' ? 'Assessed assets coverage (%)' : 'Cobertura activos evaluados (%)', t: 'kpi' },
+      { v: 'kpi_risk_no_owner_rate', l: I18n.lang() === 'en' ? 'Risks without owner (%)' : 'Riesgos sin responsable (%)', t: 'kpi' },
+      { v: 'kpi_high_risks_no_plan', l: I18n.lang() === 'en' ? 'High risks without plan (#)' : 'Riesgos altos sin plan (#)', t: 'kpi' },
+      { v: 'kpi_nis2_notification_rate', l: I18n.lang() === 'en' ? 'NIS2 notification rate (%)' : 'Tasa notificacion NIS2 (%)', t: 'kpi' },
+      { v: 'kpi_bcp_coverage', l: I18n.lang() === 'en' ? 'Approved BCP coverage (%)' : 'Cobertura BCP aprobados (%)', t: 'kpi' },
+      { v: 'kpi_mttr_incidents', l: I18n.lang() === 'en' ? 'Incident MTTR (days)' : 'MTTR incidentes (dias)', t: 'kpi' },
+      { v: 'kpi_supplier_coverage', l: I18n.lang() === 'en' ? 'Tier-1 supplier assessment coverage (%)' : 'Cobertura evaluacion proveedores Tier-1 (%)', t: 'kpi' },
     ];
 
     const html = `
       <form id="kri-form">
         <div class="form-group">
-          <label>Tipo de indicador</label>
+          <label>${t('kris.form_type')}</label>
           <select id="kri-f-type" ${kri?.is_system ? 'disabled' : ''}>
-            <option value="kri" ${(!kri || kri.indicator_type === 'kri') ? 'selected' : ''}>KRI — Indicador de riesgo</option>
-            <option value="kpi" ${kri?.indicator_type === 'kpi' ? 'selected' : ''}>KPI — Indicador de rendimiento</option>
+            <option value="kri" ${(!kri || kri.indicator_type === 'kri') ? 'selected' : ''}>${t('kris.types.kri')}</option>
+            <option value="kpi" ${kri?.indicator_type === 'kpi' ? 'selected' : ''}>${t('kris.types.kpi')}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Metrica</label>
+          <label>${t('kris.form_metric')}</label>
           <select id="kri-f-metric" ${kri?.is_system ? 'disabled' : ''}>
             ${metricOptions.map(o => `<option value="${o.v}" ${kri?.metric_type === o.v ? 'selected' : ''}>[${o.t.toUpperCase()}] ${o.l}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
-          <label>Nombre</label>
-          <input id="kri-f-name" value="${UI.esc(kri?.name || '')}" placeholder="Nombre del indicador" required>
+          <label>${t('kris.form_name')}</label>
+          <input id="kri-f-name" value="${UI.esc(kri?.name || '')}" placeholder="${t('kris.form_name_placeholder')}" required>
         </div>
         ${kri ? `
         <div class="form-group">
-          <label>Nombre personalizado (opcional)</label>
-          <input id="kri-f-custom" value="${UI.esc(kri?.custom_name || '')}" placeholder="Deja vacio para usar el nombre original">
+          <label>${t('kris.form_custom_name')}</label>
+          <input id="kri-f-custom" value="${UI.esc(kri?.custom_name || '')}" placeholder="${t('kris.form_custom_placeholder')}">
         </div>` : ''}
         <div class="form-group">
-          <label>Descripcion / referencia normativa</label>
+          <label>${t('kris.form_desc')}</label>
           <textarea id="kri-f-desc" rows="2" placeholder="ISO 27001 cl.9.1 — ...">${UI.esc(kri?.description || '')}</textarea>
         </div>
         <div class="form-group">
-          <label>Direccion</label>
+          <label>${t('kris.form_direction')}</label>
           <select id="kri-f-dir">
-            <option value="lower_is_better" ${(!kri || kri.direction === 'lower_is_better') ? 'selected' : ''}>Menor es mejor (ej. incidentes, dias)</option>
-            <option value="higher_is_better" ${kri?.direction === 'higher_is_better' ? 'selected' : ''}>Mayor es mejor (ej. % cobertura, madurez)</option>
+            <option value="lower_is_better" ${(!kri || kri.direction === 'lower_is_better') ? 'selected' : ''}>${t('kris.dir_lower_opt')}</option>
+            <option value="higher_is_better" ${kri?.direction === 'higher_is_better' ? 'selected' : ''}>${t('kris.dir_higher_opt')}</option>
           </select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
-            <label>Umbral de aviso</label>
+            <label>${t('kris.form_warn_threshold')}</label>
             <input id="kri-f-warn" type="number" step="0.1" value="${kri?.warning_threshold ?? ''}">
           </div>
           <div class="form-group">
-            <label>Umbral de breach</label>
+            <label>${t('kris.form_breach_threshold')}</label>
             <input id="kri-f-breach" type="number" step="0.1" value="${kri?.breach_threshold ?? ''}">
           </div>
         </div>
         <div class="form-group">
-          <label>Email de alerta (opcional)</label>
-          <input id="kri-f-email" type="email" value="${UI.esc(kri?.recipient_email || '')}" placeholder="seguridad@empresa.com">
+          <label>${t('kris.form_email')}</label>
+          <input id="kri-f-email" type="email" value="${UI.esc(kri?.recipient_email || '')}" placeholder="${t('kris.form_email_placeholder')}">
         </div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;">
           <label style="display:flex;gap:6px;align-items:center;">
             <input type="checkbox" id="kri-f-active" ${!kri || kri.is_active ? 'checked' : ''}>
-            Activo
+            ${t('kris.form_active')}
           </label>
           <label style="display:flex;gap:6px;align-items:center;">
             <input type="checkbox" id="kri-f-alert" ${!kri || kri.alert_on_breach ? 'checked' : ''}>
-            Alertar en breach
+            ${t('kris.form_alert_breach')}
           </label>
           <label style="display:flex;gap:6px;align-items:center;">
             <input type="checkbox" id="kri-f-visible" ${!kri || kri.is_visible ? 'checked' : ''}>
-            Visible
+            ${t('kris.form_visible')}
           </label>
         </div>
       </form>
     `;
 
     UI.modal(
-      id ? 'Editar indicador' : 'Nuevo KRI',
+      id ? t('kris.modal_edit_title') : t('kris.modal_new_title'),
       html,
       {
         actions: `
-          <button class="btn btn-ghost" onclick="UI.closeModal()">Cancelar</button>
-          <button class="btn btn-primary" id="kri-modal-save">${id ? 'Guardar' : 'Crear'}</button>
+          <button class="btn btn-ghost" onclick="UI.closeModal()">${t('common.cancel')}</button>
+          <button class="btn btn-primary" id="kri-modal-save">${id ? t('common.save') : t('common.create')}</button>
         `,
       }
     );
@@ -442,7 +449,7 @@ const ViewKRIs = {
 
   async _save(id, existing) {
     const name = document.getElementById('kri-f-name')?.value?.trim();
-    if (!name) { UI.toast('El nombre es obligatorio', 'error'); return false; }
+    if (!name) { UI.toast(t('kris.name_required'), 'error'); return false; }
 
     const body = {
       name,
@@ -464,12 +471,12 @@ const ViewKRIs = {
     try {
       if (id) {
         await Api.patch(`/api/kris/${id}`, body);
-        UI.toast('Indicador actualizado');
+        UI.toast(t('kris.updated_ok'));
       } else {
         const metricType = document.getElementById('kri-f-metric')?.value;
         const indicatorType = document.getElementById('kri-f-type')?.value || 'kri';
         await Api.post('/api/kris', { ...body, metric_type: metricType, indicator_type: indicatorType });
-        UI.toast('Indicador creado');
+        UI.toast(t('kris.created_ok'));
       }
       await ViewKRIs._reload();
       return true;

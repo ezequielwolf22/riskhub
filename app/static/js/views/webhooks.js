@@ -11,28 +11,28 @@ const ViewWebhooks = (() => {
     const isEdit = !!existing;
     const ev = existing || {};
     UI.openModal(`
-      <h3 style="margin:0 0 16px;color:var(--brand-purple);">${isEdit ? 'Editar' : 'Nuevo'} Webhook</h3>
+      <h3 style="margin:0 0 16px;color:var(--brand-purple);">${isEdit ? t('webhooks.modal_title_edit') : t('webhooks.modal_title_new')}</h3>
       <div style="display:grid;gap:12px;">
         <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Nombre *</label>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">${t('webhooks.name_label')}</label>
           <input id="wh-name" class="input-field" style="width:100%;" value="${UI.esc(ev.name || '')}">
         </div>
         <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">URL destino * (debe ser pública)</label>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">${t('webhooks.url_label')}</label>
           <input id="wh-url" class="input-field" style="width:100%;"
-                 placeholder="https://hooks.ejemplo.com/..." value="${UI.esc(ev.url || '')}">
+                 placeholder="${t('webhooks.url_placeholder')}" value="${UI.esc(ev.url || '')}">
         </div>
         <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Secret HMAC (opcional)</label>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">${t('webhooks.secret_label')}</label>
           <input id="wh-secret" class="input-field" style="width:100%;" type="password"
-                 placeholder="Dejar vacío para no firmar">
+                 placeholder="${t('webhooks.secret_placeholder')}">
         </div>
         <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:8px;">Eventos *</label>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:8px;">${t('webhooks.events_label')}</label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
               <input type="checkbox" id="wh-ev-all" onchange="ViewWebhooks._toggleAll(this)">
-              <strong>Todos los eventos</strong>
+              <strong>${t('webhooks.all_events')}</strong>
             </label>
             ${_availableEvents.map(e => `
               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
@@ -43,18 +43,18 @@ const ViewWebhooks = (() => {
           </div>
         </div>
         <div>
-          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Reintentos (1-5)</label>
+          <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">${t('webhooks.retry_label')}</label>
           <input id="wh-retry" type="number" min="1" max="5" class="input-field"
                  style="width:80px;" value="${ev.retry_count || 3}">
         </div>
         ${isEdit ? `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-          <input type="checkbox" id="wh-active" ${ev.is_active ? 'checked' : ''}> Activo
+          <input type="checkbox" id="wh-active" ${ev.is_active ? 'checked' : ''}> ${t('webhooks.active_label')}
         </label>` : ''}
       </div>
       <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-        <button onclick="UI.closeModal()" class="btn-outline">Cancelar</button>
+        <button onclick="UI.closeModal()" class="btn-outline">${t('webhooks.cancel_btn')}</button>
         <button onclick="ViewWebhooks._submit(${isEdit ? ev.id : 'null'})" class="btn-primary">
-          ${isEdit ? 'Guardar' : 'Crear webhook'}
+          ${isEdit ? t('webhooks.save_btn') : t('webhooks.create_btn')}
         </button>
       </div>`);
   }
@@ -79,8 +79,8 @@ const ViewWebhooks = (() => {
       events = [...document.querySelectorAll('.wh-ev-cb:checked')].map(c => c.value);
     }
 
-    if (!name || !url) { UI.toast('Nombre y URL son obligatorios', 'error'); return; }
-    if (!events.length) { UI.toast('Selecciona al menos un evento', 'error'); return; }
+    if (!name || !url) { UI.toast(t('webhooks.name_url_required'), 'error'); return; }
+    if (!events.length) { UI.toast(t('webhooks.event_required'), 'error'); return; }
 
     const body = { name, url, events, retry_count: retry, is_active };
     if (secret) body.secret = secret;
@@ -88,10 +88,10 @@ const ViewWebhooks = (() => {
     try {
       if (id) {
         await Api.webhooks.update(id, body);
-        UI.toast('Webhook actualizado', 'success');
+        UI.toast(t('webhooks.updated_toast'), 'success');
       } else {
         await Api.webhooks.create(body);
-        UI.toast('Webhook creado', 'success');
+        UI.toast(t('webhooks.created_toast'), 'success');
       }
       UI.closeModal();
       _load();
@@ -101,10 +101,10 @@ const ViewWebhooks = (() => {
   }
 
   async function _del(id, name) {
-    if (!confirm(`¿Eliminar webhook "${name}"?`)) return;
+    if (!await UI.confirm(t('webhooks.delete_confirm', { name }))) return;
     try {
       await Api.webhooks.del(id);
-      UI.toast('Webhook eliminado', 'success');
+      UI.toast(t('webhooks.deleted_toast'), 'success');
       _load();
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
@@ -112,12 +112,13 @@ const ViewWebhooks = (() => {
   }
 
   async function _test(id) {
-    UI.toast('Enviando test...', 'info');
+    UI.toast(t('common.loading'), 'info');
     try {
       const r = await Api.webhooks.test(id);
-      UI.toast(`Test enviado (${r.triggered} webhook${r.triggered !== 1 ? 's' : ''})`, 'success');
+      const s = r.triggered !== 1 ? 's' : '';
+      UI.toast(t('webhooks.test_sent', { n: r.triggered, s }), 'success');
     } catch (e) {
-      UI.toast('Error en test: ' + e.message, 'error');
+      UI.toast(t('webhooks.test_error', { msg: e.message }), 'error');
     }
   }
 
@@ -127,8 +128,7 @@ const ViewWebhooks = (() => {
     try {
       const whs = await Api.webhooks.list();
       if (!whs.length) {
-        container.innerHTML = `<div style="text-align:center;padding:48px;color:#9d9d9d;">
-          No hay webhooks configurados. Crea el primero con el botón de arriba.</div>`;
+        container.innerHTML = `<div style="text-align:center;padding:48px;color:#9d9d9d;">${t('webhooks.no_webhooks')}</div>`;
         return;
       }
       container.innerHTML = whs.map(wh => `
@@ -140,26 +140,26 @@ const ViewWebhooks = (() => {
               <span style="background:${wh.is_active ? '#E8F5E9' : '#f0f0f0'};
                            color:${wh.is_active ? '#2e7d32' : '#9d9d9d'};
                            padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">
-                ${wh.is_active ? 'Activo' : 'Inactivo'}
+                ${wh.is_active ? t('webhooks.status.active') : t('webhooks.status.inactive')}
               </span>
             </div>
             <div style="font-size:12px;color:#9d9d9d;margin-top:4px;word-break:break-all;">
               ${UI.esc(wh.url)}
             </div>
             <div style="font-size:11px;color:#bbb;margin-top:4px;">
-              Eventos: ${(wh.events || []).join(', ') || '—'} |
-              Último: ${wh.last_triggered_at ? wh.last_triggered_at.slice(0,16).replace('T',' ') : 'nunca'}
+              ${t('webhooks.events_list', { events: (wh.events || []).join(', ') || '—' })} |
+              ${t('webhooks.last_trigger', { date: wh.last_triggered_at ? wh.last_triggered_at.slice(0, 16).replace('T', ' ') : t('webhooks.never') })}
             </div>
           </div>
           <div style="display:flex;gap:6px;">
             <button onclick="ViewWebhooks._test(${wh.id})" class="btn-outline" style="font-size:12px;padding:4px 10px;">
-              Test
+              ${t('webhooks.test_btn')}
             </button>
-            <button onclick="ViewWebhooks._createModal(${JSON.stringify(wh).replace(/"/g,'&quot;')})"
-                    class="btn-outline" style="font-size:12px;padding:4px 10px;">Editar</button>
+            <button onclick="ViewWebhooks._createModal(${JSON.stringify(wh).replace(/"/g, '&quot;')})"
+                    class="btn-outline" style="font-size:12px;padding:4px 10px;">${t('webhooks.edit_btn')}</button>
             <button onclick="ViewWebhooks._del(${wh.id},'${UI.esc(wh.name)}')"
                     style="background:none;border:1px solid #a83232;color:#a83232;border-radius:6px;
-                           font-size:12px;padding:4px 10px;cursor:pointer;">Eliminar</button>
+                           font-size:12px;padding:4px 10px;cursor:pointer;">${t('webhooks.delete_btn')}</button>
           </div>
         </div>`).join('');
     } catch (e) {
@@ -173,15 +173,13 @@ const ViewWebhooks = (() => {
       <div style="max-width:900px;margin:0 auto;padding:24px 0;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
           <div>
-            <h1 style="font-size:22px;font-weight:700;color:var(--brand-purple);margin:0;">Webhooks</h1>
-            <p style="color:#9d9d9d;font-size:13px;margin:4px 0 0;">
-              Notificaciones HTTP a sistemas externos cuando ocurren eventos en RiskHub
-            </p>
+            <h1 style="font-size:22px;font-weight:700;color:var(--brand-purple);margin:0;">${t('webhooks.title')}</h1>
+            <p style="color:#9d9d9d;font-size:13px;margin:4px 0 0;">${t('webhooks.subtitle')}</p>
           </div>
-          <button onclick="ViewWebhooks._createModal(null)" class="btn-primary">+ Nuevo webhook</button>
+          <button onclick="ViewWebhooks._createModal(null)" class="btn-primary">${t('webhooks.new_btn')}</button>
         </div>
         <div id="wh-list" style="display:grid;gap:12px;">
-          <div style="text-align:center;padding:32px;color:#9d9d9d;">Cargando...</div>
+          <div style="text-align:center;padding:32px;color:#9d9d9d;">${t('webhooks.loading')}</div>
         </div>
       </div>`;
     await _load();

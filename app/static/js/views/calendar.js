@@ -6,8 +6,8 @@ const ViewCalendar = {
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Calendario de tratamiento',
-      'Vencimientos del plan de tratamiento de riesgos y revisiones de controles'
+      t('calendar.title'),
+      t('calendar.subtitle')
     ) + '<div id="cal-root"></div>';
     await ViewCalendar._draw();
   },
@@ -15,7 +15,7 @@ const ViewCalendar = {
   async _draw() {
     const root = document.getElementById('cal-root');
     if (!root) return;
-    root.innerHTML = '<div class="notice">Cargando...</div>';
+    root.innerHTML = `<div class="notice">${t('calendar.loading')}</div>`;
 
     try {
       const [risks, impls] = await Promise.all([
@@ -76,9 +76,11 @@ const ViewCalendar = {
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
 
-    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    const dayNames = ['Lun','Mar','Mie','Jue','Vie','Sab','Dom'];
+    const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
+    const monthNames = Array.from({length:12}, (_, i) =>
+      new Intl.DateTimeFormat(_locale, {month:'long'}).format(new Date(2000, i, 1)));
+    const dayNames = Array.from({length:7}, (_, i) =>
+      new Intl.DateTimeFormat(_locale, {weekday:'short'}).format(new Date(2000, 0, 3 + i)));
 
     const firstDay = new Date(year, month, 1);
     const startDow = (firstDay.getDay() + 6) % 7; // 0=lun
@@ -128,13 +130,13 @@ const ViewCalendar = {
                         : r.residual_level >= 4 ? 'var(--risk-medium)'
                         : 'var(--risk-low)';
             pills += `<div class="cal-pill" style="background:${color};"
-                         title="${UI.esc(r.code + ': ' + (r.asset ? r.asset.name : '') + ' — nivel ' + r.residual_level)}"
+                         title="${UI.esc(r.code + ': ' + (r.asset ? r.asset.name : '') + ' — ' + t('calendar.risk_level_title') + ' ' + r.residual_level)}"
                          onclick="location.hash='#/risks?id=${r.id}';event.stopPropagation();"
                       >${UI.esc(r.code)}</div>`;
           });
           const extraRisks = risks.length - maxRiskPills;
           if (extraRisks > 0) {
-            pills += `<div class="cal-pill-more">+${extraRisks} riesgo${extraRisks > 1 ? 's' : ''}</div>`;
+            pills += `<div class="cal-pill-more">${extraRisks > 1 ? t('calendar.more_risks_plural', {n: extraRisks}) : t('calendar.more_risks', {n: extraRisks})}</div>`;
           }
         }
 
@@ -149,7 +151,7 @@ const ViewCalendar = {
           });
           const extraCtrls = ctrls.length - maxCtrlPills;
           if (extraCtrls > 0) {
-            pills += `<div class="cal-pill-more" style="color:var(--brand-purple);">+${extraCtrls} ctrl${extraCtrls > 1 ? 's' : ''}</div>`;
+            pills += `<div class="cal-pill-more" style="color:var(--brand-purple);">${extraCtrls > 1 ? t('calendar.more_ctrls_plural', {n: extraCtrls}) : t('calendar.more_ctrls', {n: extraCtrls})}</div>`;
           }
         }
 
@@ -173,15 +175,15 @@ const ViewCalendar = {
           <button class="btn btn-ghost" id="cal-prev">&#8592;</button>
           <h2 style="margin:0;font-size:18px;font-weight:700;">${monthNames[month]} ${year}</h2>
           <button class="btn btn-ghost" id="cal-next">&#8594;</button>
-          <button class="btn btn-ghost" id="cal-today" style="font-size:12px;">Hoy</button>
+          <button class="btn btn-ghost" id="cal-today" style="font-size:12px;">${t('calendar.today')}</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-          ${modeBtn('all','Todos')}${modeBtn('risks','Solo riesgos')}${modeBtn('controls','Solo controles')}
+          ${modeBtn('all', t('calendar.all'))}${modeBtn('risks', t('calendar.risks_only'))}${modeBtn('controls', t('calendar.controls_only'))}
         </div>
         <div style="display:flex;gap:16px;font-size:13px;flex-wrap:wrap;">
-          ${monthRisks ? `<span>Vencimientos riesgos: <strong>${monthRisks}</strong>${monthRisksOverdue ? ` <span style="color:var(--risk-high);">(${monthRisksOverdue} vencido${monthRisksOverdue>1?'s':''})</span>` : ''}</span>` : ''}
-          ${monthCtrls ? `<span>Revisiones controles: <strong>${monthCtrls}</strong>${monthCtrlsOverdue ? ` <span style="color:var(--brand-orange);">(${monthCtrlsOverdue} vencida${monthCtrlsOverdue>1?'s':''})</span>` : ''}</span>` : ''}
-          ${!monthRisks && !monthCtrls ? '<span style="color:var(--text-subtle);">Sin eventos este mes</span>' : ''}
+          ${monthRisks ? `<span>${t('calendar.risk_due')} <strong>${monthRisks}</strong>${monthRisksOverdue ? ` <span style="color:var(--risk-high);">(${monthRisksOverdue} ${monthRisksOverdue>1 ? t('calendar.overdue_plural') : t('calendar.overdue')})</span>` : ''}</span>` : ''}
+          ${monthCtrls ? `<span>${t('calendar.ctrl_review')} <strong>${monthCtrls}</strong>${monthCtrlsOverdue ? ` <span style="color:var(--brand-orange);">(${monthCtrlsOverdue} ${monthCtrlsOverdue>1 ? t('calendar.overdue_ctrl_plural') : t('calendar.overdue_ctrl')})</span>` : ''}</span>` : ''}
+          ${!monthRisks && !monthCtrls ? `<span style="color:var(--text-subtle);">${t('calendar.no_events')}</span>` : ''}
         </div>
       </div>
 
@@ -192,21 +194,21 @@ const ViewCalendar = {
 
       <div style="display:flex;gap:16px;margin-top:14px;font-size:12px;align-items:center;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:12px;height:12px;border-radius:3px;background:var(--risk-high);"></div> Riesgo alto (&ge;6)
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--risk-high);"></div> ${t('calendar.legend_high')}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:12px;height:12px;border-radius:3px;background:var(--risk-medium);"></div> Riesgo medio (4-5)
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--risk-medium);"></div> ${t('calendar.legend_medium')}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:12px;height:12px;border-radius:3px;background:var(--risk-low);"></div> Riesgo bajo (&lt;4)
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--risk-low);"></div> ${t('calendar.legend_low')}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:12px;height:12px;border-radius:3px;background:var(--brand-purple);"></div> Control (proxima revision)
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--brand-purple);"></div> ${t('calendar.legend_ctrl_upcoming')}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:12px;height:12px;border-radius:3px;background:var(--brand-orange);"></div> Control (revision vencida)
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--brand-orange);"></div> ${t('calendar.legend_ctrl_overdue')}
         </div>
-        <span style="color:var(--text-muted);margin-left:8px;">Haz clic en una pastilla para ir al detalle</span>
+        <span style="color:var(--text-muted);margin-left:8px;">${t('calendar.click_pill')}</span>
       </div>
     `;
   },

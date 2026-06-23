@@ -5,8 +5,8 @@ const ViewIncidents = (() => {
     p1: t('incidents.severity.p1'), p2: t('incidents.severity.p2'), p3: t('incidents.severity.p3'), p4: t('incidents.severity.p4'),
   };
   const STATUS_LABELS = {
-    open: t('incidents.status.open'), investigating: /* TODO: i18n */ 'En investigacion',
-    contained: /* TODO: i18n */ 'Contenido', resolved: t('incidents.status.resolved'), closed: t('incidents.status.closed'),
+    open: t('incidents.status.open'), investigating: t('incidents.status.investigating'),
+    contained: t('incidents.status.contained'), resolved: t('incidents.status.resolved'), closed: t('incidents.status.closed'),
   };
   const STATUS_COLORS = {
     open: 'var(--risk-critical)', investigating: 'var(--risk-high)',
@@ -39,8 +39,8 @@ const ViewIncidents = (() => {
         <select id="f-status" class="input" style="width:160px;">
           <option value="">${t('common.all')}</option>
           <option value="open">${t('incidents.status.open')}</option>
-          <option value="investigating">/* TODO: i18n */ En investigacion</option>
-          <option value="contained">/* TODO: i18n */ Contenido</option>
+          <option value="investigating">${t('incidents.status.investigating')}</option>
+          <option value="contained">${t('incidents.status.contained')}</option>
           <option value="resolved">${t('incidents.status.resolved')}</option>
           <option value="closed">${t('incidents.status.closed')}</option>
         </select>
@@ -113,9 +113,9 @@ const ViewIncidents = (() => {
         <td>${_badge(SEVERITY_LABELS[inc.severity] || inc.severity, SEV_COLORS[inc.severity] || '#888')}</td>
         <td>${_badge(STATUS_LABELS[inc.status] || inc.status, STATUS_COLORS[inc.status] || '#888')}</td>
         <td>${inc.nis2_notification_required ? (inc.nis2_notification_sent_at
-          ? '<span style="color:var(--risk-low);font-size:11px;">Notificado</span>'
-          : '<span style="color:var(--risk-critical);font-size:11px;font-weight:700;">Pendiente</span>')
-          : '<span style="color:var(--text-muted);font-size:11px;">No</span>'}</td>
+          ? `<span style="color:var(--risk-low);font-size:11px;">${t('incidents.nis2_notified')}</span>`
+          : `<span style="color:var(--risk-critical);font-size:11px;font-weight:700;">${t('common.pending')}</span>`)
+          : `<span style="color:var(--text-muted);font-size:11px;">${t('common.no')}</span>`}</td>
         <td>${inc.detected_at ? inc.detected_at.slice(0, 10) : '-'}</td>
         <td>
           <button class="btn btn-sm" data-id="${inc.id}" data-action="edit">${t('common.edit')}</button>
@@ -189,13 +189,13 @@ const ViewIncidents = (() => {
         <div class="span2" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.2);border-radius:6px;">
           <input type="checkbox" id="f-continuity" ${v.affects_continuity?'checked':''}>
           <div>
-            <label for="f-continuity" style="margin:0;cursor:pointer;font-weight:600;">/* TODO: i18n */ Afecta a la continuidad del negocio</label>
-            <div style="font-size:11px;color:var(--text-muted)">/* TODO: i18n */ Activa el modulo BCP — al guardar podras activar un plan de continuidad directamente.</div>
+            <label for="f-continuity" style="margin:0;cursor:pointer;font-weight:600;">${t('incidents.affects_continuity')}</label>
+            <div style="font-size:11px;color:var(--text-muted)">${t('incidents.affects_continuity_hint')}</div>
           </div>
         </div>
         <div class="span2"><label>${t('incidents.affected_assets')}</label><input id="f-affected" class="input" value="${UI.esc((v.affected_systems || []).join(', '))}"></div>
         <div class="span2"><label>${t('incidents.root_cause')}</label><textarea id="f-root" class="input" rows="2">${UI.esc(v.root_cause || '')}</textarea></div>
-        <div class="span2"><label>/* TODO: i18n */ Acciones de respuesta tomadas</label><textarea id="f-response" class="input" rows="2">${UI.esc(v.response_actions || '')}</textarea></div>
+        <div class="span2"><label>${t('incidents.response_actions')}</label><textarea id="f-response" class="input" rows="2">${UI.esc(v.response_actions || '')}</textarea></div>
         <div class="span2"><label>${t('incidents.lessons_learned')}</label><textarea id="f-lessons" class="input" rows="2">${UI.esc(v.lessons_learned || '')}</textarea></div>
       </div>
     `;
@@ -254,17 +254,17 @@ const ViewIncidents = (() => {
     modal.innerHTML = `
     <div class="modal" style="max-width:440px">
       <div class="modal-header" style="border-bottom:2px solid #DC2626">
-        <h2 style="color:#DC2626"><i class="ti ti-alert-triangle"></i> Incidente de continuidad</h2>
+        <h2 style="color:#DC2626"><i class="ti ti-alert-triangle"></i> ${t('incidents.bcp_continuity_title')}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
       <div class="modal-body" style="padding:20px 24px">
-        <p style="font-size:13px;margin-bottom:16px">El incidente <strong>${UI.esc(incident.code)}</strong> esta marcado como que afecta a la continuidad del negocio.</p>
-        <p style="font-size:13px;color:var(--text-muted)">¿Deseas ir al modulo BCP para activar un plan de continuidad vinculado a este incidente?</p>
+        <p style="font-size:13px;margin-bottom:16px">${t('incidents.affects_continuity')}: <strong>${UI.esc(incident.code)}</strong></p>
+        <p style="font-size:13px;color:var(--text-muted)">${t('incidents.affects_continuity_hint')}</p>
       </div>
       <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:12px 20px">
-        <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Ahora no</button>
+        <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">${t('incidents.bcp_not_now')}</button>
         <button class="btn btn-sm" style="background:#DC2626;color:#fff;border-color:#DC2626" id="go-bcp-btn">
-          <i class="ti ti-alert-triangle"></i> Ir a activacion BCP
+          <i class="ti ti-alert-triangle"></i> ${t('incidents.bcp_go')}
         </button>
       </div>
     </div>`;

@@ -877,6 +877,9 @@ class Supplier(Base):
     onboarding_decision_at = Column(DateTime, nullable=True)
     onboarding_conditions = Column(JSON, nullable=True)             # [{id, description, due_days, vendor_issue_id}]
     sign_off_chain_state = Column(JSON, nullable=True)              # [{id, signed_at, signed_by_name, signed_by_user_id, doc_id, skipped, skip_justification}]
+    # v4.4.0 — monitoreo periodico (scheduler supplier_monitoring)
+    last_monitored_at = Column(DateTime, nullable=True)
+    monitoring_status = Column(String(16), nullable=True)           # ok|issue|unknown
 
 
 class OnboardingGateConfig(Base):

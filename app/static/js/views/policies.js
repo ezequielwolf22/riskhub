@@ -6,7 +6,7 @@ const ViewPolicies = (() => {
     review:   t('policies.status.review'),
     approved: t('policies.status.approved'),
     published: t('policies.status.published'),
-    obsolete: t('common.archived'), /* TODO: i18n obsolete */
+    obsolete: t('policies.status.obsolete'),
   });
   const STATUS_COLORS = {
     draft: 'var(--text-muted)', review: 'var(--brand-orange)',
@@ -15,10 +15,10 @@ const ViewPolicies = (() => {
 
   // Tipos de documento ISMS estandarizados
   const ISMS_TYPES = {
-    politica:             'Politica',     /* TODO: i18n policy type labels */
-    norma:                'Norma',
-    instruccion_tecnica:  'Instruccion tecnica',
-    evidencia:            'Otra evidencia',
+    politica:             t('policies.type.politica'),
+    norma:                t('policies.type.estandar'),
+    instruccion_tecnica:  t('policies.type.guia'),
+    evidencia:            t('common.other'),
   };
   const ISMS_TYPE_COLORS = {
     politica:            'var(--brand-purple)',
@@ -89,7 +89,7 @@ const ViewPolicies = (() => {
           </button>
           <button onclick="ViewPolicies._generateWithAI()" class="btn"
                   style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
-            ${t('common.generate')} /* TODO: i18n generate with AI */
+            ${t('policies.generate_ai')}
           </button>
           <button class="btn btn-primary" id="btn-new-pol">+ ${t('policies.new')}</button>
         </div>
@@ -271,11 +271,11 @@ const ViewPolicies = (() => {
 
     return `
       <div class="form-grid">
-        ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">/* TODO: i18n */ Nota IA: ${UI.esc(notes)}</div></div>` : ''}
+        ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">${t('policies.ai_note')} ${UI.esc(notes)}</div></div>` : ''}
         <div class="span2"><label>${t('common.title')} *</label><input id="f-title" class="input" value="${UI.esc(title)}"></div>
 
         <div>
-          <label>/* TODO: i18n */ Nivel jerarquico
+          <label>${t('policies.hierarchy_level')}
             <span title="Jerarquia ISO: Politica (alto nivel) > Norma (reglas) > Procedimiento (pasos) > Instruccion Tecnica (configuracion exacta)"
                   style="cursor:help;color:var(--text-muted);font-weight:400;font-size:11px;"> (?)</span>
           </label>
@@ -288,7 +288,7 @@ const ViewPolicies = (() => {
         </div>
 
         <div>
-          <label>/* TODO: i18n */ Documento padre (jerarquia)</label>
+          <label>${t('policies.parent_doc')}</label>
           <select id="f-parent" class="input">
             <option value="">— Ninguno (documento raiz) —</option>
             ${parentOptions}
@@ -297,7 +297,7 @@ const ViewPolicies = (() => {
         </div>
 
         <div>
-          <label>/* TODO: i18n */ Tipo de documento ISMS</label>
+          <label>${t('policies.doc_type')}</label>
           <select id="f-cat" class="input">
             <option value="">-- Sin clasificar --</option>
             ${Object.entries(ISMS_TYPES).map(([k, l]) =>
@@ -323,13 +323,13 @@ const ViewPolicies = (() => {
           </select>
         </div>
         <div><label>${t('policies.next_review')}</label><input type="date" id="f-review" class="input" value="${UI.esc(review)}"></div>
-        <div><label>/* TODO: i18n */ Clausulas ISO (separadas por coma)</label><input id="f-clauses" class="input" value="${UI.esc(clauses)}"></div>
+        <div><label>${t('policies.iso_clauses')}</label><input id="f-clauses" class="input" value="${UI.esc(clauses)}"></div>
         <div class="span2"><label>${t('audits.audit_scope')}</label><textarea id="f-scope" class="input" rows="2">${UI.esc(scope)}</textarea></div>
         <div class="span2"><label>${t('common.summary')}</label><textarea id="f-content" class="input" rows="5">${UI.esc(content)}</textarea></div>
         ${p && p.source_document_id ? `
         <div class="span2" style="padding-top:14px;border-top:1px solid var(--border);margin-top:4px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                      letter-spacing:.5px;margin-bottom:8px;">/* TODO: i18n */ Analisis de madurez SGSI</div>
+                      letter-spacing:.5px;margin-bottom:8px;">${t('policies.maturity_analysis')}</div>
           <div id="pol-maturity-panel">
             <div style="font-size:12px;color:var(--text-muted);">${t('common.loading_data')}</div>
           </div>
@@ -476,7 +476,7 @@ const ViewPolicies = (() => {
       <p style="font-size:13px;color:var(--text-subtle);margin-bottom:4px;">Al continuar se creara una nueva version <strong>v${UI.esc(nextVer)}</strong> en borrador con el mismo contenido. El documento actual permanecera vigente hasta que la nueva version sea aprobada, momento en que pasara automaticamente a estado <em>obsoleta</em>.</p>
     `, {
       actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
-                <button class="btn btn-primary" id="m-confirm-version">/* TODO: i18n */ Crear version ${UI.esc(nextVer)}</button>`,
+                <button class="btn btn-primary" id="m-confirm-version">${t('policies.create_version')} ${UI.esc(nextVer)}</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-confirm-version').onclick = async () => {
@@ -547,7 +547,7 @@ const ViewPolicies = (() => {
   async function _generateWithAI() {
     UI.openModal(`
       <div style="max-width:600px;">
-        <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">/* TODO: i18n */ Generar documento ISMS con IA</h3>
+        <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">${t('policies.generate_ai_title')}</h3>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 18px;">
           El agente IA redactara un borrador adaptado a tu organizacion y al marco normativo elegido.
         </p>

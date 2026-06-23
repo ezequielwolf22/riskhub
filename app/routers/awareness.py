@@ -28,7 +28,7 @@ from app.i18n import get_lang, t as _t
 
 from app.database import get_db
 from app.models import (
-    AiConfig, AwarenessItem, AwarenessBranding, Risk, RiskStatus, User,
+    AiConfig, AwarenessItem, AwarenessBranding, Policy, PolicyStatus, Risk, RiskStatus, User,
 )
 from app.routers.ai_config import resolve_api_key
 from app.security import check_org_access, filter_by_org, get_current_user, require_admin, require_analyst
@@ -241,6 +241,24 @@ def generate_content(
         for r in risks
     ) or "No hay riesgos activos registrados."
 
+    # Politicas publicadas — se inyectan para que la infografia refleje las normas reales de la org
+    prompt_lower = body.prompt.lower()
+    policies_q = (
+        _fbo(db.query(Policy), Policy, current_user)
+        .filter(Policy.status.in_([PolicyStatus.APPROVED, PolicyStatus.PUBLISHED]))
+    )
+    all_policies = policies_q.all()
+    # Priorizar politicas cuyo titulo o categoria coincide con palabras del prompt
+    def _relevance(p):
+        text = f"{p.title} {p.category or ''}".lower()
+        return sum(1 for word in prompt_lower.split() if len(word) > 3 and word in text)
+    sorted_policies = sorted(all_policies, key=_relevance, reverse=True)[:5]
+    policies_summary = "\n".join(
+        f"- [{p.code}] {p.title} (v{p.version}, {p.category or 'General'}):\n"
+        f"  {(p.content or '')[:400].strip()}"
+        for p in sorted_policies
+    ) or "No hay politicas publicadas en la organizacion."
+
     # Contexto de la organizacion
     from app.services.context_builder import build_context
     org_context = build_context(db, query=body.prompt, organization_id=current_user.organization_id)
@@ -258,6 +276,7 @@ def generate_content(
             user_prompt=prompt_extra,
             org_context=org_context,
             risks_summary=risks_summary,
+            policies_summary=policies_summary,
             api_key=api_key,
             model=model,
         )

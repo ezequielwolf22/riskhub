@@ -4,7 +4,7 @@ const ViewTasks = (() => {
   const STATUS_COLS = [
     { id: 'pending',     label: () => t('tasks.status.pending'),     color: 'var(--text-muted)' },
     { id: 'in_progress', label: () => t('tasks.status.in_progress'), color: 'var(--brand-purple)' },
-    { id: 'blocked',     label: () => t('common.pending') /* TODO: i18n blocked */, color: 'var(--risk-high)' },
+    { id: 'blocked',     label: () => t('tasks.status.blocked'), color: 'var(--risk-high)' },
     { id: 'done',        label: () => t('tasks.status.completed'),   color: 'var(--risk-low)' },
   ];
 
@@ -89,7 +89,7 @@ const ViewTasks = (() => {
       wrap.innerHTML = `
         <div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">${t('common.total')}</div></div>
         <div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${s.by_status.in_progress||0}</div><div class="stat-label">${t('tasks.status.in_progress')}</div></div>
-        <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.by_status.blocked||0}</div><div class="stat-label">${t('common.pending')} /* TODO: i18n blocked */</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.by_status.blocked||0}</div><div class="stat-label">${t('tasks.status.blocked')}</div></div>
         <div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.overdue}</div><div class="stat-label">${t('tasks.overdue')}</div></div>
       `;
     } catch (_) {}

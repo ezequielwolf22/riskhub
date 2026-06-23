@@ -26,7 +26,7 @@ logger = logging.getLogger("riskhub.awareness")
 
 _SYSTEM_PROMPT = """Eres un experto en concienciacion de ciberseguridad corporativa.
 Tu tarea es generar el contenido de una infografia de seguridad profesional,
-clara, impactante y adaptada al contexto de la organizacion.
+clara, impactante y adaptada al contexto REAL de la organizacion.
 
 Devuelve UNICAMENTE un objeto JSON valido con esta estructura exacta (sin markdown):
 {
@@ -45,13 +45,16 @@ Devuelve UNICAMENTE un objeto JSON valido con esta estructura exacta (sin markdo
   "hashtags": ["#Ciberseguridad", "#Awareness"]
 }
 
-Reglas:
+Reglas CRITICAS:
 - Textos SIEMPRE en castellano.
 - key_points: entre 3 y 5 puntos concisos (max 80 chars cada uno).
 - do_items: entre 2 y 4 acciones positivas.
 - dont_items: entre 2 y 3 prohibiciones claras.
 - statistic puede ser null si no aplica.
-- El contenido debe ser especifico al contexto y riesgos proporcionados, no generico.
+- OBLIGATORIO: usa el contenido de las POLITICAS REALES de la organizacion (si se proporcionan).
+  Si hay una politica de contrasenas, las reglas de la infografia DEBEN coincidir con esa politica.
+  Si hay una politica de teletrabajo, las recomendaciones DEBEN seguir sus directrices exactas.
+  NO inventes normas que contradigan las politicas reales de la org.
 - Usa terminologia ISO 27001/27002 cuando sea apropiado.
 """
 
@@ -63,13 +66,20 @@ def generate_content(
     api_key: str,
     model: str = "claude-haiku-4-5",
     max_tokens: int = 8192,
+    policies_summary: str = "",
 ) -> dict:
     """Llama al agente IA y devuelve el dict de contenido de la infografia."""
     import anthropic
 
+    policies_block = (
+        f"\n\nPOLITICAS REALES DE LA ORGANIZACION (usa su contenido, no lo contradigas):\n{policies_summary}"
+        if policies_summary and "No hay politicas" not in policies_summary
+        else ""
+    )
     full_prompt = (
         f"PETICION DEL USUARIO:\n{user_prompt}\n\n"
-        f"CONTEXTO DE LA ORGANIZACION:\n{org_context}\n\n"
+        f"CONTEXTO DE LA ORGANIZACION:\n{org_context}"
+        f"{policies_block}\n\n"
         f"RESUMEN DE RIESGOS ACTIVOS:\n{risks_summary}"
     )
 

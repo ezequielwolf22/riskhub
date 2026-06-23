@@ -1,12 +1,5 @@
 /* Vista de dashboard de cumplimiento multi-framework. */
 
-/**
- * Renderiza un SVG de progress ring circular para el dashboard de compliance.
- * @param {number} pct  Porcentaje 0-100
- * @param {number} size Tamano en px (default 80)
- * @param {number} strokeWidth Grosor del trazo (default 8)
- * @returns {string} HTML del ring
- */
 function _renderProgressRing(pct, size = 80, strokeWidth = 8) {
   const r = (size - strokeWidth) / 2;
   const circ = 2 * Math.PI * r;
@@ -29,17 +22,12 @@ function _renderProgressRing(pct, size = 80, strokeWidth = 8) {
 
 const ViewCompliance = (() => {
 
-  // Estado de panel expandido por framework key
   let _expandedPanel = null;
-  // Cache de datos de compliance para los paneles
   let _compData = null;
-  // Cache de controles implementados para los paneles ISO/NIST/ENS
   let _implsData = null;
-  // Normativas activas y nivel ENS desde el contexto organizacional
-  let _activeFrameworks = null;   // null = mostrar todo; [] = ISO 27001 mínimo
+  let _activeFrameworks = null;
   let _ensLevel = null;
 
-  // Mapa interno de frameworks disponibles
   const _FW_META = {
     iso27001: { label: 'ISO 27001:2022',      dataKey: 'iso27001' },
     iso22301: { label: 'ISO 22301:2019',      dataKey: 'iso22301' },
@@ -52,7 +40,6 @@ const ViewCompliance = (() => {
     hipaa:    { label: 'HIPAA Security Rule',  dataKey: 'hipaa' },
   };
 
-  // Cache de datos BCP/BCM para ISO 22301
   let _bcpCompData = null;
 
   function _scoreColor(score) {
@@ -63,10 +50,10 @@ const ViewCompliance = (() => {
   }
 
   function _scoreLabel(score) {
-    if (score >= 75) return 'Conforme';
-    if (score >= 50) return 'Parcial';
-    if (score >= 25) return 'Deficiente';
-    return 'Critico';
+    if (score >= 75) return t('compliance.score_conforme');
+    if (score >= 50) return t('compliance.score_parcial');
+    if (score >= 25) return t('compliance.score_deficiente');
+    return t('compliance.score_critico');
   }
 
   function _gaugeHtml(label, score, sublabel, frameworkKey) {
@@ -80,7 +67,7 @@ const ViewCompliance = (() => {
            onmouseover="this.style.boxShadow='0 0 0 2px var(--brand-purple-4)'"
            onmouseout="this.style.boxShadow=''"
            onclick="ViewCompliance._togglePanel('${frameworkKey}')"
-           title="Clic para ver detalle de ${UI.esc(label)}">
+           title="${UI.esc(t('compliance.click_see', { label }))}">
         <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">${UI.esc(label)}</div>
         <div style="position:relative;width:100px;height:100px;margin:0 auto 8px;">
           <svg viewBox="0 0 36 36" style="width:100px;height:100px;">
@@ -99,8 +86,8 @@ const ViewCompliance = (() => {
         ${sublabel ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${UI.esc(sublabel)}</div>` : ''}
         <div style="font-size:11px;color:var(--brand-purple);margin-top:8px;">
           ${isExpanded
-            ? `<span>&#9650; Ocultar detalle</span>`
-            : `<span>&#9660; Ver detalle</span>`}
+            ? `<span>&#9650; ${UI.esc(t('compliance.hide_detail'))}</span>`
+            : `<span>&#9660; ${UI.esc(t('compliance.see_detail'))}</span>`}
         </div>
       </div>
     `;
@@ -108,7 +95,7 @@ const ViewCompliance = (() => {
 
   function _gapsHtml(gaps) {
     if (!gaps || !gaps.length) {
-      return '<p style="color:var(--risk-low);font-size:13px;">Sin brechas identificadas.</p>';
+      return `<p style="color:var(--risk-low);font-size:13px;">${UI.esc(t('compliance.no_gaps'))}</p>`;
     }
     return gaps.map(g => `
       <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
@@ -141,7 +128,6 @@ const ViewCompliance = (() => {
     return `<div style="margin-top:12px;">${bars}</div>`;
   }
 
-  // Normaliza un impl (puede tener control anidado) a un objeto plano con code/name/theme
   function _flatImpl(i) {
     return {
       id: i.id,
@@ -156,23 +142,14 @@ const ViewCompliance = (() => {
     };
   }
 
-  // ============================================================
-  // Panel de detalle por framework
-  // ============================================================
-
   function _getActiveFrameworkKeys() {
-    // Si no hay normativas configuradas → mostrar todos los frameworks disponibles
     const all = Object.keys(_FW_META);
     if (!_activeFrameworks || _activeFrameworks.length === 0) {
-      // ISO 22301 solo si hay datos BCP
       if (!_bcpCompData) return all.filter(k => k !== 'iso22301');
       return all;
     }
-    // Filtrar solo los que tienen datos en _FW_META
     const active = _activeFrameworks.filter(k => _FW_META[k]);
-    // Siempre garantizar ISO 27001 como base
     if (!active.includes('iso27001')) active.unshift('iso27001');
-    // ISO 22301 siempre visible si hay datos BCP, independiente de active_frameworks
     if (_bcpCompData && !active.includes('iso22301')) active.push('iso22301');
     return active;
   }
@@ -194,7 +171,6 @@ const ViewCompliance = (() => {
 
     const data = _compData;
     const nist = data.nist_csf || {};
-    // Determinar qué frameworks mostrar
     const activeKeys = _getActiveFrameworkKeys();
     gaugesEl.innerHTML = activeKeys
       .map(k => {
@@ -203,7 +179,7 @@ const ViewCompliance = (() => {
         const d = data[m.dataKey] || {};
         const score = k === 'nist_csf' ? (nist?.score || 0) : (d.score || 0);
         const sublabel = (k === 'ens' && _ensLevel)
-          ? `Nivel ${_ensLevel.charAt(0).toUpperCase() + _ensLevel.slice(1)}`
+          ? t('compliance.ens_level_prefix', { level: _ensLevel.charAt(0).toUpperCase() + _ensLevel.slice(1) })
           : (d.label || '');
         return _gaugeHtml(m.label, score, sublabel, k);
       }).join('');
@@ -211,7 +187,6 @@ const ViewCompliance = (() => {
     if (_expandedPanel) {
       panelEl.style.display = 'block';
       panelEl.innerHTML = _detailPanelHtml(_expandedPanel, data);
-      // Wire buttons inside the new panel
       const detailedBtn = document.getElementById('btn-gap-detailed');
       if (detailedBtn) detailedBtn.onclick = () => _runDetailedGapAnalysis(_expandedPanel);
     } else {
@@ -222,14 +197,18 @@ const ViewCompliance = (() => {
 
   function _statusBadge(status) {
     const map = {
-      'implemented': { label: 'Implementado', color: 'var(--risk-low)', bg: '#DCFCE7' },
-      'partial':     { label: 'Parcial',       color: '#D97706',        bg: '#FEF9C3' },
-      'planned':     { label: 'Planificado',   color: '#2563EB',        bg: '#DBEAFE' },
-      'not_implemented': { label: 'No impl.',  color: 'var(--risk-high)', bg: '#FEE2E2' },
+      'implemented':     { key: 'compliance.status_implemented', color: 'var(--risk-low)', bg: '#DCFCE7' },
+      'partial':         { key: 'compliance.status_partial',     color: '#D97706',          bg: '#FEF9C3' },
+      'planned':         { key: 'compliance.status_planned',     color: '#2563EB',           bg: '#DBEAFE' },
+      'not_implemented': { key: 'compliance.status_not_impl',    color: 'var(--risk-high)',  bg: '#FEE2E2' },
     };
-    const s = map[status] || { label: status || '-', color: 'var(--text-muted)', bg: 'var(--bg-2)' };
-    return `<span style="background:${s.bg};color:${s.color};font-size:10px;font-weight:700;
-              padding:2px 7px;border-radius:4px;white-space:nowrap;">${s.label}</span>`;
+    const s = map[status];
+    if (s) {
+      return `<span style="background:${s.bg};color:${s.color};font-size:10px;font-weight:700;
+                padding:2px 7px;border-radius:4px;white-space:nowrap;">${t(s.key)}</span>`;
+    }
+    return `<span style="background:var(--bg-2);color:var(--text-muted);font-size:10px;font-weight:700;
+              padding:2px 7px;border-radius:4px;white-space:nowrap;">${status || '-'}</span>`;
   }
 
   function _maturityBar(val) {
@@ -257,7 +236,6 @@ const ViewCompliance = (() => {
     };
 
     let innerHtml = '';
-
     if (key === 'iso27001') {
       innerHtml = _iso27001PanelHtml(data);
     } else if (key === 'iso22301') {
@@ -269,7 +247,6 @@ const ViewCompliance = (() => {
     } else if (key === 'ens') {
       innerHtml = _ensPanelHtml(data);
     } else {
-      // Panel genérico para GDPR, PCI-DSS, SOC 2, HIPAA
       innerHtml = _genericFrameworkPanel(key, data);
     }
 
@@ -278,14 +255,14 @@ const ViewCompliance = (() => {
                   padding:20px;margin-top:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--brand-purple);">
-            ${UI.esc(frameworkLabels[key] || key)} — Detalle
+            ${UI.esc(frameworkLabels[key] || key)} ${UI.esc(t('compliance.detail_suffix'))}
           </h3>
           <div style="display:flex;gap:8px;align-items:center;">
             <button class="btn btn-primary" id="btn-gap-detailed" style="font-size:12px;">
-              Analizar brechas con IA
+              ${UI.esc(t('compliance.ai_gap_btn'))}
             </button>
             <button class="btn btn-ghost" style="font-size:12px;"
-                    onclick="ViewCompliance._togglePanel('${key}')">Cerrar &#10005;</button>
+                    onclick="ViewCompliance._togglePanel('${key}')">${UI.esc(t('compliance.close_btn'))} &#10005;</button>
           </div>
         </div>
         <div id="comp-detail-inner">${innerHtml}</div>
@@ -296,20 +273,19 @@ const ViewCompliance = (() => {
 
   function _iso27001PanelHtml(data) {
     const impls = (_implsData || []).map(_flatImpl);
-    // Group by theme
     const themes = {};
     impls.forEach(i => {
-      const theme = (i.theme || 'Sin tema');
+      const theme = (i.theme || t('compliance.iso27001_no_theme'));
       if (!themes[theme]) themes[theme] = [];
       themes[theme].push(i);
     });
 
     if (!impls.length) {
-      return `<p style="color:var(--text-muted);font-size:13px;">No hay controles registrados en esta organizacion.</p>
+      return `<p style="color:var(--text-muted);font-size:13px;">${UI.esc(t('compliance.iso27001_no_controls'))}</p>
               ${_gapsSection(data.iso27001?.gaps)}`;
     }
 
-    const themeOrder = ['Organizational', 'People', 'Physical', 'Technological', 'Sin tema'];
+    const themeOrder = ['Organizational', 'People', 'Physical', 'Technological', t('compliance.iso27001_no_theme')];
     const sortedThemes = Object.keys(themes).sort((a, b) => {
       const ai = themeOrder.indexOf(a), bi = themeOrder.indexOf(b);
       if (ai < 0 && bi < 0) return a.localeCompare(b);
@@ -332,8 +308,8 @@ const ViewCompliance = (() => {
             ${needsAnalysis
               ? `<span style="color:var(--brand-purple);cursor:pointer;font-size:11px;text-decoration:underline;"
                        onclick="ViewCompliance._showGapModal(${c.id})">
-                   Ver analisis${c.notes ? ' IA' : ''}</span>`
-              : '<span style="color:var(--risk-low);font-size:11px;">Optimo</span>'}
+                   ${UI.esc(c.notes ? t('compliance.iso27001_view_analysis_ai') : t('compliance.iso27001_view_analysis'))}</span>`
+              : `<span style="color:var(--risk-low);font-size:11px;">${UI.esc(t('compliance.iso27001_optimal'))}</span>`}
           </td>
         </tr>`;
       }).join('');
@@ -341,12 +317,16 @@ const ViewCompliance = (() => {
         <details open style="margin-bottom:12px;">
           <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--text-base);
                           padding:6px 0;border-bottom:1px solid var(--border);margin-bottom:6px;">
-            ${UI.esc(theme)} <span style="font-weight:400;color:var(--text-muted);">(${controls.length} controles)</span>
+            ${UI.esc(theme)} <span style="font-weight:400;color:var(--text-muted);">(${UI.esc(t('compliance.iso27001_n_controls', { n: controls.length }))})</span>
           </summary>
           <div style="overflow-x:auto;">
             <table class="data" style="font-size:12px;width:100%;">
               <thead><tr>
-                <th>Codigo</th><th>Control</th><th>Estado</th><th>Madurez</th><th>Analisis IA</th>
+                <th>${UI.esc(t('compliance.iso27001_col_code'))}</th>
+                <th>${UI.esc(t('compliance.iso27001_col_control'))}</th>
+                <th>${UI.esc(t('compliance.iso27001_col_status'))}</th>
+                <th>${UI.esc(t('compliance.iso27001_col_maturity'))}</th>
+                <th>${UI.esc(t('compliance.iso27001_col_ai'))}</th>
               </tr></thead>
               <tbody>${rows}</tbody>
             </table>
@@ -361,15 +341,16 @@ const ViewCompliance = (() => {
     const d = data.iso22301 || {};
     const clauses = d.clauses || [];
     const kpis = d.kpis || {};
+    const locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
 
     if (!clauses.length) {
       return `
         <div style="text-align:center;padding:24px;">
           <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px;">
-            No hay datos de continuidad de negocio registrados todavia.
+            ${UI.esc(t('compliance.iso22301_no_data'))}
           </p>
           <button class="btn btn-primary" onclick="App.navigate('bcp');UI.closeModal();">
-            Ir a BCP/BCM para configurar
+            ${UI.esc(t('compliance.iso22301_go_bcp'))}
           </button>
         </div>`;
     }
@@ -391,14 +372,14 @@ const ViewCompliance = (() => {
     }).join('');
 
     const kpiItems = [
-      { label: 'Procesos totales',     val: kpis.processes_total || 0 },
-      { label: 'Procesos con BIA',     val: kpis.processes_with_bia || 0, color: 'var(--risk-low)' },
-      { label: 'Planes totales',       val: kpis.plans_total || 0 },
-      { label: 'Planes aprobados',     val: kpis.plans_approved || 0, color: 'var(--risk-low)' },
-      { label: 'Ejercicios 12m',       val: kpis.tests_recent_12m || 0, color: 'var(--brand-purple)' },
-      { label: 'Ejercicios superados', val: kpis.tests_passed || 0, color: 'var(--risk-low)' },
-      { label: 'Estrategias impl.',    val: kpis.strategies_implemented || 0, color: 'var(--risk-low)' },
-      { label: 'Evidencias',           val: kpis.evidence_items || 0 },
+      { label: t('compliance.iso22301_kpi_processes'),     val: kpis.processes_total || 0 },
+      { label: t('compliance.iso22301_kpi_with_bia'),      val: kpis.processes_with_bia || 0, color: 'var(--risk-low)' },
+      { label: t('compliance.iso22301_kpi_plans'),         val: kpis.plans_total || 0 },
+      { label: t('compliance.iso22301_kpi_approved'),      val: kpis.plans_approved || 0, color: 'var(--risk-low)' },
+      { label: t('compliance.iso22301_kpi_tests_12m'),     val: kpis.tests_recent_12m || 0, color: 'var(--brand-purple)' },
+      { label: t('compliance.iso22301_kpi_tests_passed'),  val: kpis.tests_passed || 0, color: 'var(--risk-low)' },
+      { label: t('compliance.iso22301_kpi_strategies'),    val: kpis.strategies_implemented || 0, color: 'var(--risk-low)' },
+      { label: t('compliance.iso22301_kpi_evidence'),      val: kpis.evidence_items || 0 },
     ];
 
     const kpiHtml = kpiItems.map(k => `
@@ -407,15 +388,27 @@ const ViewCompliance = (() => {
         <div class="stat-label">${UI.esc(k.label)}</div>
       </div>`).join('');
 
+    const locationStatusLabels = {
+      green:  t('compliance.iso22301_loc_conforme'),
+      yellow: t('compliance.iso22301_loc_parcial'),
+      red:    t('compliance.iso22301_loc_critico'),
+    };
+
     const locHtml = (d.locations || []).length ? `
-      <h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">Sedes / Ubicaciones</h4>
+      <h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">${UI.esc(t('compliance.iso22301_locations'))}</h4>
       <div style="overflow-x:auto;">
         <table class="data" style="font-size:12px;width:100%;">
-          <thead><tr><th>Sede</th><th>Score</th><th>Estado</th><th>Planes aprobados</th><th>Ultimo ejercicio</th></tr></thead>
+          <thead><tr>
+            <th>${UI.esc(t('compliance.iso22301_col_location'))}</th>
+            <th>${UI.esc(t('compliance.iso22301_col_score'))}</th>
+            <th>${UI.esc(t('compliance.iso22301_col_status'))}</th>
+            <th>${UI.esc(t('compliance.iso22301_col_approved_plans'))}</th>
+            <th>${UI.esc(t('compliance.iso22301_col_last_test'))}</th>
+          </tr></thead>
           <tbody>
             ${(d.locations || []).map(loc => {
               const sc = loc.score >= 70 ? 'var(--risk-low)' : loc.score >= 40 ? 'var(--risk-medium)' : 'var(--risk-high)';
-              const statusLabel = { green: 'Conforme', yellow: 'Parcial', red: 'Critico' }[loc.status] || loc.status;
+              const statusLabel = locationStatusLabels[loc.status] || loc.status;
               return `<tr>
                 <td style="font-size:12px;">${UI.esc(loc.name)}</td>
                 <td style="font-size:12px;font-weight:700;color:${sc};">${loc.score}%</td>
@@ -432,27 +425,30 @@ const ViewCompliance = (() => {
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
         <div style="text-align:center;min-width:90px;">
           <div style="font-size:36px;font-weight:800;color:${scoreColor};">${d.score || 0}</div>
-          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Score global</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">${UI.esc(t('compliance.iso22301_global_score'))}</div>
         </div>
         <div style="flex:1;font-size:13px;color:var(--text-muted);min-width:180px;">
-          Puntuacion calculada a partir de los datos de la seccion BCP/BCM (planes, procesos, ejercicios
-          y estrategias de continuidad). Los datos son identicos a los de esa seccion y se
-          actualizan automaticamente al modificar cualquier elemento BCM.
+          ${UI.esc(t('compliance.iso22301_score_desc'))}
           <br>
           <button class="btn btn-ghost" style="margin-top:8px;font-size:12px;"
                   onclick="App.navigate('bcp');">
-            Ir a BCP/BCM para editar &#8594;
+            ${UI.esc(t('compliance.iso22301_go_edit'))}
           </button>
         </div>
       </div>
 
-      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">KPIs de continuidad</h4>
+      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">${UI.esc(t('compliance.iso22301_kpis'))}</h4>
       <div class="stats-row" style="margin-bottom:16px;flex-wrap:wrap;">${kpiHtml}</div>
 
-      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">Clausulas ISO 22301</h4>
+      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">${UI.esc(t('compliance.iso22301_clauses'))}</h4>
       <div style="overflow-x:auto;margin-bottom:16px;">
         <table class="data" style="font-size:12px;width:100%;">
-          <thead><tr><th>Clausula</th><th>Titulo</th><th>Cobertura</th><th>%</th></tr></thead>
+          <thead><tr>
+            <th>${UI.esc(t('compliance.iso22301_col_clause'))}</th>
+            <th>${UI.esc(t('compliance.iso22301_col_title'))}</th>
+            <th>${UI.esc(t('compliance.iso22301_col_coverage'))}</th>
+            <th>${UI.esc(t('compliance.iso22301_col_pct'))}</th>
+          </tr></thead>
           <tbody>${clauseRows}</tbody>
         </table>
       </div>
@@ -461,21 +457,19 @@ const ViewCompliance = (() => {
   }
 
   function _nis2PanelHtml(data) {
-    // NIS2 Art. 21.2 articles and their mapping to control indicators
     const articles = [
-      { id: 'a', text: 'Politicas de analisis de riesgos y seguridad de sistemas (Art. 21.2.a)' },
-      { id: 'b', text: 'Gestion de incidentes (Art. 21.2.b)' },
-      { id: 'c', text: 'Continuidad del negocio y gestion de crisis (Art. 21.2.c)' },
-      { id: 'd', text: 'Seguridad de la cadena de suministro (Art. 21.2.d)' },
-      { id: 'e', text: 'Seguridad en adquisicion, desarrollo y mantenimiento de sistemas (Art. 21.2.e)' },
-      { id: 'f', text: 'Politicas y procedimientos para evaluar eficacia de medidas (Art. 21.2.f)' },
-      { id: 'g', text: 'Practicas basicas de ciberhigiene y formacion (Art. 21.2.g)' },
-      { id: 'h', text: 'Politicas sobre uso de criptografia (Art. 21.2.h)' },
-      { id: 'i', text: 'Seguridad de recursos humanos, control de acceso y gestion de activos (Art. 21.2.i)' },
-      { id: 'j', text: 'Autenticacion multifactor y comunicaciones seguras (Art. 21.2.j)' },
+      { id: 'a', text: t('compliance.nis2_art_a') },
+      { id: 'b', text: t('compliance.nis2_art_b') },
+      { id: 'c', text: t('compliance.nis2_art_c') },
+      { id: 'd', text: t('compliance.nis2_art_d') },
+      { id: 'e', text: t('compliance.nis2_art_e') },
+      { id: 'f', text: t('compliance.nis2_art_f') },
+      { id: 'g', text: t('compliance.nis2_art_g') },
+      { id: 'h', text: t('compliance.nis2_art_h') },
+      { id: 'i', text: t('compliance.nis2_art_i') },
+      { id: 'j', text: t('compliance.nis2_art_j') },
     ];
     const impls = (_implsData || []).map(_flatImpl);
-    // Map articles to control coverage (simplified heuristic by theme/keywords)
     const themeMap = {
       a: ['risk', 'organizational', 'governance'],
       b: ['incident'],
@@ -497,20 +491,24 @@ const ViewCompliance = (() => {
       });
       const implemented = matched.filter(i => i.status === 'implemented').length;
       const partial = matched.filter(i => i.status === 'partial').length;
-      const statusColor = (implemented + partial) > 0 ? 'var(--risk-low)' : 'var(--risk-high)';
-      const statusLabel = (implemented + partial) > 0
-        ? `${implemented + partial} controles cubiertos`
-        : 'Sin cobertura detectada';
+      const covered = implemented + partial;
+      const statusColor = covered > 0 ? 'var(--risk-low)' : 'var(--risk-high)';
+      const statusLabel = covered > 0
+        ? t('compliance.nis2_controls_covered', { n: covered })
+        : t('compliance.nis2_no_coverage');
       return `<tr>
         <td style="font-size:12px;">${UI.esc(art.text)}</td>
-        <td><span style="color:${statusColor};font-size:12px;font-weight:600;">${statusLabel}</span></td>
+        <td><span style="color:${statusColor};font-size:12px;font-weight:600;">${UI.esc(statusLabel)}</span></td>
       </tr>`;
     }).join('');
 
     return `
       <div style="overflow-x:auto;margin-bottom:16px;">
         <table class="data" style="font-size:12px;width:100%;">
-          <thead><tr><th>Requisito NIS2</th><th>Cobertura estimada</th></tr></thead>
+          <thead><tr>
+            <th>${UI.esc(t('compliance.nis2_col_req'))}</th>
+            <th>${UI.esc(t('compliance.nis2_col_coverage'))}</th>
+          </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -526,7 +524,6 @@ const ViewCompliance = (() => {
       GOVERN: '#7C3AED', IDENTIFY: '#2563EB', PROTECT: '#059669',
       DETECT: '#D97706', RESPOND: '#DC2626', RECOVER: '#0891B2',
     };
-    // Heuristic: map controls to NIST functions by theme/name keywords
     const fnKeywords = {
       GOVERN:   ['governance', 'policy', 'risk management', 'organizational'],
       IDENTIFY: ['asset', 'inventory', 'risk assessment', 'vulnerability'],
@@ -559,12 +556,12 @@ const ViewCompliance = (() => {
           ${matched.length > 0 ? `
             <details>
               <summary style="cursor:pointer;font-size:11px;color:var(--text-muted);">
-                ${matched.length} controles contribuyen a esta funcion
+                ${UI.esc(t('compliance.nist_controls_contrib', { n: matched.length }))}
               </summary>
               <ul style="margin:4px 0 0 16px;padding:0;">${controlList}
-                ${matched.length > 5 ? `<li style="font-size:11px;color:var(--text-subtle);">... y ${matched.length - 5} mas</li>` : ''}
+                ${matched.length > 5 ? `<li style="font-size:11px;color:var(--text-subtle);">${UI.esc(t('compliance.nist_controls_more', { n: matched.length - 5 }))}</li>` : ''}
               </ul>
-            </details>` : `<p style="font-size:11px;color:var(--text-muted);margin:0;">Sin controles mapeados a esta funcion.</p>`}
+            </details>` : `<p style="font-size:11px;color:var(--text-muted);margin:0;">${UI.esc(t('compliance.nist_no_controls'))}</p>`}
         </div>`;
     }).join('');
 
@@ -573,11 +570,11 @@ const ViewCompliance = (() => {
 
   function _ensPanelHtml(data) {
     const dimensions = [
-      { id: 'identificacion', label: 'Identificacion — Marco organizativo y gestion de riesgos', themes: ['organizational', 'risk'] },
-      { id: 'proteccion',     label: 'Proteccion — Medidas de proteccion (Anexo II, Marco OP/MP)', themes: ['access', 'cryptography', 'physical', 'network'] },
-      { id: 'deteccion',      label: 'Deteccion — Monitorizacion y deteccion de incidentes', themes: ['monitoring', 'detection', 'audit'] },
-      { id: 'respuesta',      label: 'Respuesta — Gestion de incidentes y comunicacion', themes: ['incident', 'response'] },
-      { id: 'recuperacion',   label: 'Recuperacion — Continuidad y recuperacion', themes: ['recovery', 'continuity', 'backup'] },
+      { id: 'identificacion', label: t('compliance.ens_dim_identificacion'), themes: ['organizational', 'risk'] },
+      { id: 'proteccion',     label: t('compliance.ens_dim_proteccion'), themes: ['access', 'cryptography', 'physical', 'network'] },
+      { id: 'deteccion',      label: t('compliance.ens_dim_deteccion'), themes: ['monitoring', 'detection', 'audit'] },
+      { id: 'respuesta',      label: t('compliance.ens_dim_respuesta'), themes: ['incident', 'response'] },
+      { id: 'recuperacion',   label: t('compliance.ens_dim_recuperacion'), themes: ['recovery', 'continuity', 'backup'] },
     ];
     const impls = (_implsData || []).map(_flatImpl);
 
@@ -596,14 +593,19 @@ const ViewCompliance = (() => {
         <td style="font-size:12px;">${UI.esc(dim.label)}</td>
         <td style="min-width:120px;">${_maturityBar(Math.round(pct / 20))}</td>
         <td style="font-size:12px;color:${color};font-weight:600;">${pct}%</td>
-        <td style="font-size:11px;color:var(--text-muted);">${total} medidas detectadas</td>
+        <td style="font-size:11px;color:var(--text-muted);">${UI.esc(t('compliance.ens_n_measures', { n: total }))}</td>
       </tr>`;
     }).join('');
 
     return `
       <div style="overflow-x:auto;margin-bottom:16px;">
         <table class="data" style="font-size:12px;width:100%;">
-          <thead><tr><th>Dimension ENS</th><th>Cobertura</th><th>%</th><th>Medidas</th></tr></thead>
+          <thead><tr>
+            <th>${UI.esc(t('compliance.ens_col_dimension'))}</th>
+            <th>${UI.esc(t('compliance.ens_col_coverage'))}</th>
+            <th>${UI.esc(t('compliance.ens_col_pct'))}</th>
+            <th>${UI.esc(t('compliance.ens_col_measures'))}</th>
+          </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -611,7 +613,6 @@ const ViewCompliance = (() => {
     `;
   }
 
-  // Panel genérico para GDPR, PCI-DSS, SOC 2, HIPAA
   function _genericFrameworkPanel(key, data) {
     const fwData = data[key] || {};
     const score  = fwData.score ?? 0;
@@ -620,32 +621,32 @@ const ViewCompliance = (() => {
 
     const actionsByFramework = {
       gdpr: [
-        { action: 'Registra todas las actividades de tratamiento (Art. 30 RGPD)', link: 'gdpr', label: 'Ir a RGPD' },
-        { action: 'Completa DPIAs para tratamientos de alto riesgo (Art. 35 RGPD)', link: 'gdpr', label: 'Ir a RGPD' },
-        { action: 'Documenta la base legal de cada actividad de tratamiento (Art. 6 RGPD)', link: null },
-        { action: 'Implementa controles de privacidad por diseño: cifrado, seudonimización, minimización de datos', link: 'controls', label: 'Ir a Controles' },
-        { action: 'Establece procedimientos de respuesta a violaciones de datos (Art. 33, 72h)', link: 'incidents', label: 'Ir a Incidentes' },
+        { action: t('compliance.gdpr_action_0'), link: 'gdpr', label: t('compliance.gdpr_link_0') },
+        { action: t('compliance.gdpr_action_1'), link: 'gdpr', label: t('compliance.gdpr_link_0') },
+        { action: t('compliance.gdpr_action_2'), link: null },
+        { action: t('compliance.gdpr_action_3'), link: 'controls', label: t('compliance.gdpr_link_3') },
+        { action: t('compliance.gdpr_action_4'), link: 'incidents', label: t('compliance.gdpr_link_4') },
       ],
       pcidss: [
-        { action: 'Implementa control de acceso basado en necesidad de conocer (Req. 7 PCI-DSS v4.0)', link: 'controls' },
-        { action: 'Cifra datos de titulares de tarjeta en reposo y en tránsito (Req. 3, 4)', link: 'controls' },
-        { action: 'Mantén inventario de sistemas que almacenan, procesan o transmiten datos de pago (Req. 12)', link: 'assets', label: 'Ir a Activos' },
-        { action: 'Gestiona parches y vulnerabilidades con regularidad (Req. 6)', link: 'cve', label: 'Ir a CVE' },
-        { action: 'Monitoriza y analiza logs de acceso (Req. 10)', link: 'controls' },
+        { action: t('compliance.pcidss_action_0'), link: 'controls' },
+        { action: t('compliance.pcidss_action_1'), link: 'controls' },
+        { action: t('compliance.pcidss_action_2'), link: 'assets', label: t('compliance.pcidss_link_2') },
+        { action: t('compliance.pcidss_action_3'), link: 'cve', label: t('compliance.pcidss_link_3') },
+        { action: t('compliance.pcidss_action_4'), link: 'controls' },
       ],
       soc2: [
-        { action: 'Documenta controles de acceso lógico (CC6 — Common Criteria)', link: 'controls' },
-        { action: 'Implementa monitorización de actividad del sistema (CC7)', link: 'controls' },
-        { action: 'Define SLAs de disponibilidad para sistemas críticos (A1 — Availability)', link: 'assets', label: 'Ir a Activos' },
-        { action: 'Mantén políticas de seguridad formales y revisadas (CC1 — Control Environment)', link: 'policies', label: 'Ir a Políticas' },
-        { action: 'Documenta el proceso de gestión de cambios (CC8)', link: 'audit', label: 'Ir a Auditorías' },
+        { action: t('compliance.soc2_action_0'), link: 'controls' },
+        { action: t('compliance.soc2_action_1'), link: 'controls' },
+        { action: t('compliance.soc2_action_2'), link: 'assets', label: t('compliance.soc2_link_2') },
+        { action: t('compliance.soc2_action_3'), link: 'policies', label: t('compliance.soc2_link_3') },
+        { action: t('compliance.soc2_action_4'), link: 'audit', label: t('compliance.soc2_link_4') },
       ],
       hipaa: [
-        { action: 'Implementa controles de acceso a ePHI con MFA (§ 164.312.a.1)', link: 'controls' },
-        { action: 'Cifra toda la información de salud protegida (§ 164.312.a.2.iv)', link: 'controls' },
-        { action: 'Activa logs de auditoría para accesos a ePHI (§ 164.312.b)', link: 'controls' },
-        { action: 'Define plan de contingencia y backups con pruebas (§ 164.312.a.2.ii)', link: 'controls' },
-        { action: 'Evalúa y documenta riesgos sobre ePHI periódicamente (§ 164.308.a.1)', link: 'risks', label: 'Ir a Riesgos' },
+        { action: t('compliance.hipaa_action_0'), link: 'controls' },
+        { action: t('compliance.hipaa_action_1'), link: 'controls' },
+        { action: t('compliance.hipaa_action_2'), link: 'controls' },
+        { action: t('compliance.hipaa_action_3'), link: 'controls' },
+        { action: t('compliance.hipaa_action_4'), link: 'risks', label: t('compliance.hipaa_link_4') },
       ],
     };
 
@@ -655,7 +656,7 @@ const ViewCompliance = (() => {
                   padding:10px 12px;${i%2===0?'background:var(--bg-2);':''}border-radius:6px;gap:12px;">
         <div style="font-size:12px;flex:1;">${UI.esc(a.action)}</div>
         ${a.link ? `<button class="btn btn-sm" style="flex-shrink:0;font-size:11px;"
-          onclick="App.navigate('${a.link}');UI.closeModal();">${a.label||'Ver'}</button>` : ''}
+          onclick="App.navigate('${a.link}');UI.closeModal();">${a.label || 'Ver'}</button>` : ''}
       </div>`).join('');
 
     const scoreColor = score >= 75 ? '#059669' : score >= 50 ? '#D97706' : score >= 25 ? '#DC2626' : '#9D1B1B';
@@ -664,17 +665,16 @@ const ViewCompliance = (() => {
       <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px;">
         <div style="text-align:center;min-width:100px;">
           <div style="font-size:36px;font-weight:800;color:${scoreColor};">${score}</div>
-          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">Puntuación</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;">${UI.esc(t('compliance.generic_score_label'))}</div>
         </div>
         <div style="flex:1;min-width:200px;">
           <p style="font-size:13px;color:var(--text-muted);margin:0 0 8px;">
-            Puntuación calculada a partir de los controles implementados, gestión de riesgos e incidentes
-            relevantes para ${UI.esc(label)}.
+            ${UI.esc(t('compliance.generic_score_desc', { label }))}
           </p>
           ${_gapsSection(gaps)}
         </div>
       </div>
-      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">Acciones recomendadas</h4>
+      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">${UI.esc(t('compliance.generic_actions'))}</h4>
       ${actionsHtml}
     `;
   }
@@ -682,24 +682,20 @@ const ViewCompliance = (() => {
   function _gapsSection(gaps) {
     if (!gaps || !gaps.length) return '';
     return `<div style="margin-top:12px;">
-      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">Brechas identificadas</h4>
+      <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">${UI.esc(t('compliance.gaps_title'))}</h4>
       ${_gapsHtml(gaps)}
     </div>`;
   }
-
-  // ============================================================
-  // Detailed AI Gap Analysis modal
-  // ============================================================
 
   async function _runDetailedGapAnalysis(framework) {
     const btn = document.getElementById('btn-gap-detailed');
     const resultDiv = document.getElementById('comp-detail-gap-result');
     if (!resultDiv) return;
-    if (btn) { btn.disabled = true; btn.textContent = 'Analizando con IA...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('compliance.ai_gap_btn_loading'); }
     resultDiv.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;padding:20px;background:var(--bg-2);border-radius:8px;">
         <div class="loading-spinner" style="width:24px;height:24px;"></div>
-        <span style="font-size:13px;color:var(--text-muted);">El agente IA esta realizando el gap analysis detallado...</span>
+        <span style="font-size:13px;color:var(--text-muted);">${UI.esc(t('compliance.ai_running'))}</span>
       </div>`;
 
     try {
@@ -708,7 +704,7 @@ const ViewCompliance = (() => {
     } catch (e) {
       resultDiv.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Analizar brechas con IA'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('compliance.ai_gap_btn'); }
     }
   }
 
@@ -720,17 +716,16 @@ const ViewCompliance = (() => {
       'EXCLUIDO':    { bg: 'var(--bg-2)', color: 'var(--text-muted)' },
     };
     const priorityColors = {
-      'INMEDIATA':     'var(--risk-critical)',
-      'CORTO PLAZO':   'var(--risk-high)',
-      'MEDIO PLAZO':   'var(--risk-medium)',
+      'INMEDIATA':   'var(--risk-critical)',
+      'CORTO PLAZO': 'var(--risk-high)',
+      'MEDIO PLAZO': 'var(--risk-medium)',
     };
 
     const controls = d.controls || [];
-    let filterStatus = 'all';
 
     function _rowsHtml(filterVal) {
       const filtered = filterVal === 'all' ? controls : controls.filter(c => c.status === filterVal);
-      if (!filtered.length) return `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted);">Sin controles en este estado.</td></tr>`;
+      if (!filtered.length) return `<tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text-muted);">${UI.esc(t('compliance.ai_no_controls'))}</td></tr>`;
       return filtered.map(c => {
         const sc = statusColors[c.status] || { bg: 'var(--bg-2)', color: 'var(--text-muted)' };
         const pc = priorityColors[c.priority] || 'var(--text-muted)';
@@ -754,19 +749,17 @@ const ViewCompliance = (() => {
 
     container.innerHTML = `
       <hr style="border:none;border-top:1px solid var(--border);margin:0 0 16px;">
-      <!-- Executive summary -->
       ${d.executive_summary ? `
         <div style="background:var(--bg-2);border-left:4px solid var(--brand-purple);
                     padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px;">
           <p style="font-size:13px;margin:0;line-height:1.6;">${UI.esc(d.executive_summary)}</p>
         </div>` : ''}
 
-      <!-- Score + top 3 -->
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
         ${d.framework_score != null ? `
           <div class="stat-card" style="text-align:center;min-width:120px;">
             <div class="stat-value" style="color:${_scoreColor(d.framework_score)};">${d.framework_score}</div>
-            <div class="stat-label">Score IA /100</div>
+            <div class="stat-label">${UI.esc(t('compliance.ai_score_label'))}</div>
           </div>` : ''}
         ${Object.entries(statusCounts).map(([s, n]) => {
           const sc = statusColors[s] || { bg: 'var(--bg-2)', color: 'var(--text-muted)' };
@@ -779,7 +772,7 @@ const ViewCompliance = (() => {
 
       ${d.top_3_priorities?.length ? `
         <div style="margin-bottom:16px;">
-          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--risk-critical);">Top 3 prioridades</h4>
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--risk-critical);">${UI.esc(t('compliance.ai_top3'))}</h4>
           ${d.top_3_priorities.map((p, i) => `
             <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;
                         padding:10px;background:var(--bg-2);border-radius:6px;">
@@ -789,28 +782,30 @@ const ViewCompliance = (() => {
             </div>`).join('')}
         </div>` : ''}
 
-      <!-- Filter + table -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
         ${['all', 'CONFORME', 'PARCIAL', 'NO CONFORME', 'EXCLUIDO'].map(s => {
           const n = s === 'all' ? controls.length : (statusCounts[s] || 0);
           return `<button class="btn btn-ghost" style="font-size:11px;padding:3px 10px;"
                           onclick="ViewCompliance._filterGapTable(this, '${s}')">
-            ${s === 'all' ? 'Todos' : s} (${n})
+            ${s === 'all' ? UI.esc(t('compliance.ai_filter_all')) : s} (${n})
           </button>`;
         }).join('')}
       </div>
       <div style="overflow-x:auto;">
         <table class="data" id="gap-detail-table" style="font-size:12px;width:100%;">
           <thead><tr>
-            <th>Codigo</th><th>Control</th><th>Estado</th><th>Hallazgo</th>
-            <th>Recomendacion</th><th>Prioridad</th>
+            <th>${UI.esc(t('compliance.ai_col_code'))}</th>
+            <th>${UI.esc(t('compliance.ai_col_control'))}</th>
+            <th>${UI.esc(t('compliance.ai_col_status'))}</th>
+            <th>${UI.esc(t('compliance.ai_col_finding'))}</th>
+            <th>${UI.esc(t('compliance.ai_col_recommendation'))}</th>
+            <th>${UI.esc(t('compliance.ai_col_priority'))}</th>
           </tr></thead>
           <tbody id="gap-detail-tbody">${_rowsHtml('all')}</tbody>
         </table>
       </div>
     `;
 
-    // Store filter function
     ViewCompliance._filterGapTable = (btn, status) => {
       document.querySelectorAll('#comp-detail-gap-result .btn').forEach(b => b.classList.remove('btn-primary'));
       btn.classList.add('btn-primary');
@@ -819,18 +814,14 @@ const ViewCompliance = (() => {
     };
   }
 
-  // ============================================================
-  // Main render
-  // ============================================================
-
   async function render(el) {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Dashboard de Cumplimiento</h1>
-          <p class="page-sub">Puntuacion multi-framework: ISO 27001 | ISO 22301 | NIS2 | NIST CSF 2.0 | ENS</p>
+          <h1 class="page-title">${UI.esc(t('compliance.page_title'))}</h1>
+          <p class="page-sub">${UI.esc(t('compliance.page_subtitle'))}</p>
         </div>
-        <button class="btn btn-primary" id="btn-refresh-comp">Actualizar</button>
+        <button class="btn btn-primary" id="btn-refresh-comp">${UI.esc(t('compliance.btn_refresh'))}</button>
       </div>
       <div id="comp-content"><div class="loading-spinner" style="margin:40px auto;"></div></div>
     `;
@@ -841,7 +832,7 @@ const ViewCompliance = (() => {
   async function _load(el) {
     const content = document.getElementById('comp-content');
     if (!content) return;
-    content.innerHTML = '<p class="text-muted" style="text-align:center;padding:32px;">Calculando puntuaciones...</p>';
+    content.innerHTML = `<p class="text-muted" style="text-align:center;padding:32px;">${UI.esc(t('compliance.loading'))}</p>`;
     _expandedPanel = null;
     _compData = null;
     _implsData = null;
@@ -858,7 +849,6 @@ const ViewCompliance = (() => {
       ]);
       _compData = data;
       _implsData = implsList;
-      // Inyectar datos ISO 22301 desde BCP/BCM (fuente de verdad: sección BCP)
       _bcpCompData = bcpComp;
       if (bcpComp && typeof bcpComp.score_global === 'number') {
         _compData.iso22301 = {
@@ -875,7 +865,6 @@ const ViewCompliance = (() => {
         _ensLevel = ctx.ens_level;
       }
 
-      // Insertar panel de estado real multi-framework si hay datos nuevos
       if (realStatus && realStatus.frameworks && realStatus.frameworks.length > 0) {
         const realPanel = _buildRealStatusPanel(realStatus);
         content.innerHTML = realPanel;
@@ -887,7 +876,6 @@ const ViewCompliance = (() => {
         _render(content, data);
       }
 
-      // Wire legacy gap button
       const gapBtn = document.getElementById('btn-gap-analysis');
       if (gapBtn) gapBtn.onclick = _runGapAnalysis;
     } catch (e) {
@@ -905,10 +893,10 @@ const ViewCompliance = (() => {
       <div style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:16px;min-width:200px;flex:1;">
         <div style="font-size:12px;font-weight:700;color:var(--brand-purple);margin-bottom:8px;">
           ${UI.esc(f.framework_name || f.framework_code)}
-          ${f.is_audit_ready ? '<span style="background:#E8F5E9;color:#2e7d32;padding:2px 6px;border-radius:8px;font-size:10px;margin-left:4px;">✓ Audit Ready</span>' : ''}
+          ${f.is_audit_ready ? '<span style="background:#E8F5E9;color:#2e7d32;padding:2px 6px;border-radius:8px;font-size:10px;margin-left:4px;">&#10003; Audit Ready</span>' : ''}
         </div>
         <div style="font-size:28px;font-weight:800;color:${col(f.overall_pct)};">${f.overall_pct}%</div>
-        <div style="font-size:11px;color:#9d9d9d;margin:4px 0 6px;">Cumplimiento global</div>
+        <div style="font-size:11px;color:#9d9d9d;margin:4px 0 6px;">${UI.esc(t('compliance.real_global_compliance'))}</div>
         ${bar(f.overall_pct, col(f.overall_pct))}
         ${f.gaps && f.gaps.length ? `<div style="font-size:11px;color:#c25a1f;margin-top:6px;">${f.gaps.length} gap(s)</div>` : ''}
       </div>`).join('');
@@ -918,23 +906,23 @@ const ViewCompliance = (() => {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
           <div>
             <h2 style="font-size:15px;font-weight:700;color:var(--brand-purple);margin:0;">
-              Estado real de cumplimiento normativo
+              ${UI.esc(t('compliance.real_title'))}
             </h2>
             <p style="color:#9d9d9d;font-size:12px;margin:4px 0 0;">
-              Basado en controles implementados y evidencias subidas
+              ${UI.esc(t('compliance.real_subtitle'))}
             </p>
           </div>
           <div style="display:flex;gap:8px;">
             <a href="#/evidence" onclick="App.navigate('evidence');return false;"
-               class="btn-outline" style="font-size:12px;padding:5px 12px;">+ Evidencias</a>
+               class="btn-outline" style="font-size:12px;padding:5px 12px;">${UI.esc(t('compliance.real_add_evidence'))}</a>
             <button onclick="ViewCompliance._configureFrameworks()"
-                    class="btn-outline" style="font-size:12px;padding:5px 12px;">Configurar</button>
+                    class="btn-outline" style="font-size:12px;padding:5px 12px;">${UI.esc(t('compliance.real_configure'))}</button>
           </div>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;">${fwCards}</div>
         <div style="margin-top:12px;font-size:12px;color:#9d9d9d;">
-          Cumplimiento global ponderado: <strong>${status.overall_pct || 0}%</strong> |
-          Total gaps: <strong>${status.total_gaps || 0}</strong>
+          ${UI.esc(t('compliance.real_global_pct'))} <strong>${status.overall_pct || 0}%</strong> |
+          ${UI.esc(t('compliance.real_total_gaps'))} <strong>${status.total_gaps || 0}</strong>
         </div>
       </div>
       <div id="comp-legacy-placeholder"></div>`;
@@ -946,13 +934,12 @@ const ViewCompliance = (() => {
     const fns = nist.functions || {};
     const activeKeys = _getActiveFrameworkKeys();
 
-    // Banner de normativas activas
     const fwBanner = (_activeFrameworks && _activeFrameworks.length > 0) ? `
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
            background:var(--brand-purple-4);border:1px solid var(--brand-purple-3);
            border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;">
         <div>
-          <strong style="color:var(--brand-purple);">Normativas activas:</strong>
+          <strong style="color:var(--brand-purple);">${UI.esc(t('compliance.active_frameworks_label'))}</strong>
           ${activeKeys.map(k => {
             const m = _FW_META[k];
             const extra = (k === 'ens' && _ensLevel)
@@ -963,18 +950,14 @@ const ViewCompliance = (() => {
         </div>
         <a href="#questionnaire" onclick="App.navigate('questionnaire');return false;"
            style="font-size:11px;color:var(--brand-purple);text-decoration:underline;">
-          Cambiar normativas
+          ${UI.esc(t('compliance.change_frameworks'))}
         </a>
       </div>` : `
       <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;
            padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--text-muted);">
-        Mostrando todos los frameworks. Ejecuta el <a href="#questionnaire"
-          onclick="App.navigate('questionnaire');return false;"
-          style="color:var(--brand-purple);">cuestionario IA</a>
-        y selecciona las normativas aplicables para personalizar esta vista.
+        ${t('compliance.all_frameworks_msg', { link: `<a href="#questionnaire" onclick="App.navigate('questionnaire');return false;" style="color:var(--brand-purple);">${UI.esc(t('compliance.questionnaire_link'))}</a>` })}
       </div>`;
 
-    // Paneles de brechas — solo frameworks activos
     const gapPanels = activeKeys
       .filter(k => ['iso27001','nis2','nist_csf','ens'].includes(k))
       .map(k => {
@@ -982,23 +965,29 @@ const ViewCompliance = (() => {
         if (!k || !m) return '';
         if (k === 'nist_csf') return `
           <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
-            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">NIST CSF 2.0 — Funciones</h3>
-            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">Cobertura por función</p>
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">${UI.esc(t('compliance.nist_func_title'))}</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px;">${UI.esc(t('compliance.nist_func_subtitle'))}</p>
             ${_nistFunctionsHtml(fns)}
           </div>`;
         const d = data[m.dataKey] || {};
-        const subtitle = k === 'ens'
-          ? (_ensLevel ? `Nivel ${_ensLevel.charAt(0).toUpperCase()+_ensLevel.slice(1)} · Anexo II` : 'Anexo II')
-          : (k === 'nis2' ? 'Art. 21 y 23' : 'Cláusula 6.1.3 y 10.1');
+        let subtitle;
+        if (k === 'ens') {
+          subtitle = _ensLevel
+            ? `${t('compliance.ens_level_prefix', { level: _ensLevel.charAt(0).toUpperCase()+_ensLevel.slice(1) })} · ${t('compliance.ens_gaps_subtitle')}`
+            : t('compliance.ens_gaps_subtitle');
+        } else if (k === 'nis2') {
+          subtitle = t('compliance.nis2_gaps_subtitle');
+        } else {
+          subtitle = t('compliance.iso27001_gaps_subtitle');
+        }
         return `
           <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;">
-            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">${m.label} — Brechas</h3>
-            <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">${subtitle}</p>
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">${m.label} — ${UI.esc(t('compliance.gaps_title'))}</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">${UI.esc(subtitle)}</p>
             ${_gapsHtml(d.gaps)}
           </div>`;
       }).filter(Boolean);
 
-    // Agrupar en filas de 2
     const gapRows = [];
     for (let i = 0; i < gapPanels.length; i += 2) {
       gapRows.push(`<div style="display:grid;grid-template-columns:${gapPanels[i+1] ? '1fr 1fr' : '1fr'};gap:16px;margin-bottom:16px;" class="compliance-detail-grid">
@@ -1008,57 +997,50 @@ const ViewCompliance = (() => {
 
     content.innerHTML = `
       ${fwBanner}
-      <!-- Resumen global -->
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;">
-        <h2 style="font-size:15px;font-weight:700;margin:0 0 16px;">Resumen operacional</h2>
+        <h2 style="font-size:15px;font-weight:700;margin:0 0 16px;">${UI.esc(t('compliance.summary_title'))}</h2>
         <div class="stats-row">
           <div class="stat-card">
             <div class="stat-value">${meta.total_controls || 0}</div>
-            <div class="stat-label">Controles activos</div>
+            <div class="stat-label">${UI.esc(t('compliance.stat_active_controls'))}</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" style="color:var(--risk-low);">${meta.implemented_controls || 0}</div>
-            <div class="stat-label">Implementados</div>
+            <div class="stat-label">${UI.esc(t('compliance.stat_implemented'))}</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">${meta.total_risks || 0}</div>
-            <div class="stat-label">Riesgos totales</div>
+            <div class="stat-label">${UI.esc(t('compliance.stat_total_risks'))}</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" style="color:var(--risk-medium);">${meta.risks_treated || 0}</div>
-            <div class="stat-label">Con tratamiento</div>
+            <div class="stat-label">${UI.esc(t('compliance.stat_treated'))}</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" style="color:var(--risk-high);">${meta.open_incidents || 0}</div>
-            <div class="stat-label">Incidentes abiertos</div>
+            <div class="stat-label">${UI.esc(t('compliance.stat_incidents'))}</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" style="color:var(--risk-critical);">${meta.open_ncs || 0}</div>
-            <div class="stat-label">NC abiertas</div>
+            <div class="stat-label">${UI.esc(t('compliance.stat_nc'))}</div>
           </div>
         </div>
       </div>
 
-      <!-- Gauges por framework (solo activos) -->
       <div id="comp-gauges" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;"></div>
-
-      <!-- Panel de detalle expandible -->
       <div id="comp-detail-panel" style="display:none;margin-bottom:20px;"></div>
 
-      <!-- Paneles de brechas por normativa activa -->
       ${gapRows.join('')}
 
       <p style="font-size:11px;color:var(--text-muted);margin-top:16px;text-align:center;">
-        Puntuaciones calculadas a partir de los datos registrados en RiskHub.
-        Actualizar regularmente para reflejar el estado real del SGSI.
+        ${UI.esc(t('compliance.footnote'))}
       </p>
 
-      <!-- AI Gap Analysis section (legacy estadistico) -->
       <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:20px;margin-top:20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <div>
-            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">Analisis de brechas de controles (estadistico)</h3>
-            <p style="font-size:12px;color:var(--text-muted);margin:0;">Detecta controles sin implementar, temas debiles y problemas SOA por framework. Para gap analysis profundo usa el boton en cada gauge.</p>
+            <h3 style="font-size:14px;font-weight:700;margin:0 0 4px;">${UI.esc(t('compliance.gap_section_title'))}</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:0;">${UI.esc(t('compliance.gap_section_desc'))}</p>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <select id="gap-framework" style="font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-1);">
@@ -1067,28 +1049,23 @@ const ViewCompliance = (() => {
                 return m ? `<option value="${k}">${m.label}</option>` : '';
               }).join('')}
             </select>
-            <button class="btn btn-primary" id="btn-gap-analysis">Analizar brechas</button>
+            <button class="btn btn-primary" id="btn-gap-analysis">${UI.esc(t('compliance.gap_analyze_btn'))}</button>
           </div>
         </div>
         <div id="gap-results" style="display:none;"></div>
       </div>
     `;
-    // Rellenar gauges ahora que el DOM está listo
     _rerenderGaugesAndPanels();
   }
-
-  // ============================================================
-  // Legacy gap analysis (estadistico)
-  // ============================================================
 
   async function _runGapAnalysis() {
     const framework = document.getElementById('gap-framework')?.value || 'iso27001';
     const btn = document.getElementById('btn-gap-analysis');
     const resultsDiv = document.getElementById('gap-results');
     if (!resultsDiv) return;
-    if (btn) { btn.disabled = true; btn.textContent = 'Analizando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('compliance.gap_analyzing'); }
     resultsDiv.style.display = 'block';
-    resultsDiv.innerHTML = '<p style="color:var(--text-muted);font-size:13px;">Analizando controles...</p>';
+    resultsDiv.innerHTML = `<p style="color:var(--text-muted);font-size:13px;">${UI.esc(t('compliance.gap_analyzing_detail'))}</p>`;
     try {
       const d = await Api.ai.controlGap({ framework });
       const s = d.summary || {};
@@ -1097,49 +1074,49 @@ const ViewCompliance = (() => {
       resultsDiv.innerHTML = `
         <hr style="border:none;border-top:1px solid var(--border);margin:0 0 16px;">
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
-          <div class="stat-card"><div class="stat-value">${s.total||0}</div><div class="stat-label">Controles totales</div></div>
-          <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.implemented||0}</div><div class="stat-label">Implementados</div></div>
-          <div class="stat-card"><div class="stat-value" style="color:var(--risk-medium);">${s.partial||0}</div><div class="stat-label">Parciales</div></div>
-          <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.not_implemented||0}</div><div class="stat-label">Sin implementar</div></div>
+          <div class="stat-card"><div class="stat-value">${s.total||0}</div><div class="stat-label">${UI.esc(t('compliance.gap_stat_total'))}</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${s.implemented||0}</div><div class="stat-label">${UI.esc(t('compliance.gap_stat_implemented'))}</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--risk-medium);">${s.partial||0}</div><div class="stat-label">${UI.esc(t('compliance.gap_stat_partial'))}</div></div>
+          <div class="stat-card"><div class="stat-value" style="color:var(--risk-high);">${s.not_implemented||0}</div><div class="stat-label">${UI.esc(t('compliance.gap_stat_not_impl'))}</div></div>
           <div class="stat-card">
             <div class="stat-value" style="color:${pctColor};">${pct}%</div>
-            <div class="stat-label">Cobertura efectiva</div>
+            <div class="stat-label">${UI.esc(t('compliance.gap_stat_coverage'))}</div>
           </div>
         </div>
         ${d.weak_themes?.length ? `
-          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">Temas con menor cobertura</h4>
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">${UI.esc(t('compliance.gap_weak_themes'))}</h4>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-            ${d.weak_themes.map(t => `
+            ${d.weak_themes.map(th => `
               <div style="background:var(--bg-2);border-radius:8px;padding:8px 12px;font-size:12px;min-width:140px;">
-                <div style="font-weight:700;color:var(--risk-high);font-size:16px;">${t.score}%</div>
-                <div style="font-weight:600;margin:2px 0;">${UI.esc(t.theme)}</div>
-                <div style="color:var(--text-muted);">${t.not_implemented} sin implementar de ${t.total}</div>
+                <div style="font-weight:700;color:var(--risk-high);font-size:16px;">${th.score}%</div>
+                <div style="font-weight:600;margin:2px 0;">${UI.esc(th.theme)}</div>
+                <div style="color:var(--text-muted);">${UI.esc(t('compliance.gap_n_not_impl', { n: th.not_implemented, total: th.total }))}</div>
               </div>`).join('')}
           </div>` : ''}
         ${d.soa_issues ? `
-          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">Problemas SOA (cl. 6.1.3)</h4>
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">${UI.esc(t('compliance.gap_soa_issues'))}</h4>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-            ${d.soa_issues.missing_inclusion_reason > 0 ? `<span style="background:#FEF9C3;color:#854D0E;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${d.soa_issues.missing_inclusion_reason} sin razon de inclusion</span>` : ''}
-            ${d.soa_issues.missing_evidence > 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${d.soa_issues.missing_evidence} sin evidencia</span>` : ''}
-            ${d.soa_issues.overdue_reviews > 0 ? `<span style="background:#FFF7ED;color:#9A3412;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${d.soa_issues.overdue_reviews} revisiones vencidas</span>` : ''}
-            ${(!d.soa_issues.missing_inclusion_reason && !d.soa_issues.missing_evidence && !d.soa_issues.overdue_reviews) ? '<span style="color:var(--risk-low);font-size:13px;">Sin problemas SOA detectados.</span>' : ''}
+            ${d.soa_issues.missing_inclusion_reason > 0 ? `<span style="background:#FEF9C3;color:#854D0E;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${UI.esc(t('compliance.gap_soa_no_reason', { n: d.soa_issues.missing_inclusion_reason }))}</span>` : ''}
+            ${d.soa_issues.missing_evidence > 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${UI.esc(t('compliance.gap_soa_no_evidence', { n: d.soa_issues.missing_evidence }))}</span>` : ''}
+            ${d.soa_issues.overdue_reviews > 0 ? `<span style="background:#FFF7ED;color:#9A3412;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;">${UI.esc(t('compliance.gap_soa_overdue', { n: d.soa_issues.overdue_reviews }))}</span>` : ''}
+            ${(!d.soa_issues.missing_inclusion_reason && !d.soa_issues.missing_evidence && !d.soa_issues.overdue_reviews) ? `<span style="color:var(--risk-low);font-size:13px;">${UI.esc(t('compliance.gap_soa_ok'))}</span>` : ''}
           </div>` : ''}
         ${d.recommendations?.length ? `
-          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">Recomendaciones</h4>
+          <h4 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-base);">${UI.esc(t('compliance.gap_recommendations'))}</h4>
           <ul style="margin:0 0 12px;padding-left:20px;">
             ${d.recommendations.map(r => `<li style="font-size:13px;margin-bottom:4px;color:var(--text-base);">${UI.esc(r)}</li>`).join('')}
           </ul>` : ''}
         ${d.critical_gaps?.length ? `
           <details style="margin-top:8px;">
             <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--text-muted);">
-              ${d.critical_gaps.length} controles sin implementar (sin justificacion de exclusion)
+              ${UI.esc(t('compliance.gap_critical_n', { n: d.critical_gaps.length }))}
             </summary>
             <div style="margin-top:8px;">
               ${d.critical_gaps.map(g => `
                 <div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;">
                   <span style="color:var(--text-muted);min-width:80px;">${UI.esc(g.theme||'-')}</span>
                   <span style="font-weight:600;">${UI.esc(g.control_name)}</span>
-                  <span style="color:var(--text-muted);">madurez ${g.maturity}/5</span>
+                  <span style="color:var(--text-muted);">${UI.esc(t('compliance.gap_maturity_label', { n: g.maturity }))}</span>
                 </div>`).join('')}
             </div>
           </details>` : ''}
@@ -1147,31 +1124,26 @@ const ViewCompliance = (() => {
     } catch (e) {
       resultsDiv.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Analizar brechas'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('compliance.gap_analyze_btn'); }
     }
   }
 
-  // ============================================================
-  // Modal de madurez / gap analysis por control (ISO 27001 panel)
-  // ============================================================
+  function _getGapMaturityLabels() { return [t('compliance.gap_maturity_0'),t('compliance.gap_maturity_1'),t('compliance.gap_maturity_2'),t('compliance.gap_maturity_3'),t('compliance.gap_maturity_4'),t('compliance.gap_maturity_5')]; }
 
-  const _GAP_MATURITY_LABELS = ['Inexistente', 'Inicial', 'Basico', 'Definido', 'Gestionado', 'Optimizado'];
-
-  // Texto generico cuando no hay analisis IA guardado
   const _GAP_DEFAULT_WHY = [
-    'Este control no existe ni esta configurado en la organizacion. No aporta reduccion del riesgo.',
-    'El control existe de forma ad-hoc, sin proceso formal ni documentacion. Reduccion minima e inconsistente.',
-    'El control esta documentado pero su aplicacion es inconsistente o incompleta. Reduccion parcial del riesgo.',
-    'El control esta implementado de forma estandarizada pero sin revisiones periodicas ni metricas de eficacia.',
-    'El control se mide y gestiona activamente con metricas definidas. Falta implementar mejora continua formal.',
+    'Este control no existe ni está configurado en la organización. No aporta reducción del riesgo.',
+    'El control existe de forma ad-hoc, sin proceso formal ni documentación. Reducción mínima e inconsistente.',
+    'El control está documentado pero su aplicación es inconsistente o incompleta. Reducción parcial del riesgo.',
+    'El control está implementado de forma estandarizada pero sin revisiones periódicas ni métricas de eficacia.',
+    'El control se mide y gestiona activamente con métricas definidas. Falta implementar mejora continua formal.',
     '',
   ];
 
   const _GAP_DEFAULT_GAP = [
-    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable, establecer metricas y revision periodica.',
-    'Formalizar el proceso: crear documentacion oficial, establecer procedimientos escritos, comunicar a los equipos y medir resultados.',
-    'Estandarizar la aplicacion: garantizar consistencia en todos los casos, implementar controles de calidad y medir la eficacia con KPIs definidos.',
-    'Añadir metricas de eficacia: establecer KPIs, revisar resultados periodicamente, documentar excepciones y reducir la variabilidad del proceso.',
+    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable, establecer métricas y revisión periódica.',
+    'Formalizar el proceso: crear documentación oficial, establecer procedimientos escritos, comunicar a los equipos y medir resultados.',
+    'Estandarizar la aplicación: garantizar consistencia en todos los casos, implementar controles de calidad y medir la eficacia con KPIs definidos.',
+    'Añadir métricas de eficacia: establecer KPIs, revisar resultados periódicamente, documentar excepciones y reducir la variabilidad del proceso.',
     'Implementar mejora continua: analizar tendencias, automatizar donde sea posible, revisar benchmarks del sector y documentar las optimizaciones.',
     '',
   ];
@@ -1192,7 +1164,7 @@ const ViewCompliance = (() => {
     return `<div style="display:flex;gap:4px;align-items:center;">
       ${bars}
       <span style="font-size:14px;font-weight:800;color:${color};margin-left:8px;">${v}/5</span>
-      <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">${_GAP_MATURITY_LABELS[v] || ''}</span>
+      <span style="font-size:12px;color:var(--text-muted);margin-left:4px;">${_getGapMaturityLabels()[v] || ''}</span>
     </div>`;
   }
 
@@ -1210,23 +1182,21 @@ const ViewCompliance = (() => {
     return { rationale, gap };
   }
 
-  const _DOC_LEVEL_LABELS = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion Tecnica' };
+  const _DOC_LEVEL_LABELS = { 1: 'Política', 2: 'Norma', 3: 'Procedimiento', 4: 'Instrucción Técnica' };
   const _DOC_LEVEL_COLORS = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a' };
 
   function _showGapModal(implId) {
     const raw = (_implsData || []).find(i => i.id === implId);
-    if (!raw) { UI.toast('Sin datos de madurez disponibles para este control', 'info'); return; }
+    if (!raw) { UI.toast(t('compliance.maturity_no_data'), 'info'); return; }
     const c = _flatImpl(raw);
     const { rationale, gap } = _parseGapNotes(c.notes);
     const color = _gapMaturityColor(c.maturity);
     const v = Math.min(5, Math.max(0, c.maturity || 0));
 
-    // Usar texto IA si existe, sino texto generico por nivel
     const isAI = !!(rationale || gap);
     const displayRationale = rationale || _GAP_DEFAULT_WHY[v] || '';
     const displayGap = gap || _GAP_DEFAULT_GAP[v] || '';
 
-    // Documentos que contribuyen a este control, agrupados por nivel jerarquico
     const refs = (c.evidence_refs || []).filter(r => r && r.title);
     const refsWithLevel = refs.filter(r => r.document_level);
     const refsLegacy = refs.filter(r => !r.document_level);
@@ -1240,12 +1210,10 @@ const ViewCompliance = (() => {
 
     const _maturityDots = (m, max) => Array.from({length: 5}, (_, i) => {
       const filled = i < m;
-      const cap = i < max;
-      return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:2px;background:${filled ? color : (cap ? 'var(--bg-3)' : 'var(--bg-3)')};opacity:${cap ? 1 : 0.4};"></span>`;
+      return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:2px;background:${filled ? color : 'var(--bg-3)'};opacity:${i < max ? 1 : 0.4};"></span>`;
     }).join('');
 
     const docPyramidHtml = refsWithLevel.length > 0 ? (() => {
-      // Ordenar por nivel
       const sorted = [...refsWithLevel].sort((a, b) => a.document_level - b.document_level);
       const rows = sorted.map(r => {
         const lvl = r.document_level || 1;
@@ -1269,7 +1237,6 @@ const ViewCompliance = (() => {
           </div>`;
       }).join('');
 
-      // Mostrar niveles que faltan para llegar a madurez 5
       const maxLevelPresent = Math.max(...refsWithLevel.map(r => r.document_level || 1));
       const missingLevels = [1,2,3,4].filter(l => l > maxLevelPresent)
         .map(l => `<span style="color:${_DOC_LEVEL_COLORS[l]};font-weight:600;">${_DOC_LEVEL_LABELS[l]}</span>`);
@@ -1277,18 +1244,18 @@ const ViewCompliance = (() => {
       return `
         <div style="margin-bottom:14px;">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                      letter-spacing:.6px;margin-bottom:8px;">Documentos que contribuyen a este control</div>
+                      letter-spacing:.6px;margin-bottom:8px;">${UI.esc(t('compliance.maturity_docs'))}</div>
           ${rows}
           ${missingLevels.length > 0 ? `
             <div style="margin-top:8px;font-size:11px;color:var(--text-muted);padding:6px 10px;
                         background:rgba(89,0,141,.04);border-radius:5px;border:1px dashed var(--border);">
-              Faltan para llegar a nivel 5: ${missingLevels.join(' → ')}
+              ${t('compliance.maturity_missing_levels', { levels: missingLevels.join(' → ') })}
             </div>` : ''}
         </div>`;
     })() : (refsLegacy.length > 0 ? `
       <div style="margin-bottom:14px;">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                    letter-spacing:.6px;margin-bottom:6px;">Documentos referenciados</div>
+                    letter-spacing:.6px;margin-bottom:6px;">${UI.esc(t('compliance.maturity_legacy_docs'))}</div>
         ${refsLegacy.map(r => `
           <div style="font-size:12px;color:var(--text-base);padding:4px 8px;background:var(--bg-2);
                       border-radius:4px;margin-bottom:4px;">${UI.esc(r.title.replace(/^\[Auto\]\s*/,''))}</div>`
@@ -1296,17 +1263,12 @@ const ViewCompliance = (() => {
       </div>` : '');
 
     const aiNote = isAI
-      ? `<div style="font-size:10px;color:var(--risk-low);margin-bottom:12px;">
-           Analisis generado por IA a partir del documento fuente
-         </div>`
-      : `<div style="font-size:10px;color:var(--text-muted);margin-bottom:12px;">
-           Descripcion generica por nivel de madurez &mdash;
-           sube documentos al Agente IA para obtener analisis personalizado
-         </div>`;
+      ? `<div style="font-size:10px;color:var(--risk-low);margin-bottom:12px;">${UI.esc(t('compliance.maturity_ai_note'))}</div>`
+      : `<div style="font-size:10px;color:var(--text-muted);margin-bottom:12px;">${UI.esc(t('compliance.maturity_generic_note'))}</div>`;
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Analisis de madurez</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${UI.esc(t('compliance.maturity_title'))}</h3>
         <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">&#10005;</button>
       </div>
 
@@ -1327,7 +1289,7 @@ const ViewCompliance = (() => {
       ${displayRationale ? `
         <div style="margin-bottom:14px;">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                      letter-spacing:.6px;margin-bottom:6px;">Por que esta en nivel ${v}/5</div>
+                      letter-spacing:.6px;margin-bottom:6px;">${UI.esc(t('compliance.maturity_why', { v }))}</div>
           <div style="font-size:13px;line-height:1.7;color:var(--text-base);background:var(--bg-2);
                       border-radius:6px;padding:12px 14px;border-left:4px solid ${color};">
             ${UI.esc(displayRationale)}
@@ -1337,7 +1299,7 @@ const ViewCompliance = (() => {
       ${displayGap ? `
         <div>
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                      letter-spacing:.6px;margin-bottom:6px;">Para llegar a nivel 5 (Optimizado)</div>
+                      letter-spacing:.6px;margin-bottom:6px;">${UI.esc(t('compliance.maturity_to5'))}</div>
           <div style="font-size:13px;line-height:1.7;color:var(--text-base);
                       background:rgba(89,0,141,.05);border-radius:6px;padding:12px 14px;
                       border-left:4px solid var(--brand-purple);">
@@ -1348,9 +1310,9 @@ const ViewCompliance = (() => {
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);
                   display:flex;justify-content:flex-end;gap:8px;">
         <a href="#/controls" onclick="UI.closeModal();" class="btn btn-ghost" style="font-size:12px;">
-          Ver en Controles
+          ${UI.esc(t('compliance.maturity_go_controls'))}
         </a>
-        <button onclick="UI.closeModal();" class="btn btn-primary" style="font-size:12px;">Cerrar</button>
+        <button onclick="UI.closeModal();" class="btn btn-primary" style="font-size:12px;">${UI.esc(t('compliance.maturity_close'))}</button>
       </div>
     `, { width: '680px' });
   }
@@ -1365,30 +1327,30 @@ const ViewCompliance = (() => {
                    ${active.includes(fw.code) ? 'checked' : ''}>
             <div>
               <div style="font-size:13px;font-weight:600;">${UI.esc(fw.name)}</div>
-              <div style="font-size:11px;color:#9d9d9d;">${fw.requirements_count} requisitos</div>
+              <div style="font-size:11px;color:#9d9d9d;">${UI.esc(t('compliance.config_n_reqs', { n: fw.requirements_count }))}</div>
             </div>
           </label>`).join('');
         UI.openModal(`
-          <h3 style="margin:0 0 16px;color:var(--brand-purple);">Configurar frameworks normativos</h3>
+          <h3 style="margin:0 0 16px;color:var(--brand-purple);">${UI.esc(t('compliance.config_modal_title'))}</h3>
           <p style="font-size:13px;color:#666;margin-bottom:12px;">
-            Selecciona los frameworks que debe cumplir tu organización.
+            ${UI.esc(t('compliance.config_modal_desc'))}
           </p>
           <div style="max-height:350px;overflow-y:auto;">${checkboxes}</div>
           <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-            <button onclick="UI.closeModal()" class="btn-outline">Cancelar</button>
-            <button onclick="ViewCompliance._saveFrameworks()" class="btn-primary">Guardar</button>
+            <button onclick="UI.closeModal()" class="btn-outline">${UI.esc(t('common.cancel'))}</button>
+            <button onclick="ViewCompliance._saveFrameworks()" class="btn-primary">${UI.esc(t('common.save'))}</button>
           </div>`);
-      }).catch(() => UI.toast('Error cargando contexto', 'error'));
-    }).catch(() => UI.toast('Error cargando frameworks', 'error'));
+      }).catch(() => UI.toast(t('compliance.config_error_ctx'), 'error'));
+    }).catch(() => UI.toast(t('compliance.config_error_fw'), 'error'));
   }
 
   async function _saveFrameworks() {
     const selected = [...document.querySelectorAll('.fw-cb:checked')].map(c => c.value);
-    if (!selected.length) { UI.toast('Selecciona al menos un framework', 'error'); return; }
+    if (!selected.length) { UI.toast(t('compliance.config_min_one'), 'error'); return; }
     try {
       await Api.complianceFrameworks.subscribe({ frameworks: selected });
       UI.closeModal();
-      UI.toast('Frameworks configurados correctamente', 'success');
+      UI.toast(t('compliance.config_saved'), 'success');
       setTimeout(() => location.reload(), 800);
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');

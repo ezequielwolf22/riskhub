@@ -61,19 +61,19 @@ const ViewAiChat = (() => {
 
   function _renderSidePanel() {
     const suggestions = [
-      'Dame un resumen del estado de riesgos criticos y que acciones deberiamos tomar',
-      'Que controles tienen baja madurez? Propón tareas para mejorarlos',
-      'Resume los incidentes recientes y sugiere lecciones aprendidas',
-      'Cuales son las brechas mas importantes en nuestros controles ISO 27002?',
-      'Hay proveedores criticos con riesgo elevado que requieran atencion?',
-      'Que riesgos deberíamos priorizar este mes?',
-      'Como configuro la API key del agente?',
-      'Como subo documentos para enriquecer el contexto del agente?',
+      t('ai_chat.suggestion_0'),
+      t('ai_chat.suggestion_1'),
+      t('ai_chat.suggestion_2'),
+      t('ai_chat.suggestion_3'),
+      t('ai_chat.suggestion_4'),
+      t('ai_chat.suggestion_5'),
+      t('ai_chat.suggestion_6'),
+      t('ai_chat.suggestion_7'),
     ];
     return `
       <div class="card" style="margin-bottom:12px;">
         <h4 style="margin:0 0 10px;font-size:12px;text-transform:uppercase;
-                   color:var(--text-muted);letter-spacing:.5px;">Preguntas rapidas</h4>
+                   color:var(--text-muted);letter-spacing:.5px;">${UI.esc(t('ai_chat.quick_questions'))}</h4>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${suggestions.map(s => `
             <button class="btn btn-ghost" style="text-align:left;font-size:12px;padding:7px 10px;

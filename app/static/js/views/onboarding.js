@@ -19,37 +19,53 @@ const ViewOnboarding = (() => {
   const LS_SUBSTEP = 'riskhub_wizard_substep';
   const LS_ANSWERS = 'riskhub_wizard_answers';
 
-  const STEPS = [
-    { n: 1, label: 'Organizacion' },
-    { n: 2, label: 'Cuestionario IA' },
-    { n: 3, label: 'Documentos' },
-    { n: 4, label: 'Revisar propuesta' },
-    { n: 5, label: 'Automatizaciones' },
-  ];
+  function _getSteps() {
+    return [
+      { n: 1, label: t('onboarding.step1_label') },
+      { n: 2, label: t('onboarding.step2_label') },
+      { n: 3, label: t('onboarding.step3_label') },
+      { n: 4, label: t('onboarding.step4_label') },
+      { n: 5, label: t('onboarding.step5_label') },
+    ];
+  }
 
   const ACCEPTED_EXTS = ['pdf', 'docx', 'txt', 'csv'];
 
-  const SECTORS = ['Financiero / Banca', 'Sanitario / Salud', 'Industrial / Manufactura',
-    'Tecnologia / Software', 'Administracion publica', 'Educacion',
-    'Energia / Utilities', 'Retail / Comercio', 'Servicios profesionales', 'Otro'];
+  function _getSectors() {
+    return [
+      t('onboarding.sector_finance'),
+      t('onboarding.sector_health'),
+      t('onboarding.sector_industry'),
+      t('onboarding.sector_tech'),
+      t('onboarding.sector_public'),
+      t('onboarding.sector_education'),
+      t('onboarding.sector_energy'),
+      t('onboarding.sector_retail'),
+      t('onboarding.sector_services'),
+      t('onboarding.sector_other'),
+    ];
+  }
 
-  const SIZES = ['< 50 empleados', '50-250 empleados', '250-1.000 empleados',
-    '1.000-5.000 empleados', '> 5.000 empleados'];
+  function _getSizes() {
+    return [
+      t('onboarding.size_xs'),
+      t('onboarding.size_s'),
+      t('onboarding.size_m'),
+      t('onboarding.size_l'),
+      t('onboarding.size_xl'),
+    ];
+  }
 
-  const AUTOMATIONS = [
-    { title: 'Escaneo CVE automatico',
-      desc: 'Consulta periodica de la NVD para detectar vulnerabilidades conocidas en tu stack tecnologico y vincularlas a los activos.' },
-    { title: 'Re-escaneo OSINT semanal',
-      desc: 'Revision semanal de exposicion externa (dominios, emails, IPs). Los hallazgos criticos generan incidentes automaticamente.' },
-    { title: 'Informe mensual',
-      desc: 'Generacion automatica de un informe ejecutivo mensual con la evolucion del riesgo y el estado del SGSI.' },
-    { title: 'Escalado de tareas',
-      desc: 'Las tareas vencidas se escalan automaticamente para que ninguna accion de tratamiento quede olvidada.' },
-    { title: 'Revision de politicas',
-      desc: 'Aviso automatico cuando una politica supera su fecha de revision prevista.' },
-    { title: 'Degradacion de controles',
-      desc: 'Deteccion de controles cuya efectividad decae con el tiempo sin evidencias recientes.' },
-  ];
+  function _getAutomations() {
+    return [
+      { title: t('onboarding.auto1_title'), desc: t('onboarding.auto1_desc') },
+      { title: t('onboarding.auto2_title'), desc: t('onboarding.auto2_desc') },
+      { title: t('onboarding.auto3_title'), desc: t('onboarding.auto3_desc') },
+      { title: t('onboarding.auto4_title'), desc: t('onboarding.auto4_desc') },
+      { title: t('onboarding.auto5_title'), desc: t('onboarding.auto5_desc') },
+      { title: t('onboarding.auto6_title'), desc: t('onboarding.auto6_desc') },
+    ];
+  }
 
   // ---------- Estado ----------
 
@@ -72,17 +88,16 @@ const ViewOnboarding = (() => {
   // ---------- Entry point ----------
 
   async function render(main) {
-    // Resetear estado async entre renders para evitar valores obsoletos
     _result = null;
     _importResult = null;
     _analyzing = false;
     _busy = false;
 
-    main.innerHTML = '<div id="wz-root">' + UI.notice('Cargando...') + '</div>';
+    main.innerHTML = '<div id="wz-root">' + UI.notice(t('onboarding.loading')) + '</div>';
 
     _restoreLocal();
     await _loadBase();
-    if (!document.getElementById('wz-root')) return; // tab desmontado mientras cargaba
+    if (!document.getElementById('wz-root')) return;
     _renderWizard();
   }
 
@@ -124,15 +139,12 @@ const ViewOnboarding = (() => {
     if (_questions) return;
     const data = await Api.get('/api/ai/questionnaire');
     _questions = data.questions || [];
-    // Respuestas guardadas server-side (de un analisis previo) como base;
-    // las respuestas locales del wizard tienen prioridad por ser mas recientes.
     if (data.saved_answers && Object.keys(data.saved_answers).length > 0) {
       _answers = { ...data.saved_answers, ..._answers };
       if (Array.isArray(_answers.custom_controls) && !_customControls.length) {
         _customControls = [..._answers.custom_controls];
       }
     }
-    // Agrupar por categoria -> sub-pantallas de 2-3 preguntas
     const byCat = [];
     _questions.forEach(q => {
       let g = byCat.find(x => x.title === q.category);
@@ -155,16 +167,17 @@ const ViewOnboarding = (() => {
         <div class="wizard-nav" id="wz-nav"></div>
       </div>
       <div class="wizard-later">
-        <button type="button" class="btn btn-ghost" id="wz-later">Completar mas tarde</button>
+        <button type="button" class="btn btn-ghost" id="wz-later">${UI.esc(t('onboarding.later_btn'))}</button>
       </div>`;
     document.getElementById('wz-later').onclick = _skipLater;
     _renderStep();
   }
 
   function _renderProgress() {
+    const steps = _getSteps();
     return `
-      <ol class="wizard-progress" aria-label="Progreso del asistente">
-        ${STEPS.map(s => {
+      <ol class="wizard-progress" aria-label="${UI.esc(t('onboarding.progress_label'))}">
+        ${steps.map(s => {
           const state = s.n < _step ? 'done' : (s.n === _step ? 'active' : '');
           return `
             <li class="wizard-step ${state}" ${s.n === _step ? 'aria-current="step"' : ''}>
@@ -176,6 +189,7 @@ const ViewOnboarding = (() => {
   }
 
   function _updateProgress() {
+    const steps = _getSteps();
     const items = document.querySelectorAll('#wz-root .wizard-step');
     if (!items.length) return;
     items.forEach((li, i) => {
@@ -187,6 +201,8 @@ const ViewOnboarding = (() => {
       else li.removeAttribute('aria-current');
       const dot = li.querySelector('.wizard-step-dot');
       if (dot) dot.innerHTML = isDone ? '&#10003;' : String(n);
+      const lbl = li.querySelector('.wizard-step-label');
+      if (lbl && steps[i]) lbl.textContent = steps[i].label;
     });
   }
 
@@ -205,11 +221,10 @@ const ViewOnboarding = (() => {
       body.innerHTML = `
         <div class="notice notice-error">${UI.esc(e.message)}</div>
         <button type="button" class="btn btn-primary" style="margin-top:12px;"
-                onclick="ViewOnboarding._retryStep()">Reintentar</button>`;
+                onclick="ViewOnboarding._retryStep()">${UI.esc(t('onboarding.retry_btn'))}</button>`;
       _renderNav({ nextDisabled: true });
       return;
     }
-    // Foco al titulo del paso (accesibilidad)
     const h = document.getElementById('wz-step-title');
     if (h) h.focus();
   }
@@ -223,16 +238,16 @@ const ViewOnboarding = (() => {
     nav.innerHTML = `
       <button type="button" class="btn btn-ghost" id="wz-prev"
               ${(_step === 1 && _substep === 0) || _busy ? 'disabled' : ''}>
-        &larr; Atras
+        &larr; ${UI.esc(t('onboarding.back_btn'))}
       </button>
       <span class="wizard-nav-error" id="wz-nav-error" role="alert"></span>
       ${isLast ? `
         <button type="button" class="btn btn-primary" id="wz-finish" ${_busy ? 'disabled' : ''}>
-          Finalizar setup
+          ${UI.esc(t('onboarding.finish_btn'))}
         </button>` : `
         <button type="button" class="btn btn-primary" id="wz-next"
                 ${opts.nextDisabled || _busy ? 'disabled' : ''}>
-          ${UI.esc(opts.nextLabel || 'Siguiente')} &rarr;
+          ${UI.esc(opts.nextLabel || t('onboarding.next_btn'))} &rarr;
         </button>`}`;
     const prev = document.getElementById('wz-prev');
     if (prev) prev.onclick = _prev;
@@ -266,7 +281,7 @@ const ViewOnboarding = (() => {
   function _skipLater() {
     localStorage.setItem('riskhub_onboarding_skipped', '1');
     _persistLocal();
-    UI.toast('Puedes retomar el asistente desde Setup en el menu lateral', 'info');
+    UI.toast(t('onboarding.skip_later_toast'), 'info');
     location.hash = '/home';
   }
 
@@ -276,7 +291,7 @@ const ViewOnboarding = (() => {
     if (_busy) return;
     _navError('');
     if (_step === 2 && _substep > 0) {
-      _collectSubstepAnswers();   // guardar lo escrito antes de retroceder
+      _collectSubstepAnswers();
       _substep--;
     } else if (_step > 1) {
       if (_step === 2) _collectSubstepAnswers();
@@ -319,40 +334,41 @@ const ViewOnboarding = (() => {
   function _renderStep1(body) {
     const name  = _ctx.organization_name || '';
     const scope = _ctx.scope || '';
+    const sectors = _getSectors();
+    const sizes   = _getSizes();
     body.innerHTML = `
-      ${_stepTitle('Datos de la organizacion',
-        'Lo imprescindible para empezar. El resto del contexto lo completara la IA con el cuestionario y tus documentos.')}
+      ${_stepTitle(t('onboarding.s1_title'), UI.esc(t('onboarding.s1_hint')))}
       <div class="form-grid">
         <div class="span2">
-          <label for="wz-org-name">Nombre de la organizacion <span class="wizard-req">*</span></label>
+          <label for="wz-org-name">${UI.esc(t('onboarding.s1_org_name_label'))} <span class="wizard-req">*</span></label>
           <input id="wz-org-name" type="text" maxlength="200" value="${UI.esc(name)}"
-                 placeholder="Ej: Acme Iberia S.L.">
+                 placeholder="${UI.esc(t('onboarding.s1_org_name_placeholder'))}">
           <div class="wizard-field-error" id="wz-err-org-name" role="alert"></div>
         </div>
         <div>
-          <label for="wz-sector">Sector de actividad <span class="wizard-req">*</span></label>
+          <label for="wz-sector">${UI.esc(t('onboarding.s1_sector_label'))} <span class="wizard-req">*</span></label>
           <select id="wz-sector">
-            <option value="">-- Seleccionar --</option>
-            ${SECTORS.map(s =>
+            <option value="">${UI.esc(t('onboarding.select_placeholder'))}</option>
+            ${sectors.map(s =>
               `<option value="${UI.esc(s)}"${_cfg.org_sector === s ? ' selected' : ''}>${UI.esc(s)}</option>`
             ).join('')}
           </select>
           <div class="wizard-field-error" id="wz-err-sector" role="alert"></div>
         </div>
         <div>
-          <label for="wz-size">Tamano de la organizacion <span class="wizard-req">*</span></label>
+          <label for="wz-size">${UI.esc(t('onboarding.s1_size_label'))} <span class="wizard-req">*</span></label>
           <select id="wz-size">
-            <option value="">-- Seleccionar --</option>
-            ${SIZES.map(s =>
+            <option value="">${UI.esc(t('onboarding.select_placeholder'))}</option>
+            ${sizes.map(s =>
               `<option value="${UI.esc(s)}"${_cfg.org_size === s ? ' selected' : ''}>${UI.esc(s)}</option>`
             ).join('')}
           </select>
           <div class="wizard-field-error" id="wz-err-size" role="alert"></div>
         </div>
         <div class="span2">
-          <label for="wz-scope">Alcance del SGSI <span class="wizard-req">*</span></label>
+          <label for="wz-scope">${UI.esc(t('onboarding.s1_scope_label'))} <span class="wizard-req">*</span></label>
           <textarea id="wz-scope" rows="3"
-            placeholder="Ej: Sistemas de informacion que soportan la facturacion y la atencion al cliente en la sede central...">${UI.esc(scope)}</textarea>
+            placeholder="${UI.esc(t('onboarding.s1_scope_placeholder'))}">${UI.esc(scope)}</textarea>
           <div class="wizard-field-error" id="wz-err-scope" role="alert"></div>
         </div>
       </div>`;
@@ -371,24 +387,22 @@ const ViewOnboarding = (() => {
     const scope  = document.getElementById('wz-scope').value.trim();
 
     let ok = true;
-    _fieldError('org-name', name ? '' : 'Introduce el nombre de la organizacion.');
-    _fieldError('sector',   sector ? '' : 'Selecciona un sector.');
-    _fieldError('size',     size ? '' : 'Selecciona el tamano.');
-    _fieldError('scope',    scope ? '' : 'Describe brevemente el alcance del SGSI.');
+    _fieldError('org-name', name ? '' : t('onboarding.s1_err_org_name'));
+    _fieldError('sector',   sector ? '' : t('onboarding.s1_err_sector'));
+    _fieldError('size',     size ? '' : t('onboarding.s1_err_size'));
+    _fieldError('scope',    scope ? '' : t('onboarding.s1_err_scope'));
     if (!name || !sector || !size || !scope) ok = false;
-    if (!ok) { _navError('Completa los campos marcados.'); return false; }
+    if (!ok) { _navError(t('onboarding.err_required_fields')); return false; }
 
-    _setBusy(true, 'Guardando...');
+    _setBusy(true, t('onboarding.saving'));
     try {
-      // Contexto SGSI (mismo endpoint que la vista Contexto)
       _ctx = await Api.context.update({ organization_name: name, scope: scope });
-      // Perfil en config IA (mismo endpoint que el onboarding anterior)
       _cfg = { ..._cfg, ...await Api.aiConfig.update({ org_sector: sector, org_size: size }) };
       return true;
     } catch (e) {
       const msg = e.status === 403
-        ? 'Necesitas rol de administrador para guardar el contexto. Pide a un admin que complete el asistente.'
-        : 'No se pudo guardar: ' + e.message;
+        ? t('onboarding.err_forbidden_ctx')
+        : t('onboarding.err_save_ctx', { msg: e.message });
       _navError(msg);
       return false;
     } finally {
@@ -402,7 +416,7 @@ const ViewOnboarding = (() => {
   // ============================================================
 
   async function _renderStep2(body) {
-    body.innerHTML = '<div class="notice">Cargando cuestionario...</div>';
+    body.innerHTML = `<div class="notice">${UI.esc(t('onboarding.s2_loading'))}</div>`;
     await _loadQuestions();
     const group = _groups[_substep];
     if (!group) { _step = 3; _renderStep(); return; }
@@ -410,27 +424,29 @@ const ViewOnboarding = (() => {
     const pct = Math.round(((_substep) / _groups.length) * 100);
 
     body.innerHTML = `
-      ${_stepTitle('Cuestionario IA — ' + group.title,
-        'Tus respuestas alimentan el analisis de riesgos ISO 27005 / MAGERIT del paso 4. Se guardan automaticamente al avanzar.')}
-      <div class="wizard-substep" aria-label="Progreso del cuestionario">
+      ${_stepTitle(
+        t('onboarding.s2_title') + ' — ' + group.title,
+        UI.esc(t('onboarding.s2_hint'))
+      )}
+      <div class="wizard-substep" aria-label="${UI.esc(t('onboarding.progress_label'))}">
         <div class="wizard-substep-bar"><div style="width:${pct}%;"></div></div>
-        <span class="wizard-substep-text">Bloque ${_substep + 1} de ${_groups.length}</span>
+        <span class="wizard-substep-text">${UI.esc(t('onboarding.s2_block', { current: _substep + 1, total: _groups.length }))}</span>
       </div>
       ${group.questions.map(_renderQuestion).join('')}`;
 
     _prefillSubstep(group);
     _wireQuestionEvents();
-    _renderNav({ nextLabel: _substep < _groups.length - 1 ? 'Siguiente' : 'Siguiente paso' });
+    _renderNav({ nextLabel: _substep < _groups.length - 1 ? t('onboarding.next_btn') : t('onboarding.next_step_btn') });
   }
 
   function _renderQuestion(q) {
-    const req = q.required ? ' <span class="wizard-req">*</span>' : '';
+    const req = q.required ? ` <span class="wizard-req">*</span>` : '';
     let control = '';
 
     if (q.type === 'select') {
       control = `
         <select id="wzq-${UI.esc(q.id)}">
-          <option value="">-- Selecciona --</option>
+          <option value="">${UI.esc(t('onboarding.q_select_placeholder'))}</option>
           ${(q.options || []).map(o => `<option value="${UI.esc(o)}">${UI.esc(o)}</option>`).join('')}
         </select>`;
     } else if (q.type === 'multiselect') {
@@ -445,7 +461,7 @@ const ViewOnboarding = (() => {
       if (q.id === 'regulations') {
         control += `
           <div id="wz-ens-wrap" class="wizard-ens-wrap" style="display:none;">
-            <span class="wizard-ens-title">Nivel ENS (RD 311/2022) <span class="wizard-req">*</span></span>
+            <span class="wizard-ens-title">${UI.esc(t('onboarding.q_ens_title'))} <span class="wizard-req">*</span></span>
             <div class="wizard-ens-opts">
               ${['basico', 'medio', 'alto'].map(lvl => `
                 <label class="wizard-ens-opt">
@@ -458,27 +474,27 @@ const ViewOnboarding = (() => {
       if (q.id === 'controls_existing') {
         control += `
           <div class="wizard-custom-ctrl">
-            <label for="wz-custom-ctrl-input">Anadir control adicional (no esta en la lista)</label>
+            <label for="wz-custom-ctrl-input">${UI.esc(t('onboarding.q_custom_ctrl_label'))}</label>
             <div class="wizard-custom-ctrl-row">
               <input id="wz-custom-ctrl-input" type="text" maxlength="120"
-                     placeholder="Ej: WAF, PAM, Zero Trust, cifrado de emails...">
-              <button type="button" class="btn" onclick="ViewOnboarding._addCustomControl()">+ Anadir</button>
+                     placeholder="${UI.esc(t('onboarding.q_custom_ctrl_placeholder'))}">
+              <button type="button" class="btn" onclick="ViewOnboarding._addCustomControl()">${UI.esc(t('onboarding.q_custom_ctrl_add'))}</button>
             </div>
             <div id="wz-custom-ctrl-list" class="wizard-custom-ctrl-list"></div>
           </div>`;
       }
-    } else { // textarea
+    } else {
       control = `<textarea id="wzq-${UI.esc(q.id)}" rows="3"
-        placeholder="Opcional — escribe cualquier informacion relevante..."></textarea>`;
+        placeholder="${UI.esc(t('onboarding.q_extra_placeholder'))}"></textarea>`;
     }
 
     const extra = q.allow_extra ? `
       <button type="button" class="btn btn-ghost wizard-extra-btn"
-              onclick="ViewOnboarding._toggleExtra('${UI.esc(q.id)}')">+ Anadir criterio</button>
+              onclick="ViewOnboarding._toggleExtra('${UI.esc(q.id)}')">${UI.esc(t('onboarding.q_extra_btn'))}</button>
       <div id="wz-extra-wrap-${UI.esc(q.id)}" style="display:none;margin-top:8px;">
-        <label for="wz-extra-${UI.esc(q.id)}" class="wizard-extra-label">Criterio adicional para el agente IA</label>
+        <label for="wz-extra-${UI.esc(q.id)}" class="wizard-extra-label">${UI.esc(t('onboarding.q_extra_label'))}</label>
         <textarea id="wz-extra-${UI.esc(q.id)}" rows="2"
-          placeholder="Contexto, restriccion o requisito relevante sobre este punto..."></textarea>
+          placeholder="${UI.esc(t('onboarding.q_extra_placeholder'))}"></textarea>
       </div>` : '';
 
     return `
@@ -512,7 +528,6 @@ const ViewOnboarding = (() => {
         if (inp)  inp.value = _answers['extra_' + q.id];
       }
     });
-    // ENS
     const ensWrap = document.getElementById('wz-ens-wrap');
     if (ensWrap) {
       const ensChecked = [...document.querySelectorAll('input[data-wzq="regulations"]:checked')]
@@ -566,7 +581,7 @@ const ViewOnboarding = (() => {
     const input = document.getElementById('wz-custom-ctrl-input');
     const val = input ? input.value.trim() : '';
     if (!val) return;
-    if (_customControls.includes(val)) { UI.toast('Ese control ya esta anadido', 'info'); return; }
+    if (_customControls.includes(val)) { UI.toast(t('onboarding.ctrl_already_added'), 'info'); return; }
     _customControls.push(val);
     input.value = '';
     _renderCustomControls();
@@ -583,7 +598,7 @@ const ViewOnboarding = (() => {
     list.innerHTML = _customControls.map((c, i) => `
       <span class="wizard-chip">
         ${UI.esc(c)}
-        <button type="button" aria-label="Quitar ${UI.esc(c)}"
+        <button type="button" aria-label="${UI.esc(t('onboarding.ctrl_remove_label', { name: c }))}"
                 onclick="ViewOnboarding._removeCustomControl(${i})">&times;</button>
       </span>`).join('');
   }
@@ -634,21 +649,20 @@ const ViewOnboarding = (() => {
         }
       }
       const err = document.getElementById('wz-qerr-' + q.id);
-      if (err) err.textContent = bad ? 'Esta pregunta es obligatoria.' : '';
+      if (err) err.textContent = bad ? t('onboarding.q_err_required') : '';
       if (bad && !firstBad) firstBad = q.id;
     });
-    // ENS: si se ha marcado ENS hay que elegir nivel
     const ensWrap = document.getElementById('wz-ens-wrap');
     if (ensWrap && ensWrap.style.display !== 'none') {
       const sel = document.querySelector('input[name="wz_ens_level"]:checked');
       if (!sel) {
         const err = document.getElementById('wz-qerr-regulations');
-        if (err) err.textContent = 'Selecciona el nivel ENS (basico, medio o alto).';
+        if (err) err.textContent = t('onboarding.q_err_ens_level');
         if (!firstBad) firstBad = 'regulations';
       }
     }
     if (firstBad) {
-      _navError('Revisa las preguntas marcadas.');
+      _navError(t('onboarding.err_review_questions'));
       document.getElementById('wz-q-' + firstBad)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return false;
     }
@@ -661,18 +675,16 @@ const ViewOnboarding = (() => {
 
   function _renderStep3(body) {
     body.innerHTML = `
-      ${_stepTitle('Documentos de contexto',
-        'Sube politicas, inventarios, diagramas o evaluaciones previas (PDF, DOCX, TXT, CSV). ' +
-        'La vectorizacion e indexado son automaticos al subir. Este paso es opcional: puedes continuar sin documentos.')}
+      ${_stepTitle(t('onboarding.s3_title'), UI.esc(t('onboarding.s3_hint')))}
       <div id="wz-dropzone" class="wizard-dropzone" role="button" tabindex="0"
-           aria-label="Zona para arrastrar documentos o pulsar para seleccionar">
+           aria-label="${UI.esc(t('onboarding.s3_dropzone_aria'))}">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
           <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <div>Arrastra aqui uno o varios documentos<br>
-          <span class="wizard-dropzone-hint">o pulsa para seleccionar (PDF, DOCX, TXT, CSV)</span>
+        <div>${UI.esc(t('onboarding.s3_drop_text'))}<br>
+          <span class="wizard-dropzone-hint">${UI.esc(t('onboarding.s3_drop_hint'))}</span>
         </div>
         <input type="file" id="wz-file-input" accept=".pdf,.docx,.txt,.csv" multiple
                style="display:none;" aria-hidden="true">
@@ -702,7 +714,6 @@ const ViewOnboarding = (() => {
     });
   }
 
-  // Misma heuristica de categoria que la vista de documentos IA
   function _guessCategory(filename) {
     const n = filename.toLowerCase().replace(/[_\-\.]/g, ' ');
     if (/politic|policy|procedur|instruc|manual|proceso|reglamento interno/.test(n)) return 'policies';
@@ -720,7 +731,7 @@ const ViewOnboarding = (() => {
     for (const f of files) {
       const ext = f.name.split('.').pop().toLowerCase();
       if (!ACCEPTED_EXTS.includes(ext)) {
-        UI.toast(`${f.name}: formato no soportado. Solo PDF, DOCX, TXT, CSV.`, 'error');
+        UI.toast(t('onboarding.s3_format_error', { name: f.name }), 'error');
         continue;
       }
       valid.push(f);
@@ -743,7 +754,7 @@ const ViewOnboarding = (() => {
         item.status = 'done';
       } catch (e) {
         item.status = 'error';
-        item.error = e.message || 'Error desconocido';
+        item.error = e.message || t('onboarding.upload_unknown_err');
       }
       _renderUploadList();
     }
@@ -752,10 +763,10 @@ const ViewOnboarding = (() => {
     try { _docs = await Api.aiDocuments.list(); } catch (_) { /* mantener lista previa */ }
     _renderDocList();
     _renderNav();
-    const ok = _queue.filter(q => q.status === 'done').length;
+    const ok   = _queue.filter(q => q.status === 'done').length;
     const fail = _queue.filter(q => q.status === 'error').length;
-    if (ok && !fail) UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} — indexado automatico iniciado`, 'success');
-    else if (fail) UI.toast(`${ok} subidos, ${fail} con error`, 'error');
+    if (ok && !fail) UI.toast(t(ok !== 1 ? 'onboarding.upload_success_pl' : 'onboarding.upload_success', { n: ok }), 'success');
+    else if (fail) UI.toast(t('onboarding.upload_partial', { ok, fail }), 'error');
   }
 
   function _renderUploadList() {
@@ -769,12 +780,12 @@ const ViewOnboarding = (() => {
             ? Math.round(q.size / 1024) + ' KB'
             : (q.size / 1024 / 1024).toFixed(1) + ' MB';
           const st = q.status === 'done'
-            ? '<span class="wizard-up-ok">&#10003; Subido</span>'
+            ? `<span class="wizard-up-ok">&#10003; ${UI.esc(t('onboarding.upload_ok'))}</span>`
             : q.status === 'error'
-            ? `<span class="wizard-up-err" title="${UI.esc(q.error || '')}">&#10007; ${UI.esc(q.error || 'Error')}</span>`
+            ? `<span class="wizard-up-err" title="${UI.esc(q.error || '')}">&#10007; ${UI.esc(q.error || t('onboarding.doc_status_error'))}</span>`
             : q.status === 'uploading'
-            ? '<span class="wizard-up-busy">Subiendo...</span>'
-            : '<span class="wizard-up-wait">En cola</span>';
+            ? `<span class="wizard-up-busy">${UI.esc(t('onboarding.upload_busy'))}</span>`
+            : `<span class="wizard-up-wait">${UI.esc(t('onboarding.upload_queued'))}</span>`;
           return `
             <div class="wizard-upload-item">
               <span class="wizard-upload-name" title="${UI.esc(q.name)}">${UI.esc(q.name)}</span>
@@ -789,20 +800,25 @@ const ViewOnboarding = (() => {
     const c = document.getElementById('wz-doc-list');
     if (!c) return;
     if (!_docs.length) {
-      c.innerHTML = '<p class="wizard-muted">Aun no hay documentos subidos.</p>';
+      c.innerHTML = `<p class="wizard-muted">${UI.esc(t('onboarding.docs_none'))}</p>`;
       return;
     }
-    const statusLabels = { indexed: 'Indexado', processing: 'Procesando', pending: 'Pendiente', error: 'Error' };
+    const statusLabels = {
+      indexed:    t('onboarding.doc_status_indexed'),
+      processing: t('onboarding.doc_status_processing'),
+      pending:    t('onboarding.doc_status_pending'),
+      error:      t('onboarding.doc_status_error'),
+    };
     c.innerHTML = `
-      <h3 class="wizard-subhead">Documentos ya disponibles (${_docs.length})</h3>
+      <h3 class="wizard-subhead">${UI.esc(t('onboarding.docs_heading', { n: _docs.length }))}</h3>
       <div class="wizard-upload-list">
         ${_docs.map(d => `
           <div class="wizard-upload-item">
             <span class="wizard-upload-name" title="${UI.esc(d.original_name)}">${UI.esc(d.original_name)}</span>
-            ${d.chunk_count ? `<span class="wizard-upload-size">${d.chunk_count} frags</span>` : ''}
+            ${d.chunk_count ? `<span class="wizard-upload-size">${UI.esc(t('onboarding.doc_frags', { n: d.chunk_count }))}</span>` : ''}
             <span class="${d.status === 'indexed' ? 'wizard-up-ok' : d.status === 'error' ? 'wizard-up-err' : 'wizard-up-busy'}"
                   ${d.error_message ? `title="${UI.esc(d.error_message)}"` : ''}>
-              ${statusLabels[d.status] || UI.esc(String(d.status))}
+              ${UI.esc(statusLabels[d.status] || String(d.status))}
             </span>
           </div>`).join('')}
       </div>`;
@@ -817,19 +833,18 @@ const ViewOnboarding = (() => {
     if (_result) { _renderStep4Proposal(body); return; }
 
     body.innerHTML = `
-      ${_stepTitle('Analisis y propuesta de la IA',
-        'El agente analizara tus respuestas segun ISO 27005 y MAGERIT v3 y propondra activos, riesgos y controles. Suele tardar entre 30 y 60 segundos.')}
+      ${_stepTitle(t('onboarding.s4_title'), UI.esc(t('onboarding.s4_hint')))}
       <div id="wz-analyze-zone" class="wizard-analyze-zone">
         <button type="button" class="btn btn-primary wizard-analyze-btn" id="wz-launch">
-          Lanzar analisis IA
+          ${UI.esc(t('onboarding.s4_launch_btn'))}
         </button>
-        <p class="wizard-muted">Tambien puedes pulsar &ldquo;Siguiente&rdquo; para saltar el analisis y hacerlo mas tarde desde la seccion Agente IA.</p>
+        <p class="wizard-muted">${UI.esc(t('onboarding.s4_skip_hint'))}</p>
         <div class="wizard-field-error" id="wz-err-analyze" role="alert"></div>
       </div>`;
 
     const launch = document.getElementById('wz-launch');
     if (launch) launch.onclick = _launchAnalysis;
-    _renderNav({ nextLabel: 'Omitir y continuar' });
+    _renderNav({ nextLabel: t('onboarding.skip_continue') });
   }
 
   function _missingRequired() {
@@ -847,13 +862,12 @@ const ViewOnboarding = (() => {
     if (_analyzing) return;
     const errEl = document.getElementById('wz-err-analyze');
     try { await _loadQuestions(); } catch (e) {
-      if (errEl) errEl.textContent = 'No se pudo cargar el cuestionario: ' + e.message;
+      if (errEl) errEl.textContent = t('onboarding.err_load_questions', { msg: e.message });
       return;
     }
     const missing = _missingRequired();
     if (missing.length) {
-      if (errEl) errEl.textContent =
-        'Faltan respuestas obligatorias del cuestionario (paso 2): ' + missing[0].slice(0, 60) + '...';
+      if (errEl) errEl.textContent = t('onboarding.err_missing_required', { q: missing[0].slice(0, 60) });
       return;
     }
 
@@ -862,21 +876,20 @@ const ViewOnboarding = (() => {
     const zone = document.getElementById('wz-analyze-zone');
     if (zone) zone.innerHTML = `
       <div class="wizard-spinner" aria-hidden="true"></div>
-      <h3>Analizando el perfil de riesgo...</h3>
-      <p class="wizard-muted">El agente evalua amenazas, vulnerabilidades y controles segun ISO 27005 y MAGERIT v3.</p>
+      <h3>${UI.esc(t('onboarding.analyzing_title'))}</h3>
+      <p class="wizard-muted">${UI.esc(t('onboarding.analyzing_hint'))}</p>
       <p class="wizard-muted" id="wz-analyze-timer" aria-live="polite"></p>`;
 
     try {
-      // Mismo flujo async + polling que la vista de cuestionario
       const { job_id } = await Api.post('/api/ai/analyze/async', { answers: _answers });
       const startMs = Date.now();
       for (;;) {
         await new Promise(r => setTimeout(r, 3000));
         const timer = document.getElementById('wz-analyze-timer');
-        if (timer) timer.textContent = `Tiempo transcurrido: ${Math.round((Date.now() - startMs) / 1000)}s`;
+        if (timer) timer.textContent = t('onboarding.analyzing_timer', { n: Math.round((Date.now() - startMs) / 1000) });
         const data = await Api.get(`/api/ai/analyze/status/${job_id}`);
         if (data.status === 'done') { _result = data.result; break; }
-        if (data.status === 'error') throw new Error(data.error || 'Error desconocido en el analisis');
+        if (data.status === 'error') throw new Error(data.error || t('onboarding.err_analyze'));
       }
       _renderStep4Proposal(document.getElementById('wz-body'));
     } catch (e) {
@@ -884,11 +897,11 @@ const ViewOnboarding = (() => {
       if (z) z.innerHTML = `
         <div class="notice notice-error">${UI.esc(e.message)}</div>
         <button type="button" class="btn btn-primary" style="margin-top:12px;"
-                onclick="ViewOnboarding._retryStep()">Volver a intentarlo</button>`;
+                onclick="ViewOnboarding._retryStep()">${UI.esc(t('onboarding.retry_analyze_btn'))}</button>`;
     } finally {
       _analyzing = false;
       _setBusy(false);
-      _renderNav({ nextLabel: _result ? 'Siguiente' : 'Omitir y continuar' });
+      _renderNav({ nextLabel: _result ? t('onboarding.next_btn') : t('onboarding.skip_continue') });
     }
   }
 
@@ -896,20 +909,18 @@ const ViewOnboarding = (() => {
     const scenarios = (_result && _result.scenarios) || [];
     const appetite = _result.risk_appetite ?? 3;
     body.innerHTML = `
-      ${_stepTitle('Revisar propuesta de la IA',
-        'Revisa los escenarios propuestos. Los marcados se crearan como activos y riesgos en el sistema; ' +
-        'los controles ISO 27002 asociados se vincularan automaticamente.')}
+      ${_stepTitle(t('onboarding.s4b_title'), UI.esc(t('onboarding.s4b_hint')))}
       ${_result.summary ? `
         <div class="wizard-summary-box">
-          <strong>Resumen del analisis</strong>
+          <strong>${UI.esc(t('onboarding.analysis_summary_title'))}</strong>
           <p>${UI.esc(_result.summary)}</p>
-          <span class="wizard-muted">Apetito de riesgo propuesto: ${UI.esc(String(appetite))}/8
-            &middot; Normativas: ${UI.esc(((_result.active_frameworks || []).join(', ') || '-').toUpperCase())}</span>
+          <span class="wizard-muted">${UI.esc(t('onboarding.analysis_appetite', { n: appetite }))}
+            &middot; ${UI.esc(t('onboarding.analysis_frameworks', { frameworks: ((_result.active_frameworks || []).join(', ') || '-').toUpperCase() }))}</span>
         </div>` : ''}
       <div class="wizard-proposal-head">
         <label class="wizard-ms-opt" style="display:inline-flex;">
           <input type="checkbox" id="wz-sel-all" checked>
-          <span>Seleccionar todos (${scenarios.length})</span>
+          <span>${UI.esc(t('onboarding.select_all', { n: scenarios.length }))}</span>
         </label>
       </div>
       <div class="wizard-proposal-list">
@@ -920,7 +931,7 @@ const ViewOnboarding = (() => {
               <strong>${UI.esc(sc.asset_suggestion || '')}</strong>
               <span class="wizard-muted"> — ${UI.esc(sc.threat_name || '')}</span><br>
               <span class="wizard-proposal-meta">
-                Inherente ${UI.riskPill(sc.inherent_level)} &rarr; Residual ${UI.riskPill(sc.residual_level)}
+                ${UI.esc(t('onboarding.inherent_label'))} ${UI.riskPill(sc.inherent_level)} &rarr; ${UI.esc(t('onboarding.residual_label'))} ${UI.riskPill(sc.residual_level)}
                 ${(sc.control_codes || []).slice(0, 4).map(c => `<span class="code-pill">${UI.esc(c)}</span>`).join(' ')}
                 ${(sc.control_codes || []).length > 4 ? `+${sc.control_codes.length - 4}` : ''}
               </span>
@@ -928,7 +939,7 @@ const ViewOnboarding = (() => {
           </label>`).join('')}
       </div>
       <div class="wizard-proposal-actions">
-        <button type="button" class="btn btn-primary" id="wz-accept">Aceptar seleccionados</button>
+        <button type="button" class="btn btn-primary" id="wz-accept">${UI.esc(t('onboarding.accept_btn'))}</button>
         <div class="wizard-field-error" id="wz-err-accept" role="alert"></div>
       </div>`;
 
@@ -938,21 +949,21 @@ const ViewOnboarding = (() => {
     };
     const accept = document.getElementById('wz-accept');
     if (accept) accept.onclick = _acceptSelected;
-    _renderNav({ nextLabel: 'Omitir y continuar' });
+    _renderNav({ nextLabel: t('onboarding.skip_continue') });
   }
 
   async function _acceptSelected() {
     const checks = [...document.querySelectorAll('.wz-sc-check:checked')];
     const errEl = document.getElementById('wz-err-accept');
     if (!checks.length) {
-      if (errEl) errEl.textContent = 'Selecciona al menos un escenario o pulsa "Omitir y continuar".';
+      if (errEl) errEl.textContent = t('onboarding.err_no_selection');
       return;
     }
     const scenarios = (_result.scenarios || []);
     const selected = checks.map(cb => scenarios[parseInt(cb.dataset.idx, 10)]).filter(Boolean);
 
     const btn = document.getElementById('wz-accept');
-    if (btn) { btn.disabled = true; btn.textContent = 'Creando riesgos...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('onboarding.creating_risks'); }
     _setBusy(true);
     try {
       const payload = { scenarios: selected };
@@ -966,8 +977,8 @@ const ViewOnboarding = (() => {
       _importResult = await Api.post('/api/ai/import', payload);
       _renderStep4Summary(document.getElementById('wz-body'));
     } catch (e) {
-      if (errEl) errEl.textContent = 'No se pudieron crear los riesgos: ' + e.message;
-      if (btn) { btn.disabled = false; btn.textContent = 'Aceptar seleccionados'; }
+      if (errEl) errEl.textContent = t('onboarding.err_create_risks', { msg: e.message });
+      if (btn) { btn.disabled = false; btn.textContent = t('onboarding.accept_btn'); }
     } finally {
       _setBusy(false);
       _renderNav();
@@ -978,14 +989,13 @@ const ViewOnboarding = (() => {
     const created = _importResult?.created ?? 0;
     const skipped = _importResult?.skipped ?? 0;
     body.innerHTML = `
-      ${_stepTitle('Propuesta aplicada',
-        'El contexto organizacional, el apetito de riesgo y las normativas quedan guardados para informes y cumplimiento.')}
+      ${_stepTitle(t('onboarding.s4c_title'), UI.esc(t('onboarding.s4c_hint')))}
       <div class="wizard-result-box">
         <div class="wizard-result-num">${created}</div>
         <div>
-          <strong>riesgo${created !== 1 ? 's' : ''} creado${created !== 1 ? 's' : ''} en el registro</strong>
-          ${skipped ? `<div class="wizard-muted">${skipped} escenario${skipped !== 1 ? 's' : ''} omitido${skipped !== 1 ? 's' : ''} (duplicados o sin activo/amenaza valida)</div>` : ''}
-          <div class="wizard-muted">Podras revisarlos en la seccion Riesgos al terminar el asistente.</div>
+          <strong>${UI.esc(t(created !== 1 ? 'onboarding.risks_created_pl' : 'onboarding.risks_created'))}</strong>
+          ${skipped ? `<div class="wizard-muted">${UI.esc(t(skipped !== 1 ? 'onboarding.risks_skipped_pl' : 'onboarding.risks_skipped', { n: skipped }))}</div>` : ''}
+          <div class="wizard-muted">${UI.esc(t('onboarding.risks_review_hint'))}</div>
         </div>
       </div>`;
     _renderNav();
@@ -997,32 +1007,31 @@ const ViewOnboarding = (() => {
 
   function _renderStep5(body) {
     const hasKey = !!(_cfg && _cfg.has_api_key);
+    const automations = _getAutomations();
     body.innerHTML = `
-      ${_stepTitle('Automatizaciones activas',
-        'RiskHub ejecuta estas tareas de forma automatica mediante su planificador interno. No requieren configuracion.')}
+      ${_stepTitle(t('onboarding.s5_title'), UI.esc(t('onboarding.s5_hint')))}
       <div class="wizard-auto-grid">
-        ${AUTOMATIONS.map(a => `
+        ${automations.map(a => `
           <div class="wizard-auto-card">
             <div class="wizard-auto-head">
               <strong>${UI.esc(a.title)}</strong>
-              <span class="wizard-auto-badge">Activado</span>
+              <span class="wizard-auto-badge">${UI.esc(t('onboarding.auto_badge'))}</span>
             </div>
             <p>${UI.esc(a.desc)}</p>
           </div>`).join('')}
       </div>
 
-      <h3 class="wizard-subhead">Agente IA</h3>
+      <h3 class="wizard-subhead">${UI.esc(t('onboarding.ai_agent_title'))}</h3>
       ${hasKey ? `
-        <p class="wizard-key-ok">API key de Anthropic configurada. El agente IA esta operativo.</p>
+        <p class="wizard-key-ok">${UI.esc(t('onboarding.api_key_ok'))}</p>
       ` : `
-        <p class="wizard-muted">Introduce tu API key de Anthropic para activar el agente IA
-          (chat, analisis de documentos y propuestas de riesgo).
-          <a href="https://console.anthropic.com/" target="_blank" rel="noopener">Obtener clave</a>
+        <p class="wizard-muted">${UI.esc(t('onboarding.api_key_hint'))}
+          <a href="https://console.anthropic.com/" target="_blank" rel="noopener">${UI.esc(t('onboarding.api_key_link'))}</a>
         </p>
         <div class="form-grid">
           <div class="span2">
-            <label for="wz-apikey">API Key de Anthropic</label>
-            <input type="password" id="wz-apikey" placeholder="sk-ant-api03-..." autocomplete="new-password">
+            <label for="wz-apikey">${UI.esc(t('onboarding.api_key_label'))}</label>
+            <input type="password" id="wz-apikey" placeholder="${UI.esc(t('onboarding.api_key_placeholder'))}" autocomplete="new-password">
             <div class="wizard-field-error" id="wz-err-apikey" role="alert"></div>
           </div>
         </div>
@@ -1037,34 +1046,32 @@ const ViewOnboarding = (() => {
     if (errEl) errEl.textContent = '';
     _setBusy(true);
     const fin = document.getElementById('wz-finish');
-    if (fin) fin.textContent = 'Finalizando...';
+    if (fin) fin.textContent = t('onboarding.finishing');
     try {
       const payload = { setup_completed: true };
       const keyInput = document.getElementById('wz-apikey');
       if (keyInput && keyInput.value.trim()) payload.api_key = keyInput.value.trim();
       _cfg = { ..._cfg, ...await Api.aiConfig.update(payload) };
 
-      // Mecanismo existente de app.js: marca el onboarding como hecho
       localStorage.setItem('riskhub_onboarding_done', '1');
       localStorage.removeItem('riskhub_onboarding_skipped');
       localStorage.removeItem(LS_STEP);
       localStorage.removeItem(LS_SUBSTEP);
       localStorage.removeItem(LS_ANSWERS);
 
-      UI.toast('Setup completado. Bienvenido a RiskHub.', 'success');
+      UI.toast(t('onboarding.success_toast'), 'success');
       location.hash = '/home';
     } catch (e) {
       const msg = e.status === 403
-        ? 'Necesitas rol de administrador para completar el setup.'
-        : 'No se pudo finalizar: ' + e.message;
+        ? t('onboarding.err_forbidden_finish')
+        : t('onboarding.err_finish', { msg: e.message });
       if (errEl) errEl.textContent = msg;
-      if (fin) fin.textContent = 'Finalizar setup';
+      if (fin) fin.textContent = t('onboarding.finish_btn');
       _setBusy(false);
       _renderNav();
     }
   }
 
-  // Metodos invocados desde HTML inline
   return { render, _toggleExtra, _addCustomControl, _removeCustomControl, _retryStep };
 
 })();

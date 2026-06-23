@@ -68,7 +68,7 @@ const LegacyRedirects = {
   'itsm-config': 'admin-hub/itsm',
   webhooks: 'admin-hub/webhooks',
   alerts: 'admin-hub/alerts',
-  awareness: 'admin-hub/awareness',
+  awareness: 'ai-hub/awareness',
   audit: 'admin-hub/audit',
   organizations: 'admin-hub/organizations',
   'feature-flags': 'admin-hub/feature-flags',

@@ -12,6 +12,7 @@ from app import __version__
 from app.config import settings
 from app.logging_config import setup_logging
 from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.middleware.license_guard import LicenseGuardMiddleware
 
 setup_logging(env=settings.env)
 
@@ -50,6 +51,8 @@ app = FastAPI(
 
 # Cabeceras de seguridad HTTP — se aplican a todas las respuestas (OWASP A05)
 app.add_middleware(SecurityHeadersMiddleware)
+# Bloqueo de escrituras cuando la licencia criptografica ha expirado
+app.add_middleware(LicenseGuardMiddleware)
 
 # CORS solo en dev; en produccion la app se sirve junto al frontend
 if settings.env != "production":
@@ -91,6 +94,10 @@ def startup():
     init_db()
     sched.start(interval_hours=1)
     _reset_stuck_analyses()
+
+    # Validar licencia criptografica (on-premise)
+    from app.services import crypto_license as _lic
+    _lic.load_and_validate()
 
 
 @app.on_event("shutdown")
@@ -212,6 +219,8 @@ app.include_router(report_schedules.router)
 app.include_router(report_templates.router)
 app.include_router(bcp.router)
 app.include_router(regwatch.router)
+from app.routers import license_crypto
+app.include_router(license_crypto.router)
 app.include_router(surveys.router)
 app.include_router(survey_public_router)
 app.include_router(policy_approvals_router)

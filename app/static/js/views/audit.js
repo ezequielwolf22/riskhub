@@ -11,25 +11,25 @@ const ViewAudit = {
   async render(main) {
     const u = Auth.user();
     if (!u || (u.role !== 'admin' && u.role !== 'superadmin')) {
-      main.innerHTML = UI.sectionHeader('Log de Auditoria', 'Trazabilidad de operaciones')
-        + UI.notice('Esta seccion esta restringida a administradores.', 'warn');
+      main.innerHTML = UI.sectionHeader(t('audit_log.title'), t('audit_log.subtitle'))
+        + UI.notice(t('audit_log.restricted'), 'warn');
       return;
     }
 
     main.innerHTML = UI.sectionHeader(
-      'Log de Auditoria',
-      'Trazabilidad completa de operaciones realizadas en el sistema'
+      t('audit_log.title'),
+      t('audit_log.subtitle')
     ) + `
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
         <button id="audit-tab-log" onclick="ViewAudit._setTab('log')"
           style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;
                  border-bottom:3px solid var(--brand-purple);color:var(--brand-purple);margin-bottom:-2px;">
-          Log completo
+          ${t('audit_log.tab_log')}
         </button>
         <button id="audit-tab-approvals" onclick="ViewAudit._setTab('approvals')"
           style="padding:8px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;
                  border-bottom:3px solid transparent;color:var(--text-muted);margin-bottom:-2px;">
-          Registro de aprobaciones
+          ${t('audit_log.tab_approvals')}
         </button>
       </div>
       <div id="audit-tab-content">
@@ -37,51 +37,51 @@ const ViewAudit = {
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
           <div style="flex:1;min-width:160px;">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">
-              Tipo de entidad
+              ${t('audit_log.filter_entity')}
             </label>
             <select id="audit-entity" style="width:100%;">
-              <option value="">Todas</option>
-              <option value="risk">Riesgo</option>
-              <option value="asset">Activo</option>
-              <option value="control">Control</option>
-              <option value="control_impl">Control impl.</option>
-              <option value="user">Usuario</option>
-              <option value="threat">Amenaza</option>
-              <option value="vulnerability">Vulnerabilidad</option>
-              <option value="context">Contexto</option>
-              <option value="alert_rule">Regla de alerta</option>
-              <option value="email_settings">Config. SMTP</option>
+              <option value="">${t('audit_log.all_entities')}</option>
+              <option value="risk">${t('audit_log.entity_risk')}</option>
+              <option value="asset">${t('audit_log.entity_asset')}</option>
+              <option value="control">${t('audit_log.entity_control')}</option>
+              <option value="control_impl">${t('audit_log.entity_control_impl')}</option>
+              <option value="user">${t('audit_log.entity_user')}</option>
+              <option value="threat">${t('audit_log.entity_threat')}</option>
+              <option value="vulnerability">${t('audit_log.entity_vulnerability')}</option>
+              <option value="context">${t('audit_log.entity_context')}</option>
+              <option value="alert_rule">${t('audit_log.entity_alert_rule')}</option>
+              <option value="email_settings">${t('audit_log.entity_email_settings')}</option>
             </select>
           </div>
           <div style="flex:1;min-width:160px;">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">
-              Accion
+              ${t('audit_log.filter_action')}
             </label>
             <select id="audit-action" style="width:100%;">
-              <option value="">Todas</option>
-              <option value="create">Crear</option>
-              <option value="update">Actualizar</option>
-              <option value="delete">Eliminar</option>
-              <option value="login">Inicio de sesion</option>
+              <option value="">${t('audit_log.action_all')}</option>
+              <option value="create">${t('audit_log.action_create')}</option>
+              <option value="update">${t('audit_log.action_update')}</option>
+              <option value="delete">${t('audit_log.action_delete')}</option>
+              <option value="login">${t('audit_log.action_login')}</option>
             </select>
           </div>
           <div style="flex:1;min-width:130px;">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">
-              Desde
+              ${t('audit_log.filter_from')}
             </label>
             <input id="audit-date-from" type="date" style="width:100%;">
           </div>
           <div style="flex:1;min-width:130px;">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">
-              Hasta
+              ${t('audit_log.filter_to')}
             </label>
             <input id="audit-date-to" type="date" style="width:100%;">
           </div>
-          <button class="btn btn-primary" onclick="ViewAudit._search()">Filtrar</button>
-          <button class="btn" onclick="ViewAudit._reset()">Limpiar</button>
+          <button class="btn btn-primary" onclick="ViewAudit._search()">${t('audit_log.filter_btn')}</button>
+          <button class="btn" onclick="ViewAudit._reset()">${t('audit_log.clear')}</button>
           <button class="btn" onclick="ViewAudit._exportCsv()"
-            style="margin-left:auto;" title="Descargar log completo (filtrado) en CSV">
-            Exportar CSV
+            style="margin-left:auto;" title="${t('audit_log.export_csv')}">
+            ${t('audit_log.export_csv')}
           </button>
         </div>
       </div>
@@ -119,33 +119,33 @@ const ViewAudit = {
         <div class="card" style="margin-bottom:16px;">
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
             <div style="flex:1;min-width:160px;">
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Tipo de entidad</label>
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_entity')}</label>
               <select id="audit-entity" style="width:100%;">
-                <option value="">Todas</option>
-                <option value="risk">Riesgo</option><option value="asset">Activo</option>
-                <option value="supplier">Proveedor</option><option value="control">Control</option>
-                <option value="user">Usuario</option>
+                <option value="">${t('audit_log.all_entities')}</option>
+                <option value="risk">${t('audit_log.entity_risk')}</option><option value="asset">${t('audit_log.entity_asset')}</option>
+                <option value="supplier">${t('audit_log.entity_supplier')}</option><option value="control">${t('audit_log.entity_control')}</option>
+                <option value="user">${t('audit_log.entity_user')}</option>
               </select>
             </div>
             <div style="flex:1;min-width:160px;">
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Accion</label>
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_action')}</label>
               <select id="audit-action" style="width:100%;">
-                <option value="">Todas</option>
-                <option value="create">Crear</option><option value="update">Actualizar</option>
-                <option value="delete">Eliminar</option><option value="login">Login</option>
+                <option value="">${t('audit_log.action_all')}</option>
+                <option value="create">${t('audit_log.action_create')}</option><option value="update">${t('audit_log.action_update')}</option>
+                <option value="delete">${t('audit_log.action_delete')}</option><option value="login">${t('audit_log.action_login')}</option>
               </select>
             </div>
             <div style="flex:1;min-width:130px;">
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Desde</label>
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_from')}</label>
               <input id="audit-date-from" type="date" style="width:100%;">
             </div>
             <div style="flex:1;min-width:130px;">
-              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Hasta</label>
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_to')}</label>
               <input id="audit-date-to" type="date" style="width:100%;">
             </div>
-            <button class="btn btn-primary" onclick="ViewAudit._search()">Filtrar</button>
-            <button class="btn" onclick="ViewAudit._reset()">Limpiar</button>
-            <button class="btn" onclick="ViewAudit._exportCsv()" style="margin-left:auto;">Exportar CSV</button>
+            <button class="btn btn-primary" onclick="ViewAudit._search()">${t('audit_log.filter_btn')}</button>
+            <button class="btn" onclick="ViewAudit._reset()">${t('audit_log.clear')}</button>
+            <button class="btn" onclick="ViewAudit._exportCsv()" style="margin-left:auto;">${t('audit_log.export_csv')}</button>
           </div>
         </div>
         <div id="audit-content"></div>`;
@@ -161,25 +161,25 @@ const ViewAudit = {
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           <div style="flex:1;min-width:140px;">
-            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Tipo de entidad</label>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_entity')}</label>
             <input id="app-entity" class="input" placeholder="risk, supplier, policy...">
           </div>
           <div style="flex:1;min-width:120px;">
-            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Email usuario</label>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_email')}</label>
             <input id="app-user" class="input" placeholder="usuario@empresa.com">
           </div>
           <div style="flex:1;min-width:120px;">
-            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Desde</label>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_from')}</label>
             <input id="app-from" type="date" class="input">
           </div>
           <div style="flex:1;min-width:120px;">
-            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Hasta</label>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_to')}</label>
             <input id="app-to" type="date" class="input">
           </div>
-          <button class="btn btn-primary" id="app-search">Filtrar</button>
+          <button class="btn btn-primary" id="app-search">${t('audit_log.filter_btn')}</button>
         </div>
       </div>
-      <div id="app-results"><div class="notice">Cargando...</div></div>`;
+      <div id="app-results"><div class="notice">${t('audit_log.loading')}</div></div>`;
     const search = async () => {
       const params = { limit: 200 };
       const et = document.getElementById('app-entity')?.value.trim();
@@ -196,21 +196,22 @@ const ViewAudit = {
         const data = await Api.audit.approvals(params);
         const items = data.items || [];
         if (!items.length) {
-          wrap.innerHTML = '<div class="card" style="text-align:center;padding:48px;"><h3 style="color:var(--text-muted);">Sin aprobaciones registradas</h3></div>';
+          wrap.innerHTML = `<div class="card" style="text-align:center;padding:48px;"><h3 style="color:var(--text-muted);">${t('audit_log.no_approvals')}</h3></div>`;
           return;
         }
+        const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
         wrap.innerHTML = `<div class="card" style="padding:0;overflow:hidden;">
           <div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text-muted);">
-            ${data.total} aprobacion${data.total!==1?'es':''} encontrada${data.total!==1?'s':''}
+            ${data.total} ${t('audit_log.approvals_count', {n: data.total, s: data.total!==1?'es':''})}
           </div>
           <div class="table-wrap"><table class="data">
             <thead><tr>
-              <th style="width:140px;">Fecha</th><th style="width:160px;">Usuario</th>
-              <th style="width:100px;">Accion</th><th style="width:100px;">Tipo</th>
-              <th style="width:70px;">ID</th><th>Detalle</th>
+              <th style="width:140px;">${t('audit_log.col_datetime')}</th><th style="width:160px;">${t('audit_log.col_user')}</th>
+              <th style="width:100px;">${t('audit_log.col_action')}</th><th style="width:100px;">${t('audit_log.col_entity')}</th>
+              <th style="width:70px;">${t('audit_log.col_id')}</th><th>${t('audit_log.col_detail')}</th>
             </tr></thead>
             <tbody>${items.map(e => {
-              const ts = new Date(e.timestamp).toLocaleString('es-ES', {
+              const ts = new Date(e.timestamp).toLocaleString(_locale, {
                 day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit',
               });
               const detail = e.detail && Object.keys(e.detail).length
@@ -230,7 +231,7 @@ const ViewAudit = {
         </div>`;
       } catch (err) {
         if (document.getElementById('app-results'))
-          document.getElementById('app-results').innerHTML = UI.notice('Error: ' + UI.esc(err.message), 'warn');
+          document.getElementById('app-results').innerHTML = UI.notice(t('audit_log.error_approvals') + ' ' + UI.esc(err.message), 'warn');
       }
     };
     document.getElementById('app-search').onclick = search;
@@ -261,7 +262,7 @@ const ViewAudit = {
 
   async _load() {
     const c = document.getElementById('audit-content');
-    c.innerHTML = '<div class="notice">Cargando...</div>';
+    c.innerHTML = `<div class="notice">${t('audit_log.loading')}</div>`;
 
     const params = {
       skip: this._page * this._limit,
@@ -277,7 +278,7 @@ const ViewAudit = {
       this._total = data.total;
       this._render(c, data);
     } catch (e) {
-      c.innerHTML = UI.notice('Error al cargar el log: ' + UI.esc(e.message), 'warn');
+      c.innerHTML = UI.notice(t('audit_log.error_load') + ' ' + UI.esc(e.message), 'warn');
     }
   },
 
@@ -291,7 +292,7 @@ const ViewAudit = {
       const url = '/api/audit/export/csv' + (Object.keys(q).length ? '?' + new URLSearchParams(q) : '');
       const tok = localStorage.getItem('riskhub_token');
       const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
-      if (!r.ok) throw new Error('Error al exportar');
+      if (!r.ok) throw new Error(t('audit_log.error_export'));
       const blob = await r.blob();
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -314,71 +315,73 @@ const ViewAudit = {
         login: 'background:#EDE9FE;color:#5B21B6',
       };
       const labels = {
-        create: 'Crear',
-        update: 'Actualizar',
-        delete: 'Eliminar',
-        login: 'Login',
+        create: t('audit_log.badge_create'),
+        update: t('audit_log.badge_update'),
+        delete: t('audit_log.badge_delete'),
+        login:  t('audit_log.badge_login'),
       };
       const style = colors[a] || 'background:var(--bg-3);color:var(--text-muted)';
       return `<span class="badge badge-muted" style="${style};font-size:11px;">${UI.esc(labels[a] || a)}</span>`;
     };
 
-    const entityLabel = (t) => ({
-      risk: 'Riesgo',
-      asset: 'Activo',
-      control: 'Control',
-      control_impl: 'Control impl.',
-      user: 'Usuario',
-      threat: 'Amenaza',
-      vulnerability: 'Vulnerabilidad',
-      context: 'Contexto',
-      alert_rule: 'Regla alerta',
-      email_settings: 'Config. SMTP',
-    })[t] || t;
+    const entityLabel = (e) => ({
+      risk:            t('audit_log.entity_risk'),
+      asset:           t('audit_log.entity_asset'),
+      control:         t('audit_log.entity_control'),
+      control_impl:    t('audit_log.entity_control_impl'),
+      user:            t('audit_log.entity_user'),
+      threat:          t('audit_log.entity_threat'),
+      vulnerability:   t('audit_log.entity_vulnerability'),
+      context:         t('audit_log.entity_context'),
+      alert_rule:      t('audit_log.entity_alert_rule'),
+      email_settings:  t('audit_log.entity_email_settings'),
+    })[e] || e;
 
     if (items.length === 0) {
       container.innerHTML = `
         <div class="card" style="text-align:center;padding:48px 24px;">
-          <h3 style="color:var(--text-muted);">No hay entradas en el log</h3>
+          <h3 style="color:var(--text-muted);">${t('audit_log.no_entries')}</h3>
           <p style="color:var(--text-subtle);font-size:13px;margin-top:8px;">
-            Las operaciones de creacion, modificacion y eliminacion se registran automaticamente.
+            ${t('audit_log.no_entries_body')}
           </p>
         </div>`;
       return;
     }
+
+    const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
 
     container.innerHTML = `
       <div class="card" style="padding:0;overflow:hidden;">
         <div style="padding:12px 16px;border-bottom:1px solid var(--border);
                     display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:13px;color:var(--text-muted);">
-            ${this._total} entrada${this._total !== 1 ? 's' : ''} encontrada${this._total !== 1 ? 's' : ''}
+            ${t('audit_log.entries_found', {n: this._total, s: this._total !== 1 ? 's' : '', y: this._total !== 1 ? 'ies' : 'y'})}
           </span>
           <div style="display:flex;gap:8px;align-items:center;">
             <span style="font-size:12px;color:var(--text-muted);">
-              Pagina ${currentPage} de ${Math.max(1, totalPages)}
+              ${t('audit_log.page_of', {page: currentPage, total: Math.max(1, totalPages)})}
             </span>
             <button class="btn btn-sm" ${this._page === 0 ? 'disabled' : ''}
-                    onclick="ViewAudit._prevPage()">Anterior</button>
+                    onclick="ViewAudit._prevPage()">${t('audit_log.prev')}</button>
             <button class="btn btn-sm" ${currentPage >= totalPages ? 'disabled' : ''}
-                    onclick="ViewAudit._nextPage()">Siguiente</button>
+                    onclick="ViewAudit._nextPage()">${t('audit_log.next')}</button>
           </div>
         </div>
         <div class="table-wrap">
           <table class="data">
             <thead>
               <tr>
-                <th style="width:150px;">Fecha y hora</th>
-                <th style="width:140px;">Usuario</th>
-                <th style="width:90px;">Accion</th>
-                <th style="width:100px;">Entidad</th>
-                <th style="width:70px;">ID</th>
-                <th>Detalle</th>
+                <th style="width:150px;">${t('audit_log.col_datetime')}</th>
+                <th style="width:140px;">${t('audit_log.col_user')}</th>
+                <th style="width:90px;">${t('audit_log.col_action')}</th>
+                <th style="width:100px;">${t('audit_log.col_entity')}</th>
+                <th style="width:70px;">${t('audit_log.col_id')}</th>
+                <th>${t('audit_log.col_detail')}</th>
               </tr>
             </thead>
             <tbody>
               ${items.map(e => {
-                const ts = new Date(e.timestamp).toLocaleString('es-ES', {
+                const ts = new Date(e.timestamp).toLocaleString(_locale, {
                   day: '2-digit', month: '2-digit', year: 'numeric',
                   hour: '2-digit', minute: '2-digit', second: '2-digit',
                 });
@@ -428,9 +431,10 @@ const ViewAudit = {
     try {
       const data = await Api.audit.approvals(params);
       const items = data.items || [];
+      const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
       const rows = items.length
         ? items.map(e => {
-            const ts = new Date(e.timestamp).toLocaleString('es-ES', {
+            const ts = new Date(e.timestamp).toLocaleString(_locale, {
               day: '2-digit', month: '2-digit', year: 'numeric',
               hour: '2-digit', minute: '2-digit',
             });
@@ -447,24 +451,26 @@ const ViewAudit = {
               <td style="font-size:11px;color:var(--text-muted);">${detail}</td>
             </tr>`;
           }).join('')
-        : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Sin aprobaciones registradas.</td></tr>`;
+        : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">${t('audit_log.no_approvals')}</td></tr>`;
 
-      UI.modal('Registro de aprobaciones', `
+      UI.modal(t('audit_log.approvals_title'), `
         <div class="span2" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
-          <input id="app-from" type="date" class="input" placeholder="Desde" style="width:140px;" ${opts.date_from?`value="${opts.date_from}"`:''}>
-          <input id="app-to" type="date" class="input" placeholder="Hasta" style="width:140px;" ${opts.date_to?`value="${opts.date_to}"`:''}>
-          <button class="btn btn-sm btn-primary" id="app-filter-btn">Filtrar</button>
-          <span style="margin-left:auto;font-size:12px;color:var(--text-muted);align-self:center;">${data.total} registro${data.total!==1?'s':''}</span>
+          <input id="app-from" type="date" class="input" placeholder="${t('audit_log.filter_from')}" style="width:140px;" ${opts.date_from?`value="${opts.date_from}"`:''}>
+          <input id="app-to" type="date" class="input" placeholder="${t('audit_log.filter_to')}" style="width:140px;" ${opts.date_to?`value="${opts.date_to}"`:''}>
+          <button class="btn btn-sm btn-primary" id="app-filter-btn">${t('audit_log.filter_btn')}</button>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-muted);align-self:center;">${data.total}</span>
         </div>
         <div class="span2" style="overflow:auto;max-height:420px;">
           <table class="data">
             <thead><tr>
-              <th>Fecha</th><th>Usuario</th><th>Accion</th><th>Tipo</th><th>ID</th><th>Detalle</th>
+              <th>${t('audit_log.col_datetime')}</th><th>${t('audit_log.col_user')}</th>
+              <th>${t('audit_log.col_action')}</th><th>${t('audit_log.col_entity')}</th>
+              <th>${t('audit_log.col_id')}</th><th>${t('audit_log.col_detail')}</th>
             </tr></thead>
             <tbody id="approval-tbody">${rows}</tbody>
           </table>
         </div>
-      `, { actions: '<button class="btn btn-primary" id="m-close-app">Cerrar</button>', width: '820px' });
+      `, { actions: `<button class="btn btn-primary" id="m-close-app">${t('audit_log.close')}</button>`, width: '820px' });
 
       document.getElementById('m-close-app').onclick = UI.closeModal;
       document.getElementById('app-filter-btn').onclick = () => {
@@ -474,16 +480,17 @@ const ViewAudit = {
           date_to: document.getElementById('app-to')?.value || undefined,
         });
       };
-    } catch (e) { UI.toast('Error al cargar aprobaciones: ' + e.message, 'error'); }
+    } catch (e) { UI.toast(t('audit_log.error_approvals') + ' ' + e.message, 'error'); }
   },
 
   // Muestra el historial de cambios de una entidad en un modal
   async showEntityHistory(entityType, entityId, label) {
     try {
       const items = await Api.audit.history(entityType, String(entityId));
+      const _locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
       const rows = items.length
         ? items.map(e => {
-            const ts = new Date(e.timestamp).toLocaleString('es-ES', {
+            const ts = new Date(e.timestamp).toLocaleString(_locale, {
               day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
             });
             const detail = e.detail && Object.keys(e.detail).length
@@ -505,17 +512,20 @@ const ViewAudit = {
               <td style="font-size:11px;color:var(--text-muted);">${detail}</td>
             </tr>`;
           }).join('')
-        : `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">Sin historial registrado.</td></tr>`;
+        : `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--text-muted);">${t('audit_log.no_history')}</td></tr>`;
 
-      UI.modal(`Historial: ${UI.esc(label||entityId)}`, `
+      UI.modal(t('audit_log.history_title', {label: UI.esc(label||entityId)}), `
         <div class="span2" style="overflow:auto;max-height:420px;">
           <table class="data">
-            <thead><tr><th>Fecha</th><th>Usuario</th><th>Accion</th><th>Detalle</th></tr></thead>
+            <thead><tr>
+              <th>${t('audit_log.col_datetime')}</th><th>${t('audit_log.col_user')}</th>
+              <th>${t('audit_log.col_action')}</th><th>${t('audit_log.col_detail')}</th>
+            </tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
-      `, { actions: '<button class="btn btn-primary" id="m-close-hist">Cerrar</button>' });
+      `, { actions: `<button class="btn btn-primary" id="m-close-hist">${t('audit_log.close')}</button>` });
       document.getElementById('m-close-hist').onclick = UI.closeModal;
-    } catch (e) { UI.toast('Error al cargar historial: ' + e.message, 'error'); }
+    } catch (e) { UI.toast(t('audit_log.error_history') + ' ' + e.message, 'error'); }
   },
 };
