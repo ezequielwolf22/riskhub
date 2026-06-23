@@ -34,7 +34,6 @@ const ViewRiskHub = {
         { id: 'assets', label: t('hub.risk.assets'), view: ViewAssets, route: 'assets' },
         { id: 'threats', label: t('hub.risk.threats'), view: ViewThreats },
         { id: 'vulnerabilities', label: t('hub.risk.vulnerabilities'), view: ViewVulns },
-        { id: 'magerit', label: t('hub.risk.magerit'), view: ViewMagerit },
         { id: 'kris', label: t('hub.risk.kris'), view: ViewKRIs, route: 'kris' },
       ],
     });
@@ -53,10 +52,137 @@ const ViewWatchHub = {
         { id: 'external-findings', label: t('hub.watch.external_findings'), view: ViewExternalFindings },
         { id: 'architecture-review', label: t('hub.watch.architecture'), view: ViewArchitectureReview },
         { id: 'predictive', label: t('hub.watch.predictive'), view: ViewPredictive },
+        { id: 'supplier-monitor', label: t('hub.watch.supplier_monitor'), view: ViewSupplierMonitor },
       ],
     });
   },
 };
+
+/* Vista de monitoreo automatico de proveedores */
+const ViewSupplierMonitor = (() => {
+  const STATUS_COLOR = { ok: 'var(--risk-low)', issue: 'var(--risk-critical)', unknown: '#9CA3AF' };
+  const TIER_COLOR   = { critical: 'var(--risk-critical)', high: 'var(--risk-high)', medium: 'var(--risk-medium)', low: 'var(--risk-low)', unrated: '#9CA3AF' };
+
+  function _statusBadge(status) {
+    const c = STATUS_COLOR[status] || '#9CA3AF';
+    const labels = { ok: t('supplier_monitor.status_ok'), issue: t('supplier_monitor.status_issue'), unknown: t('supplier_monitor.status_unknown') };
+    return `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;background:${c};color:#fff;">
+      <span style="width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.7);display:inline-block;"></span>${labels[status] || status}</span>`;
+  }
+
+  function _tierBadge(tier) {
+    if (!tier) return '';
+    const c = TIER_COLOR[tier] || '#9CA3AF';
+    return `<span style="padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;background:${c};color:#fff;">${tier.toUpperCase()}</span>`;
+  }
+
+  function _fmtDate(iso) {
+    if (!iso) return '—';
+    try {
+      const locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
+      return new Date(iso).toLocaleString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (_) { return iso.slice(0, 16); }
+  }
+
+  async function render(el) {
+    el.innerHTML = `
+      <div class="page-header" style="margin-bottom:16px;">
+        <div>
+          <h1 class="page-title">${t('supplier_monitor.title')}</h1>
+          <p class="page-sub">${t('supplier_monitor.subtitle')}</p>
+        </div>
+        <button class="btn btn-sm" id="sm-refresh">${t('supplier_monitor.refresh')}</button>
+      </div>
+      <div id="sm-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;"></div>
+      <div id="sm-table"></div>
+    `;
+    document.getElementById('sm-refresh').onclick = () => _load(el);
+    await _load(el);
+  }
+
+  async function _load(el) {
+    const tableEl = document.getElementById('sm-table');
+    const kpisEl  = document.getElementById('sm-kpis');
+    tableEl.innerHTML = `<p class="text-muted">${t('common.loading')}</p>`;
+    try {
+      const rows = await Api.suppliers.monitoring();
+      const total   = rows.length;
+      const ok      = rows.filter(r => r.monitoring_status === 'ok').length;
+      const issue   = rows.filter(r => r.monitoring_status === 'issue').length;
+      const unknown = rows.filter(r => r.monitoring_status === 'unknown').length;
+
+      kpisEl.innerHTML = [
+        { label: t('supplier_monitor.kpi_total'),   value: total,   color: 'var(--brand-purple)' },
+        { label: t('supplier_monitor.kpi_ok'),       value: ok,      color: 'var(--risk-low)' },
+        { label: t('supplier_monitor.kpi_issue'),    value: issue,   color: 'var(--risk-critical)' },
+        { label: t('supplier_monitor.kpi_unknown'),  value: unknown, color: '#9CA3AF' },
+      ].map(k => `
+        <div class="card" style="padding:14px;text-align:center;">
+          <div style="font-size:28px;font-weight:700;color:${k.color};">${k.value}</div>
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-top:4px;">${k.label}</div>
+        </div>`).join('');
+
+      if (!rows.length) {
+        tableEl.innerHTML = `<div class="card"><p class="text-muted">${t('supplier_monitor.no_suppliers')}</p></div>`;
+        return;
+      }
+
+      tableEl.innerHTML = `
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="data" style="width:100%;margin:0;">
+            <thead><tr>
+              <th>${t('supplier_monitor.col_name')}</th>
+              <th>${t('supplier_monitor.col_tier')}</th>
+              <th>${t('supplier_monitor.col_target')}</th>
+              <th>${t('supplier_monitor.col_status')}</th>
+              <th>${t('supplier_monitor.col_last_scan')}</th>
+              <th>${t('supplier_monitor.col_finding')}</th>
+              <th></th>
+            </tr></thead>
+            <tbody>
+            ${rows.map(r => `
+              <tr>
+                <td><span style="font-weight:600;">${UI.esc(r.name)}</span><br>
+                    <span style="font-size:11px;color:var(--text-muted);">${UI.esc(r.code)}</span></td>
+                <td>${_tierBadge(r.tier)}</td>
+                <td style="font-size:12px;color:var(--text-muted);">${UI.esc(r.website || r.contact_email || '—')}</td>
+                <td>${_statusBadge(r.monitoring_status)}</td>
+                <td style="font-size:12px;">${_fmtDate(r.last_monitored_at)}</td>
+                <td style="font-size:12px;max-width:260px;">
+                  ${r.finding
+                    ? `<span style="color:var(--risk-critical);font-weight:600;">${UI.esc(r.finding.severity)}</span> — ${UI.esc((r.finding.description || r.finding.title || '').slice(0, 100))}`
+                    : `<span style="color:var(--text-muted);">${t('supplier_monitor.no_finding')}</span>`}
+                </td>
+                <td><button class="btn btn-sm" data-sm-rescan="${r.id}">${t('supplier_monitor.rescan')}</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      tableEl.querySelectorAll('[data-sm-rescan]').forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.dataset.smRescan;
+          btn.disabled = true;
+          btn.textContent = t('common.loading');
+          try {
+            const res = await Api.suppliers.rescan(id);
+            UI.toast(t('supplier_monitor.rescan_done', { status: res.monitoring_status }), 'success');
+            await _load(el);
+          } catch (e) {
+            UI.toast(e.message, 'error');
+            btn.disabled = false;
+            btn.textContent = t('supplier_monitor.rescan');
+          }
+        };
+      });
+    } catch (e) {
+      tableEl.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  }
+
+  return { render };
+})();
 
 /* 4. Cumplimiento */
 const ViewComplianceHub = {

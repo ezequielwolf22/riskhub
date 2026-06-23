@@ -68,7 +68,6 @@ const ViewKRIs = {
     };
     document.getElementById('kri-btn-seed').onclick = () => ViewKRIs._seedKpis();
     document.getElementById('kri-btn-eval-all').onclick = () => ViewKRIs._evalAll();
-    document.getElementById('kri-btn-new').onclick = () => ViewKRIs._openModal(null);
 
     UI.tabs(document.getElementById('kri-tabs-wrap'), {
       hub: 'kri-inner',
@@ -86,6 +85,17 @@ const ViewKRIs = {
     const activeBtn = document.querySelector('#kri-tabs-wrap .hub-tab.active');
     const type = activeBtn && activeBtn.dataset.tab === 'kpis-tab' ? 'kpi' : 'kri';
     await ViewKRIs._renderList(panel, type);
+  },
+
+  // Llamados desde onclick inline en los chips de filtro
+  _setCategory(cat) {
+    ViewKRIs._category = cat;
+    ViewKRIs._reload();
+  },
+
+  _setStatus(status) {
+    ViewKRIs._statusFilter = status;
+    ViewKRIs._reload();
   },
 
   _filterBar(type) {
@@ -116,14 +126,14 @@ const ViewKRIs = {
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
           <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">${t('kris.filter_category')}</span>
           ${cats.map(([v, l]) => `
-            <span data-kri-cat="${v}" data-kri-type="${type}"
+            <span onclick="ViewKRIs._setCategory('${UI.esc(v)}')"
               style="${chipStyle(ViewKRIs._category === v)}">${l}</span>
           `).join('')}
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
           <span style="font-size:0.75rem;color:var(--text-muted);margin-right:4px;white-space:nowrap;">${t('kris.filter_status')}</span>
           ${statusOpts.map(({ v, l }) => `
-            <span data-kri-status="${v}" data-kri-type="${type}"
+            <span onclick="ViewKRIs._setStatus('${UI.esc(v)}')"
               style="${statusBadge(ViewKRIs._statusFilter === v, v)}">${l}</span>
           `).join('')}
         </div>
@@ -143,22 +153,22 @@ const ViewKRIs = {
     return result;
   },
 
-  _bindFilterClicks(type) {
-    document.querySelectorAll(`[data-kri-cat][data-kri-type="${type}"]`).forEach(el => {
-      el.onclick = () => {
-        ViewKRIs._category = el.dataset.kriCat;
-        ViewKRIs._reload();
-      };
-    });
-    document.querySelectorAll(`[data-kri-status][data-kri-type="${type}"]`).forEach(el => {
-      el.onclick = () => {
-        ViewKRIs._statusFilter = el.dataset.kriStatus;
-        ViewKRIs._reload();
-      };
-    });
+  _getCategoryForMetric(metricType) {
+    const labels = ViewKRIs._CATEGORY_LABELS;
+    for (const [cat, metrics] of Object.entries(ViewKRIs._CATEGORIES)) {
+      if (metrics.includes(metricType)) return labels[cat] || cat;
+    }
+    return t('kris.cat_none');
   },
 
   async _renderList(el, type) {
+    // Actualizar el boton "+ Nuevo" segun la pestana activa
+    const newBtn = document.getElementById('kri-btn-new');
+    if (newBtn) {
+      newBtn.textContent = type === 'kpi' ? t('kris.new_btn_kpi') : t('kris.new_btn');
+      newBtn.onclick = () => ViewKRIs._openModal(null, type);
+    }
+
     el.innerHTML = `<div class="notice">${t('kris.loading')}</div>`;
     try {
       const params = new URLSearchParams({ indicator_type: type, active_only: 'false' });
@@ -177,7 +187,6 @@ const ViewKRIs = {
             ${type === 'kpi' ? t('kris.no_kpis') : t('kris.no_kris')}
             ${type === 'kpi' ? `<br><button class="btn btn-ghost" onclick="ViewKRIs._seedKpis()">${t('kris.seed_hint')}</button>` : ''}
           </div>`;
-        ViewKRIs._bindFilterClicks(type);
         return;
       }
 
@@ -195,8 +204,6 @@ const ViewKRIs = {
           : `<div class="notice">${t('kris.none_match')}</div>`
         }
       `;
-
-      ViewKRIs._bindFilterClicks(type);
 
       el.querySelectorAll('[data-kri-eval]').forEach(btn => {
         btn.onclick = () => ViewKRIs._evalOne(parseInt(btn.dataset.kriEval));
@@ -329,55 +336,80 @@ const ViewKRIs = {
     }
   },
 
-  async _openModal(id) {
+  async _openModal(id, defaultType) {
+    // Si no se pasa defaultType, leer la pestana activa
+    if (!defaultType) {
+      const activeBtn = document.querySelector('#kri-tabs-wrap .hub-tab.active');
+      defaultType = activeBtn && activeBtn.dataset.tab === 'kpis-tab' ? 'kpi' : 'kri';
+    }
+
     let kri = null;
     if (id) {
       try { kri = await Api.get(`/api/kris/${id}`); } catch (e) { UI.toast(e.message, 'error'); return; }
     }
 
+    const effectiveType = kri ? kri.indicator_type : defaultType;
+
     const metricOptions = [
       // KRI
-      { v: 'residual_level', l: I18n.lang() === 'en' ? 'Residual risk level' : 'Nivel residual del riesgo', t: 'kri' },
-      { v: 'inherent_level', l: I18n.lang() === 'en' ? 'Inherent risk level' : 'Nivel inherente del riesgo', t: 'kri' },
-      { v: 'open_incidents', l: I18n.lang() === 'en' ? 'Open incidents' : 'Incidentes abiertos', t: 'kri' },
-      { v: 'open_ncs', l: I18n.lang() === 'en' ? 'Open major non-conformities' : 'No conformidades mayores abiertas', t: 'kri' },
-      { v: 'control_maturity', l: I18n.lang() === 'en' ? 'Average control maturity' : 'Madurez media de controles', t: 'kri' },
-      { v: 'overdue_tasks', l: I18n.lang() === 'en' ? 'Overdue treatment tasks' : 'Tareas de tratamiento vencidas', t: 'kri' },
-      { v: 'kri_critical_risks', l: I18n.lang() === 'en' ? 'Active critical risks (#)' : 'Riesgos criticos activos (#)', t: 'kri' },
-      { v: 'kri_stale_risks', l: I18n.lang() === 'en' ? 'Risks unreviewed >90 days (#)' : 'Riesgos sin revisar >90 dias (#)', t: 'kri' },
-      { v: 'kri_critical_cves', l: I18n.lang() === 'en' ? 'Unremediated critical/high CVEs (#)' : 'CVEs criticos/altos sin remediar (#)', t: 'kri' },
-      { v: 'kri_high_risk_suppliers', l: I18n.lang() === 'en' ? 'Tier-1/2 suppliers with high risk (#)' : 'Proveedores Tier-1/2 con riesgo alto (#)', t: 'kri' },
+      { v: 'residual_level', l: I18n.lang() === 'en' ? 'Residual risk level' : 'Nivel residual del riesgo', tp: 'kri' },
+      { v: 'inherent_level', l: I18n.lang() === 'en' ? 'Inherent risk level' : 'Nivel inherente del riesgo', tp: 'kri' },
+      { v: 'open_incidents', l: I18n.lang() === 'en' ? 'Open incidents' : 'Incidentes abiertos', tp: 'kri' },
+      { v: 'open_ncs', l: I18n.lang() === 'en' ? 'Open major non-conformities' : 'No conformidades mayores abiertas', tp: 'kri' },
+      { v: 'control_maturity', l: I18n.lang() === 'en' ? 'Average control maturity' : 'Madurez media de controles', tp: 'kri' },
+      { v: 'overdue_tasks', l: I18n.lang() === 'en' ? 'Overdue treatment tasks' : 'Tareas de tratamiento vencidas', tp: 'kri' },
+      { v: 'kri_critical_risks', l: I18n.lang() === 'en' ? 'Active critical risks (#)' : 'Riesgos criticos activos (#)', tp: 'kri' },
+      { v: 'kri_stale_risks', l: I18n.lang() === 'en' ? 'Risks unreviewed >90 days (#)' : 'Riesgos sin revisar >90 dias (#)', tp: 'kri' },
+      { v: 'kri_critical_cves', l: I18n.lang() === 'en' ? 'Unremediated critical/high CVEs (#)' : 'CVEs criticos/altos sin remediar (#)', tp: 'kri' },
+      { v: 'kri_high_risk_suppliers', l: I18n.lang() === 'en' ? 'Tier-1/2 suppliers with high risk (#)' : 'Proveedores Tier-1/2 con riesgo alto (#)', tp: 'kri' },
       // KPI
-      { v: 'kpi_treatment_rate', l: I18n.lang() === 'en' ? 'High risk treatment rate (%)' : 'Tasa de tratamiento riesgos altos (%)', t: 'kpi' },
-      { v: 'kpi_mttt', l: I18n.lang() === 'en' ? 'Mean time to treat (days)' : 'Tiempo medio de tratamiento (dias)', t: 'kpi' },
-      { v: 'kpi_control_coverage', l: I18n.lang() === 'en' ? 'ISO 27002 control coverage (%)' : 'Cobertura controles ISO 27002 (%)', t: 'kpi' },
-      { v: 'kpi_control_maturity_avg', l: I18n.lang() === 'en' ? 'Average control maturity (0-5)' : 'Madurez media de controles (0-5)', t: 'kpi' },
-      { v: 'kpi_policy_review', l: I18n.lang() === 'en' ? 'Policy review compliance (%)' : 'Cumplimiento revision politicas (%)', t: 'kpi' },
-      { v: 'kpi_nc_closure_rate', l: I18n.lang() === 'en' ? 'Non-conformity closure rate (%)' : 'Tasa cierre no conformidades (%)', t: 'kpi' },
-      { v: 'kpi_risk_reduction_avg', l: I18n.lang() === 'en' ? 'Average risk reduction (%)' : 'Reduccion media del riesgo (%)', t: 'kpi' },
-      { v: 'kpi_appetite_compliance', l: I18n.lang() === 'en' ? 'Risk appetite compliance (%)' : 'Conformidad apetito de riesgo (%)', t: 'kpi' },
-      { v: 'kpi_asset_coverage', l: I18n.lang() === 'en' ? 'Assessed assets coverage (%)' : 'Cobertura activos evaluados (%)', t: 'kpi' },
-      { v: 'kpi_risk_no_owner_rate', l: I18n.lang() === 'en' ? 'Risks without owner (%)' : 'Riesgos sin responsable (%)', t: 'kpi' },
-      { v: 'kpi_high_risks_no_plan', l: I18n.lang() === 'en' ? 'High risks without plan (#)' : 'Riesgos altos sin plan (#)', t: 'kpi' },
-      { v: 'kpi_nis2_notification_rate', l: I18n.lang() === 'en' ? 'NIS2 notification rate (%)' : 'Tasa notificacion NIS2 (%)', t: 'kpi' },
-      { v: 'kpi_bcp_coverage', l: I18n.lang() === 'en' ? 'Approved BCP coverage (%)' : 'Cobertura BCP aprobados (%)', t: 'kpi' },
-      { v: 'kpi_mttr_incidents', l: I18n.lang() === 'en' ? 'Incident MTTR (days)' : 'MTTR incidentes (dias)', t: 'kpi' },
-      { v: 'kpi_supplier_coverage', l: I18n.lang() === 'en' ? 'Tier-1 supplier assessment coverage (%)' : 'Cobertura evaluacion proveedores Tier-1 (%)', t: 'kpi' },
+      { v: 'kpi_treatment_rate', l: I18n.lang() === 'en' ? 'High risk treatment rate (%)' : 'Tasa de tratamiento riesgos altos (%)', tp: 'kpi' },
+      { v: 'kpi_mttt', l: I18n.lang() === 'en' ? 'Mean time to treat (days)' : 'Tiempo medio de tratamiento (dias)', tp: 'kpi' },
+      { v: 'kpi_control_coverage', l: I18n.lang() === 'en' ? 'ISO 27002 control coverage (%)' : 'Cobertura controles ISO 27002 (%)', tp: 'kpi' },
+      { v: 'kpi_control_maturity_avg', l: I18n.lang() === 'en' ? 'Average control maturity (0-5)' : 'Madurez media de controles (0-5)', tp: 'kpi' },
+      { v: 'kpi_policy_review', l: I18n.lang() === 'en' ? 'Policy review compliance (%)' : 'Cumplimiento revision politicas (%)', tp: 'kpi' },
+      { v: 'kpi_nc_closure_rate', l: I18n.lang() === 'en' ? 'Non-conformity closure rate (%)' : 'Tasa cierre no conformidades (%)', tp: 'kpi' },
+      { v: 'kpi_risk_reduction_avg', l: I18n.lang() === 'en' ? 'Average risk reduction (%)' : 'Reduccion media del riesgo (%)', tp: 'kpi' },
+      { v: 'kpi_appetite_compliance', l: I18n.lang() === 'en' ? 'Risk appetite compliance (%)' : 'Conformidad apetito de riesgo (%)', tp: 'kpi' },
+      { v: 'kpi_asset_coverage', l: I18n.lang() === 'en' ? 'Assessed assets coverage (%)' : 'Cobertura activos evaluados (%)', tp: 'kpi' },
+      { v: 'kpi_risk_no_owner_rate', l: I18n.lang() === 'en' ? 'Risks without owner (%)' : 'Riesgos sin responsable (%)', tp: 'kpi' },
+      { v: 'kpi_high_risks_no_plan', l: I18n.lang() === 'en' ? 'High risks without plan (#)' : 'Riesgos altos sin plan (#)', tp: 'kpi' },
+      { v: 'kpi_nis2_notification_rate', l: I18n.lang() === 'en' ? 'NIS2 notification rate (%)' : 'Tasa notificacion NIS2 (%)', tp: 'kpi' },
+      { v: 'kpi_bcp_coverage', l: I18n.lang() === 'en' ? 'Approved BCP coverage (%)' : 'Cobertura BCP aprobados (%)', tp: 'kpi' },
+      { v: 'kpi_mttr_incidents', l: I18n.lang() === 'en' ? 'Incident MTTR (days)' : 'MTTR incidentes (dias)', tp: 'kpi' },
+      { v: 'kpi_supplier_coverage', l: I18n.lang() === 'en' ? 'Tier-1 supplier assessment coverage (%)' : 'Cobertura evaluacion proveedores Tier-1 (%)', tp: 'kpi' },
     ];
+
+    // Metrica por defecto: primera que coincide con el tipo activo
+    const defaultMetric = kri
+      ? kri.metric_type
+      : (metricOptions.find(o => o.tp === effectiveType) || metricOptions[0]).v;
+
+    const initialCategory = ViewKRIs._getCategoryForMetric(defaultMetric);
 
     const html = `
       <form id="kri-form">
-        <div class="form-group">
-          <label>${t('kris.form_type')}</label>
-          <select id="kri-f-type" ${kri?.is_system ? 'disabled' : ''}>
-            <option value="kri" ${(!kri || kri.indicator_type === 'kri') ? 'selected' : ''}>${t('kris.types.kri')}</option>
-            <option value="kpi" ${kri?.indicator_type === 'kpi' ? 'selected' : ''}>${t('kris.types.kpi')}</option>
-          </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>${t('kris.form_type')}</label>
+            <select id="kri-f-type" ${kri?.is_system ? 'disabled' : ''}>
+              <option value="kri" ${effectiveType === 'kri' ? 'selected' : ''}>${t('kris.types.kri')}</option>
+              <option value="kpi" ${effectiveType === 'kpi' ? 'selected' : ''}>${t('kris.types.kpi')}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>${t('kris.form_category')}
+              <span style="font-size:0.72rem;color:var(--text-muted);font-weight:400;"> — ${t('kris.form_category_hint')}</span>
+            </label>
+            <div id="kri-cat-display" style="padding:7px 10px;background:var(--bg-2,#f5f5f5);border-radius:6px;font-size:0.85rem;border:1px solid var(--border-color,#ddd);">
+              ${initialCategory}
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label>${t('kris.form_metric')}</label>
           <select id="kri-f-metric" ${kri?.is_system ? 'disabled' : ''}>
-            ${metricOptions.map(o => `<option value="${o.v}" ${kri?.metric_type === o.v ? 'selected' : ''}>[${o.t.toUpperCase()}] ${o.l}</option>`).join('')}
+            ${metricOptions.map(o => `<option value="${o.v}" ${(kri?.metric_type ?? defaultMetric) === o.v ? 'selected' : ''}>[${o.tp.toUpperCase()}] ${o.l}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -431,8 +463,12 @@ const ViewKRIs = {
       </form>
     `;
 
+    const modalTitle = id
+      ? t('kris.modal_edit_title')
+      : (effectiveType === 'kpi' ? t('kris.modal_new_kpi_title') : t('kris.modal_new_title'));
+
     UI.modal(
-      id ? t('kris.modal_edit_title') : t('kris.modal_new_title'),
+      modalTitle,
       html,
       {
         actions: `
@@ -441,6 +477,16 @@ const ViewKRIs = {
         `,
       }
     );
+
+    // Actualizar categoria al cambiar la metrica
+    const metricSel = document.getElementById('kri-f-metric');
+    if (metricSel) {
+      metricSel.onchange = () => {
+        const catDisplay = document.getElementById('kri-cat-display');
+        if (catDisplay) catDisplay.textContent = ViewKRIs._getCategoryForMetric(metricSel.value);
+      };
+    }
+
     document.getElementById('kri-modal-save').onclick = async () => {
       const ok = await ViewKRIs._save(id, kri);
       if (ok) UI.closeModal();
