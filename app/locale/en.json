@@ -1,0 +1,279 @@
+{
+  "common": {
+    "not_found": "Resource not found.",
+    "forbidden": "You do not have permission to perform this action.",
+    "unauthorized": "Unauthorized.",
+    "bad_request": "Invalid request.",
+    "conflict": "A record with the same data already exists.",
+    "server_error": "Internal server error.",
+    "validation_error": "Validation error."
+  },
+  "auth": {
+    "invalid_credentials": "Invalid credentials.",
+    "account_locked": "Account temporarily locked. Try again in {seconds} seconds.",
+    "token_expired": "Session has expired. Please sign in again.",
+    "token_invalid": "Invalid authentication token.",
+    "mfa_code_invalid": "Incorrect TOTP code.",
+    "mfa_token_invalid": "Invalid or expired MFA token.",
+    "password_min_length": "Password must be at least {min} characters.",
+    "password_needs_uppercase": "Password must contain at least one uppercase letter.",
+    "password_needs_lowercase": "Password must contain at least one lowercase letter.",
+    "password_needs_digit": "Password must contain at least one digit (0-9).",
+    "password_needs_special": "Password must contain at least one special character (!@#$%^&*()-_=+[]{}|;:',.<>?/).",
+    "same_password": "The new password cannot be the same as the current one.",
+    "user_not_found": "User not found.",
+    "user_disabled": "Your account is disabled. Contact the administrator.",
+    "email_already_exists": "A user with that email already exists.",
+    "cannot_delete_self": "You cannot delete your own account.",
+    "cannot_modify_superadmin": "You cannot modify the superadmin account.",
+    "insufficient_role": "You do not have the required role to perform this action.",
+    "mfa_already_enabled": "Two-factor authentication is already enabled.",
+    "mfa_not_enabled": "Two-factor authentication is not enabled.",
+    "otp_invalid": "Incorrect OTP code.",
+    "sso_user_not_found": "Your account does not exist in RiskHub. Contact the administrator.",
+    "sso_account_disabled": "Your account is disabled. Contact the administrator.",
+    "sso_domain_not_allowed": "Your email domain is not authorized to access via SSO.",
+    "sso_invalid_state": "The SSO session has expired. Please try again.",
+    "sso_not_configured": "SSO is not configured.",
+    "sso_no_email": "The identity provider did not return a valid email.",
+    "sso_missing_params": "Incomplete response from the identity provider."
+  },
+  "risks": {
+    "not_found": "Risk not found.",
+    "duplicate_detected": "A possible duplicate risk was detected: \"{name}\" (ID {id}). Please check if it already exists before creating a new one.",
+    "treatment_not_found": "Treatment plan not found.",
+    "invalid_score": "Risk score out of allowed range (1-5).",
+    "owner_not_found": "Assigned owner does not exist.",
+    "asset_not_found": "Asset not found.",
+    "threat_not_found": "Threat not found.",
+    "vulnerability_not_found": "Vulnerability not found.",
+    "cannot_delete_with_treatments": "Cannot delete a risk that has active treatments."
+  },
+  "assets": {
+    "not_found": "Asset not found.",
+    "already_exists": "An asset with that name already exists.",
+    "group_not_found": "Asset group not found."
+  },
+  "controls": {
+    "not_found": "Control not found.",
+    "implementation_not_found": "Control implementation not found.",
+    "already_implemented": "This control is already implemented.",
+    "catalogue_not_found": "Catalogue control not found."
+  },
+  "incidents": {
+    "not_found": "Incident not found.",
+    "cannot_close_open_actions": "The incident has pending open actions.",
+    "action_not_found": "Incident action not found."
+  },
+  "tasks": {
+    "not_found": "Task not found.",
+    "invalid_status": "Invalid task status.",
+    "risk_not_found": "The associated risk does not exist."
+  },
+  "policies": {
+    "not_found": "Policy not found.",
+    "cannot_delete_published": "A published policy cannot be deleted.",
+    "version_conflict": "Version conflict. The policy has been modified by another user."
+  },
+  "suppliers": {
+    "not_found": "Supplier not found.",
+    "questionnaire_not_found": "Questionnaire not found.",
+    "assessment_not_found": "Assessment not found.",
+    "issue_not_found": "Finding not found.",
+    "template_not_found": "Template not found.",
+    "cannot_delete_active": "Cannot delete an active supplier with existing contracts.",
+    "gate_score_required": "The onboarding gate must be passed before activating the supplier."
+  },
+  "users": {
+    "not_found": "User not found.",
+    "email_exists": "A user with that email already exists.",
+    "cannot_delete_self": "You cannot delete your own account.",
+    "role_invalid": "Invalid role.",
+    "org_not_found": "Organization not found."
+  },
+  "organizations": {
+    "not_found": "Organization not found.",
+    "plan_invalid": "Invalid plan.",
+    "module_not_available": "This module is not available in your current plan ({plan}). Upgrade to {required} or higher.",
+    "slug_taken": "An organization with that identifier already exists.",
+    "cannot_delete_with_users": "Cannot delete an organization that has active users."
+  },
+  "documents": {
+    "not_found": "Document not found.",
+    "upload_failed": "Error uploading document.",
+    "invalid_type": "File type not allowed. Accepted formats: {formats}.",
+    "too_large": "File exceeds the maximum allowed size ({max_mb} MB)."
+  },
+  "reports": {
+    "not_found": "Report not found.",
+    "generation_failed": "Error generating report.",
+    "no_data": "Not enough data to generate the report.",
+    "template_not_found": "Report template not found.",
+    "schedule_not_found": "Report schedule not found.",
+    "pdf": {
+      "risk_register": "Risk Register",
+      "soa": "Statement of Applicability",
+      "executive": "Executive Report",
+      "confidential": "CONFIDENTIAL",
+      "page": "Page {n} of {total}",
+      "generated": "Generated by RiskHub",
+      "cover_date": "Date: {date}",
+      "col_risk": "Risk",
+      "col_asset": "Asset",
+      "col_inherent": "Inherent level",
+      "col_residual": "Residual level",
+      "col_treatment": "Treatment",
+      "col_owner": "Owner",
+      "col_status": "Status",
+      "col_deadline": "Deadline",
+      "col_control": "Control",
+      "col_theme": "Theme",
+      "col_impl_status": "Implementation status",
+      "col_maturity": "Maturity",
+      "col_justification": "Justification"
+    }
+  },
+  "osint": {
+    "not_found": "OSINT finding not found.",
+    "scan_failed": "Error during OSINT scan: {detail}.",
+    "target_invalid": "Invalid scan target.",
+    "target_not_found": "OSINT target not found."
+  },
+  "cve": {
+    "not_found": "CVE not found.",
+    "scan_failed": "Error during CVE scan: {detail}.",
+    "asset_not_found": "Asset for CVE scan not found."
+  },
+  "ai": {
+    "not_configured": "The AI agent is not configured. Set up the API key in Settings → AI Agent.",
+    "api_error": "Error communicating with AI: {detail}",
+    "context_required": "The organizational context must be configured before using the AI agent.",
+    "document_not_found": "AI document not found.",
+    "analysis_failed": "Error during document analysis: {detail}",
+    "token_limit_exceeded": "Your plan's token limit has been exceeded. Contact the administrator.",
+    "rate_limited": "Too many AI agent requests. Please wait a moment."
+  },
+  "compliance": {
+    "not_found": "Compliance framework not found.",
+    "status_not_found": "Compliance status not found.",
+    "framework_already_exists": "This compliance framework already exists."
+  },
+  "audits": {
+    "not_found": "Audit not found.",
+    "finding_not_found": "Audit finding not found.",
+    "cannot_delete_completed": "Cannot delete a completed audit."
+  },
+  "nonconformities": {
+    "not_found": "Non-conformity not found.",
+    "cannot_close_without_action": "Cannot close without a defined corrective action."
+  },
+  "gdpr": {
+    "activity_not_found": "Processing activity not found.",
+    "dpia_not_found": "DPIA not found.",
+    "processing_activity_not_found": "Processing activity not found."
+  },
+  "context": {
+    "not_found": "Organizational context not found.",
+    "not_configured": "Organizational context is not configured. Complete the initial questionnaire."
+  },
+  "alerts": {
+    "not_found": "Alert not found.",
+    "rule_not_found": "Alert rule not found.",
+    "duplicate_name": "An alert with that name already exists."
+  },
+  "webhooks": {
+    "not_found": "Webhook not found.",
+    "send_failed": "Error sending webhook: {detail}",
+    "url_invalid": "Invalid webhook URL.",
+    "hmac_invalid": "Invalid HMAC signature."
+  },
+  "integrations": {
+    "sso_not_configured": "SSO is not configured.",
+    "sharepoint_not_configured": "SharePoint is not configured.",
+    "erp_not_configured": "ERP integration is not configured.",
+    "connection_failed": "Connection error with external service: {detail}",
+    "invalid_hmac": "Invalid HMAC signature. Check the configured secret.",
+    "event_not_mapped": "Unrecognized event type: {event_type}."
+  },
+  "evidence": {
+    "not_found": "Evidence not found.",
+    "upload_failed": "Error uploading evidence.",
+    "invalid_type": "File type not allowed for evidence."
+  },
+  "tprm": {
+    "template_not_found": "TPRM template not found.",
+    "assessment_not_found": "Supplier assessment not found.",
+    "issue_not_found": "Supplier finding not found.",
+    "questionnaire_not_found": "Questionnaire not found.",
+    "score_out_of_range": "Score out of allowed range (0-100).",
+    "already_submitted": "The questionnaire has already been submitted and cannot be modified.",
+    "ai_review_failed": "Error during AI review of questionnaire: {detail}."
+  },
+  "regwatch": {
+    "source_not_found": "Regulatory source not found.",
+    "event_not_found": "Regulatory event not found.",
+    "pack_not_found": "Change pack not found.",
+    "not_enabled": "Regulatory watch is not enabled for this tenant.",
+    "sweep_failed": "Error during regulatory sweep: {detail}."
+  },
+  "bcp": {
+    "plan_not_found": "Business continuity plan not found.",
+    "process_not_found": "Critical process not found.",
+    "cannot_delete_active": "Cannot delete an active plan."
+  },
+  "kris": {
+    "not_found": "KRI not found.",
+    "invalid_value": "KRI value out of allowed range.",
+    "duplicate_name": "A KRI with that name already exists."
+  },
+  "architecture": {
+    "review_not_found": "Architecture review not found.",
+    "finding_not_found": "Architecture finding not found."
+  },
+  "external_findings": {
+    "not_found": "External finding not found.",
+    "invalid_severity": "Invalid severity."
+  },
+  "magerit": {
+    "not_found": "MAGERIT valuation not found.",
+    "asset_not_found": "MAGERIT asset not found."
+  },
+  "change_requests": {
+    "not_found": "Change request not found.",
+    "cannot_modify_approved": "Cannot modify an approved request.",
+    "cannot_delete_implemented": "Cannot delete an implemented request."
+  },
+  "management_review": {
+    "not_found": "Management review not found.",
+    "already_completed": "This review is already marked as completed."
+  },
+  "nis2": {
+    "not_applicable": "NIS2 does not apply to this organization.",
+    "notification_overdue": "The NIS2 72-hour notification deadline has passed."
+  },
+  "awareness": {
+    "campaign_not_found": "Awareness campaign not found.",
+    "material_not_found": "Awareness material not found."
+  },
+  "soa_versions": {
+    "not_found": "SoA version not found.",
+    "cannot_restore_current": "This is already the current version."
+  },
+  "inbox": {
+    "item_not_found": "Inbox item not found.",
+    "already_processed": "This item has already been processed."
+  },
+  "predictive": {
+    "analysis_failed": "Error during predictive analysis: {detail}.",
+    "insufficient_data": "Not enough historical data for predictive analysis."
+  },
+  "search": {
+    "query_too_short": "Search must be at least {min} characters.",
+    "no_results": "No results found for \"{query}\"."
+  },
+  "onboarding": {
+    "gate_not_found": "Onboarding gate not found.",
+    "gate_config_invalid": "Invalid gate configuration.",
+    "already_passed": "This gate has already been passed."
+  }
+}

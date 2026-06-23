@@ -1,0 +1,279 @@
+{
+  "common": {
+    "not_found": "Recurso no encontrado.",
+    "forbidden": "No tienes permisos para realizar esta acción.",
+    "unauthorized": "No autorizado.",
+    "bad_request": "Solicitud inválida.",
+    "conflict": "Ya existe un registro con los mismos datos.",
+    "server_error": "Error interno del servidor.",
+    "validation_error": "Error de validación."
+  },
+  "auth": {
+    "invalid_credentials": "Credenciales no válidas.",
+    "account_locked": "Cuenta bloqueada temporalmente. Intenta de nuevo en {seconds} segundos.",
+    "token_expired": "La sesión ha expirado. Por favor, inicia sesión de nuevo.",
+    "token_invalid": "Token de autenticación inválido.",
+    "mfa_code_invalid": "Código TOTP incorrecto.",
+    "mfa_token_invalid": "Token MFA inválido o expirado.",
+    "password_min_length": "La contraseña debe tener al menos {min} caracteres.",
+    "password_needs_uppercase": "La contraseña debe contener al menos una letra mayúscula.",
+    "password_needs_lowercase": "La contraseña debe contener al menos una letra minúscula.",
+    "password_needs_digit": "La contraseña debe contener al menos un dígito (0-9).",
+    "password_needs_special": "La contraseña debe contener al menos un carácter especial (!@#$%^&*()-_=+[]{}|;:',.<>?/).",
+    "same_password": "La nueva contraseña no puede ser igual a la actual.",
+    "user_not_found": "Usuario no encontrado.",
+    "user_disabled": "Tu cuenta está desactivada. Contacta con el administrador.",
+    "email_already_exists": "Ya existe un usuario con ese email.",
+    "cannot_delete_self": "No puedes eliminarte a ti mismo.",
+    "cannot_modify_superadmin": "No puedes modificar la cuenta de superadmin.",
+    "insufficient_role": "No tienes el rol necesario para realizar esta acción.",
+    "mfa_already_enabled": "La autenticación de dos factores ya está activada.",
+    "mfa_not_enabled": "La autenticación de dos factores no está activada.",
+    "otp_invalid": "Código OTP incorrecto.",
+    "sso_user_not_found": "Tu cuenta no existe en RiskHub. Contacta con el administrador.",
+    "sso_account_disabled": "Tu cuenta está desactivada. Contacta con el administrador.",
+    "sso_domain_not_allowed": "Tu dominio de correo no está autorizado para acceder via SSO.",
+    "sso_invalid_state": "La sesión de SSO ha expirado. Intenta de nuevo.",
+    "sso_not_configured": "SSO no está configurado.",
+    "sso_no_email": "El proveedor de identidad no devolvió un email válido.",
+    "sso_missing_params": "Respuesta incompleta del proveedor de identidad."
+  },
+  "risks": {
+    "not_found": "Riesgo no encontrado.",
+    "duplicate_detected": "Se detectó un posible riesgo duplicado: \"{name}\" (ID {id}). Revisa si ya existe antes de crear uno nuevo.",
+    "treatment_not_found": "Plan de tratamiento no encontrado.",
+    "invalid_score": "Puntuación de riesgo fuera del rango permitido (1-5).",
+    "owner_not_found": "El responsable asignado no existe.",
+    "asset_not_found": "Activo no encontrado.",
+    "threat_not_found": "Amenaza no encontrada.",
+    "vulnerability_not_found": "Vulnerabilidad no encontrada.",
+    "cannot_delete_with_treatments": "No se puede eliminar un riesgo que tiene tratamientos activos."
+  },
+  "assets": {
+    "not_found": "Activo no encontrado.",
+    "already_exists": "Ya existe un activo con ese nombre.",
+    "group_not_found": "Grupo de activos no encontrado."
+  },
+  "controls": {
+    "not_found": "Control no encontrado.",
+    "implementation_not_found": "Implementación de control no encontrada.",
+    "already_implemented": "Este control ya está implementado.",
+    "catalogue_not_found": "Control del catálogo no encontrado."
+  },
+  "incidents": {
+    "not_found": "Incidente no encontrado.",
+    "cannot_close_open_actions": "El incidente tiene acciones abiertas pendientes.",
+    "action_not_found": "Acción del incidente no encontrada."
+  },
+  "tasks": {
+    "not_found": "Tarea no encontrada.",
+    "invalid_status": "Estado de tarea no válido.",
+    "risk_not_found": "El riesgo asociado no existe."
+  },
+  "policies": {
+    "not_found": "Política no encontrada.",
+    "cannot_delete_published": "No se puede eliminar una política publicada.",
+    "version_conflict": "Conflicto de versión. La política ha sido modificada por otro usuario."
+  },
+  "suppliers": {
+    "not_found": "Proveedor no encontrado.",
+    "questionnaire_not_found": "Cuestionario no encontrado.",
+    "assessment_not_found": "Evaluación no encontrada.",
+    "issue_not_found": "Hallazgo no encontrado.",
+    "template_not_found": "Plantilla no encontrada.",
+    "cannot_delete_active": "No se puede eliminar un proveedor activo con contratos vigentes.",
+    "gate_score_required": "Se requiere superar el gate de onboarding antes de activar el proveedor."
+  },
+  "users": {
+    "not_found": "Usuario no encontrado.",
+    "email_exists": "Ya existe un usuario con ese email.",
+    "cannot_delete_self": "No puedes eliminarte a ti mismo.",
+    "role_invalid": "Rol no válido.",
+    "org_not_found": "Organización no encontrada."
+  },
+  "organizations": {
+    "not_found": "Organización no encontrada.",
+    "plan_invalid": "Plan no válido.",
+    "module_not_available": "Este módulo no está disponible en tu plan actual ({plan}). Actualiza al plan {required} o superior.",
+    "slug_taken": "Ya existe una organización con ese identificador.",
+    "cannot_delete_with_users": "No se puede eliminar una organización con usuarios activos."
+  },
+  "documents": {
+    "not_found": "Documento no encontrado.",
+    "upload_failed": "Error al subir el documento.",
+    "invalid_type": "Tipo de archivo no permitido. Formatos aceptados: {formats}.",
+    "too_large": "El archivo supera el tamaño máximo permitido ({max_mb} MB)."
+  },
+  "reports": {
+    "not_found": "Informe no encontrado.",
+    "generation_failed": "Error al generar el informe.",
+    "no_data": "No hay datos suficientes para generar el informe.",
+    "template_not_found": "Plantilla de informe no encontrada.",
+    "schedule_not_found": "Programación de informe no encontrada.",
+    "pdf": {
+      "risk_register": "Registro de Riesgos",
+      "soa": "Declaración de Aplicabilidad",
+      "executive": "Informe Ejecutivo",
+      "confidential": "CONFIDENCIAL",
+      "page": "Página {n} de {total}",
+      "generated": "Generado por RiskHub",
+      "cover_date": "Fecha: {date}",
+      "col_risk": "Riesgo",
+      "col_asset": "Activo",
+      "col_inherent": "Nivel inherente",
+      "col_residual": "Nivel residual",
+      "col_treatment": "Tratamiento",
+      "col_owner": "Responsable",
+      "col_status": "Estado",
+      "col_deadline": "Fecha límite",
+      "col_control": "Control",
+      "col_theme": "Tema",
+      "col_impl_status": "Estado implementación",
+      "col_maturity": "Madurez",
+      "col_justification": "Justificación"
+    }
+  },
+  "osint": {
+    "not_found": "Hallazgo OSINT no encontrado.",
+    "scan_failed": "Error durante el escaneo OSINT: {detail}.",
+    "target_invalid": "Objetivo de escaneo no válido.",
+    "target_not_found": "Objetivo OSINT no encontrado."
+  },
+  "cve": {
+    "not_found": "CVE no encontrado.",
+    "scan_failed": "Error durante el escaneo de CVEs: {detail}.",
+    "asset_not_found": "Activo para el escaneo de CVE no encontrado."
+  },
+  "ai": {
+    "not_configured": "El agente IA no está configurado. Configura la API key en Ajustes → Agente IA.",
+    "api_error": "Error al comunicarse con la IA: {detail}",
+    "context_required": "Es necesario configurar el contexto organizativo antes de usar el agente IA.",
+    "document_not_found": "Documento IA no encontrado.",
+    "analysis_failed": "Error durante el análisis del documento: {detail}",
+    "token_limit_exceeded": "Se ha superado el límite de tokens de tu plan. Contacta con el administrador.",
+    "rate_limited": "Demasiadas solicitudes al agente IA. Espera un momento."
+  },
+  "compliance": {
+    "not_found": "Framework de cumplimiento no encontrado.",
+    "status_not_found": "Estado de cumplimiento no encontrado.",
+    "framework_already_exists": "Ya existe este framework de cumplimiento."
+  },
+  "audits": {
+    "not_found": "Auditoría no encontrada.",
+    "finding_not_found": "Hallazgo de auditoría no encontrado.",
+    "cannot_delete_completed": "No se puede eliminar una auditoría completada."
+  },
+  "nonconformities": {
+    "not_found": "No conformidad no encontrada.",
+    "cannot_close_without_action": "No se puede cerrar sin una acción correctora definida."
+  },
+  "gdpr": {
+    "activity_not_found": "Actividad de tratamiento no encontrada.",
+    "dpia_not_found": "DPIA no encontrada.",
+    "processing_activity_not_found": "Actividad de tratamiento no encontrada."
+  },
+  "context": {
+    "not_found": "Contexto organizativo no encontrado.",
+    "not_configured": "El contexto organizativo no está configurado. Completa el cuestionario inicial."
+  },
+  "alerts": {
+    "not_found": "Alerta no encontrada.",
+    "rule_not_found": "Regla de alerta no encontrada.",
+    "duplicate_name": "Ya existe una alerta con ese nombre."
+  },
+  "webhooks": {
+    "not_found": "Webhook no encontrado.",
+    "send_failed": "Error al enviar el webhook: {detail}",
+    "url_invalid": "URL del webhook no válida.",
+    "hmac_invalid": "Firma HMAC inválida."
+  },
+  "integrations": {
+    "sso_not_configured": "SSO no está configurado.",
+    "sharepoint_not_configured": "SharePoint no está configurado.",
+    "erp_not_configured": "La integración ERP no está configurada.",
+    "connection_failed": "Error de conexión con el servicio externo: {detail}",
+    "invalid_hmac": "Firma HMAC inválida. Verifica el secret configurado.",
+    "event_not_mapped": "Tipo de evento no reconocido: {event_type}."
+  },
+  "evidence": {
+    "not_found": "Evidencia no encontrada.",
+    "upload_failed": "Error al subir la evidencia.",
+    "invalid_type": "Tipo de archivo no permitido para evidencias."
+  },
+  "tprm": {
+    "template_not_found": "Plantilla TPRM no encontrada.",
+    "assessment_not_found": "Evaluación de proveedor no encontrada.",
+    "issue_not_found": "Hallazgo de proveedor no encontrado.",
+    "questionnaire_not_found": "Cuestionario no encontrado.",
+    "score_out_of_range": "Puntuación fuera del rango permitido (0-100).",
+    "already_submitted": "El cuestionario ya ha sido enviado y no puede modificarse.",
+    "ai_review_failed": "Error durante la revisión IA del cuestionario: {detail}."
+  },
+  "regwatch": {
+    "source_not_found": "Fuente normativa no encontrada.",
+    "event_not_found": "Evento normativo no encontrado.",
+    "pack_not_found": "Paquete de cambios no encontrado.",
+    "not_enabled": "La vigilancia normativa no está activada para este tenant.",
+    "sweep_failed": "Error durante el barrido normativo: {detail}."
+  },
+  "bcp": {
+    "plan_not_found": "Plan de continuidad no encontrado.",
+    "process_not_found": "Proceso crítico no encontrado.",
+    "cannot_delete_active": "No se puede eliminar un plan activo."
+  },
+  "kris": {
+    "not_found": "KRI no encontrado.",
+    "invalid_value": "Valor del KRI fuera del rango permitido.",
+    "duplicate_name": "Ya existe un KRI con ese nombre."
+  },
+  "architecture": {
+    "review_not_found": "Revisión de arquitectura no encontrada.",
+    "finding_not_found": "Hallazgo de arquitectura no encontrado."
+  },
+  "external_findings": {
+    "not_found": "Hallazgo externo no encontrado.",
+    "invalid_severity": "Severidad no válida."
+  },
+  "magerit": {
+    "not_found": "Valoración MAGERIT no encontrada.",
+    "asset_not_found": "Activo MAGERIT no encontrado."
+  },
+  "change_requests": {
+    "not_found": "Solicitud de cambio no encontrada.",
+    "cannot_modify_approved": "No se puede modificar una solicitud aprobada.",
+    "cannot_delete_implemented": "No se puede eliminar una solicitud implementada."
+  },
+  "management_review": {
+    "not_found": "Revisión por la dirección no encontrada.",
+    "already_completed": "Esta revisión ya está marcada como completada."
+  },
+  "nis2": {
+    "not_applicable": "NIS2 no aplica a esta organización.",
+    "notification_overdue": "El plazo de notificación NIS2 de 72 horas ha vencido."
+  },
+  "awareness": {
+    "campaign_not_found": "Campaña de concienciación no encontrada.",
+    "material_not_found": "Material de concienciación no encontrado."
+  },
+  "soa_versions": {
+    "not_found": "Versión de SoA no encontrada.",
+    "cannot_restore_current": "Esta ya es la versión actual."
+  },
+  "inbox": {
+    "item_not_found": "Elemento de la bandeja no encontrado.",
+    "already_processed": "Este elemento ya ha sido procesado."
+  },
+  "predictive": {
+    "analysis_failed": "Error durante el análisis predictivo: {detail}.",
+    "insufficient_data": "No hay suficientes datos históricos para el análisis predictivo."
+  },
+  "search": {
+    "query_too_short": "La búsqueda debe tener al menos {min} caracteres.",
+    "no_results": "No se encontraron resultados para \"{query}\"."
+  },
+  "onboarding": {
+    "gate_not_found": "Gate de onboarding no encontrado.",
+    "gate_config_invalid": "Configuración del gate no válida.",
+    "already_passed": "Este gate ya ha sido superado."
+  }
+}
