@@ -720,6 +720,7 @@ class SupplierUpdate(BaseModel):
     department: Optional[str] = None
     business_importance: Optional[int] = Field(default=None, ge=1, le=5)
     internal_owner_id: Optional[int] = None
+    trust_portal_url: Optional[str] = None
 
 
 class SupplierOut(ORMBase):
@@ -775,6 +776,8 @@ class SupplierOut(ORMBase):
     department: Optional[str] = None
     business_importance: Optional[int] = None
     internal_owner_id: Optional[int] = None
+    trust_portal_url: Optional[str] = None
+    trust_portal_last_scraped_at: Optional[datetime] = None
 
 
 # ---------- NON-CONFORMITIES ----------

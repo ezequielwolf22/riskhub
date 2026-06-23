@@ -119,6 +119,14 @@ const ViewChangeRequests = (() => {
           </select>
         </div>
         <div>
+          <label>${t('change_requests.form_urgency')}</label>
+          <select id="chg-urgency" class="input">
+            <option value="normal" ${(chg?.urgency||'normal')==='normal'?'selected':''}>${t('change_requests.urgency_normal')}</option>
+            <option value="urgent" ${chg?.urgency==='urgent'?'selected':''}>${t('change_requests.urgency_urgent')}</option>
+            <option value="emergency" ${chg?.urgency==='emergency'?'selected':''}>${t('change_requests.urgency_emergency')}</option>
+          </select>
+        </div>
+        <div>
           <label>${t('change_requests.form_impact')}</label>
           <select id="chg-impact" class="input">
             <option value="none" ${chg?.risk_impact === 'none' ? 'selected' : ''}>${t('change_requests.impact_none')}</option>
@@ -126,6 +134,12 @@ const ViewChangeRequests = (() => {
             <option value="medium" ${chg?.risk_impact === 'medium' ? 'selected' : ''}>${t('change_requests.impact_medium')}</option>
             <option value="high" ${chg?.risk_impact === 'high' ? 'selected' : ''}>${t('change_requests.impact_high')}</option>
           </select>
+        </div>
+        <div><label>${t('change_requests.form_iso_clause')}</label><input id="chg-clause" class="input" placeholder="${t('change_requests.form_iso_clause_placeholder')}" value="${UI.esc(chg?.iso_clause_ref||'')}"></div>
+        <div>
+          <label>${t('change_requests.form_date')}</label>
+          <input id="chg-date" class="input" type="datetime-local"
+                 value="${chg?.planned_date ? chg.planned_date.replace('Z', '') : ''}">
         </div>
         <div class="span2">
           <label>${t('change_requests.form_description')}</label>
@@ -135,10 +149,13 @@ const ViewChangeRequests = (() => {
           <label>${t('change_requests.form_reason')}</label>
           <textarea id="chg-reason" class="input" rows="2">${UI.esc(chg?.business_reason || '')}</textarea>
         </div>
-        <div>
-          <label>${t('change_requests.form_date')}</label>
-          <input id="chg-date" class="input" type="datetime-local"
-                 value="${chg?.planned_date ? chg.planned_date.replace('Z', '') : ''}">
+        <div class="span2">
+          <label>${t('change_requests.form_risk_assessment')}</label>
+          <textarea id="chg-risk" class="input" rows="2">${UI.esc(chg?.risk_assessment || '')}</textarea>
+        </div>
+        <div class="span2">
+          <label>${t('change_requests.form_rollback_plan')}</label>
+          <textarea id="chg-rollback" class="input" rows="2">${UI.esc(chg?.rollback_plan || '')}</textarea>
         </div>
       </div>
     `, {
@@ -155,9 +172,13 @@ const ViewChangeRequests = (() => {
     const body = {
       title,
       change_type: document.getElementById('chg-type').value,
+      urgency: document.getElementById('chg-urgency').value,
       risk_impact: document.getElementById('chg-impact').value,
+      iso_clause_ref: document.getElementById('chg-clause').value.trim() || null,
       description: document.getElementById('chg-desc').value.trim(),
       business_reason: document.getElementById('chg-reason').value.trim(),
+      risk_assessment: document.getElementById('chg-risk').value.trim() || null,
+      rollback_plan: document.getElementById('chg-rollback').value.trim() || null,
       planned_date: document.getElementById('chg-date').value || null,
     };
     try {
@@ -202,8 +223,15 @@ const ViewChangeRequests = (() => {
         </div>
         ${c.description ? `<div><strong style="font-size:12px;">${t('change_requests.form_description')}:</strong><p style="font-size:13px;margin:4px 0 0;">${UI.esc(c.description)}</p></div>` : ''}
         ${c.business_reason ? `<div><strong style="font-size:12px;">${t('change_requests.form_reason')}:</strong><p style="font-size:13px;margin:4px 0 0;">${UI.esc(c.business_reason)}</p></div>` : ''}
-        ${c.planned_date ? `<div style="font-size:13px;"><strong>${t('change_requests.planned_date_label')}:</strong> ${new Date(c.planned_date).toLocaleDateString(locale)}</div>` : ''}
-        ${c.implemented_at ? `<div style="font-size:13px;"><strong>${t('change_requests.implemented_label')}:</strong> ${new Date(c.implemented_at).toLocaleDateString(locale)}</div>` : ''}
+        ${c.risk_assessment ? `<div><strong style="font-size:12px;">${t('change_requests.form_risk_assessment')}:</strong><p style="font-size:13px;margin:4px 0 0;">${UI.esc(c.risk_assessment)}</p></div>` : ''}
+        ${c.rollback_plan ? `<div style="background:var(--bg-2);border-radius:6px;padding:10px;"><strong style="font-size:12px;">${t('change_requests.form_rollback_plan')}:</strong><p style="font-size:13px;margin:4px 0 0;">${UI.esc(c.rollback_plan)}</p></div>` : ''}
+        ${c.approval_evidence ? `<div style="background:var(--bg-2);border-radius:6px;padding:10px;"><strong style="font-size:12px;">${t('change_requests.approval_evidence_label')}:</strong><p style="font-size:13px;margin:4px 0 0;">${UI.esc(c.approval_evidence)}</p></div>` : ''}
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;">
+          ${c.iso_clause_ref ? `<div><strong>${t('change_requests.form_iso_clause')}:</strong> <code>${UI.esc(c.iso_clause_ref)}</code></div>` : ''}
+          ${c.urgency && c.urgency !== 'normal' ? `<div><strong>${t('change_requests.form_urgency')}:</strong> ${t('change_requests.urgency_'+c.urgency)}</div>` : ''}
+          ${c.planned_date ? `<div><strong>${t('change_requests.planned_date_label')}:</strong> ${new Date(c.planned_date).toLocaleDateString(locale)}</div>` : ''}
+          ${c.implemented_at ? `<div><strong>${t('change_requests.implemented_label')}:</strong> ${new Date(c.implemented_at).toLocaleDateString(locale)}</div>` : ''}
+        </div>
         ${c.verification_notes ? `<div><strong style="font-size:12px;">${t('change_requests.verification_label')}:</strong><p style="font-size:13px;margin:4px 0 0;">${UI.esc(c.verification_notes)}</p></div>` : ''}
       </div>
     `, {

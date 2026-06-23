@@ -52,6 +52,10 @@ def _chg_to_dict(c: ChangeRequest) -> dict:
         "verified_by_id": c.verified_by_id,
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+        "urgency": c.urgency,
+        "rollback_plan": c.rollback_plan,
+        "approval_evidence": c.approval_evidence,
+        "iso_clause_ref": c.iso_clause_ref,
     }
 
 
@@ -66,6 +70,10 @@ class ChangeRequestCreate(BaseModel):
     risk_impact: Optional[str] = "low"
     risk_assessment: Optional[str] = None
     planned_date: Optional[str] = None
+    urgency: Optional[str] = "normal"
+    rollback_plan: Optional[str] = None
+    approval_evidence: Optional[str] = None
+    iso_clause_ref: Optional[str] = None
 
 
 class ChangeRequestUpdate(BaseModel):
@@ -80,6 +88,10 @@ class ChangeRequestUpdate(BaseModel):
     risk_assessment: Optional[str] = None
     planned_date: Optional[str] = None
     verification_notes: Optional[str] = None
+    urgency: Optional[str] = None
+    rollback_plan: Optional[str] = None
+    approval_evidence: Optional[str] = None
+    iso_clause_ref: Optional[str] = None
 
 
 class RejectBody(BaseModel):
@@ -136,6 +148,10 @@ def create_change(
         planned_date=planned,
         status="draft",
         requested_by_id=current_user.id,
+        urgency=body.urgency or "normal",
+        rollback_plan=body.rollback_plan,
+        approval_evidence=body.approval_evidence,
+        iso_clause_ref=body.iso_clause_ref,
     )
     db.add(chg)
     db.commit()
@@ -175,7 +191,8 @@ def update_change(
 
     for field in ("title", "change_type", "description", "business_reason",
                   "affected_asset_ids", "affected_control_ids", "affected_policy_ids",
-                  "risk_impact", "risk_assessment", "verification_notes"):
+                  "risk_impact", "risk_assessment", "verification_notes",
+                  "urgency", "rollback_plan", "approval_evidence", "iso_clause_ref"):
         val = getattr(body, field, None)
         if val is not None:
             setattr(chg, field, val)

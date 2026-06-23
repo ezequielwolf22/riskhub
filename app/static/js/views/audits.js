@@ -328,19 +328,7 @@ const ViewAudits = (() => {
             ${Auth.canEdit() ? `<button class="btn btn-sm btn-primary" id="btn-add-finding">${t('audits.btn_add_finding')}</button>` : ''}
           </div>
           <div id="findings-list">
-            ${(data.findings||[]).length ? (data.findings||[]).map(f => `
-              <div style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--bg-2);">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                  <div>
-                    ${_badge(FINDING_TYPE_LABELS[f.finding_type]||f.finding_type, FINDING_TYPE_COLORS[f.finding_type]||'#888')}
-                    ${f.iso_clause ? `<span style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-left:6px;">${UI.esc(f.iso_clause)}</span>` : ''}
-                  </div>
-                  ${Auth.canEdit() ? `<button class="btn btn-sm btn-danger" data-del-finding="${f.id}" onclick="event.stopPropagation()">${t('audits.btn_delete')}</button>` : ''}
-                </div>
-                <div style="font-weight:600;font-size:13px;margin-top:4px;">${UI.esc(f.title)}</div>
-                ${f.description ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${UI.esc(f.description)}</div>` : ''}
-                ${f.recommendation ? `<div style="font-size:12px;color:var(--brand-purple);margin-top:4px;">${t('audits.finding_recommendation')} ${UI.esc(f.recommendation)}</div>` : ''}
-              </div>`).join('')
+            ${(data.findings||[]).length ? (data.findings||[]).map(f => _findingCardHtml(f, FINDING_TYPE_LABELS, FINDING_TYPE_COLORS)).join('')
             : `<p style="font-size:13px;color:var(--text-muted);">${t('audits.detail_no_findings')}</p>`}
           </div>
         </div>
@@ -367,6 +355,15 @@ const ViewAudits = (() => {
       const btnAddFinding = document.getElementById('btn-add-finding');
       if (btnAddFinding) btnAddFinding.onclick = () => _openFindingForm(data.id);
 
+      document.querySelectorAll('[data-edit-finding]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const fid = parseInt(btn.dataset.editFinding);
+          const f = (data.findings||[]).find(x => x.id === fid);
+          if (f) { UI.closeModal(); _openFindingDetail(data.id, f); }
+        };
+      });
+
       document.querySelectorAll('[data-del-finding]').forEach(btn => {
         btn.onclick = async (e) => {
           e.stopPropagation();
@@ -381,49 +378,197 @@ const ViewAudits = (() => {
     }
   }
 
-  function _openFindingForm(auditId) {
+  const FINDING_STATUS_COLORS = {
+    open: 'var(--risk-critical)',
+    in_progress: 'var(--brand-orange)',
+    closed: '#aaa',
+    verified: 'var(--risk-low)',
+  };
+
+  function _findingStatusLabel(s) {
+    return t('audits.finding_status_' + (s||'open'));
+  }
+
+  function _findingCardHtml(f, typeLabels, typeColors) {
+    const statusColor = FINDING_STATUS_COLORS[f.status] || '#aaa';
+    return `
+      <div style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg-2);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${_badge(typeLabels[f.finding_type]||f.finding_type, typeColors[f.finding_type]||'#888')}
+            ${_badge(_findingStatusLabel(f.status), statusColor)}
+            ${f.iso_clause ? `<span style="font-size:11px;font-family:var(--font-mono);color:var(--text-muted);">${UI.esc(f.iso_clause)}</span>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;">
+            ${Auth.canEdit() ? `<button class="btn btn-sm btn-ghost" data-edit-finding="${f.id}" onclick="event.stopPropagation()">${t('audits.btn_edit')}</button>` : ''}
+            ${Auth.canEdit() ? `<button class="btn btn-sm btn-danger" data-del-finding="${f.id}" onclick="event.stopPropagation()">${t('audits.btn_delete')}</button>` : ''}
+          </div>
+        </div>
+        <div style="font-weight:600;font-size:13px;margin-top:6px;">${UI.esc(f.title)}</div>
+        ${f.description ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${UI.esc(f.description)}</div>` : ''}
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--text-muted);">
+          ${f.deadline ? `<span>${t('audits.finding_deadline')} ${f.deadline.slice(0,10)}</span>` : ''}
+          ${f.action_plan ? `<span style="color:var(--brand-purple);">${t('audits.finding_action_plan_short')}</span>` : ''}
+          ${(f.comments||[]).length ? `<span>${t('audits.finding_comments_count', {count:(f.comments||[]).length})}</span>` : ''}
+        </div>
+      </div>`;
+  }
+
+  async function _openFindingDetail(auditId, f) {
     const FINDING_TYPE_LABELS = _getFindingTypeLabels();
-    UI.modal(t('audits.new_finding'), `
+    const statusColor = FINDING_STATUS_COLORS[f.status] || '#aaa';
+    const statusOpts = ['open','in_progress','closed','verified'].map(s =>
+      `<option value="${s}" ${f.status===s?'selected':''}>${_findingStatusLabel(s)}</option>`
+    ).join('');
+    UI.modal(`${t('audits.finding_detail_title')} — ${UI.esc(f.title)}`, `
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          ${_badge(FINDING_TYPE_LABELS[f.finding_type]||f.finding_type, FINDING_TYPE_COLORS[f.finding_type]||'#888')}
+          ${_badge(_findingStatusLabel(f.status), statusColor)}
+          ${f.iso_clause ? `<code style="font-size:12px;color:var(--text-muted);">${UI.esc(f.iso_clause)}</code>` : ''}
+        </div>
+        ${f.description ? `<div><strong>${t('audits.finding_desc_label')}</strong><br><span style="font-size:13px;">${UI.esc(f.description)}</span></div>` : ''}
+        ${f.recommendation ? `<div style="background:var(--bg-2);border-radius:6px;padding:10px;"><strong>${t('audits.finding_rec_label')}</strong><br><span style="font-size:13px;">${UI.esc(f.recommendation)}</span></div>` : ''}
+        ${f.action_plan ? `<div><strong>${t('audits.finding_action_plan')}</strong><br><span style="font-size:13px;">${UI.esc(f.action_plan)}</span></div>` : ''}
+        <div style="display:flex;gap:16px;font-size:13px;flex-wrap:wrap;">
+          ${f.deadline ? `<div><strong>${t('audits.finding_deadline')}</strong> ${f.deadline.slice(0,10)}</div>` : ''}
+          ${f.closed_at ? `<div><strong>${t('audits.finding_closed_at')}</strong> ${f.closed_at.slice(0,10)}</div>` : ''}
+        </div>
+        ${f.resolution_evidence ? `<div><strong>${t('audits.finding_resolution_evidence')}</strong><br><span style="font-size:13px;">${UI.esc(f.resolution_evidence)}</span></div>` : ''}
+
+        ${Auth.canEdit() ? `
+        <div style="border-top:1px solid var(--border);padding-top:12px;">
+          <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">${t('audits.finding_change_status')}</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <select id="fd-status" class="input" style="max-width:200px;">${statusOpts}</select>
+            <button class="btn btn-sm btn-primary" id="fd-save-status">${t('audits.btn_save')}</button>
+          </div>
+        </div>` : ''}
+
+        <div style="border-top:1px solid var(--border);padding-top:12px;">
+          <strong style="font-size:13px;">${t('audits.finding_comments_title')} (${(f.comments||[]).length})</strong>
+          <div id="fd-comments" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+            ${(f.comments||[]).map(c => `
+              <div style="background:var(--bg-2);border-radius:6px;padding:8px 10px;font-size:13px;">
+                <div style="font-weight:600;font-size:11px;color:var(--text-muted);margin-bottom:3px;">${UI.esc(c.author)} · ${c.created_at ? c.created_at.slice(0,10) : ''}</div>
+                ${UI.esc(c.text)}
+              </div>`).join('') || `<p style="font-size:12px;color:var(--text-muted);">${t('audits.finding_no_comments')}</p>`}
+          </div>
+          ${Auth.canEdit() ? `
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <input id="fd-new-comment" class="input" placeholder="${t('audits.finding_comment_placeholder')}" style="flex:1;">
+            <button class="btn btn-sm btn-primary" id="fd-add-comment">${t('audits.btn_comment')}</button>
+          </div>` : ''}
+        </div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="fd-close">${t('audits.btn_close')}</button>
+                ${Auth.canEdit() ? `<button class="btn btn-ghost" id="fd-edit">${t('audits.btn_edit')}</button>` : ''}`
+    });
+
+    document.getElementById('fd-close').onclick = () => { UI.closeModal(); _openAuditDetail(auditId); };
+    if (Auth.canEdit()) {
+      document.getElementById('fd-edit').onclick = () => { UI.closeModal(); _openFindingForm(auditId, f); };
+
+      const saveStatusBtn = document.getElementById('fd-save-status');
+      if (saveStatusBtn) saveStatusBtn.onclick = async () => {
+        const newStatus = document.getElementById('fd-status').value;
+        try {
+          const updated = await Api.audits.updateFinding(auditId, f.id, { ...f, status: newStatus });
+          UI.toast(t('audits.finding_status_updated'), 'success');
+          UI.closeModal(); _openAuditDetail(auditId);
+        } catch (e) { UI.toast(e.message, 'error'); }
+      };
+
+      const addCommentBtn = document.getElementById('fd-add-comment');
+      if (addCommentBtn) addCommentBtn.onclick = async () => {
+        const text = document.getElementById('fd-new-comment').value.trim();
+        if (!text) return;
+        try {
+          const updated = await Api.audits.addComment(auditId, f.id, text);
+          UI.toast(t('audits.finding_comment_added'), 'success');
+          UI.closeModal(); _openFindingDetail(auditId, updated);
+        } catch (e) { UI.toast(e.message, 'error'); }
+      };
+    }
+  }
+
+  function _openFindingForm(auditId, existing) {
+    const FINDING_TYPE_LABELS = _getFindingTypeLabels();
+    const v = existing || {};
+    const statusOpts = ['open','in_progress','closed','verified'].map(s =>
+      `<option value="${s}" ${(v.status||'open')===s?'selected':''}>${_findingStatusLabel(s)}</option>`
+    ).join('');
+    const isEdit = !!existing;
+    UI.modal(isEdit ? t('audits.edit_finding') : t('audits.new_finding'), `
       <div class="form-grid">
-        <div class="span2">
+        <div>
           <label>${t('audits.finding_type_label')}</label>
           <select id="ff-type" class="input">
-            ${Object.entries(FINDING_TYPE_LABELS).map(([k,l]) => `<option value="${k}">${l}</option>`).join('')}
+            ${Object.entries(FINDING_TYPE_LABELS).map(([k,l]) => `<option value="${k}" ${(v.finding_type||'minor_nc')===k?'selected':''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div class="span2"><label>${t('audits.finding_title_label')}</label><input id="ff-title" class="input" placeholder="${t('audits.finding_title_placeholder')}"></div>
-        <div><label>${t('audits.finding_clause_label')}</label><input id="ff-clause" class="input" placeholder="${t('audits.finding_clause_placeholder')}"></div>
+        <div>
+          <label>${t('audits.finding_status_label')}</label>
+          <select id="ff-status" class="input">${statusOpts}</select>
+        </div>
+        <div class="span2"><label>${t('audits.finding_title_label')}</label><input id="ff-title" class="input" placeholder="${t('audits.finding_title_placeholder')}" value="${UI.esc(v.title||'')}"></div>
+        <div><label>${t('audits.finding_clause_label')}</label><input id="ff-clause" class="input" placeholder="${t('audits.finding_clause_placeholder')}" value="${UI.esc(v.iso_clause||'')}"></div>
         <div>
           <label>${t('audits.finding_nc_label')}</label>
           <select id="ff-nc" class="input">
             <option value="">${t('audits.finding_nc_none')}</option>
-            ${_nonconformities.map(nc => `<option value="${nc.id}">${UI.esc(nc.code)} — ${UI.esc(nc.title)}</option>`).join('')}
+            ${_nonconformities.map(nc => `<option value="${nc.id}" ${v.nonconformity_id===nc.id?'selected':''}>${UI.esc(nc.code)} — ${UI.esc(nc.title)}</option>`).join('')}
           </select>
         </div>
-        <div class="span2"><label>${t('audits.finding_desc_label')}</label><textarea id="ff-desc" class="input" rows="3"></textarea></div>
-        <div class="span2"><label>${t('audits.finding_rec_label')}</label><textarea id="ff-rec" class="input" rows="2"></textarea></div>
+        <div><label>${t('audits.finding_responsible_label')}</label>
+          <select id="ff-resp" class="input">
+            <option value="">${t('audits.field_owner_none')}</option>
+            ${_users.map(u => `<option value="${u.id}" ${v.responsible_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>${t('audits.finding_deadline_label')}</label><input type="date" id="ff-deadline" class="input" value="${v.deadline?v.deadline.slice(0,10):''}"></div>
+        <div class="span2"><label>${t('audits.finding_desc_label')}</label><textarea id="ff-desc" class="input" rows="3">${UI.esc(v.description||'')}</textarea></div>
+        <div class="span2"><label>${t('audits.finding_rec_label')}</label><textarea id="ff-rec" class="input" rows="2">${UI.esc(v.recommendation||'')}</textarea></div>
+        <div class="span2"><label>${t('audits.finding_action_plan')}</label><textarea id="ff-plan" class="input" rows="2">${UI.esc(v.action_plan||'')}</textarea></div>
+        <div class="span2"><label>${t('audits.finding_resolution_evidence')}</label><textarea id="ff-res-ev" class="input" rows="2">${UI.esc(v.resolution_evidence||'')}</textarea></div>
       </div>
     `, {
       actions: `<button class="btn" id="mf-cancel">${t('audits.btn_cancel')}</button>
                 <button class="btn btn-primary" id="mf-save">${t('audits.btn_save_finding')}</button>`
     });
-    document.getElementById('mf-cancel').onclick = () => { UI.closeModal(); _openAuditDetail(auditId); };
+    document.getElementById('mf-cancel').onclick = () => {
+      UI.closeModal();
+      if (isEdit) _openFindingDetail(auditId, existing);
+      else _openAuditDetail(auditId);
+    };
     document.getElementById('mf-save').onclick = async () => {
       const title = document.getElementById('ff-title').value.trim();
       if (!title) { UI.toast(t('audits.finding_title_required'), 'error'); return; }
       const ncVal = document.getElementById('ff-nc').value;
+      const respVal = document.getElementById('ff-resp').value;
       const payload = {
         finding_type: document.getElementById('ff-type').value,
+        status: document.getElementById('ff-status').value,
         title,
         description: document.getElementById('ff-desc').value.trim(),
-        evidence: '',
+        evidence: v.evidence || '',
         iso_clause: document.getElementById('ff-clause').value.trim() || null,
         recommendation: document.getElementById('ff-rec').value.trim(),
         nonconformity_id: ncVal ? parseInt(ncVal) : null,
+        responsible_id: respVal ? parseInt(respVal) : null,
+        deadline: document.getElementById('ff-deadline').value || null,
+        action_plan: document.getElementById('ff-plan').value.trim() || null,
+        resolution_evidence: document.getElementById('ff-res-ev').value.trim() || null,
       };
       try {
-        await Api.audits.createFinding(auditId, payload);
-        UI.toast(t('audits.finding_toast_saved'), 'success');
+        if (isEdit) {
+          await Api.audits.updateFinding(auditId, existing.id, payload);
+          UI.toast(t('audits.finding_toast_updated'), 'success');
+        } else {
+          await Api.audits.createFinding(auditId, payload);
+          UI.toast(t('audits.finding_toast_saved'), 'success');
+        }
         UI.closeModal();
         await _loadStats(); await _refresh();
         _openAuditDetail(auditId);
@@ -453,14 +598,13 @@ const ViewAudits = (() => {
         <div><label>${t('audits.field_lead')}</label><input id="fa-lead" class="input" value="${UI.esc(v.auditor_lead||'')}"></div>
         <div><label>${t('audits.field_auditee')}</label><input id="fa-auditee" class="input" placeholder="${t('audits.field_auditee_placeholder')}" value="${UI.esc(v.auditee||'')}"></div>
         <div class="span2"><label>${t('audits.field_team')}</label><input id="fa-team" class="input" placeholder="${t('audits.field_team_placeholder')}" value="${UI.esc(Array.isArray(v.auditor_team)?v.auditor_team.join(', '):(v.auditor_team||''))}"></div>
-        <div>
+        <div class="span2">
           <label>${t('audits.field_owner')}</label>
-          <select id="fa-owner" class="input">
+          <select id="fa-owner" class="input" style="max-width:320px;">
             <option value="">${t('audits.field_owner_none')}</option>
             ${_users.map(u => `<option value="${u.id}" ${v.owner_id===u.id?'selected':''}>${UI.esc(u.full_name||u.email)}</option>`).join('')}
           </select>
         </div>
-        <div></div>
         <div><label>${t('audits.field_start')}</label><input type="date" id="fa-start" class="input" value="${v.planned_start?v.planned_start.slice(0,10):''}"></div>
         <div><label>${t('audits.field_end')}</label><input type="date" id="fa-end" class="input" value="${v.planned_end?v.planned_end.slice(0,10):''}"></div>
         <div><label>${t('audits.field_actual_start')}</label><input type="date" id="fa-actual-start" class="input" value="${v.actual_start?v.actual_start.slice(0,10):''}"></div>

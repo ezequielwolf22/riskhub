@@ -880,6 +880,10 @@ class Supplier(Base):
     # v4.4.0 — monitoreo periodico (scheduler supplier_monitoring)
     last_monitored_at = Column(DateTime, nullable=True)
     monitoring_status = Column(String(16), nullable=True)           # ok|issue|unknown
+    # Trust Portal IA — URL del portal publico del proveedor + resultado del ultimo analisis
+    trust_portal_url = Column(String(512), nullable=True)
+    trust_portal_last_scraped_at = Column(DateTime, nullable=True)
+    trust_portal_raw_data = Column(JSON, nullable=True)             # datos extraidos por la IA
 
 
 class OnboardingGateConfig(Base):
@@ -2195,6 +2199,11 @@ class ChangeRequest(Base):
     verified_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+    # ISO 27001 cl. 6.3 — campos adicionales (v5.10)
+    urgency = Column(String(16), default="normal")       # normal|urgent|emergency
+    rollback_plan = Column(Text, nullable=True)
+    approval_evidence = Column(Text, nullable=True)
+    iso_clause_ref = Column(String(128), nullable=True)
 
     requested_by = relationship("User", foreign_keys=[requested_by_id])
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_id])

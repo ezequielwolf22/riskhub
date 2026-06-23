@@ -20,15 +20,19 @@ const ViewNis2Dashboard = (() => {
     }[s] || s;
   }
 
+  let _wrap = null;
+
   async function render(container) {
     if (_countdownInterval) clearInterval(_countdownInterval);
     container.innerHTML = UI.sectionHeader(
       t('nis2.dashboard_title'),
-      t('nis2.dashboard_subtitle')
+      t('nis2.dashboard_subtitle'),
+      Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-nis2-inc">${t('nis2.btn_new_incident')}</button>` : ''
     );
-    const wrap = document.createElement('div');
-    container.appendChild(wrap);
-    await _load(wrap);
+    _wrap = document.createElement('div');
+    container.appendChild(_wrap);
+    await _load(_wrap);
+    document.getElementById('btn-new-nis2-inc')?.addEventListener('click', _openNewIncidentForm);
 
     if (!document.getElementById('nis2-css')) {
       const s = document.createElement('style');
@@ -74,7 +78,7 @@ const ViewNis2Dashboard = (() => {
       const stages = ['early_warning', 'initial_report', 'final_report'];
       const locale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
 
-      data.incidents.forEach(inc => {
+      data.incidents.forEach((inc, idx) => {
         const notifCards = stages.map(stage => {
           const n = (inc.notifications || []).find(x => x.stage === stage);
           if (!n) return `<div class="nis2-sc nis2-missing"><div class="nis2-sc-label">${_stageLabel(stage)}</div><div class="nis2-sc-status">${t('nis2.not_created')}</div></div>`;
@@ -87,20 +91,41 @@ const ViewNis2Dashboard = (() => {
             <div class="nis2-cntdwn" data-deadline="${n.deadline_at || ''}">${n.hours_left != null ? Math.round(Math.max(0, n.hours_left)) + 'h' : '—'}</div>
             <div class="nis2-sc-status">${_statusLabel(n.status)}</div>
             ${btnAction}
-            <a href="/api/nis2/notifications/${n.id}/pdf" target="_blank" class="btn btn-sm btn-outline" style="margin-top:4px;">PDF</a>
+            <div style="display:flex;gap:4px;justify-content:center;margin-top:4px;flex-wrap:wrap;">
+              <a href="/api/nis2/notifications/${n.id}/pdf" target="_blank" class="btn btn-sm btn-ghost" style="font-size:11px;">PDF</a>
+              <button class="btn btn-sm btn-ghost" style="font-size:11px;" onclick="ViewNis2Dashboard._openEvidenceModal(${n.id})">${t('nis2.btn_evidence')}</button>
+            </div>
           </div>`;
         }).join('');
 
+        const activityLog = (inc.notifications || []).filter(n => n.submitted_at).map(n => `
+          <div style="display:flex;gap:10px;align-items:flex-start;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span style="min-width:70px;color:var(--text-muted);">${n.submitted_at ? n.submitted_at.slice(0,10) : ''}</span>
+            <span style="font-weight:600;">${n.stage_label}</span>
+            <span style="color:var(--risk-low);">${_statusLabel('submitted')}</span>
+            ${n.notification_ref ? `<span style="color:var(--text-muted);"># ${UI.esc(n.notification_ref)}</span>` : ''}
+          </div>`).join('') || `<p style="font-size:12px;color:var(--text-muted);">${t('nis2.no_activity')}</p>`;
+
         html += `
-        <div class="card" style="margin-bottom:14px;">
-          <div class="card-header">
-            ${UI.codePill(inc.incident_code)} ${UI.esc(inc.incident_title)}
-            <span style="margin-left:8px;font-size:11px;color:#9D9D9D;">${inc.incident_status}</span>
-            <button class="btn btn-sm btn-secondary" style="float:right;"
-              onclick="ViewNis2Dashboard._createChain(${inc.incident_id})">${t('nis2.create_chain_btn')}</button>
+        <div style="background:var(--bg-1);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;cursor:pointer;"
+               onclick="document.getElementById('nis2-body-${idx}').style.display = document.getElementById('nis2-body-${idx}').style.display === 'none' ? 'block' : 'none'">
+            <div style="display:flex;align-items:center;gap:8px;">
+              ${UI.codePill(inc.incident_code)}
+              <span style="font-weight:600;">${UI.esc(inc.incident_title)}</span>
+              <span style="font-size:11px;color:var(--text-muted);">${inc.incident_status}</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ViewNis2Dashboard._createChain(${inc.incident_id})">${t('nis2.create_chain_btn')}</button>
+              <span style="color:var(--text-muted);font-size:16px;">&#x25BE;</span>
+            </div>
           </div>
-          <div class="card-body">
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">${notifCards}</div>
+          <div id="nis2-body-${idx}" style="padding:0 16px 14px;">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">${notifCards}</div>
+            <details style="font-size:13px;">
+              <summary style="cursor:pointer;font-weight:600;color:var(--text-muted);margin-bottom:8px;">${t('nis2.activity_log_title')}</summary>
+              <div style="margin-top:8px;">${activityLog}</div>
+            </details>
           </div>
         </div>`;
       });
@@ -194,5 +219,85 @@ const ViewNis2Dashboard = (() => {
     location.reload();
   }
 
-  return { render, _createChain, _wizard, _saveWizard, _submitWizard };
+  async function _openNewIncidentForm() {
+    UI.modal(t('nis2.new_incident_title'), `
+      <div class="form-grid">
+        <div class="span2"><label>${t('nis2.inc_field_title')} *</label><input id="ni-title" class="input" placeholder="${t('nis2.inc_field_title_placeholder')}"></div>
+        <div>
+          <label>${t('nis2.inc_field_severity')}</label>
+          <select id="ni-severity" class="input">
+            <option value="P1">P1 — ${t('incidents.severity_p1') || 'Crítico'}</option>
+            <option value="P2">P2 — ${t('incidents.severity_p2') || 'Alto'}</option>
+            <option value="P3" selected>P3 — ${t('incidents.severity_p3') || 'Medio'}</option>
+            <option value="P4">P4 — ${t('incidents.severity_p4') || 'Bajo'}</option>
+          </select>
+        </div>
+        <div><label>${t('nis2.inc_field_detected')}</label><input type="date" id="ni-detected" class="input" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="span2"><label>${t('nis2.inc_field_desc')}</label><textarea id="ni-desc" class="input" rows="3" placeholder="${t('nis2.inc_field_desc_placeholder')}"></textarea></div>
+        <div class="span2"><label>${t('nis2.inc_field_affected_systems')}</label><input id="ni-systems" class="input" placeholder="${t('nis2.inc_field_affected_systems_placeholder')}"></div>
+        <div class="span2"><label>${t('nis2.inc_field_response')}</label><textarea id="ni-response" class="input" rows="2" placeholder="${t('nis2.inc_field_response_placeholder')}"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="ni-cancel">${t('nis2.btn_cancel')}</button>
+                <button class="btn btn-primary" id="ni-save">${t('nis2.btn_create_incident')}</button>`
+    });
+    document.getElementById('ni-cancel').onclick = UI.closeModal;
+    document.getElementById('ni-save').onclick = async () => {
+      const title = document.getElementById('ni-title').value.trim();
+      if (!title) { UI.toast(t('nis2.inc_title_required'), 'error'); return; }
+      const systemsVal = document.getElementById('ni-systems').value.trim();
+      try {
+        const inc = await Api.post('/api/incidents/', {
+          title,
+          severity: document.getElementById('ni-severity').value,
+          detected_at: document.getElementById('ni-detected').value || null,
+          description: document.getElementById('ni-desc').value.trim(),
+          affected_systems: systemsVal ? systemsVal.split(',').map(s => s.trim()).filter(Boolean) : [],
+          response_actions: document.getElementById('ni-response').value.trim(),
+          nis2_notification_required: true,
+          gdpr_notification_required: true,
+          status: 'open',
+        });
+        UI.toast(t('nis2.incident_created'), 'success');
+        UI.closeModal();
+        if (_wrap) await _load(_wrap);
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  async function _openEvidenceModal(notifId) {
+    const n = await Api.get(`/api/nis2/notifications/${notifId}`);
+    const c = n.content_json || {};
+    UI.modal(t('nis2.evidence_modal_title'), `
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div><strong>${t('nis2.evidence_stage')}</strong> ${UI.esc(n.stage_label || '')}</div>
+        <div>
+          <label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">${t('nis2.evidence_notes_label')}</label>
+          <textarea id="ev-notes" class="input" rows="4">${UI.esc(c.evidence_notes || '')}</textarea>
+        </div>
+        <div>
+          <label style="font-weight:600;font-size:13px;display:block;margin-bottom:4px;">${t('nis2.evidence_refs_label')}</label>
+          <input id="ev-refs" class="input" placeholder="${t('nis2.evidence_refs_placeholder')}" value="${UI.esc(c.evidence_refs || '')}">
+        </div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="ev-cancel">${t('nis2.btn_cancel')}</button>
+                <button class="btn btn-primary" id="ev-save">${t('nis2.btn_save_evidence')}</button>`
+    });
+    document.getElementById('ev-cancel').onclick = UI.closeModal;
+    document.getElementById('ev-save').onclick = async () => {
+      const updated_content = {
+        ...c,
+        evidence_notes: document.getElementById('ev-notes').value.trim(),
+        evidence_refs: document.getElementById('ev-refs').value.trim(),
+      };
+      try {
+        await Api.patch(`/api/nis2/notifications/${notifId}`, { content_json: updated_content });
+        UI.toast(t('nis2.evidence_saved'), 'success');
+        UI.closeModal();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  return { render, _createChain, _wizard, _saveWizard, _submitWizard, _openNewIncidentForm, _openEvidenceModal };
 })();

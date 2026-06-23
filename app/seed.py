@@ -660,10 +660,19 @@ def _migrate_columns() -> None:
         # v4.4.0 — Supplier: resultado de monitoreo periodico
         ("ALTER TABLE suppliers ADD COLUMN last_monitored_at DATETIME", "suppliers", "last_monitored_at"),
         ("ALTER TABLE suppliers ADD COLUMN monitoring_status VARCHAR(16)", "suppliers", "monitoring_status"),
+        # Trust Portal IA — URL y resultado del ultimo analisis por IA
+        ("ALTER TABLE suppliers ADD COLUMN trust_portal_url VARCHAR(512)", "suppliers", "trust_portal_url"),
+        ("ALTER TABLE suppliers ADD COLUMN trust_portal_last_scraped_at DATETIME", "suppliers", "trust_portal_last_scraped_at"),
+        ("ALTER TABLE suppliers ADD COLUMN trust_portal_raw_data JSON", "suppliers", "trust_portal_raw_data"),
         # v5.10.0 — AuditProgram: auditado (entidad auditada) + equipo auditor
         ("ALTER TABLE audit_programs ADD COLUMN auditee VARCHAR(255)", "audit_programs", "auditee"),
         ("ALTER TABLE audit_programs ADD COLUMN actual_start DATE", "audit_programs", "actual_start"),
         ("ALTER TABLE audit_programs ADD COLUMN actual_end DATE", "audit_programs", "actual_end"),
+        # v5.10.0 — ChangeRequest: campos normativos ISO 27001 cl. 6.3
+        ("ALTER TABLE change_requests ADD COLUMN urgency VARCHAR(16) DEFAULT 'normal'", "change_requests", "urgency"),
+        ("ALTER TABLE change_requests ADD COLUMN rollback_plan TEXT", "change_requests", "rollback_plan"),
+        ("ALTER TABLE change_requests ADD COLUMN approval_evidence TEXT", "change_requests", "approval_evidence"),
+        ("ALTER TABLE change_requests ADD COLUMN iso_clause_ref VARCHAR(128)", "change_requests", "iso_clause_ref"),
         # v5.10.0 — AuditFinding: ciclo de vida completo ISO 27001 cl. 9.2
         ("ALTER TABLE audit_findings ADD COLUMN status VARCHAR(32) DEFAULT 'open'", "audit_findings", "status"),
         ("ALTER TABLE audit_findings ADD COLUMN responsible_id INTEGER REFERENCES users(id)", "audit_findings", "responsible_id"),
