@@ -1470,7 +1470,7 @@ const ViewBcp = (() => {
   }
 
   async function _confirmImport(file) {
-    if (!confirm(`Importar ${window._bcpLastPreview?.summary?.processes_found || 0} procesos?`)) return;
+    if (!confirm(t('bcp.import_confirm', { count: window._bcpLastPreview?.summary?.processes_found || 0 }))) return;
     const btn = document.getElementById('btn-confirm-import');
     if (btn) { btn.disabled = true; btn.textContent = t('bcp.importing'); }
 
@@ -1478,7 +1478,7 @@ const ViewBcp = (() => {
     const inputFile = document.getElementById('import-file-input');
     const fileToSend = (inputFile && inputFile.files[0]) || file;
     if (!fileToSend) {
-      UI.toast('Selecciona el archivo de nuevo para confirmar', 'error');
+      UI.toast(t('bcp.confirm_reimport'), 'error');
       if (btn) btn.disabled = false;
       return;
     }
@@ -1493,7 +1493,7 @@ const ViewBcp = (() => {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
       const result = await res.json();
       UI.toast(
-        `Importacion completada: ${result.created.processes} procesos, ${result.created.dependencies} dependencias`,
+        t('bcp.import_completed', { procs: result.created.processes, deps: result.created.dependencies }),
         'success'
       );
       _procs = [];
@@ -2672,7 +2672,7 @@ const ViewBcp = (() => {
             .map(([v,l])=>`<option value="${v}"${plan?.data_classification_level===v?' selected':''}>${l}</option>`).join('')}
         </select>
       </div>
-      <div>${lbl('Usuarios afectados (estimado)')}
+      <div>${lbl(t('bcp.plan_label_users_count'))}
         <input id="pl-users-count" class="form-control" type="number" min="0" style="font-size:13px;" value="${plan?.affected_users_count??''}">
       </div>
       <div style="display:flex;align-items:center;gap:8px;padding-top:20px;">
@@ -2682,7 +2682,7 @@ const ViewBcp = (() => {
     </div>
 
     <!-- Autorizadores -->
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">Autorizadores de activacion</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">${t('bcp.plan_authorizers')}</div>
     <div class="inline-table-wrap" style="margin-bottom:8px;">
       <table class="inline-table">
         <thead><tr><th>Nombre</th><th>Rol</th><th>Email</th><th>Telefono</th><th>Suplente</th><th style="width:30px"></th></tr></thead>
@@ -2699,11 +2699,11 @@ const ViewBcp = (() => {
       </table>
     </div>
     <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addAuthActivator()" style="margin-bottom:14px;font-size:12px;">
-      <i class="ti ti-plus"></i> Anadir autorizador
+      <i class="ti ti-plus"></i> ${t('bcp.plan_add_authorizer')}
     </button>
 
     <!-- Documentacion vinculada -->
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">Documentacion vinculada (enlaces externos)</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">${t('bcp.plan_linked_docs')}</div>
     <div class="inline-table-wrap" style="margin-bottom:8px;">
       <table class="inline-table">
         <thead><tr><th>Titulo</th><th>URL / Referencia</th><th style="width:30px"></th></tr></thead>
@@ -2717,11 +2717,11 @@ const ViewBcp = (() => {
       </table>
     </div>
     <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addDocLink()" style="margin-bottom:14px;font-size:12px;">
-      <i class="ti ti-plus"></i> Anadir enlace
+      <i class="ti ti-plus"></i> ${t('bcp.plan_add_link')}
     </button>
 
     <!-- Documentos relacionados -->
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">Documentos relacionados (internos)</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">${t('bcp.plan_related_docs')}</div>
     <div class="inline-table-wrap" style="margin-bottom:8px;">
       <table class="inline-table">
         <thead><tr><th>Titulo</th><th>Version</th><th>Vigente desde</th><th style="width:30px"></th></tr></thead>
@@ -2736,16 +2736,16 @@ const ViewBcp = (() => {
       </table>
     </div>
     <button class="btn btn-ghost btn-sm" onclick="ViewBcp._addRelDoc()" style="margin-bottom:14px;font-size:12px;">
-      <i class="ti ti-plus"></i> Anadir documento
+      <i class="ti ti-plus"></i> ${t('bcp.plan_add_doc')}
     </button>
 
     <!-- SECCION 9: Historial -->
-    ${plan ? `<div class="form-section-divider"><span>HISTORIAL Y MANTENIMIENTO</span></div>
+    ${plan ? `<div class="form-section-divider"><span>${t('bcp.sec_history')}</span></div>
     <div style="font-size:12px;color:var(--text-subtle);display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
-      <div>Estado: <strong>${UI.esc(plan.status)}</strong></div>
-      <div>Ultima prueba: <strong>${plan.last_exercised_at ? new Date(plan.last_exercised_at).toLocaleDateString('es-ES') : '—'}</strong></div>
-      ${plan.approved_by_id ? `<div>Aprobado por: <strong>#${plan.approved_by_id}</strong></div>` : ''}
-      ${plan.approved_at ? `<div>Aprobado: <strong>${new Date(plan.approved_at).toLocaleDateString('es-ES')}</strong></div>` : ''}
+      <div>${t('bcp.plan_status_label')}: <strong>${UI.esc(plan.status)}</strong></div>
+      <div>${t('bcp.plan_last_test_label')}: <strong>${plan.last_exercised_at ? new Date(plan.last_exercised_at).toLocaleDateString('es-ES') : '—'}</strong></div>
+      ${plan.approved_by_id ? `<div>${t('bcp.plan_approved_by_label')}: <strong>#${plan.approved_by_id}</strong></div>` : ''}
+      ${plan.approved_at ? `<div>${t('bcp.plan_approved_at_label')}: <strong>${new Date(plan.approved_at).toLocaleDateString('es-ES')}</strong></div>` : ''}
     </div>` : ''}`;
 
     // Datos en memoria para las tablas inline
@@ -2954,7 +2954,7 @@ const ViewBcp = (() => {
   async function _editPlan(id) {
     let plan = _plans.find(p => p.id === id);
     if (!plan) plan = await Api.get(`/api/bcp/plans/${id}`).catch(() => null);
-    if (!plan) { UI.toast('Plan no encontrado', 'error'); return; }
+    if (!plan) { UI.toast(t('bcp.plan_not_found'), 'error'); return; }
     if (plan.status === 'approved') {
       _openApprovedVersioningModal(plan);
     } else {
@@ -2993,9 +2993,9 @@ const ViewBcp = (() => {
     modal.querySelector('#btn-confirm-version').addEventListener('click', async () => {
       modal.remove();
       try {
-        UI.toast('Creando nueva version...', 'info');
+        UI.toast(t('bcp.plan_creating_version'), 'info');
         const newPlan = await Api.post(`/api/bcp/plans/${plan.id}/new-version`, {});
-        UI.toast(`Version ${newPlan.version} creada en borrador`, 'success');
+        UI.toast(`v${newPlan.version} — ${t('bcp.plan_creating_version')}`, 'success');
         _plans = await Api.get('/api/bcp/plans').catch(() => _plans);
         _openPlanDrawer(newPlan);
       } catch (e) {
@@ -3073,7 +3073,7 @@ const ViewBcp = (() => {
       related_documents:     (window._planRelDocs         || []).length ? window._planRelDocs         : null,
     };
 
-    if (!body.name) { UI.toast('El nombre del plan es obligatorio', 'error'); return; }
+    if (!body.name) { UI.toast(t('bcp.plan_name_required'), 'error'); return; }
     if (_planSaving) return;
     _planSaving = true;
     if (!id && window._planVersioningCode) {
@@ -3083,7 +3083,7 @@ const ViewBcp = (() => {
       if (id) await Api.patch(`/api/bcp/plans/${id}`, body);
       else await Api.post('/api/bcp/plans', body);
       window._planVersioningCode = null;
-      UI.toast('Plan guardado', 'success');
+      UI.toast(t('bcp.plan_saved'), 'success');
       _closePlanDrawer();
       _plans = [];
       const subtabBody = document.getElementById('bcm-subtab-body-4');
@@ -3104,15 +3104,15 @@ const ViewBcp = (() => {
     modal.className = 'modal-bg';
     modal.innerHTML = `
     <div class="modal" style="max-width:420px;">
-      <div class="modal-header"><h2><i class="ti ti-shield-check"></i> Confirmar aprobacion</h2></div>
+      <div class="modal-header"><h2><i class="ti ti-shield-check"></i> ${t('bcp.plan_approve_confirm')}</h2></div>
       <div class="modal-body">
         <p style="margin-bottom:12px;"><strong>${UI.esc(plan.name)}</strong> — v${UI.esc(plan.version||'1.0')} — ${PLAN_TYPE_LABELS[plan.plan_type]||plan.plan_type}</p>
-        <p style="font-size:13px;color:var(--text-subtle);">Al aprobar este plan confirmas que ha sido revisado y es valido para su activacion. El plan pasara a estado <strong>aprobado</strong> y podra ser activado en caso de incidente.</p>
+        <p style="font-size:13px;color:var(--text-subtle);">${t('bcp.plan_approve_text')}</p>
         <div class="modal-footer-sticky" style="position:relative;padding:12px 0 0;">
           <div style="display:flex;gap:8px;margin-left:auto;">
-            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">${t('common.cancel')}</button>
             <button class="btn btn-primary btn-sm" id="btn-confirm-approve" style="background:var(--risk-high);border-color:var(--risk-high);">
-              <i class="ti ti-check"></i> Aprobar plan
+              <i class="ti ti-check"></i> ${t('bcp.plan_approve_btn')}
             </button>
           </div>
         </div>
@@ -3122,7 +3122,7 @@ const ViewBcp = (() => {
     modal.querySelector('#btn-confirm-approve').addEventListener('click', async () => {
       try {
         await Api.post(`/api/bcp/plans/${id}/approve`, {});
-        UI.toast('Plan aprobado', 'success');
+        UI.toast(t('bcp.plan_approved_toast'), 'success');
         modal.remove();
         _plans = [];
         const subtabBody = document.getElementById('bcm-subtab-body-4');
@@ -3140,13 +3140,13 @@ const ViewBcp = (() => {
     modal.innerHTML = `
     <div class="modal" style="max-width:520px;max-height:90vh;display:flex;flex-direction:column">
       <div class="modal-header" style="flex-shrink:0">
-        <h2>Programar test BCM</h2>
+        <h2>${t('bcp.test_schedule_title')}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Tipo *</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_type')} *</label>
             <select id="tm-type" class="form-control" style="font-size:13px">
               <option value="tabletop">Tabletop exercise</option>
               <option value="simulation">Simulacion</option>
@@ -3154,54 +3154,54 @@ const ViewBcp = (() => {
             </select>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Fecha programada *</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_date')} *</label>
             <input id="tm-date" class="form-control" type="datetime-local" style="font-size:13px">
           </div>
         </div>
         <div style="margin-bottom:12px">
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Plan asociado</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_plan')}</label>
           <select id="tm-plan" class="form-control" style="font-size:13px">
             <option value="">— Sin plan especifico —</option>
             ${_plans.map(p=>`<option value="${p.id}">${UI.esc(p.code||'')} ${UI.esc(p.name)}</option>`).join('')}
           </select>
         </div>
         <div style="margin-bottom:12px">
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Objetivo</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_objective')}</label>
           <input id="tm-obj" class="form-control" style="font-size:13px" placeholder="Objetivo del test">
         </div>
         <div style="margin-bottom:12px">
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Descripcion del alcance</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_scope')}</label>
           <textarea id="tm-scope" class="form-control" rows="3" style="font-size:13px"></textarea>
         </div>
         <div style="margin-bottom:12px">
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Procesos a evaluar</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_processes')}</label>
           <div style="max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:6px;">
             ${_procs.map(p=>`<label style="display:flex;gap:8px;align-items:center;padding:4px 6px;font-size:13px;cursor:pointer;"><input type="checkbox" value="${p.id}" class="tm-pids" style="flex-shrink:0;margin:0;"><span>${UI.esc(p.name)}</span></label>`).join('')}
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Facilitador (ID usuario)</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_facilitator')}</label>
             <input id="tm-fac" class="form-control" type="number" style="font-size:13px">
           </div>
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Frecuencia planificada</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.test_label_frequency')}</label>
             <select id="tm-freq" class="form-control" style="font-size:13px">
               <option value="">— Sin definir —</option>
-              <option value="mensual">Mensual</option>
-              <option value="trimestral">Trimestral</option>
-              <option value="semestral">Semestral</option>
-              <option value="anual">Anual</option>
+              <option value="mensual">${t('bcp.test_freq_monthly')}</option>
+              <option value="trimestral">${t('bcp.test_freq_quarterly')}</option>
+              <option value="semestral">${t('bcp.test_freq_biannual')}</option>
+              <option value="anual">${t('bcp.test_freq_annual')}</option>
             </select>
           </div>
         </div>
         <div id="tm-ai-note" style="display:none;padding:8px 12px;background:rgba(89,0,141,.08);border-left:3px solid var(--primary);border-radius:4px;font-size:12px;margin-bottom:12px">
-          <i class="ti ti-sparkles"></i> Tras guardar podras generar un checklist detallado con IA.
+          <i class="ti ti-sparkles"></i> ${t('bcp.test_ai_note')}
         </div>
       </div>
       <div class="modal-footer-sticky">
-        <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">Cancelar</button>
-        <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveTest()"><i class="ti ti-check"></i> Guardar test</button>
+        <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove()">${t('common.cancel')}</button>
+        <button class="btn btn-primary btn-sm" onclick="ViewBcp._saveTest()"><i class="ti ti-check"></i> ${t('bcp.test_saved')}</button>
       </div>
     </div>`;
     document.body.appendChild(modal);
@@ -3242,7 +3242,7 @@ const ViewBcp = (() => {
       frequency: document.getElementById('tm-freq')?.value || null,
       plan_id: parseInt(document.getElementById('tm-plan')?.value) || null,
     };
-    if (!body.scheduled_at) { UI.toast('La fecha es obligatoria', 'error'); return; }
+    if (!body.scheduled_at) { UI.toast(t('bcp.test_date_required'), 'error'); return; }
     try {
       const resp = await Api.post('/api/bcp/tests', body);
       document.querySelector('.modal-bg')?.remove();
@@ -3251,16 +3251,16 @@ const ViewBcp = (() => {
       const newId = resp?.id;
       if (newId && body.plan_id) {
         // Tiene plan asociado: generar checklist IA automaticamente
-        UI.toast('Test creado. Generando checklist con IA...', 'info');
+        UI.toast(t('bcp.test_created_ai'), 'info');
         setTimeout(() => _genAiChecklist(newId), 600);
       } else {
-        UI.toast('Test programado', 'success');
+        UI.toast(t('bcp.test_scheduled'), 'success');
       }
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
   }
 
   async function _genAiChecklist(testId) {
-    UI.toast('Generando checklist con IA...', 'info');
+    UI.toast(t('bcp.test_gen_checklist'), 'info');
     try {
       const result = await Api.post(`/api/bcp/tests/${testId}/ai-generate-checklist`);
       _showAiChecklistModal(testId, result);
@@ -3315,7 +3315,7 @@ const ViewBcp = (() => {
           ${notifItems}` : ''}
       </div>
       <div class="modal-footer-sticky">
-        <button class="btn btn-sm" onclick="navigator.clipboard?.writeText(${JSON.stringify(JSON.stringify(cl, null, 2))});UI.toast('Copiado al portapapeles','success')">
+        <button class="btn btn-sm" onclick="navigator.clipboard?.writeText(${JSON.stringify(JSON.stringify(cl, null, 2))});UI.toast(t('bcp.test_copied'),'success')">
           <i class="ti ti-copy"></i> Copiar JSON
         </button>
         <button class="btn btn-primary btn-sm" onclick="this.closest('.modal-bg').remove()">Cerrar</button>
@@ -3347,35 +3347,35 @@ const ViewBcp = (() => {
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <div>${lbl('Resultado','*')}
+          <div>${lbl(t('bcp.test_label_result'),'*')}
             <select id="rm-result" class="form-control" style="font-size:13px;" onchange="ViewBcp._onResultChange(this.value)">
               <option value="">— Sin resultado —</option>
               ${['passed','partial','failed'].map(r =>
-                `<option value="${r}"${test.result===r?' selected':''}>${{passed:'Pasado',partial:'Parcial',failed:'Fallido'}[r]}</option>`
+                `<option value="${r}"${test.result===r?' selected':''}>${{passed:t('bcp.test_result_option_passed'),partial:t('bcp.test_result_option_partial'),failed:t('bcp.test_result_option_failed')}[r]}</option>`
               ).join('')}
             </select>
             <div id="rm-result-desc" style="font-size:11px;color:var(--text-subtle);margin-top:4px;">${RESULT_DESCS[test.result]||''}</div>
           </div>
-          <div>${lbl('Fecha de realizacion','*')}
+          <div>${lbl(t('bcp.test_label_conducted_at'),'*')}
             <input id="rm-date" class="form-control" type="datetime-local" style="font-size:13px;"
               value="${test.conducted_at?(test.conducted_at.replace('Z','')||''):''}">
           </div>
         </div>
-        <div style="margin-bottom:14px;">${lbl('Hallazgos','','¿Que no funciono segun lo esperado?')}
+        <div style="margin-bottom:14px;">${lbl(t('bcp.test_label_findings'),'','¿Que no funciono segun lo esperado?')}
           <textarea id="rm-findings" class="form-control" rows="3" style="font-size:13px;">${UI.esc(test.findings||'')}</textarea>
         </div>
-        <div style="margin-bottom:14px;">${lbl('Lecciones aprendidas',true,'Obligatorio si resultado != Pasado')}
+        <div style="margin-bottom:14px;">${lbl(t('bcp.test_label_lessons'),true,'Obligatorio si resultado != Pasado')}
           <textarea id="rm-lessons" class="form-control" rows="3" style="font-size:13px;">${UI.esc(test.lessons_learned||'')}</textarea>
         </div>
-        <div style="margin-bottom:14px;">${lbl('Acciones de mejora','')}
+        <div style="margin-bottom:14px;">${lbl(t('bcp.test_label_improve'),'')}
           <textarea id="rm-actions" class="form-control" rows="2" style="font-size:13px;">${UI.esc(test.improvement_actions||'')}</textarea>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <div>${lbl('RTO real conseguido (horas)','','Tiempo que tardo realmente la recuperacion')}
+          <div>${lbl(t('bcp.test_label_rto_achieved'),'','Tiempo que tardo realmente la recuperacion')}
             <input id="rm-rto-achieved" class="form-control" type="number" min="0" style="font-size:13px;"
               value="${test.rto_achieved_hours??''}" placeholder="Ej: 3">
           </div>
-          <div>${lbl('RPO real conseguido (horas)','','Datos perdidos reales medidos')}
+          <div>${lbl(t('bcp.test_label_rpo_achieved'),'','Datos perdidos reales medidos')}
             <input id="rm-rpo-achieved" class="form-control" type="number" min="0" style="font-size:13px;"
               value="${test.rpo_achieved_hours??''}" placeholder="Ej: 1">
           </div>
@@ -3449,8 +3449,8 @@ const ViewBcp = (() => {
     const title = document.getElementById('rm-ev-title')?.value?.trim();
     const fileEl = document.getElementById('rm-ev-file');
     const file = fileEl?.files?.[0];
-    if (!title) { UI.toast('Titulo requerido', 'error'); return; }
-    if (!file) { UI.toast('Selecciona un archivo', 'error'); return; }
+    if (!title) { UI.toast(t('bcp.crisis_title_required'), 'error'); return; }
+    if (!file) { UI.toast(t('bcp.crisis_select_file'), 'error'); return; }
     const fd = new FormData();
     fd.append('title', title);
     fd.append('evidence_type', 'test_evidence');
@@ -3467,7 +3467,7 @@ const ViewBcp = (() => {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Error al subir');
       }
-      UI.toast('Evidencia adjuntada', 'success');
+      UI.toast(t('bcp.test_evidence_attached'), 'success');
       document.getElementById('rm-ev-title').value = '';
       fileEl.value = '';
       await _loadTestEvidence(testId);
@@ -3476,9 +3476,9 @@ const ViewBcp = (() => {
 
   function _onResultChange(val) {
     const DESCS = {
-      passed: 'El ejercicio se completo sin problemas significativos.',
-      partial: 'Se identificaron problemas menores o areas de mejora.',
-      failed: 'El ejercicio no alcanzo los objetivos. Se requieren acciones correctoras.',
+      passed: t('bcp.test_result_passed'),
+      partial: t('bcp.test_result_partial'),
+      failed: t('bcp.test_result_failed'),
     };
     const el = document.getElementById('rm-result-desc');
     if (el) el.textContent = DESCS[val] || '';
@@ -3497,12 +3497,12 @@ const ViewBcp = (() => {
     };
     // Validar: si resultado != "passed", lecciones son obligatorias
     if (result && result !== 'passed' && !body.lessons_learned) {
-      UI.toast('Las lecciones aprendidas son obligatorias para resultado parcial o fallido', 'error');
+      UI.toast(t('bcp.test_lessons_required'), 'error');
       return;
     }
     try {
       await Api.patch(`/api/bcp/tests/${id}`, body);
-      UI.toast('Resultado guardado', 'success');
+      UI.toast(t('bcp.test_result_saved'), 'success');
       document.querySelector('.modal-bg')?.remove();
 
       // Si el test fallo o fue parcial, ofrecer crear NC
@@ -3520,16 +3520,16 @@ const ViewBcp = (() => {
     modal.innerHTML = `
     <div class="modal" style="max-width:420px;">
       <div class="modal-header">
-        <h2><i class="ti ti-alert-circle" style="color:var(--risk-high)"></i> Test ${result === 'failed' ? 'fallido' : 'parcial'}</h2>
+        <h2><i class="ti ti-alert-circle" style="color:var(--risk-high)"></i> ${result === 'failed' ? t('bcp.nc_modal_title_failed') : t('bcp.nc_modal_title_partial')}</h2>
       </div>
       <div class="modal-body" style="display:block;">
-        <p style="font-size:13px;margin-bottom:16px;">Un test ${result === 'failed' ? 'fallido' : 'con resultado parcial'} puede generar una No Conformidad automaticamente para garantizar el seguimiento.
-        <br><br><strong>¿Crear NC vinculada a este test?</strong></p>
+        <p style="font-size:13px;margin-bottom:16px;">${result === 'failed' ? t('bcp.nc_modal_body_failed') : t('bcp.nc_modal_body_partial')}
+        <br><br><strong>${t('bcp.nc_create_question')}</strong></p>
         <div class="modal-footer-sticky" style="position:relative;padding:12px 0 0;">
           <div style="display:flex;gap:8px;margin-left:auto;">
-            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove();ViewBcp._switchTab('tests')">No por ahora</button>
+            <button class="btn btn-sm" onclick="this.closest('.modal-bg').remove();ViewBcp._switchTab('tests')">${t('bcp.nc_not_now')}</button>
             <button class="btn btn-primary btn-sm" id="btn-create-nc-from-test">
-              <i class="ti ti-plus"></i> Si, crear NC
+              <i class="ti ti-plus"></i> ${t('bcp.nc_create_yes')}
             </button>
           </div>
         </div>
@@ -3660,7 +3660,7 @@ const ViewBcp = (() => {
     });
     document.getElementById('slm-confirm-new-sup')?.addEventListener('click', async () => {
       const name = document.getElementById('slm-new-sup-name').value.trim();
-      if (!name) { UI.toast('El nombre del proveedor es obligatorio', 'error'); return; }
+      if (!name) { UI.toast(t('bcp.supplier_name_required'), 'error'); return; }
       const cat = document.getElementById('slm-new-sup-cat').value.trim() || null;
       const btn = document.getElementById('slm-confirm-new-sup');
       btn.disabled = true;
@@ -3709,7 +3709,7 @@ const ViewBcp = (() => {
     try {
       if (id) await Api.patch(`/api/bcp/supplier-links/${id}`, body);
       else await Api.post('/api/bcp/supplier-links', body);
-      UI.toast('Vinculo guardado', 'success');
+      UI.toast(t('bcp.link_saved'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _switchTab('suppliers');
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
@@ -3718,7 +3718,7 @@ const ViewBcp = (() => {
   async function _delSL(id) {
     if (!confirm('Eliminar vinculo BCM?')) return;
     await Api.del(`/api/bcp/supplier-links/${id}`);
-    UI.toast('Vinculo eliminado', 'success');
+    UI.toast(t('bcp.link_deleted'), 'success');
     document.querySelector('.modal-bg')?.remove();
     _switchTab('suppliers');
   }
@@ -3754,7 +3754,7 @@ const ViewBcp = (() => {
     };
     try {
       await Api.post('/api/bcp/exercise-programme', body);
-      UI.toast('Programa creado', 'success');
+      UI.toast(t('bcp.program_created'), 'success');
       document.querySelector('.modal-bg')?.remove();
       _switchTab('tests');
     } catch (e) { UI.toast('Error: ' + (e.message || e), 'error'); }
@@ -3889,7 +3889,7 @@ const ViewBcp = (() => {
     // Intentar obtener datos frescos del API; caer en cache si falla
     let loc = await Api.get('/api/bcp/locations/' + locId).catch(() => null);
     if (!loc) loc = _locationMap[locId];
-    if (!loc) { UI.toast('No se encontró la localización', 'error'); return; }
+    if (!loc) { UI.toast(t('bcp.location_not_found'), 'error'); return; }
     _modalLocation(loc);
   }
 
@@ -4002,7 +4002,7 @@ const ViewBcp = (() => {
 
     modal.querySelector('#btn-save-loc-full').onclick = async () => {
       const name = modal.querySelector('#locm-name').value.trim();
-      if (!name) return UI.toast('El nombre es obligatorio', 'error');
+      if (!name) return UI.toast(t('bcp.location_name_required'), 'error');
       const altLocId = parseInt(modal.querySelector('#locm-alt-loc').value) || null;
       const body = {
         name,
@@ -4020,7 +4020,7 @@ const ViewBcp = (() => {
         let saved;
         if (loc) saved = await Api.patch('/api/bcp/locations/' + loc.id, body);
         else saved = await Api.post('/api/bcp/locations', body);
-        UI.toast('Localización guardada', 'success');
+        UI.toast(t('bcp.location_saved'), 'success');
         modal.remove();
         await _loadLocations();
         // Auto-crear dependencias si hay sede alternativa configurada
@@ -4042,7 +4042,7 @@ const ViewBcp = (() => {
         if (!confirm('¿Eliminar localización? Solo posible si no hay procesos vinculados.')) return;
         try {
           await Api.del('/api/bcp/locations/' + loc.id);
-          UI.toast('Localización eliminada', 'success');
+          UI.toast(t('bcp.location_deleted'), 'success');
           modal.remove();
           await _loadLocations();
           _setStep(1);
@@ -4672,7 +4672,7 @@ const ViewBcp = (() => {
     modal.querySelector('#btn-save-ev').onclick = async () => {
       const title = modal.querySelector('#ev-title').value.trim();
       const file = modal.querySelector('#ev-file').files[0];
-      if (!title || !file) return UI.toast('Titulo y archivo son obligatorios', 'error');
+      if (!title || !file) return UI.toast(t('bcp.evidence_title_file_required'), 'error');
       const fd = new FormData();
       fd.append('file', file);
       const params = new URLSearchParams({ title, evidence_type: modal.querySelector('#ev-type').value });
@@ -4695,7 +4695,7 @@ const ViewBcp = (() => {
           body: fd,
         });
         modal.remove();
-        UI.toast('Evidencia subida correctamente', 'success');
+        UI.toast(t('bcp.evidence_uploaded'), 'success');
         if (onSuccess) onSuccess();
       } catch (e) { UI.toast('Error al subir la evidencia', 'error'); }
     };
@@ -4866,7 +4866,7 @@ const ViewBcp = (() => {
       btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i>';
       try {
         await Api.post('/api/bcp/test-recommendations/generate', {});
-        UI.toast('Recomendaciones regeneradas', 'success');
+        UI.toast(t('bcp.recs_regenerated'), 'success');
         _switchTab('recommendations');
       } catch (e) { UI.toast('Error al regenerar', 'error'); }
       finally { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerar'; }
@@ -5357,7 +5357,7 @@ const ViewBcp = (() => {
         UI.toast(`${data.key_suppliers.length} proveedores criticos importados`, 'success');
       }
       if (!data.critical_systems?.length && !data.key_suppliers?.length) {
-        UI.toast('No se encontraron datos en la plataforma. Introduce los sistemas manualmente.', 'info');
+        UI.toast(t('bcp.no_platform_data'), 'info');
       }
     } catch (e) {
       UI.toast('Error al autocompletar: ' + e.message, 'error');
@@ -5422,9 +5422,9 @@ const ViewBcp = (() => {
     try {
       _bcmContext = await Api.post('/api/bcp/context', body);
       const lbl = document.getElementById('bcm-wizard-label');
-      if (lbl) lbl.textContent = _bcmContext.wizard_completed ? 'Contexto IA' : 'Configurar IA';
+      if (lbl) lbl.textContent = _bcmContext.wizard_completed ? t('bcp.wizard_label_complete') : t('bcp.wizard_label_setup');
       if (toStep === 'done') {
-        UI.toast('Contexto BCM guardado correctamente', 'success');
+        UI.toast(t('bcp.bcm_context_saved'), 'success');
         _currentStep = 1;
         _renderContent();
       } else {
@@ -5704,7 +5704,7 @@ const ViewBcp = (() => {
     document.body.appendChild(modal);
     modal.querySelector('#ql-save-btn').onclick = async () => {
       const text = modal.querySelector('#ql-text').value.trim();
-      if (!text) { UI.toast('Descripcion requerida', 'error'); return; }
+      if (!text) { UI.toast(t('bcp.crisis_desc_required'), 'error'); return; }
       try {
         await Api.post(`/api/bcp/activations/${actId}/log`, {
           entry_type: modal.querySelector('#ql-type').value,
@@ -5712,7 +5712,7 @@ const ViewBcp = (() => {
           action_owner: modal.querySelector('#ql-owner').value.trim() || undefined,
         });
         modal.remove();
-        UI.toast('Evento registrado', 'success');
+        UI.toast(t('bcp.crisis_event_registered'), 'success');
         _setTile('activaciones');
       } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
     };
@@ -5726,7 +5726,7 @@ const ViewBcp = (() => {
     modal.className = 'modal-bg';
     modal.innerHTML = `<div class="modal" style="max-width:900px;width:96vw;height:88vh;display:flex;flex-direction:column">
       <div class="modal-header" style="border-bottom:2px solid #DC2626;flex-shrink:0">
-        <h2 style="color:#DC2626"><i class="ti ti-alert-triangle"></i> Sala de Crisis — cargando...</h2>
+        <h2 style="color:#DC2626"><i class="ti ti-alert-triangle"></i> ${t('bcp.crisis_room_loading')}</h2>
         <button class="modal-close" onclick="this.closest('.modal-bg').remove()">&#xd7;</button>
       </div>
       <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
@@ -5744,14 +5744,14 @@ const ViewBcp = (() => {
       const act = await Api.get(`/api/bcp/activations/${actId}`);
       const isActive = !act.closed_at;
 
-      modal.querySelector('h2').innerHTML = `<i class="ti ti-alert-triangle"></i> ${UI.esc(act.code)} — ${UI.esc(act.title)} <span style="font-size:11px;font-weight:400;padding:2px 8px;border-radius:4px;background:${isActive?'#DC262620':'var(--bg-3)'};color:${isActive?'#DC2626':'var(--text-subtle)'};margin-left:8px">${isActive?'ACTIVA':'CERRADA'}</span>`;
+      modal.querySelector('h2').innerHTML = `<i class="ti ti-alert-triangle"></i> ${UI.esc(act.code)} — ${UI.esc(act.title)} <span style="font-size:11px;font-weight:400;padding:2px 8px;border-radius:4px;background:${isActive?'#DC262620':'var(--bg-3)'};color:${isActive?'#DC2626':'var(--text-subtle)'};margin-left:8px">${isActive?t('bcp.crisis_room_active'):t('bcp.crisis_room_closed')}</span>`;
 
       const attachments = act.attachments || [];
       const log = act.situation_log || [];
       const checklist = act.checklist_items || [];
 
       const tabBtns = ['timeline','adjuntos','checklist','postmortem'];
-      const tabLabels = { timeline:'Timeline', adjuntos:'Adjuntos (' + attachments.length + ')', checklist:'Checklist (' + checklist.filter(i=>i.status==='done').length + '/' + checklist.length + ')', postmortem:'Post-Mortem' };
+      const tabLabels = { timeline:t('bcp.crisis_tab_timeline'), adjuntos:t('bcp.crisis_tab_attachments') + ' (' + attachments.length + ')', checklist:t('bcp.crisis_tab_checklist') + ' (' + checklist.filter(i=>i.status==='done').length + '/' + checklist.length + ')', postmortem:t('bcp.crisis_tab_postmortem') };
 
       let activeTab = 'timeline';
 
@@ -5763,7 +5763,7 @@ const ViewBcp = (() => {
           </button>`).join('')}
           ${isActive ? `<div style="margin-left:auto;display:flex;gap:6px;padding-bottom:4px">
             <button class="btn btn-sm" style="background:#DC2626;color:#fff;font-size:11px" onclick="ViewBcp._closeActivacion(${actId})">
-              <i class="ti ti-lock"></i> Cerrar activacion
+              <i class="ti ti-lock"></i> ${t('bcp.crisis_close_activation')}
             </button>
           </div>` : ''}
         </div>
@@ -5773,7 +5773,7 @@ const ViewBcp = (() => {
         const logRev = [...log].reverse();
         return `
           ${isActive ? `<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
-            <div style="font-size:12px;font-weight:700;margin-bottom:10px">Registrar nuevo evento</div>
+            <div style="font-size:12px;font-weight:700;margin-bottom:10px">${t('bcp.crisis_register_event')}</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
               <select id="cr-etype" class="form-control" style="font-size:12px">
                 <option value="accion">Accion tomada</option>
@@ -5790,7 +5790,7 @@ const ViewBcp = (() => {
           </div>` : ''}
           <div style="max-height:360px;overflow-y:auto">
             ${logRev.length === 0
-              ? '<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">Sin eventos registrados.</div>'
+              ? `<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">${t('bcp.crisis_no_events')}</div>`
               : logRev.map((e,i) => {
                   const color = _ACT_TYPE_COLORS[e.entry_type||'accion'] || '#6B7280';
                   const label = _ACT_TYPE_LABELS[e.entry_type||'accion'] || e.entry_type || 'Accion';
@@ -5828,10 +5828,10 @@ const ViewBcp = (() => {
             <input type="file" id="cr-att-file" class="form-control" style="font-size:12px"
               accept=".pdf,.docx,.doc,.txt,.csv,.png,.jpg,.jpeg,.gif,.xlsx,.xls">
           </div>
-          <button class="btn btn-sm btn-primary" onclick="ViewBcp._crUploadAttachment(${actId})"><i class="ti ti-upload"></i> Subir adjunto</button>
+          <button class="btn btn-sm btn-primary" onclick="ViewBcp._crUploadAttachment(${actId})"><i class="ti ti-upload"></i> ${t('bcp.crisis_upload_btn')}</button>
         </div>` : ''}
         ${attachments.length === 0
-          ? '<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">Sin adjuntos. Sube evidencias del incidente.</div>'
+          ? `<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">${t('bcp.crisis_no_attachments')}</div>`
           : `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;max-height:360px;overflow-y:auto">
               ${attachments.map(a => {
                 const icon = (a.mime_type||'').includes('pdf') ? 'ti-file-type-pdf' :
@@ -5859,12 +5859,12 @@ const ViewBcp = (() => {
             </div>`
         }
         ${isActive ? `<div style="margin-top:14px;padding:10px 12px;background:var(--bg-2);border-radius:8px;font-size:12px">
-          <div style="font-weight:700;margin-bottom:8px"><i class="ti ti-sparkles" style="color:var(--primary)"></i> Resumen IA de evidencia</div>
+          <div style="font-weight:700;margin-bottom:8px"><i class="ti ti-sparkles" style="color:var(--primary)"></i> ${t('bcp.crisis_ai_summary')}</div>
           ${act.ai_summary
             ? `<div style="font-size:12px;max-height:120px;overflow-y:auto">${UI.esc(act.ai_summary).replace(/\n/g,'<br>')}</div>
-               <button class="btn btn-sm btn-ghost" style="margin-top:8px;font-size:11px" onclick="ViewBcp._crGenerateAISummary(${actId})"><i class="ti ti-refresh"></i> Regenerar</button>`
-            : `<div style="font-size:12px;color:var(--text-subtle);margin-bottom:8px">El agente IA puede leer todos los adjuntos y el timeline, y generar un resumen ordenado.</div>
-               <button class="btn btn-sm btn-primary" style="font-size:11px" onclick="ViewBcp._crGenerateAISummary(${actId})"><i class="ti ti-sparkles"></i> Generar resumen IA</button>`
+               <button class="btn btn-sm btn-ghost" style="margin-top:8px;font-size:11px" onclick="ViewBcp._crGenerateAISummary(${actId})"><i class="ti ti-refresh"></i> ${t('bcp.crisis_ai_regenerate')}</button>`
+            : `<div style="font-size:12px;color:var(--text-subtle);margin-bottom:8px">${t('bcp.crisis_ai_summary_text')}</div>
+               <button class="btn btn-sm btn-primary" style="font-size:11px" onclick="ViewBcp._crGenerateAISummary(${actId})"><i class="ti ti-sparkles"></i> ${t('bcp.crisis_ai_generate')}</button>`
           }
         </div>` : (act.ai_summary ? `<div style="margin-top:14px;padding:10px 12px;background:var(--bg-2);border-radius:8px"><div style="font-size:11px;font-weight:700;margin-bottom:6px">Resumen IA</div><div style="font-size:12px">${UI.esc(act.ai_summary).replace(/\n/g,'<br>')}</div></div>` : '')}
       `;
@@ -5872,7 +5872,7 @@ const ViewBcp = (() => {
       const renderChecklist = () => `
         <div style="max-height:440px;overflow-y:auto">
           ${checklist.length === 0
-            ? '<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">Sin checklist. Se genera automaticamente al activar el plan.</div>'
+            ? `<div style="text-align:center;padding:24px;color:var(--text-subtle);font-size:12px">${t('bcp.crisis_no_checklist')}</div>`
             : checklist.map(item => {
                 const done = item.status === 'done';
                 return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
@@ -5887,7 +5887,7 @@ const ViewBcp = (() => {
                     ${item.description?`<div style="font-size:11px;color:var(--text-subtle)">${UI.esc(item.description)}</div>`:''}
                     ${done&&item.executed_by?`<div style="font-size:10px;color:var(--text-subtle)">Por ${UI.esc(item.executed_by)}</div>`:''}
                   </div>
-                  <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${done?'#16a34a18':'var(--bg-3)'};color:${done?'#16a34a':'var(--text-subtle)'}">${done?'Hecho':'Pendiente'}</span>
+                  <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${done?'#16a34a18':'var(--bg-3)'};color:${done?'#16a34a':'var(--text-subtle)'}">${done?t('bcp.done'):t('bcp.pending')}</span>
                 </div>`;
               }).join('')
           }
@@ -5897,32 +5897,32 @@ const ViewBcp = (() => {
       const renderPostMortem = () => `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Resumen ejecutivo</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.crisis_pm_exec')}</label>
             <textarea id="cr-pm-exec" class="form-control" rows="5" style="font-size:12px" ${isActive?'':'readonly'}
               placeholder="Resumen del incidente para la alta direccion...">${UI.esc(act.executive_summary||'')}</textarea>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Causa raiz</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.crisis_pm_root')}</label>
             <textarea id="cr-pm-root" class="form-control" rows="5" style="font-size:12px" ${isActive?'':'readonly'}
               placeholder="Analisis de causa raiz...">${UI.esc(act.root_cause||'')}</textarea>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Lecciones aprendidas</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.crisis_pm_lessons')}</label>
             <textarea id="cr-pm-lessons" class="form-control" rows="4" style="font-size:12px" ${isActive?'':'readonly'}
               placeholder="Que funcionó, que fallo, como mejorar...">${UI.esc(act.lessons_learned||'')}</textarea>
           </div>
           <div>
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">Acciones correctivas</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);display:block;margin-bottom:4px">${t('bcp.crisis_pm_improve')}</label>
             <textarea id="cr-pm-improve" class="form-control" rows="4" style="font-size:12px" ${isActive?'':'readonly'}
               placeholder="Mejoras a implementar...">${UI.esc(Array.isArray(act.improvement_actions)?act.improvement_actions.join('\n'):act.improvement_actions||'')}</textarea>
           </div>
         </div>
         ${isActive ? `<div style="display:flex;gap:8px;margin-bottom:14px">
-          <button class="btn btn-sm btn-primary" onclick="ViewBcp._crSavePostMortem(${actId})"><i class="ti ti-device-floppy"></i> Guardar borrador</button>
+          <button class="btn btn-sm btn-primary" onclick="ViewBcp._crSavePostMortem(${actId})"><i class="ti ti-device-floppy"></i> ${t('bcp.crisis_pm_save')}</button>
         </div>` : ''}
         <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;gap:8px">
           <button class="btn btn-sm" onclick="ViewBcp._openActivationReport(${actId})" style="background:var(--primary);color:#fff">
-            <i class="ti ti-file-report"></i> Generar informe post-mortem
+            <i class="ti ti-file-report"></i> ${t('bcp.crisis_pm_report')}
           </button>
         </div>
       `;
@@ -5950,14 +5950,14 @@ const ViewBcp = (() => {
 
   async function _crAddLog(actId) {
     const text = document.getElementById('cr-etext')?.value?.trim();
-    if (!text) { UI.toast('Descripcion requerida', 'error'); return; }
+    if (!text) { UI.toast(t('bcp.crisis_desc_required'), 'error'); return; }
     try {
       await Api.post(`/api/bcp/activations/${actId}/log`, {
         entry_type: document.getElementById('cr-etype')?.value || 'accion',
         text,
         action_owner: document.getElementById('cr-eowner')?.value?.trim() || undefined,
       });
-      UI.toast('Evento registrado', 'success');
+      UI.toast(t('bcp.crisis_event_registered'), 'success');
       await _renderCrisisRoomContent(actId, window._crModal);
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
   }
@@ -5966,8 +5966,8 @@ const ViewBcp = (() => {
     const title = document.getElementById('cr-att-title')?.value?.trim();
     const fileEl = document.getElementById('cr-att-file');
     const file = fileEl?.files?.[0];
-    if (!title) { UI.toast('Titulo requerido', 'error'); return; }
-    if (!file) { UI.toast('Selecciona un archivo', 'error'); return; }
+    if (!title) { UI.toast(t('bcp.crisis_title_required'), 'error'); return; }
+    if (!file) { UI.toast(t('bcp.crisis_select_file'), 'error'); return; }
     const fd = new FormData();
     fd.append('title', title);
     fd.append('entry_type', document.getElementById('cr-att-type')?.value || 'evidencia');
@@ -5983,7 +5983,7 @@ const ViewBcp = (() => {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Error al subir archivo');
       }
-      UI.toast('Adjunto subido', 'success');
+      UI.toast(t('bcp.crisis_attachment_uploaded'), 'success');
       await _renderCrisisRoomContent(actId, window._crModal);
       window._crCurrentTab = 'adjuntos';
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
@@ -5993,13 +5993,13 @@ const ViewBcp = (() => {
     if (!confirm('Eliminar este adjunto?')) return;
     try {
       await Api.del(`/api/bcp/activations/${actId}/attachments/${eid}`);
-      UI.toast('Adjunto eliminado', 'success');
+      UI.toast(t('bcp.attachment_deleted'), 'success');
       await _renderCrisisRoomContent(actId, window._crModal);
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
   }
 
   async function _crGenerateAISummary(actId) {
-    UI.toast('El agente IA esta analizando la evidencia...', 'info');
+    UI.toast(t('bcp.ai_analyzing_evidence'), 'info');
     try {
       const r = await Api.post(`/api/bcp/activations/${actId}/ai-summary`, {});
       UI.toast('Resumen generado', 'success');
@@ -6036,7 +6036,7 @@ const ViewBcp = (() => {
       const inc = data.linked_incident;
       const dur = data.duration_minutes != null
         ? (data.duration_minutes > 60 ? Math.round(data.duration_minutes/60) + ' h ' + (data.duration_minutes%60) + ' min' : data.duration_minutes + ' min')
-        : 'En curso';
+        : t('bcp.in_progress_plan');
 
       const existing = document.getElementById('modal-postmortem-dyn');
       if (existing) existing.remove();
@@ -6057,7 +6057,7 @@ const ViewBcp = (() => {
               <div><span class="pm-label">Codigo</span><span class="pm-val">${UI.esc(act.code||'—')}</span></div>
               <div><span class="pm-label">Fecha de deteccion</span><span class="pm-val">${act.activated_at?new Date(act.activated_at).toLocaleString('es-ES'):'—'}</span></div>
               <div><span class="pm-label">Duracion total</span><span class="pm-val">${dur}</span></div>
-              <div><span class="pm-label">Estado final</span><span class="pm-val">${act.status === 'closed' ? 'Recuperado' : 'En curso'}</span></div>
+              <div><span class="pm-label">Estado final</span><span class="pm-val">${act.status === 'closed' ? t('bcp.activated') : t('bcp.in_progress_plan')}</span></div>
             </div>
             ${act.executive_summary ? `<div style="margin-top:10px;font-size:13px">${UI.esc(act.executive_summary).replace(/\n/g,'<br>')}</div>` : '<div style="color:var(--text-subtle);font-size:12px;font-style:italic">Sin resumen ejecutivo. Completa el campo en la pestaña Post-Mortem de la sala de crisis.</div>'}
           </div>
@@ -6322,9 +6322,9 @@ const ViewBcp = (() => {
     if (existing) existing.remove();
     const ACTION_LABELS = {
       manual: '',
-      notify_users: 'Notificar',
-      create_task: 'Crear tarea',
-      log_timeline: 'Registrar',
+      notify_users: t('common.notify') || 'Notificar',
+      create_task: t('common.create_task') || 'Crear tarea',
+      log_timeline: t('common.register') || 'Registrar',
     };
     const renderItem = (item) => {
       const isDone = item.status === 'done';

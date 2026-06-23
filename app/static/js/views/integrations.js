@@ -548,12 +548,12 @@ const ViewIntegrations = {
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
-      'Integraciones',
-      'Integraciones en vivo y catalogo de herramientas GRC'
+      t('integrations.title'),
+      t('integrations.subtitle')
     ) + `
       <div style="display:flex;gap:8px;margin-bottom:20px;">
-        <button class="btn btn-primary" id="int-tab-live" onclick="ViewIntegrations._showTab('live')">Live</button>
-        <button class="btn" id="int-tab-catalog" onclick="ViewIntegrations._showTab('catalog')">Catalogo de guias</button>
+        <button class="btn btn-primary" id="int-tab-live" onclick="ViewIntegrations._showTab('live')">${t('integrations.tab_live')}</button>
+        <button class="btn" id="int-tab-catalog" onclick="ViewIntegrations._showTab('catalog')">${t('integrations.tab_catalog')}</button>
       </div>
       <div id="int-live"></div>
       <div id="int-content" style="display:none;"></div>
@@ -582,12 +582,12 @@ const ViewIntegrations = {
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
             <div>
               <b style="font-size:15px;">Microsoft SharePoint</b>
-              <div style="font-size:11px;color:var(--text-muted);">Importacion masiva de documentos ISMS via Microsoft Graph API</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.sp_subtitle')}</div>
             </div>
             <span id="sp-status-badge" style="margin-left:auto;"></span>
           </div>
           <div id="sp-body">
-            <p class="text-muted" style="font-size:13px;">Cargando configuracion...</p>
+            <p class="text-muted" style="font-size:13px;">${t('integrations.loading_config')}</p>
           </div>
         </div>
 
@@ -599,13 +599,13 @@ const ViewIntegrations = {
               <rect x="13" y="13" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/>
             </svg>
             <div>
-              <b style="font-size:15px;">SSO — Inicio de sesion corporativo</b>
-              <div style="font-size:11px;color:var(--text-muted);">OIDC / OAuth2 — Microsoft Entra ID, Google Workspace, Okta y otros</div>
+              <b style="font-size:15px;">${t('integrations.sso_title')}</b>
+              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.sso_subtitle')}</div>
             </div>
             <span id="sso-status-badge" style="margin-left:auto;"></span>
           </div>
           <div id="sso-body">
-            <p class="text-muted" style="font-size:13px;">Cargando configuracion...</p>
+            <p class="text-muted" style="font-size:13px;">${t('integrations.loading_config')}</p>
           </div>
         </div>
 
@@ -614,12 +614,12 @@ const ViewIntegrations = {
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
             <div>
-              <b style="font-size:15px;">Servidor de correo (SMTP)</b>
-              <div style="font-size:11px;color:var(--text-muted);">Configura el servidor de email para el envio de alertas automaticas</div>
+              <b style="font-size:15px;">${t('integrations.smtp_title')}</b>
+              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.smtp_subtitle')}</div>
             </div>
             <span id="smtp-status-badge" style="margin-left:auto;"></span>
           </div>
-          <div id="smtp-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
+          <div id="smtp-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
         </div>
 
         <!-- SAP / Jagger / Sphera — Webhooks ERP -->
@@ -628,11 +628,11 @@ const ViewIntegrations = {
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
             <div>
               <b style="font-size:15px;">SAP / Jagger / Sphera — Webhooks ERP</b>
-              <div style="font-size:11px;color:var(--text-muted);">Recibe eventos de sistemas ERP/GRC via webhooks HMAC-SHA256 seguros</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.erp_subtitle')}</div>
             </div>
             <span id="erp-status-badge" style="margin-left:auto;"></span>
           </div>
-          <div id="erp-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
+          <div id="erp-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
         </div>
 
         <!-- MS Forms / Power Automate + Monday.com -->
@@ -641,11 +641,11 @@ const ViewIntegrations = {
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
             <div>
               <b style="font-size:15px;">MS Forms / Power Automate + Monday.com</b>
-              <div style="font-size:11px;color:var(--text-muted);">Recibe respuestas de formularios externos (entrante) y notifica a Monday.com (saliente)</div>
+              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.forms_subtitle')}</div>
             </div>
             <span id="forms-status-badge" style="margin-left:auto;"></span>
           </div>
-          <div id="forms-body"><p class="text-muted" style="font-size:13px;">Cargando...</p></div>
+          <div id="forms-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
         </div>
 
         <!-- VirusTotal — Escaneo de URLs y hashes -->
@@ -653,12 +653,12 @@ const ViewIntegrations = {
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 10 15.5 10 14 10.67 14 11.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 10 8.5 10 7 10.67 7 11.5 7.67 13 8.5 13zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
             <div>
-              <b style="font-size:15px;">VirusTotal — Análisis de seguridad</b>
-              <div style="font-size:11px;color:var(--text-muted);">Escanea URLs y hashes — integrado con OSINT para hallazgos automáticos</div>
+              <b style="font-size:15px;">${t('integrations.vt_title')}</b>
+              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.vt_subtitle')}</div>
             </div>
             <span id="vt-status-badge" style="margin-left:auto;"></span>
           </div>
-          <div id="vt-body"><p class="text-muted" style="font-size:13px;">Cargando configuracion...</p></div>
+          <div id="vt-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading_config')}</p></div>
         </div>
 
       </div>
@@ -682,33 +682,32 @@ const ViewIntegrations = {
     if (!body) return;
 
     if (cfg && cfg.configured) {
-      badge.innerHTML = `<span class="badge" style="background:var(--risk-low);color:#fff;">Conectado</span>`;
+      badge.innerHTML = `<span class="badge" style="background:var(--risk-low);color:#fff;">${t('integrations.sp_connected')}</span>`;
       body.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:13px;">
           <div><span class="text-muted">Tenant ID:</span> <code>${UI.esc(cfg.tenant_id||'')}</code></div>
           <div><span class="text-muted">Client ID:</span> <code>${UI.esc(cfg.client_id||'')}</code></div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:16px;">
-          <button class="btn btn-sm" onclick="ViewIntegrations._editSpConfig()">Editar credenciales</button>
-          <button class="btn btn-sm" onclick="ViewIntegrations._testSp()">Probar conexion</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._editSpConfig()">${t('integrations.sp_edit_creds')}</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._testSp()">${t('integrations.sp_test_conn')}</button>
         </div>
         <hr style="border:none;border-top:1px solid var(--border);margin:0 0 16px;">
-        <b style="font-size:13px;">Importar documentos desde SharePoint</b>
+        <b style="font-size:13px;">${t('integrations.sp_import_docs_title')}</b>
         <p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px;">
-          Selecciona un sitio, una biblioteca y la carpeta que contiene tus documentos ISMS.
-          Los archivos PDF, DOCX y TXT se indexaran automaticamente en el agente IA.
+          ${t('integrations.sp_import_docs_desc')}
         </p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
           <div>
-            <label style="font-size:12px;">Sitio</label>
+            <label style="font-size:12px;">${t('integrations.sp_label_site')}</label>
             <select id="sp-site" class="input" style="width:100%;" onchange="ViewIntegrations._loadDrives()">
-              <option value="">Cargando sitios...</option>
+              <option value="">${t('integrations.sp_loading_sites')}</option>
             </select>
           </div>
           <div>
-            <label style="font-size:12px;">Biblioteca</label>
+            <label style="font-size:12px;">${t('integrations.sp_label_library')}</label>
             <select id="sp-drive" class="input" style="width:100%;" onchange="ViewIntegrations._loadFiles('root')">
-              <option value="">Selecciona un sitio primero</option>
+              <option value="">${t('integrations.sp_select_site_first')}</option>
             </select>
           </div>
         </div>
@@ -717,26 +716,26 @@ const ViewIntegrations = {
         <div id="sp-selection" style="margin-top:8px;display:none;align-items:center;gap:8px;flex-wrap:wrap;">
           <span id="sp-sel-count" style="font-size:13px;"></span>
           <select id="sp-cat" class="input" style="width:180px;">
-            <option value="other">Categoria: Otro</option>
-            <option value="policies">Politicas</option>
-            <option value="normative">Normativa</option>
-            <option value="risk_assessments">Evaluaciones de riesgo</option>
-            <option value="architecture">Arquitectura</option>
-            <option value="assets_inventory">Inventario de activos</option>
-            <option value="critical_suppliers">Proveedores criticos</option>
-            <option value="incidents_lessons">Lecciones de incidentes</option>
+            <option value="other">${t('integrations.sp_cat_other')}</option>
+            <option value="policies">${t('integrations.sp_cat_policies')}</option>
+            <option value="normative">${t('integrations.sp_cat_normative')}</option>
+            <option value="risk_assessments">${t('integrations.sp_cat_risk_assessments')}</option>
+            <option value="architecture">${t('integrations.sp_cat_architecture')}</option>
+            <option value="assets_inventory">${t('integrations.sp_cat_assets')}</option>
+            <option value="critical_suppliers">${t('integrations.sp_cat_suppliers')}</option>
+            <option value="incidents_lessons">${t('integrations.sp_cat_incidents')}</option>
           </select>
           <button class="btn btn-primary btn-sm" onclick="ViewIntegrations._importSelected()">
-            Importar seleccionados
+            ${t('integrations.sp_import_btn')}
           </button>
-          <button class="btn btn-sm" onclick="ViewIntegrations._clearSelection()">Limpiar</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._clearSelection()">${t('integrations.sp_clear_btn')}</button>
         </div>
       `;
       this._spSelected = [];
       this._spNavStack = [];
       this._loadSites();
     } else {
-      badge.innerHTML = `<span class="badge badge-muted">No configurado</span>`;
+      badge.innerHTML = `<span class="badge badge-muted">${t('integrations.sp_not_configured')}</span>`;
       body.innerHTML = this._spConfigForm();
     }
   },
@@ -746,9 +745,7 @@ const ViewIntegrations = {
     return `
       <div class="form-grid" style="margin-bottom:12px;">
         <div class="span2" style="font-size:12px;color:var(--text-muted);">
-          Crea un <strong>App Registration</strong> en Azure Portal con permisos de aplicacion
-          <code>Sites.Read.All</code> y <code>Files.Read.All</code>,
-          luego rellena los campos siguientes.
+          ${t('integrations.sp_form_intro')}
         </div>
         <div><label style="font-size:12px;">Tenant ID *</label>
           <input id="sp-tenant" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${UI.esc(p.tenant_id||'')}">
@@ -761,8 +758,8 @@ const ViewIntegrations = {
         </div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" onclick="ViewIntegrations._saveSpConfig()">Guardar y conectar</button>
-        ${prefill ? '<button class="btn" onclick="ViewIntegrations._initSharePoint()">Cancelar</button>' : ''}
+        <button class="btn btn-primary" onclick="ViewIntegrations._saveSpConfig()">${t('integrations.sp_save_connect')}</button>
+        ${prefill ? `<button class="btn" onclick="ViewIntegrations._initSharePoint()">${t('integrations.sp_cancel')}</button>` : ''}
       </div>
     `;
   },
@@ -777,17 +774,17 @@ const ViewIntegrations = {
     const client = document.getElementById('sp-client')?.value.trim();
     const secret = document.getElementById('sp-secret')?.value.trim();
     if (!tenant || !client || !secret) {
-      UI.toast('Todos los campos son obligatorios', 'error'); return;
+      UI.toast(t('integrations.sp_all_required'), 'error'); return;
     }
     try {
       await Api.sharepoint.saveConfig({ tenant_id: tenant, client_id: client, client_secret: secret });
-      UI.toast('Configuracion guardada', 'success');
+      UI.toast(t('integrations.sp_config_saved'), 'success');
       await this._initSharePoint();
     } catch (e) { UI.toast(e.message, 'error'); }
   },
 
   async _testSp() {
-    UI.toast('Probando conexion...', 'info');
+    UI.toast(t('integrations.sp_testing'), 'info');
     try {
       const r = await Api.sharepoint.test();
       UI.toast(r.message, 'success');
@@ -812,29 +809,29 @@ const ViewIntegrations = {
     if (!body) return;
 
     if (cfg && cfg.configured) {
-      badge.innerHTML = `<span class="badge" style="background:var(--risk-low);color:#fff;">Activo</span>`;
+      badge.innerHTML = `<span class="badge" style="background:var(--risk-low);color:#fff;">${t('integrations.sso_active')}</span>`;
       body.innerHTML = `
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;font-size:13px;">
           <div><span class="text-muted">Issuer:</span><br><code style="font-size:11px;">${UI.esc(cfg.issuer_url||'')}</code></div>
           <div><span class="text-muted">Client ID:</span><br><code style="font-size:11px;">${UI.esc(cfg.client_id||'')}</code></div>
-          <div><span class="text-muted">Rol por defecto:</span><br>
+          <div><span class="text-muted">${t('integrations.sso_default_role')}</span><br>
             <span class="badge badge-muted">${UI.esc(cfg.default_role||'viewer')}</span>
             ${cfg.auto_provision ? '<span class="badge" style="background:var(--brand-purple);color:#fff;margin-left:4px;">Auto-provision</span>' : ''}
           </div>
         </div>
-        ${cfg.allowed_domains ? `<div style="font-size:12px;margin-bottom:12px;"><span class="text-muted">Dominios permitidos:</span> <code>${UI.esc(cfg.allowed_domains)}</code></div>` : ''}
+        ${cfg.allowed_domains ? `<div style="font-size:12px;margin-bottom:12px;"><span class="text-muted">${t('integrations.sso_allowed_domains')}</span> <code>${UI.esc(cfg.allowed_domains)}</code></div>` : ''}
         <div style="display:flex;gap:8px;margin-bottom:8px;">
-          <button class="btn btn-sm" onclick="ViewIntegrations._editSsoConfig()">Editar configuracion</button>
-          <button class="btn btn-sm" onclick="ViewIntegrations._testSso()">Probar conexion OIDC</button>
-          <button class="btn btn-sm btn-danger" onclick="ViewIntegrations._deleteSsoConfig()">Desactivar SSO</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._editSsoConfig()">${t('integrations.sso_edit_config')}</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._testSso()">${t('integrations.sso_test_oidc')}</button>
+          <button class="btn btn-sm btn-danger" onclick="ViewIntegrations._deleteSsoConfig()">${t('integrations.sso_disable')}</button>
         </div>
         <div style="font-size:12px;color:var(--text-muted);">
-          URL de callback a configurar en tu proveedor de identidad:
+          ${t('integrations.sso_callback_hint')}
           <code style="font-size:11px;">${UI.esc(cfg.redirect_uri||'')}</code>
         </div>
       `;
     } else {
-      badge.innerHTML = `<span class="badge badge-muted">No configurado</span>`;
+      badge.innerHTML = `<span class="badge badge-muted">${t('integrations.sso_not_configured')}</span>`;
       body.innerHTML = this._ssoConfigForm();
     }
   },
@@ -845,9 +842,7 @@ const ViewIntegrations = {
     return `
       <div class="form-grid" style="margin-bottom:12px;">
         <div class="span2" style="font-size:12px;color:var(--text-muted);">
-          Introduce los datos del <strong>App Registration / OAuth2 Client</strong> de tu proveedor de identidad
-          (Microsoft Entra ID, Google Workspace, Okta, etc.).<br>
-          La URL de callback que debes registrar en el proveedor es:
+          ${t('integrations.sso_form_intro')}
           <code style="font-size:11px;">${window.location.origin}/api/sso/callback</code>
         </div>
         <div class="span2"><label style="font-size:12px;">Issuer URL *</label>
@@ -859,16 +854,16 @@ const ViewIntegrations = {
           <input id="sso-cid" class="input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${UI.esc(p.client_id||'')}">
         </div>
         <div><label style="font-size:12px;">Client Secret *</label>
-          <input type="password" id="sso-secret" class="input" placeholder="${isEdit ? 'Dejar en blanco para no cambiar' : 'Secreto del cliente OAuth2'}">
+          <input type="password" id="sso-secret" class="input" placeholder="${isEdit ? t('integrations.sso_secret_edit_ph') : t('integrations.sso_secret_new_ph')}">
         </div>
         <div class="span2"><label style="font-size:12px;">Redirect URI (callback) *</label>
           <input id="sso-redirect" class="input"
             value="${UI.esc(p.redirect_uri || (window.location.origin + '/api/sso/callback'))}">
         </div>
-        <div><label style="font-size:12px;">Dominios permitidos</label>
-          <input id="sso-domains" class="input" placeholder="corp.com,empresa.es  (vacio = sin restriccion)" value="${UI.esc(p.allowed_domains||'')}">
+        <div><label style="font-size:12px;">${t('integrations.sso_domains_label')}</label>
+          <input id="sso-domains" class="input" placeholder="${t('integrations.sso_domains_ph')}" value="${UI.esc(p.allowed_domains||'')}">
         </div>
-        <div><label style="font-size:12px;">Rol por defecto para nuevos usuarios</label>
+        <div><label style="font-size:12px;">${t('integrations.sso_role_label')}</label>
           <select id="sso-role" class="input">
             ${['viewer','analyst','admin'].map(r =>
               `<option value="${r}" ${(p.default_role||'viewer')===r?'selected':''}>${r}</option>`).join('')}
@@ -880,17 +875,16 @@ const ViewIntegrations = {
             <span class="toggle-slider"></span>
           </label>
           <div>
-            <div style="font-size:13px;font-weight:600;">Crear usuarios automaticamente (auto-provision)</div>
+            <div style="font-size:13px;font-weight:600;">${t('integrations.sso_autoprovision_label')}</div>
             <div style="font-size:11px;color:var(--text-muted);">
-              Si esta activado, los usuarios que se autentiquen por SSO y no existan en RiskHub
-              seran creados automaticamente con el rol por defecto.
+              ${t('integrations.sso_autoprovision_desc')}
             </div>
           </div>
         </div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" onclick="ViewIntegrations._saveSsoConfig()">Guardar configuracion</button>
-        ${isEdit ? '<button class="btn" onclick="ViewIntegrations._initSso()">Cancelar</button>' : ''}
+        <button class="btn btn-primary" onclick="ViewIntegrations._saveSsoConfig()">${t('integrations.sso_save_config')}</button>
+        ${isEdit ? `<button class="btn" onclick="ViewIntegrations._initSso()">${t('integrations.sso_cancel')}</button>` : ''}
       </div>
     `;
   },
@@ -911,7 +905,7 @@ const ViewIntegrations = {
     const role = document.getElementById('sso-role')?.value;
     const provision = document.getElementById('sso-provision')?.checked || false;
     if (!issuer || !cid || !secret || !redirect) {
-      UI.toast('Issuer URL, Client ID, Client Secret y Redirect URI son obligatorios', 'error'); return;
+      UI.toast(t('integrations.sso_required_fields'), 'error'); return;
     }
     try {
       const r = await Api.sso.saveConfig({
@@ -925,7 +919,7 @@ const ViewIntegrations = {
   },
 
   async _testSso() {
-    UI.toast('Probando conexion OIDC...', 'info');
+    UI.toast(t('integrations.sso_testing'), 'info');
     try {
       const r = await Api.sso.test();
       UI.toast(`${r.message} — Issuer: ${r.issuer || '?'}`, 'success');
@@ -933,10 +927,10 @@ const ViewIntegrations = {
   },
 
   async _deleteSsoConfig() {
-    if (!confirm('Desactivar SSO eliminara la configuracion. Los usuarios que solo usan SSO no podran acceder. ¿Continuar?')) return;
+    if (!confirm(t('integrations.sso_disable_confirm'))) return;
     try {
       await Api.sso.deleteConfig();
-      UI.toast('SSO desactivado correctamente', 'success');
+      UI.toast(t('integrations.sso_disabled_ok'), 'success');
       await this._initSso();
     } catch (e) { UI.toast(e.message, 'error'); }
   },
@@ -944,10 +938,10 @@ const ViewIntegrations = {
   async _loadSites() {
     const sel = document.getElementById('sp-site');
     if (!sel) return;
-    sel.innerHTML = '<option value="">Cargando...</option>';
+    sel.innerHTML = `<option value="">${t('integrations.loading')}</option>`;
     try {
       const r = await Api.sharepoint.sites();
-      sel.innerHTML = '<option value="">Selecciona un sitio</option>' +
+      sel.innerHTML = `<option value="">${t('integrations.sp_select_site')}</option>` +
         r.sites.map(s => `<option value="${UI.esc(s.id)}">${UI.esc(s.name)}</option>`).join('');
     } catch (e) { sel.innerHTML = `<option value="">Error: ${UI.esc(e.message)}</option>`; }
   },
@@ -956,11 +950,11 @@ const ViewIntegrations = {
     const siteId = document.getElementById('sp-site')?.value;
     const driveSel = document.getElementById('sp-drive');
     if (!siteId || !driveSel) return;
-    driveSel.innerHTML = '<option value="">Cargando...</option>';
+    driveSel.innerHTML = `<option value="">${t('integrations.loading')}</option>`;
     document.getElementById('sp-files').innerHTML = '';
     try {
       const r = await Api.sharepoint.drives(siteId);
-      driveSel.innerHTML = '<option value="">Selecciona una biblioteca</option>' +
+      driveSel.innerHTML = `<option value="">${t('integrations.sp_select_library')}</option>` +
         r.drives.map(d => `<option value="${UI.esc(d.id)}">${UI.esc(d.name)}</option>`).join('');
     } catch (e) { driveSel.innerHTML = `<option value="">Error: ${UI.esc(e.message)}</option>`; }
   },
@@ -987,7 +981,7 @@ const ViewIntegrations = {
     this._renderBreadcrumb(driveId);
 
     const filesDiv = document.getElementById('sp-files');
-    filesDiv.innerHTML = '<p class="text-muted" style="padding:8px;">Cargando...</p>';
+    filesDiv.innerHTML = `<p class="text-muted" style="padding:8px;">${t('integrations.loading')}</p>`;
     try {
       const r = await Api.sharepoint.files(driveId, itemId === 'root' ? null : itemId);
       this._renderFileList(filesDiv, r.items, driveId);
@@ -999,7 +993,7 @@ const ViewIntegrations = {
   _renderBreadcrumb(driveId) {
     const bc = document.getElementById('sp-breadcrumb');
     if (!bc) return;
-    const parts = [{ id: 'root', name: 'Raiz' }, ...this._spNavStack];
+    const parts = [{ id: 'root', name: t('integrations.sp_root') }, ...this._spNavStack];
     bc.innerHTML = parts.map((p, i) =>
       i < parts.length - 1
         ? `<a href="#" style="color:var(--brand-purple);" onclick="ViewIntegrations._loadFiles('${UI.esc(p.id)}','${UI.esc(p.name)}');return false;">${UI.esc(p.name)}</a> /`
@@ -1009,7 +1003,7 @@ const ViewIntegrations = {
 
   _renderFileList(container, items, driveId) {
     if (!items.length) {
-      container.innerHTML = '<p class="text-muted" style="padding:8px;">Carpeta vacia.</p>';
+      container.innerHTML = `<p class="text-muted" style="padding:8px;">${t('integrations.sp_empty_folder')}</p>`;
       return;
     }
     const importable = ['pdf', 'docx', 'txt', 'csv'];
@@ -1036,7 +1030,7 @@ const ViewIntegrations = {
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
               title="${UI.esc(it.name)}">${UI.esc(it.name)}</span>
             <span style="color:var(--text-muted);font-size:11px;flex-shrink:0;">${sizeStr}</span>
-            ${!canImport ? `<span style="font-size:11px;color:var(--text-subtle);">(no soportado)</span>` : ''}
+            ${!canImport ? `<span style="font-size:11px;color:var(--text-subtle);">${t('integrations.sp_not_supported')}</span>` : ''}
           </div>`;
       } else {
         return `
@@ -1049,8 +1043,8 @@ const ViewIntegrations = {
               </svg>
             </span>
             <span style="flex:1;">${UI.esc(it.name)}</span>
-            <span style="font-size:11px;color:var(--text-muted);">${it.child_count} elementos</span>
-            <span style="font-size:11px;color:var(--brand-purple);">Abrir</span>
+            <span style="font-size:11px;color:var(--text-muted);">${it.child_count} ${t('integrations.sp_elements')}</span>
+            <span style="font-size:11px;color:var(--brand-purple);">${t('integrations.sp_open')}</span>
           </div>`;
       }
     }).join('');
@@ -1068,7 +1062,7 @@ const ViewIntegrations = {
               items.filter(it => ['pdf','docx','txt','csv'].includes(it.name.split('.').pop().toLowerCase()) && it.kind==='file')
                    .map(it => ({item_id: it.id, name: it.name, drive_id: driveId, mime: it.mime||''}))
             ).replace(/"/g,'&quot;')})">
-          Seleccionar todos importables (${totalImportable})
+          ${t('integrations.sp_select_all', { count: totalImportable })}
         </label>
       </div>
       ${rows}
@@ -1104,7 +1098,7 @@ const ViewIntegrations = {
     if (!bar || !cnt) return;
     if (this._spSelected.length > 0) {
       bar.style.display = 'flex';
-      cnt.textContent = `${this._spSelected.length} archivo(s) seleccionado(s)`;
+      cnt.textContent = t('integrations.sp_selected_files', { count: this._spSelected.length });
     } else {
       bar.style.display = 'none';
     }
@@ -1119,18 +1113,18 @@ const ViewIntegrations = {
   },
 
   async _importSelected() {
-    if (!this._spSelected.length) { UI.toast('Selecciona al menos un archivo', 'error'); return; }
+    if (!this._spSelected.length) { UI.toast(t('integrations.sp_select_at_least_one'), 'error'); return; }
     const cat = document.getElementById('sp-cat')?.value || 'other';
     const btn = document.querySelector('#sp-selection .btn-primary');
-    if (btn) { btn.disabled = true; btn.textContent = 'Importando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('integrations.sp_importing'); }
     try {
       const r = await Api.sharepoint.importFiles(this._spSelected, cat);
-      UI.toast(`Importados: ${r.imported.length} | Omitidos: ${r.skipped.length} | Errores: ${r.errors.length}`, 'success');
+      UI.toast(t('integrations.sp_imported_result', { imported: r.imported.length, skipped: r.skipped.length, errors: r.errors.length }), 'success');
       this._clearSelection();
     } catch (e) {
       UI.toast(e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Importar seleccionados'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('integrations.sp_import_btn'); }
     }
   },
 
@@ -1145,47 +1139,47 @@ const ViewIntegrations = {
       const isAdmin = Auth.isAdmin();
       const ok = !!s.smtp_host;
       if (badge) badge.innerHTML = ok
-        ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">Configurado</span>`
-        : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">Sin configurar</span>`;
+        ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">${t('integrations.smtp_configured')}</span>`
+        : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">${t('integrations.smtp_not_configured')}</span>`;
       body.innerHTML = isAdmin ? `
         <div class="form-grid" style="margin-bottom:12px;">
           <div class="span2">
-            <label>Host SMTP</label>
+            <label>${t('integrations.smtp_label_host')}</label>
             <input id="smtp-host" class="input" type="text" value="${UI.esc(s.smtp_host || '')}" placeholder="smtp.company.com">
           </div>
           <div>
-            <label>Puerto</label>
+            <label>${t('integrations.smtp_label_port')}</label>
             <input id="smtp-port" class="input" type="number" value="${s.smtp_port || 587}" placeholder="587">
           </div>
           <div>
-            <label>TLS / STARTTLS</label>
+            <label>${t('integrations.smtp_label_tls')}</label>
             <select id="smtp-tls" class="input">
-              <option value="true" ${s.smtp_use_tls !== false ? 'selected' : ''}>STARTTLS (recomendado)</option>
-              <option value="false" ${s.smtp_use_tls === false ? 'selected' : ''}>SSL directo / Sin TLS</option>
+              <option value="true" ${s.smtp_use_tls !== false ? 'selected' : ''}>${t('integrations.smtp_tls_starttls')}</option>
+              <option value="false" ${s.smtp_use_tls === false ? 'selected' : ''}>${t('integrations.smtp_tls_ssl')}</option>
             </select>
           </div>
           <div>
-            <label>Usuario SMTP</label>
+            <label>${t('integrations.smtp_label_user')}</label>
             <input id="smtp-user" class="input" type="text" value="${UI.esc(s.smtp_user || '')}" placeholder="noreply@company.com">
           </div>
           <div>
-            <label>Contrasena SMTP</label>
-            <input id="smtp-pass" class="input" type="password" placeholder="Dejar vacio para no cambiar">
+            <label>${t('integrations.smtp_label_pass')}</label>
+            <input id="smtp-pass" class="input" type="password" placeholder="${t('integrations.smtp_pass_ph')}">
           </div>
           <div>
-            <label>Remitente (From)</label>
+            <label>${t('integrations.smtp_label_from')}</label>
             <input id="smtp-from" class="input" type="email" value="${UI.esc(s.smtp_from || '')}" placeholder="riskhub@company.com">
           </div>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-          ${ok ? `<button class="btn" onclick="ViewIntegrations._testSmtp()">Enviar email de prueba</button>` : ''}
-          <button class="btn btn-primary" onclick="ViewIntegrations._saveSmtp()">Guardar configuracion</button>
+          ${ok ? `<button class="btn" onclick="ViewIntegrations._testSmtp()">${t('integrations.smtp_test_btn')}</button>` : ''}
+          <button class="btn btn-primary" onclick="ViewIntegrations._saveSmtp()">${t('integrations.smtp_save_btn')}</button>
         </div>
       ` : `
         <div style="font-size:13px;color:var(--text-muted);">
           ${ok
             ? `Host: <b>${UI.esc(s.smtp_host)}:${s.smtp_port}</b> &mdash; Remitente: <b>${UI.esc(s.smtp_from || '-')}</b>`
-            : 'SMTP no configurado. Contacta al administrador.'}
+            : t('integrations.smtp_not_admin_msg')}
         </div>
       `;
     } catch (e) {
@@ -1203,23 +1197,23 @@ const ViewIntegrations = {
       smtp_from: document.getElementById('smtp-from').value.trim(),
     };
     if (!body.smtp_host || !body.smtp_from) {
-      UI.toast('Host SMTP y remitente son obligatorios', 'error'); return;
+      UI.toast(t('integrations.smtp_required'), 'error'); return;
     }
     try {
       await Api.put('/api/alerts/settings', body);
-      UI.toast('Configuracion SMTP guardada', 'success');
+      UI.toast(t('integrations.smtp_saved'), 'success');
       await this._initSmtp();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   },
 
   async _testSmtp() {
     try {
       const res = await Api.post('/api/alerts/test', {});
-      UI.toast(res.message || 'Email de prueba enviado correctamente', 'success');
+      UI.toast(res.message || t('integrations.smtp_test_ok'), 'success');
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   },
 
@@ -1233,8 +1227,8 @@ const ViewIntegrations = {
       const cfg = await Api.get('/api/integrations/erp/config');
       const isAdmin = Auth.isAdmin();
       if (badge) badge.innerHTML = cfg.configured
-        ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">Configurado</span>`
-        : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">Sin configurar</span>`;
+        ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">${t('integrations.erp_configured')}</span>`
+        : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">${t('integrations.erp_not_configured')}</span>`;
 
       const origin = window.location.origin;
       const webhookUrls = {
@@ -1247,15 +1241,15 @@ const ViewIntegrations = {
         ${cfg.configured ? `
           <div style="background:var(--bg-2);border-radius:8px;padding:14px;margin-bottom:14px;">
             <p style="margin:0 0 10px;font-size:12px;font-weight:600;text-transform:uppercase;color:var(--text-muted);">
-              URLs de webhook — configurar en el sistema externo
+              ${t('integrations.erp_webhook_urls')}
             </p>
             ${Object.entries(webhookUrls).map(([sys, url]) => `
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                 <span style="min-width:56px;font-size:12px;font-weight:600;">${sys}</span>
                 <input style="flex:1;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text-base);font-family:var(--font-mono);"
                        value="${url}" readonly onclick="this.select()">
-                <button class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText('${url}');UI.toast('URL copiada','success');">
-                  Copiar
+                <button class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText('${url}');UI.toast(t('integrations.erp_url_copied'),'success');">
+                  ${t('integrations.erp_copy_btn')}
                 </button>
               </div>
             `).join('')}
@@ -1267,16 +1261,16 @@ const ViewIntegrations = {
         ` : ''}
         ${isAdmin ? `
           <div>
-            <p style="font-size:13px;font-weight:600;margin-bottom:8px;">Configurar webhook secret</p>
+            <p style="font-size:13px;font-weight:600;margin-bottom:8px;">${t('integrations.erp_config_heading')}</p>
             <div class="form-grid">
               <div class="span2">
-                <label>Webhook Secret (HMAC-SHA256) *</label>
+                <label>${t('integrations.erp_secret_label')}</label>
                 <input id="erp-secret" class="input" type="password"
-                       placeholder="Minimo 16 caracteres — genera uno aleatorio"
+                       placeholder="${t('integrations.erp_secret_ph')}"
                        value="${cfg.configured ? '••••••••' : ''}">
               </div>
               <div class="span2">
-                <label>Fuentes habilitadas</label>
+                <label>${t('integrations.erp_sources_label')}</label>
                 <div style="display:flex;gap:12px;margin-top:4px;">
                   ${['sap','jagger','sphera'].map(src => {
                     const checked = !cfg.configured || (cfg.enabled_sources || []).includes(src);
@@ -1289,15 +1283,15 @@ const ViewIntegrations = {
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;justify-content:space-between;align-items:center;">
               <button class="btn btn-ghost btn-sm" onclick="ViewIntegrations._generateErpSecret()">
-                Generar secret aleatorio
+                ${t('integrations.erp_generate_secret')}
               </button>
               <div style="display:flex;gap:8px;">
                 ${cfg.configured ? `
                   <button class="btn btn-sm" onclick="ViewIntegrations._loadErpEvents()">
-                    Ver eventos recibidos
+                    ${t('integrations.erp_view_events')}
                   </button>` : ''}
                 <button class="btn btn-sm btn-primary" onclick="ViewIntegrations._saveErpConfig()">
-                  Guardar configuracion
+                  ${t('integrations.erp_save_config')}
                 </button>
               </div>
             </div>
@@ -1305,7 +1299,7 @@ const ViewIntegrations = {
           <div id="erp-events" style="display:none;margin-top:16px;"></div>
         ` : `
           <p style="font-size:13px;color:var(--text-muted);">
-            ${cfg.configured ? 'Webhooks ERP configurados. Contacta al administrador para obtener las URLs.' : 'No configurado. Contacta al administrador.'}
+            ${cfg.configured ? t('integrations.erp_configured_msg') : t('integrations.erp_not_configured_msg')}
           </p>
         `}
       `;
@@ -1325,7 +1319,7 @@ const ViewIntegrations = {
   async _saveErpConfig() {
     const secret = document.getElementById('erp-secret')?.value?.trim();
     if (!secret || secret.startsWith('•')) {
-      UI.toast('Introduce un nuevo webhook secret para guardar', 'error'); return;
+      UI.toast(t('integrations.erp_secret_required'), 'error'); return;
     }
     const sources = ['sap','jagger','sphera'].filter(s =>
       document.getElementById(`erp-src-${s}`)?.checked
@@ -1335,7 +1329,7 @@ const ViewIntegrations = {
         webhook_secret: secret,
         enabled_sources: sources,
       });
-      UI.toast('Configuracion ERP guardada', 'success');
+      UI.toast(t('integrations.erp_saved'), 'success');
       await this._initErpWebhooks();
     } catch (e) { UI.toast(e.message, 'error'); }
   },
@@ -1347,15 +1341,15 @@ const ViewIntegrations = {
     try {
       const { events } = await Api.get('/api/integrations/erp/events');
       if (!events.length) {
-        el.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">No hay eventos recibidos aun.</p>';
+        el.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${t('integrations.erp_no_events')}</p>`;
         return;
       }
       el.innerHTML = `
         <p style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">
-          Ultimos eventos recibidos
+          ${t('integrations.erp_events_heading')}
         </p>
         <table class="table" style="font-size:12px;">
-          <thead><tr><th>Fecha</th><th>Fuente</th><th>Evento</th><th>Entidad</th><th>Resultado</th></tr></thead>
+          <thead><tr><th>${t('integrations.erp_col_date')}</th><th>${t('integrations.erp_col_source')}</th><th>${t('integrations.erp_col_event')}</th><th>${t('integrations.erp_col_entity')}</th><th>${t('integrations.erp_col_result')}</th></tr></thead>
           <tbody>
             ${events.map(ev => `
               <tr>
@@ -1388,20 +1382,26 @@ const ViewIntegrations = {
       'Identidad y acceso': '🔑',
       'Seguridad cloud': '☁️',
     };
+    const catLabels = {
+      'Gestión de activos': t('integrations.cat_assets'),
+      'Gestión de vulnerabilidades': t('integrations.cat_vulns'),
+      'Gestión de riesgos de terceros': t('integrations.cat_tprm'),
+      'SIEM / Operaciones de seguridad': t('integrations.cat_siem'),
+      'Identidad y acceso': t('integrations.cat_iam'),
+      'Seguridad cloud': t('integrations.cat_cloud'),
+    };
 
     let html = `
       <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg,var(--brand-purple-4),var(--brand-orange-4));border:1px solid var(--brand-purple-3);">
         <p style="margin:0;font-size:14px;color:var(--text-base);">
-          <strong>Catálogo de integraciones:</strong> ${this._catalog.length} herramientas del mercado de seguridad y GRC,
-          con guías paso a paso para sincronizar datos con RiskHub.
-          Las integraciones automatizadas están en el roadmap de v1.2.
-          Por ahora, sigue las guías para importar datos manualmente o semi-automáticamente.
+          ${t('integrations.cat_intro', { count: this._catalog.length })}
         </p>
       </div>`;
 
     Object.entries(cats).forEach(([cat, tools]) => {
+      const catLabel = catLabels[cat] || cat;
       html += `<div class="card" style="margin-bottom:16px;">
-        <h3 style="margin-bottom:16px;">${catIcons[cat] || '🔧'} ${cat}</h3>
+        <h3 style="margin-bottom:16px;">${catIcons[cat] || '🔧'} ${catLabel}</h3>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">`;
 
       tools.forEach(tool => {
@@ -1423,7 +1423,7 @@ const ViewIntegrations = {
             <div style="margin-top:4px;">
               <button class="btn btn-sm btn-primary" style="width:100%;"
                 onclick="ViewIntegrations._openGuide('${tool.id}')">
-                Ver guía de integración
+                ${t('integrations.cat_view_guide')}
               </button>
             </div>
           </div>`;
@@ -1450,41 +1450,39 @@ const ViewIntegrations = {
 
     const modalHtml = `
       <div class="modal-head">
-        <h2 style="font-size:16px;">Guía de integración — ${UI.esc(tool.name)}</h2>
+        <h2 style="font-size:16px;">${t('integrations.cat_guide_title', { name: UI.esc(tool.name) })}</h2>
         <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">✕</button>
       </div>
       <div style="overflow-y:auto;max-height:70vh;padding:4px 0;">
         <div style="margin-bottom:16px;display:grid;gap:6px;">
           <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;">
             <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;">
-              Datos que aporta</p>
+              ${t('integrations.cat_data_label')}</p>
             <p style="margin:0;font-size:13px;">${UI.esc(tool.data)}</p>
           </div>
           <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;">
             <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;">
-              API / Protocolo</p>
+              ${t('integrations.cat_api_label')}</p>
             <p style="margin:0;font-size:13px;">${UI.esc(tool.api)}</p>
           </div>
           <div style="background:var(--bg-2);border-radius:8px;padding:12px 14px;">
             <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;color:var(--text-muted);font-weight:600;">
-              Autenticación</p>
+              ${t('integrations.cat_auth_label')}</p>
             <p style="margin:0;font-size:13px;">${UI.esc(tool.auth)}</p>
           </div>
           <div style="background:var(--brand-purple-4);border:1px solid var(--brand-purple-3);border-radius:8px;padding:12px 14px;">
             <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;color:var(--brand-purple);font-weight:600;">
-              Referencia ISO 27005</p>
+              ${t('integrations.cat_iso_label')}</p>
             <p style="margin:0;font-size:13px;">${UI.esc(tool.iso_mapping)}</p>
           </div>
         </div>
         <h4 style="margin:0 0 12px;font-size:13px;text-transform:uppercase;
-                   color:var(--text-muted);letter-spacing:.5px;">Pasos de integración manual</h4>
+                   color:var(--text-muted);letter-spacing:.5px;">${t('integrations.cat_steps_heading')}</h4>
         ${stepsHtml}
         <div style="margin-top:16px;background:var(--brand-orange-4);border:1px solid var(--brand-orange-3);
                     border-radius:8px;padding:12px 14px;">
           <p style="margin:0;font-size:12px;color:var(--text-base);">
-            <strong>Próximamente:</strong> La integración automatizada estará disponible en RiskHub v1.2.
-            Incluirá sincronización programada, mapeo configurable de campos y asociación automática
-            de vulnerabilidades a riesgos mediante IA.
+            ${t('integrations.cat_coming_soon')}
           </p>
         </div>
       </div>`;
@@ -1506,36 +1504,36 @@ const ViewIntegrations = {
   _renderVirusTotalBody(cfg) {
     const body = document.getElementById('vt-body');
     const badge = document.getElementById('vt-status-badge');
-    if (!cfg) { body.innerHTML = '<p class="text-muted">No se pudo cargar la configuracion.</p>'; return; }
+    if (!cfg) { body.innerHTML = `<p class="text-muted">${t('integrations.vt_cannot_load')}</p>`; return; }
 
     const configured = cfg.configured || cfg.has_api_key;
-    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;background:${configured ? '#22c55e' : '#ef4444'};color:white;border-radius:4px;font-size:11px;font-weight:600;">${configured ? 'CONFIGURADO' : 'NO CONFIGURADO'}</span>`;
+    badge.innerHTML = `<span style="display:inline-block;padding:2px 8px;background:${configured ? '#22c55e' : '#ef4444'};color:white;border-radius:4px;font-size:11px;font-weight:600;">${configured ? t('integrations.vt_configured') : t('integrations.vt_not_configured')}</span>`;
 
     body.innerHTML = `
       <div style="display:grid;gap:12px;">
         ${configured ? `
           <div style="padding:10px 12px;background:var(--bg-2);border-left:3px solid #22c55e;border-radius:4px;font-size:12px;">
-            <strong>API key configurada.</strong> El motor OSINT usara VirusTotal para escanear URLs automaticamente.
+            ${t('integrations.vt_api_key_set')}
             <div style="margin-top:8px;display:flex;gap:8px;">
-              <button class="btn btn-ghost" id="vt-test" style="font-size:12px;padding:4px 10px;">🔗 Probar conexion</button>
-              <button class="btn btn-ghost" id="vt-edit" style="font-size:12px;padding:4px 10px;">📝 Cambiar API key</button>
-              <button class="btn btn-ghost" id="vt-delete" style="font-size:12px;padding:4px 10px;color:#ef4444;">🗑️ Eliminar</button>
-              <a href="#!/osint" class="btn btn-ghost" style="font-size:12px;padding:4px 10px;margin-left:auto;text-decoration:none;">→ Ir a OSINT</a>
+              <button class="btn btn-ghost" id="vt-test" style="font-size:12px;padding:4px 10px;">🔗 ${t('integrations.vt_test_btn')}</button>
+              <button class="btn btn-ghost" id="vt-edit" style="font-size:12px;padding:4px 10px;">📝 ${t('integrations.vt_edit_btn')}</button>
+              <button class="btn btn-ghost" id="vt-delete" style="font-size:12px;padding:4px 10px;color:#ef4444;">🗑️ ${t('integrations.vt_delete_btn')}</button>
+              <a href="#!/osint" class="btn btn-ghost" style="font-size:12px;padding:4px 10px;margin-left:auto;text-decoration:none;">${t('integrations.vt_goto_osint')}</a>
             </div>
           </div>
         ` : `
           <div style="padding:10px 12px;background:var(--bg-2);border-radius:4px;font-size:12px;color:var(--text-muted);">
-            <p style="margin:0 0 8px;"><strong>Paso 1: Crear cuenta en VirusTotal</strong></p>
+            <p style="margin:0 0 8px;"><strong>${t('integrations.vt_step1_title')}</strong></p>
             <p style="margin:0 0 8px;font-size:11px;">
-              Regístrate en <a href="https://www.virustotal.com/" target="_blank">virustotal.com</a> (opción gratuita disponible).
+              ${t('integrations.vt_step1_desc')}
             </p>
-            <p style="margin:0 0 8px;"><strong>Paso 2: Obtener API key</strong></p>
+            <p style="margin:0 0 8px;"><strong>${t('integrations.vt_step2_title')}</strong></p>
             <p style="margin:0 0 8px;font-size:11px;">
-              En tu perfil de VirusTotal, copia la API key personal.
+              ${t('integrations.vt_step2_desc')}
             </p>
-            <p style="margin:0;"><strong>Paso 3: Guardar en RiskHub</strong></p>
+            <p style="margin:0;"><strong>${t('integrations.vt_step3_title')}</strong></p>
             <div style="margin-top:8px;">
-              <button class="btn btn-primary" id="vt-setup" style="font-size:12px;padding:6px 12px;">➕ Agregar API key</button>
+              <button class="btn btn-primary" id="vt-setup" style="font-size:12px;padding:6px 12px;">➕ ${t('integrations.vt_add_key_btn')}</button>
             </div>
           </div>
         `}
@@ -1552,38 +1550,38 @@ const ViewIntegrations = {
   },
 
   async _setupVirusTotal() {
-    const apiKey = prompt('Pega tu API key de VirusTotal personal:');
+    const apiKey = prompt(t('integrations.vt_setup_prompt'));
     if (!apiKey || !apiKey.trim()) return;
     try {
       await Api.put('/api/integrations/virustotal/config', { api_key: apiKey.trim() });
-      UI.toast('API key de VirusTotal guardada', 'success');
+      UI.toast(t('integrations.vt_key_saved'), 'success');
       await this._initVirusTotal();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   },
 
   async _editVirusTotal() {
-    const apiKey = prompt('Nueva API key de VirusTotal (deja vacio para cancelar):');
+    const apiKey = prompt(t('integrations.vt_edit_prompt'));
     if (!apiKey && apiKey !== '') return;
     if (apiKey === '') return;
     try {
       await Api.put('/api/integrations/virustotal/config', { api_key: apiKey.trim() });
-      UI.toast('API key actualizada', 'success');
+      UI.toast(t('integrations.vt_key_updated'), 'success');
       await this._initVirusTotal();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   },
 
   async _deleteVirusTotal() {
-    if (!confirm('¿Eliminar la configuracion de VirusTotal?')) return;
+    if (!confirm(t('integrations.vt_delete_confirm'))) return;
     try {
       await Api.delete('/api/integrations/virustotal/config');
-      UI.toast('Configuracion eliminada', 'info');
+      UI.toast(t('integrations.vt_deleted'), 'info');
       await this._initVirusTotal();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
   },
 
@@ -1591,16 +1589,16 @@ const ViewIntegrations = {
     const btn = document.getElementById('vt-test');
     if (!btn) return;
     btn.disabled = true;
-    btn.textContent = '⏳ Probando...';
+    btn.textContent = `⏳ ${t('integrations.vt_testing')}`;
     try {
       const result = await Api.post('/api/integrations/virustotal/test', {});
-      const msg = `Conectado como: ${result.user || 'usuario'}\nCuota: ${result.quota_used || 0}/${result.quota_limit || '?'} requests hoy`;
+      const msg = t('integrations.vt_connected', { user: result.user || 'usuario', used: result.quota_used || 0, limit: result.quota_limit || '?' });
       UI.toast(msg, 'success', 5000);
     } catch (e) {
-      UI.toast('Conexion fallida: ' + e.message, 'error');
+      UI.toast(t('integrations.vt_conn_failed', { error: e.message }), 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = '🔗 Probar conexion';
+      btn.textContent = `🔗 ${t('integrations.vt_test_btn')}`;
     }
   },
 
@@ -1611,7 +1609,7 @@ const ViewIntegrations = {
     try {
       const cfg = await Api.integrations_forms.getConfig();
       this._renderFormsBody(cfg);
-      if (badge) badge.innerHTML = `<span style="font-size:11px;background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:999px;font-weight:600;">Configurado</span>`;
+      if (badge) badge.innerHTML = `<span style="font-size:11px;background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:999px;font-weight:600;">${t('integrations.forms_configured')}</span>`;
     } catch (e) {
       if (body) body.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
@@ -1624,20 +1622,20 @@ const ViewIntegrations = {
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px;">
 
-        <!-- Entrante: MS Forms / Power Automate -->
+        <!-- Inbound: MS Forms / Power Automate -->
         <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
-          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">MS Forms / Power Automate — Entrante</div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${t('integrations.forms_inbound_title')}</div>
           <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-            Configura un flujo de Power Automate con la accion HTTP que envie un POST JSON a la URL siguiente cuando alguien responda tu formulario de MS Forms.
+            ${t('integrations.forms_inbound_desc')}
           </p>
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">URL del webhook</label>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_webhook_label')}</label>
           <div style="display:flex;gap:6px;margin-bottom:10px;">
             <input class="input" style="font-family:monospace;font-size:11px;flex:1;" value="${UI.esc(webhookUrl)}" readonly id="forms-webhook-url">
-            <button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('forms-webhook-url').value).then(()=>UI.toast('Copiado','success'))">Copiar</button>
-            <button class="btn btn-sm" id="forms-regen-token" title="Regenerar token (invalida el anterior)">Regenerar</button>
+            <button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('forms-webhook-url').value).then(()=>UI.toast(t('integrations.forms_copied'),'success'))">${t('integrations.forms_copy_btn')}</button>
+            <button class="btn btn-sm" id="forms-regen-token" title="${t('integrations.forms_regen_btn')}">${t('integrations.forms_regen_btn')}</button>
           </div>
           <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-bottom:12px;">
-            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">Formato del payload JSON esperado:</div>
+            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">${t('integrations.forms_payload_label')}</div>
             <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
   "supplier": "Nombre del proveedor",
   "title": "Titulo del cuestionario (opcional)",
@@ -1645,22 +1643,22 @@ const ViewIntegrations = {
   "submitted_by": "email@externo.com"
 }</pre>
           </div>
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Campo identificador del proveedor</label>
-          <input class="input" id="forms-supplier-field" placeholder="supplier (nombre del campo JSON con el nombre del proveedor)" value="${UI.esc(cfg.supplier_field_name || '')}" style="width:100%;margin-bottom:10px;">
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Plantilla TPRM por defecto</label>
-          <input class="input" id="forms-template" placeholder="codigo de plantilla (p.ej. iso27001_basic)" value="${UI.esc(cfg.default_template_code || '')}" style="width:100%;">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_supplier_field_label')}</label>
+          <input class="input" id="forms-supplier-field" placeholder="${t('integrations.forms_supplier_field_ph')}" value="${UI.esc(cfg.supplier_field_name || '')}" style="width:100%;margin-bottom:10px;">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_template_label')}</label>
+          <input class="input" id="forms-template" placeholder="${t('integrations.forms_template_ph')}" value="${UI.esc(cfg.default_template_code || '')}" style="width:100%;">
         </div>
 
-        <!-- Saliente: Monday.com -->
+        <!-- Outbound: Monday.com -->
         <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
-          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">Monday.com — Saliente</div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${t('integrations.forms_outbound_title')}</div>
           <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-            Cuando se complete un cuestionario (interno o externo), RiskHub enviara un POST JSON a la URL configurada. Usa la URL de webhook de una automatizacion de Monday.com o un elemento de integracion.
+            ${t('integrations.forms_outbound_desc')}
           </p>
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">URL del webhook Monday.com</label>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_monday_label')}</label>
           <input class="input" id="forms-monday-url" placeholder="https://hooks.monday.com/..." value="${UI.esc(cfg.monday_webhook_url || '')}" style="width:100%;margin-bottom:12px;">
           <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-bottom:12px;">
-            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">Payload enviado a Monday.com:</div>
+            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">${t('integrations.forms_payload_sent_label')}</div>
             <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
   "event": "questionnaire_submitted",
   "questionnaire_code": "SEQ-0001",
@@ -1671,13 +1669,13 @@ const ViewIntegrations = {
 }</pre>
           </div>
           <p style="font-size:11px;color:var(--text-muted);">
-            En Monday.com: ve a tu tablero, crea una automatizacion "Webhook" o usa "Integraciones" → "Webhooks" para obtener la URL.
+            ${t('integrations.forms_monday_hint')}
           </p>
         </div>
       </div>
 
       <div style="display:flex;justify-content:flex-end;margin-top:16px;">
-        <button class="btn btn-primary" id="forms-save">Guardar configuracion</button>
+        <button class="btn btn-primary" id="forms-save">${t('integrations.forms_save_btn')}</button>
       </div>`;
 
     document.getElementById('forms-save').onclick = async () => {
@@ -1687,17 +1685,17 @@ const ViewIntegrations = {
           default_template_code: document.getElementById('forms-template')?.value.trim() || null,
           monday_webhook_url: document.getElementById('forms-monday-url')?.value.trim() || null,
         });
-        UI.toast('Configuracion guardada', 'success');
+        UI.toast(t('integrations.forms_saved'), 'success');
       } catch (e) { UI.toast(e.message, 'error'); }
     };
 
     document.getElementById('forms-regen-token').onclick = async () => {
-      if (!await UI.confirm('Regenerar el token invalida el webhook anterior. Confirmas?')) return;
+      if (!await UI.confirm(t('integrations.forms_regen_confirm'))) return;
       try {
         const r = await Api.integrations_forms.regenerateToken();
         const newUrl = window.location.origin + '/api/integrations/forms/inbound/' + r.inbound_token;
         document.getElementById('forms-webhook-url').value = newUrl;
-        UI.toast('Token regenerado', 'success');
+        UI.toast(t('integrations.forms_regen_ok'), 'success');
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },

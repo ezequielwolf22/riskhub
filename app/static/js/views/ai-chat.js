@@ -11,7 +11,7 @@ const ViewAiChat = (() => {
   async function render(main) {
     main.innerHTML = UI.sectionHeader(
       t('ai.chat_title'),
-      'Consulta sobre riesgos, controles, activos e incidentes de tu organizacion.'
+      t('ai_chat.subtitle')
     ) + `
       <div style="display:grid;grid-template-columns:1fr 280px;gap:16px;align-items:start;" class="ai-chat-grid">
         <div>
@@ -47,13 +47,7 @@ const ViewAiChat = (() => {
 
     // Mensaje inicial si no hay historial
     if (_messages.length === 0) {
-      _appendAssistant(
-        'Hola, soy tu agente de seguridad de RiskHub. ' +
-        'Puedo ayudarte a analizar riesgos, revisar controles, interpretar incidentes y mucho mas. ' +
-        'Ademas, cuando lo necesites puedo proponer acciones concretas — crear tareas, registrar incidentes ' +
-        'o actualizar riesgos — que podras confirmar o rechazar antes de que se ejecuten.\n\n' +
-        'Cuanto mas documentacion hayas subido, mas precisas seran mis respuestas. ¿En que puedo ayudarte?'
-      );
+      _appendAssistant(t('ai_chat.initial_greeting'));
     }
   }
 
@@ -164,7 +158,7 @@ const ViewAiChat = (() => {
         <span style="font-size:16px;line-height:1;">${icon}</span>
         <div>
           <div style="font-weight:600;color:var(--brand-purple);margin-bottom:2px;">
-            Accion propuesta por el agente
+            ${t('ai_chat.action_proposed')}
           </div>
           <div style="color:var(--text-base);line-height:1.5;">${UI.esc(action.label)}</div>
         </div>
@@ -341,7 +335,7 @@ const ViewAiChat = (() => {
     if (hist) hist.innerHTML = '';
     const fb = document.getElementById('chat-feedback');
     if (fb) fb.style.display = 'none';
-    _appendAssistant('Conversacion reiniciada. Como puedo ayudarte?');
+    _appendAssistant(t('ai_chat.history_reset'));
   }
 
   async function _sendFeedback(rating) {
@@ -353,8 +347,8 @@ const ViewAiChat = (() => {
       });
       const fb = document.getElementById('chat-feedback');
       if (fb) fb.innerHTML = `<p style="font-size:12px;color:var(--risk-low);padding:8px 14px;">
-        Gracias por tu valoracion (${rating}/5)</p>`;
-      UI.toast('Valoracion registrada', 'success');
+        ${t('ai_chat.rating_saved_msg', { rating })}</p>`;
+      UI.toast(t('ai_chat.rating_saved'), 'success');
     } catch (e) {
       UI.toast(t('common.error'), 'error');
     }
