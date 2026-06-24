@@ -589,10 +589,12 @@ const ViewSuppliers = (() => {
 
   let _currentSlas = [];
   let _currentContacts = [];
+  let _currentEditedSupplier = null;
 
   let _docPendingFile = null;
 
   function _openForm(s) {
+    _currentEditedSupplier = s || null;
     _currentSlas = s?.slas ? JSON.parse(JSON.stringify(s.slas)) : [];
     _currentContacts = s?.additional_contacts ? JSON.parse(JSON.stringify(s.additional_contacts)) : [];
     UI.modal(s ? `Editar ${s.code}` : 'Nuevo proveedor', _formHtml(s), {
@@ -707,7 +709,7 @@ const ViewSuppliers = (() => {
       _currentGate = gate;
     } catch (_) { gate = null; }
 
-    const stage = sup.lifecycle_stage || 'active';
+    const stage = sup.lifecycle_stage || '';
     const concentrationFlag = sup.concentration_risk_flag;
 
     const stageButtons = LIFECYCLE_STAGES().map(st => `
@@ -988,7 +990,7 @@ const ViewSuppliers = (() => {
   function _openSignOffDialog(supplierId, itemId, skipMode) {
     const title = skipMode ? 'Omitir item: ' + itemId : 'Registrar firma: ' + itemId;
     UI.modal(title, `
-      <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="span2" style="display:flex;flex-direction:column;gap:10px;">
         ${!skipMode ? `
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Firmado por</label>
@@ -1043,11 +1045,11 @@ const ViewSuppliers = (() => {
   // --- Bypass dialog ---
   function _openBypassDialog(supplierId) {
     UI.modal('Bypass del gate de seguridad', `
-      <div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px;margin-bottom:12px;font-size:12px;">
-        <strong>Atencion:</strong> El bypass omite los requisitos del gate basados en score.
-        La justificacion quedara registrada en el log de auditoria.
-      </div>
-      <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="span2" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px;font-size:12px;">
+          <strong>Atencion:</strong> El bypass omite los requisitos del gate basados en score.
+          La justificacion quedara registrada en el log de auditoria.
+        </div>
         <div>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion * (obligatoria)</label>
           <textarea id="bypass-justification" class="input" rows="3"
@@ -1091,22 +1093,32 @@ const ViewSuppliers = (() => {
     ].filter(c => !existingChain.find(i => i.id === c.id && i.applicable));
 
     UI.modal('Forzar controles adicionales', `
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
-        Marca los controles que deben ser obligatorios para este proveedor,
-        independientemente del score o las condiciones regulatorias.
-      </p>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
-        ${candidates.map(c => `
-          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
-            <input type="checkbox" class="force-ctrl-chk" value="${c.id}">
-            ${UI.esc(c.label)}
-          </label>`).join('')}
-        ${!candidates.length ? '<p style="font-size:12px;color:var(--text-muted);">Todos los items ya estan en la cadena.</p>' : ''}
-      </div>
-      <div>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion</label>
-        <textarea id="force-justification" class="input" rows="2"
-          placeholder="Razon para forzar estos controles..."></textarea>
+      <div class="span2" style="display:flex;flex-direction:column;gap:14px;">
+        <p style="font-size:12px;color:var(--text-muted);margin:0;">
+          Marca los controles que deben ser obligatorios para este proveedor,
+          independientemente del score o las condiciones regulatorias.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${candidates.map(c => `
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">
+              <input type="checkbox" class="force-ctrl-chk" value="${c.id}">
+              ${UI.esc(c.label)}
+            </label>`).join('')}
+          ${!candidates.length ? '<p style="font-size:12px;color:var(--text-muted);margin:0;">Todos los items ya estan en la cadena.</p>' : ''}
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-top:4px;">
+            <input type="checkbox" id="force-ctrl-other-chk" value="__other__">
+            Otro (especificar):
+            <input id="force-ctrl-other-text" class="input" style="flex:1;font-size:12px;"
+              placeholder="Nombre del control personalizado..."
+              onclick="event.stopPropagation()"
+              oninput="document.getElementById('force-ctrl-other-chk').checked = this.value.trim().length > 0">
+          </label>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion</label>
+          <textarea id="force-justification" class="input" rows="2"
+            placeholder="Razon para forzar estos controles..."></textarea>
+        </div>
       </div>
     `, {
       actions: `
@@ -1115,7 +1127,12 @@ const ViewSuppliers = (() => {
       width: '460px',
     });
     document.getElementById('force-confirm').onclick = async () => {
-      const checked = [...document.querySelectorAll('.force-ctrl-chk:checked')].map(c => c.value);
+      const checked = [...document.querySelectorAll('.force-ctrl-chk:checked')].map(c => c.value)
+        .filter(v => v !== '__other__');
+      const otherText = document.getElementById('force-ctrl-other-text')?.value.trim() || '';
+      if (document.getElementById('force-ctrl-other-chk')?.checked && otherText) {
+        checked.push(otherText);
+      }
       if (!checked.length) { UI.toast('Selecciona al menos un control', 'error'); return; }
       const justification = document.getElementById('force-justification')?.value.trim() || '';
       try {
@@ -1142,7 +1159,7 @@ const ViewSuppliers = (() => {
   // --- Decision dialog ---
   function _openDecisionDialog(supplierId) {
     UI.modal('Decision formal de ciberseguridad', `
-      <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="span2" style="display:flex;flex-direction:column;gap:12px;">
         <div>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Decision *</label>
           <div style="display:flex;gap:8px;">
@@ -1253,7 +1270,7 @@ const ViewSuppliers = (() => {
     const chain = cfg.sign_off_chain || [];
 
     UI.modal('Configuracion del gate de onboarding', `
-      <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="span2" style="display:flex;flex-direction:column;gap:16px;">
         <div>
           <strong style="font-size:13px;color:var(--brand-purple);display:block;margin-bottom:8px;">Umbrales de score TPRM</strong>
           <div style="display:flex;gap:12px;flex-wrap:wrap;">
@@ -1304,6 +1321,15 @@ const ViewSuppliers = (() => {
             <em>depends_on</em>: ID del item que debe firmarse antes.
             <em>required_if</em>: is_data_processor, is_nis2, is_dora, cross_border_transfers.
           </p>
+          <div style="display:grid;grid-template-columns:120px 1fr 160px 120px 90px auto 32px;gap:8px;margin-bottom:4px;">
+            <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;">ID</span>
+            <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;">Etiqueta</span>
+            <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;">Required if</span>
+            <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;">Depends on</span>
+            <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;">Score &gt;</span>
+            <span style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;">Flags</span>
+            <span></span>
+          </div>
           <div id="gc-chain-list">
             ${chain.map((it, i) => _gateChainItemRow(it, i)).join('')}
           </div>
@@ -1313,7 +1339,6 @@ const ViewSuppliers = (() => {
       actions: `
         <button class="btn" onclick="UI.closeModal()">Cancelar</button>
         <button class="btn btn-primary" id="gc-save">Guardar configuracion</button>`,
-      width: '640px',
     });
 
     document.getElementById('gc-add-item').onclick = () => {
@@ -1359,24 +1384,24 @@ const ViewSuppliers = (() => {
   function _gateChainItemRow(it, idx) {
     const reqIfOpts = ['', 'is_data_processor', 'is_nis2', 'is_dora', 'cross_border_transfers', 'is_ens'];
     return `
-      <div class="gc-chain-row" style="display:grid;grid-template-columns:80px 1fr 90px 90px 80px 24px;gap:4px;align-items:center;margin-bottom:4px;">
-        <input class="input gc-item-id" style="font-size:11px;" placeholder="ID unico" value="${UI.esc(it.id || '')}">
-        <input class="input gc-item-label" style="font-size:11px;" placeholder="Etiqueta visible" value="${UI.esc(it.label || '')}">
-        <select class="input gc-item-req-if" style="font-size:11px;">
+      <div class="gc-chain-row" style="display:grid;grid-template-columns:120px 1fr 160px 120px 90px auto 32px;gap:8px;align-items:center;margin-bottom:6px;">
+        <input class="input gc-item-id" style="font-size:12px;" placeholder="ID unico" value="${UI.esc(it.id || '')}">
+        <input class="input gc-item-label" style="font-size:12px;" placeholder="Etiqueta visible" value="${UI.esc(it.label || '')}">
+        <select class="input gc-item-req-if" style="font-size:12px;">
           ${reqIfOpts.map(o => `<option value="${o}" ${it.required_if === o ? 'selected' : ''}>${o || 'siempre'}</option>`).join('')}
         </select>
-        <input class="input gc-item-dep" style="font-size:11px;" placeholder="dep: ID" value="${UI.esc(it.depends_on || '')}">
-        <input class="input gc-item-score-gate" type="number" min="0" max="100" style="font-size:11px;" placeholder="score>" value="${it.score_gate || ''}">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-          <label title="Obligatorio siempre" style="font-size:9px;cursor:pointer;">
-            <input type="checkbox" class="gc-item-required" ${it.required ? 'checked' : ''}> req
+        <input class="input gc-item-dep" style="font-size:12px;" placeholder="depends_on ID" value="${UI.esc(it.depends_on || '')}">
+        <input class="input gc-item-score-gate" type="number" min="0" max="100" style="font-size:12px;" placeholder="score >" value="${it.score_gate || ''}">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <label title="Obligatorio siempre" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
+            <input type="checkbox" class="gc-item-required" ${it.required ? 'checked' : ''}> Obligatorio
           </label>
-          <label title="Se puede omitir" style="font-size:9px;cursor:pointer;">
-            <input type="checkbox" class="gc-item-bypass" ${it.bypass_allowed !== false ? 'checked' : ''}> omit
+          <label title="Se puede omitir con justificacion" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
+            <input type="checkbox" class="gc-item-bypass" ${it.bypass_allowed !== false ? 'checked' : ''}> Omitible
           </label>
         </div>
-        <button type="button" style="font-size:11px;background:none;border:none;color:#dc2626;cursor:pointer;padding:0;"
-          onclick="this.closest('.gc-chain-row').remove()">X</button>
+        <button type="button" style="font-size:12px;background:none;border:none;color:#dc2626;cursor:pointer;padding:0;line-height:1;"
+          onclick="this.closest('.gc-chain-row').remove()" title="Eliminar item">X</button>
       </div>`;
   }
 
@@ -1791,18 +1816,27 @@ const ViewSuppliers = (() => {
         wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:4px 0 0;">Sin documentos adjuntos.</p>';
         return;
       }
+      const canEdit = Auth.canEdit();
       wrap.innerHTML = docs.map(d => {
         const size = d.size ? (d.size > 1024*1024 ? (d.size/1024/1024).toFixed(1)+' MB' : (d.size/1024).toFixed(0)+' KB') : '-';
         const date = d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('es-ES') : '-';
+        const isAnalyzable = /\.(pdf|docx?|xlsx?|txt|csv)$/i.test(d.filename);
         return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;background:var(--bg-2);">
           <div style="flex:1;min-width:0;">
             <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${UI.esc(d.filename)}</div>
             <div style="font-size:11px;color:var(--text-muted);">${size} &middot; ${date}${d.description ? ' &middot; ' + UI.esc(d.description) : ''}</div>
           </div>
+          ${canEdit && isAnalyzable ? `<button class="btn btn-sm sup-doc-analyze" data-doc-id="${d.id}" data-doc-name="${UI.esc(d.filename)}"
+            style="background:var(--brand-purple);color:#fff;border-color:var(--brand-purple);white-space:nowrap;"
+            title="Analizar con IA y autocompletar campos vacios de la ficha">Analizar con IA</button>` : ''}
           <a href="${Api.suppliers.downloadDocumentUrl(supplierId, d.id)}" target="_blank" class="btn btn-sm" title="Descargar">Descargar</a>
-          ${Auth.canEdit() ? `<button class="btn btn-sm btn-danger sup-doc-del" data-doc-id="${d.id}" title="Eliminar">X</button>` : ''}
+          ${canEdit ? `<button class="btn btn-sm btn-danger sup-doc-del" data-doc-id="${d.id}" title="Eliminar">X</button>` : ''}
         </div>`;
       }).join('');
+
+      wrap.querySelectorAll('.sup-doc-analyze').forEach(btn => {
+        btn.onclick = () => _analyzeDocumentAI(supplierId, btn.dataset.docId, btn.dataset.docName, btn);
+      });
       wrap.querySelectorAll('.sup-doc-del').forEach(btn => {
         btn.onclick = async () => {
           if (!confirm('Eliminar este documento?')) return;
@@ -1815,6 +1849,56 @@ const ViewSuppliers = (() => {
       });
     } catch (e) {
       wrap.innerHTML = `<p style="font-size:12px;color:var(--risk-high);">${UI.esc(e.message)}</p>`;
+    }
+  }
+
+  async function _analyzeDocumentAI(supplierId, docId, docName, btn) {
+    const origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Analizando...';
+    try {
+      const result = await Api.suppliers.analyzeDocument(supplierId, docId);
+      if (!result.ok) {
+        UI.toast(result.message || 'Error en el analisis', 'error');
+        return;
+      }
+      const fields = result.updated_fields || [];
+      if (!fields.length) {
+        UI.toast('El agente no encontro campos nuevos que anadir (todos ya estaban rellenos).', 'info');
+        return;
+      }
+      const fieldLabels = {
+        name: 'Nombre', description: 'Descripcion', services: 'Servicios',
+        category: 'Categoria', vendor_type: 'Tipo de proveedor',
+        contact_name: 'Contacto principal', contact_email: 'Email principal',
+        cc_email: 'Email CC', website: 'Web', country_code: 'Pais',
+        contract_ref: 'Referencia contrato', contract_expiry: 'Vencimiento contrato',
+        location: 'Ubicacion', department: 'Departamento',
+        certifications: 'Certificaciones', notes: 'Notas',
+        is_data_processor: 'Encargado GDPR', processes_personal_data: 'Trata datos personales',
+        cross_border_transfers: 'Transferencias internacionales',
+        is_critical: 'Critico NIS2', is_nis2: 'NIS2', is_dora: 'DORA', is_ens: 'ENS',
+        data_sensitivity: 'Sensibilidad datos', data_volume: 'Volumen datos',
+        system_access_type: 'Acceso a sistemas', business_criticality: 'Criticidad negocio',
+        geographic_risk: 'Riesgo geografico', business_importance: 'Importancia negocio',
+        slas: 'SLAs', additional_contacts: 'Contactos adicionales',
+      };
+      const fieldList = fields.map(f => fieldLabels[f] || f).join(', ');
+      UI.toast(`${fields.length} campo(s) actualizados: ${fieldList}`, 'success');
+
+      // Recargar la ficha con los datos actualizados
+      try {
+        const freshSup = await Api.suppliers.get(supplierId);
+        UI.closeModal();
+        _openForm(freshSup);
+      } catch (_) {
+        // Si falla la recarga, al menos los datos ya estan guardados
+      }
+    } catch (e) {
+      UI.toast(e.message || 'Error analizando el documento', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origLabel;
     }
   }
 

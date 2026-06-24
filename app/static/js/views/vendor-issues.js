@@ -302,7 +302,7 @@ const ViewVendorIssues = (() => {
 
     const slaBreachesHtml = _slaBreachwesHtml(supplierSlas, issue?.sla_breaches || []);
 
-    return `<div class="form-grid" style="max-height:70vh;overflow-y:auto;padding-right:4px;">
+    return `<div class="span2 form-grid" style="max-height:70vh;overflow-y:auto;padding-right:4px;">
       <!-- Proveedor (solo en creacion) -->
       ${!issue ? `
       <div class="span2">
