@@ -701,6 +701,20 @@ def _migrate_columns() -> None:
             "risk_snapshots",
             "id",
         ),
+        # v5.0 — MS Forms polling: alta automatica de proveedores (Via 3)
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_poll_enabled BOOLEAN DEFAULT 0", "form_integration_configs", "msforms_poll_enabled"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_tenant_id VARCHAR(255)", "form_integration_configs", "msforms_tenant_id"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_client_id VARCHAR(255)", "form_integration_configs", "msforms_client_id"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_client_secret_enc TEXT", "form_integration_configs", "msforms_client_secret_enc"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_form_id VARCHAR(255)", "form_integration_configs", "msforms_form_id"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_poll_interval_hours INTEGER DEFAULT 4", "form_integration_configs", "msforms_poll_interval_hours"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_last_poll_at DATETIME", "form_integration_configs", "msforms_last_poll_at"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_last_response_ts VARCHAR(64)", "form_integration_configs", "msforms_last_response_ts"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_field_mapping JSON", "form_integration_configs", "msforms_field_mapping"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_auto_ai_review BOOLEAN DEFAULT 1", "form_integration_configs", "msforms_auto_ai_review"),
+        ("ALTER TABLE form_integration_configs ADD COLUMN msforms_pa_callback_url VARCHAR(500)", "form_integration_configs", "msforms_pa_callback_url"),
+        ("ALTER TABLE suppliers ADD COLUMN msforms_origin BOOLEAN DEFAULT 0", "suppliers", "msforms_origin"),
+        ("ALTER TABLE suppliers ADD COLUMN msforms_responder VARCHAR(255)", "suppliers", "msforms_responder"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

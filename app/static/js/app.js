@@ -304,6 +304,11 @@ function init() {
     };
   };
 
+  // Selector de organizacion para superadmin
+  if (u && u.role === 'superadmin') {
+    _initOrgSelector();
+  }
+
   // Ocultar enlaces admin si no es admin
   if (!Auth.isAdmin()) {
     document.querySelectorAll('[data-admin]').forEach(el => el.style.display = 'none');
@@ -437,6 +442,69 @@ function init() {
   }
 
   navigate();
+}
+
+async function _initOrgSelector() {
+  const container = document.getElementById('org-context-selector');
+  if (!container) return;
+  try {
+    const orgs = await Api.get('/api/organizations/');
+    if (!Array.isArray(orgs) || orgs.length === 0) return;
+
+    const saved = localStorage.getItem('riskhub_active_org') || '';
+    const selectedOrg = orgs.find(o => String(o.id) === saved);
+    const label = selectedOrg ? selectedOrg.name : 'Todas las orgs';
+
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.innerHTML = `
+      <div class="org-ctx-chip" id="org-ctx-chip" title="Filtrar por organizacion">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span id="org-ctx-label">${UI.esc(label)}</span>
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div id="org-ctx-dropdown" class="org-ctx-dropdown" style="display:none;">
+        <div class="org-ctx-opt ${!saved ? 'org-ctx-opt--active' : ''}" data-org-id="">
+          Todas las organizaciones
+        </div>
+        ${orgs.map(o => `
+          <div class="org-ctx-opt ${String(o.id) === saved ? 'org-ctx-opt--active' : ''}" data-org-id="${o.id}">
+            <span>${UI.esc(o.name)}</span>
+            <small>${UI.esc(o.plan || '')}</small>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    const chip = document.getElementById('org-ctx-chip');
+    const dd = document.getElementById('org-ctx-dropdown');
+
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dd.style.display = dd.style.display === 'none' ? '' : 'none';
+    });
+
+    dd.querySelectorAll('.org-ctx-opt').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const orgId = opt.dataset.orgId;
+        if (orgId) {
+          localStorage.setItem('riskhub_active_org', orgId);
+        } else {
+          localStorage.removeItem('riskhub_active_org');
+        }
+        dd.style.display = 'none';
+        // Re-renderizar el selector y recargar la vista actual
+        _initOrgSelector();
+        navigate();
+      });
+    });
+
+    document.addEventListener('click', () => {
+      if (dd) dd.style.display = 'none';
+    }, { once: false });
+
+  } catch (_) { /* silencioso */ }
 }
 
 function _showShortcutsHelp() {

@@ -208,6 +208,20 @@ def record_onboarding_decision(
         db.commit()
         result["auto_promoted"] = True
 
+    # Retorno de decision a Power Automate si el proveedor vino via MS Forms (Via 3)
+    try:
+        from app.services.msforms_service import notify_pa_decision_bg
+        notify_pa_decision_bg(
+            supplier_id=sup.id,
+            org_id=sup.organization_id,
+            decision=decision,
+            notes=notes,
+            conditions=conditions,
+            decided_by_email=current_user.email,
+        )
+    except Exception:
+        pass  # no bloquear la respuesta HTTP por el webhook saliente
+
     return result
 
 

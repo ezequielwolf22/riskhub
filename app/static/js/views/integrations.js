@@ -1619,12 +1619,34 @@ const ViewIntegrations = {
     const body = document.getElementById('forms-body');
     if (!body) return;
     const webhookUrl = window.location.origin + '/api/integrations/forms/inbound/' + (cfg.inbound_token || '...');
+
+    const lastPollStr = cfg.msforms_last_poll_at
+      ? new Date(cfg.msforms_last_poll_at).toLocaleString()
+      : 'Nunca';
+    const pollActive = cfg.msforms_poll_enabled && cfg.msforms_form_id;
+    const pollBadge = pollActive
+      ? `<span style="font-size:11px;background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:999px;font-weight:600;">Activo</span>`
+      : `<span style="font-size:11px;background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:999px;">Inactivo</span>`;
+
+    // Build field mapping rows
+    const mappingEntries = Object.entries(cfg.msforms_field_mapping || {});
+    const mappingRows = mappingEntries.map(([k, v]) =>
+      `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+        <input class="input" style="flex:1;font-size:12px;" placeholder="Pregunta del formulario" value="${UI.esc(k)}" data-map-key>
+        <span style="color:var(--text-muted);">→</span>
+        <select class="input" style="width:160px;font-size:12px;" data-map-val>
+          ${ViewIntegrations._mapFieldOptions(v)}
+        </select>
+        <button class="btn btn-sm" style="padding:2px 8px;" onclick="this.closest('div').remove()">x</button>
+      </div>`
+    ).join('');
+
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px;">
 
-        <!-- Inbound: MS Forms / Power Automate -->
+        <!-- Via 1: Inbound webhook MS Forms / Power Automate -->
         <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
-          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${t('integrations.forms_inbound_title')}</div>
+          <div style="font-weight:700;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Via 1 — Webhook entrante (Power Automate)</div>
           <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
             ${t('integrations.forms_inbound_desc')}
           </p>
@@ -1649,9 +1671,9 @@ const ViewIntegrations = {
           <input class="input" id="forms-template" placeholder="${t('integrations.forms_template_ph')}" value="${UI.esc(cfg.default_template_code || '')}" style="width:100%;">
         </div>
 
-        <!-- Outbound: Monday.com -->
+        <!-- Via 2: Outbound Monday.com -->
         <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
-          <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${t('integrations.forms_outbound_title')}</div>
+          <div style="font-weight:700;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Via 2 — Saliente Monday.com</div>
           <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
             ${t('integrations.forms_outbound_desc')}
           </p>
@@ -1671,6 +1693,141 @@ const ViewIntegrations = {
           <p style="font-size:11px;color:var(--text-muted);">
             ${t('integrations.forms_monday_hint')}
           </p>
+        </div>
+      </div>
+
+      <!-- Via 3: Alta automatica via polling -->
+      <div style="border:2px solid var(--brand-purple,#59008D);border-radius:10px;padding:20px;margin-top:20px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--brand-purple,#59008D)" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          <span style="font-weight:700;font-size:14px;color:var(--brand-purple,#59008D);">Via 3 — Alta automatica de proveedores (polling MS Forms)</span>
+          ${pollBadge}
+          <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Ultimo sync: ${UI.esc(lastPollStr)}</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px;">
+          RiskHub consulta la API de MS Forms cada <b>${cfg.msforms_poll_interval_hours || 4} horas</b>.
+          Por cada respuesta nueva crea automaticamente un proveedor, genera un cuestionario con las respuestas
+          del formulario y lanza el analisis IA. El usuario entra, revisa y decide los pasos siguientes.
+        </p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Azure Tenant ID *</label>
+            <input class="input" id="msf-tenant" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              value="${UI.esc(cfg.msforms_tenant_id || '')}">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Azure Portal > Azure Active Directory > Overview</div>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Client ID (App Registration) *</label>
+            <input class="input" id="msf-client" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              value="${UI.esc(cfg.msforms_client_id || '')}">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">App Registrations > tu app > Application (client) ID</div>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">
+              Client Secret *
+              ${cfg.msforms_secret_configured ? '<span style="color:#059669;font-size:10px;font-weight:400;">(configurado — deja en blanco para mantener)</span>' : ''}
+            </label>
+            <input type="password" class="input" id="msf-secret"
+              placeholder="${cfg.msforms_secret_configured ? 'Dejar en blanco para mantener el actual' : 'Secreto del cliente Azure AD'}">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">App Registrations > tu app > Certificates &amp; secrets</div>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Form ID *</label>
+            <input class="input" id="msf-formid" placeholder="Identificador del formulario MS Forms"
+              value="${UI.esc(cfg.msforms_form_id || '')}">
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">URL del formulario: ...forms.office.com/...?id=<b>FORM_ID</b></div>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Intervalo de polling (horas)</label>
+            <input type="number" min="1" max="168" class="input" id="msf-interval"
+              value="${cfg.msforms_poll_interval_hours || 4}" style="width:100px;">
+          </div>
+          <div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:4px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="msf-poll-enabled" ${cfg.msforms_poll_enabled ? 'checked' : ''}>
+              Polling automatico habilitado
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:6px;">
+              <input type="checkbox" id="msf-auto-ai" ${cfg.msforms_auto_ai_review !== false ? 'checked' : ''}>
+              Analisis IA automatico al crear proveedor
+            </label>
+          </div>
+        </div>
+
+        <!-- Mapeo de campos -->
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600;font-size:12px;margin-bottom:6px;">
+            Mapeo de campos del formulario a campos de proveedor
+            <span style="font-weight:400;color:var(--text-muted);font-size:11px;">
+              — indica que pregunta del formulario corresponde a cada campo
+            </span>
+          </div>
+          <div id="msf-mapping-rows" style="margin-bottom:6px;">${mappingRows}</div>
+          <button class="btn btn-sm" onclick="ViewIntegrations._addMappingRow()">+ Anadir campo</button>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+            Campos destino: <code>name</code>, <code>description</code>, <code>services</code>,
+            <code>category</code>, <code>contact_name</code>, <code>contact_email</code>,
+            <code>website</code>, <code>contract_ref</code>
+          </div>
+        </div>
+
+        <!-- Callback URL: retorno de decisiones a Power Automate -->
+        <div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
+          <div style="font-weight:700;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">
+            Retorno de decisiones → Power Automate
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+            Cuando el analista registra una decision de seguridad (condicional, aprobado o rechazado)
+            sobre un proveedor que entro via MS Forms, RiskHub envia automaticamente el resultado
+            a este webhook de Power Automate para notificar al iniciador del proceso.
+          </p>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">URL webhook Power Automate (callback de decisiones)</label>
+          <input class="input" id="msf-pa-callback" placeholder="https://prod-XX.westeurope.logic.azure.com/workflows/..."
+            value="${UI.esc(cfg.msforms_pa_callback_url || '')}" style="width:100%;margin-bottom:10px;">
+          <details style="font-size:12px;">
+            <summary style="cursor:pointer;color:var(--brand-purple,#59008D);font-weight:600;">Payload que recibe Power Automate</summary>
+            <pre style="font-size:10px;background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-top:6px;white-space:pre-wrap;">{
+  "event": "supplier.decision",
+  "decision": "conditional | approved | rejected",
+  "supplier_code": "SUP-0001",
+  "supplier_name": "Acme Corp",
+  "supplier_contact_email": "contact@acme.com",
+  "msforms_responder": "form-submitter@acme.com",
+  "notes": "Pendiente de certificado ISO 27001",
+  "conditions": [{"description": "Aportar SOC2 Type II", "due_days": 30}],
+  "decided_by": "analyst@company.com",
+  "decided_at": "2026-06-24T10:30:00Z",
+  "score": 72,
+  "risk_level": "medium"
+}</pre>
+          </details>
+        </div>
+
+        <!-- Permisos Azure requeridos -->
+        <details style="margin-bottom:14px;">
+          <summary style="font-size:12px;font-weight:600;cursor:pointer;color:var(--brand-purple,#59008D);">
+            Permisos Azure AD requeridos (como configurar)
+          </summary>
+          <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:12px;margin-top:8px;font-size:12px;">
+            <ol style="margin:0;padding-left:18px;line-height:1.8;">
+              <li>Azure Portal &gt; <b>Azure Active Directory</b> &gt; <b>App Registrations</b> &gt; New registration</li>
+              <li>Nombre: "RiskHub Forms" — Tipo de cuenta: cuentas de tu organizacion</li>
+              <li>Una vez creada: copia el <b>Application (client) ID</b> y el <b>Directory (tenant) ID</b></li>
+              <li><b>Certificates &amp; secrets</b> &gt; New client secret — copia el valor generado</li>
+              <li><b>API Permissions</b> &gt; Add permission &gt; Microsoft Graph &gt; Application permissions</li>
+              <li>Busca y selecciona: <code>Forms.Read.All</code> (o <code>Sites.Read.All</code> si no esta disponible)</li>
+              <li>Haz clic en <b>Grant admin consent</b> (requiere rol de Administrador Global)</li>
+            </ol>
+          </div>
+        </details>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary" id="msf-save">Guardar configuracion</button>
+          <button class="btn" id="msf-sync-now" ${!cfg.msforms_form_id ? 'disabled title="Configura y guarda el Form ID primero"' : ''}>
+            Sincronizar ahora
+          </button>
+          <span id="msf-sync-result" style="font-size:12px;color:var(--text-muted);"></span>
         </div>
       </div>
 
@@ -1698,5 +1855,90 @@ const ViewIntegrations = {
         UI.toast(t('integrations.forms_regen_ok'), 'success');
       } catch (e) { UI.toast(e.message, 'error'); }
     };
+
+    document.getElementById('msf-save').onclick = async () => {
+      const mapping = {};
+      document.querySelectorAll('#msf-mapping-rows > div').forEach(row => {
+        const k = row.querySelector('[data-map-key]')?.value.trim();
+        const v = row.querySelector('[data-map-val]')?.value;
+        if (k && v) mapping[k] = v;
+      });
+      try {
+        const secret = document.getElementById('msf-secret')?.value.trim();
+        const payload = {
+          msforms_poll_enabled: document.getElementById('msf-poll-enabled')?.checked,
+          msforms_tenant_id: document.getElementById('msf-tenant')?.value.trim() || null,
+          msforms_client_id: document.getElementById('msf-client')?.value.trim() || null,
+          msforms_form_id: document.getElementById('msf-formid')?.value.trim() || null,
+          msforms_poll_interval_hours: parseInt(document.getElementById('msf-interval')?.value) || 4,
+          msforms_auto_ai_review: document.getElementById('msf-auto-ai')?.checked,
+          msforms_field_mapping: mapping,
+          msforms_pa_callback_url: document.getElementById('msf-pa-callback')?.value.trim() || null,
+        };
+        if (secret) payload.msforms_client_secret = secret;
+        await Api.integrations_forms.updateConfig(payload);
+        UI.toast('Configuracion MS Forms guardada', 'success');
+        await this._initForms();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+
+    document.getElementById('msf-sync-now').onclick = async () => {
+      const btn = document.getElementById('msf-sync-now');
+      const info = document.getElementById('msf-sync-result');
+      btn.disabled = true;
+      btn.textContent = 'Sincronizando...';
+      info.textContent = '';
+      try {
+        const res = await Api.post('/api/integrations/forms/msforms/poll-now');
+        const msg = `Revisadas: ${res.checked} | Creadas: ${res.created} | Omitidas: ${res.skipped}`;
+        info.textContent = msg;
+        info.style.color = res.errors?.length ? 'var(--risk-high)' : 'var(--risk-low,#059669)';
+        if (res.errors?.length) {
+          info.textContent += ` | Errores: ${res.errors[0]}`;
+        }
+        UI.toast(`Sync completado — ${res.created} proveedor(es) creado(s)`, 'success');
+        await this._initForms();
+      } catch (e) {
+        info.textContent = e.message;
+        info.style.color = 'var(--risk-high)';
+        UI.toast(e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sincronizar ahora';
+      }
+    };
+  },
+
+  _mapFieldOptions(selected) {
+    const opts = [
+      ['', '-- Campo destino --'],
+      ['name', 'Nombre (name)'],
+      ['description', 'Descripcion (description)'],
+      ['services', 'Servicios (services)'],
+      ['category', 'Categoria (category)'],
+      ['contact_name', 'Nombre contacto (contact_name)'],
+      ['contact_email', 'Email contacto (contact_email)'],
+      ['website', 'Sitio web (website)'],
+      ['contract_ref', 'Ref. contrato (contract_ref)'],
+    ];
+    return opts.map(([v, l]) =>
+      `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`
+    ).join('');
+  },
+
+  _addMappingRow() {
+    const container = document.getElementById('msf-mapping-rows');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:4px;';
+    div.innerHTML = `
+      <input class="input" style="flex:1;font-size:12px;" placeholder="Pregunta del formulario" data-map-key>
+      <span style="color:var(--text-muted);">→</span>
+      <select class="input" style="width:160px;font-size:12px;" data-map-val>
+        ${this._mapFieldOptions('')}
+      </select>
+      <button class="btn btn-sm" style="padding:2px 8px;" onclick="this.closest('div').remove()">x</button>
+    `;
+    container.appendChild(div);
   },
 };

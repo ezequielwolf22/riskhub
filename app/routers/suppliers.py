@@ -702,6 +702,40 @@ def delete_supplier_document(
     db.commit()
 
 
+@router.post("/{supplier_id}/documents/{doc_id}/analyze")
+def analyze_supplier_document(
+    supplier_id: int,
+    doc_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Analiza un documento adjunto con IA y autocompleta los campos vacios de la ficha."""
+    lang = get_lang(request)
+    s = db.query(Supplier).filter(Supplier.id == supplier_id).first()
+    if not s or not check_org_access(s.organization_id, current_user):
+        raise HTTPException(404, _t("suppliers.not_found", lang))
+
+    from app.models import SupplierDocument
+    doc = db.query(SupplierDocument).filter(
+        SupplierDocument.id == doc_id,
+        SupplierDocument.supplier_id == supplier_id,
+    ).first()
+    if not doc:
+        raise HTTPException(404, _t("common.not_found", lang))
+
+    from app.services.supplier_document_analyzer import analyze_document
+    result = analyze_document(db, s, doc.stored_name, doc.filename)
+
+    if result.get("ok"):
+        log_action(db, current_user.id, "analyze_document_ai", "supplier", str(s.id), {
+            "doc": doc.filename,
+            "updated_fields": result.get("updated_fields", []),
+        })
+
+    return result
+
+
 # ---------- Lifecycle endpoints ----------
 
 @router.post("/{sid}/lifecycle")

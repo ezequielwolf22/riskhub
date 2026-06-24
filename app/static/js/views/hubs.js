@@ -339,9 +339,18 @@ const ViewAiSettings = {
 
     const currentModel = cfg.model || 'claude-opus-4-6';
     const hasKey = !!cfg.has_api_key;
+    const decryptError = !!cfg.api_key_decrypt_error;
 
     el.innerHTML = `
       <div style="max-width:560px;padding:24px;display:grid;gap:24px;">
+
+        ${decryptError ? `
+        <div style="padding:14px 16px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;color:#856404;font-size:13px;line-height:1.5;">
+          <strong>Aviso: la API key no puede descifrarse.</strong><br>
+          La clave guardada en la base de datos no puede leerse porque
+          <code>RISKHUB_SECRET_KEY</code> cambio desde que se guardo.
+          Introduce la API key de nuevo para que quede cifrada con la clave actual.
+        </div>` : ''}
 
         <div class="card" style="padding:20px;display:grid;gap:16px;">
           <h3 style="margin:0;font-size:15px;font-weight:600;">${t('ai.settings_api_key_title')}</h3>
@@ -356,7 +365,7 @@ const ViewAiSettings = {
           </div>
           <div style="display:grid;gap:8px;">
             <label for="ai-apikey" style="font-size:13px;font-weight:500;">
-              ${hasKey ? t('ai.settings_change_key') : t('ai.settings_enter_key')}
+              ${decryptError ? 'Vuelve a introducir la API key (sk-ant-api03-...)' : hasKey ? t('ai.settings_change_key') : t('ai.settings_enter_key')}
             </label>
             <input type="password" id="ai-apikey" placeholder="sk-ant-api03-..."
               autocomplete="new-password"

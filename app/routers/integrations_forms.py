@@ -32,6 +32,18 @@ def _cfg_out(cfg: FormIntegrationConfig) -> dict:
         "default_template_code": cfg.default_template_code,
         "supplier_field_name": cfg.supplier_field_name,
         "monday_webhook_url": cfg.monday_webhook_url,
+        # Via 3 — MS Forms polling
+        "msforms_poll_enabled": cfg.msforms_poll_enabled or False,
+        "msforms_tenant_id": cfg.msforms_tenant_id or "",
+        "msforms_client_id": cfg.msforms_client_id or "",
+        "msforms_secret_configured": bool(cfg.msforms_client_secret_enc),
+        "msforms_form_id": cfg.msforms_form_id or "",
+        "msforms_poll_interval_hours": cfg.msforms_poll_interval_hours or 4,
+        "msforms_last_poll_at": cfg.msforms_last_poll_at.isoformat() if cfg.msforms_last_poll_at else None,
+        "msforms_last_response_ts": cfg.msforms_last_response_ts or None,
+        "msforms_field_mapping": cfg.msforms_field_mapping or {},
+        "msforms_auto_ai_review": cfg.msforms_auto_ai_review if cfg.msforms_auto_ai_review is not None else True,
+        "msforms_pa_callback_url": cfg.msforms_pa_callback_url or "",
     }
 
 
@@ -80,6 +92,31 @@ def update_config(
     for key in allowed:
         if key in body:
             setattr(cfg, key, body[key] or None)
+
+    # Via 3 — MS Forms polling config
+    if "msforms_poll_enabled" in body:
+        cfg.msforms_poll_enabled = bool(body["msforms_poll_enabled"])
+    if "msforms_tenant_id" in body:
+        cfg.msforms_tenant_id = body["msforms_tenant_id"] or None
+    if "msforms_client_id" in body:
+        cfg.msforms_client_id = body["msforms_client_id"] or None
+    if "msforms_client_secret" in body and body["msforms_client_secret"]:
+        from app.services.msforms_service import _fernet_encrypt
+        cfg.msforms_client_secret_enc = _fernet_encrypt(body["msforms_client_secret"])
+    if "msforms_form_id" in body:
+        cfg.msforms_form_id = body["msforms_form_id"] or None
+    if "msforms_poll_interval_hours" in body:
+        try:
+            cfg.msforms_poll_interval_hours = max(1, int(body["msforms_poll_interval_hours"]))
+        except (TypeError, ValueError):
+            pass
+    if "msforms_field_mapping" in body:
+        cfg.msforms_field_mapping = body["msforms_field_mapping"] or {}
+    if "msforms_auto_ai_review" in body:
+        cfg.msforms_auto_ai_review = bool(body["msforms_auto_ai_review"])
+    if "msforms_pa_callback_url" in body:
+        cfg.msforms_pa_callback_url = body["msforms_pa_callback_url"] or None
+
     cfg.updated_at = datetime.now(timezone.utc)
     db.commit()
     return _cfg_out(cfg)
@@ -259,6 +296,28 @@ def _notify_monday(db_org: int, questionnaire_id: int, monday_url: str) -> None:
                 logger.info("Monday.com webhook: %s → %s", q.code, resp.status)
     except Exception as exc:
         logger.warning("Monday.com webhook failed for questionnaire %s: %s", questionnaire_id, exc)
+
+
+@router.post("/msforms/poll-now")
+def msforms_poll_now(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Dispara una sincronizacion manual con MS Forms (Via 3).
+
+    Consulta de inmediato la API de MS Forms, independientemente
+    del intervalo de polling automatico configurado.
+    """
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(400, "Se requiere organization_id")
+    cfg = _get_or_create_cfg(db, org_id)
+    if not cfg.msforms_form_id:
+        raise HTTPException(400, "Form ID no configurado — guarda la configuracion primero")
+
+    from app.services.msforms_service import poll_org
+    result = poll_org(cfg, db)
+    return result
 
 
 def notify_monday_if_configured(db: Session, org_id: int, questionnaire_id: int) -> None:

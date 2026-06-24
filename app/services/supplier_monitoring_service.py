@@ -118,9 +118,15 @@ def scan_supplier(db, supplier, org_id: int) -> list:
     url = supplier.website or ("https://" + domain)
     now = datetime.now(timezone.utc)
 
+    dns_res = _check_dns(domain)
     http_res = _check_http(url)
     ssl_res = _check_ssl(domain)
-    dns_res = _check_dns(domain)
+
+    # Si HTTP respondio OK, DNS funciono (HTTP requiere resolucion DNS).
+    # Normalizar para evitar falso positivo cuando el resolver del sistema
+    # falla en _check_dns pero urllib ya resolvio el nombre correctamente.
+    if http_res["ok"] and not dns_res["ok"]:
+        dns_res = {"ok": True, "ip": None, "error": None}
 
     findings = []
 

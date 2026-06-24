@@ -9,6 +9,8 @@ const Api = {
     if (opts.body && !headers['Content-Type'] && !(opts.body instanceof FormData))
       headers['Content-Type'] = 'application/json';
     headers['X-Lang'] = localStorage.getItem('riskhub_lang') || 'es';
+    const activeOrg = localStorage.getItem('riskhub_active_org');
+    if (activeOrg) headers['X-Active-Org'] = activeOrg;
 
     let resp;
     try {
@@ -227,6 +229,7 @@ const Api = {
     },
     downloadDocumentUrl: (supplierId, docId) => `/api/suppliers/${supplierId}/documents/${docId}/download`,
     deleteDocument: (supplierId, docId) => Api.del(`/api/suppliers/${supplierId}/documents/${docId}`),
+    analyzeDocument: (supplierId, docId) => Api.post(`/api/suppliers/${supplierId}/documents/${docId}/analyze`, {}),
   },
   nonconformities: {
     list: (q) => Api.get('/api/nonconformities/', q),

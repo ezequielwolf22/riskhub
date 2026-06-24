@@ -877,6 +877,9 @@ class Supplier(Base):
     onboarding_decision_at = Column(DateTime, nullable=True)
     onboarding_conditions = Column(JSON, nullable=True)             # [{id, description, due_days, vendor_issue_id}]
     sign_off_chain_state = Column(JSON, nullable=True)              # [{id, signed_at, signed_by_name, signed_by_user_id, doc_id, skipped, skip_justification}]
+    # Via 3 — origen MS Forms: trazabilidad para notificaciones de retorno
+    msforms_origin = Column(Boolean, default=False)
+    msforms_responder = Column(String(255), nullable=True)          # email del que respondio el form
     # v4.4.0 — monitoreo periodico (scheduler supplier_monitoring)
     last_monitored_at = Column(DateTime, nullable=True)
     monitoring_status = Column(String(16), nullable=True)           # ok|issue|unknown
@@ -1278,6 +1281,19 @@ class FormIntegrationConfig(Base):
     supplier_field_name = Column(String(255), nullable=True)  # nombre del campo del formulario que identifica al proveedor
     # Webhook saliente Monday.com
     monday_webhook_url = Column(String(500), nullable=True)
+    # Via 3 — Polling MS Forms: alta automatica de proveedores
+    msforms_poll_enabled = Column(Boolean, default=False)
+    msforms_tenant_id = Column(String(255), nullable=True)
+    msforms_client_id = Column(String(255), nullable=True)
+    msforms_client_secret_enc = Column(Text, nullable=True)  # Fernet encrypted
+    msforms_form_id = Column(String(255), nullable=True)
+    msforms_poll_interval_hours = Column(Integer, default=4)
+    msforms_last_poll_at = Column(DateTime, nullable=True)
+    msforms_last_response_ts = Column(String(64), nullable=True)
+    msforms_field_mapping = Column(JSON, nullable=True)
+    msforms_auto_ai_review = Column(Boolean, default=True)
+    # Webhook de retorno de decisiones a Power Automate
+    msforms_pa_callback_url = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

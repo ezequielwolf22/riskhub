@@ -2923,6 +2923,15 @@ def _run_questionnaire_expiry_reminders(org_id: int) -> None:
         db.close()
 
 
+def _run_msforms_poll() -> None:
+    """Polling periodico de MS Forms para alta automatica de proveedores (Via 3)."""
+    try:
+        from app.services.msforms_service import poll_all_orgs
+        poll_all_orgs()
+    except Exception as exc:
+        logger.error("MSForms scheduler: error inesperado: %s", exc)
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -3267,6 +3276,15 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         id="questionnaire_expiry_reminders",
         replace_existing=True,
         misfire_grace_time=3600,
+    )
+    # Via 3 — Polling MS Forms: alta automatica de proveedores (cada hora, filtra por intervalo por-org)
+    _scheduler.add_job(
+        func=_run_msforms_poll,
+        trigger=IntervalTrigger(hours=1),
+        id="msforms_poll",
+        name="MS Forms polling — alta automatica de proveedores",
+        replace_existing=True,
+        misfire_grace_time=600,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

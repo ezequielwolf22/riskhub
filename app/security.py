@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from cryptography.fernet import Fernet
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 import jwt
 from jwt.exceptions import InvalidTokenError as JWTError
@@ -33,7 +33,14 @@ def encrypt_secret(value: str) -> str:
 
 def decrypt_secret(value: str) -> str:
     """Descifra un string previamente cifrado con Fernet."""
-    return _fernet().decrypt(value.encode()).decode()
+    try:
+        return _fernet().decrypt(value.encode()).decode()
+    except Exception as exc:
+        import logging
+        logging.getLogger("riskhub.security").error(
+            "decrypt_secret failed — RISKHUB_SECRET_KEY may have changed since the value was encrypted: %s", exc
+        )
+        raise
 
 
 def hash_password(plain: str) -> str:
@@ -59,6 +66,7 @@ def decode_token(token: str) -> dict:
 
 
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
@@ -80,6 +88,10 @@ def get_current_user(
     user = db.query(User).filter(User.email == email).first()
     if user is None or not user.is_active:
         raise cred_error
+    # Superadmin puede enfocar una org concreta via X-Active-Org
+    if user.role == UserRole.SUPERADMIN:
+        raw = request.headers.get("X-Active-Org", "").strip()
+        user._active_org_id = int(raw) if raw.isdigit() else None
     return user
 
 
@@ -113,10 +125,14 @@ require_analyst = require_role(UserRole.ANALYST, UserRole.ADMIN)
 def filter_by_org(query, model, user: User):
     """Aplica filtro de organization_id a una query ORM.
 
-    Superadmin ve datos de todos los tenants.
+    Superadmin sin contexto activo ve datos de todos los tenants.
+    Superadmin con X-Active-Org filtra solo esa organizacion.
     El resto solo ve datos de su propia organizacion.
     """
     if user.role == UserRole.SUPERADMIN:
+        active_org = getattr(user, "_active_org_id", None)
+        if active_org:
+            return query.filter(model.organization_id == active_org)
         return query
     return query.filter(model.organization_id == user.organization_id)
 
@@ -124,6 +140,9 @@ def filter_by_org(query, model, user: User):
 def check_org_access(record_org_id, user: User) -> bool:
     """Devuelve True si el usuario tiene acceso al registro dado su organization_id."""
     if user.role == UserRole.SUPERADMIN:
+        active_org = getattr(user, "_active_org_id", None)
+        if active_org:
+            return record_org_id == active_org
         return True
     return record_org_id == user.organization_id
 

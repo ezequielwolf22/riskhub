@@ -1,4 +1,5 @@
 """Configuracion del agente IA — API key, modelo, anonimizacion, perfil org."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.models import AiAnonymizationLevel, AiConfig, User
 from app.security import decrypt_secret, encrypt_secret, filter_by_org, get_current_user, require_role
 import threading
 
+log = logging.getLogger("riskhub.ai_config")
+
 router = APIRouter(prefix="/api/ai/config", tags=["ai-config"])
 
 
@@ -22,6 +25,12 @@ def resolve_api_key(cfg: AiConfig | None) -> str | None:
         try:
             return decrypt_secret(cfg.api_key_encrypted)
         except Exception:
+            log.error(
+                "No se puede descifrar la API key almacenada (org_id=%s). "
+                "Probablemente RISKHUB_SECRET_KEY cambio desde que se guardo la clave. "
+                "El administrador debe volver a introducir la API key en Configuracion > IA.",
+                getattr(cfg, "organization_id", "?"),
+            )
             return None
     return settings.anthropic_api_key
 
@@ -155,6 +164,14 @@ def embed_existing_documents(
 
 
 def _cfg_out(cfg: AiConfig) -> dict:
+    # Detectar si la clave esta en BD pero no se puede descifrar (SECRET_KEY cambio)
+    api_key_decrypt_error = False
+    if cfg.api_key_encrypted:
+        try:
+            decrypt_secret(cfg.api_key_encrypted)
+        except Exception:
+            api_key_decrypt_error = True
+
     return {
         "model": cfg.model or "claude-opus-4-6",
         "anonymization_level": (
@@ -165,8 +182,9 @@ def _cfg_out(cfg: AiConfig) -> dict:
         "org_size": cfg.org_size,
         "org_critical_processes": cfg.org_critical_processes,
         "org_tech_stack": cfg.org_tech_stack,
-        "has_api_key": bool(cfg.api_key_encrypted),
+        "has_api_key": bool(cfg.api_key_encrypted) and not api_key_decrypt_error,
         "has_voyage_key": bool(cfg.voyage_api_key_encrypted),
+        "api_key_decrypt_error": api_key_decrypt_error,
     }
 
 
