@@ -1,9 +1,14 @@
 /* Vista de gestion de proveedores / supply chain risk (NIS2 Art. 21.2.d). */
 const ViewSuppliers = (() => {
 
-  const RISK_LABELS = {
-    low: 'Bajo', medium: 'Medio', high: 'Alto', critical: 'Critico',
-  };
+  function RISK_LABELS() {
+    return {
+      low:      window.t('suppliers.tier.low'),
+      medium:   window.t('suppliers.tier.medium'),
+      high:     window.t('suppliers.tier.high'),
+      critical: window.t('suppliers.tier.critical'),
+    };
+  }
   const RISK_COLORS = {
     low: 'var(--risk-low)', medium: 'var(--risk-medium)',
     high: 'var(--risk-high)', critical: 'var(--risk-critical)',
@@ -19,7 +24,7 @@ const ViewSuppliers = (() => {
   }
   function _rlLabel(code) {
     const b = _rlBands().find(x => x.code === code);
-    return b ? b.label : (RISK_LABELS[code] || code);
+    return b ? b.label : (RISK_LABELS()[code] || code);
   }
   function _rlColor(code) {
     const b = _rlBands().find(x => x.code === code);
@@ -31,14 +36,16 @@ const ViewSuppliers = (() => {
   }
 
   // ── Dashboard editable ────────────────────────────────────────────────────
-  const _SUP_WIDGETS = [
-    { id: 'total',    label: 'Total proveedores',     def: true },
-    { id: 'active',   label: 'Proveedores activos',   def: true },
-    { id: 'critical', label: 'Criticos / Altos',      def: true },
-    { id: 'overdue',  label: 'Evaluacion vencida',    def: true },
-    { id: 'score',    label: 'Puntuacion media',      def: false },
-    { id: 'pending',  label: 'Cuestionarios pendientes', def: false },
-  ];
+  function _SUP_WIDGETS() {
+    return [
+      { id: 'total',    label: window.t('suppliers.widget_total'),   def: true },
+      { id: 'active',   label: window.t('suppliers.widget_active'),  def: true },
+      { id: 'critical', label: window.t('suppliers.widget_critical'),def: true },
+      { id: 'overdue',  label: window.t('suppliers.widget_overdue'), def: true },
+      { id: 'score',    label: window.t('suppliers.widget_score'),   def: false },
+      { id: 'pending',  label: window.t('suppliers.widget_pending'), def: false },
+    ];
+  }
 
   function _supDashPrefKey() {
     const u = Auth.user();
@@ -55,7 +62,7 @@ const ViewSuppliers = (() => {
 
   function _openSupDashEditor() {
     const prefs = _supDashPrefs();
-    const rows = _SUP_WIDGETS.map(w => {
+    const rows = _SUP_WIDGETS().map(w => {
       const on = _isWidgetVisible(prefs, w);
       return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;">
         <input type="checkbox" data-sup-wid="${w.id}" ${on ? 'checked' : ''} style="accent-color:var(--brand-purple);width:16px;height:16px;">
@@ -63,18 +70,18 @@ const ViewSuppliers = (() => {
       </label>`;
     }).join('');
     UI.modal(
-      'Personalizar dashboard de proveedores',
+      window.t('suppliers.dashboard_title'),
       `<div style="padding:4px 0;">${rows}</div>`,
       {
         width: '400px',
-        actions: `<button class="btn btn-primary" id="sup-dash-save">Guardar</button>
-                  <button class="btn" id="sup-dash-reset">Restablecer</button>
-                  <button class="btn" id="sup-dash-cancel">Cancelar</button>`,
+        actions: `<button class="btn btn-primary" id="sup-dash-save">${window.t('suppliers.dashboard_save')}</button>
+                  <button class="btn" id="sup-dash-reset">${window.t('suppliers.dashboard_reset')}</button>
+                  <button class="btn" id="sup-dash-cancel">${window.t('suppliers.dashboard_cancel')}</button>`,
       }
     );
     document.getElementById('sup-dash-save').onclick = () => {
       const newPrefs = {};
-      _SUP_WIDGETS.forEach(w => {
+      _SUP_WIDGETS().forEach(w => {
         const el = document.querySelector(`[data-sup-wid="${w.id}"]`);
         if (el) newPrefs[w.id] = el.checked;
       });
@@ -97,8 +104,8 @@ const ViewSuppliers = (() => {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Proveedores y Cadena de Suministro</h1>
-          <p class="page-sub">Gestion de riesgo de terceros — NIS2 Art. 21.2.d / ISO 27001 A.15</p>
+          <h1 class="page-title">${window.t('suppliers.page_title')}</h1>
+          <p class="page-sub">${window.t('suppliers.page_sub')}</p>
         </div>
         <div style="display:flex;gap:8px;" id="sup-header-actions"></div>
       </div>
@@ -106,10 +113,10 @@ const ViewSuppliers = (() => {
       <div class="stats-row" id="sup-stats" style="margin-bottom:16px;"></div>
 
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;flex-wrap:wrap;">
-        <button class="tab-btn" id="suptab-suppliers" onclick="SupTab('suppliers')">Proveedores</button>
-        <button class="tab-btn" id="suptab-questionnaires" onclick="SupTab('questionnaires')">Cuestionarios</button>
-        <button class="tab-btn" id="suptab-schedules" onclick="SupTab('schedules')">Planificaciones</button>
-        <button class="tab-btn" id="suptab-flows" onclick="SupTab('flows')">Flujos</button>
+        <button class="tab-btn" id="suptab-suppliers" onclick="SupTab('suppliers')">${window.t('suppliers.tab_suppliers')}</button>
+        <button class="tab-btn" id="suptab-questionnaires" onclick="SupTab('questionnaires')">${window.t('suppliers.tab_questionnaires')}</button>
+        <button class="tab-btn" id="suptab-schedules" onclick="SupTab('schedules')">${window.t('suppliers.tab_schedules')}</button>
+        <button class="tab-btn" id="suptab-flows" onclick="SupTab('flows')">${window.t('suppliers.tab_flows')}</button>
       </div>
       <div id="sup-tab-content"></div>
     `;
@@ -132,19 +139,19 @@ const ViewSuppliers = (() => {
     const actions = document.getElementById('sup-header-actions');
     if (actions) {
       if (tab === 'suppliers') {
-        actions.innerHTML = (Auth.canEdit() ? '<button class="btn" id="btn-import-sup">Importar</button> ' : '')
-          + '<button class="btn btn-primary" id="btn-new-sup">+ Nuevo proveedor</button>';
+        actions.innerHTML = (Auth.canEdit() ? `<button class="btn" id="btn-import-sup">${window.t('suppliers.import_btn')}</button> ` : '')
+          + `<button class="btn btn-primary" id="btn-new-sup">${window.t('suppliers.new_btn')}</button>`;
         document.getElementById('btn-new-sup').onclick = () => _openForm(null);
         const impBtn = document.getElementById('btn-import-sup');
         if (impBtn) impBtn.onclick = () => _openImport();
       } else if (tab === 'questionnaires') {
-        actions.innerHTML = Auth.canEdit() ? '<button class="btn btn-primary" id="btn-new-seq">+ Nuevo cuestionario</button>' : '';
+        actions.innerHTML = Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-seq">${window.t('suppliers.new_questionnaire_btn')}</button>` : '';
         if (Auth.canEdit()) document.getElementById('btn-new-seq').onclick = () => _openSeqForm(null);
       } else if (tab === 'schedules') {
-        actions.innerHTML = Auth.canEdit() ? '<button class="btn btn-primary" id="btn-new-sched">+ Nueva planificacion</button>' : '';
+        actions.innerHTML = Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-sched">${window.t('suppliers.new_schedule_btn')}</button>` : '';
         if (Auth.canEdit()) document.getElementById('btn-new-sched').onclick = () => _openScheduleForm(null);
       } else if (tab === 'flows') {
-        actions.innerHTML = Auth.canEdit() ? '<button class="btn btn-primary" id="btn-new-flow">+ Nuevo flujo</button>' : '';
+        actions.innerHTML = Auth.canEdit() ? `<button class="btn btn-primary" id="btn-new-flow">${window.t('suppliers.new_flow_btn')}</button>` : '';
         if (Auth.canEdit()) document.getElementById('btn-new-flow').onclick = () => _openFlowForm(null);
       } else {
         actions.innerHTML = '';
@@ -162,42 +169,42 @@ const ViewSuppliers = (() => {
     wrap.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
         <select id="f-risk" class="input" style="width:150px;">
-          <option value="">Todos los niveles</option>
+          <option value="">${window.t('suppliers.filter_all_levels')}</option>
           ${_rlBands().slice().reverse().map(b => `<option value="${b.code}">${UI.esc(b.label)}</option>`).join('')}
         </select>
         <select id="f-critical" class="input" style="width:150px;">
-          <option value="">Todos</option>
-          <option value="1">Solo criticos</option>
-          <option value="0">No criticos</option>
+          <option value="">${window.t('suppliers.filter_all')}</option>
+          <option value="1">${window.t('suppliers.filter_only_critical')}</option>
+          <option value="0">${window.t('suppliers.filter_not_critical')}</option>
         </select>
-        <input id="f-q" class="input" placeholder="Buscar por nombre o codigo..." style="width:210px;">
-        <button id="btn-adv-filter" class="btn btn-sm" style="margin-left:auto;">Filtros avanzados</button>
+        <input id="f-q" class="input" placeholder="${window.t('suppliers.filter_search_placeholder')}" style="width:210px;">
+        <button id="btn-adv-filter" class="btn btn-sm" style="margin-left:auto;">${window.t('suppliers.filter_advanced')}</button>
       </div>
       <div id="sup-adv-filter" style="display:none;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;">
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">
-          <div><label style="font-size:12px;">Ubicacion</label><input id="f-adv-location" class="input" placeholder="Madrid, ES"></div>
-          <div><label style="font-size:12px;">Departamento</label><input id="f-adv-dept" class="input" placeholder="TI, Legal..."></div>
-          <div><label style="font-size:12px;">Importancia min.</label>
+          <div><label style="font-size:12px;">${window.t('suppliers.filter_location')}</label><input id="f-adv-location" class="input" placeholder="Madrid, ES"></div>
+          <div><label style="font-size:12px;">${window.t('suppliers.filter_dept')}</label><input id="f-adv-dept" class="input" placeholder="TI, Legal..."></div>
+          <div><label style="font-size:12px;">${window.t('suppliers.filter_importance')}</label>
             <select id="f-adv-imp" class="input">
-              <option value="">Cualquiera</option>
+              <option value="">${window.t('suppliers.filter_any')}</option>
               <option value="1">1+</option><option value="2">2+</option>
               <option value="3">3+</option><option value="4">4+</option><option value="5">5</option>
             </select>
           </div>
-          <div><label style="font-size:12px;">Relacion</label>
+          <div><label style="font-size:12px;">${window.t('suppliers.filter_relation')}</label>
             <select id="f-adv-rel" class="input">
-              <option value="">Cualquier estado</option>
-              <option value="active">Activo</option>
-              <option value="onboarding">Onboarding</option>
-              <option value="offboarding">Offboarding</option>
-              <option value="suspended">Suspendido</option>
-              <option value="terminated">Terminado</option>
+              <option value="">${window.t('suppliers.filter_any_status')}</option>
+              <option value="active">${window.t('suppliers.lifecycle_active')}</option>
+              <option value="onboarding">${window.t('suppliers.lifecycle_onboarding')}</option>
+              <option value="offboarding">${window.t('suppliers.lifecycle_offboarding')}</option>
+              <option value="suspended">${window.t('suppliers.filter_suspended')}</option>
+              <option value="terminated">${window.t('suppliers.lifecycle_terminated')}</option>
             </select>
           </div>
         </div>
         <div style="margin-top:8px;display:flex;gap:8px;">
-          <button id="btn-adv-apply" class="btn btn-sm btn-primary">Aplicar filtros</button>
-          <button id="btn-adv-clear" class="btn btn-sm">Limpiar</button>
+          <button id="btn-adv-apply" class="btn btn-sm btn-primary">${window.t('suppliers.filter_apply')}</button>
+          <button id="btn-adv-clear" class="btn btn-sm">${window.t('suppliers.filter_clear')}</button>
         </div>
       </div>
       <div id="sup-table-wrap"></div>
@@ -231,7 +238,7 @@ const ViewSuppliers = (() => {
     try {
       const s = await Api.suppliers.summary();
       const prefs = _supDashPrefs();
-      const show = (id) => _isWidgetVisible(prefs, _SUP_WIDGETS.find(w => w.id === id));
+      const show = (id) => _isWidgetVisible(prefs, _SUP_WIDGETS().find(w => w.id === id));
       const cards = [];
       if (show('total'))
         cards.push(`<div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total proveedores</div></div>`);
@@ -325,7 +332,7 @@ const ViewSuppliers = (() => {
     const rows = data.map(s => {
       const assessed = s.last_assessment_at ? s.last_assessment_at.slice(0, 10) : '-';
       const next = s.next_assessment_at ? s.next_assessment_at.slice(0, 10) : '-';
-      const tier = s.tier ? _badge(RISK_LABELS[s.tier] || s.tier, RISK_COLORS[s.tier] || '#888') : '-';
+      const tier = s.tier ? _badge(RISK_LABELS()[s.tier] || s.tier, RISK_COLORS[s.tier] || '#888') : '-';
       const inh = (s.inherent_risk_score ?? null) !== null ? s.inherent_risk_score : '-';
       const res = (s.residual_risk_score ?? null) !== null ? s.residual_risk_score : '-';
       const checked = _selectedIds.has(s.id) ? 'checked' : '';
@@ -663,14 +670,16 @@ const ViewSuppliers = (() => {
 
   // ---- Lifecycle / Onboarding helpers ----
 
-  const LIFECYCLE_STAGES = [
-    { id: 'prospecting',  label: 'Prospecto'    },
-    { id: 'onboarding',   label: 'Onboarding'   },
-    { id: 'active',       label: 'Activo'        },
-    { id: 'under_review', label: 'En revision'   },
-    { id: 'offboarding',  label: 'Offboarding'   },
-    { id: 'terminated',   label: 'Terminado'     },
-  ];
+  function LIFECYCLE_STAGES() {
+    return [
+      { id: 'prospecting',  label: window.t('suppliers.lifecycle_prospect')    },
+      { id: 'onboarding',   label: window.t('suppliers.lifecycle_onboarding')  },
+      { id: 'active',       label: window.t('suppliers.lifecycle_active')       },
+      { id: 'under_review', label: window.t('suppliers.lifecycle_review')       },
+      { id: 'offboarding',  label: window.t('suppliers.lifecycle_offboarding')  },
+      { id: 'terminated',   label: window.t('suppliers.lifecycle_terminated')   },
+    ];
+  }
 
   // Cache del gate actual para evitar recargas innecesarias
   let _currentGate = null;
@@ -701,7 +710,7 @@ const ViewSuppliers = (() => {
     const stage = sup.lifecycle_stage || 'active';
     const concentrationFlag = sup.concentration_risk_flag;
 
-    const stageButtons = LIFECYCLE_STAGES.map(st => `
+    const stageButtons = LIFECYCLE_STAGES().map(st => `
       <button class="lc-stage-btn ${stage === st.id ? 'lc-stage-btn--active' : ''}"
         onclick="ViewSuppliers._changeStage(${supplierId}, '${st.id}')">
         ${st.label}
@@ -762,7 +771,7 @@ const ViewSuppliers = (() => {
     wrap.innerHTML = `
       <div class="supplier-lifecycle">
         <div class="lc-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-          <span style="font-size:13px;">Stage: <strong>${LIFECYCLE_STAGES.find(x => x.id === stage)?.label || stage}</strong></span>
+          <span style="font-size:13px;">Stage: <strong>${LIFECYCLE_STAGES().find(x => x.id === stage)?.label || stage}</strong></span>
           ${Auth.canEdit() ? `<div class="lc-stage-buttons" style="display:flex;flex-wrap:wrap;gap:4px;">${stageButtons}</div>` : ''}
         </div>
         ${checklistHtml}
@@ -960,7 +969,7 @@ const ViewSuppliers = (() => {
   async function _changeStage(supplierId, stage) {
     try {
       await Api.post('/api/suppliers/' + supplierId + '/lifecycle', { stage });
-      UI.toast('Stage actualizado a: ' + (LIFECYCLE_STAGES.find(x => x.id === stage)?.label || stage), 'success');
+      UI.toast('Stage actualizado a: ' + (LIFECYCLE_STAGES().find(x => x.id === stage)?.label || stage), 'success');
       _renderLifecycleSection(supplierId, null);
     } catch (e) { UI.toast(e.message || 'Error al cambiar stage', 'error'); }
   }
@@ -1385,17 +1394,17 @@ const ViewSuppliers = (() => {
       document.body.appendChild(overlay);
     }
     overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:var(--bg-1);display:flex;flex-direction:column;overflow:hidden;';
-    const stageLabel = LIFECYCLE_STAGES.find(x => x.id === sup.lifecycle_stage)?.label || sup.lifecycle_stage || 'Sin definir';
+    const stageLabel = LIFECYCLE_STAGES().find(x => x.id === sup.lifecycle_stage)?.label || sup.lifecycle_stage || window.t('suppliers.undefined_stage');
     const tierColor = RISK_COLORS[sup.tier] || '#888';
     overlay.innerHTML = `
       <div style="flex-shrink:0;padding:14px 24px;border-bottom:2px solid var(--border);background:var(--bg-2);display:flex;align-items:center;gap:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
         <div style="flex:1;min-width:0;">
-          <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">Expediente de proveedor</div>
+          <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;">${window.t('suppliers.file_header')}</div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <span style="font-size:20px;font-weight:800;color:var(--text-1);">${UI.esc(sup.name)}</span>
             <span style="font-size:11px;color:var(--text-muted);background:var(--bg-1);padding:2px 8px;border-radius:999px;font-weight:600;border:1px solid var(--border);">${UI.esc(sup.code)}</span>
-            ${sup.tier ? `<span style="font-size:11px;font-weight:700;color:#fff;background:${tierColor};padding:2px 8px;border-radius:999px;">${RISK_LABELS[sup.tier]||sup.tier}</span>` : ''}
-            ${sup.is_critical ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#DC2626;padding:2px 8px;border-radius:999px;">CRITICO</span>` : ''}
+            ${sup.tier ? `<span style="font-size:11px;font-weight:700;color:#fff;background:${tierColor};padding:2px 8px;border-radius:999px;">${RISK_LABELS()[sup.tier]||sup.tier}</span>` : ''}
+            ${sup.is_critical ? `<span style="font-size:11px;font-weight:700;color:#fff;background:#DC2626;padding:2px 8px;border-radius:999px;">${window.t('suppliers.critical_badge')}</span>` : ''}
           </div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
             Stage: <strong>${UI.esc(stageLabel)}</strong>
@@ -1404,12 +1413,12 @@ const ViewSuppliers = (() => {
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;">
-          ${Auth.canEdit() ? `<button class="btn btn-sm btn-primary" onclick="ViewSuppliers._openFormFromFile()">Editar datos</button>` : ''}
+          ${Auth.canEdit() ? `<button class="btn btn-sm btn-primary" onclick="ViewSuppliers._openFormFromFile()">${window.t('suppliers.edit_data_btn')}</button>` : ''}
           <button onclick="ViewSuppliers._closeSupplierFile()" class="btn btn-sm" style="font-size:18px;line-height:1;padding:4px 12px;" title="Cerrar">&times;</button>
         </div>
       </div>
       <div style="flex-shrink:0;display:flex;border-bottom:1px solid var(--border);background:var(--bg-2);padding:0 20px;overflow-x:auto;">
-        ${[['perfil','Perfil'],['gate','Onboarding & Gate'],['cuestionarios','Cuestionarios'],['documentos','Documentos'],['hallazgos','Hallazgos']].map(([t,lbl],i) =>
+        ${[['perfil',window.t('suppliers.detail_profile')],['gate',window.t('suppliers.detail_gate')],['cuestionarios',window.t('suppliers.detail_questionnaires')],['documentos',window.t('suppliers.detail_documents')],['hallazgos',window.t('suppliers.detail_findings')]].map(([t,lbl],i) =>
           `<button id="fbtab-${t}" onclick="ViewSuppliers._setFileTab('${t}')"
             style="padding:10px 18px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;white-space:nowrap;
               border-bottom:2px solid ${i===0?'var(--brand-purple)':'transparent'};
@@ -1436,7 +1445,7 @@ const ViewSuppliers = (() => {
   }
 
   function _setFileTab(tab) {
-    [['perfil','Perfil'],['gate','Onboarding & Gate'],['cuestionarios','Cuestionarios'],['documentos','Documentos'],['hallazgos','Hallazgos']].forEach(([t]) => {
+    ['perfil','gate','cuestionarios','documentos','hallazgos'].forEach((t) => {
       const btn = document.getElementById('fbtab-' + t);
       if (!btn) return;
       btn.style.borderBottomColor = t === tab ? 'var(--brand-purple)' : 'transparent';
@@ -1486,7 +1495,7 @@ const ViewSuppliers = (() => {
         <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
           <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Riesgo TPRM</div>
           <div style="display:grid;gap:12px;">
-            ${_infoField('Tier', sup.tier ? `<span style="font-weight:700;color:${RISK_COLORS[sup.tier]||'#888'}">${RISK_LABELS[sup.tier]||sup.tier}</span>` : null)}
+            ${_infoField('Tier', sup.tier ? `<span style="font-weight:700;color:${RISK_COLORS[sup.tier]||'#888'}">${RISK_LABELS()[sup.tier]||sup.tier}</span>` : null)}
             ${_infoField('Score inherente', sup.inherent_risk_score != null ? `<span style="font-size:22px;font-weight:800;">${sup.inherent_risk_score}</span><span style="font-size:11px;color:var(--text-muted);">/100</span>` : null)}
             ${_infoField('Score residual', sup.residual_risk_score != null ? `<span style="font-size:22px;font-weight:800;">${sup.residual_risk_score}</span><span style="font-size:11px;color:var(--text-muted);">/100</span>` : null)}
             ${_infoField('Acceso a sistemas', UI.esc(sup.system_access_type))}

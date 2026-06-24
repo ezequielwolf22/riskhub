@@ -3,18 +3,18 @@
 const ViewAiDocuments = (() => {
 
   const CATEGORY_LABELS = () => ({
-    architecture:       'Arquitectura y sistemas',
-    normative:          'Normativa y compliance',
-    policies:           'Politicas y procedimientos',
-    assets_inventory:   'Inventario de activos',
-    risk_assessments:   'Evaluaciones de riesgo',
-    critical_suppliers: 'Proveedores criticos',
-    incidents_lessons:  'Incidentes y lecciones',
-    other:              'Otros',
+    architecture:       t('isms_documents.cat_architecture'),
+    normative:          t('isms_documents.cat_normative'),
+    policies:           t('isms_documents.cat_policies'),
+    assets_inventory:   t('isms_documents.cat_assets'),
+    risk_assessments:   t('isms_documents.cat_risk'),
+    critical_suppliers: t('isms_documents.cat_suppliers'),
+    incidents_lessons:  t('isms_documents.cat_incidents'),
+    other:              t('isms_documents.cat_other'),
   });
 
   const STATUS_LABELS = () => ({
-    indexed:    'Indexado',
+    indexed:    t('isms_documents.status_indexed'),
     processing: t('common.in_progress'),
     pending:    t('common.pending'),
     error:      t('common.error'),
@@ -31,7 +31,7 @@ const ViewAiDocuments = (() => {
   const ISMS_LABELS = () => ({
     analysing: t('ai.analyzing'),
     analysed:  t('isms_documents.status.analyzed') || 'Analizado',
-    skipped:   'Sin IA',
+    skipped:   t('isms_documents.status_skipped'),
     error:     t('common.error') + ' IA',
   });
   const ISMS_COLORS = {
@@ -155,20 +155,20 @@ const ViewAiDocuments = (() => {
         </div>
         <div class="card" style="text-align:center;padding:14px;">
           <div style="font-size:24px;font-weight:700;color:var(--risk-low);">${indexedCount}</div>
-          <div style="font-size:12px;color:var(--text-muted);">Indexados</div>
+          <div style="font-size:12px;color:var(--text-muted);">${t('isms_documents.stat_indexed')}</div>
         </div>
         <div class="card" style="text-align:center;padding:14px;">
           <div style="font-size:24px;font-weight:700;color:var(--brand-orange);">
             ${_docs.reduce((s, d) => s + (d.chunk_count || 0), 0)}
           </div>
-          <div style="font-size:12px;color:var(--text-muted);">Fragmentos totales</div>
+          <div style="font-size:12px;color:var(--text-muted);">${t('isms_documents.stat_total')}</div>
         </div>
         <div class="card" style="text-align:center;padding:14px;">
           <div style="font-size:24px;font-weight:700;
                color:${errorCount > 0 ? 'var(--risk-critical)' : 'var(--text-muted)'};">
             ${errorCount}
           </div>
-          <div style="font-size:12px;color:var(--text-muted);">Con error</div>
+          <div style="font-size:12px;color:var(--text-muted);">${t('isms_documents.stat_error')}</div>
         </div>
       </div>
 
@@ -189,14 +189,12 @@ const ViewAiDocuments = (() => {
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
           ${indexedCount > 0 ? `
           <button class="btn btn-ghost" id="aid-analyze-pending-btn"
-                  style="font-size:12px;" onclick="ViewAiDocuments._analyzePending()"
-                  title="Analiza documentos sin analizar y resetea los atascados. No toca los ya analizados.">
-            Analizar pendientes
+                  style="font-size:12px;" onclick="ViewAiDocuments._analyzePending()">
+            ${t('isms_documents.analyze_pending_btn')}
           </button>
           <button class="btn btn-ghost" id="aid-analyze-all-btn"
-                  style="font-size:12px;" onclick="ViewAiDocuments._analyzeAll()"
-                  title="Re-analizar TODOS los documentos indexados (incluye ya analizados)">
-            Re-analizar todos (${indexedCount})
+                  style="font-size:12px;" onclick="ViewAiDocuments._analyzeAll()">
+            ${t('isms_documents.reanalyze_all_btn', { n: indexedCount })}
           </button>
 ` : ''}
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
@@ -898,7 +896,7 @@ const ViewAiDocuments = (() => {
     } catch (e) {
       UI.toast(t('common.error') + ': ' + e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Analizar pendientes'; }
+      if (btn) { btn.disabled = false; btn.textContent = t('isms_documents.analyze_pending_btn'); }
     }
   }
 

@@ -162,11 +162,11 @@ const ViewAudit = {
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
           <div style="flex:1;min-width:140px;">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_entity')}</label>
-            <input id="app-entity" class="input" placeholder="risk, supplier, policy...">
+            <input id="app-entity" class="input" placeholder="${t('audit_log.placeholder_entity')}">
           </div>
           <div style="flex:1;min-width:120px;">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_email')}</label>
-            <input id="app-user" class="input" placeholder="usuario@empresa.com">
+            <input id="app-user" class="input" placeholder="${t('audit_log.placeholder_user')}">
           </div>
           <div style="flex:1;min-width:120px;">
             <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${t('audit_log.filter_from')}</label>

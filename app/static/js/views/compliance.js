@@ -893,7 +893,7 @@ const ViewCompliance = (() => {
       <div style="background:#fff;border-radius:8px;border:1px solid #e0e0e0;padding:16px;min-width:200px;flex:1;">
         <div style="font-size:12px;font-weight:700;color:var(--brand-purple);margin-bottom:8px;">
           ${UI.esc(f.framework_name || f.framework_code)}
-          ${f.is_audit_ready ? '<span style="background:#E8F5E9;color:#2e7d32;padding:2px 6px;border-radius:8px;font-size:10px;margin-left:4px;">&#10003; Audit Ready</span>' : ''}
+          ${f.is_audit_ready ? `<span style="background:#E8F5E9;color:#2e7d32;padding:2px 6px;border-radius:8px;font-size:10px;margin-left:4px;">&#10003; ${t('compliance.audit_ready_badge')}</span>` : ''}
         </div>
         <div style="font-size:28px;font-weight:800;color:${col(f.overall_pct)};">${f.overall_pct}%</div>
         <div style="font-size:11px;color:#9d9d9d;margin:4px 0 6px;">${UI.esc(t('compliance.real_global_compliance'))}</div>
@@ -1130,23 +1130,27 @@ const ViewCompliance = (() => {
 
   function _getGapMaturityLabels() { return [t('compliance.gap_maturity_0'),t('compliance.gap_maturity_1'),t('compliance.gap_maturity_2'),t('compliance.gap_maturity_3'),t('compliance.gap_maturity_4'),t('compliance.gap_maturity_5')]; }
 
-  const _GAP_DEFAULT_WHY = [
-    'Este control no existe ni está configurado en la organización. No aporta reducción del riesgo.',
-    'El control existe de forma ad-hoc, sin proceso formal ni documentación. Reducción mínima e inconsistente.',
-    'El control está documentado pero su aplicación es inconsistente o incompleta. Reducción parcial del riesgo.',
-    'El control está implementado de forma estandarizada pero sin revisiones periódicas ni métricas de eficacia.',
-    'El control se mide y gestiona activamente con métricas definidas. Falta implementar mejora continua formal.',
-    '',
-  ];
+  function _GAP_DEFAULT_WHY() {
+    return [
+      t('compliance.gap_why_0'),
+      t('compliance.gap_why_1'),
+      t('compliance.gap_why_2'),
+      t('compliance.gap_why_3'),
+      t('compliance.gap_why_4'),
+      '',
+    ];
+  }
 
-  const _GAP_DEFAULT_GAP = [
-    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable, establecer métricas y revisión periódica.',
-    'Formalizar el proceso: crear documentación oficial, establecer procedimientos escritos, comunicar a los equipos y medir resultados.',
-    'Estandarizar la aplicación: garantizar consistencia en todos los casos, implementar controles de calidad y medir la eficacia con KPIs definidos.',
-    'Añadir métricas de eficacia: establecer KPIs, revisar resultados periódicamente, documentar excepciones y reducir la variabilidad del proceso.',
-    'Implementar mejora continua: analizar tendencias, automatizar donde sea posible, revisar benchmarks del sector y documentar las optimizaciones.',
-    '',
-  ];
+  function _GAP_DEFAULT_GAP() {
+    return [
+      t('compliance.gap_gap_0'),
+      t('compliance.gap_gap_1'),
+      t('compliance.gap_gap_2'),
+      t('compliance.gap_gap_3'),
+      t('compliance.gap_gap_4'),
+      '',
+    ];
+  }
 
   function _gapMaturityColor(v) {
     if (v >= 5) return 'var(--risk-low)';
@@ -1182,7 +1186,14 @@ const ViewCompliance = (() => {
     return { rationale, gap };
   }
 
-  const _DOC_LEVEL_LABELS = { 1: 'Política', 2: 'Norma', 3: 'Procedimiento', 4: 'Instrucción Técnica' };
+  function _DOC_LEVEL_LABELS() {
+    return {
+      1: t('compliance.doc_level_1'),
+      2: t('compliance.doc_level_2'),
+      3: t('compliance.doc_level_3'),
+      4: t('compliance.doc_level_4'),
+    };
+  }
   const _DOC_LEVEL_COLORS = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a' };
 
   function _showGapModal(implId) {
@@ -1194,8 +1205,8 @@ const ViewCompliance = (() => {
     const v = Math.min(5, Math.max(0, c.maturity || 0));
 
     const isAI = !!(rationale || gap);
-    const displayRationale = rationale || _GAP_DEFAULT_WHY[v] || '';
-    const displayGap = gap || _GAP_DEFAULT_GAP[v] || '';
+    const displayRationale = rationale || _GAP_DEFAULT_WHY()[v] || '';
+    const displayGap = gap || _GAP_DEFAULT_GAP()[v] || '';
 
     const refs = (c.evidence_refs || []).filter(r => r && r.title);
     const refsWithLevel = refs.filter(r => r.document_level);
@@ -1203,7 +1214,7 @@ const ViewCompliance = (() => {
 
     const _refBadge = (level) => {
       const l = parseInt(level) || 1;
-      const lbl = _DOC_LEVEL_LABELS[l] || 'Doc';
+      const lbl = _DOC_LEVEL_LABELS()[l] || 'Doc';
       const clr = _DOC_LEVEL_COLORS[l] || '#888';
       return `<span style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;background:${clr}18;color:${clr};border:1px solid ${clr}40;">${l}. ${lbl}</span>`;
     };
@@ -1239,7 +1250,7 @@ const ViewCompliance = (() => {
 
       const maxLevelPresent = Math.max(...refsWithLevel.map(r => r.document_level || 1));
       const missingLevels = [1,2,3,4].filter(l => l > maxLevelPresent)
-        .map(l => `<span style="color:${_DOC_LEVEL_COLORS[l]};font-weight:600;">${_DOC_LEVEL_LABELS[l]}</span>`);
+        .map(l => `<span style="color:${_DOC_LEVEL_COLORS[l]};font-weight:600;">${_DOC_LEVEL_LABELS()[l]}</span>`);
 
       return `
         <div style="margin-bottom:14px;">

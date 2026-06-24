@@ -24,7 +24,7 @@ const ViewRisks = {
     main.innerHTML = UI.sectionHeader(
       t('risks.title'),
       t('risks.subtitle'),
-      canEdit ? `<button class="btn btn-primary" id="btn-new">+ ${t('risks.new')}</button><button class="btn btn-ghost" id="btn-discover-ai" style="margin-left:8px;" title="El agente IA identifica riesgos no registrados analizando el contexto de la organizacion">Descubrir con IA</button>` : ''
+      canEdit ? `<button class="btn btn-primary" id="btn-new">+ ${t('risks.new')}</button><button class="btn btn-ghost" id="btn-discover-ai" style="margin-left:8px;" title="${UI.esc(t('risks.discover_ai_title'))}">${t('risks.discover_ai')}</button>` : ''
     ) + `
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
         <button class="risk-tab-btn" data-risk-tab="list"
@@ -116,7 +116,7 @@ const ViewRisks = {
     document.getElementById('r-overdue').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-supplier-only').onchange = () => { ViewRisks._page = 0; ViewRisks._reload(); };
     document.getElementById('r-export-csv').onclick = async () => {
-      try { await Api.risks.exportCsv(); UI.toast('CSV descargado', 'success'); }
+      try { await Api.risks.exportCsv(); UI.toast(t('risks.csv_exported'), 'success'); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
     if (canEdit) {
@@ -125,18 +125,18 @@ const ViewRisks = {
         const file = e.target.files?.[0];
         if (!file) return;
         try {
-          UI.toast('Importando riesgos...', 'info');
+          UI.toast(t('risks.importing'), 'info');
           const result = await Api.risks.importCsv(file);
           UI.toast(
-            `${result.created} riesgo${result.created !== 1 ? 's' : ''} importado${result.created !== 1 ? 's' : ''}` +
-            (result.skipped > 0 ? ` · ${result.skipped} omitido${result.skipped !== 1 ? 's' : ''}` : ''),
+            `${result.created} ${t('risks.risk_code').toLowerCase()}${result.created !== 1 ? 's' : ''} ${t('common.import').toLowerCase()}${result.created !== 1 ? 's' : ''}` +
+            (result.skipped > 0 ? ` · ${result.skipped} ${t('common.cancelled').toLowerCase()}${result.skipped !== 1 ? 's' : ''}` : ''),
             result.created > 0 ? 'success' : 'warn'
           );
           if (result.detail_skipped?.length > 0) {
             console.warn('Filas omitidas:', result.detail_skipped);
           }
           ViewRisks._reload();
-        } catch (err) { UI.toast('Error: ' + err.message, 'error'); }
+        } catch (err) { UI.toast(t('common.error') + ': ' + err.message, 'error'); }
         e.target.value = '';
       };
     }
@@ -155,8 +155,8 @@ const ViewRisks = {
         filterDiv.innerHTML = `<div style="background:var(--brand-purple-4);border-left:3px solid var(--brand-purple);
                                             border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
                                             display:flex;justify-content:space-between;align-items:center;">
-          <span>Mostrando riesgos del activo: <strong>${UI.esc(asset.name)}</strong></span>
-          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+          <span>${t('risks.filter_asset')} <strong>${UI.esc(asset.name)}</strong></span>
+          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">${t('risks.remove_filter')}</button>
         </div>`;
       }
     }
@@ -172,8 +172,8 @@ const ViewRisks = {
         filterDiv.innerHTML = `<div style="background:var(--brand-orange-4);border-left:3px solid var(--brand-orange);
                                             border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
                                             display:flex;justify-content:space-between;align-items:center;">
-          <span>Mostrando riesgos de la amenaza: <strong>${UI.esc(threat.code)} — ${UI.esc(threat.name)}</strong></span>
-          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+          <span>${t('risks.filter_threat')} <strong>${UI.esc(threat.code)} — ${UI.esc(threat.name)}</strong></span>
+          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">${t('risks.remove_filter')}</button>
         </div>`;
       }
     }
@@ -189,8 +189,8 @@ const ViewRisks = {
         filterDiv.innerHTML = `<div style="background:var(--brand-orange-4);border-left:3px solid var(--brand-orange);
                                             border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
                                             display:flex;justify-content:space-between;align-items:center;">
-          <span>Mostrando riesgos con vulnerabilidad: <strong>${UI.esc(vuln.code)} — ${UI.esc(vuln.name)}</strong></span>
-          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+          <span>${t('risks.filter_vuln')} <strong>${UI.esc(vuln.code)} — ${UI.esc(vuln.name)}</strong></span>
+          <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">${t('risks.remove_filter')}</button>
         </div>`;
       }
     }
@@ -253,9 +253,7 @@ const ViewRisks = {
 
       view.innerHTML = `
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;">
-          <span style="font-size:13px;color:var(--text-muted);">
-            Riesgos por grupo de activos. Los riesgos individuales <strong>no se pierden</strong> al reagrupar.
-          </span>
+          <span style="font-size:13px;color:var(--text-muted);">${t('risks.group_info')}</span>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;white-space:nowrap;margin-left:auto;">
             <input type="checkbox" id="rg-supplier-only" ${supplierOnlyActive ? 'checked' : ''}> ${t('risks.supplier_only')}
           </label>
@@ -272,26 +270,26 @@ const ViewRisks = {
                   <div style="font-weight:700;font-size:14px;">${UI.esc(g.group_name)}</div>
                   <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">
                     ${statusBadge(g.group_status)}
-                    ${g.member_count} activos
+                    ${g.member_count} ${t('risks.group_assets')}
                   </div>
                 </div>
                 ${g.max_residual > 0 ? `
                 <div style="text-align:right;min-width:50px;">
                   <div style="font-size:22px;font-weight:800;color:${levelColor(g.max_residual)};
                                font-family:var(--font-mono);">${g.max_residual}</div>
-                  <div style="font-size:10px;color:var(--text-subtle);">max nivel</div>
+                  <div style="font-size:10px;color:var(--text-subtle);">${t('risks.group_max_level')}</div>
                 </div>` : ''}
               </div>
               <div style="display:flex;gap:12px;font-size:12px;color:var(--text-muted);">
-                <span><strong style="color:var(--text-primary);">${g.risk_count}</strong> riesgos</span>
-                ${g.critical_count ? `<span style="color:var(--risk-critical);font-weight:700;">${g.critical_count} criticos</span>` : ''}
-                ${g.high_count ? `<span style="color:var(--risk-high);font-weight:600;">${g.high_count} altos</span>` : ''}
+                <span><strong style="color:var(--text-primary);">${g.risk_count}</strong> ${t('risks.group_risks')}</span>
+                ${g.critical_count ? `<span style="color:var(--risk-critical);font-weight:700;">${g.critical_count} ${t('risks.group_critical')}</span>` : ''}
+                ${g.high_count ? `<span style="color:var(--risk-high);font-weight:600;">${g.high_count} ${t('risks.group_high')}</span>` : ''}
               </div>
               <button class="btn ${hasRisks ? 'btn-primary' : 'btn-ghost'}"
                       ${!hasRisks ? 'disabled' : ''}
                       onclick="ViewRisks._showGroupRisks(${gid}, '${UI.esc(g.group_name)}')"
                       style="font-size:12px;padding:5px 14px;align-self:flex-start;">
-                ${hasRisks ? 'Ver riesgos' : 'Sin riesgos'}
+                ${hasRisks ? t('risks.group_view') : t('risks.group_no_risks')}
               </button>
             </div>`;
           }).join('')}
@@ -323,8 +321,8 @@ const ViewRisks = {
       filterDiv.innerHTML = `<div style="background:rgba(89,0,141,0.08);border-left:3px solid var(--brand-purple);
                                           border-radius:0 6px 6px 0;padding:8px 14px;font-size:13px;
                                           display:flex;justify-content:space-between;align-items:center;">
-        <span>Riesgos del grupo: <strong>${UI.esc(groupName)}</strong></span>
-        <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">Quitar filtro</button>
+        <span>${t('risks.filter_group')} <strong>${UI.esc(groupName)}</strong></span>
+        <button class="btn btn-sm" onclick="ViewRisks._clearAssetFilter()">${t('risks.remove_filter')}</button>
       </div>`;
     }
     ViewRisks._page = 0;
@@ -489,7 +487,7 @@ const ViewRisks = {
               <td>${UI.riskPill(r.inherent_level)}</td>
               <td>${UI.riskPill(r.residual_level)}</td>
               <td style="font-size:12px;font-weight:700;color:${redColor};white-space:nowrap;">${red > 0 ? '-' : red < 0 ? '+' : ''}${Math.abs(red)}%</td>
-              <td>${UI.statusLabel(r.status)}${isOverdue ? ' <span title="Fecha de tratamiento vencida" style="font-size:10px;font-weight:700;color:var(--risk-high);background:#FEE2E2;border-radius:3px;padding:1px 4px;margin-left:4px;">VENCIDO</span>' : ''}</td>
+              <td>${UI.statusLabel(r.status)}${isOverdue ? ` <span title="${t('risks.overdue_badge_title')}" style="font-size:10px;font-weight:700;color:var(--risk-high);background:#FEE2E2;border-radius:3px;padding:1px 4px;margin-left:4px;">${t('risks.overdue_badge')}</span>` : ''}</td>
               <td>${UI.treatmentLabel(r.treatment_option)}</td>
               <td style="font-size:12px;color:var(--text-muted);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${
                 (() => { const u = ViewRisks._users.find(u => u.id === r.owner_id);
@@ -600,7 +598,7 @@ const ViewRisks = {
       bar.style.display = 'none';
     } else {
       bar.style.display = 'flex';
-      count.textContent = `${n} ${t('common.risk')}${n > 1 ? 's' : ''} ${t('common.select')}`;
+      count.textContent = `${n} ${t('common.risk')}${n > 1 ? 's' : ''} ${t('risks.selected')}`;
     }
   },
 
@@ -620,15 +618,15 @@ const ViewRisks = {
     if (newOwner === '__none__') body.owner_id = null;
     else if (newOwner) body.owner_id = parseInt(newOwner);
     const btn = document.getElementById('r-bulk-apply');
-    btn.disabled = true; btn.textContent = 'Aplicando...';
+    btn.disabled = true; btn.textContent = t('risks.applying');
     try {
       await Promise.all(ids.map(id => Api.risks.update(id, body)));
-      UI.toast(`${ids.length} riesgo${ids.length > 1 ? 's' : ''} actualizados`, 'success');
+      UI.toast(t('risks.updated_n', { n: ids.length }), 'success');
       ViewRisks._selected.clear();
       ViewRisks._reload();
     } catch (e) {
-      UI.toast('Error al actualizar: ' + e.message, 'error');
-      btn.disabled = false; btn.textContent = 'Aplicar';
+      UI.toast(t('risks.update_error') + ' ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = t('common.apply');
     }
   },
 
@@ -1053,7 +1051,7 @@ const ViewRisks = {
     if (btnSuggest && id) {
       btnSuggest.addEventListener('click', async () => {
         btnSuggest.disabled = true;
-        btnSuggest.textContent = 'Analizando cadena de ataque...';
+        btnSuggest.textContent = t('risks.suggest_analyzing');
         // Eliminar panel previo si existe
         document.getElementById('suggest-ai-panel')?.remove();
         try {
@@ -1574,7 +1572,7 @@ const ViewRisks = {
     const btn = document.getElementById('btn-ai-explain-refresh');
     const result = document.getElementById('ai-tab-content-explain');
     if (!result) return;
-    if (btn) { btn.disabled = true; btn.textContent = 'Analizando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t('risks.analyzing_btn'); }
     result.innerHTML = `<div class="notice">${UI.esc(t('risks.ai_analyzing'))}</div>`;
     try {
       const data = await Api.post(`/api/risks/${riskId}/ai-explain`, {});
@@ -2107,13 +2105,13 @@ const ViewRisks = {
 
   async _discoverRisks() {
     const dBtn = document.getElementById('btn-discover-ai');
-    if (dBtn) { dBtn.disabled = true; dBtn.textContent = 'Descubriendo...'; }
+    if (dBtn) { dBtn.disabled = true; dBtn.textContent = t('risks.discover_ai_working'); }
     try {
       const data = await Api.post('/api/risks/ai-discover', {});
       const discovered = data.discovered || [];
       if (!discovered.length) {
-        UI.toast('El agente IA no encontro riesgos no registrados en el contexto actual.', 'info');
-        if (dBtn) { dBtn.disabled = false; dBtn.textContent = 'Descubrir con IA'; }
+        UI.toast(t('risks.discover_none'), 'info');
+        if (dBtn) { dBtn.disabled = false; dBtn.textContent = t('risks.discover_ai'); }
         return;
       }
       // Mostrar modal con riesgos descubiertos
@@ -2124,11 +2122,11 @@ const ViewRisks = {
             <div style="flex:1;">
               <div style="font-size:13px;font-weight:600;">${UI.esc(r.name||r.suggested_name||'')}</div>
               <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">${UI.esc(r.description||r.rationale||'')}</div>
-              ${r.asset_name ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Activo: ${UI.esc(r.asset_name)} · Amenaza: ${UI.esc(r.threat_name||'-')}</div>` : ''}
+              ${r.asset_name ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${t('risks.discover_asset_label')}: ${UI.esc(r.asset_name)} · ${t('risks.discover_threat_label')}: ${UI.esc(r.threat_name||'-')}</div>` : ''}
               ${r.iso_reference ? `<div style="font-size:11px;color:var(--brand-purple);margin-top:2px;">ISO ref: ${UI.esc(r.iso_reference)}</div>` : ''}
             </div>
             <div style="text-align:center;flex-shrink:0;">
-              <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Nivel est.</div>
+              <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">${t('risks.discover_level_label')}</div>
               <div style="font-size:22px;font-weight:800;color:${lvlColor(r.estimated_level||0)};">${r.estimated_level||'-'}</div>
             </div>
           </div>
@@ -2139,17 +2137,17 @@ const ViewRisks = {
       modal.innerHTML = `
         <div class="modal" style="max-width:640px;width:100%;">
           <div class="modal-header">
-            <h3 class="modal-title">Riesgos descubiertos por IA (${discovered.length})</h3>
+            <h3 class="modal-title">${t('risks.discover_title', { n: discovered.length })}</h3>
             <button class="modal-close" id="disc-close">&times;</button>
           </div>
           <div class="modal-body" style="max-height:65vh;overflow-y:auto;">
             <div class="notice notice-info" style="margin-bottom:12px;font-size:13px;">
-              El agente IA identifico ${discovered.length} riesgo(s) potencial(es) no registrados. Revisalos y crea los que consideres relevantes.
+              ${t('risks.discover_info', { n: discovered.length })}
             </div>
             ${rowsHtml}
           </div>
           <div class="modal-footer">
-            <button class="btn btn-ghost" id="disc-cancel">Cerrar</button>
+            <button class="btn btn-ghost" id="disc-cancel">${t('risks.discover_close')}</button>
           </div>
         </div>`;
       document.body.appendChild(modal);
@@ -2158,9 +2156,9 @@ const ViewRisks = {
       modal.querySelector('#disc-cancel').onclick = close;
       modal.onclick = e => { if (e.target === modal) close(); };
     } catch (e) {
-      UI.toast('Error al descubrir riesgos: ' + (e.message || ''), 'error');
+      UI.toast(t('risks.discover_error') + ' ' + (e.message || ''), 'error');
     }
-    if (dBtn) { dBtn.disabled = false; dBtn.textContent = 'Descubrir con IA'; }
+    if (dBtn) { dBtn.disabled = false; dBtn.textContent = t('risks.discover_ai'); }
   },
 
   // ── Sección de encuestas distribuidas ─────────────────────────────────────

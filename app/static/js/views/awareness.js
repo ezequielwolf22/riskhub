@@ -35,7 +35,7 @@ const ViewAwareness = (() => {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Awareness</h1>
+          <h1 class="page-title">${t('awareness.page_title')}</h1>
           <p class="page-sub">${t('awareness.subtitle')}</p>
         </div>
       </div>
@@ -127,11 +127,11 @@ const ViewAwareness = (() => {
 
   window._awQuickPrompt = function(type) {
     const prompts = {
-      phishing: 'Infografia de concienciacion sobre phishing y correos fraudulentos para todos los empleados. Incluir indicadores de alerta y pasos a seguir al recibir un email sospechoso.',
-      password: 'Infografia sobre gestion segura de contrasenas: uso de gestores, contrasenas robustas, autenticacion de doble factor y por que no reutilizar contrasenas.',
-      remote: 'Infografia de buenas practicas de seguridad para el teletrabajo: conexion VPN, bloqueo de pantalla, redes wifi seguras y uso de dispositivos corporativos.',
-      usb: 'Alerta de riesgo sobre el peligro de usar dispositivos USB desconocidos. Incluir casos reales y politica de uso aceptable de dispositivos extraibles.',
-      social: 'Buenas practicas de seguridad en redes sociales para empleados: que informacion no compartir, configuracion de privacidad y riesgo de ingenieria social.',
+      phishing: t('awareness.gen_prompt_phishing'),
+      password: t('awareness.gen_prompt_password'),
+      remote:   t('awareness.gen_prompt_remote'),
+      usb:      t('awareness.gen_prompt_usb'),
+      social:   t('awareness.gen_prompt_social'),
     };
     const el = document.getElementById('aw-prompt');
     if (el) el.value = prompts[type] || '';

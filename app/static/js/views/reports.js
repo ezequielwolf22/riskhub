@@ -13,23 +13,22 @@ const ViewReports = {
           ${t('reports.generate')}
         </button>
         <button id="tab-templates" class="tab-btn" onclick="ViewReports._switchTab('templates')">
-          Plantillas de marca
+          ${t('reports.tab_templates')}
         </button>
       </div>
 
       <div id="panel-reports">
         <!-- Informes estaticos -->
         <div class="card" style="margin-bottom:16px;">
-          <h3 style="margin-bottom:4px;">Informes del registro</h3>
+          <h3 style="margin-bottom:4px;">${t('reports.static_title')}</h3>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-            Generados directamente desde los datos registrados. Sin IA, descarga instantanea.
+            ${t('reports.static_desc')}
           </p>
           <div class="card-row">
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
-              <h4 style="margin:0 0 6px;">Estado del SGSI</h4>
+              <h4 style="margin:0 0 6px;">${t('reports.sgsi_title')}</h4>
               <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
-                Informe ejecutivo multi-modulo: riesgos, controles, incidentes, tareas,
-                politicas y RGPD. Resumen de KPIs de todo el sistema en un solo documento.
+                ${t('reports.sgsi_desc')}
               </p>
               <div style="display:flex;gap:8px;">
                 <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('sgsi-status')">
@@ -38,10 +37,9 @@ const ViewReports = {
               </div>
             </div>
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
-              <h4 style="margin:0 0 6px;">Risk Register</h4>
+              <h4 style="margin:0 0 6px;">${t('reports.rr_title')}</h4>
               <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
-                Listado completo de riesgos ordenados por nivel residual. Activo, amenaza,
-                niveles inherente/residual, estado y decision de tratamiento. ISO/IEC 27005:2018.
+                ${t('reports.rr_desc')}
               </p>
               <div style="display:flex;gap:8px;">
                 <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('rr-pdf')">
@@ -55,8 +53,7 @@ const ViewReports = {
             <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
               <h4 style="margin:0 0 6px;">Statement of Applicability</h4>
               <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
-                Declaracion de aplicabilidad completa: 93 controles ISO 27002:2022 con estado, madurez,
-                razon de inclusion/exclusion, evidencias, fechas de revision y seccion de firma.
+                ${t('reports.soa_desc')}
               </p>
               <div style="display:flex;gap:8px;">
                 <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('soa')">
@@ -69,11 +66,9 @@ const ViewReports = {
 
         <!-- Revision por la Direccion -->
         <div class="card" style="margin-bottom:16px;border:2px solid var(--brand-purple);">
-          <h3 style="margin-bottom:4px;">Revision por la Direccion</h3>
+          <h3 style="margin-bottom:4px;">${t('reports.mgmt_review_title')}</h3>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-            Informe completo segun ISO 27001:2022 clausula 9.3 y ENS. Incluye todos los apartados normativos
-            con datos reales del sistema — los campos sin datos aparecen marcados [A CUMPLIMENTAR].
-            Disponible en PDF (para presentar), Excel (para editar) y Word (para personalizar y firmar).
+            ${t('reports.mgmt_review_desc')}
           </p>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
             <button class="btn btn-primary" onclick="ViewReports._download('mgmt-review-pdf')">
@@ -91,11 +86,11 @@ const ViewReports = {
         <!-- Post-Mortem BCP -->
         <div class="card" style="margin-bottom:16px;border:2px solid #DC2626;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
-            <h3 style="margin:0;color:#DC2626;"><i class="ti ti-alert-triangle"></i> Post-Mortem de Continuidad (BCP)</h3>
+            <h3 style="margin:0;color:#DC2626;"><i class="ti ti-alert-triangle"></i> ${t('reports.bcp_pm_title')}</h3>
             <span class="badge" style="font-size:10px;background:rgba(220,38,38,.12);color:#DC2626;">ISO 22301</span>
           </div>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
-            Informe completo de gestion del incidente de continuidad: cronologia, impacto en el negocio, analisis de causa raiz, evidencias, efectividad de la respuesta y acciones correctivas.
+            ${t('reports.bcp_pm_desc')}
           </p>
           <div id="bcp-pm-list" style="min-height:40px;">
             <p style="font-size:12px;color:var(--text-muted);">${t('common.loading')}</p>
@@ -105,13 +100,11 @@ const ViewReports = {
         <!-- Informes IA -->
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
-            <h3 style="margin:0;">Informes generados por IA</h3>
+            <h3 style="margin:0;">${t('reports.ai_section_title')}</h3>
             <span class="badge badge-muted" style="font-size:10px;">${t('reports.claude_api_required')}</span>
           </div>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-            Claude analiza todos los datos del registro de riesgos — activos, amenazas,
-            controles, planes de tratamiento y estadisticas — y genera un informe ejecutivo
-            en lenguaje natural. Tarda entre 30-60 segundos.
+            ${t('reports.ai_section_desc')}
           </p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             ${[
@@ -164,8 +157,7 @@ const ViewReports = {
               </div>`).join('')}
           </div>
           <div style="margin-top:12px;background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-muted);">
-            Los informes de IA toman en cuenta: activos, amenazas, riesgos, controles, planes de tratamiento,
-            estadísticas del registro y el contexto organizacional configurado.
+            ${t('reports.ai_footer_note')}
           </div>
         </div>
       </div>
@@ -187,17 +179,19 @@ const ViewReports = {
 
   // ── PLANTILLAS ──────────────────────────────────────────────
 
-  _REPORT_TYPES: [
-    { id: 'all',                label: 'Global (todos los informes)', desc: 'Se aplica a cualquier informe que no tenga plantilla especifica.' },
-    { id: 'risk_register',      label: 'Risk Register',              desc: 'PDF de riesgos ordenados por nivel residual.' },
-    { id: 'soa',                label: 'Statement of Applicability', desc: 'Declaracion de aplicabilidad ISO 27002:2022.' },
-    { id: 'sgsi_status',        label: 'Estado del SGSI',            desc: 'Informe ejecutivo multi-modulo.' },
-    { id: 'management_review',  label: 'Revision por la Direccion',  desc: 'ISO 27001:2022 clausula 9.3.' },
-    { id: 'treatment_plan',     label: 'Plan de Tratamiento (IA)',   desc: 'Narrativa de tratamiento generada por Claude.' },
-    { id: 'executive_dashboard',label: 'Dashboard Ejecutivo (IA)',   desc: 'Postura de riesgo para la Direccion.' },
-    { id: 'committee_minutes',  label: 'Acta de Comite (IA)',        desc: 'Acta formal del comite de seguridad.' },
-    { id: 'followup_report',    label: 'Seguimiento ISO 27005 (IA)', desc: 'Monitoreo y mejora continua.' },
-  ],
+  get _REPORT_TYPES() {
+    return [
+      { id: 'all',                label: t('reports.tpl_type_all'),       desc: t('reports.tpl_type_all_desc') },
+      { id: 'risk_register',      label: t('reports.tpl_type_rr'),        desc: t('reports.tpl_type_rr_desc') },
+      { id: 'soa',                label: t('reports.tpl_type_soa'),       desc: t('reports.tpl_type_soa_desc') },
+      { id: 'sgsi_status',        label: t('reports.tpl_type_sgsi'),      desc: t('reports.tpl_type_sgsi_desc') },
+      { id: 'management_review',  label: t('reports.tpl_type_mgmt'),      desc: t('reports.tpl_type_mgmt_desc') },
+      { id: 'treatment_plan',     label: t('reports.tpl_type_treatment'), desc: t('reports.tpl_type_treatment_desc') },
+      { id: 'executive_dashboard',label: t('reports.tpl_type_executive'), desc: t('reports.tpl_type_executive_desc') },
+      { id: 'committee_minutes',  label: t('reports.tpl_type_committee'), desc: t('reports.tpl_type_committee_desc') },
+      { id: 'followup_report',    label: t('reports.tpl_type_followup'),  desc: t('reports.tpl_type_followup_desc') },
+    ];
+  },
 
   async _renderTemplates() {
     const wrap = document.getElementById('panel-templates');
@@ -209,12 +203,9 @@ const ViewReports = {
 
       wrap.innerHTML = `
         <div class="card" style="margin-bottom:16px;">
-          <h3 style="margin-bottom:4px;">Plantillas de marca</h3>
+          <h3 style="margin-bottom:4px;">${t('reports.tpl_title')}</h3>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-            Personaliza colores, logo, fuente y textos para cada tipo de informe.
-            La plantilla <b>Global</b> se aplica a todos los que no tengan configuracion especifica.
-            Opcionalmente puedes subir un fichero <b>.docx</b> o <b>.html</b> como plantilla base
-            que la IA rellenara con los datos del sistema.
+            ${t('reports.tpl_desc')}
           </p>
           <div style="display:grid;gap:10px;">
             ${this._REPORT_TYPES.map(rt => {
@@ -232,21 +223,21 @@ const ViewReports = {
                 </div>
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:600;font-size:14px;">${UI.esc(rt.label)}</div>
-                  <div style="font-size:12px;color:var(--text-muted);">${UI.esc(rt.desc)}${hasFile ? ' <span style="color:var(--brand-purple);">· Plantilla de fichero activa</span>' : ''}</div>
+                  <div style="font-size:12px;color:var(--text-muted);">${UI.esc(rt.desc)}${hasFile ? ` <span style="color:var(--brand-purple);">· ${t('reports.tpl_file_active')}</span>` : ''}</div>
                 </div>
-                ${hasTemplate ? `<span class="badge badge-success" style="font-size:10px;flex-shrink:0;">Personalizado</span>` : `<span class="badge badge-muted" style="font-size:10px;flex-shrink:0;">Por defecto</span>`}
+                ${hasTemplate ? `<span class="badge badge-success" style="font-size:10px;flex-shrink:0;">${t('reports.tpl_customized')}</span>` : `<span class="badge badge-muted" style="font-size:10px;flex-shrink:0;">${t('reports.tpl_default')}</span>`}
                 <button class="btn btn-sm btn-primary" style="flex-shrink:0;" onclick="ViewReports._openTemplateModal('${rt.id}','${UI.esc(rt.label)}')">
-                  Configurar
+                  ${t('reports.tpl_configure')}
                 </button>
                 ${hasTemplate ? `<button class="btn btn-sm" style="flex-shrink:0;color:#DC2626;border-color:#DC2626;" onclick="ViewReports._deleteTemplate('${rt.id}')">
-                  Resetear
+                  ${t('reports.tpl_reset')}
                 </button>` : ''}
               </div>`;
             }).join('')}
           </div>
         </div>`;
     } catch (e) {
-      wrap.innerHTML = `<p style="color:var(--danger);">Error al cargar plantillas: ${UI.esc(e.message)}</p>`;
+      wrap.innerHTML = `<p style="color:var(--danger);">${t('reports.error_loading_templates')} ${UI.esc(e.message)}</p>`;
     }
   },
 
@@ -259,13 +250,13 @@ const ViewReports = {
     const modalId = 'modal-report-template';
     UI.modal({
       id: modalId,
-      title: `Plantilla: ${label}`,
+      title: t('reports.tpl_modal_title', { label }),
       width: 560,
       body: `
         <div style="display:grid;gap:16px;">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <label style="font-size:13px;font-weight:600;">
-              Color primario
+              ${t('reports.tpl_primary_color')}
               <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
                 <input type="color" id="tpl-primary" value="${current.primary_color || '#59008D'}"
                        style="width:44px;height:36px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:2px;">
@@ -275,7 +266,7 @@ const ViewReports = {
               </div>
             </label>
             <label style="font-size:13px;font-weight:600;">
-              Color secundario
+              ${t('reports.tpl_secondary_color')}
               <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
                 <input type="color" id="tpl-secondary" value="${current.secondary_color || '#D65200'}"
                        style="width:44px;height:36px;border-radius:6px;border:1px solid var(--border);cursor:pointer;padding:2px;">
@@ -287,7 +278,7 @@ const ViewReports = {
           </div>
 
           <label style="font-size:13px;font-weight:600;">
-            Fuente
+            ${t('reports.tpl_font')}
             <select id="tpl-font" style="width:100%;margin-top:4px;">
               ${['Helvetica','Times-Roman','Courier'].map(f =>
                 `<option value="${f}" ${(current.font_family||'Helvetica')===f?'selected':''}>${f}</option>`
@@ -296,64 +287,62 @@ const ViewReports = {
           </label>
 
           <label style="font-size:13px;font-weight:600;">
-            Nombre de empresa (aparece en cabecera y pie)
+            ${t('reports.tpl_company')}
             <input type="text" id="tpl-company" value="${UI.esc(current.company_name||'')}"
                    placeholder="Ej: Acme Corp S.L." style="width:100%;margin-top:4px;">
           </label>
 
           <label style="font-size:13px;font-weight:600;">
-            Titulo de cabecera (opcional)
+            ${t('reports.tpl_header_title')}
             <input type="text" id="tpl-header-title" value="${UI.esc(current.header_title||'')}"
                    placeholder="Ej: Confidencial — Solo uso interno" style="width:100%;margin-top:4px;">
           </label>
 
           <label style="font-size:13px;font-weight:600;">
-            Texto de pie de pagina (opcional — sobreescribe el predeterminado)
+            ${t('reports.tpl_footer')}
             <input type="text" id="tpl-footer" value="${UI.esc(current.footer_text||'')}"
                    placeholder="Ej: Acme Corp — Clasificado: Confidencial" style="width:100%;margin-top:4px;">
           </label>
 
           <label style="font-size:13px;font-weight:600;">
-            Subtitulo de portada (opcional)
+            ${t('reports.tpl_subtitle')}
             <input type="text" id="tpl-subtitle" value="${UI.esc(current.cover_subtitle||'')}"
                    placeholder="Ej: Ejercicio 2025 — Para uso del Comite de Direccion" style="width:100%;margin-top:4px;">
           </label>
 
           <div>
-            <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Logo (PNG, JPG o WebP — max 2 MB)</div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${t('reports.tpl_logo')}</div>
             ${current.has_logo ? `
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
                 <img src="/api/report-templates/${reportType}/logo" alt="Logo"
                      style="max-height:40px;max-width:160px;object-fit:contain;border:1px solid var(--border);border-radius:6px;padding:4px;">
                 <button class="btn btn-sm" style="color:#DC2626;border-color:#DC2626;"
-                        onclick="ViewReports._deleteLogo('${reportType}')">Eliminar logo</button>
+                        onclick="ViewReports._deleteLogo('${reportType}')">${t('reports.tpl_delete_logo')}</button>
               </div>` : ''}
             <input type="file" id="tpl-logo" accept=".png,.jpg,.jpeg,.webp" style="font-size:13px;">
           </div>
 
           <div style="border:1px solid var(--border);border-radius:8px;padding:14px;">
-            <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Fichero de plantilla base (.docx o .html — max 10 MB)</div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px;">${t('reports.tpl_file_title')}</div>
             <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
-              Sube un documento Word o HTML con los estilos, colores y estructura de tu organizacion.
-              La IA rellenara las secciones marcadas con <code>{{variable}}</code> con los datos reales del sistema.
-              Si no se sube ninguno, se usa la plantilla por defecto de RiskHub.
+              ${t('reports.tpl_file_desc')}
             </p>
             ${current.has_template_file ? `
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;
                           background:var(--bg-2);border-radius:6px;padding:8px 12px;">
                 <span style="font-size:18px;">${current.template_mime && current.template_mime.includes('html') ? '' : ''}</span>
                 <div style="flex:1;">
-                  <div style="font-size:13px;font-weight:600;">Plantilla activa</div>
-                  <div style="font-size:11px;color:var(--text-muted);">${current.template_mime && current.template_mime.includes('html') ? 'HTML' : 'Word (.docx)'}</div>
+                  <div style="font-size:13px;font-weight:600;">${t('reports.tpl_file_active')}</div>
+                  <div style="font-size:11px;color:var(--text-muted);">${current.template_mime && current.template_mime.includes('html') ? t('reports.tpl_file_active_html') : 'Word (.docx)'}</div>
                 </div>
                 <button class="btn btn-sm" style="color:#DC2626;border-color:#DC2626;"
-                        onclick="ViewReports._deleteTemplateFile('${reportType}')">Eliminar plantilla</button>
+                        onclick="ViewReports._deleteTemplateFile('${reportType}')">${t('reports.tpl_delete_file')}</button>
               </div>` : ''}
             <input type="file" id="tpl-template-file" accept=".docx,.html,.htm" style="font-size:13px;">
           </div>
 
           <div style="background:var(--bg-2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text-muted);">
-            Los cambios se aplican a los proximos informes generados. Los informes ya descargados no se modifican.
+            ${t('reports.tpl_footer_note')}
           </div>
         </div>
       `,
@@ -524,39 +513,39 @@ const ViewReports = {
   _download(type) {
     const actions = {
       'sgsi-status': () => {
-        UI.toast('Generando Informe del Estado del SGSI...', 'info');
+        UI.toast(t('reports.generating'), 'info');
         const today = new Date().toISOString().slice(0, 10);
         Api.download('/api/reports/sgsi-status', `sgsi_status_${today}.pdf`)
            .catch(e => UI.toast(e.message, 'error'));
       },
       'rr-pdf': () => {
-        UI.toast('Generando Risk Register PDF...', 'info');
+        UI.toast(t('reports.generating'), 'info');
         Api.download('/api/reports/risk-register', 'risk_register.pdf')
            .catch(e => UI.toast(e.message, 'error'));
       },
       'rr-excel': () => {
-        UI.toast('Generando Risk Register Excel...', 'info');
+        UI.toast(t('reports.generating'), 'info');
         Api.download(
           '/api/reports/risk-register-excel',
           `riskhub_export_${new Date().toISOString().slice(0,10)}.xlsx`
         ).catch(e => UI.toast(e.message, 'error'));
       },
       'soa': () => {
-        UI.toast('Generando Statement of Applicability...', 'info');
+        UI.toast(t('reports.generating'), 'info');
         const today = new Date().toISOString().slice(0,10);
         Api.download('/api/reports/soa', `SOA_${today}.pdf`)
            .catch(e => UI.toast(e.message, 'error'));
       },
       'mgmt-review-pdf': () => {
-        UI.toast('Generando Revision por la Direccion PDF...', 'info');
+        UI.toast(t('reports.generating'), 'info');
         Api.reports.managementReview('pdf').catch(e => UI.toast(e.message, 'error'));
       },
       'mgmt-review-excel': () => {
-        UI.toast('Generando Revision por la Direccion Excel...', 'info');
+        UI.toast(t('reports.generating'), 'info');
         Api.reports.managementReview('excel').catch(e => UI.toast(e.message, 'error'));
       },
       'mgmt-review-word': () => {
-        UI.toast('Generando Revision por la Direccion Word...', 'info');
+        UI.toast(t('reports.generating'), 'info');
         Api.reports.managementReview('word').catch(e => UI.toast(e.message, 'error'));
       },
     };

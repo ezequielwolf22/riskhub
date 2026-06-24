@@ -207,48 +207,57 @@ const UI = {
   },
 
   // Decoradores helpers
-  assetTypeLabel(t) {
-    return ({
-      primary_process: 'Proceso',
-      primary_information: 'Información',
-      support_hardware: 'Hardware',
-      support_software: 'Software',
-      support_network: 'Red',
-      support_personnel: 'Personal',
-      support_site: 'Instalación',
-      support_organization: 'Organización',
-    })[t] || t;
+  assetTypeLabel(tp) {
+    const map = {
+      primary_process:      () => window.t('assets.type.primary'),
+      primary_information:  () => window.t('assets.type.information'),
+      support_hardware:     () => window.t('assets.type.hardware'),
+      support_software:     () => window.t('assets.type.software'),
+      support_network:      () => window.t('assets.type.support_network'),
+      support_personnel:    () => window.t('assets.type.people'),
+      support_site:         () => window.t('assets.type.facilities'),
+      support_organization: () => window.t('assets.type.support_organization'),
+    };
+    return map[tp] ? map[tp]() : tp;
   },
 
   threatOriginLabel(o) {
-    return ({ D: 'Deliberada', A: 'Accidental', E: 'Ambiental' })[o] || o;
+    const map = {
+      D: () => window.t('threats.origin_deliberate'),
+      A: () => window.t('threats.origin_accidental'),
+      E: () => window.t('threats.origin_environmental'),
+    };
+    return map[o] ? map[o]() : o;
   },
 
-  treatmentLabel(t) {
-    return ({
-      modification: 'Mitigar',
-      retention: 'Aceptar',
-      avoidance: 'Evitar',
-      sharing: 'Transferir',
-    })[t] || (t || '-');
+  treatmentLabel(tr) {
+    const map = {
+      modification: () => window.t('risks.treatment_decision.reduce'),
+      retention:    () => window.t('risks.treatment_decision.accept'),
+      avoidance:    () => window.t('risks.treatment_decision.avoid'),
+      sharing:      () => window.t('risks.treatment_decision.transfer'),
+    };
+    return map[tr] ? map[tr]() : (tr || '-');
   },
 
   statusLabel(s) {
-    return ({
-      identified: 'Identificado',
-      assessed: 'Evaluado',
-      treated: 'Tratado',
-      accepted: 'Aceptado',
-      closed: 'Cerrado',
-    })[s] || s;
+    const map = {
+      identified: () => window.t('risks.status.identified'),
+      assessed:   () => window.t('risks.status.assessed'),
+      treated:    () => window.t('risks.status.treated'),
+      accepted:   () => window.t('risks.status.accepted'),
+      closed:     () => window.t('risks.status.closed'),
+    };
+    return map[s] ? map[s]() : s;
   },
 
   controlStatusLabel(s) {
-    return ({
-      planned: 'Planificado',
-      implemented: 'Implementado',
-      partial: 'Parcial',
-      not_implemented: 'No implementado',
-    })[s] || s;
+    const map = {
+      planned:         () => window.t('controls.implementation_status.planned'),
+      implemented:     () => window.t('controls.implementation_status.implemented'),
+      partial:         () => window.t('controls.implementation_status.partial'),
+      not_implemented: () => window.t('controls.implementation_status.not_implemented'),
+    };
+    return map[s] ? map[s]() : s;
   },
 };
