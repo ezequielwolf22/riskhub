@@ -622,19 +622,6 @@ const ViewIntegrations = {
           <div id="smtp-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
         </div>
 
-        <!-- SAP / Jagger / Sphera — Webhooks ERP -->
-        <div class="card" id="erp-card">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-            <div>
-              <b style="font-size:15px;">SAP / Jagger / Sphera — Webhooks ERP</b>
-              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.erp_subtitle')}</div>
-            </div>
-            <span id="erp-status-badge" style="margin-left:auto;"></span>
-          </div>
-          <div id="erp-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
-        </div>
-
         <!-- MS Forms / Power Automate + Monday.com -->
         <div class="card" id="forms-card">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
@@ -663,7 +650,7 @@ const ViewIntegrations = {
 
       </div>
     `;
-    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initErpWebhooks(), this._initVirusTotal(), this._initForms()]);
+    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initVirusTotal(), this._initForms()]);
   },
 
   async _initSharePoint() {
@@ -1217,159 +1204,6 @@ const ViewIntegrations = {
     }
   },
 
-  // ── ERP Webhooks (SAP / Jagger / Sphera) ─────────────────────────────────
-
-  async _initErpWebhooks() {
-    const body = document.getElementById('erp-body');
-    const badge = document.getElementById('erp-status-badge');
-    if (!body) return;
-    try {
-      const cfg = await Api.get('/api/integrations/erp/config');
-      const isAdmin = Auth.isAdmin();
-      if (badge) badge.innerHTML = cfg.configured
-        ? `<span class="badge badge-muted" style="background:#D1FAE5;color:#065F46;">${t('integrations.erp_configured')}</span>`
-        : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">${t('integrations.erp_not_configured')}</span>`;
-
-      const origin = window.location.origin;
-      const webhookUrls = {
-        SAP:    `${origin}/api/integrations/erp/sap/webhook`,
-        Jagger: `${origin}/api/integrations/erp/jagger/webhook`,
-        Sphera: `${origin}/api/integrations/erp/sphera/webhook`,
-      };
-
-      body.innerHTML = `
-        ${cfg.configured ? `
-          <div style="background:var(--bg-2);border-radius:8px;padding:14px;margin-bottom:14px;">
-            <p style="margin:0 0 10px;font-size:12px;font-weight:600;text-transform:uppercase;color:var(--text-muted);">
-              ${t('integrations.erp_webhook_urls')}
-            </p>
-            ${Object.entries(webhookUrls).map(([sys, url]) => `
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <span style="min-width:56px;font-size:12px;font-weight:600;">${sys}</span>
-                <input style="flex:1;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text-base);font-family:var(--font-mono);"
-                       value="${url}" readonly onclick="this.select()">
-                <button class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText('${url}');UI.toast(t('integrations.erp_url_copied'),'success');">
-                  ${t('integrations.erp_copy_btn')}
-                </button>
-              </div>
-            `).join('')}
-            <p style="margin:8px 0 0;font-size:11px;color:var(--text-muted);">
-              El sistema externo debe enviar el header <code>X-Org-Id: [id-org]</code>
-              y opcionalmente <code>X-Hub-Signature-256: sha256=[hmac]</code>
-            </p>
-          </div>
-        ` : ''}
-        ${isAdmin ? `
-          <div>
-            <p style="font-size:13px;font-weight:600;margin-bottom:8px;">${t('integrations.erp_config_heading')}</p>
-            <div class="form-grid">
-              <div class="span2">
-                <label>${t('integrations.erp_secret_label')}</label>
-                <input id="erp-secret" class="input" type="password"
-                       placeholder="${t('integrations.erp_secret_ph')}"
-                       value="${cfg.configured ? '••••••••' : ''}">
-              </div>
-              <div class="span2">
-                <label>${t('integrations.erp_sources_label')}</label>
-                <div style="display:flex;gap:12px;margin-top:4px;">
-                  ${['sap','jagger','sphera'].map(src => {
-                    const checked = !cfg.configured || (cfg.enabled_sources || []).includes(src);
-                    return `<label style="display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer;">
-                      <input type="checkbox" id="erp-src-${src}" ${checked ? 'checked' : ''}> ${src.toUpperCase()}
-                    </label>`;
-                  }).join('')}
-                </div>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:12px;justify-content:space-between;align-items:center;">
-              <button class="btn btn-ghost btn-sm" onclick="ViewIntegrations._generateErpSecret()">
-                ${t('integrations.erp_generate_secret')}
-              </button>
-              <div style="display:flex;gap:8px;">
-                ${cfg.configured ? `
-                  <button class="btn btn-sm" onclick="ViewIntegrations._loadErpEvents()">
-                    ${t('integrations.erp_view_events')}
-                  </button>` : ''}
-                <button class="btn btn-sm btn-primary" onclick="ViewIntegrations._saveErpConfig()">
-                  ${t('integrations.erp_save_config')}
-                </button>
-              </div>
-            </div>
-          </div>
-          <div id="erp-events" style="display:none;margin-top:16px;"></div>
-        ` : `
-          <p style="font-size:13px;color:var(--text-muted);">
-            ${cfg.configured ? t('integrations.erp_configured_msg') : t('integrations.erp_not_configured_msg')}
-          </p>
-        `}
-      `;
-    } catch (e) {
-      if (body) body.innerHTML = `<p class="notice">${UI.esc(e.message)}</p>`;
-    }
-  },
-
-  _generateErpSecret() {
-    const arr = new Uint8Array(32);
-    crypto.getRandomValues(arr);
-    const secret = Array.from(arr, b => b.toString(16).padStart(2,'0')).join('');
-    const input = document.getElementById('erp-secret');
-    if (input) { input.value = secret; input.type = 'text'; }
-  },
-
-  async _saveErpConfig() {
-    const secret = document.getElementById('erp-secret')?.value?.trim();
-    if (!secret || secret.startsWith('•')) {
-      UI.toast(t('integrations.erp_secret_required'), 'error'); return;
-    }
-    const sources = ['sap','jagger','sphera'].filter(s =>
-      document.getElementById(`erp-src-${s}`)?.checked
-    );
-    try {
-      await Api.put('/api/integrations/erp/config', {
-        webhook_secret: secret,
-        enabled_sources: sources,
-      });
-      UI.toast(t('integrations.erp_saved'), 'success');
-      await this._initErpWebhooks();
-    } catch (e) { UI.toast(e.message, 'error'); }
-  },
-
-  async _loadErpEvents() {
-    const el = document.getElementById('erp-events');
-    if (!el) return;
-    el.style.display = 'block';
-    try {
-      const { events } = await Api.get('/api/integrations/erp/events');
-      if (!events.length) {
-        el.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${t('integrations.erp_no_events')}</p>`;
-        return;
-      }
-      el.innerHTML = `
-        <p style="font-size:12px;font-weight:600;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">
-          ${t('integrations.erp_events_heading')}
-        </p>
-        <table class="table" style="font-size:12px;">
-          <thead><tr><th>${t('integrations.erp_col_date')}</th><th>${t('integrations.erp_col_source')}</th><th>${t('integrations.erp_col_event')}</th><th>${t('integrations.erp_col_entity')}</th><th>${t('integrations.erp_col_result')}</th></tr></thead>
-          <tbody>
-            ${events.map(ev => `
-              <tr>
-                <td style="white-space:nowrap;">${ev.ts ? ev.ts.slice(0,19).replace('T',' ') : '-'}</td>
-                <td><span class="badge badge-muted">${UI.esc(ev.source || '')}</span></td>
-                <td>${UI.esc(ev.event_type || '')}</td>
-                <td>${UI.esc(ev.entity_name || '')}</td>
-                <td style="color:${ev.result === 'ok' ? 'var(--risk-low)' : ev.result === 'queued' ? 'var(--brand-orange)' : 'var(--risk-critical)'};">
-                  ${UI.esc(ev.result || '')}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-    } catch (e) {
-      el.innerHTML = `<p class="notice">${UI.esc(e.message)}</p>`;
-    }
-  },
-
   // ── Catalogo ─────────────────────────────────────────────────────────────
 
   _renderCatalog() {
@@ -1656,15 +1490,17 @@ const ViewIntegrations = {
             <button class="btn btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('forms-webhook-url').value).then(()=>UI.toast(t('integrations.forms_copied'),'success'))">${t('integrations.forms_copy_btn')}</button>
             <button class="btn btn-sm" id="forms-regen-token" title="${t('integrations.forms_regen_btn')}">${t('integrations.forms_regen_btn')}</button>
           </div>
-          <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-bottom:12px;">
-            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">${t('integrations.forms_payload_label')}</div>
-            <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
+          <details style="margin-bottom:12px;">
+            <summary style="font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);">${t('integrations.forms_payload_label')}</summary>
+            <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-top:6px;">
+              <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
   "supplier": "Nombre del proveedor",
   "title": "Titulo del cuestionario (opcional)",
   "answers": { "Pregunta 1": "Si", "Pregunta 2": "No" },
   "submitted_by": "email@externo.com"
 }</pre>
-          </div>
+            </div>
+          </details>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_supplier_field_label')}</label>
           <input class="input" id="forms-supplier-field" placeholder="${t('integrations.forms_supplier_field_ph')}" value="${UI.esc(cfg.supplier_field_name || '')}" style="width:100%;margin-bottom:10px;">
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_template_label')}</label>
@@ -1679,9 +1515,10 @@ const ViewIntegrations = {
           </p>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_monday_label')}</label>
           <input class="input" id="forms-monday-url" placeholder="https://hooks.monday.com/..." value="${UI.esc(cfg.monday_webhook_url || '')}" style="width:100%;margin-bottom:12px;">
-          <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-bottom:12px;">
-            <div style="font-size:11px;font-weight:600;margin-bottom:4px;">${t('integrations.forms_payload_sent_label')}</div>
-            <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
+          <details style="margin-bottom:12px;">
+            <summary style="font-size:11px;font-weight:600;cursor:pointer;color:var(--text-muted);">${t('integrations.forms_payload_sent_label')}</summary>
+            <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-top:6px;">
+              <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
   "event": "questionnaire_submitted",
   "questionnaire_code": "SEQ-0001",
   "supplier_name": "Proveedor S.A.",
@@ -1689,18 +1526,19 @@ const ViewIntegrations = {
   "residual_risk_level": "low",
   "submitted_at": "2026-06-19T..."
 }</pre>
-          </div>
+            </div>
+          </details>
           <p style="font-size:11px;color:var(--text-muted);">
             ${t('integrations.forms_monday_hint')}
           </p>
         </div>
       </div>
 
-      <!-- Via 3: Alta automatica via polling -->
+      <!-- Alta automatica via polling MS Forms -->
       <div style="border:2px solid var(--brand-purple,#59008D);border-radius:10px;padding:20px;margin-top:20px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--brand-purple,#59008D)" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-          <span style="font-weight:700;font-size:14px;color:var(--brand-purple,#59008D);">Via 3 — Alta automatica de proveedores (polling MS Forms)</span>
+          <span style="font-weight:700;font-size:14px;color:var(--brand-purple,#59008D);">Alta automatica de proveedores (polling MS Forms)</span>
           ${pollBadge}
           <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Ultimo sync: ${UI.esc(lastPollStr)}</span>
         </div>
