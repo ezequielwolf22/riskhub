@@ -171,6 +171,9 @@ class AuditLog(Base):
     entity_type = Column(String(64), nullable=False)
     entity_id = Column(String(64), nullable=True)
     detail = Column(JSON, nullable=True)
+    old_value = Column(JSON, nullable=True)   # field values before change
+    new_value = Column(JSON, nullable=True)   # field values after change
+    ip_address = Column(String(64), nullable=True)
     user = relationship("User")
 
 

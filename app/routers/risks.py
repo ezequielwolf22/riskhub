@@ -19,7 +19,7 @@ from app.models import (
 )
 from app.schemas import RiskIn, RiskOut, RiskUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
-from app.services.audit_service import log_action
+from app.services.audit_service import log_action, diff_objects
 from app.services.risk_engine import (
     calc_level, calc_residual,
     calc_consequence_magerit, primary_dimension_for_threat, MAGERIT_DIM_FIELD,
@@ -960,6 +960,10 @@ def update_risk(risk_id: int, data: RiskUpdate, request: Request, db: Session = 
     # Capturar old_status ANTES de aplicar cambios (compliance sync lo necesita)
     old_status = r.status
 
+    # Capturar estado anterior para audit trail field-level
+    _TRACKED_FIELDS = ["status", "inherent_level", "residual_level", "likelihood", "consequence", "treatment"]
+    before = {f: getattr(r, f, None) for f in _TRACKED_FIELDS}
+
     # Acceptance bookkeeping
     if update_data.get("status") == RiskStatus.ACCEPTED:
         r.accepted_by_id = user.id
@@ -968,8 +972,19 @@ def update_risk(risk_id: int, data: RiskUpdate, request: Request, db: Session = 
     for k, v in update_data.items():
         setattr(r, k, v)
     _recalc(db, r)
-    log_action(db, user.id, "update", "risk", str(risk_id),
-               {"code": r.code, "status": str(r.status), "residual_level": r.residual_level})
+
+    # Capturar estado posterior y calcular diff
+    after = {f: getattr(r, f, None) for f in _TRACKED_FIELDS}
+    old_v, new_v = diff_objects(before, after)
+    ip = request.client.host if request.client else None
+    log_action(
+        db, user.id, "update", "risk", str(risk_id),
+        detail={"code": r.code},
+        old_value=old_v if old_v else None,
+        new_value=new_v if new_v else None,
+        ip_address=ip,
+        organization_id=user.organization_id,
+    )
     db.commit(); db.refresh(r)
 
     # Sincronizar compliance cuando el riesgo cambia de estado (especialmente CLOSED/ACCEPTED)

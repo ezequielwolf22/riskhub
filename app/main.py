@@ -27,6 +27,7 @@ from app.routers import (
     vendor_assessments, vendor_issues, users, webhooks,
 )
 from app.routers import kris, risk_correlations
+from app.routers.audit_log import router as audit_log_router
 from app.routers.surveys import public_router as survey_public_router
 from app.routers.policy_approvals import router as policy_approvals_router, public_router as approvals_public_router
 from app.seed import init_db
@@ -225,6 +226,7 @@ app.include_router(surveys.router)
 app.include_router(survey_public_router)
 app.include_router(policy_approvals_router)
 app.include_router(approvals_public_router)
+app.include_router(audit_log_router)
 
 
 class RevalidateStaticFiles(StaticFiles):

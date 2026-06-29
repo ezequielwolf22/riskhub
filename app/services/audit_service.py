@@ -6,6 +6,19 @@ from sqlalchemy.orm import Session
 from app.models import AuditLog
 
 
+def diff_objects(before: dict, after: dict) -> tuple:
+    """Returns (old_value, new_value) containing only changed fields."""
+    old, new = {}, {}
+    all_keys = set(before) | set(after)
+    for k in all_keys:
+        v_before = before.get(k)
+        v_after = after.get(k)
+        if v_before != v_after:
+            old[k] = v_before
+            new[k] = v_after
+    return old, new
+
+
 def log_action(
     db: Session,
     user_id: Optional[int],
@@ -14,6 +27,9 @@ def log_action(
     entity_id: Optional[str] = None,
     detail: Optional[dict] = None,
     organization_id: Optional[int] = None,
+    old_value: Optional[dict] = None,
+    new_value: Optional[dict] = None,
+    ip_address: Optional[str] = None,
 ) -> None:
     """Registra una accion en el log de auditoria.
 
@@ -35,5 +51,8 @@ def log_action(
         entity_type=entity_type,
         entity_id=str(entity_id) if entity_id is not None else None,
         detail=detail or {},
+        old_value=old_value,
+        new_value=new_value,
+        ip_address=ip_address,
     )
     db.add(entry)

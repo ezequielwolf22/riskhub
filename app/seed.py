@@ -729,6 +729,10 @@ def _migrate_columns() -> None:
             "erp_webhook_events",
             "id",
         ),
+        # v6.0.0 — Audit trail inmutable: old/new values + IP
+        ("ALTER TABLE audit_log ADD COLUMN old_value TEXT", "audit_log", "old_value"),
+        ("ALTER TABLE audit_log ADD COLUMN new_value TEXT", "audit_log", "new_value"),
+        ("ALTER TABLE audit_log ADD COLUMN ip_address VARCHAR(64)", "audit_log", "ip_address"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
