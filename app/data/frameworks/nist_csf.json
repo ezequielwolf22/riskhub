@@ -6,26 +6,283 @@
   "audit_frequency_months": 12,
   "certification_body": "NIST",
   "requirements": [
-    {"id": "GV.OC", "name": "Contexto organizacional", "domain": "Govern", "evidence_types": ["policy_document", "record"], "mandatory": true},
-    {"id": "GV.RM", "name": "Estrategia de gestión de riesgos", "domain": "Govern", "evidence_types": ["policy_document", "record"], "mandatory": true},
-    {"id": "GV.RR", "name": "Roles y responsabilidades", "domain": "Govern", "evidence_types": ["record"], "mandatory": true},
-    {"id": "GV.PO", "name": "Políticas", "domain": "Govern", "evidence_types": ["policy_document"], "mandatory": true},
-    {"id": "GV.OV", "name": "Supervisión", "domain": "Govern", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "ID.AM", "name": "Gestión de activos", "domain": "Identify", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "ID.RA", "name": "Evaluación de riesgos", "domain": "Identify", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "ID.IM", "name": "Mejora", "domain": "Identify", "evidence_types": ["record"], "mandatory": false},
-    {"id": "PR.AA", "name": "Gestión de identidad y control de acceso", "domain": "Protect", "evidence_types": ["procedure", "record", "screenshot"], "mandatory": true},
-    {"id": "PR.AT", "name": "Concienciación y formación", "domain": "Protect", "evidence_types": ["record", "certificate"], "mandatory": true},
-    {"id": "PR.DS", "name": "Seguridad de datos", "domain": "Protect", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "PR.PS", "name": "Seguridad de plataforma", "domain": "Protect", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "PR.IR", "name": "Resiliencia de infraestructura", "domain": "Protect", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "DE.CM", "name": "Monitorización continua", "domain": "Detect", "evidence_types": ["procedure", "record", "report"], "mandatory": true},
-    {"id": "DE.AE", "name": "Análisis de eventos adversos", "domain": "Detect", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "RS.MA", "name": "Gestión de incidentes", "domain": "Respond", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "RS.AN", "name": "Análisis de incidentes", "domain": "Respond", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "RS.CO", "name": "Reporting y comunicación", "domain": "Respond", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "RS.MI", "name": "Mitigación de incidentes", "domain": "Respond", "evidence_types": ["record"], "mandatory": true},
-    {"id": "RC.RP", "name": "Ejecución del plan de recuperación", "domain": "Recover", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "RC.CO", "name": "Comunicación en recuperación", "domain": "Recover", "evidence_types": ["procedure", "record"], "mandatory": false}
+    {
+      "id": "GV.OC",
+      "name": "Contexto organizacional",
+      "domain": "Govern",
+      "evidence_types": [
+        "policy_document",
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "GV.RM",
+      "name": "Estrategia de gestión de riesgos",
+      "domain": "Govern",
+      "evidence_types": [
+        "policy_document",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.37"
+      ]
+    },
+    {
+      "id": "GV.RR",
+      "name": "Roles y responsabilidades",
+      "domain": "Govern",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.2"
+      ]
+    },
+    {
+      "id": "GV.PO",
+      "name": "Políticas",
+      "domain": "Govern",
+      "evidence_types": [
+        "policy_document"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.1"
+      ]
+    },
+    {
+      "id": "GV.OV",
+      "name": "Supervisión",
+      "domain": "Govern",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "ID.AM",
+      "name": "Gestión de activos",
+      "domain": "Identify",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.1"
+      ]
+    },
+    {
+      "id": "ID.RA",
+      "name": "Evaluación de riesgos",
+      "domain": "Identify",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.7",
+        "5.8",
+        "8.8"
+      ]
+    },
+    {
+      "id": "ID.IM",
+      "name": "Mejora",
+      "domain": "Identify",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": false
+    },
+    {
+      "id": "PR.AA",
+      "name": "Gestión de identidad y control de acceso",
+      "domain": "Protect",
+      "evidence_types": [
+        "procedure",
+        "record",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.15",
+        "5.16",
+        "5.17",
+        "5.18",
+        "8.2",
+        "8.5"
+      ]
+    },
+    {
+      "id": "PR.AT",
+      "name": "Concienciación y formación",
+      "domain": "Protect",
+      "evidence_types": [
+        "record",
+        "certificate"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.3"
+      ]
+    },
+    {
+      "id": "PR.DS",
+      "name": "Seguridad de datos",
+      "domain": "Protect",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.11"
+      ]
+    },
+    {
+      "id": "PR.PS",
+      "name": "Seguridad de plataforma",
+      "domain": "Protect",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.4",
+        "8.7",
+        "8.9",
+        "8.20",
+        "8.21",
+        "8.25",
+        "8.26",
+        "8.27",
+        "8.28",
+        "8.29"
+      ]
+    },
+    {
+      "id": "PR.IR",
+      "name": "Resiliencia de infraestructura",
+      "domain": "Protect",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.30",
+        "8.6",
+        "8.13",
+        "8.14"
+      ]
+    },
+    {
+      "id": "DE.CM",
+      "name": "Monitorización continua",
+      "domain": "Detect",
+      "evidence_types": [
+        "procedure",
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.15",
+        "8.16",
+        "8.17"
+      ]
+    },
+    {
+      "id": "DE.AE",
+      "name": "Análisis de eventos adversos",
+      "domain": "Detect",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.28"
+      ]
+    },
+    {
+      "id": "RS.MA",
+      "name": "Gestión de incidentes",
+      "domain": "Respond",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.24"
+      ]
+    },
+    {
+      "id": "RS.AN",
+      "name": "Análisis de incidentes",
+      "domain": "Respond",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.25"
+      ]
+    },
+    {
+      "id": "RS.CO",
+      "name": "Reporting y comunicación",
+      "domain": "Respond",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "RS.MI",
+      "name": "Mitigación de incidentes",
+      "domain": "Respond",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.26"
+      ]
+    },
+    {
+      "id": "RC.RP",
+      "name": "Ejecución del plan de recuperación",
+      "domain": "Recover",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.27",
+        "5.29"
+      ]
+    },
+    {
+      "id": "RC.CO",
+      "name": "Comunicación en recuperación",
+      "domain": "Recover",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false
+    }
   ]
 }

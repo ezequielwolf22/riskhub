@@ -6,122 +6,1460 @@
   "audit_frequency_months": 12,
   "certification_body": "ISO",
   "requirements": [
-    {"id": "4.1", "name": "Comprensión de la organización y su contexto", "domain": "Contexto", "evidence_types": ["policy_document", "record"], "mandatory": true},
-    {"id": "4.2", "name": "Comprensión de las necesidades y expectativas", "domain": "Contexto", "evidence_types": ["record"], "mandatory": true},
-    {"id": "4.3", "name": "Alcance del SGSI", "domain": "Contexto", "evidence_types": ["policy_document"], "mandatory": true},
-    {"id": "5.1", "name": "Liderazgo y compromiso", "domain": "Liderazgo", "evidence_types": ["record", "policy_document"], "mandatory": true},
-    {"id": "5.2", "name": "Política de seguridad de la información", "domain": "Liderazgo", "evidence_types": ["policy_document"], "mandatory": true, "controls": ["5.1"]},
-    {"id": "5.3", "name": "Roles, responsabilidades y autoridades", "domain": "Liderazgo", "evidence_types": ["record", "policy_document"], "mandatory": true},
-    {"id": "6.1", "name": "Acciones para abordar riesgos y oportunidades", "domain": "Planificación", "evidence_types": ["record"], "mandatory": true},
-    {"id": "6.1.2", "name": "Evaluación de riesgos de SI", "domain": "Planificación", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "6.1.3", "name": "Tratamiento de riesgos de SI", "domain": "Planificación", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "6.2", "name": "Objetivos de seguridad de la información", "domain": "Planificación", "evidence_types": ["record"], "mandatory": true},
-    {"id": "6.3", "name": "Planificación de cambios", "domain": "Planificación", "evidence_types": ["record"], "mandatory": true},
-    {"id": "7.1", "name": "Recursos", "domain": "Soporte", "evidence_types": ["record"], "mandatory": true},
-    {"id": "7.2", "name": "Competencia", "domain": "Soporte", "evidence_types": ["record", "certificate"], "mandatory": true},
-    {"id": "7.3", "name": "Concienciación", "domain": "Soporte", "evidence_types": ["record"], "mandatory": true},
-    {"id": "7.4", "name": "Comunicación", "domain": "Soporte", "evidence_types": ["record"], "mandatory": true},
-    {"id": "7.5", "name": "Información documentada", "domain": "Soporte", "evidence_types": ["policy_document", "procedure"], "mandatory": true},
-    {"id": "8.1", "name": "Planificación y control operacional", "domain": "Operación", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "8.2", "name": "Evaluación de riesgos de SI (operacional)", "domain": "Operación", "evidence_types": ["report"], "mandatory": true},
-    {"id": "8.3", "name": "Tratamiento de riesgos de SI (operacional)", "domain": "Operación", "evidence_types": ["record"], "mandatory": true},
-    {"id": "9.1", "name": "Seguimiento, medición, análisis y evaluación", "domain": "Evaluación", "evidence_types": ["report", "record"], "mandatory": true},
-    {"id": "9.2", "name": "Auditoría interna", "domain": "Evaluación", "evidence_types": ["report"], "mandatory": true, "audit_frequency_months": 12},
-    {"id": "9.3", "name": "Revisión por la dirección", "domain": "Evaluación", "evidence_types": ["record"], "mandatory": true, "audit_frequency_months": 12},
-    {"id": "10.1", "name": "No conformidad y acción correctiva", "domain": "Mejora", "evidence_types": ["record"], "mandatory": true},
-    {"id": "10.2", "name": "Mejora continua", "domain": "Mejora", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.1", "name": "Políticas de seguridad de la información", "domain": "Controles organizativos", "evidence_types": ["policy_document"], "mandatory": true, "controls": ["5.1", "5.2"]},
-    {"id": "A.5.2", "name": "Roles y responsabilidades de SI", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.3", "name": "Segregación de funciones", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.4", "name": "Responsabilidades de la dirección", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.5", "name": "Contacto con autoridades", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.6", "name": "Contacto con grupos de interés especial", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": false},
-    {"id": "A.5.7", "name": "Inteligencia de amenazas", "domain": "Controles organizativos", "evidence_types": ["report"], "mandatory": false},
-    {"id": "A.5.8", "name": "SI en gestión de proyectos", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": false},
-    {"id": "A.5.9", "name": "Inventario de información y activos", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true, "controls": ["5.9"]},
-    {"id": "A.5.10", "name": "Uso aceptable de información y activos", "domain": "Controles organizativos", "evidence_types": ["policy_document"], "mandatory": true},
-    {"id": "A.5.11", "name": "Devolución de activos", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.12", "name": "Clasificación de la información", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.5.13", "name": "Etiquetado de la información", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.5.14", "name": "Transferencia de información", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.15", "name": "Control de acceso", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.16", "name": "Gestión de identidades", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.17", "name": "Información de autenticación", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.5.18", "name": "Derechos de acceso", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.19", "name": "Seguridad de la información en relaciones con proveedores", "domain": "Controles organizativos", "evidence_types": ["policy_document", "record"], "mandatory": true},
-    {"id": "A.5.20", "name": "Tratamiento de SI en acuerdos con proveedores", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.21", "name": "Gestión de SI en cadena TIC", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.22", "name": "Seguimiento de servicios de proveedores", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.23", "name": "Seguridad de la información para uso de servicios cloud", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": false},
-    {"id": "A.5.24", "name": "Planificación ante incidentes de SI", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true, "controls": ["5.24"]},
-    {"id": "A.5.25", "name": "Evaluación y decisión sobre eventos", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.26", "name": "Respuesta a incidentes de SI", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.27", "name": "Aprendizaje de incidentes de SI", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.28", "name": "Recopilación de evidencias", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.5.29", "name": "Seguridad de la información durante disrupción", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.30", "name": "Preparación TIC para continuidad de negocio", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.31", "name": "Requisitos legales, estatutarios y contractuales", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.32", "name": "Derechos de propiedad intelectual", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.5.33", "name": "Protección de registros", "domain": "Controles organizativos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.5.34", "name": "Privacidad y protección de datos personales", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true, "controls": ["5.34"]},
-    {"id": "A.5.35", "name": "Revisión independiente de SI", "domain": "Controles organizativos", "evidence_types": ["report"], "mandatory": true},
-    {"id": "A.5.36", "name": "Cumplimiento con políticas de SI", "domain": "Controles organizativos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.5.37", "name": "Procedimientos operacionales documentados", "domain": "Controles organizativos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.6.1", "name": "Investigación de antecedentes", "domain": "Controles de personas", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.6.2", "name": "Términos y condiciones de contratación", "domain": "Controles de personas", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.6.3", "name": "Concienciación, educación y formación en SI", "domain": "Controles de personas", "evidence_types": ["record", "certificate"], "mandatory": true},
-    {"id": "A.6.4", "name": "Proceso disciplinario", "domain": "Controles de personas", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.6.5", "name": "Responsabilidades tras cese o cambio de empleo", "domain": "Controles de personas", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.6.6", "name": "Acuerdos de confidencialidad (NDAs)", "domain": "Controles de personas", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.6.7", "name": "Trabajo en remoto", "domain": "Controles de personas", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.6.8", "name": "Reporte de eventos de SI", "domain": "Controles de personas", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.7.1", "name": "Perímetros de seguridad física", "domain": "Controles físicos", "evidence_types": ["procedure", "screenshot"], "mandatory": true},
-    {"id": "A.7.2", "name": "Controles de entrada física", "domain": "Controles físicos", "evidence_types": ["record", "screenshot"], "mandatory": true},
-    {"id": "A.7.3", "name": "Seguridad de oficinas y recursos", "domain": "Controles físicos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.7.4", "name": "Supervisión de la seguridad física", "domain": "Controles físicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.7.5", "name": "Protección contra amenazas físicas y ambientales", "domain": "Controles físicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.7.6", "name": "Trabajo en áreas seguras", "domain": "Controles físicos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.7.7", "name": "Mesa y pantalla limpias", "domain": "Controles físicos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.7.8", "name": "Ubicación y protección de equipos", "domain": "Controles físicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.7.9", "name": "Activos fuera de instalaciones", "domain": "Controles físicos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.7.10", "name": "Soportes de almacenamiento", "domain": "Controles físicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.7.11", "name": "Servicios de soporte (utilities)", "domain": "Controles físicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.7.12", "name": "Seguridad del cableado", "domain": "Controles físicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.7.13", "name": "Mantenimiento de equipos", "domain": "Controles físicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.7.14", "name": "Eliminación segura de equipos", "domain": "Controles físicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.8.1", "name": "Dispositivos endpoint de usuario", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.2", "name": "Derechos de acceso privilegiado", "domain": "Controles tecnológicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.8.3", "name": "Restricción de acceso a la información", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.4", "name": "Acceso a código fuente", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": false},
-    {"id": "A.8.5", "name": "Autenticación segura", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "screenshot"], "mandatory": true},
-    {"id": "A.8.6", "name": "Gestión de capacidad", "domain": "Controles tecnológicos", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "A.8.7", "name": "Protección contra malware", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record", "screenshot"], "mandatory": true},
-    {"id": "A.8.8", "name": "Gestión de vulnerabilidades técnicas", "domain": "Controles tecnológicos", "evidence_types": ["report", "record"], "mandatory": true},
-    {"id": "A.8.9", "name": "Gestión de configuración", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.10", "name": "Borrado de información", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.11", "name": "Enmascaramiento de datos", "domain": "Controles tecnológicos", "evidence_types": ["procedure"], "mandatory": false},
-    {"id": "A.8.12", "name": "Prevención de fuga de datos", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": false},
-    {"id": "A.8.13", "name": "Copias de seguridad", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.14", "name": "Redundancia de instalaciones", "domain": "Controles tecnológicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.8.15", "name": "Registro de actividades", "domain": "Controles tecnológicos", "evidence_types": ["record", "screenshot"], "mandatory": true},
-    {"id": "A.8.16", "name": "Actividades de monitorización", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.17", "name": "Sincronización de relojes", "domain": "Controles tecnológicos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "A.8.18", "name": "Programas de utilidad privilegiados", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.19", "name": "Instalación de software", "domain": "Controles tecnológicos", "evidence_types": ["procedure"], "mandatory": true},
-    {"id": "A.8.20", "name": "Seguridad de redes", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record", "screenshot"], "mandatory": true},
-    {"id": "A.8.21", "name": "Seguridad de servicios de red", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.22", "name": "Segregación en redes", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.23", "name": "Filtrado web", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": false},
-    {"id": "A.8.24", "name": "Uso de criptografía", "domain": "Controles tecnológicos", "evidence_types": ["policy_document", "procedure"], "mandatory": true},
-    {"id": "A.8.25", "name": "Ciclo de vida de desarrollo seguro", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": false},
-    {"id": "A.8.26", "name": "Requisitos de seguridad de aplicaciones", "domain": "Controles tecnológicos", "evidence_types": ["procedure"], "mandatory": false},
-    {"id": "A.8.27", "name": "Arquitectura e ingeniería de sistemas seguros", "domain": "Controles tecnológicos", "evidence_types": ["procedure"], "mandatory": false},
-    {"id": "A.8.28", "name": "Codificación segura", "domain": "Controles tecnológicos", "evidence_types": ["procedure"], "mandatory": false},
-    {"id": "A.8.29", "name": "Pruebas de seguridad en desarrollo y aceptación", "domain": "Controles tecnológicos", "evidence_types": ["report", "record"], "mandatory": false},
-    {"id": "A.8.30", "name": "Desarrollo externalizado", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": false},
-    {"id": "A.8.31", "name": "Separación de entornos", "domain": "Controles tecnológicos", "evidence_types": ["procedure"], "mandatory": false},
-    {"id": "A.8.32", "name": "Gestión de cambios", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "A.8.33", "name": "Información de prueba", "domain": "Controles tecnológicos", "evidence_types": ["procedure", "record"], "mandatory": false},
-    {"id": "A.8.34", "name": "Protección de sistemas de información durante pruebas de auditoría", "domain": "Controles tecnológicos", "evidence_types": ["record"], "mandatory": true}
+    {
+      "id": "4.1",
+      "name": "Comprensión de la organización y su contexto",
+      "domain": "Contexto",
+      "evidence_types": [
+        "policy_document",
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "4.2",
+      "name": "Comprensión de las necesidades y expectativas",
+      "domain": "Contexto",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.31"
+      ]
+    },
+    {
+      "id": "4.3",
+      "name": "Alcance del SGSI",
+      "domain": "Contexto",
+      "evidence_types": [
+        "policy_document"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "5.1",
+      "name": "Liderazgo y compromiso",
+      "domain": "Liderazgo",
+      "evidence_types": [
+        "record",
+        "policy_document"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "5.2",
+      "name": "Política de seguridad de la información",
+      "domain": "Liderazgo",
+      "evidence_types": [
+        "policy_document"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.1"
+      ]
+    },
+    {
+      "id": "5.3",
+      "name": "Roles, responsabilidades y autoridades",
+      "domain": "Liderazgo",
+      "evidence_types": [
+        "record",
+        "policy_document"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "6.1",
+      "name": "Acciones para abordar riesgos y oportunidades",
+      "domain": "Planificación",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "6.1.2",
+      "name": "Evaluación de riesgos de SI",
+      "domain": "Planificación",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.8"
+      ]
+    },
+    {
+      "id": "6.1.3",
+      "name": "Tratamiento de riesgos de SI",
+      "domain": "Planificación",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "6.2",
+      "name": "Objetivos de seguridad de la información",
+      "domain": "Planificación",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "6.3",
+      "name": "Planificación de cambios",
+      "domain": "Planificación",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "7.1",
+      "name": "Recursos",
+      "domain": "Soporte",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "7.2",
+      "name": "Competencia",
+      "domain": "Soporte",
+      "evidence_types": [
+        "record",
+        "certificate"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "7.3",
+      "name": "Concienciación",
+      "domain": "Soporte",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "7.4",
+      "name": "Comunicación",
+      "domain": "Soporte",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.7"
+      ]
+    },
+    {
+      "id": "7.5",
+      "name": "Información documentada",
+      "domain": "Soporte",
+      "evidence_types": [
+        "policy_document",
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.33",
+        "5.37"
+      ]
+    },
+    {
+      "id": "8.1",
+      "name": "Planificación y control operacional",
+      "domain": "Operación",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.24",
+        "5.25",
+        "5.26",
+        "5.28",
+        "6.8"
+      ]
+    },
+    {
+      "id": "8.2",
+      "name": "Evaluación de riesgos de SI (operacional)",
+      "domain": "Operación",
+      "evidence_types": [
+        "report"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "8.3",
+      "name": "Tratamiento de riesgos de SI (operacional)",
+      "domain": "Operación",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "9.1",
+      "name": "Seguimiento, medición, análisis y evaluación",
+      "domain": "Evaluación",
+      "evidence_types": [
+        "report",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.36"
+      ]
+    },
+    {
+      "id": "9.2",
+      "name": "Auditoría interna",
+      "domain": "Evaluación",
+      "evidence_types": [
+        "report"
+      ],
+      "mandatory": true,
+      "audit_frequency_months": 12,
+      "controls": [
+        "5.35"
+      ]
+    },
+    {
+      "id": "9.3",
+      "name": "Revisión por la dirección",
+      "domain": "Evaluación",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "audit_frequency_months": 12
+    },
+    {
+      "id": "10.1",
+      "name": "No conformidad y acción correctiva",
+      "domain": "Mejora",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.27"
+      ]
+    },
+    {
+      "id": "10.2",
+      "name": "Mejora continua",
+      "domain": "Mejora",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "A.5.1",
+      "name": "Políticas de seguridad de la información",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "policy_document"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.1",
+        "5.2"
+      ]
+    },
+    {
+      "id": "A.5.2",
+      "name": "Roles y responsabilidades de SI",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.2"
+      ]
+    },
+    {
+      "id": "A.5.3",
+      "name": "Segregación de funciones",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.3",
+        "5.5"
+      ]
+    },
+    {
+      "id": "A.5.4",
+      "name": "Responsabilidades de la dirección",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.4"
+      ]
+    },
+    {
+      "id": "A.5.5",
+      "name": "Contacto con autoridades",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.5"
+      ]
+    },
+    {
+      "id": "A.5.6",
+      "name": "Contacto con grupos de interés especial",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "5.6"
+      ]
+    },
+    {
+      "id": "A.5.7",
+      "name": "Inteligencia de amenazas",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "report"
+      ],
+      "mandatory": false,
+      "controls": [
+        "5.7"
+      ]
+    },
+    {
+      "id": "A.5.8",
+      "name": "SI en gestión de proyectos",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": false,
+      "controls": [
+        "5.8"
+      ]
+    },
+    {
+      "id": "A.5.9",
+      "name": "Inventario de información y activos",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.9"
+      ]
+    },
+    {
+      "id": "A.5.10",
+      "name": "Uso aceptable de información y activos",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "policy_document"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.10",
+        "5.12",
+        "5.13"
+      ]
+    },
+    {
+      "id": "A.5.11",
+      "name": "Devolución de activos",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.11"
+      ]
+    },
+    {
+      "id": "A.5.12",
+      "name": "Clasificación de la información",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.12"
+      ]
+    },
+    {
+      "id": "A.5.13",
+      "name": "Etiquetado de la información",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.13"
+      ]
+    },
+    {
+      "id": "A.5.14",
+      "name": "Transferencia de información",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.14"
+      ]
+    },
+    {
+      "id": "A.5.15",
+      "name": "Control de acceso",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.15",
+        "5.16",
+        "5.17",
+        "5.18"
+      ]
+    },
+    {
+      "id": "A.5.16",
+      "name": "Gestión de identidades",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.16"
+      ]
+    },
+    {
+      "id": "A.5.17",
+      "name": "Información de autenticación",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.17"
+      ]
+    },
+    {
+      "id": "A.5.18",
+      "name": "Derechos de acceso",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.18"
+      ]
+    },
+    {
+      "id": "A.5.19",
+      "name": "Seguridad de la información en relaciones con proveedores",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "policy_document",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.19",
+        "5.20",
+        "6.6"
+      ]
+    },
+    {
+      "id": "A.5.20",
+      "name": "Tratamiento de SI en acuerdos con proveedores",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.20"
+      ]
+    },
+    {
+      "id": "A.5.21",
+      "name": "Gestión de SI en cadena TIC",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.21"
+      ]
+    },
+    {
+      "id": "A.5.22",
+      "name": "Seguimiento de servicios de proveedores",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.22"
+      ]
+    },
+    {
+      "id": "A.5.23",
+      "name": "Seguridad de la información para uso de servicios cloud",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "5.23"
+      ]
+    },
+    {
+      "id": "A.5.24",
+      "name": "Planificación ante incidentes de SI",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.24"
+      ]
+    },
+    {
+      "id": "A.5.25",
+      "name": "Evaluación y decisión sobre eventos",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.25"
+      ]
+    },
+    {
+      "id": "A.5.26",
+      "name": "Respuesta a incidentes de SI",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.26"
+      ]
+    },
+    {
+      "id": "A.5.27",
+      "name": "Aprendizaje de incidentes de SI",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.27"
+      ]
+    },
+    {
+      "id": "A.5.28",
+      "name": "Recopilación de evidencias",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.28"
+      ]
+    },
+    {
+      "id": "A.5.29",
+      "name": "Seguridad de la información durante disrupción",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.29",
+        "8.13"
+      ]
+    },
+    {
+      "id": "A.5.30",
+      "name": "Preparación TIC para continuidad de negocio",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.30",
+        "8.14"
+      ]
+    },
+    {
+      "id": "A.5.31",
+      "name": "Requisitos legales, estatutarios y contractuales",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.31"
+      ]
+    },
+    {
+      "id": "A.5.32",
+      "name": "Derechos de propiedad intelectual",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.32"
+      ]
+    },
+    {
+      "id": "A.5.33",
+      "name": "Protección de registros",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.33"
+      ]
+    },
+    {
+      "id": "A.5.34",
+      "name": "Privacidad y protección de datos personales",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.34"
+      ]
+    },
+    {
+      "id": "A.5.35",
+      "name": "Revisión independiente de SI",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.35"
+      ]
+    },
+    {
+      "id": "A.5.36",
+      "name": "Cumplimiento con políticas de SI",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.36"
+      ]
+    },
+    {
+      "id": "A.5.37",
+      "name": "Procedimientos operacionales documentados",
+      "domain": "Controles organizativos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.37"
+      ]
+    },
+    {
+      "id": "A.6.1",
+      "name": "Investigación de antecedentes",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.1"
+      ]
+    },
+    {
+      "id": "A.6.2",
+      "name": "Términos y condiciones de contratación",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.2"
+      ]
+    },
+    {
+      "id": "A.6.3",
+      "name": "Concienciación, educación y formación en SI",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "record",
+        "certificate"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.3"
+      ]
+    },
+    {
+      "id": "A.6.4",
+      "name": "Proceso disciplinario",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.4"
+      ]
+    },
+    {
+      "id": "A.6.5",
+      "name": "Responsabilidades tras cese o cambio de empleo",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.5"
+      ]
+    },
+    {
+      "id": "A.6.6",
+      "name": "Acuerdos de confidencialidad (NDAs)",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.6"
+      ]
+    },
+    {
+      "id": "A.6.7",
+      "name": "Trabajo en remoto",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.7"
+      ]
+    },
+    {
+      "id": "A.6.8",
+      "name": "Reporte de eventos de SI",
+      "domain": "Controles de personas",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.8"
+      ]
+    },
+    {
+      "id": "A.7.1",
+      "name": "Perímetros de seguridad física",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.1",
+        "7.3",
+        "7.9"
+      ]
+    },
+    {
+      "id": "A.7.2",
+      "name": "Controles de entrada física",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "record",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.2"
+      ]
+    },
+    {
+      "id": "A.7.3",
+      "name": "Seguridad de oficinas y recursos",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.3"
+      ]
+    },
+    {
+      "id": "A.7.4",
+      "name": "Supervisión de la seguridad física",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.4"
+      ]
+    },
+    {
+      "id": "A.7.5",
+      "name": "Protección contra amenazas físicas y ambientales",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.5",
+        "7.6",
+        "7.8",
+        "7.10",
+        "7.11",
+        "7.12",
+        "7.13",
+        "7.14"
+      ]
+    },
+    {
+      "id": "A.7.6",
+      "name": "Trabajo en áreas seguras",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.6"
+      ]
+    },
+    {
+      "id": "A.7.7",
+      "name": "Mesa y pantalla limpias",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.7"
+      ]
+    },
+    {
+      "id": "A.7.8",
+      "name": "Ubicación y protección de equipos",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.8"
+      ]
+    },
+    {
+      "id": "A.7.9",
+      "name": "Activos fuera de instalaciones",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.9"
+      ]
+    },
+    {
+      "id": "A.7.10",
+      "name": "Soportes de almacenamiento",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.10"
+      ]
+    },
+    {
+      "id": "A.7.11",
+      "name": "Servicios de soporte (utilities)",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.11"
+      ]
+    },
+    {
+      "id": "A.7.12",
+      "name": "Seguridad del cableado",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.12"
+      ]
+    },
+    {
+      "id": "A.7.13",
+      "name": "Mantenimiento de equipos",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.13"
+      ]
+    },
+    {
+      "id": "A.7.14",
+      "name": "Eliminación segura de equipos",
+      "domain": "Controles físicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.14"
+      ]
+    },
+    {
+      "id": "A.8.1",
+      "name": "Dispositivos endpoint de usuario",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "7.7",
+        "8.1"
+      ]
+    },
+    {
+      "id": "A.8.2",
+      "name": "Derechos de acceso privilegiado",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.2",
+        "8.18"
+      ]
+    },
+    {
+      "id": "A.8.3",
+      "name": "Restricción de acceso a la información",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.3",
+        "8.4"
+      ]
+    },
+    {
+      "id": "A.8.4",
+      "name": "Acceso a código fuente",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.4"
+      ]
+    },
+    {
+      "id": "A.8.5",
+      "name": "Autenticación segura",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.5"
+      ]
+    },
+    {
+      "id": "A.8.6",
+      "name": "Gestión de capacidad",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.6"
+      ]
+    },
+    {
+      "id": "A.8.7",
+      "name": "Protección contra malware",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.7"
+      ]
+    },
+    {
+      "id": "A.8.8",
+      "name": "Gestión de vulnerabilidades técnicas",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "report",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.8"
+      ]
+    },
+    {
+      "id": "A.8.9",
+      "name": "Gestión de configuración",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.9",
+        "8.19"
+      ]
+    },
+    {
+      "id": "A.8.10",
+      "name": "Borrado de información",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.10"
+      ]
+    },
+    {
+      "id": "A.8.11",
+      "name": "Enmascaramiento de datos",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.11"
+      ]
+    },
+    {
+      "id": "A.8.12",
+      "name": "Prevención de fuga de datos",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.12"
+      ]
+    },
+    {
+      "id": "A.8.13",
+      "name": "Copias de seguridad",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.13"
+      ]
+    },
+    {
+      "id": "A.8.14",
+      "name": "Redundancia de instalaciones",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.14"
+      ]
+    },
+    {
+      "id": "A.8.15",
+      "name": "Registro de actividades",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "record",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.15"
+      ]
+    },
+    {
+      "id": "A.8.16",
+      "name": "Actividades de monitorización",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.16",
+        "8.17"
+      ]
+    },
+    {
+      "id": "A.8.17",
+      "name": "Sincronización de relojes",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.17"
+      ]
+    },
+    {
+      "id": "A.8.18",
+      "name": "Programas de utilidad privilegiados",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.18"
+      ]
+    },
+    {
+      "id": "A.8.19",
+      "name": "Instalación de software",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.19"
+      ]
+    },
+    {
+      "id": "A.8.20",
+      "name": "Seguridad de redes",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.20",
+        "8.21",
+        "8.22",
+        "8.23"
+      ]
+    },
+    {
+      "id": "A.8.21",
+      "name": "Seguridad de servicios de red",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.21"
+      ]
+    },
+    {
+      "id": "A.8.22",
+      "name": "Segregación en redes",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.22"
+      ]
+    },
+    {
+      "id": "A.8.23",
+      "name": "Filtrado web",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.23"
+      ]
+    },
+    {
+      "id": "A.8.24",
+      "name": "Uso de criptografía",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "policy_document",
+        "procedure"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.24"
+      ]
+    },
+    {
+      "id": "A.8.25",
+      "name": "Ciclo de vida de desarrollo seguro",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.25",
+        "8.26",
+        "8.27",
+        "8.30"
+      ]
+    },
+    {
+      "id": "A.8.26",
+      "name": "Requisitos de seguridad de aplicaciones",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.26"
+      ]
+    },
+    {
+      "id": "A.8.27",
+      "name": "Arquitectura e ingeniería de sistemas seguros",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.27"
+      ]
+    },
+    {
+      "id": "A.8.28",
+      "name": "Codificación segura",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.28"
+      ]
+    },
+    {
+      "id": "A.8.29",
+      "name": "Pruebas de seguridad en desarrollo y aceptación",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "report",
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.29",
+        "8.33"
+      ]
+    },
+    {
+      "id": "A.8.30",
+      "name": "Desarrollo externalizado",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.30"
+      ]
+    },
+    {
+      "id": "A.8.31",
+      "name": "Separación de entornos",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.31"
+      ]
+    },
+    {
+      "id": "A.8.32",
+      "name": "Gestión de cambios",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.31",
+        "8.32"
+      ]
+    },
+    {
+      "id": "A.8.33",
+      "name": "Información de prueba",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false,
+      "controls": [
+        "8.33"
+      ]
+    },
+    {
+      "id": "A.8.34",
+      "name": "Protección de sistemas de información durante pruebas de auditoría",
+      "domain": "Controles tecnológicos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.34"
+      ]
+    }
   ]
 }

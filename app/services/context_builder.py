@@ -225,6 +225,36 @@ def build_context(
     except Exception:
         pass
 
+    # 8d-bis. SOA: controles implementados sin evidencia (bloqueantes para auditoria)
+    try:
+        all_impls = _forg(db.query(ControlImplementation), ControlImplementation).all()
+        if all_impls:
+            total_impls = len(all_impls)
+            impl_count = sum(1 for c in all_impls if c.status == ControlStatus.IMPLEMENTED)
+            impl_no_evidence = [
+                c for c in all_impls
+                if c.status == ControlStatus.IMPLEMENTED and not c.evidence_refs
+            ]
+            impl_no_reason = sum(
+                1 for c in all_impls if not c.inclusion_reason and not c.exclusion_justification
+            )
+            parts.append(
+                f"\n## Estado del SOA (Declaracion de Aplicabilidad)\n"
+                f"- Total controles: {total_impls} | Implementados: {impl_count} "
+                f"| Sin evidencia: {len(impl_no_evidence)} "
+                f"| Sin justificacion inclusion/exclusion: {impl_no_reason}\n"
+                f"- ATENCION: {len(impl_no_evidence)} controles 'implementados' carecen de evidencias "
+                f"documentadas — NO son auditables ni conformes segun ISO 27001 cl. 6.1.3."
+            )
+            if impl_no_evidence:
+                sample = impl_no_evidence[:8]
+                parts.append("  Controles implementados SIN evidencia (muestra):")
+                for c in sample:
+                    code = c.control.code if c.control else "?"
+                    parts.append(f"  - {code} {c.name}: sin evidence_refs")
+    except Exception:
+        pass
+
     # 8e. KRIs en estado warning o breach
     kris_alert = (
         _forg(db.query(KRI), KRI)

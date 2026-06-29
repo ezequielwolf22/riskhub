@@ -320,8 +320,14 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
                         existing.status = ComplianceRequirementStatus.IMPLEMENTED
                         existing.completion_pct = 100
                     else:
+                        # Proporcion real de controles implementados (no 50% fijo)
+                        matched_count = sum(
+                            1 for rc in req_controls
+                            if any(rc == code for code in implemented_control_codes)
+                        )
+                        partial_pct = int(matched_count / len(req_controls) * 100)
                         existing.status = ComplianceRequirementStatus.PARTIAL
-                        existing.completion_pct = 50
+                        existing.completion_pct = max(10, min(90, partial_pct))
                     existing.last_reviewed_at = datetime.now(timezone.utc)
                     updated += 1
 

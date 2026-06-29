@@ -6,37 +6,539 @@
   "audit_frequency_months": 24,
   "certification_body": "CCN-CERT",
   "requirements": [
-    {"id": "org.1", "name": "Política de seguridad", "domain": "Organización", "evidence_types": ["policy_document"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "org.2", "name": "Normativa de seguridad", "domain": "Organización", "evidence_types": ["policy_document", "procedure"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "org.3", "name": "Procedimientos de seguridad", "domain": "Organización", "evidence_types": ["procedure"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "org.4", "name": "Proceso de autorización", "domain": "Organización", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.pl.1", "name": "Análisis de riesgos", "domain": "Operacional-Planificación", "evidence_types": ["report", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.pl.2", "name": "Arquitectura de seguridad", "domain": "Operacional-Planificación", "evidence_types": ["record", "screenshot"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.pl.4", "name": "Dimensionamiento/gestión de capacidades", "domain": "Operacional-Planificación", "evidence_types": ["record", "report"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.acc.1", "name": "Identificación", "domain": "Operacional-Control de Acceso", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.acc.2", "name": "Requisitos de acceso", "domain": "Operacional-Control de Acceso", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.acc.3", "name": "Segregación de funciones y tareas", "domain": "Operacional-Control de Acceso", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.acc.4", "name": "Proceso de gestión de derechos de acceso", "domain": "Operacional-Control de Acceso", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.acc.5", "name": "Mecanismo de autenticación", "domain": "Operacional-Control de Acceso", "evidence_types": ["procedure", "screenshot"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.exp.1", "name": "Inventario de activos", "domain": "Operacional-Explotación", "evidence_types": ["record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.exp.2", "name": "Configuración de seguridad", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.exp.3", "name": "Gestión de la configuración", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.exp.4", "name": "Mantenimiento", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.exp.5", "name": "Gestión de cambios", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.exp.6", "name": "Protección frente a código dañino", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "record", "screenshot"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.exp.9", "name": "Registro de la actividad de los usuarios", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "log"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "op.exp.10", "name": "Protección de los registros de actividad", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.exp.11", "name": "Protección de claves criptográficas", "domain": "Operacional-Explotación", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.mon.1", "name": "Detección de intrusión", "domain": "Operacional-Monitorización", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["medio", "alto"]},
-    {"id": "op.mon.2", "name": "Sistema de métricas", "domain": "Operacional-Monitorización", "evidence_types": ["report"], "mandatory": true, "categories": ["alto"]},
-    {"id": "mp.per.1", "name": "Caracterización del puesto de trabajo", "domain": "Medidas de Protección-Personal", "evidence_types": ["record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "mp.per.3", "name": "Concienciación", "domain": "Medidas de Protección-Personal", "evidence_types": ["record", "certificate"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "mp.per.4", "name": "Formación", "domain": "Medidas de Protección-Personal", "evidence_types": ["record", "certificate"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "mp.info.4", "name": "Cifrado de la información", "domain": "Medidas de Protección-Información", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["alto"]},
-    {"id": "mp.info.9", "name": "Copias de seguridad", "domain": "Medidas de Protección-Información", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "mp.com.1", "name": "Perímetro seguro", "domain": "Medidas de Protección-Comunicaciones", "evidence_types": ["procedure", "screenshot"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "mp.com.3", "name": "Comunicaciones seguras", "domain": "Medidas de Protección-Comunicaciones", "evidence_types": ["procedure", "certificate"], "mandatory": true, "categories": ["basico", "medio", "alto"]},
-    {"id": "mp.sw.1", "name": "Desarrollo de aplicaciones", "domain": "Medidas de Protección-SW", "evidence_types": ["procedure", "record"], "mandatory": false, "categories": ["alto"]},
-    {"id": "mp.sw.2", "name": "Aceptación y puesta en servicio", "domain": "Medidas de Protección-SW", "evidence_types": ["procedure", "record"], "mandatory": true, "categories": ["medio", "alto"]}
+    {
+      "id": "org.1",
+      "name": "Política de seguridad",
+      "domain": "Organización",
+      "evidence_types": [
+        "policy_document"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "5.1"
+      ]
+    },
+    {
+      "id": "org.2",
+      "name": "Normativa de seguridad",
+      "domain": "Organización",
+      "evidence_types": [
+        "policy_document",
+        "procedure"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "5.10"
+      ]
+    },
+    {
+      "id": "org.3",
+      "name": "Procedimientos de seguridad",
+      "domain": "Organización",
+      "evidence_types": [
+        "procedure"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "5.3"
+      ]
+    },
+    {
+      "id": "org.4",
+      "name": "Proceso de autorización",
+      "domain": "Organización",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ]
+    },
+    {
+      "id": "op.pl.1",
+      "name": "Análisis de riesgos",
+      "domain": "Operacional-Planificación",
+      "evidence_types": [
+        "report",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ]
+    },
+    {
+      "id": "op.pl.2",
+      "name": "Arquitectura de seguridad",
+      "domain": "Operacional-Planificación",
+      "evidence_types": [
+        "record",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ]
+    },
+    {
+      "id": "op.pl.4",
+      "name": "Dimensionamiento/gestión de capacidades",
+      "domain": "Operacional-Planificación",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ]
+    },
+    {
+      "id": "op.acc.1",
+      "name": "Identificación",
+      "domain": "Operacional-Control de Acceso",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "5.16"
+      ]
+    },
+    {
+      "id": "op.acc.2",
+      "name": "Requisitos de acceso",
+      "domain": "Operacional-Control de Acceso",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "5.15",
+        "8.3"
+      ]
+    },
+    {
+      "id": "op.acc.3",
+      "name": "Segregación de funciones y tareas",
+      "domain": "Operacional-Control de Acceso",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.2",
+        "8.18"
+      ]
+    },
+    {
+      "id": "op.acc.4",
+      "name": "Proceso de gestión de derechos de acceso",
+      "domain": "Operacional-Control de Acceso",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "5.18"
+      ]
+    },
+    {
+      "id": "op.acc.5",
+      "name": "Mecanismo de autenticación",
+      "domain": "Operacional-Control de Acceso",
+      "evidence_types": [
+        "procedure",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "5.17",
+        "8.5"
+      ]
+    },
+    {
+      "id": "op.exp.1",
+      "name": "Inventario de activos",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.1"
+      ]
+    },
+    {
+      "id": "op.exp.2",
+      "name": "Configuración de seguridad",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.8",
+        "8.9"
+      ]
+    },
+    {
+      "id": "op.exp.3",
+      "name": "Gestión de la configuración",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.9"
+      ]
+    },
+    {
+      "id": "op.exp.4",
+      "name": "Mantenimiento",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.19"
+      ]
+    },
+    {
+      "id": "op.exp.5",
+      "name": "Gestión de cambios",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.31",
+        "8.32"
+      ]
+    },
+    {
+      "id": "op.exp.6",
+      "name": "Protección frente a código dañino",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "record",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.7"
+      ]
+    },
+    {
+      "id": "op.exp.9",
+      "name": "Registro de la actividad de los usuarios",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "log"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.15"
+      ]
+    },
+    {
+      "id": "op.exp.10",
+      "name": "Protección de los registros de actividad",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ]
+    },
+    {
+      "id": "op.exp.11",
+      "name": "Protección de claves criptográficas",
+      "domain": "Operacional-Explotación",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ]
+    },
+    {
+      "id": "op.mon.1",
+      "name": "Detección de intrusión",
+      "domain": "Operacional-Monitorización",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.16"
+      ]
+    },
+    {
+      "id": "op.mon.2",
+      "name": "Sistema de métricas",
+      "domain": "Operacional-Monitorización",
+      "evidence_types": [
+        "report"
+      ],
+      "mandatory": true,
+      "categories": [
+        "alto"
+      ]
+    },
+    {
+      "id": "mp.per.1",
+      "name": "Caracterización del puesto de trabajo",
+      "domain": "Medidas de Protección-Personal",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "6.1"
+      ]
+    },
+    {
+      "id": "mp.per.3",
+      "name": "Concienciación",
+      "domain": "Medidas de Protección-Personal",
+      "evidence_types": [
+        "record",
+        "certificate"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "6.3"
+      ]
+    },
+    {
+      "id": "mp.per.4",
+      "name": "Formación",
+      "domain": "Medidas de Protección-Personal",
+      "evidence_types": [
+        "record",
+        "certificate"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ]
+    },
+    {
+      "id": "mp.info.4",
+      "name": "Cifrado de la información",
+      "domain": "Medidas de Protección-Información",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "alto"
+      ],
+      "controls": [
+        "8.24"
+      ]
+    },
+    {
+      "id": "mp.info.9",
+      "name": "Copias de seguridad",
+      "domain": "Medidas de Protección-Información",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.13"
+      ]
+    },
+    {
+      "id": "mp.com.1",
+      "name": "Perímetro seguro",
+      "domain": "Medidas de Protección-Comunicaciones",
+      "evidence_types": [
+        "procedure",
+        "screenshot"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.20",
+        "8.21",
+        "8.22"
+      ]
+    },
+    {
+      "id": "mp.com.3",
+      "name": "Comunicaciones seguras",
+      "domain": "Medidas de Protección-Comunicaciones",
+      "evidence_types": [
+        "procedure",
+        "certificate"
+      ],
+      "mandatory": true,
+      "categories": [
+        "basico",
+        "medio",
+        "alto"
+      ],
+      "controls": [
+        "8.24"
+      ]
+    },
+    {
+      "id": "mp.sw.1",
+      "name": "Desarrollo de aplicaciones",
+      "domain": "Medidas de Protección-SW",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": false,
+      "categories": [
+        "alto"
+      ]
+    },
+    {
+      "id": "mp.sw.2",
+      "name": "Aceptación y puesta en servicio",
+      "domain": "Medidas de Protección-SW",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "categories": [
+        "medio",
+        "alto"
+      ]
+    }
   ]
 }

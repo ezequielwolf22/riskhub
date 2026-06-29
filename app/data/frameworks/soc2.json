@@ -6,28 +6,282 @@
   "audit_frequency_months": 12,
   "certification_body": "AICPA",
   "requirements": [
-    {"id": "CC1.1", "name": "Compromiso con integridad y valores éticos", "domain": "Entorno de Control", "evidence_types": ["policy_document", "record"], "mandatory": true},
-    {"id": "CC1.2", "name": "Supervisión del diseño y operación de controles", "domain": "Entorno de Control", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC1.3", "name": "Estructura organizativa, reporting y responsabilidades", "domain": "Entorno de Control", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC1.4", "name": "Compromiso de competencia", "domain": "Entorno de Control", "evidence_types": ["record", "certificate"], "mandatory": true},
-    {"id": "CC1.5", "name": "Responsabilidad sobre controles", "domain": "Entorno de Control", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC2.1", "name": "Calidad de información relevante", "domain": "Comunicación y Información", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "CC2.2", "name": "Comunicación interna", "domain": "Comunicación y Información", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC2.3", "name": "Comunicación a partes externas", "domain": "Comunicación y Información", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC3.1", "name": "Especificación de objetivos", "domain": "Evaluación de Riesgos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC3.2", "name": "Identificación y análisis de riesgos", "domain": "Evaluación de Riesgos", "evidence_types": ["record", "report"], "mandatory": true},
-    {"id": "CC3.3", "name": "Evaluación de fraude", "domain": "Evaluación de Riesgos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC3.4", "name": "Identificación de cambios significativos", "domain": "Evaluación de Riesgos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC6.1", "name": "Controles lógicos y físicos de acceso", "domain": "Acceso Lógico y Físico", "evidence_types": ["procedure", "screenshot", "record"], "mandatory": true},
-    {"id": "CC6.2", "name": "Acceso basado en credenciales previas a concesión", "domain": "Acceso Lógico y Físico", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "CC6.3", "name": "Revocación de acceso cuando cese la necesidad", "domain": "Acceso Lógico y Físico", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "CC6.6", "name": "Controles de seguridad frente a amenazas externas", "domain": "Acceso Lógico y Físico", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "CC7.1", "name": "Detección y monitorización de amenazas", "domain": "Operaciones del Sistema", "evidence_types": ["procedure", "record", "report"], "mandatory": true},
-    {"id": "CC7.2", "name": "Monitorización de infraestructura para anomalías", "domain": "Operaciones del Sistema", "evidence_types": ["procedure", "log"], "mandatory": true},
-    {"id": "CC7.3", "name": "Evaluación de eventos de seguridad", "domain": "Operaciones del Sistema", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "CC7.4", "name": "Respuesta a incidentes de seguridad", "domain": "Operaciones del Sistema", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "CC8.1", "name": "Proceso de gestión del cambio", "domain": "Gestión de Cambios", "evidence_types": ["procedure", "record"], "mandatory": true},
-    {"id": "CC9.1", "name": "Evaluación de riesgos en relaciones con proveedores", "domain": "Mitigación de Riesgos", "evidence_types": ["record"], "mandatory": true},
-    {"id": "CC9.2", "name": "Monitorización de riesgos de proveedores", "domain": "Mitigación de Riesgos", "evidence_types": ["record"], "mandatory": true}
+    {
+      "id": "CC1.1",
+      "name": "Compromiso con integridad y valores éticos",
+      "domain": "Entorno de Control",
+      "evidence_types": [
+        "policy_document",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.1"
+      ]
+    },
+    {
+      "id": "CC1.2",
+      "name": "Supervisión del diseño y operación de controles",
+      "domain": "Entorno de Control",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC1.3",
+      "name": "Estructura organizativa, reporting y responsabilidades",
+      "domain": "Entorno de Control",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.2",
+        "5.3"
+      ]
+    },
+    {
+      "id": "CC1.4",
+      "name": "Compromiso de competencia",
+      "domain": "Entorno de Control",
+      "evidence_types": [
+        "record",
+        "certificate"
+      ],
+      "mandatory": true,
+      "controls": [
+        "6.3"
+      ]
+    },
+    {
+      "id": "CC1.5",
+      "name": "Responsabilidad sobre controles",
+      "domain": "Entorno de Control",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.10"
+      ]
+    },
+    {
+      "id": "CC2.1",
+      "name": "Calidad de información relevante",
+      "domain": "Comunicación y Información",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.33"
+      ]
+    },
+    {
+      "id": "CC2.2",
+      "name": "Comunicación interna",
+      "domain": "Comunicación y Información",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC2.3",
+      "name": "Comunicación a partes externas",
+      "domain": "Comunicación y Información",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC3.1",
+      "name": "Especificación de objetivos",
+      "domain": "Evaluación de Riesgos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC3.2",
+      "name": "Identificación y análisis de riesgos",
+      "domain": "Evaluación de Riesgos",
+      "evidence_types": [
+        "record",
+        "report"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC3.3",
+      "name": "Evaluación de fraude",
+      "domain": "Evaluación de Riesgos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC3.4",
+      "name": "Identificación de cambios significativos",
+      "domain": "Evaluación de Riesgos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC6.1",
+      "name": "Controles lógicos y físicos de acceso",
+      "domain": "Acceso Lógico y Físico",
+      "evidence_types": [
+        "procedure",
+        "screenshot",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.15",
+        "5.16",
+        "5.17",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.5"
+      ]
+    },
+    {
+      "id": "CC6.2",
+      "name": "Acceso basado en credenciales previas a concesión",
+      "domain": "Acceso Lógico y Físico",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.18"
+      ]
+    },
+    {
+      "id": "CC6.3",
+      "name": "Revocación de acceso cuando cese la necesidad",
+      "domain": "Acceso Lógico y Físico",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.18"
+      ]
+    },
+    {
+      "id": "CC6.6",
+      "name": "Controles de seguridad frente a amenazas externas",
+      "domain": "Acceso Lógico y Físico",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "CC7.1",
+      "name": "Detección y monitorización de amenazas",
+      "domain": "Operaciones del Sistema",
+      "evidence_types": [
+        "procedure",
+        "record",
+        "report"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.16"
+      ]
+    },
+    {
+      "id": "CC7.2",
+      "name": "Monitorización de infraestructura para anomalías",
+      "domain": "Operaciones del Sistema",
+      "evidence_types": [
+        "procedure",
+        "log"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.15"
+      ]
+    },
+    {
+      "id": "CC7.3",
+      "name": "Evaluación de eventos de seguridad",
+      "domain": "Operaciones del Sistema",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.29"
+      ]
+    },
+    {
+      "id": "CC7.4",
+      "name": "Respuesta a incidentes de seguridad",
+      "domain": "Operaciones del Sistema",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.34"
+      ]
+    },
+    {
+      "id": "CC8.1",
+      "name": "Proceso de gestión del cambio",
+      "domain": "Gestión de Cambios",
+      "evidence_types": [
+        "procedure",
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "8.19",
+        "8.31",
+        "8.32"
+      ]
+    },
+    {
+      "id": "CC9.1",
+      "name": "Evaluación de riesgos en relaciones con proveedores",
+      "domain": "Mitigación de Riesgos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.19",
+        "5.20"
+      ]
+    },
+    {
+      "id": "CC9.2",
+      "name": "Monitorización de riesgos de proveedores",
+      "domain": "Mitigación de Riesgos",
+      "evidence_types": [
+        "record"
+      ],
+      "mandatory": true,
+      "controls": [
+        "5.23"
+      ]
+    }
   ]
 }
