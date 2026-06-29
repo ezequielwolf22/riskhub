@@ -96,7 +96,9 @@ def iso22301_status(db: Session, org_id: int) -> dict:
     approved_plans = [p for p in plans if p.status in ("approved", "active")]
     bcp_plans = [p for p in approved_plans if p.plan_type == "bcp"]
     drp_plans = [p for p in approved_plans if p.plan_type in ("drp", "crp")]
-    comm_plans = [p for p in approved_plans if p.plan_type == "communication"]
+    # BUG13 fix: "communication" is not in VALID_PLAN_TYPES; use "crp" as closest equivalent
+    # so existing CRP plans count toward ISO 22301 cl. 7.4 communication requirement
+    comm_plans = [p for p in approved_plans if p.plan_type in ("crp", "communication")]
 
     # BIA completeness
     bia_complete_crit = [p for p in crit_procs if bia_completeness(db, p)["pct"] >= 80]
