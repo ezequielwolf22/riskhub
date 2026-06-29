@@ -199,7 +199,42 @@ def msforms_inbound(
             .first()
         )
     if not supplier:
-        raise HTTPException(404, f"Proveedor no encontrado: {supplier_name}")
+        # G01/G10: auto-crear proveedor con datos del payload + field_mapping
+        field_mapping = cfg.msforms_field_mapping or {}
+        mapped_data: dict = {}
+        for form_key, supplier_field in field_mapping.items():
+            val = payload.get(form_key, "")
+            if val and supplier_field:
+                mapped_data[supplier_field] = str(val).strip()
+
+        n = db.query(Supplier).filter(Supplier.organization_id == org_id).count() + 1
+        supplier = Supplier(
+            code=f"SUP-{n:04d}",
+            name=(mapped_data.get("name") or supplier_name).strip(),
+            description=mapped_data.get("description"),
+            services=mapped_data.get("services"),
+            category=mapped_data.get("category"),
+            contact_name=mapped_data.get("contact_name"),
+            contact_email=mapped_data.get("contact_email"),
+            website=mapped_data.get("website"),
+            contract_ref=mapped_data.get("contract_ref"),
+            notes=(
+                f"Alta automatica via MS Forms webhook (Via 1). "
+                f"Respondido por: {payload.get('submitted_by', 'desconocido')}."
+            ),
+            organization_id=org_id,
+            risk_level="medium",
+            msforms_origin=True,
+            msforms_responder=payload.get("submitted_by") or None,
+        )
+        db.add(supplier)
+        db.flush()
+        try:
+            from app.services.tprm_scoring_service import recompute_supplier
+            recompute_supplier(db, supplier, commit=False)
+        except Exception:
+            pass
+        logger.info("MS Forms inbound: proveedor '%s' creado automaticamente (Via 1)", supplier.name)
 
     # Construir respuestas
     answers = payload.get("answers") or {}
@@ -246,6 +281,11 @@ def msforms_inbound(
     db.refresh(q)
 
     logger.info("MS Forms inbound: questionnaire %s creado para proveedor %s", q.code, supplier.name)
+
+    # G02: disparar revision IA si esta habilitada (igual que Via 3)
+    if cfg.msforms_auto_ai_review:
+        from app.services.msforms_service import _trigger_ai_review_bg
+        _trigger_ai_review_bg(q.id, org_id)
 
     # Notificar a Monday.com en background si esta configurado
     if cfg.monday_webhook_url:

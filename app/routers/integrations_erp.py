@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    Asset, AssetType, Incident, IncidentSeverity, IncidentStatus,
+    Asset, AssetType, ErpWebhookEvent, Incident, IncidentSeverity, IncidentStatus,
     IntegrationConfig, Organization, Risk, User,
 )
 from app.security import filter_by_org, get_current_user, require_admin
@@ -146,15 +146,34 @@ def save_config(
 @router.get("/events")
 def get_events(
     current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
-    """Devuelve los ultimos eventos recibidos de sistemas ERP."""
+    """Devuelve los ultimos eventos recibidos de sistemas ERP (persistidos en BD)."""
     org_id = current_user.organization_id
-    events = _event_log.get(org_id, [])
-    return {"events": list(reversed(events[-_MAX_EVENTS:]))}
+    rows = (
+        db.query(ErpWebhookEvent)
+        .filter(ErpWebhookEvent.organization_id == org_id)
+        .order_by(ErpWebhookEvent.ts.desc())
+        .limit(_MAX_EVENTS)
+        .all()
+    )
+    events = [
+        {
+            "ts": r.ts.isoformat(),
+            "source": r.source,
+            "event_type": r.event_type,
+            "entity_name": r.entity_name or "",
+            "result": r.result,
+        }
+        for r in rows
+    ]
+    return {"events": events}
 
 
 def _log_event(org_id: int, source: str, event_type: str, payload: dict, result: str) -> None:
-    """Registra un evento en el log en memoria."""
+    """Persiste un evento ERP en BD y mantiene cache en memoria como fallback."""
+    entity_name = (payload.get("name") or payload.get("title") or "")[:255]
+    # Cache en memoria para acceso rapido (se pierde en restart, pero BD es la fuente de verdad)
     if org_id not in _event_log:
         _event_log[org_id] = []
     _event_log[org_id].append({
@@ -162,11 +181,28 @@ def _log_event(org_id: int, source: str, event_type: str, payload: dict, result:
         "source": source,
         "event_type": event_type,
         "result": result,
-        "entity_name": payload.get("name") or payload.get("title") or "",
+        "entity_name": entity_name,
     })
-    # Mantener solo los ultimos N eventos
     if len(_event_log[org_id]) > _MAX_EVENTS:
         _event_log[org_id] = _event_log[org_id][-_MAX_EVENTS:]
+    # Persistir en BD en background para no bloquear el webhook handler
+    def _persist():
+        try:
+            from app.database import SessionLocal
+            with SessionLocal() as db2:
+                db2.add(ErpWebhookEvent(
+                    organization_id=org_id,
+                    source=source,
+                    event_type=event_type,
+                    entity_name=entity_name,
+                    result=result,
+                    ts=datetime.now(timezone.utc),
+                ))
+                db2.commit()
+        except Exception as exc:
+            logger.warning("ERP event log persist failed: %s", exc)
+    import threading
+    threading.Thread(target=_persist, daemon=True).start()
 
 
 # ── Validacion HMAC ────────────────────────────────────────────────────────────
@@ -414,9 +450,10 @@ def _upsert_asset_from_erp(db: Session, org_id: int, data: dict, source: str) ->
 
 
 def _next_incident_code(db: Session) -> str:
-    """Genera el siguiente codigo de incidente (INC-XXXX)."""
-    n = db.query(Incident).count() + 1
-    return f"INC-{n:04d}"
+    """Genera el siguiente codigo de incidente usando MAX(id) para evitar race conditions."""
+    from sqlalchemy import func
+    max_id = db.query(func.max(Incident.id)).scalar() or 0
+    return f"INC-{max_id + 1:04d}"
 
 
 def _create_incident_from_erp(db: Session, org_id: int, data: dict, source: str) -> Incident:

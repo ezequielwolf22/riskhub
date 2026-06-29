@@ -1100,6 +1100,8 @@ class SupplierQuestionnaireOut(ORMBase):
     assignment_type: Optional[str] = None
     assigned_at: Optional[datetime] = None
     created_at: datetime
+    regwatch_review_at: Optional[datetime] = None
+    regwatch_pack_id: Optional[int] = None
 
 
 # ---------- TPRM: VENDOR ASSESSMENTS & ISSUES ----------

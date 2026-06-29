@@ -9,8 +9,12 @@ Los secretos se almacenan cifrados con Fernet (misma clave que el agente IA).
 import base64
 import hashlib
 import json
+import logging
+import threading
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger("riskhub.sharepoint")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -292,12 +296,17 @@ def import_files(
         db.commit()
         db.refresh(doc)
 
-        try:
-            process_document(db, doc.id)
-            db.refresh(doc)
-            results["imported"].append(name)
-        except Exception as e:
-            results["errors"].append(f"{name}: error al procesar ({e})")
+        # G09: process_document se lanza en background para no bloquear el request
+        doc_id = doc.id
+        def _bg_process(did=doc_id):
+            try:
+                from app.database import SessionLocal
+                with SessionLocal() as db_bg:
+                    process_document(db_bg, did)
+            except Exception as exc:
+                logger.warning("SharePoint: error procesando doc %d: %s", did, exc)
+        threading.Thread(target=_bg_process, daemon=True).start()
+        results["imported"].append(name)
 
     log_action(db, current_user.id, "import", "sharepoint", None, {
         "imported": len(results["imported"]),

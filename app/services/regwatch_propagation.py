@@ -424,10 +424,10 @@ def _flag_bcp_plans(db: Session, org_id: int, pack: Any) -> int:
 def _flag_supplier_questionnaires(db: Session, org_id: int, pack: Any) -> int:
     """Marca cuestionarios de proveedor cuya plantilla corresponde al framework.
 
-    Solo afecta a cuestionarios activos (sin respuesta enviada) de plantillas
-    TPRM que incluyen el framework del pack en su lista framework_codes.
+    Cubre tanto plantillas del sistema como plantillas clonadas por el tenant
+    (template_code = "custom:{id}" con created_from apuntando al codigo del sistema).
     """
-    from app.models import SupplierQuestionnaire
+    from app.models import SupplierQuestionnaire, TPRMTemplate
     try:
         from app.services.tprm_templates import SYSTEM_TEMPLATES
     except ImportError:
@@ -444,12 +444,22 @@ def _flag_supplier_questionnaires(db: Session, org_id: int, pack: Any) -> int:
     if not matching_codes:
         return 0
 
+    # R6: plantillas clonadas por el tenant que descienden de las anteriores
+    cloned = (
+        db.query(TPRMTemplate)
+        .filter(
+            TPRMTemplate.organization_id == org_id,
+            TPRMTemplate.created_from.in_(matching_codes),
+        )
+        .all()
+    )
+    all_codes = list(matching_codes) + [f"custom:{t.id}" for t in cloned]
+
     questionnaires = (
         db.query(SupplierQuestionnaire)
         .filter(
             SupplierQuestionnaire.organization_id == org_id,
-            SupplierQuestionnaire.template_code.in_(matching_codes),
-            SupplierQuestionnaire.submitted_at.is_(None),  # solo activos
+            SupplierQuestionnaire.template_code.in_(all_codes),
         )
         .all()
     )
@@ -459,7 +469,75 @@ def _flag_supplier_questionnaires(db: Session, org_id: int, pack: Any) -> int:
         _set_regwatch_flag(q, now, pack.id)
         flagged += 1
 
+    # R4: crear VendorIssue automatico para que el analista TPRM reciba accion
+    if questionnaires:
+        _create_vendor_issues_from_regwatch(db, org_id, pack, questionnaires)
+
     return flagged
+
+
+def _create_vendor_issues_from_regwatch(db: Session, org_id: int, pack: Any,
+                                         questionnaires: list) -> None:
+    """Crea un VendorIssue por proveedor afectado por el cambio normativo.
+
+    Evita duplicados: no crea issue si ya existe uno abierto del mismo pack para ese proveedor.
+    """
+    try:
+        from app.models import (
+            VendorIssue, VendorIssueSeverity, VendorIssueStatus,
+        )
+        from datetime import timedelta
+    except ImportError:
+        return
+
+    now = _now()
+    sev = VendorIssueSeverity.HIGH if getattr(pack, "severity", None) and pack.severity.value == "breaking" else VendorIssueSeverity.MEDIUM
+    pack_label = f"[RegWatch {pack.framework_code}]"
+
+    # Agrupar cuestionarios por proveedor para crear un issue por proveedor, no por cuestionario
+    supplier_ids_seen: set[int] = set()
+    for q in questionnaires:
+        sup_id = getattr(q, "supplier_id", None)
+        if not sup_id or sup_id in supplier_ids_seen:
+            continue
+        supplier_ids_seen.add(sup_id)
+
+        # Dedup: no crear si ya existe issue abierto del mismo pack
+        dup = db.query(VendorIssue).filter(
+            VendorIssue.organization_id == org_id,
+            VendorIssue.supplier_id == sup_id,
+            VendorIssue.title.like(f"%{pack_label}%"),
+            VendorIssue.status.notin_([VendorIssueStatus.CLOSED.value, VendorIssueStatus.MITIGATED.value]),
+        ).first()
+        if dup:
+            continue
+
+        n = db.query(VendorIssue).filter(VendorIssue.organization_id == org_id).count() + 1
+        issue = VendorIssue(
+            organization_id=org_id,
+            code=f"VIS-{n:04d}",
+            supplier_id=sup_id,
+            source="regwatch",
+            title=f"{pack_label} Revision de cuestionario TPRM — cambio en {pack.framework_code}",
+            description=(
+                f"Cambio normativo detectado: {pack.title_es}.\n\n"
+                f"{pack.description_es or ''}\n\n"
+                f"Revisa si el cuestionario TPRM del proveedor refleja los nuevos requisitos "
+                f"y considera re-enviar un cuestionario actualizado."
+            ),
+            severity=sev,
+            status=VendorIssueStatus.OPEN,
+            framework_refs=[pack.framework_code],
+            discovered_at=now,
+            due_date=now + timedelta(days=30),
+            auto_generated=True,
+            auto_generated_source="regwatch",
+        )
+        db.add(issue)
+    try:
+        db.flush()
+    except Exception as exc:
+        logger.warning("regwatch: error creando VendorIssues: %s", exc)
 
 
 def _update_compliance_requirements(db: Session, org_id: int, pack: Any) -> int:

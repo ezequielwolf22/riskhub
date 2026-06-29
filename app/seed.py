@@ -715,6 +715,20 @@ def _migrate_columns() -> None:
         ("ALTER TABLE form_integration_configs ADD COLUMN msforms_pa_callback_url VARCHAR(500)", "form_integration_configs", "msforms_pa_callback_url"),
         ("ALTER TABLE suppliers ADD COLUMN msforms_origin BOOLEAN DEFAULT 0", "suppliers", "msforms_origin"),
         ("ALTER TABLE suppliers ADD COLUMN msforms_responder VARCHAR(255)", "suppliers", "msforms_responder"),
+        # G04: log persistente de eventos ERP (SAP/Jagger/Sphera)
+        (
+            """CREATE TABLE IF NOT EXISTS erp_webhook_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                organization_id INTEGER NOT NULL REFERENCES organizations(id),
+                source VARCHAR(32) NOT NULL,
+                event_type VARCHAR(64) NOT NULL,
+                entity_name VARCHAR(255),
+                result VARCHAR(64) NOT NULL,
+                ts DATETIME NOT NULL
+            )""",
+            "erp_webhook_events",
+            "id",
+        ),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

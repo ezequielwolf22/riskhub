@@ -187,6 +187,18 @@ class IntegrationConfig(Base):
     updated_by = relationship("User")
 
 
+class ErpWebhookEvent(Base):
+    """Log persistente de eventos recibidos via webhooks ERP (SAP/Jagger/Sphera)."""
+    __tablename__ = "erp_webhook_events"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    source = Column(String(32), nullable=False)        # sap | jagger | sphera
+    event_type = Column(String(64), nullable=False)
+    entity_name = Column(String(255), nullable=True)
+    result = Column(String(64), nullable=False)        # queued | ok | error: ...
+    ts = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class FeatureFlag(Base):
     """Control de modulos por licencia — gestionado exclusivamente por superadmin.
 

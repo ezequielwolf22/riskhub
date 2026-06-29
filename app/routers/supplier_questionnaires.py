@@ -78,10 +78,13 @@ def list_questionnaires(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     supplier_id: Optional[int] = None,
+    regwatch_pending: bool = False,
 ):
     q = filter_by_org(db.query(SupplierQuestionnaire), SupplierQuestionnaire, current_user)
     if supplier_id:
         q = q.filter(SupplierQuestionnaire.supplier_id == supplier_id)
+    if regwatch_pending:
+        q = q.filter(SupplierQuestionnaire.regwatch_review_at.isnot(None))
     return q.order_by(SupplierQuestionnaire.created_at.desc()).all()
 
 

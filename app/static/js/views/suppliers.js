@@ -1670,9 +1670,12 @@ const ViewSuppliers = (() => {
               const ac = asc >= 80 ? '#22C55E' : asc >= 60 ? '#F59E0B' : '#EF4444';
               aiHtml = `<span style="font-weight:700;color:${ac};">${asc}/100</span>`;
             }
-            return `<tr style="${expired?'opacity:.6;':''}">
+            const rwBadge = q.regwatch_review_at
+              ? `<span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:1px 5px;border-radius:4px;vertical-align:middle;" title="Revision normativa requerida">NORM</span>`
+              : '';
+            return `<tr style="${expired?'opacity:.6;':''}${q.regwatch_review_at?'border-left:3px solid #F59E0B;':''}">
               <td>${UI.codePill(q.code)}</td>
-              <td><strong>${UI.esc(q.title)}</strong></td>
+              <td><strong>${UI.esc(q.title)}</strong>${rwBadge}</td>
               <td>${typeHtml}</td>
               <td>${scoreHtml}</td>
               <td style="font-size:12px;">${submitted || (expired ? '<span style="color:#EF4444;font-size:11px;">Expirado</span>' : '<span style="color:#F59E0B;font-size:11px;">Pendiente</span>')}</td>
@@ -2196,6 +2199,9 @@ const ViewSuppliers = (() => {
               : `<span style="font-size:10px;font-weight:600;background:#E0F2FE;color:#0369A1;padding:2px 6px;border-radius:4px;">Externo</span>`;
             const assignedUserLabel = isInternal && q.assigned_user_name
               ? `<div style="font-size:10px;color:var(--text-muted);">Asignado: ${UI.esc(q.assigned_user_name)}</div>` : '';
+            const regwatchBadge = q.regwatch_review_at
+              ? `<span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:1px 5px;border-radius:4px;vertical-align:middle;" title="Revision normativa requerida desde ${new Date(q.regwatch_review_at).toLocaleDateString('es-ES')}">NORM</span>`
+              : '';
             let scoreHtml = '-';
             if (q.score !== null && q.score !== undefined) {
               const sc = q.score;
@@ -2216,9 +2222,9 @@ const ViewSuppliers = (() => {
                 aiHtml = `<button class="btn btn-sm" style="font-size:11px;" data-id="${q.id}" data-act="eval-ai">Evaluar IA</button>`;
               }
             }
-            return `<tr style="${expired?'opacity:.6;':''}">
+            return `<tr style="${expired?'opacity:.6;':''}${q.regwatch_review_at?'border-left:3px solid #F59E0B;':''}">
               <td>${UI.codePill(q.code)}</td>
-              <td><strong>${UI.esc(q.title)}</strong>${assignedUserLabel}</td>
+              <td><strong>${UI.esc(q.title)}</strong>${regwatchBadge}${assignedUserLabel}</td>
               <td style="font-size:12px;">${UI.esc(q.supplier_name||'-')}</td>
               <td>${typeHtml}</td>
               <td>${scoreHtml}</td>

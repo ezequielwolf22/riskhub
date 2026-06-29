@@ -1091,7 +1091,7 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model=cfg.model or "claude-haiku-4-5",
+            model=cfg.model or "claude-haiku-4-5-20251001",
             max_tokens=16384,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -1299,6 +1299,9 @@ async def import_preview(file: UploadFile = File(...),
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(413, "Máx 10 MB")
+    # G11: validacion de magic bytes — ZIP header (PK\x03\x04) requerido para .xlsx
+    if not content[:4] == b'PK\x03\x04':
+        raise HTTPException(422, "Archivo invalido: no es un fichero Excel (.xlsx) valido")
     from app.services.bcp_excel_service import parse_excel_preview
     try:
         return parse_excel_preview(content)
@@ -1312,6 +1315,8 @@ async def import_confirm(file: UploadFile = File(...),
     if not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(422, "Solo se aceptan .xlsx / .xls")
     content = await file.read()
+    if not content[:4] == b'PK\x03\x04':
+        raise HTTPException(422, "Archivo invalido: no es un fichero Excel (.xlsx) valido")
     from app.services.bcp_excel_service import parse_excel_preview, confirm_excel_import
     try:
         preview = parse_excel_preview(content)
@@ -1385,7 +1390,7 @@ async def import_ai_preview(
     if not api_key:
         raise HTTPException(422, "No hay API key de IA configurada. Configura el agente IA primero.")
     from app.services.bcp_excel_service import ai_parse_any_format
-    bcp_ai_model = (cfg.model if cfg and cfg.model else None) or "claude-haiku-4-5"
+    bcp_ai_model = (cfg.model if cfg and cfg.model else None) or "claude-haiku-4-5-20251001"
     try:
         result = await ai_parse_any_format(content, file.filename, api_key, model=bcp_ai_model)
         return result
@@ -1490,7 +1495,7 @@ def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require
         prompt = _BCP_ANALYSIS_PROMPT.format(bcp_summary=summary)
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model=cfg.model or "claude-haiku-4-5",
+            model=cfg.model or "claude-haiku-4-5-20251001",
             max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -1573,16 +1578,14 @@ def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user
     if str(getattr(test, "result", "") or "").lower() not in FAIL_STATUSES:
         return
 
-    # Evitar duplicado: si ya hay NC abierta para este test, no crear otra
-    existing = db.query(NonConformity).filter(
-        NonConformity.organization_id == org_id,
-        NonConformity.source == "bcp_test",
-        NonConformity.status.notin_(["closed"]),
-    ).filter(
-        NonConformity.description.like(f"%BCPTest ID: {test.id}%")
-    ).first()
-    if existing:
-        return
+    # Evitar duplicado: si ya hay NC (auto o manual) vinculada a este test, no crear otra
+    if test.nc_ids:
+        existing = db.query(NonConformity).filter(
+            NonConformity.id.in_(test.nc_ids),
+            NonConformity.status.notin_(["closed"]),
+        ).first()
+        if existing:
+            return
 
     severity = NCSeverity.MAJOR if test.result == "failed" else NCSeverity.MINOR
     now = datetime.now(timezone.utc)
@@ -1626,13 +1629,12 @@ def _close_nc_on_bcp_pass(db: Session, test: BCPTest, org_id: int) -> None:
     if str(getattr(test, "result", "") or "").lower() != "passed":
         return
 
-    # Buscar NCs abiertas de bcp_test para el mismo test (por ID en descripcion)
+    # Buscar NCs abiertas vinculadas a este test via nc_ids (robusto frente a edicion de descripcion)
+    if not test.nc_ids:
+        return
     ncs = db.query(NonConformity).filter(
-        NonConformity.organization_id == org_id,
-        NonConformity.source == "bcp_test",
+        NonConformity.id.in_(test.nc_ids),
         NonConformity.status.notin_(["closed"]),
-    ).filter(
-        NonConformity.description.like(f"%BCPTest ID: {test.id}%")
     ).all()
 
     if not ncs:
@@ -1675,6 +1677,18 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
             422,
             "Solo se puede crear NC desde tests con resultado 'failed' o 'partial'",
         )
+    # G06: evitar duplicado cruzado con NCs auto-generadas
+    if t.nc_ids:
+        from app.models import NonConformity as _NC
+        open_nc = db.query(_NC).filter(
+            _NC.id.in_(t.nc_ids),
+            _NC.status.notin_(["closed"]),
+        ).first()
+        if open_nc:
+            raise HTTPException(
+                409,
+                f"Ya existe una NC abierta vinculada a este test: {open_nc.code}",
+            )
     try:
         from app.models import NonConformity, NCSeverity, NCStatus
         severity = NCSeverity.MAJOR if t.result == "failed" else NCSeverity.MINOR
@@ -1778,7 +1792,7 @@ def _trigger_checklist_extraction(db: Session, plan: BCPPlan, org_id: int) -> No
         return
 
     plan_id = plan.id
-    model = config.model or "claude-haiku-4-5"
+    model = config.model or "claude-haiku-4-5-20251001"
 
     def _extract():
         with SessionLocal() as sess:
@@ -2951,7 +2965,7 @@ def bcm_ai_quick(
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5",
+        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5-20251001",
         max_tokens=8192,
         system=system_prompt,
         messages=[{"role": "user", "content": body.message}],
@@ -3123,7 +3137,7 @@ def generate_activation_ai_summary(aid: int, db: Session = Depends(get_db),
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5",
+        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5-20251001",
         max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )

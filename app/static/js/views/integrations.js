@@ -635,6 +635,19 @@ const ViewIntegrations = {
           <div id="forms-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
         </div>
 
+        <!-- ERP Webhooks — SAP / Jagger / Sphera -->
+        <div class="card" id="erp-card">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2M12 12v4M8 12v4"/></svg>
+            <div>
+              <b style="font-size:15px;">ERP Webhooks (SAP / Jagger / Sphera)</b>
+              <div style="font-size:11px;color:var(--text-muted);">Recepcion automatica de activos e incidentes desde sistemas ERP via HMAC-SHA256</div>
+            </div>
+            <span id="erp-status-badge" style="margin-left:auto;"></span>
+          </div>
+          <div id="erp-body"><p class="text-muted" style="font-size:13px;">Cargando configuracion...</p></div>
+        </div>
+
         <!-- VirusTotal — Escaneo de URLs y hashes -->
         <div class="card" id="vt-card">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
@@ -650,7 +663,7 @@ const ViewIntegrations = {
 
       </div>
     `;
-    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initVirusTotal(), this._initForms()]);
+    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initVirusTotal(), this._initForms(), this._initErp()]);
   },
 
   async _initSharePoint() {
@@ -1762,6 +1775,132 @@ const ViewIntegrations = {
     return opts.map(([v, l]) =>
       `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`
     ).join('');
+  },
+
+  // ── ERP Webhooks ────────────────────────────────────────────────────────────
+
+  async _initErp() {
+    const body = document.getElementById('erp-body');
+    const badge = document.getElementById('erp-status-badge');
+    if (!body) return;
+    try {
+      const cfg = await Api.get('/api/integrations/erp/config');
+      const isConfigured = cfg.configured;
+      if (badge) badge.innerHTML = isConfigured
+        ? '<span class="badge badge-success">Configurado</span>'
+        : '<span class="badge badge-warning">Sin configurar</span>';
+
+      const baseUrl = window.location.origin;
+      const urls = {
+        sap:    `${baseUrl}/api/integrations/erp/sap/webhook`,
+        jagger: `${baseUrl}/api/integrations/erp/jagger/webhook`,
+        sphera: `${baseUrl}/api/integrations/erp/sphera/webhook`,
+      };
+
+      const sources = cfg.enabled_sources || ['sap', 'jagger', 'sphera'];
+
+      body.innerHTML = `
+        <div style="display:grid;gap:14px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;">Clave secreta HMAC (webhook_secret)</label>
+            <div style="display:flex;gap:8px;margin-top:4px;">
+              <input id="erp-secret" class="input" type="password" style="flex:1;font-size:13px;"
+                placeholder="${isConfigured ? '••••••••••••••••' : 'Minimo 16 caracteres'}" autocomplete="new-password">
+              <button class="btn" onclick="ViewIntegrations.saveErpConfig()">Guardar</button>
+            </div>
+            <p style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+              El sistema externo debe enviar esta clave como firma HMAC-SHA256 en la cabecera <code>X-Hub-Signature-256</code>.
+            </p>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;">Fuentes habilitadas</label>
+            <div style="display:flex;gap:14px;margin-top:6px;">
+              ${['sap','jagger','sphera'].map(s => `
+                <label style="font-size:13px;display:flex;align-items:center;gap:5px;">
+                  <input type="checkbox" id="erp-src-${s}" ${sources.includes(s) ? 'checked' : ''}> ${s.toUpperCase()}
+                </label>
+              `).join('')}
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;">URLs de webhook (configurar en el sistema externo)</label>
+            <div style="margin-top:6px;display:grid;gap:4px;">
+              ${Object.entries(urls).map(([src, url]) => `
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:11px;font-weight:600;width:56px;">${src.toUpperCase()}</span>
+                  <code style="font-size:11px;background:var(--bg-secondary);padding:3px 8px;border-radius:4px;flex:1;word-break:break-all;">${url}</code>
+                  <button class="btn btn-sm" onclick="navigator.clipboard.writeText('${url}').then(()=>UI.toast('URL copiada','success'))">Copiar</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <label style="font-size:12px;font-weight:600;">Ultimos eventos recibidos</label>
+              <button class="btn btn-sm" onclick="ViewIntegrations.loadErpEvents()">Actualizar</button>
+            </div>
+            <div id="erp-events-table"><p style="font-size:12px;color:var(--text-muted);">Cargando eventos...</p></div>
+          </div>
+        </div>
+      `;
+      this.loadErpEvents();
+    } catch (e) {
+      if (badge) badge.innerHTML = '<span class="badge badge-error">Error</span>';
+      body.innerHTML = `<p style="font-size:13px;color:var(--error);">Error cargando configuracion ERP: ${e.message}</p>`;
+    }
+  },
+
+  async saveErpConfig() {
+    const secret = document.getElementById('erp-secret')?.value?.trim();
+    const sources = ['sap','jagger','sphera'].filter(s => document.getElementById(`erp-src-${s}`)?.checked);
+    if (!secret) { UI.toast('Introduce la clave secreta HMAC', 'error'); return; }
+    if (secret.length < 16) { UI.toast('La clave debe tener al menos 16 caracteres', 'error'); return; }
+    try {
+      await Api.put('/api/integrations/erp/config', { webhook_secret: secret, enabled_sources: sources });
+      UI.toast('Configuracion ERP guardada correctamente', 'success');
+      document.getElementById('erp-secret').value = '';
+      await this._initErp();
+    } catch (e) {
+      UI.toast('Error guardando configuracion ERP: ' + e.message, 'error');
+    }
+  },
+
+  async loadErpEvents() {
+    const container = document.getElementById('erp-events-table');
+    if (!container) return;
+    try {
+      const { events } = await Api.get('/api/integrations/erp/events');
+      if (!events || events.length === 0) {
+        container.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">Sin eventos registrados aun.</p>';
+        return;
+      }
+      container.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="text-align:left;border-bottom:1px solid var(--border);">
+            <th style="padding:4px 8px;">Fecha/Hora</th>
+            <th style="padding:4px 8px;">Fuente</th>
+            <th style="padding:4px 8px;">Evento</th>
+            <th style="padding:4px 8px;">Entidad</th>
+            <th style="padding:4px 8px;">Resultado</th>
+          </tr></thead>
+          <tbody>
+            ${events.map(ev => `
+              <tr style="border-bottom:1px solid var(--border-light);">
+                <td style="padding:4px 8px;color:var(--text-muted);">${new Date(ev.ts).toLocaleString()}</td>
+                <td style="padding:4px 8px;font-weight:600;">${ev.source.toUpperCase()}</td>
+                <td style="padding:4px 8px;">${ev.event_type}</td>
+                <td style="padding:4px 8px;">${ev.entity_name || '—'}</td>
+                <td style="padding:4px 8px;">
+                  <span class="badge ${ev.result === 'ok' ? 'badge-success' : ev.result === 'queued' ? 'badge-info' : 'badge-error'}">${ev.result}</span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (e) {
+      container.innerHTML = `<p style="font-size:12px;color:var(--error);">Error cargando eventos: ${e.message}</p>`;
+    }
   },
 
   _addMappingRow() {
