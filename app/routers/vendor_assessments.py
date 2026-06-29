@@ -40,20 +40,13 @@ _DECISION_VALUES = frozenset({"approve", "approve_with_conditions", "reject", "r
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(VendorRiskAssessment).filter(
-        VendorRiskAssessment.organization_id == org_id
-    ).count() + 1
-    code = f"VAS-{n:04d}"
-    while db.query(VendorRiskAssessment).filter_by(code=code).first():
-        n += 1
-        code = f"VAS-{n:04d}"
-    return code
+    # Kept for backward compatibility; real code is assigned post-flush.
+    return "VAS-0000"
 
 
 def _next_q_code(db: Session) -> str:
-    from sqlalchemy import func as _func
-    max_id = db.query(_func.max(SupplierQuestionnaire.id)).scalar() or 0
-    return f"SEQ-{max_id + 1:04d}"
+    # Kept for backward compatibility; real code is assigned post-flush.
+    return "SEQ-0000"
 
 
 def _score_to_likelihood_consequence(residual_score: int) -> tuple[int, int]:
@@ -138,7 +131,7 @@ def _create_questionnaire(
     if not tpl:
         raise HTTPException(404, f"Plantilla {template_code!r} no encontrada")
     q = SupplierQuestionnaire(
-        code=_next_q_code(db),
+        code="SEQ-0000",
         supplier_id=supplier.id,
         title=title,
         token=secrets.token_urlsafe(32),
@@ -152,6 +145,7 @@ def _create_questionnaire(
     )
     db.add(q)
     db.flush()
+    q.code = f"SEQ-{q.id:04d}"
     return q
 
 
@@ -284,7 +278,10 @@ def download_evidence(
 
     entry = None
     for qid in q_ids:
-        q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid).first()
+        q = db.query(SupplierQuestionnaire).filter(
+            SupplierQuestionnaire.id == qid,
+            SupplierQuestionnaire.organization_id == a.organization_id,
+        ).first()
         if q and q.evidence and question_id in q.evidence:
             entry = q.evidence[question_id]
             break
@@ -328,10 +325,9 @@ def create_assessment(
     # Calcular scores base del proveedor (sin cuestionarios vinculados aun)
     scores = build_assessment(db, supplier, [])
 
-    code = _next_code(db, org_id)
     a = VendorRiskAssessment(
         organization_id=org_id,
-        code=code,
+        code="VAS-0000",
         supplier_id=body.supplier_id,
         period_label=body.period_label,
         valid_until=body.valid_until,
@@ -347,6 +343,7 @@ def create_assessment(
     )
     db.add(a)
     db.flush()  # obtener a.id
+    a.code = f"VAS-{a.id:04d}"
 
     base_url = str(request.base_url)
     email_result = {"sent": False}
@@ -389,7 +386,7 @@ def create_assessment(
             template_code = None
 
         direct_q = SupplierQuestionnaire(
-            code=_next_q_code(db),
+            code="SEQ-0000",
             supplier_id=supplier.id,
             title=f"Evaluacion de Seguridad — {supplier.name}",
             token=secrets.token_urlsafe(32),
@@ -403,6 +400,7 @@ def create_assessment(
         )
         db.add(direct_q)
         db.flush()
+        direct_q.code = f"SEQ-{direct_q.id:04d}"
         a.assessment_questionnaire_id = direct_q.id
         email_result = _send_q_email(db, direct_q, supplier, current_user, base_url,
                                      custom_subject=body.email_subject or "",
@@ -517,7 +515,7 @@ def new_assessment_version(
 
     new_a = VendorRiskAssessment(
         organization_id=a.organization_id,
-        code=_next_code(db, a.organization_id),
+        code="VAS-0000",
         supplier_id=a.supplier_id,
         inherent_risk_score=a.inherent_risk_score,
         inherent_risk_level=a.inherent_risk_level,
@@ -533,6 +531,8 @@ def new_assessment_version(
         previous_version_id=a.id,
     )
     db.add(new_a)
+    db.flush()
+    new_a.code = f"VAS-{new_a.id:04d}"
     db.commit()
     db.refresh(new_a)
     log_action(db, current_user.id, "new_version", "vendor_assessment", str(new_a.id),
@@ -569,6 +569,7 @@ def approve_assessment(
         raise HTTPException(404, _t("tprm.assessment_not_found", lang))
     a.approver_user_id = current_user.id
     a.approved_at = datetime.now(timezone.utc)
+    a.is_current = True
     # Versionado: al aprobar una re-evaluacion, la version anterior deja de estar vigente
     if a.previous_version_id:
         prev = db.get(VendorRiskAssessment, a.previous_version_id)

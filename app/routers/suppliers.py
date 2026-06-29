@@ -19,8 +19,8 @@ router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(Supplier).filter(Supplier.organization_id == org_id).count() + 1
-    return f"SUP-{n:04d}"
+    # Kept for backward compatibility; real code is assigned post-flush in create_supplier.
+    return "SUP-0000"
 
 
 @router.get("/", response_model=list[SupplierOut])
@@ -225,7 +225,7 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
     org_id = current_user.organization_id
     s = Supplier(
-        code=_next_code(db, org_id),
+        code="SUP-0000",
         organization_id=org_id,
         name=body.name,
         category=body.category,
@@ -259,6 +259,8 @@ def create_supplier(body: SupplierIn, db: Session = Depends(get_db),
         if _v is not None:
             setattr(s, _f, _v)
     db.add(s)
+    db.flush()
+    s.code = f"SUP-{s.id:04d}"
     db.commit()
     db.refresh(s)
     # TPRM: calcular inherent/residual risk y tier inicial
@@ -362,15 +364,10 @@ def _auto_gdpr_dpa_task(db: Session, supplier: Supplier, org_id: int, created_by
         return
 
     now = datetime.now(timezone.utc)
-    n = db.query(TreatmentTask).filter(TreatmentTask.organization_id == org_id).count() + 1
-    code = f"TSK-{n:04d}"
-    while db.query(TreatmentTask).filter_by(code=code).first():
-        n += 1
-        code = f"TSK-{n:04d}"
 
     task = TreatmentTask(
         organization_id=org_id,
-        code=code,
+        code="TSK-0000",
         title=f"Firmar DPA con proveedor: {supplier.name} (GDPR Art.28)",
         description=(
             f"El proveedor {supplier.name} (ID:{supplier.id}) trata datos personales. "
@@ -387,8 +384,10 @@ def _auto_gdpr_dpa_task(db: Session, supplier: Supplier, org_id: int, created_by
     )
     db.add(task)
     try:
+        db.flush()
+        task.code = f"TSK-{task.id:04d}"
         db.commit()
-        logger.info("Auto-created DPA task %s for supplier %s (GDPR Art.28)", code, supplier.code)
+        logger.info("Auto-created DPA task %s for supplier %s (GDPR Art.28)", task.code, supplier.code)
     except Exception as _e:
         db.rollback()
         logger.warning("DPA task creation failed: %s", _e)
@@ -485,14 +484,10 @@ def _auto_create_supplier_risk(
     from app.services.risk_engine import calc_level as _calc_level
     inherent_level = _calc_level(consequence, likelihood)
 
-    # Generar codigo unico RSK-XXXX
-    from sqlalchemy import func as _func
-    max_id = db.query(_func.max(Risk.id)).scalar() or 0
-    code = f"RSK-{max_id + 1:04d}"
-
+    # Generar codigo unico RSK-XXXX via flush+id
     risk = Risk(
         organization_id=org_id,
-        code=code,
+        code="RSK-0000",
         asset_id=asset.id,
         threat_id=threat.id,
         description=(
@@ -516,10 +511,12 @@ def _auto_create_supplier_risk(
         ),
     )
     db.add(risk)
+    db.flush()
+    risk.code = f"RSK-{risk.id:04d}"
     db.commit()
     logger.info(
         "Auto-created supply-chain risk %s (level=%d) for supplier %s (score=%d)",
-        code, inherent_level, supplier.code, new_score,
+        risk.code, inherent_level, supplier.code, new_score,
     )
 
 
@@ -585,6 +582,7 @@ def list_supplier_documents(
     docs = (
         db.query(SupplierDocument)
         .filter(SupplierDocument.supplier_id == supplier_id)
+        .filter(SupplierDocument.organization_id == current_user.organization_id)
         .order_by(SupplierDocument.uploaded_at.desc())
         .all()
     )
@@ -660,6 +658,7 @@ def download_supplier_document(
     doc = db.query(SupplierDocument).filter(
         SupplierDocument.id == doc_id,
         SupplierDocument.supplier_id == supplier_id,
+        SupplierDocument.organization_id == current_user.organization_id,
     ).first()
     if not doc:
         raise HTTPException(404, _t("common.not_found", lang))
@@ -692,6 +691,7 @@ def delete_supplier_document(
     doc = db.query(SupplierDocument).filter(
         SupplierDocument.id == doc_id,
         SupplierDocument.supplier_id == supplier_id,
+        SupplierDocument.organization_id == current_user.organization_id,
     ).first()
     if not doc:
         raise HTTPException(404, _t("common.not_found", lang))
@@ -719,6 +719,7 @@ def analyze_supplier_document(
     doc = db.query(SupplierDocument).filter(
         SupplierDocument.id == doc_id,
         SupplierDocument.supplier_id == supplier_id,
+        SupplierDocument.organization_id == current_user.organization_id,
     ).first()
     if not doc:
         raise HTTPException(404, _t("common.not_found", lang))
@@ -759,7 +760,7 @@ async def change_lifecycle(
 
     old_stage = sup.lifecycle_stage or "active"
     sup.lifecycle_stage = new_stage
-    sup.lifecycle_changed_at = datetime.utcnow()
+    sup.lifecycle_changed_at = datetime.now(timezone.utc)
     sup.lifecycle_changed_by_id = current_user.id
 
     # Auto-generar checklist si entra en onboarding
@@ -798,7 +799,7 @@ async def update_checklist_item(
 
     item["completed"] = payload.get("completed", True)
     if item["completed"]:
-        item["completed_at"] = datetime.utcnow().isoformat()
+        item["completed_at"] = datetime.now(timezone.utc).isoformat()
         item["completed_by_id"] = current_user.id
         if payload.get("evidence_doc_id"):
             item["evidence_doc_id"] = payload["evidence_doc_id"]
@@ -833,7 +834,7 @@ async def record_sign_off(
     doc_type = payload.get("type", "")
     signed_by = payload.get("signed_by", current_user.full_name)
     doc_id = payload.get("document_id")
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if doc_type == "dpa":
         sup.dpa_signed_at = now
@@ -967,7 +968,7 @@ async def set_concentration_mitigation(
     sup.concentration_risk_notes = payload.get("notes", sup.concentration_risk_notes)
     sup.exit_strategy = payload.get("exit_strategy", sup.exit_strategy)
     if payload.get("mitigated"):
-        sup.concentration_risk_mitigated_at = datetime.utcnow()
+        sup.concentration_risk_mitigated_at = datetime.now(timezone.utc)
 
     db.commit()
     result = recompute_supplier_risk_profile(db, sid, triggered_by="concentration_mitigation")
