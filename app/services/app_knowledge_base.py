@@ -117,8 +117,8 @@ Estas se integran con el motor de calculo igual que las del catalogo.
     # ------------------------------------------------------------------
     {
         "keywords": [
-            "activo", "activos", "inventario", "cia", "confidencialidad", "integridad",
-            "disponibilidad", "valoracion", "asset", "tipo de activo", "primario", "soporte",
+            "activo", "activos", "inventario", "asset", "tipo de activo", "primario",
+            "soporte", "propietario activo", "valoracion activo", "activo informacion",
         ],
         "title": "Gestion de activos de informacion",
         "content": """
@@ -200,10 +200,9 @@ alertas de degradacion. Los controles no implementados se destacan en el dashboa
     # ------------------------------------------------------------------
     {
         "keywords": [
-            "proveedor", "proveedores", "tprm", "third party", "cuestionario", "scoring",
-            "evaluacion", "vendor", "supply chain", "cadena de suministro", "tier",
-            "ciclo de vida", "lifecycle", "due diligence", "onboarding",
-            "residual risk", "inherent risk", "plantilla", "template",
+            "tprm", "third party risk", "cuestionario tprm", "scoring tprm",
+            "supply chain", "cadena suministro", "tier", "due diligence",
+            "gestion proveedores", "evaluacion tprm", "plantilla tprm",
         ],
         "title": "Gestion de proveedores y TPRM",
         "content": """
@@ -1379,8 +1378,8 @@ a empleados, departamentos o proveedores sin que necesiten cuenta en RiskHub.
     # ------------------------------------------------------------------
     {
         "keywords": [
-            "trust portal", "portal de confianza", "portal externo", "proveedor portal",
-            "respuesta publica", "sin cuenta", "tokenizado",
+            "trust portal", "portal confianza", "portal externo", "portal proveedor",
+            "sin cuenta", "tokenizado", "enlace unico proveedor",
         ],
         "title": "Trust Portal — portal externo para proveedores",
         "content": """
@@ -2121,9 +2120,9 @@ En modo combinado, RiskHub usa la estructura ISO 27005 pero incorpora los valore
     # ------------------------------------------------------------------
     {
         "keywords": [
-            "vendor assessment", "evaluacion proveedor", "consolidada evaluacion",
-            "assessment consolidado", "score por dominio", "push risk register",
-            "aprobar evaluacion",
+            "vendor assessment", "evaluacion consolidada", "assessment consolidado",
+            "score por dominio", "push risk register", "aprobar evaluacion",
+            "evaluacion formal proveedor", "assessment proveedor",
         ],
         "title": "Evaluaciones consolidadas de proveedores (VendorAssessments)",
         "content": """
