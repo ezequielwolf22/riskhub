@@ -190,10 +190,20 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
                 "domain": r.get("domain", ""),
                 "status": s.status.value if s else ComplianceRequirementStatus.PLANNED.value,
                 "completion_pct": int(eff_pct),
+                "evidence_count": s.evidence_count if s else 0,
+                "missing_evidence": (
+                    s is not None
+                    and s.status == ComplianceRequirementStatus.PARTIAL
+                    and (s.evidence_count or 0) == 0
+                    and eff_pct >= 70  # controles presentes, solo falta evidencia
+                ),
             })
 
     # Ordenar gaps: primero los de menor %, luego por nombre
     gaps.sort(key=lambda g: (g["completion_pct"], g["id"]))
+
+    # Evidence gaps: requisitos donde los controles estan pero falta evidencia
+    evidence_gaps = [g for g in gaps if g.get("missing_evidence")]
 
     # Agrupar por dominio con pct ponderado
     domain_stats: dict[str, dict] = {}
@@ -238,6 +248,10 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
         if _effective_pct(status_map.get(r["id"]))[0] < 100
     ]
 
+    # Totales de evidencia para el framework
+    total_evidence_count = sum(s.evidence_count or 0 for s in statuses)
+    reqs_with_evidence = sum(1 for s in statuses if (s.evidence_count or 0) > 0)
+
     return {
         "framework_code": framework_code,
         "framework_name": framework["name"],
@@ -249,6 +263,9 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
         "status_breakdown": status_breakdown,
         "domains": sorted(domains, key=lambda x: x["pct"]),
         "gaps": gaps[:20],
+        "evidence_gaps": evidence_gaps[:10],
+        "total_evidence_count": total_evidence_count,
+        "reqs_with_evidence": reqs_with_evidence,
         "is_audit_ready": clauses_pct == 100 and mandatory_pct >= 80,
         "audit_blockers": audit_blockers[:5],
     }
@@ -285,11 +302,19 @@ def get_multi_framework_dashboard(db: Session, org_id: int) -> dict:
 
 
 def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
-    """Actualiza estado de compliance basado en controles implementados.
+    """Actualiza estado de compliance basado en controles implementados Y evidencias.
 
-    Para cada requisito, cuenta evidencias y controles que lo satisfacen.
+    Logica de graduacion:
+      - Todos los controles implementados + evidencia en al menos uno → IMPLEMENTED (100%)
+      - Todos los controles implementados + sin ninguna evidencia → PARTIAL (75%)
+        (controles presentes pero no demostrados — un auditor los marcaria NC)
+      - Controles parciales → PARTIAL proporcional (10-90%)
+      - Sin controles → PLANNED (0%)
+
     Retorna cantidad de requisitos actualizados.
     """
+    from app.models import Evidence as _Evidence
+
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     active = (ctx.active_frameworks or []) if ctx else []
     updated = 0
@@ -310,18 +335,40 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
             for c in implemented_controls if c.control
         }
 
+        # Mapa: control_code → lista de ControlImplementation (para contar evidencias)
+        code_to_cis: dict[str, list] = {}
+        for ci in implemented_controls:
+            if ci.control:
+                code = (ci.control.code or "").lower()
+                code_to_cis.setdefault(code, []).append(ci)
+
+        # Cache de evidencias por CI id para evitar N queries en el bucle
+        ci_ids = [ci.id for ci in implemented_controls]
+        if ci_ids:
+            from sqlalchemy import func as _func
+            evd_rows = (
+                db.query(_Evidence.control_implementation_id, _func.count(_Evidence.id))
+                .filter(
+                    _Evidence.control_implementation_id.in_(ci_ids),
+                    _Evidence.organization_id == org_id,
+                    _Evidence.is_current == True,
+                )
+                .group_by(_Evidence.control_implementation_id)
+                .all()
+            )
+            ci_evidence_counts: dict[int, int] = {row[0]: row[1] for row in evd_rows}
+        else:
+            ci_evidence_counts = {}
+
         for req in framework.get("requirements", []):
             req_controls = [c.lower() for c in req.get("controls", [])]
             if not req_controls:
                 continue
 
-            # Un requisito se satisface si todos sus controles referenciados
-            # estan implementados. Match solo por codigo exacto para evitar falsos positivos.
             matched = all(
                 any(rc == code for code in implemented_control_codes)
                 for rc in req_controls
             )
-            # Match parcial: al menos uno de los controles implementados
             partial = req_controls and any(
                 any(rc == code for code in implemented_control_codes)
                 for rc in req_controls
@@ -335,29 +382,51 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
             if not existing:
                 continue
 
-            # AUDITED solo puede cambiarlo un auditor humano — no tocar
+            # AUDITED solo puede cambiarlo un auditor humano
             if existing.status == ComplianceRequirementStatus.AUDITED:
                 continue
 
-            # Calcular el nuevo estado basado en controles actuales
             matched_count = sum(
                 1 for rc in req_controls
                 if any(rc == code for code in implemented_control_codes)
             )
 
             if matched:
-                new_status = ComplianceRequirementStatus.IMPLEMENTED
-                new_pct = 100
+                # Contar evidencias: (a) vinculadas a los CIs de los controles del requisito
+                ctrl_evidence = sum(
+                    ci_evidence_counts.get(ci.id, 0)
+                    for rc in req_controls
+                    for ci in code_to_cis.get(rc, [])
+                )
+                # (b) vinculadas directamente al requisito por framework+requirement_id
+                direct_evidence = db.query(_Evidence).filter(
+                    _Evidence.organization_id == org_id,
+                    _Evidence.compliance_framework == framework_code,
+                    _Evidence.compliance_requirement == req["id"],
+                    _Evidence.is_current == True,
+                ).count()
+                total_evidence = ctrl_evidence + direct_evidence
+                existing.evidence_count = total_evidence
+
+                if total_evidence > 0:
+                    # Controles implementados Y evidencia — plenamente conforme
+                    new_status = ComplianceRequirementStatus.IMPLEMENTED
+                    new_pct = 100
+                else:
+                    # Controles presentes pero sin evidencia: un auditor lo marcaria NC
+                    new_status = ComplianceRequirementStatus.PARTIAL
+                    new_pct = 75
             elif partial:
                 new_pct = int(matched_count / len(req_controls) * 100)
-                new_pct = max(10, min(90, new_pct))
+                new_pct = max(10, min(70, new_pct))  # cap a 70 si controles parciales
                 new_status = ComplianceRequirementStatus.PARTIAL
+                existing.evidence_count = 0
             else:
-                # Ningun control implementado: no degradar NOT_APPLICABLE
                 if existing.status == ComplianceRequirementStatus.NOT_APPLICABLE:
                     continue
                 new_status = ComplianceRequirementStatus.PLANNED
                 new_pct = 0
+                existing.evidence_count = 0
 
             if existing.status != new_status or existing.completion_pct != new_pct:
                 existing.status = new_status

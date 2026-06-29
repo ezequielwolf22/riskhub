@@ -178,9 +178,52 @@ def sync_controls(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
-    """Actualiza estado de compliance basado en controles implementados."""
+    """Actualiza estado de compliance basado en controles implementados y evidencias."""
     org_id = _filter_org(current_user)
     if not org_id:
         raise HTTPException(400, "Se requiere organization_id")
     updated = auto_update_compliance_from_controls(db, org_id)
     return {"message": "Compliance sincronizado", "updated": updated}
+
+
+@router.get("/evidence-gaps")
+def get_evidence_gaps(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Requisitos con controles implementados pero sin evidencia — bloqueantes para auditoria."""
+    org_id = _filter_org(current_user)
+    if not org_id:
+        return {"frameworks": [], "total_gaps": 0}
+
+    from app.services.compliance_service import get_framework_compliance_status, get_multi_framework_dashboard
+    from app.models import RiskContext
+    ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+    active = (ctx.active_frameworks or []) if ctx else []
+
+    result = []
+    for fw_code in active:
+        fw_status = get_framework_compliance_status(db, org_id, fw_code)
+        if "error" in fw_status:
+            continue
+        result.append({
+            "framework_code": fw_code,
+            "framework_name": fw_status.get("framework_name", fw_code),
+            "overall_pct": fw_status.get("overall_pct", 0),
+            "total_requirements": fw_status.get("total_requirements", 0),
+            "reqs_with_evidence": fw_status.get("reqs_with_evidence", 0),
+            "total_evidence_count": fw_status.get("total_evidence_count", 0),
+            "evidence_gaps": fw_status.get("evidence_gaps", []),
+            "evidence_gap_count": len(fw_status.get("evidence_gaps", [])),
+        })
+
+    total_gaps = sum(f["evidence_gap_count"] for f in result)
+    return {
+        "frameworks": result,
+        "total_gaps": total_gaps,
+        "message": (
+            f"{total_gaps} requisito(s) con controles implementados sin evidencia. "
+            "Sube evidencias en /api/evidence para desbloquear el cumplimiento al 100%."
+            if total_gaps else "Sin brechas de evidencia detectadas."
+        ),
+    }

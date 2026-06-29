@@ -26,12 +26,8 @@ def _ensure_dir():
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    count = db.query(Evidence).filter(Evidence.organization_id == org_id).count()
-    code = f"EVD-{count + 1:04d}"
-    while db.query(Evidence).filter_by(code=code).first():
-        count += 1
-        code = f"EVD-{count + 1:04d}"
-    return code
+    """Stub — el codigo se asigna tras el flush usando el id de la BD."""
+    return "EVD-PENDING"
 
 
 def _evidence_out(e: Evidence) -> dict:
@@ -150,8 +146,9 @@ async def upload_evidence(
     # Guardar archivo cifrado
     safe_name = Path(file.filename or "evidence").name
     safe_name = "".join(c for c in safe_name if c.isalnum() or c in "._- ")[:80]
-    code = _next_code(db, org_id)
-    stored_name = f"{org_id}_{code}_{safe_name}"
+    # El nombre en disco usa un prefijo temporal; se renombra tras el flush
+    import uuid as _uuid
+    stored_name = f"{org_id}_{_uuid.uuid4().hex[:8]}_{safe_name}"
     file_path = _EVIDENCE_DIR / stored_name
     file_path.write_bytes(encrypted_content)
 
@@ -166,7 +163,7 @@ async def upload_evidence(
 
     ev = Evidence(
         organization_id=org_id,
-        code=code,
+        code="EVD-PENDING",
         title=title[:255],
         description=description,
         evidence_type=evidence_type,
@@ -186,10 +183,12 @@ async def upload_evidence(
         is_current=True,
     )
     db.add(ev)
+    db.flush()  # obtener ev.id
+    ev.code = f"EVD-{ev.id:04d}"
 
-    # Actualizar evidence_count en compliance
+    # Actualizar evidence_count en compliance y promover requisito si estaba en PARTIAL por falta de evidencia
     if compliance_framework and compliance_requirement:
-        from app.models import ComplianceFrameworkStatus
+        from app.models import ComplianceFrameworkStatus, ComplianceRequirementStatus as _CRS
         req_status = db.query(ComplianceFrameworkStatus).filter(
             ComplianceFrameworkStatus.organization_id == org_id,
             ComplianceFrameworkStatus.framework_code == compliance_framework,
@@ -197,6 +196,15 @@ async def upload_evidence(
         ).first()
         if req_status:
             req_status.evidence_count = (req_status.evidence_count or 0) + 1
+            # Si estaba en PARTIAL por falta de evidencia (pct=75), promover a IMPLEMENTED
+            if (
+                req_status.status == _CRS.PARTIAL
+                and req_status.completion_pct == 75
+                and req_status.evidence_count >= 1
+            ):
+                req_status.status = _CRS.IMPLEMENTED
+                req_status.completion_pct = 100
+                req_status.last_reviewed_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(ev)

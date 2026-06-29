@@ -255,6 +255,39 @@ def build_context(
     except Exception:
         pass
 
+    # 8d-ter. Brechas de evidencia por framework (requisitos con controles pero sin evidencia)
+    try:
+        if ctx and (ctx.active_frameworks or []) and organization_id:
+            from app.services.compliance_service import get_framework_compliance_status as _gfcs
+            ev_gap_lines = []
+            for fw_code in (ctx.active_frameworks or []):
+                fw_status = _gfcs(db, organization_id, fw_code)
+                ev_gaps = fw_status.get("evidence_gaps", [])
+                total_evd = fw_status.get("total_evidence_count", 0)
+                reqs_evd = fw_status.get("reqs_with_evidence", 0)
+                total_req = fw_status.get("total_requirements", 0)
+                if ev_gaps:
+                    ev_gap_lines.append(
+                        f"  {fw_code.upper()}: {len(ev_gaps)} requisito(s) con controles implementados "
+                        f"pero SIN evidencia — auditoria bloqueada en estos puntos:"
+                    )
+                    for g in ev_gaps[:5]:
+                        ev_gap_lines.append(f"    - {g['id']} {g['name']} [{g['completion_pct']}%]")
+                if total_req:
+                    ev_gap_lines.append(
+                        f"  {fw_code.upper()}: {reqs_evd}/{total_req} requisitos con evidencia "
+                        f"({total_evd} ficheros/registros total)"
+                    )
+            if ev_gap_lines:
+                parts.append(
+                    "\n## Brechas de evidencia por framework\n"
+                    "CRITICO: los siguientes requisitos tienen controles implementados pero "
+                    "carecen de evidencia documentada. Sin evidencia no hay cumplimiento demostrable."
+                )
+                parts.extend(ev_gap_lines)
+    except Exception:
+        pass
+
     # 8e. KRIs en estado warning o breach
     kris_alert = (
         _forg(db.query(KRI), KRI)
