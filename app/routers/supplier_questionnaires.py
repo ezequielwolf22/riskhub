@@ -637,25 +637,8 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     return result
 
 
+
 # ── Opcion A: asignacion interna ─────────────────────────────────────────────
-
-@router.get("/my-tasks", response_model=list[SupplierQuestionnaireOut])
-def my_assigned_tasks(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Lista los cuestionarios asignados al usuario autenticado que estan pendientes."""
-    return (
-        db.query(SupplierQuestionnaire)
-        .filter(
-            SupplierQuestionnaire.assigned_user_id == current_user.id,
-            SupplierQuestionnaire.assignment_type == "internal",
-            SupplierQuestionnaire.submitted_at.is_(None),
-        )
-        .order_by(SupplierQuestionnaire.assigned_at.desc())
-        .all()
-    )
-
 
 @router.post("/{qid}/assign-internal")
 def assign_internal(

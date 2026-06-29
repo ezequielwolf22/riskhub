@@ -103,14 +103,15 @@ def subscribe_frameworks(
         raise HTTPException(404, "Contexto de riesgo no configurado")
 
     ctx.active_frameworks = body.frameworks
-    db.commit()
+    db.flush()
 
-    # Inicializar requisitos para cada framework
+    # Inicializar requisitos para cada framework (commit unico al final)
     totals = {}
     for code in body.frameworks:
         created = initialize_org_framework(db, org_id, code)
         totals[code] = created
 
+    db.commit()
     return {"message": "Frameworks configurados", "initialized": totals}
 
 
