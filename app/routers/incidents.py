@@ -16,8 +16,9 @@ router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(Incident).filter(Incident.organization_id == org_id).count() + 1
-    return f"INC-{n:04d}"
+    from sqlalchemy import func
+    max_id = db.query(func.max(Incident.id)).scalar() or 0
+    return f"INC-{max_id + 1:04d}"
 
 
 @router.get("/", response_model=list[IncidentOut])
@@ -122,9 +123,9 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
             if linked_risk_ids != list(inc.related_risk_ids or []):
                 inc.related_risk_ids = linked_risk_ids
                 db.commit()
-    except Exception as _exc:
+    except Exception:
         import logging
-        logging.getLogger(__name__).warning("Incident->risks auto-link failed: %s", _exc)
+        logging.getLogger(__name__).exception("Incident->risks auto-link failed")
     log_action(db, current_user.id, "create", "incident", str(inc.id),
                {"code": inc.code, "severity": inc.severity.value})
     # Comprobar si el incidente activa criterios de algún proceso BCP (ISO 22301 cl. 8.4)

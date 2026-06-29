@@ -1,4 +1,5 @@
 """Router de cumplimiento normativo multi-framework."""
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -142,16 +143,15 @@ def update_requirement(
     ).first()
 
     if not req:
-        # Crear si no existe
-        from datetime import datetime, timezone
         req = ComplianceFrameworkStatus(
             organization_id=org_id,
             framework_code=framework_code,
             requirement_id=requirement_id,
+            status=body.status,
         )
         db.add(req)
-
-    req.status = body.status
+    else:
+        req.status = body.status
     if body.completion_pct is not None:
         req.completion_pct = max(0, min(100, body.completion_pct))
     if body.notes is not None:
@@ -159,7 +159,6 @@ def update_requirement(
     if body.responsible_id is not None:
         req.responsible_id = body.responsible_id
 
-    from datetime import datetime, timezone
     req.last_reviewed_at = datetime.now(timezone.utc)
     db.commit()
 

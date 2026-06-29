@@ -1317,7 +1317,7 @@ def _run_monthly_report() -> None:
             # KPIs
             risks = db.query(Risk).filter(
                 Risk.organization_id == org_id,
-                Risk.status != RiskStatus.CLOSED,
+                Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
             ).all()
             tasks = db.query(TreatmentTask).filter(
                 TreatmentTask.organization_id == org_id,
@@ -1828,10 +1828,14 @@ def _run_compliance_review_reminders() -> None:
 
         orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
         for org in orgs:
+            from sqlalchemy import or_ as _or
             stale = db.query(ComplianceFrameworkStatus).filter(
                 ComplianceFrameworkStatus.organization_id == org.id,
                 ComplianceFrameworkStatus.status == ComplianceRequirementStatus.IMPLEMENTED,
-                ComplianceFrameworkStatus.last_reviewed_at < stale_cutoff,
+                _or(
+                    ComplianceFrameworkStatus.last_reviewed_at < stale_cutoff,
+                    ComplianceFrameworkStatus.last_reviewed_at.is_(None),
+                ),
             ).all()
             if not stale:
                 continue

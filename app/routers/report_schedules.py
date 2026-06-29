@@ -20,14 +20,15 @@ VALID_REPORT_TYPES = ("risk_register", "soa", "executive_dashboard", "committee_
 VALID_FREQUENCIES = ("weekly", "monthly", "quarterly")
 
 
-def _calc_next_run(schedule: ReportSchedule) -> datetime:
+def _calc_next_run(schedule_or_freq) -> datetime:
     """Calcula la proxima ejecucion basandose en la frecuencia."""
     now = datetime.now(timezone.utc)
-    if schedule.frequency == "weekly":
+    freq = schedule_or_freq if isinstance(schedule_or_freq, str) else schedule_or_freq.frequency
+    if freq == "weekly":
         return now + timedelta(days=7)
-    elif schedule.frequency == "monthly":
+    elif freq == "monthly":
         return now + timedelta(days=30)
-    elif schedule.frequency == "quarterly":
+    elif freq == "quarterly":
         return now + timedelta(days=90)
     return now + timedelta(days=30)
 
@@ -103,9 +104,10 @@ def create_schedule(
     if not body.recipients:
         raise HTTPException(422, "Se requiere al menos un destinatario")
 
-    # Validar formato de emails basicamente
+    import re as _re
+    _EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     for email in body.recipients:
-        if "@" not in email:
+        if not _EMAIL_RE.match(email):
             raise HTTPException(422, f"Email invalido: {email}")
 
     sched = ReportSchedule(
@@ -116,9 +118,7 @@ def create_schedule(
         recipients=body.recipients,
         include_ai_analysis=body.include_ai_analysis,
         is_active=True,
-        next_scheduled_at=_calc_next_run(
-            type("s", (), {"frequency": body.frequency})()
-        ),
+        next_scheduled_at=_calc_next_run(body.frequency),
     )
     db.add(sched)
     db.commit()

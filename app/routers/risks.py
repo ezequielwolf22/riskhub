@@ -127,10 +127,9 @@ def _recalc(db: Session, risk: Risk) -> None:
             risk.treatment_option = TreatmentOption.RETENTION
             if risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
                 risk.status = RiskStatus.ACCEPTED
-                # Riesgos aceptados deben revisarse anualmente
-                if not risk.next_review:
-                    from datetime import timedelta
-                    risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
+                # Riesgos aceptados deben revisarse anualmente (ISO 27001 A.6.1.2)
+                from datetime import timedelta
+                risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
 
 
 @router.get("/group-summary")

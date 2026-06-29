@@ -552,6 +552,8 @@ def _update_compliance_requirements(db: Session, org_id: int, pack: Any) -> int:
 
     now = _now()
     compliance_code = srcs.to_compliance_code(pack.framework_code)
+    if not compliance_code:
+        return 0
     affected_codes = _get_affected_control_codes(pack)
 
     q = db.query(ComplianceFrameworkStatus).filter(
@@ -567,7 +569,7 @@ def _update_compliance_requirements(db: Session, org_id: int, pack: Any) -> int:
     flagged = 0
     for req in reqs:
         _set_regwatch_flag(req, now, pack.id)
-        # No reseteamos la fecha de revision — solo marcamos para priorizar
+        req.last_reviewed_at = None  # fuerza re-evaluacion tras cambio normativo
         flagged += 1
 
     return flagged

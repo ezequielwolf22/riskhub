@@ -588,9 +588,10 @@ def create_incident_from_finding(
     risk_str = str(finding.risk_level).replace('OSINTFindingRiskLevel.', '').lower()
     severity = severity_map.get(risk_str, IncidentSeverity.P3)
 
-    n = db.query(Incident).filter(Incident.organization_id == current_user.organization_id).count() + 1
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Incident.id)).scalar() or 0
     inc = Incident(
-        code=f"INC-{n:04d}",
+        code=f"INC-{max_id + 1:04d}",
         title=existing_title,
         description=(
             f"Incidente generado automaticamente desde hallazgo OSINT.\n\n"
@@ -694,10 +695,10 @@ def create_risk_from_osint_finding(
             f"{finding.description or ''}"
         ),
         inherent_likelihood=lh,
-        inherent_impact=imp,
+        inherent_consequence=imp,
         inherent_level=inherent_level,
         residual_likelihood=lh,
-        residual_impact=imp,
+        residual_consequence=imp,
         residual_level=inherent_level,
         status=RiskStatus.IDENTIFIED,
         owner_id=current_user.id,

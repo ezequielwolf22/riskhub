@@ -243,12 +243,15 @@ def get_multi_framework_dashboard(db: Session, org_id: int) -> dict:
 
     frameworks = []
     total_pct = 0
+    scored_count = 0
     for code in active:
         status = get_framework_compliance_status(db, org_id, code)
         frameworks.append(status)
-        total_pct += status.get("overall_pct", 0)
+        if status.get("total_requirements", 0) > 0:
+            total_pct += status.get("overall_pct", 0)
+            scored_count += 1
 
-    overall = int(total_pct / len(frameworks)) if frameworks else 0
+    overall = int(total_pct / scored_count) if scored_count else 0
 
     return {
         "org_id": org_id,
@@ -294,13 +297,10 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
                 continue
 
             # Un requisito se satisface si todos sus controles referenciados
-            # estan implementados (match por codigo O por nombre)
+            # estan implementados (match por codigo O por nombre, evaluados por separado)
             matched = all(
-                any(
-                    rc == code or rc in name
-                    for code in implemented_control_codes
-                    for name in implemented_control_names
-                )
+                any(rc == code for code in implemented_control_codes)
+                or any(rc in name for name in implemented_control_names)
                 for rc in req_controls
             )
 

@@ -319,9 +319,9 @@ def analyze_cves(
                 "name": asset.name,
                 "asset_type": asset.asset_type.value if asset.asset_type else "",
                 "description": asset.description or "",
-                "confidentiality": asset.confidentiality,
-                "integrity": asset.integrity,
-                "availability": asset.availability,
+                "confidentiality": asset.value_confidentiality or 0,
+                "integrity": asset.value_integrity or 0,
+                "availability": asset.value_availability or 0,
             }
 
             analysis = analyze_cve_asset(
@@ -628,7 +628,7 @@ def create_risk_from_cve(
 
     # --- Crear el riesgo ---
     risk = Risk(
-        code=_next_code(db),
+        code=_next_code(db, current_user.organization_id),
         asset_id=asset.id,
         threat_id=threat.id,
         description=description[:2000],

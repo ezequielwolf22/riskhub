@@ -1,14 +1,18 @@
 """Construye el bloque de contexto para inyectar en el prompt del agente IA."""
 import logging
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 from app.models import (
     AiConfig, AiDocument, AiDocumentStatus, Asset, ControlImplementation, ControlStatus,
-    Incident, NonConformity, Risk, RiskContext, RiskStatus, Supplier,
+    ComplianceFrameworkStatus, ExternalFinding, Incident, KRI, KRIStatus,
+    NonConformity, Policy, PolicyStatus, Risk, RiskContext, RiskStatus, Supplier,
+    TaskStatus, TenantChangeInboxItem, TreatmentTask,
 )
 from app.services.rag_service import search_chunks_with_source
+from app.services.app_knowledge_base import search_app_knowledge, format_knowledge_sections
 
 
 def build_context(
@@ -163,7 +167,122 @@ def build_context(
         for nc in ncs:
             parts.append(f"- {nc.code}: {nc.title} [{nc.severity.value}]")
 
-    # 8. Documentos indexados disponibles + fragmentos RAG relevantes
+    # 8b. Tareas de tratamiento pendientes/en curso/vencidas
+    now = datetime.now(timezone.utc)
+    tasks = (
+        _forg(db.query(TreatmentTask), TreatmentTask)
+        .filter(TreatmentTask.status.in_([TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED]))
+        .order_by(TreatmentTask.due_date.asc().nulls_last())
+        .limit(12)
+        .all()
+    )
+    if tasks:
+        parts.append(f"\n## Tareas de tratamiento activas ({len(tasks)})")
+        for t in tasks:
+            due = ""
+            if t.due_date:
+                due_dt = t.due_date if t.due_date.tzinfo else t.due_date.replace(tzinfo=timezone.utc)
+                overdue = " [VENCIDA]" if due_dt < now else ""
+                due = f", vence {due_dt.strftime('%Y-%m-%d')}{overdue}"
+            assignee = f", responsable: {t.assigned_to.username}" if t.assigned_to else ""
+            parts.append(f"- {t.code}: {t.title} [{t.status.value}, prioridad={t.priority.value}{due}{assignee}]")
+
+    # 8c. Politicas vigentes y pendientes de revision
+    policies = (
+        _forg(db.query(Policy), Policy)
+        .filter(Policy.status.in_([PolicyStatus.PUBLISHED, PolicyStatus.APPROVED, PolicyStatus.REVIEW]))
+        .order_by(Policy.review_date.asc().nulls_last())
+        .limit(10)
+        .all()
+    )
+    if policies:
+        parts.append(f"\n## Politicas del SGSI ({len(policies)})")
+        for p in policies:
+            review = ""
+            if p.review_date:
+                rev_dt = p.review_date if p.review_date.tzinfo else p.review_date.replace(tzinfo=timezone.utc)
+                overdue = " [REVISION VENCIDA]" if rev_dt < now else ""
+                review = f", revision: {rev_dt.strftime('%Y-%m-%d')}{overdue}"
+            regwatch_flag = " [REGWATCH: requiere revision normativa]" if p.regwatch_review_at else ""
+            parts.append(f"- {p.code}: {p.title} [v{p.version}, {p.status.value}{review}{regwatch_flag}]")
+
+    # 8d. Scores de cumplimiento por framework
+    try:
+        from sqlalchemy import func as sqlfunc
+        framework_rows = (
+            _forg(db.query(
+                ComplianceFrameworkStatus.framework_code,
+                sqlfunc.avg(ComplianceFrameworkStatus.completion_pct).label("avg_pct"),
+                sqlfunc.count(ComplianceFrameworkStatus.id).label("total"),
+            ), ComplianceFrameworkStatus)
+            .group_by(ComplianceFrameworkStatus.framework_code)
+            .all()
+        )
+        if framework_rows:
+            parts.append("\n## Estado de cumplimiento por framework")
+            for row in framework_rows:
+                parts.append(f"- {row.framework_code.upper()}: {round(row.avg_pct or 0)}% ({row.total} requisitos)")
+    except Exception:
+        pass
+
+    # 8e. KRIs en estado warning o breach
+    kris_alert = (
+        _forg(db.query(KRI), KRI)
+        .filter(KRI.is_active.is_(True), KRI.status.in_(["warning", "breach"]))
+        .limit(10)
+        .all()
+    )
+    if kris_alert:
+        parts.append(f"\n## KRIs en alerta ({len(kris_alert)})")
+        for k in kris_alert:
+            val = f"valor actual={k.current_value}" if k.current_value is not None else ""
+            breach_val = f"umbral breach={k.breach_threshold}" if k.breach_threshold is not None else ""
+            parts.append(f"- {k.name} [{k.status}, {val}, {breach_val}]")
+
+    # 8f. Inbox de Regwatch — cambios normativos pendientes
+    try:
+        inbox_items = (
+            _forg(db.query(TenantChangeInboxItem), TenantChangeInboxItem)
+            .filter(TenantChangeInboxItem.status == "pending")
+            .order_by(TenantChangeInboxItem.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        if inbox_items:
+            parts.append(f"\n## Cambios normativos pendientes de revision (Regwatch inbox: {len(inbox_items)})")
+            for item in inbox_items:
+                pack = item.change_pack
+                if pack:
+                    impact = ""
+                    if item.impact_summary_json:
+                        counts = []
+                        for key, val in (item.impact_summary_json or {}).items():
+                            if isinstance(val, list) and val:
+                                counts.append(f"{key}: {len(val)}")
+                            elif isinstance(val, int) and val:
+                                counts.append(f"{key}: {val}")
+                        impact = f" [impacta {', '.join(counts)}]" if counts else ""
+                    parts.append(f"- {pack.title or 'Cambio normativo'}{impact} (recibido {item.created_at.strftime('%Y-%m-%d')})")
+    except Exception:
+        pass
+
+    # 8g. Hallazgos externos abiertos (de escaneres, OSINT, architecture review)
+    open_findings = (
+        _forg(db.query(ExternalFinding), ExternalFinding)
+        .filter(ExternalFinding.status == "open")
+        .order_by(ExternalFinding.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    if open_findings:
+        parts.append(f"\n## Hallazgos externos abiertos ({len(open_findings)})")
+        for f in open_findings:
+            source = f.source.value if hasattr(f.source, "value") else str(f.source)
+            sev = f.severity or "N/D"
+            host = f" [{f.affected_host}]" if f.affected_host else ""
+            parts.append(f"- [{source}] {f.title[:80]} [severidad={sev}{host}]")
+
+    # 10. Documentos indexados disponibles + fragmentos RAG relevantes
     indexed_docs = (
         _forg(db.query(AiDocument), AiDocument)
         .filter(AiDocument.status == AiDocumentStatus.INDEXED)
@@ -197,6 +316,13 @@ def build_context(
                 "Si quieres consultar un documento concreto, menciona su nombre o "
                 "usa terminos que aparezcan en el documento.*"
             )
+
+    # Conocimiento funcional de la aplicacion (manual interno)
+    if query:
+        knowledge_sections = search_app_knowledge(query, max_sections=3)
+        knowledge_text = format_knowledge_sections(knowledge_sections)
+        if knowledge_text:
+            parts.append(knowledge_text)
 
     return "\n".join(parts)
 

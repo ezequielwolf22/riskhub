@@ -52,18 +52,18 @@ def _collect(db: Session, org_id: int | None = None) -> dict:
 
     control_stats = {
         "total": len(impls),
-        "implemented": sum(1 for i in impls if i.status.value == "implemented"),
-        "partial": sum(1 for i in impls if i.status.value == "partial"),
-        "planned": sum(1 for i in impls if i.status.value == "planned"),
-        "not_implemented": sum(1 for i in impls if i.status.value == "not_implemented"),
+        "implemented": sum(1 for i in impls if i.status and i.status.value == "implemented"),
+        "partial": sum(1 for i in impls if i.status and i.status.value == "partial"),
+        "planned": sum(1 for i in impls if i.status and i.status.value == "planned"),
+        "not_implemented": sum(1 for i in impls if i.status and i.status.value == "not_implemented"),
     }
 
     stats = {
         "total": len(risks),
-        "critical": sum(1 for r in risks if r.residual_level >= 7),
-        "high": sum(1 for r in risks if 5 <= r.residual_level < 7),
-        "medium": sum(1 for r in risks if 3 <= r.residual_level < 5),
-        "low": sum(1 for r in risks if r.residual_level < 3),
+        "critical": sum(1 for r in risks if (r.residual_level or 0) >= 7),
+        "high": sum(1 for r in risks if 5 <= (r.residual_level or 0) < 7),
+        "medium": sum(1 for r in risks if 3 <= (r.residual_level or 0) < 5),
+        "low": sum(1 for r in risks if (r.residual_level or 0) < 3),
         "with_treatment": sum(1 for r in risks if r.treatment_option),
         "accepted": sum(1 for r in risks if r.status == RiskStatus.ACCEPTED),
         "treated": sum(1 for r in risks if r.status == RiskStatus.TREATED),

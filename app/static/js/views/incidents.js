@@ -181,7 +181,7 @@ const ViewIncidents = (() => {
         </div>
         <div class="span2"><label>${t('common.description')}</label><textarea id="f-desc" class="input" rows="3">${UI.esc(v.description || '')}</textarea></div>
         <div><label>${t('incidents.detection_date')}</label><input type="datetime-local" id="f-detected" class="input" value="${v.detected_at ? v.detected_at.slice(0,16) : ''}"></div>
-        <div><label>${t('nis2.notification_deadline')}</label><input type="datetime-local" id="f-nis2-sent" class="input" value="${v.nis2_notification_sent_at ? v.nis2_notification_sent_at.slice(0,16) : ''}"></div>
+        ${v.nis2_notification_sent_at ? `<div><label>${t('nis2.notification_deadline')}</label><input type="datetime-local" class="input" disabled value="${v.nis2_notification_sent_at.slice(0,16)}" title="Solo editable via endpoint de notificacion NIS2"></div>` : ''}
         <div class="span2" style="display:flex;align-items:center;gap:8px;">
           <input type="checkbox" id="f-nis2-req" ${v.nis2_notification_required?'checked':''}>
           <label for="f-nis2-req" style="margin:0;cursor:pointer;">${t('incidents.nis2_notification')}</label>
@@ -222,7 +222,6 @@ const ViewIncidents = (() => {
       description: document.getElementById('f-desc').value.trim(),
       detected_at: document.getElementById('f-detected').value || null,
       nis2_notification_required: document.getElementById('f-nis2-req').checked,
-      nis2_notification_sent_at: document.getElementById('f-nis2-sent').value || null,
       affected_systems: affectedRaw ? affectedRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
       root_cause: document.getElementById('f-root').value.trim(),
       response_actions: document.getElementById('f-response').value.trim(),
