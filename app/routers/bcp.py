@@ -58,8 +58,8 @@ def _parse_dt(s, field_name: str = "fecha"):
 
 
 def _next_bct(db: Session, org_id: int) -> str:
-    count = db.query(BCPTest).filter_by(organization_id=org_id).count()
-    return f"BCT-{count + 1:04d}"
+    # BUG1 fix: placeholder; real code assigned after db.flush() using the auto-incremented id
+    return "BCT-0000"
 
 
 def _proc_d(p: BusinessProcess) -> dict:
@@ -729,7 +729,11 @@ def update_dep(did: int, body: DepUpdate, db: Session = Depends(get_db),
     d = db.get(BCPDependency, did)
     if not d or d.organization_id != _org(u):
         raise HTTPException(404)
-    for k, v in body.model_dump(exclude_none=True).items():
+    data = body.model_dump(exclude_none=True)
+    # BUG11 fix: validate dependency_type on update (same as create_dep)
+    if "dependency_type" in data and data["dependency_type"] not in VALID_DEP_TYPES:
+        raise HTTPException(422, "dependency_type inválido")
+    for k, v in data.items():
         setattr(d, k, v)
     db.commit()
     return _dep_d(d)
@@ -788,7 +792,13 @@ def update_strat(sid: int, body: StratUpdate, db: Session = Depends(get_db),
     s = db.get(BCPStrategy, sid)
     if not s or s.organization_id != _org(u):
         raise HTTPException(404)
-    for k, v in body.model_dump(exclude_none=True).items():
+    data = body.model_dump(exclude_none=True)
+    # BUG12 fix: validate strategy_type and implementation_status on update
+    if "strategy_type" in data and data["strategy_type"] not in VALID_STRATEGY_TYPES:
+        raise HTTPException(422, "strategy_type inválido")
+    if "implementation_status" in data and data["implementation_status"] not in VALID_IMPL_STATUS:
+        raise HTTPException(422, "implementation_status inválido")
+    for k, v in data.items():
         if k == "target_date":
             v = _parse_dt(v, "target_date")
         setattr(s, k, v)
@@ -849,6 +859,17 @@ def create_plan(body: PlanIn, db: Session = Depends(get_db), u: User = Depends(r
         documentation_links=body.documentation_links,
         related_documents=body.related_documents,
         authorized_activators=body.authorized_activators,
+        # BUG6 fix: fields that were silently dropped on create
+        sections=body.sections,
+        roles_matrix=body.roles_matrix,
+        contact_list=body.contact_list,
+        system_dependencies=body.system_dependencies,
+        kpis=body.kpis,
+        plan_owner_name=body.plan_owner_name,
+        classification=body.classification,
+        dr_site=body.dr_site,
+        backup_policy=body.backup_policy,
+        crisis_comms=body.crisis_comms,
     )
     db.add(p)
     db.commit()
@@ -971,20 +992,22 @@ def plan_context(pid: int, db: Session = Depends(get_db),
     """Devuelve el contexto consolidado de un plan: procesos, runbooks, dependencias,
     proveedores criticos, ubicacion DR y crisis comms. Fuente de verdad para la IA,
     el mapa y la activacion."""
+    # BUG2 fix: capture org once to avoid multiple _org() calls
+    org = _org(u)
     p = db.get(BCPPlan, pid)
-    if not p or p.organization_id != _org(u):
+    if not p or p.organization_id != org:
         raise HTTPException(404)
 
     proc_ids = [int(x) for x in (p.process_ids or []) if str(x).isdigit()]
     processes = []
     for pid_int in proc_ids:
         proc = db.get(BusinessProcess, pid_int)
-        if not proc or proc.organization_id != _org(u):
+        if not proc or proc.organization_id != org:
             continue
         deps = db.query(BCPDependency).filter_by(
-            organization_id=_org(u), process_id=proc.id
+            organization_id=org, process_id=proc.id
         ).order_by(BCPDependency.recovery_sequence).all()
-        slinks = db.query(BCPSupplierLink).filter_by(organization_id=_org(u)).all()
+        slinks = db.query(BCPSupplierLink).filter_by(organization_id=org).all()
         sup_links = [sl for sl in slinks if proc.id in (sl.process_ids or [])]
         processes.append({
             "id": proc.id, "name": proc.name, "criticality": proc.criticality,
@@ -996,10 +1019,10 @@ def plan_context(pid: int, db: Session = Depends(get_db),
         })
 
     runbooks = db.query(BCPTestRunbook).filter_by(
-        organization_id=_org(u), plan_id=p.id
+        organization_id=org, plan_id=p.id
     ).all()
 
-    tests = db.query(BCPTest).filter_by(organization_id=_org(u)).filter(
+    tests = db.query(BCPTest).filter_by(organization_id=org).filter(
         BCPTest.process_ids.isnot(None)
     ).order_by(BCPTest.scheduled_at.desc()).limit(10).all()
 
@@ -1027,11 +1050,12 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
     from app.security import decrypt_secret
     import anthropic, json as _json
 
+    # BUG2 fix: capture org once to avoid multiple _org() calls
+    org = _org(u)
     t = db.get(BCPTest, tid)
-    if not t or t.organization_id != _org(u):
+    if not t or t.organization_id != org:
         raise HTTPException(404)
 
-    org = _org(u)
     cfg = db.query(AiConfig).filter_by(organization_id=org).first()
     api_key = None
     if cfg and cfg.api_key_encrypted:
@@ -1048,18 +1072,22 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
     proc_details = []
     for pid_int in proc_ids:
         proc = db.get(BusinessProcess, pid_int)
-        if not proc or proc.organization_id != _org(u):
+        if not proc or proc.organization_id != org:
             continue
         deps = db.query(BCPDependency).filter_by(
-            organization_id=_org(u), process_id=proc.id
+            organization_id=org, process_id=proc.id
         ).order_by(BCPDependency.recovery_sequence).all()
-        slinks = [sl for sl in db.query(BCPSupplierLink).filter_by(organization_id=_org(u)).all()
+        slinks = [sl for sl in db.query(BCPSupplierLink).filter_by(organization_id=org).all()
                   if proc.id in (sl.process_ids or [])]
         proc_details.append({
             "name": proc.name, "rto_hours": proc.rto_hours, "rpo_hours": proc.rpo_hours,
             "deps": [{"name": d.name, "type": d.dependency_type, "rto": d.rto_hours,
                       "critical": d.is_critical, "seq": d.recovery_sequence} for d in deps],
-            "suppliers": [{"name": sl.supplier_name, "sla_h": sl.contract_sla_hours,
+            # BUG10 fix: BCPSupplierLink has no supplier_name attr; look up via DB
+            "suppliers": [{"name": (db.get(Supplier, sl.supplier_id).name
+                                    if sl.supplier_id and db.get(Supplier, sl.supplier_id)
+                                    else ""),
+                           "sla_h": sl.contract_sla_hours,
                            "criticality": sl.criticality} for sl in slinks],
         })
 
@@ -1134,6 +1162,9 @@ def create_test(body: TestIn, db: Session = Depends(get_db), u: User = Depends(r
         facilitator_id=body.facilitator_id,
     )
     db.add(t)
+    db.flush()
+    # BUG1 fix: use auto-incremented id for race-condition-safe code generation
+    t.code = f"BCT-{t.id:04d}"
     db.commit()
     db.refresh(t)
     log_action(db, u.id, "create", "bcp_test", str(t.id), {"code": t.code})
@@ -1143,8 +1174,10 @@ def create_test(body: TestIn, db: Session = Depends(get_db), u: User = Depends(r
 @router.patch("/tests/{tid}")
 def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
                 u: User = Depends(require_analyst)):
+    # BUG2 fix: capture org once to avoid multiple _org() calls
+    org = _org(u)
     t = db.get(BCPTest, tid)
-    if not t or t.organization_id != _org(u):
+    if not t or t.organization_id != org:
         raise HTTPException(404)
     if body.conducted_at:
         t.conducted_at = _parse_dt(body.conducted_at, "conducted_at")
@@ -1152,16 +1185,18 @@ def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
         if body.result not in VALID_TEST_RESULTS:
             raise HTTPException(422, "result inválido")
         t.result = body.result
+        # BUG7 fix: ensure conducted_at is always set when a result is recorded
+        t.conducted_at = t.conducted_at or datetime.now(timezone.utc)
         log_action(db, u.id, "update", "bcp_test", str(t.id),
                    {"result": body.result, "code": t.code})
         for pid in (t.process_ids or []):
             proc = db.get(BusinessProcess, pid)
-            if proc and proc.organization_id == _org(u):
-                proc.last_tested_at = t.conducted_at or datetime.now(timezone.utc)
+            if proc and proc.organization_id == org:
+                proc.last_tested_at = t.conducted_at
                 proc.test_result = body.result
-        for plan in db.query(BCPPlan).filter_by(organization_id=_org(u)).all():
+        for plan in db.query(BCPPlan).filter_by(organization_id=org).all():
             if any(pid in (plan.process_ids or []) for pid in (t.process_ids or [])):
-                plan.last_exercised_at = t.conducted_at or datetime.now(timezone.utc)
+                plan.last_exercised_at = t.conducted_at
     for f in ("findings", "lessons_learned", "improvement_actions", "evidence_doc_ids",
               "frequency", "rto_achieved_hours", "rpo_achieved_hours"):
         v = getattr(body, f, None)
@@ -1170,12 +1205,12 @@ def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
     db.commit()
     # ISO 27001 A.5.30 + ENS op.cont.3 + NIS2 Art.21.2b
     if body.result == "passed":
-        _update_compliance_from_bcp(db, _org(u), "test_passed", {})
+        _update_compliance_from_bcp(db, org, "test_passed", {})
         # Bucle cerrado: cerrar NCs abiertas relacionadas con este test
-        _close_nc_on_bcp_pass(db, t, _org(u))
+        _close_nc_on_bcp_pass(db, t, org)
     elif body.result in ("failed", "partial"):
         # Auto-crear NC por fallo (ISO 22301 cl. 10.1)
-        _auto_nc_from_bcp_test_failure(db, t, _org(u), u.id)
+        _auto_nc_from_bcp_test_failure(db, t, org, u.id)
     return _test_d(t)
 
 
@@ -1582,7 +1617,7 @@ def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user
     if test.nc_ids:
         existing = db.query(NonConformity).filter(
             NonConformity.id.in_(test.nc_ids),
-            NonConformity.status.notin_(["closed"]),
+            NonConformity.status.notin_([NCStatus.CLOSED]),  # BUG8 fix: use enum value
         ).first()
         if existing:
             return
@@ -1611,6 +1646,8 @@ def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user
     db.add(nc)
     try:
         db.flush()
+        # BUG1 fix: use auto-incremented id for race-condition-safe code generation
+        nc.code = f"NC-{nc.id:04d}"
         # Link NC id back to test
         nc_ids = list(test.nc_ids or [])
         nc_ids.append(nc.id)
@@ -1624,7 +1661,7 @@ def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user
 
 def _close_nc_on_bcp_pass(db: Session, test: BCPTest, org_id: int) -> None:
     """Cierra NCs auto-generadas cuando un test posterior pasa (bucle cerrado)."""
-    from app.models import NonConformity
+    from app.models import NonConformity, NCStatus
 
     if str(getattr(test, "result", "") or "").lower() != "passed":
         return
@@ -1634,7 +1671,7 @@ def _close_nc_on_bcp_pass(db: Session, test: BCPTest, org_id: int) -> None:
         return
     ncs = db.query(NonConformity).filter(
         NonConformity.id.in_(test.nc_ids),
-        NonConformity.status.notin_(["closed"]),
+        NonConformity.status.notin_([NCStatus.CLOSED]),  # BUG8 fix: use enum value
     ).all()
 
     if not ncs:
@@ -1642,7 +1679,7 @@ def _close_nc_on_bcp_pass(db: Session, test: BCPTest, org_id: int) -> None:
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     for nc in ncs:
-        nc.status = "closed"
+        nc.status = NCStatus.CLOSED  # BUG8 fix: use enum value instead of string
         nc.closed_at = now
     try:
         db.commit()
@@ -1653,13 +1690,8 @@ def _close_nc_on_bcp_pass(db: Session, test: BCPTest, org_id: int) -> None:
 
 
 def _next_nc_code(db: Session, org_id: int) -> str:
-    try:
-        from app.models import NonConformity
-        n = db.query(NonConformity).filter_by(organization_id=org_id).count()
-        return f"NC-{n + 1:04d}"
-    except Exception:
-        import uuid
-        return f"NC-{str(uuid.uuid4())[:8].upper()}"
+    # BUG1 fix: placeholder; real code assigned after db.flush() using auto-incremented id
+    return "NC-0000"
 
 
 @router.post("/tests/{test_id}/create-nc", status_code=201)
@@ -1679,10 +1711,10 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
         )
     # G06: evitar duplicado cruzado con NCs auto-generadas
     if t.nc_ids:
-        from app.models import NonConformity as _NC
+        from app.models import NonConformity as _NC, NCStatus as _NCStatus
         open_nc = db.query(_NC).filter(
             _NC.id.in_(t.nc_ids),
-            _NC.status.notin_(["closed"]),
+            _NC.status.notin_([_NCStatus.CLOSED]),  # BUG8 fix: use enum value
         ).first()
         if open_nc:
             raise HTTPException(
@@ -1692,9 +1724,10 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
     try:
         from app.models import NonConformity, NCSeverity, NCStatus
         severity = NCSeverity.MAJOR if t.result == "failed" else NCSeverity.MINOR
+        org_id_nc = _org(u)
         nc = NonConformity(
-            organization_id=_org(u),
-            code=_next_nc_code(db, _org(u)),
+            organization_id=org_id_nc,
+            code=_next_nc_code(db, org_id_nc),
             title=f"Test de continuidad {t.result.upper()}: {t.code}",
             description=(
                 f"Tipo de ejercicio: {t.test_type}\n"
@@ -1709,6 +1742,8 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
         )
         db.add(nc)
         db.flush()  # obtener nc.id antes de modificar t
+        # BUG1 fix: use auto-incremented id for race-condition-safe code generation
+        nc.code = f"NC-{nc.id:04d}"
         nc_ids = list(t.nc_ids or [])
         nc_ids.append(nc.id)
         t.nc_ids = nc_ids
@@ -2221,8 +2256,9 @@ async def upload_evidence(
     fpath = evidence_dir / stored
 
     try:
-        key_bytes = settings.secret_key[:32].encode().ljust(32)[:32]
-        fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
+        # BUG9 fix: use SHA-256 based key derivation consistent with the rest of the codebase
+        key_bytes = base64.urlsafe_b64encode(hashlib.sha256(settings.secret_key.encode()).digest())
+        fernet = Fernet(key_bytes)
         fpath.write_bytes(fernet.encrypt(content))
     except Exception:
         fpath.write_bytes(content)
@@ -2291,11 +2327,13 @@ def list_activations(status: Optional[str] = None,
 def create_activation(body: dict, db: Session = Depends(get_db),
                       u: User = Depends(require_analyst)):
     from app.services.bcm_checklist_service import build_activation_checklist
+    # BUG2 fix: capture org once to avoid multiple _org() calls
+    org = _org(u)
     plan_ids = body.get("activated_plan_ids") or []
     plans = []
     for pid in plan_ids:
         plan = db.get(BCPPlan, pid)
-        if not plan or plan.organization_id != _org(u):
+        if not plan or plan.organization_id != org:
             raise HTTPException(422, f"Plan {pid} no encontrado")
         plans.append(plan)
 
@@ -2312,10 +2350,9 @@ def create_activation(body: dict, db: Session = Depends(get_db),
             merged_checklist.append(item)
             order += 1
 
-    n = db.query(BCMActivation).filter_by(organization_id=_org(u)).count()
     act = BCMActivation(
-        organization_id=_org(u),
-        code=f"ACT-{n + 1:04d}",
+        organization_id=org,
+        code="ACT-0000",  # BUG1 fix: placeholder; real code assigned after flush
         title=body.get("title", "Activación BCM"),
         activated_plan_ids=plan_ids,
         incident_id=body.get("incident_id"),
@@ -2327,6 +2364,9 @@ def create_activation(body: dict, db: Session = Depends(get_db),
         checklist_items=merged_checklist,
     )
     db.add(act)
+    db.flush()
+    # BUG1 fix: use auto-incremented id for race-condition-safe code generation
+    act.code = f"ACT-{act.id:04d}"
     db.commit()
     db.refresh(act)
     log_action(db, u.id, "create", "bcm_activation", str(act.id), {"code": act.code})
@@ -3319,8 +3359,10 @@ async def activate_bcp_plan(
     current_user: User = Depends(require_analyst),
 ):
     """Activa un plan BCP en modo crisis (cierre de bucle: reduce residual risk vinculado)."""
+    # BUG3 fix: use _org() which raises HTTP 400 if no org, preventing None != None bypass
+    org = _org(current_user)
     plan = db.get(BCPPlan, pid)
-    if not plan or plan.organization_id != current_user.organization_id:
+    if not plan or plan.organization_id != org:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
     if plan.activation_status == "activated":
         raise HTTPException(status_code=409, detail="Plan ya esta activado")
@@ -3345,7 +3387,7 @@ async def activate_bcp_plan(
         from app.models import Risk
         for rid in plan.risk_ids:
             r = db.get(Risk, rid)
-            if r and r.organization_id == current_user.organization_id:
+            if r and r.organization_id == org:
                 if r.residual_likelihood and r.residual_likelihood > 0:
                     r.residual_likelihood = max(0, r.residual_likelihood - 1)
                     from app.routers.risks import _recalc
@@ -3366,9 +3408,14 @@ async def deactivate_bcp_plan(
     current_user: User = Depends(require_analyst),
 ):
     """Desactiva un plan BCP de crisis."""
+    # BUG3 fix: use _org() which raises HTTP 400 if no org, preventing None != None bypass
+    org = _org(current_user)
     plan = db.get(BCPPlan, pid)
-    if not plan or plan.organization_id != current_user.organization_id:
+    if not plan or plan.organization_id != org:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
+    # BUG4 fix: verify plan is currently activated before deactivating
+    if plan.activation_status != "activated":
+        raise HTTPException(status_code=409, detail="Plan no está activado")
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
@@ -3394,13 +3441,22 @@ async def link_risks_to_bcp(
     current_user: User = Depends(require_analyst),
 ):
     """Vincula/desvincula riesgos ISO 27005 a un plan BCP para bucle cerrado de mitigacion."""
+    # BUG3/BUG5 fix: use _org() which raises HTTP 400 if no org
+    org = _org(current_user)
     plan = db.get(BCPPlan, pid)
-    if not plan or plan.organization_id != current_user.organization_id:
+    if not plan or plan.organization_id != org:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
 
     risk_ids = payload.get("risk_ids", [])
     if not isinstance(risk_ids, list):
         raise HTTPException(status_code=400, detail="risk_ids debe ser lista")
+
+    # BUG5 fix: validate each risk belongs to the same org (IDOR prevention)
+    from app.models import Risk
+    for rid in risk_ids:
+        r = db.get(Risk, rid)
+        if not r or r.organization_id != org:
+            raise HTTPException(status_code=422, detail=f"Riesgo {rid} no pertenece a esta organización")
 
     plan.risk_ids = risk_ids
     db.commit()
