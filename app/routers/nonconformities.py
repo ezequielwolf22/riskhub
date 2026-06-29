@@ -164,13 +164,6 @@ def create_nc(body: NonConformityIn, db: Session = Depends(get_db),
                     if row:
                         candidate_risk = db.get(Risk, row[0])
 
-            # Fallback: buscar el riesgo activo de mayor nivel de la org
-            if not candidate_risk:
-                candidate_risk = db.query(Risk).filter(
-                    Risk.organization_id == current_user.organization_id,
-                    Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
-                ).order_by(Risk.residual_level.desc()).first()
-
             if candidate_risk:
                 nc.related_risk_id = candidate_risk.id
                 db.commit()

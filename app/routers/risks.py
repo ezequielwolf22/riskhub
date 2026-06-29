@@ -1,8 +1,11 @@
 """CRUD de riesgos + calculo automatico inherente/residual + tratamiento."""
 import csv
 import io
+import logging
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -27,8 +30,9 @@ router = APIRouter(prefix="/api/risks", tags=["risks"])
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(Risk).filter(Risk.organization_id == org_id).count() + 1
-    return f"RSK-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Risk.id)).scalar() or 0
+    return f"RSK-{max_id + 1:04d}"
 
 
 def _get_context(db: Session, org_id=None) -> RiskContext | None:
@@ -122,7 +126,7 @@ def _recalc(db: Session, risk: Risk) -> None:
     # Auto-tratamiento basado en apetito de riesgo
     ctx = _get_context(db, risk.organization_id)
     appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
-    if rlev <= appetite and risk.status not in (RiskStatus.CLOSED,):
+    if rlev <= appetite and risk.status not in (RiskStatus.CLOSED, RiskStatus.PENDING_ACCEPTANCE):
         if risk.treatment_option in (None, TreatmentOption.MODIFICATION, TreatmentOption.RETENTION):
             risk.treatment_option = TreatmentOption.RETENTION
             if risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
@@ -383,8 +387,15 @@ def risk_trace(
             ],
             "notes": impl.notes,
             "soa_reviewed_at": impl.soa_reviewed_at.isoformat() if impl.soa_reviewed_at else None,
+            "nc_penalty_factor": getattr(impl, "nc_penalty_factor", None),
+            "ccm_fail": getattr(impl, "ccm_last_status", None) == "FAIL",
         })
-        ctrl_dicts_for_engine.append({"maturity": mat, "contribution": contrib})
+        ctrl_dicts_for_engine.append({
+            "maturity": mat,
+            "contribution": contrib,
+            "nc_penalty_factor": getattr(impl, "nc_penalty_factor", None),
+            "ccm_fail": getattr(impl, "ccm_last_status", None) == "FAIL",
+        })
 
     # --- Cálculo combinado ---
     from app.services.risk_engine import control_reduction
@@ -842,11 +853,13 @@ def create_risk(data: RiskIn, request: Request, db: Session = Depends(get_db),
     if data.vulnerability_ids:
         r.vulnerabilities = db.query(Vulnerability).filter(
             Vulnerability.id.in_(data.vulnerability_ids)).all()
+    db.add(r)
+    db.flush()  # asigna r.id antes de recalcular controles
     if data.control_implementation_ids:
         r.controls = db.query(ControlImplementation).filter(
             ControlImplementation.id.in_(data.control_implementation_ids)).all()
+        db.flush()
     _recalc(db, r)
-    db.add(r)
     log_action(db, current_user.id, "create", "risk", None,
                {"asset_id": data.asset_id, "threat_id": data.threat_id})
     db.commit(); db.refresh(r)
@@ -913,9 +926,33 @@ def update_risk(risk_id: int, data: RiskUpdate, request: Request, db: Session = 
         r.vulnerabilities = db.query(Vulnerability).filter(
             Vulnerability.id.in_(ids or [])).all()
     if "control_implementation_ids" in update_data:
-        ids = update_data.pop("control_implementation_ids")
-        r.controls = db.query(ControlImplementation).filter(
-            ControlImplementation.id.in_(ids or [])).all()
+        ids = update_data.pop("control_implementation_ids") or []
+        # Validar que todos los controles pertenecen a la misma org
+        for cid in ids:
+            ci = db.get(ControlImplementation, cid)
+            if not ci or ci.organization_id != r.organization_id:
+                raise HTTPException(422, f"Control {cid} no pertenece a la organizacion")
+        # Preservar contribution existente al actualizar M2M
+        from sqlalchemy import insert as _insert, delete as _delete, text as _text
+        existing = db.execute(
+            _text("SELECT control_implementation_id, contribution FROM risk_controls WHERE risk_id = :rid"),
+            {"rid": r.id},
+        ).fetchall()
+        existing_map = {row[0]: row[1] for row in existing}
+        db.execute(
+            _delete(risk_control_table).where(risk_control_table.c.risk_id == r.id)
+        )
+        for cid in ids:
+            db.execute(
+                _insert(risk_control_table).values(
+                    risk_id=r.id,
+                    control_implementation_id=cid,
+                    contribution=existing_map.get(cid, 1.0),
+                )
+            )
+        db.flush()
+        # Refrescar la relacion desde BD
+        db.expire(r, ["controls"])
 
     # Acceptance bookkeeping
     if update_data.get("status") == RiskStatus.ACCEPTED:
@@ -1154,8 +1191,9 @@ async def import_risks_csv(
                 except ValueError:
                     continue
 
-        n = db.query(Risk).count() + len(created) + 1
-        code = f"RSK-{n:04d}"
+        from sqlalchemy import func as _func
+        max_id = db.query(_func.max(Risk.id)).scalar() or 0
+        code = f"RSK-{max_id + len(created) + 1:04d}"
 
         risk = Risk(
             code=code,
@@ -1167,12 +1205,13 @@ async def import_risks_csv(
             inherent_level=calc_level(ic, il),
             residual_likelihood=rl,
             residual_consequence=rc,
-            residual_level=calc_residual(ic, il, rc, rl),
+            residual_level=calc_level(rc, rl),
             status=status,
             treatment_option=treatment,
             treatment_plan=(row.get("Plan_Tratamiento") or "").strip(),
             treatment_due_date=due_date,
             owner_id=current_user.id,
+            organization_id=current_user.organization_id,
         )
         db.add(risk)
         created.append(code)
@@ -1735,7 +1774,7 @@ def suggest_controls_for_risk(
     rag_query = f"{threat_name} {' '.join(v.name for v in (r.vulnerabilities or []))} controles mitigacion"
     rag_chunks = []
     try:
-        chunks = search_chunks_with_source(db, rag_query, r.organization_id, k=6)
+        chunks = search_chunks_with_source(db, rag_query, top_k=6, organization_id=r.organization_id)
         rag_chunks = [f"  [{c.get('source','')}] {c.get('text','')[:200]}" for c in chunks]
     except Exception:
         pass
@@ -2170,7 +2209,7 @@ def ai_attack_scenario(
 
     prompt = f"""Eres un experto en ciberseguridad ofensiva y analisis de riesgo ISO 27005.
 
-RIESGO: {risk.code} — {risk.name}
+RIESGO: {risk.code} — {risk.description or risk.code}
 ACTIVO: {asset.name if asset else 'N/A'} (valor estimado: {estimated_value} EUR)
 AMENAZA: {threat.name if threat else 'N/A'} ({getattr(threat, 'category', 'N/A')})
 VULNERABILIDADES: {', '.join(v.name for v in vulns) or 'No especificadas'}

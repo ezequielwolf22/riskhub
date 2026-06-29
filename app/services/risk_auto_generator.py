@@ -29,8 +29,9 @@ logger = logging.getLogger("riskhub.risk_auto_generator")
 
 def _next_code(db: Session, org_id: int) -> str:
     """Genera codigo unico RSK-XXXX por organizacion."""
-    count = db.query(Risk).filter(Risk.organization_id == org_id).count() + 1
-    return f"RSK-{count:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Risk.id)).scalar() or 0
+    return f"RSK-{max_id + 1:04d}"
 
 
 def _controls_to_dicts(controls: list) -> list[dict]:
@@ -327,7 +328,8 @@ def auto_generate_risk_from_cve(
         return None
 
     # C3: Threat es catalogo global — sin organization_id, likelihood ni consequence.
-    cve_threat_code = f"CVE-{cve_id}"
+    # Normalizar: evitar "CVE-CVE-..." si cve_id ya trae el prefijo
+    cve_threat_code = cve_id if cve_id.upper().startswith("CVE-") else f"CVE-{cve_id}"
     threat = db.query(Threat).filter(
         Threat.code == cve_threat_code,
     ).first()
@@ -440,6 +442,14 @@ def auto_generate_risk_from_cve(
             "Auto-generado riesgo CVE %s para asset %s: residual=%d",
             cve_id, asset.code, risk.residual_level
         )
+        from app.services.audit_service import log_action
+        log_action(db, None, "auto_create", "risk", str(risk.id), {
+            "source": "cve",
+            "cve_id": cve_id,
+            "asset_id": asset_id,
+            "code": risk.code,
+            "residual_level": risk.residual_level,
+        })
         # Flagear procesos BCP que dependen del activo afectado (ISO 22301 cl. 8.3)
         try:
             from app.services.bcp_service import flag_bcp_process_for_cve

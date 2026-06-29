@@ -312,9 +312,13 @@ def delete_impl(impl_id: int, request: Request, db: Session = Depends(get_db),
     if not impl or not check_org_access(impl.organization_id, current_user):
         raise HTTPException(404, _t("controls.implementation_not_found", lang))
     name = impl.name
+    org_id = impl.organization_id
+    impl_id_saved = impl.id
     db.delete(impl)
     log_action(db, current_user.id, "delete", "control_impl", str(impl_id), {"name": name})
     db.commit()
+    # Recalcular residual de todos los riesgos que usaban este control
+    _trigger_linked_risks_recalc(impl_id_saved, org_id)
 
 
 @catalog_router.get("/stats/by-theme")

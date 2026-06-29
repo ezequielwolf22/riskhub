@@ -333,11 +333,25 @@ def import_findings(
         # Auto-crear riesgo si severity HIGH/CRITICAL y asset encontrado
         if auto_create_risks and asset and finding.get("severity") in ("HIGH", "CRITICAL"):
             cve_id = finding.get("cve_id")
+            consequence = 4 if finding.get("severity") == "CRITICAL" else 3
             if cve_id:
-                consequence = 4 if finding.get("severity") == "CRITICAL" else 3
                 risk = auto_generate_risk_from_cve(
                     db, asset.id, cve_id,
                     affected_software=finding.get("affected_software", ""),
+                    inherent_consequence=consequence,
+                    inherent_likelihood=3,
+                )
+                if risk:
+                    ef.risk_id = risk.id
+                    stats["risks_created"] += 1
+            else:
+                # Sin CVE: usar generador generico de hallazgos
+                from app.services.risk_auto_generator import auto_generate_risk_from_finding
+                risk = auto_generate_risk_from_finding(
+                    db, asset.id,
+                    title=finding.get("title") or finding.get("name") or "Hallazgo de seguridad",
+                    description=finding.get("description") or "",
+                    threat_code=f"EXT-{finding.get('source', 'SCANNER').upper()[:8]}",
                     inherent_consequence=consequence,
                     inherent_likelihood=3,
                 )

@@ -645,13 +645,12 @@ def push_to_risk_register(
 
     residual_score = a.residual_risk_score or 0
     likelihood, consequence = _score_to_likelihood_consequence(residual_score)
-    inherent_level = likelihood + consequence
+    from app.services.risk_engine import calc_level as _calc_level
+    inherent_level = _calc_level(consequence, likelihood)
 
-    count = db.query(Risk).filter(Risk.organization_id == org_id).count()
-    code = f"RSK-{count + 1:04d}"
-    while db.query(Risk).filter_by(code=code).first():
-        count += 1
-        code = f"RSK-{count + 1:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Risk.id)).scalar() or 0
+    code = f"RSK-{max_id + 1:04d}"
 
     supplier_name = a.supplier_name or f"Proveedor #{a.supplier_id}"
     risk = Risk(

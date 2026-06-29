@@ -174,6 +174,7 @@ def analyze_start(
             "result": None,
             "error": None,
             "created_at": datetime.now(timezone.utc),
+            "org_id": org_id,
         }
 
     def _run() -> None:
@@ -233,6 +234,8 @@ def analyze_status(
     with _JOBS_LOCK:
         job = _JOBS.get(job_id)
     if not job:
+        raise HTTPException(status_code=404, detail="Job no encontrado o expirado (max 30 min).")
+    if job.get("org_id") != current_user.organization_id:
         raise HTTPException(status_code=404, detail="Job no encontrado o expirado (max 30 min).")
     return {
         "status": job["status"],

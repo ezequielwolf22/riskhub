@@ -481,15 +481,14 @@ def _auto_create_supplier_risk(
     else:
         likelihood, consequence = 3, 3   # new_score <= 30
 
-    # Calcular nivel inherente (matriz 5x5 ISO 27005 Annex E.2 simplificada)
-    inherent_level = likelihood + consequence  # max 8
+    # Calcular nivel inherente (matriz 5x5 ISO 27005 Annex E.2)
+    from app.services.risk_engine import calc_level as _calc_level
+    inherent_level = _calc_level(consequence, likelihood)
 
     # Generar codigo unico RSK-XXXX
-    count = db.query(Risk).filter(Risk.organization_id == org_id).count()
-    code = f"RSK-{count + 1:04d}"
-    while db.query(Risk).filter_by(code=code).first():
-        count += 1
-        code = f"RSK-{count + 1:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Risk.id)).scalar() or 0
+    code = f"RSK-{max_id + 1:04d}"
 
     risk = Risk(
         organization_id=org_id,

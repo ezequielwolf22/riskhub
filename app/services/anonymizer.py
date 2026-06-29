@@ -90,7 +90,7 @@ def anonymize_messages(messages: list[dict], level: str) -> list[dict]:
     Solo se aplica en nivel 'high' (para no degradar la experiencia de usuario
     en niveles bajos donde la coherencia conversacional tiene mas peso).
     """
-    if level != "high":
+    if level == "low":
         return messages
     return [
         {"role": m["role"], "content": anonymize(m["content"], level)}
