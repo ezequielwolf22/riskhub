@@ -41,8 +41,9 @@ Para iso_clauses, busca referencias explicitas a articulos, clausulas o controle
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(Policy).filter(Policy.organization_id == org_id).count() + 1
-    return f"POL-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(Policy.id)).scalar() or 0
+    return f"POL-{max_id + 1:04d}"
 
 
 def _bump_version(ver: str) -> str:

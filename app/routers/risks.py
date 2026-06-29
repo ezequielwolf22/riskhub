@@ -1191,9 +1191,8 @@ async def import_risks_csv(
                 except ValueError:
                     continue
 
-        from sqlalchemy import func as _func
-        max_id = db.query(_func.max(Risk.id)).scalar() or 0
-        code = f"RSK-{max_id + len(created) + 1:04d}"
+        db.flush()  # hace visible el riesgo anterior del batch para MAX(id)
+        code = _next_code(db, current_user.organization_id)
 
         risk = Risk(
             code=code,
@@ -1564,6 +1563,11 @@ class AcceptanceRequestBody(BaseModel):
     review_date: Optional[str] = None   # fecha de re-evaluacion ISO 8601
 
 
+class AcceptanceApproveBody(BaseModel):
+    review_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class AcceptanceRejectBody(BaseModel):
     reason: Optional[str] = None
 
@@ -1632,7 +1636,7 @@ def request_acceptance(
 @router.put("/{risk_id}/accept")
 def accept_risk(
     risk_id: int,
-    body: AcceptanceRequestBody,
+    body: AcceptanceApproveBody,
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1775,7 +1779,7 @@ def suggest_controls_for_risk(
     rag_chunks = []
     try:
         chunks = search_chunks_with_source(db, rag_query, top_k=6, organization_id=r.organization_id)
-        rag_chunks = [f"  [{c.get('source','')}] {c.get('text','')[:200]}" for c in chunks]
+        rag_chunks = [f"  [{c.get('doc_name','')}] {c.get('content','')[:200]}" for c in chunks]
     except Exception:
         pass
 

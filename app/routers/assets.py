@@ -1,6 +1,9 @@
 """CRUD de activos + import CSV/Excel."""
 import io
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Request, UploadFile
@@ -25,8 +28,8 @@ router = APIRouter(prefix="/api/assets", tags=["assets"])
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(Asset).filter(Asset.organization_id == org_id).count() + 1
-    return f"AST-{n:04d}"
+    max_id = db.query(func.max(Asset.id)).scalar() or 0
+    return f"AST-{max_id + 1:04d}"
 
 
 def _to_out(a: Asset, risk_count: int = 0) -> AssetOut:
@@ -59,7 +62,10 @@ def list_assets(
     # Compute risk counts in a single query
     counts_q = (
         db.query(Risk.asset_id, func.count(Risk.id))
-        .filter(Risk.asset_id.in_([a.id for a in assets]))
+        .filter(
+            Risk.asset_id.in_([a.id for a in assets]),
+            Risk.organization_id == current_user.organization_id,
+        )
         .group_by(Risk.asset_id)
         .all()
     )

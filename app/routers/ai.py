@@ -256,12 +256,9 @@ def import_risks(
 
     # Función auxiliar para generar código de activo único
     def _next_asset_code() -> str:
-        n = db.query(Asset).count() + 1
-        code = f"AST-{n:04d}"
-        while db.query(Asset).filter(Asset.code == code).first():
-            n += 1
-            code = f"AST-{n:04d}"
-        return code
+        from sqlalchemy import func as _func
+        max_id = db.query(_func.max(Asset.id)).scalar() or 0
+        return f"AST-{max_id + 1:04d}"
 
     # Cache de amenazas por código
     threat_by_code = {t.code: t for t in db.query(Threat).all()}

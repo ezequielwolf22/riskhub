@@ -27,9 +27,10 @@ def _update_risk_treatment_progress(db: Session, task) -> None:
     if not risk:
         return
 
-    # Calcular progreso: tareas DONE / total tareas del riesgo
+    # Calcular progreso: tareas DONE / total tareas del riesgo (misma org)
     all_tasks = db.query(TreatmentTask).filter(
         TreatmentTask.risk_id == task.risk_id,
+        TreatmentTask.organization_id == task.organization_id,
     ).all()
     if not all_tasks:
         return
@@ -63,17 +64,13 @@ def _update_risk_treatment_progress(db: Session, task) -> None:
             except Exception:
                 pass
 
-    try:
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        import logging
-        logging.getLogger(__name__).warning("treatment_progress update failed: %s", e)
+    # No commit aquí — update_task ya hará commit después de llamar a esta función
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(TreatmentTask).filter(TreatmentTask.organization_id == org_id).count() + 1
-    return f"TSK-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(TreatmentTask.id)).scalar() or 0
+    return f"TSK-{max_id + 1:04d}"
 
 
 @router.get("/", response_model=list[TaskOut])
@@ -165,9 +162,9 @@ def update_task(task_id: int, body: TaskUpdate, request: Request,
         raise HTTPException(404, _t("tasks.not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(t, field, value)
+    _update_risk_treatment_progress(db, t)
     db.commit()
     db.refresh(t)
-    _update_risk_treatment_progress(db, t)
     log_action(db, current_user.id, "update", "task", str(t.id))
     return t
 

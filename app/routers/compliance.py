@@ -157,6 +157,9 @@ def update_requirement(
     if body.notes is not None:
         req.notes = body.notes
     if body.responsible_id is not None:
+        resp_user = db.get(User, body.responsible_id)
+        if not resp_user or resp_user.organization_id != org_id:
+            raise HTTPException(400, "responsible_id no pertenece a esta organizacion")
         req.responsible_id = body.responsible_id
 
     req.last_reviewed_at = datetime.now(timezone.utc)

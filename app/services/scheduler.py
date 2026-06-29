@@ -181,8 +181,8 @@ def _run_alert_rules() -> None:
                 ]
                 stats_digest = {
                     "total": len(active_risks),
-                    "high": sum(1 for r in active_risks if r.residual_level >= 6),
-                    "medium": sum(1 for r in active_risks if 3 <= r.residual_level < 6),
+                    "high": sum(1 for r in active_risks if r.residual_level >= 5),
+                    "medium": sum(1 for r in active_risks if 3 <= r.residual_level < 5),
                     "low": sum(1 for r in active_risks if r.residual_level < 3),
                 }
                 subject_digest = f"RiskHub — Resumen diario de riesgos ({org})"
@@ -1325,8 +1325,8 @@ def _run_monthly_report() -> None:
             ).all()
 
             total_risks = len(risks)
-            high_risks = sum(1 for r in risks if (r.residual_level or 0) >= 6)
-            medium_risks = sum(1 for r in risks if 3 <= (r.residual_level or 0) < 6)
+            high_risks = sum(1 for r in risks if (r.residual_level or 0) >= 5)
+            medium_risks = sum(1 for r in risks if 3 <= (r.residual_level or 0) < 5)
             low_risks = sum(1 for r in risks if (r.residual_level or 0) < 3)
             overdue_tasks = sum(
                 1 for t in tasks

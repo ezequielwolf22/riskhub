@@ -19,23 +19,15 @@ router = APIRouter(prefix="/api/gdpr", tags=["gdpr"])
 
 
 def _next_pa_code(db: Session, org_id: int | None = None) -> str:
-    q = db.query(ProcessingActivity)
-    if org_id is not None:
-        q = q.filter(ProcessingActivity.organization_id == org_id)
-    n = q.count() + 1
-    return f"PAR-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(ProcessingActivity.id)).scalar() or 0
+    return f"PAR-{max_id + 1:04d}"
 
 
 def _next_dpia_code(db: Session, org_id: int | None = None) -> str:
-    q = db.query(DPIA)
-    if org_id is not None:
-        q = q.filter(
-            DPIA.activity_id.in_(
-                db.query(ProcessingActivity.id).filter(ProcessingActivity.organization_id == org_id)
-            )
-        )
-    n = q.count() + 1
-    return f"DPI-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(DPIA.id)).scalar() or 0
+    return f"DPI-{max_id + 1:04d}"
 
 
 # ---------- Processing Activities ----------
@@ -130,10 +122,11 @@ def _auto_create_dpia_risk(db: Session, activity: ProcessingActivity, org_id: in
     if existing:
         return
 
-    n = db.query(Risk).filter(Risk.organization_id == org_id).count() + 1
+    from sqlalchemy import func as _func
+    max_risk_id = db.query(_func.max(Risk.id)).scalar() or 0
     risk = Risk(
         organization_id=org_id,
-        code=f"RSK-{n:04d}",
+        code=f"RSK-{max_risk_id + 1:04d}",
         name=f"[DPIA] {activity.title[:100]}",
         description=(
             f"Riesgo de privacidad generado automaticamente por actividad de tratamiento "

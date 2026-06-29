@@ -110,7 +110,15 @@ def create_control(data: ControlIn, db: Session = Depends(get_db),
 
 
 def _next_custom_code(db: Session) -> str:
-    n = db.query(Control).filter(Control.code.like("CUS.%")).count() + 1
+    from sqlalchemy import func as _func
+    max_code = db.query(_func.max(Control.code)).filter(Control.code.like("CUS.%")).scalar()
+    if max_code:
+        try:
+            n = int(max_code.split(".")[1]) + 1
+        except (IndexError, ValueError):
+            n = db.query(Control).filter(Control.code.like("CUS.%")).count() + 1
+    else:
+        n = 1
     return f"CUS.{n:03d}"
 
 
@@ -182,11 +190,44 @@ def _trigger_compliance_sync(org_id: int) -> None:
         try:
             auto_update_compliance_from_controls(db2, org_id)
         except Exception:
-            pass
+            import logging
+            logging.getLogger(__name__).warning(
+                "_trigger_compliance_sync failed for org_id=%d", org_id, exc_info=True
+            )
         finally:
             db2.close()
 
     threading.Thread(target=_sync, daemon=True).start()
+
+
+def _trigger_risks_recalc_by_ids(risk_ids: list, org_id: int) -> None:
+    """Recalcula residual de una lista explicita de risk_ids (usado tras DELETE de control)."""
+    import threading
+    from app.database import SessionLocal
+
+    def _recalc_risks():
+        db2 = SessionLocal()
+        try:
+            from app.models import Risk, RiskStatus
+            from app.routers.risks import _recalc
+            risks = db2.query(Risk).filter(
+                Risk.id.in_(risk_ids),
+                Risk.organization_id == org_id,
+                Risk.status.notin_([RiskStatus.CLOSED, RiskStatus.ACCEPTED]),
+            ).all()
+            for risk in risks:
+                _recalc(db2, risk)
+            if risks:
+                db2.commit()
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "_trigger_risks_recalc_by_ids failed for org_id=%d", org_id, exc_info=True
+            )
+        finally:
+            db2.close()
+
+    threading.Thread(target=_recalc_risks, daemon=True).start()
 
 
 def _trigger_linked_risks_recalc(impl_id: int, org_id: int) -> None:
@@ -313,12 +354,20 @@ def delete_impl(impl_id: int, request: Request, db: Session = Depends(get_db),
         raise HTTPException(404, _t("controls.implementation_not_found", lang))
     name = impl.name
     org_id = impl.organization_id
-    impl_id_saved = impl.id
+    # Recopilar risk_ids ANTES del delete (la FK cascade los elimina con el impl)
+    import sqlalchemy as _sa
+    risk_ids_to_recalc = [
+        row[0] for row in db.execute(
+            _sa.text("SELECT risk_id FROM risk_controls WHERE control_implementation_id = :cid"),
+            {"cid": impl.id},
+        ).fetchall()
+    ]
     db.delete(impl)
     log_action(db, current_user.id, "delete", "control_impl", str(impl_id), {"name": name})
     db.commit()
     # Recalcular residual de todos los riesgos que usaban este control
-    _trigger_linked_risks_recalc(impl_id_saved, org_id)
+    if risk_ids_to_recalc:
+        _trigger_risks_recalc_by_ids(risk_ids_to_recalc, org_id)
 
 
 @catalog_router.get("/stats/by-theme")

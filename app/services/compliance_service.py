@@ -165,7 +165,7 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
                 "id": r["id"],
                 "name": r["name"],
                 "domain": r.get("domain", ""),
-                "status": s.status.value if s else "not_started",
+                "status": s.status.value if s else ComplianceRequirementStatus.PLANNED.value,
                 "completion_pct": s.completion_pct if s else 0,
             })
 
@@ -242,16 +242,17 @@ def get_multi_framework_dashboard(db: Session, org_id: int) -> dict:
         return {"frameworks": [], "overall_pct": 0, "message": "No hay frameworks configurados"}
 
     frameworks = []
-    total_pct = 0
-    scored_count = 0
+    total_weighted = 0
+    total_reqs = 0
     for code in active:
         status = get_framework_compliance_status(db, org_id, code)
         frameworks.append(status)
-        if status.get("total_requirements", 0) > 0:
-            total_pct += status.get("overall_pct", 0)
-            scored_count += 1
+        reqs = status.get("total_requirements", 0)
+        if reqs > 0:
+            total_weighted += status.get("overall_pct", 0) * reqs
+            total_reqs += reqs
 
-    overall = int(total_pct / scored_count) if scored_count else 0
+    overall = int(total_weighted / total_reqs) if total_reqs else 0
 
     return {
         "org_id": org_id,
@@ -297,24 +298,33 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
                 continue
 
             # Un requisito se satisface si todos sus controles referenciados
-            # estan implementados (match por codigo O por nombre, evaluados por separado)
+            # estan implementados. Match solo por codigo exacto para evitar falsos positivos.
             matched = all(
                 any(rc == code for code in implemented_control_codes)
-                or any(rc in name for name in implemented_control_names)
+                for rc in req_controls
+            )
+            # Match parcial: al menos uno de los controles implementados
+            partial = req_controls and any(
+                any(rc == code for code in implemented_control_codes)
                 for rc in req_controls
             )
 
-            if matched:
+            if matched or partial:
                 existing = db.query(ComplianceFrameworkStatus).filter(
                     ComplianceFrameworkStatus.organization_id == org_id,
                     ComplianceFrameworkStatus.framework_code == framework_code,
                     ComplianceFrameworkStatus.requirement_id == req["id"],
                 ).first()
-                if existing and existing.status in [
-                    ComplianceRequirementStatus.PLANNED,
+                if existing and existing.status not in [
+                    ComplianceRequirementStatus.IMPLEMENTED,
+                    ComplianceRequirementStatus.AUDITED,
                 ]:
-                    existing.status = ComplianceRequirementStatus.PARTIAL
-                    existing.completion_pct = 50
+                    if matched:
+                        existing.status = ComplianceRequirementStatus.IMPLEMENTED
+                        existing.completion_pct = 100
+                    else:
+                        existing.status = ComplianceRequirementStatus.PARTIAL
+                        existing.completion_pct = 50
                     existing.last_reviewed_at = datetime.now(timezone.utc)
                     updated += 1
 

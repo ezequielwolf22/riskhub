@@ -43,8 +43,9 @@ _SEVERITY_ORDER = {
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(VendorIssue).filter(VendorIssue.organization_id == org_id).count() + 1
-    return f"VIS-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(VendorIssue.id)).scalar() or 0
+    return f"VIS-{max_id + 1:04d}"
 
 
 def _is_overdue(issue: VendorIssue, now: datetime) -> bool:
@@ -391,12 +392,11 @@ def _notify_vendor_issue_to_risks(
                 TreatmentTask.title.ilike(f"%{issue.code}%"),
             ).count()
             if task_count_q == 0:
-                n = db.query(TreatmentTask).filter(
-                    TreatmentTask.organization_id == org_id
-                ).count() + 1
+                from sqlalchemy import func as _func
+                _max_task_id = db.query(_func.max(TreatmentTask.id)).scalar() or 0
                 task = TreatmentTask(
                     organization_id=org_id,
-                    code=f"TSK-{n:04d}",
+                    code=f"TSK-{_max_task_id + 1:04d}",
                     title=f"[{issue.code}] Revisar impacto hallazgo CRITICO en proveedor: {issue.title[:80]}",
                     risk_id=r.id,
                     priority=TaskPriority.CRITICAL,

@@ -173,8 +173,7 @@ def _propagate_incident_close_to_risks(db: Session, inc: "Incident") -> None:
             "source": "incident_closed",
         })
 
-    if risks:
-        db.commit()
+    # No db.commit() aquí — el caller (update_incident) ya hizo commit antes de llamar a esta función
 
 
 @router.patch("/{incident_id}", response_model=IncidentOut)
@@ -188,6 +187,8 @@ def update_incident(incident_id: int, body: IncidentUpdate, request: Request,
 
     old_status = inc.status
     update_data = body.model_dump(exclude_none=True)
+    # nis2_notification_sent_at solo puede escribirse via /notify-nis2 (timestamp servidor)
+    update_data.pop("nis2_notification_sent_at", None)
     detected_at_changed = (
         "detected_at" in update_data and
         update_data["detected_at"] != inc.detected_at

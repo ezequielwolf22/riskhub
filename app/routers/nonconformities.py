@@ -65,8 +65,9 @@ def _apply_nc_control_penalty(db: Session, control_id: int, org_id: int,
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(NonConformity).filter(NonConformity.organization_id == org_id).count() + 1
-    return f"NC-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(NonConformity.id)).scalar() or 0
+    return f"NC-{max_id + 1:04d}"
 
 
 @router.get("/", response_model=list[NonConformityOut])

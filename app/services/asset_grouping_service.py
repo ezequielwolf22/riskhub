@@ -444,11 +444,9 @@ def validate_group(db: Session, group: AssetGroup) -> Asset:
         rep = None
 
     if not rep:
-        n = db.query(Asset).count() + 1
-        code = f"GRP-{n:04d}"
-        while db.query(Asset).filter_by(code=code).first():
-            n += 1
-            code = f"GRP-{n:04d}"
+        from sqlalchemy import func as _func
+        max_id = db.query(_func.max(Asset.id)).scalar() or 0
+        code = f"GRP-{max_id + 1:04d}"
         rep = Asset(
             code=code,
             organization_id=group.organization_id,

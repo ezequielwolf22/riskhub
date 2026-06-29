@@ -234,8 +234,9 @@ def create_assets_from_nodes(
 
     # Contador de códigos
     def _next_asset_code():
-        count = db.query(Asset).filter(Asset.organization_id == org_id).count() + 1
-        return f"AST-{count:04d}"
+        from sqlalchemy import func as _func
+        max_id = db.query(_func.max(Asset.id)).scalar() or 0
+        return f"AST-{max_id + 1:04d}"
 
     for node in nodes:
         label = node.get("label", "").strip()

@@ -185,12 +185,9 @@ def _vulns_for_threats(db: Session, threat_codes: list[str]) -> list[Vulnerabili
 
 def _next_risk_code(db: Session) -> str:
     from app.models import Risk as RiskModel
-    n = db.query(RiskModel).count() + 1
-    code = f"RSK-{n:04d}"
-    while db.query(RiskModel).filter_by(code=code).first():
-        n += 1
-        code = f"RSK-{n:04d}"
-    return code
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(RiskModel.id)).scalar() or 0
+    return f"RSK-{max_id + 1:04d}"
 
 
 # ---------- Punto de entrada principal ----------
@@ -677,11 +674,7 @@ def _process_batch_isolated(
                         dup.description = (item["rationale"] or "")[:1000]
                     updated += 1
                 else:
-                    # Generar codigo seguro
-                    n = db.query(Risk).count() + 1
-                    code = f"RSK-{n:04d}"
-                    while db.query(Risk).filter_by(code=code).first():
-                        n += 1; code = f"RSK-{n:04d}"
+                    code = _next_risk_code(db)
                     vuln_txt = (item.get("vulnerability") or "")[:400]
                     rat_txt  = (item.get("rationale") or "")[:400]
                     desc = (vuln_txt + (" — " + rat_txt if rat_txt else ""))[:1000]

@@ -1,7 +1,7 @@
 """Generacion de informes PDF y Excel (Risk Register, SoA, informes IA)."""
 import io
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -782,7 +782,7 @@ def management_review(
     org_name = (ctx.organization_name if ctx else None) or "Organizacion"
     scope = (ctx.scope if ctx else None) or ""
     boundaries = (ctx.boundaries if ctx else None) or ""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     now_str = now.strftime("%d/%m/%Y")
 
     # Recopilar datos reales

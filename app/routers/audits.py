@@ -24,8 +24,9 @@ router = APIRouter(prefix="/api/audits", tags=["audits"])
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    n = db.query(AuditProgram).filter(AuditProgram.organization_id == org_id).count() + 1
-    return f"AUD-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(AuditProgram.id)).scalar() or 0
+    return f"AUD-{max_id + 1:04d}"
 
 
 @router.get("/", response_model=list[AuditProgramOut])
