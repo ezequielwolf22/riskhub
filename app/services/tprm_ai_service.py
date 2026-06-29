@@ -117,7 +117,7 @@ def review_questionnaire(
     db: Session,
     questionnaire: Any,
     api_key: str,
-    model: str = "claude-opus-4-6",
+    model: str = "claude-opus-4-5",
 ) -> dict:
     """Evalua un cuestionario de proveedor con IA y devuelve el resultado estructurado.
 
@@ -128,7 +128,7 @@ def review_questionnaire(
         db: sesion SQLAlchemy (no se modifica — solo lectura contextual).
         questionnaire: instancia SupplierQuestionnaire con .questions y .answers.
         api_key: clave Anthropic activa para el tenant.
-        model: modelo Claude a usar (por defecto claude-opus-4-6).
+        model: modelo Claude a usar (por defecto claude-opus-4-5).
 
     Returns:
         dict con los campos del schema de evaluacion.
@@ -153,7 +153,7 @@ def review_questionnaire(
         try:
             message = client.messages.create(
                 model=model,
-                max_tokens=32768,
+                max_tokens=4096,
                 system=_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -163,7 +163,7 @@ def review_questionnaire(
             if "max_tokens" in err_str or "maximum" in err_str:
                 message = client.messages.create(
                     model=model,
-                    max_tokens=16384,
+                    max_tokens=2048,
                     system=_SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": prompt}],
                 )

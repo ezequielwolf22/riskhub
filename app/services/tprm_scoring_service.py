@@ -182,6 +182,7 @@ def recompute_supplier(db: Session, supplier: Supplier, commit: bool = True) -> 
         except Exception as exc:  # pragma: no cover
             db.rollback()
             logger.exception("Error recalculando TPRM scoring: %s", exc)
+            raise
 
     return {
         "inherent_risk_score": inherent,

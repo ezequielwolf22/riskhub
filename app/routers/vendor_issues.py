@@ -43,9 +43,8 @@ _SEVERITY_ORDER = {
 
 
 def _next_code(db: Session, org_id: int) -> str:
-    from sqlalchemy import func as _func
-    max_id = db.query(_func.max(VendorIssue.id)).scalar() or 0
-    return f"VIS-{max_id + 1:04d}"
+    # Kept for backward compatibility; real code is assigned post-flush.
+    return "VIS-0000"
 
 
 def _is_overdue(issue: VendorIssue, now: datetime) -> bool:
@@ -200,7 +199,7 @@ def create_vendor_issue(
 
     issue = VendorIssue(
         organization_id=org_id,
-        code=_next_code(db, org_id),
+        code="VIS-0000",
         supplier_id=body.supplier_id,
         assessment_id=body.assessment_id,
         source=body.source,
@@ -221,6 +220,8 @@ def create_vendor_issue(
         created_by_id=current_user.id,
     )
     db.add(issue)
+    db.flush()
+    issue.code = f"VIS-{issue.id:04d}"
     db.commit()
     db.refresh(issue)
     log_action(db, current_user.id, "create", "vendor_issue", str(issue.id),
@@ -393,11 +394,9 @@ def _notify_vendor_issue_to_risks(
                 TreatmentTask.title.ilike(f"%{issue.code}%"),
             ).count()
             if task_count_q == 0:
-                from sqlalchemy import func as _func
-                _max_task_id = db.query(_func.max(TreatmentTask.id)).scalar() or 0
                 task = TreatmentTask(
                     organization_id=org_id,
-                    code=f"TSK-{_max_task_id + 1:04d}",
+                    code="TSK-0000",
                     title=f"[{issue.code}] Revisar impacto hallazgo CRITICO en proveedor: {issue.title[:80]}",
                     risk_id=r.id,
                     priority=TaskPriority.CRITICAL,
@@ -405,6 +404,8 @@ def _notify_vendor_issue_to_risks(
                     due_date=now + timedelta(days=7),
                 )
                 db.add(task)
+                db.flush()
+                task.code = f"TSK-{task.id:04d}"
 
     if tprm_risks:
         db.commit()
@@ -425,7 +426,9 @@ def update_vendor_issue(
 
     # Si se cierra / mitiga / acepta, registrar fecha de cierre
     new_status = update_data.get("status")
-    if new_status in _CLOSED_STATUSES and not issue.closed_at:
+    _closed_values = {s.value for s in _CLOSED_STATUSES}
+    _new_status_val = new_status.value if isinstance(new_status, VendorIssueStatus) else new_status
+    if _new_status_val in _closed_values and not issue.closed_at:
         update_data["closed_at"] = datetime.now(timezone.utc)
 
     for field, value in update_data.items():
@@ -436,7 +439,7 @@ def update_vendor_issue(
     log_action(db, current_user.id, "update", "vendor_issue", str(issue.id))
 
     # Bucle cerrado: si el issue cambia a cerrado/mitigado, recomputar perfil del proveedor
-    if update_data.get("status") in ("closed", "mitigated", "accepted"):
+    if _new_status_val in _closed_values:
         try:
             from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
             recompute_supplier_risk_profile(db, issue.supplier_id, triggered_by="vendor_issue_resolved")
