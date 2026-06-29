@@ -121,31 +121,54 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
 
     status_map = {s.requirement_id: s for s in statuses}
 
-    # Calcular completeness
     requirements = framework.get("requirements", [])
     mandatory_reqs = [r for r in requirements if r.get("mandatory", True)]
 
+    def _effective_pct(s) -> tuple[float, bool]:
+        """Devuelve (pct efectivo 0-100, contar_en_denominador).
+
+        NOT_APPLICABLE se excluye del denominador para no penalizar requisitos
+        que la org ha declarado fuera de alcance con justificacion.
+        AUDITED/IMPLEMENTED = 100%. PARTIAL = completion_pct real. PLANNED = 0.
+        """
+        if s is None:
+            return 0.0, True
+        if s.status == ComplianceRequirementStatus.NOT_APPLICABLE:
+            return 0.0, False
+        if s.status in (ComplianceRequirementStatus.IMPLEMENTED, ComplianceRequirementStatus.AUDITED):
+            return 100.0, True
+        return float(s.completion_pct or 0), True
+
+    # overall_pct: media ponderada real de completion_pct — no binario
+    total_weighted = 0.0
+    total_applicable = 0
+    mandatory_weighted = 0.0
+    mandatory_applicable = 0
+    implemented_count = 0  # para status_breakdown y compatibilidad
+    mandatory_implemented_count = 0
+
+    for r in requirements:
+        s = status_map.get(r["id"])
+        pct, counts = _effective_pct(s)
+        if counts:
+            total_weighted += pct
+            total_applicable += 1
+        if s and s.status in (ComplianceRequirementStatus.IMPLEMENTED, ComplianceRequirementStatus.AUDITED):
+            implemented_count += 1
+
+    for r in mandatory_reqs:
+        s = status_map.get(r["id"])
+        pct, counts = _effective_pct(s)
+        if counts:
+            mandatory_weighted += pct
+            mandatory_applicable += 1
+        if s and s.status in (ComplianceRequirementStatus.IMPLEMENTED, ComplianceRequirementStatus.AUDITED):
+            mandatory_implemented_count += 1
+
     total = len(requirements)
     mandatory_total = len(mandatory_reqs)
-    implemented = sum(
-        1 for r in requirements
-        if status_map.get(r["id"]) and
-        status_map[r["id"]].status in [
-            ComplianceRequirementStatus.IMPLEMENTED,
-            ComplianceRequirementStatus.AUDITED
-        ]
-    )
-    mandatory_implemented = sum(
-        1 for r in mandatory_reqs
-        if status_map.get(r["id"]) and
-        status_map[r["id"]].status in [
-            ComplianceRequirementStatus.IMPLEMENTED,
-            ComplianceRequirementStatus.AUDITED
-        ]
-    )
-
-    overall_pct = int((implemented / total * 100) if total > 0 else 0)
-    mandatory_pct = int((mandatory_implemented / mandatory_total * 100) if mandatory_total > 0 else 0)
+    overall_pct = int(total_weighted / total_applicable) if total_applicable else 0
+    mandatory_pct = int(mandatory_weighted / mandatory_applicable) if mandatory_applicable else 0
 
     # Breakdown por status
     status_breakdown: dict[str, int] = {}
@@ -153,68 +176,66 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
         key = s.status.value if hasattr(s.status, "value") else str(s.status)
         status_breakdown[key] = status_breakdown.get(key, 0) + 1
 
-    # Gaps: requisitos mandatorios no implementados
+    # Gaps: requisitos mandatorios no totalmente completados (incluye parciales)
     gaps = []
     for r in mandatory_reqs:
         s = status_map.get(r["id"])
-        if not s or s.status not in [
-            ComplianceRequirementStatus.IMPLEMENTED,
-            ComplianceRequirementStatus.AUDITED
-        ]:
+        if s and s.status == ComplianceRequirementStatus.NOT_APPLICABLE:
+            continue  # excluido con justificacion
+        eff_pct, _ = _effective_pct(s)
+        if eff_pct < 100:
             gaps.append({
                 "id": r["id"],
                 "name": r["name"],
                 "domain": r.get("domain", ""),
                 "status": s.status.value if s else ComplianceRequirementStatus.PLANNED.value,
-                "completion_pct": (s.completion_pct or 0) if s else 0,
+                "completion_pct": int(eff_pct),
             })
 
-    # Agrupar por dominio
+    # Ordenar gaps: primero los de menor %, luego por nombre
+    gaps.sort(key=lambda g: (g["completion_pct"], g["id"]))
+
+    # Agrupar por dominio con pct ponderado
     domain_stats: dict[str, dict] = {}
     for r in requirements:
         domain = r.get("domain", "General")
         if domain not in domain_stats:
-            domain_stats[domain] = {"total": 0, "implemented": 0}
+            domain_stats[domain] = {"total": 0, "weighted": 0.0, "applicable": 0}
         domain_stats[domain]["total"] += 1
         s = status_map.get(r["id"])
-        if s and s.status in [
-            ComplianceRequirementStatus.IMPLEMENTED,
-            ComplianceRequirementStatus.AUDITED
-        ]:
-            domain_stats[domain]["implemented"] += 1
+        pct, counts = _effective_pct(s)
+        if counts:
+            domain_stats[domain]["weighted"] += pct
+            domain_stats[domain]["applicable"] += 1
 
     domains = [
         {
             "domain": d,
             "total": v["total"],
-            "implemented": v["implemented"],
-            "pct": int(v["implemented"] / v["total"] * 100) if v["total"] > 0 else 0,
+            "implemented": sum(
+                1 for r in requirements
+                if r.get("domain", "General") == d
+                and status_map.get(r["id"])
+                and status_map[r["id"]].status in (
+                    ComplianceRequirementStatus.IMPLEMENTED,
+                    ComplianceRequirementStatus.AUDITED,
+                )
+            ),
+            "pct": int(v["weighted"] / v["applicable"]) if v["applicable"] else 0,
         }
         for d, v in domain_stats.items()
     ]
 
     # Clausulas 4-10 (nucleares ISO 27001 — no son Annex A)
     clauses_4_10 = [r for r in requirements if not r["id"].startswith("A.")]
-    clauses_implemented = sum(
-        1 for r in clauses_4_10
-        if status_map.get(r["id"]) and
-        status_map[r["id"]].status in [
-            ComplianceRequirementStatus.IMPLEMENTED,
-            ComplianceRequirementStatus.AUDITED,
-        ]
-    )
-    clauses_pct = int(clauses_implemented / len(clauses_4_10) * 100) if clauses_4_10 else 0
+    clauses_w = sum(_effective_pct(status_map.get(r["id"]))[0] for r in clauses_4_10)
+    clauses_n = sum(1 for r in clauses_4_10 if _effective_pct(status_map.get(r["id"]))[1])
+    clauses_pct = int(clauses_w / clauses_n) if clauses_n else 0
 
-    # Bloqueantes: clausulas 4-10 que aun no estan implementadas
+    # Bloqueantes: clausulas 4-10 no implementadas (< 100%)
     audit_blockers = [
         r["id"] for r in clauses_4_10
-        if not (
-            status_map.get(r["id"]) and
-            status_map[r["id"]].status in [
-                ComplianceRequirementStatus.IMPLEMENTED,
-                ComplianceRequirementStatus.AUDITED,
-            ]
-        )
+        if _effective_pct(status_map.get(r["id"]))[0] < 100
     ]
 
     return {
@@ -227,9 +248,9 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
         "clauses_4_10_pct": clauses_pct,
         "status_breakdown": status_breakdown,
         "domains": sorted(domains, key=lambda x: x["pct"]),
-        "gaps": gaps[:20],  # Top 20 gaps
+        "gaps": gaps[:20],
         "is_audit_ready": clauses_pct == 100 and mandatory_pct >= 80,
-        "audit_blockers": audit_blockers[:5],  # top 5 bloqueantes
+        "audit_blockers": audit_blockers[:5],
     }
 
 
@@ -306,30 +327,43 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
                 for rc in req_controls
             )
 
-            if matched or partial:
-                existing = db.query(ComplianceFrameworkStatus).filter(
-                    ComplianceFrameworkStatus.organization_id == org_id,
-                    ComplianceFrameworkStatus.framework_code == framework_code,
-                    ComplianceFrameworkStatus.requirement_id == req["id"],
-                ).first()
-                if existing and existing.status not in [
-                    ComplianceRequirementStatus.IMPLEMENTED,
-                    ComplianceRequirementStatus.AUDITED,
-                ]:
-                    if matched:
-                        existing.status = ComplianceRequirementStatus.IMPLEMENTED
-                        existing.completion_pct = 100
-                    else:
-                        # Proporcion real de controles implementados (no 50% fijo)
-                        matched_count = sum(
-                            1 for rc in req_controls
-                            if any(rc == code for code in implemented_control_codes)
-                        )
-                        partial_pct = int(matched_count / len(req_controls) * 100)
-                        existing.status = ComplianceRequirementStatus.PARTIAL
-                        existing.completion_pct = max(10, min(90, partial_pct))
-                    existing.last_reviewed_at = datetime.now(timezone.utc)
-                    updated += 1
+            existing = db.query(ComplianceFrameworkStatus).filter(
+                ComplianceFrameworkStatus.organization_id == org_id,
+                ComplianceFrameworkStatus.framework_code == framework_code,
+                ComplianceFrameworkStatus.requirement_id == req["id"],
+            ).first()
+            if not existing:
+                continue
+
+            # AUDITED solo puede cambiarlo un auditor humano — no tocar
+            if existing.status == ComplianceRequirementStatus.AUDITED:
+                continue
+
+            # Calcular el nuevo estado basado en controles actuales
+            matched_count = sum(
+                1 for rc in req_controls
+                if any(rc == code for code in implemented_control_codes)
+            )
+
+            if matched:
+                new_status = ComplianceRequirementStatus.IMPLEMENTED
+                new_pct = 100
+            elif partial:
+                new_pct = int(matched_count / len(req_controls) * 100)
+                new_pct = max(10, min(90, new_pct))
+                new_status = ComplianceRequirementStatus.PARTIAL
+            else:
+                # Ningun control implementado: no degradar NOT_APPLICABLE
+                if existing.status == ComplianceRequirementStatus.NOT_APPLICABLE:
+                    continue
+                new_status = ComplianceRequirementStatus.PLANNED
+                new_pct = 0
+
+            if existing.status != new_status or existing.completion_pct != new_pct:
+                existing.status = new_status
+                existing.completion_pct = new_pct
+                existing.last_reviewed_at = datetime.now(timezone.utc)
+                updated += 1
 
     if updated:
         try:

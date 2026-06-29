@@ -545,25 +545,61 @@ def compliance_summary(
     )
     hipaa_score = min(100, hipaa_score)
 
-    # Metodología activa (para incluir en _meta y que la UI pueda mostrarlo)
     from app.models import RiskContext
     ctx_obj = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     active_methodology = ctx_obj.methodology if ctx_obj and ctx_obj.methodology else "iso27005"
-    active_frameworks_list = ctx_obj.active_frameworks if ctx_obj and ctx_obj.active_frameworks else None
+    active_frameworks_list = ctx_obj.active_frameworks if ctx_obj and ctx_obj.active_frameworks else []
+
+    # Recuperar scores reales del motor de requisitos para frameworks activos.
+    # Esto garantiza que compliance/summary y compliance/status/{fw} muestren siempre
+    # el mismo numero — un unico motor de verdad, no dos estimaciones distintas.
+    from app.services.compliance_service import get_framework_compliance_status as _gfcs
+    _tracked: dict[str, int] = {}
+    _tracked_gaps: dict[str, list] = {}
+    for fw_code in (active_frameworks_list or []):
+        try:
+            fw_status = _gfcs(db, current_user.organization_id, fw_code)
+            if "error" not in fw_status:
+                _tracked[fw_code] = fw_status["overall_pct"]
+                _tracked_gaps[fw_code] = [
+                    f"{g['id']}: {g['name']} ({g['completion_pct']}%)"
+                    for g in fw_status.get("gaps", [])[:5]
+                ]
+        except Exception:
+            pass
+
+    def _score(fw_code: str, heuristic: int) -> tuple[int, bool]:
+        """Devuelve (score, tracked). tracked=True si viene del motor de requisitos."""
+        if fw_code in _tracked:
+            return _tracked[fw_code], True
+        return heuristic, False
+
+    def _gaps(fw_code: str, heuristic_gaps: list) -> list:
+        return _tracked_gaps.get(fw_code, heuristic_gaps)
+
+    iso_s, iso_t = _score("iso27001", iso_score)
+    nis2_s, nis2_t = _score("nis2", nis2_score)
+    nist_s, nist_t = _score("nist_csf", nist_score)
+    ens_s, ens_t = _score("ens", ens_score)
+    gdpr_s, gdpr_t = _score("gdpr", gdpr_score)
+    soc2_s, soc2_t = _score("soc2", soc2_score)
+    hipaa_s, hipaa_t = _score("hipaa", hipaa_score)
 
     return {
         "iso27001": {
-            "score": iso_score,
+            "score": iso_s,
             "label": "ISO/IEC 27001:2022",
-            "gaps": _iso_gaps(impls, risks, ncs),
+            "gaps": _gaps("iso27001", _iso_gaps(impls, risks, ncs)),
+            "tracked": iso_t,
         },
         "nis2": {
-            "score": nis2_score,
+            "score": nis2_s,
             "label": "NIS2 Directiva EU 2022/2555",
-            "gaps": _nis2_gaps(incidents, suppliers, nis2_pending),
+            "gaps": _gaps("nis2", _nis2_gaps(incidents, suppliers, nis2_pending)),
+            "tracked": nis2_t,
         },
         "nist_csf": {
-            "score": nist_score,
+            "score": nist_s,
             "label": "NIST CSF 2.0",
             "functions": {
                 "GOVERN": round(govern_score),
@@ -573,31 +609,37 @@ def compliance_summary(
                 "RESPOND": round(respond_score),
                 "RECOVER": round(recover_score),
             },
+            "tracked": nist_t,
         },
         "ens": {
-            "score": ens_score,
+            "score": ens_s,
             "label": "ENS RD 311/2022",
-            "gaps": _ens_gaps(impls, risks),
+            "gaps": _gaps("ens", _ens_gaps(impls, risks)),
+            "tracked": ens_t,
         },
         "gdpr": {
-            "score": gdpr_score,
+            "score": gdpr_s,
             "label": "GDPR / RGPD",
-            "gaps": _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis),
+            "gaps": _gaps("gdpr", _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis)),
+            "tracked": gdpr_t,
         },
         "pcidss": {
             "score": pci_score,
             "label": "PCI-DSS v4.0",
             "gaps": _pcidss_gaps(impls, pci_codes, pci_impl),
+            "tracked": False,
         },
         "soc2": {
-            "score": soc2_score,
+            "score": soc2_s,
             "label": "SOC 2 Type II",
-            "gaps": _soc2_gaps(impls, soc2_codes=soc2_cc_codes, soc2_impl=soc2_impl, audit_logs_ok=audit_logs_ok),
+            "gaps": _gaps("soc2", _soc2_gaps(impls, soc2_codes=soc2_cc_codes, soc2_impl=soc2_impl, audit_logs_ok=audit_logs_ok)),
+            "tracked": soc2_t,
         },
         "hipaa": {
-            "score": hipaa_score,
+            "score": hipaa_s,
             "label": "HIPAA Security Rule",
-            "gaps": _hipaa_gaps(impls, hipaa_codes, hipaa_impl),
+            "gaps": _gaps("hipaa", _hipaa_gaps(impls, hipaa_codes, hipaa_impl)),
+            "tracked": hipaa_t,
         },
         "_meta": {
             "total_controls": total_controls,
