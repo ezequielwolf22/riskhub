@@ -247,6 +247,11 @@ const Api = {
     controlGap: (d) => Api.post('/api/ai/control-gap', d),
     chat: (d) => Api.post('/api/ai/chat', d),
     executeAction: (d) => Api.post('/api/ai/execute-action', d),
+    uploadFile: (file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return Api.req('/api/ai/upload-file', { method: 'POST', body: fd });
+    },
     feedback: (d) => Api.post('/api/ai/feedback', d),
     feedbackSummary: () => Api.get('/api/ai/feedback/summary'),
     controlGapDetailed: (d) => Api.post('/api/ai/control-gap-detailed', d),

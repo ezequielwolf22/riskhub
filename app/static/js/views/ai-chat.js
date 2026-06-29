@@ -5,6 +5,7 @@ const ViewAiChat = (() => {
   let _messages = [];   // { role, content }
   let _sending = false;
   let _lastCallLogId = null;
+  let _pendingUpload = null;  // { upload_id, filename, size } — archivo adjunto pendiente
 
   // ---------- Render principal ----------
 
@@ -21,9 +22,29 @@ const ViewAiChat = (() => {
               height:480px;overflow-y:auto;padding:16px;
               display:flex;flex-direction:column;gap:10px;
               background:var(--bg-1);"></div>
+            <!-- Badge de archivo adjunto pendiente -->
+            <div id="chat-file-badge" style="display:none;padding:6px 12px;
+                 background:rgba(89,0,141,.08);border-top:1px solid rgba(89,0,141,.2);
+                 font-size:12px;color:var(--brand-purple);display:none;
+                 align-items:center;gap:8px;">
+              <span id="chat-file-name"></span>
+              <button onclick="ViewAiChat._clearFile()" style="
+                background:none;border:none;cursor:pointer;color:var(--text-muted);
+                font-size:14px;line-height:1;padding:0 2px;" title="Quitar adjunto">x</button>
+            </div>
             <!-- Input -->
             <div style="border-top:1px solid var(--border);padding:12px;
-                        background:var(--bg-0);display:flex;gap:8px;">
+                        background:var(--bg-0);display:flex;gap:8px;align-items:flex-end;">
+              <!-- Boton adjuntar -->
+              <label for="chat-file-input" title="Adjuntar archivo" style="
+                cursor:pointer;display:flex;align-items:center;justify-content:center;
+                width:36px;height:36px;border-radius:6px;border:1px solid var(--border);
+                background:var(--bg-1);color:var(--text-muted);font-size:16px;flex-shrink:0;
+                transition:border-color .15s;user-select:none;">
+                +
+              </label>
+              <input type="file" id="chat-file-input" style="display:none;"
+                accept=".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif">
               <textarea id="chat-input" rows="2"
                 style="flex:1;resize:none;padding:8px 10px;font-size:14px;
                        border:1px solid var(--border);border-radius:6px;
@@ -146,16 +167,33 @@ const ViewAiChat = (() => {
       display:flex;flex-direction:column;gap:8px;`;
 
     const iconMap = {
-      create_treatment_task: '📋',
-      update_risk_status: '🔄',
-      create_incident: '⚠️',
-      schedule_control_review: '🔍',
+      create_treatment_task: '[tarea]',
+      update_risk_status: '[riesgo]',
+      create_incident: '[incidente]',
+      schedule_control_review: '[control]',
+      create_asset: '[activo]',
+      update_asset_cia: '[CIA]',
+      create_risk: '[riesgo]',
+      update_risk_treatment: '[tratamiento]',
+      link_control_to_risk: '[vinculo]',
+      update_control_maturity: '[madurez]',
+      create_nonconformity: '[NC]',
+      update_task_status: '[tarea]',
+      update_incident_status: '[incidente]',
+      create_policy_draft: '[politica]',
+      create_supplier: '[proveedor]',
+      register_evidence: '[evidencia]',
+      store_uploaded_file: '[archivo]',
+      run_ccm: '[CCM]',
+      trigger_osint_scan: '[OSINT]',
     };
-    const icon = iconMap[action.action_name] || '⚡';
+    const icon = iconMap[action.action_name] || '[accion]';
 
     card.innerHTML = `
       <div style="display:flex;align-items:flex-start;gap:8px;">
-        <span style="font-size:16px;line-height:1;">${icon}</span>
+        <span style="font-size:11px;font-weight:700;color:var(--brand-orange);
+                     background:rgba(214,82,0,.1);padding:2px 6px;border-radius:4px;
+                     flex-shrink:0;margin-top:1px;">${icon}</span>
         <div>
           <div style="font-weight:600;color:var(--brand-purple);margin-bottom:2px;">
             ${t('ai_chat.action_proposed')}
@@ -185,7 +223,6 @@ const ViewAiChat = (() => {
         action_name: action.action_name,
         action_input: action.action_input,
       });
-      // Reemplazar botones por mensaje de exito
       const btns = card.querySelector('div:last-child');
       if (btns) btns.innerHTML = `
         <span style="color:var(--risk-low);font-weight:600;font-size:12px;">
@@ -212,6 +249,42 @@ const ViewAiChat = (() => {
     }
   }
 
+  // ---------- Manejo de archivos adjuntos ----------
+
+  async function _handleFileSelect(file) {
+    if (!file) return;
+    const MAX_MB = 20;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      UI.toast(`El archivo supera el limite de ${MAX_MB} MB.`, 'error');
+      return;
+    }
+    const badge = document.getElementById('chat-file-badge');
+    const nameEl = document.getElementById('chat-file-name');
+    if (badge) badge.style.display = 'flex';
+    if (nameEl) nameEl.textContent = `Subiendo ${file.name}...`;
+
+    try {
+      const res = await Api.ai.uploadFile(file);
+      _pendingUpload = { upload_id: res.upload_id, filename: res.filename, size: res.size };
+      if (nameEl) nameEl.textContent = `Adjunto: ${res.filename} (${Math.round(res.size / 1024)} KB)`;
+      UI.toast('Archivo listo. Indica al agente que hacer con el.', 'success');
+    } catch (e) {
+      if (badge) badge.style.display = 'none';
+      _pendingUpload = null;
+      UI.toast('Error al subir el archivo: ' + (e.message || ''), 'error');
+    }
+  }
+
+  function _clearFile() {
+    _pendingUpload = null;
+    const badge = document.getElementById('chat-file-badge');
+    if (badge) badge.style.display = 'none';
+    const fi = document.getElementById('chat-file-input');
+    if (fi) fi.value = '';
+  }
+
+  // ---------- Append helpers ----------
+
   function _appendUser(text) {
     _messages.push({ role: 'user', content: text });
     const hist = document.getElementById('chat-history');
@@ -226,10 +299,8 @@ const ViewAiChat = (() => {
     const hist = document.getElementById('chat-history');
     if (!hist) return;
 
-    // Burbuja de texto
     if (text) hist.appendChild(_buildBubble('assistant', text));
 
-    // Action cards debajo de la burbuja
     if (actions && actions.length > 0) {
       const wrapper = document.createElement('div');
       wrapper.style.cssText = 'display:flex;flex-direction:column;gap:8px;padding-left:4px;';
@@ -273,24 +344,34 @@ const ViewAiChat = (() => {
   function _wireEvents() {
     const btn = document.getElementById('chat-send');
     const inp = document.getElementById('chat-input');
+    const fileInput = document.getElementById('chat-file-input');
     if (btn) btn.onclick = _send;
     if (inp) inp.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _send(); }
+    });
+    if (fileInput) fileInput.addEventListener('change', e => {
+      _handleFileSelect(e.target.files[0] || null);
     });
   }
 
   async function _send() {
     if (_sending) return;
     const inp = document.getElementById('chat-input');
-    const text = (inp ? inp.value : '').trim();
-    if (!text) return;
+    let text = (inp ? inp.value : '').trim();
+    if (!text && !_pendingUpload) return;
     if (inp) inp.value = '';
+
+    // Si hay archivo adjunto, inyectar referencia en el mensaje
+    if (_pendingUpload) {
+      const ref = `[Archivo adjunto: "${_pendingUpload.filename}", upload_id=${_pendingUpload.upload_id}]`;
+      text = text ? `${text}\n${ref}` : ref;
+      _clearFile();
+    }
 
     _sending = true;
     const sendBtn = document.getElementById('chat-send');
     if (sendBtn) sendBtn.disabled = true;
 
-    // Ocultar feedback del mensaje anterior
     const fb = document.getElementById('chat-feedback');
     if (fb) fb.style.display = 'none';
 
@@ -298,13 +379,11 @@ const ViewAiChat = (() => {
     _appendThinking();
 
     try {
-      // Solo enviar las ultimas 10 rondas para no saturar el contexto
       const recent = _messages.slice(-20);
       const res = await Api.ai.chat({ messages: recent, max_tokens: 2048 });
       _removeThinking();
       _appendAssistant(res.response || '', res.actions || []);
       _lastCallLogId = res.call_log_id || null;
-      // Mostrar widget de feedback solo si hay respuesta textual
       if (fb && res.response) fb.style.display = 'block';
     } catch (e) {
       _removeThinking();
@@ -331,10 +410,12 @@ const ViewAiChat = (() => {
   function _clearHistory() {
     _messages = [];
     _lastCallLogId = null;
+    _pendingUpload = null;
     const hist = document.getElementById('chat-history');
     if (hist) hist.innerHTML = '';
     const fb = document.getElementById('chat-feedback');
     if (fb) fb.style.display = 'none';
+    _clearFile();
     _appendAssistant(t('ai_chat.history_reset'));
   }
 
@@ -354,6 +435,6 @@ const ViewAiChat = (() => {
     }
   }
 
-  return { render, _suggest, _clearHistory, _sendFeedback, _confirmAction, _rejectAction };
+  return { render, _suggest, _clearHistory, _sendFeedback, _confirmAction, _rejectAction, _clearFile };
 
 })();
