@@ -207,9 +207,10 @@ def msforms_inbound(
             if val and supplier_field:
                 mapped_data[supplier_field] = str(val).strip()
 
-        n = db.query(Supplier).filter(Supplier.organization_id == org_id).count() + 1
+        from sqlalchemy import func as _func
+        max_id = db.query(_func.max(Supplier.id)).scalar() or 0
         supplier = Supplier(
-            code=f"SUP-{n:04d}",
+            code=f"SUP-{max_id + 1:04d}",
             name=(mapped_data.get("name") or supplier_name).strip(),
             description=mapped_data.get("description"),
             services=mapped_data.get("services"),

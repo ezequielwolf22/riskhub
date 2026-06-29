@@ -141,8 +141,10 @@ class SnoozeBody(BaseModel):
 
 
 @router.post("/inbox/{item_id}/snooze")
-def snooze(item_id: int, body: SnoozeBody = SnoozeBody(), db: Session = Depends(get_db),
+def snooze(item_id: int, body: SnoozeBody = None, db: Session = Depends(get_db),
            current_user: User = Depends(require_admin)):
+    if body is None:
+        body = SnoozeBody()
     org_id = _org_id(current_user)
     result = svc.snooze_inbox_item(db, org_id, item_id, body.days)
     log_action(db, current_user.id, "snooze", "regwatch_inbox", str(item_id),
@@ -156,8 +158,10 @@ class DismissBody(BaseModel):
 
 
 @router.post("/inbox/{item_id}/dismiss")
-def dismiss(item_id: int, body: DismissBody = DismissBody(), db: Session = Depends(get_db),
+def dismiss(item_id: int, body: DismissBody = None, db: Session = Depends(get_db),
             current_user: User = Depends(require_admin)):
+    if body is None:
+        body = DismissBody()
     org_id = _org_id(current_user)
     result = svc.dismiss_inbox_item(db, org_id, item_id, body.reason)
     log_action(db, current_user.id, "dismiss", "regwatch_inbox", str(item_id),
@@ -352,7 +356,8 @@ def admin_create_pack(body: PublishPackBody, db: Session = Depends(get_db),
         source_url=body.source_url,
     )
     log_action(db, current_user.id, "publish", "regwatch_change_pack", str(pack.id),
-               {"framework": body.framework_code, "severity": body.severity})
+               {"framework": body.framework_code, "severity": body.severity},
+               organization_id=current_user.organization_id)
     db.commit()
     return {"id": pack.id, "framework_code": pack.framework_code,
             "severity": pack.severity.value, "published_at": pack.published_at.isoformat()}

@@ -284,11 +284,12 @@ def _auto_risk_from_critical_issue(db: Session, issue: VendorIssue, org_id: int,
         logger.info("VendorIssue→Risk: sin amenaza supply-chain en catalogo, no se crea riesgo para %s", issue.code)
         return
 
-    # Comprobar si ya existe un riesgo para este par activo+amenaza
+    # Comprobar si ya existe un riesgo para este par activo+amenaza+proveedor
     existing = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.asset_id == asset.id,
         Risk.threat_id == threat.id,
+        Risk.supplier_id == supplier.id,
     ).first()
     if existing:
         # Vincular el issue al riesgo existente si no esta vinculado

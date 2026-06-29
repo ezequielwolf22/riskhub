@@ -71,7 +71,10 @@ def get_framework_status(
     fw = load_framework(framework_code)
     if not fw:
         raise HTTPException(404, "Framework no encontrado")
-    return get_framework_compliance_status(db, org_id, framework_code)
+    result = get_framework_compliance_status(db, org_id, framework_code)
+    if "error" in result:
+        raise HTTPException(404, result["error"])
+    return result
 
 
 class FrameworkSubscribeIn(BaseModel):
@@ -147,11 +150,12 @@ def update_requirement(
             organization_id=org_id,
             framework_code=framework_code,
             requirement_id=requirement_id,
-            status=body.status,
+            status=ComplianceRequirementStatus(body.status),
         )
         db.add(req)
+        db.flush()
     else:
-        req.status = body.status
+        req.status = ComplianceRequirementStatus(body.status)
     if body.completion_pct is not None:
         req.completion_pct = max(0, min(100, body.completion_pct))
     if body.notes is not None:

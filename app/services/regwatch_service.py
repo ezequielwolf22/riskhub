@@ -312,7 +312,7 @@ def review_inbox_item(db: Session, org_id: int, item_id: int,
     db.flush()
 
     propagation: dict = {}
-    if decision.get("action") in ("apply", None, ""):
+    if decision.get("action") == "apply":
         try:
             from app.services import regwatch_propagation as prop
             pack = it.change_pack
@@ -645,9 +645,13 @@ def run_sweep(db: Session) -> dict:
 
 def list_events_for_review(db: Session, status: str | None = None) -> list[dict]:
     """Cola de validacion interna del equipo RiskHub (§6.2)."""
+    from fastapi import HTTPException
     q = db.query(NormativeChangeEvent)
     if status:
-        q = q.filter(NormativeChangeEvent.status == status)
+        try:
+            q = q.filter(NormativeChangeEvent.status == ChangeEventStatus(status))
+        except ValueError:
+            raise HTTPException(400, f"Estado invalido: {status}")
     events = q.order_by(NormativeChangeEvent.detected_at.desc()).limit(200).all()
     return [
         {
@@ -709,10 +713,12 @@ def create_and_publish_pack(db: Session, *, framework_code: str, severity: str,
 def validate_and_publish_event(db: Session, event_id: int, user: User,
                                severity: str | None = None) -> dict:
     """Marca un evento como validado y publica su change_pack (§6.2)."""
+    from fastapi import HTTPException
     e = db.query(NormativeChangeEvent).filter(NormativeChangeEvent.id == event_id).first()
     if not e:
-        from fastapi import HTTPException
         raise HTTPException(404, "Evento no encontrado")
+    if e.status in (ChangeEventStatus.PUBLISHED,):
+        raise HTTPException(409, f"El evento ya esta en estado {e.status.value}")
     if severity:
         try:
             e.severity = ChangeSeverity(severity)

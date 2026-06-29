@@ -38,8 +38,9 @@ DEFAULT_QUESTIONS = [
 
 
 def _next_code(db: Session) -> str:
-    n = db.query(SupplierQuestionnaire).count() + 1
-    return f"SEQ-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(SupplierQuestionnaire.id)).scalar() or 0
+    return f"SEQ-{max_id + 1:04d}"
 
 
 def _calculate_score(answers: dict) -> int:
@@ -47,7 +48,8 @@ def _calculate_score(answers: dict) -> int:
     if not answers:
         return 0
     yes_count = sum(1 for v in answers.values() if str(v).lower() in ('true', '1', 'yes', 'si', 'sí'))
-    return round(yes_count / len(DEFAULT_QUESTIONS) * 100)
+    total = len(answers)
+    return round(yes_count / total * 100) if total else 0
 
 
 def _compute_residual_risk(inherent_level: str, major_nc: int, minor_nc: int) -> str:
@@ -86,6 +88,24 @@ def list_questionnaires(
     if regwatch_pending:
         q = q.filter(SupplierQuestionnaire.regwatch_review_at.isnot(None))
     return q.order_by(SupplierQuestionnaire.created_at.desc()).all()
+
+
+@router.get("/my-tasks", response_model=list[SupplierQuestionnaireOut])
+def my_assigned_tasks_early(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Lista los cuestionarios asignados al usuario autenticado que estan pendientes."""
+    return (
+        db.query(SupplierQuestionnaire)
+        .filter(
+            SupplierQuestionnaire.assigned_user_id == current_user.id,
+            SupplierQuestionnaire.assignment_type == "internal",
+            SupplierQuestionnaire.submitted_at.is_(None),
+        )
+        .order_by(SupplierQuestionnaire.assigned_at.desc())
+        .all()
+    )
 
 
 @router.get("/{qid}", response_model=SupplierQuestionnaireOut)
@@ -182,7 +202,7 @@ def ai_review_questionnaire(
     if not q:
         raise HTTPException(404, "Cuestionario no encontrado")
     if not q.submitted_at:
-        raise HTTPException(409, "El cuestionario aun no ha sido respondido")
+        raise HTTPException(400, "El cuestionario aun no ha sido respondido")
 
     cfg = (
         db.query(AiConfig)
@@ -328,7 +348,8 @@ def _create_followup_assessment(db, profiling_q, profiling_score: int):
     # Actualizar VendorRiskAssessment con el id del cuestionario de evaluacion
     if profiling_q.parent_assessment_id:
         vas = db.query(VendorRiskAssessment).filter(
-            VendorRiskAssessment.id == profiling_q.parent_assessment_id
+            VendorRiskAssessment.id == profiling_q.parent_assessment_id,
+            VendorRiskAssessment.organization_id == profiling_q.organization_id,
         ).first()
         if vas:
             vas.assessment_questionnaire_id = assessment_q.id

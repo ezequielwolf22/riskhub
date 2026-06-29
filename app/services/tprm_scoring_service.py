@@ -174,7 +174,7 @@ def recompute_supplier(db: Session, supplier: Supplier, commit: bool = True) -> 
     supplier.residual_risk_score = residual
     # Sincronizar risk_level (residual) con el tier para coherencia en listados
     supplier.risk_level = _tier_to_supplier_risk(tier)
-    supplier.is_critical = supplier.is_critical or tier == SupplierTier.CRITICAL
+    supplier.is_critical = (tier == SupplierTier.CRITICAL)
 
     if commit:
         try:

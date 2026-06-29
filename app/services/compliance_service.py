@@ -166,7 +166,7 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
                 "name": r["name"],
                 "domain": r.get("domain", ""),
                 "status": s.status.value if s else ComplianceRequirementStatus.PLANNED.value,
-                "completion_pct": s.completion_pct if s else 0,
+                "completion_pct": (s.completion_pct or 0) if s else 0,
             })
 
     # Agrupar por dominio
@@ -283,13 +283,10 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
             ControlImplementation.status == ControlStatus.IMPLEMENTED,
         ).all()
 
-        # Match por codigo del control (5.1, 8.23...) O por nombre
+        # Match por codigo del control (5.1, 8.23...)
         implemented_control_codes = {
             (c.control.code or "").lower()
             for c in implemented_controls if c.control
-        }
-        implemented_control_names = {
-            (c.name or "").lower() for c in implemented_controls
         }
 
         for req in framework.get("requirements", []):
@@ -363,6 +360,7 @@ def apply_high_risk_compliance_penalty(db: Session, org_id: int) -> int:
             JOIN control_implementations ci ON ci.id = rc.control_implementation_id
             JOIN controls c ON c.id = ci.control_id
             WHERE r.organization_id = :org_id
+              AND ci.organization_id = :org_id
               AND r.residual_level > :appetite
               AND r.status NOT IN ('closed', 'accepted')
         """),

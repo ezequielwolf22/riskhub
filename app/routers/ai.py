@@ -17,9 +17,10 @@ from app.models import (
     AiAnonymizationLevel, AiCallLog, AiConfig, AiFeedback,
     Asset, AssetType, ControlImplementation, ControlStatus,
     DPIA, DPIAStatus, ProcessingActivity,
-    Incident, IncidentSeverity, IncidentStatus, NonConformity, NCStatus,
+    Evidence, EvidenceType,
+    Incident, IncidentSeverity, IncidentStatus, NonConformity, NCSeverity, NCStatus,
     Policy, PolicyStatus,
-    Risk, RiskStatus, Supplier, SupplierRisk, Threat, TreatmentOption,
+    Risk, RiskStatus, Supplier, SupplierRisk, SupplierTier, Threat, TreatmentOption,
     TreatmentTask, TaskStatus, TaskPriority,
     User, UserRole,
 )
@@ -39,6 +40,11 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 _JOBS: dict[str, dict] = {}
 _JOBS_LOCK = threading.Lock()
 _JOB_TTL_SECONDS = 1800  # los jobs expiran a los 30 min
+
+
+# Almacén temporal de archivos adjuntos al chat (30 min TTL, mismo que jobs)
+_UPLOADS: dict[str, dict] = {}
+_UPLOADS_LOCK = threading.Lock()
 
 
 def _cleanup_old_jobs() -> None:
@@ -1311,6 +1317,7 @@ def architecture_review(
 # ============================================================
 
 _AGENT_TOOLS = [
+    # ── Existentes ──────────────────────────────────────────────────────────
     {
         "name": "create_treatment_task",
         "description": (
@@ -1387,6 +1394,328 @@ _AGENT_TOOLS = [
             "required": ["control_name", "reason"],
         },
     },
+    # ── Activos ─────────────────────────────────────────────────────────────
+    {
+        "name": "create_asset",
+        "description": (
+            "Propone dar de alta un nuevo activo en el inventario. "
+            "Usar cuando el usuario mencione un sistema, servidor, base de datos, proceso "
+            "u otro activo que deba gestionarse en el SGSI."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Nombre descriptivo del activo"},
+                "asset_type": {
+                    "type": "string",
+                    "enum": [
+                        "primary_information", "primary_process",
+                        "support_hardware", "support_software", "support_network",
+                        "support_services", "support_people", "support_site",
+                    ],
+                    "description": "Tipo de activo segun ISO 27005",
+                },
+                "description": {"type": "string", "description": "Descripcion del activo y su funcion"},
+                "value_confidentiality": {"type": "integer", "description": "Valor de confidencialidad 0-4"},
+                "value_integrity": {"type": "integer", "description": "Valor de integridad 0-4"},
+                "value_availability": {"type": "integer", "description": "Valor de disponibilidad 0-4"},
+            },
+            "required": ["name", "asset_type"],
+        },
+    },
+    {
+        "name": "update_asset_cia",
+        "description": (
+            "Propone actualizar la valoracion CIA de un activo existente. "
+            "Usar cuando el usuario indique que la criticidad de un activo ha cambiado."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "asset_name": {"type": "string", "description": "Nombre o codigo del activo (ej: AST-0001 o 'Servidor Web')"},
+                "value_confidentiality": {"type": "integer", "description": "Nuevo valor de confidencialidad 0-4"},
+                "value_integrity": {"type": "integer", "description": "Nuevo valor de integridad 0-4"},
+                "value_availability": {"type": "integer", "description": "Nuevo valor de disponibilidad 0-4"},
+                "justification": {"type": "string", "description": "Motivo del cambio de valoracion"},
+            },
+            "required": ["asset_name"],
+        },
+    },
+    # ── Riesgos ─────────────────────────────────────────────────────────────
+    {
+        "name": "create_risk",
+        "description": (
+            "Propone registrar un nuevo riesgo en el registro ISO 27005. "
+            "Usar cuando el usuario identifique una amenaza o escenario de riesgo que deba documentarse."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string", "description": "Descripcion clara del escenario de riesgo"},
+                "asset_name": {"type": "string", "description": "Nombre del activo afectado (debe existir en el inventario)"},
+                "threat_name": {"type": "string", "description": "Nombre de la amenaza (del catalogo o nueva)"},
+                "vulnerability": {"type": "string", "description": "Descripcion de la vulnerabilidad explotada"},
+                "consequence": {"type": "integer", "description": "Nivel de consecuencia/impacto 0-4"},
+                "likelihood": {"type": "integer", "description": "Nivel de probabilidad 0-4"},
+                "treatment_option": {
+                    "type": "string",
+                    "enum": ["modification", "retention", "avoidance", "sharing"],
+                    "description": "Opcion de tratamiento propuesta",
+                },
+            },
+            "required": ["description", "threat_name", "consequence", "likelihood"],
+        },
+    },
+    {
+        "name": "update_risk_treatment",
+        "description": (
+            "Propone cambiar la opcion de tratamiento de un riesgo existente. "
+            "Usar cuando el usuario decida aceptar, mitigar, evitar o transferir un riesgo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "risk_code": {"type": "string", "description": "Codigo del riesgo, ej: RSK-0001"},
+                "treatment_option": {
+                    "type": "string",
+                    "enum": ["modification", "retention", "avoidance", "sharing"],
+                    "description": "Nueva opcion de tratamiento",
+                },
+                "justification": {"type": "string", "description": "Justificacion de la decision de tratamiento"},
+            },
+            "required": ["risk_code", "treatment_option", "justification"],
+        },
+    },
+    {
+        "name": "link_control_to_risk",
+        "description": (
+            "Propone vincular un control ISO 27002 existente a un riesgo como medida de mitigacion. "
+            "Usar cuando el usuario quiera asociar un control a un riesgo especifico."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "risk_code": {"type": "string", "description": "Codigo del riesgo, ej: RSK-0001"},
+                "control_code": {"type": "string", "description": "Codigo del control ISO 27002, ej: 5.1 o 8.12"},
+                "rationale": {"type": "string", "description": "Explicacion de por que este control mitiga el riesgo"},
+            },
+            "required": ["risk_code", "control_code"],
+        },
+    },
+    # ── Controles ────────────────────────────────────────────────────────────
+    {
+        "name": "update_control_maturity",
+        "description": (
+            "Propone actualizar el nivel de madurez de un control ISO 27002 implementado. "
+            "Usar cuando el usuario informe que ha mejorado la implementacion de un control."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "control_name": {"type": "string", "description": "Nombre o codigo del control (ej: '5.1' o 'Politica de seguridad')"},
+                "new_maturity": {"type": "integer", "description": "Nuevo nivel de madurez 1-5"},
+                "justification": {"type": "string", "description": "Evidencia o motivo del cambio de madurez"},
+            },
+            "required": ["control_name", "new_maturity"],
+        },
+    },
+    # ── No conformidades ─────────────────────────────────────────────────────
+    {
+        "name": "create_nonconformity",
+        "description": (
+            "Propone registrar una no conformidad en el SGSI. "
+            "Usar cuando el usuario identifique un incumplimiento de un requisito ISO 27001 "
+            "o un hallazgo de auditoria que deba gestionarse formalmente."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Titulo descriptivo de la no conformidad"},
+                "description": {"type": "string", "description": "Descripcion del incumplimiento y su alcance"},
+                "severity": {
+                    "type": "string",
+                    "enum": ["critical", "major", "minor", "observation"],
+                    "description": "Severidad: critical=riesgo inmediato, major=incumplimiento sistematico, minor=desviacion puntual, observation=area de mejora",
+                },
+                "iso_clause": {"type": "string", "description": "Clausula ISO 27001 incumplida (ej: '9.1', 'A.8.1')"},
+            },
+            "required": ["title", "description", "severity"],
+        },
+    },
+    # ── Tareas ───────────────────────────────────────────────────────────────
+    {
+        "name": "update_task_status",
+        "description": (
+            "Propone actualizar el estado de una tarea de tratamiento existente. "
+            "Usar cuando el usuario informe del progreso o completado de una tarea."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_code": {"type": "string", "description": "Codigo de la tarea, ej: TSK-0001"},
+                "new_status": {
+                    "type": "string",
+                    "enum": ["pending", "in_progress", "blocked", "done"],
+                    "description": "Nuevo estado de la tarea",
+                },
+                "notes": {"type": "string", "description": "Notas sobre el progreso o motivo del cambio"},
+            },
+            "required": ["task_code", "new_status"],
+        },
+    },
+    # ── Incidentes ───────────────────────────────────────────────────────────
+    {
+        "name": "update_incident_status",
+        "description": (
+            "Propone avanzar el estado de un incidente de seguridad en su ciclo de vida. "
+            "Usar cuando el usuario informe de progreso en la respuesta a un incidente."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "incident_code": {"type": "string", "description": "Codigo del incidente, ej: INC-0001"},
+                "new_status": {
+                    "type": "string",
+                    "enum": ["open", "investigating", "contained", "resolved", "closed"],
+                    "description": "Nuevo estado del incidente",
+                },
+                "resolution_summary": {"type": "string", "description": "Resumen de las acciones tomadas o estado actual"},
+            },
+            "required": ["incident_code", "new_status"],
+        },
+    },
+    # ── Politicas ────────────────────────────────────────────────────────────
+    {
+        "name": "create_policy_draft",
+        "description": (
+            "Propone crear un borrador de politica de seguridad. "
+            "Usar cuando el usuario solicite crear una nueva politica (PSI, control de acceso, etc.)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Titulo de la politica"},
+                "category": {"type": "string", "description": "Categoria (ej: Control de acceso, Gestion de incidentes, Uso aceptable)"},
+                "scope": {"type": "string", "description": "Alcance y destinatarios de la politica"},
+                "iso_clauses": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Clausulas ISO 27001/27002 que esta politica implementa (ej: ['5.2', '8.1'])",
+                },
+            },
+            "required": ["title", "category"],
+        },
+    },
+    # ── Proveedores ──────────────────────────────────────────────────────────
+    {
+        "name": "create_supplier",
+        "description": (
+            "Propone dar de alta un nuevo proveedor en el registro TPRM. "
+            "Usar cuando el usuario mencione un proveedor, partner o tercero que deba gestionarse."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Nombre del proveedor o empresa"},
+                "category": {"type": "string", "description": "Categoria de servicio (ej: Cloud, Consultoria, Software, Infraestructura)"},
+                "country": {"type": "string", "description": "Pais de sede del proveedor (ej: ES, US, DE)"},
+                "is_critical": {"type": "boolean", "description": "True si es proveedor critico para el negocio"},
+                "tier": {
+                    "type": "string",
+                    "enum": ["tier_1", "tier_2", "tier_3"],
+                    "description": "Tier de riesgo: tier_1=critico, tier_2=importante, tier_3=estandar",
+                },
+            },
+            "required": ["name", "category"],
+        },
+    },
+    # ── Evidencias ───────────────────────────────────────────────────────────
+    {
+        "name": "register_evidence",
+        "description": (
+            "Propone registrar una evidencia en el repositorio centralizado del SGSI. "
+            "Usar cuando el usuario mencione que dispone de una evidencia (certificado, log, "
+            "informe, captura) que debe vincularse a un control, riesgo o politica."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Titulo descriptivo de la evidencia"},
+                "evidence_type": {
+                    "type": "string",
+                    "enum": ["policy", "procedure", "record", "certificate", "screenshot", "log", "report", "other"],
+                    "description": "Tipo de evidencia",
+                },
+                "description": {"type": "string", "description": "Descripcion del contenido y que demuestra"},
+                "control_code": {"type": "string", "description": "Codigo del control ISO 27002 al que se vincula (ej: 5.1)"},
+                "risk_code": {"type": "string", "description": "Codigo del riesgo al que se vincula (ej: RSK-0001)"},
+            },
+            "required": ["title", "evidence_type", "description"],
+        },
+    },
+    # ── Archivo adjunto ──────────────────────────────────────────────────────
+    {
+        "name": "store_uploaded_file",
+        "description": (
+            "Propone guardar el archivo que el usuario ha adjuntado al chat en la ubicacion correcta del SGSI. "
+            "Usar UNICAMENTE cuando el usuario haya adjuntado un archivo en este turno de conversacion "
+            "y el contexto incluya un upload_id. Clasifica el archivo segun su contenido y destino."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "upload_id": {"type": "string", "description": "ID del archivo temporal proporcionado en el contexto"},
+                "destination": {
+                    "type": "string",
+                    "enum": ["ai_document", "evidence", "policy_document"],
+                    "description": "Destino: ai_document=indexar para RAG, evidence=evidencia de control/riesgo, policy_document=documento de politica ISMS",
+                },
+                "title": {"type": "string", "description": "Titulo descriptivo para el archivo"},
+                "evidence_type": {
+                    "type": "string",
+                    "enum": ["policy", "procedure", "record", "certificate", "screenshot", "log", "report", "other"],
+                    "description": "Solo si destination=evidence: tipo de evidencia",
+                },
+                "control_code": {"type": "string", "description": "Solo si destination=evidence: codigo del control asociado"},
+                "risk_code": {"type": "string", "description": "Solo si destination=evidence: codigo del riesgo asociado"},
+            },
+            "required": ["upload_id", "destination", "title"],
+        },
+    },
+    # ── Automatizaciones ─────────────────────────────────────────────────────
+    {
+        "name": "run_ccm",
+        "description": (
+            "Propone ejecutar los tests de Continuous Control Monitoring (CCM) ahora mismo. "
+            "Usar cuando el usuario quiera verificar el estado operativo de los controles."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reason": {"type": "string", "description": "Motivo por el que se solicita la evaluacion CCM"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "trigger_osint_scan",
+        "description": (
+            "Propone lanzar un escaneo OSINT sobre un dominio, email o IP de la organizacion. "
+            "Usar cuando el usuario quiera verificar la exposicion de un activo externo."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Dominio, email o IP a escanear"},
+                "scan_type": {
+                    "type": "string",
+                    "enum": ["domain", "email", "ip", "url"],
+                    "description": "Tipo de objetivo",
+                },
+            },
+            "required": ["target", "scan_type"],
+        },
+    },
 ]
 
 
@@ -1400,6 +1729,38 @@ def _action_label(name: str, inp: dict) -> str:
         return f"Registrar incidente [{inp.get('severity', '').upper()}]: \"{inp.get('title', '')}\""
     if name == "schedule_control_review":
         return f"Programar revision de control: \"{inp.get('control_name', '')}\""
+    if name == "create_asset":
+        return f"Crear activo: \"{inp.get('name', '')}\" [{inp.get('asset_type', '')}]"
+    if name == "update_asset_cia":
+        cia = f"C={inp.get('value_confidentiality','?')} I={inp.get('value_integrity','?')} A={inp.get('value_availability','?')}"
+        return f"Actualizar CIA de activo \"{inp.get('asset_name', '?')}\": {cia}"
+    if name == "create_risk":
+        return f"Registrar riesgo: \"{inp.get('description', '')[:60]}\" [impacto={inp.get('consequence','?')}/4, prob={inp.get('likelihood','?')}/4]"
+    if name == "update_risk_treatment":
+        return f"Cambiar tratamiento {inp.get('risk_code','?')} → {inp.get('treatment_option','').upper()}"
+    if name == "link_control_to_risk":
+        return f"Vincular control {inp.get('control_code','?')} al riesgo {inp.get('risk_code','?')}"
+    if name == "update_control_maturity":
+        return f"Actualizar madurez de \"{inp.get('control_name','?')}\" → nivel {inp.get('new_maturity','?')}/5"
+    if name == "create_nonconformity":
+        return f"Registrar NC [{inp.get('severity','?').upper()}]: \"{inp.get('title','')}\" "
+    if name == "update_task_status":
+        return f"Actualizar tarea {inp.get('task_code','?')} → {inp.get('new_status','').upper()}"
+    if name == "update_incident_status":
+        return f"Actualizar incidente {inp.get('incident_code','?')} → {inp.get('new_status','').upper()}"
+    if name == "create_policy_draft":
+        return f"Crear borrador de politica: \"{inp.get('title','')}\" [{inp.get('category','')}]"
+    if name == "create_supplier":
+        tier = inp.get('tier', 'tier_3')
+        return f"Dar de alta proveedor: \"{inp.get('name','')}\" [{inp.get('category','')} | {tier}]"
+    if name == "register_evidence":
+        return f"Registrar evidencia [{inp.get('evidence_type','?')}]: \"{inp.get('title','')}\" "
+    if name == "store_uploaded_file":
+        return f"Guardar archivo adjunto: \"{inp.get('title','')}\" → {inp.get('destination','?')}"
+    if name == "run_ccm":
+        return "Ejecutar evaluacion CCM de controles ahora"
+    if name == "trigger_osint_scan":
+        return f"Lanzar escaneo OSINT [{inp.get('scan_type','?')}]: {inp.get('target','?')}"
     return name
 
 
@@ -1624,6 +1985,58 @@ def chat(
     }
 
 
+@router.post("/upload-file")
+async def upload_file_for_chat(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Acepta un archivo adjunto al chat y lo almacena temporalmente (30 min TTL).
+    Devuelve upload_id para referenciar el archivo en la accion store_uploaded_file."""
+    from fastapi import UploadFile
+    form = await request.form()
+    file: UploadFile | None = form.get("file")  # type: ignore[assignment]
+    if not file:
+        raise HTTPException(400, "Se requiere un campo 'file' en el formulario.")
+
+    # Validacion de tipo y tamanyo
+    ALLOWED_TYPES = {
+        "application/pdf", "text/plain", "text/csv",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "image/png", "image/jpeg", "image/gif",
+    }
+    MAX_SIZE_MB = 20
+    content_type = file.content_type or "application/octet-stream"
+    data = await file.read()
+    if len(data) > MAX_SIZE_MB * 1024 * 1024:
+        raise HTTPException(413, f"El archivo supera el limite de {MAX_SIZE_MB} MB.")
+    if content_type not in ALLOWED_TYPES:
+        raise HTTPException(415, f"Tipo de archivo no permitido: {content_type}")
+
+    upload_id = str(uuid.uuid4())
+    with _UPLOADS_LOCK:
+        _cleanup_old_jobs()
+        _UPLOADS[upload_id] = {
+            "bytes": data,
+            "filename": file.filename or "adjunto",
+            "mime": content_type,
+            "size": len(data),
+            "created_at": datetime.now(timezone.utc),
+            "organization_id": current_user.organization_id,
+            "user_id": current_user.id,
+        }
+
+    return {
+        "upload_id": upload_id,
+        "filename": file.filename,
+        "size": len(data),
+        "content_type": content_type,
+    }
+
+
 @router.post("/feedback")
 def submit_feedback(
     req: FeedbackIn,
@@ -1674,6 +2087,36 @@ def execute_action(
             return _exec_create_incident(db, inp, org_id, current_user.id)
         if name == "schedule_control_review":
             return _exec_schedule_control_review(db, inp, org_id, current_user.id)
+        if name == "create_asset":
+            return _exec_create_asset(db, inp, org_id, current_user.id)
+        if name == "update_asset_cia":
+            return _exec_update_asset_cia(db, inp, org_id)
+        if name == "create_risk":
+            return _exec_create_risk(db, inp, org_id, current_user.id)
+        if name == "update_risk_treatment":
+            return _exec_update_risk_treatment(db, inp, org_id)
+        if name == "link_control_to_risk":
+            return _exec_link_control_to_risk(db, inp, org_id)
+        if name == "update_control_maturity":
+            return _exec_update_control_maturity(db, inp, org_id)
+        if name == "create_nonconformity":
+            return _exec_create_nonconformity(db, inp, org_id, current_user.id)
+        if name == "update_task_status":
+            return _exec_update_task_status(db, inp, org_id)
+        if name == "update_incident_status":
+            return _exec_update_incident_status(db, inp, org_id)
+        if name == "create_policy_draft":
+            return _exec_create_policy_draft(db, inp, org_id, current_user.id)
+        if name == "create_supplier":
+            return _exec_create_supplier(db, inp, org_id, current_user.id)
+        if name == "register_evidence":
+            return _exec_register_evidence(db, inp, org_id, current_user.id)
+        if name == "store_uploaded_file":
+            return _exec_store_uploaded_file(db, inp, org_id, current_user.id)
+        if name == "run_ccm":
+            return _exec_run_ccm(db, org_id)
+        if name == "trigger_osint_scan":
+            return _exec_trigger_osint_scan(db, inp, org_id, current_user.id)
         raise HTTPException(400, f"Accion desconocida: {name}")
     except HTTPException:
         raise
@@ -1806,6 +2249,408 @@ def _exec_schedule_control_review(db: Session, inp: dict, org_id, user_id: int) 
         "ok": True,
         "message": f"Tarea de revision {code} creada para el control '{inp.get('control_name')}'.",
         "code": code,
+    }
+
+
+def _exec_create_asset(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    _clamp = lambda v, lo, hi: max(lo, min(hi, int(v))) if v is not None else 2
+    type_map = {t.value: t for t in AssetType}
+    asset_type = type_map.get(inp.get("asset_type", "support_software"), AssetType.SUPPORT_SOFTWARE)
+    code = _next_code(db, Asset, "AST", org_id)
+    asset = Asset(
+        organization_id=org_id,
+        code=code,
+        name=inp["name"],
+        description=inp.get("description", ""),
+        asset_type=asset_type,
+        value_confidentiality=_clamp(inp.get("value_confidentiality"), 0, 4),
+        value_integrity=_clamp(inp.get("value_integrity"), 0, 4),
+        value_availability=_clamp(inp.get("value_availability"), 0, 4),
+        owner_id=user_id,
+    )
+    db.add(asset)
+    db.commit()
+    return {"ok": True, "message": f"Activo {code} '{asset.name}' creado correctamente.", "code": code}
+
+
+def _exec_update_asset_cia(db: Session, inp: dict, org_id) -> dict:
+    name_or_code = inp.get("asset_name", "")
+    asset = (
+        db.query(Asset).filter(Asset.organization_id == org_id, Asset.code == name_or_code).first()
+        or db.query(Asset).filter(Asset.organization_id == org_id, Asset.name.ilike(f"%{name_or_code}%")).first()
+    )
+    if not asset:
+        raise HTTPException(404, f"Activo '{name_or_code}' no encontrado.")
+    _clamp = lambda v, lo, hi: max(lo, min(hi, int(v))) if v is not None else None
+    if inp.get("value_confidentiality") is not None:
+        asset.value_confidentiality = _clamp(inp["value_confidentiality"], 0, 4)
+    if inp.get("value_integrity") is not None:
+        asset.value_integrity = _clamp(inp["value_integrity"], 0, 4)
+    if inp.get("value_availability") is not None:
+        asset.value_availability = _clamp(inp["value_availability"], 0, 4)
+    db.commit()
+    return {"ok": True, "message": f"Valoracion CIA de '{asset.name}' ({asset.code}) actualizada.", "code": asset.code}
+
+
+def _exec_create_risk(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    from app.services.risk_engine import calc_level
+    _clamp = lambda v: max(0, min(4, int(v))) if v is not None else 2
+    consequence = _clamp(inp.get("consequence"))
+    likelihood = _clamp(inp.get("likelihood"))
+    inherent_level = calc_level(consequence, likelihood)
+    # Resolver activo por nombre
+    asset_id = None
+    if inp.get("asset_name"):
+        a = (
+            db.query(Asset).filter(Asset.organization_id == org_id, Asset.code == inp["asset_name"]).first()
+            or db.query(Asset).filter(Asset.organization_id == org_id, Asset.name.ilike(f"%{inp['asset_name']}%")).first()
+        )
+        if a:
+            asset_id = a.id
+    # Resolver amenaza por nombre
+    threat_id = None
+    if inp.get("threat_name"):
+        t = db.query(Threat).filter(
+            Threat.organization_id == org_id,
+            Threat.name.ilike(f"%{inp['threat_name']}%"),
+        ).first()
+        if t:
+            threat_id = t.id
+    treatment_map = {
+        "modification": TreatmentOption.MODIFICATION,
+        "retention": TreatmentOption.RETENTION,
+        "avoidance": TreatmentOption.AVOIDANCE,
+        "sharing": TreatmentOption.SHARING,
+    }
+    treatment = treatment_map.get(inp.get("treatment_option", "modification"), TreatmentOption.MODIFICATION)
+    code = _next_code(db, Risk, "RSK", org_id)
+    risk = Risk(
+        organization_id=org_id,
+        code=code,
+        description=inp["description"],
+        asset_id=asset_id,
+        threat_id=threat_id,
+        vulnerability_description=inp.get("vulnerability", ""),
+        inherent_consequence=consequence,
+        inherent_likelihood=likelihood,
+        inherent_level=inherent_level,
+        residual_consequence=consequence,
+        residual_likelihood=likelihood,
+        residual_level=inherent_level,
+        treatment_option=treatment,
+        status=RiskStatus.IDENTIFIED,
+        owner_id=user_id,
+    )
+    db.add(risk)
+    db.commit()
+    return {"ok": True, "message": f"Riesgo {code} registrado (nivel inherente={inherent_level}/8).", "code": code}
+
+
+def _exec_update_risk_treatment(db: Session, inp: dict, org_id) -> dict:
+    treatment_map = {
+        "modification": TreatmentOption.MODIFICATION,
+        "retention": TreatmentOption.RETENTION,
+        "avoidance": TreatmentOption.AVOIDANCE,
+        "sharing": TreatmentOption.SHARING,
+    }
+    risk = db.query(Risk).filter(Risk.organization_id == org_id, Risk.code == inp.get("risk_code", "")).first()
+    if not risk:
+        raise HTTPException(404, f"Riesgo {inp.get('risk_code')} no encontrado.")
+    risk.treatment_option = treatment_map.get(inp["treatment_option"], TreatmentOption.MODIFICATION)
+    if inp.get("justification"):
+        risk.description = (risk.description or "") + f"\n\n[Agente IA — Tratamiento] {inp['justification']}"
+    db.commit()
+    return {"ok": True, "message": f"Tratamiento de {risk.code} actualizado a '{inp['treatment_option']}'.", "code": risk.code}
+
+
+def _exec_link_control_to_risk(db: Session, inp: dict, org_id) -> dict:
+    risk = db.query(Risk).filter(Risk.organization_id == org_id, Risk.code == inp.get("risk_code", "")).first()
+    if not risk:
+        raise HTTPException(404, f"Riesgo {inp.get('risk_code')} no encontrado.")
+    ctrl = (
+        db.query(ControlImplementation)
+        .filter(ControlImplementation.organization_id == org_id)
+        .filter(
+            (ControlImplementation.iso_code == inp.get("control_code"))
+            | ControlImplementation.name.ilike(f"%{inp.get('control_code', '')}%")
+        )
+        .first()
+    )
+    if not ctrl:
+        raise HTTPException(404, f"Control '{inp.get('control_code')}' no encontrado en el catalogo implementado.")
+    # Registrar vinculacion en el campo de notas del riesgo (relacion a nivel de nota auditada)
+    note = f"\n[Control vinculado] {ctrl.iso_code} — {ctrl.name}"
+    if inp.get("rationale"):
+        note += f": {inp['rationale']}"
+    risk.description = (risk.description or "") + note
+    db.commit()
+    return {"ok": True, "message": f"Control {ctrl.iso_code} vinculado al riesgo {risk.code}.", "code": risk.code}
+
+
+def _exec_update_control_maturity(db: Session, inp: dict, org_id) -> dict:
+    name_or_code = inp.get("control_name", "")
+    ctrl = (
+        db.query(ControlImplementation)
+        .filter(ControlImplementation.organization_id == org_id)
+        .filter(
+            (ControlImplementation.iso_code == name_or_code)
+            | ControlImplementation.name.ilike(f"%{name_or_code}%")
+        )
+        .first()
+    )
+    if not ctrl:
+        raise HTTPException(404, f"Control '{name_or_code}' no encontrado.")
+    new_mat = max(1, min(5, int(inp.get("new_maturity", 3))))
+    ctrl.maturity = new_mat
+    if inp.get("justification"):
+        ctrl.notes = ((ctrl.notes or "") + f"\n[Agente IA] Madurez actualizada a {new_mat}: {inp['justification']}").strip()
+    db.commit()
+    return {"ok": True, "message": f"Madurez de '{ctrl.name}' actualizada a {new_mat}/5.", "code": ctrl.iso_code}
+
+
+def _exec_create_nonconformity(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    sev_map = {
+        "critical": NCSeverity.CRITICAL, "major": NCSeverity.MAJOR,
+        "minor": NCSeverity.MINOR, "observation": NCSeverity.OBSERVATION,
+    }
+    severity = sev_map.get(inp.get("severity", "minor"), NCSeverity.MINOR)
+    code = _next_code(db, NonConformity, "NC", org_id)
+    nc = NonConformity(
+        organization_id=org_id,
+        code=code,
+        title=inp["title"],
+        description=inp.get("description", ""),
+        severity=severity,
+        status=NCStatus.OPEN,
+        iso_clause=inp.get("iso_clause", ""),
+        detected_by_id=user_id,
+        detected_at=datetime.now(timezone.utc),
+    )
+    db.add(nc)
+    db.commit()
+    return {"ok": True, "message": f"No conformidad {code} [{severity.value}] registrada.", "code": code}
+
+
+def _exec_update_task_status(db: Session, inp: dict, org_id) -> dict:
+    status_map = {
+        "pending": TaskStatus.PENDING, "in_progress": TaskStatus.IN_PROGRESS,
+        "blocked": TaskStatus.BLOCKED, "done": TaskStatus.DONE,
+    }
+    task = db.query(TreatmentTask).filter(
+        TreatmentTask.organization_id == org_id,
+        TreatmentTask.code == inp.get("task_code", ""),
+    ).first()
+    if not task:
+        raise HTTPException(404, f"Tarea {inp.get('task_code')} no encontrada.")
+    task.status = status_map.get(inp.get("new_status", "in_progress"), TaskStatus.IN_PROGRESS)
+    if inp.get("notes"):
+        task.notes = ((task.notes or "") + f"\n[Agente IA] {inp['notes']}").strip()
+    db.commit()
+    return {"ok": True, "message": f"Tarea {task.code} actualizada a estado '{task.status.value}'.", "code": task.code}
+
+
+def _exec_update_incident_status(db: Session, inp: dict, org_id) -> dict:
+    status_map = {
+        "open": IncidentStatus.OPEN, "investigating": IncidentStatus.INVESTIGATING,
+        "contained": IncidentStatus.CONTAINED, "resolved": IncidentStatus.RESOLVED,
+        "closed": IncidentStatus.CLOSED,
+    }
+    incident = db.query(Incident).filter(
+        Incident.organization_id == org_id,
+        Incident.code == inp.get("incident_code", ""),
+    ).first()
+    if not incident:
+        raise HTTPException(404, f"Incidente {inp.get('incident_code')} no encontrado.")
+    incident.status = status_map.get(inp.get("new_status", "investigating"), IncidentStatus.INVESTIGATING)
+    if inp.get("new_status") in ("resolved", "closed"):
+        incident.resolved_at = datetime.now(timezone.utc)
+    if inp.get("resolution_summary"):
+        incident.description = (
+            (incident.description or "") + f"\n\n[Agente IA — {inp['new_status']}] {inp['resolution_summary']}"
+        )
+    db.commit()
+    return {
+        "ok": True,
+        "message": f"Incidente {incident.code} actualizado a '{incident.status.value}'.",
+        "code": incident.code,
+    }
+
+
+def _exec_create_policy_draft(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    code = _next_code(db, Policy, "POL", org_id)
+    policy = Policy(
+        organization_id=org_id,
+        code=code,
+        title=inp["title"],
+        category=inp.get("category", ""),
+        scope=inp.get("scope", ""),
+        status=PolicyStatus.DRAFT,
+        version="1.0",
+        iso_clauses=inp.get("iso_clauses", []),
+        owner_id=user_id,
+    )
+    db.add(policy)
+    db.commit()
+    return {"ok": True, "message": f"Politica {code} '{policy.title}' creada como borrador.", "code": code}
+
+
+def _exec_create_supplier(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    tier_map = {"tier_1": SupplierTier.TIER_1, "tier_2": SupplierTier.TIER_2, "tier_3": SupplierTier.TIER_3}
+    code = _next_code(db, Supplier, "SUP", org_id)
+    supplier = Supplier(
+        organization_id=org_id,
+        code=code,
+        name=inp["name"],
+        category=inp.get("category", ""),
+        country=inp.get("country", ""),
+        is_critical=bool(inp.get("is_critical", False)),
+        tier=tier_map.get(inp.get("tier", "tier_3"), SupplierTier.TIER_3),
+        risk_level=SupplierRisk.MEDIUM,
+    )
+    db.add(supplier)
+    db.commit()
+    return {"ok": True, "message": f"Proveedor {code} '{supplier.name}' dado de alta correctamente.", "code": code}
+
+
+def _exec_register_evidence(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    etype_map = {e.value: e for e in EvidenceType}
+    etype = etype_map.get(inp.get("evidence_type", "other"), EvidenceType.OTHER)
+    code = _next_code(db, Evidence, "EVD", org_id)
+    # Resolver vinculaciones opcionales
+    ctrl_id = None
+    if inp.get("control_code"):
+        c = db.query(ControlImplementation).filter(
+            ControlImplementation.organization_id == org_id,
+            ControlImplementation.iso_code == inp["control_code"],
+        ).first()
+        ctrl_id = c.id if c else None
+    risk_id = None
+    if inp.get("risk_code"):
+        r = db.query(Risk).filter(Risk.organization_id == org_id, Risk.code == inp["risk_code"]).first()
+        risk_id = r.id if r else None
+    ev = Evidence(
+        organization_id=org_id,
+        code=code,
+        title=inp["title"],
+        description=inp.get("description", ""),
+        evidence_type=etype,
+        control_implementation_id=ctrl_id,
+        risk_id=risk_id,
+        created_by_id=user_id,
+        version=1,
+        is_current=True,
+    )
+    db.add(ev)
+    db.commit()
+    return {"ok": True, "message": f"Evidencia {code} '{ev.title}' registrada correctamente.", "code": code}
+
+
+def _exec_store_uploaded_file(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    upload_id = inp.get("upload_id", "")
+    with _UPLOADS_LOCK:
+        upload = _UPLOADS.pop(upload_id, None)
+    if not upload:
+        raise HTTPException(404, "Archivo adjunto no encontrado o expirado. Vuelve a adjuntarlo.")
+    destination = inp.get("destination", "ai_document")
+    filename = upload["filename"]
+    file_bytes = upload["bytes"]
+    title = inp.get("title") or filename
+
+    if destination == "evidence":
+        import hashlib
+        code = _next_code(db, Evidence, "EVD", org_id)
+        etype_map = {e.value: e for e in EvidenceType}
+        etype = etype_map.get(inp.get("evidence_type", "other"), EvidenceType.OTHER)
+        ctrl_id = None
+        if inp.get("control_code"):
+            c = db.query(ControlImplementation).filter(
+                ControlImplementation.organization_id == org_id,
+                ControlImplementation.iso_code == inp["control_code"],
+            ).first()
+            ctrl_id = c.id if c else None
+        risk_id = None
+        if inp.get("risk_code"):
+            r = db.query(Risk).filter(Risk.organization_id == org_id, Risk.code == inp["risk_code"]).first()
+            risk_id = r.id if r else None
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
+        ev = Evidence(
+            organization_id=org_id, code=code, title=title,
+            description=f"Adjunto via agente IA. Archivo original: {filename}",
+            evidence_type=etype, filename=filename,
+            file_hash=file_hash, file_size=len(file_bytes),
+            control_implementation_id=ctrl_id, risk_id=risk_id,
+            created_by_id=user_id, version=1, is_current=True,
+        )
+        db.add(ev)
+        db.commit()
+        return {"ok": True, "message": f"Archivo guardado como evidencia {code} '{title}'.", "code": code}
+
+    if destination in ("ai_document", "policy_document"):
+        from app.models import AiDocument, AiDocumentStatus, AiDocumentCategory
+        from app.services.document_service import process_document
+        cat = AiDocumentCategory.POLICIES if destination == "policy_document" else AiDocumentCategory.OTHER
+        code_doc = _next_code(db, AiDocument, "DOC", org_id)
+        doc = AiDocument(
+            organization_id=org_id,
+            original_name=filename,
+            status=AiDocumentStatus.PENDING,
+            category=cat,
+            uploaded_by_id=user_id,
+        )
+        db.add(doc)
+        db.flush()
+        try:
+            process_document(db, doc.id, file_bytes, filename)
+        except Exception:
+            pass
+        db.commit()
+        return {"ok": True, "message": f"Archivo '{filename}' subido e indexado para el agente IA (doc #{doc.id}).", "code": str(doc.id)}
+
+    raise HTTPException(400, f"Destino desconocido: {destination}")
+
+
+def _exec_run_ccm(db: Session, org_id) -> dict:
+    from app.services.ccm_service import run_all_tests
+    results = run_all_tests(db, org_id, limit=100, offset=0)
+    score = results.get("score", 0)
+    total = results.get("total", 0)
+    passed = results.get("passed", 0)
+    failed = results.get("failed", 0)
+    return {
+        "ok": True,
+        "message": (
+            f"CCM ejecutado: {passed}/{total} controles OK, {failed} fallos. "
+            f"Score global: {score}/100."
+        ),
+        "score": score,
+        "passed": passed,
+        "failed": failed,
+        "total": total,
+    }
+
+
+def _exec_trigger_osint_scan(db: Session, inp: dict, org_id, user_id: int) -> dict:
+    from app.models import OSINTScan, OSINTScanType
+    scan_type_map = {
+        "domain": OSINTScanType.DOMAIN, "email": OSINTScanType.EMAIL,
+        "ip": OSINTScanType.IP, "url": OSINTScanType.URL,
+    }
+    scan_type = scan_type_map.get(inp.get("scan_type", "domain"), OSINTScanType.DOMAIN)
+    target = inp.get("target", "")
+    scan = OSINTScan(
+        organization_id=org_id,
+        user_id=user_id,
+        scan_type=scan_type,
+        target=target,
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(scan)
+    db.commit()
+    return {
+        "ok": True,
+        "message": f"Escaneo OSINT [{scan_type.value}] sobre '{target}' programado. El resultado estara disponible en OSINT > Historial.",
+        "scan_id": scan.id,
     }
 
 

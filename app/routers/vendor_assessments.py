@@ -51,12 +51,9 @@ def _next_code(db: Session, org_id: int) -> str:
 
 
 def _next_q_code(db: Session) -> str:
-    n = db.query(SupplierQuestionnaire).count() + 1
-    code = f"SEQ-{n:04d}"
-    while db.query(SupplierQuestionnaire).filter_by(code=code).first():
-        n += 1
-        code = f"SEQ-{n:04d}"
-    return code
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(SupplierQuestionnaire.id)).scalar() or 0
+    return f"SEQ-{max_id + 1:04d}"
 
 
 def _score_to_likelihood_consequence(residual_score: int) -> tuple[int, int]:
@@ -572,13 +569,12 @@ def approve_assessment(
         raise HTTPException(404, _t("tprm.assessment_not_found", lang))
     a.approver_user_id = current_user.id
     a.approved_at = datetime.now(timezone.utc)
-    db.commit()
     # Versionado: al aprobar una re-evaluacion, la version anterior deja de estar vigente
     if a.previous_version_id:
         prev = db.get(VendorRiskAssessment, a.previous_version_id)
         if prev and prev.is_current:
             prev.is_current = False
-            db.commit()
+    db.commit()
     db.refresh(a)
     log_action(db, current_user.id, "approve", "vendor_assessment", str(a.id), {"code": a.code})
     return a
@@ -637,6 +633,7 @@ def push_to_risk_register(
         Risk.organization_id == org_id,
         Risk.asset_id == asset.id,
         Risk.threat_id == threat.id,
+        Risk.supplier_id == a.supplier_id,
     ).first()
     if existing:
         a.linked_risk_id = existing.id
@@ -648,9 +645,8 @@ def push_to_risk_register(
     from app.services.risk_engine import calc_level as _calc_level
     inherent_level = _calc_level(consequence, likelihood)
 
-    from sqlalchemy import func as _func
-    max_id = db.query(_func.max(Risk.id)).scalar() or 0
-    code = f"RSK-{max_id + 1:04d}"
+    from app.routers.risks import _next_code as _risk_next_code
+    code = _risk_next_code(db, org_id)
 
     supplier_name = a.supplier_name or f"Proveedor #{a.supplier_id}"
     risk = Risk(

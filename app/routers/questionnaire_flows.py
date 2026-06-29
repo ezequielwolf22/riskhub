@@ -169,8 +169,9 @@ def apply_flow(
             questions = tpl.questions or []
             template_code = f"custom:{tpl.id}"
 
-    n = db.query(SupplierQuestionnaire).count() + 1
-    code = f"SEQ-{n:04d}"
+    from sqlalchemy import func as _func
+    max_id = db.query(_func.max(SupplierQuestionnaire.id)).scalar() or 0
+    code = f"SEQ-{max_id + 1:04d}"
     title = step.get("name") or f"Evaluacion — Flujo {f.name}"
     q = SupplierQuestionnaire(
         code=code,
