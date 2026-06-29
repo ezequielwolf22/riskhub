@@ -30,8 +30,9 @@ router = APIRouter(prefix="/api/risks", tags=["risks"])
 
 
 def _next_code(db: Session, org_id: int) -> str:
+    """Genera codigo RSK filtrado por org para evitar colisiones cross-tenant."""
     from sqlalchemy import func as _func
-    max_id = db.query(_func.max(Risk.id)).scalar() or 0
+    max_id = db.query(_func.max(Risk.id)).filter(Risk.organization_id == org_id).scalar() or 0
     return f"RSK-{max_id + 1:04d}"
 
 
@@ -134,6 +135,7 @@ def _recalc(db: Session, risk: Risk) -> None:
                 # Riesgos aceptados deben revisarse anualmente (ISO 27001 A.6.1.2)
                 from datetime import timedelta
                 risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
+                risk.accepted_at = datetime.now(timezone.utc)
 
 
 @router.get("/group-summary")
@@ -431,11 +433,11 @@ def risk_trace(
         "residual_likelihood": r.residual_likelihood,
         "residual_consequence": r.residual_consequence,
         "residual_level": r.residual_level,
-        "residual_likelihood_label": LIKELIHOOD_LABELS[r.residual_likelihood or 0],
-        "residual_consequence_label": CONSEQUENCE_LABELS[r.residual_consequence or 0],
+        "residual_likelihood_label": LIKELIHOOD_LABELS[max(0, min(4, r.residual_likelihood or 0))],
+        "residual_consequence_label": CONSEQUENCE_LABELS[max(0, min(4, r.residual_consequence or 0))],
         "combined_efficacy": round(combined_efficacy, 3),
         "combined_efficacy_pct": round(combined_efficacy * 100),
-        "reduction_pct": round((1 - r.residual_level / r.inherent_level) * 100) if r.inherent_level else 0,
+        "reduction_pct": round((1 - r.residual_level / r.inherent_level) * 100) if (r.residual_level is not None and r.inherent_level) else 0,
         "above_appetite": (r.residual_level or 0) > appetite,
         "appetite": appetite,
         "calculation_formula": (
@@ -592,7 +594,7 @@ def risk_ai_explain(
         )
 
     # Calculos derivados
-    reduction_pct = round((1 - r.residual_level / r.inherent_level) * 100) if r.inherent_level else 0
+    reduction_pct = round((1 - r.residual_level / r.inherent_level) * 100) if (r.residual_level is not None and r.inherent_level) else 0
     above_appetite = r.residual_level > risk_appetite
     cia_c = r.asset.value_confidentiality if r.asset else "N/A"
     cia_i = r.asset.value_integrity if r.asset else "N/A"
@@ -834,7 +836,7 @@ def create_risk(data: RiskIn, request: Request, db: Session = Depends(get_db),
 
     org_id = current_user.organization_id
     r = Risk(
-        code=_next_code(db, org_id),
+        code="RSK-TEMP",  # placeholder; se reemplaza tras flush con r.id
         organization_id=org_id,
         asset_id=data.asset_id, threat_id=data.threat_id,
         description=data.description,
@@ -854,7 +856,8 @@ def create_risk(data: RiskIn, request: Request, db: Session = Depends(get_db),
         r.vulnerabilities = db.query(Vulnerability).filter(
             Vulnerability.id.in_(data.vulnerability_ids)).all()
     db.add(r)
-    db.flush()  # asigna r.id antes de recalcular controles
+    db.flush()  # asigna r.id — usamos el id real para construir el codigo unico por org
+    r.code = f"RSK-{r.id:04d}"
     if data.control_implementation_ids:
         r.controls = db.query(ControlImplementation).filter(
             ControlImplementation.id.in_(data.control_implementation_ids)).all()
@@ -954,6 +957,9 @@ def update_risk(risk_id: int, data: RiskUpdate, request: Request, db: Session = 
         # Refrescar la relacion desde BD
         db.expire(r, ["controls"])
 
+    # Capturar old_status ANTES de aplicar cambios (compliance sync lo necesita)
+    old_status = r.status
+
     # Acceptance bookkeeping
     if update_data.get("status") == RiskStatus.ACCEPTED:
         r.accepted_by_id = user.id
@@ -961,7 +967,6 @@ def update_risk(risk_id: int, data: RiskUpdate, request: Request, db: Session = 
 
     for k, v in update_data.items():
         setattr(r, k, v)
-    old_status = r.status
     _recalc(db, r)
     log_action(db, user.id, "update", "risk", str(risk_id),
                {"code": r.code, "status": str(r.status), "residual_level": r.residual_level})
@@ -1191,11 +1196,8 @@ async def import_risks_csv(
                 except ValueError:
                     continue
 
-        db.flush()  # hace visible el riesgo anterior del batch para MAX(id)
-        code = _next_code(db, current_user.organization_id)
-
         risk = Risk(
-            code=code,
+            code="RSK-TEMP",  # placeholder; se reemplaza tras flush con risk.id
             asset_id=asset.id,
             threat_id=threat.id,
             description=(row.get("Descripcion") or "").strip(),
@@ -1213,7 +1215,9 @@ async def import_risks_csv(
             organization_id=current_user.organization_id,
         )
         db.add(risk)
-        created.append(code)
+        db.flush()  # asigna risk.id — usamos el id real para el codigo unico por org
+        risk.code = f"RSK-{risk.id:04d}"
+        created.append(risk.code)
 
     if created:
         db.commit()
@@ -1237,8 +1241,12 @@ def heatmap(db: Session = Depends(get_db),
     matrix = [[{"count": 0, "risks": []} for _ in range(5)] for _ in range(5)]
     for r in filter_by_org(db.query(Risk), Risk, current_user).all():
         if mode == "residual":
+            if r.residual_likelihood is None or r.residual_consequence is None:
+                continue
             x, y = r.residual_likelihood, r.residual_consequence
         else:
+            if r.inherent_likelihood is None or r.inherent_consequence is None:
+                continue
             x, y = r.inherent_likelihood, r.inherent_consequence
         x = max(0, min(4, x)); y = max(0, min(4, y))
         matrix[4 - y][x]["count"] += 1
@@ -1285,15 +1293,15 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
     )
     no_owner = sum(1 for r in risks if r.owner_id is None
                    and r.status not in {RiskStatus.ACCEPTED, RiskStatus.CLOSED})
-    total_inh = sum(r.inherent_level for r in risks)
-    total_res = sum(r.residual_level for r in risks)
+    total_inh = sum((r.inherent_level or 0) for r in risks)
+    total_res = sum((r.residual_level or 0) for r in risks)
     reduction_pct = round((1 - total_res / total_inh) * 100) if total_inh else 0
 
     # Control maturity stats
     from app.models import ControlStatus
     impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     impl_implemented = sum(1 for c in impls if c.status == ControlStatus.IMPLEMENTED)
-    avg_maturity = round(sum(c.maturity for c in impls) / len(impls), 1) if impls else 0
+    avg_maturity = round(sum((c.maturity or 0) for c in impls) / len(impls), 1) if impls else 0
     controls_overdue_reviews = sum(
         1 for c in impls
         if c.next_review
@@ -1306,7 +1314,7 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
     return {
         "total_risks": len(risks),
         "supplier_risks_count": supplier_risks_count,
-        "total_assets": db.query(Asset).count(),
+        "total_assets": db.query(Asset).filter(Asset.organization_id == current_user.organization_id).count(),
         "total_threats": db.query(Threat).count(),
         "total_vulnerabilities": db.query(Vulnerability).count(),
         "total_controls": len(impls),
@@ -1731,10 +1739,8 @@ def suggest_controls_for_risk(
 
     lang = get_lang(request)
     r = db.get(Risk, risk_id)
-    if not r:
+    if not r or not check_org_access(r.organization_id, current_user):
         raise HTTPException(404, _t("risks.not_found", lang))
-    if not check_org_access(r.organization_id, current_user):
-        raise HTTPException(403, _t("common.forbidden", lang))
 
     # Configuracion IA del tenant — mismo patron de descifrado que ai-explain
     ai_cfg = db.query(AiConfig).filter_by(organization_id=r.organization_id).first()
@@ -1930,10 +1936,8 @@ def get_risk_history(
     from app.models import RiskSnapshot
 
     risk = db.get(Risk, risk_id)
-    if not risk:
+    if not risk or not check_org_access(risk.organization_id, current_user):
         raise HTTPException(404, "Riesgo no encontrado")
-    if not check_org_access(risk.organization_id, current_user):
-        raise HTTPException(403)
 
     snapshots = (
         db.query(RiskSnapshot)
@@ -1984,10 +1988,8 @@ def simulate_what_if(
     from app.services.risk_engine import control_reduction
 
     risk = db.get(Risk, risk_id)
-    if not risk:
+    if not risk or not check_org_access(risk.organization_id, current_user):
         raise HTTPException(404, "Riesgo no encontrado")
-    if not check_org_access(risk.organization_id, current_user):
-        raise HTTPException(403)
 
     matrix = _get_matrix(db, risk.organization_id)
 
