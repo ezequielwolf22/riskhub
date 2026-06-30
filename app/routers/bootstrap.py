@@ -11,7 +11,7 @@ from sqlalchemy import func as _func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Risk, RiskStatus, Task, TaskStatus, FeatureFlag, RiskLevelConfig, NIS2Notification
+from app.models import Risk, RiskStatus, TreatmentTask, TaskStatus, FeatureFlag, RiskLevelConfig, NIS2Notification
 from app.security import get_current_user
 from app.models import User
 from app.routers.feature_flags import get_flags_for_org
@@ -80,13 +80,13 @@ def bootstrap(
     # --- Badge: tareas vencidas ---
     try:
         open_statuses = [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]
-        q3 = db.query(_func.count(Task.id)).filter(
-            Task.status.in_(open_statuses),
-            Task.due_date.isnot(None),
-            Task.due_date < now,
+        q3 = db.query(_func.count(TreatmentTask.id)).filter(
+            TreatmentTask.status.in_(open_statuses),
+            TreatmentTask.due_date.isnot(None),
+            TreatmentTask.due_date < now,
         )
         if org_id:
-            q3 = q3.filter(Task.organization_id == org_id)
+            q3 = q3.filter(TreatmentTask.organization_id == org_id)
         tasks_overdue = q3.scalar() or 0
     except Exception:
         tasks_overdue = 0
