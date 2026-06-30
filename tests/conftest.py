@@ -36,6 +36,20 @@ def override_get_db():
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     """Inicializa el esquema de BD de test al comienzo de la sesion."""
+    # Resetear rate limiter para evitar bloqueos por intentos acumulados de runs anteriores
+    try:
+        from app.services.rate_limiter import reset_all_counters
+        reset_all_counters()
+    except Exception:
+        pass
+
+    # Borrar BD residual de un run anterior (crash, kill, etc.)
+    if os.path.exists("./test_riskhub.db"):
+        try:
+            os.remove("./test_riskhub.db")
+        except OSError:
+            pass
+
     Base.metadata.create_all(bind=_engine)
     app.dependency_overrides[get_db] = override_get_db
     yield
@@ -44,10 +58,9 @@ def setup_test_db():
     # Liberar handles del engine antes de borrar el fichero (Windows bloquea si sigue abierto)
     _engine.dispose()
     # Limpiar archivo de BD de test (best-effort; en Windows puede seguir bloqueado)
-    import os as _os
-    if _os.path.exists("./test_riskhub.db"):
+    if os.path.exists("./test_riskhub.db"):
         try:
-            _os.remove("./test_riskhub.db")
+            os.remove("./test_riskhub.db")
         except OSError:
             pass
 
