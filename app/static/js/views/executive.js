@@ -385,11 +385,11 @@ const ViewExecutive = (() => {
     if (!el) return;
     el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-muted);">${t('executive.loading')}</div>`;
     try {
-      // Primera tanda: datos rapidos (sin board-report que es lento por compliance)
       const results = await Promise.allSettled([
         Api.executive.kpis(),
         Api.executive.topRisks(10),
         Api.executive.riskTrend(30),
+        Api.executive.boardReport().catch(() => null),
         Api.incidents.summary().catch(() => null),
         Api.tasks.summary().catch(() => null),
         Api.get('/api/bcp/dashboard').catch(() => null),
@@ -400,12 +400,13 @@ const ViewExecutive = (() => {
       const kpis      = results[0].status === 'fulfilled' ? results[0].value : null;
       const topRisks  = results[1].status === 'fulfilled' ? results[1].value : [];
       const trend     = results[2].status === 'fulfilled' ? results[2].value : [];
-      const incidents = results[3].status === 'fulfilled' ? results[3].value : null;
-      const tasks     = results[4].status === 'fulfilled' ? results[4].value : null;
-      const bcpData   = results[5].status === 'fulfilled' ? results[5].value : null;
-      const tprmData  = results[6].status === 'fulfilled' ? results[6].value : null;
-      const risks     = results[7].status === 'fulfilled' ? results[7].value : null;
-      let   compliance = null;
+      const board     = results[3].status === 'fulfilled' ? results[3].value : null;
+      const incidents = results[4].status === 'fulfilled' ? results[4].value : null;
+      const tasks     = results[5].status === 'fulfilled' ? results[5].value : null;
+      const bcpData   = results[6].status === 'fulfilled' ? results[6].value : null;
+      const tprmData  = results[7].status === 'fulfilled' ? results[7].value : null;
+      const risks     = results[8].status === 'fulfilled' ? results[8].value : null;
+      const compliance = board?.compliance || null;
 
       if (!kpis) throw new Error(t('executive.error_loading'));
 
@@ -421,9 +422,7 @@ const ViewExecutive = (() => {
             parts.push(_section(t('executive.trend_section'), _trendBars(trend)));
             break;
           case 'exec_compliance':
-            parts.push(_section(t('executive.compliance_section'),
-              `<div id="exec-compliance-slot"><div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">${t('executive.loading')}</div></div>`,
-              '#/compliance'));
+            parts.push(_section(t('executive.compliance_section'), _renderCompliance(compliance), '#/compliance'));
             break;
           case 'exec_top_risks':
             parts.push(_section(t('executive.top_risks_section'), _renderTopRisks(topRisks), '#/risks'));
@@ -454,17 +453,6 @@ const ViewExecutive = (() => {
 
       el.innerHTML = parts.join('') ||
         `<p style="color:var(--text-muted);padding:40px;text-align:center;">${t('executive.no_widgets')}</p>`;
-
-      // Cargar compliance en background (board-report es lento — llama a compliance completo)
-      const layout = _getLayout();
-      if (layout.includes('exec_compliance')) {
-        Api.executive.boardReport().then(board => {
-          const complianceSlot = document.getElementById('exec-compliance-slot');
-          if (!complianceSlot) return;
-          const c = board?.compliance || null;
-          complianceSlot.innerHTML = _renderCompliance(c);
-        }).catch(() => {});
-      }
     } catch (e) {
       el.innerHTML = `<div style="color:var(--risk-critical);padding:24px;">${t('executive.error_loading')} ${UI.esc(e.message)}</div>`;
     }
