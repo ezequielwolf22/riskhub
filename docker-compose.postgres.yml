@@ -1,0 +1,39 @@
+# Override de PostgreSQL para RiskHub.
+# Uso: docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+#
+# Requiere en .env:
+#   RISKHUB_DB_PASSWORD=<contrasena-segura>
+#
+# AVISO: si tienes datos en SQLite, migra primero antes de activar este override.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: riskhub-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=riskhub
+      - POSTGRES_USER=riskhub
+      - POSTGRES_PASSWORD=${RISKHUB_DB_PASSWORD:?Define RISKHUB_DB_PASSWORD en .env}
+    volumes:
+      - riskhub-pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U riskhub -d riskhub"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  riskhub:
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - RISKHUB_DB_PATH=
+      - RISKHUB_DATABASE_URL=postgresql://riskhub:${RISKHUB_DB_PASSWORD}@db:5432/riskhub
+
+volumes:
+  riskhub-pgdata:
+    driver: local

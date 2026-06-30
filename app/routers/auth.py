@@ -418,10 +418,13 @@ def mfa_regenerate_backup_codes(
 
 @router.post("/mfa/disable")
 def mfa_disable(
+    body: MfaSetupIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Desactiva MFA para el usuario autenticado."""
+    """Desactiva MFA para el usuario autenticado. Requiere contrasena actual."""
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="La contrasena actual no es correcta")
     user.mfa_enabled = False
     user.mfa_secret = None
     user.mfa_backup_codes = None
@@ -459,6 +462,115 @@ def mfa_disable_admin(
                {"email": target.email, "action": "mfa_disabled_by_admin"})
     db.commit()
     return {"ok": True, "message": f"MFA desactivado para {target.email}"}
+
+
+# ---------- Password reset por email ----------
+
+class ForgotPasswordIn(BaseModel):
+    email: str
+
+
+def _reset_password_html(full_name: str, reset_url: str) -> str:
+    from datetime import datetime as _dt
+    now = _dt.now().strftime("%Y-%m-%d %H:%M")
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<body style="margin:0;padding:24px;background:#F5F5F5;font-family:Inter,Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:10px;
+              border:1px solid #E9E9E9;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+    <div style="background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;">
+      <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">
+        RiskHub &mdash; Restablecer contrase&ntilde;a
+      </h1>
+    </div>
+    <div style="padding:28px;font-size:14px;color:#262626;line-height:1.6;">
+      <p>Hola {full_name},</p>
+      <p>Hemos recibido una solicitud para restablecer la contrase&ntilde;a de tu cuenta en RiskHub.
+         Haz clic en el siguiente boton para elegir una nueva contrase&ntilde;a:</p>
+      <p style="text-align:center;margin:28px 0;">
+        <a href="{reset_url}"
+           style="background:linear-gradient(90deg,#59008D,#D65200);color:#fff;
+                  text-decoration:none;padding:12px 28px;border-radius:6px;
+                  font-weight:700;font-size:14px;">
+          Restablecer contrase&ntilde;a
+        </a>
+      </p>
+      <p>Este enlace es valido durante <strong>1 hora</strong>.
+         Si no solicitaste este restablecimiento puedes ignorar este mensaje.</p>
+      <p style="word-break:break-all;font-size:12px;color:#9D9D9D;">
+        Enlace directo: {reset_url}
+      </p>
+      <p style="color:#9D9D9D;font-size:11px;margin-top:24px;margin-bottom:0;">
+        Generado automaticamente por RiskHub el {now}.
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    body: ForgotPasswordIn,
+    db: Session = Depends(get_db),
+):
+    """Genera token de restablecimiento y lo envia por email. Siempre devuelve 200."""
+    # Usar la URL publica configurada en settings para evitar Host Header Injection.
+    # Si no esta configurada, se omite el envio del email pero el flujo no falla.
+    public_url = settings.public_url.rstrip("/") if settings.public_url else ""
+
+    user = db.query(User).filter(User.email == body.email.strip().lower()).first()
+    if user and user.is_active:
+        token = secrets.token_urlsafe(32)
+        user.password_reset_token = token
+        user.password_reset_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        db.commit()
+        if public_url:
+            try:
+                from app.services.email_service import get_settings, send_email as _send
+                cfg = get_settings(db, getattr(user, "organization_id", None))
+                if cfg and cfg.smtp_host:
+                    reset_url = f"{public_url}/login?reset_token={token}"
+                    html = _reset_password_html(user.full_name or user.email, reset_url)
+                    _send(cfg, user.email, "RiskHub - Restablecer contrasena", html)
+            except Exception:
+                pass
+    return {"ok": True, "message": "Si el email existe en el sistema recibirás un enlace."}
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/reset-password")
+def reset_password(
+    body: ResetPasswordIn,
+    db: Session = Depends(get_db),
+):
+    """Restablece la contrasena usando el token enviado por email."""
+    user = db.query(User).filter(User.password_reset_token == body.token).first()
+    if not user or not user.password_reset_expires_at:
+        raise HTTPException(status_code=400, detail="Token invalido o expirado")
+    expires = user.password_reset_expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires < datetime.now(timezone.utc):
+        user.password_reset_token = None
+        user.password_reset_expires_at = None
+        db.commit()
+        raise HTTPException(status_code=400, detail="Token invalido o expirado")
+    error = _validate_password_strength(body.new_password)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    user.hashed_password = hash_password(body.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    user.must_change_password = False
+    log_action(db, user.id, "update", "user", str(user.id),
+               {"email": user.email, "action": "password_reset_via_email"})
+    db.commit()
+    return {"ok": True, "message": "Contrasena restablecida correctamente"}
 
 
 class MfaCompleteIn(BaseModel):

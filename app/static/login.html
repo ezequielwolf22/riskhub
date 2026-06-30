@@ -107,9 +107,87 @@
         </a>
       </div>
 
+      <p class="login-note">
+        <a href="#" id="forgot-password-link"
+           style="color:var(--brand-purple,#59008D);text-decoration:none;font-size:13px;">
+          ¿Olvidaste tu contraseña?
+        </a>
+      </p>
+
       <p class="login-note" data-i18n="login.no_access">
         ¿Sin acceso? Contacta con el responsable de seguridad de tu unidad.
       </p>
+
+    </form>
+
+
+    <!-- Formulario: solicitar restablecimiento por email -->
+    <form class="login-form" id="forgot-form" style="display:none;">
+
+      <h2>Restablecer contraseña</h2>
+      <p class="subtitle">Introduce tu email y te enviaremos un enlace de restablecimiento.</p>
+
+      <div id="forgot-error" class="login-error" style="display:none;"></div>
+      <div id="forgot-success"
+           style="display:none;background:#F0FDF4;border:1px solid #86EFAC;
+                  border-radius:6px;padding:12px 16px;color:#166534;font-size:13px;
+                  margin-bottom:16px;">
+        Si ese email existe en el sistema recibirás el enlace en breve. Revisa tu bandeja de entrada.
+      </div>
+
+      <div class="form-block" id="forgot-email-block">
+        <label for="forgot-email">Email</label>
+        <input type="email" id="forgot-email" required autocomplete="email">
+      </div>
+
+      <button class="btn btn-primary" type="submit" id="forgot-submit"
+              style="width:100%; justify-content:center; padding:12px;">
+        Enviar enlace
+      </button>
+
+      <button type="button" id="forgot-back" class="btn"
+              style="width:100%; justify-content:center; padding:12px; margin-top:8px;">
+        Volver al login
+      </button>
+
+    </form>
+
+
+    <!-- Formulario: establecer nueva contraseña (desde enlace del email) -->
+    <form class="login-form" id="reset-form" style="display:none;">
+
+      <h2>Nueva contraseña</h2>
+      <p class="subtitle">Elige una contraseña segura para tu cuenta.</p>
+
+      <div id="reset-error" class="login-error" style="display:none;"></div>
+      <div id="reset-success"
+           style="display:none;background:#F0FDF4;border:1px solid #86EFAC;
+                  border-radius:6px;padding:12px 16px;color:#166534;font-size:13px;
+                  margin-bottom:16px;">
+        Contraseña restablecida correctamente. Ahora puedes iniciar sesión.
+      </div>
+
+      <div id="reset-fields">
+        <div class="form-block">
+          <label for="new-password">Nueva contraseña</label>
+          <input type="password" id="new-password" required autocomplete="new-password" autofocus>
+        </div>
+
+        <div class="form-block">
+          <label for="new-password2">Repetir contraseña</label>
+          <input type="password" id="new-password2" required autocomplete="new-password">
+        </div>
+
+        <button class="btn btn-primary" type="submit"
+                style="width:100%; justify-content:center; padding:12px;">
+          Guardar contraseña
+        </button>
+      </div>
+
+      <button type="button" id="reset-back" class="btn"
+              style="width:100%; justify-content:center; padding:12px; margin-top:8px;">
+        Volver al login
+      </button>
 
     </form>
 
@@ -150,10 +228,12 @@
 
 
 <script>
-const form    = document.getElementById('login-form');
-const errBox  = document.getElementById('login-error');
-const mfaForm = document.getElementById('mfa-form');
-const mfaErr  = document.getElementById('mfa-error');
+const form       = document.getElementById('login-form');
+const errBox     = document.getElementById('login-error');
+const mfaForm    = document.getElementById('mfa-form');
+const mfaErr     = document.getElementById('mfa-error');
+const forgotForm = document.getElementById('forgot-form');
+const resetForm  = document.getElementById('reset-form');
 
 let _mfaToken = null;
 let _pendingUser = null;
@@ -162,9 +242,18 @@ let _pendingUser = null;
 I18n.applyDataAttrs();
 document.title = t('login.page_title');
 
+function _showOnly(el) {
+  [form, mfaForm, forgotForm, resetForm].forEach(f => { f.style.display = 'none'; });
+  el.style.display = '';
+}
+
+// Comprobar si hay token de reset en la URL
 (function() {
   const params = new URLSearchParams(window.location.search);
-  const ssoErr = params.get('sso_error');
+  const ssoErr    = params.get('sso_error');
+  const orgId     = params.get('org_id');
+  const resetToken = params.get('reset_token');
+
   if (ssoErr) {
     const key = 'login.sso_error.' + ssoErr;
     const msg = t(key);
@@ -172,9 +261,23 @@ document.title = t('login.page_title');
     errBox.style.display = 'block';
     window.history.replaceState({}, '', '/login');
   }
+
+  const ssoBtn = document.querySelector('.login-sso-btn');
+  if (ssoBtn && orgId) {
+    ssoBtn.href = `/api/sso/login?org_id=${encodeURIComponent(orgId)}`;
+  }
+
+  if (resetToken) {
+    resetForm.dataset.token = resetToken;
+    window.history.replaceState({}, '', '/login');
+    _showOnly(resetForm);
+  }
 })();
 
-fetch('/api/sso/status').then(r => r.json()).then(d => {
+const _params = new URLSearchParams(window.location.search);
+const _orgId = _params.get('org_id');
+const ssoStatusUrl = _orgId ? `/api/sso/status?org_id=${encodeURIComponent(_orgId)}` : '/api/sso/status';
+fetch(ssoStatusUrl).then(r => r.json()).then(d => {
   if (d.enabled) document.getElementById('sso-section').style.display = '';
 }).catch(() => {});
 
@@ -208,8 +311,7 @@ form.addEventListener('submit', async (e) => {
     if (data.mfa_required && data.mfa_token) {
       _mfaToken = data.mfa_token;
       _pendingUser = data.user;
-      form.style.display = 'none';
-      mfaForm.style.display = '';
+      _showOnly(mfaForm);
       document.getElementById('mfa-code').focus();
       return;
     }
@@ -247,10 +349,97 @@ mfaForm.addEventListener('submit', async (e) => {
 document.getElementById('mfa-back').onclick = () => {
   _mfaToken = null;
   _pendingUser = null;
-  mfaForm.style.display = 'none';
   mfaErr.style.display = 'none';
-  form.style.display = '';
   document.getElementById('mfa-code').value = '';
+  _showOnly(form);
+};
+
+// ---- Forgot password ----
+
+document.getElementById('forgot-password-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.getElementById('forgot-error').style.display = 'none';
+  document.getElementById('forgot-success').style.display = 'none';
+  document.getElementById('forgot-email-block').style.display = '';
+  document.getElementById('forgot-submit').style.display = '';
+  _showOnly(forgotForm);
+  document.getElementById('forgot-email').focus();
+});
+
+forgotForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('forgot-error');
+  const okEl  = document.getElementById('forgot-success');
+  errEl.style.display = 'none';
+  try {
+    const resp = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email: document.getElementById('forgot-email').value.trim() }),
+    });
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      throw new Error(d.detail || 'Error al procesar la solicitud');
+    }
+    // Ocultar el campo y boton, mostrar mensaje de exito
+    document.getElementById('forgot-email-block').style.display = 'none';
+    document.getElementById('forgot-submit').style.display = 'none';
+    okEl.style.display = '';
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+});
+
+document.getElementById('forgot-back').onclick = () => {
+  document.getElementById('forgot-email').value = '';
+  document.getElementById('forgot-error').style.display = 'none';
+  document.getElementById('forgot-success').style.display = 'none';
+  document.getElementById('forgot-email-block').style.display = '';
+  document.getElementById('forgot-submit').style.display = '';
+  _showOnly(form);
+};
+
+// ---- Reset password ----
+
+resetForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('reset-error');
+  const okEl  = document.getElementById('reset-success');
+  errEl.style.display = 'none';
+  const np  = document.getElementById('new-password').value;
+  const np2 = document.getElementById('new-password2').value;
+  if (np !== np2) {
+    errEl.textContent = 'Las contraseñas no coinciden';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const resp = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ token: resetForm.dataset.token, new_password: np }),
+    });
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      throw new Error(d.detail || 'Error al restablecer la contraseña');
+    }
+    document.getElementById('reset-fields').style.display = 'none';
+    okEl.style.display = '';
+    setTimeout(() => { _showOnly(form); }, 3000);
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+});
+
+document.getElementById('reset-back').onclick = () => {
+  document.getElementById('reset-error').style.display = 'none';
+  document.getElementById('reset-success').style.display = 'none';
+  document.getElementById('reset-fields').style.display = '';
+  document.getElementById('new-password').value = '';
+  document.getElementById('new-password2').value = '';
+  _showOnly(form);
 };
 </script>
 

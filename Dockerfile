@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /srv/app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates \
+    curl ca-certificates libpq5 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

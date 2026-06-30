@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
 
+    # URL publica de la aplicacion — usada en emails de reset de contrasena.
+    # Si no se configura, el endpoint forgot-password devolvera 503.
+    public_url: str = ""
+
     # Admin inicial
     admin_email: str = "admin@company.internal"
     admin_password: str = "ChangeMe123!"

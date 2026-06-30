@@ -9,21 +9,32 @@ class Base(DeclarativeBase):
     pass
 
 
-connect_args = {}
-if settings.db_url.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+_is_sqlite = settings.db_url.startswith("sqlite")
 
-engine = create_engine(
-    settings.db_url,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
+if _is_sqlite:
+    engine = create_engine(
+        settings.db_url,
+        connect_args={"check_same_thread": False},
+        pool_pre_ping=True,
+    )
 
-# A7: SQLite requiere activar FK constraints por conexion (por defecto estan desactivadas)
-if settings.db_url.startswith("sqlite"):
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(conn, _record):
         conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=-32000")  # 32 MB cache
+        conn.execute("PRAGMA temp_store=MEMORY")
+
+else:
+    engine = create_engine(
+        settings.db_url,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=1800,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

@@ -277,9 +277,9 @@ Implementado en v2.2.0:
 
 Pendiente:
 
-- [ ] Multi-idioma (en/es/de/fr).
+- [x] Multi-idioma (es/en) — selector en el header.
 - [ ] RBAC granular (roles personalizados por modulo).
-- [ ] Reset de contrasena por email (requiere SMTP configurado).
+- [x] Reset de contrasena por email (requiere SMTP configurado).
 - [ ] Workflow de aprobacion de tratamientos con doble firma.
 
 ---
