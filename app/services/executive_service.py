@@ -32,8 +32,8 @@ def get_kpis(db: Session, org_id: int) -> dict:
     row = db.query(
         _func.count(Risk.id).label("total"),
         _func.sum(case(
-            (Risk.residual_level >= 5, 1), else_=0
-        ).filter(Risk.status.notin_(closed_statuses))).label("high"),
+            ((Risk.residual_level >= 5) & (Risk.status.notin_(closed_statuses)), 1), else_=0
+        )).label("high"),
         _func.sum(case(
             (Risk.status == RiskStatus.ACCEPTED.value, 1), else_=0
         )).label("accepted"),
@@ -41,8 +41,8 @@ def get_kpis(db: Session, org_id: int) -> dict:
             (Risk.created_at >= thirty_days_ago, 1), else_=0
         )).label("new_30d"),
         _func.sum(case(
-            (Risk.residual_level > appetite, 1), else_=0
-        ).filter(Risk.status.notin_(closed_statuses))).label("over_appetite"),
+            ((Risk.residual_level > appetite) & (Risk.status.notin_(closed_statuses)), 1), else_=0
+        )).label("over_appetite"),
     ).filter(Risk.organization_id == org_id).one()
 
     total_risks = row.total or 0
