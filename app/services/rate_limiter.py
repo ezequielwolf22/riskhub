@@ -90,6 +90,22 @@ def reset_login_counter(ip: str) -> None:
         _reset_memory(ip)
 
 
+def reset_all_counters() -> None:
+    """Elimina todos los registros de intentos (util para tests y mantenimiento)."""
+    if _use_sqlite:
+        with _db_lock:
+            try:
+                conn = sqlite3.connect(_db_path, check_same_thread=False)
+                conn.execute("DELETE FROM login_attempts")
+                conn.commit()
+                conn.close()
+            except Exception as exc:
+                logger.warning("Rate limiter SQLite error en reset_all: %s", exc)
+    else:
+        with _mem_lock:
+            _mem_store.clear()
+
+
 def remaining_lockout_seconds(ip: str) -> int:
     """Segundos restantes de bloqueo para una IP (0 si no esta bloqueada)."""
     if _use_sqlite:
