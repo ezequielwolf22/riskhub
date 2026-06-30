@@ -21,6 +21,8 @@ const ViewGuide = {
     { id: 'incidents', title: 'Incidentes (NIS2)', icon: '🚨' },
     { id: 'suppliers', title: 'Proveedores (supply chain)', icon: '🔗' },
     { id: 'tprm', title: 'TPRM (Riesgo de Terceros)', icon: '🏢' },
+    { id: 'vendor-assessments', title: 'Evaluaciones de proveedor', icon: '📋' },
+    { id: 'vendor-issues', title: 'Hallazgos de proveedor', icon: '🚨' },
     { id: 'nonconformities', title: 'No conformidades', icon: '⚠️' },
     { id: 'tasks', title: 'Tareas de tratamiento', icon: '📌' },
     { id: 'gdpr', title: 'RGPD / Privacidad', icon: '🔒' },
@@ -132,6 +134,8 @@ const ViewGuide = {
       incidents: this._cIncidents,
       suppliers: this._cSuppliers,
       tprm: this._cTprm,
+      'vendor-assessments': this._cVendorAssessments,
+      'vendor-issues': this._cVendorIssues,
       nonconformities: this._cNonConformities,
       tasks: this._cTasks,
       gdpr: this._cGdpr,
@@ -1639,6 +1643,57 @@ const ViewGuide = {
     <p>Al crear un VendorIssue con severidad CRITICAL, el sistema crea automáticamente un riesgo en el registro. Al cerrar el VendorIssue, el riesgo reduce su likelihood automáticamente.</p>
     <h4>OSINT → VendorIssue</h4>
     <p>Hallazgos OSINT CRITICAL/HIGH que coincidan con el dominio de un proveedor generan un VendorIssue automático. Al resolver el hallazgo, el issue puede marcarse como mitigado.</p>
+  `;},
+
+  get _cVendorAssessments() { return `
+    ${this._p('Las <strong>Evaluaciones de Proveedor (Vendor Risk Assessment)</strong> consolidan toda la informacion de riesgo de un tercero en un informe estructurado: score TPRM, resultados de cuestionarios, hallazgos activos y recomendacion de continuidad. Es el documento central para la toma de decision sobre si seguir trabajando con un proveedor.')}
+    ${this._h('Crear una evaluacion')}
+    ${this._steps([
+      'Ve a <strong>Proveedores → Evaluaciones</strong> o accede desde el perfil de un proveedor especifico.',
+      'Haz clic en <strong>+ Nueva evaluacion</strong> y selecciona el proveedor.',
+      'El sistema precalcula el score consolidado a partir del perfil TPRM y los cuestionarios respondidos.',
+      'Revisa los dominios de riesgo (seguridad de datos, continuidad, cumplimiento, financiero, operacional) y ajusta el score manual si procede.',
+      'Aniade observaciones, evidencias de soporte y define la recomendacion: <em>Aprobar</em>, <em>Aprobar con condiciones</em> o <em>Rechazar</em>.',
+      'Haz clic en <strong>Aprobar evaluacion</strong> para cerrarla y registrar la decision.',
+    ])}
+    ${this._h('Registrar en el libro de riesgos')}
+    ${this._p('Si la evaluacion identifica riesgo residual inaceptable, puedes usar el boton <strong>Publicar en registro de riesgos</strong>: genera automaticamente un riesgo ISO 27005 vinculado al proveedor con los datos de la evaluacion ya precargados (activo, amenaza, probabilidad, impacto).')}
+    ${this._h('Score por dominio')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Seguridad de datos (30%):</strong> sensibilidad, volumen y tipo de acceso a sistemas.</li>
+      <li><strong>Continuidad (20%):</strong> SLAs, plan de contingencia, DR documentado.</li>
+      <li><strong>Cumplimiento (25%):</strong> certificaciones (ISO 27001, SOC 2...), alcance NIS2/DORA/ENS.</li>
+      <li><strong>Financiero (10%):</strong> concentracion y dependencia economica.</li>
+      <li><strong>Operacional (15%):</strong> dependencias criticas, nth-party exposure.</li>
+    </ul>
+    ${this._tip('Una evaluacion aprobada es valida hasta la proxima revision programada (configurable por tier: critico 6 meses, alto 12 meses, medio 24 meses). El sistema avisa cuando se acerca la fecha.')}
+  `;},
+
+  get _cVendorIssues() { return `
+    ${this._p('Los <strong>Hallazgos de Proveedor (Vendor Issues)</strong> registran incidencias, vulnerabilidades o incumplimientos detectados en un tercero, con seguimiento de SLA por severidad hasta su resolucion. Son la herramienta de gestion correctiva dentro del ciclo TPRM.')}
+    ${this._h('Crear un hallazgo')}
+    ${this._steps([
+      'Ve a <strong>Proveedores → Hallazgos</strong> o accede desde el perfil del proveedor.',
+      'Haz clic en <strong>+ Nuevo hallazgo</strong>.',
+      'Define el titulo, descripcion, severidad (CRITICAL / HIGH / MEDIUM / LOW) y referencias a frameworks normativos.',
+      'El sistema calcula automaticamente la <strong>fecha limite (due date)</strong> segun la severidad: CRITICAL 7 dias, HIGH 30 dias, MEDIUM 90 dias, LOW 180 dias.',
+      'Asigna el hallazgo al responsable del proveedor para su seguimiento.',
+    ])}
+    ${this._h('SLA y escalada automatica')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li>El scheduler revisa diariamente los hallazgos abiertos y crea <strong>tareas de tratamiento</strong> en el modulo de Tareas cuando se acerca la fecha limite.</li>
+      <li>Los hallazgos CRITICAL generan automaticamente un <strong>riesgo en el registro ISO 27005</strong> vinculado al proveedor.</li>
+      <li>Los hallazgos CRITICAL/HIGH detectados por OSINT que coinciden con el dominio del proveedor se crean automaticamente.</li>
+    </ul>
+    ${this._h('Ciclo de vida')}
+    ${this._steps([
+      '<strong>Abierto:</strong> hallazgo detectado y pendiente de resolucion.',
+      '<strong>En mitigacion:</strong> el proveedor ha enviado un plan de accion.',
+      '<strong>Resuelto:</strong> evidencia de correccion recibida, pendiente de verificacion.',
+      '<strong>Cerrado:</strong> verificado y cerrado. El riesgo vinculado reduce su likelihood automaticamente.',
+      '<strong>Aceptado:</strong> riesgo reconocido y aceptado formalmente (requiere justificacion).',
+    ])}
+    ${this._warn('Un hallazgo CRITICAL no cerrado en su SLA escala al responsable de seguridad mediante alerta y genera una no conformidad automatica si el proveedor tiene cuestionario activo.')}
   `;},
 
   get _cNonConformities() { return `

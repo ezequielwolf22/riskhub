@@ -156,6 +156,7 @@ def import_suppliers(content: bytes, filename: str, org_id: int, db: Session) ->
             )
             db.add(supplier)
             db.flush()  # asignar id para el scoring
+            supplier.code = f"SUP-{supplier.id:04d}"
             tprm_scoring_service.recompute_supplier(db, supplier, commit=False)
             # Si el Excel incluye nivel de riesgo explicito, tiene prioridad sobre el calculado
             if explicit_risk is not None:

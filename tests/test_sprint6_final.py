@@ -67,7 +67,7 @@ def test_sprint6_regwatch_full_propagation(sprint6_db):
     )
     pol = Policy(
         organization_id=org.id, code="POL-SPRINT6", title="SGSI Test",
-        status=PolicyStatus.PUBLISHED, iso_clauses=["8.10"],
+        status=PolicyStatus.PUBLISHED, iso_clauses=["8.10-sprint6"],
     )
     plan = BCPPlan(
         organization_id=org.id, code="BCP-SPRINT6", name="BCP Test",

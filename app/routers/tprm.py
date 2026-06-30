@@ -40,7 +40,8 @@ def dashboard_summary(db: Session = Depends(get_db),
 
     by_tier = {"critical": 0, "high": 0, "medium": 0, "low": 0, "unrated": 0}
     _bands = get_risk_bands(db, getattr(current_user, "organization_id", None))
-    by_residual = {b["code"]: 0 for b in _bands}
+    by_residual = {"critical": 0, "high": 0, "medium": 0, "low": 0, "very_low": 0, "unknown": 0}
+    by_residual.update({b["code"]: 0 for b in _bands})
     overdue = 0
     nis2 = dora = ens = processors = 0
 
