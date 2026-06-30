@@ -19,6 +19,9 @@ git pull origin main
 echo "[$(date -Iseconds)] ==> Construyendo imagen $VERSIONED_TAG..."
 docker build -t "$VERSIONED_TAG" -t riskhub:latest .
 
+# Configurar cron de backup diario (idempotente, no falla si ya esta instalado)
+bash "$REPO_DIR/scripts/setup_cron.sh" 2>/dev/null || true
+
 # Backup de BD antes de desplegar (no falla el deploy si falla el backup)
 echo "[$(date -Iseconds)] ==> Backup pre-deploy..."
 bash "$REPO_DIR/scripts/backup.sh" || echo "AVISO: Backup pre-deploy fallo (no critico)"
