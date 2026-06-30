@@ -3,7 +3,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy.orm import Session
+from sqlalchemy import case, func as _func
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
     Risk, RiskStatus, Asset, TreatmentTask, TaskStatus,
@@ -15,103 +16,105 @@ logger = logging.getLogger("riskhub.executive")
 
 
 def get_kpis(db: Session, org_id: int) -> dict:
-    """Calcula KPIs dinámicos para dashboard ejecutivo."""
+    """Calcula KPIs dinámicos para dashboard ejecutivo — una sola pasada SQL por tabla."""
     now = datetime.now(timezone.utc)
     thirty_days_ago = now - timedelta(days=30)
     seven_days = now + timedelta(days=7)
 
-    # Riesgos
-    total_risks = db.query(Risk).filter(Risk.organization_id == org_id).count()
-    high_risks = db.query(Risk).filter(
-        Risk.organization_id == org_id,
-        Risk.residual_level >= 5,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
-    ).count()
-    accepted_risks = db.query(Risk).filter(
-        Risk.organization_id == org_id,
-        Risk.status == RiskStatus.ACCEPTED,
-    ).count()
-    new_risks_30d = db.query(Risk).filter(
-        Risk.organization_id == org_id,
-        Risk.created_at >= thirty_days_ago,
-    ).count()
-
-    # MAT (Mean Age of Treatment)
-    open_risks = db.query(Risk).filter(
-        Risk.organization_id == org_id,
-        Risk.status.in_([RiskStatus.IDENTIFIED, RiskStatus.ASSESSED]),
-    ).all()
-    mat_days = 0
-    if open_risks:
-        ages = [
-            (now - (r.created_at.replace(tzinfo=timezone.utc) if r.created_at else now)).days
-            for r in open_risks
-        ]
-        mat_days = int(sum(ages) / len(ages))
-
-    # Mitigación
-    mitigated_pct = int((accepted_risks / total_risks * 100) if total_risks > 0 else 0)
-
-    # Controles
-    total_controls = db.query(ControlImplementation).filter(
-        ControlImplementation.organization_id == org_id
-    ).count()
-    implemented_controls = db.query(ControlImplementation).filter(
-        ControlImplementation.organization_id == org_id,
-        ControlImplementation.status == ControlStatus.IMPLEMENTED,
-    ).count()
-    controls_pct = int((implemented_controls / total_controls * 100) if total_controls > 0 else 0)
-
-    # Tareas
-    overdue_tasks = db.query(TreatmentTask).filter(
-        TreatmentTask.organization_id == org_id,
-        TreatmentTask.status != TaskStatus.DONE,
-        TreatmentTask.due_date < now,
-    ).count()
-    upcoming_tasks = db.query(TreatmentTask).filter(
-        TreatmentTask.organization_id == org_id,
-        TreatmentTask.status != TaskStatus.DONE,
-        TreatmentTask.due_date <= seven_days,
-        TreatmentTask.due_date >= now,
-    ).count()
-
-    # Incidentes
-    incidents_30d = db.query(Incident).filter(
-        Incident.organization_id == org_id,
-        Incident.created_at >= thirty_days_ago,
-    ).count() if hasattr(Incident, "organization_id") else 0
-
-    # Proveedores criticos (risk_level HIGH o is_critical)
-    critical_suppliers = db.query(Supplier).filter(
-        Supplier.organization_id == org_id,
-        Supplier.is_critical == True,
-    ).count()
-
-    # Risk appetite status
+    # Risk appetite (necesario para risks_over_appetite)
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     appetite = ctx.risk_appetite if ctx else 3
-    risks_over_appetite = db.query(Risk).filter(
-        Risk.organization_id == org_id,
-        Risk.residual_level > appetite,
-        Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
-    ).count()
 
-    # Overall risk score (0-100, menor = mejor)
-    if total_risks == 0:
-        risk_score = 0
+    closed_statuses = [RiskStatus.ACCEPTED.value, RiskStatus.CLOSED.value]
+    open_statuses = [RiskStatus.IDENTIFIED.value, RiskStatus.ASSESSED.value]
+
+    # Una sola query de riesgos con todas las agregaciones via CASE WHEN
+    row = db.query(
+        _func.count(Risk.id).label("total"),
+        _func.sum(case(
+            (Risk.residual_level >= 5, 1), else_=0
+        ).filter(Risk.status.notin_(closed_statuses))).label("high"),
+        _func.sum(case(
+            (Risk.status == RiskStatus.ACCEPTED.value, 1), else_=0
+        )).label("accepted"),
+        _func.sum(case(
+            (Risk.created_at >= thirty_days_ago, 1), else_=0
+        )).label("new_30d"),
+        _func.sum(case(
+            (Risk.residual_level > appetite, 1), else_=0
+        ).filter(Risk.status.notin_(closed_statuses))).label("over_appetite"),
+    ).filter(Risk.organization_id == org_id).one()
+
+    total_risks = row.total or 0
+    high_risks = int(row.high or 0)
+    accepted_risks = int(row.accepted or 0)
+    new_risks_30d = int(row.new_30d or 0)
+    risks_over_appetite = int(row.over_appetite or 0)
+    mitigated_pct = int(accepted_risks / total_risks * 100) if total_risks else 0
+
+    # MAT: calcular en Python con los riesgos abiertos (solo ids + created_at — ligero)
+    open_dates = db.query(Risk.created_at).filter(
+        Risk.organization_id == org_id,
+        Risk.status.in_(open_statuses),
+        Risk.created_at.isnot(None),
+    ).all()
+    if open_dates:
+        ages = [(now - r.created_at.replace(tzinfo=timezone.utc)).days for r in open_dates]
+        mat_days = int(sum(ages) / len(ages))
     else:
+        mat_days = 0
+
+    # Controles — dos conteos en una query
+    ctrl_row = db.query(
+        _func.count(ControlImplementation.id).label("total"),
+        _func.sum(case(
+            (ControlImplementation.status == ControlStatus.IMPLEMENTED.value, 1), else_=0
+        )).label("implemented"),
+    ).filter(ControlImplementation.organization_id == org_id).one()
+    total_controls = ctrl_row.total or 0
+    implemented_controls = int(ctrl_row.implemented or 0)
+    controls_pct = int(implemented_controls / total_controls * 100) if total_controls else 0
+
+    # Tareas — overdue + upcoming en una query
+    task_row = db.query(
+        _func.sum(case(
+            (TreatmentTask.due_date < now, 1), else_=0
+        )).label("overdue"),
+        _func.sum(case(
+            ((TreatmentTask.due_date >= now) & (TreatmentTask.due_date <= seven_days), 1), else_=0
+        )).label("upcoming"),
+    ).filter(
+        TreatmentTask.organization_id == org_id,
+        TreatmentTask.status != TaskStatus.DONE.value,
+    ).one()
+    overdue_tasks = int(task_row.overdue or 0)
+    upcoming_tasks = int(task_row.upcoming or 0)
+
+    # Incidentes + proveedores criticos en queries simples de COUNT (rapidas con indice)
+    incidents_30d = db.query(_func.count(Incident.id)).filter(
+        Incident.organization_id == org_id,
+        Incident.created_at >= thirty_days_ago,
+    ).scalar() or 0
+
+    critical_suppliers = db.query(_func.count(Supplier.id)).filter(
+        Supplier.organization_id == org_id,
+        Supplier.is_critical == True,
+    ).scalar() or 0
+
+    risk_score = 0
+    if total_risks:
         risk_score = min(100, int(
             (high_risks * 3 + risks_over_appetite * 2 + overdue_tasks) / max(1, total_risks) * 20
         ))
 
     return {
-        "risk_score": risk_score,                        # 0-100 (menor = mejor)
+        "risk_score": risk_score,
         "total_risks": total_risks,
         "high_risks": high_risks,
         "risks_over_appetite": risks_over_appetite,
         "mitigated_pct": mitigated_pct,
         "new_risks_30d": new_risks_30d,
-        "mat_days": mat_days,                            # Mean Age of Treatment
+        "mat_days": mat_days,
         "controls_pct": controls_pct,
         "implemented_controls": implemented_controls,
         "total_controls": total_controls,
@@ -124,30 +127,27 @@ def get_kpis(db: Session, org_id: int) -> dict:
 
 
 def get_top_risks(db: Session, org_id: int, limit: int = 10, offset: int = 0) -> list[dict]:
-    """Top N riesgos por nivel residual con paginacion."""
-    risks = db.query(Risk).filter(
+    """Top N riesgos por nivel residual — eager load de asset para evitar N+1."""
+    risks = db.query(Risk).options(
+        joinedload(Risk.asset),
+    ).filter(
         Risk.organization_id == org_id,
         Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).order_by(Risk.residual_level.desc()).offset(offset).limit(limit).all()
 
-    result = []
-    for r in risks:
-        asset_name = ""
-        if r.asset_id:
-            asset = db.get(Asset, r.asset_id)
-            if asset:
-                asset_name = asset.name or ""
-        result.append({
+    return [
+        {
             "id": r.id,
             "code": r.code,
             "description": (r.description or "")[:100],
-            "asset_name": asset_name,
+            "asset_name": r.asset.name if r.asset else "",
             "residual_level": r.residual_level,
             "inherent_level": r.inherent_level,
             "status": r.status.value if hasattr(r.status, "value") else str(r.status),
             "created_at": r.created_at.isoformat() if r.created_at else None,
-        })
-    return result
+        }
+        for r in risks
+    ]
 
 
 def get_risk_trend(db: Session, org_id: int, days: int = 30) -> list[dict]:
