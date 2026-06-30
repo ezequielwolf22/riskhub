@@ -128,6 +128,8 @@ const ViewOrganizations = (() => {
     _selectedOrg = org;
 
     const panel = document.getElementById('org-detail-panel');
+    const grid = document.getElementById('orgs-grid');
+    if (grid) grid.style.display = 'none';
     panel.style.display = 'block';
     panel.innerHTML = `<p class="muted">${t('organizations.loading')}</p>`;
 
@@ -141,7 +143,7 @@ const ViewOrganizations = (() => {
       <div class="card" style="margin-top:24px;">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
           <strong>${t('organizations.detail_title', { name: org.name })}</strong>
-          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('org-detail-panel').style.display='none'">${t('organizations.close_btn')}</button>
+          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('org-detail-panel').style.display='none';const g=document.getElementById('orgs-grid');if(g)g.style.display=''">${t('organizations.close_btn')}</button>
         </div>
         <div class="card-body">
           <form id="edit-org-form" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
@@ -586,6 +588,8 @@ const ViewOrganizations = (() => {
       renderGrid(document.getElementById('orgs-grid'));
       const panel = document.getElementById('org-detail-panel');
       if (panel) panel.style.display = 'none';
+      const g = document.getElementById('orgs-grid');
+      if (g) g.style.display = '';
     } catch (err) {
       UI.toast(err.message, 'error');
     }
@@ -642,6 +646,8 @@ const ViewOrganizations = (() => {
         renderGrid(document.getElementById('orgs-grid'));
         const panel = document.getElementById('org-detail-panel');
         if (panel) panel.style.display = 'none';
+        const g = document.getElementById('orgs-grid');
+        if (g) g.style.display = '';
       } catch (err) {
         UI.toast(err.message, 'error');
         btn.disabled = false;
