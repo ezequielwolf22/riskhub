@@ -159,6 +159,11 @@ class User(Base):
     mfa_secret = Column(String(255), nullable=True)
     # Codigos de recuperacion MFA — lista de hashes SHA-256
     mfa_backup_codes = Column(JSON, nullable=True)
+    # Override individual de MFA: None=sigue politica org, True=forzado, False=exento
+    mfa_override = Column(Boolean, nullable=True, default=None)
+    # Password reset por email (v6.2.0)
+    password_reset_token = Column(String(255), nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
 
 
 class AuditLog(Base):

@@ -151,6 +151,11 @@ def update_user(user_id: int, data: UserUpdate, request: Request, db: Session = 
         if not dest_org:
             raise HTTPException(404, _t("organizations.not_found", lang))
         u.organization_id = data.organization_id
+    # MFA override individual: solo admin/superadmin puede cambiarlo
+    if data.mfa_override_clear:
+        u.mfa_override = None
+    elif data.mfa_override is not None:
+        u.mfa_override = data.mfa_override
     log_action(db, current_user.id, "update", "user", str(user_id),
                {"email": u.email, "role": str(u.role), "is_active": u.is_active})
     db.commit()

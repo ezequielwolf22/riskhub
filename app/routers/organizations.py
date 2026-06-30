@@ -142,6 +142,8 @@ def update_organization(
         org.is_active = data.is_active
     if data.max_users is not None:
         org.max_users = data.max_users
+    if data.mfa_required is not None:
+        org.mfa_required = data.mfa_required
 
     log_action(db, current_user.id, "update", "organization", str(org_id),
                data.model_dump(exclude_none=True))

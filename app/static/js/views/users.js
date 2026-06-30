@@ -359,6 +359,21 @@ const ViewUsers = {
         <input class="input" type="password" id="f-pass" autocomplete="new-password">
         ${passHint}
       </div>
+      ${id ? `
+      <div class="span2" style="border-top:1px solid var(--border);padding-top:12px;">
+        <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px;">MFA (Autenticador)</label>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span style="font-size:12px;color:var(--text-muted);">Estado actual: ${u.mfa_enabled ? '<span style="color:var(--success-color,#22c55e);font-weight:600;">Activo</span>' : '<span style="color:var(--text-subtle);">No configurado</span>'}</span>
+          <select class="input" id="f-mfa-override" style="width:auto;min-width:180px;">
+            <option value="org" ${u.mfa_override === null || u.mfa_override === undefined ? 'selected' : ''}>Seguir politica de la org</option>
+            <option value="true" ${u.mfa_override === true ? 'selected' : ''}>Forzar MFA (requerido)</option>
+            <option value="false" ${u.mfa_override === false ? 'selected' : ''}>Exento de MFA</option>
+          </select>
+          ${u.mfa_enabled ? `<button type="button" class="btn btn-sm btn-ghost" id="f-mfa-disable-btn" style="color:var(--brand-orange);">Desactivar MFA</button>` : ''}
+        </div>
+        <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">El override individual tiene prioridad sobre la politica de la organizacion. Si hay SSO configurado, el SSO gestiona la autenticacion.</p>
+      </div>
+      ` : ''}
     `, {
       actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
                 ${id ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
@@ -376,6 +391,19 @@ const ViewUsers = {
       } catch (e) { UI.toast(e.message, 'error'); }
     };
 
+    const mfaDisableBtn = document.getElementById('f-mfa-disable-btn');
+    if (mfaDisableBtn) {
+      mfaDisableBtn.onclick = async () => {
+        if (!await UI.confirm(t('users.disable_mfa_confirm'))) return;
+        try {
+          await Api.post('/api/auth/mfa/disable-admin', { user_id: id });
+          UI.toast('MFA desactivado', 'success');
+          UI.closeModal();
+          isSuperAdmin ? ViewUsers._reloadSuperAdmin() : ViewUsers._reload();
+        } catch (e) { UI.toast(e.message, 'error'); }
+      };
+    }
+
     document.getElementById('m-save').onclick = async () => {
       const pass = document.getElementById('f-pass').value;
       const orgEl = document.getElementById('f-org');
@@ -390,6 +418,13 @@ const ViewUsers = {
           if (orgEl) {
             const orgVal = orgEl.value;
             body.organization_id = orgVal ? parseInt(orgVal) : null;
+          }
+          const mfaOverrideEl = document.getElementById('f-mfa-override');
+          if (mfaOverrideEl) {
+            const val = mfaOverrideEl.value;
+            if (val === 'true') { body.mfa_override = true; }
+            else if (val === 'false') { body.mfa_override = false; }
+            else { body.mfa_override_clear = true; }
           }
           await Api.users.update(id, body);
           UI.closeModal();

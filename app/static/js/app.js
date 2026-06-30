@@ -20,6 +20,7 @@ const Routes = {
   context: ViewContext,
   inbox: ViewInbox,
   'change-password-required': ViewChangePasswordRequired,
+  profile: ViewProfile,
 };
 
 // Mapa explicito de rutas legacy → hub/pestana. Las URLs antiguas siguen
@@ -268,40 +269,10 @@ function init() {
   }
   document.getElementById('btn-logout').onclick = () => Auth.logout();
 
-  // User chip abre modal de perfil
+  // User chip navega a Mi Perfil
   document.getElementById('user-chip').style.cursor = 'pointer';
   document.getElementById('user-chip').onclick = () => {
-    const me = Auth.user() || {};
-    UI.modal('Mi perfil', `
-      <div class="span2" style="margin-bottom:8px;">
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 4px;">
-          <strong>${UI.esc(me.full_name || '')}</strong>
-          &nbsp;<span class="badge badge-muted">${UI.esc(me.role || '')}</span>
-        </p>
-        <p style="font-size:12px;color:var(--text-subtle);margin:0;">${UI.esc(me.email || '')}</p>
-      </div>
-      <div class="span2"><hr style="border:none;border-top:1px solid var(--border);margin:8px 0;"></div>
-      <div class="span2"><label>Contrasena actual *</label><input type="password" id="p-cur"></div>
-      <div><label>Nueva contrasena *</label><input type="password" id="p-new"></div>
-      <div><label>Repetir nueva contrasena *</label><input type="password" id="p-new2"></div>
-    `, {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="m-save">Cambiar contrasena</button>`
-    });
-    document.getElementById('m-cancel').onclick = UI.closeModal;
-    document.getElementById('m-save').onclick = async () => {
-      const cur = document.getElementById('p-cur').value;
-      const nw = document.getElementById('p-new').value;
-      const nw2 = document.getElementById('p-new2').value;
-      if (!cur || !nw) { UI.toast('Completa todos los campos', 'error'); return; }
-      if (nw !== nw2) { UI.toast('Las contrasenas no coinciden', 'error'); return; }
-      if (nw.length < 8) { UI.toast('La nueva contrasena debe tener al menos 8 caracteres', 'error'); return; }
-      try {
-        await Api.changePassword({ current_password: cur, new_password: nw });
-        UI.toast('Contrasena cambiada correctamente', 'success');
-        UI.closeModal();
-      } catch (e) { UI.toast(e.message, 'error'); }
-    };
+    location.hash = '/profile';
   };
 
   // Selector de organizacion para superadmin

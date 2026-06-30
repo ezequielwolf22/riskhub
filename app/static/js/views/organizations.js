@@ -163,6 +163,21 @@ const ViewOrganizations = (() => {
             <label>${t('organizations.max_users_label')}
               <input class="input" type="number" name="max_users" value="${org.max_users}" min="1">
             </label>
+            <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+                  <div style="position:relative;display:inline-block;width:40px;height:22px;">
+                    <input type="checkbox" id="org-mfa-toggle" name="mfa_required" ${org.mfa_required ? 'checked' : ''}
+                      style="opacity:0;width:0;height:0;position:absolute;"
+                      onchange="this.closest('label').querySelector('.toggle-track').style.background=this.checked?'var(--brand-purple)':'var(--border)';this.closest('label').querySelector('.toggle-knob').style.left=this.checked?'20px':'2px'">
+                    <span class="toggle-track" style="position:absolute;inset:0;border-radius:22px;transition:background .2s;background:${org.mfa_required ? 'var(--brand-purple)' : 'var(--border)'}"></span>
+                    <span class="toggle-knob" style="position:absolute;top:3px;left:${org.mfa_required ? '20px' : '2px'};width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+                  </div>
+                  <span style="font-size:13px;font-weight:500;">Requerir MFA para todos los usuarios</span>
+                </label>
+                <span style="font-size:12px;color:var(--text-muted);">Los overrides individuales de cada usuario tienen prioridad. Si hay SSO configurado, el SSO es quien gestiona la autenticacion.</span>
+              </div>
+            </div>
             <div style="grid-column:1/-1;display:flex;gap:12px;justify-content:flex-end;">
               <button type="submit" class="btn btn-primary">${t('organizations.save_btn')}</button>
             </div>
@@ -226,6 +241,7 @@ const ViewOrganizations = (() => {
         domain: fd.get('domain') || null,
         plan: fd.get('plan'),
         max_users: parseInt(fd.get('max_users')),
+        mfa_required: document.getElementById('org-mfa-toggle').checked,
       };
       try {
         await Api.patch(`/api/organizations/${orgId}`, payload);

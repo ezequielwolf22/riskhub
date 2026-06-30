@@ -51,6 +51,7 @@ class OrganizationUpdate(BaseModel):
     plan: Optional[str] = None
     is_active: Optional[bool] = None
     max_users: Optional[int] = Field(default=None, ge=1)
+    mfa_required: Optional[bool] = None
 
 
 class OrganizationOut(ORMBase):
@@ -64,6 +65,7 @@ class OrganizationOut(ORMBase):
     owner_id: Optional[int] = None
     user_count: int = 0
     token_usage: int = 0
+    mfa_required: bool = False
 
 
 # ---------- LICENSES ----------
@@ -122,6 +124,9 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     password: Optional[str] = None
     organization_id: Optional[int] = None
+    # None=sigue politica org, True=forzado individual, False=exento individual
+    mfa_override: Optional[bool] = None
+    mfa_override_clear: bool = False  # True para resetear a None (seguir org)
 
 
 class UserOut(ORMBase):
@@ -136,6 +141,7 @@ class UserOut(ORMBase):
     organization_id: Optional[int] = None
     must_change_password: bool = False
     mfa_enabled: bool = False
+    mfa_override: Optional[bool] = None
     # Solo se rellena cuando el admin crea un usuario con OTP generado automaticamente
     otp_password: Optional[str] = None
     otp_email_sent: Optional[bool] = None

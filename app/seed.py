@@ -263,6 +263,7 @@ def _migrate_columns() -> None:
         ("ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN DEFAULT 0", "users", "mfa_enabled"),
         ("ALTER TABLE users ADD COLUMN mfa_secret VARCHAR(255)", "users", "mfa_secret"),
         ("ALTER TABLE organizations ADD COLUMN mfa_required BOOLEAN DEFAULT 0", "organizations", "mfa_required"),
+        ("ALTER TABLE users ADD COLUMN mfa_override BOOLEAN", "users", "mfa_override"),
         # v1.8 — Feature flags per-org
         ("ALTER TABLE feature_flags ADD COLUMN organization_id INTEGER REFERENCES organizations(id)", "feature_flags", "organization_id"),
         # v1.8 — Compliance/AI: gap cache + auto-categorization
@@ -733,6 +734,9 @@ def _migrate_columns() -> None:
         ("ALTER TABLE audit_log ADD COLUMN old_value TEXT", "audit_log", "old_value"),
         ("ALTER TABLE audit_log ADD COLUMN new_value TEXT", "audit_log", "new_value"),
         ("ALTER TABLE audit_log ADD COLUMN ip_address VARCHAR(64)", "audit_log", "ip_address"),
+        # v6.2.0 — Password reset por email
+        ("ALTER TABLE users ADD COLUMN password_reset_token VARCHAR(255)", "users", "password_reset_token"),
+        ("ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME", "users", "password_reset_expires_at"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
