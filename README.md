@@ -80,15 +80,22 @@ en `.env` con `RISKHUB_PORT_HOST`).
 **Login inicial**: el email/password configurados en `.env`. **Cambia la contrasena en el
 primer inicio de sesion**.
 
-### Datos persistentes
+### Datos persistentes y backups
 
 Los datos se guardan en el volumen Docker `riskhub-data` (`/srv/data` dentro
-del contenedor). Backup recomendado:
+del contenedor). El sistema incluye un script de backup automatico:
 
 ```bash
-docker run --rm -v riskhub-data:/data -v $(pwd):/backup \
-  ubuntu tar czf /backup/riskhub-$(date +%F).tar.gz /data
+# Backup manual puntual
+bash /opt/riskhub/scripts/backup.sh
+
+# Instalar cron de backup diario a las 02:00 (automatico tras el primer deploy)
+bash /opt/riskhub/scripts/setup_cron.sh
 ```
+
+Los backups se guardan en `/srv/data/backups/` como archivos `.db.gz` comprimidos
+con rotacion automatica de 30 dias. Para copiarlos a un almacenamiento externo
+(NAS, S3, SFTP) usa las herramientas de infraestructura del cliente.
 
 ---
 
@@ -231,9 +238,9 @@ Resumen de buenas practicas para entornos productivos:
 2. SSH solo con clave (no password).
 3. Firewall: solo 22 (SSH) y 443/80 (HTTPS/HTTP).
 4. Docker + docker compose instalados.
-5. Reverse proxy (Caddy o nginx) con TLS.
+5. Reverse proxy (nginx o Caddy) con TLS gestionado por el cliente.
 6. `RISKHUB_ENV=production` en `.env`.
-7. Backup nocturno del volumen `riskhub-data`.
+7. Backup nocturno automatico: se instala solo en el primer `deploy.sh` (ver seccion Backups).
 
 ---
 
@@ -254,12 +261,25 @@ Resumen de buenas practicas para entornos productivos:
 
 ## Roadmap
 
-- [ ] SuperAdmin con control de licenciamiento y activacion de modulos.
-- [ ] OIDC/SAML SSO (Microsoft Entra, Google Workspace).
-- [ ] Integracion SharePoint para importar documentacion SGSI en masa.
-- [ ] Integraciones SAP / Jagger / Sphera.
-- [ ] Extraccion automatica de clausulas ISO desde documentos de politicas.
+Implementado en v2.2.0:
+
+- [x] SSO OIDC (Microsoft Entra ID / Azure AD, Google Workspace, Okta).
+- [x] Integracion SharePoint (browser de documentos + importacion masiva).
+- [x] ERP Webhooks (SAP / Jagger / Sphera via HMAC-SHA256).
+- [x] Extraccion automatica de clausulas ISO 27001/27002 desde documentos.
+- [x] Licenciamiento por plan (free / starter / pro / enterprise).
+- [x] TPRM completo: evaluaciones, hallazgos, cuestionarios con IA, heatmap.
+- [x] Vigilancia normativa automatica (Regwatch): EUR-Lex, BOE, ENISA, NIST, NIS2, ISO...
+- [x] Audit trail inmutable con diffs campo a campo.
+- [x] Evidencias vinculadas a controles, riesgos y requisitos normativos.
+- [x] CVE Monitor (NVD/NIST) con analisis IA.
+- [x] OSINT: escaneo de huella digital (email, dominio, IP, username).
+
+Pendiente:
+
 - [ ] Multi-idioma (en/es/de/fr).
+- [ ] RBAC granular (roles personalizados por modulo).
+- [ ] Reset de contrasena por email (requiere SMTP configurado).
 - [ ] Workflow de aprobacion de tratamientos con doble firma.
 
 ---
