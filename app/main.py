@@ -16,6 +16,7 @@ from app.middleware.license_guard import LicenseGuardMiddleware
 
 setup_logging(env=settings.env)
 
+from app.routers import bootstrap as bootstrap_router
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
@@ -154,6 +155,7 @@ def health():
 
 
 # Routers REST
+app.include_router(bootstrap_router.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(admin.router)
@@ -229,27 +231,32 @@ app.include_router(approvals_public_router)
 app.include_router(audit_log_router)
 
 
-class RevalidateStaticFiles(StaticFiles):
-    """StaticFiles que obliga al navegador a revalidar (ETag/If-None-Match)
-    en cada carga en lugar de usar cache heuristica, para que los deploys
-    de JS/CSS se reflejen siempre sin necesidad de limpiar cache manualmente."""
+class VersionedStaticFiles(StaticFiles):
+    """StaticFiles con cache larga para assets versionados (?v=X.X.X en index.html).
+
+    JS/CSS/img se sirven con max-age=1 año + immutable: el navegador no hace
+    ninguna peticion al servidor en cargas posteriores hasta que cambie la URL.
+    Para actualizar basta con subir el numero de version en el ?v= de index.html.
+    """
 
     async def get_response(self, path: str, scope: Scope):
         response = await super().get_response(path, scope)
-        if response.status_code in (200, 304):
-            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif response.status_code == 304:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
 
 # Frontend estatico
 if STATIC_DIR.exists():
-    app.mount("/assets", RevalidateStaticFiles(directory=STATIC_DIR / "assets" if (STATIC_DIR / "assets").exists() else STATIC_DIR), name="assets")
-    app.mount("/css", RevalidateStaticFiles(directory=STATIC_DIR / "css"), name="css")
-    app.mount("/js", RevalidateStaticFiles(directory=STATIC_DIR / "js"), name="js")
+    app.mount("/assets", VersionedStaticFiles(directory=STATIC_DIR / "assets" if (STATIC_DIR / "assets").exists() else STATIC_DIR), name="assets")
+    app.mount("/css", VersionedStaticFiles(directory=STATIC_DIR / "css"), name="css")
+    app.mount("/js", VersionedStaticFiles(directory=STATIC_DIR / "js"), name="js")
     if (STATIC_DIR / "img").exists():
-        app.mount("/img", RevalidateStaticFiles(directory=STATIC_DIR / "img"), name="img")
+        app.mount("/img", VersionedStaticFiles(directory=STATIC_DIR / "img"), name="img")
     if (STATIC_DIR / "vendor").exists():
-        app.mount("/vendor", RevalidateStaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
+        app.mount("/vendor", VersionedStaticFiles(directory=STATIC_DIR / "vendor"), name="vendor")
 
     _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 

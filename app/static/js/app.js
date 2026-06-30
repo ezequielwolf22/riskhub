@@ -115,8 +115,8 @@ async function navigate() {
   }
   // Montar bandeja de revision en el slot del dashboard (si existe)
   if (typeof ViewInbox !== 'undefined') ViewInbox.mountIfSlot();
-  // Refresh sidebar badges after navigation (risk treatments + control reviews may have changed)
-  _loadOverdueBadge();
+  // Refresh sidebar badges after navigation
+  _loadBootstrap();
 }
 
 function _initTheme() {
@@ -217,6 +217,55 @@ window.RiskLevels = {
   all() { return [...this._bands]; },
 };
 
+/* Carga inicial: una sola llamada al servidor para flags + badges + risk levels.
+   Sustituye las ~7 llamadas independientes que se hacian al arrancar. */
+async function _loadBootstrap() {
+  try {
+    const data = await Api.get('/api/app/bootstrap');
+
+    // Risk levels
+    if (data.risk_levels && data.risk_levels.length) {
+      RiskLevels._bands = data.risk_levels.slice().sort((a, b) => a.order - b.order);
+    }
+
+    // Feature flags — aplicar al sidebar sin llamada extra a la API
+    if (data.flags) {
+      ViewFeatureFlags.applyFlagsToSidebar(data.flags);
+    }
+
+    // Badges del sidebar
+    const b = data.badges || {};
+    const badge = document.getElementById('badge-overdue');
+    if (badge) {
+      badge.textContent = b.overdue_treatments || '';
+      badge.style.display = b.overdue_treatments > 0 ? 'inline-block' : 'none';
+    }
+    const ctrlBadge = document.getElementById('badge-ctrl-review');
+    if (ctrlBadge) {
+      ctrlBadge.textContent = b.controls_overdue_reviews || '';
+      ctrlBadge.style.display = b.controls_overdue_reviews > 0 ? 'inline-block' : 'none';
+    }
+    const taskBadge = document.getElementById('badge-tasks-overdue');
+    if (taskBadge) {
+      taskBadge.textContent = b.tasks_overdue || '';
+      taskBadge.style.display = b.tasks_overdue > 0 ? 'inline-block' : 'none';
+    }
+    const nis2Badge = document.getElementById('badge-nis2-urgent');
+    if (nis2Badge) {
+      nis2Badge.textContent = b.nis2_urgent > 0 ? String(b.nis2_urgent) : '';
+      nis2Badge.style.display = b.nis2_urgent > 0 ? 'flex' : 'none';
+    }
+    const notifBadge = document.getElementById('notif-count');
+    if (notifBadge) {
+      const total = b.notif_total || 0;
+      notifBadge.textContent = total > 9 ? '9+' : String(total);
+      notifBadge.style.display = total > 0 ? 'flex' : 'none';
+    }
+  } catch (_e) {
+    // Fallback silencioso: las vistas individuales ya cargan sus propios datos
+  }
+}
+
 function init() {
   // Manejar SSO callback — llega un code de un solo uso (30s TTL), se intercambia por JWT
   const _ssoParams = new URLSearchParams(window.location.search);
@@ -245,7 +294,7 @@ function init() {
   }
 
   if (!Auth.requireAuth()) return;
-  RiskLevels.load();   // carga config org; las vistas usan RiskLevels.colorFor() / labelFor()
+  _loadBootstrap();    // flags + risk levels + badges en una sola llamada
   _initTheme();
   _initLang();
   I18n.applyDataAttrs();
@@ -298,14 +347,8 @@ function init() {
       .forEach(el => el.style.display = 'none');
   }
 
-  // Aplicar feature flags al sidebar (ocultar modulos deshabilitados)
-  ViewFeatureFlags.applyFlagsToSidebar();
-
   // Busqueda global
   Search.init();
-
-  // Badge de vencidos en sidebar
-  _loadOverdueBadge();
 
   // Atajos de teclado globales
   document.addEventListener('keydown', (e) => {
@@ -355,37 +398,8 @@ function init() {
     });
   }
 
-  // Contador de notificaciones pendientes (NIS2 urgentes + tareas vencidas)
-  async function _loadNotifCount() {
-    try {
-      const [nis2, overdue] = await Promise.all([
-        Api.get('/api/nis2/notifications?status=overdue').catch(() => []),
-        Api.get('/api/tasks/stats/summary').catch(() => ({overdue: 0})),
-      ]);
-      const total = (Array.isArray(nis2) ? nis2.length : 0) + (overdue.overdue || 0);
-      const badge = document.getElementById('notif-count');
-      if (badge) {
-        badge.textContent = total > 9 ? '9+' : String(total);
-        badge.style.display = total > 0 ? 'flex' : 'none';
-      }
-    } catch (_e) { /* silencioso */ }
-  }
-  _loadNotifCount();
-  setInterval(_loadNotifCount, 60000);
-
-  // Badge NIS2 urgente en sidebar
-  async function _loadNis2Badge() {
-    try {
-      const urgent = await Api.get('/api/nis2/notifications?status=pending&overdue=true').catch(() => []);
-      const badge = document.getElementById('badge-nis2-urgent');
-      if (badge) {
-        const count = Array.isArray(urgent) ? urgent.length : 0;
-        badge.textContent = count > 0 ? String(count) : '';
-        badge.style.display = count > 0 ? 'flex' : 'none';
-      }
-    } catch (_e) { /* silencioso */ }
-  }
-  _loadNis2Badge();
+  // Refrescar badges cada minuto (notif count desde bootstrap)
+  setInterval(_loadBootstrap, 60000);
 
   // Exponer navigate global para uso desde vistas
   window.App = {

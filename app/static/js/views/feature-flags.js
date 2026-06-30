@@ -121,9 +121,15 @@ const ViewFeatureFlags = (() => {
   }
 
   // Exportada para que app.js la llame al arrancar
-  async function applyFlagsToSidebar() {
+  async function applyFlagsToSidebar(preloadedFlags) {
     try {
-      const flags = await Api.featureFlags.list();
+      // Si ya tenemos flags del bootstrap, los usamos directamente (dict → array)
+      let flags;
+      if (preloadedFlags) {
+        flags = Object.entries(preloadedFlags).map(([name, enabled]) => ({ name, enabled }));
+      } else {
+        flags = await Api.featureFlags.list();
+      }
       _publishDisabled(flags);
       flags.forEach(f => {
         const route = MODULE_ROUTES[f.name];
