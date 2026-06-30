@@ -88,9 +88,9 @@ const Api = {
   setInitialPassword: (d) => Api.post('/api/auth/set-initial-password', d),
   listUsers: () => Api.get('/api/auth/users'),
   mfa: {
-    setup: () => Api.post('/api/auth/mfa/setup', {}),
+    setup: (currentPassword) => Api.post('/api/auth/mfa/setup', { current_password: currentPassword }),
     verifySetup: (d) => Api.post('/api/auth/mfa/verify-setup', d),
-    disable: () => Api.post('/api/auth/mfa/disable', {}),
+    disable: (currentPassword) => Api.post('/api/auth/mfa/disable', { current_password: currentPassword }),
     disableAdmin: (userId) => Api.post('/api/auth/mfa/disable-admin', { user_id: userId }),
     complete: (d) => Api.post('/api/auth/mfa/complete', d),
   },

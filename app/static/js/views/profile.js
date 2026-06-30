@@ -238,36 +238,70 @@ const ViewProfile = {
   },
 
   async _setupMfa() {
-    UI.toast('Iniciando configuracion MFA...', 'info');
-    try {
-      const res = await Api.mfa.setup();
-      // res contiene qr_url y secret
-      UI.modal('Configurar MFA — Autenticador', `
-        <div class="span2" style="text-align:center;">
-          <p style="font-size:13px;margin-bottom:12px;">Escanea este codigo QR con tu app de autenticacion (Google Authenticator, Authy, etc.).</p>
-          <img src="${UI.esc(res.qr_url)}" alt="QR MFA" style="width:200px;height:200px;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;">
-          <p style="font-size:11px;color:var(--text-muted);margin-bottom:16px;">O introduce el codigo manualmente: <strong>${UI.esc(res.secret || '')}</strong></p>
-        </div>
-        <div class="span2">
-          <label>Codigo de verificacion (6 digitos) *</label>
-          <input class="input" type="text" id="mfa-verify-code" placeholder="123456" maxlength="6" inputmode="numeric">
-        </div>
-      `, {
-        actions: `<button class="btn" onclick="UI.closeModal()">Cancelar</button>
-                  <button class="btn btn-primary" id="mfa-verify-btn">Verificar y activar</button>`
-      });
-      document.getElementById('mfa-verify-btn').onclick = async () => {
-        const code = document.getElementById('mfa-verify-code').value;
-        try {
-          await Api.mfa.verifySetup({ code });
-          UI.toast('MFA activado correctamente', 'success');
-          UI.closeModal();
-          ViewProfile._me = await Api.me();
-          const content = document.getElementById('profile-tab-content');
-          if (content) ViewProfile._renderSeguridad(content);
-        } catch (e) { UI.toast(e.message || 'Codigo incorrecto', 'error'); }
-      };
-    } catch (e) { UI.toast(e.message, 'error'); }
+    // Paso 1: pedir contrasena actual para verificar identidad
+    UI.modal('Activar MFA — Verificar identidad', `
+      <div class="span2">
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Introduce tu contrasena actual para continuar.</p>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Contrasena actual *</label>
+        <input class="input" type="password" id="mfa-step1-pass" autocomplete="current-password">
+      </div>
+    `, {
+      actions: `<button class="btn" onclick="UI.closeModal()">Cancelar</button>
+                <button class="btn btn-primary" id="mfa-step1-btn">Continuar</button>`
+    });
+    document.getElementById('mfa-step1-btn').onclick = async () => {
+      const pass = document.getElementById('mfa-step1-pass').value;
+      if (!pass) { UI.toast('Introduce tu contrasena', 'error'); return; }
+      try {
+        const res = await Api.mfa.setup(pass);
+        // res contiene secret y otpauth_url; generamos QR via API publica de Google Charts o mostramos el secreto manual
+        const secret = res.secret || '';
+        const otpauthUrl = res.otpauth_url || '';
+        // Generar QR con qrcodejs si disponible, sino mostrar secreto manual
+        const qrHtml = `<canvas id="mfa-qr-canvas" style="display:block;margin:0 auto 12px;"></canvas>`;
+        UI.modal('Activar MFA — Escanear codigo', `
+          <div class="span2" style="text-align:center;">
+            <p style="font-size:13px;margin-bottom:12px;">Escanea con tu app de autenticacion (Google Authenticator, Authy, Microsoft Authenticator).</p>
+            ${qrHtml}
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">O introduce el codigo manualmente en tu app:</p>
+            <code style="font-size:13px;font-weight:700;letter-spacing:.1em;background:var(--bg-2);padding:6px 12px;border-radius:6px;display:inline-block;margin-bottom:16px;">${UI.esc(secret)}</code>
+          </div>
+          <div class="span2">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Codigo de verificacion (6 digitos) *</label>
+            <input class="input" type="text" id="mfa-verify-code" placeholder="123456" maxlength="6" inputmode="numeric" style="max-width:200px;">
+          </div>
+        `, {
+          actions: `<button class="btn" onclick="UI.closeModal()">Cancelar</button>
+                    <button class="btn btn-primary" id="mfa-verify-btn">Verificar y activar</button>`
+        });
+        // Generar QR con la libreria si esta cargada, sino usar data URL via canvas
+        setTimeout(() => {
+          const canvas = document.getElementById('mfa-qr-canvas');
+          if (canvas && window.QRCode) {
+            new QRCode(canvas, { text: otpauthUrl, width: 200, height: 200 });
+          } else if (canvas) {
+            // Mostrar el otpauth URL como texto alternativo si no hay libreria QR
+            canvas.style.display = 'none';
+            const p = document.createElement('p');
+            p.style.cssText = 'font-size:10px;color:var(--text-muted);word-break:break-all;margin-bottom:12px;';
+            p.textContent = 'URL para app: ' + otpauthUrl;
+            canvas.parentNode.insertBefore(p, canvas);
+          }
+        }, 50);
+        document.getElementById('mfa-verify-btn').onclick = async () => {
+          const code = document.getElementById('mfa-verify-code').value.trim();
+          if (!code || code.length !== 6) { UI.toast('Introduce el codigo de 6 digitos', 'error'); return; }
+          try {
+            await Api.mfa.verifySetup({ secret, code });
+            UI.toast('MFA activado correctamente', 'success');
+            UI.closeModal();
+            ViewProfile._me = await Api.me();
+            const content = document.getElementById('profile-tab-content');
+            if (content) ViewProfile._renderSeguridad(content);
+          } catch (e) { UI.toast(e.message || 'Codigo incorrecto', 'error'); }
+        };
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
   },
 
   _renderPreferencias(el) {
