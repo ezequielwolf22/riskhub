@@ -418,7 +418,7 @@ class ControlImplementation(Base):
     __tablename__ = "control_implementations"
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
-    control_id = Column(Integer, ForeignKey("controls.id"), nullable=False)
+    control_id = Column(Integer, ForeignKey("controls.id"), nullable=False, index=True)
     name = Column(String(255), nullable=False)    # nombre interno
     description = Column(Text)
     status = Column(Enum(ControlStatus), default=ControlStatus.NOT_IMPLEMENTED)
@@ -478,8 +478,8 @@ class Risk(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)  # RSK-0001
 
-    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
-    threat_id = Column(Integer, ForeignKey("threats.id"), nullable=False)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False, index=True)
+    threat_id = Column(Integer, ForeignKey("threats.id"), nullable=False, index=True)
     description = Column(Text)
 
     # Risk identification
@@ -495,7 +495,7 @@ class Risk(Base):
     residual_consequence = Column(Integer, default=0)
     residual_level = Column(Integer, default=0)
 
-    status = Column(Enum(RiskStatus), default=RiskStatus.IDENTIFIED)
+    status = Column(Enum(RiskStatus), default=RiskStatus.IDENTIFIED, index=True)
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     # Treatment
@@ -1022,7 +1022,7 @@ class TreatmentTask(Base):
     code = Column(String(32), unique=True, nullable=False)   # TSK-0001
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)
+    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True, index=True)
     assigned_to_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     status = Column(Enum(TaskStatus), default=TaskStatus.PENDING)
@@ -1237,7 +1237,7 @@ class SupplierQuestionnaire(Base):
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)   # SEQ-0001
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     token = Column(String(64), unique=True, nullable=False)  # acceso publico
     template_code = Column(String(64), nullable=True)        # plantilla TPRM del sistema usada
@@ -1402,7 +1402,7 @@ class VendorIssue(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     severity = Column(Enum(VendorIssueSeverity), default=VendorIssueSeverity.MEDIUM)
-    status = Column(Enum(VendorIssueStatus), default=VendorIssueStatus.OPEN)
+    status = Column(Enum(VendorIssueStatus), default=VendorIssueStatus.OPEN, index=True)
     framework_refs = Column(JSON, nullable=True)
     discovered_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     due_date = Column(DateTime, nullable=True)
@@ -1896,8 +1896,8 @@ class ComplianceFrameworkStatus(Base):
     __tablename__ = "compliance_framework_status"
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
-    framework_code = Column(String(64), nullable=False)       # "iso27001", "gdpr", "hipaa", etc.
-    requirement_id = Column(String(64), nullable=False)       # "A.5.1", "Art.25", etc.
+    framework_code = Column(String(64), nullable=False, index=True)       # "iso27001", "gdpr", "hipaa", etc.
+    requirement_id = Column(String(64), nullable=False, index=True)       # "A.5.1", "Art.25", etc.
     status = Column(Enum(ComplianceRequirementStatus), default=ComplianceRequirementStatus.PLANNED)
     completion_pct = Column(Integer, default=0)               # 0-100
     responsible_id = Column(Integer, ForeignKey("users.id"), nullable=True)
@@ -1945,10 +1945,10 @@ class Evidence(Base):
     file_hash = Column(String(128), nullable=True)                  # SHA-256 integridad
     file_size = Column(Integer, nullable=True)
     # Links polimorficos
-    control_implementation_id = Column(Integer, ForeignKey("control_implementations.id"), nullable=True)
-    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True)
+    control_implementation_id = Column(Integer, ForeignKey("control_implementations.id"), nullable=True, index=True)
+    risk_id = Column(Integer, ForeignKey("risks.id"), nullable=True, index=True)
     policy_id = Column(Integer, ForeignKey("policies.id"), nullable=True)
-    compliance_framework = Column(String(64), nullable=True)        # "iso27001"
+    compliance_framework = Column(String(64), nullable=True, index=True)        # "iso27001"
     compliance_requirement = Column(String(64), nullable=True)      # "A.5.1"
     # Expiración
     valid_from = Column(DateTime, nullable=True)

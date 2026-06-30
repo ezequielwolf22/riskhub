@@ -717,10 +717,15 @@ def _process_batch_isolated(
         logger.error("Batch failed (ids=%s…): %s", batch_ids[:3], exc)
         err_msg = _CREDIT_ERROR_MSG if _is_credit_error(str(exc)) else str(exc)[:300]
         try:
-            for asset in db.query(Asset).filter(Asset.id.in_(batch_ids)).all():
-                if asset.ai_risk_status == "analysing":
-                    asset.ai_risk_status = "error"
-                    asset.ai_risk_summary = {"error": err_msg}
+            # Bulk update en lugar de loop para reducir roundtrips a la BD
+            import json as _json_mod
+            db.query(Asset).filter(
+                Asset.id.in_(batch_ids),
+                Asset.ai_risk_status == "analysing",
+            ).update(
+                {"ai_risk_status": "error", "ai_risk_summary": {"error": err_msg}},
+                synchronize_session=False,
+            )
             db.commit()
         except Exception:
             pass

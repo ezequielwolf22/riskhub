@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import (
@@ -1254,7 +1254,9 @@ def heatmap(db: Session = Depends(get_db),
             mode: str = Query("residual", regex="^(residual|inherent)$")):
     """Devuelve matriz 5x5 con conteo y referencias de riesgo."""
     matrix = [[{"count": 0, "risks": []} for _ in range(5)] for _ in range(5)]
-    for r in filter_by_org(db.query(Risk), Risk, current_user).all():
+    for r in filter_by_org(db.query(Risk), Risk, current_user).options(
+        joinedload(Risk.asset), joinedload(Risk.threat)
+    ).all():
         if mode == "residual":
             if r.residual_likelihood is None or r.residual_consequence is None:
                 continue
@@ -1277,9 +1279,33 @@ def heatmap(db: Session = Depends(get_db),
 @router.get("/stats/summary")
 def summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Resumen para el dashboard."""
-    now = datetime.now(timezone.utc)
-    risks = filter_by_org(db.query(Risk), Risk, current_user).all()
+    from sqlalchemy import func as _func
     from app.services.risk_engine import get_risk_bands, band_for_config
+    now = datetime.now(timezone.utc)
+
+    # by_status via SQL GROUP BY
+    status_rows = filter_by_org(
+        db.query(Risk.status, _func.count(Risk.id)), Risk, current_user
+    ).group_by(Risk.status).all()
+    by_status = {s.value: 0 for s in RiskStatus}
+    for status_val, cnt in status_rows:
+        if status_val:
+            by_status[status_val.value] = cnt
+
+    # by_treatment via SQL GROUP BY
+    treatment_rows = filter_by_org(
+        db.query(Risk.treatment_option, _func.count(Risk.id)), Risk, current_user
+    ).filter(Risk.treatment_option.isnot(None)).group_by(Risk.treatment_option).all()
+    by_treatment = {t.value: 0 for t in TreatmentOption}
+    for treat_val, cnt in treatment_rows:
+        if treat_val:
+            by_treatment[treat_val.value] = cnt
+
+    # Load risks with asset/threat eager-loaded (needed for top_risks and by_band)
+    risks = filter_by_org(db.query(Risk), Risk, current_user).options(
+        joinedload(Risk.asset), joinedload(Risk.threat)
+    ).all()
+
     _bands = get_risk_bands(db, getattr(current_user, "organization_id", None))
     # Siempre incluir low/medium/high para compatibilidad con el dashboard
     by_band: dict = {"low": 0, "medium": 0, "high": 0}
@@ -1287,13 +1313,6 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
     for r in risks:
         bc = band_for_config(r.residual_level or 0, _bands)
         by_band[bc["code"]] = by_band.get(bc["code"], 0) + 1
-    by_status = {s.value: 0 for s in RiskStatus}
-    for r in risks:
-        by_status[r.status.value] += 1
-    by_treatment = {t.value: 0 for t in TreatmentOption}
-    for r in risks:
-        if r.treatment_option:
-            by_treatment[r.treatment_option.value] += 1
 
     # Metricas adicionales
     active_statuses = {RiskStatus.IDENTIFIED, RiskStatus.ASSESSED}
@@ -1312,6 +1331,8 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
     total_res = sum((r.residual_level or 0) for r in risks)
     reduction_pct = round((1 - total_res / total_inh) * 100) if total_inh else 0
 
+    supplier_risks_count = sum(1 for r in risks if r.supplier_id is not None)
+
     # Control maturity stats
     from app.models import ControlStatus
     impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
@@ -1323,8 +1344,6 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
         and c.next_review.replace(tzinfo=timezone.utc) < now
         and c.status != ControlStatus.NOT_IMPLEMENTED
     )
-
-    supplier_risks_count = sum(1 for r in risks if r.supplier_id is not None)
 
     return {
         "total_risks": len(risks),

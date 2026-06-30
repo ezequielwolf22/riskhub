@@ -790,6 +790,28 @@ def _migrate_columns() -> None:
             except Exception:
                 pass
 
+        # v6.1.0 — Indices de rendimiento: columnas de FK y filtros frecuentes
+        for idx_sql in [
+            "CREATE INDEX IF NOT EXISTS ix_risks_asset_id ON risks (asset_id)",
+            "CREATE INDEX IF NOT EXISTS ix_risks_threat_id ON risks (threat_id)",
+            "CREATE INDEX IF NOT EXISTS ix_risks_status ON risks (status)",
+            "CREATE INDEX IF NOT EXISTS ix_control_implementations_control_id ON control_implementations (control_id)",
+            "CREATE INDEX IF NOT EXISTS ix_supplier_questionnaires_supplier_id ON supplier_questionnaires (supplier_id)",
+            "CREATE INDEX IF NOT EXISTS ix_vendor_issues_supplier_id ON vendor_issues (supplier_id)",
+            "CREATE INDEX IF NOT EXISTS ix_vendor_issues_status ON vendor_issues (status)",
+            "CREATE INDEX IF NOT EXISTS ix_treatment_tasks_risk_id ON treatment_tasks (risk_id)",
+            "CREATE INDEX IF NOT EXISTS ix_evidence_risk_id ON evidence (risk_id)",
+            "CREATE INDEX IF NOT EXISTS ix_evidence_control_implementation_id ON evidence (control_implementation_id)",
+            "CREATE INDEX IF NOT EXISTS ix_evidence_compliance_framework ON evidence (compliance_framework)",
+            "CREATE INDEX IF NOT EXISTS ix_compliance_framework_status_framework_code ON compliance_framework_status (framework_code)",
+            "CREATE INDEX IF NOT EXISTS ix_compliance_framework_status_requirement_id ON compliance_framework_status (requirement_id)",
+        ]:
+            try:
+                conn.execute(__import__("sqlalchemy").text(idx_sql))
+                conn.commit()
+            except Exception:
+                pass
+
 
 def _seed_licenses(db: Session) -> None:
     """Crea licencias iniciales para todas las organizaciones sin licencia."""

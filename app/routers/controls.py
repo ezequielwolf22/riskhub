@@ -4,7 +4,7 @@ import io
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -32,6 +32,8 @@ def list_controls(
     _: User = Depends(get_current_user),
     q: Optional[str] = None,
     theme: Optional[str] = None,
+    limit: int = Query(200, le=2000),
+    offset: int = Query(0),
 ):
     query = db.query(Control)
     if q:
@@ -39,7 +41,7 @@ def list_controls(
         query = query.filter((Control.name.ilike(like)) | (Control.code.ilike(like)))
     if theme:
         query = query.filter(Control.theme == theme)
-    return query.order_by(Control.code).all()
+    return query.order_by(Control.code).offset(offset).limit(limit).all()
 
 
 @catalog_router.get("/export-soa-csv")

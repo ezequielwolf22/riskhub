@@ -266,9 +266,10 @@ def import_risks(
         max_id = db.query(_func.max(Asset.id)).scalar() or 0
         return f"AST-{max_id + 1:04d}"
 
-    # Cache de amenazas por código
-    threat_by_code = {t.code: t for t in db.query(Threat).all()}
-    threat_by_name = {t.name.lower(): t for t in db.query(Threat).all()}
+    # Cache de amenazas por código — cargado una sola vez
+    _all_threats = db.query(Threat).all()
+    threat_by_code = {t.code: t for t in _all_threats}
+    threat_by_name = {t.name.lower(): t for t in _all_threats}
 
     for sc in req.scenarios:
         # Resolver o crear activo

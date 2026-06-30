@@ -41,25 +41,43 @@ def list_suppliers(
 
 @router.get("/stats/summary")
 def suppliers_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from sqlalchemy import func as _func
     from app.models import SupplierQuestionnaire
-    suppliers = filter_by_org(db.query(Supplier), Supplier, current_user).all()
     now = datetime.now(timezone.utc)
-    overdue_assessment = sum(
-        1 for s in suppliers
-        if s.next_assessment_at and s.next_assessment_at.replace(tzinfo=timezone.utc) < now
-    )
-    critical_high = sum(1 for s in suppliers if s.risk_level in (SupplierRisk.CRITICAL, SupplierRisk.HIGH))
-    scores = [s.score for s in suppliers if s.score is not None]
-    avg_score = round(sum(scores) / len(scores)) if scores else None
-    inactive_statuses = {"offboarding", "terminated", "inactive"}
-    active_count = sum(1 for s in suppliers if getattr(s, "relationship_status", None) not in inactive_statuses)
     org_id = current_user.organization_id
+
+    base_q = filter_by_org(db.query(Supplier), Supplier, current_user)
+    total = base_q.count()
+
+    # Active: exclude offboarding/terminated/inactive via SQL
+    active_count = base_q.filter(
+        Supplier.relationship_status.notin_(["offboarding", "terminated", "inactive"])
+    ).count()
+
+    # critical_or_high via SQL COUNT with IN filter
+    critical_high = base_q.filter(
+        Supplier.risk_level.in_(["critical", "high"])
+    ).count()
+
+    # Overdue assessment via SQL date comparison
+    overdue_assessment = base_q.filter(
+        Supplier.next_assessment_at.isnot(None),
+        Supplier.next_assessment_at < now,
+    ).count()
+
+    # Average score via SQL AVG
+    avg_score_raw = base_q.with_entities(_func.avg(Supplier.score)).filter(
+        Supplier.score.isnot(None)
+    ).scalar()
+    avg_score = round(avg_score_raw) if avg_score_raw is not None else None
+
     pending_q = db.query(SupplierQuestionnaire).filter(
         SupplierQuestionnaire.organization_id == org_id,
         SupplierQuestionnaire.submitted_at.is_(None),
     ).count()
+
     return {
-        "total": len(suppliers),
+        "total": total,
         "active": active_count,
         "critical_or_high": critical_high,
         "overdue_assessment": overdue_assessment,

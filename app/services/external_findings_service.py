@@ -252,28 +252,29 @@ def parse_openvas_xml(xml_content: bytes) -> list[dict]:
 # ─────────────────────── IMPORT PIPELINE ────────────────────────────────────────
 
 def _match_asset(db: Session, org_id: int, finding: dict) -> Optional[Asset]:
-    """Intenta encontrar el asset que corresponde al hallazgo."""
+    """Intenta encontrar el asset que corresponde al hallazgo — SQL LIKE en lugar de loop Python."""
+    from sqlalchemy import or_
     host = finding.get("affected_host", "").lower()
     software = (finding.get("affected_software", "") or "").lower()
 
     if not host and not software:
         return None
 
-    for asset in db.query(Asset).filter(Asset.organization_id == org_id).all():
-        asset_name = (asset.name or "").lower()
-        asset_desc = (asset.description or "").lower()
+    conditions = []
+    if host:
+        conditions.append(Asset.name.ilike(f"%{host}%"))
+        conditions.append(Asset.description.ilike(f"%{host}%"))
+    if software:
+        conditions.append(Asset.name.ilike(f"%{software}%"))
+        conditions.append(Asset.description.ilike(f"%{software}%"))
 
-        if host and (host in asset_name or host in asset_desc):
-            return asset
-        if software and (software in asset_name or software in asset_desc):
-            return asset
+    if not conditions:
+        return None
 
-        # IP match exacta en descripción
-        if host and re.search(r"\d+\.\d+\.\d+\.\d+", host):
-            if host in asset_desc:
-                return asset
-
-    return None
+    return db.query(Asset).filter(
+        Asset.organization_id == org_id,
+        or_(*conditions),
+    ).first()
 
 
 def import_findings(
