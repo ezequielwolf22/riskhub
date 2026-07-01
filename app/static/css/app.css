@@ -1728,6 +1728,18 @@ table.data td .code-pill {
    ============================================================ */
 @media (max-width: 900px) {
   .ai-chat-grid { grid-template-columns: 1fr !important; }
+
+  /* La barra lateral tiene ancho fijo (232px) sin esto: en pantallas
+     estrechas el contenido queda comprimido a <150px y tablas como el
+     checklist ISO 22301 se ven con texto superpuesto/desordenado. */
+  .sidebar {
+    width: 52px;
+  }
+  .sidebar .group { display: none; }
+  .sidebar .nav-section-items { display: flex; flex-direction: column; }
+  .sidebar a { padding: 10px 0; gap: 0; justify-content: center; }
+  .sidebar a span:not(.sidebar-badge) { display: none; }
+  .sidebar a svg { width: 20px; height: 20px; }
 }
 
 /* ============================================================
