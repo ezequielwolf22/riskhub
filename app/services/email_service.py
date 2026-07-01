@@ -135,6 +135,51 @@ def risk_alert_html(risk: Risk, org_name: str, reason: str) -> str:
 </html>"""
 
 
+def license_expiry_html(org_name: str, plan: str, expires_at: datetime, days_left: int) -> str:
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<body style="margin:0;padding:24px;background:#F5F5F5;font-family:Inter,Arial,sans-serif;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:10px;
+              border:1px solid #E9E9E9;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);">
+    <div style="background:linear-gradient(90deg,#59008D,#D65200);padding:20px 28px;">
+      <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">
+        RiskHub &mdash; Vencimiento de licencia
+      </h1>
+    </div>
+    <div style="padding:28px;">
+      <div style="background:#FFF7ED;border-left:4px solid #D97706;
+                  border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:20px;">
+        <strong style="color:#D97706;font-size:13px;">FALTAN {days_left} DIAS</strong>
+        <p style="margin:4px 0 0;color:#262626;font-size:13px;">
+          La licencia de <strong>{org_name}</strong> vence pronto.
+        </p>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <tr style="background:#F5F5F5;">
+          <td style="padding:9px 12px;font-weight:600;width:38%;">Organizacion</td>
+          <td style="padding:9px 12px;">{org_name}</td>
+        </tr>
+        <tr>
+          <td style="padding:9px 12px;font-weight:600;">Plan</td>
+          <td style="padding:9px 12px;">{plan}</td>
+        </tr>
+        <tr style="background:#F5F5F5;">
+          <td style="padding:9px 12px;font-weight:600;">Vence el</td>
+          <td style="padding:9px 12px;">{expires_at.strftime('%Y-%m-%d')}</td>
+        </tr>
+      </table>
+      <p style="color:#9D9D9D;font-size:11px;margin-top:24px;margin-bottom:0;">
+        Genera el nuevo license.jwt con tools/gen_license.py y entregaselo al cliente
+        antes de esta fecha para evitar que su instalacion entre en modo solo lectura.
+        Enviado el {now}.
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
+
+
 def _wrap_html(subject: str, body: str, org: str) -> str:
     """Envoltura HTML generica para emails de notificacion."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")

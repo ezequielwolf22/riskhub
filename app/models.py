@@ -113,6 +113,7 @@ class License(Base):
     status = Column(Enum(LicenseStatus), default=LicenseStatus.ACTIVE, nullable=False)
     issued_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     expires_at = Column(DateTime, nullable=True)  # NULL = sin límite (pago anual/indefinido)
+    last_reminder_sent_at = Column(DateTime, nullable=True)  # evita reenviar el aviso de vencimiento
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     # Para auditoría

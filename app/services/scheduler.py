@@ -2058,15 +2058,45 @@ def _run_soa_review_check() -> None:
 
 
 def _run_license_expiry_check() -> None:
-    """Auto-expira licencias vencidas y las marca como EXPIRED."""
+    """Auto-expira licencias vencidas y avisa por email cuando quedan <=30 dias."""
     from app.database import SessionLocal
-    from app.services import license_service as lic_svc
+    from app.models import User, UserRole
+    from app.services import email_service, license_service as lic_svc
 
     db = SessionLocal()
     try:
         expired_count = lic_svc.auto_expire_licenses(db)
         if expired_count:
             logger.info("License expiry: %d licencias expiradas automaticamente", expired_count)
+
+        expiring = lic_svc.get_licenses_expiring_soon(db, days=30)
+        if not expiring:
+            return
+
+        superadmins = db.query(User).filter(User.role == UserRole.SUPERADMIN).all()
+        for license in expiring:
+            days_left = (license.expires_at - datetime.now(timezone.utc)).days
+            org_name = license.organization.name if license.organization else f"org {license.organization_id}"
+            html = email_service.license_expiry_html(org_name, license.plan, license.expires_at, days_left)
+
+            sent = False
+            for admin in superadmins:
+                cfg = email_service.get_settings_for_org(db, admin.organization_id)
+                if not cfg or not cfg.smtp_host:
+                    continue
+                try:
+                    email_service.send_email(
+                        cfg, admin.email,
+                        f"RiskHub — la licencia de {org_name} vence en {days_left} dias",
+                        html,
+                    )
+                    sent = True
+                except Exception as exc:
+                    logger.error("License expiry reminder: fallo enviando a %s: %s", admin.email, exc)
+
+            if sent:
+                lic_svc.mark_reminder_sent(db, license)
+                logger.info("License expiry reminder enviado: org=%s dias_restantes=%d", org_name, days_left)
     except Exception as exc:
         logger.exception("Error en license_expiry_check: %s", exc)
     finally:

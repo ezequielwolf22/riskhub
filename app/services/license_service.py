@@ -1,5 +1,5 @@
 """Servicio de gestión de licencias."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -121,6 +121,24 @@ def auto_expire_licenses(db: Session):
         logger.info(f"Auto-expiradas {len(expired_licenses)} licencias vencidas")
 
     return len(expired_licenses)
+
+
+def get_licenses_expiring_soon(db: Session, days: int = 30) -> list[License]:
+    """Licencias activas que vencen dentro de `days` y aun no recibieron aviso."""
+    now = datetime.now(timezone.utc)
+    threshold = now + timedelta(days=days)
+    return db.query(License).filter(
+        License.status == LicenseStatus.ACTIVE,
+        License.expires_at.isnot(None),
+        License.expires_at <= threshold,
+        License.expires_at > now,
+        License.last_reminder_sent_at.is_(None),
+    ).all()
+
+
+def mark_reminder_sent(db: Session, license: License) -> None:
+    license.last_reminder_sent_at = datetime.now(timezone.utc)
+    db.commit()
 
 
 def get_license_audit_history(db: Session, org_id: int, limit: int = 50):
