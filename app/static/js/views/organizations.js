@@ -132,7 +132,8 @@ const ViewOrganizations = (() => {
     const panel = _container || document.getElementById('org-detail-panel')?.parentElement;
     if (!panel) return;
 
-    panel.scrollTop = 0;
+    const mainEl = document.getElementById('main');
+    if (mainEl) mainEl.scrollTop = 0;
     panel.innerHTML = `<p class="muted">${t('organizations.loading')}</p>`;
 
     try {
