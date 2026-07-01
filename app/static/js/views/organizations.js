@@ -5,6 +5,7 @@ const ViewOrganizations = (() => {
   let _selectedOrg = null;
   let _orgUsers = [];
   let _planLimits = null;  // {free:[...], starter:[...], pro:[...], enterprise:null}
+  let _container = null;
 
   const PLAN_COLORS = {
     free:       { bg: '#F3F4F6', text: '#6B7280', label: 'Free' },
@@ -48,6 +49,7 @@ const ViewOrganizations = (() => {
 
   // ---- Render ----
   async function render(container) {
+    _container = container;
     container.innerHTML = `
       <div class="page-header">
         <div>
@@ -127,10 +129,9 @@ const ViewOrganizations = (() => {
     if (!org) return;
     _selectedOrg = org;
 
-    const panel = document.getElementById('org-detail-panel');
-    const grid = document.getElementById('orgs-grid');
-    if (grid) grid.style.display = 'none';
-    panel.style.display = 'block';
+    const panel = _container || document.getElementById('org-detail-panel')?.parentElement;
+    if (!panel) return;
+
     panel.innerHTML = `<p class="muted">${t('organizations.loading')}</p>`;
 
     try {
@@ -140,10 +141,20 @@ const ViewOrganizations = (() => {
     }
 
     panel.innerHTML = `
-      <div class="card" style="margin-top:24px;">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">${UI.esc(org.name)}</h1>
+          <p class="page-subtitle">${t('organizations.detail_title', { name: '' }).trim()}</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-secondary" onclick="ViewOrganizations._backToList()">
+            &larr; ${t('organizations.close_btn')}
+          </button>
+        </div>
+      </div>
+      <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
           <strong>${t('organizations.detail_title', { name: org.name })}</strong>
-          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('org-detail-panel').style.display='none';const g=document.getElementById('orgs-grid');if(g)g.style.display=''">${t('organizations.close_btn')}</button>
         </div>
         <div class="card-body">
           <form id="edit-org-form" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
@@ -595,6 +606,10 @@ const ViewOrganizations = (() => {
     };
   }
 
+  function _backToList() {
+    if (_container) render(_container);
+  }
+
   async function _deactivate(orgId) {
     if (!await UI.confirm(t('organizations.deactivate_confirm'))) return;
     try {
@@ -602,10 +617,7 @@ const ViewOrganizations = (() => {
       UI.toast(t('organizations.deactivated_toast'), 'success');
       await fetchOrgs();
       renderGrid(document.getElementById('orgs-grid'));
-      const panel = document.getElementById('org-detail-panel');
-      if (panel) panel.style.display = 'none';
-      const g = document.getElementById('orgs-grid');
-      if (g) g.style.display = '';
+      _backToList();
     } catch (err) {
       UI.toast(err.message, 'error');
     }
@@ -660,10 +672,7 @@ const ViewOrganizations = (() => {
         UI.closeModal();
         await fetchOrgs();
         renderGrid(document.getElementById('orgs-grid'));
-        const panel = document.getElementById('org-detail-panel');
-        if (panel) panel.style.display = 'none';
-        const g = document.getElementById('orgs-grid');
-        if (g) g.style.display = '';
+        _backToList();
       } catch (err) {
         UI.toast(err.message, 'error');
         btn.disabled = false;
@@ -744,5 +753,5 @@ const ViewOrganizations = (() => {
     };
   }
 
-  return { render, _openDetail, _deactivate, _activate, _moveUser, _toggleOrgFlag, _resetOrgFlag, _onPlanChange, _openLicenseModal, _deleteOrganization, _downloadOrgLicense };
+  return { render, _openDetail, _backToList, _deactivate, _activate, _moveUser, _toggleOrgFlag, _resetOrgFlag, _onPlanChange, _openLicenseModal, _deleteOrganization, _downloadOrgLicense };
 })();
