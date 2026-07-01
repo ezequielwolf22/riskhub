@@ -2326,6 +2326,42 @@ const ViewBcp = (() => {
 
   let _currentPlanId = null;
 
+  function _renderPlanAiReview(plan) {
+    const review = plan?.ai_content_review;
+    if (!plan?.document_id) {
+      return '<div style="font-size:11px;color:var(--text-subtle);padding:8px;border:1px dashed var(--border);border-radius:6px;">'
+        + '<i class="ti ti-file-off"></i> Sin documento vinculado — la IA no puede revisar el contenido del plan.</div>';
+    }
+    if (!review) {
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:12px;">'
+        + '<span style="color:var(--text-subtle);"><i class="ti ti-sparkles"></i> Contenido aun no revisado por IA</span>'
+        + '<button class="btn btn-ghost btn-sm" id="btn-pl-ai-review"><i class="ti ti-wand"></i> Revisar con IA</button></div>';
+    }
+    const sc = review.score >= 70 ? '#16a34a' : review.score >= 40 ? '#ca8a04' : '#dc2626';
+    const covered = (review.covered || []).map(c => `<li>${UI.esc(c)}</li>`).join('');
+    const missing = (review.missing || []).map(m => `<li>${UI.esc(m)}</li>`).join('');
+    return '<div style="padding:10px;border:1px solid var(--border);border-radius:6px;font-size:12px;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">'
+      + `<span style="font-weight:700;color:${sc};"><i class="ti ti-sparkles"></i> Score de contenido: ${review.score}/100</span>`
+      + '<button class="btn btn-ghost btn-sm" id="btn-pl-ai-review"><i class="ti ti-refresh"></i> Re-analizar</button></div>'
+      + (review.summary ? `<div style="color:var(--text-subtle);margin-bottom:6px;">${UI.esc(review.summary)}</div>` : '')
+      + (covered ? `<div style="margin-bottom:4px;"><strong style="color:#16a34a;">Cubierto:</strong><ul style="margin:4px 0 0 18px;padding:0;">${covered}</ul></div>` : '')
+      + (missing ? `<div><strong style="color:#dc2626;">Ausente o insuficiente:</strong><ul style="margin:4px 0 0 18px;padding:0;">${missing}</ul></div>` : '')
+      + `<div style="font-size:10px;color:var(--text-subtle);margin-top:6px;">Analizado: ${review.reviewed_at ? new Date(review.reviewed_at).toLocaleString('es-ES') : ''}</div></div>`;
+  }
+
+  async function _triggerPlanAiReview(planId) {
+    const btn = document.getElementById('btn-pl-ai-review');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i>'; }
+    try {
+      await Api.post(`/api/bcp/plans/${planId}/ai-content-review`, {});
+      UI.toast('Analisis IA en curso — el resultado aparecera en unos segundos, reabre el plan para verlo.', 'info');
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> Revisar con IA'; }
+    }
+  }
+
   function _openPlanDrawer(plan) {
     _currentPlanId = plan?.id || null;
     const TYPES = ['bcp','drp','crp','ems','pandemic','cyber_response','supply_chain'];
@@ -2746,7 +2782,9 @@ const ViewBcp = (() => {
       <div>${t('bcp.plan_last_test_label')}: <strong>${plan.last_exercised_at ? new Date(plan.last_exercised_at).toLocaleDateString('es-ES') : '—'}</strong></div>
       ${plan.approved_by_id ? `<div>${t('bcp.plan_approved_by_label')}: <strong>#${plan.approved_by_id}</strong></div>` : ''}
       ${plan.approved_at ? `<div>${t('bcp.plan_approved_at_label')}: <strong>${new Date(plan.approved_at).toLocaleDateString('es-ES')}</strong></div>` : ''}
-    </div>` : ''}`;
+    </div>
+    <div class="form-section-divider"><span>Revision IA del contenido (ISO 22301 cl. 8.4)</span></div>
+    <div style="margin-bottom:14px;">${_renderPlanAiReview(plan)}</div>` : ''}`;
 
     // Datos en memoria para las tablas inline
     window._planSysDeps  = [...sysDeps];
@@ -2760,6 +2798,11 @@ const ViewBcp = (() => {
 
     // Guardar save handler actualizado con el ID
     document.getElementById('plan-drawer-save').onclick = () => _savePlan(_currentPlanId);
+
+    const aiReviewBtn = document.getElementById('btn-pl-ai-review');
+    if (aiReviewBtn && plan?.id) {
+      aiReviewBtn.onclick = () => _triggerPlanAiReview(plan.id);
+    }
 
     _openDrawer('plan-drawer');
   }
@@ -4542,6 +4585,11 @@ const ViewBcp = (() => {
     container.querySelector('#btn-upload-evidence').onclick = () =>
       _modalUploadEvidence(plans, tests, processes, () => _switchTab('evidence'));
 
+    container.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.ev-ai-btn');
+      if (btn) _triggerEvidenceAiReview(btn.dataset.id, btn);
+    });
+
     function applyFilter() {
       const type = container.querySelector('#ev-filter-type').value;
       const locId = container.querySelector('#ev-filter-loc').value;
@@ -4566,13 +4614,27 @@ const ViewBcp = (() => {
     };
   }
 
+  function _renderEvidenceAiBadge(e) {
+    const review = e.ai_review;
+    if (!review) {
+      return '<span class="badge badge-muted" style="font-size:10px" title="La IA aun no ha analizado el contenido de este archivo (o no tiene texto extraible)">'
+        + '<i class="ti ti-sparkles"></i> Sin analizar</span>'
+        + `<button class="btn btn-ghost btn-sm ev-ai-btn" data-id="${e.id}" title="Analizar contenido con IA" style="padding:2px 4px;"><i class="ti ti-wand"></i></button>`;
+    }
+    const color = !review.relevant ? '#dc2626' : review.quality_score >= 70 ? '#16a34a' : '#ca8a04';
+    const label = !review.relevant ? 'No relevante' : `Score ${review.quality_score}/100`;
+    return `<span style="font-size:10px;font-weight:700;color:${color}" title="${UI.esc(review.summary || '')}">`
+      + `<i class="ti ti-sparkles"></i> ${label}</span>`
+      + `<button class="btn btn-ghost btn-sm ev-ai-btn" data-id="${e.id}" title="Re-analizar con IA" style="padding:2px 4px;"><i class="ti ti-refresh"></i></button>`;
+  }
+
   function _buildEvidenceTable(evidence, planMap, testMap, procMap, evTypeLabels, _buildLinkedName) {
     if (!evidence.length)
       return `<div class="notice notice-info">Sin evidencias. Sube actas de tests, aprobaciones de planes o informes de auditoria.</div>`;
     return `<div class="table-wrap"><table class="data">
       <thead><tr>
         <th>Tipo</th><th>Titulo</th><th>Localizacion</th>
-        <th>Vinculada a</th><th>Integridad</th><th>Fecha</th><th></th>
+        <th>Vinculada a</th><th>Integridad</th><th>Analisis IA</th><th>Fecha</th><th></th>
       </tr></thead>
       <tbody>
         ${evidence.map(e => `<tr>
@@ -4589,6 +4651,7 @@ const ViewBcp = (() => {
               ${e.sha256_hash ? '&#10003; ' + e.sha256_hash.slice(0, 8) + '...' : '—'}
             </span>
           </td>
+          <td style="white-space:nowrap">${_renderEvidenceAiBadge(e)}</td>
           <td style="font-size:12px">${e.created_at ? e.created_at.slice(0, 10) : '—'}</td>
           <td>
             <a href="/api/bcp/evidence/${e.id}/download" class="btn btn-ghost btn-sm" title="Descargar" target="_blank">
@@ -4598,6 +4661,17 @@ const ViewBcp = (() => {
         </tr>`).join('')}
       </tbody>
     </table></div>`;
+  }
+
+  async function _triggerEvidenceAiReview(evId, btn) {
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i>'; }
+    try {
+      await Api.post(`/api/bcp/evidence/${evId}/ai-review`, {});
+      UI.toast('Analisis IA en curso — recarga en unos segundos para ver el resultado.', 'info');
+    } catch (e) {
+      UI.toast('Error: ' + e.message, 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i>'; }
+    }
   }
 
   function _modalUploadEvidence(plans, tests, processes, onSuccess) {

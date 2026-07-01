@@ -20,8 +20,12 @@ from app.config import settings
 from app.models import AiDocument, AiDocumentChunk, AiDocumentStatus
 
 # Directorio de almacenamiento de documentos
+# FIX: comprobar el punto de montaje persistente (/srv/data) en vez de la
+# subcarpeta "documents" — esta ultima nunca existe en el primer arranque de
+# un volumen nuevo, asi que el chequeo anterior caia SIEMPRE al fallback local
+# (efimero, se pierde en cada `docker build` + recreate del contenedor).
 _DOC_ROOT = Path("/srv/data/documents")
-if not _DOC_ROOT.exists():
+if not _DOC_ROOT.parent.exists():
     _DOC_ROOT = Path(__file__).parent.parent.parent / "data" / "documents"
 _DOC_ROOT.mkdir(parents=True, exist_ok=True)
 

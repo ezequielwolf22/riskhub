@@ -739,6 +739,10 @@ def _migrate_columns() -> None:
         # v6.2.0 — Password reset por email
         ("ALTER TABLE users ADD COLUMN password_reset_token VARCHAR(255)", "users", "password_reset_token"),
         ("ALTER TABLE users ADD COLUMN password_reset_expires_at DATETIME", "users", "password_reset_expires_at"),
+        # v6.3.0 — BCM: revision semantica IA del contenido de planes BCP/DRP
+        ("ALTER TABLE bcp_plans ADD COLUMN ai_content_review JSON", "bcp_plans", "ai_content_review"),
+        # v6.3.0 — BCM: revision semantica IA del contenido real de la evidencia subida
+        ("ALTER TABLE bcm_evidence_items ADD COLUMN ai_review JSON", "bcm_evidence_items", "ai_review"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

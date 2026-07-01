@@ -401,6 +401,16 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
                     db.commit()
                     logger.info("BCP plan auto-created from ISMS doc %d: %s",
                                 doc.id, doc.original_name)
+                    # Revision semantica IA del contenido — ISO 22301 cl. 8.4.
+                    # Ya estamos en un background task (analyze_document_for_isms
+                    # se invoca desde _run_isms_analysis_bg), asi que se ejecuta
+                    # en la misma sesion sin bloquear ninguna respuesta HTTP.
+                    try:
+                        from app.services.bcm_content_reviewer import review_plan_content
+                        plan.ai_content_review = review_plan_content(db, plan)
+                        db.commit()
+                    except Exception as _re:
+                        logger.debug("BCM content review skipped for plan %d: %s", plan.id, _re)
         except Exception as _e:
             logger.debug("BCP auto-detect skipped: %s", _e)
 

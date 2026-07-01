@@ -34,6 +34,8 @@ Para cada clausula o control identificado devuelve un objeto JSON con:
 
 Devuelve SOLO un array JSON valido. Sin texto adicional, sin markdown, sin explicaciones.
 Ejemplo de respuesta: [{"ref":"A.5.1","title":"Politicas de seguridad de la informacion","confidence":0.95}]
+El texto puede contener tokens como [EMAIL_1], [IP_2], [TELEFONO_1]: son datos
+anonimizados antes de llegar a ti, ignoralos a efectos de identificar clausulas.
 
 Si no encuentras ninguna referencia, devuelve: []"""
 
@@ -95,8 +97,9 @@ def _get_doc_text(db: Session, doc: AiDocument) -> str:
     return "\n".join(c.content for c in chunks)
 
 
-def _resolve_ai_config(db: Session, org_id: Optional[int]) -> tuple[str, str]:
-    """Obtiene (api_key, model) para la org. Usa per-tenant si disponible, global como fallback."""
+def _resolve_ai_config(db: Session, org_id: Optional[int]) -> tuple[str, str, str]:
+    """Obtiene (api_key, model, anonymization_level) para la org. Usa per-tenant
+    si disponible, global como fallback."""
     try:
         import base64, hashlib
         from cryptography.fernet import Fernet
@@ -114,11 +117,12 @@ def _resolve_ai_config(db: Session, org_id: Optional[int]) -> tuple[str, str]:
         model = "claude-haiku-4-5"
         if cfg and cfg.model:
             model = cfg.model
+        anon_level = cfg.anonymization_level.value if cfg and cfg.anonymization_level else "medium"
 
         if cfg and cfg.api_key_encrypted:
             try:
                 api_key = Fernet(_fkey()).decrypt(cfg.api_key_encrypted.encode()).decode()
-                return api_key, model
+                return api_key, model, anon_level
             except Exception:
                 logger.warning("iso_clause_extractor: error descifrando API key de org %s", org_id)
 
@@ -127,7 +131,7 @@ def _resolve_ai_config(db: Session, org_id: Optional[int]) -> tuple[str, str]:
 
     # Fallback a clave global
     api_key = settings.anthropic_api_key or ""
-    return api_key, "claude-haiku-4-5"
+    return api_key, "claude-haiku-4-5", "medium"
 
 
 def _call_claude(db: Session, org_id: Optional[int], text: str) -> str:
@@ -137,9 +141,12 @@ def _call_claude(db: Session, org_id: Optional[int], text: str) -> str:
     except ImportError:
         raise RuntimeError("anthropic no instalado")
 
-    api_key, model = _resolve_ai_config(db, org_id)
+    api_key, model, anon_level = _resolve_ai_config(db, org_id)
     if not api_key:
         raise RuntimeError("API key de Anthropic no configurada")
+
+    from app.services.anonymizer import anonymize
+    text = anonymize(text, anon_level)
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(

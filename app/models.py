@@ -2475,6 +2475,10 @@ class BCPPlan(Base):
     deactivated_at = Column(DateTime, nullable=True)
     activation_log = Column(JSON, nullable=True)         # [{timestamp, action, user, notes}]
 
+    # v6.3.0 — revision semantica IA del contenido del documento vinculado
+    # (ISO 22301 cl. 8.4): {score, covered, missing, summary, reviewed_at}
+    ai_content_review = Column(JSON, nullable=True)
+
     approved_by = relationship("User", foreign_keys=[approved_by_id])
 
 
@@ -2573,6 +2577,10 @@ class BCMEvidenceItem(Base):
     is_current      = Column(Boolean, default=True)
     uploaded_by_id  = Column(Integer, ForeignKey("users.id"))
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # v6.3.0 — revision semantica IA del contenido real del archivo de evidencia
+    # (bcm_content_reviewer.py): {relevant, quality_score, summary, reviewed_at}
+    ai_review       = Column(JSON, nullable=True)
 
     uploader        = relationship("User", foreign_keys=[uploaded_by_id])
 

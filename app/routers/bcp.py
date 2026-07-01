@@ -48,6 +48,21 @@ def _org(u: User) -> int:
     return u.organization_id
 
 
+def _bcm_data_root(subdir: str):
+    """Directorio raiz de almacenamiento para archivos BCM (evidencia, docs).
+
+    Mismo patron que document_service._DOC_ROOT: usa el volumen persistente de
+    produccion si existe, y cae a <proyecto>/data/<subdir> en desarrollo local.
+    FIX: settings.data_dir nunca existio en app/config.py — este era un bug
+    presente desde la creacion del modulo de evidencias (500 en cada subida).
+    """
+    from pathlib import Path
+    root = Path("/srv/data") / subdir
+    if not root.parent.exists():
+        root = Path(__file__).parent.parent.parent / "data" / subdir
+    return root
+
+
 def _parse_dt(s, field_name: str = "fecha"):
     if not s:
         return None
@@ -221,6 +236,8 @@ def _plan_d(p: BCPPlan) -> dict:
         "authorized_activators": getattr(p, "authorized_activators", None),
         "parent_plan_id": getattr(p, "parent_plan_id", None),
         "created_at": p.created_at.isoformat() if p.created_at else None,
+        # v6.3.0 — revision semantica IA del contenido (ISO 22301 cl. 8.4)
+        "ai_content_review": getattr(p, "ai_content_review", None),
     }
 
 
@@ -606,12 +623,16 @@ def bcp_dashboard(db: Session = Depends(get_db), u: User = Depends(get_current_u
 # ── ISO 22301 status ──────────────────────────────────────────────────────────
 
 @router.get("/iso22301-status")
-def iso22301_status_endpoint(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+def iso22301_status_endpoint(
+    location_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    u: User = Depends(get_current_user),
+):
     org = u.organization_id
     if not org:
         return {"clauses": [], "implemented": 0, "partial": 0, "total": 0, "pct": 0, "is_ready": False}
     from app.services.bcp_service import iso22301_status as _status
-    return _status(db, org)
+    return _status(db, org, location_id)
 
 
 # ── BIA completeness ──────────────────────────────────────────────────────────
@@ -926,9 +947,12 @@ def update_plan(pid: int, body: PlanUpdate, db: Session = Depends(get_db),
         if k == "review_date":
             v = _parse_dt(v, "review_date")
         setattr(p, k, v)
+    if doc_id_changed:
+        p.ai_content_review = None
     db.commit()
     if doc_id_changed and p.status == "approved":
         _trigger_checklist_extraction(db, p, _org(u))
+        _trigger_content_review(db, p, _org(u))
     return _plan_d(p)
 
 
@@ -981,7 +1005,26 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
     _link_bcp_to_nis2(db, p, _org(u))
     # Extraer checklist automaticamente en background si hay documento
     _trigger_checklist_extraction(db, p, _org(u))
+    # Revision semantica IA del contenido — ISO 22301 cl. 8.4 (solo si no se
+    # analizo ya con esta version del documento)
+    if not p.ai_content_review:
+        _trigger_content_review(db, p, _org(u))
     return _plan_d(p)
+
+
+@router.post("/plans/{pid}/ai-content-review")
+def trigger_plan_content_review(pid: int, db: Session = Depends(get_db),
+                                 u: User = Depends(require_analyst)):
+    """Dispara (o relanza) manualmente la revision semantica IA del documento
+    del plan. Util para planes creados antes de esta funcionalidad o para
+    re-analizar tras cambios en el documento."""
+    p = db.get(BCPPlan, pid)
+    if not p or p.organization_id != _org(u):
+        raise HTTPException(404)
+    if not p.document_id:
+        raise HTTPException(422, "Este plan no tiene un documento vinculado para analizar")
+    _trigger_content_review(db, p, _org(u))
+    return {"status": "queued"}
 
 
 # ── Plan context (consolidated for AI + map + activation) ─────────────────────
@@ -1842,6 +1885,19 @@ def _trigger_checklist_extraction(db: Session, plan: BCPPlan, org_id: int) -> No
     t.start()
 
 
+def _trigger_content_review(db: Session, plan: BCPPlan, org_id: int) -> None:
+    """Lanza en background la revision semantica IA del documento del plan
+    (ISO 22301 cl. 8.4 — bcm_content_reviewer.py). No bloquea la respuesta."""
+    import threading
+    from app.services.bcm_content_reviewer import run_review_for_plan
+
+    if not plan.document_id:
+        return
+    plan_id = plan.id
+    t = threading.Thread(target=run_review_for_plan, args=(plan_id,), daemon=True)
+    t.start()
+
+
 def _loc_d(loc):
     return {
         "id": loc.id, "code": loc.code, "name": loc.name,
@@ -1866,6 +1922,8 @@ def _evid_d(e):
         "linked_test_id": e.linked_test_id, "linked_plan_id": e.linked_plan_id,
         "linked_process_id": e.linked_process_id,
         "created_at": e.created_at.isoformat() if e.created_at else None,
+        # v6.3.0 — revision semantica IA del contenido real del archivo
+        "ai_review": getattr(e, "ai_review", None),
     }
 
 
@@ -2250,7 +2308,7 @@ async def upload_evidence(
 
     sha256 = hashlib.sha256(content).hexdigest()
 
-    evidence_dir = Path(settings.data_dir) / "bcm_evidence" / str(_org(u))
+    evidence_dir = _bcm_data_root("bcm_evidence") / str(_org(u))
     evidence_dir.mkdir(parents=True, exist_ok=True)
     stored = f"{sha256[:16]}_{file.filename}"
     fpath = evidence_dir / stored
@@ -2279,7 +2337,29 @@ async def upload_evidence(
     db.refresh(item)
     log_action(db, u.id, "upload", "bcm_evidence", str(item.id),
                {"title": title, "type": evidence_type})
+    _trigger_evidence_review(item.id)
     return _evid_d(item)
+
+
+def _trigger_evidence_review(evidence_id: int) -> None:
+    """Lanza en background la revision semantica IA del archivo de evidencia
+    (bcm_content_reviewer.py). No bloquea la respuesta de subida."""
+    import threading
+    from app.services.bcm_content_reviewer import run_review_for_evidence
+    t = threading.Thread(target=run_review_for_evidence, args=(evidence_id,), daemon=True)
+    t.start()
+
+
+@router.post("/evidence/{eid}/ai-review")
+def trigger_evidence_ai_review(eid: int, db: Session = Depends(get_db),
+                               u: User = Depends(require_analyst)):
+    """Dispara (o relanza) manualmente la revision semantica IA del archivo
+    de evidencia. Util para evidencia subida antes de esta funcionalidad."""
+    ev = db.get(BCMEvidenceItem, eid)
+    if not ev or ev.organization_id != _org(u):
+        raise HTTPException(404)
+    _trigger_evidence_review(eid)
+    return {"status": "queued"}
 
 
 @router.get("/evidence/{eid}/download")
@@ -2769,7 +2849,7 @@ async def upload_bcm_document(
         content = await file.read()
         if len(content) > 50 * 1024 * 1024:
             raise HTTPException(413, "Máx 50 MB")
-        docs_dir = Path(settings.data_dir) / "documents" / str(_org(u))
+        docs_dir = _bcm_data_root("documents") / str(_org(u))
         docs_dir.mkdir(parents=True, exist_ok=True)
         sha = hashlib.sha256(content).hexdigest()[:16]
         fpath = docs_dir / f"{sha}_{file.filename}"
@@ -2842,7 +2922,16 @@ def get_iso22301_compliance(
     db: Session = Depends(get_db),
     u: User = Depends(get_current_user),
 ):
+    """Score y checklist ISO 22301 del SGCN.
+
+    El cálculo real vive en bcp_service.iso22301_clause_scores(): es el único
+    motor de scoring de la aplicación (antes había dos, incompatibles entre sí
+    y con heurísticas sin base en evidencia — ver auditoría v5.2). Este endpoint
+    solo añade los KPIs informativos y el desglose por sede que consume el
+    frontend, que no forman parte del cálculo del score.
+    """
     from datetime import timedelta
+    from app.services.bcp_service import iso22301_clause_scores
     org = _org(u)
     now = datetime.now(timezone.utc)
     cutoff_12m = now - timedelta(days=365)
@@ -2858,10 +2947,10 @@ def get_iso22301_compliance(
     tests   = qf(BCPTest)
     strats  = qf(BCPStrategy)
     evid    = db.query(BCMEvidenceItem).filter_by(organization_id=org).all()
-    ctx     = db.query(BCMContext).filter_by(organization_id=org).first()
     locs    = db.query(BCMLocation).filter_by(organization_id=org, is_active=True).all()
 
-    procs_with_bia = [p for p in procs if getattr(p, "bia_score", None) and p.bia_score > 0]
+    from app.services.bcp_service import bia_completeness
+    procs_with_bia = [p for p in procs if bia_completeness(db, p)["pct"] >= 80]
     plans_approved = [p for p in plans if p.status == "approved"]
 
     def safe_ts(dt):
@@ -2877,39 +2966,18 @@ def get_iso22301_compliance(
 
     def pct(n, d): return round(n * 100 / d) if d else 0
 
-    cl4  = min(100, (50 if ctx else 0) + (30 if ctx and ctx.wizard_completed else 0) + (20 if locs else 0))
-    cl6  = pct(len(procs_with_bia), len(procs))
-    cl7  = min(100, len(evid) * 10)
-    cl8  = pct(len(plans_approved), len(plans))
-    cl83 = cl6
-    cl84 = pct(len(strats_impl), len(strats))
-    cl85 = pct(len(plans_approved), len(plans))
-    cl9  = pct(len(tests_recent), max(len(locs), 1))
-    cl91 = pct(len(tests_passed), len(tests))
-    cl10 = min(100, 40 + (cl9 // 2))
-
-    clauses = [
-        {"id": "4",   "title": "Contexto de la organizacion",   "score": cl4,  "weight": 1.0},
-        {"id": "6",   "title": "Planificacion y BIA",            "score": cl6,  "weight": 1.5},
-        {"id": "7",   "title": "Soporte y documentacion",        "score": cl7,  "weight": 0.8},
-        {"id": "8",   "title": "Operacion",                      "score": cl8,  "weight": 2.0},
-        {"id": "8.3", "title": "Analisis de impacto (BIA)",      "score": cl83, "weight": 1.5},
-        {"id": "8.4", "title": "Estrategias de continuidad",     "score": cl84, "weight": 1.5},
-        {"id": "8.5", "title": "Planes BCP/DRP",                 "score": cl85, "weight": 2.0},
-        {"id": "9",   "title": "Evaluacion y ejercicios",        "score": cl9,  "weight": 1.5},
-        {"id": "9.1", "title": "Seguimiento y medicion",         "score": cl91, "weight": 1.0},
-        {"id": "10",  "title": "Mejora continua",                "score": cl10, "weight": 0.8},
-    ]
-    total_w = sum(c["weight"] for c in clauses)
-    score_global = round(sum(c["score"] * c["weight"] for c in clauses) / total_w) if total_w else 0
+    result = iso22301_clause_scores(db, org, location_id)
 
     loc_list = []
     for loc in locs:
         lp = [p for p in plans if getattr(p, "location_id", None) == loc.id]
         lt = [t for t in tests if getattr(t, "location_id", None) == loc.id]
         lr = [t for t in lt if safe_ts(t.scheduled_at) and safe_ts(t.scheduled_at) >= cutoff_12m]
+        # Verde requiere ademas que al menos un test reciente tenga resultado
+        # passed/partial — no basta con que haya un test programado sin realizar.
+        lr_ok = [t for t in lr if t.result in ("passed", "partial")]
         ls = pct(len([p for p in lp if p.status == "approved"]), max(len(lp), 1))
-        status = "green" if ls >= 70 and lr else ("yellow" if ls >= 40 else "red")
+        status = "green" if ls >= 70 and lr_ok else ("yellow" if ls >= 40 or lr else "red")
         last_t = max((t.scheduled_at for t in lt if t.scheduled_at), default=None)
         loc_list.append({
             "id": loc.id, "name": loc.name, "score": ls, "status": status,
@@ -2919,8 +2987,8 @@ def get_iso22301_compliance(
         })
 
     return {
-        "score_global": score_global,
-        "clauses": clauses,
+        "score_global": result["score_global"],
+        "clauses": result["clauses"],
         "kpis": {
             "processes_total": len(procs), "processes_with_bia": len(procs_with_bia),
             "plans_total": len(plans), "plans_approved": len(plans_approved),

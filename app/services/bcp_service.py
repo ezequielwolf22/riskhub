@@ -1,6 +1,6 @@
 """Servicio BCP/ISO 22301 — lógica de negocio para continuidad."""
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -14,20 +14,108 @@ BIA_REQUIRED_FIELDS = [
     "activation_criteria", "vital_records",
 ]
 
-# Cláusulas ISO 22301 con su check correspondiente
-_ISO22301_CLAUSES = [
-    {"clause": "4.1", "name": "Comprensión del contexto organizacional", "check": "context"},
-    {"clause": "4.2", "name": "Partes interesadas y requisitos", "check": "context"},
-    {"clause": "6.1", "name": "Valoración de riesgos y oportunidades", "check": "risks"},
-    {"clause": "8.2", "name": "Análisis de Impacto en el Negocio (BIA)", "check": "bia"},
-    {"clause": "8.3", "name": "Estrategias de continuidad de negocio", "check": "strategies"},
-    {"clause": "8.4", "name": "Planes y procedimientos de continuidad", "check": "plans"},
-    {"clause": "8.5", "name": "Programa de ejercicios y pruebas", "check": "tests"},
-    {"clause": "9.1", "name": "Seguimiento, medición y análisis", "check": "dashboard"},
-    {"clause": "10.1", "name": "No conformidades y acciones correctivas", "check": "nc"},
-]
-
 VALID_PLAN_TYPES = ("bcp", "drp", "crp", "ems", "pandemic", "cyber_response", "supply_chain")
+
+# La norma ISO 22301 no pondera unas clausulas mas que otras: todos los requisitos
+# "shall" de las clausulas 4 a 10 son igual de obligatorios para la certificacion.
+# Por eso el peso se reparte a partes iguales entre las 7 clausulas principales y,
+# dentro de cada una, a partes iguales entre sus sub-clausulas evaluadas.
+_CLAUSE_GROUPS = {
+    "4":  ["4.1", "4.2", "4.3"],
+    "5":  ["5.1", "5.2", "5.3"],
+    "6":  ["6.1", "6.2"],
+    "7":  ["7.4", "7.5"],
+    "8":  ["8.2", "8.3", "8.4_bcp", "8.4_drp", "8.4_comm", "8.4_workaround",
+           "8.5_programme", "8.5_test", "8.5_lessons", "8.6"],
+    "9":  ["9.1", "9.2", "9.3"],
+    "10": ["10.1", "10.2"],
+}
+
+
+def _clause_weights() -> dict:
+    weights = {}
+    for sub_ids in _CLAUSE_GROUPS.values():
+        w = 100 / len(_CLAUSE_GROUPS) / len(sub_ids)
+        for cid in sub_ids:
+            weights[cid] = round(w, 4)
+    return weights
+
+
+def _status_to_score(status: str) -> int:
+    return {"implemented": 100, "partial": 50, "gap": 0}.get(status, 0)
+
+
+def _plan_has_substance(plan, docs_by_id: dict) -> bool:
+    """Evidencia real de contenido — no un simple flag de estado.
+
+    Si el documento del plan ya fue revisado semánticamente por IA
+    (bcm_content_reviewer.py — lee el texto y evalúa si cubre lo que la
+    cláusula exige), esa revisión es la evidencia más fuerte y manda: exige
+    score >= 60/100. Si no hay revisión IA todavía (sin documento, sin API
+    key configurada, o pendiente de analizar), cae a comprobar que el plan
+    tenga contenido estructural real (secciones, resumen largo, o documento
+    efectivamente procesado con texto extraído).
+    """
+    review = getattr(plan, "ai_content_review", None)
+    if review and isinstance(review, dict) and "score" in review:
+        return review["score"] >= 60
+    if plan.sections and len(plan.sections) > 0:
+        return True
+    if plan.content_summary and len(plan.content_summary.strip()) >= 200:
+        return True
+    if plan.document_id:
+        doc = docs_by_id.get(plan.document_id)
+        if doc and (doc.chunk_count or 0) > 0:
+            return True
+    return False
+
+
+def _plans_ai_detail(plans_all) -> str:
+    """Añade al detalle de la cláusula el resultado de la revisión IA del
+    contenido, si ya se ha ejecutado sobre alguno de los planes."""
+    reviewed = [
+        p for p in plans_all
+        if isinstance(getattr(p, "ai_content_review", None), dict) and "score" in p.ai_content_review
+    ]
+    if not reviewed:
+        return ""
+    avg = round(sum(p.ai_content_review["score"] for p in reviewed) / len(reviewed))
+    return f" — revisión IA del contenido: score medio {avg}/100 ({len(reviewed)}/{len(plans_all)} analizados)"
+
+
+def _policy_is_solid(policy) -> bool:
+    """Una politica solo es evidencia valida si esta aprobada/publicada Y tiene
+    contenido real, no solo un titulo que coincide con una busqueda."""
+    if not policy:
+        return False
+    from app.models import PolicyStatus
+    if policy.status not in (PolicyStatus.APPROVED, PolicyStatus.PUBLISHED):
+        return False
+    return bool(policy.content and len(policy.content.strip()) >= 200)
+
+
+def _evidence_covers(evid_list, plan_id: Optional[int] = None, test_id: Optional[int] = None) -> bool:
+    """Busca si existe evidencia VIGENTE (is_current) vinculada explicitamente
+    al plan o test — no basta con que exista evidencia en el repositorio.
+
+    Si el archivo ya fue leido por la IA (bcm_content_reviewer.review_evidence_item)
+    y determino que el contenido NO respalda la etiqueta declarada
+    (ai_review.relevant == False), esa evidencia no cuenta: es un archivo subido
+    para rellenar el campo, no una evidencia real. Si no se ha analizado aun
+    (o el archivo no tiene texto extraible, ej. una captura de pantalla), se
+    sigue contando por vinculacion — no se penaliza la ausencia de analisis.
+    """
+    for e in evid_list:
+        if not e.is_current:
+            continue
+        review = getattr(e, "ai_review", None)
+        if isinstance(review, dict) and review.get("relevant") is False:
+            continue
+        if plan_id and e.linked_plan_id == plan_id:
+            return True
+        if test_id and e.linked_test_id == test_id:
+            return True
+    return False
 
 _BCP_KEYWORDS = [
     "bcp", "drp", "continuidad", "continuity", "disaster recovery",
@@ -44,24 +132,44 @@ def bia_completeness(db, process) -> dict:
     return {"pct": pct, "missing": missing, "total": total}
 
 
-def iso22301_status(db: Session, org_id: int) -> dict:
+def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None) -> dict:
     """
-    Checklist ISO 22301:2019 completo — 23 cláusulas relevantes.
-    Evalúa el estado del SGCN basándose en datos reales del módulo BCP.
+    Checklist ISO 22301:2019 completo — 22 cláusulas relevantes.
+
+    Evalúa el estado real del SGCN a partir de evidencia verificable: procesos,
+    planes con contenido sustantivo (no solo un flag de estado), tests realmente
+    realizados, evidencia vigente vinculada a esos planes/tests, riesgos con
+    cobertura BCP, no conformidades y revisiones de dirección. La ausencia total
+    de datos siempre se traduce en "gap" — nunca en conformidad implícita.
     """
     from app.models import (BusinessProcess, BCPTest, BCPPlan, BCPStrategy,
-                             BCPExerciseProgramme, BCPDependency, Policy)
+                             BCPExerciseProgramme, Policy, Risk, RiskStatus,
+                             AiDocument, BCMEvidenceItem, BCMContext)
     now = datetime.now(timezone.utc)
 
+    def qf(model):
+        q = db.query(model).filter_by(organization_id=org_id)
+        if location_id and hasattr(model, "location_id"):
+            q = q.filter(getattr(model, "location_id") == location_id)
+        return q.all()
+
     # ── Cargar datos base ────────────────────────────────────────────────────
-    procs = db.query(BusinessProcess).filter_by(organization_id=org_id).all()
+    procs = qf(BusinessProcess)
     crit_procs = [p for p in procs if p.criticality in ("critical", "high")]
-    tests = db.query(BCPTest).filter_by(organization_id=org_id).all()
-    plans = db.query(BCPPlan).filter_by(organization_id=org_id).all()
-    strategies = db.query(BCPStrategy).filter_by(organization_id=org_id).all()
+    tests = qf(BCPTest)
+    plans = qf(BCPPlan)
+    strategies = qf(BCPStrategy)
+    evid = qf(BCMEvidenceItem)
+    ctx = db.query(BCMContext).filter_by(organization_id=org_id).first()
     exercise_prog = db.query(BCPExerciseProgramme).filter_by(
         organization_id=org_id
     ).order_by(BCPExerciseProgramme.year.desc()).first()
+
+    doc_ids = {p.document_id for p in plans if p.document_id}
+    docs_by_id = (
+        {d.id: d for d in db.query(AiDocument).filter(AiDocument.id.in_(doc_ids)).all()}
+        if doc_ids else {}
+    )
 
     # Política BCP
     bcp_policy = None
@@ -71,7 +179,7 @@ def iso22301_status(db: Session, org_id: int) -> dict:
         ).filter(
             Policy.title.ilike("%continuidad%") | Policy.title.ilike("%bcp%") |
             Policy.title.ilike("%sgcn%") | Policy.title.ilike("%continuity%")
-        ).first()
+        ).order_by(Policy.approved_at.desc()).first()
     except Exception:
         pass
 
@@ -87,20 +195,40 @@ def iso22301_status(db: Session, org_id: int) -> dict:
     except Exception:
         pass
 
+    # Auditoría interna formal (módulo general de auditorías, no solo los
+    # ejercicios/tests propios de BCM) con alcance en continuidad/ISO 22301,
+    # completada en los últimos 12 meses — ISO 22301 cl. 9.2.
+    bcm_audit_recent = None
+    try:
+        from app.models import AuditProgram, AuditStatus
+        cutoff_audit = now - timedelta(days=365)
+        bcm_audit_recent = db.query(AuditProgram).filter(
+            AuditProgram.organization_id == org_id,
+            AuditProgram.status == AuditStatus.COMPLETED,
+            AuditProgram.actual_end >= cutoff_audit,
+            (
+                AuditProgram.criteria.ilike("%22301%") | AuditProgram.criteria.ilike("%continuidad%") |
+                AuditProgram.criteria.ilike("%continuity%") | AuditProgram.criteria.ilike("%sgcn%") |
+                AuditProgram.scope.ilike("%continuidad%") | AuditProgram.scope.ilike("%bcm%")
+            ),
+        ).order_by(AuditProgram.actual_end.desc()).first()
+    except Exception:
+        pass
+
     # Derivaciones
     recent_tests = [
         t for t in tests if t.conducted_at and
         (now - t.conducted_at.replace(tzinfo=timezone.utc)).days <= 365
     ]
     passed_tests = [t for t in recent_tests if t.result == "passed"]
-    approved_plans = [p for p in plans if p.status in ("approved", "active")]
+    approved_plans = [p for p in plans if p.status == "approved"]
     bcp_plans = [p for p in approved_plans if p.plan_type == "bcp"]
     drp_plans = [p for p in approved_plans if p.plan_type in ("drp", "crp")]
-    # BUG13 fix: "communication" is not in VALID_PLAN_TYPES; use "crp" as closest equivalent
-    # so existing CRP plans count toward ISO 22301 cl. 7.4 communication requirement
     comm_plans = [p for p in approved_plans if p.plan_type in ("crp", "communication")]
+    bcp_plans_real = [p for p in bcp_plans if _plan_has_substance(p, docs_by_id)]
+    drp_plans_real = [p for p in drp_plans if _plan_has_substance(p, docs_by_id)]
 
-    # BIA completeness
+    # BIA completeness (campos reales del proceso, ISO 22301 cl. 8.2)
     bia_complete_crit = [p for p in crit_procs if bia_completeness(db, p)["pct"] >= 80]
     bia_complete_all = [p for p in procs if bia_completeness(db, p)["pct"] >= 80]
 
@@ -109,17 +237,39 @@ def iso22301_status(db: Session, org_id: int) -> dict:
     # Procesos con MBCO
     procs_with_mbco = [p for p in crit_procs if getattr(p, "mbco", None)]
     # Procesos con procedimiento alternativo
-    procs_with_workaround = [
-        p for p in crit_procs if
-        getattr(p, "alternative_procedure", None) or getattr(p, "workaround_procedure", None)
-    ]
+    procs_with_workaround = [p for p in crit_procs if getattr(p, "alternative_procedure", None)]
     # Planes con review_date futura
     plans_with_review = [
         p for p in approved_plans
         if p.review_date and p.review_date.replace(tzinfo=timezone.utc) > now
     ]
 
-    # NCs de BCP
+    # Estrategias implementadas/testeadas que realmente cubren procesos críticos
+    strats_impl = [s for s in strategies if s.implementation_status in ("implemented", "tested")]
+    crit_ids = {p.id for p in crit_procs}
+    covered_crit_by_strategy = crit_ids & {s.process_id for s in strats_impl if s.process_id}
+
+    # Cobertura de riesgos residuales altos por planes de continuidad (cl. 6.1) —
+    # usa Risk.bcp_coverage, ya calculado por update_risk_bcp_coverage() y hasta
+    # ahora nunca consultado por el motor de scoring.
+    all_risks = []
+    try:
+        all_risks = db.query(Risk).filter(Risk.organization_id == org_id).all()
+    except Exception:
+        pass
+    active_risks = [r for r in all_risks if r.status not in (RiskStatus.ACCEPTED, RiskStatus.CLOSED)]
+    high_risks = [r for r in active_risks if (r.residual_level or 0) >= 6]
+    high_risks_covered = [r for r in high_risks if r.bcp_coverage]
+
+    # Evidencia vigente vinculada a planes/tests reales (cl. 7.5) — no basta con
+    # contar filas de BCMEvidenceItem, hay que comprobar que estén enlazadas y activas.
+    evid_sources_total = len(approved_plans) + len(recent_tests)
+    evid_sources_covered = (
+        sum(1 for p in approved_plans if _evidence_covers(evid, plan_id=p.id))
+        + sum(1 for t in recent_tests if _evidence_covers(evid, test_id=t.id))
+    )
+
+    # NCs de BCP (cl. 10.2)
     nc_from_bcp_open = 0
     nc_from_bcp_closed = 0
     try:
@@ -147,12 +297,117 @@ def iso22301_status(db: Session, org_id: int) -> dict:
             return "partial"
         return "gap"
 
+    # ── Cláusulas con lógica multi-rama (se resuelven antes para mantener
+    #    la lista final legible) ────────────────────────────────────────────
+    ctx_substantive = bool(
+        ctx and (ctx.sector or ctx.geographic_scope or ctx.it_architecture or ctx.critical_infra_json)
+    )
+    scope_documented = bool(ctx and ctx.geographic_scope) or any(
+        p.scope and len(p.scope.strip()) >= 20 for p in approved_plans
+    )
+
+    if not all_risks:
+        status_61 = "gap"
+        detail_61 = "Sin riesgos registrados en el módulo de riesgos — no hay evidencia de valoración de riesgos para el SGCN"
+    elif high_risks:
+        pct_61 = _pct(len(high_risks_covered), len(high_risks))
+        status_61 = st(pct_61 >= 80, pct_61 >= 40)
+        detail_61 = f"{len(high_risks_covered)}/{len(high_risks)} riesgo(s) residual(es) alto(s) con cobertura de un plan de continuidad"
+    else:
+        status_61 = st(False, len(active_risks) > 0)
+        detail_61 = f"{len(active_risks)} riesgo(s) activo(s) registrado(s), ninguno con nivel residual alto — revisar si la valoración de riesgos está actualizada"
+
+    if crit_procs:
+        pct_83 = _pct(len(covered_crit_by_strategy), len(crit_procs))
+        status_83 = st(pct_83 >= 70, len(strategies) >= 1)
+        detail_83 = f"{len(covered_crit_by_strategy)}/{len(crit_procs)} procesos críticos con estrategia implementada/testeada"
+    else:
+        status_83 = st(False, len(strategies) >= 1)
+        detail_83 = f"{len(strategies)} estrategia(s) registrada(s); sin procesos críticos identificados para validar cobertura"
+
+    pct_75 = _pct(evid_sources_covered, evid_sources_total)
+    status_75 = st(pct_75 >= 70, pct_75 >= 30 or len(evid) >= 1)
+    detail_75 = (
+        f"{evid_sources_covered}/{evid_sources_total} plan(es)/test(s) con evidencia vigente vinculada "
+        f"({len(evid)} evidencia(s) en el repositorio)"
+        if evid_sources_total else
+        f"Sin planes aprobados ni tests recientes que requieran evidencia; {len(evid)} evidencia(s) en repositorio"
+    )
+
+    current_year_prog = bool(exercise_prog and exercise_prog.year == now.year)
+    status_85p = st(current_year_prog, bool(exercise_prog))
+    detail_85p = (
+        f"Programa de ejercicios {exercise_prog.year} vigente" if current_year_prog
+        else f"Programa más reciente: año {exercise_prog.year} (desactualizado)" if exercise_prog
+        else "Sin programa de ejercicios definido"
+    )
+
+    lessons_full = [
+        t for t in recent_tests
+        if getattr(t, "lessons_learned", None) and len(t.lessons_learned.strip()) >= 20
+    ]
+    status_85l = st(bool(lessons_full), any(getattr(t, "lessons_learned", None) for t in recent_tests))
+    detail_85l = f"{len(lessons_full)} test(s) con lecciones aprendidas documentadas en detalle"
+
+    status_91 = st(len(recent_tests) >= 1, len(tests) >= 1)
+    detail_91 = f"{len(recent_tests)} test(s) realizado(s) en los últimos 12 meses (de {len(tests)} histórico(s))"
+
+    # 10.1 Mejora continua — evidencia de que el SGCN evoluciona con el tiempo
+    # (no solo que "existe"), a partir de señales reales e independientes.
+    plan_revised_recent = any(
+        p.version and p.version not in ("1.0", "1", "")
+        for p in approved_plans
+    )
+    two_year_cycle = bool(
+        exercise_prog and db.query(BCPExerciseProgramme).filter(
+            BCPExerciseProgramme.organization_id == org_id,
+            BCPExerciseProgramme.year == exercise_prog.year - 1,
+        ).first()
+    )
+    action_after_test = any(
+        getattr(t, "lessons_learned", None) and getattr(t, "improvement_actions", None)
+        for t in recent_tests
+    )
+    nc_closed_with_action = nc_from_bcp_closed > 0
+    signals_10_1 = sum([plan_revised_recent, two_year_cycle, action_after_test, nc_closed_with_action])
+    status_101 = st(signals_10_1 >= 2, signals_10_1 == 1)
+    detail_101 = (
+        f"{signals_10_1}/4 señales de mejora continua detectadas "
+        f"(revisión de versión de planes, ciclo de ejercicios plurianual, "
+        f"acciones documentadas tras pruebas, cierre de no conformidades)"
+    )
+
+    # 10.2 No conformidades y acciones correctivas — FIX: la ausencia total de
+    # NCs registradas ya NO se interpreta como "implementado". Solo cuenta como
+    # implementado si hubo actividad de auditoría/pruebas Y no quedan NCs abiertas.
+    tests_ever = len(tests) >= 1
+    nc_total = nc_from_bcp_open + nc_from_bcp_closed
+    if nc_total == 0:
+        status_102 = st(False, tests_ever)
+        detail_102 = (
+            f"{len(tests)} ejercicio(s) realizado(s) sin ninguna no conformidad registrada "
+            f"— verificar si los hallazgos se documentan como NC"
+            if tests_ever else
+            "Sin ejercicios de continuidad realizados — no hay evidencia de gestión de no conformidades del SGCN"
+        )
+    else:
+        # nc_total > 0 ya es evidencia de que el proceso de gestion de NCs corre;
+        # solo falta ver si esta al dia (sin abiertas) o en curso (partial).
+        status_102 = st(nc_from_bcp_open == 0, True)
+        detail_102 = (
+            f"{nc_from_bcp_closed} NC(s) de continuidad cerrada(s)"
+            + (f", {nc_from_bcp_open} abierta(s)" if nc_from_bcp_open else "")
+        )
+
     # ── Construcción del checklist ────────────────────────────────────────────
     clauses = [
         {
             "id": "4.1", "name": "Comprensión de la organización y su contexto",
-            "status": st(len(procs) >= 1),
-            "detail": f"{len(procs)} proceso(s) de negocio registrado(s)",
+            "status": st(len(procs) >= 1 and ctx_substantive, len(procs) >= 1 or ctx_substantive),
+            "detail": (
+                f"{len(procs)} proceso(s) de negocio registrado(s); "
+                f"contexto organizacional {'documentado' if ctx_substantive else 'sin documentar'}"
+            ),
             "reference": "ISO 22301 cl. 4.1",
         },
         {
@@ -168,24 +423,31 @@ def iso22301_status(db: Session, org_id: int) -> dict:
             "reference": "ISO 22301 cl. 4.2",
         },
         {
-            "id": "4.3", "name": "Alcance del SGCN",
-            "status": st(any(getattr(p, "bcp_scope", None) for p in procs), len(procs) >= 1),
-            "detail": "Alcance definido en al menos un proceso crítico",
+            "id": "4.3", "name": "Determinación del alcance del SGCN",
+            "status": st(scope_documented, len(procs) >= 1),
+            "detail": (
+                "Alcance documentado en el contexto BCM o en un plan aprobado" if scope_documented
+                else f"Alcance no formalizado; {len(procs)} proceso(s) identificado(s) sin declaración de alcance"
+            ),
             "reference": "ISO 22301 cl. 4.3",
         },
         {
             "id": "5.1", "name": "Liderazgo y compromiso de la dirección",
-            "status": st(bool(mgmt_review_recent), bool(bcp_policy)),
+            "status": st(bool(mgmt_review_recent), _policy_is_solid(bcp_policy)),
             "detail": (
-                f"Revisión dirección: {'sí' if mgmt_review_recent else 'no'}; "
-                f"Política BCP: {'sí' if bcp_policy else 'no'}"
+                f"Revisión dirección (año actual): {'sí' if mgmt_review_recent else 'no'}; "
+                f"Política BCP: {'sólida' if _policy_is_solid(bcp_policy) else 'ausente o incompleta'}"
             ),
             "reference": "ISO 22301 cl. 5.1",
         },
         {
             "id": "5.2", "name": "Política de continuidad de negocio",
-            "status": st(bool(bcp_policy)),
-            "detail": f"Política BCP: {'encontrada' if bcp_policy else 'no encontrada — requerida'}",
+            "status": st(_policy_is_solid(bcp_policy), bool(bcp_policy)),
+            "detail": (
+                "Política BCP aprobada con contenido sustantivo" if _policy_is_solid(bcp_policy)
+                else "Política BCP en borrador o sin contenido" if bcp_policy
+                else "Sin política BCP — requerida"
+            ),
             "reference": "ISO 22301 cl. 5.2",
         },
         {
@@ -201,13 +463,12 @@ def iso22301_status(db: Session, org_id: int) -> dict:
             "reference": "ISO 22301 cl. 5.3",
         },
         {
-            "id": "6.1", "name": "Riesgos y oportunidades del SGCN",
-            "status": st(len(strategies) >= 1),
-            "detail": f"{len(strategies)} estrategia(s) de continuidad definida(s)",
+            "id": "6.1", "name": "Acciones para abordar riesgos y oportunidades",
+            "status": status_61, "detail": detail_61,
             "reference": "ISO 22301 cl. 6.1",
         },
         {
-            "id": "6.2", "name": "Objetivos de continuidad de negocio",
+            "id": "6.2", "name": "Objetivos de continuidad de negocio (MBCO)",
             "status": st(
                 _pct(len(procs_with_mbco), len(crit_procs)) >= 80,
                 _pct(len(procs_with_mbco), len(crit_procs)) >= 50,
@@ -220,6 +481,11 @@ def iso22301_status(db: Session, org_id: int) -> dict:
             "status": st(bool(comm_plans)),
             "detail": f"{len(comm_plans)} plan(es) de comunicación aprobado(s)",
             "reference": "ISO 22301 cl. 7.4",
+        },
+        {
+            "id": "7.5", "name": "Información documentada y evidencia",
+            "status": status_75, "detail": detail_75,
+            "reference": "ISO 22301 cl. 7.5",
         },
         {
             "id": "8.2", "name": "Análisis de Impacto de Negocio (BIA)",
@@ -235,20 +501,25 @@ def iso22301_status(db: Session, org_id: int) -> dict:
         },
         {
             "id": "8.3", "name": "Estrategias y soluciones de continuidad",
-            "status": st(len(strategies) >= 1),
-            "detail": f"{len(strategies)} estrategia(s) registrada(s)",
+            "status": status_83, "detail": detail_83,
             "reference": "ISO 22301 cl. 8.3",
         },
         {
             "id": "8.4_bcp", "name": "Plan de Continuidad de Negocio (BCP)",
-            "status": st(bool(bcp_plans)),
-            "detail": f"{len(bcp_plans)} BCP aprobado(s)",
+            "status": st(bool(bcp_plans_real), bool(bcp_plans)),
+            "detail": (
+                f"{len(bcp_plans_real)}/{len(bcp_plans)} BCP aprobado(s) con contenido verificable"
+                + _plans_ai_detail(bcp_plans)
+            ),
             "reference": "ISO 22301 cl. 8.4",
         },
         {
             "id": "8.4_drp", "name": "Plan de Recuperación ante Desastres (DRP)",
-            "status": st(bool(drp_plans)),
-            "detail": f"{len(drp_plans)} DRP/CRP aprobado(s)",
+            "status": st(bool(drp_plans_real), bool(drp_plans)),
+            "detail": (
+                f"{len(drp_plans_real)}/{len(drp_plans)} DRP/CRP aprobado(s) con contenido verificable"
+                + _plans_ai_detail(drp_plans)
+            ),
             "reference": "ISO 22301 cl. 8.4",
         },
         {
@@ -271,10 +542,7 @@ def iso22301_status(db: Session, org_id: int) -> dict:
         },
         {
             "id": "8.5_programme", "name": "Programa de ejercicios y pruebas",
-            "status": st(bool(exercise_prog)),
-            "detail": (
-                f"Programa: {'año ' + str(exercise_prog.year) if exercise_prog else 'no definido'}"
-            ),
+            "status": status_85p, "detail": detail_85p,
             "reference": "ISO 22301 cl. 8.5",
         },
         {
@@ -288,11 +556,7 @@ def iso22301_status(db: Session, org_id: int) -> dict:
         },
         {
             "id": "8.5_lessons", "name": "Lecciones aprendidas documentadas",
-            "status": st(any(getattr(t, "lessons_learned", None) for t in recent_tests)),
-            "detail": (
-                f"{sum(1 for t in recent_tests if getattr(t,'lessons_learned',None))} "
-                f"test(s) con lecciones documentadas"
-            ),
+            "status": status_85l, "detail": detail_85l,
             "reference": "ISO 22301 cl. 8.5",
         },
         {
@@ -309,20 +573,22 @@ def iso22301_status(db: Session, org_id: int) -> dict:
         },
         {
             "id": "9.1", "name": "Seguimiento, medición y evaluación",
-            "status": st(len(tests) >= 1),
-            "detail": f"{len(tests)} test(s) de continuidad registrado(s)",
+            "status": status_91, "detail": detail_91,
             "reference": "ISO 22301 cl. 9.1",
         },
         {
             "id": "9.2", "name": "Auditoría interna del SGCN",
             "status": st(
-                any(t.test_type == "full_test" for t in recent_tests),
+                bool(bcm_audit_recent) or any(t.test_type == "full_test" for t in recent_tests),
                 any(t.test_type in ("tabletop", "simulation") for t in recent_tests),
             ),
             "detail": (
-                "Auditoría completa realizada"
+                f"Auditoría formal '{bcm_audit_recent.title}' completada el "
+                f"{bcm_audit_recent.actual_end.strftime('%Y-%m-%d')}"
+                if bcm_audit_recent else
+                "Auditoría completa (full_test) realizada en 12 meses"
                 if any(t.test_type == "full_test" for t in recent_tests)
-                else "Sin auditoría completa del SGCN en 12 meses"
+                else "Sin auditoría interna (formal o full_test) del SGCN en los últimos 12 meses"
             ),
             "reference": "ISO 22301 cl. 9.2",
         },
@@ -336,13 +602,14 @@ def iso22301_status(db: Session, org_id: int) -> dict:
             "reference": "ISO 22301 cl. 9.3",
         },
         {
-            "id": "10.1", "name": "No conformidades y acciones correctoras",
-            "status": st(nc_from_bcp_open == 0, nc_from_bcp_closed > 0),
-            "detail": (
-                f"{nc_from_bcp_closed} NC(s) de BCP cerrada(s)"
-                + (f", {nc_from_bcp_open} abierta(s)" if nc_from_bcp_open else "")
-            ),
+            "id": "10.1", "name": "Mejora continua",
+            "status": status_101, "detail": detail_101,
             "reference": "ISO 22301 cl. 10.1",
+        },
+        {
+            "id": "10.2", "name": "No conformidades y acciones correctivas",
+            "status": status_102, "detail": detail_102,
+            "reference": "ISO 22301 cl. 10.2",
         },
     ]
 
@@ -357,6 +624,39 @@ def iso22301_status(db: Session, org_id: int) -> dict:
         "total": len(clauses),
         "pct": pct,
         "is_ready": implemented >= len(clauses) * 0.85 and pct >= 85,
+    }
+
+
+def iso22301_clause_scores(db: Session, org_id: int, location_id: Optional[int] = None) -> dict:
+    """
+    Convierte el checklist detallado (iso22301_status) al formato numérico 0-100
+    ponderado que consume el dashboard de BCP. Es el ÚNICO cálculo de score
+    ISO 22301 de la aplicación — antes existían dos motores de scoring
+    incompatibles (uno con un piso arbitrario de 40 puntos en "Mejora continua"
+    y campos inexistentes como bia_score); ahora ambos endpoints delegan aquí.
+    """
+    status = iso22301_status(db, org_id, location_id)
+    weights = _clause_weights()
+    out_clauses = []
+    for c in status["clauses"]:
+        out_clauses.append({
+            "id": c["id"],
+            "title": c["name"],
+            "score": _status_to_score(c["status"]),
+            "weight": weights.get(c["id"], 1.0),
+            "status": c["status"],
+            "detail": c["detail"],
+            "reference": c["reference"],
+        })
+    total_w = sum(c["weight"] for c in out_clauses)
+    score_global = round(sum(c["score"] * c["weight"] for c in out_clauses) / total_w) if total_w else 0
+    return {
+        "clauses": out_clauses,
+        "score_global": score_global,
+        "implemented": status["implemented"],
+        "partial": status["partial"],
+        "total": status["total"],
+        "is_ready": status["is_ready"],
     }
 
 
