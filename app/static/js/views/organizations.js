@@ -132,18 +132,10 @@ const ViewOrganizations = (() => {
     const panel = _container || document.getElementById('org-detail-panel')?.parentElement;
     if (!panel) return;
 
-    panel.innerHTML = `<p class="muted">${t('organizations.loading')}</p>`;
     const mainEl = document.getElementById('main');
-    if (mainEl) { mainEl.scrollTop = 0; }
-    panel.scrollTop = 0;
+    if (mainEl) mainEl.scrollTop = 0;
 
-    try {
-      await fetchOrgUsers(orgId);
-    } catch (_e) {
-      _orgUsers = [];
-    }
-
-    if (mainEl) { mainEl.scrollTop = 0; }
+    // Renderizar la card inmediatamente sin pasar por estado loading (gris)
     panel.innerHTML = `
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
@@ -189,31 +181,9 @@ const ViewOrganizations = (() => {
           </form>
 
           <hr style="margin:20px 0;">
-          <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">${t('organizations.users_section', { n: _orgUsers.length })}</h3>
-          ${_orgUsers.length ? `
-            <table class="table">
-              <thead><tr>
-                <th>${t('organizations.col_name')}</th>
-                <th>${t('organizations.col_email')}</th>
-                <th>${t('organizations.col_role')}</th>
-                <th>${t('organizations.col_active')}</th>
-                <th></th>
-              </tr></thead>
-              <tbody>
-                ${_orgUsers.map(u => `
-                  <tr>
-                    <td>${UI.esc(u.full_name || u.email)}</td>
-                    <td>${UI.esc(u.email)}</td>
-                    <td>${UI.esc(u.role)}</td>
-                    <td>${u.is_active ? t('organizations.yes_label') : t('organizations.no_label')}</td>
-                    <td>
-                      <button class="btn btn-xs btn-ghost" onclick="ViewOrganizations._moveUser(${u.id})">${t('organizations.move_btn')}</button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          ` : `<p class="muted">${t('organizations.no_users')}</p>`}
+          <div id="org-users-container-${orgId}">
+            <p class="muted">${t('organizations.loading')}</p>
+          </div>
 
           <hr style="margin:20px 0;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -259,8 +229,22 @@ const ViewOrganizations = (() => {
       }
     };
 
-    await _renderOrgFlags(orgId);
-    await _renderOrgLicense(orgId);
+    // Cargar usuarios, flags y licencia en paralelo (la card ya está visible)
+    fetchOrgUsers(orgId).catch(() => { _orgUsers = []; }).then(() => {
+      const uc = document.getElementById(`org-users-container-${orgId}`);
+      if (!uc) return;
+      uc.innerHTML = `<h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">${t('organizations.users_section', { n: _orgUsers.length })}</h3>` +
+        (_orgUsers.length ? `<table class="table"><thead><tr>
+          <th>${t('organizations.col_name')}</th><th>${t('organizations.col_email')}</th>
+          <th>${t('organizations.col_role')}</th><th>${t('organizations.col_active')}</th><th></th>
+        </tr></thead><tbody>${_orgUsers.map(u => `<tr>
+          <td>${UI.esc(u.full_name || u.email)}</td><td>${UI.esc(u.email)}</td>
+          <td>${UI.esc(u.role)}</td><td>${u.is_active ? t('organizations.yes_label') : t('organizations.no_label')}</td>
+          <td><button class="btn btn-xs btn-ghost" onclick="ViewOrganizations._moveUser(${u.id})">${t('organizations.move_btn')}</button></td>
+        </tr>`).join('')}</tbody></table>` : `<p class="muted">${t('organizations.no_users')}</p>`);
+    });
+    _renderOrgFlags(orgId);
+    _renderOrgLicense(orgId);
   }
 
   async function _renderOrgFlags(orgId) {
