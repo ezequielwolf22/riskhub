@@ -6,6 +6,8 @@ const ViewOrganizations = (() => {
   let _orgUsers = [];
   let _planLimits = null;  // {free:[...], starter:[...], pro:[...], enterprise:null}
   let _container = null;
+  let _detailMode = false;
+  let _detailOrgId = null;
 
   const PLAN_COLORS = {
     free:       { bg: '#F3F4F6', text: '#6B7280', label: 'Free' },
@@ -50,6 +52,12 @@ const ViewOrganizations = (() => {
   // ---- Render ----
   async function render(container) {
     _container = container;
+    // Si activate() re-invoca render() mientras estamos en el detalle, restauramos
+    // la card inmediatamente para que el vaciado de panel sea imperceptible.
+    if (_detailMode && _detailOrgId) {
+      _openDetail(_detailOrgId);
+      return;
+    }
     container.innerHTML = `
       <div class="page-header">
         <div>
@@ -128,6 +136,8 @@ const ViewOrganizations = (() => {
     const org = _orgs.find(o => o.id === orgId);
     if (!org) return;
     _selectedOrg = org;
+    _detailMode = true;
+    _detailOrgId = orgId;
 
     const panel = _container || document.getElementById('org-detail-panel')?.parentElement;
     if (!panel) return;
@@ -585,6 +595,8 @@ const ViewOrganizations = (() => {
   }
 
   function _backToList() {
+    _detailMode = false;
+    _detailOrgId = null;
     if (_container) render(_container);
   }
 
