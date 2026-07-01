@@ -25,13 +25,13 @@ logger = logging.getLogger("riskhub.crypto_license")
 # IMPORTANTE: generar un nuevo par de claves para produccion con tools/gen_license.py
 # La clave privada correspondiente debe estar SOLO en poder del vendor.
 _VENDOR_PUBLIC_KEY = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv1o5y/uMyq4c3OLw+Q5q
-D+zSpUsPfhO/wBN2PggNyny572iyPu08zM7HDQmGa38tT9Nf93vHjolj5zGN3NtD
-6rsEAX9ZdNF/JaLhD89s4FLJrM5zxoSrw6/GJR8PexcSRvUU53PCoFSXu1q/jbWT
-jVqX6eAbeje+t+GCFd/2ycnTDo2el0dnneCaN5fUiJLkUYGNComC9OrTUW19/apM
-3mkf211QflaRSw9upek4GAZS1kAGEGMZ6fjaqM9wBvDOuPuFY0MyR0mgdDgD5sbD
-7aLXFP+6UoQWMGMs+b+f7leUNr2QoMq3JwW8CWwcD3XqL8owAx0kgvkchGS3/yui
-swIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAushMJ1SIG4UsMHJpZbdu
+YIJu/Z5xRdSry+aqdk/IARjjb3FW7XhAF+xtzspycoNXoKCeb0OQ9XZbkc0kqNkr
+jBCkJ54aMxTK2H47rvcwC5X9Oi6DuAwZahs9hsPslrzj9gRdIRggCsqs48sO+eg4
+XMf+dHL/4WQczp2bHE9rbWpVz/WGIpmrDAjHqwuz+xShtCNYQLq3912xY6W5W4It
+WjBR0fg0j3o5hnY42lwNi69qeWw5qR6hcOenMTjeUxtJVZvX4O8POu0S66G9Qx7n
+qy1WpsmLHevI4wOyhKwOKW9AtWjOL4HbyI4qU7UAzfFo5hPNnLyFNbW/cC2iHC+Y
+LwIDAQAB
 -----END PUBLIC KEY-----"""
 
 _LICENSE_ISSUER = "riskhub-vendor"
