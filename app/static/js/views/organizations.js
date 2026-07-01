@@ -132,9 +132,10 @@ const ViewOrganizations = (() => {
     const panel = _container || document.getElementById('org-detail-panel')?.parentElement;
     if (!panel) return;
 
-    const mainEl = document.getElementById('main');
-    if (mainEl) mainEl.scrollTop = 0;
     panel.innerHTML = `<p class="muted">${t('organizations.loading')}</p>`;
+    const mainEl = document.getElementById('main');
+    if (mainEl) { mainEl.scrollTop = 0; }
+    panel.scrollTop = 0;
 
     try {
       await fetchOrgUsers(orgId);
@@ -142,21 +143,12 @@ const ViewOrganizations = (() => {
       _orgUsers = [];
     }
 
+    if (mainEl) { mainEl.scrollTop = 0; }
     panel.innerHTML = `
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">${UI.esc(org.name)}</h1>
-          <p class="page-subtitle">${t('organizations.detail_title', { name: '' }).trim()}</p>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-secondary" onclick="ViewOrganizations._backToList()">
-            &larr; ${t('organizations.close_btn')}
-          </button>
-        </div>
-      </div>
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
           <strong>${t('organizations.detail_title', { name: org.name })}</strong>
+          <button class="btn btn-sm btn-secondary" onclick="ViewOrganizations._backToList()">&larr; ${t('organizations.close_btn')}</button>
         </div>
         <div class="card-body">
           <form id="edit-org-form" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
