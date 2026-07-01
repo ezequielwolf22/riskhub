@@ -253,7 +253,7 @@ const ViewAssets = {
     const list = document.getElementById('asset-list');
     if (!list) return;
     const q = (document.getElementById('asset-search')?.value || '').toLowerCase();
-    const t = document.getElementById('asset-type-filter')?.value || '';
+    const typeFilter = document.getElementById('asset-type-filter')?.value || '';
 
     let data = ViewAssets._allAssets;
     if (q) data = data.filter(a =>
@@ -261,7 +261,7 @@ const ViewAssets = {
       (a.code || '').toLowerCase().includes(q) ||
       (a.description || '').toLowerCase().includes(q)
     );
-    if (t) data = data.filter(a => a.asset_type === t);
+    if (typeFilter) data = data.filter(a => a.asset_type === typeFilter);
 
     const _sortVal = a => {
       const k = ViewAssets._sortCol;
@@ -487,14 +487,14 @@ const ViewAssets = {
     // Pagination
     const _getFilteredTotal = () => {
       const q = (document.getElementById('asset-search')?.value || '').toLowerCase();
-      const t = document.getElementById('asset-type-filter')?.value || '';
+      const typeFilter = document.getElementById('asset-type-filter')?.value || '';
       let d = ViewAssets._allAssets;
       if (q) d = d.filter(a =>
         (a.name || '').toLowerCase().includes(q) ||
         (a.code || '').toLowerCase().includes(q) ||
         (a.description || '').toLowerCase().includes(q)
       );
-      if (t) d = d.filter(a => a.asset_type === t);
+      if (typeFilter) d = d.filter(a => a.asset_type === typeFilter);
       return d.length;
     };
     document.getElementById('pg-first')?.addEventListener('click', () => {
