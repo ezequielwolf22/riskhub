@@ -5196,8 +5196,8 @@ const ViewBcp = (() => {
     const clausesHtml = (comp.clauses || []).map(c => {
       const cc = c.score >= 70 ? '#16a34a' : c.score >= 40 ? '#ca8a04' : '#dc2626';
       return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
-        + '<span style="width:32px;flex-shrink:0;font-weight:700;color:var(--text-subtle)">' + t('bcp.label_clause_abbrev') + c.id + '</span>'
-        + '<span style="flex:1;color:var(--text-subtle)">' + UI.esc(c.title) + '</span>'
+        + '<span style="min-width:32px;flex-shrink:0;white-space:nowrap;font-weight:700;color:var(--text-subtle)">' + t('bcp.label_clause_abbrev') + c.id + '</span>'
+        + '<span style="flex:1;min-width:0;color:var(--text-subtle)">' + UI.esc(c.title) + '</span>'
         + '<div style="width:120px;height:5px;background:var(--bg-3,#222);border-radius:3px;overflow:hidden;flex-shrink:0">'
         + '<div style="width:' + c.score + '%;height:100%;background:' + cc + ';border-radius:3px"></div></div>'
         + '<span style="width:32px;text-align:right;font-weight:700;color:' + cc + ';flex-shrink:0">' + c.score + '%</span>'
