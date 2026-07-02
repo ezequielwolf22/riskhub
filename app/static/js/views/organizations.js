@@ -52,31 +52,37 @@ const ViewOrganizations = (() => {
   // ---- Render ----
   async function render(container) {
     _container = container;
-    // Si activate() re-invoca render() mientras estamos en el detalle, restauramos
-    // la card inmediatamente para que el vaciado de panel sea imperceptible.
-    if (_detailMode && _detailOrgId) {
-      _openDetail(_detailOrgId);
-      return;
-    }
+    // Construir siempre la estructura completa (lista + detalle oculto).
+    // Si estamos en modo detalle, ocultamos la lista y mostramos la card
+    // sin ningún flash porque ambas operaciones son síncronas (sin repaint entre ellas).
     container.innerHTML = `
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">${t('organizations.title')}</h1>
-          <p class="page-subtitle">${t('organizations.subtitle')}</p>
+      <div id="org-list-wrapper">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">${t('organizations.title')}</h1>
+            <p class="page-subtitle">${t('organizations.subtitle')}</p>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-primary" id="btn-new-org">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              ${t('organizations.new_btn')}
+            </button>
+          </div>
         </div>
-        <div class="page-actions">
-          <button class="btn btn-primary" id="btn-new-org">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            ${t('organizations.new_btn')}
-          </button>
-        </div>
+        <div id="orgs-notice"></div>
+        <div id="orgs-grid" class="card-grid"></div>
       </div>
-      <div id="orgs-notice"></div>
-      <div id="orgs-grid" class="card-grid"></div>
-      <div id="org-detail-panel" style="display:none;"></div>
+      <div id="org-detail-wrapper" style="display:none;"></div>
     `;
 
     document.getElementById('btn-new-org').onclick = () => openNewOrgModal();
+
+    if (_detailMode && _detailOrgId) {
+      // Restaurar el detalle síncronamente (sin await): el navegador no repinta
+      // entre el innerHTML de arriba y este toggle, así que no hay flash gris.
+      _openDetail(_detailOrgId);
+      return;
+    }
 
     await loadOrgs(container);
   }
@@ -139,14 +145,19 @@ const ViewOrganizations = (() => {
     _detailMode = true;
     _detailOrgId = orgId;
 
-    const panel = _container || document.getElementById('org-detail-panel')?.parentElement;
-    if (!panel) return;
+    // Usar los wrappers si existen (caso normal); si no, caer en reemplazo directo del panel.
+    const listWrapper   = document.getElementById('org-list-wrapper');
+    const detailWrapper = document.getElementById('org-detail-wrapper');
+    const target = detailWrapper || _container;
+    if (!target) return;
+
+    if (listWrapper)   listWrapper.style.display   = 'none';
+    if (detailWrapper) detailWrapper.style.display = '';
 
     const mainEl = document.getElementById('main');
     if (mainEl) mainEl.scrollTop = 0;
 
-    // Renderizar la card inmediatamente sin pasar por estado loading (gris)
-    panel.innerHTML = `
+    target.innerHTML = `
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
           <strong>${t('organizations.detail_title', { name: org.name })}</strong>
@@ -232,7 +243,8 @@ const ViewOrganizations = (() => {
         await Api.patch(`/api/organizations/${orgId}`, payload);
         UI.toast(t('organizations.org_updated'), 'success');
         await fetchOrgs();
-        renderGrid(document.getElementById('orgs-grid'));
+        const g = document.getElementById('orgs-grid');
+        if (g) renderGrid(g);
         _openDetail(orgId);
       } catch (err) {
         UI.toast(err.message, 'error');
@@ -597,7 +609,15 @@ const ViewOrganizations = (() => {
   function _backToList() {
     _detailMode = false;
     _detailOrgId = null;
-    if (_container) render(_container);
+    const listWrapper   = document.getElementById('org-list-wrapper');
+    const detailWrapper = document.getElementById('org-detail-wrapper');
+    if (listWrapper && detailWrapper) {
+      detailWrapper.style.display = 'none';
+      detailWrapper.innerHTML     = '';
+      listWrapper.style.display   = '';
+    } else if (_container) {
+      render(_container);
+    }
   }
 
   async function _deactivate(orgId) {
@@ -606,7 +626,7 @@ const ViewOrganizations = (() => {
       await Api.del(`/api/organizations/${orgId}`);
       UI.toast(t('organizations.deactivated_toast'), 'success');
       await fetchOrgs();
-      renderGrid(document.getElementById('orgs-grid'));
+      const _g = document.getElementById('orgs-grid'); if (_g) renderGrid(_g);
       _backToList();
     } catch (err) {
       UI.toast(err.message, 'error');
@@ -618,7 +638,7 @@ const ViewOrganizations = (() => {
       await Api.patch(`/api/organizations/${orgId}`, { is_active: true });
       UI.toast(t('organizations.activated_toast'), 'success');
       await fetchOrgs();
-      renderGrid(document.getElementById('orgs-grid'));
+      const _g = document.getElementById('orgs-grid'); if (_g) renderGrid(_g);
     } catch (err) {
       UI.toast(err.message, 'error');
     }
@@ -661,7 +681,7 @@ const ViewOrganizations = (() => {
         UI.toast(t('organizations.deleted_toast'), 'success');
         UI.closeModal();
         await fetchOrgs();
-        renderGrid(document.getElementById('orgs-grid'));
+        const _g = document.getElementById('orgs-grid'); if (_g) renderGrid(_g);
         _backToList();
       } catch (err) {
         UI.toast(err.message, 'error');
@@ -736,7 +756,7 @@ const ViewOrganizations = (() => {
         UI.toast(t('organizations.created_toast'), 'success');
         UI.closeModal();
         await fetchOrgs();
-        renderGrid(document.getElementById('orgs-grid'));
+        const _g = document.getElementById('orgs-grid'); if (_g) renderGrid(_g);
       } catch (err) {
         UI.toast(err.message, 'error');
       }
