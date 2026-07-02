@@ -1,15 +1,19 @@
 {
   "code": "hipaa",
   "name": "HIPAA (US Health Insurance Portability and Accountability Act)",
+  "name_en": "HIPAA (US Health Insurance Portability and Accountability Act)",
   "version": "2013",
   "description": "Regulación de privacidad y seguridad de información sanitaria",
+  "description_en": "US health information privacy and security regulation",
   "audit_frequency_months": 12,
   "certification_body": "HHS OCR",
   "requirements": [
     {
       "id": "164.308.a.1",
       "name": "Gestión de riesgos de seguridad",
+      "name_en": "Security management process",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "record",
         "report"
@@ -24,7 +28,9 @@
     {
       "id": "164.308.a.2",
       "name": "Gestión de sanciones",
+      "name_en": "Sanction management",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -37,7 +43,9 @@
     {
       "id": "164.308.a.3",
       "name": "Gestión de acceso a la información",
+      "name_en": "Information access management",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -50,7 +58,9 @@
     {
       "id": "164.308.a.4",
       "name": "Gestión de acceso a la información - control",
+      "name_en": "Information access management - control",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -60,7 +70,9 @@
     {
       "id": "164.308.a.5",
       "name": "Concienciación y formación en seguridad",
+      "name_en": "Security awareness and training",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "record",
         "certificate"
@@ -74,7 +86,9 @@
     {
       "id": "164.308.a.6",
       "name": "Procedimientos de incidentes de seguridad",
+      "name_en": "Security incident procedures",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -87,7 +101,9 @@
     {
       "id": "164.308.a.7",
       "name": "Plan de contingencia",
+      "name_en": "Contingency plan",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -104,7 +120,9 @@
     {
       "id": "164.308.a.8",
       "name": "Evaluación periódica",
+      "name_en": "Periodic evaluation",
       "domain": "Salvaguardas Administrativas",
+      "domain_en": "Administrative Safeguards",
       "evidence_types": [
         "report",
         "record"
@@ -114,7 +132,9 @@
     {
       "id": "164.310.a.1",
       "name": "Controles de acceso físico",
+      "name_en": "Facility access controls",
       "domain": "Salvaguardas Físicas",
+      "domain_en": "Physical Safeguards",
       "evidence_types": [
         "procedure",
         "screenshot"
@@ -129,7 +149,9 @@
     {
       "id": "164.310.a.2",
       "name": "Uso y reutilización de estaciones de trabajo",
+      "name_en": "Workstation use and re-use",
       "domain": "Salvaguardas Físicas",
+      "domain_en": "Physical Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -139,7 +161,9 @@
     {
       "id": "164.310.b",
       "name": "Controles de estaciones de trabajo",
+      "name_en": "Workstation controls",
       "domain": "Salvaguardas Físicas",
+      "domain_en": "Physical Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -152,7 +176,9 @@
     {
       "id": "164.310.c",
       "name": "Seguridad de equipos portátiles",
+      "name_en": "Portable device security",
       "domain": "Salvaguardas Físicas",
+      "domain_en": "Physical Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -167,7 +193,9 @@
     {
       "id": "164.312.a.1",
       "name": "Control de acceso (técnico)",
+      "name_en": "Access control (technical)",
       "domain": "Salvaguardas Técnicas",
+      "domain_en": "Technical Safeguards",
       "evidence_types": [
         "procedure",
         "screenshot"
@@ -182,7 +210,9 @@
     {
       "id": "164.312.b",
       "name": "Controles de auditoría",
+      "name_en": "Audit controls",
       "domain": "Salvaguardas Técnicas",
+      "domain_en": "Technical Safeguards",
       "evidence_types": [
         "procedure",
         "log"
@@ -196,7 +226,9 @@
     {
       "id": "164.312.c.1",
       "name": "Integridad de ePHI",
+      "name_en": "Integrity of ePHI",
       "domain": "Salvaguardas Técnicas",
+      "domain_en": "Technical Safeguards",
       "evidence_types": [
         "procedure",
         "record"
@@ -209,7 +241,9 @@
     {
       "id": "164.312.d",
       "name": "Autenticación de persona o entidad",
+      "name_en": "Person or entity authentication",
       "domain": "Salvaguardas Técnicas",
+      "domain_en": "Technical Safeguards",
       "evidence_types": [
         "procedure",
         "screenshot"
@@ -222,7 +256,9 @@
     {
       "id": "164.312.e.1",
       "name": "Seguridad en transmisión",
+      "name_en": "Transmission security",
       "domain": "Salvaguardas Técnicas",
+      "domain_en": "Technical Safeguards",
       "evidence_types": [
         "procedure",
         "certificate"
@@ -235,7 +271,9 @@
     {
       "id": "164.314",
       "name": "Acuerdos con socios de negocio (BAA)",
+      "name_en": "Business associate agreements (BAA)",
       "domain": "Proveedores",
+      "domain_en": "Business Associates",
       "evidence_types": [
         "record"
       ],

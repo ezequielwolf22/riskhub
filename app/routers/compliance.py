@@ -1,11 +1,12 @@
 """Router de cumplimiento normativo multi-framework."""
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import User, RiskContext, ComplianceFrameworkStatus, ComplianceRequirementStatus
 from app.security import get_current_user, require_role
 from app.services.compliance_service import (
@@ -28,50 +29,56 @@ def _filter_org(user: User) -> Optional[int]:
 
 
 @router.get("/frameworks")
-def list_frameworks(current_user: User = Depends(get_current_user)):
+def list_frameworks(request: Request, current_user: User = Depends(get_current_user)):
     """Lista todos los frameworks disponibles con metadata."""
-    return list_available_frameworks()
+    return list_available_frameworks(get_lang(request))
 
 
 @router.get("/frameworks/{code}")
 def get_framework_detail(
     code: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Detalle completo de un framework."""
-    fw = load_framework(code)
+    lang = get_lang(request)
+    fw = load_framework(code, lang)
     if not fw:
-        raise HTTPException(404, "Framework no encontrado")
+        raise HTTPException(404, _t("compliance.not_found", lang))
     return fw
 
 
 @router.get("/status")
 def get_compliance_dashboard(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Dashboard de cumplimiento multi-framework para la org del usuario."""
+    lang = get_lang(request)
     org_id = _filter_org(current_user)
     if not org_id:
-        return {"frameworks": [], "overall_pct": 0, "message": "Selecciona una organizacion para ver el cumplimiento."}
-    return get_multi_framework_dashboard(db, org_id)
+        return {"frameworks": [], "overall_pct": 0, "message": _t("compliance.select_org_message", lang)}
+    return get_multi_framework_dashboard(db, org_id, lang)
 
 
 @router.get("/status/{framework_code}")
 def get_framework_status(
     framework_code: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Estado de cumplimiento de un framework específico."""
+    lang = get_lang(request)
     org_id = _filter_org(current_user)
     if not org_id:
-        raise HTTPException(403, "Se requiere organization_id")
-    fw = load_framework(framework_code)
+        raise HTTPException(403, _t("compliance.org_required", lang))
+    fw = load_framework(framework_code, lang)
     if not fw:
-        raise HTTPException(404, "Framework no encontrado")
-    result = get_framework_compliance_status(db, org_id, framework_code)
+        raise HTTPException(404, _t("compliance.not_found", lang))
+    result = get_framework_compliance_status(db, org_id, framework_code, lang)
     if "error" in result:
         raise HTTPException(404, result["error"])
     return result
@@ -84,23 +91,25 @@ class FrameworkSubscribeIn(BaseModel):
 @router.post("/subscribe")
 def subscribe_frameworks(
     body: FrameworkSubscribeIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """Org selecciona qué frameworks debe cumplir. Inicializa requisitos."""
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", lang))
 
     # Validar que todos los frameworks existen
     for code in body.frameworks:
         if not load_framework(code):
-            raise HTTPException(404, f"Framework '{code}' no encontrado")
+            raise HTTPException(404, _t("compliance.framework_code_not_found", lang, code=code))
 
     # Actualizar RiskContext
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     if not ctx:
-        raise HTTPException(404, "Contexto de riesgo no configurado")
+        raise HTTPException(404, _t("compliance.risk_context_not_configured", lang))
 
     ctx.active_frameworks = body.frameworks
     db.flush()
@@ -112,7 +121,7 @@ def subscribe_frameworks(
         totals[code] = created
 
     db.commit()
-    return {"message": "Frameworks configurados", "initialized": totals}
+    return {"message": _t("compliance.frameworks_configured", lang), "initialized": totals}
 
 
 class RequirementUpdateIn(BaseModel):
@@ -127,18 +136,20 @@ def update_requirement(
     framework_code: str,
     requirement_id: str,
     body: RequirementUpdateIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
     """Actualiza el estado de un requisito de compliance."""
+    lang = get_lang(request)
     org_id = _filter_org(current_user)
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", lang))
 
     # Validar status
     valid_statuses = [s.value for s in ComplianceRequirementStatus]
     if body.status not in valid_statuses:
-        raise HTTPException(400, f"Status inválido. Válidos: {valid_statuses}")
+        raise HTTPException(400, _t("compliance.invalid_status", lang, valid=valid_statuses))
 
     req = db.query(ComplianceFrameworkStatus).filter(
         ComplianceFrameworkStatus.organization_id == org_id,
@@ -164,34 +175,38 @@ def update_requirement(
     if body.responsible_id is not None:
         resp_user = db.get(User, body.responsible_id)
         if not resp_user or resp_user.organization_id != org_id:
-            raise HTTPException(400, "responsible_id no pertenece a esta organizacion")
+            raise HTTPException(400, _t("compliance.responsible_not_in_org", lang))
         req.responsible_id = body.responsible_id
 
     req.last_reviewed_at = datetime.now(timezone.utc)
     db.commit()
 
-    return {"message": "Requisito actualizado", "id": req.id}
+    return {"message": _t("compliance.requirement_updated", lang), "id": req.id}
 
 
 @router.post("/sync-controls")
 def sync_controls(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
     """Actualiza estado de compliance basado en controles implementados y evidencias."""
+    lang = get_lang(request)
     org_id = _filter_org(current_user)
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", lang))
     updated = auto_update_compliance_from_controls(db, org_id)
-    return {"message": "Compliance sincronizado", "updated": updated}
+    return {"message": _t("compliance.synced", lang), "updated": updated}
 
 
 @router.get("/evidence-gaps")
 def get_evidence_gaps(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Requisitos con controles implementados pero sin evidencia — bloqueantes para auditoria."""
+    lang = get_lang(request)
     org_id = _filter_org(current_user)
     if not org_id:
         return {"frameworks": [], "total_gaps": 0}
@@ -203,7 +218,7 @@ def get_evidence_gaps(
 
     result = []
     for fw_code in active:
-        fw_status = get_framework_compliance_status(db, org_id, fw_code)
+        fw_status = get_framework_compliance_status(db, org_id, fw_code, lang)
         if "error" in fw_status:
             continue
         result.append({
@@ -222,8 +237,7 @@ def get_evidence_gaps(
         "frameworks": result,
         "total_gaps": total_gaps,
         "message": (
-            f"{total_gaps} requisito(s) con controles implementados sin evidencia. "
-            "Sube evidencias en /api/evidence para desbloquear el cumplimiento al 100%."
-            if total_gaps else "Sin brechas de evidencia detectadas."
+            _t("compliance.evidence_gaps_msg", lang, n=total_gaps)
+            if total_gaps else _t("compliance.no_evidence_gaps", lang)
         ),
     }

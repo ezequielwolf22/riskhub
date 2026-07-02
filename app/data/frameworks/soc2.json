@@ -1,15 +1,19 @@
 {
   "code": "soc2",
   "name": "SOC 2 (AICPA Trust Services Criteria)",
+  "name_en": "SOC 2 (AICPA Trust Services Criteria)",
   "version": "2017",
   "description": "Criterios de Servicios de Confianza AICPA",
+  "description_en": "AICPA Trust Services Criteria",
   "audit_frequency_months": 12,
   "certification_body": "AICPA",
   "requirements": [
     {
       "id": "CC1.1",
       "name": "Compromiso con integridad y valores éticos",
+      "name_en": "Demonstrates commitment to integrity and ethical values",
       "domain": "Entorno de Control",
+      "domain_en": "Control Environment",
       "evidence_types": [
         "policy_document",
         "record"
@@ -22,7 +26,9 @@
     {
       "id": "CC1.2",
       "name": "Supervisión del diseño y operación de controles",
+      "name_en": "Exercises oversight of the design and operation of controls",
       "domain": "Entorno de Control",
+      "domain_en": "Control Environment",
       "evidence_types": [
         "record"
       ],
@@ -31,7 +37,9 @@
     {
       "id": "CC1.3",
       "name": "Estructura organizativa, reporting y responsabilidades",
+      "name_en": "Establishes structure, reporting lines, and responsibilities",
       "domain": "Entorno de Control",
+      "domain_en": "Control Environment",
       "evidence_types": [
         "record"
       ],
@@ -44,7 +52,9 @@
     {
       "id": "CC1.4",
       "name": "Compromiso de competencia",
+      "name_en": "Demonstrates commitment to competence",
       "domain": "Entorno de Control",
+      "domain_en": "Control Environment",
       "evidence_types": [
         "record",
         "certificate"
@@ -57,7 +67,9 @@
     {
       "id": "CC1.5",
       "name": "Responsabilidad sobre controles",
+      "name_en": "Enforces accountability for controls",
       "domain": "Entorno de Control",
+      "domain_en": "Control Environment",
       "evidence_types": [
         "record"
       ],
@@ -69,7 +81,9 @@
     {
       "id": "CC2.1",
       "name": "Calidad de información relevante",
+      "name_en": "Uses relevant, quality information",
       "domain": "Comunicación y Información",
+      "domain_en": "Communication and Information",
       "evidence_types": [
         "procedure",
         "record"
@@ -82,7 +96,9 @@
     {
       "id": "CC2.2",
       "name": "Comunicación interna",
+      "name_en": "Communicates internally",
       "domain": "Comunicación y Información",
+      "domain_en": "Communication and Information",
       "evidence_types": [
         "record"
       ],
@@ -91,7 +107,9 @@
     {
       "id": "CC2.3",
       "name": "Comunicación a partes externas",
+      "name_en": "Communicates with external parties",
       "domain": "Comunicación y Información",
+      "domain_en": "Communication and Information",
       "evidence_types": [
         "record"
       ],
@@ -100,7 +118,9 @@
     {
       "id": "CC3.1",
       "name": "Especificación de objetivos",
+      "name_en": "Specifies suitable objectives",
       "domain": "Evaluación de Riesgos",
+      "domain_en": "Risk Assessment",
       "evidence_types": [
         "record"
       ],
@@ -109,7 +129,9 @@
     {
       "id": "CC3.2",
       "name": "Identificación y análisis de riesgos",
+      "name_en": "Identifies and analyzes risk",
       "domain": "Evaluación de Riesgos",
+      "domain_en": "Risk Assessment",
       "evidence_types": [
         "record",
         "report"
@@ -119,7 +141,9 @@
     {
       "id": "CC3.3",
       "name": "Evaluación de fraude",
+      "name_en": "Assesses fraud risk",
       "domain": "Evaluación de Riesgos",
+      "domain_en": "Risk Assessment",
       "evidence_types": [
         "record"
       ],
@@ -128,7 +152,9 @@
     {
       "id": "CC3.4",
       "name": "Identificación de cambios significativos",
+      "name_en": "Identifies and analyzes significant change",
       "domain": "Evaluación de Riesgos",
+      "domain_en": "Risk Assessment",
       "evidence_types": [
         "record"
       ],
@@ -137,7 +163,9 @@
     {
       "id": "CC6.1",
       "name": "Controles lógicos y físicos de acceso",
+      "name_en": "Logical and physical access controls",
       "domain": "Acceso Lógico y Físico",
+      "domain_en": "Logical and Physical Access",
       "evidence_types": [
         "procedure",
         "screenshot",
@@ -157,7 +185,9 @@
     {
       "id": "CC6.2",
       "name": "Acceso basado en credenciales previas a concesión",
+      "name_en": "Registers and authorizes users prior to issuing credentials",
       "domain": "Acceso Lógico y Físico",
+      "domain_en": "Logical and Physical Access",
       "evidence_types": [
         "procedure",
         "record"
@@ -170,7 +200,9 @@
     {
       "id": "CC6.3",
       "name": "Revocación de acceso cuando cese la necesidad",
+      "name_en": "Removes access when no longer required",
       "domain": "Acceso Lógico y Físico",
+      "domain_en": "Logical and Physical Access",
       "evidence_types": [
         "procedure",
         "record"
@@ -183,7 +215,9 @@
     {
       "id": "CC6.6",
       "name": "Controles de seguridad frente a amenazas externas",
+      "name_en": "Security measures against threats from outside system boundaries",
       "domain": "Acceso Lógico y Físico",
+      "domain_en": "Logical and Physical Access",
       "evidence_types": [
         "procedure",
         "record"
@@ -193,7 +227,9 @@
     {
       "id": "CC7.1",
       "name": "Detección y monitorización de amenazas",
+      "name_en": "Threat detection and monitoring",
       "domain": "Operaciones del Sistema",
+      "domain_en": "System Operations",
       "evidence_types": [
         "procedure",
         "record",
@@ -207,7 +243,9 @@
     {
       "id": "CC7.2",
       "name": "Monitorización de infraestructura para anomalías",
+      "name_en": "Monitors infrastructure for anomalies",
       "domain": "Operaciones del Sistema",
+      "domain_en": "System Operations",
       "evidence_types": [
         "procedure",
         "log"
@@ -220,7 +258,9 @@
     {
       "id": "CC7.3",
       "name": "Evaluación de eventos de seguridad",
+      "name_en": "Evaluates security events",
       "domain": "Operaciones del Sistema",
+      "domain_en": "System Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -233,7 +273,9 @@
     {
       "id": "CC7.4",
       "name": "Respuesta a incidentes de seguridad",
+      "name_en": "Responds to security incidents",
       "domain": "Operaciones del Sistema",
+      "domain_en": "System Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -246,7 +288,9 @@
     {
       "id": "CC8.1",
       "name": "Proceso de gestión del cambio",
+      "name_en": "Change management process",
       "domain": "Gestión de Cambios",
+      "domain_en": "Change Management",
       "evidence_types": [
         "procedure",
         "record"
@@ -261,7 +305,9 @@
     {
       "id": "CC9.1",
       "name": "Evaluación de riesgos en relaciones con proveedores",
+      "name_en": "Assesses risks in vendor relationships",
       "domain": "Mitigación de Riesgos",
+      "domain_en": "Risk Mitigation",
       "evidence_types": [
         "record"
       ],
@@ -274,7 +320,9 @@
     {
       "id": "CC9.2",
       "name": "Monitorización de riesgos de proveedores",
+      "name_en": "Monitors vendor risks",
       "domain": "Mitigación de Riesgos",
+      "domain_en": "Risk Mitigation",
       "evidence_types": [
         "record"
       ],

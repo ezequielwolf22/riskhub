@@ -13,6 +13,7 @@ from app.models import (
     RiskContext, Evidence, User, ControlImplementation, ControlStatus,
     Risk, RiskStatus,
 )
+from app.i18n import t as _t
 
 logger = logging.getLogger("riskhub.compliance")
 
@@ -24,31 +25,54 @@ _CACHE_TS: dict = {}
 _CACHE_TTL = 300  # 5 minutos
 
 
-def load_framework(code: str) -> Optional[dict]:
+def _localize_framework(data: Optional[dict], lang: str) -> Optional[dict]:
+    """Devuelve una copia del framework con name/description/domain en el idioma pedido.
+
+    Los catalogos JSON llevan campos *_en junto a los originales en castellano;
+    la cache guarda siempre el dato crudo y la traduccion se aplica al leer.
+    """
+    if not data or lang != "en":
+        return data
+    fw = dict(data)
+    fw["name"] = data.get("name_en") or data.get("name", "")
+    fw["description"] = data.get("description_en") or data.get("description", "")
+    reqs = []
+    for r in data.get("requirements", []):
+        r2 = dict(r)
+        r2["name"] = r.get("name_en") or r.get("name", "")
+        if "domain" in r:
+            r2["domain"] = r.get("domain_en") or r.get("domain", "")
+        reqs.append(r2)
+    fw["requirements"] = reqs
+    return fw
+
+
+def load_framework(code: str, lang: str = "es") -> Optional[dict]:
     """Carga definicion de framework desde JSON con TTL de cache."""
     now = time.time()
     if code in _CACHE and (now - _CACHE_TS.get(code, 0)) < _CACHE_TTL:
-        return _CACHE[code]
+        return _localize_framework(_CACHE[code], lang)
     path = _FRAMEWORKS_DIR / f"{code}.json"
     if not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
     _CACHE[code] = data
     _CACHE_TS[code] = now
-    return data
+    return _localize_framework(data, lang)
 
 
-def list_available_frameworks() -> list[dict]:
+def list_available_frameworks(lang: str = "es") -> list[dict]:
     """Lista todos los frameworks disponibles con metadata."""
     result = []
     for path in _FRAMEWORKS_DIR.glob("*.json"):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
+            loc = _localize_framework(data, lang)
             result.append({
                 "code": data["code"],
-                "name": data["name"],
+                "name": loc["name"],
                 "version": data.get("version", ""),
-                "description": data.get("description", ""),
+                "description": loc.get("description", ""),
                 "requirements_count": len(data.get("requirements", [])),
                 "audit_frequency_months": data.get("audit_frequency_months", 12),
             })
@@ -97,14 +121,14 @@ def initialize_org_framework(db: Session, org_id: int, framework_code: str) -> i
     return created
 
 
-def get_framework_compliance_status(db: Session, org_id: int, framework_code: str) -> dict:
+def get_framework_compliance_status(db: Session, org_id: int, framework_code: str, lang: str = "es") -> dict:
     """Calcula el estado de cumplimiento de un framework para una org.
 
     Retorna: {framework, completion_pct, status_breakdown, domains, requirements, gaps}
     """
-    framework = load_framework(framework_code)
+    framework = load_framework(framework_code, lang)
     if not framework:
-        return {"error": "Framework no encontrado"}
+        return {"error": _t("compliance.not_found", lang)}
 
     # A8: evitar side-effect en GET — solo inicializar si aun no hay registros
     existing_count = db.query(ComplianceFrameworkStatus).filter(
@@ -271,19 +295,19 @@ def get_framework_compliance_status(db: Session, org_id: int, framework_code: st
     }
 
 
-def get_multi_framework_dashboard(db: Session, org_id: int) -> dict:
+def get_multi_framework_dashboard(db: Session, org_id: int, lang: str = "es") -> dict:
     """Dashboard de cumplimiento multi-framework para una org."""
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     active = (ctx.active_frameworks or []) if ctx else []
 
     if not active:
-        return {"frameworks": [], "overall_pct": 0, "message": "No hay frameworks configurados"}
+        return {"frameworks": [], "overall_pct": 0, "message": _t("compliance.no_frameworks_configured", lang)}
 
     frameworks = []
     total_weighted = 0
     total_reqs = 0
     for code in active:
-        status = get_framework_compliance_status(db, org_id, code)
+        status = get_framework_compliance_status(db, org_id, code, lang)
         frameworks.append(status)
         reqs = status.get("total_requirements", 0)
         if reqs > 0:

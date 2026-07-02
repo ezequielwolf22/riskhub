@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.models import (
 )
 from app.services import bcm_location_service, bcm_graph_service, bcm_test_engine
 from app.security import get_current_user, require_admin, require_analyst
+from app.i18n import get_lang, t as _t
 from app.services.audit_service import log_action
 
 logger = logging.getLogger("riskhub.bcp")
@@ -42,9 +43,9 @@ VALID_IMPL_STATUS = ("planned", "in_progress", "implemented", "tested")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _org(u: User) -> int:
+def _org(u: User, lang: str = "es") -> int:
     if not u.organization_id:
-        raise HTTPException(400, "Usuario sin organización asignada")
+        raise HTTPException(400, _t("bcp.user_no_org", lang))
     return u.organization_id
 
 
@@ -63,13 +64,13 @@ def _bcm_data_root(subdir: str):
     return root
 
 
-def _parse_dt(s, field_name: str = "fecha"):
+def _parse_dt(s, field_name: str = "fecha", lang: str = "es"):
     if not s:
         return None
     try:
         return datetime.fromisoformat(str(s))
     except (ValueError, TypeError):
-        raise HTTPException(422, f"{field_name} debe ser ISO 8601 (ej: 2025-01-15T10:00:00)")
+        raise HTTPException(422, _t("bcp.invalid_iso_date", lang, field=field_name))
 
 
 def _next_bct(db: Session, org_id: int) -> str:
@@ -624,6 +625,7 @@ def bcp_dashboard(db: Session = Depends(get_db), u: User = Depends(get_current_u
 
 @router.get("/iso22301-status")
 def iso22301_status_endpoint(
+    request: Request,
     location_id: Optional[int] = None,
     db: Session = Depends(get_db),
     u: User = Depends(get_current_user),
@@ -632,7 +634,7 @@ def iso22301_status_endpoint(
     if not org:
         return {"clauses": [], "implemented": 0, "partial": 0, "total": 0, "pct": 0, "is_ready": False}
     from app.services.bcp_service import iso22301_status as _status
-    return _status(db, org, location_id)
+    return _status(db, org, location_id, lang=get_lang(request))
 
 
 # ── BIA completeness ──────────────────────────────────────────────────────────
@@ -660,9 +662,9 @@ def list_processes(db: Session = Depends(get_db), u: User = Depends(get_current_
 
 
 @router.post("/processes", status_code=201)
-def create_process(body: ProcessIn, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def create_process(body: ProcessIn, request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
     if body.criticality not in VALID_CRITICALITY:
-        raise HTTPException(422, f"criticality inválido. Válidos: {VALID_CRITICALITY}")
+        raise HTTPException(422, _t("bcp.invalid_criticality_valid", get_lang(request), valid=VALID_CRITICALITY))
     org = _org(u)
     # GDPR: escalation_contacts puede contener nombre, email y teléfono (datos personales).
     # Base legal: Art. 6(1)(f) RGPD — interés legítimo (continuidad del negocio).
@@ -684,13 +686,13 @@ def get_process(pid: int, db: Session = Depends(get_db), u: User = Depends(requi
 
 
 @router.patch("/processes/{pid}")
-def update_process(pid: int, body: ProcessUpdate, db: Session = Depends(get_db),
+def update_process(pid: int, body: ProcessUpdate, request: Request, db: Session = Depends(get_db),
                    u: User = Depends(require_analyst)):
     p = db.get(BusinessProcess, pid)
     if not p or p.organization_id != _org(u):
         raise HTTPException(404)
     if body.criticality and body.criticality not in VALID_CRITICALITY:
-        raise HTTPException(422, "criticality inválido")
+        raise HTTPException(422, _t("bcp.invalid_criticality", get_lang(request)))
     # GDPR: escalation_contacts puede contener datos personales (Art. 6(1)(f) RGPD).
     for k, v in body.model_dump(exclude_none=True).items():
         if k == "bia_review_date":
@@ -728,13 +730,14 @@ def list_deps(process_id: Optional[int] = None, db: Session = Depends(get_db),
 
 
 @router.post("/dependencies", status_code=201)
-def create_dep(body: DepIn, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
-    org = _org(u)
+def create_dep(body: DepIn, request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    lang = get_lang(request)
+    org = _org(u, lang)
     if body.dependency_type not in VALID_DEP_TYPES:
-        raise HTTPException(422, "dependency_type inválido")
+        raise HTTPException(422, _t("bcp.invalid_dependency_type", lang))
     proc = db.get(BusinessProcess, body.process_id)
     if not proc or proc.organization_id != org:
-        raise HTTPException(422, "Proceso no encontrado en esta organización")
+        raise HTTPException(422, _t("bcp.process_not_in_org", lang))
     d = BCPDependency(organization_id=org, **body.model_dump())
     db.add(d)
     db.commit()
@@ -745,7 +748,7 @@ def create_dep(body: DepIn, db: Session = Depends(get_db), u: User = Depends(req
 
 
 @router.patch("/dependencies/{did}")
-def update_dep(did: int, body: DepUpdate, db: Session = Depends(get_db),
+def update_dep(did: int, body: DepUpdate, request: Request, db: Session = Depends(get_db),
                u: User = Depends(require_analyst)):
     d = db.get(BCPDependency, did)
     if not d or d.organization_id != _org(u):
@@ -753,7 +756,7 @@ def update_dep(did: int, body: DepUpdate, db: Session = Depends(get_db),
     data = body.model_dump(exclude_none=True)
     # BUG11 fix: validate dependency_type on update (same as create_dep)
     if "dependency_type" in data and data["dependency_type"] not in VALID_DEP_TYPES:
-        raise HTTPException(422, "dependency_type inválido")
+        raise HTTPException(422, _t("bcp.invalid_dependency_type", get_lang(request)))
     for k, v in data.items():
         setattr(d, k, v)
     db.commit()
@@ -781,10 +784,10 @@ def list_strats(db: Session = Depends(get_db), u: User = Depends(get_current_use
 
 
 @router.post("/strategies", status_code=201)
-def create_strat(body: StratIn, db: Session = Depends(get_db),
+def create_strat(body: StratIn, request: Request, db: Session = Depends(get_db),
                  u: User = Depends(require_analyst)):
     if body.strategy_type not in VALID_STRATEGY_TYPES:
-        raise HTTPException(422, "strategy_type inválido")
+        raise HTTPException(422, _t("bcp.invalid_strategy_type", get_lang(request)))
     org = _org(u)
     s = BCPStrategy(
         organization_id=org,
@@ -808,17 +811,18 @@ def create_strat(body: StratIn, db: Session = Depends(get_db),
 
 
 @router.patch("/strategies/{sid}")
-def update_strat(sid: int, body: StratUpdate, db: Session = Depends(get_db),
+def update_strat(sid: int, body: StratUpdate, request: Request, db: Session = Depends(get_db),
                  u: User = Depends(require_analyst)):
+    lang = get_lang(request)
     s = db.get(BCPStrategy, sid)
-    if not s or s.organization_id != _org(u):
+    if not s or s.organization_id != _org(u, lang):
         raise HTTPException(404)
     data = body.model_dump(exclude_none=True)
     # BUG12 fix: validate strategy_type and implementation_status on update
     if "strategy_type" in data and data["strategy_type"] not in VALID_STRATEGY_TYPES:
-        raise HTTPException(422, "strategy_type inválido")
+        raise HTTPException(422, _t("bcp.invalid_strategy_type", lang))
     if "implementation_status" in data and data["implementation_status"] not in VALID_IMPL_STATUS:
-        raise HTTPException(422, "implementation_status inválido")
+        raise HTTPException(422, _t("bcp.invalid_implementation_status", lang))
     for k, v in data.items():
         if k == "target_date":
             v = _parse_dt(v, "target_date")
@@ -848,16 +852,17 @@ def list_plans(db: Session = Depends(get_db), u: User = Depends(get_current_user
 
 
 @router.post("/plans", status_code=201)
-def create_plan(body: PlanIn, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def create_plan(body: PlanIn, request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    lang = get_lang(request)
     if body.plan_type not in VALID_PLAN_TYPES:
-        raise HTTPException(422, "plan_type inválido")
-    org = _org(u)
+        raise HTTPException(422, _t("bcp.invalid_plan_type", lang))
+    org = _org(u, lang)
     # B2 — IDOR prevention: verificar que el documento pertenece a la misma organización
     if body.document_id:
         from app.models import AiDocument
         doc = db.get(AiDocument, body.document_id)
         if not doc or doc.organization_id != org:
-            raise HTTPException(422, "Documento no encontrado en esta organización")
+            raise HTTPException(422, _t("bcp.document_not_in_org", lang))
     from app.services.bcp_service import next_plan_code
     plan_code = body.code if body.code else next_plan_code(db, org, body.plan_type)
     p = BCPPlan(
@@ -917,31 +922,28 @@ _PLAN_SAFE_FIELDS_WHEN_APPROVED = {
 
 
 @router.patch("/plans/{pid}")
-def update_plan(pid: int, body: PlanUpdate, db: Session = Depends(get_db),
+def update_plan(pid: int, body: PlanUpdate, request: Request, db: Session = Depends(get_db),
                 u: User = Depends(require_analyst)):
+    lang = get_lang(request)
     p = db.get(BCPPlan, pid)
-    if not p or p.organization_id != _org(u):
+    if not p or p.organization_id != _org(u, lang):
         raise HTTPException(404)
     data = body.model_dump(exclude_none=True)
     # Un plan aprobado es un documento con validez ISO 22301 §8.4: su contenido
     # no debe poder mutarse por PATCH directo. El cambio de estado a 'approved'
     # solo puede hacerse mediante /plans/{id}/approve (que valida y obsoleta versiones previas).
     if data.get("status") == "approved":
-        raise HTTPException(422, "Para aprobar un plan usa POST /plans/{id}/approve")
+        raise HTTPException(422, _t("bcp.use_approve_endpoint", lang))
     if p.status == "approved":
         disallowed = set(data.keys()) - _PLAN_SAFE_FIELDS_WHEN_APPROVED
         if disallowed:
-            raise HTTPException(
-                422,
-                "Este plan esta aprobado y no puede editarse directamente. "
-                "Usa 'Editar plan' para crear una nueva version en borrador.",
-            )
+            raise HTTPException(422, _t("bcp.plan_approved_no_edit", lang))
     # B2 — IDOR prevention
     if "document_id" in data and data["document_id"]:
         from app.models import AiDocument
         doc = db.get(AiDocument, data["document_id"])
         if not doc or doc.organization_id != _org(u):
-            raise HTTPException(422, "Documento no encontrado en esta organización")
+            raise HTTPException(422, _t("bcp.document_not_in_org", lang))
     doc_id_changed = "document_id" in data and data["document_id"] != p.document_id
     for k, v in data.items():
         if k == "review_date":
@@ -966,24 +968,25 @@ def delete_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requi
 
 
 @router.post("/plans/{pid}/approve")
-def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(require_admin)):
+def approve_plan(pid: int, request: Request, db: Session = Depends(get_db), u: User = Depends(require_admin)):
+    lang = get_lang(request)
     p = db.get(BCPPlan, pid)
-    if not p or p.organization_id != _org(u):
+    if not p or p.organization_id != _org(u, lang):
         raise HTTPException(404)
     if p.status not in ("draft", "under_review"):
-        raise HTTPException(422, "Solo planes en draft o under_review pueden aprobarse")
+        raise HTTPException(422, _t("bcp.only_draft_approvable", lang))
     # Validate required fields before approval (ISO 22301 §8.4)
     missing = []
     if not p.name:
-        missing.append("nombre")
+        missing.append(_t("bcp.field_name", lang))
     if not p.scope:
-        missing.append("alcance")
+        missing.append(_t("bcp.field_scope", lang))
     if not p.activation_criteria:
-        missing.append("criterios de activacion")
+        missing.append(_t("bcp.field_activation_criteria", lang))
     if not p.process_ids:
-        missing.append("al menos un proceso asociado")
+        missing.append(_t("bcp.field_processes", lang))
     if missing:
-        raise HTTPException(422, f"Campos obligatorios incompletos: {', '.join(missing)}")
+        raise HTTPException(422, _t("bcp.missing_required_fields", lang, fields=", ".join(missing)))
     p.status = "approved"
     p.approved_by_id = u.id
     p.approved_at = datetime.now(timezone.utc)
@@ -1013,7 +1016,7 @@ def approve_plan(pid: int, db: Session = Depends(get_db), u: User = Depends(requ
 
 
 @router.post("/plans/{pid}/ai-content-review")
-def trigger_plan_content_review(pid: int, db: Session = Depends(get_db),
+def trigger_plan_content_review(pid: int, request: Request, db: Session = Depends(get_db),
                                  u: User = Depends(require_analyst)):
     """Dispara (o relanza) manualmente la revision semantica IA del documento
     del plan. Util para planes creados antes de esta funcionalidad o para
@@ -1022,7 +1025,7 @@ def trigger_plan_content_review(pid: int, db: Session = Depends(get_db),
     if not p or p.organization_id != _org(u):
         raise HTTPException(404)
     if not p.document_id:
-        raise HTTPException(422, "Este plan no tiene un documento vinculado para analizar")
+        raise HTTPException(422, _t("bcp.plan_no_document", get_lang(request)))
     _trigger_content_review(db, p, _org(u))
     return {"status": "queued"}
 
@@ -1085,7 +1088,7 @@ def plan_context(pid: int, db: Session = Depends(get_db),
 
 
 @router.post("/tests/{tid}/ai-generate-checklist")
-def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
+def ai_generate_test_checklist(tid: int, request: Request, db: Session = Depends(get_db),
                                 u: User = Depends(require_analyst)):
     """Genera con IA un checklist especifico para el test basado en los procesos,
     dependencias, runbooks y proveedores del plan asociado."""
@@ -1093,8 +1096,9 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
     from app.security import decrypt_secret
     import anthropic, json as _json
 
+    lang = get_lang(request)
     # BUG2 fix: capture org once to avoid multiple _org() calls
-    org = _org(u)
+    org = _org(u, lang)
     t = db.get(BCPTest, tid)
     if not t or t.organization_id != org:
         raise HTTPException(404)
@@ -1109,7 +1113,7 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
     if not api_key:
         api_key = settings.anthropic_api_key
     if not api_key:
-        raise HTTPException(422, "IA no configurada. Configura una API key en Integraciones > Agente IA")
+        raise HTTPException(422, _t("bcp.ai_not_configured_hint", lang))
 
     proc_ids = [int(x) for x in (t.process_ids or []) if str(x).isdigit()]
     proc_details = []
@@ -1171,7 +1175,7 @@ def ai_generate_test_checklist(tid: int, db: Session = Depends(get_db),
         end = raw.rfind("}") + 1
         checklist = _json.loads(raw[start:end]) if start >= 0 else {}
     except Exception as exc:
-        raise HTTPException(500, f"Error IA: {exc}")
+        raise HTTPException(500, _t("bcp.ai_error", lang, detail=exc))
 
     return {"test_id": t.id, "checklist": checklist}
 
@@ -1188,11 +1192,12 @@ def list_tests(db: Session = Depends(get_db), u: User = Depends(get_current_user
 
 
 @router.post("/tests", status_code=201)
-def create_test(body: TestIn, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def create_test(body: TestIn, request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    lang = get_lang(request)
     if body.test_type not in VALID_TEST_TYPES:
-        raise HTTPException(422, "test_type inválido")
-    scheduled = _parse_dt(body.scheduled_at, "scheduled_at")
-    org = _org(u)
+        raise HTTPException(422, _t("bcp.invalid_test_type", lang))
+    scheduled = _parse_dt(body.scheduled_at, "scheduled_at", lang)
+    org = _org(u, lang)
     t = BCPTest(
         organization_id=org,
         code=_next_bct(db, org),
@@ -1215,18 +1220,19 @@ def create_test(body: TestIn, db: Session = Depends(get_db), u: User = Depends(r
 
 
 @router.patch("/tests/{tid}")
-def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
+def update_test(tid: int, body: TestUpdate, request: Request, db: Session = Depends(get_db),
                 u: User = Depends(require_analyst)):
+    lang = get_lang(request)
     # BUG2 fix: capture org once to avoid multiple _org() calls
-    org = _org(u)
+    org = _org(u, lang)
     t = db.get(BCPTest, tid)
     if not t or t.organization_id != org:
         raise HTTPException(404)
     if body.conducted_at:
-        t.conducted_at = _parse_dt(body.conducted_at, "conducted_at")
+        t.conducted_at = _parse_dt(body.conducted_at, "conducted_at", lang)
     if body.result:
         if body.result not in VALID_TEST_RESULTS:
-            raise HTTPException(422, "result inválido")
+            raise HTTPException(422, _t("bcp.invalid_result", lang))
         t.result = body.result
         # BUG7 fix: ensure conducted_at is always set when a result is recorded
         t.conducted_at = t.conducted_at or datetime.now(timezone.utc)
@@ -1253,7 +1259,7 @@ def update_test(tid: int, body: TestUpdate, db: Session = Depends(get_db),
         _close_nc_on_bcp_pass(db, t, org)
     elif body.result in ("failed", "partial"):
         # Auto-crear NC por fallo (ISO 22301 cl. 10.1)
-        _auto_nc_from_bcp_test_failure(db, t, org, u.id)
+        _auto_nc_from_bcp_test_failure(db, t, org, u.id, lang)
     return _test_d(t)
 
 
@@ -1269,18 +1275,19 @@ def list_sl(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
 
 
 @router.post("/supplier-links", status_code=201)
-def create_sl(body: SupLinkIn, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
-    org = _org(u)
+def create_sl(body: SupLinkIn, request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    lang = get_lang(request)
+    org = _org(u, lang)
     sup = db.get(Supplier, body.supplier_id)
     if not sup or sup.organization_id != org:
-        raise HTTPException(422, "Proveedor no encontrado en esta organización")
+        raise HTTPException(422, _t("bcp.supplier_not_in_org", lang))
     existing = db.query(BCPSupplierLink).filter_by(
         organization_id=org, supplier_id=body.supplier_id).first()
     if existing:
-        raise HTTPException(409, "Ya existe vínculo BCM para este proveedor")
+        raise HTTPException(409, _t("bcp.supplier_link_exists", lang))
     data = body.model_dump()
     if data.get("last_review_date"):
-        data["last_review_date"] = _parse_dt(data["last_review_date"], "last_review_date")
+        data["last_review_date"] = _parse_dt(data["last_review_date"], "last_review_date", lang)
     sl = BCPSupplierLink(organization_id=org, **data)
     db.add(sl)
     db.commit()
@@ -1335,10 +1342,10 @@ def list_ep(year: Optional[int] = None, db: Session = Depends(get_db),
 
 
 @router.post("/exercise-programme", status_code=201)
-def create_ep(body: EPIn, db: Session = Depends(get_db), u: User = Depends(require_admin)):
+def create_ep(body: EPIn, request: Request, db: Session = Depends(get_db), u: User = Depends(require_admin)):
     org = _org(u)
     if db.query(BCPExerciseProgramme).filter_by(organization_id=org, year=body.year).first():
-        raise HTTPException(409, f"Ya existe programa para {body.year}")
+        raise HTTPException(409, _t("bcp.programme_exists", get_lang(request), year=body.year))
     ep = BCPExerciseProgramme(
         organization_id=org,
         year=body.year,
@@ -1352,14 +1359,14 @@ def create_ep(body: EPIn, db: Session = Depends(get_db), u: User = Depends(requi
 
 
 @router.patch("/exercise-programme/{eid}")
-def update_ep(eid: int, body: EPUpdate, db: Session = Depends(get_db),
+def update_ep(eid: int, body: EPUpdate, request: Request, db: Session = Depends(get_db),
               u: User = Depends(require_analyst)):
     ep = db.get(BCPExerciseProgramme, eid)
     if not ep or ep.organization_id != _org(u):
         raise HTTPException(404)
     # Security: solo admin puede marcar como aprobado (ISO 27001 A.8.15 — trazabilidad)
     if body.status == "approved" and u.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
-        raise HTTPException(403, "Solo un administrador puede aprobar el programa de ejercicios")
+        raise HTTPException(403, _t("bcp.only_admin_approve_programme", get_lang(request)))
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(ep, k, v)
     db.commit()
@@ -1370,41 +1377,43 @@ def update_ep(eid: int, body: EPUpdate, db: Session = Depends(get_db),
 # ── Excel import ──────────────────────────────────────────────────────────────
 
 @router.post("/import/preview")
-async def import_preview(file: UploadFile = File(...),
+async def import_preview(request: Request, file: UploadFile = File(...),
                          db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    lang = get_lang(request)
     if not file.filename.endswith((".xlsx", ".xls")):
-        raise HTTPException(422, "Solo se aceptan .xlsx / .xls")
+        raise HTTPException(422, _t("bcp.only_xlsx", lang))
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(413, "Máx 10 MB")
+        raise HTTPException(413, _t("bcp.max_10mb", lang))
     # G11: validacion de magic bytes — ZIP header (PK\x03\x04) requerido para .xlsx
     if not content[:4] == b'PK\x03\x04':
-        raise HTTPException(422, "Archivo invalido: no es un fichero Excel (.xlsx) valido")
+        raise HTTPException(422, _t("bcp.invalid_excel_file", lang))
     from app.services.bcp_excel_service import parse_excel_preview
     try:
         return parse_excel_preview(content)
     except Exception as exc:
-        raise HTTPException(422, f"Error leyendo Excel: {exc}")
+        raise HTTPException(422, _t("bcp.excel_read_error", lang, detail=exc))
 
 
 @router.post("/import/confirm")
-async def import_confirm(file: UploadFile = File(...),
+async def import_confirm(request: Request, file: UploadFile = File(...),
                          db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    lang = get_lang(request)
     if not file.filename.endswith((".xlsx", ".xls")):
-        raise HTTPException(422, "Solo se aceptan .xlsx / .xls")
+        raise HTTPException(422, _t("bcp.only_xlsx", lang))
     content = await file.read()
     if not content[:4] == b'PK\x03\x04':
-        raise HTTPException(422, "Archivo invalido: no es un fichero Excel (.xlsx) valido")
+        raise HTTPException(422, _t("bcp.invalid_excel_file", lang))
     from app.services.bcp_excel_service import parse_excel_preview, confirm_excel_import
     try:
         preview = parse_excel_preview(content)
         if preview["errors"]:
-            raise HTTPException(422, f"Errores en Excel: {preview['errors']}")
-        created = confirm_excel_import(db, preview, _org(u))
+            raise HTTPException(422, _t("bcp.excel_errors", lang, detail=preview['errors']))
+        created = confirm_excel_import(db, preview, _org(u, lang))
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(422, f"Error importando: {exc}")
+        raise HTTPException(422, _t("bcp.import_error", lang, detail=exc))
     log_action(db, u.id, "import", "bcp_excel", "batch",
                {"created": created, "file": file.filename})
     return {"success": True, "created": created}
@@ -1421,11 +1430,11 @@ def download_template(u: User = Depends(require_analyst)):
 
 
 @router.get("/export")
-def export_bcp_excel(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+def export_bcp_excel(request: Request, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
     """Exporta todos los datos BCP de la organización como Excel."""
     org = u.organization_id
     if not org:
-        raise HTTPException(400, "Sin organización asignada")
+        raise HTTPException(400, _t("bcp.no_org_assigned", get_lang(request)))
     from app.services.bcp_excel_service import export_org_data
     content = export_org_data(db, org)
     return Response(
@@ -1437,18 +1446,20 @@ def export_bcp_excel(db: Session = Depends(get_db), u: User = Depends(get_curren
 
 @router.post("/import/ai-preview")
 async def import_ai_preview(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     u: User = Depends(require_analyst),
 ):
     """Usa Claude para parsear cualquier formato Excel/CSV y mapear columnas BCP."""
+    lang = get_lang(request)
     if not file.filename.endswith((".xlsx", ".xls", ".csv")):
-        raise HTTPException(422, "Se aceptan .xlsx, .xls, .csv")
+        raise HTTPException(422, _t("bcp.only_xlsx_csv", lang))
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(413, "Max 10 MB")
+        raise HTTPException(413, _t("bcp.max_10mb", lang))
     from app.models import AiConfig
-    org = _org(u)
+    org = _org(u, lang)
     cfg = db.query(AiConfig).filter_by(organization_id=org).first()
     # Obtener API key usando el mismo patron que el router ai.py
     import base64
@@ -1466,7 +1477,7 @@ async def import_ai_preview(
     if not api_key:
         api_key = settings.anthropic_api_key
     if not api_key:
-        raise HTTPException(422, "No hay API key de IA configurada. Configura el agente IA primero.")
+        raise HTTPException(422, _t("bcp.ai_key_missing_configure", lang))
     from app.services.bcp_excel_service import ai_parse_any_format
     bcp_ai_model = (cfg.model if cfg and cfg.model else None) or "claude-haiku-4-5-20251001"
     try:
@@ -1474,7 +1485,7 @@ async def import_ai_preview(
         return result
     except Exception as exc:
         logger.error("AI BCP import error: %s", exc)
-        raise HTTPException(422, f"Error en analisis IA: {exc}")
+        raise HTTPException(422, _t("bcp.ai_analysis_error", lang, detail=exc))
 
 
 _BCP_ANALYSIS_PROMPT = """
@@ -1547,9 +1558,10 @@ def _build_bcp_summary(db: Session, org_id: int) -> str:
 
 
 @router.post("/analyze")
-def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def analyze_bcp_with_ai(request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
     """Analiza el estado BCP de la org con IA y devuelve recomendaciones. Consumo manual — no auto."""
-    org = _org(u)
+    lang = get_lang(request)
+    org = _org(u, lang)
     from app.models import AiConfig
     cfg = db.query(AiConfig).filter_by(organization_id=org).first()
     import base64
@@ -1565,7 +1577,7 @@ def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require
     if not api_key:
         api_key = settings.anthropic_api_key
     if not api_key:
-        raise HTTPException(422, "No hay API key de IA configurada")
+        raise HTTPException(422, _t("bcp.ai_key_missing", lang))
 
     try:
         import anthropic
@@ -1581,7 +1593,7 @@ def analyze_bcp_with_ai(db: Session = Depends(get_db), u: User = Depends(require
         return {"analysis": analysis_text, "format": "markdown"}
     except Exception as exc:
         logger.error("BCP AI analyze error org=%d: %s", org, exc)
-        raise HTTPException(422, f"Error en analisis IA: {exc}")
+        raise HTTPException(422, _t("bcp.ai_analysis_error", lang, detail=exc))
 
 
 # ── NC desde test fallido (ISO 22301 cl. 10.1) ────────────────────────────────
@@ -1644,7 +1656,8 @@ def _link_bcp_to_nis2(db: Session, plan: BCPPlan, org_id: int) -> None:
         logger.warning("NIS2 BCP link failed: %s", exc)
 
 
-def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user_id: int) -> None:
+def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user_id: int,
+                                   lang: str = "es") -> None:
     """Crea NC automaticamente cuando un test BCP falla (ISO 22301 cl. 10.1).
 
     Bucle cerrado: NC cerrada cuando un test posterior pasa (_close_nc_on_bcp_pass).
@@ -1670,14 +1683,11 @@ def _auto_nc_from_bcp_test_failure(db: Session, test: BCPTest, org_id: int, user
     nc = NonConformity(
         organization_id=org_id,
         code=_next_nc_code(db, org_id),
-        title=f"Test BCP {test.result.upper()}: {test.code or f'ID {test.id}'}",
-        description=(
-            f"El test BCP (tipo: {test.test_type or 'desconocido'}) "
-            f"obtuvo resultado '{test.result}'. "
-            f"Incumplimiento de ISO 22301 §8.5 (tests periodicos de continuidad). "
-            f"BCPTest ID: {test.id}. "
-            f"Para cerrar esta NC: realizar un nuevo test con resultado satisfactorio."
-        ),
+        title=_t("bcp.auto_nc_title", lang,
+                 result=test.result.upper(), code=test.code or f"ID {test.id}"),
+        description=_t("bcp.auto_nc_description", lang,
+                       type=test.test_type or _t("bcp.unknown", lang),
+                       result=test.result, id=test.id),
         source="bcp_test",
         severity=severity,
         status=NCStatus.OPEN,
@@ -1738,20 +1748,18 @@ def _next_nc_code(db: Session, org_id: int) -> str:
 
 
 @router.post("/tests/{test_id}/create-nc", status_code=201)
-def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
+def create_nc_from_test(test_id: int, request: Request, db: Session = Depends(get_db),
                         u: User = Depends(require_analyst)):
     """Crea una No Conformidad vinculada a un test de continuidad fallido.
 
     ISO 22301 cl. 10.1 — no conformidades y acciones correctoras.
     """
+    lang = get_lang(request)
     t = db.get(BCPTest, test_id)
-    if not t or t.organization_id != _org(u):
+    if not t or t.organization_id != _org(u, lang):
         raise HTTPException(404)
     if t.result not in ("failed", "partial"):
-        raise HTTPException(
-            422,
-            "Solo se puede crear NC desde tests con resultado 'failed' o 'partial'",
-        )
+        raise HTTPException(422, _t("bcp.nc_only_failed_tests", lang))
     # G06: evitar duplicado cruzado con NCs auto-generadas
     if t.nc_ids:
         from app.models import NonConformity as _NC, NCStatus as _NCStatus
@@ -1760,10 +1768,7 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
             _NC.status.notin_([_NCStatus.CLOSED]),  # BUG8 fix: use enum value
         ).first()
         if open_nc:
-            raise HTTPException(
-                409,
-                f"Ya existe una NC abierta vinculada a este test: {open_nc.code}",
-            )
+            raise HTTPException(409, _t("bcp.nc_already_open", lang, code=open_nc.code))
     try:
         from app.models import NonConformity, NCSeverity, NCStatus
         severity = NCSeverity.MAJOR if t.result == "failed" else NCSeverity.MINOR
@@ -1771,11 +1776,12 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
         nc = NonConformity(
             organization_id=org_id_nc,
             code=_next_nc_code(db, org_id_nc),
-            title=f"Test de continuidad {t.result.upper()}: {t.code}",
-            description=(
-                f"Tipo de ejercicio: {t.test_type}\n"
-                f"Fecha realizacion: {t.conducted_at.date() if t.conducted_at else 'pendiente'}\n"
-                f"Hallazgos: {t.findings or 'Sin hallazgos documentados'}"
+            title=_t("bcp.nc_from_test_title", lang, result=t.result.upper(), code=t.code),
+            description=_t(
+                "bcp.nc_from_test_description", lang,
+                type=t.test_type,
+                date=t.conducted_at.date() if t.conducted_at else _t("bcp.pending", lang),
+                findings=t.findings or _t("bcp.no_findings", lang),
             ),
             source="bcp_test",
             severity=severity,
@@ -1794,13 +1800,13 @@ def create_nc_from_test(test_id: int, db: Session = Depends(get_db),
         log_action(db, u.id, "create", "nonconformity_from_bcp_test",
                    str(nc.id), {"test_code": t.code, "result": t.result})
         return {"nc_id": nc.id, "nc_code": nc.code,
-                "message": f"NC {nc.code} creada correctamente"}
+                "message": _t("bcp.nc_created", lang, code=nc.code)}
     except ImportError:
-        raise HTTPException(500, "Modulo de NCs no disponible")
+        raise HTTPException(500, _t("bcp.nc_module_unavailable", lang))
     except Exception as exc:
         db.rollback()
         logger.error("create_nc_from_test error: %s", exc)
-        raise HTTPException(500, f"Error al crear NC: {exc}")
+        raise HTTPException(500, _t("bcp.nc_create_error", lang, detail=exc))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1834,17 +1840,17 @@ class LocationUpdate(BaseModel):
 
 # ── Helpers BCM Expansion ─────────────────────────────────────────────────────
 
-def _chk_loc(db, loc_id, org_id):
+def _chk_loc(db, loc_id, org_id, lang="es"):
     loc = db.get(BCMLocation, loc_id)
     if not loc or loc.organization_id != org_id:
-        raise HTTPException(404, "Localización no encontrada")
+        raise HTTPException(404, _t("bcp.location_not_found", lang))
     return loc
 
 
-def _chk_act(db, act_id, org_id):
+def _chk_act(db, act_id, org_id, lang="es"):
     act = db.get(BCMActivation, act_id)
     if not act or act.organization_id != org_id:
-        raise HTTPException(404, "Activación no encontrada")
+        raise HTTPException(404, _t("bcp.activation_not_found", lang))
     return act
 
 
@@ -2011,12 +2017,12 @@ def consolidated(db: Session = Depends(get_db), u: User = Depends(get_current_us
 
 
 @router.post("/locations", status_code=201)
-def create_location(body: LocationCreate, db: Session = Depends(get_db),
+def create_location(body: LocationCreate, request: Request, db: Session = Depends(get_db),
                     u: User = Depends(require_admin)):
     if body.parent_id:
         p = db.get(BCMLocation, body.parent_id)
         if not p or p.organization_id != _org(u):
-            raise HTTPException(422, "Localización padre no encontrada")
+            raise HTTPException(422, _t("bcp.parent_location_not_found", get_lang(request)))
     loc = BCMLocation(
         organization_id=_org(u),
         code=bcm_location_service.next_location_code(db, _org(u)),
@@ -2030,17 +2036,17 @@ def create_location(body: LocationCreate, db: Session = Depends(get_db),
 
 
 @router.get("/locations/{loc_id}")
-def get_location(loc_id: int, db: Session = Depends(get_db),
+def get_location(loc_id: int, request: Request, db: Session = Depends(get_db),
                  u: User = Depends(get_current_user)):
-    loc = _chk_loc(db, loc_id, _org(u))
+    loc = _chk_loc(db, loc_id, _org(u), get_lang(request))
     metrics = bcm_location_service.get_location_metrics(db, loc_id, _org(u))
     return {**_loc_d(loc), "metrics": metrics}
 
 
 @router.patch("/locations/{loc_id}")
-def update_location(loc_id: int, body: LocationUpdate,
+def update_location(loc_id: int, body: LocationUpdate, request: Request,
                     db: Session = Depends(get_db), u: User = Depends(require_admin)):
-    loc = _chk_loc(db, loc_id, _org(u))
+    loc = _chk_loc(db, loc_id, _org(u), get_lang(request))
     for k, v in body.model_dump(exclude_none=True).items():
         setattr(loc, k, v)
     db.commit()
@@ -2048,14 +2054,15 @@ def update_location(loc_id: int, body: LocationUpdate,
 
 
 @router.delete("/locations/{loc_id}", status_code=204)
-def delete_location(loc_id: int, db: Session = Depends(get_db),
+def delete_location(loc_id: int, request: Request, db: Session = Depends(get_db),
                     u: User = Depends(require_admin)):
-    loc = _chk_loc(db, loc_id, _org(u))
+    lang = get_lang(request)
+    loc = _chk_loc(db, loc_id, _org(u, lang), lang)
     try:
         procs = db.query(BusinessProcess).filter_by(
             organization_id=_org(u), location_id=loc_id).count()
         if procs:
-            raise HTTPException(422, f"No se puede eliminar: {procs} proceso(s) vinculado(s)")
+            raise HTTPException(422, _t("bcp.cannot_delete_location_processes", lang, n=procs))
     except HTTPException:
         raise
     except Exception:
@@ -2065,20 +2072,21 @@ def delete_location(loc_id: int, db: Session = Depends(get_db),
 
 
 @router.post("/locations/{loc_id}/sync-deps")
-def sync_location_deps(loc_id: int, db: Session = Depends(get_db),
+def sync_location_deps(loc_id: int, request: Request, db: Session = Depends(get_db),
                        u: User = Depends(require_analyst)):
     """Auto-crea dependencias BCM cuando una localización tiene localización alternativa.
     ISO 22301 cl. 8.3 — cada proceso debe tener estrategia de localización alternativa.
     Las dependencias creadas son categorizadas como criticas o no segun la criticidad del proceso.
     """
-    org = _org(u)
-    loc = _chk_loc(db, loc_id, org)
+    lang = get_lang(request)
+    org = _org(u, lang)
+    loc = _chk_loc(db, loc_id, org, lang)
     if not loc.alternate_location_id:
-        return {"created": 0, "skipped": 0, "message": "Sin localización alternativa configurada"}
+        return {"created": 0, "skipped": 0, "message": _t("bcp.no_alternate_location", lang)}
 
     alt_loc = db.get(BCMLocation, loc.alternate_location_id)
     if not alt_loc or alt_loc.organization_id != org:
-        raise HTTPException(422, "Localización alternativa no válida")
+        raise HTTPException(422, _t("bcp.invalid_alternate_location", lang))
 
     try:
         procs = db.query(BusinessProcess).filter_by(
@@ -2105,12 +2113,13 @@ def sync_location_deps(loc_id: int, db: Session = Depends(get_db),
             process_id=proc.id,
             dependency_type="facility",
             name=dep_name,
-            description=(
-                f"Dependencia auto-generada: {loc.name} tiene como sede alternativa "
-                f"{alt_loc.name}. Activar en caso de indisponibilidad de sede principal."
-            ),
+            description=_t("bcp.alt_site_dep_description", lang, loc=loc.name, alt=alt_loc.name),
             is_critical=is_critical,
-            alternative=f"Activar trasladado a {alt_loc.name} ({alt_loc.recovery_site_type or 'site alternativo'})",
+            alternative=_t(
+                "bcp.alt_site_dep_alternative", lang,
+                alt=alt_loc.name,
+                site_type=alt_loc.recovery_site_type or _t("bcp.alt_site_fallback", lang),
+            ),
             notes="auto:location_alternate",
         )
         db.add(dep)
@@ -2126,14 +2135,15 @@ def sync_location_deps(loc_id: int, db: Session = Depends(get_db),
         "skipped": skipped,
         "location": loc.name,
         "alternate": alt_loc.name,
-        "message": f"{created} dependencia(s) creada(s), {skipped} ya existían",
+        "message": _t("bcp.deps_sync_result", lang, created=created, skipped=skipped),
     }
 
 
 @router.post("/locations/sync-all-deps")
-def sync_all_location_deps(db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+def sync_all_location_deps(request: Request, db: Session = Depends(get_db), u: User = Depends(require_analyst)):
     """Sincroniza dependencias de todas las localizaciones con sede alternativa."""
-    org = _org(u)
+    lang = get_lang(request)
+    org = _org(u, lang)
     locs = db.query(BCMLocation).filter(
         BCMLocation.organization_id == org,
         BCMLocation.alternate_location_id.isnot(None),
@@ -2164,7 +2174,7 @@ def sync_all_location_deps(db: Session = Depends(get_db), u: User = Depends(requ
                         dependency_type="facility", name=dep_name,
                         description=f"Auto: {loc.name} → {alt_loc.name}",
                         is_critical=proc.criticality in ("critical", "high"),
-                        alternative=f"Trasladar a {alt_loc.name}",
+                        alternative=_t("bcp.alt_site_move", lang, alt=alt_loc.name),
                         notes="auto:location_alternate",
                     )
                     db.add(dep)
@@ -2179,22 +2189,22 @@ def sync_all_location_deps(db: Session = Depends(get_db), u: User = Depends(requ
 # ── GRAFO DE DEPENDENCIAS BCM ─────────────────────────────────────────────────
 
 @router.get("/graph")
-def get_graph(location_id: Optional[int] = None,
+def get_graph(request: Request, location_id: Optional[int] = None,
               db: Session = Depends(get_db), u: User = Depends(get_current_user)):
     """Grafo de dependencias BCM compatible con Cytoscape.js."""
     if location_id:
-        _chk_loc(db, location_id, _org(u))
+        _chk_loc(db, location_id, _org(u), get_lang(request))
     return bcm_graph_service.build_dependency_graph(db, _org(u), location_id)
 
 
 @router.post("/graph/analyze")
-def analyze_graph(location_id: Optional[int] = None,
+def analyze_graph(request: Request, location_id: Optional[int] = None,
                   db: Session = Depends(get_db), u: User = Depends(require_analyst)):
     """Análisis IA del grafo de dependencias."""
     from app.services.isms_analysis_service import _get_api_key, _get_model
     api_key = _get_api_key(db, _org(u))
     if not api_key:
-        raise HTTPException(422, "API key IA no configurada")
+        raise HTTPException(422, _t("bcp.api_key_not_configured", get_lang(request)))
     graph = bcm_graph_service.build_dependency_graph(db, _org(u), location_id)
     analysis = bcm_graph_service.analyze_graph_with_ai(
         db, graph, _org(u), api_key, _get_model(db, _org(u))
@@ -2292,6 +2302,7 @@ async def upload_evidence(
     linked_process_id: Optional[int] = None,
     description: Optional[str] = None,
     tags: Optional[str] = None,
+    request: Request = None,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     u: User = Depends(require_analyst),
@@ -2304,7 +2315,7 @@ async def upload_evidence(
 
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:
-        raise HTTPException(413, "Archivo demasiado grande (máx 50 MB)")
+        raise HTTPException(413, _t("bcp.file_too_large_50mb", get_lang(request)))
 
     sha256 = hashlib.sha256(content).hexdigest()
 
@@ -2363,7 +2374,7 @@ def trigger_evidence_ai_review(eid: int, db: Session = Depends(get_db),
 
 
 @router.get("/evidence/{eid}/download")
-def download_evidence(eid: int, db: Session = Depends(get_db),
+def download_evidence(eid: int, request: Request, db: Session = Depends(get_db),
                       u: User = Depends(require_analyst)):
     from fastapi.responses import FileResponse
     from pathlib import Path
@@ -2371,7 +2382,7 @@ def download_evidence(eid: int, db: Session = Depends(get_db),
     if not ev or ev.organization_id != _org(u):
         raise HTTPException(404)
     if not ev.file_path or not Path(ev.file_path).exists():
-        raise HTTPException(404, "Archivo no encontrado en el servidor")
+        raise HTTPException(404, _t("bcp.file_not_found_server", get_lang(request)))
     return FileResponse(ev.file_path, filename=ev.file_name,
                         media_type=ev.mime_type or "application/octet-stream")
 
@@ -2404,17 +2415,18 @@ def list_activations(status: Optional[str] = None,
 
 
 @router.post("/activations", status_code=201)
-def create_activation(body: dict, db: Session = Depends(get_db),
+def create_activation(body: dict, request: Request, db: Session = Depends(get_db),
                       u: User = Depends(require_analyst)):
     from app.services.bcm_checklist_service import build_activation_checklist
+    lang = get_lang(request)
     # BUG2 fix: capture org once to avoid multiple _org() calls
-    org = _org(u)
+    org = _org(u, lang)
     plan_ids = body.get("activated_plan_ids") or []
     plans = []
     for pid in plan_ids:
         plan = db.get(BCPPlan, pid)
         if not plan or plan.organization_id != org:
-            raise HTTPException(422, f"Plan {pid} no encontrado")
+            raise HTTPException(422, _t("bcp.plan_id_not_found", lang, id=pid))
         plans.append(plan)
 
     # Merge checklists de todos los planes activados
@@ -2433,7 +2445,7 @@ def create_activation(body: dict, db: Session = Depends(get_db),
     act = BCMActivation(
         organization_id=org,
         code="ACT-0000",  # BUG1 fix: placeholder; real code assigned after flush
-        title=body.get("title", "Activación BCM"),
+        title=body.get("title") or _t("bcp.default_activation_title", lang),
         activated_plan_ids=plan_ids,
         incident_id=body.get("incident_id"),
         location_id=body.get("location_id"),
@@ -2454,9 +2466,9 @@ def create_activation(body: dict, db: Session = Depends(get_db),
 
 
 @router.post("/activations/{aid}/log")
-def add_log_entry(aid: int, body: dict, db: Session = Depends(get_db),
+def add_log_entry(aid: int, body: dict, request: Request, db: Session = Depends(get_db),
                   u: User = Depends(require_analyst)):
-    act = _chk_act(db, aid, _org(u))
+    act = _chk_act(db, aid, _org(u), get_lang(request))
     log = list(act.situation_log or [])
     valid_types = {"accion", "nota", "escalada", "resolucion", "decision", "comunicacion", "action"}
     entry_type = body.get("entry_type") or body.get("type", "accion")
@@ -2478,10 +2490,10 @@ def add_log_entry(aid: int, body: dict, db: Session = Depends(get_db),
 
 
 @router.patch("/activations/{aid}/systems")
-def update_system_status(aid: int, body: dict, db: Session = Depends(get_db),
+def update_system_status(aid: int, body: dict, request: Request, db: Session = Depends(get_db),
                           u: User = Depends(require_analyst)):
     from app.models import Asset as AssetModel
-    act = _chk_act(db, aid, _org(u))
+    act = _chk_act(db, aid, _org(u), get_lang(request))
     systems = list(act.systems_status or [])
     now = datetime.now(timezone.utc).isoformat()
     asset = db.get(AssetModel, body.get("asset_id")) if body.get("asset_id") else None
@@ -2506,11 +2518,12 @@ def update_system_status(aid: int, body: dict, db: Session = Depends(get_db),
 
 
 @router.post("/activations/{aid}/close")
-def close_activation(aid: int, body: dict, db: Session = Depends(get_db),
+def close_activation(aid: int, body: dict, request: Request, db: Session = Depends(get_db),
                      u: User = Depends(require_admin)):
-    act = _chk_act(db, aid, _org(u))
+    lang = get_lang(request)
+    act = _chk_act(db, aid, _org(u, lang), lang)
     if act.status == "closed":
-        raise HTTPException(422, "Activación ya cerrada")
+        raise HTTPException(422, _t("bcp.activation_closed", lang))
     now = datetime.now(timezone.utc)
     rto_real = (now - act.activated_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
     act.status = "closed"
@@ -2528,14 +2541,15 @@ def close_activation(aid: int, body: dict, db: Session = Depends(get_db),
 
 
 @router.patch("/activations/{aid}/checklist/{order}")
-def update_checklist_item(aid: int, order: int, body: dict,
+def update_checklist_item(aid: int, order: int, body: dict, request: Request,
                           db: Session = Depends(get_db),
                           u: User = Depends(require_analyst)):
-    act = _chk_act(db, aid, _org(u))
+    lang = get_lang(request)
+    act = _chk_act(db, aid, _org(u, lang), lang)
     items = list(act.checklist_items or [])
     item = next((i for i in items if i.get("order") == order), None)
     if not item:
-        raise HTTPException(404, "Item de checklist no encontrado")
+        raise HTTPException(404, _t("bcp.checklist_item_not_found", lang))
     allowed = {"status", "notes"}
     for k, v in body.items():
         if k in allowed:
@@ -2549,17 +2563,18 @@ def update_checklist_item(aid: int, order: int, body: dict,
 
 
 @router.post("/activations/{aid}/checklist/{order}/execute")
-def execute_checklist_item(aid: int, order: int,
+def execute_checklist_item(aid: int, order: int, request: Request,
                            db: Session = Depends(get_db),
                            u: User = Depends(require_analyst)):
     from app.services.bcm_checklist_service import execute_checklist_action
-    act = _chk_act(db, aid, _org(u))
+    lang = get_lang(request)
+    act = _chk_act(db, aid, _org(u, lang), lang)
     items = list(act.checklist_items or [])
     item = next((i for i in items if i.get("order") == order), None)
     if not item:
-        raise HTTPException(404, "Item de checklist no encontrado")
+        raise HTTPException(404, _t("bcp.checklist_item_not_found", lang))
     if item.get("status") == "done":
-        raise HTTPException(422, "Este item ya fue ejecutado")
+        raise HTTPException(422, _t("bcp.checklist_item_executed", lang))
     updated = execute_checklist_action(db, act, item, u, _org(u))
     for i, it in enumerate(items):
         if it.get("order") == order:
@@ -2597,7 +2612,7 @@ def create_runbook(body: dict, db: Session = Depends(get_db),
 
 
 @router.post("/runbooks/{rid}/generate-ai")
-def generate_runbook_ai(rid: int, db: Session = Depends(get_db),
+def generate_runbook_ai(rid: int, request: Request, db: Session = Depends(get_db),
                          u: User = Depends(require_analyst)):
     """Genera los pasos del runbook con IA."""
     import anthropic
@@ -2608,7 +2623,7 @@ def generate_runbook_ai(rid: int, db: Session = Depends(get_db),
         raise HTTPException(404)
     api_key = _get_api_key(db, _org(u))
     if not api_key:
-        raise HTTPException(422, "API key IA no configurada")
+        raise HTTPException(422, _t("bcp.api_key_not_configured", get_lang(request)))
     plan = db.get(BCPPlan, rb.plan_id) if rb.plan_id else None
     plan_info = f"Plan: {plan.name} ({plan.plan_type})" if plan else ""
     prompt = (
@@ -2667,7 +2682,7 @@ def list_sequences(plan_id: Optional[int] = None, db: Session = Depends(get_db),
 
 
 @router.post("/recovery-sequences", status_code=201)
-def create_sequence(body: dict, db: Session = Depends(get_db),
+def create_sequence(body: dict, request: Request, db: Session = Depends(get_db),
                     u: User = Depends(require_analyst)):
     from app.models import Asset as AssetModel
     for item in (body.get("sequence_items") or []):
@@ -2675,7 +2690,7 @@ def create_sequence(body: dict, db: Session = Depends(get_db),
         if aid:
             a = db.get(AssetModel, aid)
             if not a or a.organization_id != _org(u):
-                raise HTTPException(422, f"Activo {aid} no pertenece a esta organización")
+                raise HTTPException(422, _t("bcp.asset_not_in_org", get_lang(request), id=aid))
     seq = BCPRecoverySequence(
         organization_id=_org(u),
         **{k: v for k, v in body.items() if hasattr(BCPRecoverySequence, k)}
@@ -2702,7 +2717,8 @@ def update_sequence(sid: int, body: dict, db: Session = Depends(get_db),
 # ── REPORTING BCM ─────────────────────────────────────────────────────────────
 
 @router.get("/report/executive")
-def executive_report(location_id: Optional[int] = None,
+def executive_report(request: Request,
+                     location_id: Optional[int] = None,
                      db: Session = Depends(get_db),
                      u: User = Depends(require_analyst)):
     from app.services.bcm_location_service import get_consolidated_metrics
@@ -2710,7 +2726,7 @@ def executive_report(location_id: Optional[int] = None,
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "consolidated_metrics": get_consolidated_metrics(db, _org(u)),
-        "iso22301_status": _iso(db, _org(u)),
+        "iso22301_status": _iso(db, _org(u), lang=get_lang(request)),
     }
 
 
@@ -2782,14 +2798,15 @@ def risk_coverage_gaps(location_id: Optional[int] = None,
 # ── SUPPLIER AI ANALYSIS ──────────────────────────────────────────────────────
 
 @router.post("/suppliers/analyze-ai")
-def analyze_suppliers_ai(location_id: Optional[int] = None,
+def analyze_suppliers_ai(request: Request, location_id: Optional[int] = None,
                           db: Session = Depends(get_db),
                           u: User = Depends(require_analyst)):
     import anthropic
     from app.services.isms_analysis_service import _get_api_key, _get_model
-    api_key = _get_api_key(db, _org(u))
+    lang = get_lang(request)
+    api_key = _get_api_key(db, _org(u, lang))
     if not api_key:
-        raise HTTPException(422, "API key IA no configurada")
+        raise HTTPException(422, _t("bcp.api_key_not_configured", lang))
     q = db.query(BCPSupplierLink).filter_by(organization_id=_org(u))
     if location_id:
         try:
@@ -2798,7 +2815,7 @@ def analyze_suppliers_ai(location_id: Optional[int] = None,
             pass
     links = q.all()
     if not links:
-        return {"analysis": "No hay proveedores BCM vinculados."}
+        return {"analysis": _t("bcp.no_bcm_suppliers", lang)}
     lines = []
     for lk in links:
         sup = db.get(Supplier, lk.supplier_id)
@@ -2830,12 +2847,14 @@ def analyze_suppliers_ai(location_id: Optional[int] = None,
 
 @router.post("/documents/upload", status_code=201)
 async def upload_bcm_document(
+    request: Request,
     file: UploadFile = File(...),
     location_id: Optional[int] = None,
     db: Session = Depends(get_db),
     u: User = Depends(require_analyst),
 ):
     """Upload de documentación BCM — usa el pipeline del Agente IA con hint BCM."""
+    lang = get_lang(request)
     try:
         from app.services.isms_analysis_service import process_document_upload
         return await process_document_upload(
@@ -2848,13 +2867,13 @@ async def upload_bcm_document(
         from pathlib import Path
         content = await file.read()
         if len(content) > 50 * 1024 * 1024:
-            raise HTTPException(413, "Máx 50 MB")
+            raise HTTPException(413, _t("bcp.max_50mb", lang))
         docs_dir = _bcm_data_root("documents") / str(_org(u))
         docs_dir.mkdir(parents=True, exist_ok=True)
         sha = hashlib.sha256(content).hexdigest()[:16]
         fpath = docs_dir / f"{sha}_{file.filename}"
         fpath.write_bytes(content)
-        return {"message": "Documento guardado. Procesamiento en cola.", "filename": file.filename}
+        return {"message": _t("bcp.document_queued", lang), "filename": file.filename}
 
 # â”€â”€ BCM Context (wizard de configuracion IA) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -2918,6 +2937,7 @@ def save_bcm_context(body: dict, db: Session = Depends(get_db), u: User = Depend
 
 @router.get("/compliance/iso22301")
 def get_iso22301_compliance(
+    request: Request,
     location_id: Optional[int] = None,
     db: Session = Depends(get_db),
     u: User = Depends(get_current_user),
@@ -2966,7 +2986,7 @@ def get_iso22301_compliance(
 
     def pct(n, d): return round(n * 100 / d) if d else 0
 
-    result = iso22301_clause_scores(db, org, location_id)
+    result = iso22301_clause_scores(db, org, location_id, lang=get_lang(request))
 
     loc_list = []
     for loc in locs:
@@ -3011,10 +3031,12 @@ class _BcmAiBody(BaseModel):
 @router.post("/ai/quick")
 def bcm_ai_quick(
     body: _BcmAiBody,
+    request: Request,
     db: Session = Depends(get_db),
     u: User = Depends(get_current_user),
 ):
-    org = _org(u)
+    lang = get_lang(request)
+    org = _org(u, lang)
     ctx = db.query(BCMContext).filter_by(organization_id=org).first()
     procs = db.query(BusinessProcess).filter_by(organization_id=org).limit(20).all()
     plans = db.query(BCPPlan).filter_by(organization_id=org).limit(10).all()
@@ -3055,7 +3077,7 @@ def bcm_ai_quick(
     try:
         import anthropic
     except ImportError:
-        raise HTTPException(503, "Paquete anthropic no disponible")
+        raise HTTPException(503, _t("bcp.anthropic_unavailable", lang))
 
     from app.models import AiConfig
     from app.security import decrypt_secret
@@ -3069,7 +3091,7 @@ def bcm_ai_quick(
     if not api_key:
         api_key = settings.anthropic_api_key
     if not api_key:
-        raise HTTPException(503, "API key IA no configurada. Configurala en Integraciones > Agente IA.")
+        raise HTTPException(503, _t("bcp.ai_key_missing_hint2", lang))
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
@@ -3084,9 +3106,9 @@ def bcm_ai_quick(
 # ── ACTIVACIONES: endpoints adicionales ───────────────────────────────────────
 
 @router.get("/activations/{aid}")
-def get_activation(aid: int, db: Session = Depends(get_db),
+def get_activation(aid: int, request: Request, db: Session = Depends(get_db),
                    u: User = Depends(get_current_user)):
-    act = _chk_act(db, aid, _org(u))
+    act = _chk_act(db, aid, _org(u), get_lang(request))
     d = _act_d(act)
     attachments = db.query(BCMEvidenceItem).filter_by(
         organization_id=_org(u), linked_activation_id=aid
@@ -3096,9 +3118,9 @@ def get_activation(aid: int, db: Session = Depends(get_db),
 
 
 @router.patch("/activations/{aid}")
-def update_activation(aid: int, body: dict, db: Session = Depends(get_db),
+def update_activation(aid: int, body: dict, request: Request, db: Session = Depends(get_db),
                       u: User = Depends(require_analyst)):
-    act = _chk_act(db, aid, _org(u))
+    act = _chk_act(db, aid, _org(u), get_lang(request))
     allowed = {"root_cause", "lessons_learned", "improvement_actions",
                "executive_summary", "affected_services", "rto_objective_hours"}
     for k, v in body.items():
@@ -3114,13 +3136,15 @@ async def upload_activation_attachment(
     title: str,
     entry_type: str = "file",
     description: Optional[str] = None,
+    request: Request = None,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     u: User = Depends(require_analyst),
 ):
     """Sube un adjunto a la sala de crisis (PDF, DOCX, imagen, Excel)."""
     import hashlib
-    act = _chk_act(db, aid, _org(u))
+    lang = get_lang(request)
+    act = _chk_act(db, aid, _org(u, lang), lang)
     ALLOWED_MIME = {
         "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/msword", "text/plain", "text/csv",
@@ -3130,7 +3154,7 @@ async def upload_activation_attachment(
     }
     content = await file.read()
     if len(content) > 30 * 1024 * 1024:
-        raise HTTPException(413, "Archivo demasiado grande (max 30 MB)")
+        raise HTTPException(413, _t("bcp.file_too_large_30mb", lang))
     sha256 = hashlib.sha256(content).hexdigest()
     from pathlib import Path
     doc_root = Path(settings.document_storage_path)
@@ -3162,9 +3186,9 @@ async def upload_activation_attachment(
 
 
 @router.get("/activations/{aid}/attachments")
-def list_activation_attachments(aid: int, db: Session = Depends(get_db),
+def list_activation_attachments(aid: int, request: Request, db: Session = Depends(get_db),
                                 u: User = Depends(get_current_user)):
-    _chk_act(db, aid, _org(u))
+    _chk_act(db, aid, _org(u), get_lang(request))
     items = db.query(BCMEvidenceItem).filter_by(
         organization_id=_org(u), linked_activation_id=aid
     ).order_by(BCMEvidenceItem.created_at.desc()).all()
@@ -3172,10 +3196,10 @@ def list_activation_attachments(aid: int, db: Session = Depends(get_db),
 
 
 @router.delete("/activations/{aid}/attachments/{eid}", status_code=204)
-def delete_activation_attachment(aid: int, eid: int,
+def delete_activation_attachment(aid: int, eid: int, request: Request,
                                   db: Session = Depends(get_db),
                                   u: User = Depends(require_analyst)):
-    _chk_act(db, aid, _org(u))
+    _chk_act(db, aid, _org(u), get_lang(request))
     item = db.get(BCMEvidenceItem, eid)
     if not item or item.organization_id != _org(u) or item.linked_activation_id != aid:
         raise HTTPException(404)
@@ -3190,10 +3214,11 @@ def delete_activation_attachment(aid: int, eid: int,
 
 
 @router.post("/activations/{aid}/ai-summary")
-def generate_activation_ai_summary(aid: int, db: Session = Depends(get_db),
+def generate_activation_ai_summary(aid: int, request: Request, db: Session = Depends(get_db),
                                     u: User = Depends(require_analyst)):
     """Genera un resumen IA de toda la evidencia y el log de la activacion."""
-    act = _chk_act(db, aid, _org(u))
+    lang = get_lang(request)
+    act = _chk_act(db, aid, _org(u, lang), lang)
     attachments = db.query(BCMEvidenceItem).filter_by(
         organization_id=_org(u), linked_activation_id=aid
     ).all()
@@ -3227,7 +3252,7 @@ def generate_activation_ai_summary(aid: int, db: Session = Depends(get_db),
     try:
         import anthropic
     except ImportError:
-        raise HTTPException(503, "Paquete anthropic no disponible")
+        raise HTTPException(503, _t("bcp.anthropic_unavailable", lang))
 
     from app.models import AiConfig
     from app.security import decrypt_secret
@@ -3241,7 +3266,7 @@ def generate_activation_ai_summary(aid: int, db: Session = Depends(get_db),
     if not api_key:
         api_key = settings.anthropic_api_key
     if not api_key:
-        raise HTTPException(503, "API key IA no configurada")
+        raise HTTPException(503, _t("bcp.api_key_not_configured", lang))
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
@@ -3256,10 +3281,10 @@ def generate_activation_ai_summary(aid: int, db: Session = Depends(get_db),
 
 
 @router.get("/activations/{aid}/report")
-def activation_report(aid: int, db: Session = Depends(get_db),
+def activation_report(aid: int, request: Request, db: Session = Depends(get_db),
                       u: User = Depends(get_current_user)):
     """Retorna los datos completos para el informe post-mortem de la activacion."""
-    act = _chk_act(db, aid, _org(u))
+    act = _chk_act(db, aid, _org(u), get_lang(request))
     attachments = db.query(BCMEvidenceItem).filter_by(
         organization_id=_org(u), linked_activation_id=aid
     ).all()
@@ -3303,14 +3328,14 @@ def activation_report(aid: int, db: Session = Depends(get_db),
 # ── PLAN VERSIONING — crear nueva version editable ───────────────────────────
 
 @router.post("/plans/{pid}/new-version", status_code=201)
-def create_plan_new_version(pid: int, db: Session = Depends(get_db),
+def create_plan_new_version(pid: int, request: Request, db: Session = Depends(get_db),
                              u: User = Depends(require_analyst)):
     """Crea un borrador editable a partir de un plan aprobado u obsoleto."""
     original = db.get(BCPPlan, pid)
     if not original or original.organization_id != _org(u):
         raise HTTPException(404)
     if original.status not in ("approved", "obsolete", "deprecated", "under_review"):
-        raise HTTPException(422, "Solo se puede crear una nueva version de planes aprobados o en revision")
+        raise HTTPException(422, _t("bcp.new_version_only_approved", get_lang(request)))
 
     # Incrementar version string
     try:
@@ -3364,17 +3389,18 @@ def create_plan_new_version(pid: int, db: Session = Depends(get_db),
 # ── CONTEXT AUTOFILL — sugerencias automaticas para el wizard BCM ─────────────
 
 @router.get("/context/autofill")
-def context_autofill(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+def context_autofill(request: Request, db: Session = Depends(get_db), u: User = Depends(get_current_user)):
     """Sugiere valores para el wizard BCM a partir de activos, documentos y proveedores."""
     from app.models import Asset, AiDocument, Supplier
-    org = _org(u)
+    lang = get_lang(request)
+    org = _org(u, lang)
 
     # Sistemas criticos desde activos con criticality >= high
     assets = db.query(Asset).filter_by(organization_id=org).filter(
         Asset.criticality.in_(["critical", "high"])
     ).limit(30).all()
     critical_systems = [
-        f"{a.name} ({a.asset_type or 'sistema'})" for a in assets
+        f"{a.name} ({a.asset_type or _t('bcp.asset_type_fallback', lang)})" for a in assets
     ]
 
     # Proveedores criticos
@@ -3423,17 +3449,19 @@ def context_autofill(db: Session = Depends(get_db), u: User = Depends(get_curren
 async def activate_bcp_plan(
     pid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Activa un plan BCP en modo crisis (cierre de bucle: reduce residual risk vinculado)."""
+    lang = get_lang(request)
     # BUG3 fix: use _org() which raises HTTP 400 if no org, preventing None != None bypass
-    org = _org(current_user)
+    org = _org(current_user, lang)
     plan = db.get(BCPPlan, pid)
     if not plan or plan.organization_id != org:
-        raise HTTPException(status_code=404, detail="Plan no encontrado")
+        raise HTTPException(status_code=404, detail=_t("bcp.plan_not_found", lang))
     if plan.activation_status == "activated":
-        raise HTTPException(status_code=409, detail="Plan ya esta activado")
+        raise HTTPException(status_code=409, detail=_t("bcp.plan_already_activated", lang))
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
@@ -3472,18 +3500,20 @@ async def activate_bcp_plan(
 async def deactivate_bcp_plan(
     pid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Desactiva un plan BCP de crisis."""
+    lang = get_lang(request)
     # BUG3 fix: use _org() which raises HTTP 400 if no org, preventing None != None bypass
-    org = _org(current_user)
+    org = _org(current_user, lang)
     plan = db.get(BCPPlan, pid)
     if not plan or plan.organization_id != org:
-        raise HTTPException(status_code=404, detail="Plan no encontrado")
+        raise HTTPException(status_code=404, detail=_t("bcp.plan_not_found", lang))
     # BUG4 fix: verify plan is currently activated before deactivating
     if plan.activation_status != "activated":
-        raise HTTPException(status_code=409, detail="Plan no está activado")
+        raise HTTPException(status_code=409, detail=_t("bcp.plan_not_activated", lang))
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
@@ -3505,26 +3535,28 @@ async def deactivate_bcp_plan(
 async def link_risks_to_bcp(
     pid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Vincula/desvincula riesgos ISO 27005 a un plan BCP para bucle cerrado de mitigacion."""
+    lang = get_lang(request)
     # BUG3/BUG5 fix: use _org() which raises HTTP 400 if no org
-    org = _org(current_user)
+    org = _org(current_user, lang)
     plan = db.get(BCPPlan, pid)
     if not plan or plan.organization_id != org:
-        raise HTTPException(status_code=404, detail="Plan no encontrado")
+        raise HTTPException(status_code=404, detail=_t("bcp.plan_not_found", lang))
 
     risk_ids = payload.get("risk_ids", [])
     if not isinstance(risk_ids, list):
-        raise HTTPException(status_code=400, detail="risk_ids debe ser lista")
+        raise HTTPException(status_code=400, detail=_t("bcp.risk_ids_must_be_list", lang))
 
     # BUG5 fix: validate each risk belongs to the same org (IDOR prevention)
     from app.models import Risk
     for rid in risk_ids:
         r = db.get(Risk, rid)
         if not r or r.organization_id != org:
-            raise HTTPException(status_code=422, detail=f"Riesgo {rid} no pertenece a esta organización")
+            raise HTTPException(status_code=422, detail=_t("bcp.risk_not_in_org", lang, id=rid))
 
     plan.risk_ids = risk_ids
     db.commit()

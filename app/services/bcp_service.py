@@ -5,6 +5,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
+
 logger = logging.getLogger("riskhub.bcp_service")
 
 # Campos requeridos para considerar el BIA completo
@@ -70,7 +72,7 @@ def _plan_has_substance(plan, docs_by_id: dict) -> bool:
     return False
 
 
-def _plans_ai_detail(plans_all) -> str:
+def _plans_ai_detail(plans_all, lang: str = "es") -> str:
     """Añade al detalle de la cláusula el resultado de la revisión IA del
     contenido, si ya se ha ejecutado sobre alguno de los planes."""
     reviewed = [
@@ -80,7 +82,7 @@ def _plans_ai_detail(plans_all) -> str:
     if not reviewed:
         return ""
     avg = round(sum(p.ai_content_review["score"] for p in reviewed) / len(reviewed))
-    return f" — revisión IA del contenido: score medio {avg}/100 ({len(reviewed)}/{len(plans_all)} analizados)"
+    return _t("bcp.iso_detail_ai_review", lang, avg=avg, n=len(reviewed), total=len(plans_all))
 
 
 def _policy_is_solid(policy) -> bool:
@@ -132,7 +134,7 @@ def bia_completeness(db, process) -> dict:
     return {"pct": pct, "missing": missing, "total": total}
 
 
-def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None) -> dict:
+def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None, lang: str = "es") -> dict:
     """
     Checklist ISO 22301:2019 completo — 22 cláusulas relevantes.
 
@@ -308,38 +310,38 @@ def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None)
 
     if not all_risks:
         status_61 = "gap"
-        detail_61 = "Sin riesgos registrados en el módulo de riesgos — no hay evidencia de valoración de riesgos para el SGCN"
+        detail_61 = _t("bcp.iso_detail_6_1_no_risks", lang)
     elif high_risks:
         pct_61 = _pct(len(high_risks_covered), len(high_risks))
         status_61 = st(pct_61 >= 80, pct_61 >= 40)
-        detail_61 = f"{len(high_risks_covered)}/{len(high_risks)} riesgo(s) residual(es) alto(s) con cobertura de un plan de continuidad"
+        detail_61 = _t("bcp.iso_detail_6_1_high", lang, n=len(high_risks_covered), total=len(high_risks))
     else:
         status_61 = st(False, len(active_risks) > 0)
-        detail_61 = f"{len(active_risks)} riesgo(s) activo(s) registrado(s), ninguno con nivel residual alto — revisar si la valoración de riesgos está actualizada"
+        detail_61 = _t("bcp.iso_detail_6_1_no_high", lang, n=len(active_risks))
 
     if crit_procs:
         pct_83 = _pct(len(covered_crit_by_strategy), len(crit_procs))
         status_83 = st(pct_83 >= 70, len(strategies) >= 1)
-        detail_83 = f"{len(covered_crit_by_strategy)}/{len(crit_procs)} procesos críticos con estrategia implementada/testeada"
+        detail_83 = _t("bcp.iso_detail_8_3_crit", lang, n=len(covered_crit_by_strategy), total=len(crit_procs))
     else:
         status_83 = st(False, len(strategies) >= 1)
-        detail_83 = f"{len(strategies)} estrategia(s) registrada(s); sin procesos críticos identificados para validar cobertura"
+        detail_83 = _t("bcp.iso_detail_8_3_no_crit", lang, n=len(strategies))
 
     pct_75 = _pct(evid_sources_covered, evid_sources_total)
     status_75 = st(pct_75 >= 70, pct_75 >= 30 or len(evid) >= 1)
     detail_75 = (
-        f"{evid_sources_covered}/{evid_sources_total} plan(es)/test(s) con evidencia vigente vinculada "
-        f"({len(evid)} evidencia(s) en el repositorio)"
+        _t("bcp.iso_detail_7_5_linked", lang,
+           n=evid_sources_covered, total=evid_sources_total, evid=len(evid))
         if evid_sources_total else
-        f"Sin planes aprobados ni tests recientes que requieran evidencia; {len(evid)} evidencia(s) en repositorio"
+        _t("bcp.iso_detail_7_5_none", lang, evid=len(evid))
     )
 
     current_year_prog = bool(exercise_prog and exercise_prog.year == now.year)
     status_85p = st(current_year_prog, bool(exercise_prog))
     detail_85p = (
-        f"Programa de ejercicios {exercise_prog.year} vigente" if current_year_prog
-        else f"Programa más reciente: año {exercise_prog.year} (desactualizado)" if exercise_prog
-        else "Sin programa de ejercicios definido"
+        _t("bcp.iso_detail_8_5_programme_current", lang, year=exercise_prog.year) if current_year_prog
+        else _t("bcp.iso_detail_8_5_programme_outdated", lang, year=exercise_prog.year) if exercise_prog
+        else _t("bcp.iso_detail_8_5_programme_none", lang)
     )
 
     lessons_full = [
@@ -347,10 +349,10 @@ def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None)
         if getattr(t, "lessons_learned", None) and len(t.lessons_learned.strip()) >= 20
     ]
     status_85l = st(bool(lessons_full), any(getattr(t, "lessons_learned", None) for t in recent_tests))
-    detail_85l = f"{len(lessons_full)} test(s) con lecciones aprendidas documentadas en detalle"
+    detail_85l = _t("bcp.iso_detail_8_5_lessons", lang, n=len(lessons_full))
 
     status_91 = st(len(recent_tests) >= 1, len(tests) >= 1)
-    detail_91 = f"{len(recent_tests)} test(s) realizado(s) en los últimos 12 meses (de {len(tests)} histórico(s))"
+    detail_91 = _t("bcp.iso_detail_9_1", lang, n=len(recent_tests), total=len(tests))
 
     # 10.1 Mejora continua — evidencia de que el SGCN evoluciona con el tiempo
     # (no solo que "existe"), a partir de señales reales e independientes.
@@ -371,11 +373,7 @@ def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None)
     nc_closed_with_action = nc_from_bcp_closed > 0
     signals_10_1 = sum([plan_revised_recent, two_year_cycle, action_after_test, nc_closed_with_action])
     status_101 = st(signals_10_1 >= 2, signals_10_1 == 1)
-    detail_101 = (
-        f"{signals_10_1}/4 señales de mejora continua detectadas "
-        f"(revisión de versión de planes, ciclo de ejercicios plurianual, "
-        f"acciones documentadas tras pruebas, cierre de no conformidades)"
-    )
+    detail_101 = _t("bcp.iso_detail_10_1", lang, n=signals_10_1)
 
     # 10.2 No conformidades y acciones correctivas — FIX: la ausencia total de
     # NCs registradas ya NO se interpreta como "implementado". Solo cuenta como
@@ -385,229 +383,228 @@ def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None)
     if nc_total == 0:
         status_102 = st(False, tests_ever)
         detail_102 = (
-            f"{len(tests)} ejercicio(s) realizado(s) sin ninguna no conformidad registrada "
-            f"— verificar si los hallazgos se documentan como NC"
+            _t("bcp.iso_detail_10_2_no_nc_tests", lang, n=len(tests))
             if tests_ever else
-            "Sin ejercicios de continuidad realizados — no hay evidencia de gestión de no conformidades del SGCN"
+            _t("bcp.iso_detail_10_2_no_tests", lang)
         )
     else:
         # nc_total > 0 ya es evidencia de que el proceso de gestion de NCs corre;
         # solo falta ver si esta al dia (sin abiertas) o en curso (partial).
         status_102 = st(nc_from_bcp_open == 0, True)
         detail_102 = (
-            f"{nc_from_bcp_closed} NC(s) de continuidad cerrada(s)"
-            + (f", {nc_from_bcp_open} abierta(s)" if nc_from_bcp_open else "")
+            _t("bcp.iso_detail_10_2_closed_open", lang, closed=nc_from_bcp_closed, open=nc_from_bcp_open)
+            if nc_from_bcp_open else
+            _t("bcp.iso_detail_10_2_closed", lang, closed=nc_from_bcp_closed)
         )
 
     # ── Construcción del checklist ────────────────────────────────────────────
     clauses = [
         {
-            "id": "4.1", "name": "Comprensión de la organización y su contexto",
+            "id": "4.1", "name": _t("bcp.iso_name_4_1", lang),
             "status": st(len(procs) >= 1 and ctx_substantive, len(procs) >= 1 or ctx_substantive),
             "detail": (
-                f"{len(procs)} proceso(s) de negocio registrado(s); "
-                f"contexto organizacional {'documentado' if ctx_substantive else 'sin documentar'}"
+                _t("bcp.iso_detail_4_1_documented", lang, n=len(procs)) if ctx_substantive
+                else _t("bcp.iso_detail_4_1_undocumented", lang, n=len(procs))
             ),
             "reference": "ISO 22301 cl. 4.1",
         },
         {
-            "id": "4.2", "name": "Partes interesadas y sus requisitos",
+            "id": "4.2", "name": _t("bcp.iso_name_4_2", lang),
             "status": st(
                 bool(comm_plans) or any(getattr(p, "escalation_contacts", None) for p in crit_procs),
                 any(getattr(p, "escalation_contacts", None) for p in crit_procs),
             ),
-            "detail": (
-                f"Plan comunicación: {'sí' if comm_plans else 'no'}; "
-                f"contactos escalada: {sum(1 for p in crit_procs if getattr(p,'escalation_contacts',None))} proceso(s)"
+            "detail": _t(
+                "bcp.iso_detail_4_2_yes" if comm_plans else "bcp.iso_detail_4_2_no", lang,
+                n=sum(1 for p in crit_procs if getattr(p, "escalation_contacts", None)),
             ),
             "reference": "ISO 22301 cl. 4.2",
         },
         {
-            "id": "4.3", "name": "Determinación del alcance del SGCN",
+            "id": "4.3", "name": _t("bcp.iso_name_4_3", lang),
             "status": st(scope_documented, len(procs) >= 1),
             "detail": (
-                "Alcance documentado en el contexto BCM o en un plan aprobado" if scope_documented
-                else f"Alcance no formalizado; {len(procs)} proceso(s) identificado(s) sin declaración de alcance"
+                _t("bcp.iso_detail_4_3_ok", lang) if scope_documented
+                else _t("bcp.iso_detail_4_3_gap", lang, n=len(procs))
             ),
             "reference": "ISO 22301 cl. 4.3",
         },
         {
-            "id": "5.1", "name": "Liderazgo y compromiso de la dirección",
+            "id": "5.1", "name": _t("bcp.iso_name_5_1", lang),
             "status": st(bool(mgmt_review_recent), _policy_is_solid(bcp_policy)),
-            "detail": (
-                f"Revisión dirección (año actual): {'sí' if mgmt_review_recent else 'no'}; "
-                f"Política BCP: {'sólida' if _policy_is_solid(bcp_policy) else 'ausente o incompleta'}"
+            "detail": _t(
+                "bcp.iso_detail_5_1_{}_{}".format(
+                    "yes" if mgmt_review_recent else "no",
+                    "solid" if _policy_is_solid(bcp_policy) else "weak",
+                ),
+                lang,
             ),
             "reference": "ISO 22301 cl. 5.1",
         },
         {
-            "id": "5.2", "name": "Política de continuidad de negocio",
+            "id": "5.2", "name": _t("bcp.iso_name_5_2", lang),
             "status": st(_policy_is_solid(bcp_policy), bool(bcp_policy)),
             "detail": (
-                "Política BCP aprobada con contenido sustantivo" if _policy_is_solid(bcp_policy)
-                else "Política BCP en borrador o sin contenido" if bcp_policy
-                else "Sin política BCP — requerida"
+                _t("bcp.iso_detail_5_2_ok", lang) if _policy_is_solid(bcp_policy)
+                else _t("bcp.iso_detail_5_2_draft", lang) if bcp_policy
+                else _t("bcp.iso_detail_5_2_gap", lang)
             ),
             "reference": "ISO 22301 cl. 5.2",
         },
         {
-            "id": "5.3", "name": "Roles, responsabilidades y autoridades",
+            "id": "5.3", "name": _t("bcp.iso_name_5_3", lang),
             "status": st(
                 _pct(len(procs_with_owners), len(crit_procs)) >= 80,
                 _pct(len(procs_with_owners), len(crit_procs)) >= 50,
             ),
-            "detail": (
-                f"{len(procs_with_owners)}/{len(crit_procs)} procesos críticos con "
-                f"propietario y responsable de recuperación asignados"
-            ),
+            "detail": _t("bcp.iso_detail_5_3", lang, n=len(procs_with_owners), total=len(crit_procs)),
             "reference": "ISO 22301 cl. 5.3",
         },
         {
-            "id": "6.1", "name": "Acciones para abordar riesgos y oportunidades",
+            "id": "6.1", "name": _t("bcp.iso_name_6_1", lang),
             "status": status_61, "detail": detail_61,
             "reference": "ISO 22301 cl. 6.1",
         },
         {
-            "id": "6.2", "name": "Objetivos de continuidad de negocio (MBCO)",
+            "id": "6.2", "name": _t("bcp.iso_name_6_2", lang),
             "status": st(
                 _pct(len(procs_with_mbco), len(crit_procs)) >= 80,
                 _pct(len(procs_with_mbco), len(crit_procs)) >= 50,
             ),
-            "detail": f"{len(procs_with_mbco)}/{len(crit_procs)} procesos críticos con MBCO definido",
+            "detail": _t("bcp.iso_detail_6_2", lang, n=len(procs_with_mbco), total=len(crit_procs)),
             "reference": "ISO 22301 cl. 6.2",
         },
         {
-            "id": "7.4", "name": "Comunicación durante incidente",
+            "id": "7.4", "name": _t("bcp.iso_name_7_4", lang),
             "status": st(bool(comm_plans)),
-            "detail": f"{len(comm_plans)} plan(es) de comunicación aprobado(s)",
+            "detail": _t("bcp.iso_detail_7_4", lang, n=len(comm_plans)),
             "reference": "ISO 22301 cl. 7.4",
         },
         {
-            "id": "7.5", "name": "Información documentada y evidencia",
+            "id": "7.5", "name": _t("bcp.iso_name_7_5", lang),
             "status": status_75, "detail": detail_75,
             "reference": "ISO 22301 cl. 7.5",
         },
         {
-            "id": "8.2", "name": "Análisis de Impacto de Negocio (BIA)",
+            "id": "8.2", "name": _t("bcp.iso_name_8_2", lang),
             "status": st(
                 _pct(len(bia_complete_crit), len(crit_procs)) >= 80,
                 _pct(len(bia_complete_crit), len(crit_procs)) >= 50,
             ),
-            "detail": (
-                f"{len(bia_complete_all)}/{len(procs)} procesos con BIA >= 80% "
-                f"({len(bia_complete_crit)}/{len(crit_procs)} críticos)"
+            "detail": _t(
+                "bcp.iso_detail_8_2", lang,
+                n=len(bia_complete_all), total=len(procs),
+                nc=len(bia_complete_crit), totalc=len(crit_procs),
             ),
             "reference": "ISO 22301 cl. 8.2",
         },
         {
-            "id": "8.3", "name": "Estrategias y soluciones de continuidad",
+            "id": "8.3", "name": _t("bcp.iso_name_8_3", lang),
             "status": status_83, "detail": detail_83,
             "reference": "ISO 22301 cl. 8.3",
         },
         {
-            "id": "8.4_bcp", "name": "Plan de Continuidad de Negocio (BCP)",
+            "id": "8.4_bcp", "name": _t("bcp.iso_name_8_4_bcp", lang),
             "status": st(bool(bcp_plans_real), bool(bcp_plans)),
             "detail": (
-                f"{len(bcp_plans_real)}/{len(bcp_plans)} BCP aprobado(s) con contenido verificable"
-                + _plans_ai_detail(bcp_plans)
+                _t("bcp.iso_detail_8_4_bcp", lang, n=len(bcp_plans_real), total=len(bcp_plans))
+                + _plans_ai_detail(bcp_plans, lang)
             ),
             "reference": "ISO 22301 cl. 8.4",
         },
         {
-            "id": "8.4_drp", "name": "Plan de Recuperación ante Desastres (DRP)",
+            "id": "8.4_drp", "name": _t("bcp.iso_name_8_4_drp", lang),
             "status": st(bool(drp_plans_real), bool(drp_plans)),
             "detail": (
-                f"{len(drp_plans_real)}/{len(drp_plans)} DRP/CRP aprobado(s) con contenido verificable"
-                + _plans_ai_detail(drp_plans)
+                _t("bcp.iso_detail_8_4_drp", lang, n=len(drp_plans_real), total=len(drp_plans))
+                + _plans_ai_detail(drp_plans, lang)
             ),
             "reference": "ISO 22301 cl. 8.4",
         },
         {
-            "id": "8.4_comm", "name": "Plan de comunicación de crisis",
+            "id": "8.4_comm", "name": _t("bcp.iso_name_8_4_comm", lang),
             "status": st(bool(comm_plans)),
-            "detail": f"{len(comm_plans)} plan(es) de comunicación aprobado(s)",
+            "detail": _t("bcp.iso_detail_8_4_comm", lang, n=len(comm_plans)),
             "reference": "ISO 22301 cl. 8.4 / 7.4",
         },
         {
-            "id": "8.4_workaround", "name": "Procedimientos de trabajo temporal",
+            "id": "8.4_workaround", "name": _t("bcp.iso_name_8_4_workaround", lang),
             "status": st(
                 _pct(len(procs_with_workaround), len(crit_procs)) >= 80,
                 _pct(len(procs_with_workaround), len(crit_procs)) >= 40,
             ),
-            "detail": (
-                f"{len(procs_with_workaround)}/{len(crit_procs)} procesos críticos "
-                f"con procedimiento alternativo"
+            "detail": _t(
+                "bcp.iso_detail_8_4_workaround", lang,
+                n=len(procs_with_workaround), total=len(crit_procs),
             ),
             "reference": "ISO 22301 cl. 8.4 / 4.5.1",
         },
         {
-            "id": "8.5_programme", "name": "Programa de ejercicios y pruebas",
+            "id": "8.5_programme", "name": _t("bcp.iso_name_8_5_programme", lang),
             "status": status_85p, "detail": detail_85p,
             "reference": "ISO 22301 cl. 8.5",
         },
         {
-            "id": "8.5_test", "name": "Ejercicios realizados (últimos 12 meses)",
+            "id": "8.5_test", "name": _t("bcp.iso_name_8_5_test", lang),
             "status": st(len(passed_tests) >= 1, len(recent_tests) >= 1),
-            "detail": (
-                f"{len(passed_tests)} ejercicio(s) superado(s) / "
-                f"{len(recent_tests)} realizado(s) en últimos 12 meses"
+            "detail": _t(
+                "bcp.iso_detail_8_5_test", lang,
+                passed=len(passed_tests), recent=len(recent_tests),
             ),
             "reference": "ISO 22301 cl. 8.5",
         },
         {
-            "id": "8.5_lessons", "name": "Lecciones aprendidas documentadas",
+            "id": "8.5_lessons", "name": _t("bcp.iso_name_8_5_lessons", lang),
             "status": status_85l, "detail": detail_85l,
             "reference": "ISO 22301 cl. 8.5",
         },
         {
-            "id": "8.6", "name": "Evaluación y revisión de documentación BCM",
+            "id": "8.6", "name": _t("bcp.iso_name_8_6", lang),
             "status": st(
                 len(plans_with_review) >= max(1, len(approved_plans)) * 0.8,
                 bool(plans_with_review),
             ),
-            "detail": (
-                f"{len(plans_with_review)}/{len(approved_plans)} planes aprobados "
-                f"con fecha de revisión programada"
-            ),
+            "detail": _t("bcp.iso_detail_8_6", lang, n=len(plans_with_review), total=len(approved_plans)),
             "reference": "ISO 22301 cl. 8.6",
         },
         {
-            "id": "9.1", "name": "Seguimiento, medición y evaluación",
+            "id": "9.1", "name": _t("bcp.iso_name_9_1", lang),
             "status": status_91, "detail": detail_91,
             "reference": "ISO 22301 cl. 9.1",
         },
         {
-            "id": "9.2", "name": "Auditoría interna del SGCN",
+            "id": "9.2", "name": _t("bcp.iso_name_9_2", lang),
             "status": st(
                 bool(bcm_audit_recent) or any(t.test_type == "full_test" for t in recent_tests),
                 any(t.test_type in ("tabletop", "simulation") for t in recent_tests),
             ),
             "detail": (
-                f"Auditoría formal '{bcm_audit_recent.title}' completada el "
-                f"{bcm_audit_recent.actual_end.strftime('%Y-%m-%d')}"
+                _t("bcp.iso_detail_9_2_formal", lang,
+                   title=bcm_audit_recent.title,
+                   date=bcm_audit_recent.actual_end.strftime("%Y-%m-%d"))
                 if bcm_audit_recent else
-                "Auditoría completa (full_test) realizada en 12 meses"
+                _t("bcp.iso_detail_9_2_fulltest", lang)
                 if any(t.test_type == "full_test" for t in recent_tests)
-                else "Sin auditoría interna (formal o full_test) del SGCN en los últimos 12 meses"
+                else _t("bcp.iso_detail_9_2_gap", lang)
             ),
             "reference": "ISO 22301 cl. 9.2",
         },
         {
-            "id": "9.3", "name": "Revisión del SGCN por la dirección",
+            "id": "9.3", "name": _t("bcp.iso_name_9_3", lang),
             "status": st(bool(mgmt_review_recent)),
             "detail": (
-                f"Revisión dirección (año actual): "
-                f"{'completada' if mgmt_review_recent else 'pendiente'}"
+                _t("bcp.iso_detail_9_3_done", lang) if mgmt_review_recent
+                else _t("bcp.iso_detail_9_3_pending", lang)
             ),
             "reference": "ISO 22301 cl. 9.3",
         },
         {
-            "id": "10.1", "name": "Mejora continua",
+            "id": "10.1", "name": _t("bcp.iso_name_10_1", lang),
             "status": status_101, "detail": detail_101,
             "reference": "ISO 22301 cl. 10.1",
         },
         {
-            "id": "10.2", "name": "No conformidades y acciones correctivas",
+            "id": "10.2", "name": _t("bcp.iso_name_10_2", lang),
             "status": status_102, "detail": detail_102,
             "reference": "ISO 22301 cl. 10.2",
         },
@@ -627,7 +624,7 @@ def iso22301_status(db: Session, org_id: int, location_id: Optional[int] = None)
     }
 
 
-def iso22301_clause_scores(db: Session, org_id: int, location_id: Optional[int] = None) -> dict:
+def iso22301_clause_scores(db: Session, org_id: int, location_id: Optional[int] = None, lang: str = "es") -> dict:
     """
     Convierte el checklist detallado (iso22301_status) al formato numérico 0-100
     ponderado que consume el dashboard de BCP. Es el ÚNICO cálculo de score
@@ -635,7 +632,7 @@ def iso22301_clause_scores(db: Session, org_id: int, location_id: Optional[int] 
     incompatibles (uno con un piso arbitrario de 40 puntos en "Mejora continua"
     y campos inexistentes como bia_score); ahora ambos endpoints delegan aquí.
     """
-    status = iso22301_status(db, org_id, location_id)
+    status = iso22301_status(db, org_id, location_id, lang=lang)
     weights = _clause_weights()
     out_clauses = []
     for c in status["clauses"]:

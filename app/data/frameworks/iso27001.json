@@ -1,15 +1,19 @@
 {
   "code": "iso27001",
   "name": "ISO/IEC 27001:2022",
+  "name_en": "ISO/IEC 27001:2022",
   "version": "2022",
   "description": "Sistema de Gestión de Seguridad de la Información",
+  "description_en": "Information Security Management System",
   "audit_frequency_months": 12,
   "certification_body": "ISO",
   "requirements": [
     {
       "id": "4.1",
       "name": "Comprensión de la organización y su contexto",
+      "name_en": "Understanding the organization and its context",
       "domain": "Contexto",
+      "domain_en": "Context",
       "evidence_types": [
         "policy_document",
         "record"
@@ -19,7 +23,9 @@
     {
       "id": "4.2",
       "name": "Comprensión de las necesidades y expectativas",
+      "name_en": "Understanding the needs and expectations of interested parties",
       "domain": "Contexto",
+      "domain_en": "Context",
       "evidence_types": [
         "record"
       ],
@@ -31,7 +37,9 @@
     {
       "id": "4.3",
       "name": "Alcance del SGSI",
+      "name_en": "Determining the scope of the ISMS",
       "domain": "Contexto",
+      "domain_en": "Context",
       "evidence_types": [
         "policy_document"
       ],
@@ -40,7 +48,9 @@
     {
       "id": "5.1",
       "name": "Liderazgo y compromiso",
+      "name_en": "Leadership and commitment",
       "domain": "Liderazgo",
+      "domain_en": "Leadership",
       "evidence_types": [
         "record",
         "policy_document"
@@ -50,7 +60,9 @@
     {
       "id": "5.2",
       "name": "Política de seguridad de la información",
+      "name_en": "Information security policy",
       "domain": "Liderazgo",
+      "domain_en": "Leadership",
       "evidence_types": [
         "policy_document"
       ],
@@ -62,7 +74,9 @@
     {
       "id": "5.3",
       "name": "Roles, responsabilidades y autoridades",
+      "name_en": "Organizational roles, responsibilities and authorities",
       "domain": "Liderazgo",
+      "domain_en": "Leadership",
       "evidence_types": [
         "record",
         "policy_document"
@@ -72,7 +86,9 @@
     {
       "id": "6.1",
       "name": "Acciones para abordar riesgos y oportunidades",
+      "name_en": "Actions to address risks and opportunities",
       "domain": "Planificación",
+      "domain_en": "Planning",
       "evidence_types": [
         "record"
       ],
@@ -81,7 +97,9 @@
     {
       "id": "6.1.2",
       "name": "Evaluación de riesgos de SI",
+      "name_en": "Information security risk assessment",
       "domain": "Planificación",
+      "domain_en": "Planning",
       "evidence_types": [
         "record",
         "report"
@@ -94,7 +112,9 @@
     {
       "id": "6.1.3",
       "name": "Tratamiento de riesgos de SI",
+      "name_en": "Information security risk treatment",
       "domain": "Planificación",
+      "domain_en": "Planning",
       "evidence_types": [
         "record",
         "report"
@@ -104,7 +124,9 @@
     {
       "id": "6.2",
       "name": "Objetivos de seguridad de la información",
+      "name_en": "Information security objectives",
       "domain": "Planificación",
+      "domain_en": "Planning",
       "evidence_types": [
         "record"
       ],
@@ -113,7 +135,9 @@
     {
       "id": "6.3",
       "name": "Planificación de cambios",
+      "name_en": "Planning of changes",
       "domain": "Planificación",
+      "domain_en": "Planning",
       "evidence_types": [
         "record"
       ],
@@ -122,7 +146,9 @@
     {
       "id": "7.1",
       "name": "Recursos",
+      "name_en": "Resources",
       "domain": "Soporte",
+      "domain_en": "Support",
       "evidence_types": [
         "record"
       ],
@@ -131,7 +157,9 @@
     {
       "id": "7.2",
       "name": "Competencia",
+      "name_en": "Competence",
       "domain": "Soporte",
+      "domain_en": "Support",
       "evidence_types": [
         "record",
         "certificate"
@@ -141,7 +169,9 @@
     {
       "id": "7.3",
       "name": "Concienciación",
+      "name_en": "Awareness",
       "domain": "Soporte",
+      "domain_en": "Support",
       "evidence_types": [
         "record"
       ],
@@ -150,7 +180,9 @@
     {
       "id": "7.4",
       "name": "Comunicación",
+      "name_en": "Communication",
       "domain": "Soporte",
+      "domain_en": "Support",
       "evidence_types": [
         "record"
       ],
@@ -162,7 +194,9 @@
     {
       "id": "7.5",
       "name": "Información documentada",
+      "name_en": "Documented information",
       "domain": "Soporte",
+      "domain_en": "Support",
       "evidence_types": [
         "policy_document",
         "procedure"
@@ -176,7 +210,9 @@
     {
       "id": "8.1",
       "name": "Planificación y control operacional",
+      "name_en": "Operational planning and control",
       "domain": "Operación",
+      "domain_en": "Operation",
       "evidence_types": [
         "procedure",
         "record"
@@ -193,7 +229,9 @@
     {
       "id": "8.2",
       "name": "Evaluación de riesgos de SI (operacional)",
+      "name_en": "Information security risk assessment (operational)",
       "domain": "Operación",
+      "domain_en": "Operation",
       "evidence_types": [
         "report"
       ],
@@ -202,7 +240,9 @@
     {
       "id": "8.3",
       "name": "Tratamiento de riesgos de SI (operacional)",
+      "name_en": "Information security risk treatment (operational)",
       "domain": "Operación",
+      "domain_en": "Operation",
       "evidence_types": [
         "record"
       ],
@@ -211,7 +251,9 @@
     {
       "id": "9.1",
       "name": "Seguimiento, medición, análisis y evaluación",
+      "name_en": "Monitoring, measurement, analysis and evaluation",
       "domain": "Evaluación",
+      "domain_en": "Performance evaluation",
       "evidence_types": [
         "report",
         "record"
@@ -224,7 +266,9 @@
     {
       "id": "9.2",
       "name": "Auditoría interna",
+      "name_en": "Internal audit",
       "domain": "Evaluación",
+      "domain_en": "Performance evaluation",
       "evidence_types": [
         "report"
       ],
@@ -237,7 +281,9 @@
     {
       "id": "9.3",
       "name": "Revisión por la dirección",
+      "name_en": "Management review",
       "domain": "Evaluación",
+      "domain_en": "Performance evaluation",
       "evidence_types": [
         "record"
       ],
@@ -247,7 +293,9 @@
     {
       "id": "10.1",
       "name": "No conformidad y acción correctiva",
+      "name_en": "Nonconformity and corrective action",
       "domain": "Mejora",
+      "domain_en": "Improvement",
       "evidence_types": [
         "record"
       ],
@@ -259,7 +307,9 @@
     {
       "id": "10.2",
       "name": "Mejora continua",
+      "name_en": "Continual improvement",
       "domain": "Mejora",
+      "domain_en": "Improvement",
       "evidence_types": [
         "record"
       ],
@@ -268,7 +318,9 @@
     {
       "id": "A.5.1",
       "name": "Políticas de seguridad de la información",
+      "name_en": "Policies for information security",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "policy_document"
       ],
@@ -281,7 +333,9 @@
     {
       "id": "A.5.2",
       "name": "Roles y responsabilidades de SI",
+      "name_en": "Information security roles and responsibilities",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -293,7 +347,9 @@
     {
       "id": "A.5.3",
       "name": "Segregación de funciones",
+      "name_en": "Segregation of duties",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -307,7 +363,9 @@
     {
       "id": "A.5.4",
       "name": "Responsabilidades de la dirección",
+      "name_en": "Management responsibilities",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -319,7 +377,9 @@
     {
       "id": "A.5.5",
       "name": "Contacto con autoridades",
+      "name_en": "Contact with authorities",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -331,7 +391,9 @@
     {
       "id": "A.5.6",
       "name": "Contacto con grupos de interés especial",
+      "name_en": "Contact with special interest groups",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -343,7 +405,9 @@
     {
       "id": "A.5.7",
       "name": "Inteligencia de amenazas",
+      "name_en": "Threat intelligence",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "report"
       ],
@@ -355,7 +419,9 @@
     {
       "id": "A.5.8",
       "name": "SI en gestión de proyectos",
+      "name_en": "Information security in project management",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -367,7 +433,9 @@
     {
       "id": "A.5.9",
       "name": "Inventario de información y activos",
+      "name_en": "Inventory of information and other associated assets",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -379,7 +447,9 @@
     {
       "id": "A.5.10",
       "name": "Uso aceptable de información y activos",
+      "name_en": "Acceptable use of information and other associated assets",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "policy_document"
       ],
@@ -393,7 +463,9 @@
     {
       "id": "A.5.11",
       "name": "Devolución de activos",
+      "name_en": "Return of assets",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -406,7 +478,9 @@
     {
       "id": "A.5.12",
       "name": "Clasificación de la información",
+      "name_en": "Classification of information",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -418,7 +492,9 @@
     {
       "id": "A.5.13",
       "name": "Etiquetado de la información",
+      "name_en": "Labelling of information",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -430,7 +506,9 @@
     {
       "id": "A.5.14",
       "name": "Transferencia de información",
+      "name_en": "Information transfer",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -443,7 +521,9 @@
     {
       "id": "A.5.15",
       "name": "Control de acceso",
+      "name_en": "Access control",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -459,7 +539,9 @@
     {
       "id": "A.5.16",
       "name": "Gestión de identidades",
+      "name_en": "Identity management",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -472,7 +554,9 @@
     {
       "id": "A.5.17",
       "name": "Información de autenticación",
+      "name_en": "Authentication information",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -484,7 +568,9 @@
     {
       "id": "A.5.18",
       "name": "Derechos de acceso",
+      "name_en": "Access rights",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -497,7 +583,9 @@
     {
       "id": "A.5.19",
       "name": "Seguridad de la información en relaciones con proveedores",
+      "name_en": "Information security in supplier relationships",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "policy_document",
         "record"
@@ -512,7 +600,9 @@
     {
       "id": "A.5.20",
       "name": "Tratamiento de SI en acuerdos con proveedores",
+      "name_en": "Addressing information security within supplier agreements",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -524,7 +614,9 @@
     {
       "id": "A.5.21",
       "name": "Gestión de SI en cadena TIC",
+      "name_en": "Managing information security in the ICT supply chain",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -537,7 +629,9 @@
     {
       "id": "A.5.22",
       "name": "Seguimiento de servicios de proveedores",
+      "name_en": "Monitoring, review and change management of supplier services",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -549,7 +643,9 @@
     {
       "id": "A.5.23",
       "name": "Seguridad de la información para uso de servicios cloud",
+      "name_en": "Information security for use of cloud services",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -561,7 +657,9 @@
     {
       "id": "A.5.24",
       "name": "Planificación ante incidentes de SI",
+      "name_en": "Information security incident management planning and preparation",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -573,7 +671,9 @@
     {
       "id": "A.5.25",
       "name": "Evaluación y decisión sobre eventos",
+      "name_en": "Assessment and decision on information security events",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -586,7 +686,9 @@
     {
       "id": "A.5.26",
       "name": "Respuesta a incidentes de SI",
+      "name_en": "Response to information security incidents",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -599,7 +701,9 @@
     {
       "id": "A.5.27",
       "name": "Aprendizaje de incidentes de SI",
+      "name_en": "Learning from information security incidents",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -611,7 +715,9 @@
     {
       "id": "A.5.28",
       "name": "Recopilación de evidencias",
+      "name_en": "Collection of evidence",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -623,7 +729,9 @@
     {
       "id": "A.5.29",
       "name": "Seguridad de la información durante disrupción",
+      "name_en": "Information security during disruption",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -637,7 +745,9 @@
     {
       "id": "A.5.30",
       "name": "Preparación TIC para continuidad de negocio",
+      "name_en": "ICT readiness for business continuity",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -651,7 +761,9 @@
     {
       "id": "A.5.31",
       "name": "Requisitos legales, estatutarios y contractuales",
+      "name_en": "Legal, statutory, regulatory and contractual requirements",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -663,7 +775,9 @@
     {
       "id": "A.5.32",
       "name": "Derechos de propiedad intelectual",
+      "name_en": "Intellectual property rights",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -675,7 +789,9 @@
     {
       "id": "A.5.33",
       "name": "Protección de registros",
+      "name_en": "Protection of records",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -688,7 +804,9 @@
     {
       "id": "A.5.34",
       "name": "Privacidad y protección de datos personales",
+      "name_en": "Privacy and protection of PII",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -700,7 +818,9 @@
     {
       "id": "A.5.35",
       "name": "Revisión independiente de SI",
+      "name_en": "Independent review of information security",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "report"
       ],
@@ -712,7 +832,9 @@
     {
       "id": "A.5.36",
       "name": "Cumplimiento con políticas de SI",
+      "name_en": "Compliance with policies, rules and standards for information security",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "record"
       ],
@@ -724,7 +846,9 @@
     {
       "id": "A.5.37",
       "name": "Procedimientos operacionales documentados",
+      "name_en": "Documented operating procedures",
       "domain": "Controles organizativos",
+      "domain_en": "Organizational controls",
       "evidence_types": [
         "procedure"
       ],
@@ -736,7 +860,9 @@
     {
       "id": "A.6.1",
       "name": "Investigación de antecedentes",
+      "name_en": "Screening",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "record"
       ],
@@ -748,7 +874,9 @@
     {
       "id": "A.6.2",
       "name": "Términos y condiciones de contratación",
+      "name_en": "Terms and conditions of employment",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "record"
       ],
@@ -760,7 +888,9 @@
     {
       "id": "A.6.3",
       "name": "Concienciación, educación y formación en SI",
+      "name_en": "Information security awareness, education and training",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "record",
         "certificate"
@@ -773,7 +903,9 @@
     {
       "id": "A.6.4",
       "name": "Proceso disciplinario",
+      "name_en": "Disciplinary process",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "procedure"
       ],
@@ -785,7 +917,9 @@
     {
       "id": "A.6.5",
       "name": "Responsabilidades tras cese o cambio de empleo",
+      "name_en": "Responsibilities after termination or change of employment",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -798,7 +932,9 @@
     {
       "id": "A.6.6",
       "name": "Acuerdos de confidencialidad (NDAs)",
+      "name_en": "Confidentiality or non-disclosure agreements",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "record"
       ],
@@ -810,7 +946,9 @@
     {
       "id": "A.6.7",
       "name": "Trabajo en remoto",
+      "name_en": "Remote working",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -823,7 +961,9 @@
     {
       "id": "A.6.8",
       "name": "Reporte de eventos de SI",
+      "name_en": "Information security event reporting",
       "domain": "Controles de personas",
+      "domain_en": "People controls",
       "evidence_types": [
         "procedure"
       ],
@@ -835,7 +975,9 @@
     {
       "id": "A.7.1",
       "name": "Perímetros de seguridad física",
+      "name_en": "Physical security perimeters",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure",
         "screenshot"
@@ -850,7 +992,9 @@
     {
       "id": "A.7.2",
       "name": "Controles de entrada física",
+      "name_en": "Physical entry",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "record",
         "screenshot"
@@ -863,7 +1007,9 @@
     {
       "id": "A.7.3",
       "name": "Seguridad de oficinas y recursos",
+      "name_en": "Securing offices, rooms and facilities",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure"
       ],
@@ -875,7 +1021,9 @@
     {
       "id": "A.7.4",
       "name": "Supervisión de la seguridad física",
+      "name_en": "Physical security monitoring",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "record"
       ],
@@ -887,7 +1035,9 @@
     {
       "id": "A.7.5",
       "name": "Protección contra amenazas físicas y ambientales",
+      "name_en": "Protecting against physical and environmental threats",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -907,7 +1057,9 @@
     {
       "id": "A.7.6",
       "name": "Trabajo en áreas seguras",
+      "name_en": "Working in secure areas",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure"
       ],
@@ -919,7 +1071,9 @@
     {
       "id": "A.7.7",
       "name": "Mesa y pantalla limpias",
+      "name_en": "Clear desk and clear screen",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure"
       ],
@@ -931,7 +1085,9 @@
     {
       "id": "A.7.8",
       "name": "Ubicación y protección de equipos",
+      "name_en": "Equipment siting and protection",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -944,7 +1100,9 @@
     {
       "id": "A.7.9",
       "name": "Activos fuera de instalaciones",
+      "name_en": "Security of assets off-premises",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure"
       ],
@@ -956,7 +1114,9 @@
     {
       "id": "A.7.10",
       "name": "Soportes de almacenamiento",
+      "name_en": "Storage media",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -969,7 +1129,9 @@
     {
       "id": "A.7.11",
       "name": "Servicios de soporte (utilities)",
+      "name_en": "Supporting utilities",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "record"
       ],
@@ -981,7 +1143,9 @@
     {
       "id": "A.7.12",
       "name": "Seguridad del cableado",
+      "name_en": "Cabling security",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "record"
       ],
@@ -993,7 +1157,9 @@
     {
       "id": "A.7.13",
       "name": "Mantenimiento de equipos",
+      "name_en": "Equipment maintenance",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "record"
       ],
@@ -1005,7 +1171,9 @@
     {
       "id": "A.7.14",
       "name": "Eliminación segura de equipos",
+      "name_en": "Secure disposal or re-use of equipment",
       "domain": "Controles físicos",
+      "domain_en": "Physical controls",
       "evidence_types": [
         "record"
       ],
@@ -1017,7 +1185,9 @@
     {
       "id": "A.8.1",
       "name": "Dispositivos endpoint de usuario",
+      "name_en": "User endpoint devices",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1031,7 +1201,9 @@
     {
       "id": "A.8.2",
       "name": "Derechos de acceso privilegiado",
+      "name_en": "Privileged access rights",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "record"
       ],
@@ -1044,7 +1216,9 @@
     {
       "id": "A.8.3",
       "name": "Restricción de acceso a la información",
+      "name_en": "Information access restriction",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1058,7 +1232,9 @@
     {
       "id": "A.8.4",
       "name": "Acceso a código fuente",
+      "name_en": "Access to source code",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1071,7 +1247,9 @@
     {
       "id": "A.8.5",
       "name": "Autenticación segura",
+      "name_en": "Secure authentication",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "screenshot"
@@ -1084,7 +1262,9 @@
     {
       "id": "A.8.6",
       "name": "Gestión de capacidad",
+      "name_en": "Capacity management",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "record",
         "report"
@@ -1097,7 +1277,9 @@
     {
       "id": "A.8.7",
       "name": "Protección contra malware",
+      "name_en": "Protection against malware",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record",
@@ -1111,7 +1293,9 @@
     {
       "id": "A.8.8",
       "name": "Gestión de vulnerabilidades técnicas",
+      "name_en": "Management of technical vulnerabilities",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "report",
         "record"
@@ -1124,7 +1308,9 @@
     {
       "id": "A.8.9",
       "name": "Gestión de configuración",
+      "name_en": "Configuration management",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1138,7 +1324,9 @@
     {
       "id": "A.8.10",
       "name": "Borrado de información",
+      "name_en": "Information deletion",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1151,7 +1339,9 @@
     {
       "id": "A.8.11",
       "name": "Enmascaramiento de datos",
+      "name_en": "Data masking",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure"
       ],
@@ -1163,7 +1353,9 @@
     {
       "id": "A.8.12",
       "name": "Prevención de fuga de datos",
+      "name_en": "Data leakage prevention",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1176,7 +1368,9 @@
     {
       "id": "A.8.13",
       "name": "Copias de seguridad",
+      "name_en": "Information backup",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1189,7 +1383,9 @@
     {
       "id": "A.8.14",
       "name": "Redundancia de instalaciones",
+      "name_en": "Redundancy of information processing facilities",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "record"
       ],
@@ -1201,7 +1397,9 @@
     {
       "id": "A.8.15",
       "name": "Registro de actividades",
+      "name_en": "Logging",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "record",
         "screenshot"
@@ -1214,7 +1412,9 @@
     {
       "id": "A.8.16",
       "name": "Actividades de monitorización",
+      "name_en": "Monitoring activities",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1228,7 +1428,9 @@
     {
       "id": "A.8.17",
       "name": "Sincronización de relojes",
+      "name_en": "Clock synchronization",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "record"
       ],
@@ -1240,7 +1442,9 @@
     {
       "id": "A.8.18",
       "name": "Programas de utilidad privilegiados",
+      "name_en": "Use of privileged utility programs",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1253,7 +1457,9 @@
     {
       "id": "A.8.19",
       "name": "Instalación de software",
+      "name_en": "Installation of software on operational systems",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure"
       ],
@@ -1265,7 +1471,9 @@
     {
       "id": "A.8.20",
       "name": "Seguridad de redes",
+      "name_en": "Networks security",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record",
@@ -1282,7 +1490,9 @@
     {
       "id": "A.8.21",
       "name": "Seguridad de servicios de red",
+      "name_en": "Security of network services",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1295,7 +1505,9 @@
     {
       "id": "A.8.22",
       "name": "Segregación en redes",
+      "name_en": "Segregation of networks",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1308,7 +1520,9 @@
     {
       "id": "A.8.23",
       "name": "Filtrado web",
+      "name_en": "Web filtering",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1321,7 +1535,9 @@
     {
       "id": "A.8.24",
       "name": "Uso de criptografía",
+      "name_en": "Use of cryptography",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "policy_document",
         "procedure"
@@ -1334,7 +1550,9 @@
     {
       "id": "A.8.25",
       "name": "Ciclo de vida de desarrollo seguro",
+      "name_en": "Secure development life cycle",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1350,7 +1568,9 @@
     {
       "id": "A.8.26",
       "name": "Requisitos de seguridad de aplicaciones",
+      "name_en": "Application security requirements",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure"
       ],
@@ -1362,7 +1582,9 @@
     {
       "id": "A.8.27",
       "name": "Arquitectura e ingeniería de sistemas seguros",
+      "name_en": "Secure system architecture and engineering principles",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure"
       ],
@@ -1374,7 +1596,9 @@
     {
       "id": "A.8.28",
       "name": "Codificación segura",
+      "name_en": "Secure coding",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure"
       ],
@@ -1386,7 +1610,9 @@
     {
       "id": "A.8.29",
       "name": "Pruebas de seguridad en desarrollo y aceptación",
+      "name_en": "Security testing in development and acceptance",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "report",
         "record"
@@ -1400,7 +1626,9 @@
     {
       "id": "A.8.30",
       "name": "Desarrollo externalizado",
+      "name_en": "Outsourced development",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1413,7 +1641,9 @@
     {
       "id": "A.8.31",
       "name": "Separación de entornos",
+      "name_en": "Separation of development, test and production environments",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure"
       ],
@@ -1425,7 +1655,9 @@
     {
       "id": "A.8.32",
       "name": "Gestión de cambios",
+      "name_en": "Change management",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1439,7 +1671,9 @@
     {
       "id": "A.8.33",
       "name": "Información de prueba",
+      "name_en": "Test information",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "procedure",
         "record"
@@ -1452,7 +1686,9 @@
     {
       "id": "A.8.34",
       "name": "Protección de sistemas de información durante pruebas de auditoría",
+      "name_en": "Protection of information systems during audit testing",
       "domain": "Controles tecnológicos",
+      "domain_en": "Technological controls",
       "evidence_types": [
         "record"
       ],

@@ -1,15 +1,19 @@
 {
   "code": "ens",
   "name": "ENS (Esquema Nacional de Seguridad) RD 311/2022",
+  "name_en": "ENS (Spanish National Security Framework) RD 311/2022",
   "version": "2022",
   "description": "Esquema Nacional de Seguridad España",
+  "description_en": "Spanish National Security Framework",
   "audit_frequency_months": 24,
   "certification_body": "CCN-CERT",
   "requirements": [
     {
       "id": "org.1",
       "name": "Política de seguridad",
+      "name_en": "Security policy",
       "domain": "Organización",
+      "domain_en": "Organization",
       "evidence_types": [
         "policy_document"
       ],
@@ -26,7 +30,9 @@
     {
       "id": "org.2",
       "name": "Normativa de seguridad",
+      "name_en": "Security regulations",
       "domain": "Organización",
+      "domain_en": "Organization",
       "evidence_types": [
         "policy_document",
         "procedure"
@@ -44,7 +50,9 @@
     {
       "id": "org.3",
       "name": "Procedimientos de seguridad",
+      "name_en": "Security procedures",
       "domain": "Organización",
+      "domain_en": "Organization",
       "evidence_types": [
         "procedure"
       ],
@@ -61,7 +69,9 @@
     {
       "id": "org.4",
       "name": "Proceso de autorización",
+      "name_en": "Authorization process",
       "domain": "Organización",
+      "domain_en": "Organization",
       "evidence_types": [
         "procedure",
         "record"
@@ -75,7 +85,9 @@
     {
       "id": "op.pl.1",
       "name": "Análisis de riesgos",
+      "name_en": "Risk analysis",
       "domain": "Operacional-Planificación",
+      "domain_en": "Operational-Planning",
       "evidence_types": [
         "report",
         "record"
@@ -90,7 +102,9 @@
     {
       "id": "op.pl.2",
       "name": "Arquitectura de seguridad",
+      "name_en": "Security architecture",
       "domain": "Operacional-Planificación",
+      "domain_en": "Operational-Planning",
       "evidence_types": [
         "record",
         "screenshot"
@@ -104,7 +118,9 @@
     {
       "id": "op.pl.4",
       "name": "Dimensionamiento/gestión de capacidades",
+      "name_en": "Capacity sizing and management",
       "domain": "Operacional-Planificación",
+      "domain_en": "Operational-Planning",
       "evidence_types": [
         "record",
         "report"
@@ -118,7 +134,9 @@
     {
       "id": "op.acc.1",
       "name": "Identificación",
+      "name_en": "Identification",
       "domain": "Operacional-Control de Acceso",
+      "domain_en": "Operational-Access Control",
       "evidence_types": [
         "procedure",
         "record"
@@ -136,7 +154,9 @@
     {
       "id": "op.acc.2",
       "name": "Requisitos de acceso",
+      "name_en": "Access requirements",
       "domain": "Operacional-Control de Acceso",
+      "domain_en": "Operational-Access Control",
       "evidence_types": [
         "procedure",
         "record"
@@ -155,7 +175,9 @@
     {
       "id": "op.acc.3",
       "name": "Segregación de funciones y tareas",
+      "name_en": "Segregation of duties and tasks",
       "domain": "Operacional-Control de Acceso",
+      "domain_en": "Operational-Access Control",
       "evidence_types": [
         "procedure",
         "record"
@@ -173,7 +195,9 @@
     {
       "id": "op.acc.4",
       "name": "Proceso de gestión de derechos de acceso",
+      "name_en": "Access rights management process",
       "domain": "Operacional-Control de Acceso",
+      "domain_en": "Operational-Access Control",
       "evidence_types": [
         "procedure",
         "record"
@@ -191,7 +215,9 @@
     {
       "id": "op.acc.5",
       "name": "Mecanismo de autenticación",
+      "name_en": "Authentication mechanism",
       "domain": "Operacional-Control de Acceso",
+      "domain_en": "Operational-Access Control",
       "evidence_types": [
         "procedure",
         "screenshot"
@@ -210,7 +236,9 @@
     {
       "id": "op.exp.1",
       "name": "Inventario de activos",
+      "name_en": "Asset inventory",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "record"
       ],
@@ -227,7 +255,9 @@
     {
       "id": "op.exp.2",
       "name": "Configuración de seguridad",
+      "name_en": "Security configuration",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -246,7 +276,9 @@
     {
       "id": "op.exp.3",
       "name": "Gestión de la configuración",
+      "name_en": "Configuration management",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -263,7 +295,9 @@
     {
       "id": "op.exp.4",
       "name": "Mantenimiento",
+      "name_en": "Maintenance",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -281,7 +315,9 @@
     {
       "id": "op.exp.5",
       "name": "Gestión de cambios",
+      "name_en": "Change management",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -300,7 +336,9 @@
     {
       "id": "op.exp.6",
       "name": "Protección frente a código dañino",
+      "name_en": "Protection against malicious code",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "record",
@@ -319,7 +357,9 @@
     {
       "id": "op.exp.9",
       "name": "Registro de la actividad de los usuarios",
+      "name_en": "User activity logging",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "log"
@@ -337,7 +377,9 @@
     {
       "id": "op.exp.10",
       "name": "Protección de los registros de actividad",
+      "name_en": "Protection of activity logs",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -351,7 +393,9 @@
     {
       "id": "op.exp.11",
       "name": "Protección de claves criptográficas",
+      "name_en": "Protection of cryptographic keys",
       "domain": "Operacional-Explotación",
+      "domain_en": "Operational-Operations",
       "evidence_types": [
         "procedure",
         "record"
@@ -365,7 +409,9 @@
     {
       "id": "op.mon.1",
       "name": "Detección de intrusión",
+      "name_en": "Intrusion detection",
       "domain": "Operacional-Monitorización",
+      "domain_en": "Operational-Monitoring",
       "evidence_types": [
         "procedure",
         "record"
@@ -382,7 +428,9 @@
     {
       "id": "op.mon.2",
       "name": "Sistema de métricas",
+      "name_en": "Metrics system",
       "domain": "Operacional-Monitorización",
+      "domain_en": "Operational-Monitoring",
       "evidence_types": [
         "report"
       ],
@@ -394,7 +442,9 @@
     {
       "id": "mp.per.1",
       "name": "Caracterización del puesto de trabajo",
+      "name_en": "Job position characterization",
       "domain": "Medidas de Protección-Personal",
+      "domain_en": "Protection Measures-Personnel",
       "evidence_types": [
         "record"
       ],
@@ -411,7 +461,9 @@
     {
       "id": "mp.per.3",
       "name": "Concienciación",
+      "name_en": "Awareness",
       "domain": "Medidas de Protección-Personal",
+      "domain_en": "Protection Measures-Personnel",
       "evidence_types": [
         "record",
         "certificate"
@@ -429,7 +481,9 @@
     {
       "id": "mp.per.4",
       "name": "Formación",
+      "name_en": "Training",
       "domain": "Medidas de Protección-Personal",
+      "domain_en": "Protection Measures-Personnel",
       "evidence_types": [
         "record",
         "certificate"
@@ -444,7 +498,9 @@
     {
       "id": "mp.info.4",
       "name": "Cifrado de la información",
+      "name_en": "Information encryption",
       "domain": "Medidas de Protección-Información",
+      "domain_en": "Protection Measures-Information",
       "evidence_types": [
         "procedure",
         "record"
@@ -460,7 +516,9 @@
     {
       "id": "mp.info.9",
       "name": "Copias de seguridad",
+      "name_en": "Backups",
       "domain": "Medidas de Protección-Información",
+      "domain_en": "Protection Measures-Information",
       "evidence_types": [
         "procedure",
         "record"
@@ -478,7 +536,9 @@
     {
       "id": "mp.com.1",
       "name": "Perímetro seguro",
+      "name_en": "Secure perimeter",
       "domain": "Medidas de Protección-Comunicaciones",
+      "domain_en": "Protection Measures-Communications",
       "evidence_types": [
         "procedure",
         "screenshot"
@@ -498,7 +558,9 @@
     {
       "id": "mp.com.3",
       "name": "Comunicaciones seguras",
+      "name_en": "Secure communications",
       "domain": "Medidas de Protección-Comunicaciones",
+      "domain_en": "Protection Measures-Communications",
       "evidence_types": [
         "procedure",
         "certificate"
@@ -516,7 +578,9 @@
     {
       "id": "mp.sw.1",
       "name": "Desarrollo de aplicaciones",
+      "name_en": "Application development",
       "domain": "Medidas de Protección-SW",
+      "domain_en": "Protection Measures-Software",
       "evidence_types": [
         "procedure",
         "record"
@@ -529,7 +593,9 @@
     {
       "id": "mp.sw.2",
       "name": "Aceptación y puesta en servicio",
+      "name_en": "Acceptance and commissioning",
       "domain": "Medidas de Protección-SW",
+      "domain_en": "Protection Measures-Software",
       "evidence_types": [
         "procedure",
         "record"

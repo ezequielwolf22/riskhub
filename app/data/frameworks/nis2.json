@@ -1,15 +1,19 @@
 {
   "code": "nis2",
   "name": "NIS2 (Directiva UE 2022/2555)",
+  "name_en": "NIS2 (Directive (EU) 2022/2555)",
   "version": "2022",
   "description": "Directiva de Seguridad de las Redes y Sistemas de Información",
+  "description_en": "Directive on the security of network and information systems",
   "audit_frequency_months": 24,
   "certification_body": "ENISA",
   "requirements": [
     {
       "id": "Art.21.1",
       "name": "Políticas de análisis de riesgos y seguridad de SI",
+      "name_en": "Policies on risk analysis and information system security",
       "domain": "Gestión de riesgos",
+      "domain_en": "Risk management",
       "evidence_types": [
         "policy_document",
         "record"
@@ -23,7 +27,9 @@
     {
       "id": "Art.21.2a",
       "name": "Tratamiento de incidentes",
+      "name_en": "Incident handling",
       "domain": "Gestión de incidentes",
+      "domain_en": "Incident management",
       "evidence_types": [
         "procedure",
         "record"
@@ -37,7 +43,9 @@
     {
       "id": "Art.21.2b",
       "name": "Continuidad de actividad y gestión de crisis",
+      "name_en": "Business continuity and crisis management",
       "domain": "Continuidad",
+      "domain_en": "Continuity",
       "evidence_types": [
         "procedure",
         "record"
@@ -51,7 +59,9 @@
     {
       "id": "Art.21.2c",
       "name": "Seguridad de la cadena de suministro",
+      "name_en": "Supply chain security",
       "domain": "Proveedores",
+      "domain_en": "Suppliers",
       "evidence_types": [
         "record",
         "policy_document"
@@ -64,7 +74,9 @@
     {
       "id": "Art.21.2d",
       "name": "Seguridad en adquisición, desarrollo y mantenimiento",
+      "name_en": "Security in network and information systems acquisition, development and maintenance",
       "domain": "Desarrollo seguro",
+      "domain_en": "Secure development",
       "evidence_types": [
         "procedure",
         "record"
@@ -79,7 +91,9 @@
     {
       "id": "Art.21.2e",
       "name": "Eficacia de las medidas de gestión de riesgos",
+      "name_en": "Effectiveness of cybersecurity risk-management measures",
       "domain": "Evaluación",
+      "domain_en": "Assessment",
       "evidence_types": [
         "report",
         "record"
@@ -89,7 +103,9 @@
     {
       "id": "Art.21.2f",
       "name": "Formación en ciberseguridad",
+      "name_en": "Cyber hygiene practices and cybersecurity training",
       "domain": "Formación",
+      "domain_en": "Training",
       "evidence_types": [
         "record",
         "certificate"
@@ -102,7 +118,9 @@
     {
       "id": "Art.21.2g",
       "name": "Criptografía y cifrado",
+      "name_en": "Cryptography and encryption",
       "domain": "Criptografía",
+      "domain_en": "Cryptography",
       "evidence_types": [
         "procedure",
         "record"
@@ -115,7 +133,9 @@
     {
       "id": "Art.21.2h",
       "name": "Seguridad de recursos humanos, control de acceso y gestión de activos",
+      "name_en": "Human resources security, access control policies and asset management",
       "domain": "Activos y accesos",
+      "domain_en": "Assets and access",
       "evidence_types": [
         "procedure",
         "record"
@@ -128,7 +148,9 @@
     {
       "id": "Art.21.2i",
       "name": "Autenticación multifactor y comunicaciones seguras",
+      "name_en": "Multi-factor authentication and secured communications",
       "domain": "Autenticación",
+      "domain_en": "Authentication",
       "evidence_types": [
         "screenshot",
         "record"
@@ -141,7 +163,9 @@
     {
       "id": "Art.23",
       "name": "Obligaciones de notificación de incidentes",
+      "name_en": "Incident reporting obligations",
       "domain": "Notificación",
+      "domain_en": "Reporting",
       "evidence_types": [
         "procedure",
         "record"
@@ -151,7 +175,9 @@
     {
       "id": "Art.20",
       "name": "Gobernanza (responsabilidad de órganos de dirección)",
+      "name_en": "Governance (accountability of management bodies)",
       "domain": "Gobernanza",
+      "domain_en": "Governance",
       "evidence_types": [
         "record"
       ],

@@ -1,15 +1,19 @@
 {
   "code": "gdpr",
   "name": "GDPR (Reglamento UE 2016/679)",
+  "name_en": "GDPR (Regulation (EU) 2016/679)",
   "version": "2018",
   "description": "Reglamento General de Protección de Datos",
+  "description_en": "General Data Protection Regulation",
   "audit_frequency_months": 12,
   "certification_body": "DPA",
   "requirements": [
     {
       "id": "Art.5",
       "name": "Principios relativos al tratamiento",
+      "name_en": "Principles relating to processing of personal data",
       "domain": "Principios",
+      "domain_en": "Principles",
       "evidence_types": [
         "policy_document",
         "procedure"
@@ -24,7 +28,9 @@
     {
       "id": "Art.6",
       "name": "Licitud del tratamiento",
+      "name_en": "Lawfulness of processing",
       "domain": "Principios",
+      "domain_en": "Principles",
       "evidence_types": [
         "record"
       ],
@@ -33,7 +39,9 @@
     {
       "id": "Art.7",
       "name": "Condiciones para el consentimiento",
+      "name_en": "Conditions for consent",
       "domain": "Principios",
+      "domain_en": "Principles",
       "evidence_types": [
         "record"
       ],
@@ -42,7 +50,9 @@
     {
       "id": "Art.9",
       "name": "Tratamiento de categorías especiales",
+      "name_en": "Processing of special categories of personal data",
       "domain": "Principios",
+      "domain_en": "Principles",
       "evidence_types": [
         "record",
         "procedure"
@@ -52,7 +62,9 @@
     {
       "id": "Art.12",
       "name": "Información transparente",
+      "name_en": "Transparent information",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "policy_document"
       ],
@@ -61,7 +73,9 @@
     {
       "id": "Art.13",
       "name": "Información al interesado (recogida directa)",
+      "name_en": "Information to the data subject (data collected directly)",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "policy_document"
       ],
@@ -70,7 +84,9 @@
     {
       "id": "Art.14",
       "name": "Información al interesado (datos no directos)",
+      "name_en": "Information to the data subject (data not obtained directly)",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "policy_document"
       ],
@@ -79,7 +95,9 @@
     {
       "id": "Art.15",
       "name": "Derecho de acceso",
+      "name_en": "Right of access",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "procedure",
         "record"
@@ -92,7 +110,9 @@
     {
       "id": "Art.16",
       "name": "Derecho de rectificación",
+      "name_en": "Right to rectification",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "procedure",
         "record"
@@ -105,7 +125,9 @@
     {
       "id": "Art.17",
       "name": "Derecho de supresión (olvido)",
+      "name_en": "Right to erasure (right to be forgotten)",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "procedure",
         "record"
@@ -119,7 +141,9 @@
     {
       "id": "Art.18",
       "name": "Derecho a limitación del tratamiento",
+      "name_en": "Right to restriction of processing",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "procedure",
         "record"
@@ -129,7 +153,9 @@
     {
       "id": "Art.20",
       "name": "Derecho a la portabilidad",
+      "name_en": "Right to data portability",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "procedure",
         "record"
@@ -139,7 +165,9 @@
     {
       "id": "Art.21",
       "name": "Derecho de oposición",
+      "name_en": "Right to object",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "procedure",
         "record"
@@ -149,7 +177,9 @@
     {
       "id": "Art.22",
       "name": "Decisiones individuales automatizadas",
+      "name_en": "Automated individual decision-making",
       "domain": "Derechos",
+      "domain_en": "Rights",
       "evidence_types": [
         "procedure",
         "record"
@@ -159,7 +189,9 @@
     {
       "id": "Art.25",
       "name": "Privacidad desde el diseño y por defecto",
+      "name_en": "Data protection by design and by default",
       "domain": "Diseño",
+      "domain_en": "Design",
       "evidence_types": [
         "procedure",
         "record"
@@ -169,7 +201,9 @@
     {
       "id": "Art.26",
       "name": "Responsables conjuntos del tratamiento",
+      "name_en": "Joint controllers",
       "domain": "Diseño",
+      "domain_en": "Design",
       "evidence_types": [
         "record"
       ],
@@ -178,7 +212,9 @@
     {
       "id": "Art.28",
       "name": "Encargado del tratamiento (contratos DPA)",
+      "name_en": "Processor (DPA contracts)",
       "domain": "Proveedores",
+      "domain_en": "Suppliers",
       "evidence_types": [
         "record"
       ],
@@ -192,7 +228,9 @@
     {
       "id": "Art.30",
       "name": "Registro de actividades de tratamiento",
+      "name_en": "Records of processing activities",
       "domain": "Documentación",
+      "domain_en": "Documentation",
       "evidence_types": [
         "record"
       ],
@@ -201,7 +239,9 @@
     {
       "id": "Art.32",
       "name": "Seguridad del tratamiento",
+      "name_en": "Security of processing",
       "domain": "Seguridad",
+      "domain_en": "Security",
       "evidence_types": [
         "procedure",
         "record",
@@ -216,7 +256,9 @@
     {
       "id": "Art.33",
       "name": "Notificación de violaciones a autoridad",
+      "name_en": "Notification of a personal data breach to the supervisory authority",
       "domain": "Brechas",
+      "domain_en": "Breaches",
       "evidence_types": [
         "procedure",
         "record"
@@ -226,7 +268,9 @@
     {
       "id": "Art.34",
       "name": "Comunicación de violaciones al interesado",
+      "name_en": "Communication of a personal data breach to the data subject",
       "domain": "Brechas",
+      "domain_en": "Breaches",
       "evidence_types": [
         "procedure",
         "record"
@@ -236,7 +280,9 @@
     {
       "id": "Art.35",
       "name": "Evaluación de impacto (EIPD/DPIA)",
+      "name_en": "Data protection impact assessment (DPIA)",
       "domain": "DPIA",
+      "domain_en": "DPIA",
       "evidence_types": [
         "report"
       ],
@@ -245,7 +291,9 @@
     {
       "id": "Art.37",
       "name": "Delegado de protección de datos (DPO)",
+      "name_en": "Data protection officer (DPO)",
       "domain": "DPO",
+      "domain_en": "DPO",
       "evidence_types": [
         "record"
       ],
@@ -254,7 +302,9 @@
     {
       "id": "Art.44",
       "name": "Transferencias internacionales",
+      "name_en": "International transfers",
       "domain": "Transferencias",
+      "domain_en": "Transfers",
       "evidence_types": [
         "record",
         "policy_document"

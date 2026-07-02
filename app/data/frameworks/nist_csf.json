@@ -1,15 +1,19 @@
 {
   "code": "nist_csf",
   "name": "NIST Cybersecurity Framework 2.0",
+  "name_en": "NIST Cybersecurity Framework 2.0",
   "version": "2.0",
   "description": "Framework de ciberseguridad del NIST",
+  "description_en": "NIST Cybersecurity Framework",
   "audit_frequency_months": 12,
   "certification_body": "NIST",
   "requirements": [
     {
       "id": "GV.OC",
       "name": "Contexto organizacional",
+      "name_en": "Organizational Context",
       "domain": "Govern",
+      "domain_en": "Govern",
       "evidence_types": [
         "policy_document",
         "record"
@@ -19,7 +23,9 @@
     {
       "id": "GV.RM",
       "name": "Estrategia de gestión de riesgos",
+      "name_en": "Risk Management Strategy",
       "domain": "Govern",
+      "domain_en": "Govern",
       "evidence_types": [
         "policy_document",
         "record"
@@ -32,7 +38,9 @@
     {
       "id": "GV.RR",
       "name": "Roles y responsabilidades",
+      "name_en": "Roles, Responsibilities, and Authorities",
       "domain": "Govern",
+      "domain_en": "Govern",
       "evidence_types": [
         "record"
       ],
@@ -44,7 +52,9 @@
     {
       "id": "GV.PO",
       "name": "Políticas",
+      "name_en": "Policy",
       "domain": "Govern",
+      "domain_en": "Govern",
       "evidence_types": [
         "policy_document"
       ],
@@ -56,7 +66,9 @@
     {
       "id": "GV.OV",
       "name": "Supervisión",
+      "name_en": "Oversight",
       "domain": "Govern",
+      "domain_en": "Govern",
       "evidence_types": [
         "record",
         "report"
@@ -66,7 +78,9 @@
     {
       "id": "ID.AM",
       "name": "Gestión de activos",
+      "name_en": "Asset Management",
       "domain": "Identify",
+      "domain_en": "Identify",
       "evidence_types": [
         "record",
         "report"
@@ -79,7 +93,9 @@
     {
       "id": "ID.RA",
       "name": "Evaluación de riesgos",
+      "name_en": "Risk Assessment",
       "domain": "Identify",
+      "domain_en": "Identify",
       "evidence_types": [
         "record",
         "report"
@@ -94,7 +110,9 @@
     {
       "id": "ID.IM",
       "name": "Mejora",
+      "name_en": "Improvement",
       "domain": "Identify",
+      "domain_en": "Identify",
       "evidence_types": [
         "record"
       ],
@@ -103,7 +121,9 @@
     {
       "id": "PR.AA",
       "name": "Gestión de identidad y control de acceso",
+      "name_en": "Identity Management, Authentication, and Access Control",
       "domain": "Protect",
+      "domain_en": "Protect",
       "evidence_types": [
         "procedure",
         "record",
@@ -122,7 +142,9 @@
     {
       "id": "PR.AT",
       "name": "Concienciación y formación",
+      "name_en": "Awareness and Training",
       "domain": "Protect",
+      "domain_en": "Protect",
       "evidence_types": [
         "record",
         "certificate"
@@ -135,7 +157,9 @@
     {
       "id": "PR.DS",
       "name": "Seguridad de datos",
+      "name_en": "Data Security",
       "domain": "Protect",
+      "domain_en": "Protect",
       "evidence_types": [
         "procedure",
         "record"
@@ -148,7 +172,9 @@
     {
       "id": "PR.PS",
       "name": "Seguridad de plataforma",
+      "name_en": "Platform Security",
       "domain": "Protect",
+      "domain_en": "Protect",
       "evidence_types": [
         "procedure",
         "record"
@@ -170,7 +196,9 @@
     {
       "id": "PR.IR",
       "name": "Resiliencia de infraestructura",
+      "name_en": "Technology Infrastructure Resilience",
       "domain": "Protect",
+      "domain_en": "Protect",
       "evidence_types": [
         "procedure",
         "record"
@@ -186,7 +214,9 @@
     {
       "id": "DE.CM",
       "name": "Monitorización continua",
+      "name_en": "Continuous Monitoring",
       "domain": "Detect",
+      "domain_en": "Detect",
       "evidence_types": [
         "procedure",
         "record",
@@ -202,7 +232,9 @@
     {
       "id": "DE.AE",
       "name": "Análisis de eventos adversos",
+      "name_en": "Adverse Event Analysis",
       "domain": "Detect",
+      "domain_en": "Detect",
       "evidence_types": [
         "procedure",
         "record"
@@ -215,7 +247,9 @@
     {
       "id": "RS.MA",
       "name": "Gestión de incidentes",
+      "name_en": "Incident Management",
       "domain": "Respond",
+      "domain_en": "Respond",
       "evidence_types": [
         "procedure",
         "record"
@@ -228,7 +262,9 @@
     {
       "id": "RS.AN",
       "name": "Análisis de incidentes",
+      "name_en": "Incident Analysis",
       "domain": "Respond",
+      "domain_en": "Respond",
       "evidence_types": [
         "record",
         "report"
@@ -241,7 +277,9 @@
     {
       "id": "RS.CO",
       "name": "Reporting y comunicación",
+      "name_en": "Incident Response Reporting and Communication",
       "domain": "Respond",
+      "domain_en": "Respond",
       "evidence_types": [
         "procedure",
         "record"
@@ -251,7 +289,9 @@
     {
       "id": "RS.MI",
       "name": "Mitigación de incidentes",
+      "name_en": "Incident Mitigation",
       "domain": "Respond",
+      "domain_en": "Respond",
       "evidence_types": [
         "record"
       ],
@@ -263,7 +303,9 @@
     {
       "id": "RC.RP",
       "name": "Ejecución del plan de recuperación",
+      "name_en": "Incident Recovery Plan Execution",
       "domain": "Recover",
+      "domain_en": "Recover",
       "evidence_types": [
         "procedure",
         "record"
@@ -277,7 +319,9 @@
     {
       "id": "RC.CO",
       "name": "Comunicación en recuperación",
+      "name_en": "Incident Recovery Communication",
       "domain": "Recover",
+      "domain_en": "Recover",
       "evidence_types": [
         "procedure",
         "record"
