@@ -52,38 +52,24 @@ const ViewOrganizations = (() => {
   // ---- Render ----
   async function render(container) {
     _container = container;
-    // Construir siempre la estructura completa (lista + detalle oculto).
-    // Si estamos en modo detalle, ocultamos la lista y mostramos la card
-    // sin ningún flash porque ambas operaciones son síncronas (sin repaint entre ellas).
     container.innerHTML = `
-      <div id="org-list-wrapper">
-        <div class="page-header">
-          <div>
-            <h1 class="page-title">${t('organizations.title')}</h1>
-            <p class="page-subtitle">${t('organizations.subtitle')}</p>
-          </div>
-          <div class="page-actions">
-            <button class="btn btn-primary" id="btn-new-org">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              ${t('organizations.new_btn')}
-            </button>
-          </div>
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">${t('organizations.title')}</h1>
+          <p class="page-subtitle">${t('organizations.subtitle')}</p>
         </div>
-        <div id="orgs-notice"></div>
-        <div id="orgs-grid" class="card-grid"></div>
+        <div class="page-actions">
+          <button class="btn btn-primary" id="btn-new-org">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            ${t('organizations.new_btn')}
+          </button>
+        </div>
       </div>
-      <div id="org-detail-wrapper" style="display:none;"></div>
+      <div id="orgs-notice"></div>
+      <div id="orgs-grid" class="card-grid"></div>
     `;
 
     document.getElementById('btn-new-org').onclick = () => openNewOrgModal();
-
-    if (_detailMode && _detailOrgId) {
-      // Restaurar el detalle síncronamente (sin await): el navegador no repinta
-      // entre el innerHTML de arriba y este toggle, así que no hay flash gris.
-      _openDetail(_detailOrgId);
-      return;
-    }
-
     await loadOrgs(container);
   }
 
@@ -145,17 +131,12 @@ const ViewOrganizations = (() => {
     _detailMode = true;
     _detailOrgId = orgId;
 
-    // Usar los wrappers si existen (caso normal); si no, caer en reemplazo directo del panel.
-    const listWrapper   = document.getElementById('org-list-wrapper');
-    const detailWrapper = document.getElementById('org-detail-wrapper');
-    const target = detailWrapper || _container;
-    if (!target) return;
-
-    if (listWrapper)   listWrapper.style.display   = 'none';
-    if (detailWrapper) detailWrapper.style.display = '';
-
+    // Renderizar en #main directamente (igual que navigate) para evitar
+    // cualquier problema de layout con el panel de tabs.
     const mainEl = document.getElementById('main');
-    if (mainEl) mainEl.scrollTop = 0;
+    if (!mainEl) return;
+    mainEl.scrollTop = 0;
+    const target = mainEl;
 
     target.innerHTML = `
       <div class="card">
@@ -609,12 +590,9 @@ const ViewOrganizations = (() => {
   function _backToList() {
     _detailMode = false;
     _detailOrgId = null;
-    const listWrapper   = document.getElementById('org-list-wrapper');
-    const detailWrapper = document.getElementById('org-detail-wrapper');
-    if (listWrapper && detailWrapper) {
-      detailWrapper.style.display = 'none';
-      detailWrapper.innerHTML     = '';
-      listWrapper.style.display   = '';
+    // Re-navegar al hub para restaurar el layout completo (tabs + lista).
+    if (typeof navigate === 'function') {
+      navigate();
     } else if (_container) {
       render(_container);
     }
