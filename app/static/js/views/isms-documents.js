@@ -6,68 +6,73 @@ const ViewIsmsDocuments = (() => {
 
   // --- Constantes ---
 
+  const NS = 'isms_documents_hub';
   const STATUS_LABELS = {
-    draft: 'Borrador', review: 'En revision', approved: 'Aprobada',
-    published: 'Publicada', obsolete: 'Obsoleta',
+    draft: t(`${NS}.status.draft`), review: t(`${NS}.status.review`), approved: t(`${NS}.status.approved`),
+    published: t(`${NS}.status.published`), obsolete: t(`${NS}.status.obsolete`),
   };
   const STATUS_COLORS = {
     draft: 'var(--text-muted)', review: 'var(--brand-orange)',
     approved: 'var(--brand-purple)', published: 'var(--risk-low)', obsolete: '#aaa',
   };
   const DOC_LEVEL_LABELS = {
-    1: 'Politica', 2: 'Norma / Estandar', 3: 'Procedimiento', 4: 'Instruccion Tecnica',
+    1: t(`${NS}.level.1.long`), 2: t(`${NS}.level.2.long`), 3: t(`${NS}.level.3.long`), 4: t(`${NS}.level.4.long`),
   };
-  const DOC_LEVEL_SHORT = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion' };
+  const DOC_LEVEL_SHORT = {
+    1: t(`${NS}.level.1.short`), 2: t(`${NS}.level.2.short`), 3: t(`${NS}.level.3.short`), 4: t(`${NS}.level.4.short`),
+  };
   const DOC_LEVEL_COLORS = {
     1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a',
   };
   const DOC_LEVEL_MAX_MATURITY = { 1: 2, 2: 3, 3: 4, 4: 5 };
   const ISMS_TYPES = {
-    politica: 'Politica', norma: 'Norma',
-    instruccion_tecnica: 'Instruccion tecnica', evidencia: 'Otra evidencia',
+    politica: t(`${NS}.isms_type.politica`), norma: t(`${NS}.isms_type.norma`),
+    instruccion_tecnica: t(`${NS}.isms_type.instruccion_tecnica`), evidencia: t(`${NS}.isms_type.evidencia`),
   };
   const ISMS_TYPE_COLORS = {
     politica: 'var(--brand-purple)', norma: 'var(--brand-orange)',
     instruccion_tecnica: '#0891b2', evidencia: '#6b7280',
   };
   const FILE_STATUS_LABELS = {
-    indexed: 'Indexado', processing: 'Procesando', pending: 'Pendiente', error: 'Error',
+    indexed: t(`${NS}.file_status.indexed`), processing: t(`${NS}.file_status.processing`),
+    pending: t(`${NS}.file_status.pending`), error: t(`${NS}.file_status.error`),
   };
   const FILE_STATUS_COLORS = {
     indexed: 'var(--risk-low)', processing: 'var(--brand-orange)',
     pending: 'var(--text-muted)', error: 'var(--risk-critical)',
   };
   const ISMS_STATUS_LABELS = {
-    analysing: 'Analizando...', analysed: 'Analizado', skipped: 'Sin IA', error: 'Error IA',
+    analysing: t(`${NS}.ai_status.analysing`), analysed: t(`${NS}.ai_status.analysed`),
+    skipped: t(`${NS}.ai_status.skipped`), error: t(`${NS}.ai_status.error`),
   };
   const ISMS_STATUS_COLORS = {
     analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)',
     skipped: 'var(--text-muted)', error: 'var(--risk-critical)',
   };
   const FRAMEWORKS = [
-    { value: 'ISO 27001', label: 'ISO/IEC 27001:2022' },
-    { value: 'NIS2',      label: 'NIS2 (Directiva UE 2022/2555)' },
-    { value: 'DORA',      label: 'DORA (Reglamento UE 2022/2554)' },
-    { value: 'ENS',       label: 'ENS (Esquema Nacional de Seguridad)' },
-    { value: 'GDPR',      label: 'RGPD / GDPR' },
-    { value: 'NIST CSF',  label: 'NIST Cybersecurity Framework' },
-    { value: 'PCI DSS',   label: 'PCI DSS v4' },
-    { value: 'libre',     label: 'Sin norma especifica' },
+    { value: 'ISO 27001', label: t(`${NS}.framework.iso27001`) },
+    { value: 'NIS2',      label: t(`${NS}.framework.nis2`) },
+    { value: 'DORA',      label: t(`${NS}.framework.dora`) },
+    { value: 'ENS',       label: t(`${NS}.framework.ens`) },
+    { value: 'GDPR',      label: t(`${NS}.framework.gdpr`) },
+    { value: 'NIST CSF',  label: t(`${NS}.framework.nist_csf`) },
+    { value: 'PCI DSS',   label: t(`${NS}.framework.pci_dss`) },
+    { value: 'libre',     label: t(`${NS}.framework.libre`) },
   ];
   const CATEGORY_LABELS = {
-    architecture:       'Arquitectura y sistemas',
-    normative:          'Normativa y compliance',
-    policies:           'Politicas y procedimientos',
-    assets_inventory:   'Inventario de activos',
-    risk_assessments:   'Evaluaciones de riesgo',
-    critical_suppliers: 'Proveedores criticos',
-    incidents_lessons:  'Incidentes y lecciones',
-    other:              'Otros',
+    architecture:       t(`${NS}.category.architecture`),
+    normative:          t(`${NS}.category.normative`),
+    policies:           t(`${NS}.category.policies`),
+    assets_inventory:   t(`${NS}.category.assets_inventory`),
+    risk_assessments:   t(`${NS}.category.risk_assessments`),
+    critical_suppliers: t(`${NS}.category.critical_suppliers`),
+    incidents_lessons:  t(`${NS}.category.incidents_lessons`),
+    other:              t(`${NS}.category.other`),
   };
   const ACCEPTED_EXTS = ['pdf', 'docx', 'txt', 'csv', 'jpg', 'jpeg', 'png'];
 
   // Niveles de madurez CMM
-  const MATURITY_LABELS = ['Inexistente', 'Inicial', 'Basico', 'Definido', 'Gestionado', 'Optimizado'];
+  const MATURITY_LABELS = [0, 1, 2, 3, 4, 5].map(n => t(`${NS}.maturity_level.${n}`));
 
   // --- Estado ---
 
@@ -87,7 +92,7 @@ const ViewIsmsDocuments = (() => {
 
   function _levelBadge(level) {
     const l = parseInt(level) || 1;
-    const label = DOC_LEVEL_SHORT[l] || 'Politica';
+    const label = DOC_LEVEL_SHORT[l] || t(`${NS}.level.1.short`);
     const color = DOC_LEVEL_COLORS[l] || 'var(--brand-purple)';
     return `<span title="${DOC_LEVEL_LABELS[l]}" style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;background:${color}18;color:${color};border:1px solid ${color}40;">${l}. ${label}</span>`;
   }
@@ -181,19 +186,19 @@ const ViewIsmsDocuments = (() => {
     el.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Documentos ISMS</h1>
-          <p class="page-sub">Gestion documental unificada — ISO 27001 cl. 5.2 — Politicas, normas, procedimientos e instrucciones tecnicas</p>
+          <h1 class="page-title">${t(`${NS}.header.title`)}</h1>
+          <p class="page-sub">${t(`${NS}.header.subtitle`)}</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="file" id="isms-ai-input" accept=".pdf,.docx,.txt" style="display:none;">
-          <button class="btn" id="btn-isms-ai-extract" title="Cargar un documento y extraer los campos con IA">
-            Extraer con IA
+          <button class="btn" id="btn-isms-ai-extract" title="${t(`${NS}.header.btn_extract_ai_title`)}">
+            ${t(`${NS}.header.btn_extract_ai`)}
           </button>
           <button onclick="ViewIsmsDocuments._generateWithAI()" class="btn"
                   style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
-            Generar con IA
+            ${t(`${NS}.header.btn_generate_ai`)}
           </button>
-          <button class="btn btn-primary" id="btn-isms-new-pol">+ Nuevo registro</button>
+          <button class="btn btn-primary" id="btn-isms-new-pol">${t(`${NS}.header.btn_new`)}</button>
         </div>
       </div>
       <div id="isms-root"></div>`;
@@ -205,15 +210,15 @@ const ViewIsmsDocuments = (() => {
       const file = aiInput.files[0];
       if (!file) return;
       aiInput.value = '';
-      aiBtn.disabled = true; aiBtn.textContent = 'Extrayendo...';
+      aiBtn.disabled = true; aiBtn.textContent = t(`${NS}.header.btn_extract_ai_loading`);
       try {
         const extracted = await Api.policies.aiExtract(file);
-        UI.toast('Extraccion completada. Revisa los campos.', 'success');
+        UI.toast(t(`${NS}.toast.extract_complete`), 'success');
         _openFormEnhanced(null, extracted);
       } catch (e) {
-        UI.toast('Error al extraer: ' + e.message, 'error');
+        UI.toast(t(`${NS}.toast.extract_error`, { error: e.message }), 'error');
       } finally {
-        aiBtn.disabled = false; aiBtn.textContent = 'Extraer con IA';
+        aiBtn.disabled = false; aiBtn.textContent = t(`${NS}.header.btn_extract_ai`);
       }
     };
 
@@ -250,23 +255,23 @@ const ViewIsmsDocuments = (() => {
       <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px;">
         <div class="card" style="text-align:center;padding:12px;">
           <div style="font-size:22px;font-weight:700;color:var(--brand-purple);">${_merged.length}</div>
-          <div style="font-size:11px;color:var(--text-muted);">Total entradas</div>
+          <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.stats.total_entries`)}</div>
         </div>
         <div class="card" style="text-align:center;padding:12px;">
           <div style="font-size:22px;font-weight:700;color:var(--risk-low);">${totalPolicies}</div>
-          <div style="font-size:11px;color:var(--text-muted);">Registros ISMS</div>
+          <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.stats.isms_records`)}</div>
         </div>
         <div class="card" style="text-align:center;padding:12px;">
           <div style="font-size:22px;font-weight:700;color:var(--risk-low);">${indexedDocs}</div>
-          <div style="font-size:11px;color:var(--text-muted);">Archivos indexados</div>
+          <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.stats.indexed_files`)}</div>
         </div>
         <div class="card" style="text-align:center;padding:12px;">
           <div style="font-size:22px;font-weight:700;color:var(--brand-orange);">${analysedDocs}</div>
-          <div style="font-size:11px;color:var(--text-muted);">Analizados ISMS</div>
+          <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.stats.analysed_isms`)}</div>
         </div>
         <div class="card" style="text-align:center;padding:12px;">
           <div style="font-size:22px;font-weight:700;color:${overdueCount > 0 ? 'var(--risk-high)' : 'var(--text-muted)'};">${overdueCount}</div>
-          <div style="font-size:11px;color:var(--text-muted);">Revision vencida</div>
+          <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.stats.overdue_review`)}</div>
         </div>
       </div>
 
@@ -274,21 +279,21 @@ const ViewIsmsDocuments = (() => {
       <div id="isms-upload-section" style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
-                 title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV, JPG, PNG)">
-            + Subir documentos
+                 title="${t(`${NS}.upload.btn_upload_title`)}">
+            ${t(`${NS}.upload.btn_upload`)}
             <input type="file" id="isms-file-input"
                    accept=".pdf,.docx,.txt,.csv,.jpg,.jpeg,.png" multiple style="display:none;">
           </label>
           ${indexedDocs > 0 ? `
           <button class="btn btn-ghost" id="isms-analyze-pending-btn" style="font-size:12px;"
                   onclick="ViewIsmsDocuments._analyzePending()"
-                  title="Analiza documentos pendientes y resetea los atascados">
-            Analizar pendientes
+                  title="${t(`${NS}.upload.btn_analyze_pending_title`)}">
+            ${t(`${NS}.upload.btn_analyze_pending`)}
           </button>
           <button class="btn btn-ghost" id="isms-analyze-all-btn" style="font-size:12px;"
                   onclick="ViewIsmsDocuments._analyzeAll()"
-                  title="Re-analizar TODOS los documentos indexados">
-            Re-analizar todos (${indexedDocs})
+                  title="${t(`${NS}.upload.btn_reanalyze_all_title`)}">
+            ${t(`${NS}.upload.btn_reanalyze_all`, { count: indexedDocs })}
           </button>` : ''}
         </div>
 
@@ -303,8 +308,8 @@ const ViewIsmsDocuments = (() => {
             <polyline points="17 8 12 3 7 8"/>
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg><br>
-          Arrastra aqui uno o varios documentos (PDF, DOCX, TXT, CSV, JPG, PNG)<br>
-          <span style="font-size:11px;">o usa el boton "Subir documentos"</span>
+          ${t(`${NS}.upload.dropzone_text`)}<br>
+          <span style="font-size:11px;">${t(`${NS}.upload.dropzone_hint`)}</span>
         </div>
         <div id="isms-queue"></div>
       </div>
@@ -313,33 +318,33 @@ const ViewIsmsDocuments = (() => {
       <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;
                   border-bottom:1px solid var(--border);padding-bottom:10px;">
         <button class="btn ${_filter === 'all' ? 'btn-primary' : ''} isms-lvl-tab" data-f="all">
-          Todos (${_merged.length})
+          ${t(`${NS}.filters.tab_all`, { n: _merged.length })}
         </button>
         ${[1, 2, 3, 4].map(l => {
           const n = byLevel[l] || 0;
           return n > 0
             ? `<button class="btn ${_filter == l ? 'btn-primary' : ''} isms-lvl-tab" data-f="${l}">
-                ${l}. ${DOC_LEVEL_SHORT[l]} (${n})
+                ${t(`${NS}.filters.tab_level`, { level: l, label: DOC_LEVEL_SHORT[l], n })}
                </button>` : '';
         }).join('')}
         ${noDocCnt > 0 ? `
         <button class="btn ${_filter === 'no_doc' ? 'btn-primary' : ''} isms-lvl-tab" data-f="no_doc"
-                title="Registros ISMS sin archivo subido">
-          Sin archivo (${noDocCnt})
+                title="${t(`${NS}.filters.tab_no_doc_title`)}">
+          ${t(`${NS}.filters.tab_no_doc`, { n: noDocCnt })}
         </button>` : ''}
         ${noPolicyCnt > 0 ? `
         <button class="btn ${_filter === 'no_policy' ? 'btn-primary' : ''} isms-lvl-tab" data-f="no_policy"
-                title="Archivos subidos sin registro ISMS asociado aun">
-          Sin registro (${noPolicyCnt})
+                title="${t(`${NS}.filters.tab_no_policy_title`)}">
+          ${t(`${NS}.filters.tab_no_policy`, { n: noPolicyCnt })}
         </button>` : ''}
       </div>
 
       <!-- Busqueda y filtro de estado -->
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
         <input type="search" id="isms-search" class="input" style="width:220px;"
-               placeholder="Buscar por titulo o codigo..." value="${UI.esc(_searchQ)}">
+               placeholder="${t(`${NS}.filters.search_placeholder`)}" value="${UI.esc(_searchQ)}">
         <select id="isms-status-filter" class="input" style="width:160px;">
-          <option value="">Todos los estados</option>
+          <option value="">${t(`${NS}.filters.all_statuses`)}</option>
           ${Object.entries(STATUS_LABELS).map(([k, l]) =>
             `<option value="${k}" ${_statusFilter === k ? 'selected' : ''}>${l}</option>`
           ).join('')}
@@ -416,7 +421,7 @@ const ViewIsmsDocuments = (() => {
     const rows = _filteredMerged();
 
     if (!rows.length) {
-      wrap.innerHTML = '<p class="text-muted" style="text-align:center;margin-top:24px;">No se encontraron documentos.</p>';
+      wrap.innerHTML = `<p class="text-muted" style="text-align:center;margin-top:24px;">${t(`${NS}.table.no_docs_found`)}</p>`;
       return;
     }
 
@@ -440,11 +445,11 @@ const ViewIsmsDocuments = (() => {
         fileCellHtml = `<span style="font-size:11px;font-weight:600;color:${fc};">${fl}</span>`;
         if (doc.error_message) {
           fileCellHtml += `<br><span style="font-size:10px;color:var(--risk-critical);"
-            title="${UI.esc(doc.error_message)}">Ver error</span>`;
+            title="${UI.esc(doc.error_message)}">${t(`${NS}.table.view_error`)}</span>`;
         }
       } else {
         fileCellHtml = `<span style="font-size:11px;color:var(--text-muted);"
-          title="Sube el archivo correspondiente con el boton Subir documentos">Sin archivo</span>`;
+          title="${t(`${NS}.table.no_file_title`)}">${t(`${NS}.table.no_file`)}</span>`;
       }
 
       // Columna analisis ISMS
@@ -458,7 +463,7 @@ const ViewIsmsDocuments = (() => {
           ismsCellHtml += ' <span style="font-size:10px;color:var(--text-muted);">&#8635;</span>';
         }
       } else if (doc && doc.status === 'indexed') {
-        ismsCellHtml = `<span style="font-size:11px;color:var(--text-muted);">Pendiente</span>`;
+        ismsCellHtml = `<span style="font-size:11px;color:var(--text-muted);">${t(`${NS}.table.pending`)}</span>`;
       } else {
         ismsCellHtml = '<span style="font-size:11px;color:var(--text-muted);">-</span>';
       }
@@ -468,13 +473,13 @@ const ViewIsmsDocuments = (() => {
       if (doc && doc.isms_controls_updated > 0) {
         controlsHtml = `<span onclick="ViewIsmsDocuments._showMaturityModal(${doc.id})"
           style="cursor:pointer;font-size:11px;color:var(--brand-purple);text-decoration:underline;"
-          title="Ver madurez y gap analysis por control">
-          ${doc.isms_controls_updated} ctrl
+          title="${t(`${NS}.table.view_maturity_title`)}">
+          ${t(`${NS}.table.n_ctrl`, { n: doc.isms_controls_updated })}
         </span>`;
         if (doc.extracted_clauses && doc.extracted_clauses.length > 0) {
           controlsHtml += `<br><span onclick="ViewIsmsDocuments._showClauses(${doc.id})"
             style="cursor:pointer;font-size:10px;color:var(--brand-orange);text-decoration:underline;">
-            ${doc.extracted_clauses.length} clausulas
+            ${t(`${NS}.table.n_clauses`, { n: doc.extracted_clauses.length })}
           </span>`;
         }
       }
@@ -482,34 +487,34 @@ const ViewIsmsDocuments = (() => {
       // Acciones
       const actions = [];
       if (policy) {
-        actions.push(`<button class="btn btn-sm" onclick="ViewIsmsDocuments._editPolicy(${policy.id})">Editar</button>`);
+        actions.push(`<button class="btn btn-sm" onclick="ViewIsmsDocuments._editPolicy(${policy.id})">${t(`${NS}.table.btn_edit`)}</button>`);
       }
       if (doc && doc.status === 'indexed') {
         if (!doc.isms_status || doc.isms_status === 'error' || doc.isms_status === 'skipped') {
-          actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._analyze(${doc.id})">Analizar</button>`);
+          actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._analyze(${doc.id})">${t(`${NS}.table.btn_analyze`)}</button>`);
         } else if (doc.isms_status === 'analysed') {
-          actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._analyze(${doc.id})">Re-analizar</button>`);
+          actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._analyze(${doc.id})">${t(`${NS}.table.btn_reanalyze`)}</button>`);
         }
         if (doc.isms_controls_updated > 0) {
-          actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._showMaturityModal(${doc.id})">Madurez</button>`);
+          actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._showMaturityModal(${doc.id})">${t(`${NS}.table.btn_maturity`)}</button>`);
         }
       } else if (doc && (doc.status === 'error' || doc.status === 'pending')) {
-        actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._reprocess(${doc.id})">Reprocesar</button>`);
+        actions.push(`<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._reprocess(${doc.id})">${t(`${NS}.table.btn_reprocess`)}</button>`);
       }
       if (policy) {
-        actions.push(`<button class="btn btn-sm btn-danger" onclick="ViewIsmsDocuments._deletePolicy(${policy.id})">Eliminar</button>`);
+        actions.push(`<button class="btn btn-sm btn-danger" onclick="ViewIsmsDocuments._deletePolicy(${policy.id})">${t(`${NS}.table.btn_delete`)}</button>`);
       } else if (doc) {
-        actions.push(`<button class="btn btn-sm btn-danger" onclick="ViewIsmsDocuments._deleteDoc(${doc.id})">Eliminar</button>`);
+        actions.push(`<button class="btn btn-sm btn-danger" onclick="ViewIsmsDocuments._deleteDoc(${doc.id})">${t(`${NS}.table.btn_delete`)}</button>`);
       }
 
       // Indicador de tipo de fila
       const typeTag = type === 'policy_only'
         ? `<span style="font-size:9px;background:#6b728018;color:#6b7280;border:1px solid #6b728030;
-                        border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">SIN ARCHIVO</span>`
+                        border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:middle;">${t(`${NS}.table.tag_no_file`)}</span>`
         : type === 'doc_only'
         ? `<span style="font-size:9px;background:var(--brand-orange)18;color:var(--brand-orange);
                         border:1px solid var(--brand-orange)30;border-radius:3px;padding:1px 4px;
-                        margin-left:4px;vertical-align:middle;">SIN REGISTRO</span>`
+                        margin-left:4px;vertical-align:middle;">${t(`${NS}.table.tag_no_record`)}</span>`
         : '';
 
       const rowStyle = reviewOverdue ? 'background:rgba(254,226,226,0.3);' : '';
@@ -532,7 +537,7 @@ const ViewIsmsDocuments = (() => {
           <td style="font-size:12px;">
             ${reviewDate
               ? `<span style="color:${reviewOverdue ? 'var(--risk-high)' : 'inherit'};font-weight:${reviewOverdue ? '700' : '400'};">
-                   ${reviewDate.slice(0, 10)}${reviewOverdue ? '<br><small>(VENCIDA)</small>' : ''}
+                   ${reviewDate.slice(0, 10)}${reviewOverdue ? `<br><small>${t(`${NS}.table.overdue_suffix`)}</small>` : ''}
                  </span>`
               : '-'}
           </td>
@@ -547,15 +552,15 @@ const ViewIsmsDocuments = (() => {
         <table class="data">
           <thead>
             <tr>
-              <th>Nivel</th>
-              <th>Codigo / Titulo</th>
-              <th>Version</th>
-              <th>Estado</th>
-              <th>Archivo</th>
-              <th>Analisis ISMS</th>
-              <th>Controles</th>
-              <th>Revision</th>
-              <th>Acciones</th>
+              <th>${t(`${NS}.table.col_level`)}</th>
+              <th>${t(`${NS}.table.col_code_title`)}</th>
+              <th>${t(`${NS}.table.col_version`)}</th>
+              <th>${t(`${NS}.table.col_status`)}</th>
+              <th>${t(`${NS}.table.col_file`)}</th>
+              <th>${t(`${NS}.table.col_isms_analysis`)}</th>
+              <th>${t(`${NS}.table.col_controls`)}</th>
+              <th>${t(`${NS}.table.col_review`)}</th>
+              <th>${t(`${NS}.table.col_actions`)}</th>
             </tr>
           </thead>
           <tbody>${tableRows}</tbody>
@@ -582,7 +587,7 @@ const ViewIsmsDocuments = (() => {
     for (const file of files) {
       const ext = file.name.split('.').pop().toLowerCase();
       if (!ACCEPTED_EXTS.includes(ext)) {
-        UI.toast(`${file.name}: formato no soportado.`, 'error');
+        UI.toast(t(`${NS}.upload.unsupported_format`, { name: file.name }), 'error');
         continue;
       }
       const alreadyPending = _queue.some(q => q.file.name === file.name && q.status === 'pending');
@@ -604,14 +609,14 @@ const ViewIsmsDocuments = (() => {
     container.innerHTML = `
       <div class="card" style="margin-top:10px;margin-bottom:14px;padding:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <strong style="font-size:14px;">Cola de subida
-            <span style="font-weight:400;font-size:12px;color:var(--text-muted);">— ${_queue.length} archivo${_queue.length !== 1 ? 's' : ''}</span>
+          <strong style="font-size:14px;">${t(`${NS}.upload.queue.title`)}
+            <span style="font-weight:400;font-size:12px;color:var(--text-muted);">${t(`${NS}.upload.queue.files_count`, { n: _queue.length, s: _queue.length !== 1 ? 's' : '' })}</span>
           </strong>
           ${pending.length > 0 && !_uploading ? `
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-ghost" style="font-size:12px;" id="isms-clear-queue">Limpiar pendientes</button>
+              <button class="btn btn-ghost" style="font-size:12px;" id="isms-clear-queue">${t(`${NS}.upload.queue.clear_pending`)}</button>
               <button class="btn btn-primary" style="font-size:12px;" id="isms-upload-all">
-                Subir ${pending.length} documento${pending.length !== 1 ? 's' : ''}
+                ${t(`${NS}.upload.queue.upload_btn`, { n: pending.length, s: pending.length !== 1 ? 's' : '' })}
               </button>
             </div>` : ''}
         </div>
@@ -626,11 +631,11 @@ const ViewIsmsDocuments = (() => {
               ? (item.file.size / 1024).toFixed(0) + ' KB'
               : (item.file.size / 1024 / 1024).toFixed(1) + ' MB';
             const statusIcon = isDone
-              ? `<span style="color:var(--risk-low);">&#10003; Subido</span>`
+              ? `<span style="color:var(--risk-low);">&#10003; ${t(`${NS}.upload.queue.status_uploaded`)}</span>`
               : isError
-              ? `<span style="color:var(--risk-critical);" title="${UI.esc(item.error || '')}">&#10007; Error</span>`
+              ? `<span style="color:var(--risk-critical);" title="${UI.esc(item.error || '')}">&#10007; ${t(`${NS}.upload.queue.status_error`)}</span>`
               : isUploading
-              ? `<span style="color:var(--brand-orange);">Subiendo...</span>` : '';
+              ? `<span style="color:var(--brand-orange);">${t(`${NS}.upload.queue.status_uploading`)}</span>` : '';
             return `
               <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;
                           background:var(--bg-2);border:1px solid ${isError ? 'var(--risk-critical)' : isDone ? 'var(--risk-low)' : 'var(--border)'};
@@ -643,7 +648,7 @@ const ViewIsmsDocuments = (() => {
                 ${isPending ? `
                   <select class="input" style="font-size:11px;padding:3px 6px;height:auto;min-width:180px;flex-shrink:0;"
                           onchange="ViewIsmsDocuments._setQueueCat(${item.id}, this.value)">
-                    <option value="other" ${item.category === 'other' ? 'selected' : ''}>Auto (IA detecta)</option>
+                    <option value="other" ${item.category === 'other' ? 'selected' : ''}>${t(`${NS}.upload.queue.category_auto`)}</option>
                     ${Object.entries(CATEGORY_LABELS).filter(([v]) => v !== 'other').map(([v, l]) =>
                       `<option value="${v}" ${item.category === v ? 'selected' : ''}>${l}</option>`
                     ).join('')}
@@ -659,7 +664,7 @@ const ViewIsmsDocuments = (() => {
         </div>
         ${!_uploading && active.length > 0 ? `
           <div style="margin-top:10px;text-align:right;">
-            <button class="btn btn-ghost" style="font-size:12px;" id="isms-dismiss-done">Limpiar completados</button>
+            <button class="btn btn-ghost" style="font-size:12px;" id="isms-dismiss-done">${t(`${NS}.upload.queue.clear_completed`)}</button>
           </div>` : ''}
       </div>`;
 
@@ -686,7 +691,7 @@ const ViewIsmsDocuments = (() => {
         await Api.aiDocuments.upload(item.file, item.category);
         item.status = 'done'; ok++;
       } catch (e) {
-        item.status = 'error'; item.error = e.message || 'Error desconocido'; fail++;
+        item.status = 'error'; item.error = e.message || t(`${NS}.toast.unknown_error`); fail++;
       }
       _renderQueue();
     }
@@ -694,11 +699,11 @@ const ViewIsmsDocuments = (() => {
     _uploading = false;
     await _load();
     if (ok > 0 && fail === 0) {
-      UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} — analisis ISMS iniciado`, 'success');
+      UI.toast(t(`${NS}.toast.upload_success`, { ok, s: ok !== 1 ? 's' : '' }), 'success');
     } else if (ok > 0) {
-      UI.toast(`${ok} subidos, ${fail} con error`, 'error');
+      UI.toast(t(`${NS}.toast.upload_partial`, { ok, fail }), 'error');
     } else {
-      UI.toast('Error al subir los documentos', 'error');
+      UI.toast(t(`${NS}.toast.upload_error`), 'error');
     }
     _renderQueue();
     _renderRoot();
@@ -737,67 +742,67 @@ const ViewIsmsDocuments = (() => {
     try {
       await Api.aiDocuments.analyze(docId);
       await _load(); _renderRoot();
-      UI.toast('Analisis ISMS iniciado', 'success');
+      UI.toast(t(`${NS}.toast.analysis_started`), 'success');
       _startPollIfNeeded();
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+    } catch (e) { UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error'); }
   }
 
   async function _reprocess(docId) {
     try {
       await Api.aiDocuments.reprocess(docId);
       await _load(); _renderRoot();
-      UI.toast('Documento reprocesado', 'success');
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+      UI.toast(t(`${NS}.toast.doc_reprocessed`), 'success');
+    } catch (e) { UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error'); }
   }
 
   async function _deleteDoc(docId) {
-    if (!confirm('Eliminar este archivo del indice?')) return;
+    if (!confirm(t(`${NS}.toast.confirm_delete_doc`))) return;
     try {
       await Api.aiDocuments.del(docId);
       await _load(); _renderRoot();
-      UI.toast('Archivo eliminado', 'success');
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+      UI.toast(t(`${NS}.toast.doc_deleted`), 'success');
+    } catch (e) { UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error'); }
   }
 
   async function _deletePolicy(policyId) {
-    if (!confirm('Eliminar este registro ISMS?')) return;
+    if (!confirm(t(`${NS}.toast.confirm_delete_policy`))) return;
     try {
       await Api.policies.del(policyId);
       await _load(); _renderRoot();
-      UI.toast('Registro eliminado', 'success');
-    } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
+      UI.toast(t(`${NS}.toast.policy_deleted`), 'success');
+    } catch (e) { UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error'); }
   }
 
   async function _analyzePending() {
     const btn = document.getElementById('isms-analyze-pending-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t(`${NS}.upload.starting`); }
     try {
       const res = await Api.aiDocuments.analyzePending();
       await _load(); _renderRoot();
       const msg = res.stuck_reset > 0
-        ? `${res.stuck_reset} atascados reseteados. ${res.queued} en cola.`
-        : (res.queued > 0 ? `${res.queued} documentos en cola.` : 'No hay documentos pendientes.');
+        ? t(`${NS}.toast.pending_reset_and_queued`, { reset: res.stuck_reset, queued: res.queued })
+        : (res.queued > 0 ? t(`${NS}.toast.pending_queued`, { queued: res.queued }) : t(`${NS}.toast.pending_none`));
       UI.toast(msg, 'success');
       _startPollIfNeeded();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Analizar pendientes'; }
+      if (btn) { btn.disabled = false; btn.textContent = t(`${NS}.upload.btn_analyze_pending`); }
     }
   }
 
   async function _analyzeAll() {
     const btn = document.getElementById('isms-analyze-all-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Iniciando...'; }
+    if (btn) { btn.disabled = true; btn.textContent = t(`${NS}.upload.starting`); }
     try {
       const res = await Api.aiDocuments.analyzeAll();
       await _load(); _renderRoot();
-      UI.toast(res.message || `Analisis iniciado para ${res.queued} documentos`, 'success');
+      UI.toast(res.message || t(`${NS}.toast.reanalyze_started`, { queued: res.queued }), 'success');
       _startPollIfNeeded();
     } catch (e) {
-      UI.toast('Error: ' + e.message, 'error');
+      UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Re-analizar todos'; }
+      if (btn) { btn.disabled = false; btn.textContent = t(`${NS}.upload.btn_reanalyze_all_reset`); }
     }
   }
 
@@ -815,21 +820,20 @@ const ViewIsmsDocuments = (() => {
 
   function _openVersioningModal(policy) {
     const nextVer = _bumpVersion(policy.version);
-    UI.modal('Editar documento aprobado', `
-      <p style="margin-bottom:10px;">El documento <strong>${UI.esc(policy.code)}</strong> esta
-        <strong>${STATUS_LABELS[policy.status] || policy.status}</strong> (v${UI.esc(policy.version || '1.0')}).</p>
-      <p style="font-size:13px;color:var(--text-subtle);">Se creara una nueva version
-        <strong>v${UI.esc(nextVer)}</strong> en borrador. El documento actual permanece vigente
-        hasta que la nueva version sea aprobada.</p>
+    UI.modal(t(`${NS}.versioning_modal.title`), `
+      <p style="margin-bottom:10px;">${t(`${NS}.versioning_modal.body_status`, {
+        code: UI.esc(policy.code), status: STATUS_LABELS[policy.status] || policy.status, version: UI.esc(policy.version || '1.0'),
+      })}</p>
+      <p style="font-size:13px;color:var(--text-subtle);">${t(`${NS}.versioning_modal.body_next`, { version: UI.esc(nextVer) })}</p>
     `, {
-      actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                <button class="btn btn-primary" id="m-confirm-v">Crear version ${UI.esc(nextVer)}</button>`,
+      actions: `<button class="btn" id="m-cancel">${t(`${NS}.common.cancel`)}</button>
+                <button class="btn btn-primary" id="m-confirm-v">${t(`${NS}.versioning_modal.btn_confirm`, { version: UI.esc(nextVer) })}</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-confirm-v').onclick = async () => {
       try {
         const draft = await Api.policies.newVersion(policy.id);
-        UI.toast(`Version ${draft.version} creada en borrador`, 'success');
+        UI.toast(t(`${NS}.toast.version_created`, { version: draft.version }), 'success');
         UI.closeModal();
         _openFormEnhanced(draft);
         await _load(); _renderRoot();
@@ -844,11 +848,11 @@ const ViewIsmsDocuments = (() => {
 
   async function _openForm(policy, extracted) {
     UI.modal(
-      policy ? `Editar ${policy.code}` : 'Nuevo registro ISMS',
+      policy ? t(`${NS}.edit_lock.modal_title_edit`, { code: policy.code }) : t(`${NS}.edit_lock.modal_title_new`),
       _formHtml(policy, extracted),
       {
-        actions: `<button class="btn" id="m-cancel">Cancelar</button>
-                  <button class="btn btn-primary" id="m-save">Guardar</button>`,
+        actions: `<button class="btn" id="m-cancel">${t(`${NS}.common.cancel`)}</button>
+                  <button class="btn btn-primary" id="m-save">${t(`${NS}.common.save`)}</button>`,
       }
     );
     document.getElementById('m-cancel').onclick = UI.closeModal;
@@ -882,49 +886,49 @@ const ViewIsmsDocuments = (() => {
 
     return `
       <div class="form-grid">
-        ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">Nota IA: ${UI.esc(notes)}</div></div>` : ''}
+        ${notes ? `<div class="span2"><div class="notice" style="margin-bottom:4px;font-size:12px;">${t(`${NS}.form.ai_note`, { notes: UI.esc(notes) })}</div></div>` : ''}
         <div class="span2">
-          <label>Titulo *</label>
+          <label>${t(`${NS}.form.title_label`)}</label>
           <input id="f-title" class="input" value="${UI.esc(title)}">
         </div>
 
         <div>
-          <label>Nivel jerarquico
-            <span title="Politica (alto nivel) > Norma (reglas) > Procedimiento (pasos) > Instruccion Tecnica (exacto)"
+          <label>${t(`${NS}.form.hierarchy_level_label`)}
+            <span title="${t(`${NS}.form.hierarchy_level_tooltip`)}"
                   style="cursor:help;color:var(--text-muted);font-weight:400;font-size:11px;"> (?)</span>
           </label>
           <select id="f-doc-level" class="input" onchange="ViewIsmsDocuments._onLevelChange(this)">
             ${Object.entries(DOC_LEVEL_LABELS).map(([k, l]) =>
-              `<option value="${k}" ${docLevel == k ? 'selected' : ''}>${k}. ${l} (max madurez ${DOC_LEVEL_MAX_MATURITY[k]}/5)</option>`
+              `<option value="${k}" ${docLevel == k ? 'selected' : ''}>${t(`${NS}.form.level_option`, { k, label: l, max: DOC_LEVEL_MAX_MATURITY[k] })}</option>`
             ).join('')}
           </select>
           <div id="f-level-hint" style="font-size:11px;color:var(--text-muted);margin-top:3px;"></div>
         </div>
 
         <div>
-          <label>Documento padre (jerarquia)</label>
+          <label>${t(`${NS}.form.parent_label`)}</label>
           <select id="f-parent" class="input">
-            <option value="">— Ninguno (documento raiz) —</option>
+            <option value="">${t(`${NS}.form.parent_none_option`)}</option>
             ${parentOptions}
           </select>
           <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">
-            Una Norma referencia su Politica padre; un Procedimiento referencia su Norma padre.
+            ${t(`${NS}.form.parent_help`)}
           </div>
         </div>
 
         <div>
-          <label>Tipo de documento ISMS</label>
+          <label>${t(`${NS}.form.doc_type_label`)}</label>
           <select id="f-cat" class="input">
-            <option value="">-- Sin clasificar --</option>
+            <option value="">${t(`${NS}.form.doc_type_none_option`)}</option>
             ${Object.entries(ISMS_TYPES).map(([k, l]) =>
               `<option value="${k}" ${normalizedCat === k ? 'selected' : ''}>${l}</option>`
             ).join('')}
           </select>
-          ${category && !normalizedCat ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Detectado por IA: "${UI.esc(category)}"</div>` : ''}
+          ${category && !normalizedCat ? `<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${t(`${NS}.form.doc_type_detected`, { category: UI.esc(category) })}</div>` : ''}
         </div>
 
         <div>
-          <label>Estado</label>
+          <label>${t(`${NS}.form.status_label`)}</label>
           <select id="f-status" class="input">
             ${Object.entries(STATUS_LABELS).map(([k, l]) =>
               `<option value="${k}" ${(p.status || 'draft') === k ? 'selected' : ''}>${l}</option>`
@@ -933,14 +937,14 @@ const ViewIsmsDocuments = (() => {
         </div>
 
         <div>
-          <label>Version</label>
+          <label>${t(`${NS}.form.version_label`)}</label>
           <input id="f-version" class="input" value="${UI.esc(version)}">
         </div>
 
         <div>
-          <label>Responsable</label>
+          <label>${t(`${NS}.form.owner_label`)}</label>
           <select id="f-owner" class="input">
-            <option value="">— Sin asignar —</option>
+            <option value="">${t(`${NS}.form.owner_none_option`)}</option>
             ${_users.map(u =>
               `<option value="${u.id}" ${p.owner_id === u.id ? 'selected' : ''}>${UI.esc(u.full_name || u.email)}</option>`
             ).join('')}
@@ -948,31 +952,31 @@ const ViewIsmsDocuments = (() => {
         </div>
 
         <div>
-          <label>Fecha de revision</label>
+          <label>${t(`${NS}.form.review_date_label`)}</label>
           <input type="date" id="f-review" class="input" value="${UI.esc(review)}">
         </div>
 
         <div>
-          <label>Clausulas ISO (separadas por coma)</label>
+          <label>${t(`${NS}.form.clauses_label`)}</label>
           <input id="f-clauses" class="input" value="${UI.esc(clauses)}">
         </div>
 
         <div class="span2">
-          <label>Alcance</label>
+          <label>${t(`${NS}.form.scope_label`)}</label>
           <textarea id="f-scope" class="input" rows="2">${UI.esc(scope)}</textarea>
         </div>
 
         <div class="span2">
-          <label>Contenido / resumen</label>
+          <label>${t(`${NS}.form.content_label`)}</label>
           <textarea id="f-content" class="input" rows="5">${UI.esc(content)}</textarea>
         </div>
 
         ${policy && policy.source_document_id ? `
         <div class="span2" style="padding-top:14px;border-top:1px solid var(--border);margin-top:4px;">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                      letter-spacing:.5px;margin-bottom:8px;">Analisis de madurez SGSI</div>
+                      letter-spacing:.5px;margin-bottom:8px;">${t(`${NS}.form.maturity_analysis_label`)}</div>
           <div id="pol-maturity-panel">
-            <div style="font-size:12px;color:var(--text-muted);">Cargando...</div>
+            <div style="font-size:12px;color:var(--text-muted);">${t(`${NS}.form.loading`)}</div>
           </div>
         </div>` : ''}
       </div>`;
@@ -983,17 +987,17 @@ const ViewIsmsDocuments = (() => {
     if (!hint) return;
     const l = parseInt(sel.value) || 1;
     const hints = {
-      1: 'Define la intencion y compromiso organizativo — alto nivel, sin detalles tecnicos.',
-      2: 'Define las reglas de obligado cumplimiento para un area especifica.',
-      3: 'Describe pasos detallados para ejecutar un proceso en una solucion concreta.',
-      4: 'Proporciona configuraciones exactas y medibles para un sistema especifico.',
+      1: t(`${NS}.form.level_hint_1`),
+      2: t(`${NS}.form.level_hint_2`),
+      3: t(`${NS}.form.level_hint_3`),
+      4: t(`${NS}.form.level_hint_4`),
     };
     hint.textContent = hints[l] || '';
   }
 
   async function _save(policy) {
     const title = document.getElementById('f-title').value.trim();
-    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+    if (!title) { UI.toast(t(`${NS}.toast.title_required`), 'error'); return; }
     const clausesRaw = document.getElementById('f-clauses').value.trim();
     const ownerVal   = document.getElementById('f-owner').value;
     const parentVal  = document.getElementById('f-parent')?.value;
@@ -1014,10 +1018,10 @@ const ViewIsmsDocuments = (() => {
     try {
       if (policy) {
         await Api.policies.update(policy.id, payload);
-        UI.toast('Registro actualizado', 'success');
+        UI.toast(t(`${NS}.toast.policy_updated`), 'success');
       } else {
         await Api.policies.create(payload);
-        UI.toast('Registro creado', 'success');
+        UI.toast(t(`${NS}.toast.policy_created`), 'success');
       }
       UI.closeModal();
       await _load(); _renderRoot();
@@ -1031,11 +1035,11 @@ const ViewIsmsDocuments = (() => {
     'var(--brand-orange)', '#22c55e', 'var(--risk-low)',
   ];
   const _POL_DEFAULT_GAP = [
-    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable.',
-    'Formalizar el proceso: crear documentacion oficial y comunicar a los equipos.',
-    'Estandarizar la aplicacion: garantizar consistencia y medir la eficacia con KPIs.',
-    'Añadir metricas: establecer KPIs, revisar resultados periodicamente.',
-    'Implementar mejora continua: analizar tendencias y automatizar donde sea posible.',
+    t(`${NS}.maturity_panel.default_gap_0`),
+    t(`${NS}.maturity_panel.default_gap_1`),
+    t(`${NS}.maturity_panel.default_gap_2`),
+    t(`${NS}.maturity_panel.default_gap_3`),
+    t(`${NS}.maturity_panel.default_gap_4`),
     '',
   ];
 
@@ -1055,7 +1059,7 @@ const ViewIsmsDocuments = (() => {
     let controls = [];
     try { controls = await Api.aiDocuments.controls(docId); } catch (_) { panel.innerHTML = ''; return; }
     if (!controls.length) {
-      panel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">Sin analisis ISMS disponible.</p>`;
+      panel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);">${t(`${NS}.maturity_panel.no_analysis`)}</p>`;
       return;
     }
     const avg = controls.reduce((s, c) => s + (c.maturity || 0), 0) / controls.length;
@@ -1079,8 +1083,8 @@ const ViewIsmsDocuments = (() => {
             <span style="font-size:11px;font-weight:700;color:${color};white-space:nowrap;min-width:28px;text-align:right;">${c.maturity || 0}/5</span>
           </div>
           <div id="${detId}" style="display:none;padding:8px 12px;font-size:12px;line-height:1.6;background:var(--bg-card);">
-            ${rationale ? `<div style="margin-bottom:7px;"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.4px;margin-bottom:3px;">Por que esta en nivel ${c.maturity || 0}/5</div><div style="background:var(--bg-2);border-left:3px solid ${color};border-radius:0 4px 4px 0;padding:6px 10px;">${UI.esc(rationale)}</div></div>` : ''}
-            ${displayGap ? `<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.4px;margin-bottom:3px;">Para llegar a nivel 5</div><div style="background:rgba(89,0,141,.05);border-left:3px solid var(--brand-purple);border-radius:0 4px 4px 0;padding:6px 10px;">${UI.esc(displayGap)}</div></div>` : ''}
+            ${rationale ? `<div style="margin-bottom:7px;"><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.4px;margin-bottom:3px;">${t(`${NS}.maturity_panel.why_label`, { n: c.maturity || 0 })}</div><div style="background:var(--bg-2);border-left:3px solid ${color};border-radius:0 4px 4px 0;padding:6px 10px;">${UI.esc(rationale)}</div></div>` : ''}
+            ${displayGap ? `<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.4px;margin-bottom:3px;">${t(`${NS}.maturity_panel.gap_label`)}</div><div style="background:rgba(89,0,141,.05);border-left:3px solid var(--brand-purple);border-radius:0 4px 4px 0;padding:6px 10px;">${UI.esc(displayGap)}</div></div>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -1089,8 +1093,8 @@ const ViewIsmsDocuments = (() => {
       <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg-2);border-radius:6px;margin-bottom:8px;">
         <div style="font-size:20px;font-weight:800;color:${avgColor};">${avg.toFixed(1)}</div>
         <div style="flex:1;">
-          <div style="font-size:12px;font-weight:600;">Madurez aportada por este documento</div>
-          <div style="font-size:11px;color:var(--text-muted);">${controls.length} control${controls.length !== 1 ? 'es' : ''} en el alcance de este documento</div>
+          <div style="font-size:12px;font-weight:600;">${t(`${NS}.maturity_panel.title`)}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.maturity_panel.controls_count`, { n: controls.length, es: controls.length !== 1 ? 'es' : '' })}</div>
         </div>
       </div>
       ${rows}`;
@@ -1098,7 +1102,9 @@ const ViewIsmsDocuments = (() => {
 
   // --- Modal de madurez completo ---
 
-  const _MODAL_LEVEL_LABELS = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion Tecnica' };
+  const _MODAL_LEVEL_LABELS = {
+    1: t(`${NS}.level.1.long`), 2: t(`${NS}.level.2.long`), 3: t(`${NS}.level.3.long`), 4: t(`${NS}.level.4.long`),
+  };
 
   function _maturityBarLarge(v) {
     const color = _maturityColor(v);
@@ -1128,10 +1134,10 @@ const ViewIsmsDocuments = (() => {
     try {
       controls = await Api.aiDocuments.controls(docId);
     } catch (e) {
-      UI.toast('Error cargando madurez: ' + e.message, 'error'); return;
+      UI.toast(t(`${NS}.toast.maturity_load_error`, { error: e.message }), 'error'); return;
     }
     if (!controls.length) {
-      UI.toast('Sin controles vinculados. Re-analiza el documento para generar el gap analysis.', 'info');
+      UI.toast(t(`${NS}.toast.no_linked_controls`), 'info');
       return;
     }
 
@@ -1139,7 +1145,7 @@ const ViewIsmsDocuments = (() => {
     const avgColor     = _maturityColor(Math.round(avgMaturity));
     const summary      = doc?.isms_summary || {};
     const docLevel     = summary.document_level || 1;
-    const docLevelLabel = summary.document_level_label || _MODAL_LEVEL_LABELS[docLevel] || 'Politica';
+    const docLevelLabel = summary.document_level_label || _MODAL_LEVEL_LABELS[docLevel] || t(`${NS}.level.1.long`);
     const docLevelColor = DOC_LEVEL_COLORS[docLevel] || 'var(--brand-purple)';
     const levelMaxMaturity = DOC_LEVEL_MAX_MATURITY[docLevel] || 5;
 
@@ -1156,48 +1162,46 @@ const ViewIsmsDocuments = (() => {
           <div style="margin-bottom:${(rationale || gap) ? '12px' : '0'};">${_maturityBarLarge(c.maturity || 0)}</div>
           ${rationale ? `
             <div style="margin-bottom:8px;">
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin-bottom:5px;">Justificacion del nivel actual</div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin-bottom:5px;">${t(`${NS}.maturity_modal.rationale_label`)}</div>
               <div style="font-size:12px;line-height:1.65;background:var(--bg-2);border-radius:6px;padding:8px 12px;border-left:3px solid ${color};">${UI.esc(rationale)}</div>
             </div>` : ''}
           ${gap ? `
             <div>
-              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin-bottom:5px;">Para llegar a nivel 5 (Optimizado)</div>
+              <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:.5px;margin-bottom:5px;">${t(`${NS}.maturity_modal.gap_label`)}</div>
               <div style="font-size:12px;line-height:1.65;background:rgba(89,0,141,.05);border-radius:6px;padding:8px 12px;border-left:3px solid var(--brand-purple);">${UI.esc(gap)}</div>
             </div>` : (!rationale ? `
             <div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:4px;">
-              Sin analisis de gap disponible. Re-analiza el documento para generarlo.
+              ${t(`${NS}.maturity_modal.no_gap`)}
             </div>` : '')}
         </div>`;
     }).join('');
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Analisis de madurez por control</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${t(`${NS}.maturity_modal.header`)}</h3>
         <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">&#10005;</button>
       </div>
       <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <span style="font-size:12px;color:var(--text-muted);">Documento:</span>
+        <span style="font-size:12px;color:var(--text-muted);">${t(`${NS}.maturity_modal.doc_label`)}</span>
         <strong style="font-size:12px;">${UI.esc(doc?.original_name || '')}</strong>
         <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;
                      background:${docLevelColor}18;color:${docLevelColor};border:1px solid ${docLevelColor}40;">
-          Nivel ${docLevel}: ${docLevelLabel}
+          ${t(`${NS}.maturity_modal.level_badge`, { level: docLevel, label: docLevelLabel })}
         </span>
       </div>
       <div style="background:var(--bg-2);border-radius:8px;padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;">
         <div style="font-size:28px;font-weight:800;color:${avgColor};">${avgMaturity.toFixed(1)}</div>
         <div>
-          <div style="font-size:13px;font-weight:600;">Madurez aportada por este documento</div>
+          <div style="font-size:13px;font-weight:600;">${t(`${NS}.maturity_panel.title`)}</div>
           <div style="font-size:11px;color:var(--text-muted);">
-            ${controls.length} control${controls.length !== 1 ? 'es' : ''} en el alcance &nbsp;&middot;&nbsp;
-            Madurez maxima nivel ${docLevel}: <strong>${levelMaxMaturity}/5</strong>
+            ${t(`${NS}.maturity_modal.controls_count`, { n: controls.length, es: controls.length !== 1 ? 'es' : '' })} &nbsp;&middot;&nbsp;
+            ${t(`${NS}.maturity_modal.max_maturity`, { level: docLevel, max: levelMaxMaturity })}
           </div>
         </div>
       </div>
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;padding:7px 10px;
                   background:rgba(89,0,141,.04);border-radius:5px;border:1px solid rgba(89,0,141,.1);">
-        Un documento de nivel ${docLevel} (${docLevelLabel}) puede aportar hasta ${levelMaxMaturity}/5 de madurez.
-        Para alcanzar nivel 5 en un control se necesita cubrir toda la cadena:
-        Politica &#8594; Norma &#8594; Procedimiento &#8594; Instruccion Tecnica.
+        ${t(`${NS}.maturity_modal.explanation`, { level: docLevel, label: docLevelLabel, max: levelMaxMaturity })}
       </div>
       <div style="overflow-y:auto;max-height:56vh;">${rows}</div>
     `, { width: '700px' });
@@ -1209,14 +1213,14 @@ const ViewIsmsDocuments = (() => {
     const doc = _docs.find(d => d.id === docId);
     if (!doc) return;
     const clauses = Array.isArray(doc.extracted_clauses) ? doc.extracted_clauses : [];
-    if (!clauses.length) { UI.toast('No hay clausulas extraidas', 'info'); return; }
+    if (!clauses.length) { UI.toast(t(`${NS}.toast.no_clauses`), 'info'); return; }
 
     const rows = clauses.map(c => `
       <tr style="border-bottom:1px solid var(--border);">
         <td style="padding:8px 12px;font-weight:600;color:var(--brand-purple);white-space:nowrap;">${UI.esc(c.ref)}</td>
         <td style="padding:8px 12px;font-size:13px;">${UI.esc(c.title || '')}</td>
         <td style="padding:8px 12px;text-align:center;">
-          ${c.control_id ? `<a href="#/controls" style="font-size:11px;color:var(--risk-low);">Control #${c.control_id}</a>` : '<span style="font-size:11px;color:var(--text-muted);">-</span>'}
+          ${c.control_id ? `<a href="#/controls" style="font-size:11px;color:var(--risk-low);">${t(`${NS}.clauses_modal.control_hash`, { id: c.control_id })}</a>` : '<span style="font-size:11px;color:var(--text-muted);">-</span>'}
         </td>
         <td style="padding:8px 12px;text-align:center;font-size:11px;color:${c.confidence >= 0.8 ? 'var(--risk-low)' : 'var(--brand-orange)'};">
           ${Math.round((c.confidence || 0) * 100)}%
@@ -1225,18 +1229,18 @@ const ViewIsmsDocuments = (() => {
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Clausulas ISO extraidas</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${t(`${NS}.clauses_modal.header`)}</h3>
         <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">x</button>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Documento: <strong>${UI.esc(doc.original_name)}</strong></p>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">${t(`${NS}.clauses_modal.doc_line`, { name: UI.esc(doc.original_name) })}</p>
       <div style="overflow-y:auto;max-height:60vh;">
         <table style="width:100%;border-collapse:collapse;">
           <thead>
             <tr style="background:var(--bg-2);font-size:11px;text-transform:uppercase;color:var(--text-muted);">
-              <th style="padding:8px 12px;text-align:left;">Clausula</th>
-              <th style="padding:8px 12px;text-align:left;">Titulo</th>
-              <th style="padding:8px 12px;text-align:center;">Control</th>
-              <th style="padding:8px 12px;text-align:center;">Confianza</th>
+              <th style="padding:8px 12px;text-align:left;">${t(`${NS}.clauses_modal.col_clause`)}</th>
+              <th style="padding:8px 12px;text-align:left;">${t(`${NS}.clauses_modal.col_title`)}</th>
+              <th style="padding:8px 12px;text-align:center;">${t(`${NS}.clauses_modal.col_control`)}</th>
+              <th style="padding:8px 12px;text-align:center;">${t(`${NS}.clauses_modal.col_confidence`)}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -1250,37 +1254,37 @@ const ViewIsmsDocuments = (() => {
   async function _generateWithAI() {
     UI.openModal(`
       <div style="max-width:600px;">
-        <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">Generar documento ISMS con IA</h3>
+        <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">${t(`${NS}.generate_modal.title`)}</h3>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 18px;">
-          El agente IA redactara un borrador adaptado a tu organizacion y al marco normativo elegido.
+          ${t(`${NS}.generate_modal.subtitle`)}
         </p>
         <div class="form-grid" style="gap:12px;">
           <div>
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tipo de documento *</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t(`${NS}.generate_modal.doc_type_label`)}</label>
             <select id="gen-type" class="input" style="width:100%;">
-              <option value="politica">Politica de seguridad</option>
-              <option value="norma">Norma</option>
-              <option value="instruccion_tecnica">Instruccion tecnica</option>
+              <option value="politica">${t(`${NS}.generate_modal.opt_politica`)}</option>
+              <option value="norma">${t(`${NS}.generate_modal.opt_norma`)}</option>
+              <option value="instruccion_tecnica">${t(`${NS}.generate_modal.opt_instruccion`)}</option>
             </select>
           </div>
           <div>
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Marco normativo</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t(`${NS}.generate_modal.framework_label`)}</label>
             <select id="gen-framework" class="input" style="width:100%;">
               ${FRAMEWORKS.map(f => `<option value="${UI.esc(f.value)}">${UI.esc(f.label)}</option>`).join('')}
             </select>
           </div>
           <div class="span2">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Titulo / asunto *</label>
-            <input id="gen-title" class="input" style="width:100%;" placeholder="Ej: Politica de Gestion de Accesos">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t(`${NS}.generate_modal.title_label`)}</label>
+            <input id="gen-title" class="input" style="width:100%;" placeholder="${t(`${NS}.generate_modal.title_placeholder`)}">
           </div>
           <div class="span2">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Descripcion y alcance</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t(`${NS}.generate_modal.desc_label`)}</label>
             <textarea id="gen-desc" class="input" rows="3" style="width:100%;"
-                      placeholder="Objetivo, alcance, departamentos afectados, contexto especifico..."></textarea>
+                      placeholder="${t(`${NS}.generate_modal.desc_placeholder`)}"></textarea>
           </div>
           <div class="span2">
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">
-              Documentacion de contexto (opcional)
+              ${t(`${NS}.generate_modal.context_label`)}
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;border:1px dashed var(--border);
                           border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text-muted);">
@@ -1289,7 +1293,7 @@ const ViewIsmsDocuments = (() => {
                 <polyline points="17 8 12 3 7 8"/>
                 <line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
-              <span id="gen-file-label">Subir documento de referencia (PDF, DOCX, PNG, JPG)</span>
+              <span id="gen-file-label">${t(`${NS}.generate_modal.upload_hint`)}</span>
               <input type="file" id="gen-context-file" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
                      style="display:none;" onchange="ViewIsmsDocuments._onGenFileChange(this)">
             </label>
@@ -1297,14 +1301,13 @@ const ViewIsmsDocuments = (() => {
         </div>
         <div style="margin-top:16px;background:#fff8e6;border:1px solid #f0c040;border-radius:8px;
                     padding:10px 14px;font-size:12px;color:#7a5800;line-height:1.5;">
-          <strong>Aviso importante:</strong> El documento generado por IA es un borrador de apoyo.
-          Debe ser revisado, completado y aprobado antes de su publicacion o uso operativo.
+          ${t(`${NS}.generate_modal.warning_banner`)}
         </div>
         <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-          <button onclick="UI.closeModal()" class="btn">Cancelar</button>
+          <button onclick="UI.closeModal()" class="btn">${t(`${NS}.common.cancel`)}</button>
           <button onclick="ViewIsmsDocuments._submitGenerate()" class="btn"
                   style="background:linear-gradient(90deg,var(--brand-purple),var(--brand-orange));color:#fff;border:none;">
-            Generar con IA
+            ${t(`${NS}.header.btn_generate_ai`)}
           </button>
         </div>
       </div>`);
@@ -1313,20 +1316,20 @@ const ViewIsmsDocuments = (() => {
   function _onGenFileChange(input) {
     const label = document.getElementById('gen-file-label');
     if (label && input.files[0]) {
-      label.textContent = input.files[0].name + ' (' + (input.files[0].size / 1024).toFixed(0) + ' KB)';
+      label.textContent = t(`${NS}.generate_modal.file_size_label`, { name: input.files[0].name, size: (input.files[0].size / 1024).toFixed(0) });
     }
   }
 
   async function _submitGenerate() {
     const title = document.getElementById('gen-title')?.value.trim();
-    if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+    if (!title) { UI.toast(t(`${NS}.toast.title_required`), 'error'); return; }
     const docType   = document.getElementById('gen-type')?.value;
     const framework = document.getElementById('gen-framework')?.value;
     const desc      = document.getElementById('gen-desc')?.value.trim();
     const file      = document.getElementById('gen-context-file')?.files[0] || null;
 
     UI.closeModal();
-    UI.toast('Generando documento con IA...', 'info');
+    UI.toast(t(`${NS}.toast.generating`), 'info');
 
     try {
       const fd = new FormData();
@@ -1343,28 +1346,28 @@ const ViewIsmsDocuments = (() => {
           <h3 style="margin:0 0 4px;color:var(--brand-purple);">${UI.esc(result.title)}</h3>
           <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
             ${_typeBadge(result.category)}
-            <span style="font-size:11px;color:var(--text-muted);align-self:center;">Marco: ${UI.esc(result.framework || framework)}</span>
+            <span style="font-size:11px;color:var(--text-muted);align-self:center;">${t(`${NS}.generate_modal.result_framework`, { framework: UI.esc(result.framework || framework) })}</span>
           </div>
-          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Revisa el contenido antes de guardar. Puedes editarlo directamente.</p>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">${t(`${NS}.generate_modal.review_before_save`)}</p>
           <textarea id="gen-result-content" style="width:100%;height:340px;font-size:12px;font-family:monospace;
                     border:1px solid var(--border);border-radius:6px;padding:10px;resize:vertical;">${UI.esc(result.content)}</textarea>
           <div style="margin-top:10px;background:#fff8e6;border:1px solid #f0c040;border-radius:6px;
                       padding:8px 12px;font-size:11px;color:#7a5800;">
-            Este borrador ha sido generado por IA y debe ser revisado y aprobado por una persona responsable.
+            ${t(`${NS}.generate_modal.warning_banner2`)}
           </div>
           <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
-            <button onclick="UI.closeModal()" class="btn">Descartar</button>
+            <button onclick="UI.closeModal()" class="btn">${t(`${NS}.generate_modal.btn_discard`)}</button>
             <button onclick="ViewIsmsDocuments._saveGenerated(${JSON.stringify({
               title: result.title,
               category: result.category || docType,
               iso_clauses: result.iso_clauses || [],
               framework,
             }).replace(/"/g, '&quot;')})"
-                    class="btn btn-primary">Guardar como borrador</button>
+                    class="btn btn-primary">${t(`${NS}.generate_modal.btn_save_draft`)}</button>
           </div>
         </div>`);
     } catch (e) {
-      UI.toast('Error generando: ' + e.message, 'error');
+      UI.toast(t(`${NS}.toast.generate_error`, { error: e.message }), 'error');
     }
   }
 
@@ -1374,13 +1377,13 @@ const ViewIsmsDocuments = (() => {
       await Api.policies.create({
         title: meta.title, content, category: meta.category || null,
         iso_clauses: meta.iso_clauses || [],
-        scope: 'Generado automaticamente con IA — revisar y adaptar',
+        scope: t(`${NS}.generate_modal.default_scope`),
         version: '1.0', status: 'draft', review_cycle_months: 12,
       });
       UI.closeModal();
-      UI.toast('Borrador guardado — revisa y aprueba antes de publicar', 'success');
+      UI.toast(t(`${NS}.toast.draft_saved`), 'success');
       await _load(); _renderRoot();
-    } catch (e) { UI.toast('Error guardando: ' + e.message, 'error'); }
+    } catch (e) { UI.toast(t(`${NS}.toast.save_error`, { error: e.message }), 'error'); }
   }
 
   // ============================================================
@@ -1403,25 +1406,25 @@ const ViewIsmsDocuments = (() => {
     const smtpBanner = smtpOk ? '' : `
       <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;
                   padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400e;">
-        <strong>SMTP no configurado.</strong> Configura el correo saliente en
+        <strong>${t(`${NS}.approval.smtp_title`)}</strong> ${t(`${NS}.approval.smtp_body_before_link`)}
         <a href="#/admin-hub/integrations" onclick="UI.closeModal()"
-           style="color:#59008D;font-weight:600;">Configuracion &rarr; Integraciones</a>
-        para poder enviar los emails de solicitud.
+           style="color:#59008D;font-weight:600;">${t(`${NS}.approval.smtp_link_text`)}</a>
+        ${t(`${NS}.approval.smtp_body_after_link`)}
       </div>`;
 
     UI.openModal(`
       <div style="min-width:520px;max-width:600px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-          <h3 style="margin:0;font-size:16px;color:var(--brand-purple);">Solicitar aprobacion</h3>
+          <h3 style="margin:0;font-size:16px;color:var(--brand-purple);">${t(`${NS}.approval.title`)}</h3>
           <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
         </div>
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-          Documento: <strong>${UI.esc(policy.code)} — ${UI.esc(policy.title)}</strong> (v${UI.esc(policy.version || '1.0')})
+          ${t(`${NS}.approval.doc_line`, { code: UI.esc(policy.code), title: UI.esc(policy.title), version: UI.esc(policy.version || '1.0') })}
         </p>
         ${smtpBanner}
 
         <div style="margin-bottom:14px;">
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Modo de aprobacion</label>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">${t(`${NS}.approval.mode_label`)}</label>
           <div style="display:flex;gap:8px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;
                           padding:8px 14px;border:2px solid var(--border);border-radius:8px;flex:1;
@@ -1429,8 +1432,8 @@ const ViewIsmsDocuments = (() => {
               <input type="radio" name="appr-mode" value="parallel" checked
                      onchange="ViewIsmsDocuments._onApprModeChange(this)">
               <div>
-                <div style="font-weight:600;">Paralelo</div>
-                <div style="font-size:11px;color:var(--text-muted);">Todos reciben el email a la vez</div>
+                <div style="font-weight:600;">${t(`${NS}.approval.mode_parallel`)}</div>
+                <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.approval.mode_parallel_desc`)}</div>
               </div>
             </label>
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;
@@ -1439,30 +1442,30 @@ const ViewIsmsDocuments = (() => {
               <input type="radio" name="appr-mode" value="sequential"
                      onchange="ViewIsmsDocuments._onApprModeChange(this)">
               <div>
-                <div style="font-weight:600;">Secuencial</div>
-                <div style="font-size:11px;color:var(--text-muted);">Cada uno solo recibe el email cuando el anterior aprueba</div>
+                <div style="font-weight:600;">${t(`${NS}.approval.mode_sequential`)}</div>
+                <div style="font-size:11px;color:var(--text-muted);">${t(`${NS}.approval.mode_sequential_desc`)}</div>
               </div>
             </label>
           </div>
         </div>
 
         <div style="margin-bottom:12px;">
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Aprobadores</label>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">${t(`${NS}.approval.approvers_label`)}</label>
           <div id="approver-list"></div>
           <button onclick="ViewIsmsDocuments._addApproverRow()"
-                  class="btn btn-ghost btn-sm" style="margin-top:6px;">+ Agregar aprobador</button>
+                  class="btn btn-ghost btn-sm" style="margin-top:6px;">${t(`${NS}.approval.btn_add_approver`)}</button>
           <div id="order-hint" style="display:none;font-size:11px;color:var(--text-muted);
                margin-top:8px;padding:6px 10px;background:rgba(89,0,141,.05);border-radius:5px;">
-            En modo secuencial, usa las flechas para definir el orden de aprobacion.
+            ${t(`${NS}.approval.order_hint`)}
           </div>
         </div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;
                     border-top:1px solid var(--border);">
-          <button onclick="UI.closeModal()" class="btn">Cancelar</button>
+          <button onclick="UI.closeModal()" class="btn">${t(`${NS}.common.cancel`)}</button>
           <button onclick="ViewIsmsDocuments._submitApproval(${policy.id})"
                   class="btn btn-primary" ${smtpOk ? '' : 'style="opacity:.5"'}>
-            Enviar solicitud
+            ${t(`${NS}.approval.btn_submit`)}
           </button>
         </div>
       </div>`);
@@ -1490,8 +1493,8 @@ const ViewIsmsDocuments = (() => {
       </div>
       <span class="order-num" style="display:none;font-size:12px;font-weight:700;
             color:var(--brand-purple);min-width:18px;text-align:center;">${idx}</span>
-      <input class="input appr-email" placeholder="email@empresa.com" style="flex:2;">
-      <input class="input appr-name" placeholder="Nombre (opcional)" style="flex:1.5;">
+      <input class="input appr-email" placeholder="${t(`${NS}.approval.placeholder_email`)}" style="flex:2;">
+      <input class="input appr-name" placeholder="${t(`${NS}.approval.placeholder_name`)}" style="flex:1.5;">
       <button onclick="this.closest('.approver-row').remove();ViewIsmsDocuments._reorderApprovers()"
               style="border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:16px;
                      padding:0 4px;">&#10005;</button>`;
@@ -1545,12 +1548,12 @@ const ViewIsmsDocuments = (() => {
       approvers.push({ email, name: name || null, order_index: i + 1 });
     });
     if (!valid || !approvers.length) {
-      UI.toast('Ingresa al menos un email valido', 'error'); return;
+      UI.toast(t(`${NS}.toast.approver_email_required`), 'error'); return;
     }
     try {
       await Api.approvals.create(policyId, { approvers, mode });
       UI.closeModal();
-      UI.toast('Solicitud de aprobacion enviada', 'success');
+      UI.toast(t(`${NS}.toast.approval_sent`), 'success');
       await _load(); _renderRoot();
     } catch (e) { UI.toast(e.message, 'error'); }
   }
@@ -1564,7 +1567,7 @@ const ViewIsmsDocuments = (() => {
     try { reqs = await Api.approvals.list(policy.id); } catch (_) {}
 
     if (!reqs.length) {
-      UI.toast('No hay rondas de aprobacion para este documento', 'info'); return;
+      UI.toast(t(`${NS}.toast.no_approval_rounds`), 'info'); return;
     }
 
     const STATUS_ICON = { pending: '⏳', approved: '✅', rejected: '❌', waiting: '⌛', cancelled: '🚫' };
@@ -1572,11 +1575,12 @@ const ViewIsmsDocuments = (() => {
       pending: 'var(--brand-orange)', approved: 'var(--risk-low)',
       rejected: 'var(--risk-critical)', waiting: 'var(--text-muted)', cancelled: '#aaa',
     };
+    const dateLocale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
 
     const reqHtml = reqs.map(r => {
       const badge = r.status === 'approved' ? '#22c55e' : r.status === 'rejected' ? '#ef4444'
                   : r.status === 'cancelled' ? '#9ca3af' : 'var(--brand-orange)';
-      const modeLabel = r.mode === 'sequential' ? 'Secuencial' : 'Paralelo';
+      const modeLabel = r.mode === 'sequential' ? t(`${NS}.approval.mode_sequential`) : t(`${NS}.approval.mode_parallel`);
       const approversHtml = r.approvals.map(a => `
         <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;
                     border-bottom:1px solid var(--border);">
@@ -1584,13 +1588,13 @@ const ViewIsmsDocuments = (() => {
           <div style="flex:1;">
             <div style="font-size:13px;font-weight:500;">${UI.esc(a.email)}</div>
             ${a.name ? `<div style="font-size:11px;color:var(--text-muted);">${UI.esc(a.name)}</div>` : ''}
-            ${r.mode === 'sequential' ? `<div style="font-size:11px;color:var(--brand-purple);">Orden ${a.order_index}</div>` : ''}
+            ${r.mode === 'sequential' ? `<div style="font-size:11px;color:var(--brand-purple);">${t(`${NS}.approval_log.order_label`, { n: a.order_index })}</div>` : ''}
           </div>
           <div style="text-align:right;font-size:11px;color:var(--text-muted);">
-            ${a.responded_at ? `Respondio: ${new Date(a.responded_at).toLocaleString('es-ES')}` :
-              a.sent_at ? `Email enviado: ${new Date(a.sent_at).toLocaleString('es-ES')}` : ''}
+            ${a.responded_at ? t(`${NS}.approval_log.responded_label`, { date: new Date(a.responded_at).toLocaleString(dateLocale) }) :
+              a.sent_at ? t(`${NS}.approval_log.sent_label`, { date: new Date(a.sent_at).toLocaleString(dateLocale) }) : ''}
             ${a.response_notes ? `<div style="color:var(--text);margin-top:3px;font-style:italic;">"${UI.esc(a.response_notes)}"</div>` : ''}
-            ${a.ip_address ? `<div style="color:#ccc;">IP: ${UI.esc(a.ip_address)}</div>` : ''}
+            ${a.ip_address ? `<div style="color:#ccc;">${t(`${NS}.approval_log.ip_label`, { ip: UI.esc(a.ip_address) })}</div>` : ''}
           </div>
         </div>`).join('');
 
@@ -1603,13 +1607,13 @@ const ViewIsmsDocuments = (() => {
             </span>
             <span style="font-size:12px;font-weight:600;">${modeLabel}</span>
             <span style="font-size:11px;color:var(--text-muted);margin-left:auto;">
-              ${new Date(r.created_at).toLocaleString('es-ES')}
+              ${new Date(r.created_at).toLocaleString(dateLocale)}
             </span>
             ${r.status === 'pending' ? `
             <button onclick="ViewIsmsDocuments._cancelApproval(${policy.id},${r.id})"
                     style="border:1px solid var(--risk-critical);background:none;cursor:pointer;
                            font-size:11px;color:var(--risk-critical);border-radius:4px;padding:2px 7px;">
-              Cancelar
+              ${t(`${NS}.common.cancel`)}
             </button>` : ''}
           </div>
           <div style="padding:0 14px;">${approversHtml}</div>
@@ -1618,7 +1622,7 @@ const ViewIsmsDocuments = (() => {
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Historial de aprobaciones</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${t(`${NS}.approval_log.title`)}</h3>
         <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
       </div>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
@@ -1629,10 +1633,10 @@ const ViewIsmsDocuments = (() => {
   }
 
   async function _cancelApproval(policyId, reqId) {
-    if (!confirm('Cancelar esta solicitud de aprobacion?')) return;
+    if (!confirm(t(`${NS}.toast.confirm_cancel_approval`))) return;
     try {
       await Api.approvals.cancel(policyId, reqId);
-      UI.toast('Solicitud cancelada', 'success');
+      UI.toast(t(`${NS}.toast.approval_cancelled`), 'success');
       await _load(); _renderRoot();
       UI.closeModal();
     } catch (e) { UI.toast(e.message, 'error'); }
@@ -1647,17 +1651,15 @@ const ViewIsmsDocuments = (() => {
     try { versions = await Api.policies.versions(policy.id); } catch (_) {}
 
     if (!versions.length) {
-      UI.toast('No hay historial de versiones', 'info'); return;
+      UI.toast(t(`${NS}.toast.no_version_history`), 'info'); return;
     }
 
     const STATUS_COLOR = {
       approved: '#22c55e', published: '#0891b2', draft: '#9ca3af',
       review: 'var(--brand-orange)', obsolete: '#9ca3af',
     };
-    const STATUS_LABEL = {
-      approved: 'Aprobada', published: 'Publicada', draft: 'Borrador',
-      review: 'En revision', obsolete: 'Obsoleta',
-    };
+    const STATUS_LABEL = STATUS_LABELS;
+    const dateLocale = I18n.lang() === 'en' ? 'en-GB' : 'es-ES';
 
     const timelineHtml = versions.map((v, i) => {
       const color = STATUS_COLOR[v.status] || '#9ca3af';
@@ -1678,20 +1680,20 @@ const ViewIsmsDocuments = (() => {
                 ${STATUS_LABEL[v.status] || v.status}
               </span>
               ${v.is_current ? `<span style="font-size:10px;font-weight:700;color:var(--brand-purple);
-                background:var(--brand-purple-4);padding:1px 6px;border-radius:3px;">Actual</span>` : ''}
+                background:var(--brand-purple-4);padding:1px 6px;border-radius:3px;">${t(`${NS}.version_history.current_badge`)}</span>` : ''}
             </div>
             ${v.approved_at ? `<div style="font-size:11px;color:var(--text-muted);">
-              Aprobado el ${new Date(v.approved_at).toLocaleDateString('es-ES', { day:'2-digit', month:'long', year:'numeric' })}
-              ${v.approved_by ? ` por ${UI.esc(v.approved_by)}` : ''}</div>` :
+              ${t(`${NS}.version_history.approved_on`, { date: new Date(v.approved_at).toLocaleDateString(dateLocale, { day:'2-digit', month:'long', year:'numeric' }) })}
+              ${v.approved_by ? t(`${NS}.version_history.approved_by_suffix`, { name: UI.esc(v.approved_by) }) : ''}</div>` :
               v.created_at ? `<div style="font-size:11px;color:var(--text-muted);">
-              Creado el ${new Date(v.created_at).toLocaleDateString('es-ES', { day:'2-digit', month:'long', year:'numeric' })}</div>` : ''}
+              ${t(`${NS}.version_history.created_on`, { date: new Date(v.created_at).toLocaleDateString(dateLocale, { day:'2-digit', month:'long', year:'numeric' }) })}</div>` : ''}
           </div>
         </div>`;
     }).join('');
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Historial de versiones</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${t(`${NS}.version_history.title`)}</h3>
         <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
       </div>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:18px;">
@@ -1710,19 +1712,21 @@ const ViewIsmsDocuments = (() => {
     try { hier = await Api.policies.hierarchy(policy.id); } catch (_) {}
 
     if (!hier) {
-      UI.toast('Error cargando jerarquia', 'error'); return;
+      UI.toast(t(`${NS}.toast.hierarchy_load_error`), 'error'); return;
     }
 
     const DOC_LEVEL_COLOR_MAP = {
       1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a',
     };
-    const DOC_LEVEL_NAME = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion' };
+    const DOC_LEVEL_NAME = {
+      1: t(`${NS}.level.1.short`), 2: t(`${NS}.level.2.short`), 3: t(`${NS}.level.3.short`), 4: t(`${NS}.level.4.short`),
+    };
 
     function _hierBadge(level) {
       const c = DOC_LEVEL_COLOR_MAP[level] || '#9ca3af';
       return `<span style="padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;
                             background:${c}18;color:${c};">
-                Niv.${level} ${DOC_LEVEL_NAME[level] || ''}
+                ${t(`${NS}.hierarchy.level_badge`, { level, name: DOC_LEVEL_NAME[level] || '' })}
               </span>`;
     }
 
@@ -1736,7 +1740,7 @@ const ViewIsmsDocuments = (() => {
             <span style="color:var(--text-muted);">${UI.esc(p.title)}</span>
           </span>
           <span style="color:var(--text-muted);margin:0 6px;">/</span>`).join('')
-      : `<span style="font-size:12px;color:var(--text-muted);">Sin documento padre (raiz)</span>`;
+      : `<span style="font-size:12px;color:var(--text-muted);">${t(`${NS}.hierarchy.no_parent`)}</span>`;
 
     // Hijos
     const childrenHtml = hier.children.length
@@ -1750,17 +1754,17 @@ const ViewIsmsDocuments = (() => {
             </div>
             <span style="font-size:11px;color:var(--text-muted);">${STATUS_LABELS[c.status] || c.status}</span>
           </div>`).join('')
-      : `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px 0;">Sin documentos hijo</p>`;
+      : `<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:20px 0;">${t(`${NS}.hierarchy.no_children`)}</p>`;
 
     UI.openModal(`
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">Jerarquia documental</h3>
+        <h3 style="margin:0;font-size:15px;color:var(--brand-purple);">${t(`${NS}.hierarchy.title`)}</h3>
         <button onclick="UI.closeModal()" class="btn btn-ghost btn-sm">&#10005;</button>
       </div>
 
       <div style="background:var(--bg-2);border-radius:8px;padding:12px 16px;margin-bottom:16px;">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
-                    letter-spacing:.5px;margin-bottom:6px;">Camino jerarquico</div>
+                    letter-spacing:.5px;margin-bottom:6px;">${t(`${NS}.hierarchy.path_title`)}</div>
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
           ${breadcrumb}
           <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;">
@@ -1774,7 +1778,7 @@ const ViewIsmsDocuments = (() => {
       <div>
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);
                     letter-spacing:.5px;margin-bottom:8px;">
-          Documentos dependientes (${hier.children.length})
+          ${t(`${NS}.hierarchy.dependents_title`, { n: hier.children.length })}
         </div>
         <div style="overflow-y:auto;max-height:40vh;">${childrenHtml}</div>
       </div>
@@ -1792,7 +1796,7 @@ const ViewIsmsDocuments = (() => {
       try { checkoutInfo = await Api.policies.checkout(policy.id); }
       catch (e) {
         if (e.message && e.message.includes('edicion por')) {
-          UI.toast('Documento bloqueado: ' + e.message, 'error'); return;
+          UI.toast(t(`${NS}.toast.doc_locked`, { msg: e.message }), 'error'); return;
         }
         // Si el checkout falla por otro motivo lo ignoramos
       }
@@ -1803,23 +1807,23 @@ const ViewIsmsDocuments = (() => {
 
     const extraActions = isExisting ? `
       <button class="btn btn-ghost btn-sm" id="m-versions"
-              style="margin-right:auto;">Versiones</button>
-      <button class="btn btn-ghost btn-sm" id="m-hierarchy">Jerarquia</button>
-      ${isDraftOrReview ? `<button class="btn btn-ghost btn-sm" id="m-appr-log">Aprobaciones</button>
+              style="margin-right:auto;">${t(`${NS}.edit_lock.btn_versions`)}</button>
+      <button class="btn btn-ghost btn-sm" id="m-hierarchy">${t(`${NS}.edit_lock.btn_hierarchy`)}</button>
+      ${isDraftOrReview ? `<button class="btn btn-ghost btn-sm" id="m-appr-log">${t(`${NS}.edit_lock.btn_approvals`)}</button>
       <button class="btn" id="m-request-appr"
               style="background:var(--brand-orange);color:#fff;border:none;">
-        Solicitar aprobacion
-      </button>` : `<button class="btn btn-ghost btn-sm" id="m-appr-log">Aprobaciones</button>`}
+        ${t(`${NS}.approval.title`)}
+      </button>` : `<button class="btn btn-ghost btn-sm" id="m-appr-log">${t(`${NS}.edit_lock.btn_approvals`)}</button>`}
     ` : '';
 
     UI.modal(
-      policy ? `Editar ${policy.code}` : 'Nuevo registro ISMS',
+      policy ? t(`${NS}.edit_lock.modal_title_edit`, { code: policy.code }) : t(`${NS}.edit_lock.modal_title_new`),
       _formHtml(policy, extracted),
       {
         actions: `
           ${extraActions}
-          <button class="btn" id="m-cancel">Cancelar</button>
-          <button class="btn btn-primary" id="m-save">Guardar</button>`,
+          <button class="btn" id="m-cancel">${t(`${NS}.common.cancel`)}</button>
+          <button class="btn btn-primary" id="m-save">${t(`${NS}.common.save`)}</button>`,
       }
     );
 
@@ -1852,7 +1856,7 @@ const ViewIsmsDocuments = (() => {
         const lockBadge = document.createElement('div');
         lockBadge.style.cssText = 'font-size:11px;color:var(--brand-orange);padding:4px 10px;' +
           'background:rgba(214,82,0,.08);border-radius:4px;margin-bottom:8px;';
-        lockBadge.textContent = 'Documento bloqueado para edicion exclusiva por ti';
+        lockBadge.textContent = t(`${NS}.edit_lock.blocked_badge`);
         modal.prepend(lockBadge);
       }
     }

@@ -111,7 +111,7 @@ def test_status_endpoint_shape(client, auth_headers):
     resp = client.get("/api/regwatch/status", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert "state" in body and "headline" in body
+    assert "state" in body
     assert "pending_count" in body
 
 

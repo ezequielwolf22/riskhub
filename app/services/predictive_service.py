@@ -61,15 +61,12 @@ def get_risk_trend_analysis(db: Session, org_id: int, days: int = 90) -> dict:
     # Determinar dirección del trend
     if total_change_pct > 15:
         trend_direction = "increasing"
-        trend_label = "Riesgos en aumento"
         trend_severity = "warning"
     elif total_change_pct < -15:
         trend_direction = "decreasing"
-        trend_label = "Riesgos en descenso"
         trend_severity = "good"
     else:
         trend_direction = "stable"
-        trend_label = "Riesgos estables"
         trend_severity = "neutral"
 
     return {
@@ -86,7 +83,6 @@ def get_risk_trend_analysis(db: Session, org_id: int, days: int = 90) -> dict:
         "forecast_30d_total": forecast_total,
         "forecast_30d_high": forecast_high,
         "trend_direction": trend_direction,
-        "trend_label": trend_label,
         "trend_severity": trend_severity,
     }
 

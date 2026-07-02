@@ -13,6 +13,12 @@ const ViewPredictive = (() => {
     return '<span style="color:#9d9d9d;font-size:18px;">→</span>';
   }
 
+  function _trendLabel(direction) {
+    if (direction === 'increasing') return t('predictive.trend_increasing');
+    if (direction === 'decreasing') return t('predictive.trend_decreasing');
+    return t('predictive.trend_stable');
+  }
+
   function _progressBar(pct, color) {
     return `<div style="background:#eee;border-radius:4px;height:8px;width:100%;overflow:hidden;">
       <div style="width:${Math.min(100,pct)}%;background:${color};height:100%;border-radius:4px;transition:width .4s;"></div>
@@ -51,7 +57,7 @@ const ViewPredictive = (() => {
               ${t('predictive.trend_section')} ${_trendIcon(trend.trend_direction)}
             </h2>
             <div style="font-size:20px;font-weight:700;color:var(--brand-purple);margin-bottom:4px;">
-              ${trend.trend_label}
+              ${_trendLabel(trend.trend_direction)}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0;">
               <div style="text-align:center;background:#f9f9f9;border-radius:6px;padding:10px;">

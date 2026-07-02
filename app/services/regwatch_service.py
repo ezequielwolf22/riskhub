@@ -187,35 +187,19 @@ def build_status(db: Session, org_id: int) -> dict:
 
     if not s.is_enabled:
         state = "inactive"
-        headline = "Inactivo · Tu catalogo no se esta actualizando automaticamente"
     elif pending > 0:
         state = "active_pending"
-        headline = f"Activo · {pending} actualizacion(es) pendiente(s) de tu revision"
     else:
-        last = _aware(s.last_sweep_at)
-        when = _humanize_since(last) if last else "pendiente"
         state = "active_ok"
-        headline = f"Activo · Ultima verificacion: {when} · 0 acciones pendientes"
 
     return {
         "state": state,
-        "headline": headline,
         "is_enabled": bool(s.is_enabled),
         "pending_count": pending,
         "watched_count": len(watched),
         "last_sweep_at": _iso(s.last_sweep_at),
         "last_applied": last_applied,
     }
-
-
-def _humanize_since(dt: datetime) -> str:
-    delta = _now() - dt
-    h = int(delta.total_seconds() // 3600)
-    if h < 1:
-        return "hace menos de 1 hora"
-    if h < 24:
-        return f"hace {h} hora(s)"
-    return f"hace {h // 24} dia(s)"
 
 
 def _last_applied_change(db: Session, org_id: int, watched: list[str]) -> dict | None:

@@ -57,6 +57,22 @@ const ViewRegwatch = (() => {
     }
   }
 
+  function _timeAgo(iso) {
+    if (!iso) return t('regwatch.since_pending');
+    const then = new Date(iso).getTime();
+    if (isNaN(then)) return t('regwatch.since_pending');
+    const hours = Math.floor((Date.now() - then) / 3600000);
+    if (hours < 1) return t('regwatch.since_lt_1h');
+    if (hours < 24) return t('regwatch.since_hours', {n: hours});
+    return t('regwatch.since_days', {n: Math.floor(hours / 24)});
+  }
+
+  function _headline(status) {
+    if (status.state === 'inactive') return t('regwatch.headline_inactive');
+    if (status.state === 'active_pending') return t('regwatch.headline_pending', {n: status.pending_count});
+    return t('regwatch.headline_ok', {when: _timeAgo(status.last_sweep_at)});
+  }
+
   function _renderCard(status, settings, watched) {
     const wrap = document.getElementById('rw-card');
     const on = status.is_enabled;
@@ -74,7 +90,7 @@ const ViewRegwatch = (() => {
             </p>
             <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
               <span style="width:10px;height:10px;border-radius:50%;background:${dotColor};display:inline-block;"></span>
-              <span><b>${UI.esc(status.headline)}</b></span>
+              <span><b>${UI.esc(_headline(status))}</b></span>
               ${status.pending_count > 0 ? `<button class="btn btn-sm" id="rw-goto-inbox">${t('regwatch.goto_inbox')}</button>` : ''}
             </div>
             ${la ? `<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;">${t('regwatch.last_update')} ${UI.esc(la.framework)} — ${UI.esc(la.title)}${la.applied_at ? ' · ' + _fmtDate(la.applied_at) : ''}</p>` : ''}
