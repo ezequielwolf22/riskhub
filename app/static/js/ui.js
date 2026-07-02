@@ -178,7 +178,6 @@ const UI = {
       const query = location.hash.split('?')[1];
       const newHash = '#/' + hub + '/' + tab.id + (keepQuery && query ? '?' + query : '');
       if (location.hash !== newHash) history.replaceState(null, '', newHash);
-      panel.innerHTML = '';
       panel.setAttribute('aria-labelledby', 'hubtab-' + hub + '-' + tab.id);
       try {
         if (tab.render) await tab.render(panel);
