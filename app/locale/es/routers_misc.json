@@ -52,5 +52,12 @@
     "assign_email_howto": "Accede a la plataforma RiskHub, seccion Proveedores &gt; Cuestionarios, y busca <em>Mis tareas</em> para completarlo.",
     "assign_email_subject": "[RiskHub] Cuestionario asignado: {code}",
     "level_low": "Bajo"
+  },
+  "evidence": {
+    "invalid_evidence_type": "Tipo inválido. Válidos: {valid_types}",
+    "file_too_large": "Archivo demasiado grande (máximo 50MB)",
+    "no_file": "Sin archivo asociado",
+    "file_missing_on_disk": "Archivo no encontrado en disco",
+    "deleted": "Evidencia eliminada"
   }
 }

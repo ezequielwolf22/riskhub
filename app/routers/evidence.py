@@ -6,12 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import Evidence, EvidenceType, User
 from app.security import get_current_user, require_role
 from app.services.audit_service import log_action
@@ -104,6 +105,7 @@ def list_evidence(
 
 @router.post("")
 async def upload_evidence(
+    request: Request,
     file: UploadFile = File(...),
     title: str = Form(...),
     description: Optional[str] = Form(None),
@@ -120,17 +122,18 @@ async def upload_evidence(
 ):
     """Sube un archivo de evidencia."""
     _ensure_dir()
+    lang = get_lang(request)
     org_id = current_user.organization_id
 
     # Validar tipo de evidencia
     valid_types = [t.value for t in EvidenceType]
     if evidence_type not in valid_types:
-        raise HTTPException(400, f"Tipo inválido. Válidos: {valid_types}")
+        raise HTTPException(400, _t("evidence.invalid_evidence_type", lang, valid_types=valid_types))
 
     # Leer archivo
     content = await file.read()
     if len(content) > 50 * 1024 * 1024:  # 50MB max
-        raise HTTPException(413, "Archivo demasiado grande (máximo 50MB)")
+        raise HTTPException(413, _t("evidence.file_too_large", lang))
 
     # Hash para integridad (sobre el contenido original, antes de cifrar)
     file_hash = hashlib.sha256(content).hexdigest()
@@ -217,32 +220,35 @@ async def upload_evidence(
 @router.get("/{evidence_id}")
 def get_evidence(
     evidence_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Obtiene metadatos de una evidencia."""
     ev = db.get(Evidence, evidence_id)
     if not ev or ev.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Evidencia no encontrada")
+        raise HTTPException(404, _t("evidence.not_found", get_lang(request)))
     return _evidence_out(ev)
 
 
 @router.get("/{evidence_id}/download")
 def download_evidence(
     evidence_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Descarga el archivo de evidencia."""
+    lang = get_lang(request)
     ev = db.get(Evidence, evidence_id)
     if not ev or ev.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Evidencia no encontrada")
+        raise HTTPException(404, _t("evidence.not_found", lang))
     if not ev.filename:
-        raise HTTPException(404, "Sin archivo asociado")
+        raise HTTPException(404, _t("evidence.no_file", lang))
 
     file_path = _EVIDENCE_DIR / ev.filename
     if not file_path.exists():
-        raise HTTPException(404, "Archivo no encontrado en disco")
+        raise HTTPException(404, _t("evidence.file_missing_on_disk", lang))
 
     # Descifrar Fernet; si falla (archivo legacy sin cifrar) servir en crudo
     from fastapi.responses import Response
@@ -268,6 +274,7 @@ def download_evidence(
 @router.post("/{evidence_id}/new-version")
 async def upload_new_version(
     evidence_id: int,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
@@ -276,7 +283,7 @@ async def upload_new_version(
     _ensure_dir()
     ev = db.get(Evidence, evidence_id)
     if not ev or ev.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Evidencia no encontrada")
+        raise HTTPException(404, _t("evidence.not_found", get_lang(request)))
 
     content = await file.read()
     file_hash = hashlib.sha256(content).hexdigest()
@@ -324,13 +331,15 @@ async def upload_new_version(
 @router.delete("/{evidence_id}")
 def delete_evidence(
     evidence_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin")),
 ):
     """Elimina una evidencia (solo admin)."""
+    lang = get_lang(request)
     ev = db.get(Evidence, evidence_id)
     if not ev or ev.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Evidencia no encontrada")
+        raise HTTPException(404, _t("evidence.not_found", lang))
 
     # Borrar archivo si existe
     if ev.filename:
@@ -340,4 +349,4 @@ def delete_evidence(
 
     db.delete(ev)
     db.commit()
-    return {"message": "Evidencia eliminada"}
+    return {"message": _t("evidence.deleted", lang)}

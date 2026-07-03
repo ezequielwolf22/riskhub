@@ -52,5 +52,12 @@
     "assign_email_howto": "Log in to RiskHub, go to Suppliers &gt; Questionnaires, and check <em>My tasks</em> to complete it.",
     "assign_email_subject": "[RiskHub] Questionnaire assigned: {code}",
     "level_low": "Low"
+  },
+  "evidence": {
+    "invalid_evidence_type": "Invalid type. Valid: {valid_types}",
+    "file_too_large": "File too large (50MB max)",
+    "no_file": "No file attached",
+    "file_missing_on_disk": "File not found on disk",
+    "deleted": "Evidence deleted"
   }
 }

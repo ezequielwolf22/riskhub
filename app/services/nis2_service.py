@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
+
 logger = logging.getLogger("riskhub.nis2")
 
 NIS2_DEADLINES = {
@@ -23,6 +25,14 @@ NIS2_STAGE_LABELS = {
     "initial_report": "Notificacion inicial (Art. 23.1b)",
     "final_report": "Informe final (Art. 23.1c)",
 }
+
+
+def nis2_stage_label(stage: str, lang: str = "es") -> str:
+    """Etiqueta traducida de la fase NIS2; cae al literal si la clave no existe."""
+    label = _t(f"nis2.stage_{stage}", lang)
+    if label == f"nis2.stage_{stage}":
+        return NIS2_STAGE_LABELS.get(stage, stage)
+    return label
 
 
 def create_nis2_notification_chain(db: Session, incident_id: int, org_id: int) -> list:
