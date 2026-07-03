@@ -9,7 +9,7 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.models import (
     IncidentStatus, NCStatus, NIS2Notification, NonConformity, Risk,
     RiskStatus, TaskPriority, TaskStatus, TreatmentTask, User,
 )
+from app.i18n import get_lang, t as _t
 from app.security import (
     check_org_access, filter_by_org, get_current_user, require_analyst,
 )
@@ -95,7 +96,7 @@ def _risk_severity(level):
     return "info"
 
 
-def _collect_auto_risks(db, user):
+def _collect_auto_risks(db, user, lang="es"):
     """Riesgos auto-generados (ai_generated=True) aun sin decision humana.
 
     Los hooks de CVE/OSINT/proveedores crean riesgos con ai_generated=True
@@ -112,7 +113,7 @@ def _collect_auto_risks(db, user):
         items.append(_item(
             f"risk-{r.id}", "risk",
             _risk_severity(r.residual_level),
-            f"{r.code} — Riesgo auto-generado" + (f" sobre {asset_name}" if asset_name else ""),
+            _t("inbox.risk_auto_title", lang, code=r.code) + (_t("inbox.risk_auto_on_asset", lang, asset=asset_name) if asset_name else ""),
             r.ai_rationale or r.description,
             _aware(r.created_at),
             f"#/risks?id={r.id}",
@@ -120,7 +121,7 @@ def _collect_auto_risks(db, user):
     return items
 
 
-def _collect_open_incidents(db, user):
+def _collect_open_incidents(db, user, lang="es"):
     """Incidentes abiertos P1/P2 (incluye los auto-creados por OSINT)."""
     q = filter_by_org(db.query(Incident), Incident, user).filter(
         Incident.severity.in_([IncidentSeverity.P1, IncidentSeverity.P2]),
@@ -139,9 +140,9 @@ def _collect_open_incidents(db, user):
     return items
 
 
-def _collect_nis2_notifications(db, user, now):
+def _collect_nis2_notifications(db, user, now, lang="es"):
     """Notificaciones NIS2 pendientes o vencidas (Art. 23: 24h/72h/1 mes)."""
-    from app.services.nis2_service import NIS2_STAGE_LABELS
+    from app.services.nis2_service import nis2_stage_label
 
     q = filter_by_org(db.query(NIS2Notification), NIS2Notification, user).filter(
         NIS2Notification.status.in_(["pending", "overdue"]),
@@ -157,25 +158,25 @@ def _collect_nis2_notifications(db, user, now):
             sev = "high"
         else:
             sev = "medium"
-        stage_label = NIS2_STAGE_LABELS.get(n.stage, n.stage or "")
-        inc_code = n.incident.code if n.incident else f"incidente {n.incident_id}"
+        stage_label = nis2_stage_label(n.stage, lang) if n.stage else ""
+        inc_code = n.incident.code if n.incident else _t("inbox.nis2_incident_fallback", lang, id=n.incident_id)
         if hours_left is None:
-            desc = "Sin plazo definido."
+            desc = _t("inbox.nis2_no_deadline", lang)
         elif hours_left < 0:
-            desc = f"Plazo vencido hace {abs(round(hours_left, 1))} h."
+            desc = _t("inbox.nis2_overdue_by", lang, h=abs(round(hours_left, 1)))
         else:
-            desc = f"Quedan {round(hours_left, 1)} h de plazo."
+            desc = _t("inbox.nis2_hours_left", lang, h=round(hours_left, 1))
         items.append(_item(
             f"nis2-{n.id}", "nis2", sev,
-            f"Notificacion NIS2 ({stage_label}) — {inc_code}",
-            desc + " Autoridad: " + (n.recipient_authority or "INCIBE-CERT"),
+            _t("inbox.nis2_title", lang, stage=stage_label, code=inc_code),
+            desc + _t("inbox.nis2_authority_prefix", lang) + (n.recipient_authority or "INCIBE-CERT"),
             _aware(n.created_at),
             f"#/incidents?id={n.incident_id}",
         ))
     return items
 
 
-def _collect_degraded_controls(db, user, now):
+def _collect_degraded_controls(db, user, now, lang="es"):
     """Controles degradados por el scheduler (PARTIAL) o con revision vencida.
 
     El scheduler (_run_control_degradation) degrada a PARTIAL los controles
@@ -194,16 +195,16 @@ def _collect_degraded_controls(db, user, now):
         items.append(_item(
             f"control-{impl.id}", "control",
             "high" if degraded else "medium",
-            f"Control {ctrl_code} — {impl.name}",
-            ("Control degradado automaticamente a PARTIAL por revision vencida."
-             if degraded else "Revision del control vencida."),
+            _t("inbox.control_title", lang, code=ctrl_code, name=impl.name),
+            (_t("inbox.control_degraded", lang)
+             if degraded else _t("inbox.control_review_overdue", lang)),
             _aware(impl.next_review),
             f"#/controls?id={impl.id}",
         ))
     return items
 
 
-def _collect_overdue_tasks(db, user, now):
+def _collect_overdue_tasks(db, user, now, lang="es"):
     """Tareas de tratamiento con fecha limite vencida y no completadas."""
     naive_now = now.replace(tzinfo=None)
     q = filter_by_org(db.query(TreatmentTask), TreatmentTask, user).filter(
@@ -223,15 +224,15 @@ def _collect_overdue_tasks(db, user, now):
         items.append(_item(
             f"task-{t.id}", "task",
             sev_map.get(t.priority, "medium"),
-            f"{t.code} — Tarea vencida: {t.title}",
-            f"Vencia el {due.strftime('%d/%m/%Y')}." if due else "",
+            _t("inbox.task_title", lang, code=t.code, title=t.title),
+            _t("inbox.task_due", lang, date=due.strftime("%d/%m/%Y")) if due else "",
             _aware(t.created_at),
             f"#/tasks?id={t.id}",
         ))
     return items
 
 
-def _collect_open_ncs(db, user):
+def _collect_open_ncs(db, user, lang="es"):
     """No conformidades abiertas sin accion correctiva definida."""
     q = filter_by_org(db.query(NonConformity), NonConformity, user).filter(
         NonConformity.status == NCStatus.OPEN,
@@ -245,7 +246,7 @@ def _collect_open_ncs(db, user):
             f"nonconformity-{nc.id}", "nonconformity",
             sev_map.get(sev_val, "medium"),
             f"{nc.code} — {nc.title}",
-            "No conformidad abierta sin accion correctiva definida.",
+            _t("inbox.nc_no_action", lang),
             _aware(nc.created_at),
             f"#/nonconformities?id={nc.id}",
         ))
@@ -254,6 +255,7 @@ def _collect_open_ncs(db, user):
 
 @router.get("")
 def get_inbox(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -265,12 +267,13 @@ def get_inbox(
     now = datetime.now(timezone.utc)
 
     items = []
-    items += _collect_auto_risks(db, current_user)
-    items += _collect_open_incidents(db, current_user)
-    items += _collect_nis2_notifications(db, current_user, now)
-    items += _collect_degraded_controls(db, current_user, now)
-    items += _collect_overdue_tasks(db, current_user, now)
-    items += _collect_open_ncs(db, current_user)
+    lang = get_lang(request)
+    items += _collect_auto_risks(db, current_user, lang)
+    items += _collect_open_incidents(db, current_user, lang)
+    items += _collect_nis2_notifications(db, current_user, now, lang)
+    items += _collect_degraded_controls(db, current_user, now, lang)
+    items += _collect_overdue_tasks(db, current_user, now, lang)
+    items += _collect_open_ncs(db, current_user, lang)
 
     # Excluir items descartados por la organizacion
     dismissed = {
@@ -295,6 +298,7 @@ def get_inbox(
 @router.post("/{item_key}/dismiss")
 def dismiss_item(
     item_key: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -302,21 +306,22 @@ def dismiss_item(
 
     Valida ownership por organizacion y registra la accion en el audit log.
     """
+    lang = get_lang(request)
     m = _ITEM_KEY_RE.match(item_key)
     if not m:
-        raise HTTPException(400, "Identificador de item no valido")
+        raise HTTPException(400, _t("inbox.invalid_item", lang))
     item_type, entity_id = m.group(1), int(m.group(2))
 
     record = db.get(_ITEM_MODEL[item_type], entity_id)
     if not record or not check_org_access(record.organization_id, current_user):
-        raise HTTPException(404, "Item no encontrado")
+        raise HTTPException(404, _t("inbox.item_not_found_generic", lang))
 
     existing = db.query(InboxDismissal).filter(
         InboxDismissal.organization_id == record.organization_id,
         InboxDismissal.item_key == item_key,
     ).first()
     if existing:
-        raise HTTPException(409, "El item ya fue descartado")
+        raise HTTPException(409, _t("inbox.already_dismissed", lang))
 
     db.add(InboxDismissal(
         organization_id=record.organization_id,

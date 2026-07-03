@@ -59,5 +59,24 @@
     "no_file": "Sin archivo asociado",
     "file_missing_on_disk": "Archivo no encontrado en disco",
     "deleted": "Evidencia eliminada"
+  },
+  "inbox": {
+    "risk_auto_title": "{code} — Riesgo auto-generado",
+    "risk_auto_on_asset": " sobre {asset}",
+    "nis2_no_deadline": "Sin plazo definido.",
+    "nis2_overdue_by": "Plazo vencido hace {h} h.",
+    "nis2_hours_left": "Quedan {h} h de plazo.",
+    "nis2_title": "Notificacion NIS2 ({stage}) — {code}",
+    "nis2_authority_prefix": " Autoridad: ",
+    "nis2_incident_fallback": "incidente {id}",
+    "control_title": "Control {code} — {name}",
+    "control_degraded": "Control degradado automaticamente a PARTIAL por revision vencida.",
+    "control_review_overdue": "Revision del control vencida.",
+    "task_title": "{code} — Tarea vencida: {title}",
+    "task_due": "Vencia el {date}.",
+    "nc_no_action": "No conformidad abierta sin accion correctiva definida.",
+    "invalid_item": "Identificador de item no valido",
+    "already_dismissed": "El item ya fue descartado",
+    "item_not_found_generic": "Item no encontrado"
   }
 }
