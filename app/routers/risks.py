@@ -325,24 +325,24 @@ def risk_trace(
     ).all()
 
     def _maturity_label(m: int) -> str:
-        return {0: "Inexistente", 1: "Inicial / ad-hoc", 2: "Básico / documentado",
-                3: "Definido / aplicado", 4: "Gestionado / medido", 5: "Optimizado / continuo"}.get(m, str(m))
+        return {0: _t("risks.mat_0", lang), 1: _t("risks.mat_1", lang), 2: _t("risks.mat_2", lang),
+                3: _t("risks.mat_3", lang), 4: _t("risks.mat_4", lang), 5: _t("risks.mat_5", lang)}.get(m, str(m))
 
     def _maturity_why(m: int, status: str, name: str) -> str:
         base = {
-            0: f"El control '{name}' no existe o no está configurado. Eficacia nula — no reduce el riesgo.",
-            1: f"'{name}' existe de forma ad-hoc pero sin proceso formal. Reducción mínima e inconsistente.",
-            2: f"'{name}' está documentado y tiene aplicación básica. Reduce el riesgo de forma parcial.",
-            3: f"'{name}' está definido, documentado y aplicado sistemáticamente. Reducción sustancial.",
-            4: f"'{name}' se mide y gestiona activamente. Alta eficacia y consistencia en la reducción.",
-            5: f"'{name}' está completamente optimizado con mejora continua. Máxima eficacia posible.",
+            0: _t("risks.mat_why_0", lang, name=name),
+            1: _t("risks.mat_why_1", lang, name=name),
+            2: _t("risks.mat_why_2", lang, name=name),
+            3: _t("risks.mat_why_3", lang, name=name),
+            4: _t("risks.mat_why_4", lang, name=name),
+            5: _t("risks.mat_why_5", lang, name=name),
         }.get(m, "")
         if status == "partial":
-            base += " (implementación parcial — la eficacia está limitada por la cobertura incompleta)."
+            base += _t("risks.mat_why_partial", lang)
         elif status == "planned":
-            base += " (solo planificado — no aporta reducción real hasta su implementación)."
+            base += _t("risks.mat_why_planned", lang)
         elif status == "not_implemented":
-            base = f"El control '{name}' no está implementado. No aporta reducción al nivel residual."
+            base = _t("risks.mat_why_not_impl", lang, name=name)
         return base
 
     controls_trace = []
@@ -498,7 +498,7 @@ def risk_ai_explain(
         return settings.anthropic_api_key
     api_key = _resolve_key(cfg)
     if not api_key:
-        raise HTTPException(400, "API key no configurada. Ve a Configuración > Agente IA.")
+        raise HTTPException(400, _t("risks.api_key_missing", lang))
     model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
     from app.services.risk_analysis_helpers import (
@@ -790,7 +790,7 @@ Responde con JSON valido sin texto fuera del JSON:
             raw = inner.rsplit("```", 1)[0].strip()
         result = _json.loads(raw)
     except Exception as exc:
-        raise HTTPException(500, f"Error en el análisis IA: {exc}")
+        raise HTTPException(500, _t("risks.ai_analysis_error", lang, exc=exc))
 
     # Log tokens
     tokens_in = response.usage.input_tokens if response.usage else 0
@@ -1131,17 +1131,19 @@ def risks_import_template(_: User = Depends(get_current_user)):
 
 @router.post("/import")
 async def import_risks_csv(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Importa riesgos desde un CSV. Busca activo por codigo y amenaza por codigo."""
+    lang = get_lang(request)
     content = await file.read()
     try:
         text = content.decode("utf-8-sig")  # soporta BOM de Excel
         reader = csv.DictReader(io.StringIO(text))
     except Exception as exc:
-        raise HTTPException(400, f"Error al leer el CSV: {exc}") from exc
+        raise HTTPException(400, _t("risks.csv_read_error", lang, exc=exc)) from exc
 
     # Cache de activos y amenazas para lookups rapidos (filtrados por org)
     org_assets = filter_by_org(db.query(Asset), Asset, current_user).all()
@@ -1168,10 +1170,10 @@ async def import_risks_csv(
         threat = threats_by_code.get(threat_key) or threats_by_name.get(threat_key.lower())
 
         if not asset:
-            skipped.append(f"Activo no encontrado: '{asset_key}'")
+            skipped.append(_t("risks.csv_asset_not_found", lang, key=asset_key))
             continue
         if not threat:
-            skipped.append(f"Amenaza no encontrada: '{threat_key}'")
+            skipped.append(_t("risks.csv_threat_not_found", lang, key=threat_key))
             continue
 
         # Detectar duplicados dentro de la misma org
@@ -1181,7 +1183,7 @@ async def import_risks_csv(
             Risk.organization_id == current_user.organization_id,
         ).first()
         if dup:
-            skipped.append(f"{asset.code} x {threat.code} (duplicado: {dup.code})")
+            skipped.append(_t("risks.csv_duplicate", lang, asset=asset.code, threat=threat.code, dup=dup.code))
             continue
 
         il = _parse_int(row.get("Prob_Inherente", "2"), 2)
@@ -1373,6 +1375,7 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
 
 @router.get("/aggregate-exposure")
 def aggregate_exposure(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     simulations: int = Query(10000, ge=1000, le=50000),
@@ -1382,6 +1385,7 @@ def aggregate_exposure(
     Usa Monte Carlo con matriz de correlaciones para calcular VaR conjunto del portfolio,
     evitando la suma ingenua que sobreestima el riesgo total.
     """
+    lang = get_lang(request)
     import random
     from app.models import RiskCorrelation
 
@@ -1411,7 +1415,7 @@ def aggregate_exposure(
 
     if not risk_params:
         return {"portfolio_var_95": 0, "portfolio_var_99": 0, "expected_total_loss": 0,
-                "risks_with_value": 0, "note": "Ningun activo tiene valor estimado configurado"}
+                "risks_with_value": 0, "note": _t("risks.no_asset_value_note", lang)}
 
     # Obtener correlaciones
     correlations = db.query(RiskCorrelation).filter(
@@ -1465,10 +1469,12 @@ def aggregate_exposure(
 
 @router.get("/concentration")
 def risk_concentration(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Heatmap de concentracion de riesgos por amenaza, activo, propietario y dominio ISO 27002."""
+    lang = get_lang(request)
     risks = filter_by_org(db.query(Risk), Risk, current_user).filter(
         Risk.status.notin_([RiskStatus.CLOSED])
     ).all()
@@ -1481,19 +1487,19 @@ def risk_concentration(
     for r in risks:
         level = r.residual_level or 0
         # Por amenaza
-        th_key = (r.threat.name if r.threat else "Sin amenaza")
+        th_key = (r.threat.name if r.threat else _t("risks.heatmap_no_threat", lang))
         by_threat.setdefault(th_key, {"count": 0, "max_level": 0, "total_level": 0})
         by_threat[th_key]["count"] += 1
         by_threat[th_key]["max_level"] = max(by_threat[th_key]["max_level"], level)
         by_threat[th_key]["total_level"] += level
         # Por activo
-        ast_key = (r.asset.name if r.asset else "Sin activo")
+        ast_key = (r.asset.name if r.asset else _t("risks.heatmap_no_asset", lang))
         by_asset.setdefault(ast_key, {"count": 0, "max_level": 0, "total_level": 0})
         by_asset[ast_key]["count"] += 1
         by_asset[ast_key]["max_level"] = max(by_asset[ast_key]["max_level"], level)
         by_asset[ast_key]["total_level"] += level
         # Por propietario
-        own_key = (r.owner.username if r.owner else "Sin propietario")
+        own_key = (r.owner.username if r.owner else _t("risks.heatmap_no_owner", lang))
         by_owner.setdefault(own_key, {"count": 0, "max_level": 0, "total_level": 0})
         by_owner[own_key]["count"] += 1
         by_owner[own_key]["max_level"] = max(by_owner[own_key]["max_level"], level)
@@ -1631,7 +1637,7 @@ def request_acceptance(
         raise HTTPException(403, _t("common.unauthorized", lang))
 
     if risk.status not in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED, RiskStatus.TREATED):
-        raise HTTPException(400, f"El riesgo en estado '{risk.status.value}' no puede solicitar aceptacion")
+        raise HTTPException(400, _t("risks.cannot_request_acceptance", lang, status=risk.status.value))
 
     risk.status = RiskStatus.PENDING_ACCEPTANCE
     risk.acceptance_justification = body.justification
@@ -1700,7 +1706,7 @@ def accept_risk(
         raise HTTPException(403, _t("common.forbidden", lang))
 
     if risk.status != RiskStatus.PENDING_ACCEPTANCE:
-        raise HTTPException(400, "El riesgo no esta en estado PENDING_ACCEPTANCE")
+        raise HTTPException(400, _t("risks.not_pending_acceptance", lang))
 
     risk.status = RiskStatus.ACCEPTED
     risk.accepted_by_id = current_user.id
@@ -1743,7 +1749,7 @@ def reject_acceptance(
         raise HTTPException(403, _t("common.forbidden", lang))
 
     if risk.status != RiskStatus.PENDING_ACCEPTANCE:
-        raise HTTPException(400, "El riesgo no esta en estado PENDING_ACCEPTANCE")
+        raise HTTPException(400, _t("risks.not_pending_acceptance", lang))
 
     risk.status = RiskStatus.ASSESSED
     if body.reason:
@@ -1956,7 +1962,7 @@ Responde SOLO con JSON valido:
             "missing_controls": data.get("missing_controls", []),
         }
     except Exception as exc:
-        raise HTTPException(500, f"Error en sugerencia IA: {exc}") from exc
+        raise HTTPException(500, _t("risks.ai_suggestion_error", lang, exc=exc)) from exc
 
 
 @router.get("/{risk_id}/history")
@@ -2134,6 +2140,7 @@ def _resolve_ai_key(db: Session, org_id: int) -> Optional[str]:
 
 @router.post("/ai-discover")
 def ai_discover_risks(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -2142,6 +2149,7 @@ def ai_discover_risks(
     Analiza los activos sin riesgos asignados y las amenazas del catalogo no cubiertas,
     y sugiere una lista priorizadas de nuevos riesgos a registrar.
     """
+    lang = get_lang(request)
     import anthropic
     import json as _json
 
@@ -2212,11 +2220,12 @@ Responde SOLO con JSON valido:
         data = _json.loads(raw)
         return {"discovered_risks": data.get("risks", []), "model": model}
     except Exception as exc:
-        raise HTTPException(500, f"Error en AI discovery: {exc}") from exc
+        raise HTTPException(500, _t("risks.ai_discovery_error", lang, exc=exc)) from exc
 
 
 @router.post("/{risk_id}/ai-scenario")
 def ai_attack_scenario(
+    request: Request,
     risk_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -2226,6 +2235,7 @@ def ai_attack_scenario(
     Construye la cadena de kill-chain (MITRE ATT&CK), identifica vectores reales
     (OSINT/CVE si existen), y estima el impacto economico.
     """
+    lang = get_lang(request)
     import anthropic
     import json as _json
     from app.models import AiConfig
@@ -2285,11 +2295,12 @@ Responde SOLO con JSON valido:
         data["model"] = model
         return data
     except Exception as exc:
-        raise HTTPException(500, f"Error en scenario analysis: {exc}") from exc
+        raise HTTPException(500, _t("risks.scenario_error", lang, exc=exc)) from exc
 
 
 @router.get("/{risk_id}/value-at-risk")
 def value_at_risk(
+    request: Request,
     risk_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -2300,6 +2311,7 @@ def value_at_risk(
     Usa el valor del activo (Asset.estimated_value) y los niveles ISO 27005 para
     estimar la distribucion de perdidas esperadas con intervalos de confianza.
     """
+    lang = get_lang(request)
     import random
     import math
 
@@ -2313,7 +2325,7 @@ def value_at_risk(
         return {
             "risk_id": risk_id,
             "risk_code": risk.code,
-            "error": "El activo no tiene valor estimado configurado (Asset.estimated_value)",
+            "error": _t("risks.asset_no_value", lang),
             "var_95": None,
             "var_99": None,
             "expected_loss": None,
