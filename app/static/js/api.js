@@ -335,6 +335,7 @@ const Api = {
     getConfig: () => Api.get('/api/integrations/forms/config'),
     updateConfig: (d) => Api.patch('/api/integrations/forms/config', d),
     regenerateToken: () => Api.post('/api/integrations/forms/config/regenerate-token', {}),
+    discoverQuestions: (d) => Api.post('/api/integrations/forms/msforms/discover-questions', d),
   },
   questionnaire_schedules: {
     list: (q) => Api.get('/api/questionnaire-schedules/', q),

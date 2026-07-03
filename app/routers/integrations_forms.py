@@ -339,6 +339,55 @@ def _notify_monday(db_org: int, questionnaire_id: int, monday_url: str) -> None:
         logger.warning("Monday.com webhook failed for questionnaire %s: %s", questionnaire_id, exc)
 
 
+@router.post("/msforms/discover-questions")
+def msforms_discover_questions(
+    body: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Consulta MS Graph y devuelve las preguntas reales del formulario.
+
+    Permite descubrir las preguntas antes de guardar la configuracion: usa las
+    credenciales enviadas en el body si se indican, o si no las ya guardadas
+    para la organizacion (el client_secret nunca se expone al frontend, por lo
+    que si no se envia uno nuevo se usa el descifrado internamente).
+    """
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(400, "Se requiere organization_id")
+    cfg = _get_or_create_cfg(db, org_id)
+
+    tenant_id = (body.get("tenant_id") or cfg.msforms_tenant_id or "").strip()
+    client_id = (body.get("client_id") or cfg.msforms_client_id or "").strip()
+    form_id = (body.get("form_id") or cfg.msforms_form_id or "").strip()
+    client_secret = (body.get("client_secret") or "").strip()
+
+    from app.services.msforms_service import _fernet_decrypt
+    if not client_secret and cfg.msforms_client_secret_enc:
+        client_secret = _fernet_decrypt(cfg.msforms_client_secret_enc) or ""
+
+    missing = [
+        name for name, val in [
+            ("Tenant ID", tenant_id), ("Client ID", client_id),
+            ("Form ID", form_id), ("Client Secret", client_secret),
+        ] if not val
+    ]
+    if missing:
+        raise HTTPException(400, f"Faltan credenciales: {', '.join(missing)}")
+
+    from app.services.msforms_service import get_oauth_token, get_form_questions
+    token = get_oauth_token(tenant_id, client_id, client_secret)
+    if not token:
+        raise HTTPException(400, "No se pudo autenticar contra Azure AD — revisa Tenant ID, Client ID y Client Secret")
+
+    question_map = get_form_questions(form_id, token)
+    if not question_map:
+        raise HTTPException(400, "No se encontraron preguntas — revisa el Form ID y el permiso Forms.Read.All")
+
+    questions = [{"id": qid, "title": title} for qid, title in question_map.items()]
+    return {"questions": questions}
+
+
 @router.post("/msforms/poll-now")
 def msforms_poll_now(
     db: Session = Depends(get_db),

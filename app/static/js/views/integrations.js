@@ -1479,7 +1479,7 @@ const ViewIntegrations = {
     const mappingEntries = Object.entries(cfg.msforms_field_mapping || {});
     const mappingRows = mappingEntries.map(([k, v]) =>
       `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
-        <input class="input" style="flex:1;font-size:12px;" placeholder="Pregunta del formulario" value="${UI.esc(k)}" data-map-key>
+        <input class="input" style="flex:1;font-size:12px;" placeholder="Pregunta del formulario" value="${UI.esc(k)}" list="msf-questions-datalist" data-map-key>
         <span style="color:var(--text-muted);">→</span>
         <select class="input" style="width:160px;font-size:12px;" data-map-val>
           ${ViewIntegrations._mapFieldOptions(v)}
@@ -1487,6 +1487,10 @@ const ViewIntegrations = {
         <button class="btn btn-sm" style="padding:2px 8px;" onclick="this.closest('div').remove()">x</button>
       </div>`
     ).join('');
+    const discoveredQuestions = ViewIntegrations._msfQuestions || [];
+    const questionsDatalist = `<datalist id="msf-questions-datalist">
+      ${discoveredQuestions.map(q => `<option value="${UI.esc(q.title)}">`).join('')}
+    </datalist>`;
 
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px;">
@@ -1608,12 +1612,17 @@ const ViewIntegrations = {
 
         <!-- Mapeo de campos -->
         <div style="margin-bottom:14px;">
-          <div style="font-weight:600;font-size:12px;margin-bottom:6px;">
-            Mapeo de campos del formulario a campos de proveedor
-            <span style="font-weight:400;color:var(--text-muted);font-size:11px;">
-              — indica que pregunta del formulario corresponde a cada campo
-            </span>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <div style="font-weight:600;font-size:12px;">
+              Mapeo de campos del formulario a campos de proveedor
+              <span style="font-weight:400;color:var(--text-muted);font-size:11px;">
+                — indica que pregunta del formulario corresponde a cada campo
+              </span>
+            </div>
+            <button class="btn btn-sm" id="msf-discover-btn" style="margin-left:auto;white-space:nowrap;">🔍 Descubrir preguntas</button>
           </div>
+          <div id="msf-discover-result" style="font-size:11px;margin-bottom:8px;"></div>
+          ${questionsDatalist}
           <div id="msf-mapping-rows" style="margin-bottom:6px;">${mappingRows}</div>
           <button class="btn btn-sm" onclick="ViewIntegrations._addMappingRow()">+ Anadir campo</button>
           <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
@@ -1731,6 +1740,48 @@ const ViewIntegrations = {
         UI.toast('Configuracion MS Forms guardada', 'success');
         await this._initForms();
       } catch (e) { UI.toast(e.message, 'error'); }
+    };
+
+    document.getElementById('msf-discover-btn').onclick = async () => {
+      const btn = document.getElementById('msf-discover-btn');
+      const info = document.getElementById('msf-discover-result');
+      const tenant_id = document.getElementById('msf-tenant')?.value.trim();
+      const client_id = document.getElementById('msf-client')?.value.trim();
+      const client_secret = document.getElementById('msf-secret')?.value.trim();
+      const form_id = document.getElementById('msf-formid')?.value.trim();
+      if (!tenant_id || !client_id || !form_id) {
+        info.textContent = 'Completa Tenant ID, Client ID y Form ID antes de descubrir preguntas.';
+        info.style.color = 'var(--risk-high)';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Consultando MS Graph...';
+      info.textContent = '';
+      try {
+        const body = { tenant_id, client_id, form_id };
+        if (client_secret) body.client_secret = client_secret;
+        const res = await Api.integrations_forms.discoverQuestions(body);
+        ViewIntegrations._msfQuestions = res.questions || [];
+        info.textContent = `${res.questions.length} pregunta(s) encontradas en el formulario.`;
+        info.style.color = 'var(--risk-low,#059669)';
+
+        const datalist = document.getElementById('msf-questions-datalist');
+        if (datalist) {
+          datalist.innerHTML = res.questions.map(q => `<option value="${UI.esc(q.title)}">`).join('');
+        }
+        const rowsContainer = document.getElementById('msf-mapping-rows');
+        if (rowsContainer && rowsContainer.children.length === 0) {
+          res.questions.forEach(q => ViewIntegrations._addMappingRow(q.title));
+        }
+        UI.toast('Preguntas del formulario descubiertas', 'success');
+      } catch (e) {
+        info.textContent = e.message;
+        info.style.color = 'var(--risk-high)';
+        UI.toast(e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Descubrir preguntas';
+      }
     };
 
     document.getElementById('msf-sync-now').onclick = async () => {
@@ -1903,13 +1954,13 @@ const ViewIntegrations = {
     }
   },
 
-  _addMappingRow() {
+  _addMappingRow(prefillKey) {
     const container = document.getElementById('msf-mapping-rows');
     if (!container) return;
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:4px;';
     div.innerHTML = `
-      <input class="input" style="flex:1;font-size:12px;" placeholder="Pregunta del formulario" data-map-key>
+      <input class="input" style="flex:1;font-size:12px;" placeholder="Pregunta del formulario" value="${UI.esc(prefillKey || '')}" list="msf-questions-datalist" data-map-key>
       <span style="color:var(--text-muted);">→</span>
       <select class="input" style="width:160px;font-size:12px;" data-map-val>
         ${this._mapFieldOptions('')}
