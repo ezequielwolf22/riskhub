@@ -1,9 +1,10 @@
 """Router para importar y analizar diagramas de arquitectura."""
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
+from app.i18n import get_lang
 from app.models import User
 from app.security import get_current_user, require_role
 from app.services.architecture_parser import (
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/api/architecture", tags=["architecture"])
 
 @router.post("/import")
 async def import_diagram(
+    request: Request,
     file: Optional[UploadFile] = File(None),
     description: Optional[str] = Form(None),
     diagram_name: str = Form("Diagrama importado"),
@@ -57,8 +59,8 @@ async def import_diagram(
     if description and not nodes:
         if use_ai:
             from app.services.architecture_parser import analyze_with_ai
-            import asyncio
-            nodes = await analyze_with_ai(description, org_id, db)
+            lang = get_lang(request)
+            nodes = await analyze_with_ai(description, org_id, db, lang=lang)
 
         if not nodes:
             # Fallback: NLP básico
@@ -91,6 +93,7 @@ async def import_diagram(
 
 @router.post("/analyze-text")
 async def analyze_text(
+    request: Request,
     body: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -105,7 +108,8 @@ async def analyze_text(
 
     if not nodes and body.get("use_ai", True):
         from app.services.architecture_parser import analyze_with_ai
-        nodes = await analyze_with_ai(description, org_id, db)
+        lang = get_lang(request)
+        nodes = await analyze_with_ai(description, org_id, db, lang=lang)
 
     return {
         "components_detected": len(nodes),

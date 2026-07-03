@@ -207,9 +207,11 @@ async def generate_policy_with_ai(
     template_id: str,
     org_id: int,
     extra_context: Optional[str] = None,
+    lang: str = "es",
 ) -> dict:
     """Genera política personalizada usando Claude + contexto de la org."""
     from app.services.isms_analysis_service import _get_api_key, _get_model
+    from app.i18n import ai_lang_directive
     import anthropic
 
     template = POLICY_TEMPLATES.get(template_id)
@@ -257,7 +259,7 @@ async def generate_policy_with_ai(
     if extra_context:
         safe_extra = extra_context[:500].replace("\n", " ").replace("\r", " ").strip()
 
-    prompt = _system_guard + f"""Genera una politica de seguridad de la informacion completa y profesional.
+    prompt = ai_lang_directive(lang) + "\n\n" + _system_guard + f"""Genera una politica de seguridad de la informacion completa y profesional.
 
 Organizacion: {org_name}
 Politica: {template["title"]}
@@ -272,7 +274,7 @@ Estructura requerida (genera contenido para cada sección):
 {sections_str}
 
 INSTRUCCIONES:
-- Usa lenguaje profesional y formal en español (España)
+- Usa lenguaje profesional y formal
 - Cada sección debe tener contenido concreto y aplicable (no genérico)
 - Incluye referencias a los frameworks seleccionados donde aplique
 - El documento debe ser directamente usable (no un borrador)

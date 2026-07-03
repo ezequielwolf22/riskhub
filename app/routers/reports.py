@@ -1393,6 +1393,7 @@ def ai_generate(body: AiReportIn, request: Request, db: Session = Depends(get_db
         content = report_ai_service.generate(
             body.report_type, db, api_key=api_key,
             org_id=current_user.organization_id,
+            lang=lang,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))

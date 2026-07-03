@@ -559,6 +559,7 @@ async def ai_generate_free(
 @router.post("/generate")
 async def generate_policy(
     body: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -573,8 +574,9 @@ async def generate_policy(
     org_id = current_user.organization_id
     if not org_id:
         raise HTTPException(400, "Se requiere organization_id")
+    lang = get_lang(request)
     result = await generate_policy_with_ai(
-        db, template_id, org_id, body.get("extra_context")
+        db, template_id, org_id, body.get("extra_context"), lang=lang
     )
     if "error" in result:
         raise HTTPException(422, result["error"])

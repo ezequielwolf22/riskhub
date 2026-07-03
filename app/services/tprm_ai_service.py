@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.services.ai_service import _repair_json
+from app.i18n import ai_lang_directive
 
 logger = logging.getLogger("riskhub.tprm_ai")
 
@@ -44,8 +45,12 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _build_evaluation_prompt(questionnaire: Any) -> str:
-    """Construye el prompt de usuario con las preguntas y respuestas del cuestionario."""
+def _build_evaluation_prompt(questionnaire: Any, lang: str = "es") -> str:
+    """Construye el prompt de usuario con las preguntas y respuestas del cuestionario.
+
+    El andamiaje del prompt permanece en espanol; solo la SALIDA del modelo
+    (red_flags, follow_up_questions, rationale) debe respetar *lang*.
+    """
     questions: list[dict] = questionnaire.questions or []
     answers: dict = questionnaire.answers or {}
 
@@ -94,7 +99,7 @@ def _build_evaluation_prompt(questionnaire: Any) -> str:
         "Devuelve el JSON de evaluacion segun el esquema indicado en las instrucciones del sistema."
     )
 
-    return "\n".join(lines)
+    return ai_lang_directive(lang) + "\n\n" + "\n".join(lines)
 
 
 def _safe_result(error_msg: str) -> dict:
@@ -118,6 +123,7 @@ def review_questionnaire(
     questionnaire: Any,
     api_key: str,
     model: str = "claude-opus-4-5",
+    lang: str = "es",
 ) -> dict:
     """Evalua un cuestionario de proveedor con IA y devuelve el resultado estructurado.
 
@@ -129,6 +135,8 @@ def review_questionnaire(
         questionnaire: instancia SupplierQuestionnaire con .questions y .answers.
         api_key: clave Anthropic activa para el tenant.
         model: modelo Claude a usar (por defecto claude-opus-4-5).
+        lang: idioma de SALIDA del modelo (es/en). El andamiaje del prompt
+            permanece en espanol; solo los campos de texto libre respetan lang.
 
     Returns:
         dict con los campos del schema de evaluacion.
@@ -142,10 +150,12 @@ def review_questionnaire(
         return _safe_result("Paquete 'anthropic' no instalado")
 
     try:
-        prompt = _build_evaluation_prompt(questionnaire)
+        prompt = _build_evaluation_prompt(questionnaire, lang)
     except Exception as exc:
         logger.error("tprm_ai: error construyendo prompt para Q%s: %s", questionnaire.id, exc)
         return _safe_result(f"Error construyendo prompt: {exc}")
+
+    system_prompt = ai_lang_directive(lang) + "\n\n" + _SYSTEM_PROMPT
 
     raw: str | None = None
     try:
@@ -154,7 +164,7 @@ def review_questionnaire(
             message = client.messages.create(
                 model=model,
                 max_tokens=4096,
-                system=_SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
             )
         except Exception as exc:
@@ -164,7 +174,7 @@ def review_questionnaire(
                 message = client.messages.create(
                     model=model,
                     max_tokens=2048,
-                    system=_SYSTEM_PROMPT,
+                    system=system_prompt,
                     messages=[{"role": "user", "content": prompt}],
                 )
             else:

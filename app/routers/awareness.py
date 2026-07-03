@@ -261,7 +261,7 @@ def generate_content(
 
     # Contexto de la organizacion
     from app.services.context_builder import build_context
-    org_context = build_context(db, query=body.prompt, organization_id=current_user.organization_id)
+    org_context = build_context(db, query=body.prompt, organization_id=current_user.organization_id, lang=lang)
     # Anonimizar antes de enviar al exterior
     from app.services.anonymizer import anonymize
     org_context = anonymize(org_context, "medium")

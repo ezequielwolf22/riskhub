@@ -223,7 +223,7 @@ def ai_review_questionnaire(
         )
     model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
-    result = tprm_ai_service.review_questionnaire(db, q, key, model)
+    result = tprm_ai_service.review_questionnaire(db, q, key, model, lang=lang)
 
     q.ai_review = result
     q.ai_reviewed_at = datetime.now(timezone.utc)
@@ -604,7 +604,7 @@ def submit_public_questionnaire(token: str, body: dict, request: Request,
                     ).first()
                     if not bg_q:
                         return
-                    result = tprm_ai_service.review_questionnaire(bg_db, bg_q, bg_key, bg_model)
+                    result = tprm_ai_service.review_questionnaire(bg_db, bg_q, bg_key, bg_model, lang="es")
                     bg_q.ai_review = result
                     bg_q.ai_reviewed_at = datetime.now(timezone.utc)
                     bg_db.commit()

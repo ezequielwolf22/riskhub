@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.i18n import ai_lang_directive
 from app.models import ControlImplementation, Risk, RiskContext, RiskStatus
 
 REPORT_TYPES = {
@@ -93,13 +94,15 @@ def _collect(db: Session, org_id: int | None = None) -> dict:
     }
 
 
-def _prompt_treatment_plan(data: dict) -> str:
+def _prompt_treatment_plan(data: dict, lang: str = "es") -> str:
     risks_json = json.dumps(data["risks"][:40], ensure_ascii=False, indent=2)
     fw_str = ", ".join(data.get("active_frameworks", [])) or "no especificadas"
     ens_str = f" (Nivel {data['ens_level'].upper()})" if data.get("ens_level") else ""
-    return f"""Eres un experto en gestión del riesgo de seguridad de la información certificado en ISO/IEC 27005:2018 y CISM.
+    return f"""{ai_lang_directive(lang)}
 
-Genera un Plan de Tratamiento de Riesgos completo y profesional en ESPAÑOL para la siguiente organización.
+Eres un experto en gestión del riesgo de seguridad de la información certificado en ISO/IEC 27005:2018 y CISM.
+
+Genera un Plan de Tratamiento de Riesgos completo y profesional para la siguiente organización.
 
 CONTEXTO ORGANIZACIONAL:
 - Organización: {data['org']}
@@ -137,9 +140,11 @@ Responde ÚNICAMENTE con un JSON válido (sin markdown) con esta estructura exac
 }}"""
 
 
-def _prompt_executive_dashboard(data: dict) -> str:
+def _prompt_executive_dashboard(data: dict, lang: str = "es") -> str:
     top5 = json.dumps(data["risks"][:5], ensure_ascii=False, indent=2)
-    return f"""Eres el CISO de {data['org']} preparando un informe ejecutivo para el Comité de Dirección.
+    return f"""{ai_lang_directive(lang)}
+
+Eres el CISO de {data['org']} preparando un informe ejecutivo para el Comité de Dirección.
 
 DATOS DE GESTIÓN DEL RIESGO — {data['date']}:
 Estadísticas: {json.dumps(data['stats'], ensure_ascii=False)}
@@ -148,7 +153,7 @@ Apetito de riesgo: Nivel {data['appetite']}/8
 Top 5 riesgos más críticos:
 {top5}
 
-Genera un JSON ejecutivo en ESPAÑOL (sin markdown):
+Genera un JSON ejecutivo (sin markdown):
 {{
   "title": "Dashboard Ejecutivo de Seguridad de la Información",
   "organization": "{data['org']}",
@@ -166,12 +171,14 @@ Genera un JSON ejecutivo en ESPAÑOL (sin markdown):
 }}"""
 
 
-def _prompt_committee_minutes(data: dict) -> str:
+def _prompt_committee_minutes(data: dict, lang: str = "es") -> str:
     accepted = [r for r in data["risks"] if r["accepted"]]
     high = [r for r in data["risks"] if r["residual"] >= 5]
-    return f"""Eres el Secretario del Comité de Seguridad de la Información de {data['org']}.
+    return f"""{ai_lang_directive(lang)}
 
-Genera un Acta formal de reunión del Comité de Seguridad en ESPAÑOL.
+Eres el Secretario del Comité de Seguridad de la Información de {data['org']}.
+
+Genera un Acta formal de reunión del Comité de Seguridad.
 
 DATOS DE LA SESIÓN:
 - Organización: {data['org']}
@@ -217,11 +224,13 @@ Genera JSON (sin markdown):
 }}"""
 
 
-def _prompt_followup_report(data: dict) -> str:
+def _prompt_followup_report(data: dict, lang: str = "es") -> str:
     risks_json = json.dumps(data["risks"][:30], ensure_ascii=False, indent=2)
-    return f"""Eres auditor interno de seguridad de la información con expertise en ISO/IEC 27005:2018.
+    return f"""{ai_lang_directive(lang)}
 
-Genera un Informe de Seguimiento del proceso de gestión del riesgo según la cláusula 12 de ISO/IEC 27005:2018 (Monitoring, Review, and Improvement) en ESPAÑOL.
+Eres auditor interno de seguridad de la información con expertise en ISO/IEC 27005:2018.
+
+Genera un Informe de Seguimiento del proceso de gestión del riesgo según la cláusula 12 de ISO/IEC 27005:2018 (Monitoring, Review, and Improvement).
 
 ORGANIZACIÓN: {data['org']}
 ALCANCE: {data['scope']}
@@ -308,7 +317,7 @@ def _call_claude(prompt: str, api_key: str | None = None, org_id: int | None = N
 
 
 def generate(report_type: str, db: Session, api_key: str | None = None,
-             org_id: int | None = None) -> dict:
+             org_id: int | None = None, lang: str = "es") -> dict:
     """Genera el contenido del informe llamando a Claude. Retorna dict con secciones."""
     if report_type not in REPORT_TYPES:
         raise ValueError(f"Tipo de informe desconocido: {report_type}")
@@ -321,7 +330,7 @@ def generate(report_type: str, db: Session, api_key: str | None = None,
         "committee_minutes": _prompt_committee_minutes,
         "followup_report": _prompt_followup_report,
     }
-    prompt = prompts[report_type](data)
+    prompt = prompts[report_type](data, lang)
     content = _call_claude(prompt, api_key=api_key, org_id=org_id, db=db)
     content["_meta"] = {
         "report_type": report_type,

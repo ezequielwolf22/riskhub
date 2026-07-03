@@ -21,6 +21,7 @@ def build_context(
     max_chunks: int = 8,
     organization_id: int | None = None,
     voyage_api_key: str | None = None,
+    lang: str = "es",
 ) -> str:
     """Genera el bloque de contexto completo para inyectar en el prompt.
 
@@ -390,7 +391,7 @@ def build_context(
     return "\n".join(parts)
 
 
-def _build_supplier_context(db: Session, risk) -> str:
+def _build_supplier_context(db: Session, risk, lang: str = "es") -> str:
     """Anade contexto del proveedor vinculado al riesgo para el agente IA."""
     if not getattr(risk, "supplier_id", None):
         return ""
@@ -440,7 +441,7 @@ def _build_supplier_context(db: Session, risk) -> str:
     return "\n".join(lines)
 
 
-def build_risk_context(db: Session, risk, organization_id: int | None = None) -> str:
+def build_risk_context(db: Session, risk, organization_id: int | None = None, lang: str = "es") -> str:
     """Construye el bloque de contexto especifico de un riesgo para el agente IA.
 
     Incluye la informacion del proveedor vinculado si el riesgo tiene supplier_id.
@@ -458,7 +459,7 @@ def build_risk_context(db: Session, risk, organization_id: int | None = None) ->
     if risk.residual_score is not None:
         parts.append(f"- Score residual: {risk.residual_score}")
 
-    supplier_ctx = _build_supplier_context(db, risk)
+    supplier_ctx = _build_supplier_context(db, risk, lang)
     if supplier_ctx:
         parts.append(supplier_ctx)
 

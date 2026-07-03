@@ -200,6 +200,7 @@ def run_now(
             sched.report_type, db,
             org_id=current_user.organization_id,
             api_key=api_key,
+            lang="es",
         )
 
         subject = f"[RiskHub] Informe: {sched.report_type}"

@@ -177,15 +177,26 @@ def parse_text_description(description: str) -> list[dict]:
     return nodes
 
 
-async def analyze_with_ai(content: str, org_id: int, db: Session) -> list[dict]:
-    """Usa Claude para analizar descripción/imagen y extraer componentes."""
+async def analyze_with_ai(content: str, org_id: int, db: Session, lang: str = "es") -> list[dict]:
+    """Usa Claude para analizar descripción/imagen y extraer componentes.
+
+    El idioma de SALIDA (nombres/etiquetas de componentes) respeta *lang*
+    mediante la directiva de idioma. Los valores de `type` siguen siendo enums
+    técnicos en inglés y la estructura JSON no cambia.
+    """
     try:
         from app.services.rag_service import rag_service
+        from app.i18n import ai_lang_directive
 
         prompt = (
+            f"{ai_lang_directive(lang)}\n\n"
             "Analiza esta arquitectura de sistema y extrae una lista de componentes. "
-            "Para cada componente indica: nombre, tipo (server/database/api/network/user/process), "
-            "y con qué otros componentes se comunica. "
+            "Para cada componente indica: nombre (label), tipo (type) que DEBE ser "
+            "uno de estos valores literales en ingles: "
+            "server/database/api/network/user/process, "
+            "y con qué otros componentes se comunica (connections). "
+            "El nombre (label) y cualquier texto libre deben ir en el idioma de salida indicado; "
+            "los valores de type se mantienen siempre en ingles. "
             "Responde SOLO con JSON array: "
             '[{"label":"nombre","type":"tipo","connections":["comp1","comp2"]}]. '
             f"Arquitectura: {content[:2000]}"
