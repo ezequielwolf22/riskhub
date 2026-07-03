@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
 from app.models import (
     Asset, ControlImplementation, ControlStatus,
     Evidence, Incident, IncidentStatus, Policy, PolicyStatus,
@@ -53,26 +54,27 @@ class CCMResult:
 
 # ─── Tests individuales ─────────────────────────────────────────────────────
 
-def test_all_assets_have_owner(db: Session, org_id: int) -> CCMResult:
+def test_all_assets_have_owner(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """8.1 — Todos los activos tienen propietario asignado."""
     total = db.query(Asset).filter(Asset.organization_id == org_id).count()
     # A1: Asset no tiene owner_id; usa la relacion M2M 'owners'
     all_assets = db.query(Asset).filter(Asset.organization_id == org_id).all()
     without_owner = sum(1 for a in all_assets if not (getattr(a, "owners", None)))
+    name = _t("ccm.assets_owner.name", lang)
     if total == 0:
-        return CCMResult("assets_owner", "8.1", "Activos con propietario",
-                         "SKIP", "No hay activos registrados")
+        return CCMResult("assets_owner", "8.1", name,
+                         "SKIP", _t("ccm.assets_owner.skip", lang))
     pct = round((total - without_owner) / total * 100, 1)
     status = "PASS" if without_owner == 0 else ("WARNING" if without_owner <= 2 else "FAIL")
     return CCMResult(
-        "assets_owner", "8.1", "Activos con propietario asignado", status,
-        f"{total - without_owner}/{total} activos tienen propietario ({pct}%)",
+        "assets_owner", "8.1", name, status,
+        _t("ccm.assets_owner.detail", lang, ok=total - without_owner, total=total, pct=pct),
         value=pct,
-        recommendation="" if status == "PASS" else f"Asignar propietario a {without_owner} activos sin dueño",
+        recommendation="" if status == "PASS" else _t("ccm.assets_owner.rec", lang, n=without_owner),
     )
 
 
-def test_assets_classified(db: Session, org_id: int) -> CCMResult:
+def test_assets_classified(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.12/5.13 — Activos tienen clasificación de información."""
     total = db.query(Asset).filter(Asset.organization_id == org_id).count()
     classified = db.query(Asset).filter(
@@ -80,44 +82,48 @@ def test_assets_classified(db: Session, org_id: int) -> CCMResult:
         Asset.classification.isnot(None),
         Asset.classification != "",
     ).count()
+    name = _t("ccm.assets_classified.name", lang)
     if total == 0:
         return CCMResult(
-            "assets_classified", "5.12", "Clasificación de información en activos",
-            "WARNING", "No hay activos definidos — requerido para cumplimiento ISO 27001 A.5.12",
-            recommendation="Registrar activos de información y clasificarlos",
+            "assets_classified", "5.12", name,
+            "WARNING", _t("ccm.assets_classified.empty", lang),
+            recommendation=_t("ccm.assets_classified.empty_rec", lang),
         )
     pct = round(classified / total * 100, 1)
     status = "PASS" if pct >= 90 else ("WARNING" if pct >= 70 else "FAIL")
     return CCMResult(
-        "assets_classified", "5.12", "Clasificación de información en activos", status,
-        f"{classified}/{total} activos clasificados ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else "Clasificar activos sin etiqueta (público/interno/confidencial/secreto)",
+        "assets_classified", "5.12", name, status,
+        _t("ccm.assets_classified.detail", lang, ok=classified, total=total, pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.assets_classified.rec", lang),
     )
 
 
-def test_high_risks_have_treatment(db: Session, org_id: int) -> CCMResult:
+def test_high_risks_have_treatment(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.8/6.1 — Riesgos altos/críticos tienen tratamiento asignado."""
     high_risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
         Risk.residual_level >= 5,
         Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).all()
+    name = _t("ccm.risks_treatment.name", lang)
     if not high_risks:
-        return CCMResult("risks_treatment", "5.8", "Tratamiento de riesgos altos",
-                         "PASS", "No hay riesgos altos sin gestionar")
+        return CCMResult("risks_treatment", "5.8", name,
+                         "PASS", _t("ccm.risks_treatment.ok", lang))
     without = [r for r in high_risks if not r.treatment_option]
     total = len(high_risks)
     pct = round((total - len(without)) / total * 100, 1) if total > 0 else 100
     status = "PASS" if not without else ("WARNING" if len(without) <= 2 else "FAIL")
     return CCMResult(
-        "risks_treatment", "5.8", "Riesgos altos con tratamiento asignado", status,
-        f"{total - len(without)}/{total} riesgos altos tienen tratamiento ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else f"{len(without)} riesgo(s) altos sin tratamiento: " +
-            ", ".join(r.code for r in without[:3]),
+        "risks_treatment", "5.8", name, status,
+        _t("ccm.risks_treatment.detail", lang, ok=total - len(without), total=total, pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t(
+            "ccm.risks_treatment.rec", lang, n=len(without),
+            codes=", ".join(r.code for r in without[:3]),
+        ),
     )
 
 
-def test_risks_over_appetite_have_tasks(db: Session, org_id: int) -> CCMResult:
+def test_risks_over_appetite_have_tasks(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.8 — Riesgos sobre apetito tienen tareas de tratamiento activas."""
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     appetite = ctx.risk_appetite if ctx else 3
@@ -126,9 +132,10 @@ def test_risks_over_appetite_have_tasks(db: Session, org_id: int) -> CCMResult:
         Risk.residual_level > appetite,
         Risk.status == RiskStatus.ASSESSED,
     ).all()
+    name = _t("ccm.risks_tasks.name", lang)
     if not over:
-        return CCMResult("risks_tasks", "5.8", "Tareas para riesgos sobre apetito",
-                         "PASS", "No hay riesgos sobre apetito sin tareas")
+        return CCMResult("risks_tasks", "5.8", name,
+                         "PASS", _t("ccm.risks_tasks.ok", lang))
     without_tasks = []
     for r in over:
         tasks = db.query(TreatmentTask).filter(
@@ -140,21 +147,23 @@ def test_risks_over_appetite_have_tasks(db: Session, org_id: int) -> CCMResult:
     pct = round((len(over) - len(without_tasks)) / len(over) * 100, 1)
     status = "PASS" if not without_tasks else ("WARNING" if len(without_tasks) <= 2 else "FAIL")
     return CCMResult(
-        "risks_tasks", "5.8", "Riesgos sobre apetito con tareas activas", status,
-        f"{len(over) - len(without_tasks)}/{len(over)} tienen tareas ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else f"Crear tareas para {len(without_tasks)} riesgo(s)",
+        "risks_tasks", "5.8", name, status,
+        _t("ccm.risks_tasks.detail", lang, ok=len(over) - len(without_tasks), total=len(over), pct=pct),
+        value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.risks_tasks.rec", lang, n=len(without_tasks)),
     )
 
 
-def test_controls_have_evidence(db: Session, org_id: int) -> CCMResult:
+def test_controls_have_evidence(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.35/5.36 — Controles implementados tienen evidencia asociada."""
     implemented = db.query(ControlImplementation).filter(
         ControlImplementation.organization_id == org_id,
         ControlImplementation.status == ControlStatus.IMPLEMENTED,
     ).all()
+    name = _t("ccm.controls_evidence.name", lang)
     if not implemented:
-        return CCMResult("controls_evidence", "5.35", "Controles con evidencia",
-                         "SKIP", "No hay controles implementados")
+        return CCMResult("controls_evidence", "5.35", name,
+                         "SKIP", _t("ccm.controls_evidence.skip", lang))
     with_evidence = db.query(Evidence).filter(
         Evidence.organization_id == org_id,
         Evidence.control_implementation_id.isnot(None),
@@ -164,35 +173,37 @@ def test_controls_have_evidence(db: Session, org_id: int) -> CCMResult:
     pct = round(with_evidence / total * 100, 1)
     status = "PASS" if pct >= 80 else ("WARNING" if pct >= 50 else "FAIL")
     return CCMResult(
-        "controls_evidence", "5.35", "Controles implementados con evidencia", status,
-        f"{with_evidence}/{total} controles tienen evidencia ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else "Subir evidencias para controles sin documentación",
+        "controls_evidence", "5.35", name, status,
+        _t("ccm.controls_evidence.detail", lang, ok=with_evidence, total=total, pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.controls_evidence.rec", lang),
     )
 
 
-def test_policies_current(db: Session, org_id: int) -> CCMResult:
+def test_policies_current(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.1 — Políticas de seguridad están vigentes (no vencidas)."""
     now = datetime.now(timezone.utc)
     all_policies = db.query(Policy).filter(
         Policy.organization_id == org_id,
         Policy.status != PolicyStatus.OBSOLETE,
     ).all()
+    name = _t("ccm.policies_current.name", lang)
     if not all_policies:
-        return CCMResult("policies_current", "5.1", "Políticas vigentes",
-                         "FAIL", "No hay políticas de seguridad definidas",
-                         recommendation="Crear políticas de seguridad de la información")
+        return CCMResult("policies_current", "5.1", name,
+                         "FAIL", _t("ccm.policies_current.none", lang),
+                         recommendation=_t("ccm.policies_current.none_rec", lang))
     overdue = [p for p in all_policies
                if p.review_date and p.review_date.replace(tzinfo=timezone.utc) < now]
     pct = round((len(all_policies) - len(overdue)) / len(all_policies) * 100, 1)
     status = "PASS" if not overdue else ("WARNING" if len(overdue) <= 2 else "FAIL")
     return CCMResult(
-        "policies_current", "5.1", "Políticas de seguridad vigentes", status,
-        f"{len(all_policies) - len(overdue)}/{len(all_policies)} políticas vigentes ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else f"{len(overdue)} política(s) con revisión vencida",
+        "policies_current", "5.1", name, status,
+        _t("ccm.policies_current.detail", lang,
+           ok=len(all_policies) - len(overdue), total=len(all_policies), pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.policies_current.rec", lang, n=len(overdue)),
     )
 
 
-def test_incidents_resolved(db: Session, org_id: int) -> CCMResult:
+def test_incidents_resolved(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.24/5.25 — Incidentes P1/P2 resueltos en tiempo."""
     from app.models import IncidentSeverity
     now = datetime.now(timezone.utc)
@@ -202,17 +213,18 @@ def test_incidents_resolved(db: Session, org_id: int) -> CCMResult:
         Incident.severity.in_([IncidentSeverity.P1, IncidentSeverity.P2]),
         Incident.created_at < now - timedelta(days=3),
     ).count()
+    name = _t("ccm.incidents_resolved.name", lang)
     if critical_open == 0:
-        return CCMResult("incidents_resolved", "5.24", "Resolución de incidentes críticos",
-                         "PASS", "No hay incidentes P1/P2 abiertos más de 3 días")
+        return CCMResult("incidents_resolved", "5.24", name,
+                         "PASS", _t("ccm.incidents_resolved.ok", lang))
     return CCMResult(
-        "incidents_resolved", "5.24", "Resolución de incidentes críticos", "FAIL",
-        f"{critical_open} incidente(s) P1/P2 abierto(s) por más de 3 días",
-        recommendation="Escalar y resolver incidentes críticos pendientes",
+        "incidents_resolved", "5.24", name, "FAIL",
+        _t("ccm.incidents_resolved.detail", lang, n=critical_open),
+        recommendation=_t("ccm.incidents_resolved.rec", lang),
     )
 
 
-def test_suppliers_reviewed(db: Session, org_id: int) -> CCMResult:
+def test_suppliers_reviewed(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.19 — Proveedores críticos con evaluación reciente."""
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(days=365)
@@ -226,22 +238,24 @@ def test_suppliers_reviewed(db: Session, org_id: int) -> CCMResult:
     if not suppliers:
         # Sin proveedores marcados como críticos → evaluar todos
         suppliers = db.query(Supplier).filter(Supplier.organization_id == org_id).all()
+    name = _t("ccm.suppliers_reviewed.name", lang)
     if not suppliers:
-        return CCMResult("suppliers_reviewed", "5.19", "Evaluación de proveedores",
-                         "SKIP", "No hay proveedores registrados")
+        return CCMResult("suppliers_reviewed", "5.19", name,
+                         "SKIP", _t("ccm.suppliers_reviewed.skip", lang))
     stale = [s for s in suppliers
              if not s.updated_at or s.updated_at.replace(tzinfo=timezone.utc) < threshold]
     pct = round((len(suppliers) - len(stale)) / len(suppliers) * 100, 1)
     status = "PASS" if not stale else ("WARNING" if len(stale) <= 2 else "FAIL")
     return CCMResult(
-        "suppliers_reviewed", "5.19", "Proveedores con evaluación anual", status,
-        f"{len(suppliers) - len(stale)}/{len(suppliers)} proveedores evaluados en último año ({pct}%)",
+        "suppliers_reviewed", "5.19", name, status,
+        _t("ccm.suppliers_reviewed.detail", lang,
+           ok=len(suppliers) - len(stale), total=len(suppliers), pct=pct),
         value=pct,
-        recommendation="" if status == "PASS" else f"Re-evaluar {len(stale)} proveedor(es)",
+        recommendation="" if status == "PASS" else _t("ccm.suppliers_reviewed.rec", lang, n=len(stale)),
     )
 
 
-def test_tasks_not_overdue(db: Session, org_id: int) -> CCMResult:
+def test_tasks_not_overdue(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.36 — Tareas de tratamiento sin vencer (SLA)."""
     now = datetime.now(timezone.utc)
     overdue = db.query(TreatmentTask).filter(
@@ -253,19 +267,21 @@ def test_tasks_not_overdue(db: Session, org_id: int) -> CCMResult:
         TreatmentTask.organization_id == org_id,
         TreatmentTask.status.notin_([TaskStatus.DONE]),
     ).count()
+    name = _t("ccm.tasks_overdue.name", lang)
     if total == 0:
-        return CCMResult("tasks_overdue", "5.36", "Tareas sin vencer",
-                         "PASS", "No hay tareas pendientes")
+        return CCMResult("tasks_overdue", "5.36", name,
+                         "PASS", _t("ccm.tasks_overdue.ok", lang))
     pct = round((total - overdue) / total * 100, 1)
     status = "PASS" if overdue == 0 else ("WARNING" if overdue <= 3 else "FAIL")
     return CCMResult(
-        "tasks_overdue", "5.36", "Tareas de tratamiento sin vencer", status,
-        f"{overdue}/{total} tareas vencidas ({100 - pct:.0f}% de mora)", value=pct,
-        recommendation="" if status == "PASS" else f"Gestionar {overdue} tarea(s) vencida(s)",
+        "tasks_overdue", "5.36", name, status,
+        _t("ccm.tasks_overdue.detail", lang,
+           overdue=overdue, total=total, mora=f"{100 - pct:.0f}"), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.tasks_overdue.rec", lang, n=overdue),
     )
 
 
-def test_evidence_freshness(db: Session, org_id: int) -> CCMResult:
+def test_evidence_freshness(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.35 — Evidencias de controles no vencidas ni antiguas (>12 meses)."""
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(days=365)
@@ -273,10 +289,11 @@ def test_evidence_freshness(db: Session, org_id: int) -> CCMResult:
         Evidence.organization_id == org_id,
         Evidence.is_current == True,
     ).count()
+    name = _t("ccm.evidence_fresh.name", lang)
     if total_ev == 0:
-        return CCMResult("evidence_fresh", "5.35", "Frescura de evidencias",
-                         "WARNING", "No hay evidencias registradas",
-                         recommendation="Subir evidencias de los controles implementados")
+        return CCMResult("evidence_fresh", "5.35", name,
+                         "WARNING", _t("ccm.evidence_fresh.none", lang),
+                         recommendation=_t("ccm.evidence_fresh.none_rec", lang))
     stale = db.query(Evidence).filter(
         Evidence.organization_id == org_id,
         Evidence.is_current == True,
@@ -292,34 +309,35 @@ def test_evidence_freshness(db: Session, org_id: int) -> CCMResult:
     pct = round((total_ev - bad) / total_ev * 100, 1)
     status = "PASS" if pct >= 90 else ("WARNING" if pct >= 70 else "FAIL")
     return CCMResult(
-        "evidence_fresh", "5.35", "Frescura de evidencias (< 12 meses)", status,
-        f"{total_ev - bad}/{total_ev} evidencias frescas ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else f"{bad} evidencia(s) vencidas o antiguas a renovar",
+        "evidence_fresh", "5.35", name, status,
+        _t("ccm.evidence_fresh.detail", lang, ok=total_ev - bad, total=total_ev, pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.evidence_fresh.rec", lang, n=bad),
     )
 
 
-def test_admin_users_have_mfa(db: Session, org_id: int) -> CCMResult:
+def test_admin_users_have_mfa(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """8.5 — Usuarios administradores con MFA habilitado."""
     admins = db.query(User).filter(
         User.organization_id == org_id,
         User.role.in_([UserRole.ADMIN, UserRole.SUPERADMIN]),
         User.is_active == True,
     ).all()
+    name = _t("ccm.admin_mfa.name", lang)
     if not admins:
-        return CCMResult("admin_mfa", "8.5", "MFA en administradores",
-                         "SKIP", "No hay administradores")
+        return CCMResult("admin_mfa", "8.5", name,
+                         "SKIP", _t("ccm.admin_mfa.skip", lang))
     # Verificar campo otp_secret como proxy de MFA habilitado
     with_mfa = [u for u in admins if getattr(u, "otp_secret", None)]
     pct = round(len(with_mfa) / len(admins) * 100, 1)
     status = "PASS" if pct == 100 else ("WARNING" if pct >= 50 else "FAIL")
     return CCMResult(
-        "admin_mfa", "8.5", "Administradores con MFA habilitado", status,
-        f"{len(with_mfa)}/{len(admins)} admins con MFA ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else "Activar MFA para todos los administradores",
+        "admin_mfa", "8.5", name, status,
+        _t("ccm.admin_mfa.detail", lang, ok=len(with_mfa), total=len(admins), pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.admin_mfa.rec", lang),
     )
 
 
-def test_vulnerabilities_addressed(db: Session, org_id: int) -> CCMResult:
+def test_vulnerabilities_addressed(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """8.8 — Vulnerabilidades críticas con riesgo asociado."""
     vulns = db.query(Vulnerability).filter(
         Vulnerability.organization_id == org_id,
@@ -331,44 +349,47 @@ def test_vulnerabilities_addressed(db: Session, org_id: int) -> CCMResult:
         ExternalFinding.severity.in_(["CRITICAL", "HIGH"]),
         ExternalFinding.status == "open",
     ).count()
+    name = _t("ccm.vulns_addressed.name", lang)
     if critical_open == 0:
-        return CCMResult("vulns_addressed", "8.8", "Vulnerabilidades críticas gestionadas",
-                         "PASS", "No hay vulnerabilidades críticas abiertas sin gestionar")
+        return CCMResult("vulns_addressed", "8.8", name,
+                         "PASS", _t("ccm.vulns_addressed.ok", lang))
     return CCMResult(
-        "vulns_addressed", "8.8", "Vulnerabilidades críticas gestionadas", "FAIL",
-        f"{critical_open} hallazgo(s) CRITICAL/HIGH abierto(s) sin riesgo asociado",
-        recommendation="Importar hallazgos desde escáner y generar riesgos",
+        "vulns_addressed", "8.8", name, "FAIL",
+        _t("ccm.vulns_addressed.detail", lang, n=critical_open),
+        recommendation=_t("ccm.vulns_addressed.rec", lang),
     )
 
 
-def test_risk_appetite_defined(db: Session, org_id: int) -> CCMResult:
+def test_risk_appetite_defined(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.37/6.1 — Apetito de riesgo definido por la organización."""
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+    name = _t("ccm.risk_appetite.name", lang)
     if ctx and ctx.risk_appetite is not None:
-        return CCMResult("risk_appetite", "5.37", "Apetito de riesgo definido",
-                         "PASS", f"Apetito de riesgo configurado: {ctx.risk_appetite}/8")
+        return CCMResult("risk_appetite", "5.37", name,
+                         "PASS", _t("ccm.risk_appetite.ok", lang, value=ctx.risk_appetite))
     return CCMResult(
-        "risk_appetite", "5.37", "Apetito de riesgo definido", "FAIL",
-        "El apetito de riesgo no está definido",
-        recommendation="Configurar el apetito de riesgo en Contexto de la organización",
+        "risk_appetite", "5.37", name, "FAIL",
+        _t("ccm.risk_appetite.detail", lang),
+        recommendation=_t("ccm.risk_appetite.rec", lang),
     )
 
 
-def test_compliance_frameworks_active(db: Session, org_id: int) -> CCMResult:
+def test_compliance_frameworks_active(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.31 — Marcos normativos activos configurados."""
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     active = (ctx.active_frameworks or []) if ctx else []
+    name = _t("ccm.frameworks_active.name", lang)
     if active:
-        return CCMResult("frameworks_active", "5.31", "Frameworks normativos activos",
-                         "PASS", f"Frameworks activos: {', '.join(active)}")
+        return CCMResult("frameworks_active", "5.31", name,
+                         "PASS", _t("ccm.frameworks_active.ok", lang, list=", ".join(active)))
     return CCMResult(
-        "frameworks_active", "5.31", "Frameworks normativos configurados", "WARNING",
-        "No hay frameworks normativos seleccionados",
-        recommendation="Seleccionar los frameworks aplicables en la sección de Cumplimiento",
+        "frameworks_active", "5.31", name, "WARNING",
+        _t("ccm.frameworks_active.detail", lang),
+        recommendation=_t("ccm.frameworks_active.rec", lang),
     )
 
 
-def test_data_backup_evidence(db: Session, org_id: int) -> CCMResult:
+def test_data_backup_evidence(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """8.13 — Evidencia de copias de seguridad."""
     backup_keywords = ["backup", "copia", "respaldo", "recovery", "recuperacion"]
     ev_count = 0
@@ -386,17 +407,18 @@ def test_data_backup_evidence(db: Session, org_id: int) -> CCMResult:
         ControlImplementation.name.ilike("%backup%"),
         ControlImplementation.status == ControlStatus.IMPLEMENTED,
     ).count()
+    name = _t("ccm.backup_evidence.name", lang)
     if ev_count > 0 or backup_controls > 0:
-        return CCMResult("backup_evidence", "8.13", "Evidencia de copias de seguridad",
-                         "PASS", "Se han encontrado evidencias o controles de backup")
+        return CCMResult("backup_evidence", "8.13", name,
+                         "PASS", _t("ccm.backup_evidence.ok", lang))
     return CCMResult(
-        "backup_evidence", "8.13", "Evidencia de copias de seguridad", "WARNING",
-        "No se encontraron evidencias de copias de seguridad",
-        recommendation="Subir evidencias del procedimiento de backup (logs, capturas, certificados)",
+        "backup_evidence", "8.13", name, "WARNING",
+        _t("ccm.backup_evidence.detail", lang),
+        recommendation=_t("ccm.backup_evidence.rec", lang),
     )
 
 
-def test_open_risks_reviewed_recently(db: Session, org_id: int) -> CCMResult:
+def test_open_risks_reviewed_recently(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.36 — Riesgos altos revisados en últimos 90 días."""
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(days=90)
@@ -405,24 +427,26 @@ def test_open_risks_reviewed_recently(db: Session, org_id: int) -> CCMResult:
         Risk.residual_level >= 5,
         Risk.status.notin_([RiskStatus.ACCEPTED, RiskStatus.CLOSED]),
     ).all()
+    name = _t("ccm.risks_reviewed.name", lang)
     if not high:
-        return CCMResult("risks_reviewed", "5.36", "Revisión de riesgos altos",
-                         "PASS", "No hay riesgos altos abiertos")
+        return CCMResult("risks_reviewed", "5.36", name,
+                         "PASS", _t("ccm.risks_reviewed.ok", lang))
     not_reviewed = [r for r in high
                     if not r.updated_at or
                     r.updated_at.replace(tzinfo=timezone.utc) < threshold]
     pct = round((len(high) - len(not_reviewed)) / len(high) * 100, 1)
     status = "PASS" if not not_reviewed else ("WARNING" if len(not_reviewed) <= 2 else "FAIL")
     return CCMResult(
-        "risks_reviewed", "5.36", "Riesgos altos revisados en 90 días", status,
-        f"{len(high) - len(not_reviewed)}/{len(high)} riesgos revisados ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else f"Revisar {len(not_reviewed)} riesgo(s) sin actualizar en 90 días",
+        "risks_reviewed", "5.36", name, status,
+        _t("ccm.risks_reviewed.detail", lang,
+           ok=len(high) - len(not_reviewed), total=len(high), pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.risks_reviewed.rec", lang, n=len(not_reviewed)),
     )
 
 
 # ─── Tests adicionales ──────────────────────────────────────────────────────
 
-def test_users_with_inactive_access(db: Session, org_id: int) -> CCMResult:
+def test_users_with_inactive_access(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.18 — Usuarios inactivos (>90 días sin login) tienen acceso revocado."""
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(days=90)
@@ -430,23 +454,24 @@ def test_users_with_inactive_access(db: Session, org_id: int) -> CCMResult:
         User.organization_id == org_id,
         User.is_active == True,
     ).all()
+    name = _t("ccm.user_inactive.name", lang)
     if not all_users:
-        return CCMResult("user_inactive", "5.18", "Revisión de usuarios inactivos",
-                         "SKIP", "No hay usuarios activos")
+        return CCMResult("user_inactive", "5.18", name,
+                         "SKIP", _t("ccm.user_inactive.skip", lang))
     stale = [u for u in all_users if hasattr(u, "last_login_at") and u.last_login_at and
              u.last_login_at.replace(tzinfo=timezone.utc) < threshold]
     if not stale:
-        return CCMResult("user_inactive", "5.18", "Usuarios inactivos",
-                         "PASS", f"{len(all_users)} usuarios activos, ninguno inactivo >90 días")
+        return CCMResult("user_inactive", "5.18", name,
+                         "PASS", _t("ccm.user_inactive.ok", lang, total=len(all_users)))
     status = "WARNING" if len(stale) <= 3 else "FAIL"
     return CCMResult(
-        "user_inactive", "5.18", "Usuarios inactivos sin acceso revocado", status,
-        f"{len(stale)} usuario(s) sin login en >90 días",
-        recommendation="Revisar y deshabilitar usuarios que no acceden desde hace más de 90 días",
+        "user_inactive", "5.18", name, status,
+        _t("ccm.user_inactive.detail", lang, n=len(stale)),
+        recommendation=_t("ccm.user_inactive.rec", lang),
     )
 
 
-def test_supplier_contracts_valid(db: Session, org_id: int) -> CCMResult:
+def test_supplier_contracts_valid(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.19 — Contratos con proveedores críticos vigentes."""
     now = datetime.now(timezone.utc)
     suppliers = db.query(Supplier).filter(
@@ -455,9 +480,10 @@ def test_supplier_contracts_valid(db: Session, org_id: int) -> CCMResult:
     ).all()
     if not suppliers:
         suppliers = db.query(Supplier).filter(Supplier.organization_id == org_id).limit(10).all()
+    name = _t("ccm.supplier_contracts.name", lang)
     if not suppliers:
-        return CCMResult("supplier_contracts", "5.19", "Contratos con proveedores",
-                         "SKIP", "No hay proveedores registrados")
+        return CCMResult("supplier_contracts", "5.19", name,
+                         "SKIP", _t("ccm.supplier_contracts.skip", lang))
     expired = [s for s in suppliers
                if s.contract_expiry and
                s.contract_expiry.replace(tzinfo=timezone.utc) < now]
@@ -465,49 +491,51 @@ def test_supplier_contracts_valid(db: Session, org_id: int) -> CCMResult:
                      if s.contract_expiry and
                      now < s.contract_expiry.replace(tzinfo=timezone.utc) < now + timedelta(days=30)]
     if not expired and not expiring_soon:
-        return CCMResult("supplier_contracts", "5.19", "Contratos con proveedores vigentes",
-                         "PASS", f"{len(suppliers)} proveedor(es) con contratos vigentes")
+        return CCMResult("supplier_contracts", "5.19", name,
+                         "PASS", _t("ccm.supplier_contracts.ok", lang, n=len(suppliers)))
     status = "FAIL" if expired else "WARNING"
     msgs = []
     if expired:
-        msgs.append(f"{len(expired)} contrato(s) vencido(s)")
+        msgs.append(_t("ccm.supplier_contracts.expired", lang, n=len(expired)))
     if expiring_soon:
-        msgs.append(f"{len(expiring_soon)} contrato(s) vencen en <30 días")
+        msgs.append(_t("ccm.supplier_contracts.expiring", lang, n=len(expiring_soon)))
     return CCMResult(
-        "supplier_contracts", "5.19", "Vigencia de contratos con proveedores", status,
+        "supplier_contracts", "5.19", name, status,
         "; ".join(msgs),
-        recommendation="Renovar contratos vencidos o próximos a vencer",
+        recommendation=_t("ccm.supplier_contracts.rec", lang),
     )
 
 
-def test_gdpr_activities_documented(db: Session, org_id: int) -> CCMResult:
+def test_gdpr_activities_documented(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.34 — Registro de actividades de tratamiento de datos (GDPR Art. 30)."""
+    name = _t("ccm.gdpr_activities.name", lang)
     try:
         from app.models import ProcessingActivity
         count = db.query(ProcessingActivity).filter(
             ProcessingActivity.organization_id == org_id
         ).count()
         if count >= 3:
-            return CCMResult("gdpr_activities", "5.34", "Registro actividades tratamiento",
-                             "PASS", f"{count} actividades de tratamiento documentadas")
+            return CCMResult("gdpr_activities", "5.34", name,
+                             "PASS", _t("ccm.gdpr_activities.ok", lang, n=count))
         if count > 0:
-            return CCMResult("gdpr_activities", "5.34", "Registro actividades tratamiento",
-                             "WARNING", f"Solo {count} actividad(es) documentada(s)",
-                             recommendation="Documentar todas las actividades de tratamiento (GDPR Art. 30)")
+            return CCMResult("gdpr_activities", "5.34", name,
+                             "WARNING", _t("ccm.gdpr_activities.warn", lang, n=count),
+                             recommendation=_t("ccm.gdpr_activities.warn_rec", lang))
         return CCMResult(
-            "gdpr_activities", "5.34", "Registro actividades tratamiento", "FAIL",
-            "No hay actividades de tratamiento de datos documentadas",
-            recommendation="Crear el Registro de Actividades de Tratamiento (GDPR Art. 30)",
+            "gdpr_activities", "5.34", name, "FAIL",
+            _t("ccm.gdpr_activities.fail", lang),
+            recommendation=_t("ccm.gdpr_activities.fail_rec", lang),
         )
     except Exception:
-        return CCMResult("gdpr_activities", "5.34", "Registro actividades tratamiento",
-                         "SKIP", "Módulo GDPR no disponible")
+        return CCMResult("gdpr_activities", "5.34", name,
+                         "SKIP", _t("ccm.gdpr_activities.skip", lang))
 
 
-def test_internal_audits_performed(db: Session, org_id: int) -> CCMResult:
+def test_internal_audits_performed(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.35 — Auditoría interna realizada en el último año."""
     now = datetime.now(timezone.utc)
     threshold = now - timedelta(days=365)
+    name = _t("ccm.internal_audit.name", lang)
     try:
         from app.models import AuditProgram, AuditStatus
         recent = db.query(AuditProgram).filter(
@@ -516,28 +544,29 @@ def test_internal_audits_performed(db: Session, org_id: int) -> CCMResult:
             AuditProgram.actual_end > threshold,
         ).count()
         if recent >= 1:
-            return CCMResult("internal_audit", "5.35", "Auditoría interna anual",
-                             "PASS", f"{recent} auditoría(s) interna(s) en último año")
+            return CCMResult("internal_audit", "5.35", name,
+                             "PASS", _t("ccm.internal_audit.ok", lang, n=recent))
         planned = db.query(AuditProgram).filter(
             AuditProgram.organization_id == org_id,
             AuditProgram.status.in_(["planned", "in_progress"]),
         ).count()
         if planned:
-            return CCMResult("internal_audit", "5.35", "Auditoría interna anual",
-                             "WARNING", "No hay auditorías completadas, hay una planificada",
-                             recommendation="Completar la auditoría interna planificada")
+            return CCMResult("internal_audit", "5.35", name,
+                             "WARNING", _t("ccm.internal_audit.warn", lang),
+                             recommendation=_t("ccm.internal_audit.warn_rec", lang))
         return CCMResult(
-            "internal_audit", "5.35", "Auditoría interna anual", "FAIL",
-            "No se han realizado auditorías internas en el último año",
-            recommendation="Planificar y ejecutar auditoría interna del SGSI",
+            "internal_audit", "5.35", name, "FAIL",
+            _t("ccm.internal_audit.fail", lang),
+            recommendation=_t("ccm.internal_audit.fail_rec", lang),
         )
     except Exception:
-        return CCMResult("internal_audit", "5.35", "Auditoría interna anual",
-                         "SKIP", "Módulo de auditorías no disponible")
+        return CCMResult("internal_audit", "5.35", name,
+                         "SKIP", _t("ccm.internal_audit.skip", lang))
 
 
-def test_nonconformities_addressed(db: Session, org_id: int) -> CCMResult:
+def test_nonconformities_addressed(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """10.1 — No conformidades con acciones correctivas asignadas."""
+    name = _t("ccm.nc_addressed.name", lang)
     try:
         from app.models import NonConformity, NCStatus
         open_nc = db.query(NonConformity).filter(
@@ -545,61 +574,63 @@ def test_nonconformities_addressed(db: Session, org_id: int) -> CCMResult:
             NonConformity.status.notin_([NCStatus.CLOSED]),
         ).all()
         if not open_nc:
-            return CCMResult("nc_addressed", "10.1", "No conformidades gestionadas",
-                             "PASS", "No hay no conformidades abiertas")
+            return CCMResult("nc_addressed", "10.1", name,
+                             "PASS", _t("ccm.nc_addressed.ok", lang))
         old_nc = [nc for nc in open_nc
                   if nc.created_at and
                   (datetime.now(timezone.utc) - nc.created_at.replace(tzinfo=timezone.utc)).days > 90]
         if not old_nc:
-            return CCMResult("nc_addressed", "10.1", "No conformidades gestionadas",
-                             "WARNING", f"{len(open_nc)} NC abiertas (todas recientes)",
-                             recommendation="Gestionar las no conformidades abiertas")
+            return CCMResult("nc_addressed", "10.1", name,
+                             "WARNING", _t("ccm.nc_addressed.warn", lang, n=len(open_nc)),
+                             recommendation=_t("ccm.nc_addressed.warn_rec", lang))
         return CCMResult(
-            "nc_addressed", "10.1", "No conformidades gestionadas", "FAIL",
-            f"{len(old_nc)}/{len(open_nc)} NC abiertas sin cerrar en >90 días",
-            recommendation="Cerrar no conformidades antiguas con acciones correctivas verificadas",
+            "nc_addressed", "10.1", name, "FAIL",
+            _t("ccm.nc_addressed.fail", lang, old=len(old_nc), open=len(open_nc)),
+            recommendation=_t("ccm.nc_addressed.fail_rec", lang),
         )
     except Exception:
-        return CCMResult("nc_addressed", "10.1", "No conformidades gestionadas",
-                         "SKIP", "Módulo de no conformidades no disponible")
+        return CCMResult("nc_addressed", "10.1", name,
+                         "SKIP", _t("ccm.nc_addressed.skip", lang))
 
 
-def test_risk_context_complete(db: Session, org_id: int) -> CCMResult:
+def test_risk_context_complete(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """4.1/4.2 — Contexto organizacional del SGSI completo."""
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
+    name = _t("ccm.risk_context.name", lang)
     if not ctx:
-        return CCMResult("risk_context", "4.1", "Contexto organizacional",
-                         "FAIL", "No hay contexto de riesgo configurado",
-                         recommendation="Configurar el contexto organizacional del SGSI")
+        return CCMResult("risk_context", "4.1", name,
+                         "FAIL", _t("ccm.risk_context.fail", lang),
+                         recommendation=_t("ccm.risk_context.fail_rec", lang))
     missing = []
     if not ctx.scope:
-        missing.append("alcance")
+        missing.append(_t("ccm.risk_context.field_scope", lang))
     if not ctx.boundaries:
-        missing.append("límites")
+        missing.append(_t("ccm.risk_context.field_boundaries", lang))
     if not ctx.risk_matrix:
-        missing.append("matriz de riesgos")
+        missing.append(_t("ccm.risk_context.field_matrix", lang))
     if ctx.risk_appetite is None:
-        missing.append("apetito de riesgo")
+        missing.append(_t("ccm.risk_context.field_appetite", lang))
     if missing:
         return CCMResult(
-            "risk_context", "4.1", "Contexto organizacional completo", "WARNING",
-            f"Campos sin completar: {', '.join(missing)}",
-            recommendation="Completar todos los campos del contexto en la sección Contexto",
+            "risk_context", "4.1", name, "WARNING",
+            _t("ccm.risk_context.warn", lang, fields=", ".join(missing)),
+            recommendation=_t("ccm.risk_context.warn_rec", lang),
         )
-    return CCMResult("risk_context", "4.1", "Contexto organizacional completo",
-                     "PASS", "Contexto organizacional completamente configurado")
+    return CCMResult("risk_context", "4.1", name,
+                     "PASS", _t("ccm.risk_context.ok", lang))
 
 
-def test_treatment_tasks_assigned(db: Session, org_id: int) -> CCMResult:
+def test_treatment_tasks_assigned(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.2 — Tareas de tratamiento con responsable asignado."""
     from app.models import TreatmentTask
     total = db.query(TreatmentTask).filter(
         TreatmentTask.organization_id == org_id,
         TreatmentTask.status.notin_([TaskStatus.DONE]),
     ).count()
+    name = _t("ccm.tasks_assigned.name", lang)
     if total == 0:
-        return CCMResult("tasks_assigned", "5.2", "Tareas con responsable",
-                         "PASS", "No hay tareas pendientes")
+        return CCMResult("tasks_assigned", "5.2", name,
+                         "PASS", _t("ccm.tasks_assigned.ok", lang))
     unassigned = db.query(TreatmentTask).filter(
         TreatmentTask.organization_id == org_id,
         TreatmentTask.status.notin_([TaskStatus.DONE]),
@@ -608,14 +639,15 @@ def test_treatment_tasks_assigned(db: Session, org_id: int) -> CCMResult:
     pct = round((total - unassigned) / total * 100, 1)
     status = "PASS" if unassigned == 0 else ("WARNING" if unassigned <= 3 else "FAIL")
     return CCMResult(
-        "tasks_assigned", "5.2", "Tareas de tratamiento con responsable", status,
-        f"{total - unassigned}/{total} tareas tienen responsable asignado ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else f"Asignar responsable a {unassigned} tarea(s) sin asignar",
+        "tasks_assigned", "5.2", name, status,
+        _t("ccm.tasks_assigned.detail", lang, ok=total - unassigned, total=total, pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.tasks_assigned.rec", lang, n=unassigned),
     )
 
 
-def test_awareness_training_recent(db: Session, org_id: int) -> CCMResult:
+def test_awareness_training_recent(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """6.3 — Formación en concienciación reciente (último año)."""
+    name = _t("ccm.awareness.name", lang)
     try:
         from app.models import AwarenessItem
         now = datetime.now(timezone.utc)
@@ -626,23 +658,23 @@ def test_awareness_training_recent(db: Session, org_id: int) -> CCMResult:
             AwarenessItem.created_at >= threshold,
         ).count()
         if recent >= 2:
-            return CCMResult("awareness", "6.3", "Formación en concienciación",
-                             "PASS", f"{recent} elemento(s) de awareness publicados en último año")
+            return CCMResult("awareness", "6.3", name,
+                             "PASS", _t("ccm.awareness.ok", lang, n=recent))
         if recent == 1:
-            return CCMResult("awareness", "6.3", "Formación en concienciación",
-                             "WARNING", "Solo 1 elemento de awareness en el último año",
-                             recommendation="Aumentar la frecuencia de formación en concienciación")
+            return CCMResult("awareness", "6.3", name,
+                             "WARNING", _t("ccm.awareness.warn", lang),
+                             recommendation=_t("ccm.awareness.warn_rec", lang))
         return CCMResult(
-            "awareness", "6.3", "Formación en concienciación (último año)", "FAIL",
-            "No se ha publicado formación de concienciación en el último año",
-            recommendation="Publicar materiales de awareness en seguridad de la información",
+            "awareness", "6.3", name, "FAIL",
+            _t("ccm.awareness.fail", lang),
+            recommendation=_t("ccm.awareness.fail_rec", lang),
         )
     except Exception:
-        return CCMResult("awareness", "6.3", "Formación en concienciación",
-                         "SKIP", "Módulo de awareness no disponible")
+        return CCMResult("awareness", "6.3", name,
+                         "SKIP", _t("ccm.awareness.skip", lang))
 
 
-def test_incident_response_plan(db: Session, org_id: int) -> CCMResult:
+def test_incident_response_plan(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.24 — Plan de respuesta a incidentes documentado."""
     ir_keywords = ["incidente", "incident", "respuesta", "response", "ciberseguridad", "CSIRT"]
     pol_count = 0
@@ -654,23 +686,25 @@ def test_incident_response_plan(db: Session, org_id: int) -> CCMResult:
         ).count()
         if pol_count > 0:
             break
+    name = _t("ccm.ir_plan.name", lang)
     if pol_count > 0:
-        return CCMResult("ir_plan", "5.24", "Plan de respuesta a incidentes",
-                         "PASS", "Se ha encontrado política/procedimiento de respuesta a incidentes")
+        return CCMResult("ir_plan", "5.24", name,
+                         "PASS", _t("ccm.ir_plan.ok", lang))
     return CCMResult(
-        "ir_plan", "5.24", "Plan de respuesta a incidentes documentado", "WARNING",
-        "No se encontró política de respuesta a incidentes",
-        recommendation="Crear/subir el Plan de Respuesta a Incidentes de Seguridad",
+        "ir_plan", "5.24", name, "WARNING",
+        _t("ccm.ir_plan.detail", lang),
+        recommendation=_t("ccm.ir_plan.rec", lang),
     )
 
 
-def test_assets_with_risk_coverage(db: Session, org_id: int) -> CCMResult:
+def test_assets_with_risk_coverage(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.8 — Activos críticos con al menos un riesgo identificado."""
     from app.models import Asset
     total_assets = db.query(Asset).filter(Asset.organization_id == org_id).count()
+    name = _t("ccm.asset_risk_coverage.name", lang)
     if total_assets == 0:
-        return CCMResult("asset_risk_coverage", "5.8", "Activos con riesgos identificados",
-                         "SKIP", "No hay activos registrados")
+        return CCMResult("asset_risk_coverage", "5.8", name,
+                         "SKIP", _t("ccm.asset_risk_coverage.skip", lang))
     assets_with_risks = db.query(Asset.id).filter(
         Asset.organization_id == org_id,
     ).join(Risk, Risk.asset_id == Asset.id, isouter=True).filter(
@@ -679,22 +713,24 @@ def test_assets_with_risk_coverage(db: Session, org_id: int) -> CCMResult:
     pct = round(assets_with_risks / total_assets * 100, 1)
     status = "PASS" if pct >= 80 else ("WARNING" if pct >= 50 else "FAIL")
     return CCMResult(
-        "asset_risk_coverage", "5.8", "Activos con riesgos identificados", status,
-        f"{assets_with_risks}/{total_assets} activos con riesgos ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else "Completar análisis de riesgos para activos sin cobertura",
+        "asset_risk_coverage", "5.8", name, status,
+        _t("ccm.asset_risk_coverage.detail", lang,
+           ok=assets_with_risks, total=total_assets, pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.asset_risk_coverage.rec", lang),
     )
 
 
-def test_evidence_linked_to_controls(db: Session, org_id: int) -> CCMResult:
+def test_evidence_linked_to_controls(db: Session, org_id: int, lang: str = "es") -> CCMResult:
     """5.35 — Evidencias vinculadas a requisitos de compliance."""
     total_ev = db.query(Evidence).filter(
         Evidence.organization_id == org_id,
         Evidence.is_current == True,
     ).count()
+    name = _t("ccm.evidence_linked.name", lang)
     if total_ev == 0:
-        return CCMResult("evidence_linked", "5.35", "Evidencias vinculadas a compliance",
-                         "WARNING", "No hay evidencias registradas",
-                         recommendation="Subir evidencias y vincularlas a requisitos normativos")
+        return CCMResult("evidence_linked", "5.35", name,
+                         "WARNING", _t("ccm.evidence_linked.none", lang),
+                         recommendation=_t("ccm.evidence_linked.none_rec", lang))
     linked = db.query(Evidence).filter(
         Evidence.organization_id == org_id,
         Evidence.is_current == True,
@@ -703,9 +739,9 @@ def test_evidence_linked_to_controls(db: Session, org_id: int) -> CCMResult:
     pct = round(linked / total_ev * 100, 1)
     status = "PASS" if pct >= 70 else ("WARNING" if pct >= 40 else "FAIL")
     return CCMResult(
-        "evidence_linked", "5.35", "Evidencias vinculadas a requisitos normativos", status,
-        f"{linked}/{total_ev} evidencias vinculadas a frameworks ({pct}%)", value=pct,
-        recommendation="" if status == "PASS" else "Vincular más evidencias a requisitos específicos",
+        "evidence_linked", "5.35", name, status,
+        _t("ccm.evidence_linked.detail", lang, ok=linked, total=total_ev, pct=pct), value=pct,
+        recommendation="" if status == "PASS" else _t("ccm.evidence_linked.rec", lang),
     )
 
 
@@ -742,8 +778,40 @@ _ALL_TESTS: list[Callable] = [
     test_evidence_linked_to_controls,
 ]
 
+# Mapeo fn.__name__ -> test_id corto (para catalogo i18n)
+_TEST_KEYS: dict[str, str] = {
+    "test_all_assets_have_owner": "assets_owner",
+    "test_assets_classified": "assets_classified",
+    "test_high_risks_have_treatment": "risks_treatment",
+    "test_risks_over_appetite_have_tasks": "risks_tasks",
+    "test_controls_have_evidence": "controls_evidence",
+    "test_policies_current": "policies_current",
+    "test_incidents_resolved": "incidents_resolved",
+    "test_suppliers_reviewed": "suppliers_reviewed",
+    "test_tasks_not_overdue": "tasks_overdue",
+    "test_evidence_freshness": "evidence_fresh",
+    "test_admin_users_have_mfa": "admin_mfa",
+    "test_vulnerabilities_addressed": "vulns_addressed",
+    "test_risk_appetite_defined": "risk_appetite",
+    "test_compliance_frameworks_active": "frameworks_active",
+    "test_data_backup_evidence": "backup_evidence",
+    "test_open_risks_reviewed_recently": "risks_reviewed",
+    "test_users_with_inactive_access": "user_inactive",
+    "test_supplier_contracts_valid": "supplier_contracts",
+    "test_gdpr_activities_documented": "gdpr_activities",
+    "test_internal_audits_performed": "internal_audit",
+    "test_nonconformities_addressed": "nc_addressed",
+    "test_risk_context_complete": "risk_context",
+    "test_treatment_tasks_assigned": "tasks_assigned",
+    "test_awareness_training_recent": "awareness",
+    "test_incident_response_plan": "ir_plan",
+    "test_assets_with_risk_coverage": "asset_risk_coverage",
+    "test_evidence_linked_to_controls": "evidence_linked",
+}
 
-def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) -> dict:
+
+def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0,
+                  lang: str = "es") -> dict:
     """Ejecuta todos los tests CCM para una organización con paginacion.
 
     Returns: {results, summary, score, timestamp, total_tests}
@@ -753,7 +821,7 @@ def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) ->
 
     for test_fn in _ALL_TESTS:
         try:
-            result = test_fn(db, org_id)
+            result = test_fn(db, org_id, lang)
             results.append(result.to_dict())
             counts[result.status] = counts.get(result.status, 0) + 1
         except Exception as exc:
@@ -763,7 +831,7 @@ def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) ->
                 "control_code": "?",
                 "name": test_fn.__name__,
                 "status": "SKIP",
-                "detail": f"Error ejecutando test: {exc}",
+                "detail": _t("ccm.test_error", lang, error=exc),
                 "recommendation": "",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
@@ -795,10 +863,10 @@ def run_all_tests(db: Session, org_id: int, limit: int = 50, offset: int = 0) ->
         "limit": limit,
         "returned": len(paginated_results),
         "results": paginated_results,
-        "summary": (
-            f"CCM Score: {score}/100 — "
-            f"{counts['PASS']} PASS, {counts['WARNING']} WARNING, "
-            f"{counts['FAIL']} FAIL, {counts['SKIP']} SKIP"
+        "summary": _t(
+            "ccm.summary", lang, score=score,
+            p=counts["PASS"], w=counts["WARNING"],
+            f=counts["FAIL"], s=counts["SKIP"],
         ),
     }
 
@@ -905,18 +973,18 @@ def run_single_test_for_control(control_id: int, org_id: int) -> None:
         db.close()
 
 
-def run_test_by_id(db: Session, org_id: int, test_id: str) -> Optional[dict]:
+def run_test_by_id(db: Session, org_id: int, test_id: str, lang: str = "es") -> Optional[dict]:
     """Ejecuta un test específico por ID."""
     for test_fn in _ALL_TESTS:
         if test_fn.__name__ == test_id or (
             hasattr(test_fn, "__doc__") and test_id in (test_fn.__doc__ or "")
         ):
-            result = test_fn(db, org_id)
+            result = test_fn(db, org_id, lang)
             return result.to_dict()
     # Buscar por test_id en el resultado
     for test_fn in _ALL_TESTS:
         try:
-            r = test_fn(db, org_id)
+            r = test_fn(db, org_id, lang)
             if r.test_id == test_id:
                 return r.to_dict()
         except Exception:
@@ -924,13 +992,14 @@ def run_test_by_id(db: Session, org_id: int, test_id: str) -> Optional[dict]:
     return None
 
 
-def get_test_catalog() -> list[dict]:
+def get_test_catalog(lang: str = "es") -> list[dict]:
     """Retorna catálogo de tests disponibles."""
     return [
         {
             "test_id": fn.__name__,
             "control_code": fn.__doc__.split("—")[0].strip().replace("def ", "") if fn.__doc__ else "",
-            "description": fn.__doc__.split("—")[1].strip() if fn.__doc__ and "—" in fn.__doc__ else fn.__name__,
+            "description": _t(f"ccm.{_TEST_KEYS[fn.__name__]}.name", lang)
+            if fn.__name__ in _TEST_KEYS else fn.__name__,
         }
         for fn in _ALL_TESTS
     ]

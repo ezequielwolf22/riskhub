@@ -7,6 +7,8 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
+
 logger = logging.getLogger("riskhub.bcp_excel")
 
 _HEADER_FILL = PatternFill("solid", fgColor="59008D")
@@ -24,43 +26,36 @@ def _write_header(ws, headers: list[str]) -> None:
     ws.row_dimensions[1].height = 30
 
 
-def generate_excel_template() -> bytes:
+def generate_excel_template(lang: str = "es") -> bytes:
     """Genera la plantilla Excel BCP para importación."""
     wb = openpyxl.Workbook()
 
     # Hoja 1: Procesos BIA
+    # NOTA: los nombres de hoja ("Procesos", "Dependencias", "Proveedores BCM")
+    # son identificadores del parser (parse_excel_preview) y NO se traducen.
     ws_proc = wb.active
     ws_proc.title = "Procesos"
-    _write_header(ws_proc, [
-        "Nombre *", "Criticidad (critical/high/medium/low)",
-        "RTO (horas)", "RPO (horas)", "MTPD (horas)",
-        "Descripcion", "Propietario (email)", "Prioridad",
-    ])
-    ws_proc.append(["Proceso ERP", "critical", 4, 1, 8,
-                    "Sistema ERP principal de la organización", "admin@empresa.com", 1])
-    ws_proc.append(["Portal clientes", "high", 8, 4, 24,
-                    "Portal web de atención al cliente", "", 2])
-    ws_proc.append(["Backup diario", "medium", 24, 4, 48,
-                    "Proceso de respaldo de datos", "", 3])
+    _write_header(ws_proc, _t("bcp_excel.tpl_proc_headers", lang).split("|"))
+    yes = _t("bcp_excel.yes_value", lang)
+    ex_erp = _t("bcp_excel.ex_proc_erp", lang)
+    ex_portal = _t("bcp_excel.ex_proc_portal", lang)
+    ws_proc.append([ex_erp, "critical", 4, 1, 8,
+                    _t("bcp_excel.ex_proc_erp_desc", lang), "admin@empresa.com", 1])
+    ws_proc.append([ex_portal, "high", 8, 4, 24,
+                    _t("bcp_excel.ex_proc_portal_desc", lang), "", 2])
+    ws_proc.append([_t("bcp_excel.ex_proc_backup", lang), "medium", 24, 4, 48,
+                    _t("bcp_excel.ex_proc_backup_desc", lang), "", 3])
 
     # Hoja 2: Dependencias
     ws_dep = wb.create_sheet("Dependencias")
-    _write_header(ws_dep, [
-        "Proceso (nombre exacto) *",
-        "Tipo (IT_system/personnel/facility/supplier/utility/communication/transport/external_service) *",
-        "Nombre dependencia *", "RTO necesario (horas)", "Es critico (si/no)",
-    ])
-    ws_dep.append(["Proceso ERP", "IT_system", "Servidor base de datos principal", 2, "si"])
-    ws_dep.append(["Proceso ERP", "personnel", "DBA Senior", 4, "si"])
-    ws_dep.append(["Portal clientes", "IT_system", "Servidor web", 4, "si"])
+    _write_header(ws_dep, _t("bcp_excel.tpl_dep_headers", lang).split("|"))
+    ws_dep.append([ex_erp, "IT_system", _t("bcp_excel.ex_dep_db", lang), 2, yes])
+    ws_dep.append([ex_erp, "personnel", _t("bcp_excel.ex_dep_dba", lang), 4, yes])
+    ws_dep.append([ex_portal, "IT_system", _t("bcp_excel.ex_dep_web", lang), 4, yes])
 
     # Hoja 3: Proveedores BCM
     ws_sup = wb.create_sheet("Proveedores BCM")
-    _write_header(ws_sup, [
-        "Proveedor (nombre exacto en sistema) *",
-        "Criticidad BCM (critical/high/medium/low)",
-        "RTO impacto (horas)",
-    ])
+    _write_header(ws_sup, _t("bcp_excel.tpl_sup_headers", lang).split("|"))
     ws_sup.append(["AWS", "critical", 1])
     ws_sup.append(["Microsoft 365", "high", 4])
 

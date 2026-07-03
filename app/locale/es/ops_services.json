@@ -1,0 +1,194 @@
+{
+  "ccm": {
+    "summary": "CCM Score: {score}/100 — {p} PASS, {w} WARNING, {f} FAIL, {s} SKIP",
+    "test_error": "Error ejecutando test: {error}",
+    "assets_owner": {
+      "name": "Activos con propietario asignado",
+      "skip": "No hay activos registrados",
+      "detail": "{ok}/{total} activos tienen propietario ({pct}%)",
+      "rec": "Asignar propietario a {n} activos sin dueño"
+    },
+    "assets_classified": {
+      "name": "Clasificación de información en activos",
+      "empty": "No hay activos definidos — requerido para cumplimiento ISO 27001 A.5.12",
+      "empty_rec": "Registrar activos de información y clasificarlos",
+      "detail": "{ok}/{total} activos clasificados ({pct}%)",
+      "rec": "Clasificar activos sin etiqueta (público/interno/confidencial/secreto)"
+    },
+    "risks_treatment": {
+      "name": "Riesgos altos con tratamiento asignado",
+      "ok": "No hay riesgos altos sin gestionar",
+      "detail": "{ok}/{total} riesgos altos tienen tratamiento ({pct}%)",
+      "rec": "{n} riesgo(s) altos sin tratamiento: {codes}"
+    },
+    "risks_tasks": {
+      "name": "Riesgos sobre apetito con tareas activas",
+      "ok": "No hay riesgos sobre apetito sin tareas",
+      "detail": "{ok}/{total} riesgos sobre apetito con tareas activas ({pct}%)",
+      "rec": "Crear tareas para {n} riesgo(s)"
+    },
+    "controls_evidence": {
+      "name": "Controles implementados con evidencia",
+      "skip": "No hay controles implementados",
+      "detail": "{ok}/{total} controles tienen evidencia ({pct}%)",
+      "rec": "Subir evidencias para controles sin documentación"
+    },
+    "policies_current": {
+      "name": "Políticas de seguridad vigentes",
+      "none": "No hay políticas de seguridad definidas",
+      "none_rec": "Crear políticas de seguridad de la información",
+      "detail": "{ok}/{total} políticas vigentes ({pct}%)",
+      "rec": "{n} política(s) con revisión vencida"
+    },
+    "incidents_resolved": {
+      "name": "Resolución de incidentes críticos",
+      "ok": "No hay incidentes P1/P2 abiertos más de 3 días",
+      "detail": "{n} incidente(s) P1/P2 abierto(s) por más de 3 días",
+      "rec": "Escalar y resolver incidentes críticos pendientes"
+    },
+    "suppliers_reviewed": {
+      "name": "Proveedores con evaluación anual",
+      "skip": "No hay proveedores registrados",
+      "detail": "{ok}/{total} proveedores evaluados en último año ({pct}%)",
+      "rec": "Re-evaluar {n} proveedor(es)"
+    },
+    "tasks_overdue": {
+      "name": "Tareas de tratamiento sin vencer",
+      "ok": "No hay tareas pendientes",
+      "detail": "{overdue}/{total} tareas vencidas ({mora}% de mora)",
+      "rec": "Gestionar {n} tarea(s) vencida(s)"
+    },
+    "evidence_fresh": {
+      "name": "Frescura de evidencias (< 12 meses)",
+      "none": "No hay evidencias registradas",
+      "none_rec": "Subir evidencias de los controles implementados",
+      "detail": "{ok}/{total} evidencias frescas ({pct}%)",
+      "rec": "{n} evidencia(s) vencidas o antiguas a renovar"
+    },
+    "admin_mfa": {
+      "name": "Administradores con MFA habilitado",
+      "skip": "No hay administradores",
+      "detail": "{ok}/{total} admins con MFA ({pct}%)",
+      "rec": "Activar MFA para todos los administradores"
+    },
+    "vulns_addressed": {
+      "name": "Vulnerabilidades críticas gestionadas",
+      "ok": "No hay vulnerabilidades críticas abiertas sin gestionar",
+      "detail": "{n} hallazgo(s) CRITICAL/HIGH abierto(s) sin riesgo asociado",
+      "rec": "Importar hallazgos desde escáner y generar riesgos"
+    },
+    "risk_appetite": {
+      "name": "Apetito de riesgo definido",
+      "ok": "Apetito de riesgo configurado: {value}/8",
+      "detail": "El apetito de riesgo no está definido",
+      "rec": "Configurar el apetito de riesgo en Contexto de la organización"
+    },
+    "frameworks_active": {
+      "name": "Frameworks normativos configurados",
+      "ok": "Frameworks activos: {list}",
+      "detail": "No hay frameworks normativos seleccionados",
+      "rec": "Seleccionar los frameworks aplicables en la sección de Cumplimiento"
+    },
+    "backup_evidence": {
+      "name": "Evidencia de copias de seguridad",
+      "ok": "Se han encontrado evidencias o controles de backup",
+      "detail": "No se encontraron evidencias de copias de seguridad",
+      "rec": "Subir evidencias del procedimiento de backup (logs, capturas, certificados)"
+    },
+    "risks_reviewed": {
+      "name": "Riesgos altos revisados en 90 días",
+      "ok": "No hay riesgos altos abiertos",
+      "detail": "{ok}/{total} riesgos revisados ({pct}%)",
+      "rec": "Revisar {n} riesgo(s) sin actualizar en 90 días"
+    },
+    "user_inactive": {
+      "name": "Usuarios inactivos sin acceso revocado",
+      "skip": "No hay usuarios activos",
+      "ok": "{total} usuarios activos, ninguno inactivo >90 días",
+      "detail": "{n} usuario(s) sin login en >90 días",
+      "rec": "Revisar y deshabilitar usuarios que no acceden desde hace más de 90 días"
+    },
+    "supplier_contracts": {
+      "name": "Vigencia de contratos con proveedores",
+      "skip": "No hay proveedores registrados",
+      "ok": "{n} proveedor(es) con contratos vigentes",
+      "expired": "{n} contrato(s) vencido(s)",
+      "expiring": "{n} contrato(s) vencen en <30 días",
+      "rec": "Renovar contratos vencidos o próximos a vencer"
+    },
+    "gdpr_activities": {
+      "name": "Registro actividades tratamiento",
+      "ok": "{n} actividades de tratamiento documentadas",
+      "warn": "Solo {n} actividad(es) documentada(s)",
+      "warn_rec": "Documentar todas las actividades de tratamiento (GDPR Art. 30)",
+      "fail": "No hay actividades de tratamiento de datos documentadas",
+      "fail_rec": "Crear el Registro de Actividades de Tratamiento (GDPR Art. 30)",
+      "skip": "Módulo GDPR no disponible"
+    },
+    "internal_audit": {
+      "name": "Auditoría interna anual",
+      "ok": "{n} auditoría(s) interna(s) en último año",
+      "warn": "No hay auditorías completadas, hay una planificada",
+      "warn_rec": "Completar la auditoría interna planificada",
+      "fail": "No se han realizado auditorías internas en el último año",
+      "fail_rec": "Planificar y ejecutar auditoría interna del SGSI",
+      "skip": "Módulo de auditorías no disponible"
+    },
+    "nc_addressed": {
+      "name": "No conformidades gestionadas",
+      "ok": "No hay no conformidades abiertas",
+      "warn": "{n} NC abiertas (todas recientes)",
+      "warn_rec": "Gestionar las no conformidades abiertas",
+      "fail": "{old}/{open} NC abiertas sin cerrar en >90 días",
+      "fail_rec": "Cerrar no conformidades antiguas con acciones correctivas verificadas",
+      "skip": "Módulo de no conformidades no disponible"
+    },
+    "risk_context": {
+      "name": "Contexto organizacional completo",
+      "fail": "No hay contexto de riesgo configurado",
+      "fail_rec": "Configurar el contexto organizacional del SGSI",
+      "field_scope": "alcance",
+      "field_boundaries": "límites",
+      "field_matrix": "matriz de riesgos",
+      "field_appetite": "apetito de riesgo",
+      "warn": "Campos sin completar: {fields}",
+      "warn_rec": "Completar todos los campos del contexto en la sección Contexto",
+      "ok": "Contexto organizacional completamente configurado"
+    },
+    "tasks_assigned": {
+      "name": "Tareas de tratamiento con responsable",
+      "ok": "No hay tareas pendientes",
+      "detail": "{ok}/{total} tareas tienen responsable asignado ({pct}%)",
+      "rec": "Asignar responsable a {n} tarea(s) sin asignar"
+    },
+    "awareness": {
+      "name": "Formación en concienciación (último año)",
+      "ok": "{n} elemento(s) de awareness publicados en último año",
+      "warn": "Solo 1 elemento de awareness en el último año",
+      "warn_rec": "Aumentar la frecuencia de formación en concienciación",
+      "fail": "No se ha publicado formación de concienciación en el último año",
+      "fail_rec": "Publicar materiales de awareness en seguridad de la información",
+      "skip": "Módulo de awareness no disponible"
+    },
+    "ir_plan": {
+      "name": "Plan de respuesta a incidentes documentado",
+      "ok": "Se ha encontrado política/procedimiento de respuesta a incidentes",
+      "detail": "No se encontró política de respuesta a incidentes",
+      "rec": "Crear/subir el Plan de Respuesta a Incidentes de Seguridad"
+    },
+    "asset_risk_coverage": {
+      "name": "Activos con riesgos identificados",
+      "skip": "No hay activos registrados",
+      "detail": "{ok}/{total} activos con riesgos ({pct}%)",
+      "rec": "Completar análisis de riesgos para activos sin cobertura"
+    },
+    "evidence_linked": {
+      "name": "Evidencias vinculadas a requisitos normativos",
+      "none": "No hay evidencias registradas",
+      "none_rec": "Subir evidencias y vincularlas a requisitos normativos",
+      "detail": "{ok}/{total} evidencias vinculadas a frameworks ({pct}%)",
+      "rec": "Vincular más evidencias a requisitos específicos"
+    },
+    "test_not_found": "Test '{test_id}' no encontrado"
+  }
+}

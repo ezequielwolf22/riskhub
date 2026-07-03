@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
+from app.i18n import get_lang, t as _t
 from app.models import AiConfig, EmailSettings, Supplier, SupplierQuestionnaire, User
 from app.routers.ai_config import resolve_api_key
 from app.schemas import SupplierQuestionnaireCreate, SupplierQuestionnaireOut
@@ -109,23 +110,26 @@ def my_assigned_tasks_early(
 
 
 @router.get("/{qid}", response_model=SupplierQuestionnaireOut)
-def get_questionnaire(qid: int, db: Session = Depends(get_db),
+def get_questionnaire(qid: int, request: Request, db: Session = Depends(get_db),
                       current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     q = filter_by_org(
         db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
         SupplierQuestionnaire, current_user
     ).first()
     if not q:
-        raise HTTPException(404, "Cuestionario no encontrado")
+        raise HTTPException(404, _t("supplier_questionnaires.not_found", lang))
     return q
 
 
 @router.post("/", response_model=SupplierQuestionnaireOut)
-def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depends(get_db),
+def create_questionnaire(body: SupplierQuestionnaireCreate, request: Request,
+                         db: Session = Depends(get_db),
                          current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     supplier = db.query(Supplier).filter(Supplier.id == body.supplier_id).first()
     if not supplier or not check_org_access(supplier.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("supplier_questionnaires.supplier_not_found", lang))
     expires = body.expires_at or (datetime.now(timezone.utc) + timedelta(days=30))
     # TPRM: prioridad de origen de las preguntas:
     #  1) preguntas ad-hoc (override editado)  2) plantilla personalizada
@@ -139,14 +143,14 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
         from app.models import TPRMTemplate
         tpl = db.query(TPRMTemplate).filter(TPRMTemplate.id == body.custom_template_id).first()
         if not tpl or not check_org_access(tpl.organization_id, current_user):
-            raise HTTPException(404, "Plantilla no encontrada")
+            raise HTTPException(404, _t("supplier_questionnaires.template_not_found", lang))
         questions = tpl.questions or []
         template_code = f"custom:{tpl.id}"
     elif body.template_code:
         from app.services import tprm_templates
         tpl = tprm_templates.get_template(body.template_code)
         if not tpl:
-            raise HTTPException(404, "Plantilla no encontrada")
+            raise HTTPException(404, _t("supplier_questionnaires.template_not_found", lang))
         questions = tpl["questions"]
         template_code = tpl["code"]
     now = datetime.now(timezone.utc)
@@ -176,14 +180,14 @@ def create_questionnaire(body: SupplierQuestionnaireCreate, db: Session = Depend
 
 
 @router.delete("/{qid}", status_code=204)
-def delete_questionnaire(qid: int, db: Session = Depends(get_db),
+def delete_questionnaire(qid: int, request: Request, db: Session = Depends(get_db),
                          current_user: User = Depends(require_analyst)):
     q = filter_by_org(
         db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
         SupplierQuestionnaire, current_user
     ).first()
     if not q:
-        raise HTTPException(404, "Cuestionario no encontrado")
+        raise HTTPException(404, _t("supplier_questionnaires.not_found", get_lang(request)))
     db.delete(q)
     db.commit()
 
@@ -191,18 +195,20 @@ def delete_questionnaire(qid: int, db: Session = Depends(get_db),
 @router.post("/{qid}/ai-review")
 def ai_review_questionnaire(
     qid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Evalua un cuestionario respondido con IA y almacena el resultado."""
+    lang = get_lang(request)
     q = filter_by_org(
         db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
         SupplierQuestionnaire, current_user,
     ).first()
     if not q:
-        raise HTTPException(404, "Cuestionario no encontrado")
+        raise HTTPException(404, _t("supplier_questionnaires.not_found", lang))
     if not q.submitted_at:
-        raise HTTPException(400, "El cuestionario aun no ha sido respondido")
+        raise HTTPException(400, _t("supplier_questionnaires.not_answered_yet", lang))
 
     cfg = (
         db.query(AiConfig)
@@ -213,7 +219,7 @@ def ai_review_questionnaire(
     if not key:
         raise HTTPException(
             400,
-            "API key de Claude no configurada en IA -> Configuracion",
+            _t("supplier_questionnaires.api_key_missing", lang),
         )
     model = (cfg.model if cfg else None) or "claude-opus-4-6"
 
@@ -232,40 +238,39 @@ def ai_review_questionnaire(
 def send_questionnaire(qid: int, request: Request, db: Session = Depends(get_db),
                        current_user: User = Depends(require_analyst)):
     """Envia el cuestionario por email al contacto del proveedor con el enlace tokenizado."""
+    lang = get_lang(request)
     q = filter_by_org(
         db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
         SupplierQuestionnaire, current_user,
     ).first()
     if not q:
-        raise HTTPException(404, "Cuestionario no encontrado")
+        raise HTTPException(404, _t("supplier_questionnaires.not_found", lang))
     if q.submitted_at:
-        raise HTTPException(409, "Este cuestionario ya fue respondido")
+        raise HTTPException(409, _t("supplier_questionnaires.already_answered", lang))
     supplier = q.supplier
     recipient = (supplier.contact_email or "").strip() if supplier else ""
     if not recipient:
-        raise HTTPException(400, "El proveedor no tiene email de contacto configurado")
+        raise HTTPException(400, _t("supplier_questionnaires.no_contact_email", lang))
 
     cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
     if not cfg or not cfg.smtp_host:
-        raise HTTPException(400, "Configura el servidor de correo (SMTP) en Alertas -> Configuracion")
+        raise HTTPException(400, _t("supplier_questionnaires.smtp_missing", lang))
 
     base = str(request.base_url).rstrip("/")
     link = f"{base}/supplier-q?token={q.token}"
     expires = q.expires_at.strftime("%d/%m/%Y") if q.expires_at else "-"
-    org_name = current_user.organization.name if getattr(current_user, "organization", None) else "nuestra organizacion"
-    subject = f"Cuestionario de seguridad — {q.title}"
+    org_name = current_user.organization.name if getattr(current_user, "organization", None) else _t("supplier_questionnaires.our_org_fallback", lang)
+    subject = _t("supplier_questionnaires.email_subject", lang, title=q.title)
     body_html = f"""
     <div style="font-family:Inter,Arial,sans-serif;color:#1f2937;">
-      <p>Estimado/a {supplier.contact_name or supplier.name}:</p>
-      <p>Como parte de nuestro proceso de evaluacion de proveedores ({org_name}),
-      le solicitamos completar el siguiente cuestionario de seguridad:
-      <strong>{q.title}</strong>.</p>
+      <p>{_t("supplier_questionnaires.email_greeting", lang, name=supplier.contact_name or supplier.name)}</p>
+      <p>{_t("supplier_questionnaires.email_intro", lang, org=org_name, title=q.title)}</p>
       <p style="margin:24px 0;">
         <a href="{link}" style="background:#59008D;color:#fff;padding:12px 24px;
-           border-radius:6px;text-decoration:none;font-weight:600;">Completar cuestionario</a>
+           border-radius:6px;text-decoration:none;font-weight:600;">{_t("supplier_questionnaires.email_button", lang)}</a>
       </p>
-      <p style="font-size:13px;color:#6b7280;">O copie este enlace: <br>{link}</p>
-      <p style="font-size:13px;color:#6b7280;">Fecha limite: {expires}. No necesita crear cuenta.</p>
+      <p style="font-size:13px;color:#6b7280;">{_t("supplier_questionnaires.email_copy_link", lang)} <br>{link}</p>
+      <p style="font-size:13px;color:#6b7280;">{_t("supplier_questionnaires.email_deadline", lang, expires=expires)}</p>
     </div>
     """
     # CC: cc_email del proveedor y notify_email del cuestionario
@@ -278,7 +283,7 @@ def send_questionnaire(qid: int, request: Request, db: Session = Depends(get_db)
     try:
         email_service.send_email(cfg, recipient, subject, body_html, cc=cc_addresses or None)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"No se pudo enviar el email: {exc}")
+        raise HTTPException(502, _t("supplier_questionnaires.email_send_failed", lang, error=exc))
 
     log_action(db, current_user.id, "send", "supplier_questionnaire", str(q.id),
                {"recipient": recipient, "cc": cc_addresses})
@@ -287,7 +292,7 @@ def send_questionnaire(qid: int, request: Request, db: Session = Depends(get_db)
 
 # ---- Flujo dos fases: profiling → assessment ----
 
-def _create_followup_assessment(db, profiling_q, profiling_score: int):
+def _create_followup_assessment(db, profiling_q, profiling_score: int, lang: str = "es"):
     """Crea el cuestionario de evaluacion de seguridad correspondiente al nivel de riesgo del proveedor.
 
     Selecciona la plantilla segun el score del profiling:
@@ -305,11 +310,6 @@ def _create_followup_assessment(db, profiling_q, profiling_score: int):
         "high":     "RH_TPRM_ASSESSMENT_HIGH_v1",
         "medium":   "RH_TPRM_ASSESSMENT_MEDIUM_v1",
     }
-    _LEVEL_LABELS = {
-        "critical": "Critico",
-        "high":     "Alto",
-        "medium":   "Medio",
-    }
     if profiling_score < 40:
         level = "critical"
     elif profiling_score < 66:
@@ -323,8 +323,8 @@ def _create_followup_assessment(db, profiling_q, profiling_score: int):
         raise ValueError(f"Plantilla {template_code!r} no disponible")
 
     supplier = profiling_q.supplier
-    level_label = _LEVEL_LABELS[level]
-    title = f"Evaluacion de Seguridad — {supplier.name} (Nivel {level_label})"
+    level_label = _t(f"supplier_questionnaires.level_{level}", lang)
+    title = _t("supplier_questionnaires.followup_title", lang, name=supplier.name, level=level_label)
 
     assessment_q = SupplierQuestionnaire(
         code=_next_code(db),
@@ -379,41 +379,43 @@ def _evidence_dir() -> Path:
 @router.post("/public/{token}/upload")
 async def upload_public_evidence(
     token: str,
+    request: Request,
     question_id: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     """El proveedor sube un fichero de evidencia para una pregunta (sin auth, por token)."""
+    lang = get_lang(request)
     q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.token == token).first()
     if not q:
-        raise HTTPException(404, "Enlace no valido")
+        raise HTTPException(404, _t("supplier_questionnaires.link_invalid", lang))
     now = datetime.now(timezone.utc)
     if q.expires_at and q.expires_at.replace(tzinfo=timezone.utc) < now:
-        raise HTTPException(410, "Este enlace ha expirado")
+        raise HTTPException(410, _t("supplier_questionnaires.link_expired", lang))
     if q.submitted_at:
-        raise HTTPException(409, "Este cuestionario ya fue respondido")
+        raise HTTPException(409, _t("supplier_questionnaires.already_answered", lang))
 
     # OWASP A01 — sanitizar question_id para evitar path traversal en el nombre del fichero
     question_id = re.sub(r"[^a-zA-Z0-9_\-]", "", question_id)[:64]
     if not question_id:
-        raise HTTPException(400, "question_id invalido")
+        raise HTTPException(400, _t("supplier_questionnaires.invalid_question_id", lang))
 
     fname = (file.filename or "").lower()
     ext = "." + fname.rsplit(".", 1)[-1] if "." in fname else ""
     if ext not in _EVIDENCE_EXT:
-        raise HTTPException(400, "Tipo de fichero no permitido para evidencias.")
+        raise HTTPException(400, _t("supplier_questionnaires.evidence_type_not_allowed", lang))
     content = await file.read()
     if not content:
-        raise HTTPException(400, "El fichero esta vacio.")
+        raise HTTPException(400, _t("supplier_questionnaires.file_empty", lang))
     if len(content) > _EVIDENCE_MAX_BYTES:
-        raise HTTPException(413, "El fichero supera el limite de 15 MB.")
+        raise HTTPException(413, _t("supplier_questionnaires.file_too_large", lang))
 
     # OWASP A08 — validar contenido real (magic bytes) reutilizando el validador de documentos
     try:
         from app.routers.documents import _infer_mime, _validate_magic
         mime = _infer_mime(file.filename or "", file.content_type or "")
         if not _validate_magic(mime, content):
-            raise HTTPException(400, "El contenido del fichero no coincide con su extension.")
+            raise HTTPException(400, _t("supplier_questionnaires.file_content_mismatch", lang))
     except HTTPException:
         raise
     except Exception as _magic_exc:
@@ -441,16 +443,17 @@ async def upload_public_evidence(
 # ---- Endpoints publicos (sin autenticacion) ----
 
 @router.get("/public/{token}")
-def get_public_questionnaire(token: str, db: Session = Depends(get_db)):
+def get_public_questionnaire(token: str, request: Request, db: Session = Depends(get_db)):
     """Endpoint publico: el proveedor obtiene las preguntas del cuestionario."""
+    lang = get_lang(request)
     q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.token == token).first()
     if not q:
-        raise HTTPException(404, "Enlace no valido")
+        raise HTTPException(404, _t("supplier_questionnaires.link_invalid", lang))
     now = datetime.now(timezone.utc)
     if q.expires_at and q.expires_at.replace(tzinfo=timezone.utc) < now:
-        raise HTTPException(410, "Este enlace ha expirado")
+        raise HTTPException(410, _t("supplier_questionnaires.link_expired", lang))
     if q.submitted_at:
-        raise HTTPException(409, "Este cuestionario ya fue respondido")
+        raise HTTPException(409, _t("supplier_questionnaires.already_answered", lang))
     supplier = q.supplier
     # Sanitizar: nunca exponer al proveedor las reglas de scoring, criticity ni
     # mapeo a controles internos. Si/no/partial es todo lo que ve.
@@ -470,16 +473,18 @@ def get_public_questionnaire(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/public/{token}/submit")
-def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(get_db)):
+def submit_public_questionnaire(token: str, body: dict, request: Request,
+                                db: Session = Depends(get_db)):
     """Endpoint publico: el proveedor envia sus respuestas."""
+    lang = get_lang(request)
     q = db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.token == token).first()
     if not q:
-        raise HTTPException(404, "Enlace no valido")
+        raise HTTPException(404, _t("supplier_questionnaires.link_invalid", lang))
     now = datetime.now(timezone.utc)
     if q.expires_at and q.expires_at.replace(tzinfo=timezone.utc) < now:
-        raise HTTPException(410, "Este enlace ha expirado")
+        raise HTTPException(410, _t("supplier_questionnaires.link_expired", lang))
     if q.submitted_at:
-        raise HTTPException(409, "Este cuestionario ya fue respondido")
+        raise HTTPException(409, _t("supplier_questionnaires.already_answered", lang))
     answers = body.get("answers", {})
     # TPRM: incorporar al scoring la evidencia ya subida al portal (evita la
     # penalizacion por falta de evidencia en preguntas que la requieren).
@@ -561,7 +566,7 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
         for issue in open_issues:
             issue.status = VendorIssueStatus.CLOSED
             issue.closed_at = now
-            issue.resolved_by_action = "Cuestionario respondido por el proveedor"
+            issue.resolved_by_action = _t("supplier_questionnaires.resolved_by_provider", lang)
         if open_issues:
             db.commit()
     except Exception as _e:
@@ -572,7 +577,7 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     next_title = None
     if q.phase == "profiling" and q.parent_assessment_id:
         try:
-            next_token, next_title = _create_followup_assessment(db, q, score)
+            next_token, next_title = _create_followup_assessment(db, q, score, lang)
         except Exception as _fe:
             logger.warning("No se pudo crear el cuestionario de seguimiento para Q%s: %s", q.id, _fe)
 
@@ -629,7 +634,8 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
     except Exception:
         pass
 
-    result = {"success": True, "score": score, "message": "Gracias por completar el cuestionario."}
+    result = {"success": True, "score": score,
+              "message": _t("supplier_questionnaires.thanks", lang)}
     if next_token:
         result["next_token"] = next_token
         result["next_title"] = next_title
@@ -644,28 +650,30 @@ def submit_public_questionnaire(token: str, body: dict, db: Session = Depends(ge
 def assign_internal(
     qid: int,
     body: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Asigna el cuestionario a un usuario interno de la plataforma."""
+    lang = get_lang(request)
     q = filter_by_org(
         db.query(SupplierQuestionnaire).filter(SupplierQuestionnaire.id == qid),
         SupplierQuestionnaire, current_user,
     ).first()
     if not q:
-        raise HTTPException(404, "Cuestionario no encontrado")
+        raise HTTPException(404, _t("supplier_questionnaires.not_found", lang))
     if q.submitted_at:
-        raise HTTPException(400, "El cuestionario ya ha sido respondido")
+        raise HTTPException(400, _t("supplier_questionnaires.already_submitted", lang))
 
     target_user_id = body.get("user_id")
     if not target_user_id:
-        raise HTTPException(400, "user_id requerido")
+        raise HTTPException(400, _t("supplier_questionnaires.user_id_required", lang))
     target_user = db.query(User).filter(
         User.id == target_user_id,
         User.organization_id == current_user.organization_id,
     ).first()
     if not target_user:
-        raise HTTPException(404, "Usuario no encontrado en esta organizacion")
+        raise HTTPException(404, _t("supplier_questionnaires.user_not_found_org", lang))
 
     now = datetime.now(timezone.utc)
     q.assigned_user_id = target_user.id
@@ -685,14 +693,14 @@ def assign_internal(
         if cfg and target_user.email:
             from app.services import email_service
             body_html = (
-                f"<p>Hola <strong>{target_user.full_name or target_user.email}</strong>,</p>"
-                f"<p>Se te ha asignado el cuestionario de evaluacion de proveedor "
-                f"<strong>{q.code} — {q.title}</strong>.</p>"
-                f"<p>Proveedor: <strong>{q.supplier_name}</strong></p>"
-                f"<p>Accede a la plataforma RiskHub, seccion Proveedores &gt; Cuestionarios, "
-                f"y busca <em>Mis tareas</em> para completarlo.</p>"
+                f"<p>{_t('supplier_questionnaires.assign_email_greeting', lang, name=target_user.full_name or target_user.email)}</p>"
+                f"<p>{_t('supplier_questionnaires.assign_email_body', lang, code=q.code, title=q.title)}</p>"
+                f"<p>{_t('supplier_questionnaires.assign_email_supplier', lang, supplier=q.supplier_name)}</p>"
+                f"<p>{_t('supplier_questionnaires.assign_email_howto', lang)}</p>"
             )
-            email_service.send_email(cfg, target_user.email, f"[RiskHub] Cuestionario asignado: {q.code}", body_html)
+            email_service.send_email(cfg, target_user.email,
+                                     _t("supplier_questionnaires.assign_email_subject", lang, code=q.code),
+                                     body_html)
     except Exception:
         pass
 

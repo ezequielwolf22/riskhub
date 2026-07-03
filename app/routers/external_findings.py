@@ -6,11 +6,12 @@ genericas por diseno: operan sobre cualquier ExternalFinding sin importar su `so
 forma que una fuente de hallazgos nueva (otro analisis IA, otro escaner, etc.) hereda estas
 acciones automaticamente sin tener que reimplementarlas.
 """
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import ExternalFinding, ExternalFindingSource, Incident, IncidentSeverity, IncidentStatus, User
 from app.security import check_org_access, get_current_user, require_role
 from app.services.external_findings_service import (
@@ -58,6 +59,7 @@ def _finding_out(f: ExternalFinding) -> dict:
 
 @router.post("/import")
 async def import_findings_file(
+    request: Request,
     file: UploadFile = File(...),
     source: Optional[str] = None,
     auto_create_risks: bool = True,
@@ -69,9 +71,10 @@ async def import_findings_file(
     Auto-detecta formato si no se especifica source.
     Auto-crea riesgos si severity HIGH/CRITICAL y activo encontrado.
     """
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", lang))
 
     content = await file.read()
 
@@ -80,17 +83,18 @@ async def import_findings_file(
     if not source:
         raise HTTPException(
             400,
-            "No se pudo detectar el formato. Especifica source: nessus|qualys|burp|openvas"
+            _t("external_findings.format_not_detected", lang)
         )
 
     source_lower = source.lower()
     parser = _PARSERS.get(source_lower)
     if not parser:
-        raise HTTPException(400, f"Fuente no soportada: {source}. Soportadas: {list(_PARSERS.keys())}")
+        raise HTTPException(400, _t("external_findings.source_not_supported", lang,
+                                    source=source, supported=list(_PARSERS.keys())))
 
     findings_data = parser(content)
     if not findings_data:
-        return {"message": "No se encontraron hallazgos en el archivo", "stats": {}}
+        return {"message": _t("external_findings.no_findings_in_file", lang), "stats": {}}
 
     # Mapear source string a enum
     source_enum_map = {
@@ -197,18 +201,20 @@ def findings_summary(
 @router.put("/{finding_id}/resolve")
 def resolve_finding(
     finding_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
     """Marca hallazgo como resuelto."""
     from datetime import datetime, timezone
+    lang = get_lang(request)
     f = db.get(ExternalFinding, finding_id)
     if not f or f.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("external_findings.not_found", lang))
     f.status = "resolved"
     f.resolved_at = datetime.now(timezone.utc)
     db.commit()
-    return {"message": "Hallazgo marcado como resuelto"}
+    return {"message": _t("external_findings.resolved", lang)}
 
 
 _SEVERITY_TO_INCIDENT = {
@@ -222,6 +228,7 @@ _SEVERITY_TO_INCIDENT = {
 @router.post("/{finding_id}/create-incident")
 def create_incident_from_finding(
     finding_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
 ):
@@ -229,11 +236,12 @@ def create_incident_from_finding(
     y resolucion operativa. Generico: no depende del `source` del hallazgo."""
     from app.routers.incidents import _next_code as _next_incident_code
 
+    lang = get_lang(request)
     f = db.get(ExternalFinding, finding_id)
     if not f or f.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("external_findings.not_found", lang))
     if f.incident_id:
-        raise HTTPException(400, "El hallazgo ya tiene un incidente asociado")
+        raise HTTPException(400, _t("external_findings.incident_already_linked", lang))
 
     org_id = current_user.organization_id
     inc = Incident(
@@ -253,12 +261,13 @@ def create_incident_from_finding(
     f.incident_id = inc.id
     db.commit()
     db.refresh(inc)
-    return {"message": "Incidente creado", "incident_id": inc.id, "incident_code": inc.code}
+    return {"message": _t("external_findings.incident_created", lang), "incident_id": inc.id, "incident_code": inc.code}
 
 
 @router.post("/{finding_id}/create-risk")
 def create_risk_from_finding(
     finding_id: int,
+    request: Request,
     asset_id: int = Body(..., embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
@@ -267,13 +276,14 @@ def create_risk_from_finding(
     asociandolo al activo indicado. Generico: no depende del `source` del hallazgo."""
     from app.services.risk_auto_generator import auto_generate_risk_from_finding
 
+    lang = get_lang(request)
     f = db.get(ExternalFinding, finding_id)
     if not f or f.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Hallazgo no encontrado")
+        raise HTTPException(404, _t("external_findings.not_found", lang))
     if f.risk_id:
-        raise HTTPException(400, "El hallazgo ya tiene un riesgo asociado")
+        raise HTTPException(400, _t("external_findings.risk_already_linked", lang))
     if not check_org_access(current_user.organization_id, current_user):
-        raise HTTPException(403, "Sin acceso")
+        raise HTTPException(403, _t("common.forbidden", lang))
 
     sev_map = {"CRITICAL": (4, 3), "HIGH": (3, 3), "MEDIUM": (2, 2), "LOW": (1, 2)}
     consequence, likelihood = sev_map.get((f.severity or "").upper(), (2, 2))
@@ -284,8 +294,8 @@ def create_risk_from_finding(
         inherent_consequence=consequence, inherent_likelihood=likelihood,
     )
     if not risk:
-        raise HTTPException(400, "No se pudo crear el riesgo (verifica el activo seleccionado)")
+        raise HTTPException(400, _t("external_findings.risk_create_failed", lang))
 
     f.risk_id = risk.id
     db.commit()
-    return {"message": "Riesgo creado", "risk_id": risk.id, "risk_code": risk.code}
+    return {"message": _t("external_findings.risk_created", lang), "risk_id": risk.id, "risk_code": risk.code}

@@ -1,0 +1,194 @@
+{
+  "ccm": {
+    "summary": "CCM Score: {score}/100 — {p} PASS, {w} WARNING, {f} FAIL, {s} SKIP",
+    "test_error": "Error running test: {error}",
+    "assets_owner": {
+      "name": "Assets with assigned owner",
+      "skip": "No assets registered",
+      "detail": "{ok}/{total} assets have an owner ({pct}%)",
+      "rec": "Assign an owner to {n} ownerless assets"
+    },
+    "assets_classified": {
+      "name": "Information classification on assets",
+      "empty": "No assets defined — required for ISO 27001 A.5.12 compliance",
+      "empty_rec": "Register information assets and classify them",
+      "detail": "{ok}/{total} assets classified ({pct}%)",
+      "rec": "Classify unlabelled assets (public/internal/confidential/secret)"
+    },
+    "risks_treatment": {
+      "name": "High risks with assigned treatment",
+      "ok": "No unmanaged high risks",
+      "detail": "{ok}/{total} high risks have a treatment ({pct}%)",
+      "rec": "{n} high risk(s) without treatment: {codes}"
+    },
+    "risks_tasks": {
+      "name": "Risks above appetite with active tasks",
+      "ok": "No risks above appetite without tasks",
+      "detail": "{ok}/{total} risks above appetite with active tasks ({pct}%)",
+      "rec": "Create tasks for {n} risk(s)"
+    },
+    "controls_evidence": {
+      "name": "Implemented controls with evidence",
+      "skip": "No implemented controls",
+      "detail": "{ok}/{total} controls have evidence ({pct}%)",
+      "rec": "Upload evidence for undocumented controls"
+    },
+    "policies_current": {
+      "name": "Current security policies",
+      "none": "No security policies defined",
+      "none_rec": "Create information security policies",
+      "detail": "{ok}/{total} policies current ({pct}%)",
+      "rec": "{n} policy(ies) with overdue review"
+    },
+    "incidents_resolved": {
+      "name": "Critical incident resolution",
+      "ok": "No P1/P2 incidents open for more than 3 days",
+      "detail": "{n} P1/P2 incident(s) open for more than 3 days",
+      "rec": "Escalate and resolve pending critical incidents"
+    },
+    "suppliers_reviewed": {
+      "name": "Suppliers with annual assessment",
+      "skip": "No suppliers registered",
+      "detail": "{ok}/{total} suppliers assessed in the last year ({pct}%)",
+      "rec": "Re-assess {n} supplier(s)"
+    },
+    "tasks_overdue": {
+      "name": "Treatment tasks within SLA",
+      "ok": "No pending tasks",
+      "detail": "{overdue}/{total} tasks overdue ({mora}% overdue rate)",
+      "rec": "Handle {n} overdue task(s)"
+    },
+    "evidence_fresh": {
+      "name": "Evidence freshness (< 12 months)",
+      "none": "No evidence registered",
+      "none_rec": "Upload evidence for the implemented controls",
+      "detail": "{ok}/{total} evidence items fresh ({pct}%)",
+      "rec": "{n} expired or stale evidence item(s) to renew"
+    },
+    "admin_mfa": {
+      "name": "Administrators with MFA enabled",
+      "skip": "No administrators",
+      "detail": "{ok}/{total} admins with MFA ({pct}%)",
+      "rec": "Enable MFA for all administrators"
+    },
+    "vulns_addressed": {
+      "name": "Critical vulnerabilities managed",
+      "ok": "No open unmanaged critical vulnerabilities",
+      "detail": "{n} open CRITICAL/HIGH finding(s) without an associated risk",
+      "rec": "Import findings from the scanner and generate risks"
+    },
+    "risk_appetite": {
+      "name": "Risk appetite defined",
+      "ok": "Risk appetite configured: {value}/8",
+      "detail": "Risk appetite is not defined",
+      "rec": "Set the risk appetite in the organization Context"
+    },
+    "frameworks_active": {
+      "name": "Regulatory frameworks configured",
+      "ok": "Active frameworks: {list}",
+      "detail": "No regulatory frameworks selected",
+      "rec": "Select the applicable frameworks in the Compliance section"
+    },
+    "backup_evidence": {
+      "name": "Backup evidence",
+      "ok": "Backup evidence or controls found",
+      "detail": "No backup evidence found",
+      "rec": "Upload evidence of the backup procedure (logs, screenshots, certificates)"
+    },
+    "risks_reviewed": {
+      "name": "High risks reviewed within 90 days",
+      "ok": "No open high risks",
+      "detail": "{ok}/{total} risks reviewed ({pct}%)",
+      "rec": "Review {n} risk(s) not updated in 90 days"
+    },
+    "user_inactive": {
+      "name": "Inactive users without revoked access",
+      "skip": "No active users",
+      "ok": "{total} active users, none inactive >90 days",
+      "detail": "{n} user(s) without login in >90 days",
+      "rec": "Review and disable users who have not logged in for more than 90 days"
+    },
+    "supplier_contracts": {
+      "name": "Supplier contract validity",
+      "skip": "No suppliers registered",
+      "ok": "{n} supplier(s) with valid contracts",
+      "expired": "{n} expired contract(s)",
+      "expiring": "{n} contract(s) expiring in <30 days",
+      "rec": "Renew expired or soon-to-expire contracts"
+    },
+    "gdpr_activities": {
+      "name": "Records of processing activities",
+      "ok": "{n} processing activities documented",
+      "warn": "Only {n} activity(ies) documented",
+      "warn_rec": "Document all processing activities (GDPR Art. 30)",
+      "fail": "No data processing activities documented",
+      "fail_rec": "Create the Records of Processing Activities (GDPR Art. 30)",
+      "skip": "GDPR module not available"
+    },
+    "internal_audit": {
+      "name": "Annual internal audit",
+      "ok": "{n} internal audit(s) in the last year",
+      "warn": "No completed audits, one is planned",
+      "warn_rec": "Complete the planned internal audit",
+      "fail": "No internal audits performed in the last year",
+      "fail_rec": "Plan and execute an internal ISMS audit",
+      "skip": "Audits module not available"
+    },
+    "nc_addressed": {
+      "name": "Nonconformities managed",
+      "ok": "No open nonconformities",
+      "warn": "{n} open NCs (all recent)",
+      "warn_rec": "Manage the open nonconformities",
+      "fail": "{old}/{open} open NCs not closed in >90 days",
+      "fail_rec": "Close old nonconformities with verified corrective actions",
+      "skip": "Nonconformities module not available"
+    },
+    "risk_context": {
+      "name": "Complete organizational context",
+      "fail": "No risk context configured",
+      "fail_rec": "Configure the organizational context of the ISMS",
+      "field_scope": "scope",
+      "field_boundaries": "boundaries",
+      "field_matrix": "risk matrix",
+      "field_appetite": "risk appetite",
+      "warn": "Incomplete fields: {fields}",
+      "warn_rec": "Complete all context fields in the Context section",
+      "ok": "Organizational context fully configured"
+    },
+    "tasks_assigned": {
+      "name": "Treatment tasks with an assignee",
+      "ok": "No pending tasks",
+      "detail": "{ok}/{total} tasks have an assignee ({pct}%)",
+      "rec": "Assign an owner to {n} unassigned task(s)"
+    },
+    "awareness": {
+      "name": "Awareness training (last year)",
+      "ok": "{n} awareness item(s) published in the last year",
+      "warn": "Only 1 awareness item in the last year",
+      "warn_rec": "Increase the frequency of awareness training",
+      "fail": "No awareness training published in the last year",
+      "fail_rec": "Publish information security awareness materials",
+      "skip": "Awareness module not available"
+    },
+    "ir_plan": {
+      "name": "Documented incident response plan",
+      "ok": "Incident response policy/procedure found",
+      "detail": "No incident response policy found",
+      "rec": "Create/upload the Security Incident Response Plan"
+    },
+    "asset_risk_coverage": {
+      "name": "Assets with identified risks",
+      "skip": "No assets registered",
+      "detail": "{ok}/{total} assets with risks ({pct}%)",
+      "rec": "Complete the risk analysis for uncovered assets"
+    },
+    "evidence_linked": {
+      "name": "Evidence linked to regulatory requirements",
+      "none": "No evidence registered",
+      "none_rec": "Upload evidence and link it to regulatory requirements",
+      "detail": "{ok}/{total} evidence items linked to frameworks ({pct}%)",
+      "rec": "Link more evidence to specific requirements"
+    },
+    "test_not_found": "Test '{test_id}' not found"
+  }
+}

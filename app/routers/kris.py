@@ -2,11 +2,12 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import KRI, KRIMetricType, KRIStatus, Risk, RiskStatus, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -641,18 +642,20 @@ def list_kris(
 @router.get("/{kri_id}", response_model=KRIOut)
 def get_kri(
     kri_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     kri = db.get(KRI, kri_id)
     if not kri or not check_org_access(kri.organization_id, current_user):
-        raise HTTPException(404, "KRI no encontrado")
+        raise HTTPException(404, _t("kris.not_found", get_lang(request)))
     return kri
 
 
 @router.post("", response_model=KRIOut, status_code=201)
 def create_kri(
     body: KRICreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -660,7 +663,7 @@ def create_kri(
     if body.risk_id:
         r = db.get(Risk, body.risk_id)
         if not r or not check_org_access(r.organization_id, current_user):
-            raise HTTPException(404, "Riesgo no encontrado")
+            raise HTTPException(404, _t("risks.not_found", get_lang(request)))
 
     kri = KRI(
         organization_id=org_id,
@@ -691,12 +694,13 @@ def create_kri(
 def update_kri(
     kri_id: int,
     body: KRIUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     kri = db.get(KRI, kri_id)
     if not kri or not check_org_access(kri.organization_id, current_user):
-        raise HTTPException(404, "KRI no encontrado")
+        raise HTTPException(404, _t("kris.not_found", get_lang(request)))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(kri, field, value)
     db.commit()
@@ -708,14 +712,15 @@ def update_kri(
 @router.delete("/{kri_id}", status_code=204)
 def delete_kri(
     kri_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     kri = db.get(KRI, kri_id)
     if not kri or not check_org_access(kri.organization_id, current_user):
-        raise HTTPException(404, "KRI no encontrado")
+        raise HTTPException(404, _t("kris.not_found", get_lang(request)))
     if kri.is_system:
-        raise HTTPException(400, "Los indicadores de sistema no se pueden eliminar. Puedes ocultarlos.")
+        raise HTTPException(400, _t("kris.system_not_deletable", get_lang(request)))
     log_action(db, current_user.id, "delete", "kri", str(kri_id), {"name": kri.name})
     db.delete(kri)
     db.commit()
@@ -724,13 +729,14 @@ def delete_kri(
 @router.post("/{kri_id}/evaluate", response_model=KRIOut)
 def evaluate_kri_now(
     kri_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Fuerza la evaluacion inmediata del KRI/KPI y actualiza su valor y estado."""
     kri = db.get(KRI, kri_id)
     if not kri or not check_org_access(kri.organization_id, current_user):
-        raise HTTPException(404, "KRI no encontrado")
+        raise HTTPException(404, _t("kris.not_found", get_lang(request)))
     evaluate_kri(db, kri, kri.organization_id)
     db.commit()
     db.refresh(kri)
