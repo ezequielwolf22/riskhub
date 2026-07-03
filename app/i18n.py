@@ -24,6 +24,14 @@ _DEFAULT     = "es"
 _translations: dict[str, dict] = {}
 
 
+def _deep_merge(base: dict, extra: dict) -> None:
+    for k, v in extra.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            _deep_merge(base[k], v)
+        else:
+            base[k] = v
+
+
 def _load() -> None:
     for lang in _SUPPORTED:
         path = _LOCALE_DIR / f"{lang}.json"
@@ -32,6 +40,16 @@ def _load() -> None:
                 _translations[lang] = json.load(fh)
         except FileNotFoundError:
             _translations[lang] = {}
+        # Fragmentos: app/locale/<lang>/*.json se fusionan sobre el fichero base.
+        # Permite que modulos aporten sus claves en ficheros separados.
+        frag_dir = _LOCALE_DIR / lang
+        if frag_dir.is_dir():
+            for frag in sorted(frag_dir.glob("*.json")):
+                try:
+                    with open(frag, encoding="utf-8") as fh:
+                        _deep_merge(_translations[lang], json.load(fh))
+                except (json.JSONDecodeError, OSError):
+                    continue
 
 
 _load()

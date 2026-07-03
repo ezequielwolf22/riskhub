@@ -423,10 +423,12 @@ def import_risks(
 
 @router.get("/compliance/summary")
 def compliance_summary(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Calcula puntuaciones de cumplimiento para ISO 27001, NIS2, NIST CSF y ENS."""
+    lang = get_lang(request)
     impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     total_controls = len(impls)
     implemented = sum(1 for i in impls if i.status == ControlStatus.IMPLEMENTED)
@@ -489,7 +491,11 @@ def compliance_summary(
     ens_score = round(sum(ens_components) / len(ens_components))
 
     # ---- GDPR / RGPD score (Art. 5, 25, 30, 32, 35) ----
-    dpias = filter_by_org(db.query(DPIA), DPIA, current_user).all()
+    # DPIA no tiene organization_id propio — se filtra via su ProcessingActivity
+    dpias = filter_by_org(
+        db.query(DPIA).join(ProcessingActivity, DPIA.activity_id == ProcessingActivity.id),
+        ProcessingActivity, current_user,
+    ).all()
     activities = filter_by_org(db.query(ProcessingActivity), ProcessingActivity, current_user).all()
     dpia_high_risk = [d for d in dpias if d.status != DPIAStatus.APPROVED]
     activities_without_legal_basis = sum(1 for a in activities if not a.legal_basis)
@@ -559,7 +565,7 @@ def compliance_summary(
     _tracked_gaps: dict[str, list] = {}
     for fw_code in (active_frameworks_list or []):
         try:
-            fw_status = _gfcs(db, current_user.organization_id, fw_code)
+            fw_status = _gfcs(db, current_user.organization_id, fw_code, lang)
             if "error" not in fw_status:
                 _tracked[fw_code] = fw_status["overall_pct"]
                 _tracked_gaps[fw_code] = [
@@ -590,13 +596,13 @@ def compliance_summary(
         "iso27001": {
             "score": iso_s,
             "label": "ISO/IEC 27001:2022",
-            "gaps": _gaps("iso27001", _iso_gaps(impls, risks, ncs)),
+            "gaps": _gaps("iso27001", _iso_gaps(impls, risks, ncs, lang)),
             "tracked": iso_t,
         },
         "nis2": {
             "score": nis2_s,
-            "label": "NIS2 Directiva EU 2022/2555",
-            "gaps": _gaps("nis2", _nis2_gaps(incidents, suppliers, nis2_pending)),
+            "label": _t("ai_gaps.label_nis2", lang),
+            "gaps": _gaps("nis2", _nis2_gaps(incidents, suppliers, nis2_pending, lang)),
             "tracked": nis2_t,
         },
         "nist_csf": {
@@ -615,31 +621,31 @@ def compliance_summary(
         "ens": {
             "score": ens_s,
             "label": "ENS RD 311/2022",
-            "gaps": _gaps("ens", _ens_gaps(impls, risks)),
+            "gaps": _gaps("ens", _ens_gaps(impls, risks, lang)),
             "tracked": ens_t,
         },
         "gdpr": {
             "score": gdpr_s,
             "label": "GDPR / RGPD",
-            "gaps": _gaps("gdpr", _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis)),
+            "gaps": _gaps("gdpr", _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis, lang)),
             "tracked": gdpr_t,
         },
         "pcidss": {
             "score": pci_score,
             "label": "PCI-DSS v4.0",
-            "gaps": _pcidss_gaps(impls, pci_codes, pci_impl),
+            "gaps": _pcidss_gaps(impls, pci_codes, pci_impl, lang),
             "tracked": False,
         },
         "soc2": {
             "score": soc2_s,
             "label": "SOC 2 Type II",
-            "gaps": _gaps("soc2", _soc2_gaps(impls, soc2_codes=soc2_cc_codes, soc2_impl=soc2_impl, audit_logs_ok=audit_logs_ok)),
+            "gaps": _gaps("soc2", _soc2_gaps(impls, soc2_codes=soc2_cc_codes, soc2_impl=soc2_impl, audit_logs_ok=audit_logs_ok, lang=lang)),
             "tracked": soc2_t,
         },
         "hipaa": {
             "score": hipaa_s,
             "label": "HIPAA Security Rule",
-            "gaps": _gaps("hipaa", _hipaa_gaps(impls, hipaa_codes, hipaa_impl)),
+            "gaps": _gaps("hipaa", _hipaa_gaps(impls, hipaa_codes, hipaa_impl, lang)),
             "tracked": hipaa_t,
         },
         "_meta": {
@@ -655,104 +661,104 @@ def compliance_summary(
     }
 
 
-def _iso_gaps(impls, risks, ncs) -> list[str]:
+def _iso_gaps(impls, risks, ncs, lang: str = "es") -> list[str]:
     gaps = []
     if not impls:
-        gaps.append("Sin controles ISO 27002 implementados (cl. 6.1.3)")
+        gaps.append(_t("ai_gaps.iso_no_controls", lang))
     soa_missing_reason = sum(1 for i in impls if not i.inclusion_reason)
     if soa_missing_reason > 0:
-        gaps.append(f"SOA: {soa_missing_reason} controles sin justificacion de inclusion (cl. 6.1.3)")
+        gaps.append(_t("ai_gaps.iso_soa_no_reason", lang, n=soa_missing_reason))
     soa_missing_evidence = sum(1 for i in impls if not i.evidence_refs)
     if soa_missing_evidence > 0:
-        gaps.append(f"SOA: {soa_missing_evidence} controles sin referencia de evidencia (cl. 6.1.3)")
+        gaps.append(_t("ai_gaps.iso_soa_no_evidence", lang, n=soa_missing_evidence))
     no_owner = sum(1 for r in risks if not r.owner_id and r.status not in (RiskStatus.CLOSED,))
     if no_owner > 0:
-        gaps.append(f"{no_owner} riesgos activos sin propietario asignado (cl. 6.1.2)")
+        gaps.append(_t("ai_gaps.iso_no_owner", lang, n=no_owner))
     major_open = sum(1 for n in ncs if n.severity == "major" and n.status != NCStatus.CLOSED)
     if major_open > 0:
-        gaps.append(f"{major_open} no conformidades mayores abiertas (cl. 10.1)")
+        gaps.append(_t("ai_gaps.iso_major_nc", lang, n=major_open))
     return gaps
 
 
-def _nis2_gaps(incidents, suppliers, nis2_pending) -> list[str]:
+def _nis2_gaps(incidents, suppliers, nis2_pending, lang: str = "es") -> list[str]:
     gaps = []
     if nis2_pending > 0:
-        gaps.append(f"{nis2_pending} incidentes con notificacion NIS2 pendiente (Art. 23 — plazo 72h)")
+        gaps.append(_t("ai_gaps.nis2_pending", lang, n=nis2_pending))
     if not suppliers:
-        gaps.append("Sin proveedores evaluados — riesgo de cadena de suministro no gestionado (Art. 21.2.d)")
+        gaps.append(_t("ai_gaps.nis2_no_suppliers", lang))
     no_assessment = sum(1 for s in suppliers if not s.last_assessment_at) if suppliers else 0
     if no_assessment > 0:
-        gaps.append(f"{no_assessment} proveedores sin evaluacion completada (Art. 21.2.d)")
+        gaps.append(_t("ai_gaps.nis2_no_assessment", lang, n=no_assessment))
     return gaps
 
 
-def _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis) -> list[str]:
+def _gdpr_gaps(activities, dpias, dpia_high_risk, activities_without_legal_basis, lang: str = "es") -> list[str]:
     gaps = []
     if not activities:
-        gaps.append("Sin actividades de tratamiento registradas (Art. 30 RGPD — obligatorio)")
+        gaps.append(_t("ai_gaps.gdpr_no_activities", lang))
     if activities_without_legal_basis > 0:
-        gaps.append(f"{activities_without_legal_basis} actividad(es) sin base legal documentada (Art. 6 RGPD)")
+        gaps.append(_t("ai_gaps.gdpr_no_legal_basis", lang, n=activities_without_legal_basis))
     if dpia_high_risk:
-        gaps.append(f"{len(dpia_high_risk)} DPIA(s) pendiente(s) de aprobacion para tratamientos de alto riesgo (Art. 35)")
+        gaps.append(_t("ai_gaps.gdpr_dpia_pending", lang, n=len(dpia_high_risk)))
     if not dpias:
-        gaps.append("Sin evaluaciones de impacto (DPIA) registradas — requeridas para tratamientos de alto riesgo")
+        gaps.append(_t("ai_gaps.gdpr_no_dpias", lang))
     return gaps
 
 
-def _pcidss_gaps(impls, pci_codes, pci_impl) -> list[str]:
+def _pcidss_gaps(impls, pci_codes, pci_impl, lang: str = "es") -> list[str]:
     gaps = []
     missing = len(pci_codes) - pci_impl
     if missing > 0:
-        gaps.append(f"{missing} control(es) PCI-DSS clave no implementado(s) (acceso, cifrado, parcheo)")
+        gaps.append(_t("ai_gaps.pci_missing", lang, n=missing))
     no_encryption = not any(ci.control and ci.control.code == "8.24"
                              and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
     if no_encryption:
-        gaps.append("Cifrado de datos en reposo/transito no confirmado (Req. 3, 4 PCI-DSS v4.0)")
+        gaps.append(_t("ai_gaps.pci_no_encryption", lang))
     no_access = not any(ci.control and ci.control.code in ("8.5", "8.6")
                          and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
     if no_access:
-        gaps.append("Control de acceso a datos de tarjeta no documentado (Req. 7, 8 PCI-DSS v4.0)")
+        gaps.append(_t("ai_gaps.pci_no_access", lang))
     return gaps
 
 
-def _soc2_gaps(impls, soc2_codes, soc2_impl, audit_logs_ok) -> list[str]:
+def _soc2_gaps(impls, soc2_codes, soc2_impl, audit_logs_ok, lang: str = "es") -> list[str]:
     gaps = []
     missing = len(soc2_codes) - soc2_impl
     if missing > 0:
-        gaps.append(f"{missing} criterio(s) de control comun (CC) SOC 2 sin implementar")
+        gaps.append(_t("ai_gaps.soc2_missing", lang, n=missing))
     if not audit_logs_ok:
-        gaps.append("Logs de auditoria no implementados — requerido para CC7 (Monitoring Activities)")
+        gaps.append(_t("ai_gaps.soc2_no_logs", lang))
     mfa_ok = any(ci.control and ci.control.code == "5.17"
                  and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
     if not mfa_ok:
-        gaps.append("MFA/autenticacion fuerte no confirmada (CC6 — Logical and Physical Access Controls)")
+        gaps.append(_t("ai_gaps.soc2_no_mfa", lang))
     return gaps
 
 
-def _hipaa_gaps(impls, hipaa_codes, hipaa_impl) -> list[str]:
+def _hipaa_gaps(impls, hipaa_codes, hipaa_impl, lang: str = "es") -> list[str]:
     gaps = []
     missing = len(hipaa_codes) - hipaa_impl
     if missing > 0:
-        gaps.append(f"{missing} salvaguarda(s) HIPAA Security Rule sin implementar")
+        gaps.append(_t("ai_gaps.hipaa_missing", lang, n=missing))
     no_backup = not any(ci.control and ci.control.code == "8.13"
                          and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
     if no_backup:
-        gaps.append("Plan de contingencia/backup no implementado (§ 164.312.a.2.ii HIPAA)")
+        gaps.append(_t("ai_gaps.hipaa_no_backup", lang))
     no_audit = not any(ci.control and ci.control.code == "8.15"
                         and ci.status == ControlStatus.IMPLEMENTED for ci in impls)
     if no_audit:
-        gaps.append("Controles de audit log no implementados (§ 164.312.b HIPAA)")
+        gaps.append(_t("ai_gaps.hipaa_no_audit", lang))
     return gaps
 
 
-def _ens_gaps(impls, risks) -> list[str]:
+def _ens_gaps(impls, risks, lang: str = "es") -> list[str]:
     gaps = []
     not_implemented = sum(1 for i in impls if i.status == ControlStatus.NOT_IMPLEMENTED)
     if not_implemented > 0:
-        gaps.append(f"{not_implemented} controles no implementados (Anexo II ENS)")
+        gaps.append(_t("ai_gaps.ens_not_implemented", lang, n=not_implemented))
     no_review = sum(1 for i in impls if not i.next_review)
     if no_review > 0:
-        gaps.append(f"{no_review} controles sin fecha de revision programada")
+        gaps.append(_t("ai_gaps.ens_no_review", lang, n=no_review))
     return gaps
 
 

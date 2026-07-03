@@ -4,6 +4,8 @@ import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
+
 logger = logging.getLogger("riskhub.bcm_checklist")
 
 SYSTEM_PROMPT = """Eres un experto en continuidad de negocio ISO 22301.
@@ -34,7 +36,8 @@ Reglas:
 """
 
 
-def extract_plan_checklist(db: Session, plan, api_key: str, model: str) -> list:
+def extract_plan_checklist(db: Session, plan, api_key: str, model: str,
+                           lang: str = "es") -> list:
     """
     Llama a Claude para extraer el checklist de acciones del plan.
     Devuelve lista de items o [] si falla.
@@ -44,18 +47,18 @@ def extract_plan_checklist(db: Session, plan, api_key: str, model: str) -> list:
         from app.models import AiDocument, AiDocumentChunk
 
         if not plan.document_id:
-            return _default_checklist(plan)
+            return _default_checklist(plan, lang)
 
         doc = db.get(AiDocument, plan.document_id)
         if not doc:
-            return _default_checklist(plan)
+            return _default_checklist(plan, lang)
 
         chunks = db.query(AiDocumentChunk).filter_by(
             document_id=doc.id
         ).order_by(AiDocumentChunk.chunk_index).all()
 
         if not chunks:
-            return _default_checklist(plan)
+            return _default_checklist(plan, lang)
 
         # Concatenar chunks (max ~6000 chars para no disparar tokens)
         text = "\n".join(c.content for c in chunks)[:6000]

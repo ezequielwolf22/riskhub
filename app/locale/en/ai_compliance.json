@@ -1,0 +1,28 @@
+{
+  "ai_gaps": {
+    "label_nis2": "NIS2 Directive (EU) 2022/2555",
+    "iso_no_controls": "No ISO 27002 controls implemented (cl. 6.1.3)",
+    "iso_soa_no_reason": "SoA: {n} controls without inclusion justification (cl. 6.1.3)",
+    "iso_soa_no_evidence": "SoA: {n} controls without evidence reference (cl. 6.1.3)",
+    "iso_no_owner": "{n} active risks without an assigned owner (cl. 6.1.2)",
+    "iso_major_nc": "{n} open major nonconformities (cl. 10.1)",
+    "nis2_pending": "{n} incidents with pending NIS2 notification (Art. 23 — 72h deadline)",
+    "nis2_no_suppliers": "No suppliers assessed — supply chain risk not managed (Art. 21.2.d)",
+    "nis2_no_assessment": "{n} suppliers without a completed assessment (Art. 21.2.d)",
+    "gdpr_no_activities": "No processing activities recorded (Art. 30 GDPR — mandatory)",
+    "gdpr_no_legal_basis": "{n} activity(ies) without a documented legal basis (Art. 6 GDPR)",
+    "gdpr_dpia_pending": "{n} DPIA(s) pending approval for high-risk processing (Art. 35)",
+    "gdpr_no_dpias": "No data protection impact assessments (DPIA) recorded — required for high-risk processing",
+    "pci_missing": "{n} key PCI-DSS control(s) not implemented (access, encryption, patching)",
+    "pci_no_encryption": "Encryption of data at rest/in transit not confirmed (Req. 3, 4 PCI-DSS v4.0)",
+    "pci_no_access": "Cardholder data access control not documented (Req. 7, 8 PCI-DSS v4.0)",
+    "soc2_missing": "{n} SOC 2 common criteria (CC) not implemented",
+    "soc2_no_logs": "Audit logs not implemented — required for CC7 (Monitoring Activities)",
+    "soc2_no_mfa": "MFA/strong authentication not confirmed (CC6 — Logical and Physical Access Controls)",
+    "hipaa_missing": "{n} HIPAA Security Rule safeguard(s) not implemented",
+    "hipaa_no_backup": "Contingency/backup plan not implemented (§ 164.312.a.2.ii HIPAA)",
+    "hipaa_no_audit": "Audit log controls not implemented (§ 164.312.b HIPAA)",
+    "ens_not_implemented": "{n} controls not implemented (ENS Annex II)",
+    "ens_no_review": "{n} controls without a scheduled review date"
+  }
+}

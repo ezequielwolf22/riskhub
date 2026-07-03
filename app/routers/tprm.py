@@ -199,16 +199,16 @@ def recompute_all(db: Session = Depends(get_db),
 # ---------- Biblioteca de plantillas del sistema (§4.4) ----------
 
 @router.get("/questionnaire-templates")
-def list_questionnaire_templates(current_user: User = Depends(get_current_user)):
+def list_questionnaire_templates(request: Request, current_user: User = Depends(get_current_user)):
     """Lista las plantillas de cuestionario del sistema (clonables)."""
-    return tprm_templates.list_templates()
+    return tprm_templates.list_templates(get_lang(request))
 
 
 @router.get("/questionnaire-templates/{code}")
 def get_questionnaire_template(code: str, request: Request, current_user: User = Depends(get_current_user)):
     """Devuelve la estructura completa de una plantilla del sistema."""
     lang = get_lang(request)
-    tpl = tprm_templates.get_template(code)
+    tpl = tprm_templates.get_template(code, lang)
     if not tpl:
         raise HTTPException(404, _t("tprm.template_not_found", lang))
     return tpl
@@ -248,7 +248,7 @@ def create_custom_template(body: TPRMTemplateCreate, request: Request, db: Sessi
     questions = body.questions
     created_from = None
     if body.from_system_code:
-        sys_tpl = tprm_templates.get_template(body.from_system_code)
+        sys_tpl = tprm_templates.get_template(body.from_system_code, lang)
         if not sys_tpl:
             raise HTTPException(404, _t("tprm.template_not_found", lang))
         created_from = sys_tpl["code"]

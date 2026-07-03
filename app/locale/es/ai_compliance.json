@@ -1,0 +1,28 @@
+{
+  "ai_gaps": {
+    "label_nis2": "NIS2 Directiva EU 2022/2555",
+    "iso_no_controls": "Sin controles ISO 27002 implementados (cl. 6.1.3)",
+    "iso_soa_no_reason": "SOA: {n} controles sin justificacion de inclusion (cl. 6.1.3)",
+    "iso_soa_no_evidence": "SOA: {n} controles sin referencia de evidencia (cl. 6.1.3)",
+    "iso_no_owner": "{n} riesgos activos sin propietario asignado (cl. 6.1.2)",
+    "iso_major_nc": "{n} no conformidades mayores abiertas (cl. 10.1)",
+    "nis2_pending": "{n} incidentes con notificacion NIS2 pendiente (Art. 23 — plazo 72h)",
+    "nis2_no_suppliers": "Sin proveedores evaluados — riesgo de cadena de suministro no gestionado (Art. 21.2.d)",
+    "nis2_no_assessment": "{n} proveedores sin evaluacion completada (Art. 21.2.d)",
+    "gdpr_no_activities": "Sin actividades de tratamiento registradas (Art. 30 RGPD — obligatorio)",
+    "gdpr_no_legal_basis": "{n} actividad(es) sin base legal documentada (Art. 6 RGPD)",
+    "gdpr_dpia_pending": "{n} DPIA(s) pendiente(s) de aprobacion para tratamientos de alto riesgo (Art. 35)",
+    "gdpr_no_dpias": "Sin evaluaciones de impacto (DPIA) registradas — requeridas para tratamientos de alto riesgo",
+    "pci_missing": "{n} control(es) PCI-DSS clave no implementado(s) (acceso, cifrado, parcheo)",
+    "pci_no_encryption": "Cifrado de datos en reposo/transito no confirmado (Req. 3, 4 PCI-DSS v4.0)",
+    "pci_no_access": "Control de acceso a datos de tarjeta no documentado (Req. 7, 8 PCI-DSS v4.0)",
+    "soc2_missing": "{n} criterio(s) de control comun (CC) SOC 2 sin implementar",
+    "soc2_no_logs": "Logs de auditoria no implementados — requerido para CC7 (Monitoring Activities)",
+    "soc2_no_mfa": "MFA/autenticacion fuerte no confirmada (CC6 — Logical and Physical Access Controls)",
+    "hipaa_missing": "{n} salvaguarda(s) HIPAA Security Rule sin implementar",
+    "hipaa_no_backup": "Plan de contingencia/backup no implementado (§ 164.312.a.2.ii HIPAA)",
+    "hipaa_no_audit": "Controles de audit log no implementados (§ 164.312.b HIPAA)",
+    "ens_not_implemented": "{n} controles no implementados (Anexo II ENS)",
+    "ens_no_review": "{n} controles sin fecha de revision programada"
+  }
+}
