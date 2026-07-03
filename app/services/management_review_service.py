@@ -3,6 +3,7 @@
 Auto-popula los inputs del Annexo 9.3.2 desde la BD y genera el acta PDF.
 """
 import logging
+from app.i18n import t as _t
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -207,7 +208,7 @@ def prepare_monthly_review(db: Session, org_id: int):
     return mr
 
 
-def generate_minutes_pdf(mr) -> bytes:
+def generate_minutes_pdf(mr, lang: str = "es") -> bytes:
     """Genera el PDF del acta de la Management Review con ReportLab."""
     try:
         from reportlab.lib.pagesizes import A4
@@ -234,16 +235,16 @@ def generate_minutes_pdf(mr) -> bytes:
         small = ParagraphStyle("small", parent=normal, fontSize=9, leading=12)
 
         now_str = datetime.now().strftime("%d/%m/%Y")
-        review_date = mr.review_date.strftime("%d/%m/%Y") if mr.review_date else "Por determinar"
+        review_date = mr.review_date.strftime("%d/%m/%Y") if mr.review_date else _t("management_review.pdf_tbd", lang)
 
         story = [
-            Paragraph("ACTA DE REVISION POR LA DIRECCION", title_style),
-            Paragraph("ISO/IEC 27001:2022 — Clausula 9.3", h2_style),
+            Paragraph(_t("management_review.pdf_title", lang), title_style),
+            Paragraph(_t("management_review.pdf_std", lang), h2_style),
             Spacer(1, 0.5*cm),
-            Paragraph(f"<b>Codigo:</b> {mr.code or '-'}", normal),
-            Paragraph(f"<b>Fecha de revision:</b> {review_date}", normal),
-            Paragraph(f"<b>Estado:</b> {(mr.status or 'draft').upper()}", normal),
-            Paragraph(f"<b>Documento generado:</b> {now_str}", normal),
+            Paragraph(_t("management_review.pdf_code", lang, code=mr.code or '-'), normal),
+            Paragraph(_t("management_review.pdf_date", lang, date=review_date), normal),
+            Paragraph(_t("management_review.pdf_status", lang, status=(mr.status or 'draft').upper()), normal),
+            Paragraph(_t("management_review.pdf_generated", lang, date=now_str), normal),
         ]
 
         # Asistentes
@@ -253,15 +254,15 @@ def generate_minutes_pdf(mr) -> bytes:
                 a.get("name", a) if isinstance(a, dict) else str(a)
                 for a in attendees
             )
-            story.append(Paragraph(f"<b>Asistentes:</b> {names}", normal))
+            story.append(Paragraph(_t("management_review.pdf_attendees", lang, names=names), normal))
         story.append(Spacer(1, 0.5*cm))
 
         # Entradas ISO 9.3.2
-        story.append(Paragraph("ENTRADAS (ISO 9.3.2)", h2_style))
+        story.append(Paragraph(_t("management_review.pdf_inputs", lang), h2_style))
 
         # 9.3.2.a — Acciones previas
         if mr.input_previous_actions:
-            story.append(Paragraph("<b>a) Seguimiento acciones anteriores:</b>", small))
+            story.append(Paragraph(_t("management_review.pdf_prev_actions", lang), small))
             for item in mr.input_previous_actions:
                 dec = item.get("decision", "") if isinstance(item, dict) else str(item)
                 ref = item.get("mr_code", "") if isinstance(item, dict) else ""
@@ -270,7 +271,7 @@ def generate_minutes_pdf(mr) -> bytes:
 
         # 9.3.2.b — Cambios en el contexto
         if mr.input_changes_context:
-            story.append(Paragraph("<b>b) Cambios en contexto del SGSI:</b>", small))
+            story.append(Paragraph(_t("management_review.pdf_context_changes", lang), small))
             for line in mr.input_changes_context.split("\n"):
                 if line.strip():
                     story.append(Paragraph(f"  {line}", small))
@@ -278,22 +279,22 @@ def generate_minutes_pdf(mr) -> bytes:
 
         # 9.3.2.e — Desempeno del SGSI (KPIs)
         if mr.input_performance_data:
-            story.append(Paragraph("<b>e) Desempeno e indicadores del SGSI:</b>", small))
+            story.append(Paragraph(_t("management_review.pdf_kpis", lang), small))
             kpis = mr.input_performance_data
 
             KPI_LABELS = {
-                "total_risks": "Riesgos totales",
-                "critical_risks": "Riesgos criticos (>= 7)",
-                "high_risks": "Riesgos altos (5-6)",
-                "accepted_risks": "Riesgos aceptados",
-                "controls_implemented": "Controles implementados",
-                "controls_total": "Controles totales",
-                "avg_control_maturity": "Madurez media controles",
-                "open_incidents": "Incidentes abiertos",
-                "closed_incidents_month": "Incidentes cerrados este mes",
-                "policies_overdue_review": "Politicas con revision vencida",
+                "total_risks": _t("management_review.kpi_total_risks", lang),
+                "critical_risks": _t("management_review.kpi_critical_risks", lang),
+                "high_risks": _t("management_review.kpi_high_risks", lang),
+                "accepted_risks": _t("management_review.kpi_accepted_risks", lang),
+                "controls_implemented": _t("management_review.kpi_controls_impl", lang),
+                "controls_total": _t("management_review.kpi_controls_total", lang),
+                "avg_control_maturity": _t("management_review.kpi_maturity", lang),
+                "open_incidents": _t("management_review.kpi_incidents_open", lang),
+                "closed_incidents_month": _t("management_review.kpi_incidents_closed", lang),
+                "policies_overdue_review": _t("management_review.kpi_policies_overdue", lang),
             }
-            data = [["Indicador", "Valor"]]
+            data = [[_t("management_review.col_indicator", lang), _t("management_review.col_value", lang)]]
             for k, v in kpis.items():
                 if k != "generated_at":
                     label = KPI_LABELS.get(k, k.replace("_", " ").title())
@@ -311,8 +312,8 @@ def generate_minutes_pdf(mr) -> bytes:
 
         # Top riesgos residuales
         if mr.input_risk_register:
-            story.append(Paragraph("<b>Registro de riesgos — Top residuales:</b>", small))
-            risk_data = [["Codigo", "Activo", "Amenaza", "Nivel", "Estado"]]
+            story.append(Paragraph(_t("management_review.pdf_top_risks", lang), small))
+            risk_data = [[_t("management_review.col_code", lang), _t("management_review.col_asset", lang), _t("management_review.col_threat", lang), _t("management_review.col_level", lang), _t("management_review.col_status", lang)]]
             for r in (mr.input_risk_register or []):
                 risk_data.append([
                     r.get("code", "-"),
@@ -336,42 +337,43 @@ def generate_minutes_pdf(mr) -> bytes:
         if mr.input_nc_corrections:
             nc = mr.input_nc_corrections
             story.append(Paragraph(
-                f"<b>No conformidades:</b> Abiertas: {nc.get('open', 0)} | "
-                f"Cerradas este mes: {nc.get('closed_this_month', 0)}", small
+                _t("management_review.pdf_ncs", lang,
+                   open=nc.get('open', 0), closed=nc.get('closed_this_month', 0)), small
             ))
             story.append(Spacer(1, 0.2*cm))
 
         # Resultados de auditorias
         if mr.input_audit_results:
-            story.append(Paragraph("<b>Resultados de auditorias:</b>", small))
+            story.append(Paragraph(_t("management_review.pdf_audit_results", lang), small))
             for a in mr.input_audit_results:
                 story.append(Paragraph(
-                    f"  - [{a.get('code', '')}] {a.get('title', '')} — {a.get('finding_count', 0)} hallazgos", small
+                    _t("management_review.pdf_audit_line", lang,
+                       code=a.get('code', ''), title=a.get('title', ''), findings=a.get('finding_count', 0)), small
                 ))
             story.append(Spacer(1, 0.3*cm))
 
         # Salidas ISO 9.3.3
-        story.append(Paragraph("SALIDAS (ISO 9.3.3)", h2_style))
+        story.append(Paragraph(_t("management_review.pdf_outputs", lang), h2_style))
         if mr.output_decisions:
-            story.append(Paragraph("<b>Decisiones y acciones formales adoptadas:</b>", small))
+            story.append(Paragraph(_t("management_review.pdf_decisions", lang), small))
             for d in (mr.output_decisions or []):
                 text = d.get("decision", "") if isinstance(d, dict) else str(d)
                 story.append(Paragraph(f"  - {text}", small))
         else:
-            story.append(Paragraph("(Pendiente de completar por la Direccion)", small))
+            story.append(Paragraph(_t("management_review.pdf_pending_mgmt", lang), small))
 
         if mr.output_resources:
             story.append(Spacer(1, 0.2*cm))
-            story.append(Paragraph(f"<b>Recursos aprobados:</b> {mr.output_resources}", small))
+            story.append(Paragraph(_t("management_review.pdf_resources", lang, resources=mr.output_resources), small))
 
         if mr.output_objectives:
             story.append(Spacer(1, 0.2*cm))
-            story.append(Paragraph("<b>Objetivos de mejora:</b>", small))
+            story.append(Paragraph(_t("management_review.pdf_objectives", lang), small))
             for obj in (mr.output_objectives or []):
                 story.append(Paragraph(f"  - {obj}", small))
 
         story.append(Spacer(1, 1*cm))
-        story.append(Paragraph("Firma del Responsable: ____________________________", normal))
+        story.append(Paragraph(_t("management_review.pdf_signature", lang), normal))
 
         doc.build(story)
         return buf.getvalue()

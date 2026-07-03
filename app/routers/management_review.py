@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from app.database import get_db
 from app.models import ManagementReview, User
+from app.i18n import get_lang, t as _t
 from app.security import get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
 
@@ -103,18 +104,20 @@ def create_review(
 
 @router.get("/{mr_id}")
 def get_review(
+    request: Request,
     mr_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     mr = db.get(ManagementReview, mr_id)
     if not mr or mr.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Revision no encontrada")
+        raise HTTPException(404, _t("management_review.not_found", get_lang(request)))
     return _mr_to_dict(mr)
 
 
 @router.patch("/{mr_id}")
 def update_review(
+    request: Request,
     mr_id: int,
     body: MRUpdate,
     db: Session = Depends(get_db),
@@ -122,10 +125,10 @@ def update_review(
 ):
     mr = db.get(ManagementReview, mr_id)
     if not mr or mr.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Revision no encontrada")
+        raise HTTPException(404, _t("management_review.not_found", get_lang(request)))
 
     if mr.status == "approved":
-        raise HTTPException(400, "No se puede modificar una revision ya aprobada")
+        raise HTTPException(400, _t("management_review.cannot_modify_approved", get_lang(request)))
 
     if body.review_date is not None:
         try:
@@ -152,6 +155,7 @@ def update_review(
 
 @router.post("/{mr_id}/conduct")
 def conduct_review(
+    request: Request,
     mr_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
@@ -159,9 +163,9 @@ def conduct_review(
     """Marca la revision como celebrada."""
     mr = db.get(ManagementReview, mr_id)
     if not mr or mr.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Revision no encontrada")
+        raise HTTPException(404, _t("management_review.not_found", get_lang(request)))
     if mr.status not in ("draft",):
-        raise HTTPException(400, f"Estado actual '{mr.status}' no permite esta transicion")
+        raise HTTPException(400, _t("management_review.invalid_state", get_lang(request), status=mr.status))
 
     mr.status = "conducted"
     db.commit()
@@ -171,6 +175,7 @@ def conduct_review(
 
 @router.post("/{mr_id}/approve")
 def approve_review(
+    request: Request,
     mr_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
@@ -178,17 +183,17 @@ def approve_review(
     """Admin aprueba la revision y congela el acta."""
     mr = db.get(ManagementReview, mr_id)
     if not mr or mr.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Revision no encontrada")
+        raise HTTPException(404, _t("management_review.not_found", get_lang(request)))
     if mr.status not in ("conducted", "draft"):
-        raise HTTPException(400, "Solo se pueden aprobar revisiones en estado 'conducted' o 'draft'")
+        raise HTTPException(400, _t("management_review.only_draft_approvable", get_lang(request), status="conducted/draft"))
 
     # Validar campos obligatorios ISO 9.3.3
     if not mr.review_date:
-        raise HTTPException(422, "La fecha de revisión es obligatoria (ISO 9.3.3)")
+        raise HTTPException(422, _t("management_review.review_date_required", get_lang(request)))
     if not mr.output_decisions:
-        raise HTTPException(422, "Las decisiones de salida son obligatorias (ISO 9.3.3)")
+        raise HTTPException(422, _t("management_review.decisions_required", get_lang(request)))
     if not mr.attendees:
-        raise HTTPException(422, "Los asistentes son obligatorios para la validez del acta (ISO 9.3.3)")
+        raise HTTPException(422, _t("management_review.attendees_required", get_lang(request)))
 
     mr.status = "approved"
     mr.approved_by_id = current_user.id
@@ -200,6 +205,7 @@ def approve_review(
 
 @router.get("/{mr_id}/pdf")
 def download_pdf(
+    request: Request,
     mr_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
@@ -207,12 +213,12 @@ def download_pdf(
     """Genera y descarga el acta PDF de la revision."""
     mr = db.get(ManagementReview, mr_id)
     if not mr or mr.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Revision no encontrada")
+        raise HTTPException(404, _t("management_review.not_found", get_lang(request)))
 
     from app.services.management_review_service import generate_minutes_pdf
-    pdf_bytes = generate_minutes_pdf(mr)
+    pdf_bytes = generate_minutes_pdf(mr, get_lang(request))
     if not pdf_bytes:
-        raise HTTPException(500, "Error generando PDF")
+        raise HTTPException(500, _t("management_review.pdf_error", get_lang(request)))
 
     return Response(
         content=pdf_bytes,
