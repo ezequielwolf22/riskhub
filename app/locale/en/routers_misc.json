@@ -78,5 +78,17 @@
     "invalid_item": "Invalid item identifier",
     "already_dismissed": "The item was already dismissed",
     "item_not_found_generic": "Item not found"
+  },
+  "audit": {
+    "admins_only": "Only administrators can query the audit log"
+  },
+  "portal": {
+    "rate_limited": "Too many requests. Try again in a minute.",
+    "config_saved": "Trust Portal configuration saved",
+    "share_hint": "Share this URL with your external auditor. Read-only access.",
+    "not_found": "Portal not found",
+    "not_available": "Portal not available",
+    "org_fallback": "Organization",
+    "auditor_not_found": "Auditor portal not found"
   }
 }

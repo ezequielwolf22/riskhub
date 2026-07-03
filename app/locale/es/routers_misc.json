@@ -78,5 +78,17 @@
     "invalid_item": "Identificador de item no valido",
     "already_dismissed": "El item ya fue descartado",
     "item_not_found_generic": "Item no encontrado"
+  },
+  "audit": {
+    "admins_only": "Solo administradores pueden consultar el log de auditoria"
+  },
+  "portal": {
+    "rate_limited": "Demasiadas solicitudes. Intenta de nuevo en un minuto.",
+    "config_saved": "Configuración del Trust Portal guardada",
+    "share_hint": "Comparte esta URL con tu auditor externo. Acceso de solo lectura.",
+    "not_found": "Portal no encontrado",
+    "not_available": "Portal no disponible",
+    "org_fallback": "Organización",
+    "auditor_not_found": "Portal de auditor no encontrado"
   }
 }

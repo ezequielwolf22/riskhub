@@ -4,13 +4,14 @@ import io
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import AuditLog, User, UserRole
+from app.i18n import get_lang, t as _t
 from app.security import get_current_user
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -32,9 +33,9 @@ class AuditPage(BaseModel):
     items: List[AuditEntryOut]
 
 
-def _require_admin(current_user: User = Depends(get_current_user)):
+def _require_admin(request: Request, current_user: User = Depends(get_current_user)):
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
-        raise HTTPException(403, "Solo administradores pueden consultar el log de auditoria")
+        raise HTTPException(403, _t("audit.admins_only", get_lang(request)))
     return current_user
 
 
@@ -301,6 +302,7 @@ def export_csv(
 
 @router.get("/audit-package")
 def download_audit_package(
+    request: Request,
     include_evidence_files: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(_require_admin),
@@ -314,7 +316,7 @@ def download_audit_package(
 
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
 
     zip_bytes = generate_audit_package(db, org_id, current_user, include_evidence_files)
     fname = f"riskhub_audit_package_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
@@ -327,6 +329,7 @@ def download_audit_package(
 
 @router.get("/framework-package/{framework_code}")
 def download_framework_audit_package(
+    request: Request,
     framework_code: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(_require_admin),
@@ -340,7 +343,7 @@ def download_framework_audit_package(
 
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
 
     try:
         zip_bytes = generate_framework_audit_package(db, org_id, framework_code, current_user)

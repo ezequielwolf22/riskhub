@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import IntegrationConfig, RiskContext, User
+from app.i18n import get_lang, t as _t
 from app.security import decrypt_secret, encrypt_secret, get_current_user, require_admin
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
@@ -31,7 +32,7 @@ def _portal_rate_limit(request: Request) -> None:
     with _portal_rl_lock:
         _portal_rl[ip] = [t for t in _portal_rl[ip] if now - t < _PORTAL_WINDOW]
         if len(_portal_rl[ip]) >= _PORTAL_MAX_REQ:
-            raise HTTPException(429, "Demasiadas solicitudes. Intenta de nuevo en un minuto.")
+            raise HTTPException(429, _t("portal.rate_limited", get_lang(request)))
         _portal_rl[ip].append(now)
 
 # ─── Helpers token ─────────────────────────────────────────────────────────────
@@ -126,11 +127,11 @@ def get_trust_config(db: Session = Depends(get_db),
 
 
 @router.put("/trust/config")
-def save_trust_config(body: TrustPortalConfig,
+def save_trust_config(request: Request, body: TrustPortalConfig,
                       db: Session = Depends(get_db),
                       current_user: User = Depends(require_admin)):
     _save_portal_config(db, current_user.organization_id, body.model_dump())
-    return {"message": "Configuración del Trust Portal guardada"}
+    return {"message": _t("portal.config_saved", get_lang(request))}
 
 
 @router.post("/trust/regenerate-token")
@@ -154,14 +155,14 @@ def regenerate_trust_token(db: Session = Depends(get_db),
 
 
 @router.get("/auditor/config")
-def get_auditor_config(db: Session = Depends(get_db),
+def get_auditor_config(request: Request, db: Session = Depends(get_db),
                        current_user: User = Depends(require_admin)):
     org_id = current_user.organization_id
     token = _get_or_create_token(db, org_id, "auditor")
     return {
         "token": token,
         "auditor_url": f"/portal/auditor/{org_id}/{token}",
-        "note": "Comparte esta URL con tu auditor externo. Acceso de solo lectura.",
+        "note": _t("portal.share_hint", get_lang(request)),
     }
 
 
@@ -191,14 +192,14 @@ def get_trust_data(org_id: int, token: str, request: Request, db: Session = Depe
     """API pública del trust portal. Sin auth — acceso solo con token."""
     _portal_rate_limit(request)
     if not _verify_token(db, org_id, "trust", token):
-        raise HTTPException(404, "Portal no encontrado")
+        raise HTTPException(404, _t("portal.not_found", get_lang(request)))
 
     cfg = _get_portal_config(db, org_id)
     if not cfg.get("enabled", True):
-        raise HTTPException(404, "Portal no disponible")
+        raise HTTPException(404, _t("portal.not_available", get_lang(request)))
 
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
-    org_name = ctx.organization_name if ctx else "Organización"
+    org_name = ctx.organization_name if ctx else _t("portal.org_fallback", get_lang(request))
     active_frameworks = (ctx.active_frameworks or []) if ctx else []
 
     result = {
@@ -254,7 +255,7 @@ def get_auditor_data(
     """API del auditor portal. Solo lectura — acceso por token."""
     _portal_rate_limit(request)
     if not _verify_token(db, org_id, "auditor", token):
-        raise HTTPException(404, "Portal de auditor no encontrado")
+        raise HTTPException(404, _t("portal.auditor_not_found", get_lang(request)))
 
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     active_frameworks = (ctx.active_frameworks or []) if ctx else []
