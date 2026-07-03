@@ -187,7 +187,7 @@ def _send_nis2_deadline_alert(email_service, cfg, recipient: str, notif, hours_l
         logger.debug("Error enviando alerta NIS2: %s", exc)
 
 
-def generate_nis2_pdf(notif) -> bytes:
+def generate_nis2_pdf(notif, lang: str = "es") -> bytes:
     """Genera PDF de la notificacion NIS2 en formato compatible ENISA."""
     try:
         from reportlab.lib.pagesizes import A4
@@ -205,26 +205,26 @@ def generate_nis2_pdf(notif) -> bytes:
         ORANGE = colors.HexColor("#D65200")
         normal = styles["Normal"]
 
-        stage_label = NIS2_STAGE_LABELS.get(notif.stage, notif.stage)
+        stage_label = nis2_stage_label(notif.stage, lang)
         deadline_str = notif.deadline_at.strftime("%d/%m/%Y %H:%M") if notif.deadline_at else "-"
-        submitted_str = notif.submitted_at.strftime("%d/%m/%Y %H:%M") if notif.submitted_at else "Pendiente"
+        submitted_str = notif.submitted_at.strftime("%d/%m/%Y %H:%M") if notif.submitted_at else _t("nis2.pdf_pending", lang)
 
         h1 = ParagraphStyle("H1", parent=styles["Heading1"], textColor=PURPLE, fontSize=14)
         h2 = ParagraphStyle("H2", parent=styles["Heading2"], textColor=ORANGE, fontSize=11)
 
         story = [
-            Paragraph("NOTIFICACION DE INCIDENTE DE SEGURIDAD", h1),
-            Paragraph(f"NIS2 Art. 23 — {stage_label}", h2),
+            Paragraph(_t("nis2.pdf_title", lang), h1),
+            Paragraph(_t("nis2.pdf_subtitle", lang, stage=stage_label), h2),
             Spacer(1, 0.4*cm),
         ]
 
         meta = [
-            ["Referencia notificacion", notif.notification_ref or "Pendiente asignacion"],
-            ["Autoridad receptora", notif.recipient_authority or "INCIBE-CERT"],
-            ["Fase", stage_label],
-            ["Plazo limite", deadline_str],
-            ["Fecha de envio", submitted_str],
-            ["Estado", notif.status.upper()],
+            [_t("nis2.pdf_ref", lang), notif.notification_ref or _t("nis2.pdf_pending_assignment", lang)],
+            [_t("nis2.pdf_authority", lang), notif.recipient_authority or "INCIBE-CERT"],
+            [_t("nis2.pdf_stage", lang), stage_label],
+            [_t("nis2.pdf_deadline", lang), deadline_str],
+            [_t("nis2.pdf_submitted", lang), submitted_str],
+            [_t("nis2.pdf_status", lang), notif.status.upper()],
         ]
         t = Table(meta, colWidths=[7*cm, 9*cm])
         t.setStyle(TableStyle([
@@ -238,7 +238,7 @@ def generate_nis2_pdf(notif) -> bytes:
 
         content = notif.content_json or {}
         if content:
-            story.append(Paragraph("CONTENIDO DE LA NOTIFICACION", h2))
+            story.append(Paragraph(_t("nis2.pdf_content", lang), h2))
             for key, val in content.items():
                 if val:
                     story.append(Paragraph(f"<b>{key.replace('_', ' ').title()}:</b> {val}", normal))
@@ -246,9 +246,9 @@ def generate_nis2_pdf(notif) -> bytes:
 
         story += [
             Spacer(1, 1*cm),
-            Paragraph("Responsable de la notificacion: ____________________________", normal),
+            Paragraph(_t("nis2.pdf_responsible", lang), normal),
             Spacer(1, 0.3*cm),
-            Paragraph("Firma y fecha: ____________________________", normal),
+            Paragraph(_t("nis2.pdf_signature", lang), normal),
         ]
 
         doc.build(story)

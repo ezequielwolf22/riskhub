@@ -2,18 +2,19 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import NIS2Notification, Incident, User
 from app.security import get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
 from app.services.nis2_service import (
-    create_nis2_notification_chain, NIS2_STAGE_LABELS, generate_nis2_pdf
+    create_nis2_notification_chain, nis2_stage_label, generate_nis2_pdf
 )
 
 logger = logging.getLogger("riskhub.nis2_router")
@@ -21,7 +22,7 @@ logger = logging.getLogger("riskhub.nis2_router")
 router = APIRouter(prefix="/api/nis2", tags=["nis2"])
 
 
-def _notif_to_dict(n: NIS2Notification) -> dict:
+def _notif_to_dict(n: NIS2Notification, lang: str = "es") -> dict:
     now = datetime.now(timezone.utc)
     deadline = n.deadline_at
     if deadline and not deadline.tzinfo:
@@ -33,7 +34,7 @@ def _notif_to_dict(n: NIS2Notification) -> dict:
         "organization_id": n.organization_id,
         "incident_id": n.incident_id,
         "stage": n.stage,
-        "stage_label": NIS2_STAGE_LABELS.get(n.stage, n.stage),
+        "stage_label": nis2_stage_label(n.stage, lang),
         "deadline_at": n.deadline_at.isoformat() if n.deadline_at else None,
         "hours_left": round(hours_left, 1) if hours_left is not None else None,
         "submitted_at": n.submitted_at.isoformat() if n.submitted_at else None,
@@ -47,10 +48,12 @@ def _notif_to_dict(n: NIS2Notification) -> dict:
 
 @router.get("/dashboard")
 def nis2_dashboard(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Estado global NIS2: incidentes activos con notificaciones requeridas."""
+    lang = get_lang(request)
     org_id = current_user.organization_id
 
     incidents_nis2 = db.query(Incident).filter(
@@ -69,7 +72,7 @@ def nis2_dashboard(
             "incident_title": inc.title,
             "incident_status": inc.status.value if inc.status else "open",
             "detected_at": inc.detected_at.isoformat() if inc.detected_at else None,
-            "notifications": [_notif_to_dict(n) for n in notifs],
+            "notifications": [_notif_to_dict(n, lang) for n in notifs],
         })
 
     pending_count = db.query(NIS2Notification).filter(
@@ -91,12 +94,14 @@ def nis2_dashboard(
 
 @router.get("/notifications")
 def list_notifications(
+    request: Request,
     status: Optional[str] = None,
     overdue: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Lista notificaciones NIS2 de la organizacion con filtros opcionales."""
+    lang = get_lang(request)
     q = (
         db.query(NIS2Notification)
         .filter(NIS2Notification.organization_id == current_user.organization_id)
@@ -109,19 +114,21 @@ def list_notifications(
     elif overdue is True:
         q = q.filter(NIS2Notification.status == "overdue")
     notifs = q.order_by(NIS2Notification.deadline_at.asc()).all()
-    return [_notif_to_dict(n) for n in notifs]
+    return [_notif_to_dict(n, lang) for n in notifs]
 
 
 @router.get("/notifications/{notif_id}")
 def get_notification(
     notif_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     n = db.get(NIS2Notification, notif_id)
     if not n or n.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Notificacion no encontrada")
-    return _notif_to_dict(n)
+        raise HTTPException(404, _t("nis2.notification_not_found", lang))
+    return _notif_to_dict(n, lang)
 
 
 class NotifUpdate(BaseModel):
@@ -134,15 +141,17 @@ class NotifUpdate(BaseModel):
 def update_notification(
     notif_id: int,
     body: NotifUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Actualiza el contenido del formulario de notificacion."""
+    lang = get_lang(request)
     n = db.get(NIS2Notification, notif_id)
     if not n or n.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Notificacion no encontrada")
+        raise HTTPException(404, _t("nis2.notification_not_found", lang))
     if n.status == "submitted":
-        raise HTTPException(400, "No se puede modificar una notificacion ya enviada")
+        raise HTTPException(400, _t("nis2.cannot_modify_submitted", lang))
 
     if body.recipient_authority is not None:
         n.recipient_authority = body.recipient_authority
@@ -152,21 +161,23 @@ def update_notification(
         n.content_json = body.content_json
 
     db.commit()
-    return _notif_to_dict(n)
+    return _notif_to_dict(n, lang)
 
 
 @router.post("/notifications/{notif_id}/submit")
 def submit_notification(
     notif_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Marca la notificacion como enviada con timestamp inmutable."""
+    lang = get_lang(request)
     n = db.get(NIS2Notification, notif_id)
     if not n or n.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Notificacion no encontrada")
+        raise HTTPException(404, _t("nis2.notification_not_found", lang))
     if n.status == "submitted":
-        raise HTTPException(409, "La notificacion ya fue enviada")
+        raise HTTPException(409, _t("nis2.already_submitted", lang))
 
     n.status = "submitted"
     n.submitted_at = datetime.now(timezone.utc)   # timestamp inmutable
@@ -174,23 +185,25 @@ def submit_notification(
     db.commit()
     log_action(db, current_user.id, "submit", "nis2_notification", str(notif_id),
                {"stage": n.stage, "incident_id": n.incident_id})
-    return _notif_to_dict(n)
+    return _notif_to_dict(n, lang)
 
 
 @router.get("/notifications/{notif_id}/pdf")
 def download_pdf(
     notif_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Genera PDF de la notificacion en formato compatible ENISA."""
+    lang = get_lang(request)
     n = db.get(NIS2Notification, notif_id)
     if not n or n.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Notificacion no encontrada")
+        raise HTTPException(404, _t("nis2.notification_not_found", lang))
 
-    pdf_bytes = generate_nis2_pdf(n)
+    pdf_bytes = generate_nis2_pdf(n, lang)
     if not pdf_bytes:
-        raise HTTPException(500, "Error generando PDF")
+        raise HTTPException(500, _t("nis2.pdf_error", lang))
 
     return Response(
         content=pdf_bytes,
@@ -202,16 +215,18 @@ def download_pdf(
 @router.post("/incidents/{incident_id}/create-chain")
 def create_chain_for_incident(
     incident_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Crea manualmente la cadena de notificaciones NIS2 para un incidente."""
+    lang = get_lang(request)
     inc = db.get(Incident, incident_id)
     if not inc or inc.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Incidente no encontrado")
+        raise HTTPException(404, _t("nis2.incident_not_found", lang))
 
     notifs = create_nis2_notification_chain(db, incident_id, current_user.organization_id)
     return {
         "created": len(notifs),
-        "notifications": [_notif_to_dict(n) for n in notifs],
+        "notifications": [_notif_to_dict(n, lang) for n in notifs],
     }
