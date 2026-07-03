@@ -85,3 +85,39 @@ def get_lang(request: Any) -> str:
     """Extract the requested language from the X-Lang header."""
     lang = getattr(request, "headers", {}).get("X-Lang", _DEFAULT)
     return lang if lang in _SUPPORTED else _DEFAULT
+
+
+# ─── Soporte de idioma para prompts de IA ────────────────────────────────────
+# Los prompts que se envian a Claude siguen escritos en espanol (capa de
+# instruccion), pero la SALIDA que genera el modelo debe respetar el idioma de
+# UI del usuario. Estos helpers producen la directiva de idioma de salida.
+
+_LANG_LABEL = {"es": "espanol (Espana)", "en": "English"}
+
+
+def lang_label(lang: str) -> str:
+    """Nombre legible del idioma para inyectar en prompts de IA."""
+    effective = lang if lang in _SUPPORTED else _DEFAULT
+    return _LANG_LABEL.get(effective, _LANG_LABEL[_DEFAULT])
+
+
+def ai_lang_directive(lang: str) -> str:
+    """Directiva fuerte de idioma de salida para prepender/añadir a un prompt de IA.
+
+    Instruye al modelo a redactar TODA la respuesta en el idioma de UI del
+    usuario, traduciendo cualquier encabezado o etiqueta suministrada en otro
+    idioma. Devuelve cadena vacia para el idioma por defecto solo si se desea;
+    aqui siempre devolvemos una directiva explicita para maxima fiabilidad.
+    """
+    effective = lang if lang in _SUPPORTED else _DEFAULT
+    if effective == "en":
+        return (
+            "IMPORTANT - OUTPUT LANGUAGE: Write your ENTIRE response in English "
+            "(professional register). Any section titles, headings, field labels "
+            "or fixed text provided below in another language MUST be translated "
+            "into English in your output."
+        )
+    return (
+        "IMPORTANTE - IDIOMA DE SALIDA: Redacta TODA tu respuesta en espanol "
+        "(Espana), registro profesional."
+    )

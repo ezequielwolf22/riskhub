@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.i18n import ai_lang_directive
 from app.models import Asset, Control, Threat
 from app.services.risk_engine import DEFAULT_MATRIX
 
@@ -337,7 +338,7 @@ _METHODOLOGY_HINTS: dict[str, str] = {
 }
 
 
-def _build_prompt(answers: dict, assets: list, threats: list, controls: list) -> str:
+def _build_prompt(answers: dict, assets: list, threats: list, controls: list, lang: str = "es") -> str:
     matrix_str = "\n".join(
         f"  Consecuencia {i}: {row}" for i, row in enumerate(DEFAULT_MATRIX)
     )
@@ -403,7 +404,9 @@ def _build_prompt(answers: dict, assets: list, threats: list, controls: list) ->
     appetite_raw = answers.get("risk_appetite_level", "")
     appetite_num = _parse_appetite_level(appetite_raw)
 
-    return f"""Eres un experto en gestión de riesgos de seguridad de la información certificado en ISO/IEC 27001:2022, ISO/IEC 27005:2018 y MAGERIT v3.
+    return f"""{ai_lang_directive(lang)}
+
+Eres un experto en gestión de riesgos de seguridad de la información certificado en ISO/IEC 27001:2022, ISO/IEC 27005:2018 y MAGERIT v3.
 
 METODOLOGÍA:
 - ISO 27005: Escala 5×5 (consecuencia 0-4 × probabilidad 0-4 → nivel 0-8)
@@ -498,7 +501,7 @@ Devuelve EXCLUSIVAMENTE un JSON válido con este esquema:
 
 # ---------- Llamada a Claude API ----------
 
-def run_analysis(answers: dict, db: Session, api_key: str | None = None, org_id: int | None = None) -> dict[str, Any]:
+def run_analysis(answers: dict, db: Session, api_key: str | None = None, org_id: int | None = None, lang: str = "es") -> dict[str, Any]:
     """Llama a Claude API y devuelve el analisis de riesgos estructurado.
 
     El parametro api_key permite usar la clave per-tenant configurada en la UI
@@ -532,7 +535,7 @@ def run_analysis(answers: dict, db: Session, api_key: str | None = None, org_id:
         for c in db.query(Control).order_by(Control.code).all()
     ]
 
-    prompt = _build_prompt(answers, assets, threats, controls)
+    prompt = _build_prompt(answers, assets, threats, controls, lang)
 
     model = _get_model(db, org_id)
     client = anthropic.Anthropic(api_key=effective_key)

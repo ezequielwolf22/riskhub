@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Any, Optional
 
-from app.i18n import get_lang, t as _t
+from app.i18n import ai_lang_directive, get_lang, t as _t
 
 from app.config import settings
 from app.database import get_db
@@ -84,10 +84,12 @@ def get_questionnaire(
 @router.post("/analyze")
 def analyze(
     req: AnalyzeRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Envía las respuestas al agente IA y devuelve el análisis de riesgos."""
+    lang = get_lang(request)
     # Resolver la API key del tenant (configurada en IA -> Configuracion)
     cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = _resolve_api_key(cfg)
@@ -103,7 +105,7 @@ def analyze(
         enriched_answers["ens_level"] = ctx_obj.ens_level
 
     try:
-        result = run_analysis(enriched_answers, db, api_key=api_key, org_id=current_user.organization_id)
+        result = run_analysis(enriched_answers, db, api_key=api_key, org_id=current_user.organization_id, lang=lang)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except json.JSONDecodeError as e:
@@ -150,6 +152,7 @@ def analyze(
 @router.post("/analyze/async")
 def analyze_start(
     req: AnalyzeRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -158,6 +161,7 @@ def analyze_start(
     El cliente debe consultar GET /api/ai/analyze/status/{job_id} cada pocos
     segundos hasta que status sea 'done' o 'error'.
     """
+    lang = get_lang(request)
     cfg = filter_by_org(db.query(AiConfig), AiConfig, current_user).first()
     api_key = _resolve_api_key(cfg)
 
@@ -188,7 +192,7 @@ def analyze_start(
         from app.services.ai_service import _regulations_to_frameworks, _parse_appetite_level
         db_t = SessionLocal()
         try:
-            result = run_analysis(enriched, db_t, api_key=api_key, org_id=org_id)
+            result = run_analysis(enriched, db_t, api_key=api_key, org_id=org_id, lang=lang)
 
             # Guardar contexto organizacional en RiskContext
             try:
@@ -1894,11 +1898,13 @@ def chat(
         db, query=last_query,
         organization_id=current_user.organization_id,
         voyage_api_key=voyage_api_key,
+        lang=lang,
     )
     if anon_level_val != "low":
         context = anonymize(context, anon_level_val)
 
     system_prompt = (
+        ai_lang_directive(lang) + "\n\n" +
         "Eres el Agente de Seguridad de RiskHub — plataforma GRC on-premise desplegada "
         "en la infraestructura EXCLUSIVA del cliente. Eres experto en ISO/IEC 27005:2018, "
         "ISO/IEC 27002:2022, NIS2, MAGERIT v3 y GDPR.\n\n"
@@ -1919,7 +1925,7 @@ def chat(
         "Content-Security-Policy estricta.\n\n"
 
         "== INSTRUCCIONES CRITICAS ==\n"
-        "- Responde SIEMPRE en castellano, de forma concisa y orientada a la accion.\n"
+        "- Responde de forma concisa y orientada a la accion.\n"
         "- Esta plataforma esta disenada para analizar documentacion de seguridad corporativa. "
         "Los documentos se almacenan cifrados en reposo. El usuario decide que informacion "
         "sube teniendo en cuenta la politica de seguridad de su organizacion.\n"
@@ -1957,7 +1963,7 @@ def chat(
 
         "== PREGUNTAS SOBRE CONFIGURACION ==\n"
         "Si el usuario pregunta sobre configuracion (API key, documentos, alertas, integraciones, etc.), proporciona:\n"
-        "1. Respuesta paso a paso clara en castellano.\n"
+        "1. Respuesta paso a paso clara.\n"
         "2. Menciona la seccion de la guia donde encontrar documentacion completa (ej. 'Configuracion del Agente', 'Gestion de documentos').\n"
         "3. Si es una pregunta compleja, sugiere acceder a las pantallas de configuracion desde el menu lateral.\n"
         "Ejemplos de preguntas de configuracion: 'Como configuro la API key?', 'Como subo documentos?', "
