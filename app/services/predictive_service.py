@@ -8,6 +8,7 @@ Funcionalidades:
 """
 import logging
 from collections import defaultdict
+from app.i18n import t as _t
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -87,7 +88,7 @@ def get_risk_trend_analysis(db: Session, org_id: int, days: int = 90) -> dict:
     }
 
 
-def get_maturity_path(db: Session, org_id: int) -> dict:
+def get_maturity_path(db: Session, org_id: int, lang: str = "es") -> dict:
     """Calcula el camino de madurez: qué controles implementar para mejorar más.
 
     Retorna lista de recomendaciones priorizadas.
@@ -134,9 +135,8 @@ def get_maturity_path(db: Session, org_id: int) -> dict:
         recommendations.append({
             "type": "complete_partial_control",
             "priority": "high",
-            "title": f"Completar control parcial: {ctrl.name[:60]}",
-            "description": f"Este control está parcialmente implementado (madurez {ctrl.maturity or 0}/5). "
-                          f"Completarlo mejorará directamente el residual de riesgos asociados.",
+            "title": _t("predictive.rec_complete_control_title", lang, name=ctrl.name[:60]),
+            "description": _t("predictive.rec_complete_control_desc", lang, maturity=ctrl.maturity or 0),
             "impact": "medium",
             "effort": "low",
             "estimated_days": 7,
@@ -148,9 +148,8 @@ def get_maturity_path(db: Session, org_id: int) -> dict:
             recommendations.append({
                 "type": "framework_gap",
                 "priority": "high" if gap.get("status") == "not_started" else "medium",
-                "title": f"[{fw_code.upper()}] {gap.get('id')}: {gap.get('name', '')[:60]}",
-                "description": f"Requisito pendiente en {fw_code.upper()}, dominio {gap.get('domain', '')}. "
-                              f"Estado actual: {gap.get('status', 'sin iniciar')}.",
+                "title": _t("predictive.rec_gap_title", lang, fw=fw_code.upper(), id=gap.get('id'), name=gap.get('name', '')[:60]),
+                "description": _t("predictive.rec_gap_desc", lang, fw=fw_code.upper(), domain=gap.get('domain', ''), status=gap.get('status') or _t("predictive.rec_gap_status_fallback", lang)),
                 "impact": "high",
                 "effort": "medium",
                 "estimated_days": 14,
@@ -171,9 +170,8 @@ def get_maturity_path(db: Session, org_id: int) -> dict:
             recommendations.append({
                 "type": "assign_controls",
                 "priority": "high",
-                "title": f"Asignar controles a {r.code}",
-                "description": f"El riesgo {r.code} (nivel {r.residual_level}) no tiene controles asignados. "
-                              f"Asignar controles ISO 27002 reduciría el residual.",
+                "title": _t("predictive.rec_assign_controls_title", lang, code=r.code),
+                "description": _t("predictive.rec_assign_controls_desc", lang, code=r.code, level=r.residual_level),
                 "impact": "high",
                 "effort": "medium",
                 "estimated_days": 30,
@@ -197,7 +195,7 @@ def get_maturity_path(db: Session, org_id: int) -> dict:
     }
 
 
-def get_high_risk_assets(db: Session, org_id: int, limit: int = 10) -> list[dict]:
+def get_high_risk_assets(db: Session, org_id: int, limit: int = 10, lang: str = "es") -> list[dict]:
     """Identifica activos con mayor concentración de riesgos altos."""
     risks = db.query(Risk).filter(
         Risk.organization_id == org_id,
@@ -231,20 +229,20 @@ def get_high_risk_assets(db: Session, org_id: int, limit: int = 10) -> list[dict
             "high_risk_count": stats["count"],
             "max_residual_level": stats["max_level"],
             "avg_residual_level": round(stats["total_level"] / stats["count"], 1),
-            "recommendation": _asset_recommendation(asset, stats),
+            "recommendation": _asset_recommendation(asset, stats, lang),
         })
     return result
 
 
-def _asset_recommendation(asset: Asset, stats: dict) -> str:
+def _asset_recommendation(asset: Asset, stats: dict, lang: str = "es") -> str:
     if stats["max_level"] >= 6:
-        return "Acción urgente: riesgos críticos sin mitigar. Revisar controles inmediatamente."
+        return _t("predictive.asset_rec_urgent", lang)
     if stats["count"] >= 5:
-        return "Alta concentración de riesgos. Considerar segmentación o controles adicionales."
-    return "Revisar y asignar controles específicos para este activo."
+        return _t("predictive.asset_rec_concentration", lang)
+    return _t("predictive.asset_rec_default", lang)
 
 
-def get_threat_forecast(db: Session, org_id: int) -> list[dict]:
+def get_threat_forecast(db: Session, org_id: int, lang: str = "es") -> list[dict]:
     """Predice qué amenazas tienen mayor probabilidad de materializarse próximamente.
 
     Basado en: historial de incidentes, hallazgos externos, CVEs recientes.
@@ -300,7 +298,7 @@ def get_threat_forecast(db: Session, org_id: int) -> list[dict]:
             "max_residual_level": stats["max_level"],
             "avg_likelihood": stats["avg_likelihood"],
             "forecast_score": round(score, 2),
-            "signal": "Alta" if score >= 3.5 else "Media" if score >= 2 else "Baja",
+            "signal": _t("predictive.signal_high", lang) if score >= 3.5 else _t("predictive.signal_medium", lang) if score >= 2 else _t("predictive.signal_low", lang),
         })
 
     return forecasts

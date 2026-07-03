@@ -322,5 +322,20 @@
     "col_threat": "Amenaza",
     "col_level": "Nivel",
     "col_status": "Estado"
+  },
+  "predictive": {
+    "rec_complete_control_title": "Completar control parcial: {name}",
+    "rec_complete_control_desc": "Este control está parcialmente implementado (madurez {maturity}/5). Completarlo mejorará directamente el residual de riesgos asociados.",
+    "rec_gap_title": "[{fw}] {id}: {name}",
+    "rec_gap_desc": "Requisito pendiente en {fw}, dominio {domain}. Estado actual: {status}.",
+    "rec_gap_status_fallback": "sin iniciar",
+    "rec_assign_controls_title": "Asignar controles a {code}",
+    "rec_assign_controls_desc": "El riesgo {code} (nivel {level}) no tiene controles asignados. Asignar controles ISO 27002 reduciría el residual.",
+    "asset_rec_urgent": "Acción urgente: riesgos críticos sin mitigar. Revisar controles inmediatamente.",
+    "asset_rec_concentration": "Alta concentración de riesgos. Considerar segmentación o controles adicionales.",
+    "asset_rec_default": "Revisar y asignar controles específicos para este activo.",
+    "signal_high": "Alta",
+    "signal_medium": "Media",
+    "signal_low": "Baja"
   }
 }

@@ -1,9 +1,10 @@
 """Router de análisis predictivo."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.i18n import get_lang, t as _t
 from app.security import get_current_user
 from app.services.predictive_service import (
     get_risk_trend_analysis,
@@ -17,45 +18,49 @@ router = APIRouter(prefix="/api/predictive", tags=["predictive"])
 
 @router.get("/trend")
 def risk_trend(
+    request: Request,
     days: int = Query(90, le=365),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
     return get_risk_trend_analysis(db, org_id, days)
 
 
 @router.get("/maturity-path")
 def maturity_path(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
-    return get_maturity_path(db, org_id)
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
+    return get_maturity_path(db, org_id, get_lang(request))
 
 
 @router.get("/high-risk-assets")
 def high_risk_assets(
+    request: Request,
     limit: int = Query(10, le=50),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
-    return get_high_risk_assets(db, org_id, limit)
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
+    return get_high_risk_assets(db, org_id, limit, lang=get_lang(request))
 
 
 @router.get("/threat-forecast")
 def threat_forecast(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
-    return get_threat_forecast(db, org_id)
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
+    return get_threat_forecast(db, org_id, get_lang(request))
