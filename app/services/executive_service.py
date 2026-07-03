@@ -1,5 +1,6 @@
 """Servicio de dashboard ejecutivo y generación de informes board-level."""
 import logging
+from app.i18n import t as _t
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -206,11 +207,11 @@ def get_risk_heatmap(db: Session, org_id: int) -> dict:
     }
 
 
-def generate_board_report_data(db: Session, org_id: int) -> dict:
+def generate_board_report_data(db: Session, org_id: int, lang: str = "es") -> dict:
     """Genera datos para informe de dirección (board-level)."""
     now = datetime.now(timezone.utc)
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
-    org_name = ctx.organization_name if ctx else "Organización"
+    org_name = ctx.organization_name if ctx else _t("executive.org_fallback", lang)
 
     kpis = get_kpis(db, org_id)
     top_risks = get_top_risks(db, org_id, 5)
@@ -218,7 +219,7 @@ def generate_board_report_data(db: Session, org_id: int) -> dict:
 
     # Compliance summary
     from app.services.compliance_service import get_multi_framework_dashboard
-    compliance = get_multi_framework_dashboard(db, org_id)
+    compliance = get_multi_framework_dashboard(db, org_id, lang)
 
     # Incidentes del mes
     thirty_days_ago = now - timedelta(days=30)
@@ -246,11 +247,11 @@ def generate_board_report_data(db: Session, org_id: int) -> dict:
         "risk_trend_30d": trend,
         "compliance": compliance,
         "recent_incidents": recent_incidents,
-        "summary_text": _generate_summary(kpis, top_risks, compliance),
+        "summary_text": _generate_summary(kpis, top_risks, compliance, lang),
     }
 
 
-def _generate_summary(kpis: dict, top_risks: list, compliance: dict) -> str:
+def _generate_summary(kpis: dict, top_risks: list, compliance: dict, lang: str = "es") -> str:
     """Genera texto ejecutivo del resumen."""
     lines = []
     total = kpis.get("total_risks", 0)
@@ -260,20 +261,11 @@ def _generate_summary(kpis: dict, top_risks: list, compliance: dict) -> str:
     overall_compliance = compliance.get("overall_pct", 0)
     overdue = kpis.get("overdue_tasks", 0)
 
-    lines.append(
-        f"La organización gestiona actualmente {total} riesgos, "
-        f"de los cuales {high} son de nivel alto o crítico."
-    )
-    lines.append(
-        f"El {mitigated}% de los riesgos han sido aceptados o mitigados por debajo del apetito de riesgo."
-    )
-    lines.append(
-        f"Los controles de seguridad tienen un {controls}% de implementación."
-    )
+    lines.append(_t("executive.summary_risks", lang, total=total, high=high))
+    lines.append(_t("executive.summary_mitigated", lang, mitigated=mitigated))
+    lines.append(_t("executive.summary_controls", lang, controls=controls))
     if overall_compliance > 0:
-        lines.append(f"El cumplimiento normativo global se sitúa en {overall_compliance}%.")
+        lines.append(_t("executive.summary_compliance", lang, pct=overall_compliance))
     if overdue > 0:
-        lines.append(
-            f"Hay {overdue} tarea(s) de tratamiento vencidas que requieren atención inmediata."
-        )
+        lines.append(_t("executive.summary_overdue", lang, overdue=overdue))
     return " ".join(lines)

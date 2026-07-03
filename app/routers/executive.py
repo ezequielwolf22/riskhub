@@ -1,9 +1,10 @@
 """Router de dashboard ejecutivo y reportes board-level."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.i18n import get_lang, t as _t
 from app.security import get_current_user, require_role
 from app.services.executive_service import (
     get_kpis,
@@ -18,18 +19,20 @@ router = APIRouter(prefix="/api/executive", tags=["executive"])
 
 @router.get("/kpis")
 def executive_kpis(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """KPIs dinámicos para dashboard ejecutivo."""
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
     return get_kpis(db, org_id)
 
 
 @router.get("/top-risks")
 def top_risks(
+    request: Request,
     limit: int = Query(10, ge=1, le=50),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -38,12 +41,13 @@ def top_risks(
     """Top N riesgos por nivel residual con paginacion."""
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
     return get_top_risks(db, org_id, limit, offset)
 
 
 @router.get("/risk-trend")
 def risk_trend(
+    request: Request,
     days: int = Query(30, le=365),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -51,36 +55,39 @@ def risk_trend(
     """Trend de riesgos por día (últimos N días)."""
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
     return get_risk_trend(db, org_id, days)
 
 
 @router.get("/heatmap")
 def risk_heatmap(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Heatmap de riesgos por dominio y framework."""
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
     return get_risk_heatmap(db, org_id)
 
 
 @router.get("/board-report")
 def board_report_data(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Datos para informe de dirección (board-level)."""
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
-    return generate_board_report_data(db, org_id)
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
+    return generate_board_report_data(db, org_id, get_lang(request))
 
 
 @router.get("/board-report/pdf")
 def board_report_pdf(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -88,10 +95,11 @@ def board_report_pdf(
     from fastapi.responses import Response
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
 
-    data = generate_board_report_data(db, org_id)
-    pdf_bytes = _generate_board_pdf(data)
+    lang = get_lang(request)
+    data = generate_board_report_data(db, org_id, lang)
+    pdf_bytes = _generate_board_pdf(data, lang)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -99,7 +107,7 @@ def board_report_pdf(
     )
 
 
-def _generate_board_pdf(data: dict) -> bytes:
+def _generate_board_pdf(data: dict, lang: str = "es") -> bytes:
     """Genera PDF de informe de dirección con ReportLab."""
     from io import BytesIO
     from reportlab.lib import colors
@@ -129,31 +137,31 @@ def _generate_board_pdf(data: dict) -> bytes:
 
     story = []
     kpis = data.get("kpis", {})
-    org_name = data.get("org_name", "Organización")
+    org_name = data.get("org_name", _t("executive.org_fallback", lang))
 
     # Header
-    story.append(Paragraph(f"Informe de Seguridad — {org_name}", title_style))
-    story.append(Paragraph(f"Periodo: {data.get('period', 'N/A')}", small_style))
+    story.append(Paragraph(_t("executive.pdf_title", lang, org=org_name), title_style))
+    story.append(Paragraph(_t("executive.pdf_period", lang, period=data.get('period', 'N/A')), small_style))
     story.append(HRFlowable(color=ORANGE, thickness=2))
     story.append(Spacer(1, 0.4*cm))
 
     # Resumen ejecutivo
-    story.append(Paragraph("Resumen Ejecutivo", h2_style))
+    story.append(Paragraph(_t("executive.pdf_exec_summary", lang), h2_style))
     story.append(Paragraph(data.get("summary_text", ""), normal_style))
     story.append(Spacer(1, 0.4*cm))
 
     # KPIs
-    story.append(Paragraph("Indicadores Clave", h2_style))
+    story.append(Paragraph(_t("executive.pdf_kpis", lang), h2_style))
     kpi_data = [
-        ["Indicador", "Valor"],
-        ["Riesgos totales", str(kpis.get("total_risks", 0))],
-        ["Riesgos altos/críticos", str(kpis.get("high_risks", 0))],
-        ["Riesgos sobre apetito", str(kpis.get("risks_over_appetite", 0))],
-        ["Riesgos mitigados", f"{kpis.get('mitigated_pct', 0)}%"],
-        ["Controles implementados", f"{kpis.get('controls_pct', 0)}%"],
-        ["Tareas vencidas", str(kpis.get("overdue_tasks", 0))],
-        ["Incidentes (30 días)", str(kpis.get("incidents_30d", 0))],
-        ["Edad media tratamiento", f"{kpis.get('mat_days', 0)} días"],
+        [_t("executive.col_indicator", lang), _t("executive.col_value", lang)],
+        [_t("executive.kpi_total_risks", lang), str(kpis.get("total_risks", 0))],
+        [_t("executive.kpi_high", lang), str(kpis.get("high_risks", 0))],
+        [_t("executive.kpi_over_appetite", lang), str(kpis.get("risks_over_appetite", 0))],
+        [_t("executive.kpi_mitigated", lang), f"{kpis.get('mitigated_pct', 0)}%"],
+        [_t("executive.kpi_controls", lang), f"{kpis.get('controls_pct', 0)}%"],
+        [_t("executive.kpi_overdue", lang), str(kpis.get("overdue_tasks", 0))],
+        [_t("executive.kpi_incidents_30d", lang), str(kpis.get("incidents_30d", 0))],
+        [_t("executive.kpi_mat", lang), _t("executive.kpi_mat_value", lang, n=kpis.get('mat_days', 0))],
     ]
     kpi_table = Table(kpi_data, colWidths=[10*cm, 5*cm])
     kpi_table.setStyle(TableStyle([
@@ -171,8 +179,8 @@ def _generate_board_pdf(data: dict) -> bytes:
     # Top riesgos
     top = data.get("top_risks", [])
     if top:
-        story.append(Paragraph("Top Riesgos", h2_style))
-        risk_rows = [["Código", "Descripción", "Activo", "Nivel Residual", "Estado"]]
+        story.append(Paragraph(_t("executive.pdf_top_risks", lang), h2_style))
+        risk_rows = [[_t("executive.col_code", lang), _t("executive.col_description", lang), _t("executive.col_asset", lang), _t("executive.col_residual", lang), _t("executive.col_status", lang)]]
         for r in top[:5]:
             risk_rows.append([
                 r.get("code", ""),
@@ -197,8 +205,8 @@ def _generate_board_pdf(data: dict) -> bytes:
     # Compliance
     compliance = data.get("compliance", {})
     if compliance.get("frameworks"):
-        story.append(Paragraph("Cumplimiento Normativo", h2_style))
-        comp_rows = [["Framework", "Requisitos", "Implementados", "% Cumplimiento", "Listo Auditoría"]]
+        story.append(Paragraph(_t("executive.pdf_compliance", lang), h2_style))
+        comp_rows = [[_t("executive.col_framework", lang), _t("executive.col_requirements", lang), _t("executive.col_implemented", lang), _t("executive.col_pct", lang), _t("executive.col_audit_ready", lang)]]
         for fw in compliance["frameworks"]:
             comp_rows.append([
                 fw.get("framework_name", fw.get("framework_code", ""))[:25],
@@ -223,7 +231,7 @@ def _generate_board_pdf(data: dict) -> bytes:
     story.append(Spacer(1, 1*cm))
     story.append(HRFlowable(color=LIGHT_GRAY, thickness=1))
     story.append(Paragraph(
-        f"Generado automáticamente por RiskHub — {data.get('report_date', '')[:10]}",
+        _t("executive.pdf_footer", lang, date=data.get('report_date', '')[:10]),
         small_style
     ))
 
