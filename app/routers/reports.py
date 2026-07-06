@@ -134,7 +134,7 @@ def _styles(brand: Optional[ReportBrand] = None):
     return s
 
 
-def _make_header_footer(brand: Optional[ReportBrand] = None):
+def _make_header_footer(brand: Optional[ReportBrand] = None, lang: str = "es"):
     """Devuelve una funcion de cabecera/pie personalizada con los colores y logo del template."""
     if brand is None:
         brand = ReportBrand()
@@ -184,7 +184,7 @@ def _make_header_footer(brand: Optional[ReportBrand] = None):
         canvas.setFillColor(BRAND_GRAY3)
         canvas.drawString(20 * mm, 10 * mm,
                           f"{footer_label} - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        canvas.drawRightString(w - 20 * mm, 10 * mm, f"Pagina {doc.page}")
+        canvas.drawRightString(w - 20 * mm, 10 * mm, _t("reports.page_label", lang, page=doc.page))
         canvas.restoreState()
 
     return _header_footer_fn
@@ -195,12 +195,12 @@ def _header_footer(canvas, doc):
     _make_header_footer()(canvas, doc)
 
 
-def _pdf_response(elements, filename: str, brand: Optional[ReportBrand] = None):
+def _pdf_response(elements, filename: str, brand: Optional[ReportBrand] = None, lang: str = "es"):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=20*mm, rightMargin=20*mm,
                             topMargin=20*mm, bottomMargin=20*mm)
-    hf = _make_header_footer(brand)
+    hf = _make_header_footer(brand, lang)
     doc.build(elements, onFirstPage=hf, onLaterPages=hf)
     buf.seek(0)
     return StreamingResponse(
@@ -210,28 +210,44 @@ def _pdf_response(elements, filename: str, brand: Optional[ReportBrand] = None):
 
 
 @router.get("/risk-register")
-def risk_register(db: Session = Depends(get_db),
+def risk_register(request: Request, db: Session = Depends(get_db),
                   current_user: User = Depends(get_current_user)):
     """Risk Register (ISO 27005)."""
+    lang = get_lang(request)
     brand = _load_brand(db, current_user.organization_id, "risk_register")
     BRAND_PURPLE = brand.primary
     BRAND_ORANGE = brand.secondary
     s = _styles(brand)
     el = []
-    el.append(Paragraph("Risk Register", s["TitleBrand"]))
-    el.append(Paragraph("ISO/IEC 27005:2018", s["SubBrand"]))
+    el.append(Paragraph(_t("reports.risk_register.title", lang), s["TitleBrand"]))
+    el.append(Paragraph(_t("reports.risk_register.subtitle", lang), s["SubBrand"]))
     el.append(Spacer(1, 6))
 
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     if ctx:
-        el.append(Paragraph(f"<b>Organizacion:</b> {ctx.organization_name or '-'}", s["BodyBrand"]))
-        el.append(Paragraph(f"<b>Alcance:</b> {ctx.scope or '-'}", s["BodyBrand"]))
-        el.append(Paragraph(f"<b>Apetito de riesgo:</b> Nivel {ctx.risk_appetite}",
-                            s["BodyBrand"]))
+        el.append(Paragraph(
+            f"<b>{_t('reports.risk_register.organization_label', lang)}</b> {ctx.organization_name or '-'}",
+            s["BodyBrand"]))
+        el.append(Paragraph(
+            f"<b>{_t('reports.risk_register.scope_label', lang)}</b> {ctx.scope or '-'}",
+            s["BodyBrand"]))
+        el.append(Paragraph(
+            f"<b>{_t('reports.risk_register.appetite_label', lang)}</b> "
+            f"{_t('reports.risk_register.appetite_level', lang, level=ctx.risk_appetite)}",
+            s["BodyBrand"]))
         el.append(Spacer(1, 12))
 
     risks = filter_by_org(db.query(Risk), Risk, current_user).order_by(Risk.residual_level.desc()).all()
-    data = [["Codigo", "Activo", "Amenaza", "Inh.", "Res.", "Estado", "Tratamiento", "Propietario"]]
+    data = [[
+        _t("reports.risk_register.table_header_code", lang),
+        _t("reports.risk_register.table_header_asset", lang),
+        _t("reports.risk_register.table_header_threat", lang),
+        _t("reports.risk_register.table_header_inherent", lang),
+        _t("reports.risk_register.table_header_residual", lang),
+        _t("reports.risk_register.table_header_status", lang),
+        _t("reports.risk_register.table_header_treatment", lang),
+        _t("reports.risk_register.table_header_owner", lang),
+    ]]
     for r in risks:
         owner_name = r.owner.full_name if r.owner else "-"
         data.append([
@@ -257,26 +273,37 @@ def risk_register(db: Session = Depends(get_db),
         ]))
         el.append(t)
     else:
-        el.append(Paragraph("No hay riesgos registrados.", s["BodyBrand"]))
+        el.append(Paragraph(_t("reports.risk_register.no_risks", lang), s["BodyBrand"]))
 
     # Pagina de metodologia
     el.append(PageBreak())
-    el.append(Paragraph("Metodologia de evaluacion de riesgos", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.risk_register.methodology_title", lang), s["H2Brand"]))
     el.append(Spacer(1, 4))
-    el.append(Paragraph(
-        "Este registro de riesgos ha sido elaborado conforme a la norma <b>ISO/IEC 27005:2018</b> "
-        "y el marco de controles <b>ISO/IEC 27002:2022</b>. La evaluacion cualitativa utiliza "
-        "una matriz 5x5 (Consecuencia x Probabilidad) basada en el Anexo E.2 de ISO 27005.",
-        s["BodyBrand"]))
+    el.append(Paragraph(_t("reports.risk_register.methodology_body", lang), s["BodyBrand"]))
     el.append(Spacer(1, 8))
-    el.append(Paragraph("Escala de niveles de riesgo", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.risk_register.scale_title", lang), s["H2Brand"]))
     level_data = [
-        ["Nivel", "Rango", "Descripcion", "Accion requerida"],
-        ["Critico", "7-8", "Riesgo inaceptable. Amenaza grave.", "Tratamiento inmediato"],
-        ["Alto", "5-6", "Riesgo elevado. Atencion prioritaria.", "Plan en < 30 dias"],
-        ["Medio", "3-4", "Riesgo moderado. Monitoreo activo.", "Plan en < 90 dias"],
-        ["Bajo", "1-2", "Riesgo aceptable. Vigilancia periodica.", "Revision anual"],
-        ["Insignificante", "0", "Riesgo residual minimo.", "Aceptar o monitorear"],
+        [
+            _t("reports.risk_register.scale_header_level", lang),
+            _t("reports.risk_register.scale_header_range", lang),
+            _t("reports.risk_register.scale_header_description", lang),
+            _t("reports.risk_register.scale_header_action", lang),
+        ],
+        [_t("reports.risk_register.level_critical", lang), "7-8",
+         _t("reports.risk_register.level_critical_desc", lang),
+         _t("reports.risk_register.level_critical_action", lang)],
+        [_t("reports.risk_register.level_high", lang), "5-6",
+         _t("reports.risk_register.level_high_desc", lang),
+         _t("reports.risk_register.level_high_action", lang)],
+        [_t("reports.risk_register.level_medium", lang), "3-4",
+         _t("reports.risk_register.level_medium_desc", lang),
+         _t("reports.risk_register.level_medium_action", lang)],
+        [_t("reports.risk_register.level_low", lang), "1-2",
+         _t("reports.risk_register.level_low_desc", lang),
+         _t("reports.risk_register.level_low_action", lang)],
+        [_t("reports.risk_register.level_negligible", lang), "0",
+         _t("reports.risk_register.level_negligible_desc", lang),
+         _t("reports.risk_register.level_negligible_action", lang)],
     ]
     level_colors = [BRAND_GRAY5, colors.HexColor("#FCA5A5"), colors.HexColor("#FED7AA"),
                     colors.HexColor("#FEF9C3"), colors.HexColor("#DCFCE7"), colors.white]
@@ -294,14 +321,22 @@ def risk_register(db: Session = Depends(get_db),
     t2.setStyle(TableStyle(t2_style))
     el.append(t2)
     el.append(Spacer(1, 8))
-    el.append(Paragraph("Opciones de tratamiento (ISO 27005 cl. 8.4)", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.risk_register.treatment_title", lang), s["H2Brand"]))
     treat_data = [
-        ["Opcion", "Descripcion"],
-        ["Modificacion", "Implementar controles para reducir la probabilidad o el impacto."],
-        ["Retencion", "Aceptar el riesgo de forma consciente e informada."],
-        ["Transferencia", "Compartir el riesgo con terceros (seguros, outsourcing)."],
-        ["Evitacion", "Eliminar la actividad que genera el riesgo."],
-        ["Comparticion", "Distribuir el riesgo entre varias partes interesadas."],
+        [
+            _t("reports.risk_register.treatment_header_option", lang),
+            _t("reports.risk_register.treatment_header_description", lang),
+        ],
+        [_t("reports.risk_register.treatment_modification", lang),
+         _t("reports.risk_register.treatment_modification_desc", lang)],
+        [_t("reports.risk_register.treatment_retention", lang),
+         _t("reports.risk_register.treatment_retention_desc", lang)],
+        [_t("reports.risk_register.treatment_transfer", lang),
+         _t("reports.risk_register.treatment_transfer_desc", lang)],
+        [_t("reports.risk_register.treatment_avoidance", lang),
+         _t("reports.risk_register.treatment_avoidance_desc", lang)],
+        [_t("reports.risk_register.treatment_sharing", lang),
+         _t("reports.risk_register.treatment_sharing_desc", lang)],
     ]
     t3 = Table(treat_data, repeatRows=1, colWidths=[35*mm, 135*mm])
     t3.setStyle(TableStyle([
@@ -315,13 +350,14 @@ def risk_register(db: Session = Depends(get_db),
     ]))
     el.append(t3)
 
-    return _pdf_response(el, "risk_register.pdf", brand)
+    return _pdf_response(el, "risk_register.pdf", brand, lang)
 
 
 @router.get("/soa")
-def statement_of_applicability(db: Session = Depends(get_db),
+def statement_of_applicability(request: Request, db: Session = Depends(get_db),
                                current_user: User = Depends(get_current_user)):
     """Statement of Applicability ISO 27001/27002 — completo con todos los campos normativos."""
+    lang = get_lang(request)
     brand = _load_brand(db, current_user.organization_id, "soa")
     BRAND_PURPLE = brand.primary
     BRAND_ORANGE = brand.secondary
@@ -329,32 +365,33 @@ def statement_of_applicability(db: Session = Depends(get_db),
     el = []
     now_str = datetime.now().strftime("%d/%m/%Y")
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
-    org_name = (ctx.organization_name if ctx else None) or "Organizacion"
-    scope = (ctx.scope if ctx else None) or "[Alcance no definido]"
+    org_name = (ctx.organization_name if ctx else None) or _t("reports.soa.default_org_name", lang)
+    scope = (ctx.scope if ctx else None) or _t("reports.soa.default_scope", lang)
     appetite = ctx.risk_appetite if ctx else 3
 
     # ── PORTADA ──────────────────────────────────────────────────────────────
     el.append(Spacer(1, 30*mm))
-    el.append(Paragraph("Declaracion de Aplicabilidad", s["TitleBrand"]))
-    el.append(Paragraph("Statement of Applicability (SOA)", s["SubBrand"]))
+    el.append(Paragraph(_t("reports.soa.title", lang), s["TitleBrand"]))
+    el.append(Paragraph(_t("reports.soa.subtitle", lang), s["SubBrand"]))
     el.append(Spacer(1, 8))
-    el.append(Paragraph(f"<b>Organizacion:</b> {_safe(org_name)}", s["BodyBrand"]))
-    el.append(Paragraph(f"<b>Norma:</b> ISO/IEC 27001:2022 &mdash; ISO/IEC 27002:2022", s["BodyBrand"]))
-    el.append(Paragraph(f"<b>Fecha de emision:</b> {now_str}", s["BodyBrand"]))
-    el.append(Paragraph(f"<b>Version:</b> 1.0", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.soa.organization_label', lang)}</b> {_safe(org_name)}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.soa.standard_label', lang)}</b> {_t('reports.soa.standard_value', lang)}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.soa.issue_date_label', lang)}</b> {now_str}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.soa.version_label', lang)}</b> {_t('reports.soa.version_value', lang)}", s["BodyBrand"]))
     el.append(Spacer(1, 16))
 
     # Alcance y contexto
-    el.append(Paragraph("Alcance del SGSI", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.soa.scope_title", lang), s["H2Brand"]))
     el.append(Paragraph(_safe(scope), s["BodyBrand"]))
-    el.append(Paragraph(f"<b>Apetito de riesgo:</b> Nivel {appetite}/8", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.soa.appetite_label', lang)}</b> {_t('reports.soa.appetite_level', lang, level=appetite)}", s["BodyBrand"]))
     el.append(PageBreak())
 
     # ── TABLA DE CONTROL DE VERSIONES ────────────────────────────────────────
-    el.append(Paragraph("Control de Versiones", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.soa.version_control_title", lang), s["H2Brand"]))
     ver_data = [
-        ["Version", "Fecha", "Autor", "Descripcion del cambio"],
-        ["1.0", now_str, "Administrador de Seguridad", "Version inicial generada por RiskHub"],
+        [_t("reports.soa.version_table_header_version", lang), _t("reports.soa.version_table_header_date", lang),
+         _t("reports.soa.version_table_header_author", lang), _t("reports.soa.version_table_header_description", lang)],
+        ["1.0", now_str, _t("reports.soa.version_table_initial_author", lang), _t("reports.soa.version_table_initial_description", lang)],
     ]
     ver_t = Table(ver_data, colWidths=[20*mm, 30*mm, 60*mm, 60*mm])
     ver_t.setStyle(TableStyle([
@@ -380,15 +417,15 @@ def statement_of_applicability(db: Session = Depends(get_db),
     partial_count = sum(1 for imp in impls if imp.status and imp.status.value == "partial")
     excluded_count = sum(1 for imp in impls if imp.exclusion_justification)
 
-    el.append(Paragraph("Resumen Ejecutivo", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.soa.executive_summary_title", lang), s["H2Brand"]))
     stats_data = [
-        ["Indicador", "Valor"],
-        ["Total controles ISO 27002:2022", str(total_c)],
-        ["Controles con implementacion activa", str(total_impl)],
-        ["Controles en estado IMPLEMENTADO", str(implemented_count)],
-        ["Controles en estado PARCIAL", str(partial_count)],
-        ["Controles con justificacion de exclusion", str(excluded_count)],
-        ["Controles sin implementar", str(total_c - total_impl)],
+        [_t("reports.soa.stats_header_indicator", lang), _t("reports.soa.stats_header_value", lang)],
+        [_t("reports.soa.stats_total_controls", lang), str(total_c)],
+        [_t("reports.soa.stats_active_implementation", lang), str(total_impl)],
+        [_t("reports.soa.stats_implemented", lang), str(implemented_count)],
+        [_t("reports.soa.stats_partial", lang), str(partial_count)],
+        [_t("reports.soa.stats_excluded", lang), str(excluded_count)],
+        [_t("reports.soa.stats_not_implemented", lang), str(total_c - total_impl)],
     ]
     stats_t = Table(stats_data, colWidths=[120*mm, 50*mm])
     stats_t.setStyle(TableStyle([
@@ -404,31 +441,33 @@ def statement_of_applicability(db: Session = Depends(get_db),
     el.append(PageBreak())
 
     # ── TABLA COMPLETA DE CONTROLES ───────────────────────────────────────────
-    el.append(Paragraph("Declaracion de Aplicabilidad — Detalle por Control", s["H2Brand"]))
-    el.append(Paragraph(
-        "La siguiente tabla lista todos los controles del Anexo A de ISO/IEC 27001:2022 "
-        "(basados en ISO/IEC 27002:2022), con su estado de aplicabilidad, justificacion, "
-        "evidencias y nivel de madurez.", s["BodyBrand"]))
+    el.append(Paragraph(_t("reports.soa.detail_title", lang), s["H2Brand"]))
+    el.append(Paragraph(_t("reports.soa.detail_description", lang), s["BodyBrand"]))
     el.append(Spacer(1, 6))
 
-    _STATUS_ES = {
-        "implemented": "Implementado",
-        "partial": "Parcial",
-        "planned": "Planificado",
-        "not_implemented": "No impl.",
+    _STATUS_LABELS = {
+        "implemented": _t("reports.soa.status_implemented", lang),
+        "partial": _t("reports.soa.status_partial", lang),
+        "planned": _t("reports.soa.status_planned", lang),
+        "not_implemented": _t("reports.soa.status_not_implemented", lang),
     }
-    _REASON_ES = {
-        "legal": "Legal/Regulatorio",
-        "contractual": "Contractual",
-        "risk": "Gestion riesgo",
-        "best_practice": "Buena practica",
+    _REASON_LABELS = {
+        "legal": _t("reports.soa.reason_legal", lang),
+        "contractual": _t("reports.soa.reason_contractual", lang),
+        "risk": _t("reports.soa.reason_risk", lang),
+        "best_practice": _t("reports.soa.reason_best_practice", lang),
     }
 
     data = [[
-        "Ctrl", "Nombre del control", "Aplic.", "Estado",
-        "Mat.", "Razon inclusion", "Razon exclusion",
-        "Evidencias", "Ult. revision SOA", "Prox. revision",
+        _t("reports.soa.table_header_ctrl", lang), _t("reports.soa.table_header_control_name", lang),
+        _t("reports.soa.table_header_applicable", lang), _t("reports.soa.table_header_status", lang),
+        _t("reports.soa.table_header_maturity", lang), _t("reports.soa.table_header_inclusion_reason", lang),
+        _t("reports.soa.table_header_exclusion_reason", lang), _t("reports.soa.table_header_evidence", lang),
+        _t("reports.soa.table_header_last_soa_review", lang), _t("reports.soa.table_header_next_review", lang),
     ]]
+
+    _YES = _t("reports.soa.yes", lang)
+    _NO = _t("reports.soa.no", lang)
 
     for c in controls:
         ims = by_control.get(c.id, [])
@@ -443,17 +482,17 @@ def statement_of_applicability(db: Session = Depends(get_db),
                 data.append([
                     c.code,
                     _safe(c.name, 42),
-                    "Si",
-                    _STATUS_ES.get(imp.status.value if imp.status else "", "-"),
+                    _YES,
+                    _STATUS_LABELS.get(imp.status.value if imp.status else "", "-"),
                     f"{imp.maturity or 0}/5",
-                    _REASON_ES.get(imp.inclusion_reason or "", imp.inclusion_reason or "-"),
+                    _REASON_LABELS.get(imp.inclusion_reason or "", imp.inclusion_reason or "-"),
                     _safe(imp.exclusion_justification, 35) if imp.exclusion_justification else "-",
                     _safe(ev_str, 40),
                     soa_rev,
                     next_rev,
                 ])
         else:
-            data.append([c.code, _safe(c.name, 42), "No", "-", "-", "-", "-", "-", "-", "-"])
+            data.append([c.code, _safe(c.name, 42), _NO, "-", "-", "-", "-", "-", "-", "-"])
 
     # Columnas ajustadas para A4 landscape-ish en puntos
     col_w = [13*mm, 48*mm, 10*mm, 20*mm, 10*mm, 24*mm, 24*mm, 30*mm, 18*mm, 18*mm]
@@ -472,16 +511,15 @@ def statement_of_applicability(db: Session = Depends(get_db),
 
     # ── SECCION DE FIRMA Y APROBACION ─────────────────────────────────────────
     el.append(PageBreak())
-    el.append(Paragraph("Aprobacion y Firma", s["H2Brand"]))
-    el.append(Paragraph(
-        "El presente documento ha sido revisado y aprobado por los responsables del "
-        "Sistema de Gestion de la Seguridad de la Informacion (SGSI).", s["BodyBrand"]))
+    el.append(Paragraph(_t("reports.soa.approval_title", lang), s["H2Brand"]))
+    el.append(Paragraph(_t("reports.soa.approval_description", lang), s["BodyBrand"]))
     el.append(Spacer(1, 20))
     firma_data = [
-        ["Rol", "Nombre y apellidos", "Fecha", "Firma"],
-        ["Responsable de Seguridad", "_" * 30, "_" * 15, "_" * 20],
-        ["Director / CISO", "_" * 30, "_" * 15, "_" * 20],
-        ["Auditor Interno", "_" * 30, "_" * 15, "_" * 20],
+        [_t("reports.soa.signature_header_role", lang), _t("reports.soa.signature_header_name", lang),
+         _t("reports.soa.signature_header_date", lang), _t("reports.soa.signature_header_signature", lang)],
+        [_t("reports.soa.signature_role_security_officer", lang), "_" * 30, "_" * 15, "_" * 20],
+        [_t("reports.soa.signature_role_ciso", lang), "_" * 30, "_" * 15, "_" * 20],
+        [_t("reports.soa.signature_role_internal_auditor", lang), "_" * 30, "_" * 15, "_" * 20],
     ]
     firma_t = Table(firma_data, colWidths=[45*mm, 55*mm, 30*mm, 40*mm])
     firma_t.setStyle(TableStyle([
@@ -496,12 +534,9 @@ def statement_of_applicability(db: Session = Depends(get_db),
     ]))
     el.append(firma_t)
     el.append(Spacer(1, 10))
-    el.append(Paragraph(
-        "<i>Documento generado automaticamente por RiskHub. "
-        "Conforme a ISO/IEC 27001:2022 clausula 6.1.3 (Statement of Applicability).</i>",
-        s["BodyBrand"]))
+    el.append(Paragraph(_t("reports.soa.footer_note", lang), s["BodyBrand"]))
 
-    return _pdf_response(el, f"SOA_{org_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf", brand)
+    return _pdf_response(el, f"SOA_{org_name.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf", brand, lang)
 
 
 # ============================================================
@@ -509,9 +544,10 @@ def statement_of_applicability(db: Session = Depends(get_db),
 # ============================================================
 
 @router.get("/risk-register-excel")
-def risk_register_excel(db: Session = Depends(get_db),
+def risk_register_excel(request: Request, db: Session = Depends(get_db),
                         current_user: User = Depends(get_current_user)):
     """Exporta el Risk Register completo a Excel (.xlsx)."""
+    lang = get_lang(request)
     import openpyxl
     from openpyxl.styles import (
         Alignment, Border, Font, PatternFill, Side,
@@ -522,7 +558,7 @@ def risk_register_excel(db: Session = Depends(get_db),
 
     # ---- Hoja 1: Riesgos ----
     ws = wb.active
-    ws.title = "Risk Register"
+    ws.title = _t("reports.risk_register_excel.sheet_risk_register", lang)
 
     hdr_fill = PatternFill("solid", fgColor="59008D")
     hdr_font = Font(color="FFFFFF", bold=True, size=10)
@@ -531,11 +567,15 @@ def risk_register_excel(db: Session = Depends(get_db),
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
     headers = [
-        "Codigo", "Activo", "Tipo activo", "Amenaza", "Categoria amenaza",
-        "Lik. inh.", "Cons. inh.", "Nivel inh.",
-        "Lik. res.", "Cons. res.", "Nivel res.",
-        "Estado", "Tratamiento", "Fecha limite",
-        "Descripcion", "Plan tratamiento",
+        _t("reports.risk_register_excel.rr_header_code", lang), _t("reports.risk_register_excel.rr_header_asset", lang),
+        _t("reports.risk_register_excel.rr_header_asset_type", lang), _t("reports.risk_register_excel.rr_header_threat", lang),
+        _t("reports.risk_register_excel.rr_header_threat_category", lang),
+        _t("reports.risk_register_excel.rr_header_inherent_likelihood", lang), _t("reports.risk_register_excel.rr_header_inherent_consequence", lang),
+        _t("reports.risk_register_excel.rr_header_inherent_level", lang),
+        _t("reports.risk_register_excel.rr_header_residual_likelihood", lang), _t("reports.risk_register_excel.rr_header_residual_consequence", lang),
+        _t("reports.risk_register_excel.rr_header_residual_level", lang),
+        _t("reports.risk_register_excel.rr_header_status", lang), _t("reports.risk_register_excel.rr_header_treatment", lang), _t("reports.risk_register_excel.rr_header_due_date", lang),
+        _t("reports.risk_register_excel.rr_header_description", lang), _t("reports.risk_register_excel.rr_header_treatment_plan", lang),
     ]
     ws.append(headers)
     for col_idx, _ in enumerate(headers, 1):
@@ -589,8 +629,14 @@ def risk_register_excel(db: Session = Depends(get_db),
     ws.freeze_panes = "A2"
 
     # ---- Hoja 2: Activos ----
-    ws2 = wb.create_sheet("Activos")
-    ws2.append(["Codigo", "Nombre", "Tipo", "Clasificacion", "Loc.", "C", "I", "A", "Valor max"])
+    ws2 = wb.create_sheet(_t("reports.risk_register_excel.sheet_assets", lang))
+    ws2.append([
+        _t("reports.risk_register_excel.assets_header_code", lang), _t("reports.risk_register_excel.assets_header_name", lang),
+        _t("reports.risk_register_excel.assets_header_type", lang), _t("reports.risk_register_excel.assets_header_classification", lang),
+        _t("reports.risk_register_excel.assets_header_location", lang), _t("reports.risk_register_excel.assets_header_c", lang),
+        _t("reports.risk_register_excel.assets_header_i", lang), _t("reports.risk_register_excel.assets_header_a", lang),
+        _t("reports.risk_register_excel.assets_header_max_value", lang),
+    ])
     for col_idx in range(1, 10):
         c = ws2.cell(row=1, column=col_idx)
         c.fill = hdr_fill
@@ -615,8 +661,12 @@ def risk_register_excel(db: Session = Depends(get_db),
         ws2.column_dimensions[get_column_letter(idx)].width = w
 
     # ---- Hoja 3: Controles ----
-    ws3 = wb.create_sheet("Controles")
-    ws3.append(["Control", "Nombre", "Tema", "Estado", "Madurez", "Descripcion"])
+    ws3 = wb.create_sheet(_t("reports.risk_register_excel.sheet_controls", lang))
+    ws3.append([
+        _t("reports.risk_register_excel.controls_header_control", lang), _t("reports.risk_register_excel.controls_header_name", lang),
+        _t("reports.risk_register_excel.controls_header_theme", lang), _t("reports.risk_register_excel.controls_header_status", lang),
+        _t("reports.risk_register_excel.controls_header_maturity", lang), _t("reports.risk_register_excel.controls_header_description", lang),
+    ])
     for col_idx in range(1, 7):
         c = ws3.cell(row=1, column=col_idx)
         c.fill = hdr_fill
@@ -641,25 +691,25 @@ def risk_register_excel(db: Session = Depends(get_db),
         ws3.column_dimensions[get_column_letter(idx)].width = w
 
     # ---- Hoja 4: Resumen ----
-    ws4 = wb.create_sheet("Resumen")
+    ws4 = wb.create_sheet(_t("reports.risk_register_excel.sheet_summary", lang))
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     stat_fill = PatternFill("solid", fgColor="EDE9FE")
     rows_summary = [
-        ("Organizacion", ctx.organization_name if ctx else "-"),
-        ("Alcance", (ctx.scope or "-") if ctx else "-"),
-        ("Apetito de riesgo", f"Nivel {ctx.risk_appetite if ctx else '-'} / 8"),
-        ("Fecha exportacion", datetime.now().strftime("%Y-%m-%d %H:%M")),
+        (_t("reports.risk_register_excel.summary_organization", lang), ctx.organization_name if ctx else "-"),
+        (_t("reports.risk_register_excel.summary_scope", lang), (ctx.scope or "-") if ctx else "-"),
+        (_t("reports.risk_register_excel.summary_appetite", lang), _t("reports.risk_register_excel.summary_appetite_level", lang, level=ctx.risk_appetite if ctx else "-")),
+        (_t("reports.risk_register_excel.summary_export_date", lang), datetime.now().strftime("%Y-%m-%d %H:%M")),
         ("", ""),
-        ("Total riesgos", len(risks)),
-        ("Nivel critico (>=7)", sum(1 for r in risks if r.residual_level >= 7)),
-        ("Nivel alto (5-6)", sum(1 for r in risks if 5 <= r.residual_level < 7)),
-        ("Nivel medio (3-4)", sum(1 for r in risks if 3 <= r.residual_level < 5)),
-        ("Nivel bajo (<3)", sum(1 for r in risks if r.residual_level < 3)),
-        ("Con plan de tratamiento", sum(1 for r in risks if r.treatment_option)),
-        ("Aceptados", sum(1 for r in risks if r.status == RiskStatus.ACCEPTED)),
+        (_t("reports.risk_register_excel.summary_total_risks", lang), len(risks)),
+        (_t("reports.risk_register_excel.summary_critical_level", lang), sum(1 for r in risks if r.residual_level >= 7)),
+        (_t("reports.risk_register_excel.summary_high_level", lang), sum(1 for r in risks if 5 <= r.residual_level < 7)),
+        (_t("reports.risk_register_excel.summary_medium_level", lang), sum(1 for r in risks if 3 <= r.residual_level < 5)),
+        (_t("reports.risk_register_excel.summary_low_level", lang), sum(1 for r in risks if r.residual_level < 3)),
+        (_t("reports.risk_register_excel.summary_with_treatment_plan", lang), sum(1 for r in risks if r.treatment_option)),
+        (_t("reports.risk_register_excel.summary_accepted", lang), sum(1 for r in risks if r.status == RiskStatus.ACCEPTED)),
         ("", ""),
-        ("Total activos", len(assets)),
-        ("Total controles implementados", len(impls)),
+        (_t("reports.risk_register_excel.summary_total_assets", lang), len(assets)),
+        (_t("reports.risk_register_excel.summary_total_controls_implemented", lang), len(impls)),
     ]
     for label, value in rows_summary:
         ws4.append([label, value])
@@ -681,18 +731,18 @@ def risk_register_excel(db: Session = Depends(get_db),
     wb.active = ws5
 
     # Titulo
-    ws5["A1"] = f"RiskHub — Dashboard Ejecutivo"
+    ws5["A1"] = _t("reports.risk_register_excel.dashboard_title", lang)
     ws5["A1"].font = Font(size=16, bold=True, color="59008D")
-    ws5["A2"] = f"{ctx.organization_name if ctx else 'Organizacion'} — {datetime.now().strftime('%d/%m/%Y')}"
+    ws5["A2"] = f"{ctx.organization_name if ctx else _t('reports.risk_register_excel.dashboard_org_fallback', lang)} — {datetime.now().strftime('%d/%m/%Y')}"
     ws5["A2"].font = Font(size=11, color="9D9D9D")
 
     # KPIs en fila
     kpi_col = 1
     for label, val, bg in [
-        ("Total Riesgos", len(risks), "EDE9FE"),
-        ("Riesgos Altos (>=5)", sum(1 for r in risks if r.residual_level >= 5), "FEE2E2"),
-        ("Controles Implantados", sum(1 for imp in impls if imp.status and imp.status.value == "implemented"), "D1FAE5"),
-        ("Madurez Media", f"{round(sum(imp.maturity or 0 for imp in impls)/max(1, len(impls)), 1)}/5", "FEF9C3"),
+        (_t("reports.risk_register_excel.kpi_total_risks", lang), len(risks), "EDE9FE"),
+        (_t("reports.risk_register_excel.kpi_high_risks", lang), sum(1 for r in risks if r.residual_level >= 5), "FEE2E2"),
+        (_t("reports.risk_register_excel.kpi_controls_implemented", lang), sum(1 for imp in impls if imp.status and imp.status.value == "implemented"), "D1FAE5"),
+        (_t("reports.risk_register_excel.kpi_average_maturity", lang), f"{round(sum(imp.maturity or 0 for imp in impls)/max(1, len(impls)), 1)}/5", "FEF9C3"),
     ]:
         ws5.cell(row=4, column=kpi_col, value=label).font = Font(bold=True, size=9, color="59008D")
         cell_val = ws5.cell(row=5, column=kpi_col, value=val)
@@ -704,22 +754,22 @@ def risk_register_excel(db: Session = Depends(get_db),
 
     # Datos para graficos
     chart_row = 8
-    ws5.cell(row=chart_row, column=1, value="Nivel Residual")
-    ws5.cell(row=chart_row, column=2, value="Cantidad")
-    for lbl, fn in [("Critico (>=7)", lambda r: r.residual_level >= 7),
-                    ("Alto (5-6)", lambda r: 5 <= r.residual_level < 7),
-                    ("Medio (3-4)", lambda r: 3 <= r.residual_level < 5),
-                    ("Bajo (<3)", lambda r: r.residual_level < 3)]:
+    ws5.cell(row=chart_row, column=1, value=_t("reports.risk_register_excel.chart_residual_level", lang))
+    ws5.cell(row=chart_row, column=2, value=_t("reports.risk_register_excel.chart_quantity", lang))
+    for lbl, fn in [(_t("reports.risk_register_excel.chart_level_critical", lang), lambda r: r.residual_level >= 7),
+                    (_t("reports.risk_register_excel.chart_level_high", lang), lambda r: 5 <= r.residual_level < 7),
+                    (_t("reports.risk_register_excel.chart_level_medium", lang), lambda r: 3 <= r.residual_level < 5),
+                    (_t("reports.risk_register_excel.chart_level_low", lang), lambda r: r.residual_level < 3)]:
         chart_row += 1
         ws5.cell(row=chart_row, column=1, value=lbl)
         ws5.cell(row=chart_row, column=2, value=sum(1 for r in risks if fn(r)))
 
     try:
         bar = BarChart()
-        bar.title = "Distribucion de Riesgos por Nivel Residual"
+        bar.title = _t("reports.risk_register_excel.bar_chart_title", lang)
         bar.style = 10
-        bar.y_axis.title = "Numero de riesgos"
-        bar.x_axis.title = "Nivel"
+        bar.y_axis.title = _t("reports.risk_register_excel.bar_chart_y_axis", lang)
+        bar.x_axis.title = _t("reports.risk_register_excel.bar_chart_x_axis", lang)
         bar.shape = 4
         data_ref = Reference(ws5, min_col=2, min_row=8, max_row=12)
         cats = Reference(ws5, min_col=1, min_row=9, max_row=12)
@@ -729,16 +779,16 @@ def risk_register_excel(db: Session = Depends(get_db),
         ws5.add_chart(bar, "E4")
 
         pie = PieChart()
-        pie.title = "Estado de Controles"
+        pie.title = _t("reports.risk_register_excel.pie_chart_title", lang)
         pie.style = 10
         st_row = chart_row + 2
-        ws5.cell(row=st_row, column=1, value="Estado controles")
-        ws5.cell(row=st_row, column=2, value="N")
+        ws5.cell(row=st_row, column=1, value=_t("reports.risk_register_excel.pie_chart_status_label", lang))
+        ws5.cell(row=st_row, column=2, value=_t("reports.risk_register_excel.pie_chart_n_label", lang))
         for st_lbl, st_val in [
-            ("Implementado", sum(1 for i in impls if i.status and i.status.value == "implemented")),
-            ("Parcial", sum(1 for i in impls if i.status and i.status.value == "partial")),
-            ("Planificado", sum(1 for i in impls if i.status and i.status.value == "planned")),
-            ("No impl.", sum(1 for i in impls if i.status and i.status.value == "not_implemented")),
+            (_t("reports.risk_register_excel.status_implemented", lang), sum(1 for i in impls if i.status and i.status.value == "implemented")),
+            (_t("reports.risk_register_excel.status_partial", lang), sum(1 for i in impls if i.status and i.status.value == "partial")),
+            (_t("reports.risk_register_excel.status_planned", lang), sum(1 for i in impls if i.status and i.status.value == "planned")),
+            (_t("reports.risk_register_excel.status_not_implemented", lang), sum(1 for i in impls if i.status and i.status.value == "not_implemented")),
         ]:
             st_row += 1
             ws5.cell(row=st_row, column=1, value=st_lbl)
@@ -769,6 +819,7 @@ def risk_register_excel(db: Session = Depends(get_db),
 
 @router.get("/management-review")
 def management_review(
+    request: Request,
     format: str = Query("pdf", regex="^(pdf|excel|word)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -777,6 +828,7 @@ def management_review(
 
     Soporta format=pdf | excel | word.
     """
+    lang = get_lang(request)
     from app.models import AuditProgram, NonConformity, Supplier  # noqa
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     org_name = (ctx.organization_name if ctx else None) or "Organizacion"
@@ -800,129 +852,135 @@ def management_review(
     avg_mat = round(sum(i.maturity or 0 for i in impls) / max(1, len(impls)), 1)
     open_inc = sum(1 for i in incidents_all if i.status and i.status.value in ("open", "in_progress"))
     p1p2 = sum(1 for i in incidents_all if i.severity and i.severity.value in ("p1", "p2"))
-    tasks_overdue = sum(1 for t in tasks_all if t.due_date and t.due_date < now and t.status and t.status.value != "done")
+    tasks_overdue = sum(
+        1 for t in tasks_all
+        if t.due_date and t.due_date.replace(tzinfo=timezone.utc) < now
+        and t.status and t.status.value != "done"
+    )
     tasks_pending = sum(1 for t in tasks_all if t.status and t.status.value == "pending")
-    policies_overdue = sum(1 for p in policies if p.review_date and p.review_date < now)
+    policies_overdue = sum(
+        1 for p in policies
+        if p.review_date and p.review_date.replace(tzinfo=timezone.utc) < now
+    )
 
-    EMPTY = "[A CUMPLIMENTAR]"
+    EMPTY = _t("reports.mgmt_review.empty_placeholder", lang)
 
+    _NS = "reports.mgmt_review.sections."
     sections = [
         {
-            "title": "a) Estado de acciones de la revision anterior",
+            "title": _t(_NS + "a_previous_actions.title", lang),
             "content": EMPTY,
             "iso": "ISO 27001:2022 cl. 9.3.2.a",
         },
         {
-            "title": "b) Cambios en el contexto de la organizacion",
-            "content": (
-                f"Alcance del SGSI: {scope or EMPTY}\n"
-                f"Fronteras: {boundaries or EMPTY}\n"
-                f"Cambios internos/externos relevantes: {EMPTY}"
+            "title": _t(_NS + "b_context_changes.title", lang),
+            "content": _t(
+                _NS + "b_context_changes.content", lang,
+                scope=(scope or EMPTY), boundaries=(boundaries or EMPTY), empty=EMPTY,
             ),
             "iso": "ISO 27001:2022 cl. 9.3.2.b",
         },
         {
-            "title": "c) Cambios en las necesidades de las partes interesadas",
+            "title": _t(_NS + "c_stakeholder_needs.title", lang),
             "content": EMPTY,
             "iso": "ISO 27001:2022 cl. 9.3.2.c",
         },
         {
-            "title": "d) Desempeno del SGSI — Gestion de Riesgos",
-            "content": (
-                f"Total riesgos identificados: {total_risks}\n"
-                f"Riesgos altos (nivel >= 5): {high_risks}\n"
-                f"Riesgos altos sin plan de tratamiento: {untreated}\n"
-                f"Controles implementados: {impl_pct}% | Madurez media: {avg_mat}/5"
+            "title": _t(_NS + "d_risk_management.title", lang),
+            "content": _t(
+                _NS + "d_risk_management.content", lang,
+                total_risks=total_risks, high_risks=high_risks,
+                untreated=untreated, impl_pct=impl_pct, avg_mat=avg_mat,
             ),
             "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 8.2/8.3",
         },
         {
-            "title": "d) Desempeno del SGSI — Incidentes de Seguridad",
-            "content": (
-                f"Incidentes abiertos: {open_inc}\n"
-                f"Incidentes P1/P2 (criticos/altos): {p1p2}\n"
-                f"Total historico de incidentes: {len(incidents_all)}\n"
-                f"Lecciones aprendidas documentadas: {sum(1 for i in incidents_all if i.lessons_learned)}"
+            "title": _t(_NS + "d_incidents.title", lang),
+            "content": _t(
+                _NS + "d_incidents.content", lang,
+                open_inc=open_inc, p1p2=p1p2,
+                total_incidents=len(incidents_all),
+                lessons_learned=sum(1 for i in incidents_all if i.lessons_learned),
             ),
             "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 6.1.2",
         },
         {
-            "title": "d) Desempeno del SGSI — No Conformidades y Acciones Correctivas",
-            "content": EMPTY + "\n(Ver modulo de No Conformidades en RiskHub para el detalle actualizado)",
+            "title": _t(_NS + "d_nonconformities.title", lang),
+            "content": _t(_NS + "d_nonconformities.content", lang, empty=EMPTY),
             "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 10.1",
         },
         {
-            "title": "d) Desempeno del SGSI — Tareas de Tratamiento",
-            "content": (
-                f"Tareas vencidas sin completar: {tasks_overdue}\n"
-                f"Tareas pendientes de inicio: {tasks_pending}\n"
-                f"Total tareas activas: {len(tasks_all)}"
+            "title": _t(_NS + "d_tasks.title", lang),
+            "content": _t(
+                _NS + "d_tasks.content", lang,
+                tasks_overdue=tasks_overdue, tasks_pending=tasks_pending,
+                total_tasks=len(tasks_all),
             ),
             "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 8.3",
         },
         {
-            "title": "d) Desempeno del SGSI — Auditorias Internas",
-            "content": EMPTY + "\n(Ver modulo Auditoria Interna en RiskHub)",
+            "title": _t(_NS + "d_audits.title", lang),
+            "content": _t(_NS + "d_audits.content", lang, empty=EMPTY),
             "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 9.2",
         },
         {
-            "title": "d) Desempeno del SGSI — Cumplimiento de Politicas",
-            "content": (
-                f"Total politicas gestionadas: {len(policies)}\n"
-                f"Politicas con revision vencida: {policies_overdue}\n"
-                f"Politicas en estado borrador: {sum(1 for p in policies if p.status and p.status.value == 'draft')}"
+            "title": _t(_NS + "d_policies.title", lang),
+            "content": _t(
+                _NS + "d_policies.content", lang,
+                total_policies=len(policies), policies_overdue=policies_overdue,
+                policies_draft=sum(1 for p in policies if p.status and p.status.value == 'draft'),
             ),
             "iso": "ISO 27001:2022 cl. 9.3.2.d — cl. 5.2",
         },
         {
-            "title": "d) Desempeno del SGSI — Proveedores y Cadena de Suministro",
-            "content": (
-                f"Total proveedores gestionados: {len(suppliers)}\n"
-                f"Proveedores criticos: {sum(1 for s in suppliers if s.is_critical)}\n"
-                f"Proveedores sin evaluacion reciente: {sum(1 for s in suppliers if not s.last_assessment_at)}"
+            "title": _t(_NS + "d_suppliers.title", lang),
+            "content": _t(
+                _NS + "d_suppliers.content", lang,
+                total_suppliers=len(suppliers),
+                critical_suppliers=sum(1 for s in suppliers if s.is_critical),
+                suppliers_no_assessment=sum(1 for s in suppliers if not s.last_assessment_at),
             ),
             "iso": "ISO 27001:2022 cl. 9.3.2.d — NIS2 Art. 21.2.d",
         },
         {
-            "title": "d) Retroalimentacion de partes interesadas",
+            "title": _t(_NS + "d_stakeholder_feedback.title", lang),
             "content": EMPTY,
             "iso": "ISO 27001:2022 cl. 9.3.2.d",
         },
         {
-            "title": "e) Resultados de la evaluacion de riesgos y estado del plan de tratamiento",
-            "content": (
-                f"Ver detalle en el Risk Register exportado desde RiskHub.\n"
-                f"Resumen: {total_risks} riesgos | {high_risks} altos | "
-                f"{sum(1 for r in risks if r.status and r.status.value == 'accepted')} aceptados"
+            "title": _t(_NS + "e_risk_results.title", lang),
+            "content": _t(
+                _NS + "e_risk_results.content", lang,
+                total_risks=total_risks, high_risks=high_risks,
+                accepted_risks=sum(1 for r in risks if r.status and r.status.value == 'accepted'),
             ),
             "iso": "ISO 27001:2022 cl. 9.3.2.e",
         },
         {
-            "title": "f) Oportunidades de mejora continua",
+            "title": _t(_NS + "f_improvement.title", lang),
             "content": EMPTY,
             "iso": "ISO 27001:2022 cl. 9.3.2.f / cl. 10.2",
         },
         {
-            "title": "g) Objetivos de seguridad para el proximo periodo",
+            "title": _t(_NS + "g_objectives.title", lang),
             "content": EMPTY,
             "iso": "ISO 27001:2022 cl. 9.3.2 / cl. 6.2",
         },
         {
-            "title": "h) Decisiones y acciones resultantes",
+            "title": _t(_NS + "h_decisions.title", lang),
             "content": EMPTY,
             "iso": "ISO 27001:2022 cl. 9.3.3",
         },
         {
-            "title": "i) Recursos necesarios",
+            "title": _t(_NS + "i_resources.title", lang),
             "content": EMPTY,
             "iso": "ISO 27001:2022 cl. 9.3.3 / cl. 7.1",
         },
         {
-            "title": "j) ENS — Nivel de seguridad alcanzado y plan de adecuacion",
-            "content": (
-                f"Cobertura de controles: {impl_pct}% implementados\n"
-                f"Nivel de madurez medio: {avg_mat}/5\n"
-                f"Plan de adecuacion ENS: {EMPTY}"
+            "title": _t(_NS + "j_ens.title", lang),
+            "content": _t(
+                _NS + "j_ens.content", lang,
+                impl_pct=impl_pct, avg_mat=avg_mat, empty=EMPTY,
             ),
             "iso": "ENS RD 311/2022 — Art. 28 / Anexo II",
         },
@@ -930,27 +988,28 @@ def management_review(
 
     brand = _load_brand(db, current_user.organization_id, "management_review")
     if format == "pdf":
-        return _mgmt_review_pdf(sections, org_name, scope, now_str, brand)
+        return _mgmt_review_pdf(sections, org_name, scope, now_str, brand, lang)
     elif format == "excel":
-        return _mgmt_review_excel(sections, org_name, scope, now_str)
+        return _mgmt_review_excel(sections, org_name, scope, now_str, lang)
     else:
-        return _mgmt_review_word(sections, org_name, scope, now_str)
+        return _mgmt_review_word(sections, org_name, scope, now_str, lang)
 
 
-def _mgmt_review_pdf(sections, org_name, scope, now_str, brand: Optional[ReportBrand] = None):
+def _mgmt_review_pdf(sections, org_name, scope, now_str, brand: Optional[ReportBrand] = None, lang: str = "es"):
     """Genera el informe de revision por la direccion en PDF."""
     if brand is None:
         brand = ReportBrand()
     BRAND_PURPLE = brand.primary
     s = _styles(brand)
+    _NS = "reports.mgmt_review."
     el = []
     el.append(Spacer(1, 20*mm))
-    el.append(Paragraph("Informe de Revision por la Direccion", s["TitleBrand"]))
-    el.append(Paragraph("ISO/IEC 27001:2022 Clausula 9.3 &mdash; ENS RD 311/2022", s["SubBrand"]))
+    el.append(Paragraph(_t(_NS + "report_title", lang), s["TitleBrand"]))
+    el.append(Paragraph(_t(_NS + "report_subtitle", lang), s["SubBrand"]))
     el.append(Spacer(1, 6))
-    el.append(Paragraph(f"<b>Organizacion:</b> {_safe(org_name)}", s["BodyBrand"]))
-    el.append(Paragraph(f"<b>Fecha:</b> {now_str}", s["BodyBrand"]))
-    el.append(Paragraph(f"<b>Alcance:</b> {_safe(scope) or '[A CUMPLIMENTAR]'}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t(_NS + 'label_organization', lang)}</b> {_safe(org_name)}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t(_NS + 'label_date', lang)}</b> {now_str}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t(_NS + 'label_scope', lang)}</b> {_safe(scope) or _t(_NS + 'empty_placeholder', lang)}", s["BodyBrand"]))
     el.append(PageBreak())
 
     for sec in sections:
@@ -966,12 +1025,13 @@ def _mgmt_review_pdf(sections, org_name, scope, now_str, brand: Optional[ReportB
 
     # Firma
     el.append(PageBreak())
-    el.append(Paragraph("Aprobacion de la Direccion", s["H2Brand"]))
+    el.append(Paragraph(_t(_NS + "approval_title", lang), s["H2Brand"]))
     firma_data = [
-        ["Cargo", "Nombre y apellidos", "Fecha", "Firma"],
-        ["Director General / CEO", "_" * 28, "_" * 12, "_" * 20],
-        ["Responsable de Seguridad (CISO)", "_" * 28, "_" * 12, "_" * 20],
-        ["Auditor Interno", "_" * 28, "_" * 12, "_" * 20],
+        [_t(_NS + "signature_role", lang), _t(_NS + "signature_name", lang),
+         _t(_NS + "signature_date", lang), _t(_NS + "signature_signature", lang)],
+        [_t(_NS + "role_ceo", lang), "_" * 28, "_" * 12, "_" * 20],
+        [_t(_NS + "role_ciso", lang), "_" * 28, "_" * 12, "_" * 20],
+        [_t(_NS + "role_auditor", lang), "_" * 28, "_" * 12, "_" * 20],
     ]
     ft = Table(firma_data, colWidths=[50*mm, 55*mm, 28*mm, 37*mm])
     ft.setStyle(TableStyle([
@@ -985,13 +1045,16 @@ def _mgmt_review_pdf(sections, org_name, scope, now_str, brand: Optional[ReportB
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     el.append(ft)
-    return _pdf_response(el, f"revision_direccion_{datetime.now().strftime('%Y%m%d')}.pdf", brand)
+    return _pdf_response(el, f"revision_direccion_{datetime.now().strftime('%Y%m%d')}.pdf", brand, lang)
 
 
-def _mgmt_review_excel(sections, org_name, scope, now_str):
+def _mgmt_review_excel(sections, org_name, scope, now_str, lang: str = "es"):
     """Genera el informe de revision por la direccion en Excel."""
     import openpyxl
     from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+
+    _NS = "reports.mgmt_review."
+    empty_ph = _t(_NS + "empty_placeholder", lang)
 
     wb = openpyxl.Workbook()
     thin = Side(style="thin", color="D1D5DB")
@@ -1000,15 +1063,15 @@ def _mgmt_review_excel(sections, org_name, scope, now_str):
     emp_fill = PatternFill("solid", fgColor="FFFBEB")  # amarillo claro = a rellenar
 
     ws = wb.active
-    ws.title = "Revision Direccion"
+    ws.title = _t(_NS + "excel_sheet_title", lang)
     ws.column_dimensions["A"].width = 45
     ws.column_dimensions["B"].width = 80
 
-    ws.append(["Informe de Revision por la Direccion"])
+    ws.append([_t(_NS + "report_title", lang)])
     ws["A1"].font = Font(size=14, bold=True, color="59008D")
-    ws.append([f"Organizacion: {org_name}   |   Fecha: {now_str}"])
-    ws.append([f"Alcance: {scope or '[A CUMPLIMENTAR]'}"])
-    ws.append(["Norma", "ISO/IEC 27001:2022 Clausula 9.3 — ENS RD 311/2022"])
+    ws.append([_t(_NS + "field_organization", lang, org=org_name, date=now_str)])
+    ws.append([_t(_NS + "field_scope", lang, scope=(scope or empty_ph))])
+    ws.append([_t(_NS + "excel_header_norma", lang), _t(_NS + "standard_reference", lang)])
     ws.append([])
 
     for sec in sections:
@@ -1021,9 +1084,9 @@ def _mgmt_review_excel(sections, org_name, scope, now_str):
             c.border = brd
 
         content = sec["content"] or ""
-        needs_fill = "[A CUMPLIMENTAR]" in content
+        needs_fill = empty_ph in content
         row_cont = ws.max_row + 1
-        ws.append(["Contenido", content])
+        ws.append([_t(_NS + "excel_content_label", lang), content])
         for col in [1, 2]:
             c = ws.cell(row=row_cont, column=col)
             c.alignment = Alignment(wrap_text=True, vertical="top")
@@ -1044,14 +1107,17 @@ def _mgmt_review_excel(sections, org_name, scope, now_str):
     )
 
 
-def _mgmt_review_word(sections, org_name, scope, now_str):
+def _mgmt_review_word(sections, org_name, scope, now_str, lang: str = "es"):
     """Genera el informe de revision por la direccion en Word (.docx)."""
     try:
         from docx import Document
         from docx.shared import Pt, RGBColor, Cm
         from docx.enum.text import WD_ALIGN_PARAGRAPH
     except ImportError:
-        raise HTTPException(500, "python-docx no instalado. Anade 'python-docx' a requirements.txt.")
+        raise HTTPException(500, _t("reports.mgmt_review.docx_not_installed", lang))
+
+    _NS = "reports.mgmt_review."
+    empty_ph = _t(_NS + "empty_placeholder", lang)
 
     doc = Document()
 
@@ -1060,11 +1126,11 @@ def _mgmt_review_word(sections, org_name, scope, now_str):
     style_title.font.size = Pt(22)
     style_title.font.color.rgb = RGBColor(0x59, 0x00, 0x8D)
 
-    doc.add_heading("Informe de Revision por la Direccion", 0)
-    doc.add_paragraph(f"Organizacion: {org_name}")
-    doc.add_paragraph(f"Fecha: {now_str}")
-    doc.add_paragraph(f"Alcance del SGSI: {scope or '[A CUMPLIMENTAR]'}")
-    doc.add_paragraph("Norma de referencia: ISO/IEC 27001:2022 cl. 9.3 / ENS RD 311/2022")
+    doc.add_heading(_t(_NS + "report_title", lang), 0)
+    doc.add_paragraph(f"{_t(_NS + 'label_organization', lang)} {org_name}")
+    doc.add_paragraph(f"{_t(_NS + 'label_date', lang)} {now_str}")
+    doc.add_paragraph(f"{_t(_NS + 'label_scope', lang)} {scope or empty_ph}")
+    doc.add_paragraph(_t(_NS + "standard_reference_word", lang))
     doc.add_page_break()
 
     for sec in sections:
@@ -1074,11 +1140,11 @@ def _mgmt_review_word(sections, org_name, scope, now_str):
         iso_p.runs[0].font.size = Pt(8)
         iso_p.runs[0].font.color.rgb = RGBColor(0x9D, 0x9D, 0x9D)
 
-        content = sec["content"] or "[A CUMPLIMENTAR]"
+        content = sec["content"] or empty_ph
         for line in content.split("\n"):
             if line.strip():
                 p = doc.add_paragraph(line.strip())
-                if "[A CUMPLIMENTAR]" in line:
+                if empty_ph in line:
                     for run in p.runs:
                         run.italic = True
                         run.font.color.rgb = RGBColor(0x92, 0x40, 0x0E)
@@ -1087,14 +1153,17 @@ def _mgmt_review_word(sections, org_name, scope, now_str):
 
     # Seccion de firmas
     doc.add_page_break()
-    doc.add_heading("Aprobacion de la Direccion", 2)
+    doc.add_heading(_t(_NS + "approval_title", lang), 2)
     table = doc.add_table(rows=4, cols=4)
     table.style = "Table Grid"
-    for i, hdr in enumerate(["Cargo", "Nombre y apellidos", "Fecha", "Firma"]):
+    for i, hdr in enumerate([
+        _t(_NS + "signature_role", lang), _t(_NS + "signature_name", lang),
+        _t(_NS + "signature_date", lang), _t(_NS + "signature_signature", lang),
+    ]):
         table.cell(0, i).text = hdr
         table.cell(0, i).paragraphs[0].runs[0].bold = True
     for row_idx, cargo in enumerate(
-        ["Director General / CEO", "Responsable Seguridad (CISO)", "Auditor Interno"], 1
+        [_t(_NS + "role_ceo", lang), _t(_NS + "role_ciso_word", lang), _t(_NS + "role_auditor", lang)], 1
     ):
         table.cell(row_idx, 0).text = cargo
         for col in [1, 2, 3]:
@@ -1122,15 +1191,22 @@ REPORT_LABEL = {
 }
 
 
+def _report_label(report_type: str, lang: str = "es") -> str:
+    """Etiqueta visible del tipo de informe IA, en el idioma de UI."""
+    if report_type not in REPORT_LABEL:
+        return _t("reports.ai_report.label_fallback", lang)
+    return _t(f"reports.ai_report.label_{report_type}", lang)
+
+
 # ============================================================
 # Informe del Estado del SGSI — multi-modulo, sin IA
 # ============================================================
 
-def _kpi_table(data_rows: list[tuple], s, brand: Optional[ReportBrand] = None) -> "Table":
+def _kpi_table(data_rows: list[tuple], s, brand: Optional[ReportBrand] = None, lang: str = "es") -> "Table":
     """Tabla de 2 columnas: etiqueta | valor."""
     if brand is None:
         brand = ReportBrand()
-    rows = [["Indicador", "Valor"]] + list(data_rows)
+    rows = [[_t("reports.sgsi_status.kpi_header_indicator", lang), _t("reports.sgsi_status.kpi_header_value", lang)]] + list(data_rows)
     t = Table(rows, colWidths=[110 * mm, 60 * mm])
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), brand.primary),
@@ -1149,10 +1225,12 @@ def _kpi_table(data_rows: list[tuple], s, brand: Optional[ReportBrand] = None) -
 
 @router.get("/sgsi-status")
 def sgsi_status_report(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Informe del Estado del SGSI — resumen multi-modulo sin IA. Descarga instantanea."""
+    lang = get_lang(request)
     from datetime import timezone
     brand = _load_brand(db, current_user.organization_id, "sgsi_status")
     BRAND_PURPLE = brand.primary
@@ -1161,19 +1239,19 @@ def sgsi_status_report(
     el = []
 
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
-    org = ctx.organization_name if ctx else "Organizacion"
+    org = ctx.organization_name if ctx else _t("reports.sgsi_status.default_org_name", lang)
     now = datetime.now(timezone.utc)
 
     # --- Portada ---
     el.append(Spacer(1, 20))
-    el.append(Paragraph("Informe del Estado del SGSI", s["TitleBrand"]))
-    el.append(Paragraph("Sistema de Gestion de la Seguridad de la Informacion", s["SubBrand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.cover_title", lang), s["TitleBrand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.cover_subtitle", lang), s["SubBrand"]))
     el.append(Spacer(1, 8))
-    el.append(Paragraph(f"<b>Organizacion:</b> {org}", s["BodyBrand"]))
-    el.append(Paragraph(f"<b>Fecha:</b> {now.strftime('%d/%m/%Y %H:%M UTC')}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.sgsi_status.org_label', lang)}</b> {org}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.sgsi_status.date_label', lang)}</b> {now.strftime('%d/%m/%Y %H:%M UTC')}", s["BodyBrand"]))
     if ctx:
-        el.append(Paragraph(f"<b>Alcance:</b> {ctx.scope or '-'}", s["BodyBrand"]))
-        el.append(Paragraph(f"<b>Apetito de riesgo:</b> Nivel {ctx.risk_appetite}", s["BodyBrand"]))
+        el.append(Paragraph(f"<b>{_t('reports.sgsi_status.scope_label', lang)}</b> {ctx.scope or '-'}", s["BodyBrand"]))
+        el.append(Paragraph(f"<b>{_t('reports.sgsi_status.appetite_label', lang)}</b> {_t('reports.sgsi_status.appetite_level', lang, level=ctx.risk_appetite)}", s["BodyBrand"]))
     el.append(Spacer(1, 12))
 
     # --- Seccion 1: Riesgos ---
@@ -1189,15 +1267,15 @@ def sgsi_status_report(
         and r.treatment_due_date.replace(tzinfo=timezone.utc) < now
     )
 
-    el.append(Paragraph("1. Gestion de Riesgos (ISO 27005)", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.section1_title", lang), s["H2Brand"]))
     el.append(_kpi_table([
-        ("Total de riesgos identificados", str(total_r)),
-        ("Riesgos altos (nivel >= 5)", str(high_r)),
-        ("Riesgos medios (nivel 3-4)", str(medium_r)),
-        ("Riesgos bajos (nivel < 3)", str(low_r)),
-        ("Con plan de tratamiento", str(treated_r)),
-        ("Tratamientos vencidos", str(overdue_r)),
-    ], s, brand))
+        (_t("reports.sgsi_status.kpi_total_risks", lang), str(total_r)),
+        (_t("reports.sgsi_status.kpi_high_risks", lang), str(high_r)),
+        (_t("reports.sgsi_status.kpi_medium_risks", lang), str(medium_r)),
+        (_t("reports.sgsi_status.kpi_low_risks", lang), str(low_r)),
+        (_t("reports.sgsi_status.kpi_treated_risks", lang), str(treated_r)),
+        (_t("reports.sgsi_status.kpi_overdue_treatments", lang), str(overdue_r)),
+    ], s, brand, lang))
     el.append(Spacer(1, 8))
 
     # Top riesgos altos
@@ -1206,16 +1284,20 @@ def sgsi_status_report(
         key=lambda r: -(r.residual_level or 0)
     )[:10]
     if top_high:
-        el.append(Paragraph("Principales riesgos altos", s["BodyBrand"]))
+        el.append(Paragraph(_t("reports.sgsi_status.top_high_risks_title", lang), s["BodyBrand"]))
         el.append(Spacer(1, 4))
-        th_data = [["Codigo", "Activo", "Amenaza", "Nivel res.", "Tratamiento"]]
+        th_data = [[
+            _t("reports.sgsi_status.risk_table_header_code", lang), _t("reports.sgsi_status.risk_table_header_asset", lang),
+            _t("reports.sgsi_status.risk_table_header_threat", lang), _t("reports.sgsi_status.risk_table_header_residual_level", lang),
+            _t("reports.sgsi_status.risk_table_header_treatment", lang),
+        ]]
         for r in top_high:
             th_data.append([
                 r.code,
                 (r.asset.name[:30] if r.asset else "-"),
                 (r.threat.name[:35] if r.threat else "-"),
                 str(r.residual_level or 0),
-                (r.treatment_option.value if r.treatment_option else "Sin definir"),
+                (r.treatment_option.value if r.treatment_option else _t("reports.sgsi_status.not_defined", lang)),
             ])
         th = Table(th_data, repeatRows=1, colWidths=[18*mm, 42*mm, 50*mm, 18*mm, 32*mm])
         th.setStyle(TableStyle([
@@ -1231,7 +1313,7 @@ def sgsi_status_report(
     el.append(Spacer(1, 10))
 
     # --- Seccion 2: Controles ---
-    el.append(Paragraph("2. Controles de Seguridad ISO 27002:2022", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.section2_title", lang), s["H2Brand"]))
     impls = filter_by_org(db.query(ControlImplementation), ControlImplementation, current_user).all()
     total_impl = len(impls)
     impl_done = sum(1 for i in impls if i.status and i.status.value == "implemented")
@@ -1244,17 +1326,17 @@ def sgsi_status_report(
         and i.next_review.replace(tzinfo=timezone.utc) < now
     )
     el.append(_kpi_table([
-        ("Controles con implementacion activa", str(total_impl)),
-        ("Estado: Implementado", str(impl_done)),
-        ("Estado: Parcial", str(impl_partial)),
-        ("Estado: Planificado", str(impl_planned)),
-        ("Madurez media (0-5)", f"{avg_mat:.1f}"),
-        ("Revisiones vencidas", str(overdue_ctrl)),
-    ], s, brand))
+        (_t("reports.sgsi_status.kpi_active_controls", lang), str(total_impl)),
+        (_t("reports.sgsi_status.kpi_status_implemented", lang), str(impl_done)),
+        (_t("reports.sgsi_status.kpi_status_partial", lang), str(impl_partial)),
+        (_t("reports.sgsi_status.kpi_status_planned", lang), str(impl_planned)),
+        (_t("reports.sgsi_status.kpi_avg_maturity", lang), f"{avg_mat:.1f}"),
+        (_t("reports.sgsi_status.kpi_overdue_reviews", lang), str(overdue_ctrl)),
+    ], s, brand, lang))
     el.append(Spacer(1, 10))
 
     # --- Seccion 3: Incidentes ---
-    el.append(Paragraph("3. Incidentes de Seguridad (NIS2)", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.section3_title", lang), s["H2Brand"]))
     incidents = filter_by_org(db.query(Incident), Incident, current_user).all()
     total_inc = len(incidents)
     open_inc = sum(1 for i in incidents if i.status != IncidentStatus.CLOSED)
@@ -1265,15 +1347,15 @@ def sgsi_status_report(
         and i.status != IncidentStatus.CLOSED
     )
     el.append(_kpi_table([
-        ("Total incidentes registrados", str(total_inc)),
-        ("Incidentes abiertos", str(open_inc)),
-        ("Incidentes P1/P2 abiertos (criticos)", str(p1p2)),
-        ("Notificaciones NIS2 pendientes", str(nis2_pending)),
-    ], s, brand))
+        (_t("reports.sgsi_status.kpi_total_incidents", lang), str(total_inc)),
+        (_t("reports.sgsi_status.kpi_open_incidents", lang), str(open_inc)),
+        (_t("reports.sgsi_status.kpi_critical_incidents", lang), str(p1p2)),
+        (_t("reports.sgsi_status.kpi_nis2_pending", lang), str(nis2_pending)),
+    ], s, brand, lang))
     el.append(Spacer(1, 10))
 
     # --- Seccion 4: Tareas de tratamiento ---
-    el.append(Paragraph("4. Tareas de Tratamiento", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.section4_title", lang), s["H2Brand"]))
     tasks = filter_by_org(db.query(TreatmentTask), TreatmentTask, current_user).all()
     total_t = len(tasks)
     done_t = sum(1 for t in tasks if t.status == TaskStatus.DONE)
@@ -1285,16 +1367,16 @@ def sgsi_status_report(
         and t.due_date.replace(tzinfo=timezone.utc) < now
     )
     el.append(_kpi_table([
-        ("Total tareas", str(total_t)),
-        ("Completadas", str(done_t)),
-        ("En progreso", str(inprog_t)),
-        ("Pendientes", str(pend_t)),
-        ("Vencidas sin completar", str(overdue_t)),
-    ], s, brand))
+        (_t("reports.sgsi_status.kpi_total_tasks", lang), str(total_t)),
+        (_t("reports.sgsi_status.kpi_done_tasks", lang), str(done_t)),
+        (_t("reports.sgsi_status.kpi_inprogress_tasks", lang), str(inprog_t)),
+        (_t("reports.sgsi_status.kpi_pending_tasks", lang), str(pend_t)),
+        (_t("reports.sgsi_status.kpi_overdue_tasks", lang), str(overdue_t)),
+    ], s, brand, lang))
     el.append(Spacer(1, 10))
 
     # --- Seccion 5: Politicas ---
-    el.append(Paragraph("5. Politicas de Seguridad (ISO 27001 cl. 5.2)", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.section5_title", lang), s["H2Brand"]))
     policies = filter_by_org(db.query(Policy), Policy, current_user).all()
     total_pol = len(policies)
     pub_pol = sum(1 for p in policies if p.status == PolicyStatus.PUBLISHED)
@@ -1306,16 +1388,16 @@ def sgsi_status_report(
         and p.review_date.replace(tzinfo=timezone.utc) < now
     )
     el.append(_kpi_table([
-        ("Total politicas", str(total_pol)),
-        ("Publicadas", str(pub_pol)),
-        ("En revision", str(rev_pol)),
-        ("Borradores", str(draft_pol)),
-        ("Revision vencida", str(overdue_pol)),
-    ], s, brand))
+        (_t("reports.sgsi_status.kpi_total_policies", lang), str(total_pol)),
+        (_t("reports.sgsi_status.kpi_published_policies", lang), str(pub_pol)),
+        (_t("reports.sgsi_status.kpi_review_policies", lang), str(rev_pol)),
+        (_t("reports.sgsi_status.kpi_draft_policies", lang), str(draft_pol)),
+        (_t("reports.sgsi_status.kpi_overdue_policy_review", lang), str(overdue_pol)),
+    ], s, brand, lang))
     el.append(Spacer(1, 10))
 
     # --- Seccion 6: RGPD ---
-    el.append(Paragraph("6. RGPD / Privacidad de Datos", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.section6_title", lang), s["H2Brand"]))
     activities = filter_by_org(db.query(ProcessingActivity), ProcessingActivity, current_user).all()
     act_ids = [a.id for a in activities]
     dpias = db.query(DPIA).filter(DPIA.activity_id.in_(act_ids)).all() if act_ids else []
@@ -1325,32 +1407,29 @@ def sgsi_status_report(
     total_dp = len(dpias)
     pend_dp = sum(1 for d in dpias if d.status == DPIAStatus.PENDING)
     el.append(_kpi_table([
-        ("Actividades de tratamiento registradas", str(total_act)),
-        ("Actividades que requieren DPIA", str(req_dpia)),
-        ("Transferencias fuera de la UE", str(eu_transfer)),
-        ("DPIAs totales", str(total_dp)),
-        ("DPIAs pendientes de completar", str(pend_dp)),
-    ], s, brand))
+        (_t("reports.sgsi_status.kpi_total_activities", lang), str(total_act)),
+        (_t("reports.sgsi_status.kpi_dpia_required", lang), str(req_dpia)),
+        (_t("reports.sgsi_status.kpi_eu_transfers", lang), str(eu_transfer)),
+        (_t("reports.sgsi_status.kpi_total_dpias", lang), str(total_dp)),
+        (_t("reports.sgsi_status.kpi_pending_dpias", lang), str(pend_dp)),
+    ], s, brand, lang))
     el.append(Spacer(1, 10))
 
     # --- Seccion 7: Nota metodologica ---
     el.append(PageBreak())
-    el.append(Paragraph("7. Nota metodologica", s["H2Brand"]))
+    el.append(Paragraph(_t("reports.sgsi_status.section7_title", lang), s["H2Brand"]))
     el.append(Paragraph(
-        "Este informe ha sido generado automaticamente por <b>RiskHub v1.5.1</b> a partir de los "
-        "datos registrados en el sistema. Los indicadores reflejan el estado en el momento de la "
-        "generacion del informe. Para una interpretacion completa, consulte los informes detallados "
-        "de cada modulo y los informes narrativos generados por IA.",
+        _t("reports.sgsi_status.methodology_note", lang),
         s["BodyBrand"],
     ))
     el.append(Spacer(1, 8))
     refs = [
-        ["Norma / Marco", "Clausulas / Areas cubiertas"],
-        ["ISO/IEC 27005:2018", "Seccion 1: Riesgos — proceso completo de gestion del riesgo"],
-        ["ISO/IEC 27002:2022", "Seccion 2: Controles — 93 controles en 4 temas"],
-        ["ISO/IEC 27001:2022", "Seccion 5: Politicas — cl. 5.2 y Anexo A"],
-        ["NIS2 (Directiva UE 2022/2555)", "Seccion 3: Incidentes — Art. 21 y 23"],
-        ["RGPD / GDPR (Reglamento UE 2016/679)", "Seccion 6: RGPD — Art. 30 (RoPA), Art. 35 (DPIA)"],
+        [_t("reports.sgsi_status.refs_table_header_standard", lang), _t("reports.sgsi_status.refs_table_header_coverage", lang)],
+        ["ISO/IEC 27005:2018", _t("reports.sgsi_status.ref_iso27005_coverage", lang)],
+        ["ISO/IEC 27002:2022", _t("reports.sgsi_status.ref_iso27002_coverage", lang)],
+        ["ISO/IEC 27001:2022", _t("reports.sgsi_status.ref_iso27001_coverage", lang)],
+        ["NIS2 (Directiva UE 2022/2555)", _t("reports.sgsi_status.ref_nis2_coverage", lang)],
+        ["RGPD / GDPR (Reglamento UE 2016/679)", _t("reports.sgsi_status.ref_gdpr_coverage", lang)],
     ]
     ref_t = Table(refs, repeatRows=1, colWidths=[70 * mm, 100 * mm])
     ref_t.setStyle(TableStyle([
@@ -1365,7 +1444,7 @@ def sgsi_status_report(
     el.append(ref_t)
 
     filename = f"sgsi_status_{now.strftime('%Y%m%d')}.pdf"
-    return _pdf_response(el, filename, brand)
+    return _pdf_response(el, filename, brand, lang)
 
 
 class AiReportIn(BaseModel):
@@ -1379,9 +1458,9 @@ def ai_generate(body: AiReportIn, request: Request, db: Session = Depends(get_db
     """Genera un informe ejecutivo usando Claude API y lo devuelve como PDF o Excel."""
     lang = get_lang(request)
     if body.report_type not in REPORT_LABEL:
-        raise HTTPException(422, f"report_type no valido. Opciones: {list(REPORT_LABEL)}")
+        raise HTTPException(422, _t("reports.ai_report.invalid_report_type", lang, options=list(REPORT_LABEL)))
     if body.format not in ("pdf", "excel"):
-        raise HTTPException(422, "format debe ser 'pdf' o 'excel'")
+        raise HTTPException(422, _t("reports.ai_report.invalid_format", lang))
 
     # Resolver API key del tenant (configurada en IA -> Configuracion)
     from app.routers.ai_config import resolve_api_key
@@ -1402,8 +1481,8 @@ def ai_generate(body: AiReportIn, request: Request, db: Session = Depends(get_db
 
     brand = _load_brand(db, current_user.organization_id, body.report_type)
     if body.format == "excel":
-        return _ai_report_excel(content, body.report_type)
-    return _ai_report_pdf(content, body.report_type, brand)
+        return _ai_report_excel(content, body.report_type, lang)
+    return _ai_report_pdf(content, body.report_type, brand, lang)
 
 
 def _safe(text, max_chars=None):
@@ -1417,7 +1496,7 @@ def _safe(text, max_chars=None):
     return s.replace("\x00", "").replace("\r", "")
 
 
-def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand] = None):
+def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand] = None, lang: str = "es"):
     """Convierte el JSON de Claude a un PDF con ReportLab."""
     if brand is None:
         brand = ReportBrand()
@@ -1425,7 +1504,7 @@ def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand]
     BRAND_ORANGE = brand.secondary
     s = _styles(brand)
     el = []
-    label = REPORT_LABEL.get(report_type, "Informe")
+    label = _report_label(report_type, lang)
 
     # Portada
     el.append(Spacer(1, 30 * mm))
@@ -1434,7 +1513,7 @@ def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand]
     if org:
         el.append(Paragraph(org, s["SubBrand"]))
     date_str = _safe(content.get("date", datetime.now().strftime("%d/%m/%Y")))
-    el.append(Paragraph(f"Fecha: {date_str}", s["BodyBrand"]))
+    el.append(Paragraph(_t("reports.ai_report.date_label", lang, date=date_str), s["BodyBrand"]))
     el.append(Spacer(1, 8))
 
     def add_section(title, text):
@@ -1451,16 +1530,20 @@ def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand]
             el.append(Spacer(1, 6))
 
     # Secciones comunes
-    add_section("Resumen ejecutivo", content.get("executive_summary"))
+    add_section(_t("reports.ai_report.executive_summary", lang), content.get("executive_summary"))
 
     # Secciones especificas por tipo
     if report_type == "treatment_plan":
-        add_section("Analisis del apetito de riesgo", content.get("risk_appetite_analysis"))
+        add_section(_t("reports.ai_report.risk_appetite_analysis", lang), content.get("risk_appetite_analysis"))
         risks = content.get("risks", [])
         if risks:
-            el.append(Paragraph("Planes de tratamiento por riesgo", s["H2Brand"]))
+            el.append(Paragraph(_t("reports.ai_report.treatment_plans_by_risk", lang), s["H2Brand"]))
             el.append(Spacer(1, 4))
-            data = [["Codigo", "Prioridad", "Esfuerzo", "Nivel objetivo", "Acciones"]]
+            data = [[
+                _t("reports.ai_report.header_code", lang), _t("reports.ai_report.header_priority", lang),
+                _t("reports.ai_report.header_effort", lang), _t("reports.ai_report.header_target_level", lang),
+                _t("reports.ai_report.header_actions", lang),
+            ]]
             for r in risks:
                 actions = "\n".join(f"• {a}" for a in (r.get("recommended_actions") or [])[:3])
                 data.append([
@@ -1487,34 +1570,34 @@ def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand]
                 el.append(Paragraph(f"<b>{_safe(r.get('code',''))}</b> — {_safe(r.get('treatment_narrative',''))}",
                                     s["BodyBrand"]))
                 if r.get("success_metrics"):
-                    el.append(Paragraph(f"<i>Metricas de exito:</i> {_safe(r['success_metrics'])}", s["BodyBrand"]))
+                    el.append(Paragraph(f"<i>{_t('reports.ai_report.success_metrics_label', lang)}</i> {_safe(r['success_metrics'])}", s["BodyBrand"]))
                 el.append(Spacer(1, 4))
-        add_section("Hoja de ruta de implementacion", content.get("implementation_roadmap"))
-        add_section("Conclusion", content.get("conclusion"))
+        add_section(_t("reports.ai_report.implementation_roadmap", lang), content.get("implementation_roadmap"))
+        add_section(_t("reports.ai_report.conclusion", lang), content.get("conclusion"))
 
     elif report_type == "executive_dashboard":
-        add_list("Hallazgos clave", content.get("key_findings"))
-        add_section("Postura de riesgo", content.get("risk_posture_explanation"))
-        add_section("Riesgos criticos", content.get("top_risks_narrative"))
-        add_section("Efectividad de controles", content.get("control_effectiveness"))
-        add_section("Estado de cumplimiento", content.get("compliance_status"))
-        add_list("Acciones criticas requeridas", content.get("critical_actions"))
-        add_section("Analisis de KPIs", content.get("kpi_commentary"))
-        add_section("Proxima revision recomendada", content.get("next_review_recommendation"))
+        add_list(_t("reports.ai_report.key_findings", lang), content.get("key_findings"))
+        add_section(_t("reports.ai_report.risk_posture", lang), content.get("risk_posture_explanation"))
+        add_section(_t("reports.ai_report.critical_risks", lang), content.get("top_risks_narrative"))
+        add_section(_t("reports.ai_report.control_effectiveness", lang), content.get("control_effectiveness"))
+        add_section(_t("reports.ai_report.compliance_status", lang), content.get("compliance_status"))
+        add_list(_t("reports.ai_report.critical_actions_required", lang), content.get("critical_actions"))
+        add_section(_t("reports.ai_report.kpi_analysis", lang), content.get("kpi_commentary"))
+        add_section(_t("reports.ai_report.next_review_recommendation", lang), content.get("next_review_recommendation"))
 
         # Tabla de estadisticas
         meta = content.get("_meta", {})
         stats = meta.get("stats", {})
         if stats:
-            el.append(Paragraph("Estadisticas del registro de riesgos", s["H2Brand"]))
+            el.append(Paragraph(_t("reports.ai_report.risk_register_stats", lang), s["H2Brand"]))
             stat_data = [
-                ["Total", str(stats.get("total", 0))],
-                ["Criticos (>=7)", str(stats.get("critical", 0))],
-                ["Altos (5-6)", str(stats.get("high", 0))],
-                ["Medios (3-4)", str(stats.get("medium", 0))],
-                ["Bajos (<3)", str(stats.get("low", 0))],
-                ["Con tratamiento", str(stats.get("with_treatment", 0))],
-                ["Aceptados", str(stats.get("accepted", 0))],
+                [_t("reports.ai_report.stat_total", lang), str(stats.get("total", 0))],
+                [_t("reports.ai_report.stat_critical", lang), str(stats.get("critical", 0))],
+                [_t("reports.ai_report.stat_high", lang), str(stats.get("high", 0))],
+                [_t("reports.ai_report.stat_medium", lang), str(stats.get("medium", 0))],
+                [_t("reports.ai_report.stat_low", lang), str(stats.get("low", 0))],
+                [_t("reports.ai_report.stat_with_treatment", lang), str(stats.get("with_treatment", 0))],
+                [_t("reports.ai_report.stat_accepted", lang), str(stats.get("accepted", 0))],
             ]
             t = Table(stat_data, colWidths=[60*mm, 30*mm])
             t.setStyle(TableStyle([
@@ -1529,27 +1612,27 @@ def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand]
     elif report_type == "committee_minutes":
         session_info = content.get("session_number", "")
         if session_info:
-            add_section("Numero de sesion", session_info)
-        add_section("Nota sobre asistentes", content.get("attendees_note"))
-        add_list("Orden del dia", content.get("agenda"))
-        add_section("Revision del registro de riesgos", content.get("risk_register_review"))
+            add_section(_t("reports.ai_report.session_number", lang), session_info)
+        add_section(_t("reports.ai_report.attendees_note", lang), content.get("attendees_note"))
+        add_list(_t("reports.ai_report.agenda", lang), content.get("agenda"))
+        add_section(_t("reports.ai_report.risk_register_review", lang), content.get("risk_register_review"))
         # Riesgos aceptados
         accepted = content.get("accepted_risks", [])
         if accepted:
-            el.append(Paragraph("Riesgos formalmente aceptados", s["H2Brand"]))
+            el.append(Paragraph(_t("reports.ai_report.accepted_risks", lang), s["H2Brand"]))
             for ar in accepted:
                 el.append(Paragraph(
                     f"<b>{_safe(ar.get('code',''))}</b>: {_safe(ar.get('rationale',''))}",
                     s["BodyBrand"],
                 ))
             el.append(Spacer(1, 6))
-        add_section("Seguimiento de tratamientos", content.get("treatment_followup"))
-        add_list("Decisiones adoptadas", content.get("decisions"))
+        add_section(_t("reports.ai_report.treatment_followup", lang), content.get("treatment_followup"))
+        add_list(_t("reports.ai_report.decisions_adopted", lang), content.get("decisions"))
         # Acciones
         actions = content.get("action_items", [])
         if actions:
-            el.append(Paragraph("Acciones acordadas", s["H2Brand"]))
-            data = [["Accion", "Responsable", "Plazo"]]
+            el.append(Paragraph(_t("reports.ai_report.agreed_actions", lang), s["H2Brand"]))
+            data = [[_t("reports.ai_report.header_action", lang), _t("reports.ai_report.header_responsible", lang), _t("reports.ai_report.header_deadline", lang)]]
             for a in actions:
                 data.append([_safe(a.get("action", ""), 80),
                               _safe(a.get("responsible", "")),
@@ -1564,41 +1647,41 @@ def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand]
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]))
             el.append(t)
-        add_list("Temas para proxima sesion", content.get("next_session_topics"))
-        add_section("Cierre", content.get("closing_note"))
+        add_list(_t("reports.ai_report.next_session_topics", lang), content.get("next_session_topics"))
+        add_section(_t("reports.ai_report.closing", lang), content.get("closing_note"))
 
     elif report_type == "followup_report":
-        add_section("Subtitulo", content.get("subtitle"))
+        add_section(_t("reports.ai_report.subtitle", lang), content.get("subtitle"))
         cl12 = content.get("cl12_assessment", {})
         if cl12:
-            el.append(Paragraph("Evaluacion ISO 27005 clausula 12", s["H2Brand"]))
+            el.append(Paragraph(_t("reports.ai_report.cl12_assessment", lang), s["H2Brand"]))
             for key, label_text in [
-                ("monitoring_adequacy", "Monitorizacion continua"),
-                ("review_frequency", "Frecuencia de revision"),
-                ("improvement_actions", "Acciones de mejora"),
-                ("context_changes", "Cambios en el contexto"),
+                ("monitoring_adequacy", _t("reports.ai_report.cl12_monitoring_adequacy", lang)),
+                ("review_frequency", _t("reports.ai_report.cl12_review_frequency", lang)),
+                ("improvement_actions", _t("reports.ai_report.cl12_improvement_actions", lang)),
+                ("context_changes", _t("reports.ai_report.cl12_context_changes", lang)),
             ]:
                 if cl12.get(key):
                     el.append(Paragraph(f"<b>{label_text}:</b> {_safe(cl12[key])}", s["BodyBrand"]))
                     el.append(Spacer(1, 4))
         kpi = content.get("kpi_analysis", {})
         if kpi:
-            el.append(Paragraph("Analisis de KPIs", s["H2Brand"]))
+            el.append(Paragraph(_t("reports.ai_report.kpi_analysis", lang), s["H2Brand"]))
             for key, label_text in [
-                ("risk_reduction_trend", "Tendencia de reduccion del riesgo"),
-                ("treatment_effectiveness", "Efectividad de tratamientos"),
-                ("control_coverage", "Cobertura de controles"),
-                ("pending_actions", "Acciones pendientes"),
+                ("risk_reduction_trend", _t("reports.ai_report.kpi_risk_reduction_trend", lang)),
+                ("treatment_effectiveness", _t("reports.ai_report.kpi_treatment_effectiveness", lang)),
+                ("control_coverage", _t("reports.ai_report.kpi_control_coverage", lang)),
+                ("pending_actions", _t("reports.ai_report.kpi_pending_actions", lang)),
             ]:
                 if kpi.get(key):
                     el.append(Paragraph(f"<b>{label_text}:</b> {_safe(kpi[key])}", s["BodyBrand"]))
                     el.append(Spacer(1, 4))
-        add_list("Fortalezas identificadas", content.get("strengths"))
-        add_list("Debilidades identificadas", content.get("weaknesses"))
+        add_list(_t("reports.ai_report.strengths_identified", lang), content.get("strengths"))
+        add_list(_t("reports.ai_report.weaknesses_identified", lang), content.get("weaknesses"))
         recs = content.get("recommendations", [])
         if recs:
-            el.append(Paragraph("Recomendaciones", s["H2Brand"]))
-            data = [["Area", "Recomendacion", "Prioridad", "Ref. ISO"]]
+            el.append(Paragraph(_t("reports.ai_report.recommendations", lang), s["H2Brand"]))
+            data = [[_t("reports.ai_report.header_area", lang), _t("reports.ai_report.header_recommendation", lang), _t("reports.ai_report.header_priority", lang), _t("reports.ai_report.header_iso_ref", lang)]]
             for rec in recs:
                 data.append([
                     _safe(rec.get("area", ""), 30),
@@ -1616,20 +1699,20 @@ def _ai_report_pdf(content: dict, report_type: str, brand: Optional[ReportBrand]
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]))
             el.append(t)
-        add_section("Conclusion", content.get("conclusion"))
+        add_section(_t("reports.ai_report.conclusion", lang), content.get("conclusion"))
 
     fname = f"{report_type}_{datetime.now().strftime('%Y%m%d')}.pdf"
-    return _pdf_response(el, fname, brand)
+    return _pdf_response(el, fname, brand, lang)
 
 
-def _ai_report_excel(content: dict, report_type: str):
+def _ai_report_excel(content: dict, report_type: str, lang: str = "es"):
     """Convierte el JSON de Claude a un Excel."""
     import openpyxl
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = REPORT_LABEL.get(report_type, "Informe")[:31]
+    ws.title = _report_label(report_type, lang)[:31]
 
     hdr_fill = PatternFill("solid", fgColor="59008D")
     hdr_font = Font(color="FFFFFF", bold=True)
@@ -1654,20 +1737,24 @@ def _ai_report_excel(content: dict, report_type: str):
             ws.append(["• " + str(item)])
         ws.append([""])
 
-    ws.append([content.get("title", REPORT_LABEL.get(report_type, "Informe"))])
+    ws.append([content.get("title", _report_label(report_type, lang))])
     ws.cell(row=1, column=1).font = Font(bold=True, size=14, color="59008D")
-    ws.append([f"Organización: {content.get('organization', '')} — Fecha: {content.get('date', '')}"])
+    ws.append([_t("reports.ai_report.org_date_label", lang, org=content.get("organization", ""), date=content.get("date", ""))])
     ws.append([""])
 
-    write_section("Resumen ejecutivo", content.get("executive_summary"))
+    write_section(_t("reports.ai_report.executive_summary", lang), content.get("executive_summary"))
 
     if report_type == "treatment_plan":
-        write_section("Análisis del apetito de riesgo", content.get("risk_appetite_analysis"))
+        write_section(_t("reports.ai_report.risk_appetite_analysis", lang), content.get("risk_appetite_analysis"))
         risks = content.get("risks", [])
         if risks:
-            ws.append(["Planes de tratamiento"])
+            ws.append([_t("reports.ai_report.treatment_plans", lang)])
             ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="59008D", size=11)
-            hdrs = ["Código", "Prioridad", "Narrativa", "Acciones", "Métricas", "Esfuerzo", "Nivel objetivo"]
+            hdrs = [
+                _t("reports.ai_report.header_code", lang), _t("reports.ai_report.header_priority", lang), _t("reports.ai_report.header_narrative", lang),
+                _t("reports.ai_report.header_actions", lang), _t("reports.ai_report.header_metrics", lang), _t("reports.ai_report.header_effort", lang),
+                _t("reports.ai_report.header_target_level", lang),
+            ]
             ws.append(hdrs)
             for h_idx, _ in enumerate(hdrs, 1):
                 c = ws.cell(row=ws.max_row, column=h_idx)
@@ -1686,63 +1773,63 @@ def _ai_report_excel(content: dict, report_type: str):
                 ])
                 for col_i in range(1, len(hdrs) + 1):
                     ws.cell(row=ws.max_row, column=col_i).border = border
-        write_section("Hoja de ruta", content.get("implementation_roadmap"))
-        write_section("Conclusión", content.get("conclusion"))
+        write_section(_t("reports.ai_report.implementation_roadmap_short", lang), content.get("implementation_roadmap"))
+        write_section(_t("reports.ai_report.conclusion", lang), content.get("conclusion"))
 
     elif report_type == "executive_dashboard":
-        write_list("Hallazgos clave", content.get("key_findings"))
-        write_section("Postura de riesgo", content.get("risk_posture_explanation"))
-        write_section("Riesgos críticos", content.get("top_risks_narrative"))
-        write_section("Efectividad de controles", content.get("control_effectiveness"))
-        write_list("Acciones críticas", content.get("critical_actions"))
-        write_section("Análisis de KPIs", content.get("kpi_commentary"))
+        write_list(_t("reports.ai_report.key_findings", lang), content.get("key_findings"))
+        write_section(_t("reports.ai_report.risk_posture", lang), content.get("risk_posture_explanation"))
+        write_section(_t("reports.ai_report.critical_risks", lang), content.get("top_risks_narrative"))
+        write_section(_t("reports.ai_report.control_effectiveness", lang), content.get("control_effectiveness"))
+        write_list(_t("reports.ai_report.critical_actions", lang), content.get("critical_actions"))
+        write_section(_t("reports.ai_report.kpi_analysis", lang), content.get("kpi_commentary"))
         # Stats
         meta = content.get("_meta", {})
         stats = meta.get("stats", {})
         if stats:
-            ws.append(["Estadísticas"])
+            ws.append([_t("reports.ai_report.stats", lang)])
             ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="59008D", size=11)
             for k, v in stats.items():
                 ws.append([k.replace("_", " ").capitalize(), v])
 
     elif report_type == "committee_minutes":
-        write_list("Orden del día", content.get("agenda"))
-        write_section("Revisión del registro", content.get("risk_register_review"))
+        write_list(_t("reports.ai_report.agenda", lang), content.get("agenda"))
+        write_section(_t("reports.ai_report.risk_register_review_short", lang), content.get("risk_register_review"))
         accepted = content.get("accepted_risks", [])
         if accepted:
-            ws.append(["Riesgos aceptados"])
+            ws.append([_t("reports.ai_report.accepted_risks_short", lang)])
             ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="59008D", size=11)
-            ws.append(["Código", "Justificación"])
+            ws.append([_t("reports.ai_report.header_code", lang), _t("reports.ai_report.header_justification", lang)])
             for ar in accepted:
                 ws.append([ar.get("code", ""), ar.get("rationale", "")])
-        write_list("Decisiones adoptadas", content.get("decisions"))
+        write_list(_t("reports.ai_report.decisions_adopted", lang), content.get("decisions"))
         actions = content.get("action_items", [])
         if actions:
-            ws.append(["Acciones acordadas"])
+            ws.append([_t("reports.ai_report.agreed_actions", lang)])
             ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="59008D", size=11)
-            ws.append(["Acción", "Responsable", "Plazo"])
+            ws.append([_t("reports.ai_report.header_action", lang), _t("reports.ai_report.header_responsible", lang), _t("reports.ai_report.header_deadline", lang)])
             for a in actions:
                 ws.append([a.get("action", ""), a.get("responsible", ""), a.get("deadline", "")])
-        write_section("Cierre", content.get("closing_note"))
+        write_section(_t("reports.ai_report.closing", lang), content.get("closing_note"))
 
     elif report_type == "followup_report":
         cl12 = content.get("cl12_assessment", {})
         if cl12:
-            ws.append(["Evaluación ISO 27005 cláusula 12"])
+            ws.append([_t("reports.ai_report.cl12_assessment", lang)])
             ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="59008D", size=11)
             for k, v in cl12.items():
                 ws.append([k.replace("_", " ").capitalize(), str(v)])
-        write_list("Fortalezas", content.get("strengths"))
-        write_list("Debilidades", content.get("weaknesses"))
+        write_list(_t("reports.ai_report.strengths", lang), content.get("strengths"))
+        write_list(_t("reports.ai_report.weaknesses", lang), content.get("weaknesses"))
         recs = content.get("recommendations", [])
         if recs:
-            ws.append(["Recomendaciones"])
+            ws.append([_t("reports.ai_report.recommendations", lang)])
             ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="59008D", size=11)
-            ws.append(["Área", "Recomendación", "Prioridad", "Referencia ISO"])
+            ws.append([_t("reports.ai_report.header_area", lang), _t("reports.ai_report.header_recommendation", lang), _t("reports.ai_report.header_priority", lang), _t("reports.ai_report.header_iso_ref_full", lang)])
             for rec in recs:
                 ws.append([rec.get("area", ""), rec.get("recommendation", ""),
                            rec.get("priority", ""), rec.get("iso_reference", "")])
-        write_section("Conclusión", content.get("conclusion"))
+        write_section(_t("reports.ai_report.conclusion", lang), content.get("conclusion"))
 
     ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 70

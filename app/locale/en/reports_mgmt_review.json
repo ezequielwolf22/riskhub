@@ -1,0 +1,92 @@
+{
+  "reports": {
+    "mgmt_review": {
+      "empty_placeholder": "[TO BE COMPLETED]",
+      "docx_not_installed": "python-docx is not installed. Add 'python-docx' to requirements.txt.",
+      "report_title": "Management Review Report",
+      "report_subtitle": "ISO/IEC 27001:2022 Clause 9.3 &mdash; ENS RD 311/2022",
+      "standard_reference": "ISO/IEC 27001:2022 Clause 9.3 — ENS RD 311/2022",
+      "standard_reference_word": "Reference standard: ISO/IEC 27001:2022 cl. 9.3 / ENS RD 311/2022",
+      "label_organization": "Organization:",
+      "label_date": "Date:",
+      "label_scope": "Scope:",
+      "field_organization": "Organization: {org}   |   Date: {date}",
+      "field_scope": "Scope: {scope}",
+      "excel_sheet_title": "Management Review",
+      "excel_header_norma": "Standard",
+      "excel_content_label": "Content",
+      "approval_title": "Management Approval",
+      "signature_role": "Role",
+      "signature_name": "Full name",
+      "signature_date": "Date",
+      "signature_signature": "Signature",
+      "role_ceo": "General Manager / CEO",
+      "role_ciso": "Security Officer (CISO)",
+      "role_ciso_word": "Security Officer (CISO)",
+      "role_auditor": "Internal Auditor",
+      "sections": {
+        "a_previous_actions": {
+          "title": "a) Status of actions from the previous review"
+        },
+        "b_context_changes": {
+          "title": "b) Changes in the organization's context",
+          "content": "ISMS scope: {scope}\nBoundaries: {boundaries}\nRelevant internal/external changes: {empty}"
+        },
+        "c_stakeholder_needs": {
+          "title": "c) Changes in the needs and expectations of interested parties"
+        },
+        "d_risk_management": {
+          "title": "d) ISMS Performance — Risk Management",
+          "content": "Total identified risks: {total_risks}\nHigh risks (level >= 5): {high_risks}\nHigh risks without treatment plan: {untreated}\nControls implemented: {impl_pct}% | Average maturity: {avg_mat}/5"
+        },
+        "d_incidents": {
+          "title": "d) ISMS Performance — Security Incidents",
+          "content": "Open incidents: {open_inc}\nP1/P2 incidents (critical/high): {p1p2}\nTotal historical incidents: {total_incidents}\nDocumented lessons learned: {lessons_learned}"
+        },
+        "d_nonconformities": {
+          "title": "d) ISMS Performance — Nonconformities and Corrective Actions",
+          "content": "{empty}\n(See the Nonconformities module in RiskHub for up-to-date detail)"
+        },
+        "d_tasks": {
+          "title": "d) ISMS Performance — Treatment Tasks",
+          "content": "Overdue incomplete tasks: {tasks_overdue}\nTasks pending start: {tasks_pending}\nTotal active tasks: {total_tasks}"
+        },
+        "d_audits": {
+          "title": "d) ISMS Performance — Internal Audits",
+          "content": "{empty}\n(See the Internal Audit module in RiskHub)"
+        },
+        "d_policies": {
+          "title": "d) ISMS Performance — Policy Compliance",
+          "content": "Total managed policies: {total_policies}\nPolicies with overdue review: {policies_overdue}\nPolicies in draft status: {policies_draft}"
+        },
+        "d_suppliers": {
+          "title": "d) ISMS Performance — Suppliers and Supply Chain",
+          "content": "Total managed suppliers: {total_suppliers}\nCritical suppliers: {critical_suppliers}\nSuppliers without a recent assessment: {suppliers_no_assessment}"
+        },
+        "d_stakeholder_feedback": {
+          "title": "d) Feedback from interested parties"
+        },
+        "e_risk_results": {
+          "title": "e) Risk assessment results and treatment plan status",
+          "content": "See detail in the Risk Register exported from RiskHub.\nSummary: {total_risks} risks | {high_risks} high | {accepted_risks} accepted"
+        },
+        "f_improvement": {
+          "title": "f) Opportunities for continual improvement"
+        },
+        "g_objectives": {
+          "title": "g) Security objectives for the next period"
+        },
+        "h_decisions": {
+          "title": "h) Resulting decisions and actions"
+        },
+        "i_resources": {
+          "title": "i) Required resources"
+        },
+        "j_ens": {
+          "title": "j) ENS — Security level achieved and adequacy plan",
+          "content": "Control coverage: {impl_pct}% implemented\nAverage maturity level: {avg_mat}/5\nENS adequacy plan: {empty}"
+        }
+      }
+    }
+  }
+}
