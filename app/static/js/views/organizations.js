@@ -197,6 +197,12 @@ const ViewOrganizations = (() => {
       </div>
     `, { width: '90vw' });
 
+    // Algunos browsers hacen scroll automático al cargar contenido; forzar al inicio.
+    requestAnimationFrame(() => {
+      const m = document.querySelector('#modal-root .modal');
+      if (m) m.scrollTop = 0;
+    });
+
     document.getElementById('edit-org-form').onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
