@@ -197,11 +197,19 @@ const ViewOrganizations = (() => {
       </div>
     `, { width: '90vw' });
 
-    // Deshabilitar scroll anchoring y forzar scroll al inicio del modal.
+    // Bloquear scroll del modal hasta que el usuario interactue,
+    // evitando que Edge haga auto-scroll al cargar contenido dinamico.
     const _modal = document.querySelector('#modal-root .modal');
     if (_modal) {
       _modal.style.overflowAnchor = 'none';
       _modal.scrollTop = 0;
+      let _userScrolled = false;
+      const _unlock = () => { _userScrolled = true; };
+      const _lockScroll = () => { if (!_userScrolled) _modal.scrollTop = 0; };
+      _modal.addEventListener('wheel',      _unlock, { once: true, passive: true });
+      _modal.addEventListener('touchstart', _unlock, { once: true, passive: true });
+      _modal.addEventListener('scroll',     _lockScroll, { passive: true });
+      setTimeout(() => _modal.removeEventListener('scroll', _lockScroll), 3000);
     }
 
     document.getElementById('edit-org-form').onsubmit = async (e) => {
