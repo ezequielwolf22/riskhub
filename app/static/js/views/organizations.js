@@ -248,6 +248,12 @@ const ViewOrganizations = (() => {
       const org = _orgs.find(o => o.id === orgId);
       const orgPlan = org ? (org.plan || 'starter') : 'starter';
 
+      // Block Edge auto-scroll: with overflow:hidden the element cannot scroll,
+      // so Edge's attempt to scrollIntoView a checkbox is silently ignored.
+      // Restored to auto in the next animation frame after paint.
+      const _mBefore = document.querySelector('#modal-root .modal');
+      if (_mBefore) _mBefore.style.overflowY = 'hidden';
+
       container.innerHTML = `
         <table class="table" style="font-size:13px;">
           <thead>
@@ -306,11 +312,10 @@ const ViewOrganizations = (() => {
           </tbody>
         </table>
       `;
-      // Edge auto-scrolls the modal when checkboxes are injected into the DOM.
-      // Resetting scrollTop immediately after innerHTML, in the same JS frame,
-      // undoes that scroll before the browser paints.
-      const _m = document.querySelector('#modal-root .modal');
-      if (_m) _m.scrollTop = 0;
+      // Restore scroll after one paint — by now Edge has finished its auto-scroll
+      // attempt but it was blocked by overflow:hidden set before innerHTML above.
+      const _mAfter = document.querySelector('#modal-root .modal');
+      if (_mAfter) requestAnimationFrame(() => { _mAfter.style.overflowY = 'auto'; });
     } catch (err) {
       container.innerHTML = `<p class="notice">${UI.esc(err.message)}</p>`;
     }
