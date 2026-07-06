@@ -197,11 +197,12 @@ const ViewOrganizations = (() => {
       </div>
     `, { width: '90vw' });
 
-    // Algunos browsers hacen scroll automático al cargar contenido; forzar al inicio.
-    requestAnimationFrame(() => {
-      const m = document.querySelector('#modal-root .modal');
-      if (m) m.scrollTop = 0;
-    });
+    // Deshabilitar scroll anchoring y forzar scroll al inicio del modal.
+    const _modal = document.querySelector('#modal-root .modal');
+    if (_modal) {
+      _modal.style.overflowAnchor = 'none';
+      _modal.scrollTop = 0;
+    }
 
     document.getElementById('edit-org-form').onsubmit = async (e) => {
       e.preventDefault();
