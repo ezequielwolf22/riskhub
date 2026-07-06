@@ -8,6 +8,10 @@
 <link rel="icon" type="image/svg+xml" href="/img/logo.svg">
 <script>
   (function() {
+    if (!localStorage.getItem('riskhub_token')) {
+      window.location.replace('/login');
+      return;
+    }
     var theme = localStorage.getItem('riskhub_theme') || 'light';
     document.documentElement.setAttribute('data-theme', theme);
     var lang = localStorage.getItem('riskhub_lang') || 'es';
