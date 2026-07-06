@@ -493,6 +493,13 @@ const Api = {
     toggleRule: (id) => Api.patch('/api/alerts/rules/' + id + '/toggle', {}),
     checkRules: () => Api.post('/api/alerts/check-rules', {}),
     sendRisk: (id, d) => Api.post('/api/alerts/send-risk/' + id, d),
+    getChannels: () => Api.get('/api/alerts/channels'),
+    saveTeamsChannel: (d) => Api.put('/api/alerts/channels/teams', d),
+    deleteTeamsChannel: () => Api.del('/api/alerts/channels/teams'),
+    testTeamsChannel: () => Api.post('/api/alerts/channels/teams/test', {}),
+    savePowerAutomateChannel: (d) => Api.put('/api/alerts/channels/power-automate', d),
+    deletePowerAutomateChannel: () => Api.del('/api/alerts/channels/power-automate'),
+    testPowerAutomateChannel: () => Api.post('/api/alerts/channels/power-automate/test', {}),
   },
   magerit: {
     threats:       ()         => Api.get('/api/magerit/threats'),

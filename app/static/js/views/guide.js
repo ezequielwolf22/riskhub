@@ -42,7 +42,7 @@ const ViewGuide = {
     { id: 'trust-portal', title: 'Trust Portal y Auditor', icon: '🔏' },
     { id: 'itsm-config', title: 'ITSM y Notificaciones', icon: '🔔' },
     { id: 'reports', title: 'Informes', icon: '📄' },
-    { id: 'alerts', title: 'Alertas por email', icon: '🔔' },
+    { id: 'alerts', title: 'Alertas (email, Teams, Power Automate)', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
     { id: 'erp-webhooks', title: 'ERP Webhooks', icon: '🔌' },
     { id: 'clausulas-iso', title: 'Clausulas ISO (IA)', icon: '📋' },
@@ -964,7 +964,7 @@ const ViewGuide = {
   `;},
 
   get _cAlerts() { return `
-    ${this._p('El sistema de alertas por email de RiskHub notifica automáticamente a los responsables cuando se detectan riesgos que requieren atención inmediata.')}
+    ${this._p('El sistema de alertas de RiskHub notifica automáticamente a los responsables cuando se detectan riesgos u otros eventos que requieren atención inmediata. Cada alerta se puede enviar por <strong>email (SMTP)</strong>, por un canal de <strong>Microsoft Teams</strong> y/o por un flujo de <strong>Power Automate</strong> — de forma independiente y combinable.')}
     ${this._h('Configuracion SMTP')}
     ${this._steps([
       'Ve al menú Alertas (solo accesible para admin y analyst).',
@@ -989,6 +989,13 @@ const ViewGuide = {
         </tr>`).join('')}
       </tbody>
     </table>
+    ${this._h('Canales alternativos a SMTP: Teams y Power Automate')}
+    ${this._p('Si tu organizacion no permite configurar SMTP por politica de seguridad, puedes recibir las mismas alertas sin usar correo. En ambos casos RiskHub solo hace un <strong>POST HTTPS saliente</strong> a una URL que tu mismo generas y controlas desde Microsoft 365 — no se manejan credenciales de correo en ningun momento.')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Microsoft Teams:</strong> en el canal donde quieras recibir las alertas, añade la app <strong>Workflows</strong> con la plantilla <em>"Send webhook alerts to a channel"</em> (trigger "When a Teams webhook request is received"). Copia la URL generada y pegala en Alertas → Microsoft Teams. Cinco minutos, sin flujo que construir.</li>
+      <li><strong>Power Automate:</strong> crea un flujo propio con el trigger <em>"Cuando se recibe una solicitud HTTP"</em>. Pega su URL en Alertas → Power Automate. RiskHub envia un JSON con los campos del evento (riesgo, nivel, organizacion, etc.) y tu flujo decide que hacer: publicar en Teams, reenviar por tu propio Outlook via conector OAuth, guardar en SharePoint, etc. Es el mismo mecanismo que ya usa la integracion de MS Forms para devolver decisiones de proveedores.</li>
+    </ul>
+    ${this._p('En cada canal puedes activarlo/desactivarlo sin perder la URL guardada, y enviar un mensaje de prueba antes de confiar en el para produccion.')}
     ${this._h('Reglas de alerta — Riesgos')}
     ${this._p('Crea reglas para que RiskHub envie emails automaticamente cuando se cumplan ciertos criterios:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
@@ -1015,13 +1022,13 @@ const ViewGuide = {
     </ul>
     ${this._steps([
       'El sistema comprueba todos los riesgos activos contra cada regla activada.',
-      'Si un riesgo cumple el criterio, se envía un email con el detalle del riesgo al destinatario configurado.',
+      'Si un riesgo cumple el criterio, se envia la alerta con el detalle del riesgo por cada canal activo (email al destinatario configurado, Teams y/o Power Automate).',
       'Se registra la fecha de último envío por regla para trazabilidad.',
       'El panel de Informacion del sistema (Usuarios → scroll abajo) muestra la hora de la proxima evaluacion automatica.',
     ])}
-    ${this._tip('Si el servidor SMTP no esta configurado, la evaluacion automatica se omite silenciosamente hasta que se configure una cuenta de correo valida.')}
+    ${this._tip('Si no hay ningun canal configurado (ni SMTP, ni Teams, ni Power Automate) para la organizacion, la evaluacion automatica se omite silenciosamente hasta que se active al menos uno.')}
     ${this._h('Alertas manuales')}
-    ${this._p('Desde el detalle de cualquier riesgo (menú Riesgos), puedes enviar una alerta manual a cualquier email. Útil para notificar al propietario del riesgo de una actualización importante.')}
+    ${this._p('Desde el detalle de cualquier riesgo (menú Riesgos), puedes enviar una alerta manual. El email es opcional si ya tienes Teams o Power Automate activos — en ese caso la alerta llega igual por esos canales sin necesidad de indicar destinatario.')}
   `;},
 
   get _cIntegrations() { return `

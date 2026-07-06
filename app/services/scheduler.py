@@ -102,7 +102,7 @@ def _run_alert_rules() -> None:
     """Evaluacion periodica de reglas de alerta activas."""
     from app.database import SessionLocal
     from app.models import AlertRule, Risk, RiskStatus
-    from app.services import email_service
+    from app.services import email_service, notification_channels
 
     db = SessionLocal()
     try:
@@ -110,7 +110,7 @@ def _run_alert_rules() -> None:
         if not rules:
             return
 
-        # E1: SMTP por org (nunca global)
+        # E1: SMTP/canales por org (nunca global)
         rule_org_ids = list({r.organization_id for r in rules if r.organization_id})
         cfg_by_org: dict = {}
         ctx_by_org: dict = {}
@@ -130,11 +130,11 @@ def _run_alert_rules() -> None:
         sent = 0
 
         for rule in rules:
-            # Seleccionar SMTP y nombre de org correctos para esta regla
+            # Seleccionar canales y nombre de org correctos para esta regla
             cfg = cfg_by_org.get(rule.organization_id)
             org = ctx_by_org.get(rule.organization_id, "Organizacion")
-            if not cfg or not cfg.smtp_host:
-                continue   # org sin SMTP configurado — saltar
+            if not notification_channels.has_any_channel(cfg):
+                continue   # org sin ningun canal de alerta configurado — saltar
             risks = risks_by_org.get(rule.organization_id, [])
             matching = []
             if rule.event_type in ("risk_critical", "risk_high"):
@@ -187,12 +187,20 @@ def _run_alert_rules() -> None:
                 }
                 subject_digest = f"RiskHub — Resumen diario de riesgos ({org})"
                 html_digest = _daily_digest_html(org, stats_digest, overdue_list, upcoming_list)
-                try:
-                    email_service.send_email(cfg, rule.recipient_email, subject_digest, html_digest)
+                summary_digest = (
+                    f"{stats_digest['total']} riesgo(s) activos — "
+                    f"{stats_digest['high']} alto(s), {len(overdue_list)} vencido(s), "
+                    f"{len(upcoming_list)} proximo(s) a vencer."
+                )
+                result = notification_channels.dispatch_alert(
+                    db, cfg, org, rule.recipient_email, subject_digest, summary_digest,
+                    html_body=html_digest, event="risk.daily_digest", fields=stats_digest,
+                )
+                if any(result.values()):
                     rule.last_triggered_at = now
                     sent += 1
-                except Exception as exc:
-                    logger.warning("Error enviando digest diario a %s: %s", rule.recipient_email, exc)
+                else:
+                    logger.warning("Error enviando digest diario (org %s): ningun canal disponible", rule.organization_id)
                 continue  # ya procesado, skip el loop for risk in matching
             elif rule.event_type == "treatment_due_soon":
                 from datetime import timedelta
@@ -245,16 +253,18 @@ def _run_alert_rules() -> None:
   </div>
 </body>
 </html>"""
-                    try:
-                        email_service.send_email(
-                            cfg, rule.recipient_email,
-                            f"RiskHub — {len(overdue_impls)} revisiones de controles vencidas ({org})",
-                            html_ctrl,
-                        )
+                    result = notification_channels.dispatch_alert(
+                        db, cfg, org, rule.recipient_email,
+                        f"RiskHub — {len(overdue_impls)} revisiones de controles vencidas ({org})",
+                        f"{len(overdue_impls)} control(es) tienen la fecha de revision vencida.",
+                        html_body=html_ctrl, event="control.review_overdue",
+                        fields={"count": len(overdue_impls)},
+                    )
+                    if any(result.values()):
                         rule.last_triggered_at = now
                         sent += 1
-                    except Exception as exc:
-                        logger.warning("Error enviando alerta control_review_overdue: %s", exc)
+                    else:
+                        logger.warning("Error enviando alerta control_review_overdue: ningun canal disponible")
                 continue
 
             elif rule.event_type == "incident_p1p2":
@@ -297,16 +307,18 @@ def _run_alert_rules() -> None:
     </div>
   </div>
 </body></html>"""
-                    try:
-                        email_service.send_email(
-                            cfg, rule.recipient_email,
-                            f"RiskHub — {len(open_p1p2)} incidente(s) P1/P2 abierto(s) ({org})",
-                            html_inc,
-                        )
+                    result = notification_channels.dispatch_alert(
+                        db, cfg, org, rule.recipient_email,
+                        f"RiskHub — {len(open_p1p2)} incidente(s) P1/P2 abierto(s) ({org})",
+                        f"{len(open_p1p2)} incidente(s) P1/P2 permanecen abiertos.",
+                        html_body=html_inc, event="incident.p1p2_open",
+                        fields={"count": len(open_p1p2)},
+                    )
+                    if any(result.values()):
                         rule.last_triggered_at = now
                         sent += 1
-                    except Exception as exc:
-                        logger.warning("Error enviando alerta incident_p1p2: %s", exc)
+                    else:
+                        logger.warning("Error enviando alerta incident_p1p2: ningun canal disponible")
                 continue
 
             elif rule.event_type == "nis2_pending":
@@ -348,16 +360,18 @@ def _run_alert_rules() -> None:
     </div>
   </div>
 </body></html>"""
-                    try:
-                        email_service.send_email(
-                            cfg, rule.recipient_email,
-                            f"RiskHub [URGENTE] — {len(nis2_pending_list)} notificacion(es) NIS2 pendiente(s) ({org})",
-                            html_nis2,
-                        )
+                    result = notification_channels.dispatch_alert(
+                        db, cfg, org, rule.recipient_email,
+                        f"RiskHub [URGENTE] — {len(nis2_pending_list)} notificacion(es) NIS2 pendiente(s) ({org})",
+                        f"ATENCION: {len(nis2_pending_list)} incidente(s) requieren notificacion NIS2 al supervisor nacional (Art. 23, plazo 24h).",
+                        html_body=html_nis2, event="incident.nis2_pending",
+                        fields={"count": len(nis2_pending_list)},
+                    )
+                    if any(result.values()):
                         rule.last_triggered_at = now
                         sent += 1
-                    except Exception as exc:
-                        logger.warning("Error enviando alerta nis2_pending: %s", exc)
+                    else:
+                        logger.warning("Error enviando alerta nis2_pending: ningun canal disponible")
                 continue
 
             elif rule.event_type == "policy_review_overdue":
@@ -401,16 +415,18 @@ def _run_alert_rules() -> None:
     </div>
   </div>
 </body></html>"""
-                    try:
-                        email_service.send_email(
-                            cfg, rule.recipient_email,
-                            f"RiskHub — {len(overdue_policies)} politica(s) con revision vencida ({org})",
-                            html_pol,
-                        )
+                    result = notification_channels.dispatch_alert(
+                        db, cfg, org, rule.recipient_email,
+                        f"RiskHub — {len(overdue_policies)} politica(s) con revision vencida ({org})",
+                        f"{len(overdue_policies)} politica(s) tienen la fecha de revision vencida.",
+                        html_body=html_pol, event="policy.review_overdue",
+                        fields={"count": len(overdue_policies)},
+                    )
+                    if any(result.values()):
                         rule.last_triggered_at = now
                         sent += 1
-                    except Exception as exc:
-                        logger.warning("Error enviando alerta policy_review_overdue: %s", exc)
+                    else:
+                        logger.warning("Error enviando alerta policy_review_overdue: ningun canal disponible")
                 continue
 
             elif rule.event_type == "task_overdue":
@@ -454,16 +470,18 @@ def _run_alert_rules() -> None:
     </div>
   </div>
 </body></html>"""
-                    try:
-                        email_service.send_email(
-                            cfg, rule.recipient_email,
-                            f"RiskHub — {len(overdue_tasks)} tarea(s) vencida(s) ({org})",
-                            html_tsk,
-                        )
+                    result = notification_channels.dispatch_alert(
+                        db, cfg, org, rule.recipient_email,
+                        f"RiskHub — {len(overdue_tasks)} tarea(s) vencida(s) ({org})",
+                        f"{len(overdue_tasks)} tarea(s) de tratamiento tienen la fecha limite vencida.",
+                        html_body=html_tsk, event="task.overdue",
+                        fields={"count": len(overdue_tasks)},
+                    )
+                    if any(result.values()):
                         rule.last_triggered_at = now
                         sent += 1
-                    except Exception as exc:
-                        logger.warning("Error enviando alerta task_overdue: %s", exc)
+                    else:
+                        logger.warning("Error enviando alerta task_overdue: ningun canal disponible")
                 continue
 
             # Reglas compuestas: conditions JSON + logic AND|OR (v5.3.0)
@@ -530,16 +548,16 @@ def _run_alert_rules() -> None:
             for risk in matching:
                 subject = f"RiskHub — Alerta: {risk.code} ({org})"
                 body_txt = f"El riesgo {risk.code} {reason_map.get(rule.event_type, '')}."
-                try:
-                    email_service.send_email(
-                        cfg,
-                        rule.recipient_email,
-                        subject,
-                        email_service.risk_alert_html(risk, org, body_txt),
-                    )
+                result = notification_channels.dispatch_alert(
+                    db, cfg, org, rule.recipient_email, subject, body_txt,
+                    html_body=email_service.risk_alert_html(risk, org, body_txt),
+                    event=f"risk.{rule.event_type}",
+                    fields={"risk_code": risk.code, "residual_level": risk.residual_level},
+                )
+                if any(result.values()):
                     sent += 1
-                except Exception as exc:
-                    logger.warning("Error enviando alerta para %s: %s", risk.code, exc)
+                else:
+                    logger.warning("Error enviando alerta para %s: ningun canal disponible", risk.code)
 
             if matching:
                 rule.last_triggered_at = now

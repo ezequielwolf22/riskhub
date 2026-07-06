@@ -10,8 +10,9 @@ from app.database import get_db
 from app.i18n import get_lang, t as _t
 from app.models import AlertRule, EmailSettings, Risk, UserRole
 from app.security import filter_by_org, get_current_user
-from app.services import email_service
+from app.services import email_service, notification_channels
 from app.services.audit_service import log_action
+from app.services.webhook_service import validate_webhook_url
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
@@ -36,6 +37,22 @@ class EmailSettingsOut(BaseModel):
     # password no se expone
 
 
+class AlertChannelIn(BaseModel):
+    webhook_url: Optional[str] = None   # si se envia, reemplaza la URL guardada
+    enabled: bool = True
+
+
+class AlertChannelStatusOut(BaseModel):
+    configured: bool
+    enabled: bool
+    host_hint: Optional[str] = None   # solo el hostname, nunca la URL completa (contiene el secreto)
+
+
+class AlertChannelsOut(BaseModel):
+    teams: AlertChannelStatusOut
+    power_automate: AlertChannelStatusOut
+
+
 class AlertRuleIn(BaseModel):
     name: str
     event_type: str  # risk_high, risk_critical, treatment_overdue, risk_no_treatment
@@ -56,7 +73,7 @@ class AlertRuleOut(BaseModel):
 
 
 class SendRiskAlertIn(BaseModel):
-    recipient_email: EmailStr
+    recipient_email: Optional[EmailStr] = None
     reason: str = "Alerta manual de riesgo"
 
 
@@ -127,6 +144,122 @@ def send_test(db: Session = Depends(get_db),
     except RuntimeError as e:
         raise HTTPException(502, str(e))
     return {"ok": True, "message": f"Email de prueba enviado a {cfg.smtp_from}"}
+
+
+# ---------- Endpoints canales alternativos (Teams / Power Automate) ----------
+
+def _channel_status(cfg, url_field: str, enabled_field: str) -> AlertChannelStatusOut:
+    enc = getattr(cfg, url_field, None) if cfg else None
+    enabled = bool(getattr(cfg, enabled_field, False)) if cfg else False
+    if not enc:
+        return AlertChannelStatusOut(configured=False, enabled=enabled, host_hint=None)
+    try:
+        from urllib.parse import urlparse
+
+        from app.security import decrypt_secret
+        host = urlparse(decrypt_secret(enc)).hostname or ""
+    except Exception:
+        host = ""
+    return AlertChannelStatusOut(configured=True, enabled=enabled, host_hint=host)
+
+
+@router.get("/channels", response_model=AlertChannelsOut)
+def get_channels(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
+    return AlertChannelsOut(
+        teams=_channel_status(cfg, "teams_webhook_url_encrypted", "teams_webhook_enabled"),
+        power_automate=_channel_status(cfg, "power_automate_webhook_url_encrypted", "power_automate_webhook_enabled"),
+    )
+
+
+def _save_channel(db: Session, current_user, body: AlertChannelIn,
+                   url_field: str, enabled_field: str, label: str) -> AlertChannelStatusOut:
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores")
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
+    if not cfg:
+        cfg = EmailSettings(organization_id=current_user.organization_id)
+        db.add(cfg)
+    if body.webhook_url:
+        try:
+            validate_webhook_url(body.webhook_url)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        from app.security import encrypt_secret
+        setattr(cfg, url_field, encrypt_secret(body.webhook_url))
+    setattr(cfg, enabled_field, body.enabled)
+    log_action(db, current_user.id, "update", "alert_channel", label, {"enabled": body.enabled})
+    db.commit()
+    db.refresh(cfg)
+    return _channel_status(cfg, url_field, enabled_field)
+
+
+@router.put("/channels/teams", response_model=AlertChannelStatusOut)
+def save_teams_channel(body: AlertChannelIn, db: Session = Depends(get_db),
+                       current_user=Depends(get_current_user)):
+    return _save_channel(db, current_user, body,
+                         "teams_webhook_url_encrypted", "teams_webhook_enabled", "teams")
+
+
+@router.put("/channels/power-automate", response_model=AlertChannelStatusOut)
+def save_power_automate_channel(body: AlertChannelIn, db: Session = Depends(get_db),
+                                current_user=Depends(get_current_user)):
+    return _save_channel(db, current_user, body,
+                         "power_automate_webhook_url_encrypted", "power_automate_webhook_enabled", "power_automate")
+
+
+@router.delete("/channels/teams", status_code=204)
+def delete_teams_channel(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores")
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
+    if cfg:
+        cfg.teams_webhook_url_encrypted = None
+        cfg.teams_webhook_enabled = False
+        log_action(db, current_user.id, "delete", "alert_channel", "teams", {})
+        db.commit()
+
+
+@router.delete("/channels/power-automate", status_code=204)
+def delete_power_automate_channel(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores")
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
+    if cfg:
+        cfg.power_automate_webhook_url_encrypted = None
+        cfg.power_automate_webhook_enabled = False
+        log_action(db, current_user.id, "delete", "alert_channel", "power_automate", {})
+        db.commit()
+
+
+@router.post("/channels/teams/test")
+def test_teams_channel(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores")
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
+    if not cfg or not cfg.teams_webhook_url_encrypted:
+        raise HTTPException(400, "Configura primero la URL del webhook de Teams")
+    from app.security import decrypt_secret
+    try:
+        notification_channels.test_teams(decrypt_secret(cfg.teams_webhook_url_encrypted))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+    return {"ok": True, "message": "Mensaje de prueba enviado al canal de Teams"}
+
+
+@router.post("/channels/power-automate/test")
+def test_power_automate_channel(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        raise HTTPException(403, "Solo administradores")
+    cfg = filter_by_org(db.query(EmailSettings), EmailSettings, current_user).first()
+    if not cfg or not cfg.power_automate_webhook_url_encrypted:
+        raise HTTPException(400, "Configura primero la URL de Power Automate")
+    from app.security import decrypt_secret
+    try:
+        notification_channels.test_power_automate(decrypt_secret(cfg.power_automate_webhook_url_encrypted))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+    return {"ok": True, "message": "Solicitud de prueba enviada al flujo de Power Automate"}
 
 
 # ---------- Endpoints Reglas ----------
@@ -212,7 +345,8 @@ def toggle_rule(rule_id: int, request: Request, db: Session = Depends(get_db),
 def send_risk_alert(risk_id: int, body: SendRiskAlertIn,
                     db: Session = Depends(get_db),
                     current_user=Depends(get_current_user)):
-    """Envia una alerta manual para un riesgo especifico."""
+    """Envia una alerta manual para un riesgo especifico por todos los canales activos
+    (email si se indica destinatario y hay SMTP, Teams y/o Power Automate si estan configurados)."""
     if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
         raise HTTPException(403, "Acceso denegado")
     risk = filter_by_org(db.query(Risk).filter(Risk.id == risk_id), Risk, current_user).first()
@@ -220,35 +354,38 @@ def send_risk_alert(risk_id: int, body: SendRiskAlertIn,
         raise HTTPException(404, "Riesgo no encontrado")
     # A1: org_id para evitar usar SMTP de otro tenant
     cfg = email_service.get_settings(db, org_id=current_user.organization_id)
-    if not cfg or not cfg.smtp_host:
-        raise HTTPException(400, "Servidor SMTP no configurado")
+    if not notification_channels.has_any_channel(cfg) and not body.recipient_email:
+        raise HTTPException(400, "No hay ningun canal de alerta configurado (email, Teams o Power Automate)")
 
     from app.models import RiskContext
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
     org = ctx.organization_name if ctx else "Organizacion"
 
-    try:
-        email_service.send_email(
-            cfg,
-            body.recipient_email,
-            f"RiskHub — Alerta: {risk.code} ({risk.residual_level}/8)",
-            email_service.risk_alert_html(risk, org, body.reason),
-        )
-    except RuntimeError as e:
-        raise HTTPException(502, str(e))
-    return {"ok": True, "message": f"Alerta enviada a {body.recipient_email}"}
+    subject = f"RiskHub — Alerta: {risk.code} ({risk.residual_level}/8)"
+    summary = f"{body.reason}\nRiesgo {risk.code} — nivel residual {risk.residual_level}/8."
+    result = notification_channels.dispatch_alert(
+        db, cfg, org, body.recipient_email, subject, summary,
+        html_body=email_service.risk_alert_html(risk, org, body.reason),
+        event="risk.manual_alert",
+        fields={"risk_code": risk.code, "residual_level": risk.residual_level, "reason": body.reason},
+    )
+    if not any(v for v in result.values()):
+        raise HTTPException(502, "No se pudo enviar la alerta por ningun canal configurado")
+    sent_channels = [k for k, v in result.items() if v]
+    return {"ok": True, "message": f"Alerta enviada via: {', '.join(sent_channels)}", "channels": result}
 
 
 @router.post("/check-rules")
 def check_rules(db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
-    """Evalua todas las reglas activas y envia emails para los riesgos que cumplen criterios."""
+    """Evalua todas las reglas activas y envia alertas (email/Teams/Power Automate,
+    segun lo configurado) para los riesgos que cumplen criterios."""
     if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
         raise HTTPException(403, "Acceso denegado")
     # A1: org_id para evitar usar SMTP de otro tenant
     cfg = email_service.get_settings(db, org_id=current_user.organization_id)
-    if not cfg or not cfg.smtp_host:
-        raise HTTPException(400, "Servidor SMTP no configurado")
+    if not notification_channels.has_any_channel(cfg):
+        raise HTTPException(400, "No hay ningun canal de alerta configurado (email, Teams o Power Automate)")
 
     from app.models import RiskContext, RiskStatus
     ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
@@ -288,16 +425,20 @@ def check_rules(db: Session = Depends(get_db),
                 "treatment_overdue": f"El plan de tratamiento del riesgo {risk.code} esta vencido",
                 "risk_no_treatment": f"Riesgo {risk.code} (nivel {risk.residual_level}) sin plan de tratamiento definido",
             }
-            try:
-                email_service.send_email(
-                    cfg,
-                    rule.recipient_email,
-                    f"RiskHub — {reason_map.get(rule.event_type, 'Alerta')}",
-                    email_service.risk_alert_html(risk, org, reason_map.get(rule.event_type, "")),
-                )
+            reason = reason_map.get(rule.event_type, "")
+            result = notification_channels.dispatch_alert(
+                db, cfg, org, rule.recipient_email,
+                f"RiskHub — {reason_map.get(rule.event_type, 'Alerta')}",
+                reason,
+                html_body=email_service.risk_alert_html(risk, org, reason),
+                event=f"risk.{rule.event_type}",
+                fields={"risk_code": risk.code, "residual_level": risk.residual_level, "reason": reason},
+            )
+            if any(v for v in result.values()):
                 sent += 1
-            except RuntimeError as e:
-                errors.append(str(e))
+            for channel, ok in result.items():
+                if ok is False:
+                    errors.append(f"{channel}: fallo al enviar alerta para {risk.code}")
 
         if matching:
             rule.last_triggered_at = now

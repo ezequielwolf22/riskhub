@@ -743,6 +743,11 @@ def _migrate_columns() -> None:
         ("ALTER TABLE bcp_plans ADD COLUMN ai_content_review JSON", "bcp_plans", "ai_content_review"),
         # v6.3.0 — BCM: revision semantica IA del contenido real de la evidencia subida
         ("ALTER TABLE bcm_evidence_items ADD COLUMN ai_review JSON", "bcm_evidence_items", "ai_review"),
+        # v3.9.0 — canales de alerta alternativos a SMTP: Teams webhook / Power Automate
+        ("ALTER TABLE email_settings ADD COLUMN teams_webhook_url_encrypted TEXT", "email_settings", "teams_webhook_url_encrypted"),
+        ("ALTER TABLE email_settings ADD COLUMN teams_webhook_enabled BOOLEAN DEFAULT 0", "email_settings", "teams_webhook_enabled"),
+        ("ALTER TABLE email_settings ADD COLUMN power_automate_webhook_url_encrypted TEXT", "email_settings", "power_automate_webhook_url_encrypted"),
+        ("ALTER TABLE email_settings ADD COLUMN power_automate_webhook_enabled BOOLEAN DEFAULT 0", "email_settings", "power_automate_webhook_enabled"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

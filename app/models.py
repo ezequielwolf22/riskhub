@@ -598,6 +598,11 @@ class EmailSettings(Base):
     smtp_password_encrypted = Column(Text, nullable=True)    # Fernet-encrypted (v1.8+)
     smtp_from = Column(String(255), default="")
     smtp_use_tls = Column(Boolean, default=True)
+    # v3.9.0 — canales de alerta alternativos a SMTP (clientes que no permiten SMTP)
+    teams_webhook_url_encrypted = Column(Text, nullable=True)      # Fernet — webhook Workflows de Teams
+    teams_webhook_enabled = Column(Boolean, default=False)
+    power_automate_webhook_url_encrypted = Column(Text, nullable=True)  # Fernet — trigger HTTP de Power Automate
+    power_automate_webhook_enabled = Column(Boolean, default=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
