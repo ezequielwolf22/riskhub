@@ -6,8 +6,6 @@ const ViewOrganizations = (() => {
   let _orgUsers = [];
   let _planLimits = null;  // {free:[...], starter:[...], pro:[...], enterprise:null}
   let _container = null;
-  let _detailMode = false;
-  let _detailOrgId = null;
 
   const PLAN_COLORS = {
     free:       { bg: '#F3F4F6', text: '#6B7280', label: 'Free' },
@@ -128,87 +126,76 @@ const ViewOrganizations = (() => {
     const org = _orgs.find(o => o.id === orgId);
     if (!org) return;
     _selectedOrg = org;
-    _detailMode = true;
-    _detailOrgId = orgId;
 
-    // Renderizar en #main directamente (igual que navigate) para evitar
-    // cualquier problema de layout con el panel de tabs.
-    const mainEl = document.getElementById('main');
-    if (!mainEl) return;
-    mainEl.scrollTop = 0;
-    const target = mainEl;
-
-    target.innerHTML = `
-      <div class="card">
-        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-          <strong>${t('organizations.detail_title', { name: org.name })}</strong>
-          <button class="btn btn-sm btn-secondary" onclick="ViewOrganizations._backToList()">&larr; ${t('organizations.close_btn')}</button>
-        </div>
-        <div class="card-body">
-          <form id="edit-org-form" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;">
-            <label>${t('organizations.name_label')}
-              <input class="input" name="name" value="${UI.esc(org.name)}" required>
-            </label>
-            <label>${t('organizations.domain_form_label')}
-              <input class="input" name="domain" value="${UI.esc(org.domain || '')}" placeholder="empresa.com">
-            </label>
-            <label>${t('organizations.plan_label')}
-              <select class="input" name="plan" onchange="ViewOrganizations._onPlanChange(this, ${org.id})">
-                ${['free','starter','pro','enterprise'].map(p =>
-                  `<option value="${p}" ${(org.plan === p || (!org.plan && p === 'starter')) ? 'selected' : ''}>${(PLAN_COLORS[p] || {label:p}).label}</option>`
-                ).join('')}
-              </select>
-            </label>
-            <label>${t('organizations.max_users_label')}
-              <input class="input" type="number" name="max_users" value="${org.max_users}" min="1">
-            </label>
-            <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;">
-              <div style="display:flex;align-items:center;gap:12px;">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
-                  <div style="position:relative;display:inline-block;width:40px;height:22px;">
-                    <input type="checkbox" id="org-mfa-toggle" name="mfa_required" ${org.mfa_required ? 'checked' : ''}
-                      style="opacity:0;width:0;height:0;position:absolute;"
-                      onchange="this.closest('label').querySelector('.toggle-track').style.background=this.checked?'var(--brand-purple)':'var(--border)';this.closest('label').querySelector('.toggle-knob').style.left=this.checked?'20px':'2px'">
-                    <span class="toggle-track" style="position:absolute;inset:0;border-radius:22px;transition:background .2s;background:${org.mfa_required ? 'var(--brand-purple)' : 'var(--border)'}"></span>
-                    <span class="toggle-knob" style="position:absolute;top:3px;left:${org.mfa_required ? '20px' : '2px'};width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
-                  </div>
-                  <span style="font-size:13px;font-weight:500;">Requerir MFA para todos los usuarios</span>
-                </label>
-                <span style="font-size:12px;color:var(--text-muted);">Los overrides individuales de cada usuario tienen prioridad. Si hay SSO configurado, el SSO es quien gestiona la autenticacion.</span>
-              </div>
-            </div>
-            <div style="grid-column:1/-1;display:flex;gap:12px;justify-content:flex-end;">
-              <button type="submit" class="btn btn-primary">${t('organizations.save_btn')}</button>
-            </div>
-          </form>
-
-          <hr style="margin:20px 0;">
-          <div id="org-users-container-${orgId}">
-            <p class="muted">${t('organizations.loading')}</p>
-          </div>
-
-          <hr style="margin:20px 0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <h3 style="font-size:14px;font-weight:600;margin:0;">${t('organizations.flags_section')}</h3>
-          </div>
-          <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
-            ${t('organizations.flags_desc')}
-          </p>
-          <div id="org-flags-container-${orgId}">
-            <p class="muted">${t('organizations.flags_loading')}</p>
-          </div>
-
-          <hr style="margin:20px 0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <h3 style="font-size:14px;font-weight:600;margin:0;">${t('organizations.license_section')}</h3>
-            <button class="btn btn-sm btn-secondary" onclick="ViewOrganizations._openLicenseModal(${orgId})">${t('organizations.manage_license_btn')}</button>
-          </div>
-          <div id="org-license-container-${orgId}">
-            <p class="muted">${t('organizations.license_loading')}</p>
-          </div>
-        </div>
+    // Abrir en modal para evitar cualquier conflicto de layout con el hub de tabs.
+    UI.openModal(`
+      <div class="modal-head" style="position:sticky;top:0;background:var(--bg-card);z-index:1;padding-bottom:12px;margin-bottom:16px;border-bottom:1px solid var(--border);">
+        <h2 style="margin:0;font-size:16px;">${t('organizations.detail_title', { name: UI.esc(org.name) })}</h2>
+        <button class="btn btn-ghost" onclick="UI.closeModal()">x</button>
       </div>
-    `;
+
+      <form id="edit-org-form" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:20px;">
+        <label>${t('organizations.name_label')}
+          <input class="input" name="name" value="${UI.esc(org.name)}" required>
+        </label>
+        <label>${t('organizations.domain_form_label')}
+          <input class="input" name="domain" value="${UI.esc(org.domain || '')}" placeholder="empresa.com">
+        </label>
+        <label>${t('organizations.plan_label')}
+          <select class="input" name="plan" onchange="ViewOrganizations._onPlanChange(this, ${org.id})">
+            ${['free','starter','pro','enterprise'].map(p =>
+              `<option value="${p}" ${(org.plan === p || (!org.plan && p === 'starter')) ? 'selected' : ''}>${(PLAN_COLORS[p] || {label:p}).label}</option>`
+            ).join('')}
+          </select>
+        </label>
+        <label>${t('organizations.max_users_label')}
+          <input class="input" type="number" name="max_users" value="${org.max_users}" min="1">
+        </label>
+        <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;">
+              <div style="position:relative;display:inline-block;width:40px;height:22px;">
+                <input type="checkbox" id="org-mfa-toggle" name="mfa_required" ${org.mfa_required ? 'checked' : ''}
+                  style="opacity:0;width:0;height:0;position:absolute;"
+                  onchange="this.closest('label').querySelector('.toggle-track').style.background=this.checked?'var(--brand-purple)':'var(--border)';this.closest('label').querySelector('.toggle-knob').style.left=this.checked?'20px':'2px'">
+                <span class="toggle-track" style="position:absolute;inset:0;border-radius:22px;transition:background .2s;background:${org.mfa_required ? 'var(--brand-purple)' : 'var(--border)'}"></span>
+                <span class="toggle-knob" style="position:absolute;top:3px;left:${org.mfa_required ? '20px' : '2px'};width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span>
+              </div>
+              <span style="font-size:13px;font-weight:500;">Requerir MFA para todos los usuarios</span>
+            </label>
+            <span style="font-size:12px;color:var(--text-muted);">Los overrides individuales de cada usuario tienen prioridad. Si hay SSO configurado, el SSO es quien gestiona la autenticacion.</span>
+          </div>
+        </div>
+        <div style="grid-column:1/-1;display:flex;gap:12px;justify-content:flex-end;">
+          <button type="submit" class="btn btn-primary">${t('organizations.save_btn')}</button>
+        </div>
+      </form>
+
+      <hr style="margin:0 0 20px;">
+      <div id="org-users-container-${orgId}">
+        <p class="muted">${t('organizations.loading')}</p>
+      </div>
+
+      <hr style="margin:20px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="font-size:14px;font-weight:600;margin:0;">${t('organizations.flags_section')}</h3>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+        ${t('organizations.flags_desc')}
+      </p>
+      <div id="org-flags-container-${orgId}">
+        <p class="muted">${t('organizations.flags_loading')}</p>
+      </div>
+
+      <hr style="margin:20px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="font-size:14px;font-weight:600;margin:0;">${t('organizations.license_section')}</h3>
+        <button class="btn btn-sm btn-secondary" onclick="ViewOrganizations._openLicenseModal(${orgId})">${t('organizations.manage_license_btn')}</button>
+      </div>
+      <div id="org-license-container-${orgId}">
+        <p class="muted">${t('organizations.license_loading')}</p>
+      </div>
+    `, { width: '90vw' });
 
     document.getElementById('edit-org-form').onsubmit = async (e) => {
       e.preventDefault();
@@ -232,7 +219,7 @@ const ViewOrganizations = (() => {
       }
     };
 
-    // Cargar usuarios, flags y licencia en paralelo (la card ya está visible)
+    // Cargar usuarios, flags y licencia en paralelo (modal ya visible)
     fetchOrgUsers(orgId).catch(() => { _orgUsers = []; }).then(() => {
       const uc = document.getElementById(`org-users-container-${orgId}`);
       if (!uc) return;
@@ -588,14 +575,7 @@ const ViewOrganizations = (() => {
   }
 
   function _backToList() {
-    _detailMode = false;
-    _detailOrgId = null;
-    // Re-navegar al hub para restaurar el layout completo (tabs + lista).
-    if (typeof navigate === 'function') {
-      navigate();
-    } else if (_container) {
-      render(_container);
-    }
+    UI.closeModal();
   }
 
   async function _deactivate(orgId) {
