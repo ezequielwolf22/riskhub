@@ -1,0 +1,20 @@
+{
+  "onboarding_gate": {
+    "auto_approve_range": "auto_approve_below must be between 0 and 100",
+    "manual_review_range": "manual_review_above must be between 0 and 100",
+    "threshold_order": "auto_approve_below must be lower than manual_review_above",
+    "bypass_role_invalid": "bypass_min_role must be admin or analyst",
+    "chain_must_be_list": "sign_off_chain must be a list",
+    "chain_item_fields": "Each item needs 'id' and 'label'",
+    "supplier_not_found": "Supplier not found",
+    "override_type_invalid": "type must be bypass, force_controls or clear",
+    "bypass_admin_only": "Only administrators can bypass the gate",
+    "justification_required": "A justification is required for this action",
+    "force_controls_disabled": "Forcing controls is disabled in the configuration",
+    "decision_invalid": "decision must be approved, rejected or conditional",
+    "conditional_needs_conditions": "A 'conditional' decision requires at least one condition",
+    "signoff_not_found": "Item '{id}' does not exist in the chain",
+    "signoff_no_bypass": "Item '{id}' cannot be skipped (bypass_allowed=false)",
+    "skip_justification_required": "A justification is required to skip an item"
+  }
+}

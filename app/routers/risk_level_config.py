@@ -7,11 +7,12 @@ DELETE /api/risk-levels        → elimina config custom, vuelve a defaults (adm
 from __future__ import annotations
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import RiskLevelConfig
 from app.security import get_current_user, require_role
 from app.services.risk_engine import _DEFAULT_BANDS
@@ -74,11 +75,20 @@ def _get_custom(db: Session, org_id) -> list[RiskLevelConfig]:
 
 # ---------- Endpoints ----------
 
+_DEFAULT_LABEL_KEYS = {
+    "low": "risk_level_config.band_label_low",
+    "medium": "risk_level_config.band_label_medium",
+    "high": "risk_level_config.band_label_high",
+}
+
+
 @router.get("", response_model=list[RiskBandOut])
 def get_risk_levels(
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    lang = get_lang(request)
     org_id = _org_id(current_user)
     rows = _get_custom(db, org_id)
     if rows:
@@ -87,25 +97,34 @@ def get_risk_levels(
             max_level=r.max_level, color=r.color, order=r.order,
             is_default=False,
         ) for r in rows]
-    return [RiskBandOut(**{**b, "is_default": True}) for b in _DEFAULT_BANDS]
+    return [
+        RiskBandOut(**{
+            **b,
+            "label": _t(_DEFAULT_LABEL_KEYS.get(b["code"], ""), lang) if b["code"] in _DEFAULT_LABEL_KEYS else b["label"],
+            "is_default": True,
+        })
+        for b in _DEFAULT_BANDS
+    ]
 
 
 @router.put("", response_model=list[RiskBandOut])
 def update_risk_levels(
     bands: list[RiskBandIn],
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_role("admin")),
 ):
+    lang = get_lang(request)
     if not bands:
-        raise HTTPException(400, "Se requiere al menos una banda")
+        raise HTTPException(400, _t("risk_level_config.at_least_one_band", lang))
     if len(bands) > 10:
-        raise HTTPException(400, "Maximo 10 bandas")
+        raise HTTPException(400, _t("risk_level_config.max_ten_bands", lang))
 
     # Validar que cubren 0-8 sin solapamientos
     sorted_bands = sorted(bands, key=lambda b: b.order)
     for b in sorted_bands:
         if b.min_level > b.max_level:
-            raise HTTPException(400, f"min_level > max_level en banda '{b.code}'")
+            raise HTTPException(400, _t("risk_level_config.min_greater_than_max", lang, code=b.code))
 
     org_id = _org_id(current_user)
 

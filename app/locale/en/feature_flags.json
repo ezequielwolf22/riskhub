@@ -1,0 +1,10 @@
+{
+  "feature_flags": {
+    "invalid_name": "Invalid flag name (lowercase letters, numbers and _ only)",
+    "no_permission": "You do not have permission to modify feature flags",
+    "plan_module_not_included": "The '{plan}' plan does not include the '{flag_name}' module. Upgrade the plan to enable it.",
+    "flag_not_found": "Feature flag '{flag_name}' not found",
+    "override_not_found": "No override of flag '{flag_name}' exists for organization {org_id}",
+    "override_deleted": "Override deleted. The organization now inherits the global value."
+  }
+}

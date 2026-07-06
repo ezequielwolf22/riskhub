@@ -1,0 +1,12 @@
+{
+  "report_schedules": {
+    "invalid_report_type": "report_type invalido. Validos: {valid_types}",
+    "invalid_frequency_list": "frequency invalida. Validas: {valid_freqs}",
+    "at_least_one_recipient": "Se requiere al menos un destinatario",
+    "invalid_email": "Email invalido: {email}",
+    "schedule_not_found": "Programacion no encontrada",
+    "invalid_frequency": "frequency invalida",
+    "smtp_not_configured": "SMTP no configurado",
+    "error_generating_report": "Error generando informe: {error}"
+  }
+}

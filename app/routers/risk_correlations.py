@@ -2,11 +2,12 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import Risk, RiskCorrelation, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -75,18 +76,20 @@ def list_correlations(
 @router.post("/", status_code=201)
 def create_correlation(
     body: CorrelationCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     org_id = current_user.organization_id
     ra = db.get(Risk, body.risk_id_a)
     rb = db.get(Risk, body.risk_id_b)
     if not ra or not check_org_access(ra.organization_id, current_user):
-        raise HTTPException(404, f"Riesgo {body.risk_id_a} no encontrado")
+        raise HTTPException(404, _t("risk_correlations.risk_a_not_found", lang, risk_id=body.risk_id_a))
     if not rb or not check_org_access(rb.organization_id, current_user):
-        raise HTTPException(404, f"Riesgo {body.risk_id_b} no encontrado")
+        raise HTTPException(404, _t("risk_correlations.risk_b_not_found", lang, risk_id=body.risk_id_b))
     if body.risk_id_a == body.risk_id_b:
-        raise HTTPException(400, "Un riesgo no puede correlacionarse consigo mismo")
+        raise HTTPException(400, _t("risk_correlations.cannot_correlate_self", lang))
 
     # Evitar duplicados
     existing = db.query(RiskCorrelation).filter(
@@ -97,7 +100,7 @@ def create_correlation(
         ),
     ).first()
     if existing:
-        raise HTTPException(409, f"Ya existe correlacion entre {ra.code} y {rb.code}")
+        raise HTTPException(409, _t("risk_correlations.already_exists", lang, code_a=ra.code, code_b=rb.code))
 
     corr = RiskCorrelation(
         organization_id=org_id,
@@ -119,12 +122,14 @@ def create_correlation(
 def update_correlation(
     cid: int,
     body: CorrelationUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     corr = db.get(RiskCorrelation, cid)
     if not corr or not check_org_access(corr.organization_id, current_user):
-        raise HTTPException(404, "Correlacion no encontrada")
+        raise HTTPException(404, _t("risk_correlations.correlation_not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(corr, field, value)
     db.commit()
@@ -135,12 +140,14 @@ def update_correlation(
 @router.delete("/{cid}", status_code=204)
 def delete_correlation(
     cid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     corr = db.get(RiskCorrelation, cid)
     if not corr or not check_org_access(corr.organization_id, current_user):
-        raise HTTPException(404, "Correlacion no encontrada")
+        raise HTTPException(404, _t("risk_correlations.correlation_not_found", lang))
     log_action(db, current_user.id, "delete", "risk_correlation", str(cid))
     db.delete(corr)
     db.commit()

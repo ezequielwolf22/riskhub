@@ -1,0 +1,21 @@
+{
+  "report_templates": {
+    "invalid_report_type": "Invalid report type: {report_type}",
+    "invalid_primary_color": "primary_color must be a valid hex color (#RRGGBB)",
+    "invalid_secondary_color": "secondary_color must be a valid hex color (#RRGGBB)",
+    "unsupported_font": "Unsupported font. Options: {valid_fonts}",
+    "template_not_found": "Template not found",
+    "logo_too_large": "The logo cannot exceed 2 MB",
+    "unsupported_logo_format": "Unsupported format. Use PNG, JPG or WebP.",
+    "logo_content_mismatch": "The file content does not match the declared format.",
+    "no_logo_configured": "No logo configured",
+    "template_file_too_large": "The template file cannot exceed 10 MB",
+    "unsupported_template_file": "Only .docx or .html files are accepted as a base template.",
+    "no_template_file_configured": "No template file configured",
+    "logo_file_not_found": "Logo file not found",
+    "audit_template_updated": "Template '{report_type}' updated",
+    "audit_template_deleted": "Template '{report_type}' deleted",
+    "audit_logo_uploaded": "Logo uploaded for template '{report_type}'",
+    "audit_template_file_uploaded": "Template file uploaded for '{report_type}' ({ext})"
+  }
+}

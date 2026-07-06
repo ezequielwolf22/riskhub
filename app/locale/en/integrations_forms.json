@@ -1,0 +1,19 @@
+{
+  "integrations_forms": {
+    "org_required": "organization_id is required",
+    "invalid_token": "Invalid token",
+    "supplier_not_identified": "Could not identify the supplier. Include the 'supplier' field in the payload.",
+    "unknown_responder": "unknown",
+    "auto_created_notes": "Automatically created via MS Forms webhook (Route 1). Answered by: {responder}.",
+    "default_title": "External form — {supplier}",
+    "imported_notes": "Imported via MS Forms / Power Automate. Answered by: {submitted_by}",
+    "missing_credentials": "Missing credentials: {missing}",
+    "azure_auth_failed": "Could not authenticate against Azure AD — check Tenant ID, Client ID and Client Secret",
+    "no_questions_found": "No questions found — check the Form ID and the Forms.Read.All permission",
+    "form_id_not_configured": "Form ID not configured — save the configuration first",
+    "cred_tenant_id": "Tenant ID",
+    "cred_client_id": "Client ID",
+    "cred_form_id": "Form ID",
+    "cred_client_secret": "Client Secret"
+  }
+}

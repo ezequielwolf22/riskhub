@@ -1,0 +1,9 @@
+{
+  "magerit": {
+    "org_id_required": "Se requiere organization_id",
+    "threats_seeded": "{created} amenazas MAGERIT cargadas",
+    "asset_not_found": "Activo no encontrado",
+    "catalog_deleted": "{deleted} amenazas MAGERIT eliminadas.",
+    "catalog_deleted_with_skipped": " {skipped} omitidas por tener riesgos asociados."
+  }
+}

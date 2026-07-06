@@ -5,13 +5,14 @@ Flujo: Analyst crea draft → Admin aprueba → snapshot inmutable → PDF.
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import SoAVersion, User
 from app.security import get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
@@ -78,10 +79,12 @@ def list_versions(
 
 @router.post("", status_code=201)
 def create_version(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Crea nueva version draft de la SoA con snapshot actual."""
+    lang = get_lang(request)
     org_id = current_user.organization_id
 
     # Comprobar que no hay otro draft activo
@@ -89,7 +92,7 @@ def create_version(
         organization_id=org_id, status="draft"
     ).first()
     if existing_draft:
-        raise HTTPException(409, "Ya existe un borrador de SoA activo")
+        raise HTTPException(409, _t("soa_versions.draft_already_exists", lang))
 
     snapshot = _take_snapshot(db, org_id)
     version = SoAVersion(
@@ -109,12 +112,14 @@ def create_version(
 @router.get("/{version_id}")
 def get_version(
     version_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     soa = db.get(SoAVersion, version_id)
     if not soa or soa.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Version no encontrada")
+        raise HTTPException(404, _t("soa_versions.version_not_found", lang))
     result = _soa_to_dict(soa)
     result["snapshot_json"] = soa.snapshot_json   # incluir snapshot completo en detalle
     return result
@@ -123,15 +128,17 @@ def get_version(
 @router.post("/{version_id}/submit")
 def submit_version(
     version_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Analyst envia la version para revision del Admin."""
+    lang = get_lang(request)
     soa = db.get(SoAVersion, version_id)
     if not soa or soa.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Version no encontrada")
+        raise HTTPException(404, _t("soa_versions.version_not_found", lang))
     if soa.status != "draft":
-        raise HTTPException(400, "Solo se pueden enviar versiones en borrador")
+        raise HTTPException(400, _t("soa_versions.submit_only_draft", lang))
 
     soa.status = "under_review"
     soa.submitted_by_id = current_user.id
@@ -149,15 +156,17 @@ class ApproveBody(BaseModel):
 def approve_version(
     version_id: int,
     body: ApproveBody,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Admin aprueba la SoA. El snapshot queda inmutable. Las versiones anteriores pasan a 'superseded'."""
+    lang = get_lang(request)
     soa = db.get(SoAVersion, version_id)
     if not soa or soa.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Version no encontrada")
+        raise HTTPException(404, _t("soa_versions.version_not_found", lang))
     if soa.status not in ("under_review", "draft"):
-        raise HTTPException(400, "Solo se pueden aprobar versiones en revision o borrador")
+        raise HTTPException(400, _t("soa_versions.approve_only_review_or_draft", lang))
 
     # Marcar versiones anteriores como superseded
     db.query(SoAVersion).filter(
@@ -181,17 +190,19 @@ def approve_version(
 @router.get("/{version_id}/pdf")
 def download_pdf(
     version_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Genera PDF de la SoA aprobada."""
+    lang = get_lang(request)
     soa = db.get(SoAVersion, version_id)
     if not soa or soa.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Version no encontrada")
+        raise HTTPException(404, _t("soa_versions.version_not_found", lang))
 
-    pdf_bytes = _generate_soa_pdf(soa)
+    pdf_bytes = _generate_soa_pdf(soa, lang)
     if not pdf_bytes:
-        raise HTTPException(500, "Error generando PDF")
+        raise HTTPException(500, _t("soa_versions.pdf_generation_error", lang))
 
     return Response(
         content=pdf_bytes,
@@ -200,7 +211,7 @@ def download_pdf(
     )
 
 
-def _generate_soa_pdf(soa: SoAVersion) -> bytes:
+def _generate_soa_pdf(soa: SoAVersion, lang: str = "es") -> bytes:
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -226,44 +237,47 @@ def _generate_soa_pdf(soa: SoAVersion) -> bytes:
 
         approved_str = soa.approved_at.strftime("%d/%m/%Y") if soa.approved_at else "-"
         story = [
-            Paragraph("DECLARACION DE APLICABILIDAD (SoA)", h1),
-            Paragraph("ISO/IEC 27001:2022 — Clausula 6.1.3", h2),
+            Paragraph(_t("soa_versions.pdf_title", lang), h1),
+            Paragraph(_t("soa_versions.pdf_subtitle", lang), h2),
             Spacer(1, 0.4*cm),
-            Paragraph(f"<b>Version:</b> {soa.version}", normal),
-            Paragraph(f"<b>Estado:</b> {soa.status.upper()}", normal),
-            Paragraph(f"<b>Aprobada el:</b> {approved_str}", normal),
+            Paragraph(f"<b>{_t('soa_versions.pdf_version_label', lang)}</b> {soa.version}", normal),
+            Paragraph(f"<b>{_t('soa_versions.pdf_status_label', lang)}</b> {soa.status.upper()}", normal),
+            Paragraph(f"<b>{_t('soa_versions.pdf_approved_at_label', lang)}</b> {approved_str}", normal),
         ]
         if soa.approval_notes:
-            story.append(Paragraph(f"<b>Notas de aprobacion:</b> {soa.approval_notes}", normal))
+            story.append(Paragraph(f"<b>{_t('soa_versions.pdf_approval_notes_label', lang)}</b> {soa.approval_notes}", normal))
         story.append(Spacer(1, 0.5*cm))
 
         controls = soa.snapshot_json or []
         if controls:
-            story.append(Paragraph(f"CONTROLES ({len(controls)} entradas)", h2))
+            story.append(Paragraph(
+                _t("soa_versions.pdf_controls_section_title", lang, count=len(controls)), h2
+            ))
 
-            STATUS_ES = {
-                "implemented": "Implementado",
-                "partial": "Parcial",
-                "planned": "Planificado",
-                "not_implemented": "No implementado",
+            no_data = _t("soa_versions.pdf_no_data_placeholder", lang)
+            STATUS_LABELS = {
+                "implemented": _t("soa_versions.pdf_status_implemented", lang),
+                "partial": _t("soa_versions.pdf_status_partial", lang),
+                "planned": _t("soa_versions.pdf_status_planned", lang),
+                "not_implemented": _t("soa_versions.pdf_status_not_implemented", lang),
             }
 
             # colWidths suma exacta: 1.8+5.2+2.5+1.5+6.0 = 17.0cm
             COL_W = [1.8*cm, 5.2*cm, 2.5*cm, 1.5*cm, 6.0*cm]
             data = [[
-                Paragraph("Codigo", cell_hdr),
-                Paragraph("Control", cell_hdr),
-                Paragraph("Estado", cell_hdr),
-                Paragraph("Mad.", cell_hdr),
-                Paragraph("Razon inclusion / Justif. exclusion", cell_hdr),
+                Paragraph(_t("soa_versions.pdf_col_code", lang), cell_hdr),
+                Paragraph(_t("soa_versions.pdf_col_control", lang), cell_hdr),
+                Paragraph(_t("soa_versions.pdf_col_status", lang), cell_hdr),
+                Paragraph(_t("soa_versions.pdf_col_maturity", lang), cell_hdr),
+                Paragraph(_t("soa_versions.pdf_col_reason", lang), cell_hdr),
             ]]
             for c in controls:
                 status_raw = c.get("status", "") or ""
-                reason = (c.get("inclusion_reason") or c.get("exclusion_justification") or "—").strip()
+                reason = (c.get("inclusion_reason") or c.get("exclusion_justification") or no_data).strip()
                 data.append([
-                    Paragraph(c.get("control_code") or "—", cell),
-                    Paragraph(c.get("control_name") or "—", cell),
-                    Paragraph(STATUS_ES.get(status_raw, status_raw), cell),
+                    Paragraph(c.get("control_code") or no_data, cell),
+                    Paragraph(c.get("control_name") or no_data, cell),
+                    Paragraph(STATUS_LABELS.get(status_raw, status_raw), cell),
                     Paragraph(str(c.get("maturity") or 0), cell),
                     Paragraph(reason, cell),
                 ])
@@ -282,9 +296,9 @@ def _generate_soa_pdf(soa: SoAVersion) -> bytes:
 
         story += [
             Spacer(1, 1*cm),
-            Paragraph("Aprobado por: ____________________________", normal),
+            Paragraph(_t("soa_versions.pdf_approved_by_label", lang), normal),
             Spacer(1, 0.3*cm),
-            Paragraph("Firma y fecha: ____________________________", normal),
+            Paragraph(_t("soa_versions.pdf_signature_date_label", lang), normal),
         ]
 
         doc.build(story)

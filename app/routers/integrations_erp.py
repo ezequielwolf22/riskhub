@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import (
     Asset, AssetType, ErpWebhookEvent, Incident, IncidentSeverity, IncidentStatus,
     IntegrationConfig, Organization, Risk, User,
@@ -107,12 +108,14 @@ def get_config(
 @router.put("/config")
 def save_config(
     body: ErpConfigIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Guarda o actualiza la configuracion ERP webhook."""
+    lang = get_lang(request)
     if not body.webhook_secret or len(body.webhook_secret) < 16:
-        raise HTTPException(400, "El webhook_secret debe tener al menos 16 caracteres")
+        raise HTTPException(400, _t("integrations_erp.secret_too_short", lang))
 
     cfg_data = {
         "webhook_secret": body.webhook_secret,
@@ -248,27 +251,29 @@ async def sap_webhook(
       asset.created / asset.updated  — crea/actualiza activo en RiskHub
       incident.created               — crea incidente en RiskHub
     """
+    # Webhook receptor externo (SAP) — sin X-Lang de usuario humano, se fija "es".
+    lang = "es"
     body = await request.body()
     org = _resolve_org_from_header(db, x_org_id)
     if not org:
-        raise HTTPException(400, "Header X-Org-Id invalido o ausente")
+        raise HTTPException(400, _t("integrations_erp.org_header_invalid", lang))
 
     cfg = _get_config(db, org.id)
     if not cfg:
-        raise HTTPException(400, "Integracion ERP no configurada para esta organizacion")
+        raise HTTPException(400, _t("integrations_erp.not_configured", lang))
     if "sap" not in cfg.get("enabled_sources", []):
-        raise HTTPException(403, "Fuente SAP deshabilitada en la configuracion")
+        raise HTTPException(403, _t("integrations_erp.source_disabled_sap", lang))
 
     # C4: firma HMAC obligatoria — rechazar si ausente
     if not x_signature:
-        raise HTTPException(401, "Cabecera X-Hub-Signature-256 requerida")
+        raise HTTPException(401, _t("integrations_erp.signature_required", lang))
     if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
-        raise HTTPException(401, "Firma HMAC invalida")
+        raise HTTPException(401, _t("integrations_erp.signature_invalid", lang))
 
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
-        raise HTTPException(400, "Body JSON invalido")
+        raise HTTPException(400, _t("integrations_erp.body_invalid_json", lang))
 
     event_type = payload.get("event_type", "")
     data = payload.get("data", {})
@@ -307,27 +312,29 @@ async def jagger_webhook(
     x_signature: Optional[str] = Header(None, alias="X-Hub-Signature-256"),
 ):
     """Recibe eventos de Jagger y los mapea a entidades RiskHub."""
+    # Webhook receptor externo (Jagger) — sin X-Lang de usuario humano, se fija "es".
+    lang = "es"
     body = await request.body()
     org = _resolve_org_from_header(db, x_org_id)
     if not org:
-        raise HTTPException(400, "Header X-Org-Id invalido o ausente")
+        raise HTTPException(400, _t("integrations_erp.org_header_invalid", lang))
 
     cfg = _get_config(db, org.id)
     if not cfg:
-        raise HTTPException(400, "Integracion ERP no configurada para esta organizacion")
+        raise HTTPException(400, _t("integrations_erp.not_configured", lang))
     if "jagger" not in cfg.get("enabled_sources", []):
-        raise HTTPException(403, "Fuente Jagger deshabilitada en la configuracion")
+        raise HTTPException(403, _t("integrations_erp.source_disabled_jagger", lang))
 
     # C4: firma HMAC obligatoria
     if not x_signature:
-        raise HTTPException(401, "Cabecera X-Hub-Signature-256 requerida")
+        raise HTTPException(401, _t("integrations_erp.signature_required", lang))
     if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
-        raise HTTPException(401, "Firma HMAC invalida")
+        raise HTTPException(401, _t("integrations_erp.signature_invalid", lang))
 
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
-        raise HTTPException(400, "Body JSON invalido")
+        raise HTTPException(400, _t("integrations_erp.body_invalid_json", lang))
 
     event_type = payload.get("event_type", "")
     data = payload.get("data", {})
@@ -363,27 +370,29 @@ async def sphera_webhook(
     x_signature: Optional[str] = Header(None, alias="X-Hub-Signature-256"),
 ):
     """Recibe eventos de Sphera y los mapea a entidades RiskHub."""
+    # Webhook receptor externo (Sphera) — sin X-Lang de usuario humano, se fija "es".
+    lang = "es"
     body = await request.body()
     org = _resolve_org_from_header(db, x_org_id)
     if not org:
-        raise HTTPException(400, "Header X-Org-Id invalido o ausente")
+        raise HTTPException(400, _t("integrations_erp.org_header_invalid", lang))
 
     cfg = _get_config(db, org.id)
     if not cfg:
-        raise HTTPException(400, "Integracion ERP no configurada para esta organizacion")
+        raise HTTPException(400, _t("integrations_erp.not_configured", lang))
     if "sphera" not in cfg.get("enabled_sources", []):
-        raise HTTPException(403, "Fuente Sphera deshabilitada en la configuracion")
+        raise HTTPException(403, _t("integrations_erp.source_disabled_sphera", lang))
 
     # C4: firma HMAC obligatoria
     if not x_signature:
-        raise HTTPException(401, "Cabecera X-Hub-Signature-256 requerida")
+        raise HTTPException(401, _t("integrations_erp.signature_required", lang))
     if not _verify_hmac(cfg["webhook_secret"], body, x_signature):
-        raise HTTPException(401, "Firma HMAC invalida")
+        raise HTTPException(401, _t("integrations_erp.signature_invalid", lang))
 
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
-        raise HTTPException(400, "Body JSON invalido")
+        raise HTTPException(400, _t("integrations_erp.body_invalid_json", lang))
 
     event_type = payload.get("event_type", "")
     data = payload.get("data", {})

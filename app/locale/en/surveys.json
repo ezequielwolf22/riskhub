@@ -1,0 +1,14 @@
+{
+  "surveys": {
+    "template_default_delete_forbidden": "Default templates cannot be deleted",
+    "template_not_found": "Template not found",
+    "risk_not_found_in_org": "Risk {rid} not found in this organization",
+    "campaign_needs_questions": "The campaign must have questions",
+    "campaign_not_found": "Campaign not found",
+    "campaign_active_delete_forbidden": "An active campaign cannot be deleted. Close it first.",
+    "campaign_closed_add_respondents_forbidden": "Recipients cannot be added to a closed campaign",
+    "response_completed_delete_forbidden": "A response that is already completed cannot be deleted",
+    "campaign_closed": "Campaign closed",
+    "add_respondents_before_send": "Add recipients before sending"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "onboarding_gate": {
+    "auto_approve_range": "auto_approve_below debe estar entre 0 y 100",
+    "manual_review_range": "manual_review_above debe estar entre 0 y 100",
+    "threshold_order": "auto_approve_below debe ser menor que manual_review_above",
+    "bypass_role_invalid": "bypass_min_role debe ser admin o analyst",
+    "chain_must_be_list": "sign_off_chain debe ser una lista",
+    "chain_item_fields": "Cada item necesita 'id' y 'label'",
+    "supplier_not_found": "Proveedor no encontrado",
+    "override_type_invalid": "type debe ser bypass, force_controls o clear",
+    "bypass_admin_only": "Solo administradores pueden hacer bypass del gate",
+    "justification_required": "Se requiere justificacion para esta accion",
+    "force_controls_disabled": "El forzado de controles esta desactivado en la configuracion",
+    "decision_invalid": "decision debe ser approved, rejected o conditional",
+    "conditional_needs_conditions": "Una decision 'conditional' requiere al menos una condicion",
+    "signoff_not_found": "Item '{id}' no existe en la cadena",
+    "signoff_no_bypass": "El item '{id}' no puede ser omitido (bypass_allowed=false)",
+    "skip_justification_required": "Se requiere justificacion para omitir un item"
+  }
+}

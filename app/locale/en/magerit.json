@@ -1,0 +1,9 @@
+{
+  "magerit": {
+    "org_id_required": "organization_id is required",
+    "threats_seeded": "{created} MAGERIT threats loaded",
+    "asset_not_found": "Asset not found",
+    "catalog_deleted": "{deleted} MAGERIT threats deleted.",
+    "catalog_deleted_with_skipped": " {skipped} skipped because they have associated risks."
+  }
+}

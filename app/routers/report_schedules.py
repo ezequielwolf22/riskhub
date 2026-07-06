@@ -2,7 +2,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import ReportSchedule, User
 from app.security import get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
+from app.i18n import get_lang, t as _t
 
 logger = logging.getLogger("riskhub.report_schedules")
 
@@ -67,6 +68,7 @@ class ScheduleUpdate(BaseModel):
 
 @router.get("")
 def list_schedules(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -94,21 +96,23 @@ def list_schedules(
 @router.post("", status_code=201)
 def create_schedule(
     body: ScheduleCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    lang = get_lang(request)
     if body.report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(422, f"report_type invalido. Validos: {VALID_REPORT_TYPES}")
+        raise HTTPException(422, _t("report_schedules.invalid_report_type", lang, valid_types=VALID_REPORT_TYPES))
     if body.frequency not in VALID_FREQUENCIES:
-        raise HTTPException(422, f"frequency invalida. Validas: {VALID_FREQUENCIES}")
+        raise HTTPException(422, _t("report_schedules.invalid_frequency_list", lang, valid_freqs=VALID_FREQUENCIES))
     if not body.recipients:
-        raise HTTPException(422, "Se requiere al menos un destinatario")
+        raise HTTPException(422, _t("report_schedules.at_least_one_recipient", lang))
 
     import re as _re
     _EMAIL_RE = _re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     for email in body.recipients:
         if not _EMAIL_RE.match(email):
-            raise HTTPException(422, f"Email invalido: {email}")
+            raise HTTPException(422, _t("report_schedules.invalid_email", lang, email=email))
 
     sched = ReportSchedule(
         organization_id=current_user.organization_id,
@@ -132,16 +136,18 @@ def create_schedule(
 def update_schedule(
     sched_id: int,
     body: ScheduleUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    lang = get_lang(request)
     sched = db.get(ReportSchedule, sched_id)
     if not sched or sched.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Programacion no encontrada")
+        raise HTTPException(404, _t("report_schedules.schedule_not_found", lang))
 
     if body.frequency is not None:
         if body.frequency not in VALID_FREQUENCIES:
-            raise HTTPException(422, f"frequency invalida")
+            raise HTTPException(422, _t("report_schedules.invalid_frequency", lang))
         sched.frequency = body.frequency
         sched.next_scheduled_at = _calc_next_run(sched)
     if body.day_of_month is not None:
@@ -160,12 +166,14 @@ def update_schedule(
 @router.delete("/{sched_id}", status_code=204)
 def delete_schedule(
     sched_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    lang = get_lang(request)
     sched = db.get(ReportSchedule, sched_id)
     if not sched or sched.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Programacion no encontrada")
+        raise HTTPException(404, _t("report_schedules.schedule_not_found", lang))
     db.delete(sched)
     db.commit()
 
@@ -173,13 +181,15 @@ def delete_schedule(
 @router.post("/{sched_id}/run-now")
 def run_now(
     sched_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Ejecuta el informe ahora (preview / envio inmediato)."""
+    lang = get_lang(request)
     sched = db.get(ReportSchedule, sched_id)
     if not sched or sched.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Programacion no encontrada")
+        raise HTTPException(404, _t("report_schedules.schedule_not_found", lang))
 
     try:
         from app.services import report_ai_service
@@ -187,7 +197,7 @@ def run_now(
 
         cfg = get_settings(db, current_user.organization_id)
         if not cfg or not cfg.smtp_host:
-            raise HTTPException(400, "SMTP no configurado")
+            raise HTTPException(400, _t("report_schedules.smtp_not_configured", lang))
 
         # Resolver api_key per-tenant
         try:
@@ -220,4 +230,4 @@ def run_now(
         raise
     except Exception as exc:
         logger.exception("Error en run_now: %s", exc)
-        raise HTTPException(500, f"Error generando informe: {exc}")
+        raise HTTPException(500, _t("report_schedules.error_generating_report", lang, error=exc))

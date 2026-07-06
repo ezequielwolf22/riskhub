@@ -1,0 +1,9 @@
+{
+  "risk_correlations": {
+    "risk_a_not_found": "Risk {risk_id} not found",
+    "risk_b_not_found": "Risk {risk_id} not found",
+    "cannot_correlate_self": "A risk cannot be correlated with itself",
+    "already_exists": "A correlation already exists between {code_a} and {code_b}",
+    "correlation_not_found": "Correlation not found"
+  }
+}

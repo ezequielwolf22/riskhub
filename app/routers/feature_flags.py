@@ -10,11 +10,12 @@ organizacion. Un flag de org sobreescribe el valor global para esa org.
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import FeatureFlag, Organization, User, UserRole
 from app.security import get_current_user, require_superadmin
 from app.services.audit_service import log_action
@@ -224,6 +225,7 @@ class FlagUpdate(BaseModel):
 def update_flag(
     flag_name: str,
     body: FlagUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -234,17 +236,18 @@ def update_flag(
     - Admin puede crear/actualizar el override de su propia organizacion.
     - Viewer/analyst no tienen acceso.
     """
+    lang = get_lang(request)
     # M5: validar formato del flag_name para prevenir path traversal y nombres arbitrarios
     import re
     if not re.match(r'^[a-z][a-z0-9_]{0,63}$', flag_name):
-        raise HTTPException(422, "Nombre de flag invalido (solo minusculas, numeros y _)")
+        raise HTTPException(422, _t("feature_flags.invalid_name", lang))
 
     if current_user.role == UserRole.SUPERADMIN:
         org_id_to_update = body.organization_id  # None = global, int = org especifica
     elif current_user.role == UserRole.ADMIN:
         org_id_to_update = current_user.organization_id
     else:
-        raise HTTPException(403, "Sin permisos para modificar feature flags")
+        raise HTTPException(403, _t("feature_flags.no_permission", lang))
 
     # Verificar limite de plan al activar un modulo para una org especifica
     if org_id_to_update is not None and body.enabled and current_user.role != UserRole.SUPERADMIN:
@@ -254,8 +257,8 @@ def update_flag(
             if plan_limits is not None and flag_name not in plan_limits:
                 raise HTTPException(
                     403,
-                    f"El plan '{org.plan}' no incluye el modulo '{flag_name}'. "
-                    "Actualiza el plan para habilitarlo.",
+                    _t("feature_flags.plan_module_not_included", lang,
+                       plan=org.plan, flag_name=flag_name),
                 )
 
     # Buscar flag existente para el scope solicitado
@@ -268,7 +271,7 @@ def update_flag(
 
     if not flag:
         if org_id_to_update is None:
-            raise HTTPException(404, f"Feature flag '{flag_name}' no encontrado")
+            raise HTTPException(404, _t("feature_flags.flag_not_found", lang, flag_name=flag_name))
         # Crear override de org basado en el flag global
         global_flag = (
             db.query(FeatureFlag)
@@ -276,7 +279,7 @@ def update_flag(
             .first()
         )
         if not global_flag:
-            raise HTTPException(404, f"Feature flag '{flag_name}' no encontrado")
+            raise HTTPException(404, _t("feature_flags.flag_not_found", lang, flag_name=flag_name))
         flag = FeatureFlag(
             name=flag_name,
             label=global_flag.label,
@@ -301,6 +304,7 @@ def update_flag(
 def delete_flag_override(
     flag_name: str,
     org_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_superadmin),
 ):
@@ -309,6 +313,7 @@ def delete_flag_override(
     Solo superadmin. No se pueden eliminar flags globales (organization_id=None).
     Tras eliminar el override, la org hereda el valor global.
     """
+    lang = get_lang(request)
     flag = (
         db.query(FeatureFlag)
         .filter(FeatureFlag.name == flag_name, FeatureFlag.organization_id == org_id)
@@ -317,13 +322,13 @@ def delete_flag_override(
     if not flag:
         raise HTTPException(
             404,
-            f"No existe override del flag '{flag_name}' para la organizacion {org_id}",
+            _t("feature_flags.override_not_found", lang, flag_name=flag_name, org_id=org_id),
         )
     db.delete(flag)
     log_action(db, current_user.id, "delete", "feature_flag", flag_name,
                {"organization_id": org_id})
     db.commit()
-    return {"detail": "Override eliminado. La organizacion hereda el valor global."}
+    return {"detail": _t("feature_flags.override_deleted", lang)}
 
 
 @router.get("/plans/limits")

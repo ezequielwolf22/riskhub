@@ -1,0 +1,11 @@
+{
+  "policy_approvals": {
+    "policy_not_found": "Policy not found",
+    "access_denied": "Access denied",
+    "at_least_one_approver": "At least one approver is required",
+    "invalid_mode": "mode must be parallel or sequential",
+    "request_not_found": "Request not found",
+    "only_pending_cancellable": "Only pending requests can be cancelled",
+    "invalid_decision": "decision must be approved or rejected"
+  }
+}

@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import ApprovalRequest, Policy, User
 from app.security import get_current_user, require_role
 from app.services import approval_service
@@ -53,16 +54,17 @@ def create_approval_request(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     policy = db.query(Policy).filter_by(id=policy_id).first()
     if not policy:
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policy_approvals.policy_not_found", lang))
     if policy.organization_id and policy.organization_id != current_user.organization_id:
-        raise HTTPException(403, "Acceso denegado")
+        raise HTTPException(403, _t("policy_approvals.access_denied", lang))
     if not body.approvers:
-        raise HTTPException(422, "Se requiere al menos un aprobador")
+        raise HTTPException(422, _t("policy_approvals.at_least_one_approver", lang))
 
     if body.mode not in ("parallel", "sequential"):
-        raise HTTPException(422, "mode debe ser parallel o sequential")
+        raise HTTPException(422, _t("policy_approvals.invalid_mode", lang))
 
     approvers = [{"email": a.email, "name": a.name, "order_index": a.order_index}
                  for a in body.approvers]
@@ -82,12 +84,14 @@ def create_approval_request(
 @router.get("/{policy_id}/requests")
 def list_approval_requests(
     policy_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     policy = db.query(Policy).filter_by(id=policy_id).first()
     if not policy:
-        raise HTTPException(404, "Politica no encontrada")
+        raise HTTPException(404, _t("policy_approvals.policy_not_found", lang))
 
     reqs = (
         db.query(ApprovalRequest)
@@ -129,14 +133,16 @@ def list_approval_requests(
 def cancel_approval_request(
     policy_id: int,
     req_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     req = db.query(ApprovalRequest).filter_by(id=req_id, policy_id=policy_id).first()
     if not req:
-        raise HTTPException(404, "Solicitud no encontrada")
+        raise HTTPException(404, _t("policy_approvals.request_not_found", lang))
     if req.status != "pending":
-        raise HTTPException(409, "Solo se pueden cancelar solicitudes pendientes")
+        raise HTTPException(409, _t("policy_approvals.only_pending_cancellable", lang))
     req.status = "cancelled"
     req.completed_at = datetime.now(timezone.utc)
     # Volver a borrador si estaba en revision
@@ -150,8 +156,9 @@ def cancel_approval_request(
 # ---------- Endpoints publicos (sin autenticacion) ----------
 
 @public_router.get("/info/{token}")
-def get_approval_info(token: str, db: Session = Depends(get_db)):
+def get_approval_info(token: str, request: Request, db: Session = Depends(get_db)):
     """Retorna info del documento para la pagina publica de aprobacion."""
+    lang = get_lang(request)
     info = approval_service.get_approval_info(db, token)
     if "error" in info:
         raise HTTPException(404, info["error"])
@@ -166,8 +173,9 @@ def decide_approval(
     db: Session = Depends(get_db),
 ):
     """Procesa la decision del aprobador (approve/reject) sin requerir login."""
+    lang = get_lang(request)
     if body.decision not in ("approved", "rejected"):
-        raise HTTPException(422, "decision debe ser approved o rejected")
+        raise HTTPException(422, _t("policy_approvals.invalid_decision", lang))
 
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "")
     base = _app_base_url(request)

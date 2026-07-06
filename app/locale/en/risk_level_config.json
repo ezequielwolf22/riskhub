@@ -1,0 +1,10 @@
+{
+  "risk_level_config": {
+    "at_least_one_band": "At least one band is required",
+    "max_ten_bands": "Maximum 10 bands",
+    "min_greater_than_max": "min_level > max_level in band '{code}'",
+    "band_label_low": "Low",
+    "band_label_medium": "Medium",
+    "band_label_high": "High"
+  }
+}

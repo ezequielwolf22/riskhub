@@ -4,11 +4,12 @@ import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import QuestionnaireFlow, QuestionnaireSchedule, Supplier, SupplierQuestionnaire, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -54,22 +55,24 @@ def list_flows(
 
 
 @router.get("/{fid}")
-def get_flow(fid: int, db: Session = Depends(get_db),
+def get_flow(fid: int, request: Request, db: Session = Depends(get_db),
              current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     f = filter_by_org(
         db.query(QuestionnaireFlow).filter(QuestionnaireFlow.id == fid),
         QuestionnaireFlow, current_user,
     ).first()
     if not f:
-        raise HTTPException(404, "Flujo no encontrado")
+        raise HTTPException(404, _t("questionnaire_flows.flow_not_found", lang))
     return _flow_out(f)
 
 
 @router.post("/")
-def create_flow(body: FlowIn, db: Session = Depends(get_db),
+def create_flow(body: FlowIn, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     if not body.steps:
-        raise HTTPException(400, "El flujo debe tener al menos un paso")
+        raise HTTPException(400, _t("questionnaire_flows.flow_needs_step", lang))
     f = QuestionnaireFlow(
         organization_id=current_user.organization_id,
         name=body.name,
@@ -85,22 +88,23 @@ def create_flow(body: FlowIn, db: Session = Depends(get_db),
 
 
 @router.patch("/{fid}")
-def update_flow(fid: int, body: FlowUpdate,
+def update_flow(fid: int, body: FlowUpdate, request: Request,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     f = filter_by_org(
         db.query(QuestionnaireFlow).filter(QuestionnaireFlow.id == fid),
         QuestionnaireFlow, current_user,
     ).first()
     if not f:
-        raise HTTPException(404, "Flujo no encontrado")
+        raise HTTPException(404, _t("questionnaire_flows.flow_not_found", lang))
     if body.name is not None:
         f.name = body.name
     if body.description is not None:
         f.description = body.description
     if body.steps is not None:
         if not body.steps:
-            raise HTTPException(400, "El flujo debe tener al menos un paso")
+            raise HTTPException(400, _t("questionnaire_flows.flow_needs_step", lang))
         f.steps = body.steps
     db.commit()
     db.refresh(f)
@@ -109,14 +113,15 @@ def update_flow(fid: int, body: FlowUpdate,
 
 
 @router.delete("/{fid}", status_code=204)
-def delete_flow(fid: int, db: Session = Depends(get_db),
+def delete_flow(fid: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     f = filter_by_org(
         db.query(QuestionnaireFlow).filter(QuestionnaireFlow.id == fid),
         QuestionnaireFlow, current_user,
     ).first()
     if not f:
-        raise HTTPException(404, "Flujo no encontrado")
+        raise HTTPException(404, _t("questionnaire_flows.flow_not_found", lang))
     log_action(db, current_user.id, "delete", "questionnaire_flow", str(f.id), {"name": f.name})
     db.delete(f)
     db.commit()
@@ -126,24 +131,26 @@ def delete_flow(fid: int, db: Session = Depends(get_db),
 def apply_flow(
     fid: int,
     supplier_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Inicia el flujo para un proveedor: crea el primer cuestionario (paso sin condicion)."""
+    lang = get_lang(request)
     f = filter_by_org(
         db.query(QuestionnaireFlow).filter(QuestionnaireFlow.id == fid),
         QuestionnaireFlow, current_user,
     ).first()
     if not f:
-        raise HTTPException(404, "Flujo no encontrado")
+        raise HTTPException(404, _t("questionnaire_flows.flow_not_found", lang))
     supplier = db.query(Supplier).filter(Supplier.id == supplier_id).first()
     if not supplier or not check_org_access(supplier.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("questionnaire_flows.supplier_not_found", lang))
 
     steps = f.steps or []
     first_steps = [s for s in steps if not s.get("condition")]
     if not first_steps:
-        raise HTTPException(400, "El flujo no tiene ningun paso inicial (sin condicion)")
+        raise HTTPException(400, _t("questionnaire_flows.flow_no_initial_step", lang))
     step = first_steps[0]
 
     expires_days = step.get("expires_days", 30)

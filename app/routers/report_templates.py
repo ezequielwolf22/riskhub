@@ -12,12 +12,13 @@ import logging
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import ReportBrandingConfig, User
 from app.security import filter_by_org, get_current_user, require_admin
 from app.services.audit_service import log_action
@@ -135,12 +136,14 @@ def list_templates(
 @router.get("/{report_type}")
 def get_template(
     report_type: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Devuelve el template para un tipo de informe, o los valores por defecto si no existe."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
     row = (
         filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
         .filter(ReportBrandingConfig.report_type == report_type)
@@ -169,18 +172,20 @@ def get_template(
 def upsert_template(
     report_type: str,
     body: TemplateIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Crea o actualiza el template de marca para un tipo de informe."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
     if not _valid_hex(body.primary_color):
-        raise HTTPException(400, "primary_color debe ser un color hex valido (#RRGGBB)")
+        raise HTTPException(400, _t("report_templates.invalid_primary_color", lang))
     if not _valid_hex(body.secondary_color):
-        raise HTTPException(400, "secondary_color debe ser un color hex valido (#RRGGBB)")
+        raise HTTPException(400, _t("report_templates.invalid_secondary_color", lang))
     if body.font_family not in VALID_FONTS:
-        raise HTTPException(400, f"Fuente no soportada. Opciones: {', '.join(VALID_FONTS)}")
+        raise HTTPException(400, _t("report_templates.unsupported_font", lang, valid_fonts=', '.join(VALID_FONTS)))
 
     row = (
         filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
@@ -204,26 +209,28 @@ def upsert_template(
     db.commit()
 
     log_action(db, current_user, "report_template_update",
-               f"Template '{report_type}' actualizado", "report_template")
+               _t("report_templates.audit_template_updated", lang, report_type=report_type), "report_template")
     return _template_to_dict(row)
 
 
 @router.delete("/{report_type}")
 def delete_template(
     report_type: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Elimina el template (restaura valores por defecto de RiskHub)."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
     row = (
         filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
         .filter(ReportBrandingConfig.report_type == report_type)
         .first()
     )
     if not row:
-        raise HTTPException(404, "Template no encontrado")
+        raise HTTPException(404, _t("report_templates.template_not_found", lang))
 
     # Borrar logo fisico si existe
     if row.logo_filename:
@@ -236,27 +243,29 @@ def delete_template(
     db.delete(row)
     db.commit()
     log_action(db, current_user, "report_template_delete",
-               f"Template '{report_type}' eliminado", "report_template")
+               _t("report_templates.audit_template_deleted", lang, report_type=report_type), "report_template")
     return {"ok": True}
 
 
 @router.post("/{report_type}/logo")
 def upload_logo(
     report_type: str,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Sube el logo para el template. Acepta PNG, JPG o WebP (max 2 MB)."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
 
     data = file.file.read()
     if len(data) > _MAX_LOGO_BYTES:
-        raise HTTPException(400, "El logo no puede superar 2 MB")
+        raise HTTPException(400, _t("report_templates.logo_too_large", lang))
     mime = file.content_type or "image/png"
     if mime not in _ALLOWED_LOGO_MIME:
-        raise HTTPException(400, "Formato no soportado. Usa PNG, JPG o WebP.")
+        raise HTTPException(400, _t("report_templates.unsupported_logo_format", lang))
 
     # Validar magic bytes (OWASP A08 — Software and Data Integrity Failures)
     _MAGIC = {
@@ -266,7 +275,7 @@ def upload_logo(
     }
     detected = next((m for sig, m in _MAGIC.items() if data[:len(sig)] == sig), None)
     if not detected or detected != mime:
-        raise HTTPException(400, "El contenido del archivo no coincide con el formato declarado.")
+        raise HTTPException(400, _t("report_templates.logo_content_mismatch", lang))
 
     ext = mime.split("/")[-1]
     fname = f"rpt_{report_type}_{uuid.uuid4().hex}.{ext}"
@@ -297,26 +306,28 @@ def upload_logo(
     db.commit()
 
     log_action(db, current_user, "report_template_logo",
-               f"Logo subido para template '{report_type}'", "report_template")
+               _t("report_templates.audit_logo_uploaded", lang, report_type=report_type), "report_template")
     return {"ok": True, "filename": fname}
 
 
 @router.delete("/{report_type}/logo")
 def delete_logo(
     report_type: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Elimina el logo del template."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
     row = (
         filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
         .filter(ReportBrandingConfig.report_type == report_type)
         .first()
     )
     if not row or not row.logo_filename:
-        raise HTTPException(404, "No hay logo configurado")
+        raise HTTPException(404, _t("report_templates.no_logo_configured", lang))
     logo_path = _logo_root() / row.logo_filename
     try:
         logo_path.unlink(missing_ok=True)
@@ -331,17 +342,19 @@ def delete_logo(
 @router.post("/{report_type}/template-file")
 def upload_template_file(
     report_type: str,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Sube un fichero .docx o .html como plantilla base para la generacion de informes."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
 
     data = file.file.read()
     if len(data) > _MAX_TEMPLATE_BYTES:
-        raise HTTPException(400, "El fichero de plantilla no puede superar 10 MB")
+        raise HTTPException(400, _t("report_templates.template_file_too_large", lang))
 
     # Detectar MIME por nombre de fichero (los .docx son ZIP, .html son texto)
     filename_lower = (file.filename or "").lower()
@@ -350,7 +363,7 @@ def upload_template_file(
     elif filename_lower.endswith(".html") or filename_lower.endswith(".htm"):
         mime = "text/html"
     else:
-        raise HTTPException(400, "Solo se admiten ficheros .docx o .html como plantilla base.")
+        raise HTTPException(400, _t("report_templates.unsupported_template_file", lang))
 
     ext = "docx" if mime.startswith("application/") else "html"
     fname = f"tpl_{report_type}_{uuid.uuid4().hex}.{ext}"
@@ -381,26 +394,28 @@ def upload_template_file(
     db.commit()
 
     log_action(db, current_user, "report_template_file_upload",
-               f"Fichero de plantilla subido para '{report_type}' ({ext})", "report_template")
+               _t("report_templates.audit_template_file_uploaded", lang, report_type=report_type, ext=ext), "report_template")
     return {"ok": True, "filename": fname, "mime": mime}
 
 
 @router.delete("/{report_type}/template-file")
 def delete_template_file(
     report_type: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """Elimina el fichero de plantilla base del template."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
     row = (
         filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
         .filter(ReportBrandingConfig.report_type == report_type)
         .first()
     )
     if not row or not row.template_filename:
-        raise HTTPException(404, "No hay fichero de plantilla configurado")
+        raise HTTPException(404, _t("report_templates.no_template_file_configured", lang))
     tpl_path = _template_root() / row.template_filename
     try:
         tpl_path.unlink(missing_ok=True)
@@ -415,21 +430,23 @@ def delete_template_file(
 @router.get("/{report_type}/logo")
 def get_logo(
     report_type: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Devuelve la imagen del logo del template."""
+    lang = get_lang(request)
     if report_type not in VALID_REPORT_TYPES:
-        raise HTTPException(400, f"Tipo de informe no valido: {report_type}")
+        raise HTTPException(400, _t("report_templates.invalid_report_type", lang, report_type=report_type))
     row = (
         filter_by_org(db.query(ReportBrandingConfig), ReportBrandingConfig, current_user)
         .filter(ReportBrandingConfig.report_type == report_type)
         .first()
     )
     if not row or not row.logo_filename:
-        raise HTTPException(404, "No hay logo configurado")
+        raise HTTPException(404, _t("report_templates.no_logo_configured", lang))
     logo_path = _logo_root() / row.logo_filename
     if not logo_path.exists():
-        raise HTTPException(404, "Archivo de logo no encontrado")
+        raise HTTPException(404, _t("report_templates.logo_file_not_found", lang))
     data = logo_path.read_bytes()
     return Response(content=data, media_type=row.logo_mime or "image/png")

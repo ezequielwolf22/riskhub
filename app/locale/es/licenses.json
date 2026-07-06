@@ -1,0 +1,8 @@
+{
+  "licenses": {
+    "not_found": "Licencia no encontrada",
+    "organization_not_found": "Organizacion no encontrada",
+    "already_assigned": "La organizacion ya tiene una licencia asignada",
+    "not_authorized": "No autorizado"
+  }
+}

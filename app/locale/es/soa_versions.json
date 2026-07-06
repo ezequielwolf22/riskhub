@@ -1,0 +1,28 @@
+{
+  "soa_versions": {
+    "draft_already_exists": "Ya existe un borrador de SoA activo",
+    "version_not_found": "Version no encontrada",
+    "submit_only_draft": "Solo se pueden enviar versiones en borrador",
+    "approve_only_review_or_draft": "Solo se pueden aprobar versiones en revision o borrador",
+    "pdf_generation_error": "Error generando PDF",
+    "pdf_title": "DECLARACION DE APLICABILIDAD (SoA)",
+    "pdf_subtitle": "ISO/IEC 27001:2022 — Clausula 6.1.3",
+    "pdf_version_label": "Version:",
+    "pdf_status_label": "Estado:",
+    "pdf_approved_at_label": "Aprobada el:",
+    "pdf_approval_notes_label": "Notas de aprobacion:",
+    "pdf_controls_section_title": "CONTROLES ({count} entradas)",
+    "pdf_status_implemented": "Implementado",
+    "pdf_status_partial": "Parcial",
+    "pdf_status_planned": "Planificado",
+    "pdf_status_not_implemented": "No implementado",
+    "pdf_col_code": "Codigo",
+    "pdf_col_control": "Control",
+    "pdf_col_status": "Estado",
+    "pdf_col_maturity": "Mad.",
+    "pdf_col_reason": "Razon inclusion / Justif. exclusion",
+    "pdf_no_data_placeholder": "—",
+    "pdf_approved_by_label": "Aprobado por: ____________________________",
+    "pdf_signature_date_label": "Firma y fecha: ____________________________"
+  }
+}

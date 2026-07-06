@@ -1,0 +1,11 @@
+{
+  "license_crypto": {
+    "file_too_large": "File too large to be a valid license",
+    "invalid_jwt_format": "The file does not appear to be a valid JWT",
+    "invalid_license": "Invalid license: {error}",
+    "save_error": "Error saving the license: {error}",
+    "private_key_not_configured": "RISKHUB_LICENSE_PRIVATE_KEY is not configured on this server. Generate the JWT with tools/gen_license.py on your local machine.",
+    "organization_not_found": "Organization not found",
+    "sign_error": "Error signing the license: {error}"
+  }
+}

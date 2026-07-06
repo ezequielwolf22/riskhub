@@ -1,0 +1,21 @@
+{
+  "report_templates": {
+    "invalid_report_type": "Tipo de informe no valido: {report_type}",
+    "invalid_primary_color": "primary_color debe ser un color hex valido (#RRGGBB)",
+    "invalid_secondary_color": "secondary_color debe ser un color hex valido (#RRGGBB)",
+    "unsupported_font": "Fuente no soportada. Opciones: {valid_fonts}",
+    "template_not_found": "Template no encontrado",
+    "logo_too_large": "El logo no puede superar 2 MB",
+    "unsupported_logo_format": "Formato no soportado. Usa PNG, JPG o WebP.",
+    "logo_content_mismatch": "El contenido del archivo no coincide con el formato declarado.",
+    "no_logo_configured": "No hay logo configurado",
+    "template_file_too_large": "El fichero de plantilla no puede superar 10 MB",
+    "unsupported_template_file": "Solo se admiten ficheros .docx o .html como plantilla base.",
+    "no_template_file_configured": "No hay fichero de plantilla configurado",
+    "logo_file_not_found": "Archivo de logo no encontrado",
+    "audit_template_updated": "Template '{report_type}' actualizado",
+    "audit_template_deleted": "Template '{report_type}' eliminado",
+    "audit_logo_uploaded": "Logo subido para template '{report_type}'",
+    "audit_template_file_uploaded": "Fichero de plantilla subido para '{report_type}' ({ext})"
+  }
+}

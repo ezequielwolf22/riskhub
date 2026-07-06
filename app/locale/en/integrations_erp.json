@@ -1,0 +1,13 @@
+{
+  "integrations_erp": {
+    "secret_too_short": "The webhook_secret must be at least 16 characters long",
+    "org_header_invalid": "Invalid or missing X-Org-Id header",
+    "not_configured": "ERP integration not configured for this organization",
+    "source_disabled_sap": "SAP source disabled in configuration",
+    "source_disabled_jagger": "Jagger source disabled in configuration",
+    "source_disabled_sphera": "Sphera source disabled in configuration",
+    "signature_required": "X-Hub-Signature-256 header required",
+    "signature_invalid": "Invalid HMAC signature",
+    "body_invalid_json": "Invalid JSON body"
+  }
+}

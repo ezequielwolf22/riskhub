@@ -15,12 +15,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
+from app.i18n import _resolve as _i18n_resolve, _translations as _i18n_translations
 from app.models import NormativeSource, User
 from app.security import get_current_user, require_admin, require_superadmin
 from app.services import regwatch_service as svc
@@ -31,17 +33,19 @@ logger = logging.getLogger("riskhub.regwatch")
 router = APIRouter(prefix="/api/regwatch", tags=["regwatch"])
 
 
-def _org_id(user: User) -> int:
+def _org_id(user: User, lang: str = "es") -> int:
     if not user.organization_id:
-        raise HTTPException(400, "Usuario sin organizacion asignada")
+        raise HTTPException(400, _t("regwatch.no_organization", lang))
     return user.organization_id
 
 
 # ---------- Settings + toggle ----------
 
 @router.get("/settings")
-def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return svc.settings_dict(db, _org_id(current_user))
+def get_settings(request: Request, db: Session = Depends(get_db),
+                 current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
+    return svc.settings_dict(db, _org_id(current_user, lang))
 
 
 class SettingsUpdate(BaseModel):
@@ -52,9 +56,10 @@ class SettingsUpdate(BaseModel):
 
 
 @router.put("/settings")
-def put_settings(body: SettingsUpdate, db: Session = Depends(get_db),
+def put_settings(body: SettingsUpdate, request: Request, db: Session = Depends(get_db),
                  current_user: User = Depends(require_admin)):
-    org_id = _org_id(current_user)
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     result = svc.update_settings(db, org_id, body.model_dump(exclude_none=True))
     log_action(db, current_user.id, "update", "regwatch_settings", str(org_id),
                body.model_dump(exclude_none=True), organization_id=org_id)
@@ -63,9 +68,10 @@ def put_settings(body: SettingsUpdate, db: Session = Depends(get_db),
 
 
 @router.post("/enable")
-def enable(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+def enable(request: Request, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
     """Activa la vigilancia con un solo clic (§5.1, criterio 1)."""
-    org_id = _org_id(current_user)
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     result = svc.enable(db, org_id, current_user)
     log_action(db, current_user.id, "enable", "regwatch", str(org_id), result,
                organization_id=org_id)
@@ -80,8 +86,9 @@ def enable(db: Session = Depends(get_db), current_user: User = Depends(require_a
 
 
 @router.post("/disable")
-def disable(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
-    org_id = _org_id(current_user)
+def disable(request: Request, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     result = svc.disable(db, org_id)
     log_action(db, current_user.id, "disable", "regwatch", str(org_id), result,
                organization_id=org_id)
@@ -90,34 +97,38 @@ def disable(db: Session = Depends(get_db), current_user: User = Depends(require_
 
 
 @router.get("/status")
-def status(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def status(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Estado para la tarjeta de Setup, sin recargar (§1.1, criterio 2)."""
-    return svc.build_status(db, _org_id(current_user))
+    lang = get_lang(request)
+    return svc.build_status(db, _org_id(current_user, lang))
 
 
 @router.get("/watched-frameworks")
-def watched_frameworks(db: Session = Depends(get_db),
+def watched_frameworks(request: Request, db: Session = Depends(get_db),
                        current_user: User = Depends(get_current_user)):
     """Lista derivada (solo lectura) de frameworks vigilados (§1.2, §6.1)."""
-    return svc.watched_frameworks_detail(db, _org_id(current_user))
+    lang = get_lang(request)
+    return svc.watched_frameworks_detail(db, _org_id(current_user, lang))
 
 
 # ---------- Inbox ----------
 
 @router.get("/inbox")
-def inbox(include_resolved: bool = False, db: Session = Depends(get_db),
+def inbox(request: Request, include_resolved: bool = False, db: Session = Depends(get_db),
           current_user: User = Depends(get_current_user)):
-    org_id = _org_id(current_user)
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     items = svc.list_inbox(db, org_id, include_resolved=include_resolved)
     return {"items": items, "pending": svc.count_pending_inbox(db, org_id)}
 
 
 @router.get("/inbox/{item_id}")
-def inbox_item(item_id: int, db: Session = Depends(get_db),
+def inbox_item(item_id: int, request: Request, db: Session = Depends(get_db),
                current_user: User = Depends(get_current_user)):
-    d = svc.get_inbox_item(db, _org_id(current_user), item_id)
+    lang = get_lang(request)
+    d = svc.get_inbox_item(db, _org_id(current_user, lang), item_id)
     if not d:
-        raise HTTPException(404, "Item no encontrado")
+        raise HTTPException(404, _t("regwatch.inbox_item_not_found", lang))
     return d
 
 
@@ -126,9 +137,10 @@ class ReviewBody(BaseModel):
 
 
 @router.post("/inbox/{item_id}/review")
-def review(item_id: int, body: ReviewBody, db: Session = Depends(get_db),
+def review(item_id: int, body: ReviewBody, request: Request, db: Session = Depends(get_db),
            current_user: User = Depends(require_admin)):
-    org_id = _org_id(current_user)
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     result = svc.review_inbox_item(db, org_id, item_id, current_user, body.decision)
     log_action(db, current_user.id, "review", "regwatch_inbox", str(item_id),
                body.decision, organization_id=org_id)
@@ -141,11 +153,12 @@ class SnoozeBody(BaseModel):
 
 
 @router.post("/inbox/{item_id}/snooze")
-def snooze(item_id: int, body: SnoozeBody = None, db: Session = Depends(get_db),
+def snooze(item_id: int, request: Request, body: SnoozeBody = None, db: Session = Depends(get_db),
            current_user: User = Depends(require_admin)):
     if body is None:
         body = SnoozeBody()
-    org_id = _org_id(current_user)
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     result = svc.snooze_inbox_item(db, org_id, item_id, body.days)
     log_action(db, current_user.id, "snooze", "regwatch_inbox", str(item_id),
                {"days": body.days}, organization_id=org_id)
@@ -158,11 +171,12 @@ class DismissBody(BaseModel):
 
 
 @router.post("/inbox/{item_id}/dismiss")
-def dismiss(item_id: int, body: DismissBody = None, db: Session = Depends(get_db),
+def dismiss(item_id: int, request: Request, body: DismissBody = None, db: Session = Depends(get_db),
             current_user: User = Depends(require_admin)):
     if body is None:
         body = DismissBody()
-    org_id = _org_id(current_user)
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     result = svc.dismiss_inbox_item(db, org_id, item_id, body.reason)
     log_action(db, current_user.id, "dismiss", "regwatch_inbox", str(item_id),
                {"reason": body.reason}, organization_id=org_id)
@@ -173,18 +187,20 @@ def dismiss(item_id: int, body: DismissBody = None, db: Session = Depends(get_db
 # ---------- Historial + evidencia PDF ----------
 
 @router.get("/history")
-def history(framework: Optional[str] = None, db: Session = Depends(get_db),
+def history(request: Request, framework: Optional[str] = None, db: Session = Depends(get_db),
             current_user: User = Depends(get_current_user)):
-    return svc.list_history(db, _org_id(current_user), framework=framework)
+    lang = get_lang(request)
+    return svc.list_history(db, _org_id(current_user, lang), framework=framework)
 
 
 @router.get("/history.pdf")
-def history_pdf(framework: Optional[str] = None, db: Session = Depends(get_db),
+def history_pdf(request: Request, framework: Optional[str] = None, db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)):
     """Informe firmado de actualizaciones aplicadas (§10, evidencia ante auditor)."""
-    org_id = _org_id(current_user)
+    lang = get_lang(request)
+    org_id = _org_id(current_user, lang)
     rows = svc.list_history(db, org_id, framework=framework)
-    pdf_bytes = _render_history_pdf(rows, framework)
+    pdf_bytes = _render_history_pdf(rows, framework, lang)
     log_action(db, current_user.id, "export_pdf", "regwatch_history", str(org_id),
                {"framework": framework, "rows": len(rows)}, organization_id=org_id)
     db.commit()
@@ -192,7 +208,7 @@ def history_pdf(framework: Optional[str] = None, db: Session = Depends(get_db),
                     headers={"Content-Disposition": "attachment; filename=regwatch_history.pdf"})
 
 
-def _render_history_pdf(rows: list[dict], framework: Optional[str]) -> bytes:
+def _render_history_pdf(rows: list[dict], framework: Optional[str], lang: str = "es") -> bytes:
     """Genera el PDF de historial reutilizando ReportLab (paleta del producto)."""
     import io
     from reportlab.lib.pagesizes import A4
@@ -207,16 +223,18 @@ def _render_history_pdf(rows: list[dict], framework: Optional[str]) -> bytes:
     purple = colors.HexColor("#59008D")
     title_style = ParagraphStyle("t", parent=styles["Title"], textColor=purple, fontSize=18)
     story = [
-        Paragraph("RiskHub — Vigilancia Normativa", title_style),
-        Paragraph("Historial de actualizaciones aplicadas al catalogo", styles["Heading2"]),
+        Paragraph(_t("regwatch.pdf.brand_title", lang), title_style),
+        Paragraph(_t("regwatch.pdf.history_heading", lang), styles["Heading2"]),
         Paragraph(
-            f"Generado: {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC')}"
-            + (f" · Framework: {framework}" if framework else ""),
+            _t("regwatch.pdf.generated_at", lang,
+               date=datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC'))
+            + (_t("regwatch.pdf.framework_suffix", lang, framework=framework) if framework else ""),
             styles["Normal"],
         ),
         Spacer(1, 8 * mm),
     ]
-    data = [["Fecha", "Marco", "Severidad", "Cambio"]]
+    data = [[_t("regwatch.pdf.col_date", lang), _t("regwatch.pdf.col_framework", lang),
+             _t("regwatch.pdf.col_severity", lang), _t("regwatch.pdf.col_change", lang)]]
     for r in rows:
         data.append([
             (r.get("applied_at") or r.get("published_at") or "")[:10],
@@ -225,7 +243,8 @@ def _render_history_pdf(rows: list[dict], framework: Optional[str]) -> bytes:
             Paragraph(r.get("title", ""), styles["Normal"]),
         ])
     if len(data) == 1:
-        data.append(["—", "—", "—", "Sin actualizaciones en el periodo."])
+        dash = _t("regwatch.pdf.dash", lang)
+        data.append([dash, dash, dash, _t("regwatch.pdf.no_updates_period", lang)])
     table = Table(data, colWidths=[24 * mm, 38 * mm, 26 * mm, 82 * mm])
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), purple),
@@ -243,24 +262,13 @@ def _render_history_pdf(rows: list[dict], framework: Optional[str]) -> bytes:
 # ---------- FAQ usuario final (§16) ----------
 
 @router.get("/faq")
-def faq(current_user: User = Depends(get_current_user)):
+def faq(request: Request, current_user: User = Depends(get_current_user)):
     """FAQ breve para el usuario final (§16)."""
-    return [
-        {"q": "¿Que hace la Vigilancia Normativa?",
-         "a": "RiskHub vigila los marcos normativos que ya usas y mantiene tu catalogo "
-              "al dia automaticamente. Solo te avisa si necesita tu confirmacion."},
-        {"q": "¿Que tengo que configurar?",
-         "a": "Nada mas alla de activar el interruptor. Los frameworks vigilados se "
-              "derivan solos de lo que usas en RiskHub."},
-        {"q": "¿Interpreta legalmente las normas?",
-         "a": "No. Detecta y propone cambios; no certifica ni sustituye a tu consultor "
-              "o auditor."},
-        {"q": "¿Que pasa si lo desactivo?",
-         "a": "Dejas de recibir notificaciones y tus copias no se tocan. Puedes "
-              "reactivarlo cuando quieras sin perder configuracion."},
-        {"q": "¿Procesa datos personales de mi organizacion?",
-         "a": "No. Solo analiza documentos normativos publicos mediante IA."},
-    ]
+    lang = get_lang(request)
+    faq_list = _i18n_resolve(_i18n_translations.get(lang, {}), "regwatch.faq")
+    if faq_list is None:
+        faq_list = _i18n_resolve(_i18n_translations.get("es", {}), "regwatch.faq")
+    return faq_list
 
 
 # ===================================================================
@@ -303,12 +311,13 @@ def admin_health(db: Session = Depends(get_db),
 
 
 @router.post("/admin/sources/{source_id}/run-now")
-def admin_run_source(source_id: int, db: Session = Depends(get_db),
+def admin_run_source(source_id: int, request: Request, db: Session = Depends(get_db),
                      current_user: User = Depends(require_superadmin)):
+    lang = get_lang(request)
     from app.services import regwatch_connectors as conns
     src = db.query(NormativeSource).filter(NormativeSource.id == source_id).first()
     if not src:
-        raise HTTPException(404, "Fuente no encontrada")
+        raise HTTPException(404, _t("regwatch.source_not_found", lang))
     summary = conns.run_source(db, src)
     db.commit()
     return summary

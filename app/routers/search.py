@@ -1,10 +1,11 @@
 """Busqueda global entre activos, riesgos, amenazas y vulnerabilidades."""
 from typing import List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import Asset, ControlImplementation, Risk, Threat, User, Vulnerability
 from app.security import filter_by_org, get_current_user
 
@@ -17,11 +18,13 @@ def _ilike(column, q: str):
 
 @router.get("/")
 def global_search(
+    request: Request,
     q: str = Query(..., min_length=2, max_length=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Busca en activos, riesgos, amenazas y vulnerabilidades."""
+    lang = get_lang(request)
     term = q.strip()
 
     # Activos (filtrados por org)
@@ -68,7 +71,7 @@ def global_search(
             "risks": [
                 {"id": r.id, "type": "risk", "title": r.code,
                  "subtitle": (r.asset.name if r.asset else "") + " — " + (r.threat.name if r.threat else ""),
-                 "meta": f"Nivel {r.residual_level}", "url": f"#/risks"}
+                 "meta": _t("search.risk_level_meta", lang, level=r.residual_level), "url": f"#/risks"}
                 for r in risks
             ],
             "threats": [

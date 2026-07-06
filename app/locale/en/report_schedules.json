@@ -1,0 +1,12 @@
+{
+  "report_schedules": {
+    "invalid_report_type": "Invalid report_type. Valid values: {valid_types}",
+    "invalid_frequency_list": "Invalid frequency. Valid values: {valid_freqs}",
+    "at_least_one_recipient": "At least one recipient is required",
+    "invalid_email": "Invalid email: {email}",
+    "schedule_not_found": "Schedule not found",
+    "invalid_frequency": "Invalid frequency",
+    "smtp_not_configured": "SMTP not configured",
+    "error_generating_report": "Error generating report: {error}"
+  }
+}

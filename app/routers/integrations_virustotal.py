@@ -8,12 +8,13 @@ import hashlib
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import IntegrationConfig, User
 from app.security import get_current_user, require_admin
 
@@ -85,11 +86,13 @@ def get_config(
 @router.put("/config")
 def save_config(
     body: VtConfigIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    lang = get_lang(request)
     if not body.api_key or not body.api_key.strip():
-        raise HTTPException(400, "La API key no puede estar vacia.")
+        raise HTTPException(400, _t("integrations_virustotal.api_key_empty", lang))
     data = {"api_key": body.api_key.strip()}
     encrypted = _encrypt(json.dumps(data))
     ic = db.query(IntegrationConfig).filter_by(
@@ -105,7 +108,7 @@ def save_config(
     ic.config_encrypted = encrypted
     ic.updated_by_id = current_user.id
     db.commit()
-    return {"ok": True, "message": "API key de VirusTotal guardada correctamente."}
+    return {"ok": True, "message": _t("integrations_virustotal.config_saved", lang)}
 
 
 @router.delete("/config", status_code=204)
@@ -124,13 +127,15 @@ def delete_config(
 
 @router.post("/test")
 async def test_connection(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Prueba la API key contra la API de VirusTotal con una URL conocida benigna."""
+    lang = get_lang(request)
     api_key = get_vt_api_key(db, current_user.organization_id)
     if not api_key:
-        raise HTTPException(400, "No hay API key de VirusTotal configurada.")
+        raise HTTPException(400, _t("integrations_virustotal.no_api_key_configured", lang))
 
     import aiohttp
     try:
@@ -142,18 +147,21 @@ async def test_connection(
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 if resp.status == 401:
-                    raise HTTPException(400, "API key invalida o sin permisos.")
+                    raise HTTPException(400, _t("integrations_virustotal.invalid_api_key", lang))
                 if resp.status == 429:
-                    raise HTTPException(400, "Rate limit superado. Espera antes de probar.")
+                    raise HTTPException(400, _t("integrations_virustotal.rate_limit_exceeded", lang))
                 if resp.status not in (200, 204):
-                    raise HTTPException(400, f"VirusTotal respondio con error {resp.status}.")
+                    raise HTTPException(
+                        400,
+                        _t("integrations_virustotal.vt_error_status", lang, status=resp.status),
+                    )
                 data = await resp.json()
                 user_data = data.get("data", {}).get("attributes", {})
                 quota = user_data.get("quotas", {})
                 daily = quota.get("api_requests_daily", {})
                 return {
                     "ok": True,
-                    "message": "Conexion con VirusTotal correcta.",
+                    "message": _t("integrations_virustotal.connection_ok", lang),
                     "user": user_data.get("email", ""),
                     "quota_used": daily.get("used", 0),
                     "quota_limit": daily.get("allowed", 0),
@@ -161,4 +169,7 @@ async def test_connection(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(400, f"No se pudo conectar con VirusTotal: {exc}")
+        raise HTTPException(
+            400,
+            _t("integrations_virustotal.connection_failed", lang, error=exc),
+        )

@@ -1,10 +1,11 @@
 """Endpoints para agrupacion de activos — criterios, propuesta IA y validacion."""
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import Asset, AssetGroup, AssetGroupingConfig, AssetGroupStatus, Risk, User
 from app.schemas import (
     AssetGroupIn, AssetGroupOut, AssetGroupUpdate, AssetGroupingConfigIn,
@@ -80,13 +81,15 @@ def save_config(
 
 @router.post("/propose")
 def propose(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Llama a la IA para agrupar activos. Reemplaza grupos PROPOSED anteriores."""
+    lang = get_lang(request)
     result = propose_groups(db, current_user.organization_id)
     if not result.get("ok"):
-        raise HTTPException(400, result.get("error", "Error desconocido"))
+        raise HTTPException(400, result.get("error", _t("asset_groups.unknown_error", lang)))
     log_action(db, current_user.id, "propose_groups", "asset_group", None,
                {"groups_created": result["groups_created"]})
     return result
@@ -130,12 +133,14 @@ def create_group(
 @router.get("/{group_id}", response_model=AssetGroupOut)
 def get_group(
     group_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     g = db.get(AssetGroup, group_id)
     if not g or not check_org_access(g.organization_id, current_user):
-        raise HTTPException(404, "Grupo no encontrado")
+        raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     return _group_out(g, db)
 
 
@@ -143,12 +148,14 @@ def get_group(
 def update_group(
     group_id: int,
     data: AssetGroupUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     g = db.get(AssetGroup, group_id)
     if not g or not check_org_access(g.organization_id, current_user):
-        raise HTTPException(404, "Grupo no encontrado")
+        raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     if data.name is not None:
         g.name = data.name
     if data.description is not None:
@@ -161,12 +168,14 @@ def update_group(
 @router.delete("/{group_id}", status_code=204)
 def remove_group(
     group_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     g = db.get(AssetGroup, group_id)
     if not g or not check_org_access(g.organization_id, current_user):
-        raise HTTPException(404, "Grupo no encontrado")
+        raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     log_action(db, current_user.id, "delete", "asset_group", str(group_id), {"name": g.name})
     delete_group(db, g)
 
@@ -176,13 +185,15 @@ def remove_group(
 @router.post("/{group_id}/validate", response_model=AssetGroupOut)
 def validate(
     group_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Valida el grupo y crea su activo representativo para el analisis de riesgo."""
+    lang = get_lang(request)
     g = db.get(AssetGroup, group_id)
     if not g or not check_org_access(g.organization_id, current_user):
-        raise HTTPException(404, "Grupo no encontrado")
+        raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     try:
         validate_group(db, g)
     except ValueError as e:
@@ -234,13 +245,15 @@ def move(
 @router.delete("/{group_id}/with-assets")
 def delete_group_with_assets(
     group_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Elimina el grupo y todos sus activos miembro (incluido representativo)."""
+    lang = get_lang(request)
     g = db.get(AssetGroup, group_id)
     if not g or not check_org_access(g.organization_id, current_user):
-        raise HTTPException(404, "Grupo no encontrado")
+        raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     group_name = g.name
     members = db.query(Asset).filter_by(group_id=group_id).all()
     member_count = len(members)
@@ -268,12 +281,14 @@ def delete_group_with_assets(
 def split(
     group_id: int,
     data: SplitGroupIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     g = db.get(AssetGroup, group_id)
     if not g or not check_org_access(g.organization_id, current_user):
-        raise HTTPException(404, "Grupo no encontrado")
+        raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     try:
         new_grp = split_group(db, g, data.asset_ids, data.new_group_name)
     except ValueError as e:

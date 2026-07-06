@@ -1,0 +1,41 @@
+{
+  "regwatch": {
+    "no_organization": "User has no organization assigned",
+    "inbox_item_not_found": "Item not found",
+    "source_not_found": "Source not found",
+    "pdf": {
+      "brand_title": "RiskHub — Regulatory Watch",
+      "history_heading": "History of updates applied to the catalogue",
+      "generated_at": "Generated: {date}",
+      "framework_suffix": " · Framework: {framework}",
+      "col_date": "Date",
+      "col_framework": "Framework",
+      "col_severity": "Severity",
+      "col_change": "Change",
+      "no_updates_period": "No updates in this period.",
+      "dash": "—"
+    },
+    "faq": [
+      {
+        "q": "What does Regulatory Watch do?",
+        "a": "RiskHub monitors the regulatory frameworks you already use and keeps your catalogue up to date automatically. It only notifies you when it needs your confirmation."
+      },
+      {
+        "q": "What do I need to configure?",
+        "a": "Nothing beyond turning on the switch. The monitored frameworks are derived automatically from what you use in RiskHub."
+      },
+      {
+        "q": "Does it legally interpret regulations?",
+        "a": "No. It detects and proposes changes; it does not certify or replace your consultant or auditor."
+      },
+      {
+        "q": "What happens if I disable it?",
+        "a": "You stop receiving notifications and your copies remain untouched. You can re-enable it whenever you want without losing your configuration."
+      },
+      {
+        "q": "Does it process personal data from my organization?",
+        "a": "No. It only analyzes public regulatory documents using AI."
+      }
+    ]
+  }
+}

@@ -3,11 +3,12 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import QuestionnaireSchedule, Supplier, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action
@@ -75,23 +76,25 @@ def list_schedules(
 
 
 @router.get("/{sid}")
-def get_schedule(sid: int, db: Session = Depends(get_db),
+def get_schedule(sid: int, request: Request, db: Session = Depends(get_db),
                  current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
     s = filter_by_org(
         db.query(QuestionnaireSchedule).filter(QuestionnaireSchedule.id == sid),
         QuestionnaireSchedule, current_user,
     ).first()
     if not s:
-        raise HTTPException(404, "Planificacion no encontrada")
+        raise HTTPException(404, _t("questionnaire_schedules.schedule_not_found", lang))
     return _schedule_out(s)
 
 
 @router.post("/")
-def create_schedule(body: ScheduleIn, db: Session = Depends(get_db),
+def create_schedule(body: ScheduleIn, request: Request, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     supplier = db.query(Supplier).filter(Supplier.id == body.supplier_id).first()
     if not supplier or not check_org_access(supplier.organization_id, current_user):
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("questionnaire_schedules.supplier_not_found", lang))
     next_send = body.next_send_at or datetime.now(timezone.utc)
     s = QuestionnaireSchedule(
         organization_id=current_user.organization_id,
@@ -116,15 +119,16 @@ def create_schedule(body: ScheduleIn, db: Session = Depends(get_db),
 
 
 @router.patch("/{sid}")
-def update_schedule(sid: int, body: ScheduleUpdate,
+def update_schedule(sid: int, body: ScheduleUpdate, request: Request,
                     db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     s = filter_by_org(
         db.query(QuestionnaireSchedule).filter(QuestionnaireSchedule.id == sid),
         QuestionnaireSchedule, current_user,
     ).first()
     if not s:
-        raise HTTPException(404, "Planificacion no encontrada")
+        raise HTTPException(404, _t("questionnaire_schedules.schedule_not_found", lang))
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(s, field, value)
     db.commit()
@@ -134,14 +138,15 @@ def update_schedule(sid: int, body: ScheduleUpdate,
 
 
 @router.delete("/{sid}", status_code=204)
-def delete_schedule(sid: int, db: Session = Depends(get_db),
+def delete_schedule(sid: int, request: Request, db: Session = Depends(get_db),
                     current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
     s = filter_by_org(
         db.query(QuestionnaireSchedule).filter(QuestionnaireSchedule.id == sid),
         QuestionnaireSchedule, current_user,
     ).first()
     if not s:
-        raise HTTPException(404, "Planificacion no encontrada")
+        raise HTTPException(404, _t("questionnaire_schedules.schedule_not_found", lang))
     log_action(db, current_user.id, "delete", "questionnaire_schedule", str(s.id))
     db.delete(s)
     db.commit()

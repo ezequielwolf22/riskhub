@@ -14,6 +14,7 @@ from app.models import SurveyTemplate, SurveyCampaign, SurveyResponse
 from app.security import get_current_user, require_analyst, require_admin
 from app.services.audit_service import log_action
 from app.services import survey_service
+from app.i18n import get_lang, t as _t
 
 logger = logging.getLogger("riskhub.surveys")
 
@@ -83,12 +84,13 @@ def create_template(body: TemplateCreate, db=Depends(get_db), u=Depends(require_
 
 
 @router.delete("/templates/{tid}", status_code=204)
-def delete_template(tid: int, db=Depends(get_db), u=Depends(require_admin)):
+def delete_template(tid: int, request: Request, db=Depends(get_db), u=Depends(require_admin)):
+    lang = get_lang(request)
     t = db.get(SurveyTemplate, tid)
     if not t or t.organization_id != _org(u):
         raise HTTPException(404)
     if t.is_default:
-        raise HTTPException(422, "No se pueden eliminar plantillas predeterminadas")
+        raise HTTPException(422, _t("surveys.template_default_delete_forbidden", lang))
     db.delete(t)
     db.commit()
 
@@ -105,21 +107,22 @@ def list_campaigns(status: Optional[str] = None, db=Depends(get_db),
 
 
 @router.post("/campaigns", status_code=201)
-def create_campaign(body: CampaignCreate, db=Depends(get_db), u=Depends(require_analyst)):
+def create_campaign(body: CampaignCreate, request: Request, db=Depends(get_db), u=Depends(require_analyst)):
+    lang = get_lang(request)
     questions = body.questions or []
     if body.template_id and not questions:
         tmpl = db.get(SurveyTemplate, body.template_id)
         if not tmpl or tmpl.organization_id != _org(u):
-            raise HTTPException(422, "Plantilla no encontrada")
+            raise HTTPException(422, _t("surveys.template_not_found", lang))
         questions = tmpl.questions
     if not questions:
-        raise HTTPException(422, "La campaña debe tener preguntas")
+        raise HTTPException(422, _t("surveys.campaign_needs_questions", lang))
     if body.scope_risk_ids:
         from app.models import Risk
         for rid in body.scope_risk_ids:
             r = db.get(Risk, rid)
             if not r or r.organization_id != _org(u):
-                raise HTTPException(422, f"Riesgo {rid} no encontrado en esta organización")
+                raise HTTPException(422, _t("surveys.risk_not_found_in_org", lang, rid=rid))
     c = survey_service.create_campaign(
         db=db, org_id=_org(u), user_id=u.id,
         title=body.title, campaign_type=body.campaign_type,
@@ -136,16 +139,18 @@ def create_campaign(body: CampaignCreate, db=Depends(get_db), u=Depends(require_
 
 
 @router.get("/campaigns/{cid}")
-def get_campaign(cid: int, db=Depends(get_db), u=Depends(require_analyst)):
-    c = _chk_campaign(db, cid, _org(u))
+def get_campaign(cid: int, request: Request, db=Depends(get_db), u=Depends(require_analyst)):
+    lang = get_lang(request)
+    c = _chk_campaign(db, cid, _org(u), lang)
     return _campaign_d(c, db)
 
 
 @router.delete("/campaigns/{cid}", status_code=204)
-def delete_campaign(cid: int, db=Depends(get_db), u=Depends(require_admin)):
-    c = _chk_campaign(db, cid, _org(u))
+def delete_campaign(cid: int, request: Request, db=Depends(get_db), u=Depends(require_admin)):
+    lang = get_lang(request)
+    c = _chk_campaign(db, cid, _org(u), lang)
     if c.status == "active":
-        raise HTTPException(422, "No se puede eliminar una campaña activa. Ciérrala primero.")
+        raise HTTPException(422, _t("surveys.campaign_active_delete_forbidden", lang))
     db.delete(c)
     db.commit()
 
@@ -153,18 +158,20 @@ def delete_campaign(cid: int, db=Depends(get_db), u=Depends(require_admin)):
 # ── Destinatarios ─────────────────────────────────────────────────────────────
 
 @router.get("/campaigns/{cid}/respondents")
-def list_respondents(cid: int, db=Depends(get_db), u=Depends(require_analyst)):
-    _chk_campaign(db, cid, _org(u))
+def list_respondents(cid: int, request: Request, db=Depends(get_db), u=Depends(require_analyst)):
+    lang = get_lang(request)
+    _chk_campaign(db, cid, _org(u), lang)
     resps = db.query(SurveyResponse).filter_by(campaign_id=cid).all()
     return [_resp_summary(r) for r in resps]
 
 
 @router.post("/campaigns/{cid}/respondents", status_code=201)
-def add_respondents(cid: int, body: AddRespondentsBulk,
+def add_respondents(cid: int, body: AddRespondentsBulk, request: Request,
                     db=Depends(get_db), u=Depends(require_analyst)):
-    c = _chk_campaign(db, cid, _org(u))
+    lang = get_lang(request)
+    c = _chk_campaign(db, cid, _org(u), lang)
     if c.status == "closed":
-        raise HTTPException(422, "No se pueden añadir destinatarios a una campaña cerrada")
+        raise HTTPException(422, _t("surveys.campaign_closed_add_respondents_forbidden", lang))
     added = []
     for r in body.respondents:
         resp = survey_service.add_respondent(db, c, r.name, r.email, r.role, r.dept)
@@ -173,14 +180,15 @@ def add_respondents(cid: int, body: AddRespondentsBulk,
 
 
 @router.delete("/campaigns/{cid}/respondents/{rid}", status_code=204)
-def remove_respondent(cid: int, rid: int,
+def remove_respondent(cid: int, rid: int, request: Request,
                       db=Depends(get_db), u=Depends(require_analyst)):
-    _chk_campaign(db, cid, _org(u))
+    lang = get_lang(request)
+    _chk_campaign(db, cid, _org(u), lang)
     resp = db.get(SurveyResponse, rid)
     if not resp or resp.campaign_id != cid:
         raise HTTPException(404)
     if resp.status == "completed":
-        raise HTTPException(422, "No se puede eliminar una respuesta ya completada")
+        raise HTTPException(422, _t("surveys.response_completed_delete_forbidden", lang))
     db.delete(resp)
     db.commit()
 
@@ -190,12 +198,13 @@ def remove_respondent(cid: int, rid: int,
 @router.post("/campaigns/{cid}/send")
 def send_invitations(cid: int, request: Request,
                      db=Depends(get_db), u=Depends(require_analyst)):
-    c = _chk_campaign(db, cid, _org(u))
+    lang = get_lang(request)
+    c = _chk_campaign(db, cid, _org(u), lang)
     if c.status == "closed":
-        raise HTTPException(422, "Campaña cerrada")
+        raise HTTPException(422, _t("surveys.campaign_closed", lang))
     count = db.query(SurveyResponse).filter_by(campaign_id=cid).count()
     if count == 0:
-        raise HTTPException(422, "Añade destinatarios antes de enviar")
+        raise HTTPException(422, _t("surveys.add_respondents_before_send", lang))
     base_url = str(request.base_url).rstrip("/")
     result = survey_service.send_campaign_invitations(db, cid, base_url)
     log_action(db, u.id, "send", "survey_campaign", str(cid),
@@ -204,8 +213,9 @@ def send_invitations(cid: int, request: Request,
 
 
 @router.post("/campaigns/{cid}/close")
-def close_campaign(cid: int, db=Depends(get_db), u=Depends(require_admin)):
-    c = _chk_campaign(db, cid, _org(u))
+def close_campaign(cid: int, request: Request, db=Depends(get_db), u=Depends(require_admin)):
+    lang = get_lang(request)
+    c = _chk_campaign(db, cid, _org(u), lang)
     c.status = "closed"
     c.closed_at = datetime.now(timezone.utc)
     db.commit()
@@ -226,9 +236,10 @@ def close_campaign(cid: int, db=Depends(get_db), u=Depends(require_admin)):
 
 
 @router.post("/campaigns/{cid}/apply-to-risks")
-def apply_to_risks(cid: int, db=Depends(get_db), u=Depends(require_admin)):
+def apply_to_risks(cid: int, request: Request, db=Depends(get_db), u=Depends(require_admin)):
     """Aplica los promedios de las respuestas al modelo de riesgos (acción deliberada del admin)."""
-    _chk_campaign(db, cid, _org(u))
+    lang = get_lang(request)
+    _chk_campaign(db, cid, _org(u), lang)
     result = survey_service.apply_responses_to_risks(db, cid, u.id)
     if result.get("applied", 0) > 0:
         log_action(db, u.id, "apply_survey_results", "survey_campaign", str(cid),
@@ -237,8 +248,9 @@ def apply_to_risks(cid: int, db=Depends(get_db), u=Depends(require_admin)):
 
 
 @router.get("/campaigns/{cid}/results")
-def get_results(cid: int, db=Depends(get_db), u=Depends(require_analyst)):
-    c = _chk_campaign(db, cid, _org(u))
+def get_results(cid: int, request: Request, db=Depends(get_db), u=Depends(require_analyst)):
+    lang = get_lang(request)
+    c = _chk_campaign(db, cid, _org(u), lang)
     resps = db.query(SurveyResponse).filter_by(campaign_id=cid).all()
     completed = [r for r in resps if r.status == "completed"]
     question_stats = {}
@@ -392,10 +404,10 @@ async def submit_survey(token: str, body: AnswerSubmit,
 
 # ─────────────────────────── HELPERS ─────────────────────────────────────────
 
-def _chk_campaign(db, cid, org_id):
+def _chk_campaign(db, cid, org_id, lang="es"):
     c = db.get(SurveyCampaign, cid)
     if not c or c.organization_id != org_id:
-        raise HTTPException(404, "Campaña no encontrada")
+        raise HTTPException(404, _t("surveys.campaign_not_found", lang))
     return c
 
 

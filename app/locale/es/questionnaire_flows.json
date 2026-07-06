@@ -1,0 +1,8 @@
+{
+  "questionnaire_flows": {
+    "flow_not_found": "Flujo no encontrado",
+    "flow_needs_step": "El flujo debe tener al menos un paso",
+    "supplier_not_found": "Proveedor no encontrado",
+    "flow_no_initial_step": "El flujo no tiene ningun paso inicial (sin condicion)"
+  }
+}

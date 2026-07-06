@@ -15,6 +15,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
+from app.i18n import get_lang, t as _t
 from app.models import FormIntegrationConfig, Supplier, SupplierQuestionnaire, User
 from app.security import filter_by_org, get_current_user, require_analyst
 
@@ -66,27 +67,31 @@ def _get_or_create_cfg(db: Session, org_id: int) -> FormIntegrationConfig:
 
 @router.get("/config")
 def get_config(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Obtiene (o crea) la configuracion de integracion de formularios para la organizacion."""
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("integrations_forms.org_required", lang))
     cfg = _get_or_create_cfg(db, org_id)
     return _cfg_out(cfg)
 
 
 @router.patch("/config")
 def update_config(
+    request: Request,
     body: dict = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Actualiza la configuracion de integracion de formularios."""
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("integrations_forms.org_required", lang))
     cfg = _get_or_create_cfg(db, org_id)
     allowed = ("default_template_code", "supplier_field_name", "monday_webhook_url")
     for key in allowed:
@@ -124,13 +129,15 @@ def update_config(
 
 @router.post("/config/regenerate-token")
 def regenerate_token(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Regenera el token de webhook entrante (invalida el anterior)."""
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("integrations_forms.org_required", lang))
     cfg = _get_or_create_cfg(db, org_id)
     cfg.inbound_token = secrets.token_urlsafe(32)
     cfg.updated_at = datetime.now(timezone.utc)
@@ -167,18 +174,21 @@ def msforms_inbound(
     cualquier campo llamado igual que supplier_field_name se usa para identificar al proveedor,
     el resto de campos se tratan como respuestas.
     """
+    # Endpoint publico sin usuario autenticado de RiskHub (invocado por Power Automate);
+    # X-Lang no es fiable aqui, se fija "es" para los mensajes de error.
+    lang = "es"
     cfg = db.query(FormIntegrationConfig).filter(
         FormIntegrationConfig.inbound_token == token
     ).first()
     if not cfg:
-        raise HTTPException(404, "Token no valido")
+        raise HTTPException(404, _t("integrations_forms.invalid_token", lang))
 
     org_id = cfg.organization_id
 
     # Identificar proveedor
     supplier_name = payload.get("supplier") or payload.get(cfg.supplier_field_name or "supplier") or ""
     if not supplier_name:
-        raise HTTPException(400, "No se pudo identificar el proveedor. Incluye el campo 'supplier' en el payload.")
+        raise HTTPException(400, _t("integrations_forms.supplier_not_identified", lang))
 
     supplier = (
         db.query(Supplier)
@@ -219,9 +229,10 @@ def msforms_inbound(
             contact_email=mapped_data.get("contact_email"),
             website=mapped_data.get("website"),
             contract_ref=mapped_data.get("contract_ref"),
-            notes=(
-                f"Alta automatica via MS Forms webhook (Via 1). "
-                f"Respondido por: {payload.get('submitted_by', 'desconocido')}."
+            notes=_t(
+                "integrations_forms.auto_created_notes",
+                lang,
+                responder=payload.get("submitted_by", _t("integrations_forms.unknown_responder", lang)),
             ),
             organization_id=org_id,
             risk_level="medium",
@@ -246,7 +257,7 @@ def msforms_inbound(
         skip = {"supplier", "title", "submitted_by", cfg.supplier_field_name or "supplier"}
         answers = {k: v for k, v in payload.items() if k not in skip}
 
-    title = payload.get("title") or f"Formulario externo — {supplier.name}"
+    title = payload.get("title") or _t("integrations_forms.default_title", lang, supplier=supplier.name)
     submitted_by = payload.get("submitted_by", "ms_forms_inbound")
     now = datetime.now(timezone.utc)
 
@@ -273,7 +284,7 @@ def msforms_inbound(
         answers=answers,
         score=_calculate_score(answers),
         submitted_at=now,
-        notes=f"Importado via MS Forms / Power Automate. Respondido por: {submitted_by}",
+        notes=_t("integrations_forms.imported_notes", lang, submitted_by=submitted_by),
         assignment_type="external",
         organization_id=org_id,
     )
@@ -341,6 +352,7 @@ def _notify_monday(db_org: int, questionnaire_id: int, monday_url: str) -> None:
 
 @router.post("/msforms/discover-questions")
 def msforms_discover_questions(
+    request: Request,
     body: dict = Body(default={}),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
@@ -352,9 +364,10 @@ def msforms_discover_questions(
     para la organizacion (el client_secret nunca se expone al frontend, por lo
     que si no se envia uno nuevo se usa el descifrado internamente).
     """
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("integrations_forms.org_required", lang))
     cfg = _get_or_create_cfg(db, org_id)
 
     tenant_id = (body.get("tenant_id") or cfg.msforms_tenant_id or "").strip()
@@ -368,21 +381,23 @@ def msforms_discover_questions(
 
     missing = [
         name for name, val in [
-            ("Tenant ID", tenant_id), ("Client ID", client_id),
-            ("Form ID", form_id), ("Client Secret", client_secret),
+            (_t("integrations_forms.cred_tenant_id", lang), tenant_id),
+            (_t("integrations_forms.cred_client_id", lang), client_id),
+            (_t("integrations_forms.cred_form_id", lang), form_id),
+            (_t("integrations_forms.cred_client_secret", lang), client_secret),
         ] if not val
     ]
     if missing:
-        raise HTTPException(400, f"Faltan credenciales: {', '.join(missing)}")
+        raise HTTPException(400, _t("integrations_forms.missing_credentials", lang, missing=", ".join(missing)))
 
     from app.services.msforms_service import get_oauth_token, get_form_questions
     token = get_oauth_token(tenant_id, client_id, client_secret)
     if not token:
-        raise HTTPException(400, "No se pudo autenticar contra Azure AD — revisa Tenant ID, Client ID y Client Secret")
+        raise HTTPException(400, _t("integrations_forms.azure_auth_failed", lang))
 
     question_map = get_form_questions(form_id, token)
     if not question_map:
-        raise HTTPException(400, "No se encontraron preguntas — revisa el Form ID y el permiso Forms.Read.All")
+        raise HTTPException(400, _t("integrations_forms.no_questions_found", lang))
 
     questions = [{"id": qid, "title": title} for qid, title in question_map.items()]
     return {"questions": questions}
@@ -390,6 +405,7 @@ def msforms_discover_questions(
 
 @router.post("/msforms/poll-now")
 def msforms_poll_now(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -398,12 +414,13 @@ def msforms_poll_now(
     Consulta de inmediato la API de MS Forms, independientemente
     del intervalo de polling automatico configurado.
     """
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, "Se requiere organization_id")
+        raise HTTPException(400, _t("integrations_forms.org_required", lang))
     cfg = _get_or_create_cfg(db, org_id)
     if not cfg.msforms_form_id:
-        raise HTTPException(400, "Form ID no configurado — guarda la configuracion primero")
+        raise HTTPException(400, _t("integrations_forms.form_id_not_configured", lang))
 
     from app.services.msforms_service import poll_org
     result = poll_org(cfg, db)

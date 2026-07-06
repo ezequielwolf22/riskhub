@@ -1,0 +1,14 @@
+{
+  "surveys": {
+    "template_default_delete_forbidden": "No se pueden eliminar plantillas predeterminadas",
+    "template_not_found": "Plantilla no encontrada",
+    "risk_not_found_in_org": "Riesgo {rid} no encontrado en esta organización",
+    "campaign_needs_questions": "La campaña debe tener preguntas",
+    "campaign_not_found": "Campaña no encontrada",
+    "campaign_active_delete_forbidden": "No se puede eliminar una campaña activa. Ciérrala primero.",
+    "campaign_closed_add_respondents_forbidden": "No se pueden añadir destinatarios a una campaña cerrada",
+    "response_completed_delete_forbidden": "No se puede eliminar una respuesta ya completada",
+    "campaign_closed": "Campaña cerrada",
+    "add_respondents_before_send": "Añade destinatarios antes de enviar"
+  }
+}

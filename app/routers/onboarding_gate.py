@@ -1,10 +1,11 @@
 """Gate de onboarding de proveedores — control total por el equipo de ciberseguridad."""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.i18n import get_lang, t as _t
 from app.models import OnboardingGateConfig, Supplier, User
 from app.security import get_current_user, require_admin, require_analyst
 from app.services.audit_service import log_action
@@ -16,9 +17,11 @@ router = APIRouter(prefix="/api/onboarding-gate", tags=["onboarding-gate"])
 
 @router.get("/config")
 def get_gate_config(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     from app.services.onboarding_gate_service import get_or_create_config
     cfg = get_or_create_config(db, current_user.organization_id)
     return {
@@ -37,30 +40,32 @@ def get_gate_config(
 @router.put("/config")
 def update_gate_config(
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    lang = get_lang(request)
     from app.services.onboarding_gate_service import get_or_create_config
     cfg = get_or_create_config(db, current_user.organization_id)
 
     if "auto_approve_below" in payload:
         val = int(payload["auto_approve_below"])
         if not 0 <= val <= 100:
-            raise HTTPException(400, "auto_approve_below debe estar entre 0 y 100")
+            raise HTTPException(400, _t("onboarding_gate.auto_approve_range", lang))
         cfg.auto_approve_below = val
 
     if "manual_review_above" in payload:
         val = int(payload["manual_review_above"])
         if not 0 <= val <= 100:
-            raise HTTPException(400, "manual_review_above debe estar entre 0 y 100")
+            raise HTTPException(400, _t("onboarding_gate.manual_review_range", lang))
         cfg.manual_review_above = val
 
     if cfg.auto_approve_below >= cfg.manual_review_above:
-        raise HTTPException(400, "auto_approve_below debe ser menor que manual_review_above")
+        raise HTTPException(400, _t("onboarding_gate.threshold_order", lang))
 
     if "bypass_min_role" in payload:
         if payload["bypass_min_role"] not in ("admin", "analyst"):
-            raise HTTPException(400, "bypass_min_role debe ser admin o analyst")
+            raise HTTPException(400, _t("onboarding_gate.bypass_role_invalid", lang))
         cfg.bypass_min_role = payload["bypass_min_role"]
 
     if "bypass_requires_justification" in payload:
@@ -72,10 +77,10 @@ def update_gate_config(
     if "sign_off_chain" in payload:
         chain = payload["sign_off_chain"]
         if not isinstance(chain, list):
-            raise HTTPException(400, "sign_off_chain debe ser una lista")
+            raise HTTPException(400, _t("onboarding_gate.chain_must_be_list", lang))
         for item in chain:
             if "id" not in item or "label" not in item:
-                raise HTTPException(400, "Cada item necesita 'id' y 'label'")
+                raise HTTPException(400, _t("onboarding_gate.chain_item_fields", lang))
         cfg.sign_off_chain = chain
 
     cfg.updated_at = datetime.now(timezone.utc)
@@ -103,13 +108,15 @@ def update_gate_config(
 @router.get("/{sid}/evaluate")
 def evaluate_supplier_gate(
     sid: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    lang = get_lang(request)
     from app.services.onboarding_gate_service import evaluate_gate, get_or_create_config
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
     cfg = get_or_create_config(db, current_user.organization_id)
     return evaluate_gate(db, sup, cfg)
 
@@ -120,14 +127,16 @@ def evaluate_supplier_gate(
 def apply_gate_override(
     sid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     from app.services.onboarding_gate_service import apply_override, evaluate_gate, get_or_create_config
 
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
 
     cfg = get_or_create_config(db, current_user.organization_id)
     override_type = payload.get("type")
@@ -145,21 +154,21 @@ def apply_gate_override(
         return evaluate_gate(db, sup, cfg)
 
     if override_type not in ("bypass", "force_controls"):
-        raise HTTPException(400, "type debe ser bypass, force_controls o clear")
+        raise HTTPException(400, _t("onboarding_gate.override_type_invalid", lang))
 
     # Comprobar rol minimo para bypass
     if override_type == "bypass":
         required_role = cfg.bypass_min_role or "admin"
         if required_role == "admin" and current_user.role.value not in ("admin", "superadmin"):
-            raise HTTPException(403, "Solo administradores pueden hacer bypass del gate")
+            raise HTTPException(403, _t("onboarding_gate.bypass_admin_only", lang))
 
     # Justificacion obligatoria
     justification = payload.get("justification", "").strip()
     if cfg.bypass_requires_justification and not justification:
-        raise HTTPException(400, "Se requiere justificacion para esta accion")
+        raise HTTPException(400, _t("onboarding_gate.justification_required", lang))
 
     if override_type == "force_controls" and not cfg.force_controls_allowed:
-        raise HTTPException(403, "El forzado de controles esta desactivado en la configuracion")
+        raise HTTPException(403, _t("onboarding_gate.force_controls_disabled", lang))
 
     extra_signoffs = payload.get("extra_signoffs", [])
     result = apply_override(db, sup, override_type, justification, extra_signoffs, current_user)
@@ -176,24 +185,26 @@ def apply_gate_override(
 def record_onboarding_decision(
     sid: int,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     from app.services.onboarding_gate_service import record_decision
 
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
 
     decision = payload.get("decision")
     if decision not in ("approved", "rejected", "conditional"):
-        raise HTTPException(400, "decision debe ser approved, rejected o conditional")
+        raise HTTPException(400, _t("onboarding_gate.decision_invalid", lang))
 
     notes = payload.get("notes", "").strip()
     conditions = payload.get("conditions", [])
 
     if decision == "conditional" and not conditions:
-        raise HTTPException(400, "Una decision 'conditional' requiere al menos una condicion")
+        raise HTTPException(400, _t("onboarding_gate.conditional_needs_conditions", lang))
 
     result = record_decision(db, sup, decision, notes, conditions, current_user)
     log_action(db, current_user.id, f"onboarding_decision_{decision}", "supplier", str(sid), {
@@ -232,16 +243,18 @@ def sign_chain_item(
     sid: int,
     sign_off_id: str,
     payload: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     from app.services.onboarding_gate_service import (
         evaluate_gate, get_or_create_config, sign_chain_item as _sign,
     )
 
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
 
     cfg = get_or_create_config(db, current_user.organization_id)
     chain_def = cfg.sign_off_chain or []
@@ -249,15 +262,15 @@ def sign_chain_item(
     forced = sup.forced_signoffs or []
 
     if not item_def and sign_off_id not in forced:
-        raise HTTPException(404, f"Item '{sign_off_id}' no existe en la cadena")
+        raise HTTPException(404, _t("onboarding_gate.signoff_not_found", lang, id=sign_off_id))
 
     skipped = bool(payload.get("skipped", False))
     if skipped and item_def and not item_def.get("bypass_allowed", True):
-        raise HTTPException(403, f"El item '{sign_off_id}' no puede ser omitido (bypass_allowed=false)")
+        raise HTTPException(403, _t("onboarding_gate.signoff_no_bypass", lang, id=sign_off_id))
 
     skip_justification = payload.get("skip_justification", "").strip()
     if skipped and not skip_justification:
-        raise HTTPException(400, "Se requiere justificacion para omitir un item")
+        raise HTTPException(400, _t("onboarding_gate.skip_justification_required", lang))
 
     signed_by = payload.get("signed_by") or current_user.full_name or current_user.email
     doc_id = payload.get("document_id")
@@ -275,15 +288,17 @@ def sign_chain_item(
 def undo_sign_off(
     sid: int,
     sign_off_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    lang = get_lang(request)
     from sqlalchemy.orm.attributes import flag_modified
     from app.services.onboarding_gate_service import evaluate_gate, get_or_create_config
 
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
-        raise HTTPException(404, "Proveedor no encontrado")
+        raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
 
     chain_state = [s for s in (sup.sign_off_chain_state or []) if s.get("id") != sign_off_id]
     sup.sign_off_chain_state = chain_state
