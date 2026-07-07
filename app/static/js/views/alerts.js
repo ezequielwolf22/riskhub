@@ -1,9 +1,10 @@
-/* Vista Alertas — Reglas de alerta por email. */
+/* Vista Alertas — Reglas de alerta por email/Teams/Power Automate. */
 const ViewAlerts = {
 
   _settings: null,
   _rules: [],
   _channels: null,
+  _users: [],
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
@@ -32,6 +33,7 @@ const ViewAlerts = {
 
   _render(container) {
     const u = Auth.user();
+    const isAdmin = u && (u.role === 'admin' || u.role === 'superadmin');
     const isAnalyst = u && (u.role === 'admin' || u.role === 'superadmin' || u.role === 'analyst');
 
     const s = this._settings || {};
@@ -71,8 +73,8 @@ const ViewAlerts = {
           <h3 style="margin:0;">${t('alerts.rules_title', { n: this._rules.length })}</h3>
           <div style="display:flex;gap:8px;">
             ${isAnalyst ? `<button class="btn btn-sm" onclick="ViewAlerts._checkRules()">
-              ${t('alerts.eval_rules')}</button>
-            <button class="btn btn-sm btn-primary" onclick="ViewAlerts._newRule()">
+              ${t('alerts.eval_rules')}</button>` : ''}
+            ${isAdmin ? `<button class="btn btn-sm btn-primary" onclick="ViewAlerts._newRule()">
               ${t('alerts.new_rule')}</button>` : ''}
           </div>
         </div>
@@ -113,18 +115,60 @@ const ViewAlerts = {
       </div>`;
   },
 
-  // Ocultar/mostrar campo de umbral segun el tipo de evento
+  // Configuracion de umbral por tipo de evento — solo estos tipos muestran/usan el campo umbral.
+  _THRESHOLD_CONFIG: {
+    risk_critical: { min: 1, max: 8, def: 6 },
+    risk_high: { min: 1, max: 8, def: 5 },
+    risk_no_treatment: { min: 1, max: 8, def: 5 },
+    treatment_due_soon: { min: 1, max: 90, def: 7, labelKey: 'alerts.threshold_label_days', isDays: true },
+    supplier_critical_risk: { min: 0, max: 100, def: 70, labelKey: 'alerts.threshold_label_score' },
+  },
+
+  _EVENT_ENTITY_LABEL_KEYS: {
+    supplier: 'alerts.entity_supplier',
+    supplier_questionnaire: 'alerts.entity_supplier_questionnaire',
+  },
+
+  // Ocultar/mostrar campo de umbral y bloque de condiciones segun el tipo de evento
   _onTypeChange(sel) {
-    const noThreshold = ['daily_digest', 'treatment_overdue', 'control_review_overdue',
-                         'incident_p1p2', 'nis2_pending', 'policy_review_overdue', 'task_overdue', 'compound'];
+    const cfg = ViewAlerts._THRESHOLD_CONFIG[sel.value];
     const thresholdWrap = document.getElementById('r-threshold-wrap');
     if (thresholdWrap) {
-      thresholdWrap.style.display = noThreshold.includes(sel.value) ? 'none' : '';
+      thresholdWrap.style.display = cfg ? '' : 'none';
+      if (cfg) {
+        const label = document.getElementById('r-threshold-label');
+        if (label) label.textContent = t(cfg.labelKey || 'alerts.rule_threshold_label');
+        const inp = document.getElementById('r-threshold');
+        if (inp) { inp.min = cfg.min; inp.max = cfg.max; inp.value = cfg.def; }
+      }
     }
     const compoundWrap = document.getElementById('r-compound-wrap');
     if (compoundWrap) {
       compoundWrap.style.display = sel.value === 'compound' ? '' : 'none';
     }
+    if (sel.value === 'compound') {
+      ViewAlerts._onEntityChange(document.getElementById('r-entity'));
+    }
+  },
+
+  // Actualiza el texto de ayuda de campos disponibles segun la entidad elegida (regla personalizada)
+  _onEntityChange(sel) {
+    const hintEl = document.getElementById('r-fields-hint');
+    if (!hintEl) return;
+    const entity = sel ? sel.value : 'risk';
+    const hintKeys = {
+      risk: 'alerts.fields_hint_risk',
+      supplier: 'alerts.fields_hint_supplier',
+      supplier_questionnaire: 'alerts.fields_hint_supplier_questionnaire',
+    };
+    hintEl.innerHTML = t(hintKeys[entity] || hintKeys.risk) + '<br>' + t('alerts.fields_hint_operators');
+  },
+
+  // Autocompleta el email destinatario con el del usuario interno seleccionado
+  _onRecipientUserChange(sel) {
+    if (!sel || !sel.value) return;
+    const emailInput = document.getElementById('r-email');
+    if (emailInput) emailInput.value = sel.value;
   },
 
   _ruleRow(r) {
@@ -141,15 +185,34 @@ const ViewAlerts = {
       nis2_pending: t('alerts.event_nis2_pending'),
       policy_review_overdue: t('alerts.event_policy_review_overdue'),
       task_overdue: t('alerts.event_task_overdue'),
+      compound: t('alerts.event_compound'),
+      supplier_created: t('alerts.event_supplier_created'),
+      supplier_critical_risk: t('alerts.event_supplier_critical_risk'),
+      vendor_issue_created: t('alerts.event_vendor_issue_created'),
+      vendor_issue_sla_breach: t('alerts.event_vendor_issue_sla_breach'),
+      questionnaire_overdue: t('alerts.event_questionnaire_overdue'),
+      bcp_review_overdue: t('alerts.event_bcp_review_overdue'),
+      bcp_under_review: t('alerts.event_bcp_under_review'),
+      regwatch_new_change: t('alerts.event_regwatch_new_change'),
+      regwatch_high_impact: t('alerts.event_regwatch_high_impact'),
     };
+    let eventLabel = UI.esc(eventLabels[r.event_type] || r.event_type);
+    if (r.event_type === 'compound' && r.entity_type && r.entity_type !== 'risk') {
+      const entityKey = ViewAlerts._EVENT_ENTITY_LABEL_KEYS[r.entity_type];
+      if (entityKey) eventLabel += ` (${t(entityKey)})`;
+    }
+    const thCfg = ViewAlerts._THRESHOLD_CONFIG[r.event_type];
+    const thresholdDisplay = thCfg
+      ? (thCfg.isDays ? `${r.threshold_level} d` : `≥ ${r.threshold_level}`)
+      : '—';
     const lastTrig = r.last_triggered_at
       ? new Date(r.last_triggered_at).toLocaleDateString(_locale)
       : t('alerts.last_never');
     return `
       <tr id="rule-row-${r.id}">
         <td><strong>${UI.esc(r.name)}</strong></td>
-        <td><span class="badge badge-muted">${UI.esc(eventLabels[r.event_type] || r.event_type)}</span></td>
-        <td style="text-align:center;">≥ ${r.threshold_level}</td>
+        <td><span class="badge badge-muted">${eventLabel}</span></td>
+        <td style="text-align:center;">${thresholdDisplay}</td>
         <td style="font-size:12px;">${UI.esc(r.recipient_email)}</td>
         <td style="font-size:12px;color:var(--text-muted);">${lastTrig}</td>
         <td style="text-align:center;">
@@ -256,14 +319,23 @@ const ViewAlerts = {
     }
   },
 
-  _newRule() {
+  async _newRule() {
+    try {
+      this._users = await Api.users.list();
+    } catch (e) {
+      this._users = [];
+    }
+    const userOptions = (this._users || [])
+      .map(u => `<option value="${UI.esc(u.email)}">${UI.esc(u.full_name || u.email)} (${UI.esc(u.email)})</option>`)
+      .join('');
+
     UI.modal(t('alerts.new_rule_title'), `
       <div class="form-grid">
         <div class="span2">
           <label>${t('alerts.rule_name_label')}</label>
           <input id="r-name" class="input" type="text" placeholder="${t('alerts.rule_name_placeholder')}">
         </div>
-        <div>
+        <div class="span2">
           <label>${t('alerts.rule_type_label')}</label>
           <select id="r-type" class="input" onchange="ViewAlerts._onTypeChange(this)">
             <optgroup label="${t('alerts.group_risks')}">
@@ -273,7 +345,6 @@ const ViewAlerts = {
               <option value="risk_no_treatment">${t('alerts.event_risk_no_treatment_opt')}</option>
               <option value="treatment_due_soon">${t('alerts.event_treatment_due_soon_opt')}</option>
               <option value="daily_digest">${t('alerts.event_daily_digest_opt')}</option>
-              <option value="compound">${t('alerts.event_compound_opt')}</option>
             </optgroup>
             <optgroup label="${t('alerts.group_controls')}">
               <option value="control_review_overdue">${t('alerts.event_control_opt')}</option>
@@ -286,11 +357,38 @@ const ViewAlerts = {
               <option value="policy_review_overdue">${t('alerts.event_policy_opt')}</option>
               <option value="task_overdue">${t('alerts.event_task_opt')}</option>
             </optgroup>
+            <optgroup label="${t('alerts.group_suppliers')}">
+              <option value="supplier_created">${t('alerts.event_supplier_created_opt')}</option>
+              <option value="supplier_critical_risk">${t('alerts.event_supplier_critical_risk_opt')}</option>
+              <option value="vendor_issue_created">${t('alerts.event_vendor_issue_created_opt')}</option>
+              <option value="vendor_issue_sla_breach">${t('alerts.event_vendor_issue_sla_breach_opt')}</option>
+              <option value="questionnaire_overdue">${t('alerts.event_questionnaire_overdue_opt')}</option>
+            </optgroup>
+            <optgroup label="${t('alerts.group_bcp')}">
+              <option value="bcp_review_overdue">${t('alerts.event_bcp_review_overdue_opt')}</option>
+              <option value="bcp_under_review">${t('alerts.event_bcp_under_review_opt')}</option>
+            </optgroup>
+            <optgroup label="${t('alerts.group_regwatch')}">
+              <option value="regwatch_new_change">${t('alerts.event_regwatch_new_change_opt')}</option>
+              <option value="regwatch_high_impact">${t('alerts.event_regwatch_high_impact_opt')}</option>
+            </optgroup>
+            <optgroup label="${t('alerts.group_other')}">
+              <option value="compound">${t('alerts.event_compound_opt')}</option>
+            </optgroup>
           </select>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${t('alerts.custom_alerts_hint')}</div>
         </div>
-        <div id="r-threshold-wrap">
-          <label>${t('alerts.rule_threshold_label')}</label>
+        <div id="r-threshold-wrap" style="display:none;">
+          <label id="r-threshold-label">${t('alerts.rule_threshold_label')}</label>
           <input id="r-threshold" class="input" type="number" value="5" min="1" max="8">
+        </div>
+        <div>
+          <label>${t('alerts.recipient_user_label')}</label>
+          <select id="r-user" class="input" onchange="ViewAlerts._onRecipientUserChange(this)">
+            <option value="">${t('alerts.recipient_user_placeholder')}</option>
+            ${userOptions}
+          </select>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${t('alerts.recipient_user_hint')}</div>
         </div>
         <div class="span2">
           <label>${t('alerts.rule_email_label')}</label>
@@ -298,8 +396,15 @@ const ViewAlerts = {
         </div>
         <div class="span2" id="r-compound-wrap" style="display:none;">
           <div style="background:var(--bg-2);border-radius:8px;padding:12px;border:1px solid var(--border);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <strong style="font-size:13px;">${t('alerts.compound_conditions')}</strong>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+                ${t('alerts.entity_label')}
+                <select id="r-entity" class="input" style="width:auto;padding:3px 8px;" onchange="ViewAlerts._onEntityChange(this)">
+                  <option value="risk">${t('alerts.entity_risk')}</option>
+                  <option value="supplier">${t('alerts.entity_supplier')}</option>
+                  <option value="supplier_questionnaire">${t('alerts.entity_supplier_questionnaire')}</option>
+                </select>
+              </div>
               <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
                 ${t('alerts.compound_logic')}
                 <select id="r-logic" class="input" style="width:auto;padding:3px 8px;">
@@ -310,10 +415,7 @@ const ViewAlerts = {
             </div>
             <div id="r-conditions-list" style="margin-bottom:10px;"></div>
             <button type="button" class="btn btn-ghost btn-sm" id="btn-add-condition">${t('alerts.add_condition')}</button>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">
-              Fields: <code>residual_level</code>, <code>inherent_level</code>, <code>control_count</code><br>
-              Operators: <code>gte</code> (>=), <code>lte</code> (<=), <code>gt</code> (>), <code>lt</code> (<), <code>eq</code> (=)
-            </div>
+            <div id="r-fields-hint" style="font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
           </div>
         </div>
       </div>
@@ -323,6 +425,7 @@ const ViewAlerts = {
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = () => ViewAlerts._createRule();
+    ViewAlerts._onEntityChange(document.getElementById('r-entity'));
 
     // Compound conditions builder
     const conditions = [];
@@ -344,7 +447,7 @@ const ViewAlerts = {
         inp.oninput = inp.onchange = () => {
           const idx = parseInt(inp.dataset.ci);
           const field = inp.dataset.cf;
-          conditions[idx][field] = field === 'value' ? (parseFloat(inp.value) ?? 0) : inp.value;
+          conditions[idx][field] = field === 'value' ? (parseFloat(inp.value) || 0) : inp.value;
         };
       });
       list.querySelectorAll('[data-del-ci]').forEach(btn => {
@@ -360,15 +463,20 @@ const ViewAlerts = {
 
   async _createRule() {
     const typeVal = document.getElementById('r-type').value;
+    const cfg = ViewAlerts._THRESHOLD_CONFIG[typeVal];
     const body = {
       name: document.getElementById('r-name').value.trim(),
-      event_type: typeVal === 'compound' ? 'risk_high' : typeVal,
+      event_type: typeVal,
       recipient_email: document.getElementById('r-email').value.trim(),
-      threshold_level: parseInt(document.getElementById('r-threshold').value) || 5,
+      threshold_level: cfg ? (parseInt(document.getElementById('r-threshold').value) || cfg.def) : 0,
     };
-    if (typeVal === 'compound' && ViewAlerts._pendingConditions?.length) {
-      body.conditions = ViewAlerts._pendingConditions;
+    if (typeVal === 'compound') {
+      body.entity_type = document.getElementById('r-entity')?.value || 'risk';
       body.logic = document.getElementById('r-logic')?.value || 'AND';
+      body.conditions = (ViewAlerts._pendingConditions || []).filter(c => c.field);
+      if (!body.conditions.length) {
+        UI.toast(t('alerts.rule_fill'), 'error'); return;
+      }
     }
     if (!body.name || !body.recipient_email) {
       UI.toast(t('alerts.rule_fill'), 'error'); return;

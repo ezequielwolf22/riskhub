@@ -645,6 +645,9 @@ class AlertRule(Base):
     # v5.3.0 — reglas compuestas
     conditions = Column(JSON, nullable=True)    # [{"field":"residual_level","op":"gte","value":6}, ...]
     logic = Column(String(3), default="AND")    # AND | OR
+    # v6.5.0 — reglas compuestas multi-entidad (event_type="compound"): a que entidad
+    # aplican las conditions. None = "risk" (comportamiento legacy).
+    entity_type = Column(String(32), nullable=True)  # risk|supplier|supplier_questionnaire
 
 
 # ---------- KRI — KEY RISK INDICATORS (v5.3.0) ----------

@@ -748,6 +748,9 @@ def _migrate_columns() -> None:
         ("ALTER TABLE email_settings ADD COLUMN teams_webhook_enabled BOOLEAN DEFAULT 0", "email_settings", "teams_webhook_enabled"),
         ("ALTER TABLE email_settings ADD COLUMN power_automate_webhook_url_encrypted TEXT", "email_settings", "power_automate_webhook_url_encrypted"),
         ("ALTER TABLE email_settings ADD COLUMN power_automate_webhook_enabled BOOLEAN DEFAULT 0", "email_settings", "power_automate_webhook_enabled"),
+        # v6.5.0 — Alertas: catalogo ampliado (proveedores/TPRM, BCP, vigilancia normativa)
+        # y reglas compuestas multi-entidad
+        ("ALTER TABLE alert_rules ADD COLUMN entity_type VARCHAR(32)", "alert_rules", "entity_type"),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:

@@ -1,5 +1,5 @@
 """Gestion de alertas por email: configuracion SMTP y reglas de alerta."""
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -53,12 +53,44 @@ class AlertChannelsOut(BaseModel):
     power_automate: AlertChannelStatusOut
 
 
+VALID_ALERT_EVENT_TYPES = {
+    # Riesgos
+    "risk_critical", "risk_high", "treatment_overdue", "risk_no_treatment",
+    "treatment_due_soon", "daily_digest", "compound",
+    # Controles
+    "control_review_overdue",
+    # Incidentes
+    "incident_p1p2", "nis2_pending",
+    # Politicas / tareas
+    "policy_review_overdue", "task_overdue",
+    # Proveedores / TPRM
+    "supplier_created", "supplier_critical_risk", "vendor_issue_created",
+    "vendor_issue_sla_breach", "questionnaire_overdue",
+    # BCP / ISO 22301
+    "bcp_review_overdue", "bcp_under_review",
+    # Vigilancia normativa (regwatch)
+    "regwatch_new_change", "regwatch_high_impact",
+}
+
+VALID_COMPOUND_ENTITY_TYPES = {"risk", "supplier", "supplier_questionnaire"}
+
+
+class AlertConditionIn(BaseModel):
+    field: str
+    op: str = "gte"
+    value: float
+
+
 class AlertRuleIn(BaseModel):
     name: str
-    event_type: str  # risk_high, risk_critical, treatment_overdue, risk_no_treatment
+    event_type: str
     recipient_email: EmailStr
-    threshold_level: int = Field(default=5, ge=0, le=8)  # M1: rango valido para matriz 5x5
+    threshold_level: int = Field(default=5, ge=0, le=100)
     is_active: bool = True
+    # Solo aplica cuando event_type == "compound"
+    entity_type: Optional[str] = None
+    conditions: Optional[List[AlertConditionIn]] = None
+    logic: str = "AND"
 
 
 class AlertRuleOut(BaseModel):
@@ -70,6 +102,9 @@ class AlertRuleOut(BaseModel):
     is_active: bool
     created_at: datetime
     last_triggered_at: Optional[datetime] = None
+    entity_type: Optional[str] = None
+    conditions: Optional[List[dict]] = None
+    logic: str = "AND"
 
 
 class SendRiskAlertIn(BaseModel):
@@ -264,16 +299,22 @@ def test_power_automate_channel(db: Session = Depends(get_db), current_user=Depe
 
 # ---------- Endpoints Reglas ----------
 
-@router.get("/rules", response_model=List[AlertRuleOut])
-def list_rules(db: Session = Depends(get_db),
-               current_user=Depends(get_current_user)):
-    rules = filter_by_org(db.query(AlertRule), AlertRule, current_user).order_by(AlertRule.created_at).all()
-    return [AlertRuleOut(
+def _rule_to_out(r: AlertRule) -> AlertRuleOut:
+    return AlertRuleOut(
         id=r.id, name=r.name, event_type=r.event_type,
         recipient_email=r.recipient_email, threshold_level=r.threshold_level,
         is_active=r.is_active, created_at=r.created_at,
         last_triggered_at=r.last_triggered_at,
-    ) for r in rules]
+        entity_type=r.entity_type, conditions=r.conditions,
+        logic=r.logic or "AND",
+    )
+
+
+@router.get("/rules", response_model=List[AlertRuleOut])
+def list_rules(db: Session = Depends(get_db),
+               current_user=Depends(get_current_user)):
+    rules = filter_by_org(db.query(AlertRule), AlertRule, current_user).order_by(AlertRule.created_at).all()
+    return [_rule_to_out(r) for r in rules]
 
 
 @router.post("/rules", response_model=AlertRuleOut, status_code=201)
@@ -282,9 +323,10 @@ def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
     # M1: restringido a ADMIN — analyst podria exfiltrar alertas a email externo
     if current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
         raise HTTPException(403, "Solo administradores pueden crear reglas de alerta")
-    valid_types = {"risk_high", "risk_critical", "treatment_overdue", "risk_no_treatment"}
-    if body.event_type not in valid_types:
-        raise HTTPException(422, f"event_type debe ser uno de: {', '.join(valid_types)}")
+    if body.event_type not in VALID_ALERT_EVENT_TYPES:
+        raise HTTPException(422, f"event_type debe ser uno de: {', '.join(sorted(VALID_ALERT_EVENT_TYPES))}")
+    if body.event_type == "compound" and body.entity_type and body.entity_type not in VALID_COMPOUND_ENTITY_TYPES:
+        raise HTTPException(422, f"entity_type debe ser uno de: {', '.join(sorted(VALID_COMPOUND_ENTITY_TYPES))}")
     rule = AlertRule(organization_id=current_user.organization_id, **body.model_dump())
     db.add(rule)
     log_action(db, current_user.id, "create", "alert_rule", None,
@@ -292,12 +334,7 @@ def create_rule(body: AlertRuleIn, db: Session = Depends(get_db),
                 "recipient": body.recipient_email})
     db.commit()
     db.refresh(rule)
-    return AlertRuleOut(
-        id=rule.id, name=rule.name, event_type=rule.event_type,
-        recipient_email=rule.recipient_email, threshold_level=rule.threshold_level,
-        is_active=rule.is_active, created_at=rule.created_at,
-        last_triggered_at=rule.last_triggered_at,
-    )
+    return _rule_to_out(rule)
 
 
 @router.delete("/rules/{rule_id}", status_code=204)
@@ -331,12 +368,7 @@ def toggle_rule(rule_id: int, request: Request, db: Session = Depends(get_db),
                {"name": rule.name, "is_active": rule.is_active})
     db.commit()
     db.refresh(rule)
-    return AlertRuleOut(
-        id=rule.id, name=rule.name, event_type=rule.event_type,
-        recipient_email=rule.recipient_email, threshold_level=rule.threshold_level,
-        is_active=rule.is_active, created_at=rule.created_at,
-        last_triggered_at=rule.last_triggered_at,
-    )
+    return _rule_to_out(rule)
 
 
 # ---------- Envio manual y evaluacion de reglas ----------
@@ -378,8 +410,10 @@ def send_risk_alert(risk_id: int, body: SendRiskAlertIn,
 @router.post("/check-rules")
 def check_rules(db: Session = Depends(get_db),
                 current_user=Depends(get_current_user)):
-    """Evalua todas las reglas activas y envia alertas (email/Teams/Power Automate,
-    segun lo configurado) para los riesgos que cumplen criterios."""
+    """Evalua todas las reglas activas de la organizacion y envia alertas
+    (email/Teams/Power Automate, segun lo configurado) para cualquier categoria:
+    riesgos, controles, incidentes, politicas, tareas, proveedores/TPRM, BCP y
+    vigilancia normativa. Misma logica que la evaluacion periodica del scheduler."""
     if current_user.role not in (UserRole.ADMIN, UserRole.ANALYST):
         raise HTTPException(403, "Acceso denegado")
     # A1: org_id para evitar usar SMTP de otro tenant
@@ -387,65 +421,5 @@ def check_rules(db: Session = Depends(get_db),
     if not notification_channels.has_any_channel(cfg):
         raise HTTPException(400, "No hay ningun canal de alerta configurado (email, Teams o Power Automate)")
 
-    from app.models import RiskContext, RiskStatus
-    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
-    org = ctx.organization_name if ctx else "Organizacion"
-
-    rules = filter_by_org(
-        db.query(AlertRule).filter(AlertRule.is_active.is_(True)), AlertRule, current_user
-    ).all()
-    risks = filter_by_org(db.query(Risk), Risk, current_user).all()
-    sent = 0
-    errors = []
-
-    for rule in rules:
-        matching = []
-        now = datetime.now(timezone.utc)
-
-        if rule.event_type == "risk_critical":
-            matching = [r for r in risks if r.residual_level >= rule.threshold_level
-                        and r.status not in (RiskStatus.ACCEPTED, RiskStatus.CLOSED)]
-        elif rule.event_type == "risk_high":
-            matching = [r for r in risks if r.residual_level >= rule.threshold_level
-                        and r.status not in (RiskStatus.ACCEPTED, RiskStatus.CLOSED)]
-        elif rule.event_type == "treatment_overdue":
-            matching = [r for r in risks
-                        if r.treatment_due_date and r.treatment_due_date < now
-                        and r.status not in (RiskStatus.TREATED, RiskStatus.ACCEPTED, RiskStatus.CLOSED)]
-        elif rule.event_type == "risk_no_treatment":
-            matching = [r for r in risks
-                        if r.residual_level >= rule.threshold_level
-                        and not r.treatment_option
-                        and r.status not in (RiskStatus.ACCEPTED, RiskStatus.CLOSED)]
-
-        for risk in matching:
-            reason_map = {
-                "risk_critical": f"Riesgo {risk.code} supera el umbral critico (nivel {risk.residual_level})",
-                "risk_high": f"Riesgo {risk.code} supera el umbral alto configurado (nivel {risk.residual_level})",
-                "treatment_overdue": f"El plan de tratamiento del riesgo {risk.code} esta vencido",
-                "risk_no_treatment": f"Riesgo {risk.code} (nivel {risk.residual_level}) sin plan de tratamiento definido",
-            }
-            reason = reason_map.get(rule.event_type, "")
-            result = notification_channels.dispatch_alert(
-                db, cfg, org, rule.recipient_email,
-                f"RiskHub — {reason_map.get(rule.event_type, 'Alerta')}",
-                reason,
-                html_body=email_service.risk_alert_html(risk, org, reason),
-                event=f"risk.{rule.event_type}",
-                fields={"risk_code": risk.code, "residual_level": risk.residual_level, "reason": reason},
-            )
-            if any(v for v in result.values()):
-                sent += 1
-            for channel, ok in result.items():
-                if ok is False:
-                    errors.append(f"{channel}: fallo al enviar alerta para {risk.code}")
-
-        if matching:
-            rule.last_triggered_at = now
-            db.commit()
-
-    return {
-        "sent": sent,
-        "rules_evaluated": len(rules),
-        "errors": errors,
-    }
+    from app.services.alert_rules_service import evaluate_rules_for_org
+    return evaluate_rules_for_org(db, current_user.organization_id)

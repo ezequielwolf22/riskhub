@@ -1012,6 +1012,28 @@ const ViewGuide = {
       <li><strong>Politica vencida:</strong> politicas de seguridad con fecha de revision superada. Cooldown 20h.</li>
       <li><strong>Tarea vencida:</strong> tareas de tratamiento con fecha limite superada. Cooldown 20h.</li>
     </ul>
+    ${this._h('Reglas de alerta — Proveedores / TPRM')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Nuevo proveedor:</strong> resumen de proveedores dados de alta desde la ultima notificacion (ej. "se ha creado un nuevo proveedor").</li>
+      <li><strong>Proveedor con riesgo critico:</strong> proveedores cuyo score de riesgo residual (0-100) supera el umbral configurado.</li>
+      <li><strong>Nuevo hallazgo de proveedor:</strong> hallazgos (vendor issues) creados desde la ultima notificacion.</li>
+      <li><strong>Hallazgo con SLA vencido:</strong> hallazgos de proveedor abiertos que superaron su plazo de resolucion. Cooldown 20h.</li>
+      <li><strong>Cuestionario vencido:</strong> cuestionarios de seguridad enviados a proveedores sin responder y con plazo superado. Cooldown 20h.</li>
+    </ul>
+    ${this._h('Reglas de alerta — BCP / Continuidad de negocio (ISO 22301)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Revision de plan BCP vencida:</strong> planes de continuidad/recuperacion con fecha de revision superada. Cooldown 20h.</li>
+      <li><strong>Plan BCP en revision:</strong> planes actualmente en estado "en revision" (por ejemplo, tras un cambio normativo detectado por Vigilancia Normativa). Cooldown 20h.</li>
+    </ul>
+    ${this._h('Reglas de alerta — Vigilancia normativa (Regwatch)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Nuevo cambio normativo:</strong> cambios detectados y anadidos al inbox de la organizacion desde la ultima notificacion.</li>
+      <li><strong>Cambio normativo de alto impacto:</strong> cambios de severidad "sustancial" o "mayor" que siguen pendientes de revision en el inbox. Cooldown 20h.</li>
+    </ul>
+    ${this._h('Regla personalizada (por si falta algun evento)')}
+    ${this._p('Si ninguna de las reglas predefinidas cubre lo que necesitas, elige <strong>"Regla personalizada"</strong> en el desplegable de tipo de evento. Define a que entidad aplica (Riesgo, Proveedor o Cuestionario de proveedor), anade una o mas condiciones sobre sus campos numericos (ej. <code>residual_risk_score >= 80</code>) y combina varias con logica AND/OR. RiskHub evalua la condicion cada hora y te avisa cuando se cumple.')}
+    ${this._h('Destinatario de la alerta')}
+    ${this._p('El campo <strong>"Notificar a usuario interno"</strong> te deja elegir a cualquier usuario de tu organizacion y autocompleta su email — util para que analistas, responsables de riesgo o el propio CISO reciban avisos sin tener que memorizar su direccion. Tambien puedes escribir directamente cualquier email externo en el campo de destinatario, o combinar ambos casos con distintas reglas.')}
     ${this._h('Evaluacion de reglas')}
     ${this._p('Las reglas se evaluan de <strong>dos formas</strong>:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 12px;">
