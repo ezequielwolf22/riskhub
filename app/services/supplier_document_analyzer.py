@@ -86,7 +86,8 @@ Sin texto adicional. Sin markdown. SOLO el JSON."""
 
 def _resolve_ai(db: Session, org_id: Optional[int]) -> tuple[str, str]:
     from app.services.iso_clause_extractor import _resolve_ai_config
-    return _resolve_ai_config(db, org_id)
+    api_key, model, _anon = _resolve_ai_config(db, org_id)
+    return api_key, model
 
 
 def _read_doc_bytes(stored_name: str) -> bytes:
