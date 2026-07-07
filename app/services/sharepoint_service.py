@@ -5,15 +5,19 @@ Requiere un Azure AD App Registration con permisos:
   - Sites.Read.All (Application)
   - Files.Read.All (Application)
 """
+import base64
+import hashlib
 import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from typing import Optional
 
 
 _GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 _TOKEN_CACHE: dict[str, tuple[str, float]] = {}   # key -> (token, expires_at monotonic)
+_INTEGRATION_NAME = "sharepoint"
 
 
 def get_token(tenant_id: str, client_id: str, client_secret: str,
@@ -53,11 +57,8 @@ def get_token(tenant_id: str, client_id: str, client_secret: str,
     return token
 
 
-def _graph_get(token: str, path: str, params: Optional[dict] = None) -> dict:
-    """Hace un GET a la Graph API y devuelve el JSON parseado."""
-    url = f"{_GRAPH_BASE}{path}"
-    if params:
-        url += "?" + urllib.parse.urlencode(params)
+def _graph_get_url(token: str, url: str) -> dict:
+    """Hace un GET a una URL absoluta de Graph (usado para paginacion/delta) y devuelve el JSON."""
     req = urllib.request.Request(url)
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Accept", "application/json")
@@ -72,6 +73,14 @@ def _graph_get(token: str, path: str, params: Optional[dict] = None) -> dict:
         except Exception:
             msg = str(e)
         raise ValueError(f"Graph API error {e.code}: {msg}")
+
+
+def _graph_get(token: str, path: str, params: Optional[dict] = None) -> dict:
+    """Hace un GET a la Graph API y devuelve el JSON parseado."""
+    url = f"{_GRAPH_BASE}{path}"
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    return _graph_get_url(token, url)
 
 
 def list_sites(token: str, search: str = "*") -> list[dict]:
@@ -160,3 +169,145 @@ def is_importable(filename: str, mime: str) -> bool:
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     inferred = _EXT_MIME.get(ext, mime)
     return inferred in _IMPORTABLE_MIME or any(k in mime for k in ("pdf", "wordprocessingml", "plain", "csv"))
+
+
+# ---------- Deteccion de cambios (delta query) ----------
+
+def delta_scan(token: str, drive_id: str, item_id: str,
+                delta_link: Optional[str] = None) -> tuple[list[dict], Optional[str]]:
+    """Escanea cambios (nuevos/modificados/eliminados) bajo un item usando delta query de Graph.
+
+    Si delta_link es None hace un escaneo inicial completo del arbol bajo item_id.
+    Si se pasa un delta_link (guardado de una llamada anterior), Graph devuelve solo
+    los cambios desde entonces. Devuelve (items, next_delta_link) — next_delta_link
+    debe guardarse para la siguiente sincronizacion incremental.
+    """
+    url = delta_link or (
+        f"{_GRAPH_BASE}/drives/{drive_id}/items/{item_id}/delta"
+        "?$select=id,name,size,file,folder,deleted,parentReference,lastModifiedDateTime"
+    )
+    items: list[dict] = []
+    next_delta_link = delta_link
+    while True:
+        data = _graph_get_url(token, url)
+        for it in data.get("value", []):
+            is_deleted = "deleted" in it
+            if "folder" in it and not is_deleted:
+                continue   # las carpetas no se importan, solo archivos
+            mime = it.get("file", {}).get("mimeType", "") if not is_deleted else ""
+            items.append({
+                "id": it["id"],
+                "name": it.get("name", ""),
+                "deleted": is_deleted,
+                "size": it.get("size", 0),
+                "mime": mime,
+                "modified": it.get("lastModifiedDateTime", ""),
+            })
+        if "@odata.nextLink" in data:
+            url = data["@odata.nextLink"]
+            continue
+        next_delta_link = data.get("@odata.deltaLink", next_delta_link)
+        break
+    return items, next_delta_link
+
+
+def get_item_parent_chain(token: str, drive_id: str, item_id: str, max_depth: int = 20) -> list[str]:
+    """Devuelve la cadena de IDs ancestros del item, desde el propio item hasta la raiz."""
+    chain = []
+    current_id = item_id
+    for _ in range(max_depth):
+        chain.append(current_id)
+        try:
+            data = _graph_get(token, f"/drives/{drive_id}/items/{current_id}",
+                              {"$select": "id,parentReference"})
+        except ValueError:
+            break
+        parent_id = (data.get("parentReference") or {}).get("id")
+        if not parent_id or parent_id == current_id:
+            break
+        current_id = parent_id
+    return chain
+
+
+def item_is_allowed(token: str, allowed_folders: list[dict], drive_id: str, item_id: str) -> bool:
+    """Comprueba si un item esta dentro de alguna de las carpetas permitidas.
+
+    Si no hay carpetas configuradas se permite todo (compatibilidad con instalaciones
+    que aun no han configurado el allowlist). "root" es un alias especial que permite
+    toda la biblioteca (no aparece en la cadena de ancestros real de Graph).
+    """
+    if not allowed_folders:
+        return True
+    allowed_ids = {f["item_id"] for f in allowed_folders if f.get("drive_id") == drive_id}
+    if not allowed_ids:
+        return False
+    if "root" in allowed_ids or item_id in allowed_ids:
+        return True
+    chain = get_item_parent_chain(token, drive_id, item_id)
+    return any(cid in allowed_ids for cid in chain)
+
+
+# ---------- Configuracion cifrada (compartida entre router y scheduler) ----------
+
+def _fernet_key() -> bytes:
+    from app.config import settings
+    return base64.urlsafe_b64encode(hashlib.sha256(settings.secret_key.encode()).digest())
+
+
+def encrypt_json(data: dict) -> str:
+    from cryptography.fernet import Fernet
+    return Fernet(_fernet_key()).encrypt(json.dumps(data).encode()).decode()
+
+
+def decrypt_json(token: str) -> dict:
+    from cryptography.fernet import Fernet
+    return json.loads(Fernet(_fernet_key()).decrypt(token.encode()).decode())
+
+
+def get_config(db, organization_id: int | None = None) -> Optional[dict]:
+    """Devuelve la configuracion de SharePoint descifrada, o None si no existe."""
+    from app.models import IntegrationConfig
+    q = db.query(IntegrationConfig).filter(IntegrationConfig.name == _INTEGRATION_NAME)
+    if organization_id is not None:
+        q = q.filter(IntegrationConfig.organization_id == organization_id)
+    ic = q.first()
+    if not ic or not ic.config_encrypted:
+        return None
+    try:
+        return decrypt_json(ic.config_encrypted)
+    except Exception:
+        return None
+
+
+def update_config(db, organization_id: int | None, updated_by_id: int | None, **fields) -> dict:
+    """Actualiza (merge) campos sueltos de la config existente y la persiste cifrada."""
+    from app.models import IntegrationConfig
+    ic = db.query(IntegrationConfig).filter(
+        IntegrationConfig.name == _INTEGRATION_NAME,
+        IntegrationConfig.organization_id == organization_id,
+    ).first()
+    if not ic or not ic.config_encrypted:
+        raise ValueError("SharePoint no configurado")
+    cfg = decrypt_json(ic.config_encrypted)
+    cfg.update(fields)
+    ic.config_encrypted = encrypt_json(cfg)
+    ic.updated_at = datetime.now(timezone.utc)
+    ic.updated_by_id = updated_by_id
+    db.commit()
+    return cfg
+
+
+def list_configured_organizations(db) -> list[int]:
+    """Devuelve los organization_id con sincronizacion de SharePoint activada."""
+    from app.models import IntegrationConfig
+    org_ids = []
+    for ic in db.query(IntegrationConfig).filter(IntegrationConfig.name == _INTEGRATION_NAME).all():
+        if not ic.config_encrypted or ic.organization_id is None:
+            continue
+        try:
+            cfg = decrypt_json(ic.config_encrypted)
+        except Exception:
+            continue
+        if cfg.get("sync_enabled") and cfg.get("allowed_folders"):
+            org_ids.append(ic.organization_id)
+    return org_ids

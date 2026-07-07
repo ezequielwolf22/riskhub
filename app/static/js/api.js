@@ -438,6 +438,11 @@ const Api = {
     files: (drive_id, item_id) => Api.get('/api/integrations/sharepoint/files',
       item_id && item_id !== 'root' ? { drive_id, item_id } : { drive_id }),
     importFiles: (items, category) => Api.post('/api/integrations/sharepoint/import', { items, category }),
+    getAllowedFolders: () => Api.get('/api/integrations/sharepoint/allowed-folders'),
+    setAllowedFolders: (folders) => Api.put('/api/integrations/sharepoint/allowed-folders', { folders }),
+    getSyncStatus: () => Api.get('/api/integrations/sharepoint/sync-status'),
+    setSyncEnabled: (sync_enabled) => Api.put('/api/integrations/sharepoint/sync-settings', { sync_enabled }),
+    syncNow: () => Api.post('/api/integrations/sharepoint/sync', {}),
   },
   cve: {
     getConfig: () => Api.get('/api/cve/config'),

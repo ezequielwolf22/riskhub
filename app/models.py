@@ -1671,6 +1671,12 @@ class AiDocument(Base):
     detected_category = Column(String(64), nullable=True)
     # Clausulas ISO extraidas automaticamente por IA (v2.2)
     extracted_clauses = Column(JSON, nullable=True)  # [{ref, title, control_id, confidence}]
+    # Origen del documento y trazabilidad para sincronizacion (SharePoint)
+    source = Column(String(32), default="upload")   # upload | sharepoint
+    source_site_id = Column(String(128), nullable=True)
+    source_drive_id = Column(String(128), nullable=True)
+    source_item_id = Column(String(128), nullable=True, index=True)
+    source_deleted = Column(Boolean, default=False)  # True si el archivo origen ya no existe
 
     uploaded_by = relationship("User")
     chunks = relationship("AiDocumentChunk", back_populates="document",

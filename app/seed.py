@@ -748,6 +748,12 @@ def _migrate_columns() -> None:
         ("ALTER TABLE email_settings ADD COLUMN teams_webhook_enabled BOOLEAN DEFAULT 0", "email_settings", "teams_webhook_enabled"),
         ("ALTER TABLE email_settings ADD COLUMN power_automate_webhook_url_encrypted TEXT", "email_settings", "power_automate_webhook_url_encrypted"),
         ("ALTER TABLE email_settings ADD COLUMN power_automate_webhook_enabled BOOLEAN DEFAULT 0", "email_settings", "power_automate_webhook_enabled"),
+        # v3.9.1 — SharePoint: sincronizacion automatica de carpetas permitidas
+        ("ALTER TABLE ai_documents ADD COLUMN source VARCHAR(32) DEFAULT 'upload'", "ai_documents", "source"),
+        ("ALTER TABLE ai_documents ADD COLUMN source_site_id VARCHAR(128)", "ai_documents", "source_site_id"),
+        ("ALTER TABLE ai_documents ADD COLUMN source_drive_id VARCHAR(128)", "ai_documents", "source_drive_id"),
+        ("ALTER TABLE ai_documents ADD COLUMN source_item_id VARCHAR(128)", "ai_documents", "source_item_id"),
+        ("ALTER TABLE ai_documents ADD COLUMN source_deleted BOOLEAN DEFAULT 0", "ai_documents", "source_deleted"),
         # v6.5.0 — Alertas: catalogo ampliado (proveedores/TPRM, BCP, vigilancia normativa)
         # y reglas compuestas multi-entidad
         ("ALTER TABLE alert_rules ADD COLUMN entity_type VARCHAR(32)", "alert_rules", "entity_type"),
