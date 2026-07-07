@@ -19,7 +19,7 @@ from app.models import EmailSettings, Organization, User
 from app.schemas import TokenOut, UserOut
 from app.security import (
     create_access_token, decrypt_secret, encrypt_secret,
-    get_current_user, hash_password, verify_password,
+    get_current_user, hash_password, mfa_setup_required, verify_password,
 )
 from app.services.audit_service import log_action
 from app.services.rate_limiter import (
@@ -195,6 +195,7 @@ def login(
         access_token=token,
         user=UserOut.model_validate(user),
         must_change_password=bool(user.must_change_password),
+        must_configure_mfa=mfa_setup_required(db, user),
     )
 
 

@@ -34,6 +34,7 @@ class TokenOut(BaseModel):
     must_change_password: bool = False
     mfa_required: bool = False
     mfa_token: Optional[str] = None
+    must_configure_mfa: bool = False
 
 
 # ---------- ORGANIZATIONS ----------

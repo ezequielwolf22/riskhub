@@ -282,10 +282,14 @@ fetch(ssoStatusUrl).then(r => r.json()).then(d => {
 }).catch(() => {});
 
 function _finishLogin(data) {
+  const user = data.user || {};
+  user.must_configure_mfa = !!data.must_configure_mfa;
   localStorage.setItem('riskhub_token', data.access_token);
-  localStorage.setItem('riskhub_user', JSON.stringify(data.user));
+  localStorage.setItem('riskhub_user', JSON.stringify(user));
   if (data.must_change_password) {
     window.location.href = '/#/change-password-required';
+  } else if (data.must_configure_mfa) {
+    window.location.href = '/#/mfa-setup-required';
   } else {
     window.location.href = '/';
   }

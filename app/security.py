@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import User, UserRole
+from app.models import Organization, User, UserRole
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -93,6 +93,23 @@ def get_current_user(
         raw = request.headers.get("X-Active-Org", "").strip()
         user._active_org_id = int(raw) if raw.isdigit() else None
     return user
+
+
+def mfa_setup_required(db: Session, user: User) -> bool:
+    """Devuelve True si la politica de MFA obliga a este usuario a configurar TOTP.
+
+    Prioridad: override individual (True=forzado, False=exento) sobre la
+    politica de la organizacion (Organization.mfa_required). Si el usuario ya
+    tiene MFA activo no aplica (ya cumple, sea cual sea la politica).
+    """
+    if user.mfa_enabled:
+        return False
+    if user.mfa_override is not None:
+        return bool(user.mfa_override)
+    if not user.organization_id:
+        return False
+    org = db.get(Organization, user.organization_id)
+    return bool(org and org.mfa_required)
 
 
 def require_role(*roles: UserRole):

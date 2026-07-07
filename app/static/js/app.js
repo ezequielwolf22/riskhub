@@ -20,6 +20,7 @@ const Routes = {
   context: ViewContext,
   inbox: ViewInbox,
   'change-password-required': ViewChangePasswordRequired,
+  'mfa-setup-required': ViewMfaSetupRequired,
   profile: ViewProfile,
 };
 
@@ -99,6 +100,11 @@ async function navigate() {
   const u = Auth.user();
   if (u && u.must_change_password && route !== 'change-password-required') {
     location.hash = '/change-password-required';
+    return;
+  }
+  // Forzar configuracion de MFA si la organizacion/admin lo exige y el usuario aun no lo activo
+  if (u && u.must_configure_mfa && route !== 'mfa-setup-required') {
+    location.hash = '/mfa-setup-required';
     return;
   }
   const view = Routes[route] || Routes.home;
