@@ -53,6 +53,10 @@
     "not_authorized": "No autorizado para exportar datos de esta organización",
     "attestation_note": "Este documento certifica la integridad del paquete de auditoría. Verifique los hashes SHA-256 de cada archivo para confirmar que no han sido alterados.",
     "framework_invalid": "Framework '{code}' no válido",
-    "framework_not_found": "Framework '{code}' no encontrado"
+    "framework_not_found": "Framework '{code}' no encontrado",
+    "risks_csv_headers": "codigo|descripcion|activo|amenaza|nivel_inherente|nivel_residual|estado|tratamiento|fecha_creacion",
+    "controls_csv_headers": "nombre|estado|madurez|proxima_revision|propietario",
+    "gaps_csv_headers": "id|nombre|dominio|estado|porcentaje_completado",
+    "framework_risks_csv_headers": "codigo|activo|amenaza|nivel_residual|estado|tratamiento"
   }
 }
