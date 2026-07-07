@@ -45,6 +45,25 @@ def _cfg_out(cfg: FormIntegrationConfig) -> dict:
         "msforms_field_mapping": cfg.msforms_field_mapping or {},
         "msforms_auto_ai_review": cfg.msforms_auto_ai_review if cfg.msforms_auto_ai_review is not None else True,
         "msforms_pa_callback_url": cfg.msforms_pa_callback_url or "",
+        # Via 4 — alta de proveedor por email (polling de buzon)
+        "email_intake_enabled": cfg.email_intake_enabled or False,
+        "email_intake_mode": cfg.email_intake_mode or "",
+        "email_intake_poll_interval_hours": cfg.email_intake_poll_interval_hours or 2,
+        "email_intake_last_poll_at": cfg.email_intake_last_poll_at.isoformat() if cfg.email_intake_last_poll_at else None,
+        "email_intake_auto_ai_review": cfg.email_intake_auto_ai_review if cfg.email_intake_auto_ai_review is not None else True,
+        "email_intake_sender_allowlist": cfg.email_intake_sender_allowlist or [],
+        "email_intake_subject_filter": cfg.email_intake_subject_filter or "",
+        "email_intake_field_mapping": cfg.email_intake_field_mapping or {},
+        "email_intake_graph_tenant_id": cfg.email_intake_graph_tenant_id or "",
+        "email_intake_graph_client_id": cfg.email_intake_graph_client_id or "",
+        "email_intake_graph_secret_configured": bool(cfg.email_intake_graph_client_secret_enc),
+        "email_intake_graph_mailbox": cfg.email_intake_graph_mailbox or "",
+        "email_intake_imap_host": cfg.email_intake_imap_host or "",
+        "email_intake_imap_port": cfg.email_intake_imap_port or 993,
+        "email_intake_imap_username": cfg.email_intake_imap_username or "",
+        "email_intake_imap_password_configured": bool(cfg.email_intake_imap_password_enc),
+        "email_intake_imap_use_ssl": cfg.email_intake_imap_use_ssl if cfg.email_intake_imap_use_ssl is not None else True,
+        "email_intake_imap_folder": cfg.email_intake_imap_folder or "INBOX",
     }
 
 
@@ -121,6 +140,52 @@ def update_config(
         cfg.msforms_auto_ai_review = bool(body["msforms_auto_ai_review"])
     if "msforms_pa_callback_url" in body:
         cfg.msforms_pa_callback_url = body["msforms_pa_callback_url"] or None
+
+    # Via 4 — alta de proveedor por email (polling de buzon)
+    if "email_intake_enabled" in body:
+        cfg.email_intake_enabled = bool(body["email_intake_enabled"])
+    if "email_intake_mode" in body:
+        mode = body["email_intake_mode"]
+        cfg.email_intake_mode = mode if mode in ("graph", "imap") else None
+    if "email_intake_poll_interval_hours" in body:
+        try:
+            cfg.email_intake_poll_interval_hours = max(1, int(body["email_intake_poll_interval_hours"]))
+        except (TypeError, ValueError):
+            pass
+    if "email_intake_auto_ai_review" in body:
+        cfg.email_intake_auto_ai_review = bool(body["email_intake_auto_ai_review"])
+    if "email_intake_sender_allowlist" in body:
+        val = body["email_intake_sender_allowlist"]
+        cfg.email_intake_sender_allowlist = val if isinstance(val, list) else None
+    if "email_intake_subject_filter" in body:
+        cfg.email_intake_subject_filter = body["email_intake_subject_filter"] or None
+    if "email_intake_field_mapping" in body:
+        cfg.email_intake_field_mapping = body["email_intake_field_mapping"] or {}
+    if "email_intake_graph_tenant_id" in body:
+        cfg.email_intake_graph_tenant_id = body["email_intake_graph_tenant_id"] or None
+    if "email_intake_graph_client_id" in body:
+        cfg.email_intake_graph_client_id = body["email_intake_graph_client_id"] or None
+    if "email_intake_graph_client_secret" in body and body["email_intake_graph_client_secret"]:
+        from app.services.msforms_service import _fernet_encrypt
+        cfg.email_intake_graph_client_secret_enc = _fernet_encrypt(body["email_intake_graph_client_secret"])
+    if "email_intake_graph_mailbox" in body:
+        cfg.email_intake_graph_mailbox = body["email_intake_graph_mailbox"] or None
+    if "email_intake_imap_host" in body:
+        cfg.email_intake_imap_host = body["email_intake_imap_host"] or None
+    if "email_intake_imap_port" in body:
+        try:
+            cfg.email_intake_imap_port = int(body["email_intake_imap_port"]) or 993
+        except (TypeError, ValueError):
+            pass
+    if "email_intake_imap_username" in body:
+        cfg.email_intake_imap_username = body["email_intake_imap_username"] or None
+    if "email_intake_imap_password" in body and body["email_intake_imap_password"]:
+        from app.services.msforms_service import _fernet_encrypt
+        cfg.email_intake_imap_password_enc = _fernet_encrypt(body["email_intake_imap_password"])
+    if "email_intake_imap_use_ssl" in body:
+        cfg.email_intake_imap_use_ssl = bool(body["email_intake_imap_use_ssl"])
+    if "email_intake_imap_folder" in body:
+        cfg.email_intake_imap_folder = body["email_intake_imap_folder"] or "INBOX"
 
     cfg.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -423,6 +488,94 @@ def msforms_poll_now(
         raise HTTPException(400, _t("integrations_forms.form_id_not_configured", lang))
 
     from app.services.msforms_service import poll_org
+    result = poll_org(cfg, db)
+    return result
+
+
+# ── Via 4 — Alta de proveedor por email (polling de buzon) ───────────────────
+
+@router.post("/email-intake/test-connection")
+def email_intake_test_connection(
+    request: Request,
+    body: dict = Body(default={}),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Prueba la conexion al buzon configurado (Graph o IMAP) sin listar mensajes.
+
+    Acepta credenciales nuevas en el body (para probar antes de guardar) o usa
+    las ya guardadas si no se envian. Nunca expone secretos descifrados.
+    """
+    lang = get_lang(request)
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(400, _t("integrations_forms.org_required", lang))
+    cfg = _get_or_create_cfg(db, org_id)
+    mode = body.get("mode") or cfg.email_intake_mode
+
+    if mode == "graph":
+        tenant_id = (body.get("tenant_id") or cfg.email_intake_graph_tenant_id or "").strip()
+        client_id = (body.get("client_id") or cfg.email_intake_graph_client_id or "").strip()
+        mailbox = (body.get("mailbox") or cfg.email_intake_graph_mailbox or "").strip()
+        client_secret = (body.get("client_secret") or "").strip()
+        from app.services.msforms_service import _fernet_decrypt
+        if not client_secret and cfg.email_intake_graph_client_secret_enc:
+            client_secret = _fernet_decrypt(cfg.email_intake_graph_client_secret_enc) or ""
+        missing = [
+            n for n, v in [("tenant_id", tenant_id), ("client_id", client_id),
+                           ("mailbox", mailbox), ("client_secret", client_secret)]
+            if not v
+        ]
+        if missing:
+            raise HTTPException(400, _t("integrations_forms.missing_credentials", lang, missing=", ".join(missing)))
+        from app.services.msforms_service import get_oauth_token
+        token = get_oauth_token(tenant_id, client_id, client_secret)
+        if not token:
+            raise HTTPException(400, _t("integrations_forms.azure_auth_failed", lang))
+        from app.services.email_intake_service import _graph_get_mailbox_probe
+        if not _graph_get_mailbox_probe(mailbox, token):
+            raise HTTPException(400, _t("integrations_forms.email_intake_mailbox_not_reachable", lang))
+        return {"ok": True}
+
+    if mode == "imap":
+        host = (body.get("host") or cfg.email_intake_imap_host or "").strip()
+        port = int(body.get("port") or cfg.email_intake_imap_port or 993)
+        username = (body.get("username") or cfg.email_intake_imap_username or "").strip()
+        use_ssl = body.get("use_ssl") if "use_ssl" in body else (
+            cfg.email_intake_imap_use_ssl if cfg.email_intake_imap_use_ssl is not None else True)
+        password = (body.get("password") or "").strip()
+        from app.services.msforms_service import _fernet_decrypt
+        if not password and cfg.email_intake_imap_password_enc:
+            password = _fernet_decrypt(cfg.email_intake_imap_password_enc) or ""
+        missing = [n for n, v in [("host", host), ("username", username), ("password", password)] if not v]
+        if missing:
+            raise HTTPException(400, _t("integrations_forms.missing_credentials", lang, missing=", ".join(missing)))
+        from app.services.email_intake_service import _imap_connect
+        try:
+            conn = _imap_connect(host, port, username, password, bool(use_ssl))
+            conn.logout()
+        except Exception as exc:
+            raise HTTPException(400, _t("integrations_forms.email_intake_imap_failed", lang, error=str(exc)[:150]))
+        return {"ok": True}
+
+    raise HTTPException(400, _t("integrations_forms.email_intake_mode_required", lang))
+
+
+@router.post("/email-intake/poll-now")
+def email_intake_poll_now(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Dispara una sincronizacion manual del buzon configurado (Via 4)."""
+    lang = get_lang(request)
+    org_id = current_user.organization_id
+    if not org_id:
+        raise HTTPException(400, _t("integrations_forms.org_required", lang))
+    cfg = _get_or_create_cfg(db, org_id)
+    if not cfg.email_intake_mode:
+        raise HTTPException(400, _t("integrations_forms.email_intake_mode_not_configured", lang))
+    from app.services.email_intake_service import poll_org
     result = poll_org(cfg, db)
     return result
 

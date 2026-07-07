@@ -337,6 +337,8 @@ const Api = {
     updateConfig: (d) => Api.patch('/api/integrations/forms/config', d),
     regenerateToken: () => Api.post('/api/integrations/forms/config/regenerate-token', {}),
     discoverQuestions: (d) => Api.post('/api/integrations/forms/msforms/discover-questions', d),
+    emailIntakeTestConnection: (d) => Api.post('/api/integrations/forms/email-intake/test-connection', d),
+    emailIntakePollNow: () => Api.post('/api/integrations/forms/email-intake/poll-now', {}),
   },
   questionnaire_schedules: {
     list: (q) => Api.get('/api/questionnaire-schedules/', q),

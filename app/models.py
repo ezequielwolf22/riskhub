@@ -909,6 +909,13 @@ class Supplier(Base):
     # Via 3 — origen MS Forms: trazabilidad para notificaciones de retorno
     msforms_origin = Column(Boolean, default=False)
     msforms_responder = Column(String(255), nullable=True)          # email del que respondio el form
+    # Via 4 — origen alta por email (polling de buzon)
+    email_origin = Column(Boolean, default=False)
+    email_sender = Column(String(255), nullable=True)               # remitente del mail que origino el alta
+    email_subject = Column(String(500), nullable=True)              # asunto del mail original
+    email_message_id = Column(String(255), nullable=True)           # Message-ID del mail (dedupe/trazabilidad)
+    email_extraction_method = Column(String(16), nullable=True)     # deterministic | ai
+    email_needs_review = Column(Boolean, default=False)             # extraccion IA de baja confianza
     # v4.4.0 — monitoreo periodico (scheduler supplier_monitoring)
     last_monitored_at = Column(DateTime, nullable=True)
     monitoring_status = Column(String(16), nullable=True)           # ok|issue|unknown
@@ -1323,6 +1330,31 @@ class FormIntegrationConfig(Base):
     msforms_auto_ai_review = Column(Boolean, default=True)
     # Webhook de retorno de decisiones a Power Automate
     msforms_pa_callback_url = Column(String(500), nullable=True)
+    # Via 4 — Alta de proveedor por email (polling de buzon: Microsoft 365/Graph o IMAP generico)
+    email_intake_enabled = Column(Boolean, default=False)
+    email_intake_mode = Column(String(16), nullable=True)  # graph | imap
+    email_intake_poll_interval_hours = Column(Integer, default=2)
+    email_intake_last_poll_at = Column(DateTime, nullable=True)
+    email_intake_auto_ai_review = Column(Boolean, default=True)
+    email_intake_sender_allowlist = Column(JSON, nullable=True)  # ["*@dominio.com", "juan@x.com"] o null = cualquiera
+    email_intake_subject_filter = Column(String(255), nullable=True)
+    email_intake_field_mapping = Column(JSON, nullable=True)  # {campo_pdf_o_tag_word: campo_supplier}
+    # Modo Graph (Microsoft 365)
+    email_intake_graph_tenant_id = Column(String(255), nullable=True)
+    email_intake_graph_client_id = Column(String(255), nullable=True)
+    email_intake_graph_client_secret_enc = Column(Text, nullable=True)  # Fernet encrypted
+    email_intake_graph_mailbox = Column(String(255), nullable=True)  # UPN del buzon a monitorear
+    email_intake_graph_last_message_id = Column(String(255), nullable=True)
+    email_intake_graph_last_received_ts = Column(String(64), nullable=True)
+    # Modo IMAP generico (Gmail, Exchange on-prem, cualquier proveedor)
+    email_intake_imap_host = Column(String(255), nullable=True)
+    email_intake_imap_port = Column(Integer, default=993)
+    email_intake_imap_username = Column(String(255), nullable=True)
+    email_intake_imap_password_enc = Column(Text, nullable=True)  # Fernet encrypted
+    email_intake_imap_use_ssl = Column(Boolean, default=True)
+    email_intake_imap_folder = Column(String(128), default="INBOX")
+    email_intake_imap_last_uid = Column(Integer, nullable=True)
+    email_intake_imap_uidvalidity = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

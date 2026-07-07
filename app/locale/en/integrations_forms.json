@@ -14,6 +14,10 @@
     "cred_tenant_id": "Tenant ID",
     "cred_client_id": "Client ID",
     "cred_form_id": "Form ID",
-    "cred_client_secret": "Client Secret"
+    "cred_client_secret": "Client Secret",
+    "email_intake_mode_required": "Select a connection mode (Microsoft 365 or IMAP) before testing the connection",
+    "email_intake_mode_not_configured": "Connection mode not configured — save the configuration first",
+    "email_intake_mailbox_not_reachable": "Could not reach the specified mailbox — check the mailbox and the Mail.Read permission",
+    "email_intake_imap_failed": "Could not connect via IMAP: {error}"
   }
 }

@@ -1501,6 +1501,8 @@ const ViewSuppliers = (() => {
     if (sup.is_data_processor) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Encargado GDPR</span>');
     if (sup.processes_personal_data) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Trata datos personales</span>');
     if (sup.cross_border_transfers) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Transf. internac.</span>');
+    if (sup.email_origin) flags.push('<span style="font-size:11px;font-weight:700;background:#E0F2FE;color:#075985;padding:2px 8px;border-radius:999px;">Alta por email</span>');
+    if (sup.email_needs_review) flags.push('<span style="font-size:11px;font-weight:700;background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:999px;">Pendiente de revision</span>');
     const slas = sup.slas || [];
     const contacts = sup.additional_contacts || [];
     wrap.innerHTML = `

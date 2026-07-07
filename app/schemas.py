@@ -784,6 +784,12 @@ class SupplierOut(ORMBase):
     internal_owner_id: Optional[int] = None
     trust_portal_url: Optional[str] = None
     trust_portal_last_scraped_at: Optional[datetime] = None
+    # Via 4 — alta por email
+    email_origin: Optional[bool] = None
+    email_sender: Optional[str] = None
+    email_subject: Optional[str] = None
+    email_extraction_method: Optional[str] = None
+    email_needs_review: Optional[bool] = None
 
 
 # ---------- NON-CONFORMITIES ----------

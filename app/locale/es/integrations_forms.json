@@ -14,6 +14,10 @@
     "cred_tenant_id": "Tenant ID",
     "cred_client_id": "Client ID",
     "cred_form_id": "Form ID",
-    "cred_client_secret": "Client Secret"
+    "cred_client_secret": "Client Secret",
+    "email_intake_mode_required": "Selecciona un modo de conexion (Microsoft 365 o IMAP) antes de probar la conexion",
+    "email_intake_mode_not_configured": "Modo de conexion no configurado — guarda la configuracion primero",
+    "email_intake_mailbox_not_reachable": "No se pudo acceder al buzon indicado — revisa el mailbox y el permiso Mail.Read",
+    "email_intake_imap_failed": "No se pudo conectar por IMAP: {error}"
   }
 }
