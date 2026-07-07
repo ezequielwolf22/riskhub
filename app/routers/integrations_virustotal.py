@@ -142,7 +142,7 @@ async def test_connection(
         # Consultar info del usuario (endpoint ligero que valida la key)
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "https://www.virustotal.com/api/v3/users/current_user",
+                f"https://www.virustotal.com/api/v3/users/{api_key}",
                 headers={"x-apikey": api_key},
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:

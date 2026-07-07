@@ -66,6 +66,7 @@ const Api = {
   patch(p, body) { return Api.req(p, { method: 'PATCH', body: JSON.stringify(body) }); },
   put(p, body) { return Api.req(p, { method: 'PUT', body: JSON.stringify(body) }); },
   del(p) { return Api.req(p, { method: 'DELETE' }); },
+  delete(p) { return Api.req(p, { method: 'DELETE' }); },
   postFile(p, file) {
     const fd = new FormData(); fd.append('file', file);
     return Api.req(p, { method: 'POST', body: fd });
