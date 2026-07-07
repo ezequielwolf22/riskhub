@@ -1122,7 +1122,7 @@ const ViewIntegrations = {
     const badge = document.getElementById('smtp-status-badge');
     if (!body) return;
     try {
-      const s = await Api.get('/api/alerts/settings');
+      const s = (await Api.get('/api/alerts/settings')) || {};
       const isAdmin = Auth.isAdmin();
       const ok = !!s.smtp_host;
       if (badge) badge.innerHTML = ok
