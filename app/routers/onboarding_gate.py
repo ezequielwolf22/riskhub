@@ -22,8 +22,8 @@ def get_gate_config(
     current_user: User = Depends(get_current_user),
 ):
     lang = get_lang(request)
-    from app.services.onboarding_gate_service import get_or_create_config
-    cfg = get_or_create_config(db, current_user.organization_id)
+    from app.services.onboarding_gate_service import get_or_create_config, localize_chain
+    cfg = get_or_create_config(db, current_user.organization_id, lang)
     return {
         "id": cfg.id,
         "auto_approve_below": cfg.auto_approve_below,
@@ -31,7 +31,7 @@ def get_gate_config(
         "bypass_min_role": cfg.bypass_min_role,
         "bypass_requires_justification": cfg.bypass_requires_justification,
         "force_controls_allowed": cfg.force_controls_allowed,
-        "sign_off_chain": cfg.sign_off_chain or [],
+        "sign_off_chain": localize_chain(cfg.sign_off_chain, lang),
         "updated_at": cfg.updated_at.isoformat() if cfg.updated_at else None,
         "updated_by_id": cfg.updated_by_id,
     }
@@ -45,8 +45,8 @@ def update_gate_config(
     current_user: User = Depends(require_admin),
 ):
     lang = get_lang(request)
-    from app.services.onboarding_gate_service import get_or_create_config
-    cfg = get_or_create_config(db, current_user.organization_id)
+    from app.services.onboarding_gate_service import get_or_create_config, localize_chain
+    cfg = get_or_create_config(db, current_user.organization_id, lang)
 
     if "auto_approve_below" in payload:
         val = int(payload["auto_approve_below"])
@@ -99,7 +99,7 @@ def update_gate_config(
         "bypass_min_role": cfg.bypass_min_role,
         "bypass_requires_justification": cfg.bypass_requires_justification,
         "force_controls_allowed": cfg.force_controls_allowed,
-        "sign_off_chain": cfg.sign_off_chain,
+        "sign_off_chain": localize_chain(cfg.sign_off_chain, lang),
     }
 
 
@@ -117,8 +117,8 @@ def evaluate_supplier_gate(
     sup = db.get(Supplier, sid)
     if not sup or sup.organization_id != current_user.organization_id:
         raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
-    cfg = get_or_create_config(db, current_user.organization_id)
-    return evaluate_gate(db, sup, cfg)
+    cfg = get_or_create_config(db, current_user.organization_id, lang)
+    return evaluate_gate(db, sup, cfg, lang)
 
 
 # ---------- Override del gate (bypass o force_controls) ----------
@@ -138,7 +138,7 @@ def apply_gate_override(
     if not sup or sup.organization_id != current_user.organization_id:
         raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
 
-    cfg = get_or_create_config(db, current_user.organization_id)
+    cfg = get_or_create_config(db, current_user.organization_id, lang)
     override_type = payload.get("type")
 
     # Limpiar override
@@ -151,7 +151,7 @@ def apply_gate_override(
             sup.forced_signoffs = None
         db.commit()
         log_action(db, current_user.id, "gate_override_clear", "supplier", str(sid), {})
-        return evaluate_gate(db, sup, cfg)
+        return evaluate_gate(db, sup, cfg, lang)
 
     if override_type not in ("bypass", "force_controls"):
         raise HTTPException(400, _t("onboarding_gate.override_type_invalid", lang))
@@ -171,7 +171,7 @@ def apply_gate_override(
         raise HTTPException(403, _t("onboarding_gate.force_controls_disabled", lang))
 
     extra_signoffs = payload.get("extra_signoffs", [])
-    result = apply_override(db, sup, override_type, justification, extra_signoffs, current_user)
+    result = apply_override(db, sup, override_type, justification, extra_signoffs, current_user, lang)
     log_action(db, current_user.id, f"gate_override_{override_type}", "supplier", str(sid), {
         "justification": justification,
         "extra_signoffs": extra_signoffs,
@@ -206,7 +206,7 @@ def record_onboarding_decision(
     if decision == "conditional" and not conditions:
         raise HTTPException(400, _t("onboarding_gate.conditional_needs_conditions", lang))
 
-    result = record_decision(db, sup, decision, notes, conditions, current_user)
+    result = record_decision(db, sup, decision, notes, conditions, current_user, lang)
     log_action(db, current_user.id, f"onboarding_decision_{decision}", "supplier", str(sid), {
         "notes": notes,
         "conditions_count": len(conditions),
@@ -256,7 +256,7 @@ def sign_chain_item(
     if not sup or sup.organization_id != current_user.organization_id:
         raise HTTPException(404, _t("onboarding_gate.supplier_not_found", lang))
 
-    cfg = get_or_create_config(db, current_user.organization_id)
+    cfg = get_or_create_config(db, current_user.organization_id, lang)
     chain_def = cfg.sign_off_chain or []
     item_def = next((i for i in chain_def if i["id"] == sign_off_id), None)
     forced = sup.forced_signoffs or []
@@ -275,7 +275,7 @@ def sign_chain_item(
     signed_by = payload.get("signed_by") or current_user.full_name or current_user.email
     doc_id = payload.get("document_id")
 
-    result = _sign(db, sup, sign_off_id, signed_by, current_user.id, doc_id, skipped, skip_justification)
+    result = _sign(db, sup, sign_off_id, signed_by, current_user.id, doc_id, skipped, skip_justification, lang)
     log_action(db, current_user.id, f"sign_off_{'skip' if skipped else 'sign'}_{sign_off_id}", "supplier", str(sid), {
         "signed_by": signed_by, "skipped": skipped,
     })
@@ -313,5 +313,5 @@ def undo_sign_off(
 
     db.commit()
     log_action(db, current_user.id, f"sign_off_undo_{sign_off_id}", "supplier", str(sid), {})
-    cfg = get_or_create_config(db, current_user.organization_id)
-    return evaluate_gate(db, sup, cfg)
+    cfg = get_or_create_config(db, current_user.organization_id, lang)
+    return evaluate_gate(db, sup, cfg, lang)

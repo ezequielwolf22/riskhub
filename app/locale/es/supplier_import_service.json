@@ -1,0 +1,10 @@
+{
+  "supplier_import_service": {
+    "empty_file": "El fichero esta vacio o no contiene datos legibles.",
+    "no_name_column": "No se encontro una columna de nombre de proveedor. Incluye una columna 'name' / 'nombre' / 'proveedor'.",
+    "row_error": "Fila {row}: {error}",
+    "unsupported_format": "Formato no soportado. Usa CSV, XLSX, XLS, ODS, TSV o JSON.",
+    "file_too_large": "El fichero supera el limite de 10 MB.",
+    "file_empty": "El fichero esta vacio."
+  }
+}

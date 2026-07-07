@@ -1,0 +1,13 @@
+{
+  "supplier_monitoring_service": {
+    "ssl_invalid_reason": "SSL invalido: {reason}",
+    "dns_not_resolved": "DNS no resuelve '{domain}': {error}",
+    "http_no_response": "Sitio no responde (HTTP {status}, {latency} ms). {error}",
+    "http_no_response_status_fallback": "sin respuesta",
+    "ssl_cert_invalid": "Certificado SSL invalido: {error}",
+    "ssl_cert_expiring": "Certificado SSL expira en {days} dias",
+    "finding_title": "Disponibilidad degradada: {name} ({domain})",
+    "supplier_not_found": "Proveedor no encontrado",
+    "supplier_missing_contact": "El proveedor no tiene website ni email configurado"
+  }
+}

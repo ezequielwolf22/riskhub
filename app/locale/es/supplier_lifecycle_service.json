@@ -1,0 +1,32 @@
+{
+  "supplier_lifecycle_service": {
+    "checklist": {
+      "questionnaire": "Cuestionario de seguridad enviado y respondido",
+      "risk_assessment": "Evaluacion de riesgo inicial completada",
+      "dpa": "Acuerdo de Tratamiento de Datos (DPA) firmado — GDPR Art.28",
+      "cross_border": "Clausulas de transferencia internacional firmadas",
+      "nis2_clause": "Clausula NIS2 incluida en contrato (Art.21)",
+      "dora_ict_category": "Clasificacion DORA ICT (critical/important) asignada — Art.28",
+      "dora_exit_strategy": "Estrategia de salida documentada — DORA Art.28(8)",
+      "tier1_assessment": "Assessment formal completado (tier-1 obligatorio en 30 dias)",
+      "nda": "NDA / acuerdo de confidencialidad firmado",
+      "contract_uploaded": "Contrato subido al sistema",
+      "sla_defined": "SLAs definidos y documentados",
+      "contacts_verified": "Contactos del proveedor verificados"
+    },
+    "supplier_not_found": "Proveedor no encontrado",
+    "change_score": "score: {old_score} → {new_score}",
+    "change_lifecycle_active": "lifecycle: onboarding → active",
+    "change_auto_issue_closed": "auto-issue {code} cerrado: {resolution}",
+    "resolution_reassessed": "Proveedor reevaluado",
+    "resolution_concentration_reduced": "Concentracion de riesgo reducida por accion del usuario",
+    "resolution_contract_renewed": "Contrato renovado",
+    "resolution_dpa_signed": "DPA firmado",
+    "change_risks_recalculated": "{updated} riesgo(s) vinculados recalculados",
+    "change_concentration_flag_removed_no_critical": "concentracion: flag eliminado (sin procesos criticos)",
+    "change_concentration_flag_new": "concentracion: nuevo flag ({pct}% procesos criticos)",
+    "change_concentration_flag_removed": "concentracion: flag eliminado ({pct}% < 40%)",
+    "concentration_issue_title": "Concentracion de riesgo: {pct}% de procesos criticos dependen de este proveedor",
+    "concentration_issue_description": "El proveedor {supplier_name} concentra el {pct}% de los procesos de negocio criticos que dependen de el (umbral DORA: 40%). Acciones posibles: (1) distribuir dependencias entre proveedores alternativos, (2) documentar el plan de salida en el campo 'Estrategia de salida', (3) anadir nuevas dependencias a otros proveedores que reduzcan la concentracion, (4) anadir notas de mitigacion en el campo 'Notas de concentracion'."
+  }
+}

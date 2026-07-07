@@ -1,0 +1,7 @@
+{
+  "evidence_inference_service": {
+    "default_document_name": "Document",
+    "evidence_title": "{doc_name} → {fw_code} {req_id}",
+    "evidence_description": "Automatically inferred evidence. Document '{doc_name}' covers ISO 27002 control {control_code} ({coverage}) with maturity {maturity}/5, satisfying requirement {req_id} of framework {fw_code}."
+  }
+}

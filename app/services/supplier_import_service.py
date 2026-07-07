@@ -10,6 +10,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
 from app.models import Supplier
 from app.services.smart_import_service import _read_file
 
@@ -92,7 +93,7 @@ def _cell(row, col) -> Optional[str]:
     return sval
 
 
-def import_suppliers(content: bytes, filename: str, org_id: int, db: Session) -> dict:
+def import_suppliers(content: bytes, filename: str, org_id: int, db: Session, lang: str = "es") -> dict:
     """Importa proveedores desde un fichero. Devuelve resumen del resultado.
 
     - Deduplica por nombre (case-insensitive) dentro de la organizacion.
@@ -103,14 +104,11 @@ def import_suppliers(content: bytes, filename: str, org_id: int, db: Session) ->
 
     df = _read_file(content, filename)
     if df is None or df.empty:
-        raise ValueError("El fichero esta vacio o no contiene datos legibles.")
+        raise ValueError(_t("supplier_import_service.empty_file", lang))
 
     header_map = _build_header_map(df.columns)
     if "name" not in header_map:
-        raise ValueError(
-            "No se encontro una columna de nombre de proveedor. "
-            "Incluye una columna 'name' / 'nombre' / 'proveedor'."
-        )
+        raise ValueError(_t("supplier_import_service.no_name_column", lang))
 
     # Nombres existentes en la org para deduplicar
     existing = {
@@ -163,7 +161,7 @@ def import_suppliers(content: bytes, filename: str, org_id: int, db: Session) ->
                 supplier.risk_level = explicit_risk
             created += 1
         except Exception as exc:  # noqa: BLE001
-            errors.append(f"Fila {idx + 2}: {exc}")
+            errors.append(_t("supplier_import_service.row_error", lang, row=idx + 2, error=exc))
             logger.warning("Error importando proveedor fila %s: %s", idx, exc)
 
     db.commit()

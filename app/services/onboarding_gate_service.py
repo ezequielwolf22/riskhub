@@ -10,12 +10,13 @@ El equipo cyber controla el proceso completo con:
 from datetime import datetime, timezone, timedelta
 import logging
 
+from app.i18n import t as _t
+
 logger = logging.getLogger(__name__)
 
-_DEFAULT_SIGN_OFF_CHAIN = [
+_DEFAULT_SIGN_OFF_CHAIN_IDS = [
     {
         "id": "nda",
-        "label": "NDA / Acuerdo de confidencialidad",
         "required": False,
         "required_if": None,
         "depends_on": None,
@@ -24,7 +25,6 @@ _DEFAULT_SIGN_OFF_CHAIN = [
     },
     {
         "id": "dpa",
-        "label": "DPA (Art. 28 GDPR)",
         "required": False,
         "required_if": "is_data_processor",
         "depends_on": None,
@@ -33,7 +33,6 @@ _DEFAULT_SIGN_OFF_CHAIN = [
     },
     {
         "id": "cross_border",
-        "label": "Clausulas transferencia internacional",
         "required": False,
         "required_if": "cross_border_transfers",
         "depends_on": "dpa",
@@ -42,7 +41,6 @@ _DEFAULT_SIGN_OFF_CHAIN = [
     },
     {
         "id": "nis2_addendum",
-        "label": "Addendum NIS2 Art. 21",
         "required": False,
         "required_if": "is_nis2",
         "depends_on": None,
@@ -51,7 +49,6 @@ _DEFAULT_SIGN_OFF_CHAIN = [
     },
     {
         "id": "dora_exit",
-        "label": "Estrategia de salida DORA Art. 28(8)",
         "required": False,
         "required_if": "is_dora",
         "depends_on": None,
@@ -60,7 +57,6 @@ _DEFAULT_SIGN_OFF_CHAIN = [
     },
     {
         "id": "ciso_approval",
-        "label": "Aprobacion CISO",
         "required": False,
         "required_if": None,
         "depends_on": None,
@@ -69,7 +65,6 @@ _DEFAULT_SIGN_OFF_CHAIN = [
     },
     {
         "id": "contract",
-        "label": "Contrato principal firmado",
         "required": False,
         "required_if": None,
         "depends_on": None,
@@ -79,7 +74,36 @@ _DEFAULT_SIGN_OFF_CHAIN = [
 ]
 
 
-def get_or_create_config(db, org_id: int):
+def _default_sign_off_chain(lang: str = "es") -> list:
+    """Construye la cadena de firmas default con labels traducidas al idioma dado."""
+    chain = []
+    for item in _DEFAULT_SIGN_OFF_CHAIN_IDS:
+        entry = dict(item)
+        entry["label"] = _t(f"onboarding_gate_service.chain_labels.{item['id']}", lang)
+        chain.append(entry)
+    return chain
+
+
+# Retrocompatibilidad: alias en espanol para codigo/datos existentes que
+# referencien el nombre original de la constante.
+_DEFAULT_SIGN_OFF_CHAIN = _default_sign_off_chain("es")
+
+
+def localize_chain(chain: list, lang: str = "es") -> list:
+    """Re-traduce en vivo los labels de los items por defecto de una cadena
+    de firmas ya persistida (los items custom conservan su label guardado)."""
+    result = []
+    for item in chain or []:
+        entry = dict(item)
+        item_id = entry.get("id", "")
+        live_label = _t(f"onboarding_gate_service.chain_labels.{item_id}", lang)
+        if live_label != f"onboarding_gate_service.chain_labels.{item_id}":
+            entry["label"] = live_label
+        result.append(entry)
+    return result
+
+
+def get_or_create_config(db, org_id: int, lang: str = "es"):
     """Obtiene la config del gate para la org, creando el default si no existe."""
     from app.models import OnboardingGateConfig
     cfg = db.query(OnboardingGateConfig).filter_by(organization_id=org_id).first()
@@ -91,13 +115,13 @@ def get_or_create_config(db, org_id: int):
             bypass_min_role="admin",
             bypass_requires_justification=True,
             force_controls_allowed=True,
-            sign_off_chain=_DEFAULT_SIGN_OFF_CHAIN,
+            sign_off_chain=_default_sign_off_chain(lang),
         )
         db.add(cfg)
         db.commit()
         db.refresh(cfg)
     if not cfg.sign_off_chain:
-        cfg.sign_off_chain = _DEFAULT_SIGN_OFF_CHAIN
+        cfg.sign_off_chain = _default_sign_off_chain(lang)
     return cfg
 
 
@@ -171,10 +195,10 @@ def _get_item_state(supplier, item_id: str) -> dict:
     return {}
 
 
-def evaluate_gate(db, supplier, config=None) -> dict:
+def evaluate_gate(db, supplier, config=None, lang: str = "es") -> dict:
     """Evaluacion completa del gate de onboarding para un proveedor."""
     if config is None:
-        config = get_or_create_config(db, supplier.organization_id)
+        config = get_or_create_config(db, supplier.organization_id, lang)
 
     score = supplier.residual_risk_score or supplier.inherent_risk_score or 0
     auto_below = config.auto_approve_below if config.auto_approve_below is not None else 30
@@ -235,9 +259,13 @@ def evaluate_gate(db, supplier, config=None) -> dict:
         if effective_level == "auto" and not is_forced:
             is_required = False
 
+        # Los items por defecto se re-traducen en vivo al idioma pedido; los
+        # items custom (no presentes en chain_labels) conservan su label guardado.
+        live_label = _t(f"onboarding_gate_service.chain_labels.{item_id}", lang)
+        is_default_item = live_label != f"onboarding_gate_service.chain_labels.{item_id}"
         chain_items.append({
             "id": item_id,
-            "label": item_def["label"],
+            "label": live_label if is_default_item else item_def["label"],
             "required": is_required,
             "applicable": applicable,
             "signed": is_signed,
@@ -292,7 +320,7 @@ def evaluate_gate(db, supplier, config=None) -> dict:
     }
 
 
-def apply_override(db, supplier, override_type: str, justification: str, extra_signoffs: list, user) -> dict:
+def apply_override(db, supplier, override_type: str, justification: str, extra_signoffs: list, user, lang: str = "es") -> dict:
     """Aplica un override (bypass o force_controls) con trazabilidad completa."""
     from sqlalchemy.orm.attributes import flag_modified
 
@@ -310,10 +338,10 @@ def apply_override(db, supplier, override_type: str, justification: str, extra_s
         flag_modified(supplier, "forced_signoffs")
 
     db.commit()
-    return evaluate_gate(db, supplier)
+    return evaluate_gate(db, supplier, lang=lang)
 
 
-def record_decision(db, supplier, decision: str, notes: str, conditions: list, user) -> dict:
+def record_decision(db, supplier, decision: str, notes: str, conditions: list, user, lang: str = "es") -> dict:
     """Registra la decision formal de cyber con creacion de VendorIssues por condiciones."""
     from sqlalchemy.orm.attributes import flag_modified
     from app.models import VendorIssue, VendorIssueSeverity, VendorIssueStatus
@@ -354,11 +382,11 @@ def record_decision(db, supplier, decision: str, notes: str, conditions: list, u
         flag_modified(supplier, "onboarding_conditions")
 
     db.commit()
-    return evaluate_gate(db, supplier)
+    return evaluate_gate(db, supplier, lang=lang)
 
 
 def sign_chain_item(db, supplier, item_id: str, signed_by_name: str, user_id: int,
-                    doc_id=None, skipped=False, skip_justification=None) -> dict:
+                    doc_id=None, skipped=False, skip_justification=None, lang: str = "es") -> dict:
     """Registra la firma (o el salto justificado) de un item de la cadena."""
     from sqlalchemy.orm.attributes import flag_modified
 
@@ -400,4 +428,4 @@ def sign_chain_item(db, supplier, item_id: str, signed_by_name: str, user_id: in
     from app.services.supplier_lifecycle_service import recompute_supplier_risk_profile
     recompute_supplier_risk_profile(db, supplier.id, triggered_by=f"sign_off_{item_id}")
 
-    return evaluate_gate(db, supplier)
+    return evaluate_gate(db, supplier, lang=lang)

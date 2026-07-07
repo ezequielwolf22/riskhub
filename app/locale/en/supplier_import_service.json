@@ -1,0 +1,10 @@
+{
+  "supplier_import_service": {
+    "empty_file": "The file is empty or contains no readable data.",
+    "no_name_column": "No supplier name column was found. Include a 'name' / 'nombre' / 'proveedor' column.",
+    "row_error": "Row {row}: {error}",
+    "unsupported_format": "Unsupported format. Use CSV, XLSX, XLS, ODS, TSV or JSON.",
+    "file_too_large": "The file exceeds the 10 MB limit.",
+    "file_empty": "The file is empty."
+  }
+}

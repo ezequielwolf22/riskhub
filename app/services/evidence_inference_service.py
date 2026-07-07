@@ -15,6 +15,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
 from app.models import (
     ComplianceFrameworkStatus, ComplianceRequirementStatus,
     Evidence, EvidenceType, RiskContext, AiDocument,
@@ -51,6 +52,7 @@ def infer_compliance_from_document(
     doc: AiDocument,
     controls_covered: list[dict],
     org_id: int,
+    lang: str = "es",
 ) -> dict:
     """Infiere cumplimiento de frameworks desde controles cubiertos por un documento.
 
@@ -59,6 +61,7 @@ def infer_compliance_from_document(
         doc: Documento analizado
         controls_covered: Lista de {code, coverage, maturity_current} de la IA
         org_id: Organización
+        lang: Idioma para textos generados (title/description de Evidence)
 
     Returns:
         {requirements_updated, evidence_created, frameworks_affected}
@@ -153,15 +156,21 @@ def infer_compliance_from_document(
             ).first()
 
             if not existing_ev:
+                doc_name = doc.original_name or _t(
+                    "evidence_inference_service.default_document_name", lang
+                )
                 ev = Evidence(
                     organization_id=org_id,
                     code=_next_evidence_code(db, org_id),
-                    title=f"{doc.original_name or 'Documento'} → {fw_code.upper()} {req_id}",
-                    description=(
-                        f"Evidencia inferida automáticamente. "
-                        f"El documento '{doc.original_name}' cubre el control ISO 27002 {control_code} "
-                        f"({coverage}) con madurez {maturity}/5, "
-                        f"que satisface el requisito {req_id} del framework {fw_code.upper()}."
+                    title=_t(
+                        "evidence_inference_service.evidence_title", lang,
+                        doc_name=doc_name, fw_code=fw_code.upper(), req_id=req_id,
+                    ),
+                    description=_t(
+                        "evidence_inference_service.evidence_description", lang,
+                        doc_name=doc.original_name, control_code=control_code,
+                        coverage=coverage, maturity=maturity, req_id=req_id,
+                        fw_code=fw_code.upper(),
                     ),
                     evidence_type=EvidenceType.POLICY if doc.category == "policy" else EvidenceType.PROCEDURE,
                     compliance_framework=fw_code,

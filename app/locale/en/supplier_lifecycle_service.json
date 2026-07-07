@@ -1,0 +1,32 @@
+{
+  "supplier_lifecycle_service": {
+    "checklist": {
+      "questionnaire": "Security questionnaire sent and answered",
+      "risk_assessment": "Initial risk assessment completed",
+      "dpa": "Data Processing Agreement (DPA) signed — GDPR Art.28",
+      "cross_border": "International transfer clauses signed",
+      "nis2_clause": "NIS2 clause included in contract (Art.21)",
+      "dora_ict_category": "DORA ICT classification (critical/important) assigned — Art.28",
+      "dora_exit_strategy": "Exit strategy documented — DORA Art.28(8)",
+      "tier1_assessment": "Formal assessment completed (tier-1 mandatory within 30 days)",
+      "nda": "NDA / confidentiality agreement signed",
+      "contract_uploaded": "Contract uploaded to the system",
+      "sla_defined": "SLAs defined and documented",
+      "contacts_verified": "Supplier contacts verified"
+    },
+    "supplier_not_found": "Supplier not found",
+    "change_score": "score: {old_score} → {new_score}",
+    "change_lifecycle_active": "lifecycle: onboarding → active",
+    "change_auto_issue_closed": "auto-issue {code} closed: {resolution}",
+    "resolution_reassessed": "Supplier reassessed",
+    "resolution_concentration_reduced": "Concentration risk reduced by user action",
+    "resolution_contract_renewed": "Contract renewed",
+    "resolution_dpa_signed": "DPA signed",
+    "change_risks_recalculated": "{updated} linked risk(s) recalculated",
+    "change_concentration_flag_removed_no_critical": "concentration: flag removed (no critical processes)",
+    "change_concentration_flag_new": "concentration: new flag ({pct}% critical processes)",
+    "change_concentration_flag_removed": "concentration: flag removed ({pct}% < 40%)",
+    "concentration_issue_title": "Risk concentration: {pct}% of critical processes depend on this supplier",
+    "concentration_issue_description": "Supplier {supplier_name} concentrates {pct}% of the critical business processes that depend on it (DORA threshold: 40%). Possible actions: (1) distribute dependencies across alternative suppliers, (2) document the exit plan in the 'Exit strategy' field, (3) add new dependencies on other suppliers to reduce concentration, (4) add mitigation notes in the 'Concentration notes' field."
+  }
+}

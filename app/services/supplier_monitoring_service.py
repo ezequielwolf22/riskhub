@@ -15,6 +15,8 @@ import ssl
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
+from app.i18n import t as _t
+
 logger = logging.getLogger("riskhub.supplier_monitor")
 
 # Solo crear hallazgos para estados que merecen atencion
@@ -60,7 +62,7 @@ def _check_http(url: str, timeout: int = 10) -> dict:
         return {"ok": False, "status": None, "latency_ms": latency_ms, "error": str(exc)[:200]}
 
 
-def _check_ssl(hostname: str, port: int = 443, timeout: int = 10) -> dict:
+def _check_ssl(hostname: str, port: int = 443, timeout: int = 10, lang: str = "es") -> dict:
     """Verifica el certificado SSL. Devuelve {ok, days_remaining, error}."""
     try:
         ctx = ssl.create_default_context()
@@ -76,7 +78,11 @@ def _check_ssl(hostname: str, port: int = 443, timeout: int = 10) -> dict:
                     return {"ok": days > 14, "days_remaining": days, "error": None}
                 return {"ok": True, "days_remaining": None, "error": None}
     except ssl.SSLCertVerificationError as exc:
-        return {"ok": False, "days_remaining": None, "error": f"SSL invalido: {exc.reason}"}
+        return {
+            "ok": False,
+            "days_remaining": None,
+            "error": _t("supplier_monitoring_service.ssl_invalid_reason", lang, reason=exc.reason),
+        }
     except Exception as exc:
         return {"ok": None, "days_remaining": None, "error": str(exc)[:200]}
 

@@ -8,32 +8,34 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 import logging
 
+from app.i18n import t as _t
+
 logger = logging.getLogger(__name__)
 
 # ------- Checklist de onboarding -------
 
 _CHECKLIST_TEMPLATES = [
     # item siempre presente
-    {"id": "questionnaire", "title": "Cuestionario de seguridad enviado y respondido", "category": "security", "required": True, "condition": "always"},
-    {"id": "risk_assessment", "title": "Evaluacion de riesgo inicial completada", "category": "security", "required": True, "condition": "always"},
+    {"id": "questionnaire", "title_key": "supplier_lifecycle_service.checklist.questionnaire", "category": "security", "required": True, "condition": "always"},
+    {"id": "risk_assessment", "title_key": "supplier_lifecycle_service.checklist.risk_assessment", "category": "security", "required": True, "condition": "always"},
     # GDPR
-    {"id": "dpa", "title": "Acuerdo de Tratamiento de Datos (DPA) firmado — GDPR Art.28", "category": "legal", "required": True, "condition": "is_data_processor"},
-    {"id": "cross_border", "title": "Clausulas de transferencia internacional firmadas", "category": "legal", "required": True, "condition": "cross_border_transfers"},
+    {"id": "dpa", "title_key": "supplier_lifecycle_service.checklist.dpa", "category": "legal", "required": True, "condition": "is_data_processor"},
+    {"id": "cross_border", "title_key": "supplier_lifecycle_service.checklist.cross_border", "category": "legal", "required": True, "condition": "cross_border_transfers"},
     # NIS2 / DORA
-    {"id": "nis2_clause", "title": "Clausula NIS2 incluida en contrato (Art.21)", "category": "compliance", "required": True, "condition": "is_nis2"},
-    {"id": "dora_ict_category", "title": "Clasificacion DORA ICT (critical/important) asignada — Art.28", "category": "compliance", "required": True, "condition": "is_dora"},
-    {"id": "dora_exit_strategy", "title": "Estrategia de salida documentada — DORA Art.28(8)", "category": "compliance", "required": True, "condition": "is_dora"},
+    {"id": "nis2_clause", "title_key": "supplier_lifecycle_service.checklist.nis2_clause", "category": "compliance", "required": True, "condition": "is_nis2"},
+    {"id": "dora_ict_category", "title_key": "supplier_lifecycle_service.checklist.dora_ict_category", "category": "compliance", "required": True, "condition": "is_dora"},
+    {"id": "dora_exit_strategy", "title_key": "supplier_lifecycle_service.checklist.dora_exit_strategy", "category": "compliance", "required": True, "condition": "is_dora"},
     # Tier-1
-    {"id": "tier1_assessment", "title": "Assessment formal completado (tier-1 obligatorio en 30 dias)", "category": "security", "required": True, "condition": "tier_1"},
-    {"id": "nda", "title": "NDA / acuerdo de confidencialidad firmado", "category": "legal", "required": False, "condition": "always"},
+    {"id": "tier1_assessment", "title_key": "supplier_lifecycle_service.checklist.tier1_assessment", "category": "security", "required": True, "condition": "tier_1"},
+    {"id": "nda", "title_key": "supplier_lifecycle_service.checklist.nda", "category": "legal", "required": False, "condition": "always"},
     # Contrato
-    {"id": "contract_uploaded", "title": "Contrato subido al sistema", "category": "legal", "required": False, "condition": "always"},
-    {"id": "sla_defined", "title": "SLAs definidos y documentados", "category": "operational", "required": False, "condition": "always"},
-    {"id": "contacts_verified", "title": "Contactos del proveedor verificados", "category": "operational", "required": False, "condition": "always"},
+    {"id": "contract_uploaded", "title_key": "supplier_lifecycle_service.checklist.contract_uploaded", "category": "legal", "required": False, "condition": "always"},
+    {"id": "sla_defined", "title_key": "supplier_lifecycle_service.checklist.sla_defined", "category": "operational", "required": False, "condition": "always"},
+    {"id": "contacts_verified", "title_key": "supplier_lifecycle_service.checklist.contacts_verified", "category": "operational", "required": False, "condition": "always"},
 ]
 
 
-def generate_onboarding_checklist(supplier) -> list[dict]:
+def generate_onboarding_checklist(supplier, lang: str = "es") -> list[dict]:
     """Genera la lista de items de onboarding aplicables a este proveedor."""
     items = []
     for tmpl in _CHECKLIST_TEMPLATES:
@@ -55,7 +57,7 @@ def generate_onboarding_checklist(supplier) -> list[dict]:
         if applicable:
             items.append({
                 "id": tmpl["id"],
-                "title": tmpl["title"],
+                "title": _t(tmpl["title_key"], lang),
                 "category": tmpl["category"],
                 "required": tmpl["required"],
                 "completed": False,

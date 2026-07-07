@@ -1,0 +1,11 @@
+{
+  "audit_export_service": {
+    "risks_csv_headers": "Codigo,Descripcion,Activo,Amenaza,Nivel Inherente,Nivel Residual,Estado,Tratamiento,Fecha Creacion",
+    "controls_csv_headers": "Nombre,Estado,Madurez,Proxima Revision,Propietario",
+    "not_authorized": "No autorizado para exportar datos de esta organizacion",
+    "framework_invalid": "Framework '{framework}' no valido",
+    "framework_not_found": "Framework '{framework}' no encontrado",
+    "gaps_csv_headers": "id,nombre,dominio,estado,completion_pct",
+    "attestation_note": "Este documento certifica la integridad del paquete de auditoria. Verifique los hashes SHA-256 de cada archivo para confirmar que no han sido alterados."
+  }
+}

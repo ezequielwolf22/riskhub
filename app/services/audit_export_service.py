@@ -13,6 +13,7 @@ from app.models import (
     Risk, RiskStatus, ControlImplementation, Evidence, AuditLog,
     RiskContext, User, UserRole, ComplianceFrameworkStatus,
 )
+from app.i18n import t as _t
 
 logger = logging.getLogger("riskhub.audit_export")
 
@@ -21,8 +22,8 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _risks_csv(risks: list) -> bytes:
-    lines = ["code,description,asset,threat,inherent_level,residual_level,status,treatment,created_at"]
+def _risks_csv(risks: list, lang: str = "es") -> bytes:
+    lines = [_t("audit_export_service.risks_csv_headers", lang)]
     for r in risks:
         asset_name = r.asset.name if r.asset else ""
         threat_name = r.threat.name if r.threat else ""
@@ -37,8 +38,8 @@ def _risks_csv(risks: list) -> bytes:
     return "\n".join(lines).encode("utf-8")
 
 
-def _controls_csv(controls: list) -> bytes:
-    lines = ["name,status,maturity,next_review,owner"]
+def _controls_csv(controls: list, lang: str = "es") -> bytes:
+    lines = [_t("audit_export_service.controls_csv_headers", lang)]
     for c in controls:
         owner = c.owner.email if c.owner else ""
         lines.append(",".join([
@@ -84,6 +85,7 @@ def generate_audit_package(
     org_id: int,
     requested_by: User,
     include_evidence_files: bool = False,
+    lang: str = "es",
 ) -> bytes:
     """Genera ZIP de paquete de auditoría completo con hash de integridad.
 
@@ -103,7 +105,7 @@ def generate_audit_package(
     # pasar org_id explícitamente validado en el router.
     from fastapi import HTTPException as _HTTPException
     if requested_by.organization_id is None or requested_by.organization_id != org_id:
-        raise _HTTPException(403, "No autorizado para exportar datos de esta organización")
+        raise _HTTPException(403, _t("audit_export_service.not_authorized", lang))
 
     now = datetime.now(timezone.utc)
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
@@ -128,8 +130,8 @@ def generate_audit_package(
     # Generar archivos
     files: dict[str, bytes] = {}
 
-    files["risks.csv"] = _risks_csv(risks)
-    files["controls.csv"] = _controls_csv(controls)
+    files["risks.csv"] = _risks_csv(risks, lang)
+    files["controls.csv"] = _controls_csv(controls, lang)
     files["compliance.json"] = _compliance_json(compliance_statuses)
     files["audit_trail.json"] = _audit_trail_json(audit_logs)
 
@@ -193,10 +195,7 @@ def generate_audit_package(
         "package_hash": _sha256_bytes(
             json.dumps(file_hashes, sort_keys=True).encode("utf-8")
         ),
-        "note": (
-            "Este documento certifica la integridad del paquete de auditoría. "
-            "Verifique los hashes SHA-256 de cada archivo para confirmar que no han sido alterados."
-        ),
+        "note": _t("audit_export_service.attestation_note", lang),
     }
     files["attestation.json"] = json.dumps(attestation, indent=2, default=str).encode("utf-8")
 
@@ -219,6 +218,7 @@ def generate_framework_audit_package(
     org_id: int,
     framework_code: str,
     requested_by: User,
+    lang: str = "es",
 ) -> bytes:
     """Genera ZIP de auditoría estructurado específicamente para un framework.
 
@@ -229,12 +229,12 @@ def generate_framework_audit_package(
     # Usar "is None or" para bloquear también a superadmins con organization_id=None.
     from fastapi import HTTPException as _HTTPException
     if requested_by.organization_id is None or requested_by.organization_id != org_id:
-        raise _HTTPException(403, "No autorizado para exportar datos de esta organización")
+        raise _HTTPException(403, _t("audit_export_service.not_authorized", lang))
 
     # Validar que framework_code es un valor conocido para prevenir enumeración
     allowed_frameworks = {"iso27001", "gdpr", "nis2", "hipaa", "nist_csf", "soc2", "ens"}
     if framework_code not in allowed_frameworks:
-        raise ValueError(f"Framework '{framework_code}' no válido")
+        raise ValueError(_t("audit_export_service.framework_invalid", lang, framework=framework_code))
 
     from app.services.compliance_service import (
         load_framework, get_framework_compliance_status, initialize_org_framework
@@ -243,7 +243,7 @@ def generate_framework_audit_package(
     now = datetime.now(timezone.utc)
     framework = load_framework(framework_code)
     if not framework:
-        raise ValueError(f"Framework '{framework_code}' no encontrado")
+        raise ValueError(_t("audit_export_service.framework_not_found", lang, framework=framework_code))
 
     ctx = db.query(RiskContext).filter(RiskContext.organization_id == org_id).first()
     org_name = ctx.organization_name if ctx else f"Org-{org_id}"
@@ -275,7 +275,7 @@ def generate_framework_audit_package(
     # 3. Gaps (requisitos no implementados)
     gaps = status.get("gaps", [])
     if gaps:
-        gaps_csv_lines = ["id,nombre,dominio,estado,completion_pct"]
+        gaps_csv_lines = [_t("audit_export_service.gaps_csv_headers", lang)]
         for g in gaps:
             gaps_csv_lines.append(
                 f'"{g["id"]}","{g.get("name","")[:80]}","{g.get("domain","")}",'

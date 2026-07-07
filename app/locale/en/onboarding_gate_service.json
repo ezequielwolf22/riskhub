@@ -1,0 +1,16 @@
+{
+  "onboarding_gate_service": {
+    "chain_labels": {
+      "nda": "NDA / Non-disclosure agreement",
+      "dpa": "DPA (GDPR Art. 28)",
+      "cross_border": "Cross-border transfer clauses",
+      "nis2_addendum": "NIS2 Art. 21 addendum",
+      "dora_exit": "DORA Art. 28(8) exit strategy",
+      "ciso_approval": "CISO approval",
+      "contract": "Main contract signed"
+    },
+    "system_signer": "System",
+    "default_condition_title": "Onboarding condition",
+    "condition_description": "Condition required for onboarding of supplier {supplier_name}: {description}. Deadline: {due_days} days."
+  }
+}

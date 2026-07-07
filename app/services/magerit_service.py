@@ -20,6 +20,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.i18n import t as _t
 from app.models import Asset, AssetType, Risk, RiskContext, Threat
 
 logger = logging.getLogger("riskhub.magerit")
@@ -30,17 +31,29 @@ _MAGERIT_THREATS_PATH = Path(__file__).parent.parent / "data" / "magerit_threats
 _MAGERIT_TO_ISO = {1: 1, 2: 2, 3: 3, 4: 4, 5: 4}
 
 # Valoración de activos MAGERIT por dimensión (D, I, C, A, T)
-# Guía de niveles:
-_ASSET_VALUE_SCALE = {
-    1: "Muy bajo — Impacto mínimo o nulo",
-    2: "Bajo — Daño leve y recuperable",
-    3: "Medio — Daño moderado, afecta operativa",
-    4: "Alto — Daño grave, afecta misión",
-    5: "Muy alto — Daño catastrófico o irreversible",
-    6: "Crítico — Pérdida total de capacidad operativa",
-    7: "Catastrófico — Comprometería la viabilidad de la organización",
-    8: "Extremo — Afecta a seguridad nacional o ciudadana",
+# Guía de niveles (claves i18n, se resuelven con _get_scale_description)
+_ASSET_VALUE_SCALE_KEYS = {
+    1: "scale_value_1",
+    2: "scale_value_2",
+    3: "scale_value_3",
+    4: "scale_value_4",
+    5: "scale_value_5",
+    6: "scale_value_6",
+    7: "scale_value_7",
+    8: "scale_value_8",
 }
+
+
+def _get_asset_value_scale(lang: str = "es") -> dict:
+    """Escala de valoración MAGERIT (niveles 1-8) traducida al idioma solicitado."""
+    return {
+        level: _t(f"magerit_service.{key}", lang)
+        for level, key in _ASSET_VALUE_SCALE_KEYS.items()
+    }
+
+
+# Alias retrocompatible en español, usado por codigo que aun no pasa `lang`.
+_ASSET_VALUE_SCALE = _get_asset_value_scale("es")
 
 # Tipología de activos MAGERIT (mapeo desde ISO27005 AssetType)
 _ASSET_TYPE_MAGERIT = {
@@ -75,7 +88,7 @@ def load_magerit_threats() -> list[dict]:
         return []
 
 
-def get_asset_magerit_value(asset: Asset) -> dict:
+def get_asset_magerit_value(asset: Asset, lang: str = "es") -> dict:
     """Calcula la valoración MAGERIT de un activo por dimensiones.
 
     Retorna: {D, I, C, A, T, value_max, magerit_type}
@@ -95,7 +108,7 @@ def get_asset_magerit_value(asset: Asset) -> dict:
         **base_dims,
         "value_max": value_max,
         "magerit_type": magerit_type,
-        "scale_description": _ASSET_VALUE_SCALE.get(value_max, ""),
+        "scale_description": _get_asset_value_scale(lang).get(value_max, ""),
     }
 
 
@@ -104,6 +117,7 @@ def calculate_magerit_risk(
     threat_likelihood: int,
     threat_consequence: int,
     degradation_pct: int = 50,
+    lang: str = "es",
 ) -> dict:
     """Calcula riesgo MAGERIT: Riesgo = Impacto × Frecuencia.
 
@@ -132,13 +146,13 @@ def calculate_magerit_risk(
 
     # Nivel de riesgo MAGERIT
     if risk_val <= 1:
-        level = "BAJO"
+        level = _t("magerit_service.risk_level_low", lang)
     elif risk_val <= 3:
-        level = "MEDIO"
+        level = _t("magerit_service.risk_level_medium", lang)
     elif risk_val <= 6:
-        level = "ALTO"
+        level = _t("magerit_service.risk_level_high", lang)
     else:
-        level = "MUY ALTO"
+        level = _t("magerit_service.risk_level_very_high", lang)
 
     return {
         "impact": impact,
@@ -207,7 +221,7 @@ def seed_magerit_threats(db: Session, org_id: int) -> int:
     return created
 
 
-def get_magerit_analysis(db: Session, org_id: int) -> dict:
+def get_magerit_analysis(db: Session, org_id: int, lang: str = "es") -> dict:
     """Análisis MAGERIT completo de los activos de la org.
 
     Retorna valoración de activos, riesgos MAGERIT y métricas.
@@ -220,7 +234,7 @@ def get_magerit_analysis(db: Session, org_id: int) -> dict:
 
     asset_valuations = []
     for asset in assets:
-        val = get_asset_magerit_value(asset)
+        val = get_asset_magerit_value(asset, lang)
         asset_valuations.append({
             "asset_id": asset.id,
             "asset_code": asset.code,
@@ -232,14 +246,13 @@ def get_magerit_analysis(db: Session, org_id: int) -> dict:
             "scale": val["scale_description"],
         })
 
+    from app.services.risk_engine import magerit_dimensions
+
     return {
         "org_id": org_id,
         "total_assets": len(assets),
         "magerit_threats_count": len(magerit_threats),
         "asset_valuations": asset_valuations[:50],
-        "dimensions_legend": {
-            "D": "Disponibilidad", "I": "Integridad", "C": "Confidencialidad",
-            "A": "Autenticidad", "T": "Trazabilidad",
-        },
-        "scale_legend": _ASSET_VALUE_SCALE,
+        "dimensions_legend": magerit_dimensions(lang),
+        "scale_legend": _get_asset_value_scale(lang),
     }

@@ -138,19 +138,21 @@ def supplier_monitoring_dashboard(
 @router.post("/{supplier_id}/rescan")
 def rescan_supplier(
     supplier_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Lanza un escaneo manual inmediato de un proveedor."""
+    lang = get_lang(request)
     supplier = filter_by_org(db.query(Supplier), Supplier, current_user).filter(
         Supplier.id == supplier_id
     ).first()
     if not supplier:
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+        raise HTTPException(status_code=404, detail=_t("supplier_monitoring_service.supplier_not_found", lang))
 
     domain = supplier.website or supplier.contact_email
     if not domain:
-        raise HTTPException(status_code=400, detail="El proveedor no tiene website ni email configurado")
+        raise HTTPException(status_code=400, detail=_t("supplier_monitoring_service.supplier_missing_contact", lang))
 
     from app.services.supplier_monitoring_service import scan_supplier
     findings = scan_supplier(db, supplier, current_user.organization_id)
@@ -169,22 +171,24 @@ _ALLOWED_IMPORT_EXT = (".csv", ".xlsx", ".xls", ".ods", ".tsv", ".json")
 
 @router.post("/import")
 async def import_suppliers_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Importa proveedores desde Excel/CSV/exportaciones de otras herramientas."""
+    lang = get_lang(request)
     fname = (file.filename or "").lower()
     if not fname.endswith(_ALLOWED_IMPORT_EXT):
-        raise HTTPException(400, "Formato no soportado. Usa CSV, XLSX, XLS, ODS, TSV o JSON.")
+        raise HTTPException(400, _t("supplier_import_service.unsupported_format", lang))
     content = await file.read()
     if len(content) > _MAX_IMPORT_BYTES:
-        raise HTTPException(413, "El fichero supera el limite de 10 MB.")
+        raise HTTPException(413, _t("supplier_import_service.file_too_large", lang))
     if not content:
-        raise HTTPException(400, "El fichero esta vacio.")
+        raise HTTPException(400, _t("supplier_import_service.file_empty", lang))
     from app.services.supplier_import_service import import_suppliers
     try:
-        result = import_suppliers(content, file.filename, current_user.organization_id, db)
+        result = import_suppliers(content, file.filename, current_user.organization_id, db, lang)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     log_action(db, current_user.id, "import", "supplier", "*",
@@ -783,7 +787,7 @@ async def change_lifecycle(
 
     # Auto-generar checklist si entra en onboarding
     if new_stage == "onboarding" and not sup.onboarding_checklist:
-        sup.onboarding_checklist = generate_onboarding_checklist(sup)
+        sup.onboarding_checklist = generate_onboarding_checklist(sup, lang=lang)
 
     db.commit()
     return {

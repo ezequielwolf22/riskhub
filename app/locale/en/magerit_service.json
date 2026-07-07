@@ -1,0 +1,16 @@
+{
+  "magerit_service": {
+    "scale_value_1": "Very low — Minimal or no impact",
+    "scale_value_2": "Low — Mild, recoverable damage",
+    "scale_value_3": "Medium — Moderate damage, affects operations",
+    "scale_value_4": "High — Severe damage, affects mission",
+    "scale_value_5": "Very high — Catastrophic or irreversible damage",
+    "scale_value_6": "Critical — Total loss of operational capacity",
+    "scale_value_7": "Catastrophic — Would compromise organizational viability",
+    "scale_value_8": "Extreme — Affects national or public security",
+    "risk_level_low": "LOW",
+    "risk_level_medium": "MEDIUM",
+    "risk_level_high": "HIGH",
+    "risk_level_very_high": "VERY HIGH"
+  }
+}

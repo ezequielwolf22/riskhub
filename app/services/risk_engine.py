@@ -10,6 +10,8 @@ Mapeo de bandas finales (configurable en RiskContext):
 from __future__ import annotations
 from typing import Iterable, Optional
 
+from app.i18n import t as _t
+
 # Matriz por defecto (Tabla E.2 de ISO 27005:2018, p. 48)
 # Filas = impacto 0..4 (very low -> very high)
 # Columnas = likelihood 0..4 (very unlikely -> frequent)
@@ -21,6 +23,9 @@ DEFAULT_MATRIX = [
     [4, 5, 6, 7, 8],
 ]
 
+# Se mantienen en castellano por retrocompatibilidad (importados directamente
+# por routers/services que aun no pasan lang). Usar likelihood_labels(lang) /
+# consequence_labels(lang) para obtener las etiquetas en el idioma de UI.
 LIKELIHOOD_LABELS = [
     "Muy improbable",
     "Improbable",
@@ -35,6 +40,16 @@ CONSEQUENCE_LABELS = [
     "Mayor",
     "Critico",
 ]
+
+
+def likelihood_labels(lang: str = "es") -> list[str]:
+    """Devuelve las etiquetas de likelihood (0..4) en el idioma indicado."""
+    return [_t(f"risk_engine.likelihood.{i}", lang) for i in range(5)]
+
+
+def consequence_labels(lang: str = "es") -> list[str]:
+    """Devuelve las etiquetas de consequence (0..4) en el idioma indicado."""
+    return [_t(f"risk_engine.consequence.{i}", lang) for i in range(5)]
 
 
 def clamp(v: int, lo: int = 0, hi: int = 4) -> int:
@@ -56,7 +71,9 @@ def band_for(level: int) -> str:
     return "high"
 
 
-# Bandas por defecto (se devuelven cuando la org no tiene config personalizada)
+# Bandas por defecto (se devuelven cuando la org no tiene config personalizada).
+# Mantiene labels en es para retrocompatibilidad con importadores directos
+# (ej. routers/risk_level_config.py, que sobreescribe el label via _t() propio).
 _DEFAULT_BANDS = [
     {"code": "low",    "label": "Bajo",  "min_level": 0, "max_level": 2, "color": "var(--risk-low)",    "order": 1},
     {"code": "medium", "label": "Medio", "min_level": 3, "max_level": 5, "color": "var(--risk-medium)", "order": 2},
@@ -64,7 +81,18 @@ _DEFAULT_BANDS = [
 ]
 
 
-def get_risk_bands(db, org_id: int | None) -> list[dict]:
+def _default_bands(lang: str = "es") -> list[dict]:
+    return [
+        {"code": "low", "label": _t("risk_engine.band_label.low", lang),
+         "min_level": 0, "max_level": 2, "color": "var(--risk-low)", "order": 1},
+        {"code": "medium", "label": _t("risk_engine.band_label.medium", lang),
+         "min_level": 3, "max_level": 5, "color": "var(--risk-medium)", "order": 2},
+        {"code": "high", "label": _t("risk_engine.band_label.high", lang),
+         "min_level": 6, "max_level": 8, "color": "var(--risk-high)", "order": 3},
+    ]
+
+
+def get_risk_bands(db, org_id: int | None, lang: str = "es") -> list[dict]:
     """Devuelve la configuracion de bandas para una org (o defaults si no hay custom)."""
     try:
         from app.models import RiskLevelConfig
@@ -82,7 +110,7 @@ def get_risk_bands(db, org_id: int | None) -> list[dict]:
             ]
     except Exception:
         pass
-    return [b.copy() for b in _DEFAULT_BANDS]
+    return _default_bands(lang)
 
 
 def band_for_config(level: int, bands: list[dict]) -> dict:
@@ -209,6 +237,8 @@ def default_matrix() -> list[list[int]]:
 # ---------- MAGERIT v3 helpers ----------
 
 # Escala de frecuencia MAGERIT (MA/A/M/B/MB) → probabilidad 0-4 ISO 27005
+# Se mantienen en castellano por retrocompatibilidad con importadores directos.
+# Usar magerit_freq_labels(lang) / magerit_dimensions(lang) para el idioma de UI.
 MAGERIT_FREQ_LABELS = {
     "0": "MB — Muy Baja (< 1/10 años)",
     "1": "B  — Baja (1/5-10 años)",
@@ -225,6 +255,16 @@ MAGERIT_DIMENSIONS = {
     "A": "Autenticidad",
     "T": "Trazabilidad",
 }
+
+
+def magerit_freq_labels(lang: str = "es") -> dict:
+    """Devuelve la escala de frecuencia MAGERIT en el idioma indicado."""
+    return {k: _t(f"risk_engine.magerit_freq_label.{k}", lang) for k in MAGERIT_FREQ_LABELS}
+
+
+def magerit_dimensions(lang: str = "es") -> dict:
+    """Devuelve las dimensiones de seguridad MAGERIT en el idioma indicado."""
+    return {k: _t(f"risk_engine.magerit_dimension.{k}", lang) for k in MAGERIT_DIMENSIONS}
 
 # Mapa dimensión → campo en Asset
 MAGERIT_DIM_FIELD = {

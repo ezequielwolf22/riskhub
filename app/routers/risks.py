@@ -24,7 +24,7 @@ from app.services.risk_engine import (
     calc_level, calc_residual,
     calc_consequence_magerit, primary_dimension_for_threat, MAGERIT_DIM_FIELD,
 )
-from app.i18n import get_lang, t as _t
+from app.i18n import ai_lang_directive, get_lang, t as _t
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
 
@@ -271,18 +271,20 @@ def list_risks(
 
 @router.get("/methodology")
 def get_methodology(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Devuelve la metodologia activa y sus metadatos (para el formulario de riesgos)."""
-    from app.services.risk_engine import MAGERIT_DIMENSIONS, MAGERIT_FREQ_LABELS
+    lang = get_lang(request)
+    from app.services.risk_engine import magerit_dimensions, magerit_freq_labels
     ctx = _get_context(db, current_user.organization_id)
     methodology = ctx.methodology if ctx and ctx.methodology else "iso27005"
     risk_appetite = (ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3)
     return {
         "methodology": methodology,
-        "magerit_dimensions": MAGERIT_DIMENSIONS,
-        "magerit_freq_labels": MAGERIT_FREQ_LABELS,
+        "magerit_dimensions": magerit_dimensions(lang),
+        "magerit_freq_labels": magerit_freq_labels(lang),
         "risk_appetite": risk_appetite,
     }
 
@@ -309,9 +311,11 @@ def risk_trace(
     Crítico para justificar el nivel residual ante una auditoría ISO 27001."""
     from sqlalchemy import select
     from app.models import Evidence, risk_control_table
-    from app.services.risk_engine import control_reduction, LIKELIHOOD_LABELS, CONSEQUENCE_LABELS
+    from app.services.risk_engine import control_reduction, likelihood_labels, consequence_labels
 
     lang = get_lang(request)
+    LIKELIHOOD_LABELS = likelihood_labels(lang)
+    CONSEQUENCE_LABELS = consequence_labels(lang)
     r = db.get(Risk, risk_id)
     if not r or not check_org_access(r.organization_id, current_user):
         raise HTTPException(404, _t("risks.not_found", lang))
@@ -473,11 +477,13 @@ def risk_ai_explain(
     from app.models import AiConfig, AiCallLog, Evidence, risk_control_table
     from app.security import filter_by_org
     from app.services.rag_service import search_chunks_with_source
-    from app.services.risk_engine import LIKELIHOOD_LABELS, CONSEQUENCE_LABELS
+    from app.services.risk_engine import likelihood_labels, consequence_labels
     from sqlalchemy import select
     import json as _json
 
     lang = get_lang(request)
+    LIKELIHOOD_LABELS = likelihood_labels(lang)
+    CONSEQUENCE_LABELS = consequence_labels(lang)
     r = db.get(Risk, risk_id)
     if not r or not check_org_access(r.organization_id, current_user):
         raise HTTPException(404, _t("risks.not_found", lang))
@@ -600,7 +606,9 @@ def risk_ai_explain(
     cia_i = r.asset.value_integrity if r.asset else "N/A"
     cia_a = r.asset.value_availability if r.asset else "N/A"
 
-    prompt = f"""Eres un auditor senior de seguridad de la informacion con:
+    prompt = f"""{ai_lang_directive(lang)}
+
+Eres un auditor senior de seguridad de la informacion con:
 - Certificaciones CISSP, CISM, ISO 27001 Lead Auditor, ISO 27005 Risk Manager
 - Especializacion en analisis cuantitativo y cualitativo de riesgos segun ISO/IEC 27005:2018
 - Conocimiento profundo de ISO 27001/27002:2022, MAGERIT v3, NIST CSF 2.0, ENS, DORA, NIS2, GDPR
@@ -1015,6 +1023,7 @@ def _trigger_compliance_sync_bg(org_id: int) -> None:
 @router.post("/magerit-preview")
 def magerit_consequence_preview(
     body: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1023,7 +1032,9 @@ def magerit_consequence_preview(
     Body: {asset_id, dimension, degradation_pct}
     Respuesta: {consequence, magerit_impact, dim_value, label}
     """
-    from app.services.risk_engine import calc_consequence_magerit, MAGERIT_DIM_FIELD, CONSEQUENCE_LABELS
+    lang = get_lang(request)
+    from app.services.risk_engine import calc_consequence_magerit, MAGERIT_DIM_FIELD, consequence_labels
+    CONSEQUENCE_LABELS = consequence_labels(lang)
     asset_id = body.get("asset_id")
     dimension = body.get("dimension", "D")
     degrad = int(body.get("degradation_pct", 50))
@@ -1279,8 +1290,9 @@ def heatmap(db: Session = Depends(get_db),
 
 
 @router.get("/stats/summary")
-def summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def summary(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Resumen para el dashboard."""
+    lang = get_lang(request)
     from sqlalchemy import func as _func
     from app.services.risk_engine import get_risk_bands, band_for_config
     now = datetime.now(timezone.utc)
@@ -1308,7 +1320,7 @@ def summary(db: Session = Depends(get_db), current_user: User = Depends(get_curr
         joinedload(Risk.asset), joinedload(Risk.threat)
     ).all()
 
-    _bands = get_risk_bands(db, getattr(current_user, "organization_id", None))
+    _bands = get_risk_bands(db, getattr(current_user, "organization_id", None), lang)
     # Siempre incluir low/medium/high para compatibilidad con el dashboard
     by_band: dict = {"low": 0, "medium": 0, "high": 0}
     by_band.update({b["code"]: 0 for b in _bands})
@@ -1867,7 +1879,9 @@ def suggest_controls_for_risk(
         db, r.asset_id, vuln_ids_suggest, impl_ids_suggest, r.organization_id
     )
 
-    prompt = f"""Eres un auditor ISO 27001 y ISO 27005 experto en gestion de riesgos de seguridad.
+    prompt = f"""{ai_lang_directive(lang)}
+
+Eres un auditor ISO 27001 y ISO 27005 experto en gestion de riesgos de seguridad.
 
 Tu tarea es seleccionar los controles que REALMENTE mitigan este riesgo especifico,
 NO los que tienen un nombre relacionado. Piensa en terminos de cadena de ataque.
@@ -2156,7 +2170,7 @@ def ai_discover_risks(
     org_id = current_user.organization_id
     api_key = _resolve_ai_key(db, org_id)
     if not api_key:
-        raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
+        raise HTTPException(400, _t("risks.api_key_missing", lang))
 
     from app.models import AiConfig, Asset, Threat
     ai_cfg = db.query(AiConfig).filter_by(organization_id=org_id).first()
@@ -2185,7 +2199,9 @@ def ai_discover_risks(
         for t in threats_unused
     ) or "  (todas las amenazas cubiertas)"
 
-    prompt = f"""Eres un auditor ISO 27005 senior. Analiza las brechas de cobertura de riesgos:
+    prompt = f"""{ai_lang_directive(lang)}
+
+Eres un auditor ISO 27005 senior. Analiza las brechas de cobertura de riesgos:
 
 ACTIVOS SIN RIESGOS ASIGNADOS:
 {asset_lines}
@@ -2242,12 +2258,12 @@ def ai_attack_scenario(
 
     risk = db.get(Risk, risk_id)
     if not risk or not check_org_access(risk.organization_id, current_user):
-        raise HTTPException(404, "Riesgo no encontrado")
+        raise HTTPException(404, _t("risks.not_found", lang))
 
     org_id = risk.organization_id
     api_key = _resolve_ai_key(db, org_id)
     if not api_key:
-        raise HTTPException(400, "API key no configurada.")
+        raise HTTPException(400, _t("risks.api_key_missing", lang))
 
     ai_cfg = db.query(AiConfig).filter_by(organization_id=org_id).first()
     model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5"
@@ -2257,7 +2273,9 @@ def ai_attack_scenario(
     vulns = risk.vulnerabilities or []
     estimated_value = (asset.estimated_value if asset and hasattr(asset, "estimated_value") else None) or 0
 
-    prompt = f"""Eres un experto en ciberseguridad ofensiva y analisis de riesgo ISO 27005.
+    prompt = f"""{ai_lang_directive(lang)}
+
+Eres un experto en ciberseguridad ofensiva y analisis de riesgo ISO 27005.
 
 RIESGO: {risk.code} — {risk.description or risk.code}
 ACTIVO: {asset.name if asset else 'N/A'} (valor estimado: {estimated_value} EUR)

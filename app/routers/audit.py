@@ -314,11 +314,12 @@ def download_audit_package(
     from fastapi.responses import Response
     from app.services.audit_export_service import generate_audit_package
 
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
+        raise HTTPException(400, _t("compliance.org_required", lang))
 
-    zip_bytes = generate_audit_package(db, org_id, current_user, include_evidence_files)
+    zip_bytes = generate_audit_package(db, org_id, current_user, include_evidence_files, lang)
     fname = f"riskhub_audit_package_{datetime.now().strftime('%Y%m%d_%H%M')}.zip"
     return Response(
         content=zip_bytes,
@@ -341,12 +342,13 @@ def download_framework_audit_package(
     from fastapi.responses import Response
     from app.services.audit_export_service import generate_framework_audit_package
 
+    lang = get_lang(request)
     org_id = current_user.organization_id
     if not org_id:
-        raise HTTPException(400, _t("compliance.org_required", get_lang(request)))
+        raise HTTPException(400, _t("compliance.org_required", lang))
 
     try:
-        zip_bytes = generate_framework_audit_package(db, org_id, framework_code, current_user)
+        zip_bytes = generate_framework_audit_package(db, org_id, framework_code, current_user, lang)
     except ValueError as e:
         raise HTTPException(404, str(e))
 

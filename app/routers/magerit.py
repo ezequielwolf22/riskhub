@@ -9,8 +9,9 @@ from app.security import get_current_user, require_analyst
 from app.services.magerit_service import (
     load_magerit_threats, seed_magerit_threats,
     get_magerit_analysis, get_asset_magerit_value,
-    _ASSET_VALUE_SCALE, _DIMENSIONS_BY_TYPE,
+    _get_asset_value_scale, _DIMENSIONS_BY_TYPE,
 )
+from app.services.risk_engine import magerit_dimensions
 
 router = APIRouter(prefix="/api/magerit", tags=["magerit"])
 
@@ -41,7 +42,7 @@ def get_analysis(request: Request, db: Session = Depends(get_db),
     org_id = current_user.organization_id
     if not org_id:
         raise HTTPException(400, _t("magerit.org_id_required", lang))
-    return get_magerit_analysis(db, org_id)
+    return get_magerit_analysis(db, org_id, lang)
 
 
 @router.get("/assets/{asset_id}/valuation")
@@ -53,7 +54,7 @@ def get_asset_valuation(asset_id: int, request: Request, db: Session = Depends(g
     asset = db.get(Asset, asset_id)
     if not asset or asset.organization_id != current_user.organization_id:
         raise HTTPException(404, _t("magerit.asset_not_found", lang))
-    return get_asset_magerit_value(asset)
+    return get_asset_magerit_value(asset, lang)
 
 
 @router.delete("/catalog", status_code=200)
@@ -96,9 +97,7 @@ def delete_magerit_catalog(request: Request, db: Session = Depends(get_db),
 
 
 @router.get("/scale")
-def get_scale(current_user: User = Depends(get_current_user)):
+def get_scale(request: Request, current_user: User = Depends(get_current_user)):
     """Escala de valoración MAGERIT."""
-    return {"scale": _ASSET_VALUE_SCALE, "dimensions": {
-        "D": "Disponibilidad", "I": "Integridad",
-        "C": "Confidencialidad", "A": "Autenticidad", "T": "Trazabilidad",
-    }}
+    lang = get_lang(request)
+    return {"scale": _get_asset_value_scale(lang), "dimensions": magerit_dimensions(lang)}
