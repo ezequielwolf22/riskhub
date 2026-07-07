@@ -4,8 +4,10 @@ services:
     image: riskhub:latest
     container_name: riskhub
     restart: unless-stopped
-    ports:
-      - "${RISKHUB_PORT_HOST:-80}:8000"
+    # No external port mapping — traffic enters exclusively through nginx.
+    # For local dev without nginx, override with: RISKHUB_PORT_HOST=8000
+    expose:
+      - "8000"
     environment:
       - RISKHUB_SECRET_KEY=${RISKHUB_SECRET_KEY:?Define RISKHUB_SECRET_KEY en .env}
       - RISKHUB_ADMIN_EMAIL=${RISKHUB_ADMIN_EMAIL:-admin@company.internal}
@@ -21,6 +23,21 @@ services:
       - RISKHUB_GITHUB_API_TOKEN=${RISKHUB_GITHUB_API_TOKEN:-}
     volumes:
       - riskhub-data:/srv/data
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: riskhub-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - riskhub
     networks:
       - internal
 
