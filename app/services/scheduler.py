@@ -2520,6 +2520,24 @@ def _run_msforms_poll() -> None:
         logger.error("MSForms scheduler: error inesperado: %s", exc)
 
 
+def _run_email_intake_poll() -> None:
+    """Polling periodico de buzon de correo para alta automatica de proveedores (Via 4)."""
+    try:
+        from app.services.email_intake_service import poll_all_orgs
+        poll_all_orgs()
+    except Exception as exc:
+        logger.error("Email intake scheduler: error inesperado: %s", exc)
+
+
+def _run_sharepoint_sync() -> None:
+    """Sincronizacion periodica de carpetas SharePoint permitidas (deteccion de cambios)."""
+    try:
+        from app.services.sharepoint_sync_service import sync_all_organizations
+        sync_all_organizations()
+    except Exception as exc:
+        logger.error("SharePoint sync scheduler: error inesperado: %s", exc)
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -2873,6 +2891,23 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="MS Forms polling — alta automatica de proveedores",
         replace_existing=True,
         misfire_grace_time=600,
+    )
+    # Via 4 — Polling de buzon de correo: alta automatica de proveedores (cada hora, filtra por intervalo por-org)
+    _scheduler.add_job(
+        func=_run_email_intake_poll,
+        trigger=IntervalTrigger(hours=1),
+        id="email_intake_poll",
+        name="Email intake polling — alta automatica de proveedores",
+        replace_existing=True,
+        misfire_grace_time=600,
+    )
+    _scheduler.add_job(
+        func=_run_sharepoint_sync,
+        trigger=IntervalTrigger(hours=6),
+        id="sharepoint_sync",
+        name="SharePoint — sincronizacion de carpetas permitidas (delta)",
+        replace_existing=True,
+        misfire_grace_time=1800,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

@@ -1089,6 +1089,44 @@ const ViewGuide = {
     ${this._warn('<strong>Formatos soportados:</strong> PDF, DOCX, TXT y CSV. Los archivos de otros formatos se omiten automaticamente. Tamano maximo por archivo: 20 MB.')}
     ${this._tip('<strong>Buena practica:</strong> Organiza la documentacion SGSI en SharePoint por carpetas tematicas (politicas, procedimientos, registros, evidencias) e importa cada carpeta con la categoria correspondiente en RiskHub. Esto mejora la precision del Agente IA en las consultas.')}
 
+    ${this._h('Carpetas permitidas y sincronizacion automatica')}
+    ${this._p('Para limitar que solo determinadas carpetas de SharePoint sean accesibles desde RiskHub, navega hasta la carpeta deseada en el explorador y pulsa <strong>"+ Permitir esta carpeta"</strong>. Es un allowlist plano: cualquier documento dentro de una carpeta permitida queda disponible para todos los analisis (riesgos, compliance, TPRM, etc.), no hay asignacion de una carpeta a un tipo de analisis concreto — la evidencia suele ser transversal a varios marcos normativos.')}
+    ${this._steps([
+      'Navega hasta la carpeta (o la raiz de la biblioteca) que quieres habilitar y pulsa <strong>"+ Permitir esta carpeta"</strong>.',
+      'La carpeta aparece en el listado <strong>Carpetas permitidas</strong>. Repite para cada carpeta adicional. Usa <strong>Quitar</strong> para revocar el acceso.',
+      'Activa <strong>Sincronizacion automatica</strong> para que RiskHub revise cada 6 horas si hay archivos nuevos, modificados o eliminados en esas carpetas (deteccion de cambios via Microsoft Graph delta query).',
+      'Cada archivo nuevo o modificado se reimporta y se reprocesa por completo: indexado para el Agente IA, analisis ISMS, inferencia de evidencias/cumplimiento y extraccion de clausulas ISO — es un analisis diferencial, solo se reprocesa lo que cambio.',
+      'Usa <strong>Sincronizar ahora</strong> para forzar una comprobacion inmediata sin esperar al ciclo automatico.',
+    ])}
+    ${this._warn('Los archivos eliminados en SharePoint no se borran automaticamente en RiskHub: se marcan como "origen eliminado" para que un analista revise y decida, evitando perder evidencia de auditoria sin supervision.')}
+    ${this._tip('<strong>Acceso desde Azure AD:</strong> si ademas de este allowlist funcional quieres que la aplicacion de Azure solo pueda ver ciertos sitios de SharePoint a nivel de permisos (no solo de UI), pide al administrador de Microsoft 365 del cliente que cambie el permiso de aplicacion a <code>Sites.Selected</code> y conceda acceso sitio por sitio via Graph API — es una configuracion que debe hacer el propio administrador de Azure, RiskHub no puede activarla por si solo.')}
+
+    ${this._h('Via 4 — Alta automatica de proveedores por email (polling de buzon)')}
+    ${this._p('Permite que los proveedores envien su alta por correo (formulario adjunto en PDF/Word, o texto en el cuerpo del mail) a un buzon dedicado. RiskHub consulta ese buzon periodicamente — nunca recibe conexiones entrantes — y crea automaticamente la ficha del proveedor. Se configura en <strong>Integraciones → pestaña Live → tarjeta Formularios de proveedores → Via 4</strong>.')}
+    ${this._h('Modo 1: Microsoft 365 (Graph API)')}
+    ${this._steps([
+      'Usa el mismo App Registration de Azure AD que la Via 3 (polling MS Forms), o crea uno nuevo.',
+      'En <strong>API Permissions</strong>, anade el permiso de aplicacion <code>Mail.Read</code> sobre Microsoft Graph.',
+      'Haz clic en <strong>Conceder consentimiento de administrador</strong>.',
+      'En RiskHub, selecciona "Microsoft 365 (Graph API)" e introduce Tenant ID, Client ID, Client Secret y el buzon (UPN) a monitorear, ej. <code>proveedores@empresa.com</code>.',
+    ])}
+    ${this._h('Modo 2: IMAP generico (Gmail, Exchange on-prem, cualquier proveedor)')}
+    ${this._steps([
+      'Obten las credenciales IMAP del buzon: host, puerto (normalmente 993 con SSL), usuario y contrasena.',
+      'Para Gmail: activa el acceso IMAP en la configuracion de la cuenta y genera una <strong>contrasena de aplicacion</strong> en vez de usar la contrasena principal.',
+      'En RiskHub, selecciona "IMAP generico" e introduce host, puerto, usuario, contrasena y la carpeta a revisar (por defecto INBOX).',
+      'Usa el boton <strong>Probar conexion</strong> para verificar el login antes de guardar.',
+    ])}
+    ${this._h('Como procesa RiskHub cada mail')}
+    ${this._steps([
+      'Si el mail trae un PDF con campos de formulario reales (AcroForm) o un Word con content controls, RiskHub extrae los datos de forma deterministica usando el <strong>mapeo de campos</strong> configurado — igual de fiable que un webhook.',
+      'Si el documento no tiene campos estructurados (documento libre, escaneado, o texto en el cuerpo del mail), RiskHub usa IA (Claude) para inferir los datos del proveedor.',
+      'El proveedor SIEMPRE se crea. Si no se pudo determinar el nombre del proveedor con confianza, se usa el remitente o el asunto del mail como nombre provisional y la ficha queda marcada como <strong>"Pendiente de revision"</strong>.',
+      'El adjunto original queda guardado (cifrado) como documento del proveedor, para poder auditar despues el formulario que origino el alta.',
+    ])}
+    ${this._warn('<strong>Seguridad:</strong> los adjuntos de remitentes externos se validan por tamano (max 20 MB) y firma de contenido (magic bytes) antes de procesarse, igual que cualquier documento subido manualmente. Solo se aceptan PDF, Word, TXT y CSV — no imagenes. Opcionalmente puedes restringir que remitentes se aceptan (allowlist) y filtrar por asunto.')}
+    ${this._tip('<strong>Buena practica:</strong> dedica un buzon exclusivo para el intake de proveedores (ej. <em>altaproveedores@empresa.com</em>) y comunica ese buzon en tu proceso de onboarding, en vez de reusar un buzon corporativo general.')}
+
     ${this._h('SSO — Inicio de sesion unico (OIDC)')}
     ${this._p('RiskHub soporta autenticacion federada mediante el protocolo <strong>OpenID Connect (OIDC)</strong>, compatible con Microsoft Entra ID (Azure AD), Google Workspace, Okta y cualquier proveedor OIDC estandar. Permite a los usuarios iniciar sesion con sus credenciales corporativas sin necesidad de una cuenta RiskHub separada.')}
     ${this._h('Configurar el proveedor de identidad (IdP)')}

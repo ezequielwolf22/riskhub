@@ -698,7 +698,10 @@ const ViewIntegrations = {
             </select>
           </div>
         </div>
-        <div id="sp-breadcrumb" style="font-size:12px;color:var(--text-muted);margin-bottom:6px;"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <div id="sp-breadcrumb" style="font-size:12px;color:var(--text-muted);flex:1;"></div>
+          <button class="btn btn-sm" onclick="ViewIntegrations._addCurrentFolder()">${t('integrations.sp_allow_folder_btn')}</button>
+        </div>
         <div id="sp-files" style="min-height:80px;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--bg-2);"></div>
         <div id="sp-selection" style="margin-top:8px;display:none;align-items:center;gap:8px;flex-wrap:wrap;">
           <span id="sp-sel-count" style="font-size:13px;"></span>
@@ -717,10 +720,29 @@ const ViewIntegrations = {
           </button>
           <button class="btn btn-sm" onclick="ViewIntegrations._clearSelection()">${t('integrations.sp_clear_btn')}</button>
         </div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0;">
+        <b style="font-size:13px;">${t('integrations.sp_allowed_title')}</b>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 12px;">
+          ${t('integrations.sp_allowed_desc')}
+        </p>
+        <div id="sp-allowed-list" style="margin-bottom:12px;">
+          <p class="text-muted" style="font-size:12px;">${t('integrations.loading')}</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--border);">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="sp-sync-toggle" onchange="ViewIntegrations._toggleSync(this.checked)">
+            ${t('integrations.sp_sync_toggle_label')}
+          </label>
+          <button class="btn btn-sm" onclick="ViewIntegrations._syncNow()">${t('integrations.sp_sync_now_btn')}</button>
+          <span id="sp-sync-status" style="font-size:12px;color:var(--text-muted);"></span>
+        </div>
       `;
       this._spSelected = [];
       this._spNavStack = [];
       this._loadSites();
+      this._loadAllowedFolders();
+      this._loadSyncStatus();
     } else {
       badge.innerHTML = `<span class="badge badge-muted">${t('integrations.sp_not_configured')}</span>`;
       body.innerHTML = this._spConfigForm();
@@ -775,6 +797,111 @@ const ViewIntegrations = {
     try {
       const r = await Api.sharepoint.test();
       UI.toast(r.message, 'success');
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  // ---- Carpetas permitidas + sincronizacion automatica ----
+
+  async _loadAllowedFolders() {
+    const wrap = document.getElementById('sp-allowed-list');
+    if (!wrap) return;
+    try {
+      const r = await Api.sharepoint.getAllowedFolders();
+      const folders = r.folders || [];
+      if (!folders.length) {
+        wrap.innerHTML = `<p class="text-muted" style="font-size:12px;">${t('integrations.sp_allowed_empty')}</p>`;
+        return;
+      }
+      wrap.innerHTML = folders.map((f, i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;
+                    border:1px solid var(--border);border-radius:6px;margin-bottom:6px;font-size:12px;">
+          <span style="color:var(--brand-purple);">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${UI.esc(f.path || f.name)}">
+            <b>${UI.esc(f.drive_name || '')}</b> / ${UI.esc(f.path || f.name)}
+          </span>
+          <button class="btn btn-sm btn-danger" onclick="ViewIntegrations._removeAllowedFolder(${i})">${t('integrations.sp_remove_btn')}</button>
+        </div>
+      `).join('');
+    } catch (e) {
+      wrap.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  },
+
+  async _addCurrentFolder() {
+    const siteSel = document.getElementById('sp-site');
+    const driveSel = document.getElementById('sp-drive');
+    const siteId = siteSel?.value;
+    const driveId = driveSel?.value;
+    if (!siteId || !driveId) { UI.toast(t('integrations.sp_select_site_drive_first'), 'error'); return; }
+    const siteName = siteSel.options[siteSel.selectedIndex]?.text || siteId;
+    const driveName = driveSel.options[driveSel.selectedIndex]?.text || driveId;
+    const last = this._spNavStack[this._spNavStack.length - 1];
+    const itemId = last ? last.id : 'root';
+    const name = last ? last.name : t('integrations.sp_root');
+    const path = this._spNavStack.length ? this._spNavStack.map(n => n.name).join(' / ') : t('integrations.sp_root');
+
+    try {
+      const current = await Api.sharepoint.getAllowedFolders();
+      const folders = current.folders || [];
+      if (folders.some(f => f.drive_id === driveId && f.item_id === itemId)) {
+        UI.toast(t('integrations.sp_folder_already_allowed'), 'info');
+        return;
+      }
+      folders.push({ site_id: siteId, site_name: siteName, drive_id: driveId, drive_name: driveName, item_id: itemId, name, path });
+      await Api.sharepoint.setAllowedFolders(folders);
+      UI.toast(t('integrations.sp_folder_added'), 'success');
+      this._loadAllowedFolders();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _removeAllowedFolder(index) {
+    try {
+      const current = await Api.sharepoint.getAllowedFolders();
+      const folders = current.folders || [];
+      folders.splice(index, 1);
+      await Api.sharepoint.setAllowedFolders(folders);
+      this._loadAllowedFolders();
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _loadSyncStatus() {
+    const toggle = document.getElementById('sp-sync-toggle');
+    const status = document.getElementById('sp-sync-status');
+    if (!toggle || !status) return;
+    try {
+      const r = await Api.sharepoint.getSyncStatus();
+      toggle.checked = !!r.sync_enabled;
+      if (r.last_sync_at) {
+        const d = new Date(r.last_sync_at);
+        const s = r.last_sync_summary || {};
+        status.textContent = t('integrations.sp_last_sync', {
+          date: d.toLocaleString(), imported: s.imported || 0, updated: s.updated || 0, errors: s.errors || 0,
+        });
+      } else {
+        status.textContent = t('integrations.sp_never_synced');
+      }
+    } catch (e) { status.textContent = ''; }
+  },
+
+  async _toggleSync(enabled) {
+    try {
+      await Api.sharepoint.setSyncEnabled(enabled);
+      UI.toast(enabled ? t('integrations.sp_sync_on') : t('integrations.sp_sync_off'), 'success');
+    } catch (e) { UI.toast(e.message, 'error'); }
+  },
+
+  async _syncNow() {
+    UI.toast(t('integrations.sp_syncing'), 'info');
+    try {
+      const r = await Api.sharepoint.syncNow();
+      UI.toast(t('integrations.sp_sync_result', {
+        imported: r.imported, updated: r.updated, deleted: r.deleted, errors: r.errors.length,
+      }), 'success');
+      this._loadSyncStatus();
     } catch (e) { UI.toast(e.message, 'error'); }
   },
 
@@ -1479,6 +1606,26 @@ const ViewIntegrations = {
       ${discoveredQuestions.map(q => `<option value="${UI.esc(q.title)}">`).join('')}
     </datalist>`;
 
+    // Via 4 — alta por email
+    const emailLastPollStr = cfg.email_intake_last_poll_at
+      ? new Date(cfg.email_intake_last_poll_at).toLocaleString()
+      : 'Nunca';
+    const emailPollActive = cfg.email_intake_enabled && cfg.email_intake_mode;
+    const emailPollBadge = emailPollActive
+      ? `<span style="font-size:11px;background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:999px;font-weight:600;">Activo</span>`
+      : `<span style="font-size:11px;background:#F3F4F6;color:#6B7280;padding:2px 8px;border-radius:999px;">Inactivo</span>`;
+    const emailMappingEntries = Object.entries(cfg.email_intake_field_mapping || {});
+    const emailMappingRows = emailMappingEntries.map(([k, v]) =>
+      `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+        <input class="input" style="flex:1;font-size:12px;" placeholder="Nombre del campo PDF / tag Word" value="${UI.esc(k)}" data-email-map-key>
+        <span style="color:var(--text-muted);">→</span>
+        <select class="input" style="width:160px;font-size:12px;" data-email-map-val>
+          ${ViewIntegrations._mapFieldOptions(v)}
+        </select>
+        <button class="btn btn-sm" style="padding:2px 8px;" onclick="this.closest('div').remove()">x</button>
+      </div>`
+    ).join('');
+
     body.innerHTML = `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px;">
 
@@ -1678,6 +1825,141 @@ const ViewIntegrations = {
         </div>
       </div>
 
+      <!-- Via 4: Alta automatica de proveedores por email (polling de buzon) -->
+      <div style="border:2px solid #0EA5E9;border-radius:10px;padding:20px;margin-top:20px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0EA5E9" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 6l8 7 8-7"/></svg>
+          <span style="font-weight:700;font-size:14px;color:#0EA5E9;">Via 4 — Alta automatica de proveedores por email (polling de buzon)</span>
+          ${emailPollBadge}
+          <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Ultimo sync: ${UI.esc(emailLastPollStr)}</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px;">
+          RiskHub consulta el buzon configurado cada N horas (nunca recibe conexiones entrantes). Por cada
+          mail nuevo revisa los adjuntos (PDF/Word con campos de formulario, o texto libre) y crea
+          automaticamente un proveedor. Si la extraccion fue de baja confianza, el proveedor se marca
+          como "pendiente de revision".
+        </p>
+
+        <div style="margin-bottom:12px;">
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Tipo de conexion al buzon</label>
+          <div style="display:flex;gap:16px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="email-mode" value="graph" id="email-mode-graph" ${cfg.email_intake_mode === 'graph' ? 'checked' : ''}> Microsoft 365 (Graph API)
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="email-mode" value="imap" id="email-mode-imap" ${cfg.email_intake_mode === 'imap' ? 'checked' : ''}> IMAP generico (Gmail, Exchange on-prem, otros)
+            </label>
+          </div>
+        </div>
+
+        <div id="email-graph-panel" style="display:${cfg.email_intake_mode === 'imap' ? 'none' : 'grid'};grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Azure Tenant ID *</label>
+            <input class="input" id="email-graph-tenant" value="${UI.esc(cfg.email_intake_graph_tenant_id || '')}">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Client ID *</label>
+            <input class="input" id="email-graph-client" value="${UI.esc(cfg.email_intake_graph_client_id || '')}">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">
+              Client Secret *
+              ${cfg.email_intake_graph_secret_configured ? '<span style="color:#059669;font-size:10px;font-weight:400;">(configurado — deja en blanco para mantener)</span>' : ''}
+            </label>
+            <input type="password" class="input" id="email-graph-secret"
+              placeholder="${cfg.email_intake_graph_secret_configured ? 'Dejar en blanco para mantener el actual' : 'Secreto del cliente Azure AD'}">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Buzon (mailbox UPN) *</label>
+            <input class="input" id="email-graph-mailbox" placeholder="proveedores@empresa.com" value="${UI.esc(cfg.email_intake_graph_mailbox || '')}">
+          </div>
+          <div style="grid-column:1 / -1;font-size:10px;color:var(--text-muted);">
+            Requiere permiso de aplicacion <code>Mail.Read</code> concedido con consentimiento de administrador
+            en el mismo App Registration (o uno nuevo) que usa la Via 3.
+          </div>
+        </div>
+
+        <div id="email-imap-panel" style="display:${cfg.email_intake_mode === 'imap' ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Host IMAP *</label>
+            <input class="input" id="email-imap-host" placeholder="imap.gmail.com" value="${UI.esc(cfg.email_intake_imap_host || '')}">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Puerto</label>
+            <input type="number" class="input" id="email-imap-port" value="${cfg.email_intake_imap_port || 993}" style="width:120px;">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Usuario *</label>
+            <input class="input" id="email-imap-user" value="${UI.esc(cfg.email_intake_imap_username || '')}">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">
+              Contrasena *
+              ${cfg.email_intake_imap_password_configured ? '<span style="color:#059669;font-size:10px;font-weight:400;">(configurada — deja en blanco para mantener)</span>' : ''}
+            </label>
+            <input type="password" class="input" id="email-imap-pass"
+              placeholder="${cfg.email_intake_imap_password_configured ? 'Dejar en blanco para mantener la actual' : 'Contrasena o app password'}">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Carpeta</label>
+            <input class="input" id="email-imap-folder" value="${UI.esc(cfg.email_intake_imap_folder || 'INBOX')}">
+          </div>
+          <div style="display:flex;align-items:flex-end;padding-bottom:6px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="email-imap-ssl" ${cfg.email_intake_imap_use_ssl !== false ? 'checked' : ''}> Usar SSL/TLS (recomendado)
+            </label>
+          </div>
+          <div style="grid-column:1 / -1;font-size:10px;color:var(--text-muted);">
+            Para Gmail: activa el acceso IMAP y genera una "contrasena de aplicacion" en vez de la contrasena principal.
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600;font-size:12px;margin-bottom:6px;">
+            Mapeo de campos (formulario PDF/Word → campo de proveedor)
+            <span style="font-weight:400;color:var(--text-muted);font-size:11px;">
+              — indica el nombre del campo del PDF (AcroForm) o la etiqueta del content control de Word
+            </span>
+          </div>
+          <div id="email-mapping-rows" style="margin-bottom:6px;">${emailMappingRows}</div>
+          <button class="btn btn-sm" onclick="ViewIntegrations._addEmailMappingRow()">+ Anadir campo</button>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+            Si un documento no tiene campos estructurados, RiskHub usa IA para inferir los datos.
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Intervalo de polling (horas)</label>
+            <input type="number" min="1" max="168" class="input" id="email-interval" value="${cfg.email_intake_poll_interval_hours || 2}" style="width:100px;">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Filtro de asunto (opcional)</label>
+            <input class="input" id="email-subject-filter" placeholder="ej: Alta proveedor" value="${UI.esc(cfg.email_intake_subject_filter || '')}">
+          </div>
+          <div style="grid-column:1 / -1;">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Remitentes permitidos (opcional, uno por linea; admite <code>*@dominio.com</code>)</label>
+            <textarea class="input" id="email-sender-allowlist" rows="3" placeholder="*@proveedor-conocido.com">${UI.esc((cfg.email_intake_sender_allowlist || []).join('\n'))}</textarea>
+            <div style="font-size:10px;color:var(--text-muted);">Dejar vacio para aceptar cualquier remitente.</div>
+          </div>
+          <div style="display:flex;flex-direction:column;justify-content:flex-end;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" id="email-poll-enabled" ${cfg.email_intake_enabled ? 'checked' : ''}> Polling automatico habilitado
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:6px;">
+              <input type="checkbox" id="email-auto-ai" ${cfg.email_intake_auto_ai_review !== false ? 'checked' : ''}> Analisis IA automatico (documentos no estructurados)
+            </label>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn btn-primary" id="email-save">Guardar configuracion</button>
+          <button class="btn" id="email-test-connection">Probar conexion</button>
+          <button class="btn" id="email-sync-now" ${!cfg.email_intake_mode ? 'disabled title="Selecciona y guarda un modo de conexion primero"' : ''}>Sincronizar ahora</button>
+          <span id="email-sync-result" style="font-size:12px;color:var(--text-muted);"></span>
+        </div>
+      </div>
+
       <div style="display:flex;justify-content:flex-end;margin-top:16px;">
         <button class="btn btn-primary" id="forms-save">${t('integrations.forms_save_btn')}</button>
       </div>`;
@@ -1796,6 +2078,128 @@ const ViewIntegrations = {
         btn.textContent = 'Sincronizar ahora';
       }
     };
+
+    // Via 4 — alta por email
+    const toggleEmailPanels = () => {
+      const mode = document.querySelector('input[name="email-mode"]:checked')?.value;
+      document.getElementById('email-graph-panel').style.display = mode === 'imap' ? 'none' : 'grid';
+      document.getElementById('email-imap-panel').style.display = mode === 'imap' ? 'grid' : 'none';
+    };
+    document.getElementById('email-mode-graph')?.addEventListener('change', toggleEmailPanels);
+    document.getElementById('email-mode-imap')?.addEventListener('change', toggleEmailPanels);
+
+    document.getElementById('email-save').onclick = async () => {
+      const mapping = {};
+      document.querySelectorAll('#email-mapping-rows > div').forEach(row => {
+        const k = row.querySelector('[data-email-map-key]')?.value.trim();
+        const v = row.querySelector('[data-email-map-val]')?.value;
+        if (k && v) mapping[k] = v;
+      });
+      const mode = document.querySelector('input[name="email-mode"]:checked')?.value || null;
+      const allowlist = (document.getElementById('email-sender-allowlist')?.value || '')
+        .split('\n').map(s => s.trim()).filter(Boolean);
+      try {
+        const graphSecret = document.getElementById('email-graph-secret')?.value.trim();
+        const imapPass = document.getElementById('email-imap-pass')?.value.trim();
+        const payload = {
+          email_intake_enabled: document.getElementById('email-poll-enabled')?.checked,
+          email_intake_mode: mode,
+          email_intake_poll_interval_hours: parseInt(document.getElementById('email-interval')?.value) || 2,
+          email_intake_auto_ai_review: document.getElementById('email-auto-ai')?.checked,
+          email_intake_sender_allowlist: allowlist,
+          email_intake_subject_filter: document.getElementById('email-subject-filter')?.value.trim() || null,
+          email_intake_field_mapping: mapping,
+          email_intake_graph_tenant_id: document.getElementById('email-graph-tenant')?.value.trim() || null,
+          email_intake_graph_client_id: document.getElementById('email-graph-client')?.value.trim() || null,
+          email_intake_graph_mailbox: document.getElementById('email-graph-mailbox')?.value.trim() || null,
+          email_intake_imap_host: document.getElementById('email-imap-host')?.value.trim() || null,
+          email_intake_imap_port: parseInt(document.getElementById('email-imap-port')?.value) || 993,
+          email_intake_imap_username: document.getElementById('email-imap-user')?.value.trim() || null,
+          email_intake_imap_use_ssl: document.getElementById('email-imap-ssl')?.checked,
+          email_intake_imap_folder: document.getElementById('email-imap-folder')?.value.trim() || 'INBOX',
+        };
+        if (graphSecret) payload.email_intake_graph_client_secret = graphSecret;
+        if (imapPass) payload.email_intake_imap_password = imapPass;
+        await Api.integrations_forms.updateConfig(payload);
+        UI.toast('Configuracion de intake por email guardada', 'success');
+        await this._initForms();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+
+    document.getElementById('email-test-connection').onclick = async () => {
+      const btn = document.getElementById('email-test-connection');
+      const info = document.getElementById('email-sync-result');
+      const mode = document.querySelector('input[name="email-mode"]:checked')?.value;
+      btn.disabled = true;
+      info.textContent = '';
+      try {
+        const body = { mode };
+        if (mode === 'graph') {
+          body.tenant_id = document.getElementById('email-graph-tenant')?.value.trim();
+          body.client_id = document.getElementById('email-graph-client')?.value.trim();
+          body.mailbox = document.getElementById('email-graph-mailbox')?.value.trim();
+          const secret = document.getElementById('email-graph-secret')?.value.trim();
+          if (secret) body.client_secret = secret;
+        } else if (mode === 'imap') {
+          body.host = document.getElementById('email-imap-host')?.value.trim();
+          body.port = parseInt(document.getElementById('email-imap-port')?.value) || 993;
+          body.username = document.getElementById('email-imap-user')?.value.trim();
+          body.use_ssl = document.getElementById('email-imap-ssl')?.checked;
+          const pass = document.getElementById('email-imap-pass')?.value.trim();
+          if (pass) body.password = pass;
+        }
+        await Api.integrations_forms.emailIntakeTestConnection(body);
+        info.textContent = 'Conexion correcta.';
+        info.style.color = 'var(--risk-low,#059669)';
+        UI.toast('Conexion al buzon verificada', 'success');
+      } catch (e) {
+        info.textContent = e.message;
+        info.style.color = 'var(--risk-high)';
+        UI.toast(e.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    document.getElementById('email-sync-now').onclick = async () => {
+      const btn = document.getElementById('email-sync-now');
+      const info = document.getElementById('email-sync-result');
+      btn.disabled = true;
+      btn.textContent = 'Sincronizando...';
+      info.textContent = '';
+      try {
+        const res = await Api.integrations_forms.emailIntakePollNow();
+        const msg = `Revisados: ${res.checked} | Creados: ${res.created} | Omitidos: ${res.skipped}`;
+        info.textContent = msg;
+        info.style.color = res.errors?.length ? 'var(--risk-high)' : 'var(--risk-low,#059669)';
+        if (res.errors?.length) info.textContent += ` | Errores: ${res.errors[0]}`;
+        UI.toast(`Sync completado — ${res.created} proveedor(es) creado(s)`, 'success');
+        await this._initForms();
+      } catch (e) {
+        info.textContent = e.message;
+        info.style.color = 'var(--risk-high)';
+        UI.toast(e.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sincronizar ahora';
+      }
+    };
+  },
+
+  _addEmailMappingRow(prefillKey) {
+    const container = document.getElementById('email-mapping-rows');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:4px;';
+    div.innerHTML = `
+      <input class="input" style="flex:1;font-size:12px;" placeholder="Nombre del campo PDF / tag Word" value="${UI.esc(prefillKey || '')}" data-email-map-key>
+      <span style="color:var(--text-muted);">→</span>
+      <select class="input" style="width:160px;font-size:12px;" data-email-map-val>
+        ${this._mapFieldOptions('')}
+      </select>
+      <button class="btn btn-sm" style="padding:2px 8px;" onclick="this.closest('div').remove()">x</button>
+    `;
+    container.appendChild(div);
   },
 
   _mapFieldOptions(selected) {
