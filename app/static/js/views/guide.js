@@ -44,7 +44,6 @@ const ViewGuide = {
     { id: 'reports', title: 'Informes', icon: '📄' },
     { id: 'alerts', title: 'Alertas (email, Teams, Power Automate)', icon: '🔔' },
     { id: 'integrations', title: 'Integraciones', icon: '🔌' },
-    { id: 'erp-webhooks', title: 'ERP Webhooks', icon: '🔌' },
     { id: 'clausulas-iso', title: 'Clausulas ISO (IA)', icon: '📋' },
     { id: 'cve', title: 'CVE Monitor', icon: '🛡️' },
     { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
@@ -157,7 +156,6 @@ const ViewGuide = {
       reports: this._cReports,
       alerts: this._cAlerts,
       integrations: this._cIntegrations,
-      'erp-webhooks': this._cErpWebhooks,
       'clausulas-iso': this._cClausulasIso,
       cve: this._cCve,
       osint: this._cOsint,
@@ -2333,33 +2331,6 @@ const ViewGuide = {
     ${this._warn('El analisis es generado por IA. Debe ser revisado por el equipo de seguridad antes de implementar cambios en produccion.')}
     ${this._tip('Para obtener mejores resultados, sube diagramas en formato imagen (PNG/JPG) junto con documentos de descripcion en texto. El agente analizara ambos formatos en conjunto.')}
   `;},
-
-  get _cErpWebhooks() {
-    return `
-      <div class="guide-section-content">
-        ${this._h('ERP Webhooks — Integraciones SAP/Jagger/Sphera')}
-        ${this._p('El modulo de <strong>ERP Webhooks</strong> permite recibir eventos de sistemas ERP empresariales (SAP, Jagger, Sphera) de forma segura mediante <strong>HMAC-SHA256</strong> para validar la autenticidad de cada llamada. Los eventos se mapean automaticamente a activos e incidentes de RiskHub.')}
-        ${this._h('Como configurar una integracion ERP')}
-        <ol>
-          <li>Ir a <strong>Integraciones &gt; ERP Webhooks</strong></li>
-          <li>Crear nueva integracion: nombre, tipo de sistema (SAP/Jagger/Sphera) y clave secreta HMAC</li>
-          <li>Copiar la URL del endpoint generado y configurarla en el sistema ERP externo</li>
-          <li>Seleccionar los tipos de eventos a recibir (activos, incidentes, cambios de configuracion)</li>
-        </ol>
-        ${this._h('Seguridad')}
-        ${this._p('Cada webhook entrante se valida con <code>X-Webhook-Signature</code> (HMAC-SHA256 sobre el body con la clave secreta). Las llamadas sin firma valida son rechazadas con HTTP 401. La clave secreta se almacena cifrada con Fernet en la base de datos.')}
-        ${this._h('Log de eventos')}
-        ${this._p('Todos los webhooks recibidos quedan en el log de memoria (ultimos 500 eventos). Incluye timestamp, tipo de evento, payload resumido y estado de procesamiento. Accesible desde Integraciones &gt; ERP Webhooks &gt; Ver log.')}
-        ${this._h('Mapeo de eventos')}
-        <ul>
-          <li><strong>asset_created / asset_updated:</strong> crea o actualiza activo en el inventario</li>
-          <li><strong>incident_reported:</strong> abre incidente de seguridad automaticamente</li>
-          <li><strong>config_change:</strong> registra cambio de configuracion como evento de auditoria</li>
-        </ul>
-        ${this._tip('Usa un secret de al menos 32 caracteres aleatorios para la clave HMAC. Rota la clave periodicamente en Integraciones &gt; ERP Webhooks &gt; Editar &gt; Regenerar secret.')}
-      </div>
-    `;
-  },
 
   get _cClausulasIso() {
     return `
