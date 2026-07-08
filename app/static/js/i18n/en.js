@@ -5723,7 +5723,7 @@ const I18N_EN = {
     vt_cannot_load: "Could not load configuration.",
 
     // Forms
-    forms_subtitle: "Receive responses from external forms (inbound) and notify Monday.com (outbound)",
+    forms_subtitle: "Inbound webhook, outbound to Monday.com, and automatic supplier onboarding via polling (MS Forms / email)",
     forms_configured: "Configured",
     forms_inbound_title: "MS Forms / Power Automate — Inbound",
     forms_inbound_desc: "Set up a Power Automate flow with an HTTP action that sends a POST JSON to the URL below when someone responds to your MS Forms form.",

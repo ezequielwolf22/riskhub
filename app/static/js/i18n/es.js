@@ -5726,7 +5726,7 @@ const I18N_ES = {
     vt_cannot_load: "No se pudo cargar la configuración.",
 
     // Forms
-    forms_subtitle: "Recibe respuestas de formularios externos (entrante) y notifica a Monday.com (saliente)",
+    forms_subtitle: "Webhook entrante, salida a Monday.com y alta automatica de proveedores por polling (MS Forms / email)",
     forms_configured: "Configurado",
     forms_inbound_title: "MS Forms / Power Automate — Entrante",
     forms_inbound_desc: "Configura un flujo de Power Automate con la acción HTTP que envíe un POST JSON a la URL siguiente cuando alguien responda tu formulario de MS Forms.",

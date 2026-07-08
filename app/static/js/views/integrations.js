@@ -622,18 +622,18 @@ const ViewIntegrations = {
           <div id="smtp-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
         </div>
 
-        <!-- MS Forms / Power Automate + Monday.com -->
-        <div class="card" id="forms-card">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+        <!-- Integraciones de terceros: MS Forms / Power Automate + Monday.com -->
+        <details class="card" id="forms-card">
+          <summary style="display:flex;align-items:center;gap:12px;cursor:pointer;">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
             <div>
-              <b style="font-size:15px;">MS Forms / Power Automate + Monday.com</b>
+              <b style="font-size:15px;">Integraciones de terceros — alta de proveedores</b>
               <div style="font-size:11px;color:var(--text-muted);">${t('integrations.forms_subtitle')}</div>
             </div>
             <span id="forms-status-badge" style="margin-left:auto;"></span>
-          </div>
-          <div id="forms-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
-        </div>
+          </summary>
+          <div id="forms-body" style="margin-top:12px;"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
+        </details>
 
         <!-- VirusTotal — Escaneo de URLs y hashes -->
         <div class="card" id="vt-card">
@@ -1627,11 +1627,12 @@ const ViewIntegrations = {
     ).join('');
 
     body.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px;">
+      <div style="margin-top:12px;">
 
-        <!-- Via 1: Inbound webhook MS Forms / Power Automate -->
-        <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
-          <div style="font-weight:700;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Via 1 — Webhook entrante (Power Automate)</div>
+        <!-- Webhook entrante -- Power Automate -->
+        <details class="acc-item" style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+        <summary style="cursor:pointer;padding:12px 16px;font-weight:700;font-size:13px;">Webhook entrante — Power Automate</summary>
+        <div style="padding:0 16px 16px;">
           <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
             ${t('integrations.forms_inbound_desc')}
           </p>
@@ -1657,10 +1658,12 @@ const ViewIntegrations = {
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('integrations.forms_template_label')}</label>
           <input class="input" id="forms-template" placeholder="${t('integrations.forms_template_ph')}" value="${UI.esc(cfg.default_template_code || '')}" style="width:100%;">
         </div>
+        </details>
 
-        <!-- Via 2: Outbound Monday.com -->
-        <div style="border:1px solid var(--border);border-radius:8px;padding:16px;">
-          <div style="font-weight:700;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Via 2 — Saliente Monday.com</div>
+        <!-- Salida a Monday.com -->
+        <details class="acc-item" style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">
+        <summary style="cursor:pointer;padding:12px 16px;font-weight:700;font-size:13px;">Salida a Monday.com</summary>
+        <div style="padding:0 16px 16px;">
           <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
             ${t('integrations.forms_outbound_desc')}
           </p>
@@ -1683,16 +1686,17 @@ const ViewIntegrations = {
             ${t('integrations.forms_monday_hint')}
           </p>
         </div>
-      </div>
+        </details>
 
-      <!-- Alta automatica via polling MS Forms -->
-      <div style="border:2px solid var(--brand-purple,#59008D);border-radius:10px;padding:20px;margin-top:20px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+        <!-- Polling MS Forms: alta automatica de proveedores -->
+        <details class="acc-item" style="border:2px solid var(--brand-purple,#59008D);border-radius:10px;margin-bottom:10px;">
+        <summary style="cursor:pointer;padding:14px 20px;display:flex;align-items:center;gap:10px;">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--brand-purple,#59008D)" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-          <span style="font-weight:700;font-size:14px;color:var(--brand-purple,#59008D);">Alta automatica de proveedores (polling MS Forms)</span>
+          <span style="font-weight:700;font-size:14px;color:var(--brand-purple,#59008D);">Polling MS Forms — alta automatica de proveedores</span>
           ${pollBadge}
           <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Ultimo sync: ${UI.esc(lastPollStr)}</span>
-        </div>
+        </summary>
+        <div style="padding:0 20px 20px;">
         <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px;">
           RiskHub consulta la API de MS Forms cada <b>${cfg.msforms_poll_interval_hours || 4} horas</b>.
           Por cada respuesta nueva crea automaticamente un proveedor, genera un cuestionario con las respuestas
@@ -1823,16 +1827,18 @@ const ViewIntegrations = {
           </button>
           <span id="msf-sync-result" style="font-size:12px;color:var(--text-muted);"></span>
         </div>
-      </div>
+        </div>
+        </details>
 
-      <!-- Via 4: Alta automatica de proveedores por email (polling de buzon) -->
-      <div style="border:2px solid #0EA5E9;border-radius:10px;padding:20px;margin-top:20px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+        <!-- Polling de email: alta automatica de proveedores -->
+        <details class="acc-item" style="border:2px solid #0EA5E9;border-radius:10px;margin-bottom:10px;">
+        <summary style="cursor:pointer;padding:14px 20px;display:flex;align-items:center;gap:10px;">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0EA5E9" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 6l8 7 8-7"/></svg>
-          <span style="font-weight:700;font-size:14px;color:#0EA5E9;">Via 4 — Alta automatica de proveedores por email (polling de buzon)</span>
+          <span style="font-weight:700;font-size:14px;color:#0EA5E9;">Polling de email — alta automatica de proveedores</span>
           ${emailPollBadge}
           <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Ultimo sync: ${UI.esc(emailLastPollStr)}</span>
-        </div>
+        </summary>
+        <div style="padding:0 20px 20px;">
         <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px;">
           RiskHub consulta el buzon configurado cada N horas (nunca recibe conexiones entrantes). Por cada
           mail nuevo revisa los adjuntos (PDF/Word con campos de formulario, o texto libre) y crea
@@ -1875,7 +1881,7 @@ const ViewIntegrations = {
           </div>
           <div style="grid-column:1 / -1;font-size:10px;color:var(--text-muted);">
             Requiere permiso de aplicacion <code>Mail.Read</code> concedido con consentimiento de administrador
-            en el mismo App Registration (o uno nuevo) que usa la Via 3.
+            en el mismo App Registration (o uno nuevo) que usa el polling de MS Forms.
           </div>
         </div>
 
@@ -1958,6 +1964,9 @@ const ViewIntegrations = {
           <button class="btn" id="email-sync-now" ${!cfg.email_intake_mode ? 'disabled title="Selecciona y guarda un modo de conexion primero"' : ''}>Sincronizar ahora</button>
           <span id="email-sync-result" style="font-size:12px;color:var(--text-muted);"></span>
         </div>
+        </div>
+        </details>
+
       </div>
 
       <div style="display:flex;justify-content:flex-end;margin-top:16px;">
