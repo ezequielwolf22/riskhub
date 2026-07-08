@@ -577,23 +577,23 @@ const ViewIntegrations = {
       <div style="display:grid;gap:20px;">
 
         <!-- SharePoint -->
-        <div class="card" id="sp-card">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+        <details class="card" id="sp-card">
+          <summary style="display:flex;align-items:center;gap:12px;cursor:pointer;">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
             <div>
               <b style="font-size:15px;">Microsoft SharePoint</b>
               <div style="font-size:11px;color:var(--text-muted);">${t('integrations.sp_subtitle')}</div>
             </div>
             <span id="sp-status-badge" style="margin-left:auto;"></span>
-          </div>
-          <div id="sp-body">
+          </summary>
+          <div id="sp-body" style="margin-top:12px;">
             <p class="text-muted" style="font-size:13px;">${t('integrations.loading_config')}</p>
           </div>
-        </div>
+        </details>
 
         <!-- SSO -->
-        <div class="card" id="sso-card">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+        <details class="card" id="sso-card">
+          <summary style="display:flex;align-items:center;gap:12px;cursor:pointer;">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5">
               <rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/>
               <rect x="13" y="13" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/>
@@ -603,11 +603,11 @@ const ViewIntegrations = {
               <div style="font-size:11px;color:var(--text-muted);">${t('integrations.sso_subtitle')}</div>
             </div>
             <span id="sso-status-badge" style="margin-left:auto;"></span>
-          </div>
-          <div id="sso-body">
+          </summary>
+          <div id="sso-body" style="margin-top:12px;">
             <p class="text-muted" style="font-size:13px;">${t('integrations.loading_config')}</p>
           </div>
-        </div>
+        </details>
 
         <!-- Integraciones para alertas: SMTP + alternativas (Teams / Power Automate) -->
         <details class="card" id="alerts-integrations-card">
@@ -689,17 +689,17 @@ const ViewIntegrations = {
         </details>
 
         <!-- VirusTotal — Escaneo de URLs y hashes -->
-        <div class="card" id="vt-card">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <details class="card" id="vt-card">
+          <summary style="display:flex;align-items:center;gap:12px;cursor:pointer;">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 10 15.5 10 14 10.67 14 11.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 10 8.5 10 7 10.67 7 11.5 7.67 13 8.5 13zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
             <div>
               <b style="font-size:15px;">${t('integrations.vt_title')}</b>
               <div style="font-size:11px;color:var(--text-muted);">${t('integrations.vt_subtitle')}</div>
             </div>
             <span id="vt-status-badge" style="margin-left:auto;"></span>
-          </div>
-          <div id="vt-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading_config')}</p></div>
-        </div>
+          </summary>
+          <div id="vt-body" style="margin-top:12px;"><p class="text-muted" style="font-size:13px;">${t('integrations.loading_config')}</p></div>
+        </details>
 
       </div>
     `;
