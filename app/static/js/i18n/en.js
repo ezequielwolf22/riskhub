@@ -5652,6 +5652,13 @@ const I18N_EN = {
     smtp_saved: "SMTP configuration saved",
     smtp_test_ok: "Test email sent successfully",
 
+    // Alert integrations (SMTP + Teams/Power Automate alternatives)
+    alerts_section_title: "Alert integrations",
+    alerts_section_desc: "Delivery channels for Alert rules: SMTP server or SMTP-free alternatives (Microsoft Teams, Power Automate).",
+    alerts_altsmtp_title: "Alternative to SMTP",
+    alerts_altsmtp_desc: "If you can't use SMTP, receive alerts in a Microsoft Teams channel or through your own Power Automate flow. RiskHub only sends an outbound HTTPS POST to the URL you configure — no mail credentials involved.",
+    help_btn_title: "How do I do this?",
+
     // ERP Webhooks
     erp_subtitle: "Receive events from ERP/GRC systems via secure HMAC-SHA256 webhooks",
     erp_configured: "Configured",

@@ -609,18 +609,71 @@ const ViewIntegrations = {
           </div>
         </div>
 
-        <!-- SMTP — Servidor de correo para alertas -->
-        <div class="card" id="smtp-card">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <!-- Integraciones para alertas: SMTP + alternativas (Teams / Power Automate) -->
+        <details class="card" id="alerts-integrations-card">
+          <summary style="display:flex;align-items:center;gap:12px;cursor:pointer;">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             <div>
-              <b style="font-size:15px;">${t('integrations.smtp_title')}</b>
-              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.smtp_subtitle')}</div>
+              <b style="font-size:15px;">${t('integrations.alerts_section_title')}</b>
+              <div style="font-size:11px;color:var(--text-muted);">${t('integrations.alerts_section_desc')}</div>
             </div>
-            <span id="smtp-status-badge" style="margin-left:auto;"></span>
+          </summary>
+
+          <div style="margin-top:14px;display:grid;gap:10px;">
+
+            <!-- SMTP -->
+            <details class="acc-item" style="border:1px solid var(--border);border-radius:8px;">
+              <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 16px;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <b style="font-size:14px;">${t('integrations.smtp_title')}</b>
+                <span id="smtp-status-badge" style="margin-left:auto;"></span>
+                <button type="button" class="btn btn-ghost btn-sm" title="${t('integrations.help_btn_title')}"
+                        onclick="event.preventDefault();event.stopPropagation();ViewIntegrations._openAlertHelp('smtp')">?</button>
+              </summary>
+              <div style="padding:0 16px 16px;">
+                <p style="font-size:11px;color:var(--text-muted);margin:4px 0 12px;">${t('integrations.smtp_subtitle')}</p>
+                <div id="smtp-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
+              </div>
+            </details>
+
+            <!-- Alternativa a SMTP -->
+            <details class="acc-item" style="border:1px solid var(--border);border-radius:8px;">
+              <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px 16px;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <b style="font-size:14px;">${t('integrations.alerts_altsmtp_title')}</b>
+              </summary>
+              <div style="padding:0 16px 16px;">
+                <p style="font-size:11px;color:var(--text-muted);margin:4px 0 12px;">${t('integrations.alerts_altsmtp_desc')}</p>
+                <div style="display:grid;gap:10px;">
+
+                  <!-- Teams -->
+                  <details class="acc-item" style="border:1px solid var(--border);border-radius:8px;">
+                    <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;">
+                      <b style="font-size:13px;">${t('alerts.teams_label')}</b>
+                      <span id="ch-status-badge-teams" style="margin-left:auto;"></span>
+                      <button type="button" class="btn btn-ghost btn-sm" title="${t('integrations.help_btn_title')}"
+                              onclick="event.preventDefault();event.stopPropagation();ViewIntegrations._openAlertHelp('teams')">?</button>
+                    </summary>
+                    <div id="teams-channel-body" style="padding:0 14px 14px;"></div>
+                  </details>
+
+                  <!-- Power Automate -->
+                  <details class="acc-item" style="border:1px solid var(--border);border-radius:8px;">
+                    <summary style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px;">
+                      <b style="font-size:13px;">${t('alerts.power_automate_label')}</b>
+                      <span id="ch-status-badge-power_automate" style="margin-left:auto;"></span>
+                      <button type="button" class="btn btn-ghost btn-sm" title="${t('integrations.help_btn_title')}"
+                              onclick="event.preventDefault();event.stopPropagation();ViewIntegrations._openAlertHelp('power_automate')">?</button>
+                    </summary>
+                    <div id="power_automate-channel-body" style="padding:0 14px 14px;"></div>
+                  </details>
+
+                </div>
+              </div>
+            </details>
+
           </div>
-          <div id="smtp-body"><p class="text-muted" style="font-size:13px;">${t('integrations.loading')}</p></div>
-        </div>
+        </details>
 
         <!-- Integraciones de terceros: MS Forms / Power Automate + Monday.com -->
         <details class="card" id="forms-card">
@@ -650,7 +703,7 @@ const ViewIntegrations = {
 
       </div>
     `;
-    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initVirusTotal(), this._initForms()]);
+    await Promise.all([this._initSharePoint(), this._initSso(), this._initSmtp(), this._initAlertChannels(), this._initVirusTotal(), this._initForms()]);
   },
 
   async _initSharePoint() {
@@ -1329,6 +1382,164 @@ const ViewIntegrations = {
     } catch (e) {
       UI.toast(t('common.error') + ': ' + e.message, 'error');
     }
+  },
+
+  // ── Alternativa a SMTP: Teams / Power Automate ─────────────────────────────
+
+  async _initAlertChannels() {
+    try {
+      const channels = await Api.alerts.getChannels();
+      this._channels = channels || {};
+      this._renderAlertChannel('teams');
+      this._renderAlertChannel('power_automate');
+    } catch (e) {
+      ['teams-channel-body', 'power_automate-channel-body'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
+      });
+    }
+  },
+
+  _renderAlertChannel(kind) {
+    const body = document.getElementById(`${kind}-channel-body`);
+    const badge = document.getElementById(`ch-status-badge-${kind}`);
+    if (!body) return;
+    const s = (this._channels || {})[kind] || { configured: false, enabled: false, host_hint: null };
+    const help = kind === 'teams' ? t('alerts.teams_help') : t('alerts.power_automate_help');
+    const placeholder = kind === 'teams'
+      ? 'https://xxxx.webhook.office.com/webhookb2/...'
+      : 'https://prod-xx.westeurope.logic.azure.com/workflows/.../invoke?...';
+    if (badge) badge.innerHTML = s.configured
+      ? `<span class="badge badge-muted" style="background:${s.enabled ? '#D1FAE5' : '#F3F4F6'};color:${s.enabled ? '#065F46' : '#6B7280'};">
+           ${s.enabled ? t('alerts.channel_active') : t('alerts.channel_paused')}
+         </span>`
+      : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">${t('alerts.channel_missing')}</span>`;
+    body.innerHTML = `
+      <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">${help}</p>
+      ${s.configured ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
+        ${t('alerts.channel_host')}: <code>${UI.esc(s.host_hint || '-')}</code>
+      </div>` : ''}
+      <input id="ch-url-${kind}" class="input" type="url" placeholder="${placeholder}"
+             style="width:100%;font-size:11px;margin-bottom:8px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+          <input id="ch-enabled-${kind}" type="checkbox" ${s.enabled ? 'checked' : ''}>
+          ${t('alerts.channel_enabled')}
+        </label>
+        <button class="btn btn-sm" onclick="ViewIntegrations._saveAlertChannel('${kind}')">${t('common.save')}</button>
+        ${s.configured ? `<button class="btn btn-sm" onclick="ViewIntegrations._testAlertChannel('${kind}')">${t('alerts.send_test')}</button>
+        <button class="btn btn-sm" onclick="ViewIntegrations._removeAlertChannel('${kind}')" style="color:var(--brand-orange);">${t('common.delete')}</button>` : ''}
+      </div>`;
+  },
+
+  async _saveAlertChannel(kind) {
+    const url = document.getElementById(`ch-url-${kind}`).value.trim();
+    const enabled = document.getElementById(`ch-enabled-${kind}`).checked;
+    try {
+      if (kind === 'teams') {
+        await Api.alerts.saveTeamsChannel({ webhook_url: url || null, enabled });
+      } else {
+        await Api.alerts.savePowerAutomateChannel({ webhook_url: url || null, enabled });
+      }
+      UI.toast(t('alerts.channel_saved'), 'success');
+      await this._initAlertChannels();
+    } catch (e) {
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
+    }
+  },
+
+  async _testAlertChannel(kind) {
+    try {
+      const res = kind === 'teams'
+        ? await Api.alerts.testTeamsChannel()
+        : await Api.alerts.testPowerAutomateChannel();
+      UI.toast(res.message || t('alerts.manual_sent'), 'success');
+    } catch (e) {
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
+    }
+  },
+
+  async _removeAlertChannel(kind) {
+    if (!await UI.confirm(t('alerts.channel_remove_confirm'))) return;
+    try {
+      if (kind === 'teams') {
+        await Api.alerts.deleteTeamsChannel();
+      } else {
+        await Api.alerts.deletePowerAutomateChannel();
+      }
+      UI.toast(t('alerts.channel_removed'), 'success');
+      await this._initAlertChannels();
+    } catch (e) {
+      UI.toast(t('common.error') + ': ' + e.message, 'error');
+    }
+  },
+
+  // Contenido de ayuda "como hacerlo" por bloque de configuracion de alertas
+  _ALERT_HELP: {
+    smtp: {
+      title: 'Cómo obtener los datos de tu servidor SMTP',
+      intro: 'Pide estos datos a tu proveedor de correo o a tu equipo de IT: host, puerto, usuario y contraseña.',
+      steps: [
+        'Si usáis Microsoft 365: host smtp.office365.com, puerto 587, STARTTLS. Usuario = la cuenta de correo; contraseña = la de esa cuenta o una "contraseña de aplicación" si tenéis MFA activado.',
+        'Si usáis Google Workspace / Gmail: host smtp.gmail.com, puerto 587, STARTTLS. Usuario = la cuenta de Gmail; contraseña = una "contraseña de aplicación" generada en la configuración de seguridad de la cuenta Google (no la contraseña normal).',
+        'Si usáis un proveedor SMTP dedicado (SendGrid, Amazon SES, Mailgun, etc.) o un servidor propio, pedid las credenciales al administrador de ese servicio.',
+        'Rellenad host, puerto, usuario, contraseña y remitente (From) en este bloque.',
+        'Pulsad "Enviar email de prueba" para confirmar que funciona antes de activar reglas de alerta que dependan de él.',
+      ],
+      note: 'Si vuestra política de seguridad no permite configurar SMTP, usad el bloque "Alternativa a SMTP" (Teams o Power Automate) en su lugar.',
+    },
+    teams: {
+      title: 'Cómo obtener la URL de webhook de Microsoft Teams',
+      intro: 'Microsoft sustituyó los "Incoming Webhooks" clásicos por la app Workflows. RiskHub ya está adaptado a ese formato.',
+      steps: [
+        'En el canal de Teams donde queráis recibir las alertas, pulsad "···" (más opciones) → "Flujos de trabajo" (Workflows).',
+        'Buscad la plantilla "Enviar alertas de webhook a un canal" ("Send webhook alerts to a channel" / "Post to a channel when a webhook request is received").',
+        'Seguid el asistente: elegid el equipo y el canal destino, y confirmad.',
+        'Al finalizar, Teams os mostrará una URL de webhook — copiadla.',
+        'Pegad esa URL en el campo de este bloque, marcad "Activo" y pulsad "Guardar". Usad "Enviar prueba" para confirmar que llega el mensaje.',
+      ],
+      note: 'Necesitáis permiso para crear flujos de trabajo en el equipo; normalmente cualquier miembro puede, salvo que el administrador de Teams lo haya restringido.',
+    },
+    power_automate: {
+      title: 'Cómo obtener la URL de flujo de Power Automate',
+      intro: 'A diferencia de Teams, aquí el propio cliente construye el flujo: RiskHub solo envía un JSON genérico y es el flujo el que decide qué hacer con él (publicar en Teams, reenviar por Outlook, guardar en SharePoint...).',
+      steps: [
+        'Entrad en make.powerautomate.com con vuestra cuenta de Microsoft 365.',
+        'Pulsad "Crear" → "Flujo de nube instantáneo".',
+        'Como desencadenador elegid "Cuando se recibe una solicitud HTTP" ("When a HTTP request is received").',
+        'Guardad el flujo (no hace falta definir el schema del JSON) — Power Automate genera automáticamente la URL HTTP POST.',
+        'Copiad esa URL y pegadla en el campo de este bloque, marcad "Activo" y pulsad "Guardar". Usad "Enviar prueba" para confirmar.',
+        'Añadid al flujo los pasos que queráis a partir de ahí: publicar en un canal de Teams, reenviar por vuestro Outlook, guardar en SharePoint, etc.',
+      ],
+      note: null,
+    },
+  },
+
+  _openAlertHelp(kind) {
+    const cfg = ViewIntegrations._ALERT_HELP[kind];
+    if (!cfg) return;
+    const stepsHtml = cfg.steps.map((s, i) =>
+      `<div style="display:flex;gap:12px;margin-bottom:10px;">
+        <span style="background:var(--brand-purple);color:#fff;border-radius:50%;
+                     width:22px;height:22px;flex-shrink:0;display:flex;align-items:center;
+                     justify-content:center;font-size:11px;font-weight:700;margin-top:2px;">${i + 1}</span>
+        <p style="margin:0;font-size:13px;line-height:1.5;color:var(--text-base);">${UI.esc(s)}</p>
+      </div>`
+    ).join('');
+    const modalHtml = `
+      <div class="modal-head">
+        <h2 style="font-size:16px;">${UI.esc(cfg.title)}</h2>
+        <button class="btn btn-ghost btn-sm" onclick="UI.closeModal()">✕</button>
+      </div>
+      <div style="overflow-y:auto;max-height:70vh;padding:4px 0;">
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px;">${UI.esc(cfg.intro)}</p>
+        ${stepsHtml}
+        ${cfg.note ? `<div style="margin-top:16px;background:var(--brand-orange-4);border:1px solid var(--brand-orange-3);
+                    border-radius:8px;padding:12px 14px;">
+          <p style="margin:0;font-size:12px;color:var(--text-base);">${UI.esc(cfg.note)}</p>
+        </div>` : ''}
+      </div>`;
+    UI.openModal(modalHtml, { width: '640px' });
   },
 
   // ── Catalogo ─────────────────────────────────────────────────────────────

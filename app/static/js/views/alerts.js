@@ -1,9 +1,9 @@
-/* Vista Alertas — Reglas de alerta por email/Teams/Power Automate. */
+/* Vista Alertas — Reglas de alerta. Los canales (SMTP, Teams, Power Automate)
+ * se configuran en la vista Integraciones, seccion "Integraciones para alertas". */
 const ViewAlerts = {
 
   _settings: null,
   _rules: [],
-  _channels: null,
   _users: [],
 
   async render(main) {
@@ -17,14 +17,12 @@ const ViewAlerts = {
   async _load() {
     const c = document.getElementById('alerts-content');
     try {
-      const [settings, rules, channels] = await Promise.all([
+      const [settings, rules] = await Promise.all([
         Api.get('/api/alerts/settings'),
         Api.get('/api/alerts/rules'),
-        Api.alerts.getChannels(),
       ]);
       this._settings = settings;
       this._rules = rules || [];
-      this._channels = channels;
       this._render(c);
     } catch (e) {
       c.innerHTML = UI.notice(t('common.error') + ': ' + UI.esc(e.message), 'error');
@@ -55,16 +53,6 @@ const ViewAlerts = {
           ${t('alerts.config_smtp')}
         </button>
         ${smtpOk ? `<button class="btn btn-sm" onclick="ViewAlerts._testEmail()">${t('alerts.send_test')}</button>` : ''}
-      </div>
-
-      <!-- Canales alternativos: Teams / Power Automate -->
-      <div class="card" style="margin-bottom:16px;">
-        <h3 style="margin:0 0 4px;">${t('alerts.channels_title')}</h3>
-        <p style="font-size:12px;color:var(--text-muted);margin:0 0 16px;">${t('alerts.channels_desc')}</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-          ${this._channelCard('teams', (this._channels || {}).teams)}
-          ${this._channelCard('power_automate', (this._channels || {}).power_automate)}
-        </div>
       </div>
 
       <!-- Reglas -->
@@ -234,86 +222,6 @@ const ViewAlerts = {
     try {
       const res = await Api.post('/api/alerts/test', {});
       UI.toast(res.message || t('alerts.manual_sent'), 'success');
-    } catch (e) {
-      UI.toast(t('common.error') + ': ' + e.message, 'error');
-    }
-  },
-
-  // ---------- Canales alternativos: Teams / Power Automate ----------
-
-  _channelCard(kind, status) {
-    const s = status || { configured: false, enabled: false, host_hint: null };
-    const label = kind === 'teams' ? t('alerts.teams_label') : t('alerts.power_automate_label');
-    const help = kind === 'teams' ? t('alerts.teams_help') : t('alerts.power_automate_help');
-    const placeholder = kind === 'teams'
-      ? 'https://xxxx.webhook.office.com/webhookb2/...'
-      : 'https://prod-xx.westeurope.logic.azure.com/workflows/.../invoke?...';
-    const badge = s.configured
-      ? `<span class="badge badge-muted" style="background:${s.enabled ? '#D1FAE5' : '#F3F4F6'};color:${s.enabled ? '#065F46' : '#6B7280'};">
-           ${s.enabled ? t('alerts.channel_active') : t('alerts.channel_paused')}
-         </span>`
-      : `<span class="badge badge-muted" style="background:#FEF3C7;color:#92400E;">${t('alerts.channel_missing')}</span>`;
-    return `
-      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <strong style="font-size:13px;">${label}</strong>
-          ${badge}
-        </div>
-        <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">${help}</p>
-        ${s.configured ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
-          ${t('alerts.channel_host')}: <code>${UI.esc(s.host_hint || '-')}</code>
-        </div>` : ''}
-        <input id="ch-url-${kind}" class="input" type="url" placeholder="${placeholder}"
-               style="width:100%;font-size:11px;margin-bottom:8px;">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-          <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
-            <input id="ch-enabled-${kind}" type="checkbox" ${s.enabled ? 'checked' : ''}>
-            ${t('alerts.channel_enabled')}
-          </label>
-          <button class="btn btn-sm" onclick="ViewAlerts._saveChannel('${kind}')">${t('common.save')}</button>
-          ${s.configured ? `<button class="btn btn-sm" onclick="ViewAlerts._testChannel('${kind}')">${t('alerts.send_test')}</button>
-          <button class="btn btn-sm" onclick="ViewAlerts._removeChannel('${kind}')" style="color:var(--brand-orange);">${t('common.delete')}</button>` : ''}
-        </div>
-      </div>`;
-  },
-
-  async _saveChannel(kind) {
-    const url = document.getElementById(`ch-url-${kind}`).value.trim();
-    const enabled = document.getElementById(`ch-enabled-${kind}`).checked;
-    try {
-      if (kind === 'teams') {
-        await Api.alerts.saveTeamsChannel({ webhook_url: url || null, enabled });
-      } else {
-        await Api.alerts.savePowerAutomateChannel({ webhook_url: url || null, enabled });
-      }
-      UI.toast(t('alerts.channel_saved'), 'success');
-      await this._load();
-    } catch (e) {
-      UI.toast(t('common.error') + ': ' + e.message, 'error');
-    }
-  },
-
-  async _testChannel(kind) {
-    try {
-      const res = kind === 'teams'
-        ? await Api.alerts.testTeamsChannel()
-        : await Api.alerts.testPowerAutomateChannel();
-      UI.toast(res.message || t('alerts.manual_sent'), 'success');
-    } catch (e) {
-      UI.toast(t('common.error') + ': ' + e.message, 'error');
-    }
-  },
-
-  async _removeChannel(kind) {
-    if (!await UI.confirm(t('alerts.channel_remove_confirm'))) return;
-    try {
-      if (kind === 'teams') {
-        await Api.alerts.deleteTeamsChannel();
-      } else {
-        await Api.alerts.deletePowerAutomateChannel();
-      }
-      UI.toast(t('alerts.channel_removed'), 'success');
-      await this._load();
     } catch (e) {
       UI.toast(t('common.error') + ': ' + e.message, 'error');
     }

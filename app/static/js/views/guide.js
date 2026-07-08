@@ -964,8 +964,9 @@ const ViewGuide = {
   get _cAlerts() { return `
     ${this._p('El sistema de alertas de RiskHub notifica automáticamente a los responsables cuando se detectan riesgos u otros eventos que requieren atención inmediata. Cada alerta se puede enviar por <strong>email (SMTP)</strong>, por un canal de <strong>Microsoft Teams</strong> y/o por un flujo de <strong>Power Automate</strong> — de forma independiente y combinable.')}
     ${this._h('Configuracion SMTP')}
+    ${this._p('Los canales de envio (SMTP, Teams, Power Automate) se configuran desde el menú <strong>Integraciones</strong>, en el desplegable <em>"Integraciones para alertas"</em> — no desde Alertas, que solo gestiona las reglas. Cada bloque de configuracion tiene un boton <strong>"?"</strong> junto al titulo con una guia paso a paso de como obtener los datos necesarios.')}
     ${this._steps([
-      'Ve al menú Alertas (solo accesible para admin y analyst).',
+      'Ve al menú Integraciones → desplegable "Integraciones para alertas" → sub-desplegable "SMTP" (solo accesible para admin y analyst).',
       'Configura el servidor SMTP: host, puerto, usuario, contraseña y dirección de remitente.',
       'Activa TLS/STARTTLS según la configuración de tu servidor de correo.',
       'Haz clic en "Enviar email de prueba" para verificar que la configuración es correcta.',
@@ -988,12 +989,12 @@ const ViewGuide = {
       </tbody>
     </table>
     ${this._h('Canales alternativos a SMTP: Teams y Power Automate')}
-    ${this._p('Si tu organizacion no permite configurar SMTP por politica de seguridad, puedes recibir las mismas alertas sin usar correo. En ambos casos RiskHub solo hace un <strong>POST HTTPS saliente</strong> a una URL que tu mismo generas y controlas desde Microsoft 365 — no se manejan credenciales de correo en ningun momento.')}
+    ${this._p('Si tu organizacion no permite configurar SMTP por politica de seguridad, puedes recibir las mismas alertas sin usar correo desde Integraciones → "Integraciones para alertas" → sub-desplegable <em>"Alternativa a SMTP"</em>, que contiene dos bloques desplegables: Microsoft Teams y Power Automate. En ambos casos RiskHub solo hace un <strong>POST HTTPS saliente</strong> a una URL que tu mismo generas y controlas desde Microsoft 365 — no se manejan credenciales de correo en ningun momento.')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
-      <li><strong>Microsoft Teams:</strong> en el canal donde quieras recibir las alertas, añade la app <strong>Workflows</strong> con la plantilla <em>"Send webhook alerts to a channel"</em> (trigger "When a Teams webhook request is received"). Copia la URL generada y pegala en Alertas → Microsoft Teams. Cinco minutos, sin flujo que construir.</li>
-      <li><strong>Power Automate:</strong> crea un flujo propio con el trigger <em>"Cuando se recibe una solicitud HTTP"</em>. Pega su URL en Alertas → Power Automate. RiskHub envia un JSON con los campos del evento (riesgo, nivel, organizacion, etc.) y tu flujo decide que hacer: publicar en Teams, reenviar por tu propio Outlook via conector OAuth, guardar en SharePoint, etc. Es el mismo mecanismo que ya usa la integracion de MS Forms para devolver decisiones de proveedores.</li>
+      <li><strong>Microsoft Teams:</strong> en el canal donde quieras recibir las alertas, añade la app <strong>Workflows</strong> con la plantilla <em>"Send webhook alerts to a channel"</em> (trigger "When a Teams webhook request is received"). Copia la URL generada y pegala en el bloque Microsoft Teams. Cinco minutos, sin flujo que construir.</li>
+      <li><strong>Power Automate:</strong> crea un flujo propio con el trigger <em>"Cuando se recibe una solicitud HTTP"</em>. Pega su URL en el bloque Power Automate. RiskHub envia un JSON con los campos del evento (riesgo, nivel, organizacion, etc.) y tu flujo decide que hacer: publicar en Teams, reenviar por tu propio Outlook via conector OAuth, guardar en SharePoint, etc. Es el mismo mecanismo que ya usa la integracion de MS Forms para devolver decisiones de proveedores.</li>
     </ul>
-    ${this._p('En cada canal puedes activarlo/desactivarlo sin perder la URL guardada, y enviar un mensaje de prueba antes de confiar en el para produccion.')}
+    ${this._p('En cada canal puedes activarlo/desactivarlo sin perder la URL guardada, y enviar un mensaje de prueba antes de confiar en el para produccion. El boton "?" junto al titulo de cada bloque (SMTP, Teams, Power Automate) abre una guia con los pasos exactos para obtener la URL o credenciales desde el proveedor correspondiente.')}
     ${this._h('Reglas de alerta — Riesgos')}
     ${this._p('Crea reglas para que RiskHub envie emails automaticamente cuando se cumplan ciertos criterios:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
