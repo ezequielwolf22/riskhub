@@ -26,18 +26,14 @@ bash "$REPO_DIR/scripts/setup_cron.sh" 2>/dev/null || true
 echo "[$(date -Iseconds)] ==> Backup pre-deploy..."
 bash "$REPO_DIR/scripts/backup.sh" || echo "AVISO: Backup pre-deploy fallo (no critico)"
 
-# Generar certificado TLS si no existe (primer deploy o cert eliminado)
-echo "[$(date -Iseconds)] ==> Verificando certificado TLS..."
-bash "$REPO_DIR/nginx/generate-certs.sh"
-
-echo "[$(date -Iseconds)] ==> Reiniciando contenedores..."
+echo "[$(date -Iseconds)] ==> Reiniciando contenedor..."
 docker compose up -d
 
 echo "[$(date -Iseconds)] ==> Esperando health check..."
 MAX_RETRIES=12
 for i in $(seq 1 $MAX_RETRIES); do
     sleep 5
-    if curl -fsSk https://localhost/api/health > /dev/null 2>&1; then
+    if curl -fsS http://localhost/api/health > /dev/null 2>&1; then
         echo ""
         echo "[$(date -Iseconds)] ==> Deploy OK — version activa: $VERSIONED_TAG"
         echo "[$(date -Iseconds)] Para rollback ejecuta: bash $REPO_DIR/scripts/rollback.sh $VERSIONED_TAG"
