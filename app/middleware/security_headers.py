@@ -7,7 +7,7 @@ Cabeceras aplicadas a todas las respuestas:
 - Referrer-Policy: controla informacion de referer
 - Permissions-Policy: deshabilita APIs del navegador no usadas
 - Content-Security-Policy: restringe origenes de recursos (SPA sin CDN)
-- Strict-Transport-Security: solo relevante cuando hay TLS (se incluye siempre)
+- Strict-Transport-Security: solo se incluye si la conexion es HTTPS/TLS
 - Cache-Control: no-store para endpoints /api/* (datos confidenciales)
 - X-Permitted-Cross-Domain-Policies: bloquea Adobe Flash/PDF cross-domain
 - Cross-Origin-Opener-Policy: aislamiento de origen para proteger de XS-Leaks
@@ -57,22 +57,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "frame-ancestors 'none';"
         )
 
-        # HSTS: se activa si la app esta detras de TLS (no hace dano en HTTP)
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains; preload"
-        )
-
         # Bloquear carga cross-domain de recursos internos (Adobe Flash / PDF legacy)
         response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
 
-        # COOP y CORP solo son validos sobre HTTPS o localhost.
-        # En HTTP el navegador las ignora y emite un warning en consola.
+        # COOP, CORP y HSTS solo son validos sobre HTTPS o localhost.
+        # Enviar HSTS sobre HTTP plano hace que el navegador fuerce HTTPS en
+        # visitas futuras aunque el servidor deje de tener TLS (deja al usuario
+        # sin poder acceder si luego no hay nada escuchando en 443).
         is_secure = (
             request.url.scheme == "https"
             or request.headers.get("x-forwarded-proto") == "https"
             or request.url.hostname in ("localhost", "127.0.0.1")
         )
         if is_secure:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
             response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
             response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
 
