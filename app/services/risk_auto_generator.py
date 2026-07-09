@@ -36,7 +36,27 @@ def _next_code(db: Session, org_id: int) -> str:
 
 def _controls_to_dicts(controls: list) -> list[dict]:
     """Convierte lista de ControlImplementation ORM a list[dict] para calc_residual."""
-    return [{"maturity": c.maturity or 0, "contribution": 1.0} for c in controls]
+    from app.services.risk_recalc_service import control_payload
+    return [control_payload(c, 1.0) for c in controls]
+
+
+def _cap_consequence_by_asset(asset: Asset, consequence: int) -> int:
+    """La consecuencia por defecto no puede superar la valoracion del activo.
+
+    Un hallazgo critico sobre un activo de valor bajo no hereda consecuencia
+    critica: el impacto de negocio lo acota la dimension CIA mas alta.
+    Si el activo no esta valorado (todo 0), se respeta el default recibido.
+    """
+    max_dim = max(
+        asset.value_confidentiality or 0,
+        asset.value_integrity or 0,
+        asset.value_availability or 0,
+        getattr(asset, "value_authenticity", 0) or 0,
+        getattr(asset, "value_accountability", 0) or 0,
+    )
+    if max_dim > 0:
+        return min(consequence, max_dim)
+    return consequence
 
 
 # Mapeo ISO 27005 threat category → temas ISO 27002 relevantes
@@ -327,6 +347,8 @@ def auto_generate_risk_from_cve(
         logger.warning("Asset %s sin org_id, CVE auto-gen aborted", asset.code)
         return None
 
+    inherent_consequence = _cap_consequence_by_asset(asset, inherent_consequence)
+
     # C3: Threat es catalogo global — sin organization_id, likelihood ni consequence.
     # Normalizar: evitar "CVE-CVE-..." si cve_id ya trae el prefijo
     cve_threat_code = cve_id if cve_id.upper().startswith("CVE-") else f"CVE-{cve_id}"
@@ -489,6 +511,8 @@ def auto_generate_risk_from_finding(
         logger.warning("Asset %s sin org_id, finding risk auto-gen aborted", asset.code)
         return None
 
+    inherent_consequence = _cap_consequence_by_asset(asset, inherent_consequence)
+
     threat = db.query(Threat).filter(Threat.code == threat_code).first()
 
     if threat:
@@ -603,6 +627,8 @@ def auto_generate_risk_from_osint(
     if not org_id:
         logger.warning("Asset %s sin org_id, OSINT auto-gen aborted", asset.code)
         return None
+
+    inherent_consequence = _cap_consequence_by_asset(asset, inherent_consequence)
 
     # C3: Threat es catalogo global — sin organization_id, likelihood ni consequence.
     osint_threat_code = f"OSINT-{osint_finding_type.upper()}"

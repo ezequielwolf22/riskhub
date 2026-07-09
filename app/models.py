@@ -550,6 +550,11 @@ class Risk(Base):
     # v5.2.0 — GDPR Art.35: riesgo generado por actividad que requiere DPIA
     gdpr_activity_id = Column(Integer, ForeignKey("processing_activities.id"), nullable=True)
 
+    # v6.0.0 — trazabilidad del analisis IA y frescura del resultado
+    analysis_stale = Column(Boolean, default=False)      # el contexto cambio desde el ultimo analisis
+    stale_reason = Column(String(255), nullable=True)    # que cambio (doc, CVE, OSINT, control...)
+    ai_context_meta = Column(JSON, nullable=True)        # fuentes usadas + residual sugerido por el LLM
+
     asset = relationship("Asset", back_populates="risks")
     threat = relationship("Threat")
     owner = relationship("User", foreign_keys=[owner_id])

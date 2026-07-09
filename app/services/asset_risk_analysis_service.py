@@ -153,6 +153,7 @@ def _threats_for_asset(db: Session, asset_type: str, org_id: int | None = None) 
         threat_q = threat_q.filter(Threat.catalog.in_(active_catalogs))
     all_threats = threat_q.all()
     result = []
+    universal = []  # amenazas sin typical_assets: aplican a cualquier tipo
     for t in all_threats:
         ta = t.typical_assets or []
         if isinstance(ta, str):
@@ -160,11 +161,25 @@ def _threats_for_asset(db: Session, asset_type: str, org_id: int | None = None) 
                 ta = json.loads(ta)
             except Exception:
                 ta = [ta]
+        if not ta:
+            universal.append(t)
+            continue
         ta_lower = [x.lower() for x in ta]
         if any(k in ta_lower or any(k in s for s in ta_lower) for k in keys):
             result.append(t)
-    # Si no hay coincidencias exactas, devolver todas las amenazas (mejor tenerlas todas que ninguna)
-    return result if result else all_threats
+    if result:
+        return result + universal
+    # Sin match por tipo: usar solo las universales para no inundar el analisis
+    # con amenazas irrelevantes (fuego a un activo software, etc.)
+    if universal:
+        logger.warning(
+            "_threats_for_asset: sin match de typical_assets para tipo '%s'; "
+            "usando %d amenazas universales", asset_type, len(universal))
+        return universal
+    logger.warning(
+        "_threats_for_asset: tipo '%s' sin mapeo en catalogo; fallback a todas",
+        asset_type)
+    return all_threats
 
 
 def _vulns_for_threats(db: Session, threat_codes: list[str]) -> list[Vulnerability]:
@@ -933,27 +948,16 @@ def _upsert_risk(
     inh_con = clamp(int(item.get("inherent_consequence", 2)))
     inh_lvl = calc_level(inh_con, inh_lik)
 
-    # Controles con contribucion
     ctrl_list = item.get("control_contributions", [])
-    ctrl_dicts = []
-    for cc in ctrl_list:
-        impl = impls_by_id.get(cc.get("impl_id"))
-        if impl:
-            ctrl_dicts.append({
-                "maturity": impl.maturity or 0,
-                "contribution": float(cc.get("contribution", 0.5)),
-            })
 
-    res_lik, res_con, res_lvl = (
-        calc_residual(inh_lik, inh_con, ctrl_dicts) if ctrl_dicts
-        else (inh_lik, inh_con, inh_lvl)
-    )
-    # Override si el IA proporciona residual directo
-    if item.get("residual_likelihood") is not None:
-        res_lik = clamp(int(item["residual_likelihood"]))
-    if item.get("residual_consequence") is not None:
-        res_con = clamp(int(item["residual_consequence"]))
-    res_lvl = calc_level(res_con, res_lik)
+    # El residual NO lo fija el LLM: se calcula de forma determinista en
+    # recalc_risk() tras vincular los controles (tipo P/D/C, madurez ajustada
+    # por evidencia, penalizaciones NC/CCM, matriz de la org). El valor que
+    # sugiera el modelo se conserva solo como trazabilidad en ai_context_meta.
+    suggested_lik = item.get("suggested_residual_likelihood",
+                             item.get("residual_likelihood"))
+    suggested_con = item.get("suggested_residual_consequence",
+                             item.get("residual_consequence"))
 
     treatment_raw = item.get("treatment_option", "modification")
     try:
@@ -971,18 +975,16 @@ def _upsert_risk(
             existing.inherent_likelihood = inh_lik
             existing.inherent_consequence = inh_con
             existing.inherent_level = inh_lvl
-            existing.residual_likelihood = res_lik
-            existing.residual_consequence = res_con
-            existing.residual_level = res_lvl
             existing.description = item.get("rationale", existing.description)
             existing.consequence_description = item.get("consequence_description", existing.consequence_description)
             existing.ai_rationale = item.get("rationale", "")
             existing.treatment_option = treatment
             _sync_vulns(db, existing, item.get("vulnerability_codes", []), vulns_by_code)
             _sync_controls(db, existing, ctrl_list, impls_by_id)
+            _finalize_ai_risk(db, existing, item, suggested_lik, suggested_con)
         return 0, 1
 
-    # Crear nuevo riesgo
+    # Crear nuevo riesgo (residual preliminar = inherente; lo fija recalc_risk)
     code = _next_risk_code(db)
     risk = Risk(
         organization_id=asset.organization_id,
@@ -994,9 +996,9 @@ def _upsert_risk(
         inherent_likelihood=inh_lik,
         inherent_consequence=inh_con,
         inherent_level=inh_lvl,
-        residual_likelihood=res_lik,
-        residual_consequence=res_con,
-        residual_level=res_lvl,
+        residual_likelihood=inh_lik,
+        residual_consequence=inh_con,
+        residual_level=inh_lvl,
         status=RiskStatus.ASSESSED,
         owner_id=owner_id,
         treatment_option=treatment,
@@ -1008,7 +1010,43 @@ def _upsert_risk(
 
     _sync_vulns(db, risk, item.get("vulnerability_codes", []), vulns_by_code)
     _sync_controls(db, risk, ctrl_list, impls_by_id)
+    _finalize_ai_risk(db, risk, item, suggested_lik, suggested_con)
     return 1, 0
+
+
+def _finalize_ai_risk(db: Session, risk: Risk, item: dict,
+                      suggested_lik, suggested_con) -> None:
+    """Cierra el ciclo del riesgo IA: residual determinista + trazabilidad.
+
+    El motor (recalc_risk) calcula el residual desde los controles realmente
+    vinculados; el residual sugerido por el LLM se registra en ai_context_meta
+    y se loguea si difiere mas de 1 nivel del calculado.
+    """
+    from app.services.risk_recalc_service import recalc_risk
+
+    db.expire(risk, ["controls"])  # los links se insertaron via SQL directo
+    recalc_risk(db, risk)
+
+    meta = dict(risk.ai_context_meta or {})
+    meta.update({
+        "suggested_residual_likelihood": suggested_lik,
+        "suggested_residual_consequence": suggested_con,
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
+    })
+    risk.ai_context_meta = meta
+    risk.analysis_stale = False
+    risk.stale_reason = None
+
+    if suggested_lik is not None and suggested_con is not None:
+        try:
+            s_lvl = calc_level(clamp(int(suggested_con)), clamp(int(suggested_lik)))
+            if abs(s_lvl - (risk.residual_level or 0)) > 1:
+                logger.info(
+                    "Residual LLM difiere del motor en risk %s: sugerido=%d calculado=%d",
+                    risk.code, s_lvl, risk.residual_level or 0,
+                )
+        except (TypeError, ValueError):
+            pass
 
 
 def _enforce_risk_appetite(db: Session, asset: Asset) -> int:

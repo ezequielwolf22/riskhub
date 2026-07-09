@@ -180,17 +180,21 @@ def _parse_response(raw: str) -> list[dict]:
 def _find_control_id(db: Session, ref: str, org_id: Optional[int]) -> Optional[int]:
     """Busca en la BD el control ISO 27002 que coincide con la referencia.
 
-    Busca por codigo exacto o por codigo normalizado.
+    Match por codigo exacto tras normalizar (A.5.1 -> 5.1). No se usa LIKE
+    parcial porque produce falsos positivos (5.1 matchearia 5.10, 5.11...).
     """
-    # Normalizar: A.5.1 -> 5.1, 5.1 -> 5.1
     normalized = ref.upper().lstrip("A.").strip()
 
-    control = (
+    candidates = (
         db.query(Control)
         .filter(Control.code.ilike(f"%{normalized}%"))
-        .first()
+        .all()
     )
-    return control.id if control else None
+    for control in candidates:
+        code_norm = (control.code or "").upper().lstrip("A.").strip()
+        if code_norm == normalized:
+            return control.id
+    return None
 
 
 def run_extraction_for_document(doc_id: int) -> None:

@@ -544,6 +544,62 @@ def auto_scan_cves(
     }
 
 
+def _likelihood_from_cve(cve: dict, analysis: dict) -> int:
+    """Likelihood 0..4 desde la explotabilidad del vector CVSS.
+
+    AV (vector de ataque) y AC (complejidad) aproximan la facilidad de
+    explotacion; un exploit conocido eleva un nivel.
+    """
+    from app.services.risk_engine import clamp
+    vector = (cve.get("cvss_vector") or "").upper()
+    if "AV:N" in vector:
+        lik = 3 if "AC:H" in vector else 4
+    elif "AV:A" in vector:
+        lik = 2
+    elif "AV:L" in vector or "AV:P" in vector:
+        lik = 1
+    else:
+        # Sin vector: aproximar por score CVSS
+        score = float(cve.get("cvss_score") or 0)
+        lik = 3 if score >= 9 else 2 if score >= 7 else 1
+    exploit_hint = " ".join(str(v) for v in [
+        analysis.get("justificacion_afectacion", ""),
+        cve.get("description", ""),
+    ]).lower()
+    if any(k in exploit_hint for k in ("exploit publico", "actively exploited",
+                                       "in the wild", "kev", "metasploit")):
+        lik += 1
+    return clamp(lik)
+
+
+def _consequence_from_cve_asset(cve: dict, asset: Asset) -> int:
+    """Consequence 0..4: impacto CVSS (C/I/A del vector) x valoracion CIA del activo.
+
+    La consecuencia de negocio depende del valor del activo, no solo del
+    impacto tecnico del CVE.
+    """
+    from app.services.risk_engine import clamp
+    vector = (cve.get("cvss_vector") or "").upper()
+    impact_map = {"H": 1.0, "L": 0.5, "N": 0.0}
+
+    def _vec(metric: str) -> float:
+        import re as _re
+        m = _re.search(rf"{metric}:([HLN])", vector)
+        return impact_map.get(m.group(1), 0.5) if m else 0.5
+
+    dims = [
+        (_vec("C"), asset.value_confidentiality or 0),
+        (_vec("I"), asset.value_integrity or 0),
+        (_vec("A"), asset.value_availability or 0),
+    ]
+    consequence = max(round(factor * value) for factor, value in dims)
+    if consequence == 0:
+        # Activo sin valorar o vector sin impacto: minimo derivado del score
+        score = float(cve.get("cvss_score") or 0)
+        consequence = 2 if score >= 9 else 1 if score >= 4 else 0
+    return clamp(consequence)
+
+
 @router.post("/create-risk")
 def create_risk_from_cve(
     body: CreateRiskRequest,
@@ -607,11 +663,12 @@ def create_risk_from_cve(
             ),
         }
 
-    # --- Mapeo de niveles IA (escala 1-5) a escala Risk (0-4) ---
-    inherent_15 = int(analysis.get("riesgo_inherente") or cvs.score_to_risk_level(cve.get("cvss_score", 0)))
-    residual_15 = int(analysis.get("riesgo_residual") or inherent_15)
-    inh_04 = clamp(inherent_15 - 1)   # 1-5 → 0-4
-    res_04 = clamp(residual_15 - 1)
+    # --- Inherente con criterio: likelihood desde explotabilidad del vector
+    # CVSS; consequence desde el impacto CVSS ponderado por la valoracion CIA
+    # del activo. CVSS no equivale a consecuencia de negocio: un CVE critico
+    # en un activo de valor bajo no puede heredar consecuencia critica.
+    inh_lik = _likelihood_from_cve(cve, analysis)
+    inh_con = _consequence_from_cve_asset(cve, asset)
 
     # --- Descripcion del riesgo ---
     actions_text = "\n".join(
@@ -626,19 +683,19 @@ def create_risk_from_cve(
         f"Acciones de mitigacion propuestas:\n{actions_text}"
     )
 
-    # --- Crear el riesgo ---
+    # --- Crear el riesgo (residual lo fija el motor via recalc_risk) ---
     risk = Risk(
         code=_next_code(db, current_user.organization_id),
         asset_id=asset.id,
         threat_id=threat.id,
         description=description[:2000],
-        inherent_likelihood=inh_04,
-        inherent_consequence=inh_04,
-        inherent_level=calc_level(inh_04, inh_04),
-        residual_likelihood=res_04,
-        residual_consequence=res_04,
-        residual_level=calc_level(res_04, res_04),
-        treatment_option=TreatmentOption.MODIFICATION if res_04 >= 2 else None,
+        inherent_likelihood=inh_lik,
+        inherent_consequence=inh_con,
+        inherent_level=calc_level(inh_con, inh_lik),
+        residual_likelihood=inh_lik,
+        residual_consequence=inh_con,
+        residual_level=calc_level(inh_con, inh_lik),
+        treatment_option=TreatmentOption.MODIFICATION if calc_level(inh_con, inh_lik) >= 3 else None,
         status=RiskStatus.IDENTIFIED,
         owner_id=current_user.id,
         organization_id=current_user.organization_id,
@@ -648,6 +705,9 @@ def create_risk_from_cve(
 
     # M2M: vincular vulnerabilidad al riesgo
     risk.vulnerabilities = [vuln]
+
+    from app.services.risk_recalc_service import recalc_risk
+    recalc_risk(db, risk)
 
     log_action(db, current_user.id, "create", "risk", None, {
         "source": "cve_analysis",

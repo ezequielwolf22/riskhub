@@ -786,6 +786,19 @@ def _migrate_columns() -> None:
         # v6.5.0 — Alertas: catalogo ampliado (proveedores/TPRM, BCP, vigilancia normativa)
         # y reglas compuestas multi-entidad
         ("ALTER TABLE alert_rules ADD COLUMN entity_type VARCHAR(32)", "alert_rules", "entity_type"),
+        # v6.0.0 — Motor residual v2: trazabilidad del analisis IA y frescura
+        ("ALTER TABLE risks ADD COLUMN analysis_stale BOOLEAN DEFAULT 0", "risks", "analysis_stale"),
+        ("ALTER TABLE risks ADD COLUMN stale_reason VARCHAR(255)", "risks", "stale_reason"),
+        ("ALTER TABLE risks ADD COLUMN ai_context_meta JSON", "risks", "ai_context_meta"),
+        # v6.0.0 — registro de migraciones one-shot (pasos de datos que solo corren una vez)
+        (
+            """CREATE TABLE IF NOT EXISTS app_migrations (
+                name VARCHAR(128) PRIMARY KEY,
+                applied_at DATETIME
+            )""",
+            "app_migrations",
+            "name",
+        ),
     ]
     with engine.connect() as conn:
         for sql, table, col in migrations:
@@ -1339,8 +1352,44 @@ def init_db() -> None:
         _backfill_risk_supplier_id(db)
         _seed_default_kpis(db, org.id)
         _seed_default_kris(db, org.id)
+        _run_one_shot_recalc_v2(db)
     finally:
         db.close()
+
+
+def _run_one_shot_recalc_v2(db: Session) -> None:
+    """Recalcula todos los residuales con el motor v2 (P/D/C + madurez ajustada).
+
+    Se ejecuta una sola vez tras el despliegue del motor v2; queda registrado
+    en app_migrations para no repetirse en arranques posteriores.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import text as _text
+    marker = "residual_engine_v2_recalc"
+    try:
+        row = db.execute(
+            _text("SELECT name FROM app_migrations WHERE name = :n"), {"n": marker}
+        ).fetchone()
+        if row:
+            return
+        from app.models import Risk
+        from app.services.risk_recalc_service import recalc_risk
+        risks = db.query(Risk).all()
+        errors = 0
+        for r in risks:
+            try:
+                recalc_risk(db, r)
+            except Exception:
+                errors += 1
+        db.execute(
+            _text("INSERT INTO app_migrations (name, applied_at) VALUES (:n, :ts)"),
+            {"n": marker, "ts": datetime.now(timezone.utc).isoformat()},
+        )
+        db.commit()
+        print(f"Motor v2: {len(risks)} riesgos recalculados ({errors} errores).")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        print(f"Recalculo v2 omitido: {exc}")
 
 
 def _seed_regwatch_sources(db: Session) -> None:

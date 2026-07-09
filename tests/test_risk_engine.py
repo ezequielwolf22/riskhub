@@ -9,6 +9,7 @@ from app.services.risk_engine import (
     clamp,
     color_for,
     control_reduction,
+    control_reduction_split,
 )
 
 
@@ -102,6 +103,67 @@ class TestControlReduction:
     def test_reduction_bounded(self):
         many = [{"maturity": 5, "contribution": 1.0}] * 10
         assert 0.0 <= control_reduction(many) <= 1.0
+
+
+class TestControlReductionSplit:
+    """Motor v2: la reduccion depende del tipo de control (P/D/C)."""
+
+    def test_no_ctype_matches_historic_behavior(self):
+        """Sin ctype, un control reduce prob al 100% y cons al 50% de su eficacia."""
+        c = [{"maturity": 5, "contribution": 1.0}]
+        red_lik, red_cons = control_reduction_split(c)
+        assert red_lik == pytest.approx(1.0)
+        assert red_cons == pytest.approx(0.5)
+
+    def test_corrective_does_not_reduce_likelihood(self):
+        """Un backup (correctivo) perfecto no reduce la probabilidad de la amenaza."""
+        c = [{"maturity": 5, "contribution": 1.0, "ctype": "C"}]
+        red_lik, red_cons = control_reduction_split(c)
+        assert red_lik == pytest.approx(0.0)
+        assert red_cons == pytest.approx(1.0)
+
+    def test_preventive_barely_reduces_consequence(self):
+        """Un firewall (preventivo) reduce probabilidad pero apenas el impacto."""
+        c = [{"maturity": 5, "contribution": 1.0, "ctype": "P"}]
+        red_lik, red_cons = control_reduction_split(c)
+        assert red_lik == pytest.approx(1.0)
+        assert red_cons == pytest.approx(0.2)
+
+    def test_detective_partial_both_axes(self):
+        c = [{"maturity": 5, "contribution": 1.0, "ctype": "D"}]
+        red_lik, red_cons = control_reduction_split(c)
+        assert red_lik == pytest.approx(0.4)
+        assert red_cons == pytest.approx(0.5)
+
+    def test_float_maturity_accepted(self):
+        """La madurez ajustada por evidencia (float) entra en el calculo."""
+        full = control_reduction_split([{"maturity": 5, "contribution": 1.0, "ctype": "P"}])
+        adjusted = control_reduction_split([{"maturity": 2.5, "contribution": 1.0, "ctype": "P"}])
+        assert adjusted[0] == pytest.approx(full[0] * 0.5)
+
+    def test_mixed_portfolio(self):
+        """P+C combinados reducen ambos ejes; solo-C deja likelihood intacta."""
+        mixed = [
+            {"maturity": 5, "contribution": 1.0, "ctype": "P"},
+            {"maturity": 5, "contribution": 1.0, "ctype": "C"},
+        ]
+        red_lik, red_cons = control_reduction_split(mixed)
+        assert red_lik == pytest.approx(1.0)
+        assert red_cons == pytest.approx(1.0)
+
+
+class TestCalcResidualV2:
+    def test_corrective_only_keeps_likelihood(self):
+        """Riesgo 4/4 con solo un correctivo perfecto: prob intacta, impacto a 0."""
+        lik, cons, level = calc_residual(4, 4, [{"maturity": 5, "contribution": 1.0, "ctype": "C"}])
+        assert lik == 4
+        assert cons == 0
+
+    def test_preventive_only_keeps_most_consequence(self):
+        """Riesgo 4/4 con solo un preventivo perfecto: prob a 0, impacto casi intacto."""
+        lik, cons, level = calc_residual(4, 4, [{"maturity": 5, "contribution": 1.0, "ctype": "P"}])
+        assert lik == 0
+        assert cons == 3  # 4 * (1 - 0.2) = 3.2 -> 3
 
 
 class TestCalcResidual:

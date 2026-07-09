@@ -20,10 +20,7 @@ from app.models import (
 from app.schemas import RiskIn, RiskOut, RiskUpdate
 from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
 from app.services.audit_service import log_action, diff_objects
-from app.services.risk_engine import (
-    calc_level, calc_residual,
-    calc_consequence_magerit, primary_dimension_for_threat, MAGERIT_DIM_FIELD,
-)
+from app.services.risk_engine import calc_level, calc_residual
 from app.i18n import ai_lang_directive, get_lang, t as _t
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
@@ -36,106 +33,15 @@ def _next_code(db: Session, org_id: int) -> str:
     return f"RSK-{max_id + 1:04d}"
 
 
-def _get_context(db: Session, org_id=None) -> RiskContext | None:
-    q = db.query(RiskContext)
-    if org_id:
-        q = q.filter(RiskContext.organization_id == org_id)
-    return q.first()
-
-
-def _get_matrix(db: Session, org_id=None):
-    ctx = _get_context(db, org_id)
-    return ctx.risk_matrix if ctx and ctx.risk_matrix else None
-
-
-def _apply_magerit_consequence(risk: Risk, db: Session) -> None:
-    """Si la metodologia del contexto es magerit|combined y el riesgo tiene
-    dimension + degradacion, recalcula inherent_consequence desde el activo."""
-    if not risk.asset_id:
-        return
-    ctx = _get_context(db, risk.organization_id)
-    if not ctx or ctx.methodology not in ("magerit", "combined"):
-        return
-    if risk.degradation_pct is None:
-        return
-
-    asset = db.get(Asset, risk.asset_id)
-    if not asset:
-        return
-
-    # Determinar dimension primaria si no esta guardada
-    if not risk.magerit_dimension:
-        threat = db.get(Threat, risk.threat_id)
-        affects = getattr(threat, "affects", None) or []
-        risk.magerit_dimension = primary_dimension_for_threat(affects, asset)
-
-    # Calcular consecuencia MAGERIT
-    field = MAGERIT_DIM_FIELD.get(risk.magerit_dimension, "value_availability")
-    dim_value = getattr(asset, field, 0) or 0
-    consequence, magerit_impact = calc_consequence_magerit(dim_value, risk.degradation_pct)
-    risk.inherent_consequence = consequence
-    risk.magerit_impact = magerit_impact
-
-
-def _recalc(db: Session, risk: Risk) -> None:
-    from sqlalchemy import text as _text
-    matrix = _get_matrix(db, risk.organization_id)
-
-    # MAGERIT: si aplica, sobrescribir inherent_consequence antes de calcular
-    _apply_magerit_consequence(risk, db)
-
-    risk.inherent_level = calc_level(
-        risk.inherent_consequence, risk.inherent_likelihood, matrix)
-
-    # Obtener contribution real de la tabla de asociacion (no hardcoded 1.0)
-    rows = db.execute(
-        _text("SELECT control_implementation_id, contribution FROM risk_controls WHERE risk_id = :rid"),
-        {"rid": risk.id},
-    ).fetchall()
-    contrib_map = {row[0]: (row[1] if row[1] is not None else 1.0) for row in rows}
-
-    controls = [
-        {
-            "maturity": ci.maturity or 0,
-            "contribution": contrib_map.get(ci.id, 1.0),
-            "nc_penalty_factor": getattr(ci, "nc_penalty_factor", None),
-            "ccm_fail": getattr(ci, "ccm_last_status", None) == "FAIL",
-        }
-        for ci in risk.controls
-    ]
-    rl, rc, rlev = calc_residual(
-        risk.inherent_likelihood, risk.inherent_consequence, controls, matrix)
-
-    # Floor por controles obligatorios con madurez insuficiente (ISO 27001 Annex A)
-    # Si algun control IS_MANDATORY tiene maturity < 2, el residual no puede ser
-    # menor que inherent - 1 (los controles deficientes limitan la reduccion alcanzable)
-    mandatory_gap = any(
-        (ci.control.is_mandatory if ci.control else False) and (ci.maturity or 0) < 2
-        for ci in risk.controls
-    )
-    if mandatory_gap:
-        min_lik = max(0, (risk.inherent_likelihood or 0) - 1)
-        min_con = max(0, (risk.inherent_consequence or 0) - 1)
-        rl = max(rl, min_lik)
-        rc = max(rc, min_con)
-        rlev = calc_level(rc, rl, matrix)
-
-    risk.residual_likelihood = rl
-    risk.residual_consequence = rc
-    risk.residual_level = rlev
-
-    # Auto-tratamiento basado en apetito de riesgo
-    ctx = _get_context(db, risk.organization_id)
-    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
-    if rlev <= appetite and risk.status not in (RiskStatus.CLOSED, RiskStatus.PENDING_ACCEPTANCE):
-        if risk.treatment_option in (None, TreatmentOption.MODIFICATION, TreatmentOption.RETENTION):
-            risk.treatment_option = TreatmentOption.RETENTION
-            if risk.status in (RiskStatus.IDENTIFIED, RiskStatus.ASSESSED):
-                risk.status = RiskStatus.ACCEPTED
-                # Riesgos aceptados deben revisarse anualmente (ISO 27001 A.6.1.2)
-                from datetime import timedelta
-                risk.next_review = datetime.now(timezone.utc) + timedelta(days=365)
-                risk.accepted_at = datetime.now(timezone.utc)
+# El calculo vive en risk_recalc_service (autoridad unica de recalculo).
+# Los alias _recalc/_get_context/_get_matrix se conservan porque ~12 modulos
+# los importan desde este router (controls, ccm, nc, incidents, scheduler...).
+from app.services.risk_recalc_service import (  # noqa: E402
+    apply_magerit_consequence as _apply_magerit_consequence,
+    get_context as _get_context,
+    get_matrix as _get_matrix,
+    recalc_risk as _recalc,
+)
 
 
 @router.get("/group-summary")
@@ -2039,7 +1945,8 @@ def simulate_what_if(
     Retorna: niveles actuales + niveles simulados + delta para apoyar decisiones de tratamiento.
     """
     from sqlalchemy import text as _text
-    from app.services.risk_engine import control_reduction
+    from app.services.risk_analysis_helpers import adjusted_maturity
+    from app.services.risk_recalc_service import control_payload
 
     risk = db.get(Risk, risk_id)
     if not risk or not check_org_access(risk.organization_id, current_user):
@@ -2047,22 +1954,20 @@ def simulate_what_if(
 
     matrix = _get_matrix(db, risk.organization_id)
 
-    # Controles actuales con sus contribuciones reales
+    # Controles actuales con sus contribuciones reales (misma semantica que
+    # el recalculo persistido: tipo P/D/C + madurez ajustada por evidencia)
     rows = db.execute(
         _text("SELECT control_implementation_id, contribution FROM risk_controls WHERE risk_id = :rid"),
         {"rid": risk_id},
     ).fetchall()
     contrib_map = {row[0]: (row[1] if row[1] is not None else 1.0) for row in rows}
 
+    ci_by_id = {ci.id: ci for ci in (risk.controls or [])}
     controls_current = []
     for ci in (risk.controls or []):
-        controls_current.append({
-            "id": ci.id,
-            "maturity": ci.maturity or 0,
-            "contribution": contrib_map.get(ci.id, 1.0),
-            "nc_penalty_factor": getattr(ci, "nc_penalty_factor", None),
-            "ccm_fail": getattr(ci, "ccm_last_status", None) == "FAIL",
-        })
+        payload = control_payload(ci, contrib_map.get(ci.id, 1.0))
+        payload["id"] = ci.id
+        controls_current.append(payload)
 
     # Construir lista simulada
     controls_simulated = []
@@ -2070,7 +1975,9 @@ def simulate_what_if(
         sim = dict(c)
         if ci_id and c["id"] == ci_id:
             if new_maturity is not None:
-                sim["maturity"] = new_maturity
+                ci_ref = ci_by_id.get(ci_id)
+                sim["maturity"] = adjusted_maturity(
+                    new_maturity, (ci_ref.evidence_refs or []) if ci_ref else [])
             if new_contribution is not None:
                 sim["contribution"] = new_contribution
         controls_simulated.append(sim)
@@ -2079,13 +1986,10 @@ def simulate_what_if(
     if add_ci_id is not None:
         ci_add = db.get(ControlImplementation, add_ci_id)
         if ci_add and check_org_access(ci_add.organization_id, current_user):
-            controls_simulated.append({
-                "id": ci_add.id,
-                "maturity": add_maturity,
-                "contribution": add_contribution,
-                "nc_penalty_factor": getattr(ci_add, "nc_penalty_factor", None),
-                "ccm_fail": getattr(ci_add, "ccm_last_status", None) == "FAIL",
-            })
+            payload = control_payload(ci_add, add_contribution)
+            payload["id"] = ci_add.id
+            payload["maturity"] = adjusted_maturity(add_maturity, ci_add.evidence_refs or [])
+            controls_simulated.append(payload)
 
     # Calcular niveles actuales
     rl_cur, rc_cur, rlev_cur = calc_residual(

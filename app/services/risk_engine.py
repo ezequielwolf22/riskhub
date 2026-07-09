@@ -126,25 +126,62 @@ def color_for(level: int) -> str:
     return {"low": "brand-low", "medium": "brand-medium", "high": "brand-high"}[band_for(level)]
 
 
-def control_reduction(controls: Iterable[dict]) -> float:
-    """Combina la eficacia de N controles (madurez 0..5 + contribucion 0..1).
+# Pesos (likelihood, consequence) de la reduccion segun tipo de control.
+# Un preventivo bloquea la amenaza (reduce probabilidad, apenas impacto);
+# un correctivo/recuperacion no evita el evento pero limita el dano;
+# un detectivo acorta la ventana de ataque (parcial en ambos ejes).
+CONTROL_EFFECT_WEIGHTS = {
+    "P": (1.0, 0.2),
+    "D": (0.4, 0.5),
+    "C": (0.0, 1.0),
+}
+# Sin tipo declarado: comportamiento historico (prob 100%, cons 50%)
+DEFAULT_EFFECT_WEIGHTS = (1.0, 0.5)
 
-    Modelo base:  efficacy_i = (maturity/5) * contribution
+
+def _control_efficacy(c: dict) -> float:
+    """Eficacia 0..1 de un control: (maturity/5) * contribution * penalizaciones.
+
+    maturity admite float (madurez ajustada por calidad de evidencia).
     Penalizaciones automaticas (v5.2.0):
       - nc_penalty_factor: 0.4 si NC major abierta sobre el control (null = sin penalizacion)
       - ccm_fail: True si el ultimo test CCM arrojo FAIL (aplica factor 0.6)
+    """
+    mat = max(0.0, min(5.0, float(c.get("maturity") or 0)))
+    contrib = max(0.0, min(1.0, float(c.get("contribution", 1.0))))
+    nc_pen = float(c.get("nc_penalty_factor") if c.get("nc_penalty_factor") is not None else 1.0)
+    nc_pen = max(0.1, min(1.0, nc_pen))
+    ccm_pen = 0.6 if c.get("ccm_fail") else 1.0
+    return (mat / 5.0) * contrib * nc_pen * ccm_pen
+
+
+def control_reduction(controls: Iterable[dict]) -> float:
+    """Reduccion combinada (sin distinguir eje) de N controles.
+
+    Se mantiene para consumidores que muestran una eficacia agregada.
     Combinacion: 1 - PROD(1 - efficacy_i)
     """
     factor = 1.0
     for c in controls:
-        mat = max(0, min(5, int(c.get("maturity", 0))))
-        contrib = max(0.0, min(1.0, float(c.get("contribution", 1.0))))
-        nc_pen = float(c.get("nc_penalty_factor") if c.get("nc_penalty_factor") is not None else 1.0)
-        nc_pen = max(0.1, min(1.0, nc_pen))
-        ccm_pen = 0.6 if c.get("ccm_fail") else 1.0
-        eff = (mat / 5.0) * contrib * nc_pen * ccm_pen
-        factor *= (1.0 - eff)
+        factor *= (1.0 - _control_efficacy(c))
     return 1.0 - factor
+
+
+def control_reduction_split(controls: Iterable[dict]) -> tuple[float, float]:
+    """Reduccion separada (likelihood, consequence) segun tipo de control.
+
+    Cada control aporta su eficacia ponderada por CONTROL_EFFECT_WEIGHTS
+    segun c["ctype"] in {P, D, C}; sin ctype usa DEFAULT_EFFECT_WEIGHTS.
+    """
+    factor_lik = 1.0
+    factor_cons = 1.0
+    for c in controls:
+        eff = _control_efficacy(c)
+        w_lik, w_cons = CONTROL_EFFECT_WEIGHTS.get(
+            (c.get("ctype") or "").upper(), DEFAULT_EFFECT_WEIGHTS)
+        factor_lik *= (1.0 - eff * w_lik)
+        factor_cons *= (1.0 - eff * w_cons)
+    return 1.0 - factor_lik, 1.0 - factor_cons
 
 
 def calc_residual(
@@ -155,14 +192,14 @@ def calc_residual(
 ) -> tuple[int, int, int]:
     """Calcula likelihood/consequence/level residual aplicando controles.
 
-    Se reduce la probabilidad y, parcialmente, la consecuencia (los controles
-    correctivos/recuperacion mitigan el impacto). En este modelo simple
-    aplicamos la misma reduccion a ambos pero ponderando: prob -> 100%,
-    cons -> 50%, para no doble-contar.
+    Motor v2: la reduccion de probabilidad y la de consecuencia se acumulan
+    por separado segun el tipo de cada control (P/D/C). Un backup (correctivo)
+    no reduce la probabilidad de la amenaza; un firewall (preventivo) apenas
+    reduce el impacto si esta se materializa.
     """
-    reduction = control_reduction(controls)
-    new_lik = clamp(round(inherent_likelihood * (1.0 - reduction)))
-    new_cons = clamp(round(inherent_consequence * (1.0 - 0.5 * reduction)))
+    red_lik, red_cons = control_reduction_split(controls)
+    new_lik = clamp(round(inherent_likelihood * (1.0 - red_lik)))
+    new_cons = clamp(round(inherent_consequence * (1.0 - red_cons)))
     return new_lik, new_cons, calc_level(new_cons, new_lik, matrix)
 
 

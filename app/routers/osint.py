@@ -681,6 +681,16 @@ def create_risk_from_osint_finding(
     else:
         lh, imp = 1, 1
 
+    # La consecuencia de negocio no puede superar la valoracion CIA del activo:
+    # una exposicion OSINT alta sobre un activo de valor bajo no es critica.
+    max_cia = max(
+        asset.value_confidentiality or 0,
+        asset.value_integrity or 0,
+        asset.value_availability or 0,
+    )
+    if max_cia > 0:
+        imp = min(imp, max_cia)
+
     # calc_level(consequence=impact, likelihood)
     inherent_level = calc_level(imp, lh)
 
@@ -705,6 +715,11 @@ def create_risk_from_osint_finding(
         organization_id=current_user.organization_id,
     )
     db.add(risk)
+    db.flush()
+
+    # Residual determinista (matriz de la org, controles vinculados, apetito)
+    from app.services.risk_recalc_service import recalc_risk
+    recalc_risk(db, risk)
     db.commit()
     db.refresh(risk)
 
