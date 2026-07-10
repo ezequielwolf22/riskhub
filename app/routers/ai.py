@@ -2869,3 +2869,115 @@ def feedback_summary(
     ][:10]
     return {"total": total, "avg_rating": round(avg, 2), "ratings": rating_counts,
             "by_call_type": by_call_type, "recent_negative": recent_negative}
+
+
+# ---------- Aprendizaje del agente y calibracion ----------
+
+@router.get("/learning")
+def ai_learning_status(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Panel de aprendizaje del agente: lecciones destiladas, senales
+    registradas y calibracion residual (LLM vs motor determinista)."""
+    from sqlalchemy import func as _func
+    from app.models import AiDecisionSignal, RiskContext
+
+    org_id = current_user.organization_id
+    ctx = db.query(RiskContext).filter_by(organization_id=org_id).first()
+    lessons = (ctx.ai_learned_lessons or []) if ctx else []
+
+    signal_counts = dict(
+        db.query(AiDecisionSignal.signal_type, _func.count())
+        .filter(AiDecisionSignal.organization_id == org_id)
+        .group_by(AiDecisionSignal.signal_type)
+        .all()
+    )
+
+    # Calibracion: divergencia entre el residual sugerido por el LLM y el
+    # calculado por el motor en los ultimos analisis
+    divergences = (
+        db.query(AiDecisionSignal)
+        .filter(
+            AiDecisionSignal.organization_id == org_id,
+            AiDecisionSignal.signal_type == "residual_divergence",
+        )
+        .order_by(AiDecisionSignal.id.desc())
+        .limit(500)
+        .all()
+    )
+    calibration = None
+    if divergences:
+        deltas = [
+            int((s.context or {}).get("delta_level", 0)) for s in divergences
+            if (s.context or {}).get("delta_level") is not None
+        ]
+        if deltas:
+            exact = sum(1 for d in deltas if d == 0)
+            within1 = sum(1 for d in deltas if abs(d) <= 1)
+            by_cat: dict[str, list[int]] = {}
+            for s in divergences:
+                c = s.context or {}
+                if c.get("delta_level") is not None:
+                    by_cat.setdefault(c.get("threat_category") or "general", []).append(
+                        int(c["delta_level"]))
+            calibration = {
+                "samples": len(deltas),
+                "mean_delta": round(sum(deltas) / len(deltas), 2),
+                "exact_pct": round(exact / len(deltas) * 100),
+                "within_1_pct": round(within1 / len(deltas) * 100),
+                "by_threat_category": {
+                    cat: {"samples": len(ds),
+                          "mean_delta": round(sum(ds) / len(ds), 2)}
+                    for cat, ds in sorted(by_cat.items(), key=lambda kv: -len(kv[1]))
+                },
+            }
+
+    return {
+        "lessons": lessons,
+        "signal_counts": signal_counts,
+        "calibration": calibration,
+    }
+
+
+@router.post("/learning/refresh")
+def ai_learning_refresh(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Fuerza la destilacion de lecciones de la org (normalmente nocturna)."""
+    from app.services.ai_learning_service import refresh_org_lessons
+    from app.services.audit_service import log_action
+    n = refresh_org_lessons(db, current_user.organization_id)
+    db.commit()
+    log_action(db, current_user.id, "refresh", "ai_learning", None, {"lessons": n})
+    return {"lessons": n}
+
+
+@router.delete("/learning")
+def ai_learning_reset(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Resetea lo aprendido: borra senales y lecciones de la organizacion.
+
+    Accion consciente del admin (p.ej. tras un cambio de criterio corporativo
+    que invalida los patrones historicos)."""
+    from app.models import AiDecisionSignal, RiskContext
+    from app.services.audit_service import log_action
+
+    org_id = current_user.organization_id
+    deleted = (
+        db.query(AiDecisionSignal)
+        .filter(AiDecisionSignal.organization_id == org_id)
+        .delete(synchronize_session=False)
+    )
+    ctx = db.query(RiskContext).filter_by(organization_id=org_id).first()
+    if ctx is not None:
+        ctx.ai_learned_lessons = []
+    db.commit()
+    log_action(db, current_user.id, "reset", "ai_learning", None, {"signals_deleted": deleted})
+    return {"signals_deleted": deleted}

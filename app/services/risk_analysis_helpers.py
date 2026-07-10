@@ -596,6 +596,19 @@ def build_asset_risk_context(db, asset, impls: list | None = None,
     except Exception:
         pass
 
+    # Lecciones aprendidas de las decisiones reales de la organizacion
+    lessons_txt = ""
+    try:
+        from app.services.ai_learning_service import lessons_block
+        lessons_txt = lessons_block(
+            db, asset.organization_id,
+            kinds=("risk_acceptance", "risk_escalation", "likelihood_calibration",
+                   "consequence_calibration", "threat_rejection",
+                   "residual_calibration"),
+        )
+    except Exception:
+        pass
+
     return {
         "profile": profile_txt,
         "calibration": calibration_txt,
@@ -603,6 +616,7 @@ def build_asset_risk_context(db, asset, impls: list | None = None,
         "normative": normative_txt,
         "incidents": incidents_txt,
         "rag": rag_txt,
+        "lessons": lessons_txt,
     }
 
 
@@ -619,6 +633,8 @@ def render_asset_risk_context(sections: dict) -> str:
     if sections.get("rag"):
         parts.append("# DOCUMENTACION INTERNA RELEVANTE (actas, evidencias, procedimientos)\n"
                      + sections["rag"])
+    if sections.get("lessons"):
+        parts.append("# " + sections["lessons"])
     return "\n\n".join(parts)
 
 

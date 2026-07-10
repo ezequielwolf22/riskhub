@@ -89,11 +89,10 @@ def analyze_questionnaire_evidence(
         return 0
 
     try:
-        import anthropic
         from app.models import AiConfig
         from app.services.anonymizer import anonymize
+        from app.services.claude_client import create_message
         from app.services.document_service import extract_text
-        client = anthropic.Anthropic(api_key=api_key)
         cfg = db.query(AiConfig).filter_by(
             organization_id=questionnaire.organization_id).first()
         anon_level = (cfg.anonymization_level.value
@@ -159,8 +158,8 @@ def analyze_questionnaire_evidence(
                 content = [{"type": "text",
                             "text": f"{context_txt}\n\nContenido del fichero:\n{text}"}]
 
-            msg = client.messages.create(
-                model=model, max_tokens=1024,
+            msg = create_message(
+                api_key, model=model, max_tokens=1024,
                 system=_EVIDENCE_REVIEW_PROMPT,
                 messages=[{"role": "user", "content": content}],
             )
@@ -293,6 +292,17 @@ def _build_supplier_profile(db: Session, questionnaire: Any) -> str:
                 for p in prev
             )
             lines.append(f"  Cuestionarios anteriores: {hist}")
+
+        # Patrones de decision aprendidos de la org sobre proveedores
+        try:
+            from app.services.ai_learning_service import lessons_block
+            lessons = lessons_block(db, questionnaire.organization_id,
+                                    kinds=("vendor_decisions",))
+            if lessons:
+                lines.append("")
+                lines.append(lessons)
+        except Exception:
+            pass
     except Exception:
         logger.debug("tprm_ai: perfil de proveedor no disponible", exc_info=True)
         return ""
@@ -454,9 +464,10 @@ def review_questionnaire(
 
     raw: str | None = None
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        from app.services.claude_client import create_message
         try:
-            message = client.messages.create(
+            message = create_message(
+                api_key,
                 model=model,
                 max_tokens=4096,
                 system=system_prompt,
@@ -466,7 +477,8 @@ def review_questionnaire(
             # Reintentar con limite menor si el modelo rechaza el valor maximo
             err_str = str(exc).lower()
             if "max_tokens" in err_str or "maximum" in err_str:
-                message = client.messages.create(
+                message = create_message(
+                    api_key,
                     model=model,
                     max_tokens=2048,
                     system=system_prompt,

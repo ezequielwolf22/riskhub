@@ -804,6 +804,8 @@ def _migrate_columns() -> None:
         # v6.0.0 — Evidence understanding: revision IA del contenido de evidencias
         ("ALTER TABLE evidence ADD COLUMN ai_review JSON", "evidence", "ai_review"),
         ("ALTER TABLE evidence ADD COLUMN ai_reviewed_at DATETIME", "evidence", "ai_reviewed_at"),
+        # v6.1.0 — Aprendizaje del agente: lecciones destiladas por organizacion
+        ("ALTER TABLE risk_context ADD COLUMN ai_learned_lessons JSON", "risk_context", "ai_learned_lessons"),
         # v6.0.0 — registro de migraciones one-shot (pasos de datos que solo corren una vez)
         (
             """CREATE TABLE IF NOT EXISTS app_migrations (

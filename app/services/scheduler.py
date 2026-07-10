@@ -593,6 +593,16 @@ def _run_evidence_understanding() -> None:
         logger.exception("Error en evidence_understanding nocturno: %s", exc)
 
 
+def _run_ai_lessons_distillation() -> None:
+    """Destila las senales de decision del usuario en lecciones por org
+    (aprendizaje in-context del agente: gratis, sin llamadas a la API)."""
+    try:
+        from app.services.ai_learning_service import refresh_all_lessons
+        refresh_all_lessons()
+    except Exception as exc:
+        logger.exception("Error en destilacion de lecciones IA: %s", exc)
+
+
 def _run_entity_index_refresh() -> None:
     """Reconstruye el indice FTS de entidades de negocio para el RAG del chat."""
     from app.database import SessionLocal
@@ -2655,6 +2665,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=CronTrigger(hour=3, minute=30),  # nocturno, cap de coste por org
         id="evidence_understanding",
         name="Analisis IA nocturno de evidencias pendientes",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_ai_lessons_distillation,
+        trigger=CronTrigger(hour=4, minute=0),  # tras el analisis de evidencias
+        id="ai_lessons_distillation",
+        name="Destilacion nocturna de lecciones del agente IA",
         replace_existing=True,
         misfire_grace_time=7200,
     )

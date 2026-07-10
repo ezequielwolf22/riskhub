@@ -883,9 +883,41 @@ def update_risk(risk_id: int, data: RiskUpdate, request: Request, db: Session = 
         r.accepted_by_id = user.id
         r.accepted_at = datetime.now(timezone.utc)
 
+    # Aprendizaje: capturar la intencion del usuario ANTES del recalculo
+    # (el motor puede ajustar estado/tratamiento por apetito)
+    _learn_old = {
+        "inherent_likelihood": r.inherent_likelihood,
+        "inherent_consequence": r.inherent_consequence,
+        "treatment_option": r.treatment_option,
+    }
+
     for k, v in update_data.items():
         setattr(r, k, v)
     _recalc(db, r)
+
+    # Registrar senales de decision (best-effort, nunca rompe el update)
+    try:
+        from app.services.ai_learning_service import signal_risk_decision
+        if update_data.get("status") == RiskStatus.ACCEPTED:
+            signal_risk_decision(db, r, "risk_accepted", user_id=user.id)
+        new_treat = update_data.get("treatment_option")
+        if new_treat in (TreatmentOption.MODIFICATION, TreatmentOption.AVOIDANCE) \
+                and _learn_old["treatment_option"] in (None, TreatmentOption.RETENTION):
+            signal_risk_decision(db, r, "risk_escalated", user_id=user.id)
+        if r.ai_generated:
+            lik_delta = None
+            con_delta = None
+            if "inherent_likelihood" in update_data:
+                lik_delta = (update_data["inherent_likelihood"] or 0) - (_learn_old["inherent_likelihood"] or 0)
+            if "inherent_consequence" in update_data:
+                con_delta = (update_data["inherent_consequence"] or 0) - (_learn_old["inherent_consequence"] or 0)
+            if (lik_delta not in (None, 0)) or (con_delta not in (None, 0)):
+                signal_risk_decision(
+                    db, r, "ai_risk_edited", user_id=user.id,
+                    extra={"likelihood_delta": lik_delta, "consequence_delta": con_delta},
+                )
+    except Exception:
+        pass
 
     # Capturar estado posterior y calcular diff
     after = {f: getattr(r, f, None) for f in _TRACKED_FIELDS}
@@ -975,6 +1007,14 @@ def delete_risk(risk_id: int, request: Request, db: Session = Depends(get_db),
     if not r or not check_org_access(r.organization_id, current_user):
         raise HTTPException(404, _t("risks.not_found", lang))
     code = r.code
+    # Aprendizaje: borrar un riesgo generado por IA es la senal negativa mas
+    # fuerte sobre la aplicabilidad de esa amenaza a ese tipo de activo
+    if r.ai_generated:
+        try:
+            from app.services.ai_learning_service import signal_risk_decision
+            signal_risk_decision(db, r, "ai_risk_deleted", user_id=current_user.id)
+        except Exception:
+            pass
     db.delete(r)
     log_action(db, current_user.id, "delete", "risk", str(risk_id), {"code": code})
     db.commit()
@@ -1638,6 +1678,13 @@ def accept_risk(
         except ValueError:
             pass
 
+    try:
+        from app.services.ai_learning_service import signal_risk_decision
+        signal_risk_decision(db, risk, "risk_accepted", user_id=current_user.id,
+                             extra={"formal_acceptance": True})
+    except Exception:
+        pass
+
     db.commit()
     log_action(db, current_user.id, "accept", "risk", str(risk_id),
                {"code": risk.code, "residual_level": risk.residual_level})
@@ -1672,6 +1719,13 @@ def reject_acceptance(
     risk.status = RiskStatus.ASSESSED
     if body.reason:
         risk.acceptance_justification = (risk.acceptance_justification or "") + f"\nRechazado: {body.reason}"
+
+    try:
+        from app.services.ai_learning_service import signal_risk_decision
+        signal_risk_decision(db, risk, "risk_escalated", user_id=current_user.id,
+                             extra={"acceptance_rejected": True})
+    except Exception:
+        pass
 
     db.commit()
     log_action(db, current_user.id, "reject_acceptance", "risk", str(risk_id),

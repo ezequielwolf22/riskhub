@@ -558,11 +558,12 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
         return False
 
     try:
+        from app.services.claude_client import create_message
         from app.services.model_registry import MODEL_TIERS
-        client = anthropic.Anthropic(api_key=api_key)
 
         def _run_pass(model_id: str) -> dict:
-            msg = client.messages.create(
+            msg = create_message(
+                api_key,
                 model=model_id,
                 max_tokens=8192,
                 system=system_prompt,

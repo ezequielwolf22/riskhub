@@ -174,8 +174,7 @@ def analyze_evidence(db: Session, evidence_id: int) -> Optional[dict]:
     model = get_model(db, ev.organization_id, tier="fast")
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        from app.services.claude_client import create_message
 
         if use_vision:
             content = _vision_content(raw, mime, ev)
@@ -191,7 +190,8 @@ def analyze_evidence(db: Session, evidence_id: int) -> Optional[dict]:
                         + anonymize(text[:_MAX_TEXT_CHARS], anon_level),
             }]
 
-        msg = client.messages.create(
+        msg = create_message(
+            api_key,
             model=model,
             max_tokens=2048,
             system=system_prompt,

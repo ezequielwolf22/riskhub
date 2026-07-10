@@ -247,6 +247,7 @@ class RiskContext(Base):
     risk_matrix = Column(JSON)             # matriz 5x5 ISO 27005 Annex E.2
     risk_appetite = Column(Integer, default=3)  # nivel 0..8 maximo aceptable
     ai_gap_cache = Column(JSON, nullable=True)   # cache gap analysis detallado (v1.8)
+    ai_learned_lessons = Column(JSON, nullable=True)  # lecciones destiladas de senales (v6.1)
     # Normativas activas seleccionadas en el cuestionario IA
     active_frameworks = Column(JSON, nullable=True)  # ["iso27001","nis2","gdpr","ens",...]
     ens_level = Column(String(16), nullable=True)    # "basico" | "medio" | "alto"
@@ -562,6 +563,28 @@ class Risk(Base):
     vulnerabilities = relationship("Vulnerability", secondary=risk_vulnerability_table)
     controls = relationship("ControlImplementation", secondary=risk_control_table)
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
+
+
+class AiDecisionSignal(Base):
+    """Senal de decision del usuario para el aprendizaje del agente IA.
+
+    Cada vez que el usuario acepta/edita/borra un riesgo generado por IA,
+    aprueba una evaluacion de proveedor o corrige una propuesta, se registra
+    una senal con su contexto. Un job nocturno las destila en lecciones por
+    organizacion (RiskContext.ai_learned_lessons) que se inyectan en los
+    prompts: el agente se adapta al criterio real de la organizacion sin
+    reentrenar ningun modelo.
+    """
+    __tablename__ = "ai_decision_signals"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    signal_type = Column(String(48), nullable=False, index=True)
+    # risk_accepted | risk_escalated | ai_risk_edited | ai_risk_deleted |
+    # residual_divergence | vendor_assessment_decision | controls_relinked
+    entity_ref = Column(String(64), nullable=True)   # RSK-0001, VRA-0001...
+    context = Column(JSON, nullable=True)            # {asset_type, threat_code, deltas...}
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ThreatControlOverride(Base):

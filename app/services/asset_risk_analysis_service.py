@@ -527,22 +527,62 @@ def _build_org_context_str(db: Session, org_id: int) -> str:
             if isinstance(val, list):
                 val = ", ".join(str(v) for v in val)
             lines.append(f"{key}: {val}")
+
+    # Lecciones aprendidas de las decisiones de la org (aprendizaje in-context)
+    try:
+        from app.services.ai_learning_service import lessons_block
+        lessons = lessons_block(
+            db, org_id,
+            kinds=("risk_acceptance", "risk_escalation", "likelihood_calibration",
+                   "consequence_calibration", "threat_rejection",
+                   "residual_calibration"),
+        )
+        if lessons:
+            lines.append("")
+            lines.append(lessons)
+    except Exception:
+        pass
     return "\n".join(lines)
 
 
-def _build_batch_user_prompt(
-    assets: list[Asset],
-    threats: list[Threat],
-    candidates_by_threat: dict[str, list[dict]],
-    vulns: list[Vulnerability],
-    org_ctx: str,
-) -> str:
-    """Construye el user-content para analizar un lote de activos.
+def _build_org_catalog_block(db: Session, org_id: int, all_threats: list,
+                             org_ctx: str) -> str:
+    """Bloque estable por organizacion para el analisis batch: contexto org,
+    catalogo de amenazas con controles candidatos y vulnerabilidades.
 
-    Incluye las 5 dimensiones de valoracion del activo y, por amenaza, los
-    controles candidatos reales de la org (impl_id + madurez + tipo P/D/C)
-    derivados del catalogo amenaza->control.
+    Se construye UNA vez por ejecucion y va en el system con cache_control:
+    todos los lotes de la misma pasada reutilizan el prefijo cacheado
+    (~90% menos coste de input a partir del segundo lote).
     """
+    from app.services.threat_knowledge import candidate_impls_for_threat
+    impls = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == org_id,
+        ControlImplementation.status != ControlStatus.NOT_IMPLEMENTED,
+    ).all()
+
+    threats_lines = []
+    for t in all_threats[:100]:
+        cands = candidate_impls_for_threat(db, org_id, t.code, impls=impls)
+        cand_str = ", ".join(
+            f"{c['code']}[impl_id={c['impl_id']},m={c['maturity']},{c['effect']}]"
+            for c in cands[:8]
+        ) or "(sin controles implementados que mitiguen esta amenaza)"
+        threats_lines.append(f"{t.code}: {t.name}\n  candidatos: {cand_str}")
+    threats_str = "\n".join(threats_lines)
+
+    vulns = _vulns_for_threats(db, [t.code for t in all_threats])
+    vulns_str = "\n".join(f"{v.code}: {v.name}" for v in vulns[:80]) or "(catalogo vacio)"
+
+    return (
+        f"CONTEXTO ORG:\n{org_ctx}\n\n"
+        f"CATALOGO DE AMENAZAS Y CONTROLES CANDIDATOS POR AMENAZA ({len(all_threats)}):\n{threats_str}\n\n"
+        f"CATALOGO DE VULNERABILIDADES ({len(vulns)}):\n{vulns_str}"
+    )
+
+
+def _build_batch_user_prompt(assets: list[Asset]) -> str:
+    """User-content del lote: solo los activos (el catalogo va en el system
+    cacheado). Incluye las 5 dimensiones y las senales de vigilancia."""
     assets_lines = []
     for a in assets:
         assets_lines.append(
@@ -553,28 +593,7 @@ def _build_batch_user_prompt(
             f"| desc:{(a.description or '')[:120]}"
             + (f"\n  senales: {a._signal_summary}" if getattr(a, "_signal_summary", "") else "")
         )
-    assets_str = "\n".join(assets_lines)
-
-    # Amenazas + controles candidatos por amenaza (max 50 amenazas)
-    threats_lines = []
-    for t in threats[:50]:
-        cands = candidates_by_threat.get(t.code, [])
-        cand_str = ", ".join(
-            f"{c['code']}[impl_id={c['impl_id']},m={c['maturity']},{c['effect']}]"
-            for c in cands[:8]
-        ) or "(sin controles implementados que mitiguen esta amenaza)"
-        threats_lines.append(f"{t.code}: {t.name}\n  candidatos: {cand_str}")
-    threats_str = "\n".join(threats_lines)
-
-    vulns_lines = [f"{v.code}: {v.name}" for v in vulns[:60]]
-    vulns_str = "\n".join(vulns_lines) if vulns_lines else "(catalogo vacio)"
-
-    return (
-        f"CONTEXTO ORG:\n{org_ctx}\n\n"
-        f"CATALOGO DE AMENAZAS Y CONTROLES CANDIDATOS POR AMENAZA ({len(threats)}):\n{threats_str}\n\n"
-        f"CATALOGO DE VULNERABILIDADES ({len(vulns)}):\n{vulns_str}\n\n"
-        f"ACTIVOS A ANALIZAR ({len(assets)}):\n{assets_str}"
-    )
+    return f"ACTIVOS A ANALIZAR ({len(assets)}):\n" + "\n".join(assets_lines)
 
 
 def _parse_batch_response(raw: str) -> dict:
@@ -642,10 +661,14 @@ def _process_batch_isolated(
     model: str,
     appetite: int,
     all_threats: list,
-    org_ctx: str,
+    catalog_block: str,
     owner_id: int | None,
 ) -> None:
-    """Procesa un lote de activos en una sola llamada API. Sesion DB propia."""
+    """Procesa un lote de activos en una sola llamada API. Sesion DB propia.
+
+    El catalogo (amenazas + candidatos + vulnerabilidades + contexto org) va
+    en el system con cache_control: identico entre lotes -> prompt caching.
+    """
     from app.database import SessionLocal
     db = SessionLocal()
     try:
@@ -653,48 +676,22 @@ def _process_batch_isolated(
         if not assets:
             return
 
-        # Filtrar amenazas relevantes para los tipos de activo del lote
-        types_in_batch = {a.asset_type.value if a.asset_type else "" for a in assets}
-        relevant_threats = []
-        seen_codes = set()
-        for t in all_threats:
-            ta = t.typical_assets or []
-            if isinstance(ta, str):
-                try:
-                    ta = json.loads(ta)
-                except Exception:
-                    ta = [ta]
-            ta_lower = [x.lower() for x in ta]
-            for atype in types_in_batch:
-                keys = _ASSET_TYPE_KEYS.get(atype, [atype])
-                if any(k in ta_lower or any(k in s for s in ta_lower) for k in keys):
-                    if t.code not in seen_codes:
-                        relevant_threats.append(t)
-                        seen_codes.add(t.code)
-                    break
-        if not relevant_threats:
-            relevant_threats = all_threats[:40]
-
         # Senales de vigilancia por activo (CVE/OSINT abiertos + incidentes):
         # version compacta del contexto rico para no disparar el tamano del lote
         for a in assets:
             a._signal_summary = _asset_signal_summary(db, a)
 
-        # Controles implementados + candidatos por amenaza (catalogo amenaza->control)
-        from app.services.threat_knowledge import candidate_impls_for_threat
+        # Cargas locales para la persistencia (objetos ligados a ESTA sesion)
         impls = db.query(ControlImplementation).filter(
             ControlImplementation.organization_id == org_id,
             ControlImplementation.status != ControlStatus.NOT_IMPLEMENTED,
         ).all()
-        candidates_by_threat = {
-            t.code: candidate_impls_for_threat(db, org_id, t.code, impls=impls)
-            for t in relevant_threats[:50]
-        }
-        vulns = _vulns_for_threats(db, [t.code for t in relevant_threats])
+        vulns = _vulns_for_threats(db, [t.code for t in all_threats])
 
-        user_content = _build_batch_user_prompt(
-            assets, relevant_threats, candidates_by_threat, vulns, org_ctx)
-        system = _BATCH_SYSTEM_PROMPT.format(appetite=appetite)
+        user_content = _build_batch_user_prompt(assets)
+        from app.services.claude_client import cached_system
+        system = cached_system(
+            _BATCH_SYSTEM_PROMPT.format(appetite=appetite), catalog_block)
 
         import anthropic
         import time as _time
@@ -900,6 +897,8 @@ def analyze_all_org_assets(
     appetite      = ctx_obj.risk_appetite if ctx_obj and ctx_obj.risk_appetite is not None else 3
     owner_id      = _org_owner_id(db, org_id)
     org_ctx       = _build_org_context_str(db, org_id)
+    # Catalogo estable por org (una vez): va al system cacheado de cada lote
+    catalog_block = _build_org_catalog_block(db, org_id, all_threats, org_ctx)
 
     # Dividir en lotes (los controles se cargan por lote en _process_batch_isolated)
     batches = [asset_ids[i:i + _BATCH_SIZE] for i in range(0, total, _BATCH_SIZE)]
@@ -911,7 +910,7 @@ def analyze_all_org_assets(
             executor.submit(
                 _process_batch_isolated,
                 batch, org_id, api_key, model,
-                appetite, all_threats, org_ctx, owner_id,
+                appetite, all_threats, catalog_block, owner_id,
             ): batch
             for batch in batches
         }
@@ -1188,8 +1187,22 @@ def _finalize_ai_risk(db: Session, risk: Risk, item: dict,
 
     if suggested_lik is not None and suggested_con is not None:
         try:
-            s_lvl = calc_level(clamp(int(suggested_con)), clamp(int(suggested_lik)))
-            if abs(s_lvl - (risk.residual_level or 0)) > 1:
+            s_lvl = calc_level(suggested_con, suggested_lik)
+            delta = s_lvl - (risk.residual_level or 0)
+            # Persistir la divergencia LLM vs motor: alimenta el panel de
+            # calibracion y las lecciones aprendidas (residual_calibration)
+            from app.services.ai_learning_service import record_signal
+            record_signal(
+                db, risk.organization_id, "residual_divergence",
+                {
+                    "suggested_level": s_lvl,
+                    "engine_level": risk.residual_level or 0,
+                    "delta_level": delta,
+                    "threat_category": risk.threat.category if risk.threat else None,
+                },
+                entity_ref=risk.code,
+            )
+            if abs(delta) > 1:
                 logger.info(
                     "Residual LLM difiere del motor en risk %s: sugerido=%d calculado=%d",
                     risk.code, s_lvl, risk.residual_level or 0,

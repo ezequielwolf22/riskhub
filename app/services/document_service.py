@@ -255,9 +255,9 @@ def describe_document_with_vision(doc_id: int) -> bool:
         else:
             return False
 
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
+        from app.services.claude_client import create_message
+        msg = create_message(
+            api_key,
             model=get_model(db, doc.organization_id, tier="fast"),
             max_tokens=8192,
             system=(

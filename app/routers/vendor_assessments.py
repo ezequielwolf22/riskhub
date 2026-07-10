@@ -446,6 +446,28 @@ def decide_assessment(
     a.decision_notes = body.notes
     a.decision_at = datetime.now(timezone.utc)
     a.decision_by_id = current_user.id
+
+    # Aprendizaje: patron de decisiones sobre proveedores por tier/score
+    try:
+        from app.models import Supplier
+        from app.services.ai_learning_service import record_signal
+        supplier = db.get(Supplier, a.supplier_id) if a.supplier_id else None
+        tier = None
+        if supplier is not None and getattr(supplier, "tier", None) is not None:
+            tier = supplier.tier.value if hasattr(supplier.tier, "value") else str(supplier.tier)
+        record_signal(
+            db, a.organization_id, "vendor_assessment_decision",
+            {
+                "decision": body.decision,
+                "tier": tier,
+                "residual_risk_score": a.residual_risk_score,
+                "control_effectiveness": a.control_effectiveness,
+            },
+            entity_ref=a.code, user_id=current_user.id,
+        )
+    except Exception:
+        pass
+
     db.commit()
     db.refresh(a)
     log_action(db, current_user.id, "decide", "vendor_assessment", str(a.id),
