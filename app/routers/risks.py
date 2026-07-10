@@ -1719,7 +1719,9 @@ def suggest_controls_for_risk(
     api_key = _resolve_key(ai_cfg)
     if not api_key:
         raise HTTPException(400, "API key no configurada. Ve a Configuracion > Agente IA.")
-    model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5"
+    # Razonamiento de cadena de ataque: tier deep por defecto
+    from app.services.model_registry import MODEL_TIERS as _TIERS
+    model = (ai_cfg.model if ai_cfg else None) or _TIERS["deep"]
 
     # Contexto del riesgo
     asset_name = r.asset.name if r.asset else "N/A"

@@ -562,6 +562,10 @@ const ViewGuide = {
     </div>
     ${this._h('Riesgo inherente vs. residual')}
     ${this._p('<strong>Nivel inherente:</strong> nivel de riesgo SIN considerar los controles existentes. Refleja la exposición bruta. <strong>Nivel residual:</strong> nivel de riesgo DESPUÉS de aplicar los controles. Es el nivel real al que está expuesta la organización.')}
+    ${this._h('Motor residual v2: cómo se calcula')}
+    ${this._p('El residual lo calcula siempre el <strong>motor determinista</strong> de la plataforma, nunca la IA directamente. Cada control vinculado reduce el riesgo según: (1) su <strong>tipo</strong> — un preventivo (firewall) reduce probabilidad, un correctivo (backup) reduce impacto, un detectivo aporta parcialmente a ambos; (2) su <strong>madurez ajustada por la calidad real de la evidencia</strong> — un control declarado 5/5 sin evidencia no reduce igual que uno con pentest documentado; (3) penalizaciones automáticas por no conformidades abiertas y tests CCM fallidos. La IA propone amenazas, valores inherentes calibrados y contribuciones de controles; el motor calcula el número final con trazabilidad.')}
+    ${this._h('Badge "DESACT." y panel "Fuentes consideradas"')}
+    ${this._p('Cuando el contexto cambia después de un análisis IA (nuevo CVE u OSINT sobre el activo, un documento que sube la madurez de controles), el riesgo se marca con el badge <strong>DESACT.</strong> — el residual determinista sí se recalcula al momento, pero conviene re-analizar el activo con IA para refrescar amenazas y rationale. Al abrir un riesgo generado por IA, el panel plegable <strong>"Fuentes consideradas"</strong> muestra en qué se apoyó el análisis: controles y vulnerabilidades vinculados, hallazgos CVE/OSINT abiertos, incidentes previos del activo, evidencias analizadas y flags de vigilancia normativa.')}
     ${this._h('Creacion manual de un riesgo')}
     ${this._steps([
       'Ve al menú Riesgos → Nuevo riesgo.',
@@ -1697,6 +1701,9 @@ const ViewGuide = {
     ${this._p('La pestana <strong>Evaluaciones</strong> agrega el riesgo inherente del proveedor, los cuestionarios respondidos (media de puntuaciones) y un desglose por dominio funcional en una unica evaluacion. Cada evaluacion puede <strong>aprobarse</strong> y <strong>enviarse al registro de riesgos ISO 27005</strong> con un clic (boton "Push a riesgos"), creando una entrada de riesgo de cadena de suministro vinculada.')}
     ${this._h('Evaluacion por IA de los cuestionarios')}
     ${this._p('Cuando un proveedor responde un cuestionario, RiskHub puede evaluar las respuestas con IA (Claude) y devolver una puntuacion, nivel de confianza, banderas rojas y preguntas de seguimiento. Si la confianza es baja, el cuestionario se marca para revision manual obligatoria. Requiere configurar la API key en IA -> Configuracion. Tambien puedes lanzarla manualmente con el boton "Evaluar IA" en la tabla de cuestionarios.')}
+    ${this._p('La evaluacion IA <strong>lee el contenido real de las evidencias adjuntas</strong> (documentos e imagenes que el proveedor sube al portal) y lo cruza con las respuestas declaradas: solo puede afirmar consistencia sobre evidencias analizadas, y si un fichero <strong>contradice</strong> la respuesta se crea un VendorIssue automatico. Ademas pondera el juicio con el perfil del proveedor (tier, riesgo inherente, alcance regulatorio), sus issues abiertos y el historico de cuestionarios anteriores.')}
+    ${this._h('Estados de la evidencia en el scoring')}
+    ${this._p('Las preguntas que requieren evidencia ponderan en 4 estados: <strong>sin evidencia</strong> (x0.5), <strong>subida sin verificar</strong> (x0.7), <strong>verificada consistente</strong> (x1.0) y <strong>contradictoria</strong> (x0.4 + issue automatico). Subir un fichero ya no basta: el contenido tiene que respaldar la respuesta.')}
     ${this._h('Hallazgos y SLA')}
     ${this._p('La pestana <strong>Hallazgos</strong> registra issues del proveedor con SLA automatico por severidad (critico 7 dias, alto 30, medio 90, bajo 180). Los hallazgos vencidos se marcan automaticamente como "Vencido". Gestiona la remediacion, la asignacion y la aceptacion de riesgo desde aqui.')}
     ${this._tip('<strong>Nota:</strong> el modulo reutiliza el registro de proveedores y los cuestionarios existentes; no crea un silo paralelo. Los proveedores con riesgo residual alto pueden vincularse al registro de riesgos ISO 27005 central.')}
@@ -1904,6 +1911,8 @@ const ViewGuide = {
     </table>
     ${this._h('Bandeja de actualizaciones y revision')}
     ${this._p('Cuando un cambio sustantivo afecta a un marco que usas, aparece un item con dos botones: <strong>Revisar</strong> (abre un asistente breve con el resumen, el impacto sobre tus politicas y requisitos, y un boton Aplicar) y <strong>Aplazar 7 dias</strong>. El historial es exportable a PDF como evidencia ante auditor.')}
+    ${this._h('Analisis con el texto completo y doble pasada')}
+    ${this._p('El analisis IA de cada cambio <strong>descarga y lee el texto completo</strong> de la fuente (no solo el titular del feed). La primera clasificacion corre con el modelo rapido; si el resultado apunta a un cambio sustantivo o de version mayor, o la confianza es baja, una <strong>segunda pasada con el modelo potente</strong> emite el juicio final antes de auto-publicar. La propagacion a TPRM ademas usa los <strong>controles afectados identificados por la IA</strong> para marcar tambien los cuestionarios cuyas preguntas referencian esos controles, no solo los de plantillas del framework.')}
     ${this._h('Opciones avanzadas (colapsadas, solo admin)')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>Email de notificaciones:</strong> por defecto, el del primer admin.</li>
@@ -2459,7 +2468,12 @@ const ViewGuide = {
     ])}
     ${this._h('Inferencia automática')}
     ${this._p('Cuando subes un documento al Agente IA y se analiza con ISMS, el sistema <strong>infiere automáticamente</strong> qué requisitos de tus frameworks activos cubre el documento y crea las evidencias vinculadas. Un documento de política de backups puede cubrir simultáneamente ISO27001 A.8.13, NIS2 Art.21.2.b, HIPAA y NIST CSF.')}
-    ${this._tip('Las evidencias próximas a vencer reciben alertas automáticas 30 días antes de su expiración.')}
+    ${this._h('Revisión IA del contenido (evidence understanding)')}
+    ${this._p('Cada evidencia subida se <strong>analiza con IA en segundo plano</strong> (y un job nocturno procesa las pendientes con límite de coste por organización). El agente lee el contenido real — texto, imágenes y PDFs escaneados vía visión — y determina: si el contenido <strong>respalda el tipo declarado</strong>, un nivel de calidad probatoria <strong>E1-E5</strong> (E1 = irrelevante, E5 = prueba técnica verificable como un pentest o log fechado), los controles ISO que respalda, hechos clave y señales de alerta. El badge <strong>IA + nivel</strong> aparece junto al tipo en la tabla.')}
+    ${this._p('<strong>Este análisis mueve el riesgo:</strong> la calidad E1-E5 ajusta la madurez efectiva del control vinculado, y el residual de los riesgos que dependen de ese control se recalcula automáticamente. Una captura del MFA activo puede subir la madurez efectiva del control 8.5; una plantilla vacía la baja.')}
+    ${this._h('Nuevos tipos de evidencia')}
+    ${this._p('Además de políticas, certificados, logs e informes, ahora puedes subir <strong>actas de reunión o comité</strong> (alimentan el gobierno del SGSI y el contexto del agente), <strong>registros de formación</strong> y <strong>resultados de campañas de simulación de phishing</strong> (alimentan el control 6.3 y la sección de factor humano del contexto IA).')}
+    ${this._tip('Las evidencias próximas a vencer reciben alertas automáticas 30 días antes de su expiración. Puedes relanzar el análisis IA de una evidencia con el endpoint de re-análisis si su contenido cambió.')}
   `;},
 
   get _cMagerit() { return `

@@ -182,7 +182,7 @@ def seed_controls(db: Session) -> None:
 
 
 def _create_fts5_table() -> None:
-    """Crea la tabla FTS5 para busqueda de chunks de documentos IA."""
+    """Crea las tablas FTS5: chunks de documentos IA y entidades de negocio."""
     with engine.connect() as conn:
         try:
             conn.execute(__import__("sqlalchemy").text(
@@ -192,6 +192,17 @@ def _create_fts5_table() -> None:
             conn.commit()
         except Exception:
             pass  # SQLite sin soporte FTS5 (entorno de test)
+        try:
+            # v6.0.0 — entidades de negocio (riesgos, controles, politicas,
+            # evidencias analizadas) buscables por el RAG del chat
+            conn.execute(__import__("sqlalchemy").text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS ai_entity_fts "
+                "USING fts5(content, entity_type UNINDEXED, entity_ref UNINDEXED, "
+                "org_id UNINDEXED, tokenize='unicode61 remove_diacritics 1')"
+            ))
+            conn.commit()
+        except Exception:
+            pass
 
 
 def _ensure_doc_dir() -> None:

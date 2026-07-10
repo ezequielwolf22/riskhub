@@ -524,6 +524,20 @@ def build_context(
             "(Puedes hacer preguntas sobre el contenido de cualquiera de estos documentos.)"
         )
 
+    # Entidades de negocio relacionadas con la consulta (indice FTS propio):
+    # complementa las secciones fijas cuando la consulta apunta a registros
+    # concretos que no entraron en los limites de arriba
+    if query:
+        try:
+            from app.services.rag_service import search_entities
+            hits = search_entities(db, query, top_k=6, organization_id=organization_id)
+            if hits:
+                parts.append("\n## Registros de la plataforma relacionados con la consulta")
+                for h in hits:
+                    parts.append(f"- [{h['entity_type']}:{h['entity_ref']}] {h['content'][:220]}")
+        except Exception:
+            pass
+
     # Fragmentos RAG relevantes a la consulta actual
     if query:
         results = search_chunks_with_source(

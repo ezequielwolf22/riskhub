@@ -1166,7 +1166,7 @@ def ai_generate_test_checklist(tid: int, request: Request, db: Session = Depends
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model=cfg.model or "claude-haiku-4-5-20251001",
+            model=cfg.model or "claude-haiku-4-5",
             max_tokens=16384,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -1479,7 +1479,7 @@ async def import_ai_preview(
     if not api_key:
         raise HTTPException(422, _t("bcp.ai_key_missing_configure", lang))
     from app.services.bcp_excel_service import ai_parse_any_format
-    bcp_ai_model = (cfg.model if cfg and cfg.model else None) or "claude-haiku-4-5-20251001"
+    bcp_ai_model = (cfg.model if cfg and cfg.model else None) or "claude-haiku-4-5"
     try:
         result = await ai_parse_any_format(content, file.filename, api_key, model=bcp_ai_model)
         return result
@@ -1585,7 +1585,7 @@ def analyze_bcp_with_ai(request: Request, db: Session = Depends(get_db), u: User
         prompt = _BCP_ANALYSIS_PROMPT.format(bcp_summary=summary)
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model=cfg.model or "claude-haiku-4-5-20251001",
+            model=cfg.model or "claude-haiku-4-5",
             max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -1876,7 +1876,7 @@ def _trigger_checklist_extraction(db: Session, plan: BCPPlan, org_id: int) -> No
         return
 
     plan_id = plan.id
-    model = config.model or "claude-haiku-4-5-20251001"
+    model = config.model or "claude-haiku-4-5"
 
     def _extract():
         with SessionLocal() as sess:
@@ -3095,7 +3095,7 @@ def bcm_ai_quick(
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5-20251001",
+        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5",
         max_tokens=8192,
         system=system_prompt,
         messages=[{"role": "user", "content": body.message}],
@@ -3270,7 +3270,7 @@ def generate_activation_ai_summary(aid: int, request: Request, db: Session = Dep
 
     client = anthropic.Anthropic(api_key=api_key)
     msg = client.messages.create(
-        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5-20251001",
+        model=(_ai_cfg.model if _ai_cfg and _ai_cfg.model else None) or "claude-haiku-4-5",
         max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )

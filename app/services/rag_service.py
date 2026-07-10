@@ -380,24 +380,132 @@ def search_chunks_with_source(
         except Exception as e:
             logger.warning("Embedding search error, fallback a FTS5: %s", e)
 
-    # -- Nivel 2: FTS5 con expansion bilingue --
+    # -- Nivel 2: FTS5 con expansion bilingue y FUSION de variantes --
+    # Antes se devolvia la primera variante con resultados; ahora se ejecutan
+    # todas y se fusionan por puntuacion (especificidad de la variante +
+    # posicion en su ranking), deduplicando por contenido.
     try:
-        for variant in _fts5_query_variants(query):
+        variants = _fts5_query_variants(query)
+        fused: dict[str, dict] = {}
+        for idx, variant in enumerate(variants):
             try:
                 rows = _run_fts5(db, variant, top_k, organization_id)
-                if rows:
-                    logger.debug("RAG FTS5 hit con variante: %r -> %d resultados", variant, len(rows))
-                    return [
-                        {"content": r[0], "doc_name": r[1] or "Documento", "category": r[2] or ""}
-                        for r in rows
-                    ]
             except Exception:
                 continue
+            for pos, r in enumerate(rows):
+                key = (r[0] or "")[:200]
+                score = (len(variants) - idx) * 100 - pos
+                if key not in fused or score > fused[key]["_score"]:
+                    fused[key] = {
+                        "content": r[0], "doc_name": r[1] or "Documento",
+                        "category": r[2] or "", "_score": score,
+                    }
+        if fused:
+            ranked = sorted(fused.values(), key=lambda x: -x["_score"])[:top_k]
+            for r in ranked:
+                r.pop("_score", None)
+            logger.debug("RAG FTS5 fusion: %d variantes -> %d resultados",
+                         len(variants), len(ranked))
+            return ranked
     except Exception:
         pass
 
     logger.debug("RAG: sin resultados para query: %r", query[:80])
     return []
+
+
+# ---------- Indice FTS de entidades de negocio (v6.0.0) ----------
+# Riesgos, controles, politicas y evidencias analizadas quedan buscables por
+# el chat: "que riesgos afectan al ERP" recupera registros aunque no esten
+# entre los 15 del contexto fijo.
+
+def refresh_entity_index(db: Session) -> int:
+    """Reconstruye ai_entity_fts con las entidades de negocio actuales.
+
+    Se ejecuta desde el scheduler (nocturno). Rebuild completo: el volumen
+    es pequeno (miles de filas) y evita logica de sincronizacion incremental.
+    """
+    from app.models import (
+        ControlImplementation, Evidence, Policy, Risk,
+    )
+    try:
+        db.execute(text("DELETE FROM ai_entity_fts"))
+    except Exception:
+        return 0  # FTS5 no disponible
+
+    inserted = 0
+
+    def _add(content: str, etype: str, ref: str, org_id) -> None:
+        nonlocal inserted
+        if not content or not content.strip():
+            return
+        db.execute(
+            text("INSERT INTO ai_entity_fts(content, entity_type, entity_ref, org_id) "
+                 "VALUES (:c, :t, :r, :o)"),
+            {"c": content[:2000], "t": etype, "r": ref, "o": str(org_id or "")},
+        )
+        inserted += 1
+
+    for r in db.query(Risk).all():
+        asset = r.asset.name if r.asset else ""
+        threat = r.threat.name if r.threat else ""
+        _add(
+            f"{r.code} riesgo {asset} {threat} {r.description or ''} {r.ai_rationale or ''}",
+            "risk", r.code, r.organization_id,
+        )
+    for ci in db.query(ControlImplementation).all():
+        code = ci.control.code if ci.control else ""
+        _add(
+            f"{code} control {ci.name or ''} {ci.evidence or ''} {ci.notes or ''}",
+            "control", code or str(ci.id), ci.organization_id,
+        )
+    for p in db.query(Policy).all():
+        _add(
+            f"{p.code or ''} politica {p.title or ''} {(p.scope or '')[:200]} "
+            f"{(p.content or '')[:400]}",
+            "policy", p.code or str(p.id), p.organization_id,
+        )
+    for ev in db.query(Evidence).filter(Evidence.ai_review.isnot(None)).all():
+        rev = ev.ai_review or {}
+        facts = " ".join(rev.get("key_facts") or [])
+        _add(
+            f"{ev.code} evidencia {ev.title or ''} {rev.get('summary', '')} {facts}",
+            "evidence", ev.code, ev.organization_id,
+        )
+
+    db.commit()
+    logger.info("RAG entidades: indice reconstruido (%d filas)", inserted)
+    return inserted
+
+
+def search_entities(db: Session, query: str, top_k: int = 6,
+                    organization_id: int | None = None) -> list[dict]:
+    """Busca entidades de negocio relacionadas con la consulta del chat."""
+    if not query or not query.strip():
+        return []
+    results: list[dict] = []
+    seen: set[str] = set()
+    try:
+        for variant in _fts5_query_variants(query):
+            rows = db.execute(
+                text("SELECT content, entity_type, entity_ref FROM ai_entity_fts "
+                     "WHERE ai_entity_fts MATCH :q AND org_id = :o "
+                     "ORDER BY rank LIMIT :k"),
+                {"q": variant, "o": str(organization_id or ""), "k": top_k},
+            ).fetchall()
+            for r in rows:
+                key = f"{r[1]}:{r[2]}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                results.append({
+                    "content": r[0], "entity_type": r[1], "entity_ref": r[2],
+                })
+                if len(results) >= top_k:
+                    return results
+    except Exception:
+        logger.debug("search_entities fallo", exc_info=True)
+    return results
 
 
 def ask(prompt: str, org_id: Optional[int] = None) -> Optional[str]:

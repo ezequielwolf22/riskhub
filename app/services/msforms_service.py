@@ -361,7 +361,7 @@ def _trigger_ai_review_bg(questionnaire_id: int, org_id: int) -> None:
                         org_id,
                     )
                     return
-                model = (ai_cfg.model if ai_cfg else None) or "claude-haiku-4-5-20251001"
+                model = (ai_cfg.model if ai_cfg else None) or "claude-opus-4-6"
                 review = tprm_ai_service.review_questionnaire(db2, q, key, model)
                 q.ai_review = review
                 q.ai_reviewed_at = datetime.now(timezone.utc)
