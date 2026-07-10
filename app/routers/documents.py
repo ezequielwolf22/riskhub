@@ -101,20 +101,6 @@ def _doc_out(d: AiDocument) -> dict:
     }
 
 
-def _run_vision_then_isms_bg(doc_id: int) -> None:
-    """Transcripcion Vision (imagenes/escaneados) y despues analisis ISMS.
-
-    Solo encadena el ISMS si Vision genero chunks: sin texto no hay nada
-    que analizar y se evita una llamada IA inutil.
-    """
-    try:
-        from app.services.document_service import describe_document_with_vision
-        if describe_document_with_vision(doc_id):
-            _run_isms_analysis_bg(doc_id)
-    except Exception:
-        pass
-
-
 def _run_isms_analysis_bg(doc_id: int) -> None:
     """Wrapper de background para analisis ISMS — crea su propia sesion de BD."""
     db = SessionLocal()
@@ -212,12 +198,19 @@ def upload_document(
         if "pdf" in mime and doc.status == AiDocumentStatus.INDEXED and not doc.chunk_count:
             needs_vision = True
 
-    if background_tasks is not None:
-        if needs_vision:
-            background_tasks.add_task(_run_vision_then_isms_bg, doc.id)
-        elif doc.status == AiDocumentStatus.INDEXED:
-            # Analisis ISMS en background para no bloquear la respuesta HTTP
-            background_tasks.add_task(_run_isms_analysis_bg, doc.id)
+    if needs_vision:
+        # Vision + ISMS via cola persistida (trabajo largo, sobrevive reinicios)
+        try:
+            from app.services.job_queue import enqueue
+            enqueue(db, doc.organization_id, "document_vision_isms",
+                    {"doc_id": doc.id}, created_by_id=current_user.id,
+                    dedupe_key=f"document_vision_isms:{doc.id}")
+            db.commit()
+        except Exception:
+            pass
+    elif doc.status == AiDocumentStatus.INDEXED and background_tasks is not None:
+        # Analisis ISMS en background para no bloquear la respuesta HTTP
+        background_tasks.add_task(_run_isms_analysis_bg, doc.id)
 
     return _doc_out(doc)
 

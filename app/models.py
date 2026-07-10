@@ -565,6 +565,33 @@ class Risk(Base):
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
 
 
+class BackgroundJob(Base):
+    """Trabajo asincrono persistido (cola en BD, sin dependencias externas).
+
+    Sustituye a los hilos sueltos/BackgroundTasks para el trabajo pesado
+    (analisis IA masivo, evidencias, vision de documentos): sobrevive a
+    reinicios, reintenta con backoff y deja rastro consultable.
+    """
+    __tablename__ = "background_jobs"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    job_type = Column(String(48), nullable=False, index=True)
+    payload = Column(JSON, nullable=True)
+    status = Column(String(16), default="pending", index=True)
+    # pending | running | done | error | cancelled
+    priority = Column(Integer, default=5)          # menor = antes
+    attempts = Column(Integer, default=0)
+    max_attempts = Column(Integer, default=3)
+    next_attempt_at = Column(DateTime, nullable=True)
+    dedupe_key = Column(String(128), nullable=True, index=True)
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+
 class AiDecisionSignal(Base):
     """Senal de decision del usuario para el aprendizaje del agente IA.
 

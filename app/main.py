@@ -20,7 +20,7 @@ from app.routers import bootstrap as bootstrap_router
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
-    cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents,
+    cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents, jobs,
     integrations_erp, integrations_forms, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, onboarding_gate, organizations,
     osint, policies, portal, predictive, questionnaire_flows, questionnaire_schedules, regwatch, report_schedules,
     report_templates, reports, risk_level_config, risks, search, sharepoint,
@@ -96,6 +96,10 @@ def startup():
     init_db()
     sched.start(interval_hours=1)
     _reset_stuck_analyses()
+
+    # Cola de trabajos asincrona (recovery de jobs interrumpidos + workers)
+    from app.services import job_queue
+    job_queue.start()
 
     # Validar licencia criptografica (on-premise)
     from app.services import crypto_license as _lic
@@ -193,6 +197,7 @@ app.include_router(gdpr.router)
 app.include_router(documents.router)
 app.include_router(ai_config.router)
 app.include_router(feature_flags.router)
+app.include_router(jobs.router)
 app.include_router(sharepoint.router)
 app.include_router(sso.router)
 app.include_router(cve.router)

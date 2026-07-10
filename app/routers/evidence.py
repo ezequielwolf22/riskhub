@@ -216,12 +216,16 @@ async def upload_evidence(
 
     log_action(db, current_user.id, "create", "evidence", str(ev.id), {"code": ev.code})
 
-    # Analisis IA del contenido en background (no-op si la org no tiene API key)
-    import threading as _threading
-    from app.services.evidence_understanding_service import run_analysis_for_evidence
-    _threading.Thread(
-        target=run_analysis_for_evidence, args=(ev.id,), daemon=True
-    ).start()
+    # Analisis IA del contenido via cola persistida (sobrevive reinicios;
+    # no-op si la org no tiene API key)
+    try:
+        from app.services.job_queue import enqueue
+        enqueue(db, org_id, "evidence_analysis", {"evidence_id": ev.id},
+                created_by_id=current_user.id,
+                dedupe_key=f"evidence_analysis:{ev.id}")
+        db.commit()
+    except Exception:
+        pass
 
     return _evidence_out(ev)
 

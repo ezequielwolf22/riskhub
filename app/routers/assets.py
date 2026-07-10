@@ -383,33 +383,25 @@ async def smart_import_assets(
 
     # Lanzar auto-analisis de riesgos en background para los activos nuevos
     if background_tasks and result.get("created", 0) > 0:
-        background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+        _enqueue_org_analysis(db, org_id, current_user.id)
 
     return result
 
 
-def _run_all_assets_analysis_bg(org_id: int) -> None:
-    """Wrapper background para analisis de activos individuales (Opcion A)."""
-    db = SessionLocal()
-    try:
-        from app.services.asset_risk_analysis_service import analyze_all_org_assets
-        analyze_all_org_assets(db, org_id, representatives_only=False)
-    except Exception:
-        pass
-    finally:
-        db.close()
-
-
-def _run_groups_analysis_bg(org_id: int) -> None:
-    """Wrapper background para analisis de activos representativos de grupos (Opcion B)."""
-    db = SessionLocal()
-    try:
-        from app.services.asset_risk_analysis_service import analyze_all_org_assets
-        analyze_all_org_assets(db, org_id, representatives_only=True)
-    except Exception:
-        pass
-    finally:
-        db.close()
+def _enqueue_org_analysis(db, org_id: int, user_id: int | None = None,
+                          representatives_only: bool = False):
+    """Encola el analisis masivo en la cola persistida (sobrevive reinicios,
+    reintenta y es consultable en /api/jobs). Dedupe por org para no apilar
+    dos analisis completos identicos."""
+    from app.services.job_queue import enqueue
+    job = enqueue(
+        db, org_id, "asset_analysis_all",
+        {"org_id": org_id, "representatives_only": representatives_only},
+        created_by_id=user_id,
+        dedupe_key=f"asset_analysis_all:{org_id}:{int(representatives_only)}",
+    )
+    db.commit()
+    return job
 
 
 @router.post("/{asset_id}/analyze")
@@ -448,7 +440,7 @@ def analyze_all_assets(
         Asset.is_group_representative.is_(False),
         or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
     ).count()
-    background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+    _enqueue_org_analysis(db, org_id, current_user.id)
     return {"ok": True, "total": pending, "message": f"Analisis iniciado para {pending} activos pendientes."}
 
 
@@ -476,7 +468,7 @@ def analyze_cia_zero(
     if count:
         zero_cia.update({"ai_risk_status": None, "ai_risk_summary": None})
         db.commit()
-        background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+        _enqueue_org_analysis(db, org_id, current_user.id)
     return {
         "ok": True,
         "total": count,
@@ -508,7 +500,7 @@ def reset_stuck_assets(
         or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
     ).count()
     if pending:
-        background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+        _enqueue_org_analysis(db, org_id, current_user.id)
     return {
         "ok": True,
         "stuck_reset": stuck_count,
@@ -534,7 +526,7 @@ def analyze_all_assets_force(
         Asset.is_group_representative.is_(False),
     ).update({"ai_risk_status": None, "ai_risk_summary": None})
     db.commit()
-    background_tasks.add_task(_run_all_assets_analysis_bg, org_id)
+    _enqueue_org_analysis(db, org_id, current_user.id)
     return {"ok": True, "total": count, "message": f"Re-analisis forzado para {count} activos."}
 
 
@@ -602,7 +594,7 @@ def analyze_validated_groups(
         ).update({"ai_risk_status": None, "ai_risk_summary": None}, synchronize_session=False)
         db.commit()
         count = total
-    background_tasks.add_task(_run_groups_analysis_bg, org_id)
+    _enqueue_org_analysis(db, org_id, current_user.id, representatives_only=True)
     return {"ok": True, "total": count, "message": f"Analisis de riesgos iniciado para {count} grupos validados."}
 
 
