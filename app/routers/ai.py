@@ -2871,6 +2871,116 @@ def feedback_summary(
             "by_call_type": by_call_type, "recent_negative": recent_negative}
 
 
+# ---------- Uso y coste de la IA por organizacion ----------
+
+@router.get("/usage")
+def ai_usage(
+    months: int = 6,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Consumo de tokens IA de la org: mes actual por tipo/modelo con coste
+    estimado, tendencia mensual y presupuesto blando segun el plan.
+
+    El coste es un TECHO: AiCallLog no separa tokens cacheados (cache read
+    cuesta ~0.1x), asi que el gasto real puede ser menor.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import func as _func
+    from app.models import Organization
+    from app.services.model_registry import (
+        AI_MONTHLY_TOKEN_BUDGETS, estimate_cost_usd,
+    )
+
+    org_id = current_user.organization_id
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Mes actual por call_type + modelo
+    rows = (
+        db.query(
+            AiCallLog.call_type,
+            AiCallLog.model,
+            _func.count(),
+            _func.coalesce(_func.sum(AiCallLog.prompt_tokens), 0),
+            _func.coalesce(_func.sum(AiCallLog.completion_tokens), 0),
+        )
+        .filter(
+            AiCallLog.organization_id == org_id,
+            AiCallLog.created_at >= month_start,
+        )
+        .group_by(AiCallLog.call_type, AiCallLog.model)
+        .all()
+    )
+    current_month = []
+    total_in = total_out = 0
+    total_cost = 0.0
+    for call_type, model, calls, tok_in, tok_out in rows:
+        cost = estimate_cost_usd(model, tok_in, tok_out)
+        total_in += tok_in
+        total_out += tok_out
+        total_cost += cost
+        current_month.append({
+            "call_type": call_type,
+            "model": model,
+            "calls": calls,
+            "input_tokens": int(tok_in),
+            "output_tokens": int(tok_out),
+            "estimated_cost_usd": round(cost, 4),
+        })
+    current_month.sort(key=lambda x: -x["estimated_cost_usd"])
+
+    # Tendencia mensual (ultimos N meses)
+    months = max(1, min(months, 24))
+    trend_rows = (
+        db.query(
+            _func.strftime("%Y-%m", AiCallLog.created_at),
+            _func.coalesce(_func.sum(AiCallLog.prompt_tokens), 0),
+            _func.coalesce(_func.sum(AiCallLog.completion_tokens), 0),
+            _func.count(),
+        )
+        .filter(AiCallLog.organization_id == org_id)
+        .group_by(_func.strftime("%Y-%m", AiCallLog.created_at))
+        .order_by(_func.strftime("%Y-%m", AiCallLog.created_at).desc())
+        .limit(months)
+        .all()
+    )
+    trend = [
+        {"month": m, "input_tokens": int(ti), "output_tokens": int(to), "calls": c}
+        for m, ti, to, c in trend_rows
+    ]
+
+    # Presupuesto blando por plan
+    org = db.get(Organization, org_id) if org_id else None
+    plan = (org.plan if org else None) or "starter"
+    budget = AI_MONTHLY_TOKEN_BUDGETS.get(plan)
+    consumed = total_in + total_out
+    budget_info = {
+        "plan": plan,
+        "monthly_token_budget": budget,
+        "consumed_tokens": consumed,
+        "pct_used": round(consumed / budget * 100, 1) if budget else None,
+        "over_budget": bool(budget and consumed > budget),
+        "note": "Presupuesto blando: solo aviso, nunca corta el servicio.",
+    }
+    if budget and consumed > budget:
+        logging.getLogger("riskhub.ai").warning(
+            "AI usage: org=%s supera el presupuesto blando del plan %s (%d/%d tokens)",
+            org_id, plan, consumed, budget)
+
+    return {
+        "month": month_start.strftime("%Y-%m"),
+        "current_month": current_month,
+        "totals": {
+            "input_tokens": total_in,
+            "output_tokens": total_out,
+            "estimated_cost_usd": round(total_cost, 2),
+        },
+        "trend": trend,
+        "budget": budget_info,
+    }
+
+
 # ---------- Aprendizaje del agente y calibracion ----------
 
 @router.get("/learning")

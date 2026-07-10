@@ -20,6 +20,51 @@ from sqlalchemy.orm import Session
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
+@router.get("/errors")
+def list_app_errors(
+    limit: int = 50,
+    current_user: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Errores no controlados capturados por el middleware (observabilidad).
+
+    Cada entrada lleva el request_id que el cliente recibio en la respuesta
+    500, para correlacionar tickets de soporte con el error real.
+    """
+    from app.models import AppError
+    rows = (
+        db.query(AppError)
+        .order_by(AppError.id.desc())
+        .limit(min(limit, 200))
+        .all()
+    )
+    return [
+        {
+            "id": e.id,
+            "request_id": e.request_id,
+            "method": e.method,
+            "path": e.path,
+            "error_type": e.error_type,
+            "error": (e.error or "")[:500],
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in rows
+    ]
+
+
+@router.delete("/errors")
+def clear_app_errors(
+    current_user: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Vacia el registro de errores (tras revisarlos)."""
+    from app.models import AppError
+    n = db.query(AppError).delete(synchronize_session=False)
+    db.commit()
+    log_action(db, current_user.id, "clear", "app_errors", None, {"deleted": n})
+    return {"deleted": n}
+
+
 def _sqlite_path() -> Path:
     """Extrae la ruta del archivo SQLite desde la URL de conexion."""
     url = settings.db_url

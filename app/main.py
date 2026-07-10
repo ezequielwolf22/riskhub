@@ -2,7 +2,9 @@
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+
+from app.security import require_role
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -55,6 +57,64 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 # Bloqueo de escrituras cuando la licencia criptografica ha expirado
 app.add_middleware(LicenseGuardMiddleware)
+
+# ---------- Observabilidad: request-id, access log, contadores y errores ----------
+
+# Contadores en memoria para /metrics (se resetean al reiniciar)
+_METRICS = {"requests_total": {}, "errors_total": 0, "started_at": None}
+
+
+@app.middleware("http")
+async def observability_middleware(request, call_next):
+    import time as _time
+    import uuid as _uuid
+
+    request_id = request.headers.get("x-request-id") or _uuid.uuid4().hex[:16]
+    t0 = _time.monotonic()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = round((_time.monotonic() - t0) * 1000)
+        _METRICS["errors_total"] += 1
+        logger.exception(
+            "request_id=%s %s %s -> 500 (%dms): %s",
+            request_id, request.method, request.url.path, duration_ms, exc,
+        )
+        # Persistir el error (best-effort, sesion propia) para la vista admin
+        try:
+            from app.database import SessionLocal
+            from app.models import AppError
+            _db = SessionLocal()
+            try:
+                _db.add(AppError(
+                    request_id=request_id,
+                    method=request.method,
+                    path=str(request.url.path)[:512],
+                    error_type=type(exc).__name__[:128],
+                    error=str(exc)[:2000],
+                ))
+                _db.commit()
+            finally:
+                _db.close()
+        except Exception:
+            pass
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Error interno. Referencia: " + request_id},
+            headers={"X-Request-ID": request_id},
+        )
+
+    duration_ms = round((_time.monotonic() - t0) * 1000)
+    status_class = f"{response.status_code // 100}xx"
+    _METRICS["requests_total"][status_class] = _METRICS["requests_total"].get(status_class, 0) + 1
+    response.headers["X-Request-ID"] = request_id
+    # Access log solo para la API (el estatico y el health check son ruido)
+    path = request.url.path
+    if path.startswith("/api") and path != "/api/health":
+        logger.info("request_id=%s %s %s -> %d (%dms)",
+                    request_id, request.method, path, response.status_code, duration_ms)
+    return response
 
 # CORS solo en dev; en produccion la app se sirve junto al frontend
 if settings.env != "production":
@@ -129,6 +189,40 @@ def _reset_stuck_analyses() -> None:
             db.close()
     except Exception as exc:
         logger.warning("No se pudo resetear analyses en startup: %s", exc)
+
+
+@app.get("/api/metrics")
+def metrics(current_user=Depends(require_role("admin"))):
+    """Metricas en formato texto plano Prometheus (requiere admin).
+
+    Contadores de proceso (se resetean al reiniciar) + estado de la cola de
+    trabajos y errores persistidos, leidos de BD.
+    """
+    from fastapi.responses import PlainTextResponse
+    from app.database import SessionLocal
+    from app.models import AppError, BackgroundJob
+
+    lines = [
+        "# TYPE riskhub_requests_total counter",
+    ]
+    for status_class, n in sorted(_METRICS["requests_total"].items()):
+        lines.append(f'riskhub_requests_total{{status="{status_class}"}} {n}')
+    lines.append("# TYPE riskhub_unhandled_errors_total counter")
+    lines.append(f"riskhub_unhandled_errors_total {_METRICS['errors_total']}")
+
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func as _func
+        lines.append("# TYPE riskhub_jobs gauge")
+        for status, n in db.query(BackgroundJob.status, _func.count()).group_by(
+                BackgroundJob.status).all():
+            lines.append(f'riskhub_jobs{{status="{status}"}} {n}')
+        lines.append("# TYPE riskhub_app_errors_total counter")
+        lines.append(f"riskhub_app_errors_total {db.query(AppError).count()}")
+    finally:
+        db.close()
+
+    return PlainTextResponse("\n".join(lines) + "\n")
 
 
 @app.get("/api/health")

@@ -565,6 +565,22 @@ class Risk(Base):
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
 
 
+class AppError(Base):
+    """Error no controlado capturado por el middleware (observabilidad).
+
+    Cada excepcion que llega sin manejar al middleware HTTP se registra aqui
+    con su request-id para poder correlacionar con los logs y dar soporte.
+    """
+    __tablename__ = "app_errors"
+    id = Column(Integer, primary_key=True)
+    request_id = Column(String(36), nullable=True, index=True)
+    method = Column(String(8), nullable=True)
+    path = Column(String(512), nullable=True)
+    error_type = Column(String(128), nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class BackgroundJob(Base):
     """Trabajo asincrono persistido (cola en BD, sin dependencias externas).
 
