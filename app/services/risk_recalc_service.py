@@ -75,15 +75,52 @@ def apply_magerit_consequence(risk: Risk, db: Session) -> None:
     risk.magerit_impact = magerit_impact
 
 
-def control_payload(ci, contribution: float = 1.0) -> dict:
+def _ai_evidence_factor(db: Session | None, ci) -> float | None:
+    """Factor de calidad E1-E5 desde evidencias del modulo central analizadas
+    por IA (evidence understanding). None si no hay ninguna analizada."""
+    if db is None:
+        return None
+    try:
+        from app.models import Evidence
+        from app.services.evidence_understanding_service import QUALITY_LEVEL_FACTOR
+        rows = (
+            db.query(Evidence.ai_review)
+            .filter(
+                Evidence.control_implementation_id == ci.id,
+                Evidence.is_current == True,  # noqa: E712
+                Evidence.ai_review.isnot(None),
+            ).all()
+        )
+        best = None
+        for (review,) in rows:
+            review = review or {}
+            factor = QUALITY_LEVEL_FACTOR.get(str(review.get("quality_level", "")).upper())
+            if factor is None:
+                continue
+            if review.get("relevant") is False:
+                factor = QUALITY_LEVEL_FACTOR["E1"]
+            best = factor if best is None else max(best, factor)
+        return best
+    except Exception:
+        logger.debug("_ai_evidence_factor fallo", exc_info=True)
+        return None
+
+
+def control_payload(ci, contribution: float = 1.0, db: Session | None = None) -> dict:
     """Convierte una ControlImplementation al dict que consume el motor.
 
-    La madurez que entra al calculo es la ajustada por calidad de evidencia,
-    y el tipo P/D/C determina que eje (probabilidad/impacto) reduce.
+    La madurez que entra al calculo es la ajustada por calidad de evidencia
+    (heuristica sobre evidence_refs y, si existe, la revision IA del contenido
+    real de las evidencias vinculadas — gana la mejor de las dos), y el tipo
+    P/D/C determina que eje (probabilidad/impacto) reduce.
     """
     ctrl = ci.control
+    maturity_adj = adjusted_maturity(ci.maturity or 0, ci.evidence_refs or [])
+    ai_factor = _ai_evidence_factor(db, ci)
+    if ai_factor is not None:
+        maturity_adj = max(maturity_adj, round((ci.maturity or 0) * ai_factor, 1))
     return {
-        "maturity": adjusted_maturity(ci.maturity or 0, ci.evidence_refs or []),
+        "maturity": maturity_adj,
         "contribution": contribution,
         "nc_penalty_factor": getattr(ci, "nc_penalty_factor", None),
         "ccm_fail": getattr(ci, "ccm_last_status", None) == "FAIL",
@@ -110,7 +147,7 @@ def recalc_risk(db: Session, risk: Risk) -> None:
     contrib_map = {row[0]: (row[1] if row[1] is not None else 1.0) for row in rows}
 
     controls = [
-        control_payload(ci, contrib_map.get(ci.id, 1.0))
+        control_payload(ci, contrib_map.get(ci.id, 1.0), db=db)
         for ci in risk.controls
     ]
     rl, rc, rlev = calc_residual(

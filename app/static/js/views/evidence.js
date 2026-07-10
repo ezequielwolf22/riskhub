@@ -8,8 +8,23 @@ const ViewEvidence = (() => {
       policy: t('evidence.type.policy'), procedure: t('evidence.type.procedure'),
       record: t('evidence.type.record'), certificate: t('evidence.type.certificate'),
       screenshot: t('evidence.type.screenshot'), log: t('evidence.type.log'),
-      report: t('evidence.type.report'), other: t('evidence.type.other'),
+      report: t('evidence.type.report'),
+      meeting_minutes: t('evidence.type.meeting_minutes'),
+      training_record: t('evidence.type.training_record'),
+      phishing_campaign: t('evidence.type.phishing_campaign'),
+      other: t('evidence.type.other'),
     };
+  }
+
+  function _aiReviewBadge(ev) {
+    const r = ev.ai_review;
+    if (!r) return '';
+    const ok = r.relevant !== false;
+    const bg = ok ? 'var(--brand-purple-4, #EDE7F6)' : '#FEE2E2';
+    const col = ok ? 'var(--brand-purple)' : '#a83232';
+    const tip = `${t('evidence.ai_review_title')}: ${r.quality_level || ''} — ${
+      ok ? (r.summary || '') : t('evidence.ai_not_relevant')}`;
+    return `<span style="background:${bg};color:${col};padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;margin-left:4px;vertical-align:middle;" title="${UI.esc(tip)}">${t('evidence.ai_review_badge')}${r.quality_level ? ' ' + r.quality_level : ''}</span>`;
   }
 
   function _typeLabel(type) {
@@ -144,7 +159,7 @@ const ViewEvidence = (() => {
             <div style="font-weight:500;">${UI.esc(ev.title)}</div>
             ${ev.compliance_framework ? `<div style="font-size:11px;color:#9d9d9d;">${UI.esc(ev.compliance_framework)} / ${UI.esc(ev.compliance_requirement || '')}</div>` : ''}
           </td>
-          <td style="padding:10px 12px;">${_typeBadge(ev.evidence_type)}</td>
+          <td style="padding:10px 12px;">${_typeBadge(ev.evidence_type)}${_aiReviewBadge(ev)}</td>
           <td style="padding:10px 12px;font-size:12px;color:#666;">
             v${ev.version}
             ${!ev.is_current ? `<span style="color:#9d9d9d;"> ${t('evidence.old_version')}</span>` : ''}

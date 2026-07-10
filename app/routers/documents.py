@@ -22,6 +22,8 @@ ALLOWED_MIME = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
     "text/csv",
+    # Hojas de calculo (v6.0.0) — inventarios, registros, resultados de campanas
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     # Imagenes de arquitectura (v1.7.8)
     "image/png",
     "image/jpeg",
@@ -33,6 +35,7 @@ MAX_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 _MAGIC_BYTES: dict[str, bytes] = {
     "application/pdf": b"%PDF",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": b"PK\x03\x04",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": b"PK\x03\x04",
     "image/png": b"\x89PNG",
     "image/jpeg": b"\xff\xd8\xff",
 }
@@ -44,6 +47,8 @@ def _infer_mime(filename: str, content_type: str) -> str:
         return "application/pdf"
     if ext == "docx":
         return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if ext == "xlsx":
+        return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     if ext in ("txt", "csv", "md"):
         return "text/plain"
     if ext == "png":
@@ -96,6 +101,20 @@ def _doc_out(d: AiDocument) -> dict:
     }
 
 
+def _run_vision_then_isms_bg(doc_id: int) -> None:
+    """Transcripcion Vision (imagenes/escaneados) y despues analisis ISMS.
+
+    Solo encadena el ISMS si Vision genero chunks: sin texto no hay nada
+    que analizar y se evita una llamada IA inutil.
+    """
+    try:
+        from app.services.document_service import describe_document_with_vision
+        if describe_document_with_vision(doc_id):
+            _run_isms_analysis_bg(doc_id)
+    except Exception:
+        pass
+
+
 def _run_isms_analysis_bg(doc_id: int) -> None:
     """Wrapper de background para analisis ISMS — crea su propia sesion de BD."""
     db = SessionLocal()
@@ -142,11 +161,11 @@ def upload_document(
 
     mime = _infer_mime(file.filename or "", file.content_type or "")
     if mime not in ALLOWED_MIME:
-        raise HTTPException(400, _t("documents.invalid_type", lang, formats="PDF, DOCX, TXT, PNG, JPG"))
+        raise HTTPException(400, _t("documents.invalid_type", lang, formats="PDF, DOCX, XLSX, TXT, PNG, JPG"))
 
     # OWASP A08 — validar contenido real mediante magic bytes
     if not _validate_magic(mime, data):
-        raise HTTPException(400, _t("documents.invalid_type", lang, formats="PDF, DOCX, TXT, PNG, JPG"))
+        raise HTTPException(400, _t("documents.invalid_type", lang, formats="PDF, DOCX, XLSX, TXT, PNG, JPG"))
 
     try:
         cat = AiDocumentCategory(category)
@@ -173,13 +192,15 @@ def upload_document(
     db.commit()
     db.refresh(doc)
 
-    # Para imagenes: marcar directamente como INDEXED sin extraccion de texto
-    # (el architecture-review endpoint las procesa directamente via Vision API)
+    needs_vision = False
     if mime.startswith("image/"):
+        # Imagenes: INDEXED de inmediato; la transcripcion Vision corre en
+        # background y genera los chunks (antes quedaban invisibles al RAG)
         doc.status = AiDocumentStatus.INDEXED
         doc.chunk_count = 0
         db.commit()
         db.refresh(doc)
+        needs_vision = mime != "image/svg+xml"
     else:
         # Extraccion de texto e indexado FTS5 (sincrono — rapido)
         try:
@@ -187,10 +208,16 @@ def upload_document(
             db.refresh(doc)
         except Exception:
             pass  # status quedo en ERROR; el cliente puede ver el mensaje
+        # PDF escaneado sin capa de texto: 0 chunks -> transcripcion Vision
+        if "pdf" in mime and doc.status == AiDocumentStatus.INDEXED and not doc.chunk_count:
+            needs_vision = True
 
-    # Analisis ISMS en background para no bloquear la respuesta HTTP
-    if doc.status == AiDocumentStatus.INDEXED and background_tasks is not None:
-        background_tasks.add_task(_run_isms_analysis_bg, doc.id)
+    if background_tasks is not None:
+        if needs_vision:
+            background_tasks.add_task(_run_vision_then_isms_bg, doc.id)
+        elif doc.status == AiDocumentStatus.INDEXED:
+            # Analisis ISMS en background para no bloquear la respuesta HTTP
+            background_tasks.add_task(_run_isms_analysis_bg, doc.id)
 
     return _doc_out(doc)
 

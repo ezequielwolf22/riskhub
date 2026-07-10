@@ -107,11 +107,30 @@ def _extract_text_plain(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _extract_text_xlsx(data: bytes) -> str:
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        parts = []
+        for ws in wb.worksheets:
+            parts.append(f"[Hoja: {ws.title}]")
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c) for c in row if c is not None and str(c).strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+        wb.close()
+        return "\n".join(parts)
+    except Exception as e:
+        raise ValueError(f"Error extrayendo XLSX: {e}")
+
+
 def extract_text(data: bytes, mime_type: str) -> str:
     if "pdf" in mime_type:
         return _extract_text_pdf(data)
     if "wordprocessingml" in mime_type or "docx" in mime_type:
         return _extract_text_docx(data)
+    if "spreadsheetml" in mime_type or "xlsx" in mime_type:
+        return _extract_text_xlsx(data)
     return _extract_text_plain(data)
 
 
@@ -139,6 +158,35 @@ def _delete_fts_for_doc(db: Session, doc_id: int) -> None:
             pass  # FTS puede no existir aun
 
 
+def _index_text(db: Session, doc: AiDocument, raw_text: str) -> int:
+    """Chunking + indexado FTS5 del texto de un documento (reemplaza chunks previos)."""
+    chunks = chunk_text(raw_text)
+
+    _delete_fts_for_doc(db, doc.id)
+    db.query(AiDocumentChunk).filter_by(document_id=doc.id).delete()
+
+    for idx, chunk_content in enumerate(chunks):
+        chunk = AiDocumentChunk(
+            document_id=doc.id,
+            chunk_index=idx,
+            content=chunk_content,
+        )
+        db.add(chunk)
+        db.flush()  # necesario para obtener chunk.id
+        try:
+            db.execute(
+                text("INSERT INTO ai_chunks_fts(rowid, content) VALUES (:rowid, :content)"),
+                {"rowid": chunk.id, "content": chunk_content},
+            )
+        except Exception:
+            pass  # FTS puede no estar disponible
+
+    doc.chunk_count = len(chunks)
+    doc.status = AiDocumentStatus.INDEXED
+    doc.processed_at = datetime.now(timezone.utc)
+    return len(chunks)
+
+
 def process_document(db: Session, doc_id: int) -> None:
     """Extrae texto, genera chunks y los indexa en FTS5."""
     doc = db.query(AiDocument).filter_by(id=doc_id).first()
@@ -152,31 +200,7 @@ def process_document(db: Session, doc_id: int) -> None:
         # decrypt_doc soporta tanto archivos cifrados (nuevos) como no cifrados (legacy)
         file_data = decrypt_doc(doc_path(doc.filename).read_bytes())
         raw_text = extract_text(file_data, doc.mime_type or "text/plain")
-        chunks = chunk_text(raw_text)
-
-        # Borrar chunks previos
-        _delete_fts_for_doc(db, doc_id)
-        db.query(AiDocumentChunk).filter_by(document_id=doc_id).delete()
-
-        for idx, chunk_content in enumerate(chunks):
-            chunk = AiDocumentChunk(
-                document_id=doc_id,
-                chunk_index=idx,
-                content=chunk_content,
-            )
-            db.add(chunk)
-            db.flush()  # necesario para obtener chunk.id
-            try:
-                db.execute(
-                    text("INSERT INTO ai_chunks_fts(rowid, content) VALUES (:rowid, :content)"),
-                    {"rowid": chunk.id, "content": chunk_content},
-                )
-            except Exception:
-                pass  # FTS puede no estar disponible
-
-        doc.chunk_count = len(chunks)
-        doc.status = AiDocumentStatus.INDEXED
-        doc.processed_at = datetime.now(timezone.utc)
+        _index_text(db, doc, raw_text)
         db.commit()
 
         # Generar embeddings semanticos si hay Voyage API key configurada
@@ -187,6 +211,83 @@ def process_document(db: Session, doc_id: int) -> None:
         doc.error_message = str(e)[:500]
         db.commit()
         raise
+
+
+def describe_document_with_vision(doc_id: int) -> bool:
+    """Transcribe con Claude Vision documentos sin texto extraible.
+
+    Cubre imagenes (capturas, diagramas, actas fotografiadas) y PDFs
+    escaneados sin capa de texto: antes quedaban INDEXED con 0 chunks,
+    invisibles para el RAG y el analisis ISMS. Crea su propia sesion.
+    Devuelve True si genero chunks.
+    """
+    import base64 as _b64
+    import logging
+    from app.database import SessionLocal
+    logger = logging.getLogger("riskhub.doc")
+
+    db = SessionLocal()
+    try:
+        doc = db.get(AiDocument, doc_id)
+        if not doc or not doc.filename:
+            return False
+        mime = doc.mime_type or ""
+
+        from app.services.model_registry import get_api_key, get_model
+        api_key = get_api_key(db, doc.organization_id)
+        if not api_key:
+            return False
+
+        raw = decrypt_doc(doc_path(doc.filename).read_bytes())
+        if mime.startswith("image/"):
+            if mime == "image/svg+xml" or len(raw) > 5 * 1024 * 1024:
+                return False
+            media = mime if mime in ("image/png", "image/jpeg", "image/gif", "image/webp") else "image/png"
+            block = {"type": "image",
+                     "source": {"type": "base64", "media_type": media,
+                                "data": _b64.standard_b64encode(raw).decode()}}
+        elif "pdf" in mime:
+            if len(raw) > 20 * 1024 * 1024:
+                return False
+            block = {"type": "document",
+                     "source": {"type": "base64", "media_type": "application/pdf",
+                                "data": _b64.standard_b64encode(raw).decode()}}
+        else:
+            return False
+
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=get_model(db, doc.organization_id, tier="fast"),
+            max_tokens=8192,
+            system=(
+                "Transcribe fielmente el contenido del documento o imagen al espanol. "
+                "Incluye todo el texto legible, tablas como lineas 'campo: valor', y "
+                "describe brevemente los elementos visuales relevantes (sellos, firmas, "
+                "graficos, capturas de configuracion). No inventes contenido ilegible: "
+                "marca [ilegible]. Devuelve solo la transcripcion, sin comentarios."
+            ),
+            messages=[{"role": "user", "content": [
+                block,
+                {"type": "text", "text": f"Documento: {doc.original_name}"},
+            ]}],
+        )
+        transcription = msg.content[0].text if msg.content else ""
+        if len(transcription.strip()) < 30:
+            return False
+
+        n = _index_text(db, doc, f"[Transcripcion automatica via Vision]\n{transcription}")
+        doc.error_message = None
+        db.commit()
+        _try_embed_document(db, doc_id, doc.organization_id)
+        logger.info("Vision: doc %d transcrito (%d chunks)", doc_id, n)
+        return n > 0
+    except Exception as e:
+        import logging
+        logging.getLogger("riskhub.doc").warning("Vision fallo para doc %d: %s", doc_id, e)
+        return False
+    finally:
+        db.close()
 
 
 def _try_embed_document(db: Session, doc_id: int, organization_id: int | None) -> None:

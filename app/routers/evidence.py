@@ -54,6 +54,8 @@ def _evidence_out(e: Evidence) -> dict:
         "is_current": e.is_current,
         "created_by_id": e.created_by_id,
         "created_at": e.created_at.isoformat() if e.created_at else None,
+        "ai_review": e.ai_review,
+        "ai_reviewed_at": e.ai_reviewed_at.isoformat() if e.ai_reviewed_at else None,
     }
 
 
@@ -214,6 +216,41 @@ async def upload_evidence(
 
     log_action(db, current_user.id, "create", "evidence", str(ev.id), {"code": ev.code})
 
+    # Analisis IA del contenido en background (no-op si la org no tiene API key)
+    import threading as _threading
+    from app.services.evidence_understanding_service import run_analysis_for_evidence
+    _threading.Thread(
+        target=run_analysis_for_evidence, args=(ev.id,), daemon=True
+    ).start()
+
+    return _evidence_out(ev)
+
+
+@router.post("/{evidence_id}/analyze")
+def analyze_evidence_now(
+    evidence_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """Relanza el analisis IA del contenido de una evidencia (sincrono)."""
+    ev = db.get(Evidence, evidence_id)
+    if not ev or ev.organization_id != current_user.organization_id:
+        raise HTTPException(404, _t("evidence.not_found", get_lang(request)))
+    if not ev.filename:
+        raise HTTPException(400, _t("evidence.no_file", get_lang(request)))
+
+    from app.services.evidence_understanding_service import (
+        _apply_review_effects, analyze_evidence,
+    )
+    result = analyze_evidence(db, evidence_id)
+    if result is None:
+        raise HTTPException(502, "No se pudo analizar la evidencia (sin API key o error del modelo)")
+    ev.ai_review = result
+    ev.ai_reviewed_at = datetime.now(timezone.utc)
+    _apply_review_effects(db, ev, result)
+    db.commit()
+    log_action(db, current_user.id, "analyze", "evidence", str(ev.id), {"code": ev.code})
     return _evidence_out(ev)
 
 

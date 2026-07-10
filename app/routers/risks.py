@@ -1965,7 +1965,7 @@ def simulate_what_if(
     ci_by_id = {ci.id: ci for ci in (risk.controls or [])}
     controls_current = []
     for ci in (risk.controls or []):
-        payload = control_payload(ci, contrib_map.get(ci.id, 1.0))
+        payload = control_payload(ci, contrib_map.get(ci.id, 1.0), db=db)
         payload["id"] = ci.id
         controls_current.append(payload)
 
@@ -1986,7 +1986,7 @@ def simulate_what_if(
     if add_ci_id is not None:
         ci_add = db.get(ControlImplementation, add_ci_id)
         if ci_add and check_org_access(ci_add.organization_id, current_user):
-            payload = control_payload(ci_add, add_contribution)
+            payload = control_payload(ci_add, add_contribution, db=db)
             payload["id"] = ci_add.id
             payload["maturity"] = adjusted_maturity(add_maturity, ci_add.evidence_refs or [])
             controls_simulated.append(payload)

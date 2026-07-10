@@ -584,6 +584,15 @@ def _run_control_degradation() -> None:
         db.close()
 
 
+def _run_evidence_understanding() -> None:
+    """Analiza con IA las evidencias pendientes (cap por org para acotar coste)."""
+    try:
+        from app.services.evidence_understanding_service import analyze_pending_evidence
+        analyze_pending_evidence(cap_per_org=20)
+    except Exception as exc:
+        logger.exception("Error en evidence_understanding nocturno: %s", exc)
+
+
 def _match_osint_to_assets(db, finding_type: str, finding_value: str, org_id: int) -> list:
     """Inteligencia para correlacionar OSINT findings con Assets.
 
@@ -2600,6 +2609,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=168),  # semanal
         id="control_degradation",
         name="Degradacion de controles IMPLEMENTED sin evidencia",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_evidence_understanding,
+        trigger=CronTrigger(hour=3, minute=30),  # nocturno, cap de coste por org
+        id="evidence_understanding",
+        name="Analisis IA nocturno de evidencias pendientes",
         replace_existing=True,
         misfire_grace_time=7200,
     )

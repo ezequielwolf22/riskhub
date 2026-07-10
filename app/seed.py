@@ -790,6 +790,9 @@ def _migrate_columns() -> None:
         ("ALTER TABLE risks ADD COLUMN analysis_stale BOOLEAN DEFAULT 0", "risks", "analysis_stale"),
         ("ALTER TABLE risks ADD COLUMN stale_reason VARCHAR(255)", "risks", "stale_reason"),
         ("ALTER TABLE risks ADD COLUMN ai_context_meta JSON", "risks", "ai_context_meta"),
+        # v6.0.0 — Evidence understanding: revision IA del contenido de evidencias
+        ("ALTER TABLE evidence ADD COLUMN ai_review JSON", "evidence", "ai_review"),
+        ("ALTER TABLE evidence ADD COLUMN ai_reviewed_at DATETIME", "evidence", "ai_reviewed_at"),
         # v6.0.0 — registro de migraciones one-shot (pasos de datos que solo corren una vez)
         (
             """CREATE TABLE IF NOT EXISTS app_migrations (

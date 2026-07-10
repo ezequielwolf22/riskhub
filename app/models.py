@@ -2008,6 +2008,10 @@ class EvidenceType(str, PyEnum):
     SCREENSHOT = "screenshot"
     LOG = "log"
     REPORT = "report"
+    # v6.0.0 — evidencia de gobierno y factor humano
+    MEETING_MINUTES = "meeting_minutes"      # actas de reunion/comite de seguridad
+    TRAINING_RECORD = "training_record"      # resultados de formacion/concienciacion
+    PHISHING_CAMPAIGN = "phishing_campaign"  # resultados de simulacion de phishing
     OTHER = "other"
 
 
@@ -2042,6 +2046,10 @@ class Evidence(Base):
     version = Column(Integer, default=1)
     is_current = Column(Boolean, default=True)
     previous_version_id = Column(Integer, ForeignKey("evidence.id"), nullable=True)
+
+    # v6.0.0 — revision IA del contenido (evidence understanding)
+    ai_review = Column(JSON, nullable=True)       # {relevant, quality_level, summary, key_facts...}
+    ai_reviewed_at = Column(DateTime, nullable=True)
 
     created_by = relationship("User", foreign_keys=[created_by_id])
     previous_version = relationship("Evidence", remote_side=[id], foreign_keys=[previous_version_id])
