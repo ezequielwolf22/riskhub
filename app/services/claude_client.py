@@ -69,6 +69,41 @@ def cached_system(prompt: str, cached_context: str | None = None) -> list[dict]:
     return blocks
 
 
+def structured_message(api_key: str, *, model: str, max_tokens: int,
+                       messages: list, tool_name: str, input_schema: dict,
+                       tool_description: str = "", system=None,
+                       retries: int = _MAX_RETRIES, **kwargs) -> tuple[dict, object]:
+    """Salida estructurada garantizada via tool use forzado.
+
+    En lugar de pedir "devuelve SOLO JSON" y reparar la respuesta a
+    posteriori (_repair_json, fences, regex), se define una herramienta con
+    schema JSON formal y se fuerza al modelo a llamarla: la API valida los
+    argumentos contra el schema, por lo que el JSON malformado deja de
+    existir como clase de error.
+
+    Devuelve (data, message): data es el dict de argumentos de la tool y
+    message el objeto completo (para logging de tokens).
+    """
+    tools = [{
+        "name": tool_name,
+        "description": tool_description or f"Entrega el resultado estructurado de {tool_name}",
+        "input_schema": input_schema,
+    }]
+    msg = create_message(
+        api_key, model=model, max_tokens=max_tokens, system=system,
+        messages=messages, retries=retries,
+        tools=tools, tool_choice={"type": "tool", "name": tool_name},
+        **kwargs,
+    )
+    for block in msg.content or []:
+        if getattr(block, "type", None) == "tool_use" and block.name == tool_name:
+            return dict(block.input), msg
+    raise ValueError(
+        f"El modelo no devolvio la llamada a la herramienta '{tool_name}' "
+        f"(stop_reason={getattr(msg, 'stop_reason', '?')})"
+    )
+
+
 def create_message(api_key: str, *, model: str, max_tokens: int,
                    messages: list, system=None, retries: int = _MAX_RETRIES,
                    **kwargs):

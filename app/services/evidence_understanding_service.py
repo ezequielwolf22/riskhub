@@ -13,9 +13,7 @@ escaneados sin capa de texto. Sin API key degrada a no-op.
 from __future__ import annotations
 
 import base64
-import json
 import logging
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -47,18 +45,10 @@ La organizacion subio un archivo etiquetado como evidencia de tipo "{evidence_ty
 con el titulo "{title}". Se espera que este tipo de evidencia contenga: {expectation}.
 {link_hint}
 
-Evalua el CONTENIDO REAL del archivo — no si existe o si el titulo suena bien.
-Devuelve SOLO un objeto JSON (sin texto adicional, sin markdown) con esta forma exacta:
-{{"relevant": <true|false>,
- "quality_level": "<E1|E2|E3|E4|E5>",
- "quality_score": <0-100>,
- "doc_type": "<que es realmente el archivo, ej: acta de comite, captura MFA, informe pentest>",
- "summary": "<2-3 frases de lo que contiene realmente>",
- "key_facts": ["<hecho concreto y verificable>", ...],
- "controls_supported": ["<codigo ISO 27002 que este contenido respalda, ej: 8.5>", ...],
- "maturity_signal": <0-5>,
- "valid_until": "<YYYY-MM-DD o null si el contenido no indica caducidad>",
- "red_flags": ["<inconsistencia o senal de evidencia hueca>", ...]}}
+Evalua el CONTENIDO REAL del archivo — no si existe o si el titulo suena bien —
+y entrega el resultado llamando a la herramienta registrar_revision_evidencia.
+doc_type: que es realmente el archivo (ej: acta de comite, captura MFA, informe pentest).
+valid_until: fecha YYYY-MM-DD si el contenido indica caducidad, null si no.
 
 Criterios de quality_level (calidad probatoria para un auditor):
 - E5: prueba tecnica verificable y fechada (pentest, auditoria externa, test automatizado, log real)
@@ -77,6 +67,25 @@ anonimizados antes de llegar a ti, ignoralos a efectos de evaluar el contenido."
 # Mapeo quality_level -> factor de calidad (misma escala que evidence_quality_score)
 QUALITY_LEVEL_FACTOR = {
     "E1": 0.10, "E2": 0.35, "E3": 0.60, "E4": 0.80, "E5": 1.00,
+}
+
+# Schema de la revision (tool use forzado: la API valida los argumentos)
+_REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "relevant": {"type": "boolean"},
+        "quality_level": {"type": "string", "enum": ["E1", "E2", "E3", "E4", "E5"]},
+        "quality_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "doc_type": {"type": "string", "maxLength": 120},
+        "summary": {"type": "string", "maxLength": 1000},
+        "key_facts": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+        "controls_supported": {"type": "array", "items": {"type": "string", "maxLength": 16}},
+        "maturity_signal": {"type": "integer", "minimum": 0, "maximum": 5},
+        "valid_until": {"type": ["string", "null"]},
+        "red_flags": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+    },
+    "required": ["relevant", "quality_level", "quality_score", "doc_type",
+                 "summary", "maturity_signal"],
 }
 
 _IMAGE_MEDIA_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
@@ -174,7 +183,7 @@ def analyze_evidence(db: Session, evidence_id: int) -> Optional[dict]:
     model = get_model(db, ev.organization_id, tier="fast")
 
     try:
-        from app.services.claude_client import create_message
+        from app.services.claude_client import structured_message
 
         if use_vision:
             content = _vision_content(raw, mime, ev)
@@ -190,20 +199,22 @@ def analyze_evidence(db: Session, evidence_id: int) -> Optional[dict]:
                         + anonymize(text[:_MAX_TEXT_CHARS], anon_level),
             }]
 
-        msg = create_message(
+        result, _msg = structured_message(
             api_key,
             model=model,
             max_tokens=2048,
             system=system_prompt,
             messages=[{"role": "user", "content": content}],
+            tool_name="registrar_revision_evidencia",
+            tool_description="Registra la revision estructurada de la evidencia del SGSI",
+            input_schema=_REVIEW_SCHEMA,
         )
-        raw_response = msg.content[0].text if msg.content else "{}"
     except Exception as e:
         logger.warning("evidence_understanding: error analizando evidencia %d: %s",
                        evidence_id, e)
         return None
 
-    result = _parse_review(raw_response)
+    result = _normalize_review(result)
     if result is None:
         return None
     result["reviewed_at"] = datetime.now(timezone.utc).isoformat()
@@ -255,15 +266,12 @@ def _minimal_review(reason: str) -> dict:
     }
 
 
-def _parse_review(raw: str) -> Optional[dict]:
-    raw = raw.strip()
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if match:
-        raw = match.group(0)
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        return None
+def _normalize_review(data: dict) -> Optional[dict]:
+    """Normaliza la salida estructurada (clamps y defaults defensivos).
+
+    El schema del tool use ya garantiza forma y tipos; esto solo acota
+    valores por si el SDK relaja alguna validacion.
+    """
     if not isinstance(data, dict) or "quality_level" not in data:
         return None
     lvl = str(data.get("quality_level", "E1")).upper()

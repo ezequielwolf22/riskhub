@@ -514,8 +514,6 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
     Confianza < 0.7 -> event.status queda DETECTED (cola manual).
     Devuelve True si el analisis fue exitoso.
     """
-    import json as _json
-
     body = _fetch_change_body(event.raw_url)
     raw_text = (
         f"Framework: {event.framework_code}\n"
@@ -530,53 +528,54 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
     if not api_key:
         return False
 
-    schema = """{
-  "severity": "<cosmetic|clarification|substantive|breaking>",
-  "confidence": <decimal 0.0-1.0>,
-  "summary_es": "<resumen en espanol, max 200 palabras>",
-  "summary_en": "<summary in english, max 200 words>",
-  "controls_affected_hint": ["<ISO control code like 5.1>"],
-  "rationale": "<por que esta severidad>"
-}"""
+    event_schema = {
+        "type": "object",
+        "properties": {
+            "severity": {
+                "type": "string",
+                "enum": ["cosmetic", "clarification", "substantive", "breaking"],
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "summary_es": {"type": "string", "maxLength": 2000},
+            "summary_en": {"type": "string", "maxLength": 2000},
+            "controls_affected_hint": {
+                "type": "array",
+                "items": {"type": "string", "maxLength": 16},
+            },
+            "rationale": {"type": "string", "maxLength": 1000},
+        },
+        "required": ["severity", "confidence", "summary_es", "summary_en", "rationale"],
+    }
 
     system_prompt = (
         "Eres un experto en normativa de ciberseguridad (ISO 27001/27002, NIS2, GDPR, ENS, DORA). "
-        "Analiza el cambio normativo descrito y clasifica su impacto.\n\n"
+        "Analiza el cambio normativo descrito y clasifica su impacto llamando a la "
+        "herramienta clasificar_cambio_normativo.\n\n"
         "Criterios de severidad:\n"
         "- cosmetic: solo cambios de formato, puntuacion, numero de referencia. Sin cambio de requisitos.\n"
         "- clarification: aclaracion de un requisito existente sin cambio de obligaciones.\n"
         "- substantive: cambio real en requisitos existentes o nuevo requisito que requiere accion.\n"
         "- breaking: cambio mayor de version (ej. nueva edicion ISO), eliminacion de controles, "
         "plazo de cumplimiento nuevo.\n\n"
-        "CRITICO: devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional.\n"
-        f"Esquema:\n{schema}"
+        "controls_affected_hint: codigos ISO 27002 (ej. 5.1, 8.24) que el cambio afecta."
     )
 
     try:
-        import anthropic
-    except ImportError:
-        return False
-
-    try:
-        from app.services.claude_client import create_message
+        from app.services.claude_client import structured_message
         from app.services.model_registry import MODEL_TIERS
 
         def _run_pass(model_id: str) -> dict:
-            msg = create_message(
+            result, _msg = structured_message(
                 api_key,
                 model=model_id,
                 max_tokens=8192,
                 system=system_prompt,
                 messages=[{"role": "user", "content": raw_text}],
+                tool_name="clasificar_cambio_normativo",
+                tool_description="Registra la clasificacion del cambio normativo",
+                input_schema=event_schema,
             )
-            raw_out = msg.content[0].text.strip() if msg.content else ""
-            if raw_out.startswith("```"):
-                parts = raw_out.split("```", 2)
-                inner = parts[1] if len(parts) > 1 else raw_out
-                if inner.startswith("json"):
-                    inner = inner[4:]
-                raw_out = inner.rsplit("```", 1)[0].strip()
-            return _json.loads(raw_out)
+            return result
 
         # Primera pasada: tier fast (barato). Si el resultado sugiere impacto
         # real o hay dudas, segunda opinion con el modelo potente antes de

@@ -75,25 +75,10 @@ Para cada control, estima contribution (0.0-1.0) segun cuanto mitiga esa amenaza
 El residual lo calcula el motor de la plataforma desde tus contribuciones (tipo P/D/C,
 madurez, calidad de evidencia); suggested_residual_* es solo tu estimacion orientativa.
 
-Devuelve UNICAMENTE JSON con esta estructura:
-{
-  "cia": {"c": <1-4>, "i": <1-4>, "a": <1-4>, "au": <0-4>, "ac": <0-4>},
-  "risks": [
-    {
-      "threat_code": "<codigo>",
-      "applies": true,
-      "inherent_likelihood": <0-4>,
-      "inherent_consequence": <0-4>,
-      "rationale": "<max 300 chars citando el criterio de la escala aplicado y la base: tipo de activo, valor CIA, exposicion, incidentes>",
-      "consequence_description": "<impacto concreto>",
-      "vulnerability_codes": ["<codigo>", ...],
-      "control_contributions": [{"impl_id": <id>, "contribution": <0.0-1.0>}],
-      "suggested_residual_likelihood": <0-4>,
-      "suggested_residual_consequence": <0-4>,
-      "treatment_option": "<modification|retention|avoidance|sharing>"
-    }
-  ]
-}
+Entrega el resultado llamando a la herramienta registrar_analisis_activo con:
+- cia: valoracion de las 5 dimensiones
+- risks: un elemento por amenaza aplicable, con rationale de max 300 chars citando el
+  criterio de la escala aplicado y la base (tipo de activo, valor CIA, exposicion, incidentes)
 
 REGLAS:
 - cia: NUNCA dejes los 5 valores a 0. Estima segun el tipo y descripcion del activo.
@@ -102,6 +87,79 @@ REGLAS:
 - treatment_option: modification=hay controles que reducen; retention=riesgo bajo aceptable;
   avoidance=riesgo inaceptable; sharing=transferible.
 """
+
+
+# ---------- Schemas de salida estructurada (tool use forzado) ----------
+# La API valida los argumentos contra el schema: el JSON malformado deja de
+# existir como clase de error (sustituye a _strip_fence/_parse_batch_response).
+
+_CIA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        k: {"type": "integer", "minimum": 0, "maximum": 4}
+        for k in ("c", "i", "a", "au", "ac")
+    },
+    "required": ["c", "i", "a"],
+}
+
+_RISK_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "threat_code": {"type": "string"},
+        "applies": {"type": "boolean"},
+        "inherent_likelihood": {"type": "integer", "minimum": 0, "maximum": 4},
+        "inherent_consequence": {"type": "integer", "minimum": 0, "maximum": 4},
+        "rationale": {"type": "string", "maxLength": 600},
+        "consequence_description": {"type": "string", "maxLength": 400},
+        "vulnerability_codes": {"type": "array", "items": {"type": "string"}},
+        "control_contributions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "impl_id": {"type": "integer"},
+                    "contribution": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "required": ["impl_id", "contribution"],
+            },
+        },
+        "suggested_residual_likelihood": {"type": "integer", "minimum": 0, "maximum": 4},
+        "suggested_residual_consequence": {"type": "integer", "minimum": 0, "maximum": 4},
+        "treatment_option": {
+            "type": "string",
+            "enum": ["modification", "retention", "avoidance", "sharing"],
+        },
+    },
+    "required": ["threat_code", "inherent_likelihood", "inherent_consequence", "rationale"],
+}
+
+_ANALYSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "cia": _CIA_SCHEMA,
+        "risks": {"type": "array", "items": _RISK_ITEM_SCHEMA},
+    },
+    "required": ["risks"],
+}
+
+_BATCH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "asset_id": {"type": "integer"},
+                    "cia": _CIA_SCHEMA,
+                    "risks": {"type": "array", "items": _RISK_ITEM_SCHEMA},
+                },
+                "required": ["asset_id", "risks"],
+            },
+        },
+    },
+    "required": ["results"],
+}
 
 
 # ---------- Helpers ----------
@@ -127,17 +185,6 @@ def _get_model(db: Session, organization_id: int | None) -> str:
 def _org_owner_id(db: Session, org_id: int | None) -> int | None:
     u = db.query(User).filter_by(organization_id=org_id, is_active=True).order_by(User.id).first()
     return u.id if u else None
-
-
-def _strip_fence(raw: str) -> str:
-    raw = raw.strip()
-    if raw.startswith("```"):
-        parts = raw.split("```", 2)
-        inner = parts[1] if len(parts) > 1 else raw
-        if inner.startswith("json"):
-            inner = inner[4:]
-        raw = inner.rsplit("```", 1)[0].strip()
-    return raw
 
 
 def _get_active_catalogs(db: Session, org_id: int) -> list[str]:
@@ -283,18 +330,20 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
             f"CONTROLES IMPLEMENTADOS EN LA ORGANIZACION ({len(impls)} controles):\n{controls_ctx}"
         )
 
-        # 4. Llamar al agente IA
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        # 4. Llamar al agente IA (salida estructurada: la API valida el schema)
+        from app.services.claude_client import structured_message
         model = _get_model(db, asset.organization_id)
 
-        message = client.messages.create(
+        parsed, message = structured_message(
+            api_key,
             model=model,
             max_tokens=32768,
             system=_RISK_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_content}],
+            tool_name="registrar_analisis_activo",
+            tool_description="Registra la valoracion CIA y los escenarios de riesgo del activo",
+            input_schema=_ANALYSIS_SCHEMA,
         )
-        raw_json = _strip_fence(message.content[0].text)
 
         # Log de tokens
         db.add(AiCallLog(
@@ -307,16 +356,9 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
             response_summary=f"Risk analysis for asset {asset_id}: {asset.name[:60]}",
         ))
 
-        parsed = json.loads(raw_json)
         owner_id = _org_owner_id(db, asset.organization_id)
-
-        # Soportar formato nuevo {cia, risks} y formato legado [...]
-        if isinstance(parsed, dict):
-            cia_data = parsed.get("cia") or {}
-            risk_items = parsed.get("risks", [])
-        else:
-            cia_data = {}
-            risk_items = parsed  # formato legado: lista directa
+        cia_data = parsed.get("cia") or {}
+        risk_items = parsed.get("risks", [])
 
         # 5a. Aplicar valores CIA ENS si el activo los tiene todos a 0
         if cia_data:
@@ -395,9 +437,8 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 _BATCH_SIZE    = 5    # activos por llamada API (contexto rico por amenaza -> lotes menores)
 _MAX_WORKERS   = 1    # 1 worker serie: evita race condition en codigos RSK + mas simple
 _BATCH_MODEL   = "claude-haiku-4-5"  # conservado como referencia; el modelo activo lo determina AiConfig
-_MAX_RETRIES   = 4    # reintentos en caso de rate limit 429
-_RETRY_BASE_S  = 15   # segundos base entre reintentos (backoff exponencial)
 _MIN_CALL_GAP  = 1.5  # segundos minimos entre llamadas API (rate limiter, con 1 worker es suficiente)
+# Los reintentos/backoff ante 429/5xx viven en claude_client.create_message
 
 # Rate limiter global: evita superar 50 req/min independientemente del paralelismo
 import threading as _threading
@@ -454,13 +495,10 @@ ESCENARIOS DE RIESGO — para cada activo, las amenazas del catalogo que realmen
 - Apetito de riesgo = {appetite}/8
 
 REGLAS CRITICAS:
-- Devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional
-- No uses comillas dentro de strings, no uses backslash, no uses saltos de linea en strings
 - TODOS los activos deben tener cia con valores > 0 (nunca dejes los 5 a 0)
 - Usa codigos exactos de los catalogos y los impl_id exactos de la lista de candidatos
-
-Formato de respuesta:
-{{"results":[{{"asset_id":<int>,"cia":{{"c":<1-4>,"i":<1-4>,"a":<1-4>,"au":<0-4>,"ac":<0-4>}},"risks":[{{"threat_code":"<cod>","inherent_likelihood":<0-4>,"inherent_consequence":<0-4>,"vulnerability_codes":["<cod>"],"control_contributions":[{{"impl_id":<int>,"contribution":<0.0-1.0>}}],"suggested_residual_likelihood":<0-4>,"suggested_residual_consequence":<0-4>,"treatment_option":"modification|retention|avoidance|sharing","consequence_description":"<impacto concreto max 150>","rationale":"<max 300>"}}]}}]}}"""
+- Entrega el resultado llamando a la herramienta registrar_analisis_lote con un
+  elemento en results por CADA activo del lote (asset_id exacto)"""
 
 
 def _asset_signal_summary(db: Session, asset: Asset) -> str:
@@ -596,64 +634,6 @@ def _build_batch_user_prompt(assets: list[Asset]) -> str:
     return f"ACTIVOS A ANALIZAR ({len(assets)}):\n" + "\n".join(assets_lines)
 
 
-def _parse_batch_response(raw: str) -> dict:
-    """Parsea la respuesta batch con intentos de reparacion."""
-    import re
-    raw = raw.strip()
-    # Strip markdown fence
-    if raw.startswith("```"):
-        raw = re.sub(r"^```[a-z]*\n?", "", raw)
-        raw = re.sub(r"\n?```$", "", raw.strip())
-
-    # Extraer bloque JSON
-    start = raw.find("{")
-    end   = raw.rfind("}") + 1
-    if start == -1 or end == 0:
-        raise ValueError(f"Sin JSON en respuesta: {raw[:200]}")
-    chunk = raw[start:end]
-
-    # Intento 1: directo
-    try:
-        return json.loads(chunk)
-    except json.JSONDecodeError:
-        pass
-
-    # Intento 2: eliminar trailing commas
-    fixed = re.sub(r",\s*([}\]])", r"\1", chunk)
-    try:
-        return json.loads(fixed)
-    except json.JSONDecodeError:
-        pass
-
-    # Intento 3: usar resultados individuales extraibles
-    asset_results = []
-    for m in re.finditer(r'"asset_id"\s*:\s*(\d+)', chunk):
-        asset_id = int(m.group(1))
-        # Buscar los risks de este asset (solo inherentes: el residual lo fija el motor)
-        pos = m.start()
-        risks = re.findall(
-            r'"threat_code"\s*:\s*"([^"]+)".*?'
-            r'"inherent_likelihood"\s*:\s*(\d).*?"inherent_consequence"\s*:\s*(\d)',
-            chunk[pos:pos+3000], re.DOTALL
-        )
-        risk_objs = [
-            {
-                "threat_code": r[0],
-                "inherent_likelihood": int(r[1]), "inherent_consequence": int(r[2]),
-                "treatment_option": "modification", "rationale": "Analisis parcial (respuesta truncada)",
-            }
-            for r in risks
-        ]
-        if risk_objs:
-            asset_results.append({"asset_id": asset_id, "risks": risk_objs})
-
-    if asset_results:
-        logger.warning("Batch JSON repaired via regex: %d asset results", len(asset_results))
-        return {"results": asset_results}
-
-    raise ValueError(f"No se pudo parsear la respuesta batch (len={len(chunk)})")
-
-
 def _process_batch_isolated(
     batch_ids: list[int],
     org_id: int,
@@ -693,7 +673,6 @@ def _process_batch_isolated(
         system = cached_system(
             _BATCH_SYSTEM_PROMPT.format(appetite=appetite), catalog_block)
 
-        import anthropic
         import time as _time
 
         # Rate limiter global: esperar si la ultima llamada fue hace menos de _MIN_CALL_GAP s
@@ -704,44 +683,24 @@ def _process_batch_isolated(
                 _time.sleep(_MIN_CALL_GAP - gap)
             _api_last_call[0] = _time.time()
 
-        client = anthropic.Anthropic(api_key=api_key)
-
-        # Retry con backoff exponencial en caso de rate limit 429
-        msg = None
-        last_exc = None
-        for attempt in range(_MAX_RETRIES):
-            try:
-                msg = client.messages.create(
-                    model=model,
-                    max_tokens=32768,
-                    system=system,
-                    messages=[{"role": "user", "content": user_content}],
-                )
-                last_exc = None
-                break
-            except Exception as _exc:
-                last_exc = _exc
-                err_str = str(_exc)
-                # Circuit breaker: créditos agotados → abortar inmediatamente
-                if _is_credit_error(err_str):
-                    _credit_exhausted[api_key[:16]] = True
-                    logger.warning("API credit exhausted — aborting batch analysis (batch=%s)", batch_ids[:3])
-                    raise
-                if "429" in err_str or "rate_limit" in err_str.lower():
-                    wait_s = _RETRY_BASE_S * (2 ** attempt)
-                    logger.warning(
-                        "Rate limit 429 (intento %d/%d), esperando %ds — batch ids=%s",
-                        attempt + 1, _MAX_RETRIES, wait_s, batch_ids[:3],
-                    )
-                    _time.sleep(wait_s)
-                else:
-                    raise  # otro tipo de error, no reintentar
-        if last_exc is not None:
-            raise last_exc
-
-        raw = msg.content[0].text
-
-        result = _parse_batch_response(raw)
+        # Salida estructurada con reintentos/backoff en claude_client;
+        # el schema garantiza JSON valido (fin del reparador regex)
+        from app.services.claude_client import CreditsExhausted, structured_message
+        try:
+            result, _msg = structured_message(
+                api_key,
+                model=model,
+                max_tokens=32768,
+                system=system,
+                messages=[{"role": "user", "content": user_content}],
+                tool_name="registrar_analisis_lote",
+                tool_description="Registra la valoracion CIA y los riesgos de cada activo del lote",
+                input_schema=_BATCH_SCHEMA,
+            )
+        except CreditsExhausted:
+            _credit_exhausted[api_key[:16]] = True
+            logger.warning("API credit exhausted — aborting batch analysis (batch=%s)", batch_ids[:3])
+            raise
 
         threats_by_code = {t.code: t for t in all_threats}
 

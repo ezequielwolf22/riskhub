@@ -12,22 +12,47 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.services.ai_service import _repair_json
 from app.i18n import ai_lang_directive
 
 logger = logging.getLogger("riskhub.tprm_ai")
 
-# Schema JSON que el modelo debe devolver (se incluye en el system prompt)
-_EXPECTED_SCHEMA = """{
-  "ai_score": <entero 0-100>,
-  "confidence": <decimal 0.0-1.0>,
-  "control_coverage_assessment": "<fully_covered|partially_covered|not_covered|unclear>",
-  "evidence_consistency": "<consistent|partially_consistent|inconsistent|no_evidence>",
-  "red_flags": ["<string>", ...],
-  "follow_up_questions": ["<string>", ...],
-  "rationale": "<string>",
-  "needs_manual_review": <true|false>
-}"""
+# Schema de la evaluacion (tool use forzado: la API valida los argumentos)
+_REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ai_score": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "control_coverage_assessment": {
+            "type": "string",
+            "enum": ["fully_covered", "partially_covered", "not_covered", "unclear"],
+        },
+        "evidence_consistency": {
+            "type": "string",
+            "enum": ["consistent", "partially_consistent", "inconsistent", "no_evidence"],
+        },
+        "red_flags": {"type": "array", "items": {"type": "string", "maxLength": 200}},
+        "follow_up_questions": {"type": "array", "items": {"type": "string", "maxLength": 300}},
+        "rationale": {"type": "string"},
+        "needs_manual_review": {"type": "boolean"},
+    },
+    "required": ["ai_score", "confidence", "control_coverage_assessment",
+                 "evidence_consistency", "red_flags", "follow_up_questions",
+                 "rationale", "needs_manual_review"],
+}
+
+# Schema de la revision de un fichero de evidencia adjunto
+_EVIDENCE_REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string", "maxLength": 600},
+        "consistency": {
+            "type": "string",
+            "enum": ["consistent", "contradictory", "unrelated"],
+        },
+        "key_facts": {"type": "array", "items": {"type": "string", "maxLength": 250}},
+    },
+    "required": ["summary", "consistency"],
+}
 
 _SYSTEM_PROMPT = (
     "Eres un auditor experto en ciberseguridad especializado en evaluacion de riesgos de terceros (TPRM). "
@@ -35,7 +60,7 @@ _SYSTEM_PROMPT = (
     "tecnico objetivo. No debes decidir si se contrata o no al proveedor — solo evaluas la calidad y consistencia "
     "de sus respuestas respecto a los controles de seguridad esperados. "
     "Reglas criticas: "
-    "1. Devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional antes ni despues. "
+    "1. Entrega la evaluacion llamando a la herramienta registrar_evaluacion_tprm. "
     "2. No inventes evidencias ni supongas controles que el proveedor no haya mencionado. "
     "3. Si no puedes evaluar una pregunta por falta de informacion, indicalo en rationale y baja la confianza. "
     "4. Los red_flags deben ser concisos (maximo 15 palabras cada uno). "
@@ -47,19 +72,17 @@ _SYSTEM_PROMPT = (
     "analizada CONTRADICE la respuesta del proveedor, marcalo como red_flag y refleja la "
     "inconsistencia en evidence_consistency. "
     "8. Pondera el juicio con el perfil del proveedor y su historico: un proveedor de tier "
-    "critico con issues abiertos exige mas exigencia probatoria. "
-    f"Devuelve exactamente este esquema JSON:\n{_EXPECTED_SCHEMA}"
+    "critico con issues abiertos exige mas exigencia probatoria."
 )
 
 # Prompt corto para analizar un fichero de evidencia adjunto a una pregunta
 _EVIDENCE_REVIEW_PROMPT = (
     "Eres un auditor TPRM. Analiza el fichero de evidencia que un proveedor adjunto "
-    "a una pregunta de un cuestionario de seguridad. Devuelve SOLO JSON: "
-    '{"summary": "<2-3 frases de lo que contiene realmente>", '
-    '"consistency": "<consistent|contradictory|unrelated>", '
-    '"key_facts": ["<hecho verificable>", ...]}. '
-    "consistency=consistent solo si el contenido respalda la respuesta declarada; "
-    "contradictory si la contradice; unrelated si no tiene relacion. Se estricto."
+    "a una pregunta de un cuestionario de seguridad y entrega el resultado llamando "
+    "a la herramienta registrar_revision_evidencia. summary: 2-3 frases de lo que "
+    "contiene realmente. consistency=consistent solo si el contenido respalda la "
+    "respuesta declarada; contradictory si la contradice; unrelated si no tiene "
+    "relacion. key_facts: hechos verificables del contenido. Se estricto."
 )
 
 
@@ -91,7 +114,7 @@ def analyze_questionnaire_evidence(
     try:
         from app.models import AiConfig
         from app.services.anonymizer import anonymize
-        from app.services.claude_client import create_message
+        from app.services.claude_client import structured_message
         from app.services.document_service import extract_text
         cfg = db.query(AiConfig).filter_by(
             organization_id=questionnaire.organization_id).first()
@@ -158,15 +181,14 @@ def analyze_questionnaire_evidence(
                 content = [{"type": "text",
                             "text": f"{context_txt}\n\nContenido del fichero:\n{text}"}]
 
-            msg = create_message(
+            review, _msg = structured_message(
                 api_key, model=model, max_tokens=1024,
                 system=_EVIDENCE_REVIEW_PROMPT,
                 messages=[{"role": "user", "content": content}],
+                tool_name="registrar_revision_evidencia",
+                tool_description="Registra la revision del fichero de evidencia del proveedor",
+                input_schema=_EVIDENCE_REVIEW_SCHEMA,
             )
-            raw = msg.content[0].text.strip() if msg.content else "{}"
-            review = _repair_json(raw)
-            if not isinstance(review, dict) or "consistency" not in review:
-                continue
             entry = dict(entry)
             entry["ai_review"] = {
                 "summary": str(review.get("summary", ""))[:500],
@@ -462,48 +484,33 @@ def review_questionnaire(
 
     system_prompt = ai_lang_directive(lang) + "\n\n" + _SYSTEM_PROMPT
 
-    raw: str | None = None
     try:
-        from app.services.claude_client import create_message
-        try:
-            message = create_message(
+        from app.services.claude_client import structured_message
+
+        def _call(max_tok: int):
+            return structured_message(
                 api_key,
                 model=model,
-                max_tokens=4096,
+                max_tokens=max_tok,
                 system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
+                tool_name="registrar_evaluacion_tprm",
+                tool_description="Registra la evaluacion estructurada del cuestionario del proveedor",
+                input_schema=_REVIEW_SCHEMA,
             )
+
+        try:
+            result, _msg = _call(4096)
         except Exception as exc:
             # Reintentar con limite menor si el modelo rechaza el valor maximo
             err_str = str(exc).lower()
             if "max_tokens" in err_str or "maximum" in err_str:
-                message = create_message(
-                    api_key,
-                    model=model,
-                    max_tokens=2048,
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": prompt}],
-                )
+                result, _msg = _call(2048)
             else:
                 raise
-
-        raw = message.content[0].text.strip() if message.content else ""
-        if not raw:
-            return _safe_result("El modelo devolvio una respuesta vacia")
-
     except Exception as exc:
         logger.error("tprm_ai: error llamando a Claude API para Q%s: %s", questionnaire.id, exc)
         return _safe_result(f"Error de API: {exc}")
-
-    # Parsear la respuesta JSON
-    try:
-        result = _repair_json(raw)
-    except Exception as exc:
-        logger.error(
-            "tprm_ai: JSON invalido para Q%s. Error: %s. Raw[:200]: %s",
-            questionnaire.id, exc, raw[:200],
-        )
-        return _safe_result(f"JSON invalido en respuesta del modelo: {exc}")
 
     # Guardrails: forzar needs_manual_review si confianza baja
     try:
