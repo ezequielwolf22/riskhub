@@ -87,8 +87,15 @@ _MAX_TEXT_CHARS = 32000
 def _read_evidence_bytes(ev) -> Optional[bytes]:
     if not ev.filename:
         return None
-    fpath = _EVIDENCE_DIR / ev.filename
-    if not fpath.exists():
+    # Guard path traversal: el nombre lo genera el servidor al subir, pero
+    # nunca leer fuera del directorio de evidencias
+    if "/" in ev.filename or "\\" in ev.filename or ".." in ev.filename:
+        logger.warning("evidence_understanding: filename sospechoso ignorado: %r",
+                       ev.filename[:80])
+        return None
+    base = _EVIDENCE_DIR.resolve()
+    fpath = (base / ev.filename).resolve()
+    if not str(fpath).startswith(str(base)) or not fpath.exists():
         return None
     from app.services.document_service import decrypt_doc
     return decrypt_doc(fpath.read_bytes())

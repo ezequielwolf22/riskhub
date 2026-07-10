@@ -246,6 +246,40 @@ def _evidence_state(qid, answers: dict, evidence: Optional[dict]) -> str:
     return "unverified"
 
 
+def recompute_questionnaire_score(db: Session, q) -> Optional[int]:
+    """Recalcula el score de un cuestionario tras cambios en la evidencia
+    (p.ej. la revision IA del contenido cambia el estado a consistente o
+    contradictorio) y actualiza el perfil del proveedor.
+
+    Devuelve el nuevo score o None si el cuestionario no usa scoring
+    ponderado o aun no tiene respuestas.
+    """
+    questions = q.questions or []
+    answers = q.answers or {}
+    if not questions or not answers:
+        return None
+    uses_weighted = bool(q.template_code) or any(
+        (qq.get("scoring_rules") or qq.get("weight")) for qq in questions)
+    if not uses_weighted:
+        return None
+    scoring_answers = dict(answers)
+    for qid in (q.evidence or {}):
+        scoring_answers[f"{qid}__evidence"] = True
+    result = score_questionnaire(questions, scoring_answers, evidence=q.evidence)
+    if result["score"] != q.score:
+        q.score = result["score"]
+        try:
+            supplier = db.get(Supplier, q.supplier_id)
+            if supplier:
+                # El residual del proveedor deriva del score del cuestionario
+                if supplier.score is not None:
+                    supplier.score = q.score
+                recompute_supplier(db, supplier, commit=False)
+        except Exception:
+            pass
+    return q.score
+
+
 def score_questionnaire(questions: list, answers: dict,
                         evidence: Optional[dict] = None) -> dict:
     """Calcula el score 0-100 de un cuestionario con pesos por pregunta.

@@ -227,6 +227,10 @@ def ai_review_questionnaire(
 
     q.ai_review = result
     q.ai_reviewed_at = datetime.now(timezone.utc)
+    # La revision IA de las evidencias puede cambiar su estado (consistente/
+    # contradictoria): recalcular el score y el perfil del proveedor
+    from app.services.tprm_scoring_service import recompute_questionnaire_score
+    recompute_questionnaire_score(db, q)
     db.commit()
 
     log_action(db, current_user.id, "ai_review", "supplier_questionnaire", str(q.id))
@@ -607,6 +611,8 @@ def submit_public_questionnaire(token: str, body: dict, request: Request,
                     result = tprm_ai_service.review_questionnaire(bg_db, bg_q, bg_key, bg_model, lang="es")
                     bg_q.ai_review = result
                     bg_q.ai_reviewed_at = datetime.now(timezone.utc)
+                    from app.services.tprm_scoring_service import recompute_questionnaire_score
+                    recompute_questionnaire_score(bg_db, bg_q)
                     bg_db.commit()
             except Exception as _exc:
                 logger.exception("Auto AI review failed for questionnaire %s: %s",

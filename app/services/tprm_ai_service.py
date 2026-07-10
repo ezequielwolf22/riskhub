@@ -90,8 +90,14 @@ def analyze_questionnaire_evidence(
 
     try:
         import anthropic
+        from app.models import AiConfig
+        from app.services.anonymizer import anonymize
         from app.services.document_service import extract_text
         client = anthropic.Anthropic(api_key=api_key)
+        cfg = db.query(AiConfig).filter_by(
+            organization_id=questionnaire.organization_id).first()
+        anon_level = (cfg.anonymization_level.value
+                      if cfg and cfg.anonymization_level else "medium")
     except Exception:
         return 0
 
@@ -101,6 +107,7 @@ def analyze_questionnaire_evidence(
     answers = questionnaire.answers or {}
 
     analyzed = 0
+    base_dir = _evidence_dir().resolve()
     for qid, entry in evidence.items():
         if analyzed >= max_files:
             break
@@ -109,8 +116,14 @@ def analyze_questionnaire_evidence(
         stored = entry.get("stored_name")
         if not stored:
             continue
-        fpath = _evidence_dir() / stored
-        if not fpath.exists():
+        # Guard path traversal: el nombre lo genera el servidor, pero el JSON
+        # de evidencia es dato persistido — nunca salir del directorio base
+        if "/" in stored or "\\" in stored or ".." in stored:
+            logger.warning("tprm_ai: stored_name sospechoso ignorado (Q%s): %r",
+                           questionnaire.id, stored[:80])
+            continue
+        fpath = (base_dir / stored).resolve()
+        if not str(fpath).startswith(str(base_dir)) or not fpath.exists():
             continue
 
         question = questions_by_id.get(str(qid), {})
@@ -140,8 +153,11 @@ def analyze_questionnaire_evidence(
                 text = extract_text(raw_bytes, mime)
                 if len(text.strip()) < 50:
                     continue
+                # Anonimizar antes de enviar a la API (mismo criterio que el
+                # resto de la plataforma segun el nivel de la org)
+                text = anonymize(text[:15000], anon_level)
                 content = [{"type": "text",
-                            "text": f"{context_txt}\n\nContenido del fichero:\n{text[:15000]}"}]
+                            "text": f"{context_txt}\n\nContenido del fichero:\n{text}"}]
 
             msg = client.messages.create(
                 model=model, max_tokens=1024,

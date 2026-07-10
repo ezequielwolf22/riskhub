@@ -1085,7 +1085,15 @@ def control_gap_detailed(
         RiskContext.organization_id == current_user.organization_id
     ).first()
     cache_key = hashlib.md5(
-        _json.dumps({"fw": req.framework, "controls": [c["code"] + c["status"] for c in controls_payload]}, sort_keys=True).encode()
+        _json.dumps({
+            "fw": req.framework,
+            "controls": [
+                f"{c['code']}|{c['status']}|{c['maturity']}|{c['adjusted_maturity']}"
+                f"|{c['linked_risks']}|{c['open_nonconformities']}"
+                f"|{len(c['evidence_ai_reviews'])}|{int(c['regwatch_review_pending'])}"
+                for c in controls_payload
+            ],
+        }, sort_keys=True).encode()
     ).hexdigest()
     if ctx and ctx.ai_gap_cache:
         cached = ctx.ai_gap_cache if isinstance(ctx.ai_gap_cache, dict) else {}

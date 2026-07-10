@@ -432,6 +432,34 @@ def compute_impact(db: Session, org_id: int, pack: ChangePack) -> dict:
 
 # ---------- Pipeline de analisis IA (§7) ----------
 
+def _url_is_safe(url: str) -> bool:
+    """Guard SSRF: solo http(s) hacia hosts publicos.
+
+    Las URLs vienen de los conectores (fuentes configuradas), pero como
+    defensa en profundidad se rechaza cualquier destino que resuelva a
+    loopback, red privada, link-local o reservada — la app corre on-premise
+    junto a otros servicios internos.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return False
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or 443,
+                                   proto=socket.IPPROTO_TCP)
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                return False
+        return bool(infos)
+    except Exception:
+        return False
+
+
 def _fetch_change_body(url: str | None, cap: int = 20000) -> str:
     """Descarga el texto completo del cambio normativo desde su URL.
 
@@ -441,13 +469,28 @@ def _fetch_change_body(url: str | None, cap: int = 20000) -> str:
     """
     if not url or not url.lower().startswith(("http://", "https://")):
         return ""
+    if not _url_is_safe(url):
+        logger.warning("regwatch: URL rechazada por guard SSRF: %s", url[:120])
+        return ""
     try:
         import re as _re
         import urllib.request
+
+        class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+            """Valida cada destino de redireccion con el mismo guard SSRF
+            (una URL publica podria redirigir a un servicio interno)."""
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                if not _url_is_safe(newurl):
+                    logger.warning("regwatch: redireccion rechazada por guard SSRF: %s",
+                                   newurl[:120])
+                    return None
+                return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+        opener = urllib.request.build_opener(_SafeRedirect())
         req = urllib.request.Request(url, headers={
             "User-Agent": "RiskHubRegWatch/1.0 (+https://riskhub.local; compliance-monitoring)",
         })
-        with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310
+        with opener.open(req, timeout=20) as resp:  # noqa: S310
             raw = resp.read(2 * 1024 * 1024)
         text = raw.decode("utf-8", errors="replace")
         # HTML -> texto plano basico
@@ -526,6 +569,12 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
                 messages=[{"role": "user", "content": raw_text}],
             )
             raw_out = msg.content[0].text.strip() if msg.content else ""
+            if raw_out.startswith("```"):
+                parts = raw_out.split("```", 2)
+                inner = parts[1] if len(parts) > 1 else raw_out
+                if inner.startswith("json"):
+                    inner = inner[4:]
+                raw_out = inner.rsplit("```", 1)[0].strip()
             return _json.loads(raw_out)
 
         # Primera pasada: tier fast (barato). Si el resultado sugiere impacto

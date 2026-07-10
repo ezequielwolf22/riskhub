@@ -927,10 +927,11 @@ def _run_monthly_report() -> None:
             ai_summary_html = ""
             try:
                 from app.services.model_registry import get_api_key as _get_key
-                if _get_key(db, org_id):
+                _ai_key = _get_key(db, org_id)
+                if _ai_key:
                     from app.services import report_ai_service
                     content = report_ai_service.generate(
-                        "executive_dashboard", db, org_id=org_id)
+                        "executive_dashboard", db, api_key=_ai_key, org_id=org_id)
                     summary_txt = (
                         content.get("executive_summary")
                         or content.get("summary") or ""

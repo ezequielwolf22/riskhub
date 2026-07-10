@@ -1164,6 +1164,17 @@ def _finalize_ai_risk(db: Session, risk: Risk, item: dict,
     db.expire(risk, ["controls"])  # los links se insertaron via SQL directo
     recalc_risk(db, risk)
 
+    def _safe_level(v):
+        """Sanea la salida del LLM a entero 0-4 o None (se persiste y se
+        muestra en la UI: nunca guardar strings arbitrarios del modelo)."""
+        try:
+            return clamp(int(v))
+        except (TypeError, ValueError):
+            return None
+
+    suggested_lik = _safe_level(suggested_lik)
+    suggested_con = _safe_level(suggested_con)
+
     meta = dict(risk.ai_context_meta or {})
     meta.update({
         "suggested_residual_likelihood": suggested_lik,

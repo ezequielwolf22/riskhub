@@ -365,6 +365,8 @@ def _trigger_ai_review_bg(questionnaire_id: int, org_id: int) -> None:
                 review = tprm_ai_service.review_questionnaire(db2, q, key, model)
                 q.ai_review = review
                 q.ai_reviewed_at = datetime.now(timezone.utc)
+                from app.services.tprm_scoring_service import recompute_questionnaire_score
+                recompute_questionnaire_score(db2, q)
                 db2.commit()
                 logger.info(
                     "MSForms: AI review completado para questionnaire %d (org %d)",
