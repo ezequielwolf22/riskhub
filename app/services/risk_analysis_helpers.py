@@ -107,24 +107,33 @@ ASSET_TYPE_PROFILES: dict[str, dict] = {
 def get_asset_profile(asset_type: str) -> dict:
     """Retorna el perfil de riesgo para un tipo de activo dado."""
     key = (asset_type or "").lower().replace("-", "_").replace(" ", "_")
-    # Normalizacion de valores del enum AssetType
+    # Normalizacion de valores del enum AssetType (incluye los valores reales
+    # del catalogo ISO 27005 de RiskHub: primary_*/support_*)
     mapping = {
         "hardware": "hardware",
+        "support_hardware": "hardware",
         "software": "software",
+        "support_software": "software",
         "data": "data",
         "information": "data",
+        "primary_information": "data",
         "datos": "data",
         "network": "network",
+        "support_network": "network",
         "red": "network",
         "infrastructure": "network",
         "service": "service",
         "servicio": "service",
         "process": "service",
+        "primary_process": "service",
+        "support_organization": "service",
         "cloud": "cloud",
         "people": "people",
+        "support_personnel": "people",
         "personas": "people",
         "human": "people",
         "facility": "facility",
+        "support_site": "facility",
         "instalacion": "facility",
         "physical": "facility",
     }
@@ -409,7 +418,7 @@ def build_vigilancia_context(db, asset_id: int | None, vuln_ids: list[int],
     - Regwatch change events que han flaggeado controles del riesgo para revision
     """
     from app.models import (
-        OsintFinding, osint_vulnerability_links,
+        OSINTFinding, osint_vulnerability_links,
         ExternalFinding, ControlImplementation, ChangePack,
     )
     lines: list[str] = []
@@ -417,14 +426,14 @@ def build_vigilancia_context(db, asset_id: int | None, vuln_ids: list[int],
     # 1. OSINT findings vinculados a las vulnerabilidades del riesgo
     if vuln_ids:
         osint_rows = (
-            db.query(OsintFinding)
+            db.query(OSINTFinding)
             .join(osint_vulnerability_links,
-                  OsintFinding.id == osint_vulnerability_links.c.osint_finding_id)
+                  OSINTFinding.id == osint_vulnerability_links.c.osint_finding_id)
             .filter(
                 osint_vulnerability_links.c.vulnerability_id.in_(vuln_ids),
-                OsintFinding.is_remediated.is_(False),
+                OSINTFinding.is_remediated.is_(False),
             )
-            .order_by(OsintFinding.risk_score.desc())
+            .order_by(OSINTFinding.risk_score.desc())
             .limit(8)
             .all()
         )
@@ -499,6 +508,118 @@ def build_vigilancia_context(db, asset_id: int | None, vuln_ids: list[int],
         return "Sin hallazgos activos de OSINT, CVE ni cambios normativos pendientes para este riesgo."
 
     return "\n".join(lines)
+
+
+# ── Builder compartido de contexto por activo ────────────────────────────────
+# Una sola fuente de verdad para el contexto que consumen la generacion de
+# riesgos por activo (individual y batch) y suggest-controls: perfil del
+# activo, criterios de calibracion, vigilancia (CVE/OSINT/Regwatch),
+# contexto normativo, incidentes historicos y documentacion RAG.
+
+def _asset_incident_history(db, asset, limit: int = 5) -> str:
+    """Incidentes recientes de la org que afectaron a este activo."""
+    try:
+        from app.models import Incident
+        rows = (
+            db.query(Incident)
+            .filter(Incident.organization_id == asset.organization_id)
+            .order_by(Incident.id.desc())
+            .limit(50)
+            .all()
+        )
+        hits = []
+        for inc in rows:
+            affected = inc.affected_asset_ids or []
+            if isinstance(affected, list) and asset.id in affected:
+                sev = inc.severity.value if getattr(inc, "severity", None) else "?"
+                when = inc.detected_at.strftime("%Y-%m-%d") if getattr(inc, "detected_at", None) else ""
+                hits.append(f"  [{sev}] {inc.title} {when}".rstrip())
+            if len(hits) >= limit:
+                break
+        if not hits:
+            return ""
+        return "\n".join(hits)
+    except Exception:
+        return ""
+
+
+def build_asset_risk_context(db, asset, impls: list | None = None,
+                             vuln_ids: list[int] | None = None) -> dict:
+    """Ensambla las secciones de contexto para analizar los riesgos de un activo.
+
+    Devuelve un dict de secciones de texto listas para insertar en prompts:
+      profile, calibration, vigilancia, normative, incidents, rag
+    Las secciones vacias vienen como cadena vacia — el llamador decide si
+    imprime el encabezado.
+    """
+    from app.models import RiskContext
+
+    asset_type = asset.asset_type.value if asset.asset_type else ""
+    profile = get_asset_profile(asset_type)
+    profile_txt = (
+        f"Tipo: {profile['label']} | Dimensiones primarias: "
+        f"{', '.join(profile['primary_dimensions'])}\n"
+        f"Factores de riesgo tipicos: {profile['key_risk_factors']}"
+    )
+
+    calibration_txt = (
+        "LIKELIHOOD (calibrar contra estos criterios):\n"
+        + "\n".join(f"  {k}: {v}" for k, v in LIKELIHOOD_CRITERIA.items())
+        + "\nCONSEQUENCE (coherente con el valor CIA del activo en la dimension atacada):\n"
+        + "\n".join(f"  {k}: {v}" for k, v in CONSEQUENCE_CRITERIA.items())
+    )
+
+    impl_ids = [c.id for c in (impls or [])]
+    vigilancia_txt = build_vigilancia_context(
+        db, asset.id, vuln_ids or [], impl_ids, asset.organization_id)
+
+    ctx = db.query(RiskContext).filter_by(organization_id=asset.organization_id).first()
+    frameworks = (ctx.active_frameworks or []) if ctx else []
+    normative_txt = normative_context(frameworks)
+
+    incidents_txt = _asset_incident_history(db, asset)
+
+    rag_txt = ""
+    try:
+        from app.services.rag_service import search_chunks_with_source
+        query = " ".join(filter(None, [
+            asset.name, asset.category, asset.business_process,
+            "seguridad control procedimiento",
+        ]))[:200]
+        chunks = search_chunks_with_source(
+            db, query, top_k=5, organization_id=asset.organization_id)
+        if chunks:
+            rag_txt = "\n".join(
+                f"  [{c.get('doc_name', '')}] {c.get('content', '')[:200]}"
+                for c in chunks
+            )
+    except Exception:
+        pass
+
+    return {
+        "profile": profile_txt,
+        "calibration": calibration_txt,
+        "vigilancia": vigilancia_txt,
+        "normative": normative_txt,
+        "incidents": incidents_txt,
+        "rag": rag_txt,
+    }
+
+
+def render_asset_risk_context(sections: dict) -> str:
+    """Serializa las secciones del builder como bloque de prompt."""
+    parts = [
+        "# PERFIL DEL ACTIVO\n" + sections["profile"],
+        "# CRITERIOS DE CALIBRACION ISO 27005\n" + sections["calibration"],
+        "# EVIDENCIA REAL DE VIGILANCIA (OSINT / CVE / REGWATCH)\n" + sections["vigilancia"],
+        "# CONTEXTO NORMATIVO\n" + sections["normative"],
+    ]
+    if sections.get("incidents"):
+        parts.append("# INCIDENTES PREVIOS EN ESTE ACTIVO\n" + sections["incidents"])
+    if sections.get("rag"):
+        parts.append("# DOCUMENTACION INTERNA RELEVANTE (actas, evidencias, procedimientos)\n"
+                     + sections["rag"])
+    return "\n\n".join(parts)
 
 
 # ── Criterios ISO 27005 para calibrar niveles ─────────────────────────────────

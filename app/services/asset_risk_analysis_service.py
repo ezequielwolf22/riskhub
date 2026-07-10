@@ -266,9 +266,18 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
                     org_ctx_lines.append(f"  {key}: {val}")
         org_ctx_str = "\n".join(org_ctx_lines) if org_ctx_lines else "(no configurado)"
 
+        # Contexto compartido: perfil, calibracion, vigilancia CVE/OSINT/Regwatch,
+        # normativa, incidentes historicos y documentacion interna (RAG)
+        from app.services.risk_analysis_helpers import (
+            build_asset_risk_context, render_asset_risk_context,
+        )
+        shared_ctx = render_asset_risk_context(
+            build_asset_risk_context(db, asset, impls, vuln_ids=[v.id for v in vulns]))
+
         user_content = (
             f"CONTEXTO DE LA ORGANIZACION:\n{org_ctx_str}\n\n"
             f"ACTIVO A ANALIZAR:\n{asset_ctx}\n\n"
+            f"{shared_ctx}\n\n"
             f"CATALOGO DE AMENAZAS APLICABLES ({len(threats)} amenazas):\n{threats_ctx}\n\n"
             f"CATALOGO DE VULNERABILIDADES ({len(vulns)} vulnerabilidades):\n{vulns_ctx}\n\n"
             f"CONTROLES IMPLEMENTADOS EN LA ORGANIZACION ({len(impls)} controles):\n{controls_ctx}"
@@ -431,6 +440,8 @@ CRITERIOS DE CALIBRACION (puntua contra estos criterios, no contra intuicion):
 - Consequence: 0=insignificante, 1=menor recuperable, 2=moderado (afecta procesos),
   3=mayor (dano grave de negocio/legal), 4=critico (amenaza la continuidad)
 - La consequence debe ser coherente con el valor CIA del activo en la dimension que ataca la amenaza.
+- Si un activo trae "senales" (CVEs/hallazgos abiertos, incidentes previos), la amenaza asociada
+  es REAL: sube la likelihood en consecuencia y citalo en el rationale.
 
 ESCENARIOS DE RIESGO — para cada activo, las amenazas del catalogo que realmente aplican (tipicamente 3-8):
 - vulnerability_codes: codigos exactos del catalogo de vulnerabilidades que habilitan la amenaza en este activo
@@ -450,6 +461,51 @@ REGLAS CRITICAS:
 
 Formato de respuesta:
 {{"results":[{{"asset_id":<int>,"cia":{{"c":<1-4>,"i":<1-4>,"a":<1-4>,"au":<0-4>,"ac":<0-4>}},"risks":[{{"threat_code":"<cod>","inherent_likelihood":<0-4>,"inherent_consequence":<0-4>,"vulnerability_codes":["<cod>"],"control_contributions":[{{"impl_id":<int>,"contribution":<0.0-1.0>}}],"suggested_residual_likelihood":<0-4>,"suggested_residual_consequence":<0-4>,"treatment_option":"modification|retention|avoidance|sharing","consequence_description":"<impacto concreto max 150>","rationale":"<max 300>"}}]}}]}}"""
+
+
+def _asset_signal_summary(db: Session, asset: Asset) -> str:
+    """Resumen compacto de vigilancia para el prompt batch: CVEs/hallazgos
+    abiertos por severidad e incidentes previos del activo."""
+    parts = []
+    try:
+        from app.models import ExternalFinding
+        rows = (
+            db.query(ExternalFinding.severity, ExternalFinding.cve_id)
+            .filter(
+                ExternalFinding.asset_id == asset.id,
+                ExternalFinding.organization_id == asset.organization_id,
+                ExternalFinding.status == "open",
+            ).limit(50).all()
+        )
+        if rows:
+            sev_count: dict[str, int] = {}
+            cves = 0
+            for sev, cve in rows:
+                key = (sev or "?").upper()
+                sev_count[key] = sev_count.get(key, 0) + 1
+                if cve:
+                    cves += 1
+            sev_txt = ", ".join(f"{n} {s}" for s, n in sorted(sev_count.items()))
+            parts.append(f"hallazgos abiertos: {sev_txt}"
+                         + (f" ({cves} con CVE)" if cves else ""))
+    except Exception:
+        pass
+    try:
+        from app.models import Incident
+        incs = (
+            db.query(Incident)
+            .filter(Incident.organization_id == asset.organization_id)
+            .order_by(Incident.id.desc()).limit(50).all()
+        )
+        n_inc = sum(
+            1 for i in incs
+            if isinstance(i.affected_asset_ids, list) and asset.id in i.affected_asset_ids
+        )
+        if n_inc:
+            parts.append(f"{n_inc} incidentes previos en este activo")
+    except Exception:
+        pass
+    return "; ".join(parts)
 
 
 def _build_org_context_str(db: Session, org_id: int) -> str:
@@ -495,6 +551,7 @@ def _build_batch_user_prompt(
             f"{a.value_availability}/{a.value_authenticity or 0}/{a.value_accountability or 0} "
             f"| cat:{a.category or '-'} | proceso:{a.business_process or '-'} "
             f"| desc:{(a.description or '')[:120]}"
+            + (f"\n  senales: {a._signal_summary}" if getattr(a, "_signal_summary", "") else "")
         )
     assets_str = "\n".join(assets_lines)
 
@@ -617,6 +674,11 @@ def _process_batch_isolated(
                     break
         if not relevant_threats:
             relevant_threats = all_threats[:40]
+
+        # Senales de vigilancia por activo (CVE/OSINT abiertos + incidentes):
+        # version compacta del contexto rico para no disparar el tamano del lote
+        for a in assets:
+            a._signal_summary = _asset_signal_summary(db, a)
 
         # Controles implementados + candidatos por amenaza (catalogo amenaza->control)
         from app.services.threat_knowledge import candidate_impls_for_threat
@@ -1043,6 +1105,52 @@ def _upsert_risk(
     return 1, 0
 
 
+def _collect_source_meta(db: Session, risk: Risk) -> dict:
+    """Huella de las fuentes consideradas en el analisis (trazabilidad UI).
+
+    Se muestra en el panel 'Fuentes consideradas' del detalle del riesgo:
+    el CISO puede ver en que se apoyo el analisis sin releer el prompt.
+    """
+    meta: dict = {}
+    try:
+        from app.models import Evidence, ExternalFinding, Incident
+        meta["controls_linked"] = len(risk.controls or [])
+        meta["vulnerabilities_linked"] = len(risk.vulnerabilities or [])
+        if risk.asset_id:
+            meta["open_findings"] = (
+                db.query(ExternalFinding)
+                .filter(
+                    ExternalFinding.asset_id == risk.asset_id,
+                    ExternalFinding.organization_id == risk.organization_id,
+                    ExternalFinding.status == "open",
+                ).count()
+            )
+            incs = (
+                db.query(Incident)
+                .filter(Incident.organization_id == risk.organization_id)
+                .order_by(Incident.id.desc()).limit(50).all()
+            )
+            meta["incidents_on_asset"] = sum(
+                1 for i in incs
+                if isinstance(i.affected_asset_ids, list) and risk.asset_id in i.affected_asset_ids
+            )
+        impl_ids = [c.id for c in (risk.controls or [])]
+        if impl_ids:
+            meta["evidence_analyzed"] = (
+                db.query(Evidence)
+                .filter(
+                    Evidence.control_implementation_id.in_(impl_ids),
+                    Evidence.ai_review.isnot(None),
+                ).count()
+            )
+            meta["regwatch_flags"] = sum(
+                1 for c in (risk.controls or []) if getattr(c, "regwatch_pack_id", None)
+            )
+    except Exception:
+        logger.debug("_collect_source_meta fallo", exc_info=True)
+    return meta
+
+
 def _finalize_ai_risk(db: Session, risk: Risk, item: dict,
                       suggested_lik, suggested_con) -> None:
     """Cierra el ciclo del riesgo IA: residual determinista + trazabilidad.
@@ -1061,6 +1169,7 @@ def _finalize_ai_risk(db: Session, risk: Risk, item: dict,
         "suggested_residual_likelihood": suggested_lik,
         "suggested_residual_consequence": suggested_con,
         "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        "sources": _collect_source_meta(db, risk),
     })
     risk.ai_context_meta = meta
     risk.analysis_stale = False

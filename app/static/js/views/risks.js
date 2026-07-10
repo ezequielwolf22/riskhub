@@ -706,6 +706,25 @@ const ViewRisks = {
     // Para nuevo riesgo: pre-seleccionar los sugeridos; para existente: respetar seleccion actual
     const effectiveCtrlIds = (isNew && suggestedImpls.length) ? suggestedImpls.map(c => c.id) : savedCtrlIds;
 
+    const meta = r.ai_context_meta || null;
+    const srcs = meta?.sources || null;
+    const sourcesPanel = (id && meta) ? `
+      <details class="span2" style="border:1px solid var(--border,#e0e0e0);border-radius:8px;padding:8px 12px;font-size:12px;background:var(--bg-muted,#fafafa);">
+        <summary style="cursor:pointer;font-weight:600;color:var(--brand-purple);">Fuentes consideradas en el análisis IA${meta.analyzed_at ? ` (${meta.analyzed_at.slice(0,10)})` : ''}</summary>
+        <div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;color:#555;">
+          ${srcs ? `
+            <div>Controles vinculados: <strong>${srcs.controls_linked ?? 0}</strong></div>
+            <div>Vulnerabilidades: <strong>${srcs.vulnerabilities_linked ?? 0}</strong></div>
+            <div>Hallazgos CVE/OSINT abiertos: <strong>${srcs.open_findings ?? 0}</strong></div>
+            <div>Incidentes previos del activo: <strong>${srcs.incidents_on_asset ?? 0}</strong></div>
+            <div>Evidencias analizadas con IA: <strong>${srcs.evidence_analyzed ?? 0}</strong></div>
+            <div>Controles con revisión normativa: <strong>${srcs.regwatch_flags ?? 0}</strong></div>
+          ` : '<div>Sin desglose de fuentes (análisis anterior a v6)</div>'}
+          ${meta.suggested_residual_likelihood != null ? `<div class="span2" style="grid-column:1/-1;">Residual sugerido por el modelo: P${meta.suggested_residual_likelihood}/C${meta.suggested_residual_consequence} — el valor final lo calcula el motor determinista desde los controles vinculados.</div>` : ''}
+          ${r.analysis_stale ? `<div style="grid-column:1/-1;color:#92400E;font-weight:600;">Desactualizado: ${UI.esc(r.stale_reason || 'el contexto cambió desde el último análisis')}</div>` : ''}
+        </div>
+      </details>` : '';
+
     UI.modal(id ? `${r.code} - ${r.asset?.name || ''}` : t('risks.new'), `
       <div class="span2 notice">
         Riesgo = Activo × Amenaza.
@@ -713,6 +732,7 @@ const ViewRisks = {
           ? `<strong>Metodología MAGERIT v3</strong>: consecuencia calculada desde las 5 dimensiones DIACAT del activo × degradación.`
           : `Nivel calculado como Consecuencia × Probabilidad (matriz 5x5 ISO 27005 Annex E.2).`}
       </div>
+      ${sourcesPanel}
       <div>
         <label>${t('common.asset')} *</label>
         <select id="f-asset" ${id?'disabled':''} onchange="${isMagerit?'ViewRisks._updateMageritPreview()':''}">

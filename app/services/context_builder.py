@@ -154,7 +154,9 @@ def build_context(
     if critical_suppliers:
         parts.append(f"\n## Proveedores criticos ({len(critical_suppliers)})")
         for s in critical_suppliers:
-            parts.append(f"- {s.name}: riesgo {s.risk_level.value}, score {s.score}/100")
+            # risk_level puede ser Enum o string plano segun el origen del dato
+            level = s.risk_level.value if hasattr(s.risk_level, "value") else (s.risk_level or "?")
+            parts.append(f"- {s.name}: riesgo {level}, score {s.score}/100")
 
     # 7. No conformidades abiertas
     ncs = (
@@ -185,7 +187,10 @@ def build_context(
                 due_dt = t.due_date if t.due_date.tzinfo else t.due_date.replace(tzinfo=timezone.utc)
                 overdue = " [VENCIDA]" if due_dt < now else ""
                 due = f", vence {due_dt.strftime('%Y-%m-%d')}{overdue}"
-            assignee = f", responsable: {t.assigned_to.username}" if t.assigned_to else ""
+            assignee = (
+                f", responsable: {t.assigned_to.full_name or t.assigned_to.email}"
+                if t.assigned_to else ""
+            )
             parts.append(f"- {t.code}: {t.title} [{t.status.value}, prioridad={t.priority.value}{due}{assignee}]")
 
     # 8c. Politicas vigentes y pendientes de revision
@@ -345,6 +350,162 @@ def build_context(
             sev = f.severity or "N/D"
             host = f" [{f.affected_host}]" if f.affected_host else ""
             parts.append(f"- [{source}] {f.title[:80]} [severidad={sev}{host}]")
+
+    # 8h. Vigilancia tecnica agregada: CVEs abiertos por severidad
+    try:
+        from sqlalchemy import func as _func
+        sev_rows = (
+            _forg(db.query(ExternalFinding.severity, _func.count()), ExternalFinding)
+            .filter(ExternalFinding.status == "open", ExternalFinding.cve_id.isnot(None))
+            .group_by(ExternalFinding.severity)
+            .all()
+        )
+        if sev_rows:
+            sev_txt = ", ".join(f"{n} {str(s or '?').upper()}" for s, n in sev_rows)
+            parts.append(f"\n## CVEs abiertos vinculados a activos: {sev_txt}")
+    except Exception:
+        pass
+
+    # 8i. OSINT: exposicion externa activa
+    try:
+        from app.models import OSINTFinding, OSINTScan
+        scan_ids = [
+            s.id for s in _forg(db.query(OSINTScan), OSINTScan).all()
+        ]
+        if scan_ids:
+            osint_top = (
+                db.query(OSINTFinding)
+                .filter(
+                    OSINTFinding.scan_id.in_(scan_ids),
+                    OSINTFinding.is_remediated == False,  # noqa: E712
+                    OSINTFinding.risk_level.in_(["critical", "high"]),
+                )
+                .order_by(OSINTFinding.risk_score.desc())
+                .limit(5)
+                .all()
+            )
+            if osint_top:
+                parts.append(f"\n## Exposicion OSINT activa (top {len(osint_top)} criticos/altos)")
+                for f in osint_top:
+                    parts.append(f"- [{(f.risk_level or '?').upper()}] {f.title[:80]} [fuente: {f.source}]")
+    except Exception:
+        pass
+
+    # 8j. Factor humano: formacion y campanas de phishing (evidencias analizadas)
+    try:
+        from app.models import Evidence
+        human_evs = (
+            _forg(db.query(Evidence), Evidence)
+            .filter(
+                Evidence.evidence_type.in_(["training_record", "phishing_campaign"]),
+                Evidence.is_current == True,  # noqa: E712
+            )
+            .order_by(Evidence.created_at.desc())
+            .limit(5)
+            .all()
+        )
+        if human_evs:
+            parts.append("\n## Factor humano: formacion y simulaciones de phishing")
+            for ev in human_evs:
+                etype = ev.evidence_type.value if hasattr(ev.evidence_type, "value") else ev.evidence_type
+                rev = ev.ai_review or {}
+                summary = rev.get("summary") or ev.description or ""
+                parts.append(f"- [{etype}] {ev.title[:70]}: {summary[:150]}")
+                for fact in (rev.get("key_facts") or [])[:2]:
+                    parts.append(f"    · {fact[:120]}")
+    except Exception:
+        pass
+
+    # 8k. Actas de comites de seguridad (gobierno)
+    try:
+        from app.models import Evidence
+        minutes = (
+            _forg(db.query(Evidence), Evidence)
+            .filter(
+                Evidence.evidence_type == "meeting_minutes",
+                Evidence.is_current == True,  # noqa: E712
+            )
+            .order_by(Evidence.created_at.desc())
+            .limit(3)
+            .all()
+        )
+        if minutes:
+            parts.append("\n## Actas de comites recientes")
+            for ev in minutes:
+                rev = ev.ai_review or {}
+                summary = rev.get("summary") or ev.description or ""
+                parts.append(f"- {ev.title[:70]}: {summary[:180]}")
+    except Exception:
+        pass
+
+    # 8l. Auditorias en curso o recientes
+    try:
+        from app.models import AuditProgram
+        audits = (
+            _forg(db.query(AuditProgram), AuditProgram)
+            .order_by(AuditProgram.id.desc())
+            .limit(4)
+            .all()
+        )
+        if audits:
+            parts.append("\n## Auditorias")
+            for a in audits:
+                status = a.status.value if hasattr(a.status, "value") else (a.status or "?")
+                parts.append(f"- {a.title or a.code} [estado: {status}, auditado: {getattr(a, 'auditee', None) or 'interno'}]")
+    except Exception:
+        pass
+
+    # 8m. GDPR: RoPA y DPIAs pendientes
+    try:
+        from app.models import ProcessingActivity
+        acts = _forg(db.query(ProcessingActivity), ProcessingActivity).all()
+        if acts:
+            dpia_pending = sum(
+                1 for a in acts
+                if getattr(a, "requires_dpia", False) and not (a.dpias or [])
+            )
+            parts.append(
+                f"\n## GDPR: {len(acts)} actividades de tratamiento (RoPA)"
+                + (f", {dpia_pending} DPIA pendientes" if dpia_pending else "")
+            )
+    except Exception:
+        pass
+
+    # 8n. Continuidad: estado de planes BCP
+    try:
+        from app.models import BCPPlan
+        plans = _forg(db.query(BCPPlan), BCPPlan).limit(20).all()
+        if plans:
+            by_status: dict[str, int] = {}
+            for p in plans:
+                st = p.status.value if hasattr(p.status, "value") else str(p.status or "?")
+                by_status[st] = by_status.get(st, 0) + 1
+            st_txt = ", ".join(f"{n} {s}" for s, n in sorted(by_status.items()))
+            parts.append(f"\n## Continuidad de negocio: {len(plans)} planes BCP ({st_txt})")
+    except Exception:
+        pass
+
+    # 8o. TPRM: cuestionarios de proveedores sin responder o vencidos
+    try:
+        from app.models import SupplierQuestionnaire
+        now_ = datetime.now(timezone.utc)
+        qs = (
+            _forg(db.query(SupplierQuestionnaire), SupplierQuestionnaire)
+            .filter(SupplierQuestionnaire.submitted_at.is_(None))
+            .limit(50)
+            .all()
+        )
+        if qs:
+            expired = sum(
+                1 for q in qs
+                if q.expires_at and q.expires_at.replace(tzinfo=timezone.utc) < now_
+            )
+            parts.append(
+                f"\n## TPRM: {len(qs)} cuestionarios de proveedor sin responder"
+                + (f" ({expired} vencidos)" if expired else "")
+            )
+    except Exception:
+        pass
 
     # 10. Documentos indexados disponibles + fragmentos RAG relevantes
     indexed_docs = (
