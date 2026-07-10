@@ -61,7 +61,8 @@ def build_assessment(
         if not questions:
             continue
         try:
-            result = tprm_scoring_service.score_questionnaire(questions, answers)
+            result = tprm_scoring_service.score_questionnaire(
+                questions, answers, evidence=q.evidence)
             by_question = result.get("by_question", {})
         except Exception as exc:
             logger.warning("score_questionnaire fallo para cuestionario %d: %s", q.id, exc)

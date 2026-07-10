@@ -432,19 +432,55 @@ def compute_impact(db: Session, org_id: int, pack: ChangePack) -> dict:
 
 # ---------- Pipeline de analisis IA (§7) ----------
 
-def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
-    """Analiza un NormativeChangeEvent con Claude Haiku y actualiza sus campos.
+def _fetch_change_body(url: str | None, cap: int = 20000) -> str:
+    """Descarga el texto completo del cambio normativo desde su URL.
 
-    Clasifica la severidad (cosmetic/clarification/substantive/breaking) y genera
-    resumenes en ES/EN. Confianza < 0.7 -> event.status queda DETECTED (cola manual).
+    Clasificar severidad viendo solo el titular es propenso a error: el
+    analisis debe leer el cuerpo real del cambio. HTML se convierte a texto
+    plano de forma basica. Best-effort: devuelve "" si falla.
+    """
+    if not url or not url.lower().startswith(("http://", "https://")):
+        return ""
+    try:
+        import re as _re
+        import urllib.request
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "RiskHubRegWatch/1.0 (+https://riskhub.local; compliance-monitoring)",
+        })
+        with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310
+            raw = resp.read(2 * 1024 * 1024)
+        text = raw.decode("utf-8", errors="replace")
+        # HTML -> texto plano basico
+        text = _re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", text)
+        text = _re.sub(r"(?s)<[^>]+>", " ", text)
+        text = _re.sub(r"\s+", " ", text).strip()
+        return text[:cap]
+    except Exception as exc:
+        logger.debug("regwatch: no se pudo descargar el cuerpo de %s: %s", url, exc)
+        return ""
+
+
+def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
+    """Analiza un NormativeChangeEvent con Claude y actualiza sus campos.
+
+    Lee el TEXTO COMPLETO del cambio (descargado de la URL, cap 20k chars),
+    clasifica la severidad (cosmetic/clarification/substantive/breaking) y
+    genera resumenes ES/EN. Si la primera pasada (tier fast) da severidad
+    alta o confianza < 0.7, una segunda pasada con el modelo potente emite
+    el juicio final antes de la auto-publicacion.
+    Confianza < 0.7 -> event.status queda DETECTED (cola manual).
     Devuelve True si el analisis fue exitoso.
     """
     import json as _json
 
+    body = _fetch_change_body(event.raw_url)
     raw_text = (
         f"Framework: {event.framework_code}\n"
         f"URL: {event.raw_url or 'N/A'}\n"
-        f"Resumen previo: {event.summary_es or 'Sin resumen previo'}"
+        f"Resumen previo del conector: {event.summary_es or 'Sin resumen previo'}\n\n"
+        + (f"TEXTO COMPLETO DEL CAMBIO (extraido de la URL):\n{body}"
+           if body else "(No se pudo descargar el texto completo: evalua con el resumen "
+                        "del conector y baja la confianza en consecuencia.)")
     )
 
     api_key = _get_global_api_key(db)
@@ -479,16 +515,32 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
         return False
 
     try:
-        model = _get_global_model(db)
+        from app.services.model_registry import MODEL_TIERS
         client = anthropic.Anthropic(api_key=api_key)
-        msg = client.messages.create(
-            model=model,
-            max_tokens=8192,
-            system=system_prompt,
-            messages=[{"role": "user", "content": raw_text}],
-        )
-        raw_out = msg.content[0].text.strip() if msg.content else ""
-        result = _json.loads(raw_out)
+
+        def _run_pass(model_id: str) -> dict:
+            msg = client.messages.create(
+                model=model_id,
+                max_tokens=8192,
+                system=system_prompt,
+                messages=[{"role": "user", "content": raw_text}],
+            )
+            raw_out = msg.content[0].text.strip() if msg.content else ""
+            return _json.loads(raw_out)
+
+        # Primera pasada: tier fast (barato). Si el resultado sugiere impacto
+        # real o hay dudas, segunda opinion con el modelo potente antes de
+        # decidir la auto-publicacion.
+        result = _run_pass(MODEL_TIERS["fast"])
+        sev_first = result.get("severity", "")
+        conf_first = float(result.get("confidence", 0.5))
+        if sev_first in ("substantive", "breaking") or conf_first < 0.7:
+            try:
+                result = _run_pass(MODEL_TIERS["deep"])
+                result["second_opinion"] = True
+                result["first_pass"] = {"severity": sev_first, "confidence": conf_first}
+            except Exception as exc:
+                logger.debug("regwatch: segunda pasada fallo, uso la primera: %s", exc)
 
         sev_str = result.get("severity", "")
         try:
@@ -599,7 +651,7 @@ def run_sweep(db: Session) -> dict:
         )
         for ev in validated:
             try:
-                create_and_publish_pack(
+                pack = create_and_publish_pack(
                     db,
                     framework_code=ev.framework_code,
                     severity=ev.severity.value if ev.severity else "substantive",
@@ -609,6 +661,9 @@ def run_sweep(db: Session) -> dict:
                     description_en=ev.summary_en or "",
                     source_url=ev.raw_url,
                 )
+                # Vincular evento->pack: la propagacion usa controls_affected_hint
+                # del analisis IA del evento para dirigir el impacto en TPRM
+                ev.change_pack_id = pack.id
                 ev.status = ChangeEventStatus.PUBLISHED
             except Exception as exc:
                 logger.warning("regwatch: error auto-publicando evento %s: %s", ev.id, exc)

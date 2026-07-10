@@ -1015,39 +1015,70 @@ def control_gap_detailed(
     if not api_key:
         raise HTTPException(400, _t("ai.not_configured", lang))
 
-    model = (cfg.model if cfg else None) or "claude-haiku-4-5"
+    from app.services.model_registry import MODEL_TIERS
+    model = MODEL_TIERS["fast"]          # analisis por tema
+    model_synthesis = (cfg.model if cfg and cfg.model else None) or MODEL_TIERS["deep"]
 
-    # Obtener riesgos para correlacion
-    risks = filter_by_org(
-        db.query(Risk).filter(Risk.status != RiskStatus.CLOSED),
-        Risk, current_user,
-    ).all()
-    risk_by_asset: dict = {}
-    for r in risks:
-        risk_by_asset.setdefault(r.asset_id, []).append(r.residual_level or 0)
+    # Correlaciones por control: riesgos vinculados (via risk_controls),
+    # NCs abiertas, flags regwatch y evidencia analizada con IA
+    from sqlalchemy import text as _sqltext
+    risk_links = db.execute(_sqltext(
+        "SELECT rc.control_implementation_id, COUNT(*), MAX(r.residual_level) "
+        "FROM risk_controls rc JOIN risks r ON r.id = rc.risk_id "
+        "WHERE r.organization_id = :org AND r.status NOT IN ('CLOSED', 'closed') "
+        "GROUP BY rc.control_implementation_id"
+    ), {"org": current_user.organization_id}).fetchall()
+    risks_by_impl = {row[0]: (row[1], row[2]) for row in risk_links}
 
-    # Construir lista de controles filtrada
+    from app.models import Evidence, NonConformity
+    ev_reviews: dict[int, list] = {}
+    for ev in filter_by_org(db.query(Evidence), Evidence, current_user).filter(
+        Evidence.control_implementation_id.isnot(None),
+        Evidence.ai_review.isnot(None),
+        Evidence.is_current == True,  # noqa: E712
+    ).all():
+        rev = ev.ai_review or {}
+        ev_reviews.setdefault(ev.control_implementation_id, []).append(
+            f"{rev.get('quality_level', '?')}: {rev.get('summary', '')[:120]}"
+        )
+    open_ncs: dict[int, int] = {}  # keyed por control_id del catalogo
+    try:
+        for nc in filter_by_org(db.query(NonConformity), NonConformity, current_user).filter(
+            NonConformity.status.in_(["open", "in_progress"]),
+        ).all():
+            if nc.related_control_id:
+                open_ncs[nc.related_control_id] = open_ncs.get(nc.related_control_id, 0) + 1
+    except Exception:
+        pass
+
+    from app.services.risk_analysis_helpers import adjusted_maturity
+
+    # Todos los controles relevantes (cubrimos el catalogo completo por temas)
     target_impls = impls if req.include_implemented else [
         i for i in impls if i.status != ControlStatus.IMPLEMENTED or (i.maturity or 0) < 4
     ]
-    # Limitar a 50 para no exceder tokens
-    target_impls = target_impls[:50]
 
-    controls_payload = []
-    for i in target_impls:
-        ctrl_code = i.control.code if i.control else ""
-        ctrl_name = i.name or (i.control.name if i.control else "")
-        controls_payload.append({
-            "code": ctrl_code,
-            "name": ctrl_name,
+    def _impl_payload(i) -> dict:
+        n_risks, max_res = risks_by_impl.get(i.id, (0, None))
+        return {
+            "code": i.control.code if i.control else "",
+            "name": i.name or (i.control.name if i.control else ""),
             "theme": i.control.theme if i.control else "",
             "status": i.status.value if i.status else "not_implemented",
             "maturity": i.maturity or 0,
+            "adjusted_maturity": adjusted_maturity(i.maturity or 0, i.evidence_refs or []),
             "evidence": i.evidence or "",
+            "evidence_ai_reviews": ev_reviews.get(i.id, [])[:3],
+            "linked_risks": n_risks,
+            "max_residual_level": max_res,
+            "open_nonconformities": open_ncs.get(i.control_id, 0),
+            "regwatch_review_pending": bool(getattr(i, "regwatch_pack_id", None)),
             "notes": (i.notes or "")[:200],
             "inclusion_reason": i.inclusion_reason or "",
             "exclusion_justification": i.exclusion_justification or "",
-        })
+        }
+
+    controls_payload = [_impl_payload(i) for i in target_impls]
 
     # Verificar cache en RiskContext
     ctx = db.query(RiskContext).filter(
@@ -1061,20 +1092,22 @@ def control_gap_detailed(
         if cached.get("_cache_key") == cache_key:
             return cached.get("_data", {})
 
-    prompt_controls = _json.dumps(controls_payload, ensure_ascii=False)
     system_prompt = (
-        f"Eres auditor ISO 27001:2022 certificado. Realiza un gap analysis completo del SGSI "
+        f"Eres auditor ISO 27001:2022 certificado. Realiza un gap analysis del SGSI "
         f"para el framework {req.framework.upper()}.\n\n"
+        "Cada control trae contexto real: madurez ajustada por evidencia, revisiones IA "
+        "de las evidencias, riesgos vinculados con su nivel residual maximo, NCs abiertas "
+        "y si tiene revision normativa pendiente (regwatch). USALO: un control con riesgos "
+        "residuales altos o evidencia pobre no puede ser CONFORME aunque declare madurez alta.\n\n"
         "Para cada control de la lista, indica:\n"
         "- Cumplimiento: CONFORME / PARCIAL / NO CONFORME / EXCLUIDO\n"
-        "- Hallazgo: descripcion especifica de que esta bien y que falta\n"
+        "- Hallazgo: descripcion especifica de que esta bien y que falta, citando el contexto\n"
         "- Evidencias requeridas: que documentacion deberia existir para este control\n"
         "- Recomendacion: accion concreta y priorizada\n"
         "- Riesgo de no cumplimiento: impacto si no se subsana\n"
         "- Prioridad: INMEDIATA / CORTO PLAZO / MEDIO PLAZO\n\n"
         "Devuelve UNICAMENTE JSON valido con esta estructura exacta:\n"
         "{\n"
-        '  "framework_score": <0-100>,\n'
         '  "controls": [\n'
         '    {\n'
         '      "code": "5.1",\n'
@@ -1086,53 +1119,98 @@ def control_gap_detailed(
         '      "priority": "INMEDIATA|CORTO PLAZO|MEDIO PLAZO",\n'
         '      "risk_of_non_compliance": "..."\n'
         '    }\n'
-        '  ],\n'
-        '  "executive_summary": "...",\n'
-        '  "top_3_priorities": ["...", "...", "..."]\n'
+        '  ]\n'
         "}\n"
         "Sin texto ni markdown antes ni despues del JSON."
     )
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=model,
-            max_tokens=32768,
-            system=system_prompt,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"Framework: {req.framework}\n"
-                    f"Controles a analizar ({len(controls_payload)}):\n"
-                    f"{prompt_controls}"
-                ),
-            }],
-        )
-        raw = response.content[0].text.strip()
-        # Strip markdown fences if present
+    def _strip_json(raw: str) -> str:
+        raw = raw.strip()
         if raw.startswith("```"):
             parts = raw.split("```", 2)
             inner = parts[1] if len(parts) > 1 else raw
             if inner.startswith("json"):
                 inner = inner[4:]
             raw = inner.rsplit("```", 1)[0].strip()
-        result = _json.loads(raw)
+        return raw
+
+    # Trocear por tema ISO 27002 (5/6/7/8): cubre el catalogo completo sin
+    # exceder tokens; cada tema en tier fast, sintesis ejecutiva en deep
+    theme_order = ["organizational", "people", "physical", "technological"]
+    by_theme: dict[str, list] = {}
+    for c in controls_payload:
+        by_theme.setdefault(c.get("theme") or "otros", []).append(c)
+
+    all_controls: list = []
+    tokens_in = tokens_out = 0
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        for theme in theme_order + [t for t in by_theme if t not in theme_order]:
+            group = by_theme.get(theme)
+            if not group:
+                continue
+            response = client.messages.create(
+                model=model,
+                max_tokens=16384,
+                system=system_prompt,
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Framework: {req.framework}\n"
+                        f"Tema ISO 27002: {theme}\n"
+                        f"Controles a analizar ({len(group)}):\n"
+                        f"{_json.dumps(group, ensure_ascii=False)}"
+                    ),
+                }],
+            )
+            tokens_in += response.usage.input_tokens if response.usage else 0
+            tokens_out += response.usage.output_tokens if response.usage else 0
+            theme_result = _json.loads(_strip_json(response.content[0].text))
+            all_controls.extend(theme_result.get("controls", []))
+
+        # Sintesis ejecutiva con el modelo potente sobre los hallazgos por tema
+        findings_brief = [
+            {"code": c.get("code"), "status": c.get("status"),
+             "priority": c.get("priority"), "finding": (c.get("finding") or "")[:150]}
+            for c in all_controls
+        ]
+        synth = client.messages.create(
+            model=model_synthesis,
+            max_tokens=4096,
+            system=(
+                "Eres auditor jefe ISO 27001. A partir de los hallazgos por control, "
+                "devuelve SOLO JSON: {\"framework_score\": <0-100>, "
+                "\"executive_summary\": \"<sintesis para direccion, 4-6 frases>\", "
+                "\"top_3_priorities\": [\"...\", \"...\", \"...\"]}. "
+                "El score pondera severidad y numero de no conformidades."
+            ),
+            messages=[{
+                "role": "user",
+                "content": f"Framework: {req.framework}\nHallazgos:\n{_json.dumps(findings_brief, ensure_ascii=False)}",
+            }],
+        )
+        tokens_in += synth.usage.input_tokens if synth.usage else 0
+        tokens_out += synth.usage.output_tokens if synth.usage else 0
+        summary = _json.loads(_strip_json(synth.content[0].text))
+        result = {
+            "framework_score": summary.get("framework_score", 0),
+            "controls": all_controls,
+            "executive_summary": summary.get("executive_summary", ""),
+            "top_3_priorities": summary.get("top_3_priorities", []),
+        }
     except Exception as exc:
         raise HTTPException(500, _t("ai.analysis_failed", lang, detail=str(exc)))
 
-    # Log tokens
-    tokens_in = response.usage.input_tokens if response.usage else 0
-    tokens_out = response.usage.output_tokens if response.usage else 0
     call_log = AiCallLog(
         user_id=current_user.id,
         organization_id=current_user.organization_id,
         call_type="gap_analysis_detailed",
         prompt_tokens=tokens_in,
         completion_tokens=tokens_out,
-        model=model,
+        model=f"{model}+{model_synthesis}",
         anonymized=False,
-        response_summary=f"Gap detailed {req.framework}: score={result.get('framework_score', '?')}",
+        response_summary=f"Gap detailed {req.framework}: score={result.get('framework_score', '?')} ({len(all_controls)} controles)",
     )
     db.add(call_log)
 
@@ -1874,7 +1952,10 @@ def chat(
     if not api_key:
         raise HTTPException(400, _t("ai.not_configured", lang))
 
-    model = (cfg.model if cfg else None) or "claude-haiku-4-5"
+    # El chat es la interaccion principal del agente: tier deep por defecto
+    # (el override AiConfig.model de la org sigue teniendo prioridad)
+    from app.services.model_registry import MODEL_TIERS as _TIERS
+    model = (cfg.model if cfg else None) or _TIERS["deep"]
     anon_level_val = (
         cfg.anonymization_level.value if cfg and cfg.anonymization_level else "medium"
     )
@@ -2750,11 +2831,33 @@ def feedback_summary(
             .all()
         )
     if not feedbacks:
-        return {"total": 0, "avg_rating": None, "ratings": {}}
+        return {"total": 0, "avg_rating": None, "ratings": {}, "by_call_type": [],
+                "recent_negative": []}
     total = len(feedbacks)
     avg = sum(f.rating for f in feedbacks) / total
     rating_counts: dict[str, int] = {}
+    by_type: dict[str, list[int]] = {}
     for f in feedbacks:
         k = str(f.rating)
         rating_counts[k] = rating_counts.get(k, 0) + 1
-    return {"total": total, "avg_rating": round(avg, 2), "ratings": rating_counts}
+        by_type.setdefault(f.call_type or "chat", []).append(f.rating)
+
+    # Desglose por tipo de analisis: senala que prompts necesitan mejora
+    by_call_type = sorted(
+        (
+            {"call_type": ct, "count": len(rs),
+             "avg_rating": round(sum(rs) / len(rs), 2),
+             "negative": sum(1 for r in rs if r <= 2)}
+            for ct, rs in by_type.items()
+        ),
+        key=lambda x: x["avg_rating"],
+    )
+    recent_negative = [
+        {"call_type": f.call_type or "chat", "rating": f.rating,
+         "comment": (f.comment or "")[:300],
+         "created_at": f.created_at.isoformat() if f.created_at else None}
+        for f in sorted(feedbacks, key=lambda x: x.id, reverse=True)
+        if f.rating <= 2 and f.comment
+    ][:10]
+    return {"total": total, "avg_rating": round(avg, 2), "ratings": rating_counts,
+            "by_call_type": by_call_type, "recent_negative": recent_negative}

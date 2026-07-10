@@ -80,6 +80,82 @@ def _collect(db: Session, org_id: int | None = None) -> dict:
     active_frameworks = ctx.active_frameworks if ctx and ctx.active_frameworks else []
     ens_level = ctx.ens_level if ctx and ctx.ens_level else None
 
+    # TPRM: proveedores criticos e issues abiertos (v6.0.0)
+    tprm: dict = {}
+    try:
+        from app.models import Supplier, VendorIssue
+        sup_q = db.query(Supplier)
+        iss_q = db.query(VendorIssue).filter(
+            VendorIssue.status.notin_(["closed", "mitigated"]))
+        if org_id is not None:
+            sup_q = sup_q.filter(Supplier.organization_id == org_id)
+            iss_q = iss_q.filter(VendorIssue.organization_id == org_id)
+        criticals = sup_q.filter(Supplier.is_critical == True).limit(10).all()  # noqa: E712
+        issues = iss_q.order_by(VendorIssue.id.desc()).limit(10).all()
+        tprm = {
+            "critical_suppliers": [
+                {"name": s.name, "score": s.score,
+                 "inherent_risk": s.inherent_risk_score}
+                for s in criticals
+            ],
+            "open_issues": [
+                {"title": i.title[:100],
+                 "severity": i.severity.value if hasattr(i.severity, "value") else str(i.severity)}
+                for i in issues
+            ],
+        }
+    except Exception:
+        pass
+
+    # Incidentes del periodo (ultimos 30 dias) (v6.0.0)
+    incidents_rows: list = []
+    try:
+        from datetime import timedelta, timezone as _tz
+        from app.models import Incident
+        since = datetime.now(_tz.utc) - timedelta(days=30)
+        inc_q = db.query(Incident).filter(Incident.created_at >= since)
+        if org_id is not None:
+            inc_q = inc_q.filter(Incident.organization_id == org_id)
+        incidents_rows = [
+            {"title": i.title[:100],
+             "severity": i.severity.value if hasattr(i.severity, "value") else str(i.severity),
+             "status": i.status.value if hasattr(i.status, "value") else str(i.status)}
+            for i in inc_q.order_by(Incident.id.desc()).limit(10).all()
+        ]
+    except Exception:
+        pass
+
+    # Regwatch: cambios normativos pendientes (v6.0.0)
+    regwatch_rows: list = []
+    try:
+        from app.models import TenantChangeInboxItem
+        rw_q = db.query(TenantChangeInboxItem).filter(
+            TenantChangeInboxItem.status == "pending")
+        if org_id is not None:
+            rw_q = rw_q.filter(TenantChangeInboxItem.organization_id == org_id)
+        for item in rw_q.limit(5).all():
+            pack = item.change_pack
+            if pack:
+                regwatch_rows.append({
+                    "framework": pack.framework_code,
+                    "title": (pack.title_es or "")[:120],
+                    "severity": pack.severity.value if pack.severity else "?",
+                })
+    except Exception:
+        pass
+
+    # Cobertura de evidencia: controles implementados sin evidencia (v6.0.0)
+    evidence_coverage: dict = {}
+    try:
+        implemented = [i for i in impls if i.status and i.status.value == "implemented"]
+        without_ev = sum(1 for i in implemented if not (i.evidence_refs or i.evidence))
+        evidence_coverage = {
+            "implemented_controls": len(implemented),
+            "without_evidence": without_ev,
+        }
+    except Exception:
+        pass
+
     return {
         "org": ctx.organization_name if ctx else "Organizacion",
         "scope": (ctx.scope or "") if ctx else "",
@@ -91,6 +167,10 @@ def _collect(db: Session, org_id: int | None = None) -> dict:
         "methodology": methodology_label,
         "active_frameworks": active_frameworks,
         "ens_level": ens_level,
+        "tprm": tprm,
+        "recent_incidents": incidents_rows,
+        "regwatch_pending": regwatch_rows,
+        "evidence_coverage": evidence_coverage,
     }
 
 
@@ -316,6 +396,40 @@ def _call_claude(prompt: str, api_key: str | None = None, org_id: int | None = N
     return json.loads(text)
 
 
+def _extra_context_block(data: dict) -> str:
+    """Bloque adicional comun a todos los informes: TPRM, incidentes del
+    periodo, cambios normativos pendientes y cobertura de evidencia."""
+    parts: list[str] = []
+    tprm = data.get("tprm") or {}
+    if tprm.get("critical_suppliers") or tprm.get("open_issues"):
+        parts.append("PROVEEDORES (TPRM):")
+        for s in tprm.get("critical_suppliers", []):
+            parts.append(f"- Critico: {s['name']} (score {s.get('score', '?')}/100, "
+                         f"inherente {s.get('inherent_risk', '?')}/100)")
+        for i in tprm.get("open_issues", []):
+            parts.append(f"- Issue abierto [{i['severity']}]: {i['title']}")
+    if data.get("recent_incidents"):
+        parts.append("INCIDENTES DEL PERIODO (30 dias):")
+        for i in data["recent_incidents"]:
+            parts.append(f"- [{i['severity']}] {i['title']} (estado: {i['status']})")
+    if data.get("regwatch_pending"):
+        parts.append("CAMBIOS NORMATIVOS PENDIENTES (Regwatch):")
+        for r in data["regwatch_pending"]:
+            parts.append(f"- [{r['framework']}/{r['severity']}] {r['title']}")
+    ev = data.get("evidence_coverage") or {}
+    if ev.get("implemented_controls"):
+        parts.append(
+            f"COBERTURA DE EVIDENCIA: {ev['without_evidence']} de "
+            f"{ev['implemented_controls']} controles implementados sin evidencia documental."
+        )
+    if not parts:
+        return ""
+    return (
+        "\n\nCONTEXTO ADICIONAL (incorporalo donde aporte al informe: proveedores, "
+        "incidentes, normativa y evidencia):\n" + "\n".join(parts)
+    )
+
+
 def generate(report_type: str, db: Session, api_key: str | None = None,
              org_id: int | None = None, lang: str = "es") -> dict:
     """Genera el contenido del informe llamando a Claude. Retorna dict con secciones."""
@@ -330,7 +444,7 @@ def generate(report_type: str, db: Session, api_key: str | None = None,
         "committee_minutes": _prompt_committee_minutes,
         "followup_report": _prompt_followup_report,
     }
-    prompt = prompts[report_type](data, lang)
+    prompt = prompts[report_type](data, lang) + _extra_context_block(data)
     content = _call_claude(prompt, api_key=api_key, org_id=org_id, db=db)
     content["_meta"] = {
         "report_type": report_type,

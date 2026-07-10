@@ -421,11 +421,39 @@ def _flag_bcp_plans(db: Session, org_id: int, pack: Any) -> int:
     return flagged
 
 
-def _flag_supplier_questionnaires(db: Session, org_id: int, pack: Any) -> int:
-    """Marca cuestionarios de proveedor cuya plantilla corresponde al framework.
+def _pack_control_hints(db: Session, pack: Any) -> set[str]:
+    """Codigos ISO 27002 que el analisis IA del cambio identifico como afectados.
 
-    Cubre tanto plantillas del sistema como plantillas clonadas por el tenant
-    (template_code = "custom:{id}" con created_from apuntando al codigo del sistema).
+    Se leen de los NormativeChangeEvent vinculados al pack
+    (ai_analysis_json.controls_affected_hint).
+    """
+    hints: set[str] = set()
+    try:
+        from app.models import NormativeChangeEvent
+        events = (
+            db.query(NormativeChangeEvent)
+            .filter(NormativeChangeEvent.change_pack_id == pack.id)
+            .all()
+        )
+        for ev in events:
+            analysis = ev.ai_analysis_json or {}
+            for code in (analysis.get("controls_affected_hint") or []):
+                code_norm = str(code).strip().lstrip("A.").strip()
+                if code_norm:
+                    hints.add(code_norm)
+    except Exception:
+        logger.debug("regwatch: hints de controles no disponibles", exc_info=True)
+    return hints
+
+
+def _flag_supplier_questionnaires(db: Session, org_id: int, pack: Any) -> int:
+    """Marca cuestionarios de proveedor afectados por el cambio normativo.
+
+    Dos criterios de match:
+      1. Plantilla del framework afectado (sistema o clonada por el tenant).
+      2. Cuestionarios cuyas preguntas referencian (control_refs) los controles
+         que el analisis IA identifico como afectados (controls_affected_hint) —
+         propagacion dirigida, no solo por codigo de plantilla.
     """
     from app.models import SupplierQuestionnaire, TPRMTemplate
     try:
@@ -441,28 +469,55 @@ def _flag_supplier_questionnaires(db: Session, org_id: int, pack: Any) -> int:
         t["code"] for t in SYSTEM_TEMPLATES
         if framework in (t.get("framework_codes") or [])
     ]
-    if not matching_codes:
+
+    all_codes: list[str] = []
+    if matching_codes:
+        # R6: plantillas clonadas por el tenant que descienden de las anteriores
+        cloned = (
+            db.query(TPRMTemplate)
+            .filter(
+                TPRMTemplate.organization_id == org_id,
+                TPRMTemplate.created_from.in_(matching_codes),
+            )
+            .all()
+        )
+        all_codes = list(matching_codes) + [f"custom:{t.id}" for t in cloned]
+
+    questionnaires = []
+    seen_ids: set[int] = set()
+    if all_codes:
+        for q in (
+            db.query(SupplierQuestionnaire)
+            .filter(
+                SupplierQuestionnaire.organization_id == org_id,
+                SupplierQuestionnaire.template_code.in_(all_codes),
+            )
+            .all()
+        ):
+            questionnaires.append(q)
+            seen_ids.add(q.id)
+
+    # 2. Match dirigido por controles afectados segun el analisis IA
+    hints = _pack_control_hints(db, pack)
+    if hints:
+        candidates = (
+            db.query(SupplierQuestionnaire)
+            .filter(SupplierQuestionnaire.organization_id == org_id)
+            .all()
+        )
+        for q in candidates:
+            if q.id in seen_ids:
+                continue
+            refs: set[str] = set()
+            for question in (q.questions or []):
+                for ref in (question.get("control_refs") or []):
+                    refs.add(str(ref).strip().lstrip("A.").strip())
+            if refs & hints:
+                questionnaires.append(q)
+                seen_ids.add(q.id)
+
+    if not questionnaires:
         return 0
-
-    # R6: plantillas clonadas por el tenant que descienden de las anteriores
-    cloned = (
-        db.query(TPRMTemplate)
-        .filter(
-            TPRMTemplate.organization_id == org_id,
-            TPRMTemplate.created_from.in_(matching_codes),
-        )
-        .all()
-    )
-    all_codes = list(matching_codes) + [f"custom:{t.id}" for t in cloned]
-
-    questionnaires = (
-        db.query(SupplierQuestionnaire)
-        .filter(
-            SupplierQuestionnaire.organization_id == org_id,
-            SupplierQuestionnaire.template_code.in_(all_codes),
-        )
-        .all()
-    )
 
     flagged = 0
     for q in questionnaires:
@@ -470,8 +525,7 @@ def _flag_supplier_questionnaires(db: Session, org_id: int, pack: Any) -> int:
         flagged += 1
 
     # R4: crear VendorIssue automatico para que el analista TPRM reciba accion
-    if questionnaires:
-        _create_vendor_issues_from_regwatch(db, org_id, pack, questionnaires)
+    _create_vendor_issues_from_regwatch(db, org_id, pack, questionnaires)
 
     return flagged
 

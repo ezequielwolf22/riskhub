@@ -394,12 +394,30 @@ class TestScoreQuestionnaire:
         assert result["score"] == 50
         assert result["by_question"]["q1"] == pytest.approx(50.0)
 
-    def test_evidence_penalty_not_applied_when_evidence_present(self):
-        """Si se aporta evidencia, NO se aplica la penalizacion."""
+    def test_evidence_uploaded_but_unverified_gets_partial_credit(self):
+        """Evidencia aportada pero sin revision IA del contenido -> x0.7 (v6)."""
         q = _make_ynp_question("q1", requires_evidence=True)
         answers = {"q1": "yes", "q1__evidence": "certificado_ISO27001.pdf"}
         result = score_questionnaire([q], answers)
+        assert result["score"] == 70
+
+    def test_evidence_verified_consistent_full_credit(self):
+        """Evidencia revisada por IA y consistente con la respuesta -> x1.0."""
+        q = _make_ynp_question("q1", requires_evidence=True)
+        answers = {"q1": "yes"}
+        evidence = {"q1": {"filename": "cert.pdf",
+                           "ai_review": {"consistency": "consistent"}}}
+        result = score_questionnaire([q], answers, evidence=evidence)
         assert result["score"] == 100
+
+    def test_evidence_contradictory_heavier_penalty(self):
+        """Evidencia que CONTRADICE la respuesta declarada -> x0.4."""
+        q = _make_ynp_question("q1", requires_evidence=True)
+        answers = {"q1": "yes"}
+        evidence = {"q1": {"filename": "cert.pdf",
+                           "ai_review": {"consistency": "contradictory"}}}
+        result = score_questionnaire([q], answers, evidence=evidence)
+        assert result["score"] == 40
 
     def test_evidence_penalty_does_not_affect_non_evidence_question(self):
         """Preguntas sin requires_evidence no se penalizan aunque falte evidencia."""

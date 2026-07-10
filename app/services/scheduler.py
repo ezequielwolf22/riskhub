@@ -593,6 +593,19 @@ def _run_evidence_understanding() -> None:
         logger.exception("Error en evidence_understanding nocturno: %s", exc)
 
 
+def _run_entity_index_refresh() -> None:
+    """Reconstruye el indice FTS de entidades de negocio para el RAG del chat."""
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        from app.services.rag_service import refresh_entity_index
+        refresh_entity_index(db)
+    except Exception as exc:
+        logger.exception("Error refrescando indice de entidades: %s", exc)
+    finally:
+        db.close()
+
+
 def _match_osint_to_assets(db, finding_type: str, finding_value: str, org_id: int) -> list:
     """Inteligencia para correlacionar OSINT findings con Assets.
 
@@ -909,6 +922,29 @@ def _run_monthly_report() -> None:
                         reductions.append(max(0, red))
                 avg_reduction = round(sum(reductions) / len(reductions)) if reductions else 0
 
+            # Sintesis ejecutiva IA (si la org tiene API key configurada);
+            # fallback silencioso a la plantilla estatica de KPIs
+            ai_summary_html = ""
+            try:
+                from app.services.model_registry import get_api_key as _get_key
+                if _get_key(db, org_id):
+                    from app.services import report_ai_service
+                    content = report_ai_service.generate(
+                        "executive_dashboard", db, org_id=org_id)
+                    summary_txt = (
+                        content.get("executive_summary")
+                        or content.get("summary") or ""
+                    )
+                    if isinstance(summary_txt, str) and summary_txt.strip():
+                        ai_summary_html = (
+                            "<div style='background:#F7F2FB;border-left:4px solid #59008D;"
+                            "padding:14px 18px;border-radius:6px;margin-bottom:24px;"
+                            "font-size:13px;color:#333;'>"
+                            f"{summary_txt[:1500]}</div>"
+                        )
+            except Exception as _exc:
+                logger.debug("Informe mensual IA no disponible org=%s: %s", org_id, _exc)
+
             month_str = now.strftime("%B %Y")
             html = f"""<!DOCTYPE html>
 <html lang='es'>
@@ -920,6 +956,7 @@ def _run_monthly_report() -> None:
     </div>
     <div style='padding:28px;'>
       <h2 style='font-size:15px;margin:0 0 16px;color:#262626;'>Resumen ejecutivo del mes</h2>
+      {ai_summary_html}
       <table style='width:100%;border-collapse:collapse;margin-bottom:24px;'>
         <tr>
           <td style='padding:14px;text-align:center;background:#F5F5F5;border-radius:8px;'>
@@ -2617,6 +2654,14 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=CronTrigger(hour=3, minute=30),  # nocturno, cap de coste por org
         id="evidence_understanding",
         name="Analisis IA nocturno de evidencias pendientes",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_entity_index_refresh,
+        trigger=CronTrigger(hour=4, minute=15),  # tras el analisis de evidencias
+        id="entity_index_refresh",
+        name="Reindexado FTS de entidades de negocio para el RAG",
         replace_existing=True,
         misfire_grace_time=7200,
     )

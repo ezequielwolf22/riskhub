@@ -223,11 +223,37 @@ def _score_answer(question: dict, answer) -> Optional[float]:
     return None
 
 
-def score_questionnaire(questions: list, answers: dict) -> dict:
+# Factores por estado de la evidencia requerida (§5.5, ampliado v6.0.0):
+# el estado sale de la revision IA del fichero adjunto (tprm_ai_service)
+_EVIDENCE_STATE_FACTOR = {
+    "missing": 0.5,        # requerida y no aportada
+    "unverified": 0.7,     # aportada pero sin revision IA del contenido
+    "consistent": 1.0,     # revisada y respalda la respuesta
+    "contradictory": 0.4,  # revisada y CONTRADICE la respuesta
+}
+
+
+def _evidence_state(qid, answers: dict, evidence: Optional[dict]) -> str:
+    entry = (evidence or {}).get(str(qid)) or (evidence or {}).get(qid)
+    if not entry and not (answers or {}).get(f"{qid}__evidence"):
+        return "missing"
+    review = (entry or {}).get("ai_review") or {}
+    consistency = review.get("consistency")
+    if consistency == "contradictory":
+        return "contradictory"
+    if consistency in ("consistent", "supports"):
+        return "consistent"
+    return "unverified"
+
+
+def score_questionnaire(questions: list, answers: dict,
+                        evidence: Optional[dict] = None) -> dict:
     """Calcula el score 0-100 de un cuestionario con pesos por pregunta.
 
     Devuelve {score, answered, total, by_question}. Las preguntas con
     respuesta None/N-A se excluyen del calculo (no penalizan).
+    La evidencia requerida pondera en 4 estados: ausente x0.5, sin verificar
+    x0.7, verificada consistente x1.0, contradictoria x0.4.
     """
     total_weight = 0.0
     weighted = 0.0
@@ -238,11 +264,9 @@ def score_questionnaire(questions: list, answers: dict) -> dict:
         weight = float(q.get("weight", 1) or 1)
         ans = (answers or {}).get(qid)
         sc = _score_answer(q, ans) if ans is not None else None
-        # Penalizacion por falta de evidencia requerida (§5.5)
         if sc is not None and q.get("requires_evidence"):
-            ev = (answers or {}).get(f"{qid}__evidence")
-            if not ev:
-                sc = sc * 0.5
+            state = _evidence_state(qid, answers, evidence)
+            sc = sc * _EVIDENCE_STATE_FACTOR.get(state, 0.7)
         by_question[qid] = sc
         if sc is not None:
             weighted += sc * weight

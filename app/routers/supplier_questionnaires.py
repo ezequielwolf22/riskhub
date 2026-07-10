@@ -495,7 +495,7 @@ def submit_public_questionnaire(token: str, body: dict, request: Request,
     # pregunta los incluye, usar el scoring ponderado. Si no, scoring Si/No.
     if q.template_code or any((qq.get("scoring_rules") or qq.get("weight")) for qq in (q.questions or [])):
         from app.services.tprm_scoring_service import score_questionnaire
-        result = score_questionnaire(q.questions or [], scoring_answers)
+        result = score_questionnaire(q.questions or [], scoring_answers, evidence=q.evidence)
         score = result["score"]
     else:
         score = _calculate_score(answers)

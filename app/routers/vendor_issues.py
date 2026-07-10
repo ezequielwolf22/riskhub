@@ -244,6 +244,47 @@ def create_vendor_issue(
     return issue
 
 
+def _create_orphan_issue_task(db: Session, issue: VendorIssue, org_id: int,
+                              created_by_id: int, missing: str) -> None:
+    """El issue critico no pudo materializarse como riesgo: crear tarea visible
+    en lugar de fallar en silencio (falta activo o amenaza de catalogo)."""
+    try:
+        from app.models import TaskPriority, TaskStatus, TreatmentTask
+        title = f"Issue de proveedor sin riesgo asociado: {issue.code}"
+        dup = db.query(TreatmentTask).filter(
+            TreatmentTask.organization_id == org_id,
+            TreatmentTask.title == title,
+            TreatmentTask.status != TaskStatus.DONE,
+        ).first()
+        if dup:
+            return
+        count = db.query(TreatmentTask).filter_by(organization_id=org_id).count()
+        code = f"TSK-{count + 1:04d}"
+        while db.query(TreatmentTask).filter_by(code=code).first():
+            count += 1
+            code = f"TSK-{count + 1:04d}"
+        db.add(TreatmentTask(
+            organization_id=org_id,
+            code=code,
+            title=title,
+            description=(
+                f"El VendorIssue CRITICAL {issue.code} no pudo registrarse como "
+                f"riesgo ISO 27005 porque falta {missing} en la plataforma. "
+                f"Registra el elemento que falta y vincula el issue manualmente "
+                f"al registro de riesgos."
+            ),
+            status=TaskStatus.PENDING,
+            priority=TaskPriority.HIGH,
+            assigned_to_id=created_by_id,
+            created_by_id=created_by_id,
+        ))
+        db.commit()
+        logger.info("VendorIssue %s sin riesgo: tarea %s creada (falta %s)",
+                    issue.code, code, missing)
+    except Exception:
+        logger.exception("No se pudo crear la tarea de issue huerfano")
+
+
 def _auto_risk_from_critical_issue(db: Session, issue: VendorIssue, org_id: int, created_by_id: int) -> None:
     """Crea un riesgo ISO 27005 en el registro cuando un VendorIssue es CRITICAL.
 
@@ -256,33 +297,46 @@ def _auto_risk_from_critical_issue(db: Session, issue: VendorIssue, org_id: int,
     if not supplier:
         return
 
-    # Buscar un activo de la org (requisito del modelo Risk: asset_id NOT NULL)
-    asset = (
-        db.query(Asset)
-        .filter(Asset.organization_id == org_id)
-        .order_by(Asset.value_confidentiality.desc(), Asset.id)
-        .first()
-    )
+    # Activo: preferir uno que mencione al proveedor (servicio/sistema que
+    # presta); fallback al de mayor valoracion. Requisito: asset_id NOT NULL.
+    asset = None
+    sup_name = (supplier.name or "").lower()
+    if len(sup_name) >= 4:
+        for a in db.query(Asset).filter(Asset.organization_id == org_id).all():
+            haystack = " ".join(filter(None, [a.name, a.description, a.category])).lower()
+            if sup_name in haystack:
+                asset = a
+                break
     if not asset:
-        logger.info("VendorIssue→Risk: sin activos en org=%s, no se crea riesgo para issue %s", org_id, issue.code)
-        return
-
-    # Buscar amenaza de tipo supply chain en el catalogo
-    threat = (
-        db.query(Threat)
-        .filter(
-            Threat.name.ilike("%supply%")
-            | Threat.name.ilike("%suministro%")
-            | Threat.name.ilike("%proveedor%")
-            | Threat.name.ilike("%third party%")
-            | Threat.category.ilike("%supply%")
+        asset = (
+            db.query(Asset)
+            .filter(Asset.organization_id == org_id)
+            .order_by(Asset.value_confidentiality.desc(), Asset.id)
+            .first()
         )
-        .first()
-    )
+
+    # Amenaza: codigo exacto del catalogo ISO 27005 (T.CYB.05 = cadena de
+    # suministro); fallback a busqueda heuristica por nombre
+    threat = db.query(Threat).filter(Threat.code == "T.CYB.05").first()
+    if not threat:
+        threat = (
+            db.query(Threat)
+            .filter(
+                Threat.name.ilike("%supply%")
+                | Threat.name.ilike("%suministro%")
+                | Threat.name.ilike("%proveedor%")
+                | Threat.name.ilike("%third party%")
+                | Threat.category.ilike("%supply%")
+            )
+            .first()
+        )
     if not threat:
         threat = db.query(Threat).filter(Threat.category.ilike("%organiz%")).first()
-    if not threat:
-        logger.info("VendorIssue→Risk: sin amenaza supply-chain en catalogo, no se crea riesgo para %s", issue.code)
+
+    if not asset or not threat:
+        # No fallar en silencio: dejar accion visible para el analista
+        _create_orphan_issue_task(db, issue, org_id, created_by_id,
+                                  missing="activo" if not asset else "amenaza de cadena de suministro")
         return
 
     # Comprobar si ya existe un riesgo para este par activo+amenaza+proveedor
@@ -306,6 +360,12 @@ def _auto_risk_from_critical_issue(db: Session, issue: VendorIssue, org_id: int,
         n = int(code.split("-")[1]) + 1
         code = f"RSK-{n:04d}"
 
+    # Consecuencia acotada por la valoracion del activo afectado
+    from app.services.risk_auto_generator import _cap_consequence_by_asset
+    from app.services.risk_engine import calc_level
+    inh_con = _cap_consequence_by_asset(asset, 4)
+    inh_lik = 4  # issue CRITICAL abierto = amenaza materializable ya
+
     now = datetime.now(timezone.utc)
     risk = Risk(
         organization_id=org_id,
@@ -320,12 +380,12 @@ def _auto_risk_from_critical_issue(db: Session, issue: VendorIssue, org_id: int,
             f"Para mitigar: resolver el VendorIssue {issue.code} — al cerrarlo, "
             f"el sistema reducira automaticamente el likelihood de este riesgo."
         ),
-        inherent_likelihood=4,
-        inherent_consequence=4,
-        inherent_level=8,
-        residual_likelihood=4,
-        residual_consequence=4,
-        residual_level=8,
+        inherent_likelihood=inh_lik,
+        inherent_consequence=inh_con,
+        inherent_level=calc_level(inh_con, inh_lik),
+        residual_likelihood=inh_lik,
+        residual_consequence=inh_con,
+        residual_level=calc_level(inh_con, inh_lik),
         status=RiskStatus.IDENTIFIED,
         owner_id=created_by_id,
         ai_generated=True,
