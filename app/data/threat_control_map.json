@@ -1,0 +1,468 @@
+{
+  "_meta": {
+    "description": "Mapeo amenaza -> controles ISO/IEC 27002:2022 que la mitigan, con relevancia 0-1. El efecto P/D/C de cada control se deriva en runtime de classify_control(). Editable: los cambios por organizacion van en la tabla threat_control_overrides.",
+    "version": "1.0.0",
+    "generated": "2026-07-10",
+    "catalogs": ["iso27005", "magerit"]
+  },
+  "T.PHY.01": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.6},
+    {"code": "7.1", "relevance": 0.5}, {"code": "7.11", "relevance": 0.5},
+    {"code": "7.4", "relevance": 0.5}, {"code": "8.13", "relevance": 0.7},
+    {"code": "8.14", "relevance": 0.6}, {"code": "5.29", "relevance": 0.7},
+    {"code": "5.30", "relevance": 0.7}
+  ],
+  "T.PHY.02": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.6},
+    {"code": "7.4", "relevance": 0.5}, {"code": "8.13", "relevance": 0.7},
+    {"code": "8.14", "relevance": 0.6}, {"code": "5.30", "relevance": 0.6}
+  ],
+  "T.PHY.03": [
+    {"code": "7.5", "relevance": 0.8}, {"code": "7.8", "relevance": 0.7},
+    {"code": "7.13", "relevance": 0.6}, {"code": "7.11", "relevance": 0.4}
+  ],
+  "T.PHY.04": [
+    {"code": "7.5", "relevance": 0.8}, {"code": "5.29", "relevance": 0.8},
+    {"code": "5.30", "relevance": 0.8}, {"code": "8.13", "relevance": 0.7},
+    {"code": "8.14", "relevance": 0.6}
+  ],
+  "T.PHY.05": [
+    {"code": "7.1", "relevance": 0.6}, {"code": "7.2", "relevance": 0.6},
+    {"code": "7.10", "relevance": 0.5}, {"code": "7.4", "relevance": 0.5},
+    {"code": "8.13", "relevance": 0.8}, {"code": "7.14", "relevance": 0.4}
+  ],
+  "T.PHY.06": [
+    {"code": "7.8", "relevance": 0.8}, {"code": "7.5", "relevance": 0.7},
+    {"code": "7.13", "relevance": 0.7}, {"code": "7.11", "relevance": 0.6}
+  ],
+  "T.NAT.01": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.5},
+    {"code": "5.29", "relevance": 0.8}, {"code": "5.30", "relevance": 0.8},
+    {"code": "8.13", "relevance": 0.8}, {"code": "8.14", "relevance": 0.7}
+  ],
+  "T.NAT.02": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.6},
+    {"code": "5.29", "relevance": 0.8}, {"code": "5.30", "relevance": 0.8},
+    {"code": "8.13", "relevance": 0.8}, {"code": "8.14", "relevance": 0.7}
+  ],
+  "T.NAT.03": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "5.29", "relevance": 0.8},
+    {"code": "5.30", "relevance": 0.8}, {"code": "8.13", "relevance": 0.8},
+    {"code": "8.14", "relevance": 0.7}
+  ],
+  "T.NAT.04": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.5},
+    {"code": "5.29", "relevance": 0.8}, {"code": "5.30", "relevance": 0.8},
+    {"code": "8.13", "relevance": 0.8}, {"code": "8.14", "relevance": 0.7}
+  ],
+  "T.NAT.05": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.6},
+    {"code": "5.29", "relevance": 0.8}, {"code": "5.30", "relevance": 0.8},
+    {"code": "8.13", "relevance": 0.8}, {"code": "8.14", "relevance": 0.7}
+  ],
+  "T.LES.01": [
+    {"code": "7.11", "relevance": 0.9}, {"code": "7.8", "relevance": 0.5},
+    {"code": "8.16", "relevance": 0.5}, {"code": "5.30", "relevance": 0.6}
+  ],
+  "T.LES.02": [
+    {"code": "7.11", "relevance": 0.9}, {"code": "8.14", "relevance": 0.7},
+    {"code": "5.30", "relevance": 0.7}, {"code": "8.16", "relevance": 0.4}
+  ],
+  "T.LES.03": [
+    {"code": "8.14", "relevance": 0.8}, {"code": "8.21", "relevance": 0.7},
+    {"code": "5.30", "relevance": 0.7}, {"code": "8.16", "relevance": 0.5}
+  ],
+  "T.RAD.01": [
+    {"code": "7.8", "relevance": 0.7}, {"code": "7.12", "relevance": 0.6},
+    {"code": "7.5", "relevance": 0.6}, {"code": "8.14", "relevance": 0.4}
+  ],
+  "T.RAD.02": [
+    {"code": "7.8", "relevance": 0.7}, {"code": "7.5", "relevance": 0.6},
+    {"code": "7.11", "relevance": 0.5}
+  ],
+  "T.RAD.03": [
+    {"code": "7.8", "relevance": 0.7}, {"code": "7.12", "relevance": 0.6},
+    {"code": "7.5", "relevance": 0.6}, {"code": "8.13", "relevance": 0.5},
+    {"code": "8.14", "relevance": 0.5}
+  ],
+  "T.COM.01": [
+    {"code": "8.24", "relevance": 0.9}, {"code": "7.12", "relevance": 0.5},
+    {"code": "8.20", "relevance": 0.6}, {"code": "7.8", "relevance": 0.4},
+    {"code": "5.14", "relevance": 0.5}
+  ],
+  "T.COM.02": [
+    {"code": "8.24", "relevance": 0.7}, {"code": "8.20", "relevance": 0.7},
+    {"code": "8.16", "relevance": 0.6}, {"code": "8.12", "relevance": 0.5},
+    {"code": "5.7", "relevance": 0.5}
+  ],
+  "T.COM.03": [
+    {"code": "8.24", "relevance": 0.9}, {"code": "8.20", "relevance": 0.7},
+    {"code": "8.21", "relevance": 0.6}, {"code": "8.22", "relevance": 0.5},
+    {"code": "5.14", "relevance": 0.6}
+  ],
+  "T.COM.04": [
+    {"code": "7.10", "relevance": 0.8}, {"code": "7.2", "relevance": 0.7},
+    {"code": "7.7", "relevance": 0.6}, {"code": "8.24", "relevance": 0.6},
+    {"code": "7.9", "relevance": 0.5}, {"code": "5.13", "relevance": 0.4}
+  ],
+  "T.COM.05": [
+    {"code": "7.2", "relevance": 0.8}, {"code": "7.1", "relevance": 0.7},
+    {"code": "7.9", "relevance": 0.7}, {"code": "8.24", "relevance": 0.6},
+    {"code": "8.1", "relevance": 0.5}, {"code": "7.4", "relevance": 0.5}
+  ],
+  "T.COM.06": [
+    {"code": "7.14", "relevance": 0.9}, {"code": "8.10", "relevance": 0.8},
+    {"code": "7.10", "relevance": 0.5}
+  ],
+  "T.COM.07": [
+    {"code": "5.14", "relevance": 0.7}, {"code": "8.12", "relevance": 0.7},
+    {"code": "6.6", "relevance": 0.6}, {"code": "5.12", "relevance": 0.5},
+    {"code": "5.10", "relevance": 0.5}, {"code": "8.11", "relevance": 0.5},
+    {"code": "6.3", "relevance": 0.5}, {"code": "5.13", "relevance": 0.4}
+  ],
+  "T.COM.08": [
+    {"code": "5.7", "relevance": 0.6}, {"code": "8.26", "relevance": 0.5},
+    {"code": "5.14", "relevance": 0.5}, {"code": "8.16", "relevance": 0.4}
+  ],
+  "T.COM.09": [
+    {"code": "7.2", "relevance": 0.7}, {"code": "7.4", "relevance": 0.6},
+    {"code": "5.21", "relevance": 0.6}, {"code": "7.13", "relevance": 0.5},
+    {"code": "8.16", "relevance": 0.4}
+  ],
+  "T.COM.10": [
+    {"code": "8.19", "relevance": 0.8}, {"code": "8.9", "relevance": 0.7},
+    {"code": "8.4", "relevance": 0.6}, {"code": "8.32", "relevance": 0.6},
+    {"code": "8.28", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5},
+    {"code": "8.29", "relevance": 0.5}
+  ],
+  "T.COM.11": [
+    {"code": "8.24", "relevance": 0.5}, {"code": "5.14", "relevance": 0.4},
+    {"code": "8.1", "relevance": 0.4}
+  ],
+  "T.TEC.01": [
+    {"code": "7.13", "relevance": 0.8}, {"code": "8.14", "relevance": 0.7},
+    {"code": "8.13", "relevance": 0.8}, {"code": "8.6", "relevance": 0.5},
+    {"code": "8.16", "relevance": 0.5}, {"code": "5.30", "relevance": 0.6}
+  ],
+  "T.TEC.02": [
+    {"code": "7.13", "relevance": 0.7}, {"code": "8.16", "relevance": 0.6},
+    {"code": "8.13", "relevance": 0.7}, {"code": "8.14", "relevance": 0.6},
+    {"code": "8.9", "relevance": 0.5}
+  ],
+  "T.TEC.03": [
+    {"code": "8.6", "relevance": 0.9}, {"code": "8.16", "relevance": 0.6},
+    {"code": "8.14", "relevance": 0.6}, {"code": "8.20", "relevance": 0.4}
+  ],
+  "T.TEC.04": [
+    {"code": "8.29", "relevance": 0.7}, {"code": "8.32", "relevance": 0.7},
+    {"code": "8.28", "relevance": 0.6}, {"code": "8.8", "relevance": 0.6},
+    {"code": "8.31", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5},
+    {"code": "8.13", "relevance": 0.5}
+  ],
+  "T.TEC.05": [
+    {"code": "7.13", "relevance": 0.7}, {"code": "5.37", "relevance": 0.6},
+    {"code": "8.32", "relevance": 0.6}, {"code": "8.9", "relevance": 0.5}
+  ],
+  "T.UNA.01": [
+    {"code": "5.10", "relevance": 0.7}, {"code": "5.15", "relevance": 0.7},
+    {"code": "8.5", "relevance": 0.6}, {"code": "8.2", "relevance": 0.5},
+    {"code": "8.15", "relevance": 0.5}, {"code": "7.2", "relevance": 0.4}
+  ],
+  "T.UNA.02": [
+    {"code": "5.32", "relevance": 0.8}, {"code": "8.19", "relevance": 0.7},
+    {"code": "5.10", "relevance": 0.5}, {"code": "8.15", "relevance": 0.4}
+  ],
+  "T.UNA.03": [
+    {"code": "5.32", "relevance": 0.8}, {"code": "8.19", "relevance": 0.8},
+    {"code": "8.7", "relevance": 0.5}, {"code": "5.10", "relevance": 0.5}
+  ],
+  "T.UNA.04": [
+    {"code": "8.13", "relevance": 0.8}, {"code": "8.3", "relevance": 0.6},
+    {"code": "5.33", "relevance": 0.6}, {"code": "8.24", "relevance": 0.5},
+    {"code": "8.15", "relevance": 0.5}, {"code": "8.32", "relevance": 0.4}
+  ],
+  "T.UNA.05": [
+    {"code": "5.31", "relevance": 0.8}, {"code": "5.34", "relevance": 0.8},
+    {"code": "5.12", "relevance": 0.5}, {"code": "8.11", "relevance": 0.5},
+    {"code": "5.36", "relevance": 0.5}
+  ],
+  "T.FUN.01": [
+    {"code": "6.3", "relevance": 0.9}, {"code": "5.37", "relevance": 0.6},
+    {"code": "5.10", "relevance": 0.5}, {"code": "8.13", "relevance": 0.5},
+    {"code": "8.1", "relevance": 0.4}
+  ],
+  "T.FUN.02": [
+    {"code": "8.2", "relevance": 0.9}, {"code": "5.18", "relevance": 0.7},
+    {"code": "8.15", "relevance": 0.7}, {"code": "5.3", "relevance": 0.6},
+    {"code": "8.16", "relevance": 0.6}, {"code": "8.18", "relevance": 0.6},
+    {"code": "6.4", "relevance": 0.4}
+  ],
+  "T.FUN.03": [
+    {"code": "5.16", "relevance": 0.8}, {"code": "8.5", "relevance": 0.8},
+    {"code": "5.17", "relevance": 0.7}, {"code": "8.2", "relevance": 0.6},
+    {"code": "8.15", "relevance": 0.5}
+  ],
+  "T.FUN.04": [
+    {"code": "8.15", "relevance": 0.8}, {"code": "8.17", "relevance": 0.6},
+    {"code": "8.24", "relevance": 0.6}, {"code": "5.33", "relevance": 0.5}
+  ],
+  "T.FUN.05": [
+    {"code": "5.30", "relevance": 0.7}, {"code": "5.29", "relevance": 0.6},
+    {"code": "5.37", "relevance": 0.5}, {"code": "5.2", "relevance": 0.4},
+    {"code": "6.1", "relevance": 0.3}
+  ],
+  "T.CYB.01": [
+    {"code": "8.8", "relevance": 0.8}, {"code": "8.20", "relevance": 0.8},
+    {"code": "8.5", "relevance": 0.7}, {"code": "8.16", "relevance": 0.7},
+    {"code": "8.22", "relevance": 0.6}, {"code": "8.2", "relevance": 0.6},
+    {"code": "5.7", "relevance": 0.6}, {"code": "5.26", "relevance": 0.6},
+    {"code": "8.23", "relevance": 0.5}, {"code": "8.26", "relevance": 0.5},
+    {"code": "5.24", "relevance": 0.5}
+  ],
+  "T.CYB.02": [
+    {"code": "6.3", "relevance": 0.9}, {"code": "8.23", "relevance": 0.7},
+    {"code": "8.5", "relevance": 0.6}, {"code": "6.8", "relevance": 0.6},
+    {"code": "5.7", "relevance": 0.5}, {"code": "8.7", "relevance": 0.5},
+    {"code": "5.26", "relevance": 0.5}
+  ],
+  "T.CYB.03": [
+    {"code": "8.7", "relevance": 0.9}, {"code": "8.13", "relevance": 0.8},
+    {"code": "8.8", "relevance": 0.6}, {"code": "8.19", "relevance": 0.6},
+    {"code": "8.23", "relevance": 0.6}, {"code": "6.3", "relevance": 0.6},
+    {"code": "8.16", "relevance": 0.6}, {"code": "8.22", "relevance": 0.5},
+    {"code": "5.26", "relevance": 0.5}
+  ],
+  "T.CYB.04": [
+    {"code": "8.6", "relevance": 0.7}, {"code": "8.14", "relevance": 0.7},
+    {"code": "8.20", "relevance": 0.6}, {"code": "8.16", "relevance": 0.6},
+    {"code": "5.30", "relevance": 0.6}, {"code": "8.21", "relevance": 0.5}
+  ],
+  "T.CYB.05": [
+    {"code": "5.21", "relevance": 0.9}, {"code": "5.19", "relevance": 0.8},
+    {"code": "5.20", "relevance": 0.8}, {"code": "5.22", "relevance": 0.7},
+    {"code": "8.29", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5},
+    {"code": "5.23", "relevance": 0.5}
+  ],
+  "T.CYB.06": [
+    {"code": "8.12", "relevance": 0.7}, {"code": "8.15", "relevance": 0.7},
+    {"code": "8.16", "relevance": 0.7}, {"code": "6.1", "relevance": 0.6},
+    {"code": "5.3", "relevance": 0.6}, {"code": "8.2", "relevance": 0.6},
+    {"code": "6.4", "relevance": 0.5}, {"code": "5.11", "relevance": 0.4}
+  ],
+  "A.1": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.6},
+    {"code": "7.1", "relevance": 0.5}, {"code": "8.13", "relevance": 0.7},
+    {"code": "8.14", "relevance": 0.6}, {"code": "5.29", "relevance": 0.7},
+    {"code": "5.30", "relevance": 0.7}
+  ],
+  "A.2": [
+    {"code": "7.5", "relevance": 0.9}, {"code": "7.8", "relevance": 0.6},
+    {"code": "8.13", "relevance": 0.7}, {"code": "8.14", "relevance": 0.6},
+    {"code": "5.30", "relevance": 0.6}
+  ],
+  "A.3": [
+    {"code": "7.5", "relevance": 0.8}, {"code": "7.8", "relevance": 0.7},
+    {"code": "7.13", "relevance": 0.6}
+  ],
+  "A.4": [
+    {"code": "7.8", "relevance": 0.7}, {"code": "7.12", "relevance": 0.6},
+    {"code": "7.5", "relevance": 0.5}
+  ],
+  "A.5": [
+    {"code": "7.13", "relevance": 0.8}, {"code": "8.13", "relevance": 0.8},
+    {"code": "8.14", "relevance": 0.7}, {"code": "8.16", "relevance": 0.5},
+    {"code": "5.30", "relevance": 0.6}
+  ],
+  "A.6": [
+    {"code": "7.11", "relevance": 0.9}, {"code": "8.14", "relevance": 0.7},
+    {"code": "5.30", "relevance": 0.7}
+  ],
+  "A.7": [
+    {"code": "7.8", "relevance": 0.8}, {"code": "7.11", "relevance": 0.7},
+    {"code": "7.5", "relevance": 0.6}, {"code": "8.16", "relevance": 0.4}
+  ],
+  "A.8": [
+    {"code": "8.14", "relevance": 0.8}, {"code": "8.21", "relevance": 0.7},
+    {"code": "5.30", "relevance": 0.7}, {"code": "8.16", "relevance": 0.5}
+  ],
+  "A.9": [
+    {"code": "7.11", "relevance": 0.7}, {"code": "5.30", "relevance": 0.7},
+    {"code": "5.29", "relevance": 0.6}, {"code": "8.14", "relevance": 0.5}
+  ],
+  "A.10": [
+    {"code": "7.10", "relevance": 0.7}, {"code": "8.13", "relevance": 0.9},
+    {"code": "7.13", "relevance": 0.5}, {"code": "5.33", "relevance": 0.5}
+  ],
+  "A.11": [
+    {"code": "7.8", "relevance": 0.7}, {"code": "7.12", "relevance": 0.6},
+    {"code": "8.24", "relevance": 0.5}
+  ],
+  "E.1": [
+    {"code": "6.3", "relevance": 0.9}, {"code": "5.37", "relevance": 0.6},
+    {"code": "5.10", "relevance": 0.5}, {"code": "8.13", "relevance": 0.5}
+  ],
+  "E.2": [
+    {"code": "8.9", "relevance": 0.7}, {"code": "5.37", "relevance": 0.7},
+    {"code": "6.3", "relevance": 0.6}, {"code": "8.32", "relevance": 0.6},
+    {"code": "8.13", "relevance": 0.6}, {"code": "8.15", "relevance": 0.5}
+  ],
+  "E.3": [
+    {"code": "8.15", "relevance": 0.8}, {"code": "8.16", "relevance": 0.8},
+    {"code": "8.17", "relevance": 0.6}
+  ],
+  "E.4": [
+    {"code": "8.9", "relevance": 0.9}, {"code": "8.32", "relevance": 0.7},
+    {"code": "8.29", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5}
+  ],
+  "E.7": [
+    {"code": "5.2", "relevance": 0.8}, {"code": "5.1", "relevance": 0.7},
+    {"code": "5.3", "relevance": 0.6}, {"code": "5.4", "relevance": 0.6},
+    {"code": "5.35", "relevance": 0.5}, {"code": "5.36", "relevance": 0.5}
+  ],
+  "E.8": [
+    {"code": "8.7", "relevance": 0.9}, {"code": "8.13", "relevance": 0.7},
+    {"code": "8.19", "relevance": 0.6}, {"code": "6.3", "relevance": 0.6},
+    {"code": "8.16", "relevance": 0.5}
+  ],
+  "E.9": [
+    {"code": "8.20", "relevance": 0.6}, {"code": "8.21", "relevance": 0.6},
+    {"code": "8.22", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5}
+  ],
+  "E.10": [
+    {"code": "8.20", "relevance": 0.5}, {"code": "8.21", "relevance": 0.5},
+    {"code": "8.16", "relevance": 0.5}, {"code": "8.28", "relevance": 0.4}
+  ],
+  "E.14": [
+    {"code": "8.12", "relevance": 0.8}, {"code": "5.14", "relevance": 0.6},
+    {"code": "6.6", "relevance": 0.5}, {"code": "5.12", "relevance": 0.5},
+    {"code": "8.11", "relevance": 0.5}
+  ],
+  "E.15": [
+    {"code": "8.13", "relevance": 0.8}, {"code": "8.3", "relevance": 0.6},
+    {"code": "5.33", "relevance": 0.6}, {"code": "8.32", "relevance": 0.4}
+  ],
+  "E.18": [
+    {"code": "8.13", "relevance": 0.9}, {"code": "5.33", "relevance": 0.6},
+    {"code": "8.3", "relevance": 0.5}
+  ],
+  "E.19": [
+    {"code": "8.12", "relevance": 0.7}, {"code": "5.14", "relevance": 0.6},
+    {"code": "6.6", "relevance": 0.6}, {"code": "5.12", "relevance": 0.5},
+    {"code": "6.3", "relevance": 0.5}, {"code": "8.11", "relevance": 0.5}
+  ],
+  "E.20": [
+    {"code": "8.8", "relevance": 0.9}, {"code": "8.29", "relevance": 0.6},
+    {"code": "8.28", "relevance": 0.6}, {"code": "8.19", "relevance": 0.5},
+    {"code": "5.7", "relevance": 0.5}
+  ],
+  "E.21": [
+    {"code": "8.32", "relevance": 0.8}, {"code": "7.13", "relevance": 0.6},
+    {"code": "8.31", "relevance": 0.5}, {"code": "8.29", "relevance": 0.5},
+    {"code": "5.37", "relevance": 0.5}
+  ],
+  "A_D.1": [
+    {"code": "8.15", "relevance": 0.9}, {"code": "8.34", "relevance": 0.6},
+    {"code": "8.17", "relevance": 0.5}, {"code": "8.2", "relevance": 0.5}
+  ],
+  "A_D.2": [
+    {"code": "8.9", "relevance": 0.8}, {"code": "8.2", "relevance": 0.7},
+    {"code": "8.15", "relevance": 0.6}, {"code": "8.32", "relevance": 0.5}
+  ],
+  "A_D.3": [
+    {"code": "8.5", "relevance": 0.8}, {"code": "5.16", "relevance": 0.8},
+    {"code": "5.17", "relevance": 0.7}, {"code": "8.15", "relevance": 0.5},
+    {"code": "8.16", "relevance": 0.5}
+  ],
+  "A_D.4": [
+    {"code": "8.2", "relevance": 0.9}, {"code": "5.18", "relevance": 0.7},
+    {"code": "8.15", "relevance": 0.7}, {"code": "5.3", "relevance": 0.6},
+    {"code": "8.16", "relevance": 0.6}, {"code": "8.18", "relevance": 0.6}
+  ],
+  "A_D.5": [
+    {"code": "5.10", "relevance": 0.7}, {"code": "5.15", "relevance": 0.6},
+    {"code": "8.15", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5}
+  ],
+  "A_D.6": [
+    {"code": "8.7", "relevance": 0.9}, {"code": "8.13", "relevance": 0.8},
+    {"code": "8.19", "relevance": 0.6}, {"code": "8.23", "relevance": 0.6},
+    {"code": "8.16", "relevance": 0.6}, {"code": "6.3", "relevance": 0.5}
+  ],
+  "A_D.7": [
+    {"code": "8.20", "relevance": 0.6}, {"code": "8.21", "relevance": 0.6},
+    {"code": "8.24", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5}
+  ],
+  "A_D.8": [
+    {"code": "8.20", "relevance": 0.5}, {"code": "8.24", "relevance": 0.5},
+    {"code": "8.16", "relevance": 0.5}
+  ],
+  "A_D.9": [
+    {"code": "5.15", "relevance": 0.8}, {"code": "8.5", "relevance": 0.8},
+    {"code": "8.2", "relevance": 0.7}, {"code": "8.3", "relevance": 0.7},
+    {"code": "8.20", "relevance": 0.6}, {"code": "8.16", "relevance": 0.6},
+    {"code": "8.22", "relevance": 0.5}
+  ],
+  "A_D.10": [
+    {"code": "8.24", "relevance": 0.8}, {"code": "8.22", "relevance": 0.6},
+    {"code": "8.20", "relevance": 0.5}
+  ],
+  "A_D.11": [
+    {"code": "8.15", "relevance": 0.8}, {"code": "8.17", "relevance": 0.6},
+    {"code": "8.24", "relevance": 0.6}, {"code": "5.33", "relevance": 0.5}
+  ],
+  "A_D.12": [
+    {"code": "8.24", "relevance": 0.9}, {"code": "8.20", "relevance": 0.7},
+    {"code": "8.21", "relevance": 0.6}, {"code": "5.14", "relevance": 0.6}
+  ],
+  "A_D.13": [
+    {"code": "8.3", "relevance": 0.7}, {"code": "8.13", "relevance": 0.8},
+    {"code": "8.24", "relevance": 0.6}, {"code": "8.15", "relevance": 0.6},
+    {"code": "5.33", "relevance": 0.5}
+  ],
+  "A_D.14": [
+    {"code": "8.13", "relevance": 0.9}, {"code": "8.3", "relevance": 0.6},
+    {"code": "8.2", "relevance": 0.5}, {"code": "7.10", "relevance": 0.4}
+  ],
+  "A_D.15": [
+    {"code": "8.12", "relevance": 0.7}, {"code": "5.14", "relevance": 0.6},
+    {"code": "6.6", "relevance": 0.6}, {"code": "8.11", "relevance": 0.5},
+    {"code": "5.12", "relevance": 0.5}
+  ],
+  "A_D.16": [
+    {"code": "8.19", "relevance": 0.8}, {"code": "8.4", "relevance": 0.7},
+    {"code": "8.9", "relevance": 0.7}, {"code": "8.28", "relevance": 0.5},
+    {"code": "8.29", "relevance": 0.5}, {"code": "8.16", "relevance": 0.5}
+  ],
+  "A_D.17": [
+    {"code": "8.6", "relevance": 0.7}, {"code": "8.14", "relevance": 0.7},
+    {"code": "8.20", "relevance": 0.6}, {"code": "8.16", "relevance": 0.6},
+    {"code": "5.30", "relevance": 0.6}
+  ],
+  "A_D.18": [
+    {"code": "7.2", "relevance": 0.8}, {"code": "7.1", "relevance": 0.7},
+    {"code": "7.9", "relevance": 0.7}, {"code": "8.24", "relevance": 0.6},
+    {"code": "7.4", "relevance": 0.5}
+  ],
+  "A_D.19": [
+    {"code": "7.1", "relevance": 0.6}, {"code": "7.2", "relevance": 0.6},
+    {"code": "7.5", "relevance": 0.6}, {"code": "8.13", "relevance": 0.8},
+    {"code": "5.29", "relevance": 0.7}, {"code": "5.30", "relevance": 0.7}
+  ],
+  "A_D.20": [
+    {"code": "5.29", "relevance": 0.8}, {"code": "5.30", "relevance": 0.8},
+    {"code": "8.13", "relevance": 0.6}, {"code": "7.1", "relevance": 0.5}
+  ],
+  "A_D.21": [
+    {"code": "5.30", "relevance": 0.7}, {"code": "5.29", "relevance": 0.6},
+    {"code": "5.37", "relevance": 0.5}, {"code": "5.2", "relevance": 0.4}
+  ],
+  "A_D.22": [
+    {"code": "5.24", "relevance": 0.6}, {"code": "5.26", "relevance": 0.5},
+    {"code": "5.7", "relevance": 0.5}, {"code": "6.3", "relevance": 0.5},
+    {"code": "8.12", "relevance": 0.4}
+  ],
+  "A_D.23": [
+    {"code": "6.3", "relevance": 0.9}, {"code": "8.23", "relevance": 0.6},
+    {"code": "8.5", "relevance": 0.6}, {"code": "6.8", "relevance": 0.6},
+    {"code": "5.7", "relevance": 0.5}, {"code": "5.26", "relevance": 0.5}
+  ]
+}

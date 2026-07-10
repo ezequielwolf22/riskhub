@@ -571,8 +571,13 @@ def _run_control_degradation() -> None:
             degraded += 1
 
         if degraded:
+            # Recalcular el residual de los riesgos que dependen de los
+            # controles degradados: sin esto quedaban obsoletos en silencio.
+            from app.services.risk_recalc_service import recalc_risks_for_impls
+            recalced = recalc_risks_for_impls(db, [i.id for i in stale])
             db.commit()
-            logger.info("Control degradation: %d controles degradados a PARTIAL.", degraded)
+            logger.info("Control degradation: %d controles degradados a PARTIAL, "
+                        "%d riesgos recalculados.", degraded, recalced)
     except Exception as exc:
         logger.exception("Error en control_degradation: %s", exc)
     finally:

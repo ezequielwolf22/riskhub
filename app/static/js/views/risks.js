@@ -480,6 +480,7 @@ const ViewRisks = {
               <td>
                 ${UI.codePill(r.code)}
                 ${r.ai_generated ? `<span style="font-size:9px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc(r.ai_rationale||'Generado por el agente IA')}">IA</span>` : ''}
+                ${r.analysis_stale ? `<span style="font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc('Analisis desactualizado: ' + (r.stale_reason || 'el contexto cambio desde el ultimo analisis IA') + '. Re-analiza el activo para refrescarlo.')}">DESACT.</span>` : ''}
                 ${r.supplier_id ? `<span style="font-size:9px;font-weight:700;background:#FFF3E0;color:#E65100;border-radius:3px;padding:1px 5px;margin-left:3px;vertical-align:middle;" title="Riesgo de proveedor TPRM${r.supplier_name ? ': ' + r.supplier_name : ''}">TPRM</span>` : ''}
               </td>
               <td><strong>${UI.esc(r.asset?.name||'-')}</strong></td>

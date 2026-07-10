@@ -564,6 +564,29 @@ class Risk(Base):
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
 
 
+class ThreatControlOverride(Base):
+    """Ajuste por organizacion del mapeo amenaza -> control.
+
+    El catalogo base vive en app/data/threat_control_map.json; esta tabla
+    permite a cada org anadir, reponderar o excluir (active=False) controles
+    para una amenaza sin tocar el catalogo comun.
+    """
+    __tablename__ = "threat_control_overrides"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "threat_code", "control_code",
+                         name="uq_threat_control_override"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    threat_code = Column(String(32), nullable=False, index=True)
+    control_code = Column(String(16), nullable=False)
+    relevance = Column(Float, default=0.5)   # 0..1
+    effect = Column(String(1), nullable=True)  # P|D|C (null = derivar de classify_control)
+    active = Column(Boolean, default=True)     # False = excluir el control del mapeo base
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class Questionnaire(Base):
     """Cuestionarios para semiautomatizar el cruce activo x amenaza."""
     __tablename__ = "questionnaires"

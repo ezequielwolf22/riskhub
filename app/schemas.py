@@ -495,6 +495,10 @@ class RiskOut(ORMBase):
     target_residual_level: Optional[int] = None
     target_date: Optional[datetime] = None
     baseline_residual_level: Optional[int] = None
+    # v6.0.0 — trazabilidad del analisis IA
+    analysis_stale: Optional[bool] = False
+    stale_reason: Optional[str] = None
+    ai_context_meta: Optional[dict] = None
     asset: AssetOut
     threat: ThreatOut
 

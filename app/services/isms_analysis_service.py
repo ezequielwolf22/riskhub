@@ -725,6 +725,7 @@ def _update_controls(
     La madurez final del control se recalcula como el maximo de todas las contribuciones.
     """
     updated = 0
+    changed_impl_ids: list[int] = []
     old_doc_url = f"/api/ai/documents/{obsolete_doc_id}" if obsolete_doc_id else None
     doc_url = f"/api/ai/documents/{doc.id}"
     max_for_level = _LEVEL_MAX_MATURITY.get(doc_level, 2)
@@ -823,6 +824,28 @@ def _update_controls(
             db.add(impl)
 
         updated += 1
+        db.flush()
+        if impl.id:
+            changed_impl_ids.append(impl.id)
+
+    if changed_impl_ids:
+        # El residual de los riesgos vinculados se recalcula de inmediato
+        # (determinista, gratis); ademas se marca el analisis IA como stale
+        # para que el usuario decida si re-analizar con el boton manual.
+        from app.services.risk_recalc_service import (
+            mark_risks_stale_for_impls, recalc_risks_for_impls,
+        )
+        recalced = recalc_risks_for_impls(db, changed_impl_ids)
+        stale = mark_risks_stale_for_impls(
+            db, changed_impl_ids,
+            f"Documento '{doc.original_name[:80]}' actualizo la madurez de "
+            f"{len(changed_impl_ids)} controles",
+        )
+        if recalced or stale:
+            logger.info(
+                "ISMS doc %d: %d riesgos recalculados, %d marcados stale",
+                doc.id, recalced, stale,
+            )
 
     db.commit()
     return updated

@@ -331,6 +331,16 @@ def import_findings(
         db.flush()
         stats["created"] += 1
 
+        # Nueva vigilancia sobre el activo: el analisis IA de sus riesgos
+        # queda desactualizado (el usuario decide si re-analizar)
+        if asset:
+            from app.services.risk_recalc_service import mark_risks_stale_for_asset
+            mark_risks_stale_for_asset(
+                db, asset.id,
+                f"Nuevo hallazgo {finding.get('severity', '')} "
+                f"({finding.get('cve_id') or finding.get('source', 'scanner')})",
+            )
+
         # Auto-crear riesgo si severity HIGH/CRITICAL y asset encontrado
         if auto_create_risks and asset and finding.get("severity") in ("HIGH", "CRITICAL"):
             cve_id = finding.get("cve_id")

@@ -147,6 +147,38 @@ def recalc_risk(db: Session, risk: Risk) -> None:
                 risk.accepted_at = datetime.now(timezone.utc)
 
 
+def mark_risks_stale_for_impls(db: Session, impl_ids: list[int], reason: str) -> int:
+    """Marca como desactualizado el analisis IA de los riesgos vinculados
+    a estos controles. El recalculo determinista es gratis y se hace aparte;
+    esta marca indica que conviene re-analizar con IA (accion manual)."""
+    if not impl_ids:
+        return 0
+    risk_ids = [
+        rid for (rid,) in db.query(risk_control_table.c.risk_id)
+        .filter(risk_control_table.c.control_implementation_id.in_(impl_ids))
+        .distinct().all()
+    ]
+    if not risk_ids:
+        return 0
+    return (
+        db.query(Risk)
+        .filter(Risk.id.in_(risk_ids), Risk.ai_generated == True)  # noqa: E712
+        .update({"analysis_stale": True, "stale_reason": reason[:255]},
+                synchronize_session=False)
+    )
+
+
+def mark_risks_stale_for_asset(db: Session, asset_id: int, reason: str) -> int:
+    """Marca como desactualizado el analisis IA de los riesgos de un activo
+    (nueva vigilancia CVE/OSINT, cambios de contexto...)."""
+    return (
+        db.query(Risk)
+        .filter(Risk.asset_id == asset_id, Risk.ai_generated == True)  # noqa: E712
+        .update({"analysis_stale": True, "stale_reason": reason[:255]},
+                synchronize_session=False)
+    )
+
+
 def recalc_risks_for_impls(db: Session, impl_ids: list[int]) -> int:
     """Recalcula en lote los riesgos vinculados a un conjunto de controles.
 

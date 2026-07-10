@@ -65,11 +65,15 @@ VALORACION CIA — escala 0-4 (0=nulo, 4=critico):
 - au (Autenticidad ENS): necesidad de verificar identidad
 - ac (Trazabilidad ENS): necesidad de audit trail y no-repudio
 
-Escala de valoracion riesgos:
-- Likelihood: 0=muy improbable, 1=improbable, 2=posible, 3=probable, 4=muy probable
-- Consequence: 0=insignificante, 1=menor, 2=moderado, 3=mayor, 4=critico
+CRITERIOS DE CALIBRACION (puntua contra estos criterios, no contra intuicion):
+- Likelihood: 0=<1 vez/10 anos, 1=1 vez/5-10 anos, 2=~1 vez/ano, 3=varias veces/ano, 4=mensual o mas frecuente
+- Consequence: 0=insignificante, 1=menor recuperable, 2=moderado (afecta procesos),
+  3=mayor (dano grave de negocio/legal), 4=critico (amenaza la continuidad)
+- La consequence debe ser coherente con el valor CIA del activo en la dimension que ataca la amenaza.
 
-Para cada control, estima contribution (0.0-1.0) y aplica la reduccion al residual.
+Para cada control, estima contribution (0.0-1.0) segun cuanto mitiga esa amenaza concreta.
+El residual lo calcula el motor de la plataforma desde tus contribuciones (tipo P/D/C,
+madurez, calidad de evidencia); suggested_residual_* es solo tu estimacion orientativa.
 
 Devuelve UNICAMENTE JSON con esta estructura:
 {
@@ -80,12 +84,12 @@ Devuelve UNICAMENTE JSON con esta estructura:
       "applies": true,
       "inherent_likelihood": <0-4>,
       "inherent_consequence": <0-4>,
-      "rationale": "<max 150 palabras>",
+      "rationale": "<max 300 chars citando el criterio de la escala aplicado y la base: tipo de activo, valor CIA, exposicion, incidentes>",
       "consequence_description": "<impacto concreto>",
       "vulnerability_codes": ["<codigo>", ...],
       "control_contributions": [{"impl_id": <id>, "contribution": <0.0-1.0>}],
-      "residual_likelihood": <0-4>,
-      "residual_consequence": <0-4>,
+      "suggested_residual_likelihood": <0-4>,
+      "suggested_residual_consequence": <0-4>,
       "treatment_option": "<modification|retention|avoidance|sharing>"
     }
   ]
@@ -94,7 +98,7 @@ Devuelve UNICAMENTE JSON con esta estructura:
 REGLAS:
 - cia: NUNCA dejes los 5 valores a 0. Estima segun el tipo y descripcion del activo.
 - risks: solo amenazas donde applies=true e inherente >= 1 en alguna dimension.
-- Usa codigos exactos del catalogo.
+- Usa codigos exactos del catalogo y los impl_id exactos de los controles listados.
 - treatment_option: modification=hay controles que reducen; retention=riesgo bajo aceptable;
   avoidance=riesgo inaceptable; sharing=transferible.
 """
@@ -379,7 +383,7 @@ def analyze_asset_risks(db: Session, asset_id: int) -> None:
 # Para 3000 activos: 3000/10 = 300 lotes / 2 workers + rate limiter 2.5s = ~24 req/min
 # ──────────────────────────────────────────────────────────────────────────────
 
-_BATCH_SIZE    = 10   # activos por llamada API
+_BATCH_SIZE    = 5    # activos por llamada API (contexto rico por amenaza -> lotes menores)
 _MAX_WORKERS   = 1    # 1 worker serie: evita race condition en codigos RSK + mas simple
 _BATCH_MODEL   = "claude-haiku-4-5"  # conservado como referencia; el modelo activo lo determina AiConfig
 _MAX_RETRIES   = 4    # reintentos en caso de rate limit 429
@@ -411,8 +415,9 @@ def _is_credit_error(err: str) -> bool:
         or "402" in low
     )
 
-_BATCH_SYSTEM_PROMPT = """Eres un experto ISO 27005, MAGERIT v3 y ENS (Esquema Nacional de Seguridad).
-Analiza cada activo y devuelve: (1) valoracion CIA segun ENS/ISO 27005 y (2) escenarios de riesgo.
+_BATCH_SYSTEM_PROMPT = """Eres un experto en analisis de riesgos ISO/IEC 27005:2018, MAGERIT v3 y ENS.
+Analiza cada activo del lote y devuelve: (1) valoracion CIA de 5 dimensiones y
+(2) escenarios de riesgo con vulnerabilidades y controles vinculados.
 
 VALORACION CIA — 5 dimensiones ENS (escala 0-4):
 - c (Confidencialidad): dano por revelacion no autorizada. 0=publico, 4=dato ultrasensible/secreto
@@ -421,18 +426,30 @@ VALORACION CIA — 5 dimensiones ENS (escala 0-4):
 - au (Autenticidad ENS): necesidad de verificar identidad de usuarios/procesos. 0=no necesario, 4=imprescindible
 - ac (Trazabilidad ENS): necesidad de audit trail y no-repudio. 0=no requerido, 4=obligatorio legal/regulatorio
 
-ESCENARIOS DE RIESGO — selecciona 3-5 amenazas reales para el activo:
-Escala consecuencia/probabilidad: 0=insignificante/muy improbable, 4=critico/muy probable.
-Apetito = {appetite}/8. treatment: "modification" si nivel_residual > {appetite}, "retention" si <=.
+CRITERIOS DE CALIBRACION (puntua contra estos criterios, no contra intuicion):
+- Likelihood: 0=<1 vez/10 anos, 1=1 vez/5-10 anos, 2=~1 vez/ano, 3=varias veces/ano, 4=mensual o mas frecuente
+- Consequence: 0=insignificante, 1=menor recuperable, 2=moderado (afecta procesos),
+  3=mayor (dano grave de negocio/legal), 4=critico (amenaza la continuidad)
+- La consequence debe ser coherente con el valor CIA del activo en la dimension que ataca la amenaza.
+
+ESCENARIOS DE RIESGO — para cada activo, las amenazas del catalogo que realmente aplican (tipicamente 3-8):
+- vulnerability_codes: codigos exactos del catalogo de vulnerabilidades que habilitan la amenaza en este activo
+- control_contributions: SOLO controles de la lista CONTROLES CANDIDATOS POR AMENAZA, con su impl_id
+  exacto y contribution 0.0-1.0 segun cuanto mitiga ese control esta amenaza en este activo concreto
+- El residual lo calcula el motor de la plataforma desde tus contribuciones (tipo P/D/C, madurez,
+  evidencia); suggested_residual_* es solo tu estimacion orientativa
+- rationale: max 300 chars citando el criterio de la escala aplicado y la base (tipo de activo,
+  valor CIA, exposicion, incidentes)
+- Apetito de riesgo = {appetite}/8
 
 REGLAS CRITICAS:
 - Devuelve EXCLUSIVAMENTE JSON valido, sin texto adicional
 - No uses comillas dentro de strings, no uses backslash, no uses saltos de linea en strings
-- Strings de rationale max 80 chars, vulnerability max 60 chars
 - TODOS los activos deben tener cia con valores > 0 (nunca dejes los 5 a 0)
+- Usa codigos exactos de los catalogos y los impl_id exactos de la lista de candidatos
 
 Formato de respuesta:
-{{"results":[{{"asset_id":<int>,"cia":{{"c":<1-4>,"i":<1-4>,"a":<1-4>,"au":<0-4>,"ac":<0-4>}},"risks":[{{"threat_code":"<cod>","threat_name":"<nombre>","vulnerability":"<desc max 60>","inherent_consequence":<0-4>,"inherent_likelihood":<0-4>,"residual_consequence":<0-4>,"residual_likelihood":<0-4>,"treatment":"modification|retention","rationale":"<max 80>"}}]}}]}}"""
+{{"results":[{{"asset_id":<int>,"cia":{{"c":<1-4>,"i":<1-4>,"a":<1-4>,"au":<0-4>,"ac":<0-4>}},"risks":[{{"threat_code":"<cod>","inherent_likelihood":<0-4>,"inherent_consequence":<0-4>,"vulnerability_codes":["<cod>"],"control_contributions":[{{"impl_id":<int>,"contribution":<0.0-1.0>}}],"suggested_residual_likelihood":<0-4>,"suggested_residual_consequence":<0-4>,"treatment_option":"modification|retention|avoidance|sharing","consequence_description":"<impacto concreto max 150>","rationale":"<max 300>"}}]}}]}}"""
 
 
 def _build_org_context_str(db: Session, org_id: int) -> str:
@@ -460,30 +477,45 @@ def _build_org_context_str(db: Session, org_id: int) -> str:
 def _build_batch_user_prompt(
     assets: list[Asset],
     threats: list[Threat],
-    impls_summary: str,
+    candidates_by_threat: dict[str, list[dict]],
+    vulns: list[Vulnerability],
     org_ctx: str,
 ) -> str:
-    """Construye el user-content para analizar un lote de activos."""
+    """Construye el user-content para analizar un lote de activos.
+
+    Incluye las 5 dimensiones de valoracion del activo y, por amenaza, los
+    controles candidatos reales de la org (impl_id + madurez + tipo P/D/C)
+    derivados del catalogo amenaza->control.
+    """
     assets_lines = []
     for a in assets:
         assets_lines.append(
             f"ID:{a.id} [{a.asset_type.value if a.asset_type else 'unknown'}] "
-            f"{a.name} | CIA:{a.value_confidentiality}/{a.value_integrity}/{a.value_availability} "
-            f"| cat:{a.category or '-'} | desc:{(a.description or '')[:80]}"
+            f"{a.name} | CIAAuAc:{a.value_confidentiality}/{a.value_integrity}/"
+            f"{a.value_availability}/{a.value_authenticity or 0}/{a.value_accountability or 0} "
+            f"| cat:{a.category or '-'} | proceso:{a.business_process or '-'} "
+            f"| desc:{(a.description or '')[:120]}"
         )
     assets_str = "\n".join(assets_lines)
 
-    # Incluir solo las amenazas mas relevantes (max 50)
-    threats_lines = [
-        f"{t.code}: {t.name} | aplica_a:{','.join((t.typical_assets or [])[:3])}"
-        for t in threats[:50]
-    ]
+    # Amenazas + controles candidatos por amenaza (max 50 amenazas)
+    threats_lines = []
+    for t in threats[:50]:
+        cands = candidates_by_threat.get(t.code, [])
+        cand_str = ", ".join(
+            f"{c['code']}[impl_id={c['impl_id']},m={c['maturity']},{c['effect']}]"
+            for c in cands[:8]
+        ) or "(sin controles implementados que mitiguen esta amenaza)"
+        threats_lines.append(f"{t.code}: {t.name}\n  candidatos: {cand_str}")
     threats_str = "\n".join(threats_lines)
+
+    vulns_lines = [f"{v.code}: {v.name}" for v in vulns[:60]]
+    vulns_str = "\n".join(vulns_lines) if vulns_lines else "(catalogo vacio)"
 
     return (
         f"CONTEXTO ORG:\n{org_ctx}\n\n"
-        f"CONTROLES IMPLEMENTADOS:\n{impls_summary}\n\n"
-        f"CATALOGO DE AMENAZAS ({len(threats)}):\n{threats_str}\n\n"
+        f"CATALOGO DE AMENAZAS Y CONTROLES CANDIDATOS POR AMENAZA ({len(threats)}):\n{threats_str}\n\n"
+        f"CATALOGO DE VULNERABILIDADES ({len(vulns)}):\n{vulns_str}\n\n"
         f"ACTIVOS A ANALIZAR ({len(assets)}):\n{assets_str}"
     )
 
@@ -521,20 +553,18 @@ def _parse_batch_response(raw: str) -> dict:
     asset_results = []
     for m in re.finditer(r'"asset_id"\s*:\s*(\d+)', chunk):
         asset_id = int(m.group(1))
-        # Buscar los risks de este asset
+        # Buscar los risks de este asset (solo inherentes: el residual lo fija el motor)
         pos = m.start()
         risks = re.findall(
-            r'"threat_code"\s*:\s*"([^"]+)".*?"threat_name"\s*:\s*"([^"]+)".*?'
-            r'"inherent_consequence"\s*:\s*(\d).*?"inherent_likelihood"\s*:\s*(\d).*?'
-            r'"residual_consequence"\s*:\s*(\d).*?"residual_likelihood"\s*:\s*(\d)',
+            r'"threat_code"\s*:\s*"([^"]+)".*?'
+            r'"inherent_likelihood"\s*:\s*(\d).*?"inherent_consequence"\s*:\s*(\d)',
             chunk[pos:pos+3000], re.DOTALL
         )
         risk_objs = [
             {
-                "threat_code": r[0], "threat_name": r[1],
-                "inherent_consequence": int(r[2]), "inherent_likelihood": int(r[3]),
-                "residual_consequence": int(r[4]), "residual_likelihood": int(r[5]),
-                "treatment": "modification", "rationale": "Analisis parcial",
+                "threat_code": r[0],
+                "inherent_likelihood": int(r[1]), "inherent_consequence": int(r[2]),
+                "treatment_option": "modification", "rationale": "Analisis parcial (respuesta truncada)",
             }
             for r in risks
         ]
@@ -555,7 +585,6 @@ def _process_batch_isolated(
     model: str,
     appetite: int,
     all_threats: list,
-    impls_summary: str,
     org_ctx: str,
     owner_id: int | None,
 ) -> None:
@@ -589,7 +618,20 @@ def _process_batch_isolated(
         if not relevant_threats:
             relevant_threats = all_threats[:40]
 
-        user_content = _build_batch_user_prompt(assets, relevant_threats, impls_summary, org_ctx)
+        # Controles implementados + candidatos por amenaza (catalogo amenaza->control)
+        from app.services.threat_knowledge import candidate_impls_for_threat
+        impls = db.query(ControlImplementation).filter(
+            ControlImplementation.organization_id == org_id,
+            ControlImplementation.status != ControlStatus.NOT_IMPLEMENTED,
+        ).all()
+        candidates_by_threat = {
+            t.code: candidate_impls_for_threat(db, org_id, t.code, impls=impls)
+            for t in relevant_threats[:50]
+        }
+        vulns = _vulns_for_threats(db, [t.code for t in relevant_threats])
+
+        user_content = _build_batch_user_prompt(
+            assets, relevant_threats, candidates_by_threat, vulns, org_ctx)
         system = _BATCH_SYSTEM_PROMPT.format(appetite=appetite)
 
         import anthropic
@@ -666,55 +708,32 @@ def _process_batch_isolated(
                     asset.value_authenticity    = _clamp(cia.get("au", 0))
                     asset.value_accountability  = _clamp(cia.get("ac", 0))
 
+            # Persistencia por el MISMO camino que el analisis individual:
+            # _upsert_risk vincula vulns/controles y delega el residual en el
+            # motor determinista (recalc_risk). Fin de la divergencia batch.
+            vulns_by_code = {v.code: v for v in vulns}
+            impls_by_id = {i.id: i for i in impls}
             created, updated = 0, 0
             for item in ar.get("risks", []):
+                if not item.get("applies", True):
+                    continue
                 threat = threats_by_code.get(item.get("threat_code", ""))
                 if not threat:
                     continue
-                c_, l_ = max(0, min(4, int(item.get("inherent_consequence", 2)))), max(0, min(4, int(item.get("inherent_likelihood", 2))))
-                rc, rl = max(0, min(4, int(item.get("residual_consequence", 1)))), max(0, min(4, int(item.get("residual_likelihood", 1))))
-                inh_lvl = calc_level(c_, l_)
-                res_lvl = calc_level(rc, rl)
-                tx_str  = item.get("treatment", "")
-                treatment_map = {"modification": TreatmentOption.MODIFICATION, "retention": TreatmentOption.RETENTION,
-                                 "avoidance": TreatmentOption.AVOIDANCE, "sharing": TreatmentOption.SHARING}
-                treatment = treatment_map.get(tx_str, TreatmentOption.MODIFICATION if res_lvl > appetite else TreatmentOption.RETENTION)
+                c, u = _upsert_risk(
+                    db, asset, threat, item,
+                    vulns_by_code, impls_by_id, owner_id,
+                )
+                created += c
+                updated += u
 
-                dup = db.query(Risk).filter_by(asset_id=asset.id, threat_id=threat.id).first()
-                if dup:
-                    dup.inherent_consequence = c_; dup.inherent_likelihood = l_; dup.inherent_level = inh_lvl
-                    dup.residual_consequence = rc;  dup.residual_likelihood = rl;  dup.residual_level = res_lvl
-                    dup.treatment_option = treatment
-                    if item.get("rationale"):
-                        dup.description = (item["rationale"] or "")[:1000]
-                    updated += 1
-                else:
-                    code = _next_risk_code(db)
-                    vuln_txt = (item.get("vulnerability") or "")[:400]
-                    rat_txt  = (item.get("rationale") or "")[:400]
-                    desc = (vuln_txt + (" — " + rat_txt if rat_txt else ""))[:1000]
-                    risk = Risk(
-                        code=code,
-                        asset_id=asset.id,
-                        threat_id=threat.id,
-                        inherent_consequence=c_, inherent_likelihood=l_, inherent_level=inh_lvl,
-                        residual_consequence=rc,  residual_likelihood=rl,  residual_level=res_lvl,
-                        treatment_option=treatment,
-                        description=desc,
-                        ai_rationale=rat_txt,
-                        status=RiskStatus.IDENTIFIED,
-                        owner_id=owner_id,
-                        organization_id=org_id,
-                        ai_generated=True,
-                    )
-                    db.add(risk)
-                    db.flush()  # necesario: autoflush=False → flush manual para que count() vea el nuevo codigo
-                    created += 1
+            appetite_upgrades = _enforce_risk_appetite(db, asset)
 
             asset.ai_risk_status = "analysed"
             asset.ai_risk_summary = {
                 "risks_created": created, "risks_updated": updated,
                 "threats_analysed": len(ar.get("risks", [])),
+                "appetite_upgrades": appetite_upgrades,
                 "summary": f"{created} riesgos creados, {updated} actualizados",
             }
 
@@ -820,16 +839,7 @@ def analyze_all_org_assets(
     owner_id      = _org_owner_id(db, org_id)
     org_ctx       = _build_org_context_str(db, org_id)
 
-    # Resumen de controles implementados
-    impls = db.query(ControlImplementation).filter(
-        ControlImplementation.organization_id == org_id,
-        ControlImplementation.status != ControlStatus.NOT_IMPLEMENTED,
-    ).all()
-    impls_summary = ", ".join(
-        f"{i.name}" for i in impls[:20]
-    ) or "ninguno"
-
-    # Dividir en lotes
+    # Dividir en lotes (los controles se cargan por lote en _process_batch_isolated)
     batches = [asset_ids[i:i + _BATCH_SIZE] for i in range(0, total, _BATCH_SIZE)]
     logger.info("Lotes: %d (tamano=%d), serial", len(batches), _BATCH_SIZE)
 
@@ -839,7 +849,7 @@ def analyze_all_org_assets(
             executor.submit(
                 _process_batch_isolated,
                 batch, org_id, api_key, model,
-                appetite, all_threats, impls_summary, org_ctx, owner_id,
+                appetite, all_threats, org_ctx, owner_id,
             ): batch
             for batch in batches
         }
@@ -948,7 +958,26 @@ def _upsert_risk(
     inh_con = clamp(int(item.get("inherent_consequence", 2)))
     inh_lvl = calc_level(inh_con, inh_lik)
 
-    ctrl_list = item.get("control_contributions", [])
+    ctrl_list = item.get("control_contributions", []) or []
+    if not ctrl_list:
+        # Fallback determinista: controles implementados que mitigan esta
+        # amenaza segun el catalogo amenaza->control (relevance >= 0.6)
+        from app.services.threat_knowledge import (
+            candidate_impls_for_threat, fallback_contributions,
+        )
+        candidates = candidate_impls_for_threat(
+            db, asset.organization_id, threat.code,
+            impls=list(impls_by_id.values()),
+        )
+        ctrl_list = fallback_contributions(candidates)
+
+    vuln_codes = item.get("vulnerability_codes", []) or []
+    if not vuln_codes:
+        # Fallback: vulnerabilidades del catalogo relacionadas con la amenaza
+        from app.services.threat_knowledge import vulns_for_threat
+        for v in vulns_for_threat(db, threat.code)[:5]:
+            vulns_by_code.setdefault(v.code, v)
+            vuln_codes.append(v.code)
 
     # El residual NO lo fija el LLM: se calcula de forma determinista en
     # recalc_risk() tras vincular los controles (tipo P/D/C, madurez ajustada
@@ -979,7 +1008,7 @@ def _upsert_risk(
             existing.consequence_description = item.get("consequence_description", existing.consequence_description)
             existing.ai_rationale = item.get("rationale", "")
             existing.treatment_option = treatment
-            _sync_vulns(db, existing, item.get("vulnerability_codes", []), vulns_by_code)
+            _sync_vulns(db, existing, vuln_codes, vulns_by_code)
             _sync_controls(db, existing, ctrl_list, impls_by_id)
             _finalize_ai_risk(db, existing, item, suggested_lik, suggested_con)
         return 0, 1
@@ -1008,7 +1037,7 @@ def _upsert_risk(
     db.add(risk)
     db.flush()  # necesario para obtener risk.id
 
-    _sync_vulns(db, risk, item.get("vulnerability_codes", []), vulns_by_code)
+    _sync_vulns(db, risk, vuln_codes, vulns_by_code)
     _sync_controls(db, risk, ctrl_list, impls_by_id)
     _finalize_ai_risk(db, risk, item, suggested_lik, suggested_con)
     return 1, 0
@@ -1299,6 +1328,15 @@ def link_osint_findings_to_assets(
         sev_map = {"critical": (4, 4), "high": (3, 4), "medium": (2, 3), "low": (1, 2), "info": (1, 1)}
         inh_lik, inh_con = sev_map.get(finding.risk_level.value if finding.risk_level else "medium", (2, 2))
 
+        # La consecuencia de negocio la acota la valoracion del activo
+        max_cia = max(
+            matched_asset.value_confidentiality or 0,
+            matched_asset.value_integrity or 0,
+            matched_asset.value_availability or 0,
+        )
+        if max_cia > 0:
+            inh_con = min(inh_con, max_cia)
+
         existing = db.query(Risk).filter_by(
             asset_id=matched_asset.id, threat_id=threat.id
         ).first()
@@ -1354,6 +1392,14 @@ def link_osint_findings_to_assets(
             db.add(risk)
             created += 1
 
-    if created > 0:
+    if findings and matched_asset:
+        # Nueva exposicion OSINT: el analisis IA previo del activo queda stale
+        from app.services.risk_recalc_service import mark_risks_stale_for_asset
+        mark_risks_stale_for_asset(
+            db, matched_asset.id,
+            f"Nuevos hallazgos OSINT ({len(findings)}) sobre {scan.target[:60]}",
+        )
+
+    if created > 0 or findings:
         db.commit()
     return {"created": created}
