@@ -28,10 +28,13 @@ from app.services.risk_engine import calc_level, calc_residual
 logger = logging.getLogger("riskhub.risk_auto_generator")
 
 def _next_code(db: Session, org_id: int) -> str:
-    """Genera codigo unico RSK-XXXX por organizacion."""
-    from sqlalchemy import func as _func
-    max_id = db.query(_func.max(Risk.id)).scalar() or 0
-    return f"RSK-{max_id + 1:04d}"
+    """Genera codigo unico RSK-XXXX (el UNIQUE de risks.code es global).
+
+    No usar max(id): tras borrados e imports los ids divergen de los codigos
+    y el insert revienta con IntegrityError (visto en produccion).
+    """
+    from app.services.asset_risk_analysis_service import _next_risk_code
+    return _next_risk_code(db)
 
 
 def _controls_to_dicts(controls: list) -> list[dict]:

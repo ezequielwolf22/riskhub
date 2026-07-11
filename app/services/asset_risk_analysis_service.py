@@ -250,10 +250,21 @@ def _vulns_for_threats(db: Session, threat_codes: list[str]) -> list[Vulnerabili
 
 
 def _next_risk_code(db: Session) -> str:
+    # El codigo NO puede derivarse del id: tras borrados e imports divergen
+    # y el UNIQUE global de risks.code revienta (visto en produccion con
+    # RSK-8244). Se toma el maximo sufijo numerico real y se comprueba.
     from app.models import Risk as RiskModel
-    from sqlalchemy import func as _func
-    max_id = db.query(_func.max(RiskModel.id)).scalar() or 0
-    return f"RSK-{max_id + 1:04d}"
+    from sqlalchemy import Integer, func as _func
+    max_num = (
+        db.query(_func.max(_func.cast(_func.substr(RiskModel.code, 5), Integer)))
+        .filter(RiskModel.code.like("RSK-%"))
+        .scalar()
+    ) or 0
+    code = f"RSK-{max_num + 1:04d}"
+    while db.query(RiskModel.id).filter(RiskModel.code == code).first():
+        max_num += 1
+        code = f"RSK-{max_num + 1:04d}"
+    return code
 
 
 # ---------- Punto de entrada principal ----------
