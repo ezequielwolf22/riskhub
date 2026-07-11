@@ -208,6 +208,7 @@ def analyze_evidence(db: Session, evidence_id: int) -> Optional[dict]:
             tool_name="registrar_revision_evidencia",
             tool_description="Registra la revision estructurada de la evidencia del SGSI",
             input_schema=_REVIEW_SCHEMA,
+            org_id=ev.organization_id, call_type="evidence_review",
         )
     except Exception as e:
         logger.warning("evidence_understanding: error analizando evidencia %d: %s",

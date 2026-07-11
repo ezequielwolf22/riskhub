@@ -188,6 +188,8 @@ def analyze_questionnaire_evidence(
                 tool_name="registrar_revision_evidencia",
                 tool_description="Registra la revision del fichero de evidencia del proveedor",
                 input_schema=_EVIDENCE_REVIEW_SCHEMA,
+                org_id=getattr(questionnaire, "organization_id", None),
+                call_type="tprm_evidence_review",
             )
             entry = dict(entry)
             entry["ai_review"] = {
@@ -497,6 +499,8 @@ def review_questionnaire(
                 tool_name="registrar_evaluacion_tprm",
                 tool_description="Registra la evaluacion estructurada del cuestionario del proveedor",
                 input_schema=_REVIEW_SCHEMA,
+                org_id=getattr(questionnaire, "organization_id", None),
+                call_type="tprm_review",
             )
 
         try:

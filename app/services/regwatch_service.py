@@ -574,6 +574,7 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
                 tool_name="clasificar_cambio_normativo",
                 tool_description="Registra la clasificacion del cambio normativo",
                 input_schema=event_schema,
+                call_type="regwatch_analysis",
             )
             return result
 

@@ -260,6 +260,7 @@ def describe_document_with_vision(doc_id: int) -> bool:
             api_key,
             model=get_model(db, doc.organization_id, tier="fast"),
             max_tokens=8192,
+            org_id=doc.organization_id, call_type="document_vision",
             system=(
                 "Transcribe fielmente el contenido del documento o imagen al espanol. "
                 "Incluye todo el texto legible, tablas como lineas 'campo: valor', y "

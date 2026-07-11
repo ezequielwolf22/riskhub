@@ -714,6 +714,7 @@ def _process_batch_isolated(
                 tool_name="registrar_analisis_lote",
                 tool_description="Registra la valoracion CIA y los riesgos de cada activo del lote",
                 input_schema=_BATCH_SCHEMA,
+                org_id=org_id, call_type="asset_risk_analysis",
             )
         except CreditsExhausted:
             _credit_exhausted[api_key[:16]] = True

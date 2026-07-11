@@ -69,6 +69,30 @@ def cached_system(prompt: str, cached_context: str | None = None) -> list[dict]:
     return blocks
 
 
+def _log_usage(msg, *, org_id: int | None, call_type: str | None, model: str) -> None:
+    """Registra tokens en ai_call_logs (best-effort) para el panel de costes."""
+    if not call_type:
+        return
+    try:
+        from app.database import SessionLocal
+        from app.models import AiCallLog
+        usage = getattr(msg, "usage", None)
+        db = SessionLocal()
+        try:
+            db.add(AiCallLog(
+                organization_id=org_id,
+                call_type=call_type,
+                model=model,
+                prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "output_tokens", 0) or 0,
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:  # nunca romper el analisis por el logging
+        logger.debug("claude_client: no se pudo registrar el uso: %s", exc)
+
+
 def structured_message(api_key: str, *, model: str, max_tokens: int,
                        messages: list, tool_name: str, input_schema: dict,
                        tool_description: str = "", system=None,
@@ -106,9 +130,19 @@ def structured_message(api_key: str, *, model: str, max_tokens: int,
 
 def create_message(api_key: str, *, model: str, max_tokens: int,
                    messages: list, system=None, retries: int = _MAX_RETRIES,
+                   org_id: int | None = None, call_type: str | None = None,
                    **kwargs):
-    """messages.create con reintentos y circuit breaker. Lanza CreditsExhausted
-    si la key esta sin creditos (los jobs masivos deben abortar, no reintentar)."""
+    """Llamada a la API con reintentos y circuit breaker. Lanza CreditsExhausted
+    si la key esta sin creditos (los jobs masivos deben abortar, no reintentar).
+
+    Usa streaming internamente: el SDK rechaza peticiones no-streaming que
+    estima largas ("Streaming is required for operations that may take longer
+    than 10 minutes"), lo que rompia el analisis batch con max_tokens altos.
+    El resultado es el mensaje final completo, identico al de messages.create.
+
+    Con org_id + call_type registra los tokens en ai_call_logs (panel de
+    costes /api/ai/usage).
+    """
     import anthropic
 
     if _credit_exhausted.get(api_key[:16]):
@@ -123,7 +157,10 @@ def create_message(api_key: str, *, model: str, max_tokens: int,
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            return client.messages.create(**params)
+            with client.messages.stream(**params) as stream:
+                msg = stream.get_final_message()
+            _log_usage(msg, org_id=org_id, call_type=call_type, model=model)
+            return msg
         except Exception as exc:
             err = str(exc)
             if _is_credit_error(err):

@@ -420,7 +420,12 @@ def analyze_asset(
     a.ai_risk_status = None
     a.ai_risk_summary = None
     db.commit()
+    # Riesgos regla (activo x amenaza) + analisis IA profundo del activo.
+    # La accion es explicita del usuario, asi que aqui SI corre la IA
+    # (en alta/import masivo solo corre la parte regla para no quemar tokens).
     background_tasks.add_task(_run_asset_analysis_bg, asset_id)
+    from app.services.asset_risk_analysis_service import _analyze_isolated
+    background_tasks.add_task(_analyze_isolated, asset_id)
     return {"ok": True, "message": "Analisis de riesgos iniciado en background"}
 
 
