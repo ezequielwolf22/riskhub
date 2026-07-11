@@ -226,3 +226,36 @@ def _remaining_memory(ip: str) -> int:
         if elapsed >= _LOGIN_WINDOW_S:
             return 0
         return int(_LOGIN_WINDOW_S - elapsed)
+
+
+# ---------- Rate limiting global de API (por IP, en memoria) ----------
+# Ventana fija de 60s con limite generoso: protege de abuso/bucles, no
+# molesta al uso normal. Configurable con RISKHUB_API_RATE_PER_MINUTE
+# (0 = desactivado). Solo en memoria: un reinicio resetea contadores, lo
+# cual es aceptable para este proposito (no es el lockout de login).
+
+_API_WINDOW_S = 60
+_API_MAX_PER_WINDOW = int(os.getenv("RISKHUB_API_RATE_PER_MINUTE", "600"))
+_api_lock = Lock()
+_api_store: Dict[str, Tuple[int, float]] = {}
+
+
+def check_api_rate(ip: str) -> Tuple[bool, int]:
+    """Devuelve (permitido, segundos_para_retry) para una request de API."""
+    if _API_MAX_PER_WINDOW <= 0:
+        return True, 0
+    now = time.monotonic()
+    with _api_lock:
+        # Limpieza oportunista si el mapa crece demasiado (IPs efimeras)
+        if len(_api_store) > 10000:
+            expired = [k for k, (_, s) in _api_store.items() if now - s > _API_WINDOW_S]
+            for k in expired:
+                _api_store.pop(k, None)
+        count, start = _api_store.get(ip, (0, now))
+        if now - start > _API_WINDOW_S:
+            count, start = 0, now
+        count += 1
+        _api_store[ip] = (count, start)
+        if count > _API_MAX_PER_WINDOW:
+            return False, max(1, int(_API_WINDOW_S - (now - start)))
+    return True, 0

@@ -18,8 +18,9 @@ from app.database import get_db
 from app.models import EmailSettings, Organization, User
 from app.schemas import TokenOut, UserOut
 from app.security import (
-    create_access_token, decrypt_secret, encrypt_secret,
-    get_current_user, hash_password, mfa_setup_required, verify_password,
+    create_access_token, decode_token, decrypt_secret, encrypt_secret,
+    get_current_user, hash_password, mfa_setup_required, oauth2_scheme,
+    revoke_token, verify_password,
 )
 from app.services.audit_service import log_action
 from app.services.rate_limiter import (
@@ -128,9 +129,14 @@ def login(
     ip  = _client_ip(request)
     lang = get_lang(request)
 
-    # OWASP A07 — comprobar rate limit antes de consultar la BD
-    if not check_login_allowed(ip):
-        secs = remaining_lockout_seconds(ip)
+    # OWASP A07 — comprobar rate limit antes de consultar la BD.
+    # Doble clave: por IP (ataque desde una maquina) y por cuenta (ataque
+    # distribuido contra un mismo email rotando IPs).
+    acct_key = "acct:" + (form.username or "").strip().lower()
+    ip_ok = check_login_allowed(ip)
+    acct_ok = check_login_allowed(acct_key)
+    if not ip_ok or not acct_ok:
+        secs = max(remaining_lockout_seconds(ip), remaining_lockout_seconds(acct_key))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=_t("auth.account_locked", lang, seconds=secs),
@@ -173,8 +179,9 @@ def login(
                 detail=_t("auth.user_disabled", lang),
             )
 
-    # Login exitoso: resetear contador de intentos
+    # Login exitoso: resetear contadores de intentos (IP y cuenta)
     reset_login_counter(ip)
+    reset_login_counter(acct_key)
     user.last_login_at = datetime.now(timezone.utc)
     log_action(db, user.id, "login", "user", str(user.id),
                {"email": user.email, "role": user.role.value, "ip": ip})
@@ -202,6 +209,27 @@ def login(
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return UserOut.model_validate(user)
+
+
+@router.post("/logout")
+def logout(
+    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cierra la sesion revocando el token actual (logout real).
+
+    El jti del token entra en la lista de revocados hasta su expiracion;
+    cualquier uso posterior del mismo token devuelve 401.
+    """
+    try:
+        payload = decode_token(token)
+    except Exception:
+        payload = {}
+    revoked = revoke_token(db, payload, user_id=user.id)
+    log_action(db, user.id, "logout", "user", str(user.id), {"revoked": revoked})
+    db.commit()
+    return {"ok": True, "revoked": revoked}
 
 
 class UserBasic(BaseModel):

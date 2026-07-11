@@ -1,6 +1,9 @@
 """Autenticacion JWT, hash de passwords y dependencias FastAPI."""
 import base64
 import hashlib
+import threading
+import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -14,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Organization, User, UserRole
+from app.models import Organization, RevokedToken, User, UserRole
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -54,7 +57,8 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(subject: str, role: str, extra: Optional[dict] = None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expires_minutes)
-    payload = {"sub": subject, "role": role, "exp": expire}
+    # jti unico por token: permite revocacion individual (logout real)
+    payload = {"sub": subject, "role": role, "exp": expire, "jti": uuid.uuid4().hex}
     if extra:
         payload.update(extra)
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
@@ -63,6 +67,67 @@ def create_access_token(subject: str, role: str, extra: Optional[dict] = None) -
 def decode_token(token: str) -> dict:
     # PyJWT devuelve dict directamente; algorithms es obligatorio para evitar alg:none
     return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+
+
+# ---------- Revocacion de tokens (logout real) ----------
+# Cache en memoria del conjunto de jti revocados: se refresca desde la tabla
+# revoked_tokens cada _REVOKED_TTL_S para no consultar la BD en cada request.
+
+_REVOKED_TTL_S = 30
+_revoked_lock = threading.Lock()
+_revoked_jtis: set[str] = set()
+_revoked_loaded_at: float = 0.0
+
+
+def _refresh_revoked_cache(db: Session) -> None:
+    global _revoked_jtis, _revoked_loaded_at
+    now = time.monotonic()
+    with _revoked_lock:
+        if now - _revoked_loaded_at < _REVOKED_TTL_S and _revoked_loaded_at > 0:
+            return
+        try:
+            rows = db.query(RevokedToken.jti).all()
+            _revoked_jtis = {r[0] for r in rows}
+            _revoked_loaded_at = now
+        except Exception:
+            # Si la tabla aun no existe (arranque inicial), no bloquear el login
+            _revoked_loaded_at = now
+
+
+def is_token_revoked(db: Session, jti: Optional[str]) -> bool:
+    if not jti:
+        # Tokens antiguos sin jti: no revocables individualmente, se aceptan
+        # hasta su expiracion natural.
+        return False
+    _refresh_revoked_cache(db)
+    return jti in _revoked_jtis
+
+
+def revoke_token(db: Session, payload: dict, user_id: Optional[int] = None) -> bool:
+    """Revoca el token del payload dado. Devuelve False si no tiene jti."""
+    jti = payload.get("jti")
+    if not jti:
+        return False
+    exp = payload.get("exp")
+    expires_at = datetime.fromtimestamp(exp, tz=timezone.utc) if exp else None
+    if not db.query(RevokedToken.id).filter(RevokedToken.jti == jti).first():
+        db.add(RevokedToken(jti=jti, user_id=user_id, expires_at=expires_at))
+        db.commit()
+    with _revoked_lock:
+        _revoked_jtis.add(jti)
+    return True
+
+
+def purge_expired_revocations(db: Session) -> int:
+    """Elimina revocaciones de tokens ya expirados (mantenimiento)."""
+    cutoff = datetime.now(timezone.utc)
+    n = (
+        db.query(RevokedToken)
+        .filter(RevokedToken.expires_at.isnot(None), RevokedToken.expires_at < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return n
 
 
 def get_current_user(
@@ -84,6 +149,9 @@ def get_current_user(
         if payload.get("type") == "mfa":
             raise cred_error
     except JWTError:
+        raise cred_error
+    # Sesion cerrada explicitamente (logout): el token queda invalido
+    if is_token_revoked(db, payload.get("jti")):
         raise cred_error
     user = db.query(User).filter(User.email == email).first()
     if user is None or not user.is_active:

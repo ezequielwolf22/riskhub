@@ -70,6 +70,21 @@ async def observability_middleware(request, call_next):
     import uuid as _uuid
 
     request_id = request.headers.get("x-request-id") or _uuid.uuid4().hex[:16]
+
+    # Rate limiting global por IP (solo API; health exento para monitores)
+    req_path = request.url.path
+    if req_path.startswith("/api") and req_path != "/api/health":
+        from app.services.rate_limiter import check_api_rate
+        client_ip = request.client.host if request.client else "unknown"
+        allowed, retry_s = check_api_rate(client_ip)
+        if not allowed:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Demasiadas peticiones. Intentalo de nuevo en unos segundos."},
+                headers={"Retry-After": str(retry_s), "X-Request-ID": request_id},
+            )
+
     t0 = _time.monotonic()
     try:
         response = await call_next(request)

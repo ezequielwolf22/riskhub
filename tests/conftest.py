@@ -8,6 +8,8 @@ os.environ.setdefault("RISKHUB_SECRET_KEY", "test-secret-key-for-ci-testing-only
 os.environ.setdefault("RISKHUB_ADMIN_EMAIL", "admin@test.internal")
 os.environ.setdefault("RISKHUB_ADMIN_PASSWORD", "TestAdmin123!")
 os.environ.setdefault("RISKHUB_DB_PATH", "./test_riskhub.db")
+# Sin limite global de API en tests (la suite dispara miles de requests)
+os.environ.setdefault("RISKHUB_API_RATE_PER_MINUTE", "0")
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

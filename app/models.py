@@ -581,6 +581,21 @@ class AppError(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class RevokedToken(Base):
+    """Token JWT revocado (logout real / cierre de sesion).
+
+    Se guarda el jti hasta la expiracion natural del token; un barrido
+    periodico elimina las filas ya expiradas. get_current_user consulta
+    una cache en memoria refrescada desde esta tabla.
+    """
+    __tablename__ = "revoked_tokens"
+    id = Column(Integer, primary_key=True)
+    jti = Column(String(48), nullable=False, unique=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    expires_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class BackgroundJob(Base):
     """Trabajo asincrono persistido (cola en BD, sin dependencias externas).
 
