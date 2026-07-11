@@ -21,12 +21,12 @@ Multi-usuario con roles.
 
 - **Backend**: Python 3.11 + FastAPI + SQLAlchemy 2.0 + SQLite (default) / PostgreSQL (opcional).
 - **Frontend**: HTML + Vanilla JS + CSS. Sin frameworks, sin CDNs, todo servido en local.
-- **Autenticacion**: JWT (HS256) + bcrypt. Tres roles: `admin`, `analyst`, `viewer`.
+- **Autenticacion**: JWT (HS256) + bcrypt. Access token 60 min + refresh token rotativo 12h (`/api/auth/refresh`); revocacion por jti (`revoked_tokens`) = logout real. Roles: `superadmin`, `admin`, `analyst`, `viewer`.
 - **PDF**: ReportLab con paleta purple/orange.
 - **Despliegue**: Docker + docker compose. Volumen `riskhub-data` para BD persistente.
 - **IA**: Claude API (Anthropic). RAG con SQLite FTS5. Anonimizacion regex configurable.
 - **Branding**: Paleta purple `#59008D` / orange `#D65200`. Variables CSS: `--brand-purple`, `--brand-orange`. Tipografia: Inter.
-- **Seguridad**: Rate limiting en memoria, security headers middleware, magic bytes validation, API docs deshabilitados en produccion.
+- **Seguridad**: Lockout de login por IP y por cuenta (persistido en rate_limits.db), rate limiting global de API por IP (600/min, `RISKHUB_API_RATE_PER_MINUTE`), security headers middleware, magic bytes validation, API docs deshabilitados en produccion.
 
 ## Estado actual (v2.2.0)
 
@@ -70,12 +70,20 @@ Multi-usuario con roles.
   - Regwatch: analisis con texto completo descargado + doble pasada fast->deep; evento vinculado a su pack; propagacion TPRM dirigida por `controls_affected_hint`.
   - Gap detallado: 93 controles por temas (fast) + sintesis (deep), con riesgos vinculados, NCs, regwatch y evidencia IA por control. Informes con TPRM/incidentes/regwatch/evidencia; informe mensual con sintesis IA.
   - `services/model_registry.py`: tiers deep=claude-opus-4-6 / fast=claude-haiku-4-5 (fuente unica); chat y suggest-controls en deep por defecto.
+- [x] Aprendizaje in-context (2026-07-10): `services/ai_learning_service.py` — senales de decision del usuario (tabla `ai_decision_signals`, hooks en risks/vendor assessments) -> destilacion nocturna determinista (min 3 senales) -> lecciones por org en `RiskContext.ai_learned_lessons` inyectadas en prompts (solo advisory, nunca toca el motor). Endpoints `/api/ai/learning`. `services/claude_client.py`: cliente unificado (retries+circuit breaker), `structured_message` (tool use forzado con schema = JSON validado por la API; obligatorio para codigo IA nuevo con salida JSON) y `cached_system` (prompt caching).
+- [x] Ciclo SaaS (2026-07-11, commits 9a2fc00..HEAD):
+  - Cola de trabajos en BD: `services/job_queue.py` (claim atomico, backoff, dedupe, recuperacion tras crash; workers en startup); handlers asset_analysis_all / evidence_analysis / document_vision_isms; router `/api/jobs`.
+  - Observabilidad: middleware en main.py (X-Request-ID, access log, contadores, captura en tabla `app_errors` con 500 limpio + referencia); `/api/metrics` (Prometheus text, admin); `/api/admin/errors` (superadmin); `/api/ai/usage` (consumo/coste IA del mes por tipo+modelo, tendencia, presupuesto blando por plan en `model_registry.AI_MONTHLY_TOKEN_BUDGETS`).
+  - Hardening de acceso: jti en todos los JWT + tabla `revoked_tokens` + `/api/auth/logout` (logout real, cache en memoria TTL 30s); refresh tokens con rotacion (`/api/auth/refresh`, access 60min / refresh 12h, config `jwt_expires_minutes`/`jwt_refresh_expires_minutes`); lockout de login por cuenta ademas de IP; rate limit global de API (`rate_limiter.check_api_rate`); api.js renueva sesion automaticamente ante 401 y reintenta una vez.
+  - Backups: `services/backup_service.py` (API de backup de sqlite3 + gzip, nocturno 2:30 UTC, retencion 14d, `RISKHUB_BACKUP_DIR`/`RISKHUB_BACKUP_RETENTION_DAYS`); endpoints `/api/admin/backups` (listar/lanzar/descargar, superadmin); runbook `docs/BACKUP_RESTORE_RUNBOOK.md`. Migracion PostgreSQL: solo diseno en `docs/POSTGRES_MIGRATION_PLAN.md` (FTS5->tsvector, INSERT OR IGNORE, PRAGMA, strftime; rollout 5 fases).
+  - CI: `.github/workflows/ci.yml` (pytest + ruff + docker build en push/PR a main).
+  - Vista Operaciones (`ops.js`, pestana en Configuracion): consumo IA, cola de jobs, errores capturados y backups.
 
 ### Frontend
 
 - [x] SPA hash-based (`app/static/`)
 - [x] Vistas: dashboard, heatmap, assets, threats, vulnerabilities, risks, controls, reports, context, users, suppliers, incidents, nonconformities, tasks, policies, audits, gdpr, compliance, alerts, integrations, audit, ai-chat, ai-documents, onboarding, guide, organizations
-- [x] Vistas nuevas: evidence, webhooks, external-findings, predictive, ccm, itsm-config, trust-portal, magerit, executive, architecture-review, cve, osint, feature-flags
+- [x] Vistas nuevas: evidence, webhooks, external-findings, predictive, ccm, itsm-config, trust-portal, magerit, executive, architecture-review, cve, osint, feature-flags, ops (operaciones: consumo IA, jobs, errores, backups)
 - [x] Organizaciones: badges de plan con colores, modulos incluidos/bloqueados segun plan, plan selector actualizado (free/starter/pro/enterprise)
 - [x] Integraciones: SSO config form, SharePoint config + browser, ERP webhooks config real (reemplaza placeholder)
 - [x] Docs IA: modal de clausulas ISO extraidas con confianza y link a controles
@@ -89,11 +97,9 @@ Multi-usuario con roles.
 ## Pendiente
 
 ### Proximas funcionalidades
-- [ ] Multi-idioma i18n (es/en/de/fr) — decision tomada: selector de idioma en header,
-      ficheros `app/static/js/i18n/{es,en}.json`, funcion global `t('key')`.
-      Flujo: primero refactorizar vistas a `t()` manteniendo ES, luego anadir EN.
-      Diferido hasta que la app este estable.
-- [ ] Actualizar guide.js con documentacion de todas las nuevas secciones (evidence, webhooks, external-findings, magerit, ccm, itsm, trust-portal, executive, architecture-review, erp-webhooks, clausulas-iso)
+- [ ] i18n backend (cola larga de mensajes de routers/servicios a patron X-Lang/get_lang/t(); frontend ya migrado a t() con es/en)
+- [ ] Deploy a produccion del ciclo v6 + SaaS (git push + deploy.sh — decision del usuario; el arranque hara el recalculo one-shot de residuales v2)
+- [ ] Validacion end-to-end de los flujos IA contra la API real (analisis de activo, evidencia con Vision, cuestionario TPRM con evidencia) — los tests cubren lo determinista
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 
 ## Convenciones
