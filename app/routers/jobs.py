@@ -48,12 +48,17 @@ def cancel_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
-    """Cancela un trabajo pendiente (los que ya corren terminan su intento)."""
+    """Cancela un trabajo pendiente o en ejecucion.
+
+    Los handlers largos (analisis IA masivo) comprueban la cancelacion entre
+    lotes y abortan: como mucho terminan las llamadas en vuelo.
+    """
     job = db.get(BackgroundJob, job_id)
     if not job or job.organization_id != current_user.organization_id:
         raise HTTPException(404, "Trabajo no encontrado")
-    if job.status != "pending":
-        raise HTTPException(409, f"Solo se cancelan trabajos pendientes (estado: {job.status})")
+    if job.status not in ("pending", "running"):
+        raise HTTPException(409, f"El trabajo ya termino (estado: {job.status})")
     job.status = "cancelled"
+    job.error = "cancelado por el usuario"
     db.commit()
     return job_out(job)

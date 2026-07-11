@@ -35,16 +35,32 @@ _started = False
 _stop = threading.Event()
 
 
+def is_cancelled(job_id: int) -> bool:
+    """Consulta fresca del estado: los handlers largos la usan entre lotes
+    para abortar de forma cooperativa cuando el usuario cancela el job."""
+    from app.database import SessionLocal
+    from app.models import BackgroundJob
+    db = SessionLocal()
+    try:
+        status = db.query(BackgroundJob.status).filter(BackgroundJob.id == job_id).scalar()
+        return status == "cancelled"
+    finally:
+        db.close()
+
+
 # ---------- Handlers ----------
 
 def _handle_asset_analysis_all(payload: dict) -> dict:
     from app.database import SessionLocal
     from app.services.asset_risk_analysis_service import analyze_all_org_assets
+    job_id = payload.get("_job_id")
+    cancel_check = (lambda: is_cancelled(job_id)) if job_id else None
     db = SessionLocal()
     try:
         result = analyze_all_org_assets(
             db, payload["org_id"],
             representatives_only=bool(payload.get("representatives_only", False)),
+            cancel_check=cancel_check,
         )
         return result if isinstance(result, dict) else {"total": result}
     finally:
@@ -173,6 +189,12 @@ def _finish(job_id: int, *, result: dict | None = None, error: str | None = None
         if not job:
             return
         now = datetime.now(timezone.utc)
+        if job.status == "cancelled":
+            # Cancelado por el usuario mientras corria: respetar el estado,
+            # no convertirlo en done/pending/error
+            job.finished_at = job.finished_at or now
+            db.commit()
+            return
         if error is None:
             job.status = "done"
             job.result = result or {}
@@ -208,6 +230,8 @@ def _run_job(job_id: int) -> None:
         if not job:
             return
         job_type, payload = job.job_type, dict(job.payload or {})
+        # El handler conoce su job para poder consultar la cancelacion
+        payload["_job_id"] = job_id
     finally:
         db.close()
 

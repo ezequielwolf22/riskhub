@@ -804,7 +804,8 @@ def _process_batch_isolated(
 
 
 def analyze_all_org_assets(
-    db: Session, org_id: int, representatives_only: bool = False
+    db: Session, org_id: int, representatives_only: bool = False,
+    cancel_check=None,
 ) -> dict:
     """Analiza en SERIE todos los activos pendientes (null/error) de la org.
 
@@ -882,6 +883,7 @@ def analyze_all_org_assets(
     logger.info("Lotes: %d (tamano=%d), serial", len(batches), _BATCH_SIZE)
 
     # Ejecutar en paralelo
+    was_cancelled = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
         futures = {
             executor.submit(
@@ -893,6 +895,16 @@ def analyze_all_org_assets(
         }
         done, failed = 0, 0
         for future in concurrent.futures.as_completed(futures):
+            # Cancelacion cooperativa: si el usuario cancela el job, se
+            # descartan los lotes que aun no han empezado (los ~2 en vuelo
+            # terminan su llamada y paran)
+            if cancel_check and cancel_check():
+                was_cancelled = True
+                for f in futures:
+                    f.cancel()
+                logger.warning("Analysis CANCELLED by user org=%d: %d/%d lotes completados",
+                               org_id, done, len(batches))
+                break
             try:
                 future.result()
                 done += 1
@@ -901,6 +913,13 @@ def analyze_all_org_assets(
                 logger.error("Future failed batch=%s: %s", futures[future][:2], exc)
 
     _analysis_org_lock.pop(org_id, None)
+    if was_cancelled:
+        # Los activos que quedaron a medias vuelven a estado pendiente
+        db.query(Asset).filter(
+            Asset.id.in_(asset_ids), Asset.ai_risk_status == "analysing",
+        ).update({"ai_risk_status": None}, synchronize_session=False)
+        db.commit()
+        return {"total": total, "done_batches": done, "cancelled": True}
     logger.info("Serial analysis complete: %d batches done, %d failed, org=%d",
                 done, failed, org_id)
     return {"total": total}
