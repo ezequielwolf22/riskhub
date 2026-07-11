@@ -252,7 +252,9 @@ def _vulns_for_threats(db: Session, threat_codes: list[str]) -> list[Vulnerabili
 def _next_risk_code(db: Session) -> str:
     # El codigo NO puede derivarse del id: tras borrados e imports divergen
     # y el UNIQUE global de risks.code revienta (visto en produccion con
-    # RSK-8244). Se toma el maximo sufijo numerico real y se comprueba.
+    # RSK-8244). Se toma el maximo sufijo numerico real y se comprueba
+    # tambien contra los riesgos PENDIENTES de la sesion: con autoflush=False
+    # un lote (activo x N amenazas) obtendria N veces el mismo codigo.
     from app.models import Risk as RiskModel
     from sqlalchemy import Integer, func as _func
     max_num = (
@@ -260,8 +262,13 @@ def _next_risk_code(db: Session) -> str:
         .filter(RiskModel.code.like("RSK-%"))
         .scalar()
     ) or 0
+    pending = {
+        getattr(obj, "code", None)
+        for obj in db.new
+        if isinstance(obj, RiskModel)
+    }
     code = f"RSK-{max_num + 1:04d}"
-    while db.query(RiskModel.id).filter(RiskModel.code == code).first():
+    while code in pending or db.query(RiskModel.id).filter(RiskModel.code == code).first():
         max_num += 1
         code = f"RSK-{max_num + 1:04d}"
     return code
