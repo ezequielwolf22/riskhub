@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     env: str = "development"
     secret_key: str = "change-me-in-production-very-long-random-string"
     jwt_algorithm: str = "HS256"
-    jwt_expires_minutes: int = 8 * 60  # 8 horas
+    jwt_expires_minutes: int = 60           # access token (se renueva via refresh)
+    jwt_refresh_expires_minutes: int = 12 * 60  # refresh token: sesion maxima 12h
 
     # Base de datos (SQLite por defecto; cambia a postgresql://... si quieres)
     db_path: str = "./riskhub.db"

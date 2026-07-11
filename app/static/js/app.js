@@ -73,6 +73,7 @@ const LegacyRedirects = {
   audit: 'admin-hub/audit',
   organizations: 'admin-hub/organizations',
   'feature-flags': 'admin-hub/feature-flags',
+  ops: 'admin-hub/ops',
 };
 
 function currentRoute() {
@@ -291,6 +292,7 @@ function init() {
           .then(r => r.ok ? r.json() : Promise.reject('invalid'))
           .then(user => {
             localStorage.setItem('riskhub_token', tok);
+            if (data.refresh_token) localStorage.setItem('riskhub_refresh', data.refresh_token);
             localStorage.setItem('riskhub_user', JSON.stringify(user));
             window.location.reload();
           });

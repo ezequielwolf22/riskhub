@@ -18,9 +18,9 @@ from app.database import get_db
 from app.models import EmailSettings, Organization, User
 from app.schemas import TokenOut, UserOut
 from app.security import (
-    create_access_token, decode_token, decrypt_secret, encrypt_secret,
-    get_current_user, hash_password, mfa_setup_required, oauth2_scheme,
-    revoke_token, verify_password,
+    create_access_token, create_refresh_token, decode_token, decrypt_secret,
+    encrypt_secret, get_current_user, hash_password, is_token_revoked,
+    mfa_setup_required, oauth2_scheme, revoke_token, verify_password,
 )
 from app.services.audit_service import log_action
 from app.services.rate_limiter import (
@@ -200,6 +200,7 @@ def login(
     token = create_access_token(subject=user.email, role=user.role.value)
     return TokenOut(
         access_token=token,
+        refresh_token=create_refresh_token(subject=user.email, role=user.role.value),
         user=UserOut.model_validate(user),
         must_change_password=bool(user.must_change_password),
         must_configure_mfa=mfa_setup_required(db, user),
@@ -211,25 +212,80 @@ def me(user: User = Depends(get_current_user)):
     return UserOut.model_validate(user)
 
 
+class LogoutIn(BaseModel):
+    refresh_token: str | None = None
+
+
 @router.post("/logout")
 def logout(
+    body: LogoutIn | None = None,
     token: str = Depends(oauth2_scheme),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Cierra la sesion revocando el token actual (logout real).
+    """Cierra la sesion revocando el access token actual y, si el cliente
+    lo envia, tambien su refresh token (logout real completo).
 
-    El jti del token entra en la lista de revocados hasta su expiracion;
-    cualquier uso posterior del mismo token devuelve 401.
+    Los jti entran en la lista de revocados hasta su expiracion natural;
+    cualquier uso posterior devuelve 401.
     """
     try:
         payload = decode_token(token)
     except Exception:
         payload = {}
     revoked = revoke_token(db, payload, user_id=user.id)
+    if body and body.refresh_token:
+        try:
+            rpayload = decode_token(body.refresh_token)
+            # Solo revocar refresh tokens del propio usuario
+            if rpayload.get("type") == "refresh" and rpayload.get("sub") == user.email:
+                revoke_token(db, rpayload, user_id=user.id)
+        except Exception:
+            pass  # refresh invalido o expirado: nada que revocar
     log_action(db, user.id, "logout", "user", str(user.id), {"revoked": revoked})
     db.commit()
     return {"ok": True, "revoked": revoked}
+
+
+class RefreshIn(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh", response_model=TokenOut)
+def refresh_session(
+    request: Request,
+    body: RefreshIn,
+    db: Session = Depends(get_db),
+):
+    """Renueva la sesion: valida el refresh token, lo rota (el usado queda
+    revocado) y devuelve un access token nuevo con su refresh nuevo."""
+    lang = get_lang(request)
+    cred_error = HTTPException(status_code=401, detail=_t("auth.invalid_credentials", lang))
+    try:
+        payload = decode_token(body.refresh_token)
+    except Exception:
+        raise cred_error
+    if payload.get("type") != "refresh":
+        raise cred_error
+    if is_token_revoked(db, payload.get("jti")):
+        raise cred_error
+
+    user = db.query(User).filter(User.email == payload.get("sub")).first()
+    if not user or not user.is_active:
+        raise cred_error
+    if user.organization_id:
+        org = db.get(Organization, user.organization_id)
+        if org and not org.is_active:
+            raise cred_error
+
+    # Rotacion: el refresh usado deja de valer (limita el dano si se filtra)
+    revoke_token(db, payload, user_id=user.id)
+    return TokenOut(
+        access_token=create_access_token(subject=user.email, role=user.role.value),
+        refresh_token=create_refresh_token(subject=user.email, role=user.role.value),
+        user=UserOut.model_validate(user),
+        must_change_password=bool(user.must_change_password),
+    )
 
 
 class UserBasic(BaseModel):
@@ -632,6 +688,7 @@ def mfa_complete(
     token = create_access_token(subject=user.email, role=user.role.value)
     return TokenOut(
         access_token=token,
+        refresh_token=create_refresh_token(subject=user.email, role=user.role.value),
         user=UserOut.model_validate(user),
         must_change_password=bool(user.must_change_password),
     )

@@ -492,4 +492,13 @@ def sso_exchange(request: Request, body: SsoExchangeIn, db: Session = Depends(ge
     token = record.token
     db.delete(record)
     db.commit()
-    return {"access_token": token, "token_type": "bearer"}
+    # Emitir tambien un refresh token para que la sesion SSO se renueve
+    # igual que la de login por contrasena
+    refresh = None
+    try:
+        from app.security import create_refresh_token, decode_token
+        payload = decode_token(token)
+        refresh = create_refresh_token(subject=payload["sub"], role=payload.get("role", ""))
+    except Exception:
+        pass
+    return {"access_token": token, "refresh_token": refresh, "token_type": "bearer"}

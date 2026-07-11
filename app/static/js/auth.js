@@ -12,17 +12,19 @@ const Auth = {
   logout() {
     const token = Auth.token();
     if (token) {
-      // Revocar el token en el servidor (logout real); keepalive para que
-      // la peticion sobreviva a la navegacion inmediata a /login.
+      // Revocar access + refresh en el servidor (logout real); keepalive
+      // para que la peticion sobreviva a la navegacion inmediata a /login.
       try {
         fetch('/api/auth/logout', {
           method: 'POST',
-          headers: { Authorization: 'Bearer ' + token },
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: localStorage.getItem('riskhub_refresh') || null }),
           keepalive: true,
         }).catch(() => {});
       } catch (e) { /* sin red: se limpia localmente igual */ }
     }
     localStorage.removeItem('riskhub_token');
+    localStorage.removeItem('riskhub_refresh');
     localStorage.removeItem('riskhub_user');
     window.location.href = '/login';
   },

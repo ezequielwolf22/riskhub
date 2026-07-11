@@ -64,6 +64,16 @@ def create_access_token(subject: str, role: str, extra: Optional[dict] = None) -
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
 
+def create_refresh_token(subject: str, role: str) -> str:
+    """Refresh token de larga duracion: solo sirve en /api/auth/refresh."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_refresh_expires_minutes)
+    payload = {
+        "sub": subject, "role": role, "exp": expire,
+        "jti": uuid.uuid4().hex, "type": "refresh",
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+
+
 def decode_token(token: str) -> dict:
     # PyJWT devuelve dict directamente; algorithms es obligatorio para evitar alg:none
     return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
@@ -145,8 +155,9 @@ def get_current_user(
         email = payload.get("sub")
         if email is None:
             raise cred_error
-        # Rechazar tokens intermedios de MFA — solo aceptar tokens de sesion completa
-        if payload.get("type") == "mfa":
+        # Solo aceptar tokens de sesion completa: los intermedios de MFA y los
+        # refresh tokens llevan claim "type" y no valen como access token
+        if payload.get("type"):
             raise cred_error
     except JWTError:
         raise cred_error

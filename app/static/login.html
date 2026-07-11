@@ -285,6 +285,7 @@ function _finishLogin(data) {
   const user = data.user || {};
   user.must_configure_mfa = !!data.must_configure_mfa;
   localStorage.setItem('riskhub_token', data.access_token);
+  if (data.refresh_token) localStorage.setItem('riskhub_refresh', data.refresh_token);
   localStorage.setItem('riskhub_user', JSON.stringify(user));
   if (data.must_change_password) {
     window.location.href = '/#/change-password-required';

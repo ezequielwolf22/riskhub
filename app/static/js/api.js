@@ -2,7 +2,37 @@
 const Api = {
   token() { return localStorage.getItem('riskhub_token'); },
 
-  async req(path, opts = {}) {
+  // Promesa compartida: si varias peticiones reciben 401 a la vez solo se
+  // hace UN intento de refresh (el resto espera al mismo resultado).
+  _refreshing: null,
+
+  async _tryRefresh() {
+    if (!Api._refreshing) {
+      Api._refreshing = (async () => {
+        const refresh = localStorage.getItem('riskhub_refresh');
+        if (!refresh) return false;
+        try {
+          const r = await fetch('/api/auth/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refresh }),
+          });
+          if (!r.ok) return false;
+          const data = await r.json();
+          localStorage.setItem('riskhub_token', data.access_token);
+          if (data.refresh_token) localStorage.setItem('riskhub_refresh', data.refresh_token);
+          return true;
+        } catch (_e) {
+          return false;
+        } finally {
+          setTimeout(() => { Api._refreshing = null; }, 0);
+        }
+      })();
+    }
+    return Api._refreshing;
+  },
+
+  async req(path, opts = {}, _isRetry = false) {
     const headers = opts.headers || {};
     const tok = Api.token();
     if (tok) headers['Authorization'] = 'Bearer ' + tok;
@@ -20,7 +50,15 @@ const Api = {
     }
 
     if (resp.status === 401) {
+      // Access token caducado: intentar renovarlo con el refresh token y
+      // reintentar la peticion una sola vez antes de cerrar la sesion
+      if (!_isRetry && await Api._tryRefresh()) {
+        const retryOpts = { ...opts, headers: { ...(opts.headers || {}) } };
+        delete retryOpts.headers['Authorization'];
+        return Api.req(path, retryOpts, true);
+      }
       localStorage.removeItem('riskhub_token');
+      localStorage.removeItem('riskhub_refresh');
       localStorage.removeItem('riskhub_user');
       window.location.href = '/login';
       throw new Error('No autorizado');

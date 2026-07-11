@@ -69,6 +69,70 @@ def test_login_lockout_after_failed_attempts(client):
         reset_all_counters()
 
 
+def _fresh_pair(client):
+    resp = client.post(
+        "/api/auth/login",
+        data={"username": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    return body["access_token"], body["refresh_token"]
+
+
+def test_login_returns_refresh_token(client):
+    _access, refresh = _fresh_pair(client)
+    payload = pyjwt.decode(refresh, options={"verify_signature": False})
+    assert payload.get("type") == "refresh"
+    assert payload.get("jti")
+
+
+def test_refresh_rotates_and_revokes_old_token(client):
+    _access, refresh = _fresh_pair(client)
+
+    resp = client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    new_access, new_refresh = body["access_token"], body["refresh_token"]
+    assert new_refresh != refresh
+
+    # El access nuevo funciona
+    r = client.get("/api/auth/me", headers={"Authorization": f"Bearer {new_access}"})
+    assert r.status_code == 200
+
+    # El refresh usado quedo revocado (rotacion): reutilizarlo falla
+    resp2 = client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert resp2.status_code == 401
+
+    # El refresh nuevo si vale
+    resp3 = client.post("/api/auth/refresh", json={"refresh_token": new_refresh})
+    assert resp3.status_code == 200
+
+
+def test_refresh_token_is_not_an_access_token(client):
+    _access, refresh = _fresh_pair(client)
+    r = client.get("/api/auth/me", headers={"Authorization": f"Bearer {refresh}"})
+    assert r.status_code == 401
+
+
+def test_access_token_cannot_be_used_as_refresh(client):
+    access, _refresh = _fresh_pair(client)
+    resp = client.post("/api/auth/refresh", json={"refresh_token": access})
+    assert resp.status_code == 401
+
+
+def test_logout_revokes_refresh_token_too(client):
+    access, refresh = _fresh_pair(client)
+    resp = client.post(
+        "/api/auth/logout",
+        headers={"Authorization": f"Bearer {access}"},
+        json={"refresh_token": refresh},
+    )
+    assert resp.status_code == 200
+    # Tras logout, el refresh tampoco sirve para renovar la sesion
+    resp2 = client.post("/api/auth/refresh", json={"refresh_token": refresh})
+    assert resp2.status_code == 401
+
+
 def test_password_policy_rejects_weak_password(client, auth_headers):
     resp = client.patch(
         "/api/auth/me/password",
