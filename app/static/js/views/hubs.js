@@ -488,6 +488,7 @@ const ViewAdminHub = {
         { id: 'audit', label: t('hub.admin.audit_log'), view: ViewAudit, visible: () => Auth.isAdmin() },
         { id: 'organizations', label: t('hub.admin.organizations'), view: ViewOrganizations, visible: () => Auth.isSuperAdmin() },
         { id: 'feature-flags', label: t('hub.admin.modules'), view: ViewFeatureFlags, visible: () => Auth.isSuperAdmin() },
+        { id: 'ops', label: t('hub.admin.ops'), view: ViewOps, visible: () => Auth.isAdmin() },
         { id: 'license', label: t('hub.admin.license'), view: ViewLicense, visible: () => Auth.isAdmin() },
       ],
     });

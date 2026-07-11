@@ -54,6 +54,7 @@ const ViewGuide = {
     { id: 'awareness', title: 'Awareness (Infografias)', icon: '🎨' },
     { id: 'organizations', title: 'Organizaciones (multi-tenant)', icon: '🏢' },
     { id: 'audit', title: 'Log de Auditoria', icon: '📋' },
+    { id: 'ops', title: 'Operaciones (IA, jobs, backups)', icon: '🧰' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'security', title: 'Seguridad y privacidad', icon: '🔐' },
     { id: 'methodology', title: 'Metodologia ISO 27005', icon: '📐' },
@@ -166,6 +167,7 @@ const ViewGuide = {
       awareness: this._cAwareness,
       organizations: this._cOrganizations,
       audit: this._cAudit,
+      ops: this._cOps,
       admin: this._cAdmin,
       security: this._cSecurity,
       methodology: this._cMethodology,
@@ -1372,6 +1374,24 @@ const ViewGuide = {
     ${this._tip('<strong>Buena práctica:</strong> Revisa el log de auditoría mensualmente como parte del proceso de monitorización y revisión del SGSI (ISO 27005 cl. 12). Exporta las entradas relevantes junto con los informes de seguimiento periódico.')}
   `;},
 
+  get _cOps() { return `
+    ${this._p('La pestana <strong>Configuracion → Operaciones</strong> concentra la salud operativa de la plataforma: cuanto consume la IA, que trabajos en segundo plano hay en cola, que errores ha capturado el sistema y que copias de seguridad existen.')}
+
+    ${this._h('Consumo de IA del mes (admin)')}
+    ${this._p('Desglose del mes en curso por tipo de analisis y modelo: llamadas, tokens de entrada/salida y <strong>coste estimado en USD</strong> segun los precios reales por millon de tokens de cada modelo. Incluye la tendencia de los ultimos meses y el presupuesto blando del plan contratado (free/starter/pro/enterprise).')}
+    ${this._tip('El presupuesto es <strong>blando</strong>: al superarlo se muestra un aviso y se registra en el log, pero nunca se corta el servicio. El coste mostrado es un techo (no descuenta los descuentos por prompt caching).')}
+
+    ${this._h('Cola de trabajos (admin)')}
+    ${this._p('Los analisis pesados (analisis IA masivo de activos, revision de evidencias, vision de documentos escaneados) se ejecutan como trabajos persistidos en base de datos: sobreviven a reinicios, reintentan con backoff exponencial y dejan rastro. Aqui ves su estado (pendiente, en ejecucion, completado, error) y puedes cancelar los que aun no han empezado.')}
+
+    ${this._h('Errores del sistema (superadmin)')}
+    ${this._p('Cada error no controlado se captura con un <strong>request-id</strong> unico que el usuario afectado recibe en su mensaje de error. Con ese identificador localizas aqui el error exacto (endpoint, tipo de excepcion, detalle y momento) sin pedirle nada mas al usuario. Vacia el registro tras revisarlo.')}
+
+    ${this._h('Copias de seguridad (superadmin)')}
+    ${this._p('Backup automatico nocturno (02:30 UTC) de la base de datos con compresion gzip y retencion de 14 dias, guardado dentro del volumen de datos del servidor. Desde aqui puedes lanzar un backup inmediato (por ejemplo antes de un cambio grande) y descargar cualquiera de los existentes.')}
+    ${this._warn('El backup no incluye el fichero <code>.env</code> del servidor. Sin el <code>SECRET_KEY</code> original no se pueden descifrar las API keys ni el resto de secretos cifrados: guardalo en un gestor de secretos aparte. Procedimiento completo de restauracion en <code>docs/BACKUP_RESTORE_RUNBOOK.md</code>.')}
+  `; },
+
   get _cAdmin() { return `
     ${this._p('La seccion de administracion de RiskHub agrupa las funciones exclusivas del rol <strong>admin</strong>: gestion de usuarios, log de auditoria, configuracion SMTP y mantenimiento del sistema.')}
     ${this._h('Gestion de usuarios')}
@@ -2099,7 +2119,7 @@ const ViewGuide = {
         ['Documentos en disco', 'Fernet (AES-128-CBC + HMAC-SHA256): los archivos se cifran con la clave del servidor antes de escribirse en disco. Un atacante con acceso al sistema de archivos no puede leer los documentos sin el SECRET_KEY.'],
         ['API keys e integraciones', 'Todas las claves de API (agente IA, SharePoint, CVE, SSO client_secret) se cifran con Fernet antes de guardarse en la base de datos.'],
         ['Contrasenas de usuario', 'bcrypt con factor de coste 12. Nunca se almacena la contrasena en claro.'],
-        ['Tokens de sesion', 'JWT HS256 firmados con el SECRET_KEY. Expiran a las 8 horas.'],
+        ['Tokens de sesion', 'JWT HS256 firmados con el SECRET_KEY. Access token de 60 minutos que se renueva automaticamente con un refresh token rotativo (sesion maxima 12h). Cerrar sesion revoca ambos tokens en el servidor (logout real).'],
         ['Cifrado en transito', 'HSTS activado (max-age=31536000 + preload). Requiere nginx + TLS delante de la app (ver seccion de instalacion).'],
         ['Anonimizacion IA', 'IPs, emails, dominios, telefonos, DNI/NIF y datos bancarios (IBAN) se reemplazan por tokens antes de enviar contexto al agente IA externo.'],
       ].map(([t,d]) => `
@@ -2139,6 +2159,16 @@ const ViewGuide = {
       <li><strong>analyst:</strong> creacion y edicion de riesgos, activos, controles, incidentes. Sin gestion de usuarios.</li>
       <li><strong>admin:</strong> todo lo anterior + gestion de usuarios, configuracion SMTP, backups, log de auditoria.</li>
       <li><strong>superadmin:</strong> todo lo anterior + feature flags, licenciamiento, acceso a todos los tenants.</li>
+    </ul>
+
+    ${this._h('Hardening de acceso')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Bloqueo de login:</strong> 10 intentos fallidos en 5 minutos bloquean tanto la IP de origen como la cuenta atacada (protege contra ataques distribuidos que rotan IPs). El bloqueo sobrevive a reinicios del servidor.</li>
+      <li><strong>Rate limiting global:</strong> limite de peticiones por IP a toda la API (600/min por defecto, configurable con <code>RISKHUB_API_RATE_PER_MINUTE</code>). Protege contra abuso y bucles descontrolados.</li>
+      <li><strong>Logout real:</strong> cerrar sesion revoca el token en el servidor; un token robado deja de funcionar inmediatamente tras el logout.</li>
+      <li><strong>Sesiones renovables:</strong> el access token dura 60 minutos y se renueva solo mientras usas la app; el refresh token rota en cada renovacion (uno filtrado se invalida al primer uso legitimo).</li>
+      <li><strong>Politica de contrasenas:</strong> minimo 8 caracteres con mayuscula, minuscula, digito y caracter especial, aplicada en creacion, cambio y reseteo.</li>
+      <li><strong>Backups automaticos:</strong> copia nocturna de la base de datos (02:30 UTC) con retencion de 14 dias, gestionable desde Configuracion → Operaciones.</li>
     </ul>
 
     ${this._h('Anonimizacion configurable del Agente IA')}
