@@ -25,6 +25,7 @@ data/
 .claude/
 test_riskhub.db
 rate_limits.db
+backups/
 scripts/__pycache__/
 BCP_MODULE.md
 *.bak

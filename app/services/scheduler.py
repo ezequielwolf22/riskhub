@@ -1988,6 +1988,31 @@ def _cleanup_ai_jobs() -> None:
         logger.warning("AI jobs cleanup error: %s", exc)
 
 
+def _run_db_backup() -> None:
+    """Backup nocturno de la BD SQLite con retencion (backup_service)."""
+    try:
+        from app.services import backup_service
+        backup_service.run_backup()
+    except Exception as exc:
+        logger.exception("Error en backup nocturno de BD: %s", exc)
+
+
+def _run_revoked_token_purge() -> None:
+    """Elimina revocaciones de tokens ya expirados (higiene de la tabla)."""
+    from app.database import SessionLocal
+    from app.security import purge_expired_revocations
+
+    db = SessionLocal()
+    try:
+        n = purge_expired_revocations(db)
+        if n:
+            logger.info("Revoked tokens purge: %d filas eliminadas.", n)
+    except Exception as exc:
+        logger.warning("Revoked tokens purge error: %s", exc)
+    finally:
+        db.close()
+
+
 def _run_regwatch_sweep() -> None:
     """Barrido periodico de fuentes de vigilancia normativa (regwatch §5.2)."""
     from app.database import SessionLocal
@@ -2846,6 +2871,22 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=CronTrigger(hour=9),
         id="survey_reminders",
         name="Recordatorios de encuestas pendientes",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_db_backup,
+        trigger=CronTrigger(hour=2, minute=30),  # nocturno, antes de los jobs IA
+        id="db_backup",
+        name="Backup nocturno de la base de datos",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_revoked_token_purge,
+        trigger=IntervalTrigger(hours=24),
+        id="revoked_token_purge",
+        name="Purga de tokens revocados expirados",
         replace_existing=True,
         misfire_grace_time=3600,
     )

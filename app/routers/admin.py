@@ -109,6 +109,56 @@ def backup_db(
     )
 
 
+@router.get("/backups")
+def list_scheduled_backups(
+    current_user: User = Depends(require_superadmin),
+):
+    """Lista los backups automatizados disponibles en el servidor."""
+    from app.services import backup_service
+    return {
+        "backup_dir": str(backup_service.backup_dir()),
+        "backups": backup_service.list_backups(),
+    }
+
+
+@router.post("/backups/run")
+def run_backup_now(
+    current_user: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Ejecuta un backup inmediato (ademas del programado nocturno)."""
+    from app.services import backup_service
+    dest = backup_service.run_backup()
+    if dest is None:
+        raise HTTPException(400, "Backup no disponible (la BD no es SQLite)")
+    log_action(db, current_user.id, "backup", "database", None, {"filename": dest.name})
+    db.commit()
+    return {"filename": dest.name, "size_bytes": dest.stat().st_size}
+
+
+@router.get("/backups/{filename}")
+def download_scheduled_backup(
+    filename: str,
+    current_user: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Descarga un backup automatizado concreto."""
+    from app.services import backup_service
+    # Solo nombres generados por el servicio: sin separadores ni traversal
+    if not re.fullmatch(r"riskhub-\d{8}-\d{6}\.db\.gz", filename):
+        raise HTTPException(400, "Nombre de backup no valido")
+    path = backup_service.backup_dir() / filename
+    if not path.exists():
+        raise HTTPException(404, "Backup no encontrado")
+    log_action(db, current_user.id, "export", "database_backup", None, {"filename": filename})
+    db.commit()
+    return FileResponse(
+        path=str(path),
+        media_type="application/gzip",
+        filename=filename,
+    )
+
+
 @router.get("/system-info")
 def system_info(
     current_user: User = Depends(require_admin),
