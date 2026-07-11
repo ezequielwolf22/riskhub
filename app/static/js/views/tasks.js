@@ -156,43 +156,45 @@ const ViewTasks = (() => {
     });
   }
 
-  function _taskCard(t, now, canEdit) {
-    const isOverdue = t.due_date && t.status !== 'done'
-      && new Date(t.due_date) < now;
-    const assignee = _users.find(u => u.id === t.assigned_to_id);
-    const riskObj = _risks.find(r => r.id === t.risk_id);
-    const dueFmt = t.due_date ? new Date(t.due_date).toLocaleDateString('es-ES') : null;
+  // OJO: el parametro no puede llamarse "t" — sombrearia la funcion global
+  // de i18n t() y romperia el render (bug historico de la migracion i18n)
+  function _taskCard(task, now, canEdit) {
+    const isOverdue = task.due_date && task.status !== 'done'
+      && new Date(task.due_date) < now;
+    const assignee = _users.find(u => u.id === task.assigned_to_id);
+    const riskObj = _risks.find(r => r.id === task.risk_id);
+    const dueFmt = task.due_date ? new Date(task.due_date).toLocaleDateString('es-ES') : null;
 
-    const colIdx = STATUS_COLS.findIndex(c => c.id === t.status);
+    const colIdx = STATUS_COLS.findIndex(c => c.id === task.status);
     const prevCol = colIdx > 0 ? STATUS_COLS[colIdx - 1] : null;
     const nextCol = colIdx < STATUS_COLS.length - 1 ? STATUS_COLS[colIdx + 1] : null;
 
     return `
-      <div data-task-id="${t.id}" style="background:var(--bg-1);border:1px solid var(--border);
+      <div data-task-id="${task.id}" style="background:var(--bg-1);border:1px solid var(--border);
             border-radius:8px;padding:10px 12px;cursor:pointer;
             ${isOverdue ? 'border-left:3px solid var(--risk-critical);' : ''}
             transition:box-shadow .15s;"
            onmouseover="this.style.boxShadow='0 2px 10px rgba(0,0,0,.12)'"
            onmouseout="this.style.boxShadow='none'">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
-          <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);">${UI.esc(t.code)}</span>
-          ${_badge(PRIORITY_LABELS()[t.priority] || t.priority, PRIORITY_COLORS[t.priority] || '#888')}
+          <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);">${UI.esc(task.code)}</span>
+          ${_badge(PRIORITY_LABELS()[task.priority] || task.priority, PRIORITY_COLORS[task.priority] || '#888')}
         </div>
-        <div style="font-weight:600;font-size:13px;margin:5px 0 3px;">${UI.esc(t.title)}</div>
+        <div style="font-weight:600;font-size:13px;margin:5px 0 3px;">${UI.esc(task.title)}</div>
         ${riskObj ? `<div style="font-size:11px;color:var(--text-muted);">${t('common.risk')}: ${UI.esc(riskObj.code)} — ${UI.esc(riskObj.asset?.name||'')}</div>` : ''}
         ${assignee ? `<div style="font-size:11px;color:var(--text-subtle);margin-top:3px;">${t('common.owner')}: ${UI.esc(assignee.full_name||assignee.email)}</div>` : ''}
         ${dueFmt ? `<div style="font-size:11px;margin-top:3px;color:${isOverdue?'var(--risk-critical)':'var(--text-subtle)'};">
           ${isOverdue ? t('tasks.overdue') + ' — ' : ''}${t('common.due_date')}: ${dueFmt}
         </div>` : ''}
         ${canEdit ? `<div style="display:flex;gap:4px;margin-top:8px;justify-content:flex-end;" onclick="event.stopPropagation()">
-          ${prevCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${t.id}" data-move-to="${prevCol.id}" title="${prevCol.label()}">◀</button>` : ''}
-          ${nextCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${t.id}" data-move-to="${nextCol.id}" title="${nextCol.label()}">▶</button>` : ''}
+          ${prevCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${task.id}" data-move-to="${prevCol.id}" title="${prevCol.label()}">◀</button>` : ''}
+          ${nextCol ? `<button class="btn btn-sm btn-ghost" data-move-id="${task.id}" data-move-to="${nextCol.id}" title="${nextCol.label()}">▶</button>` : ''}
         </div>` : ''}
       </div>`;
   }
 
-  function _formHtml(t, defaultStatus) {
-    const v = t || {};
+  function _formHtml(task, defaultStatus) {
+    const v = task || {};
     const status = v.status || defaultStatus || 'pending';
     return `
       <div class="form-grid">
@@ -230,30 +232,30 @@ const ViewTasks = (() => {
     `;
   }
 
-  function _openForm(t, defaultStatus) {
-    const title = t ? `${t('common.task')} ${t.code}` : t('tasks.new');
-    UI.modal(title, _formHtml(t, defaultStatus), {
+  function _openForm(task, defaultStatus) {
+    const title = task ? `${t('common.task')} ${task.code}` : t('tasks.new');
+    UI.modal(title, _formHtml(task, defaultStatus), {
       actions: `
         <button class="btn" id="m-cancel">${t('common.cancel')}</button>
-        ${t ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
+        ${task ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
         <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`,
     });
     document.getElementById('m-cancel').onclick = UI.closeModal;
-    if (t) document.getElementById('m-del').onclick = async () => {
+    if (task) document.getElementById('m-del').onclick = async () => {
       if (!confirm(t('tasks.delete_confirm'))) return;
       try {
-        await Api.tasks.del(t.id);
+        await Api.tasks.del(task.id);
         UI.toast(t('common.success'), 'success');
         UI.closeModal();
-        _tasks = _tasks.filter(x => x.id !== t.id);
+        _tasks = _tasks.filter(x => x.id !== task.id);
         _renderBoard();
         await _loadStats();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
-    document.getElementById('m-save').onclick = () => _save(t);
+    document.getElementById('m-save').onclick = () => _save(task);
   }
 
-  async function _save(t) {
+  async function _save(task) {
     const title = document.getElementById('f-title').value.trim();
     if (!title) { UI.toast(t('tasks.task_name') + ' ' + t('common.required').toLowerCase(), 'error'); return; }
     const riskVal = document.getElementById('f-risk').value;
@@ -270,9 +272,9 @@ const ViewTasks = (() => {
     };
     try {
       let updated;
-      if (t) {
-        updated = await Api.tasks.update(t.id, payload);
-        _tasks = _tasks.map(x => x.id === t.id ? updated : x);
+      if (task) {
+        updated = await Api.tasks.update(task.id, payload);
+        _tasks = _tasks.map(x => x.id === task.id ? updated : x);
         UI.toast(t('common.success'), 'success');
       } else {
         updated = await Api.tasks.create(payload);
