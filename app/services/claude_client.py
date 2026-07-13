@@ -70,27 +70,38 @@ def cached_system(prompt: str, cached_context: str | None = None) -> list[dict]:
 
 
 def _log_usage(msg, *, org_id: int | None, call_type: str | None, model: str) -> None:
-    """Registra tokens en ai_call_logs (best-effort) para el panel de costes."""
+    """Registra tokens en ai_call_logs (best-effort) para el panel de costes.
+
+    Reintenta una vez ante contencion de SQLite (p.ej. hilos background que
+    escriben a la vez) y deja rastro visible si aun asi falla: el panel de
+    costes depende de estas filas.
+    """
     if not call_type:
         return
-    try:
-        from app.database import SessionLocal
-        from app.models import AiCallLog
-        usage = getattr(msg, "usage", None)
-        db = SessionLocal()
+    usage = getattr(msg, "usage", None)
+    for attempt in (0, 1):
         try:
-            db.add(AiCallLog(
-                organization_id=org_id,
-                call_type=call_type,
-                model=model,
-                prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
-                completion_tokens=getattr(usage, "output_tokens", 0) or 0,
-            ))
-            db.commit()
-        finally:
-            db.close()
-    except Exception as exc:  # nunca romper el analisis por el logging
-        logger.debug("claude_client: no se pudo registrar el uso: %s", exc)
+            from app.database import SessionLocal
+            from app.models import AiCallLog
+            db = SessionLocal()
+            try:
+                db.add(AiCallLog(
+                    organization_id=org_id,
+                    call_type=call_type,
+                    model=model,
+                    prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
+                    completion_tokens=getattr(usage, "output_tokens", 0) or 0,
+                ))
+                db.commit()
+                return
+            finally:
+                db.close()
+        except Exception as exc:  # nunca romper el analisis por el logging
+            if attempt == 0:
+                time.sleep(0.5)
+                continue
+            logger.warning("claude_client: no se pudo registrar el uso (%s/%s): %s",
+                           call_type, model, exc)
 
 
 def structured_message(api_key: str, *, model: str, max_tokens: int,

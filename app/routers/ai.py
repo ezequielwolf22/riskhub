@@ -1108,75 +1108,88 @@ def control_gap_detailed(
         "de las evidencias, riesgos vinculados con su nivel residual maximo, NCs abiertas "
         "y si tiene revision normativa pendiente (regwatch). USALO: un control con riesgos "
         "residuales altos o evidencia pobre no puede ser CONFORME aunque declare madurez alta.\n\n"
-        "Para cada control de la lista, indica:\n"
-        "- Cumplimiento: CONFORME / PARCIAL / NO CONFORME / EXCLUIDO\n"
-        "- Hallazgo: descripcion especifica de que esta bien y que falta, citando el contexto\n"
-        "- Evidencias requeridas: que documentacion deberia existir para este control\n"
-        "- Recomendacion: accion concreta y priorizada\n"
-        "- Riesgo de no cumplimiento: impacto si no se subsana\n"
-        "- Prioridad: INMEDIATA / CORTO PLAZO / MEDIO PLAZO\n\n"
-        "Devuelve UNICAMENTE JSON valido con esta estructura exacta:\n"
-        "{\n"
-        '  "controls": [\n'
-        '    {\n'
-        '      "code": "5.1",\n'
-        '      "name": "...",\n'
-        '      "status": "CONFORME|PARCIAL|NO CONFORME|EXCLUIDO",\n'
-        '      "finding": "...",\n'
-        '      "evidence_required": ["..."],\n'
-        '      "recommendation": "...",\n'
-        '      "priority": "INMEDIATA|CORTO PLAZO|MEDIO PLAZO",\n'
-        '      "risk_of_non_compliance": "..."\n'
-        '    }\n'
-        '  ]\n'
-        "}\n"
-        "Sin texto ni markdown antes ni despues del JSON."
+        "Para cada control de la lista entrega su evaluacion llamando a la herramienta "
+        "registrar_gap_controles: cumplimiento, hallazgo especifico citando el contexto, "
+        "evidencias requeridas, recomendacion accionable, riesgo de no cumplimiento y prioridad."
     )
 
-    def _strip_json(raw: str) -> str:
-        raw = raw.strip()
-        if raw.startswith("```"):
-            parts = raw.split("```", 2)
-            inner = parts[1] if len(parts) > 1 else raw
-            if inner.startswith("json"):
-                inner = inner[4:]
-            raw = inner.rsplit("```", 1)[0].strip()
-        return raw
+    _GAP_CHUNK_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "controls": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string"},
+                        "name": {"type": "string"},
+                        "status": {"type": "string",
+                                   "enum": ["CONFORME", "PARCIAL", "NO CONFORME", "EXCLUIDO"]},
+                        "finding": {"type": "string", "maxLength": 600},
+                        "evidence_required": {"type": "array", "items": {"type": "string"},
+                                              "maxItems": 4},
+                        "recommendation": {"type": "string", "maxLength": 400},
+                        "priority": {"type": "string",
+                                     "enum": ["INMEDIATA", "CORTO PLAZO", "MEDIO PLAZO"]},
+                        "risk_of_non_compliance": {"type": "string", "maxLength": 300},
+                    },
+                    "required": ["code", "status", "finding", "recommendation", "priority"],
+                },
+            },
+        },
+        "required": ["controls"],
+    }
+    _GAP_SYNTH_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "framework_score": {"type": "integer", "minimum": 0, "maximum": 100},
+            "executive_summary": {"type": "string"},
+            "top_3_priorities": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+        },
+        "required": ["framework_score", "executive_summary", "top_3_priorities"],
+    }
 
-    # Trocear por tema ISO 27002 (5/6/7/8): cubre el catalogo completo sin
-    # exceder tokens; cada tema en tier fast, sintesis ejecutiva en deep
+    # Trocear por tema ISO 27002 (5/6/7/8) y dentro de cada tema en bloques
+    # acotados: el tema organizational (37 controles) desbordaba max_tokens y
+    # truncaba el JSON. Salida estructurada (tool use) = JSON validado por la API.
     theme_order = ["organizational", "people", "physical", "technological"]
     by_theme: dict[str, list] = {}
     for c in controls_payload:
         by_theme.setdefault(c.get("theme") or "otros", []).append(c)
 
+    _CHUNK = 12
     all_controls: list = []
     tokens_in = tokens_out = 0
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        from app.services.claude_client import structured_message
         for theme in theme_order + [t for t in by_theme if t not in theme_order]:
             group = by_theme.get(theme)
             if not group:
                 continue
-            response = client.messages.create(
-                model=model,
-                max_tokens=16384,
-                system=system_prompt,
-                messages=[{
-                    "role": "user",
-                    "content": (
-                        f"Framework: {req.framework}\n"
-                        f"Tema ISO 27002: {theme}\n"
-                        f"Controles a analizar ({len(group)}):\n"
-                        f"{_json.dumps(group, ensure_ascii=False)}"
-                    ),
-                }],
-            )
-            tokens_in += response.usage.input_tokens if response.usage else 0
-            tokens_out += response.usage.output_tokens if response.usage else 0
-            theme_result = _json.loads(_strip_json(response.content[0].text))
-            all_controls.extend(theme_result.get("controls", []))
+            for start in range(0, len(group), _CHUNK):
+                chunk = group[start:start + _CHUNK]
+                parsed, msg = structured_message(
+                    api_key,
+                    model=model,
+                    max_tokens=8192,
+                    system=system_prompt,
+                    messages=[{
+                        "role": "user",
+                        "content": (
+                            f"Framework: {req.framework}\n"
+                            f"Tema ISO 27002: {theme}\n"
+                            f"Controles a analizar ({len(chunk)}):\n"
+                            f"{_json.dumps(chunk, ensure_ascii=False)}"
+                        ),
+                    }],
+                    tool_name="registrar_gap_controles",
+                    tool_description="Registra la evaluacion de cumplimiento de cada control del bloque",
+                    input_schema=_GAP_CHUNK_SCHEMA,
+                )
+                usage = getattr(msg, "usage", None)
+                tokens_in += getattr(usage, "input_tokens", 0) or 0
+                tokens_out += getattr(usage, "output_tokens", 0) or 0
+                all_controls.extend(parsed.get("controls", []))
 
         # Sintesis ejecutiva con el modelo potente sobre los hallazgos por tema
         findings_brief = [
@@ -1184,24 +1197,27 @@ def control_gap_detailed(
              "priority": c.get("priority"), "finding": (c.get("finding") or "")[:150]}
             for c in all_controls
         ]
-        synth = client.messages.create(
+        summary, synth_msg = structured_message(
+            api_key,
             model=model_synthesis,
             max_tokens=4096,
             system=(
                 "Eres auditor jefe ISO 27001. A partir de los hallazgos por control, "
-                "devuelve SOLO JSON: {\"framework_score\": <0-100>, "
-                "\"executive_summary\": \"<sintesis para direccion, 4-6 frases>\", "
-                "\"top_3_priorities\": [\"...\", \"...\", \"...\"]}. "
-                "El score pondera severidad y numero de no conformidades."
+                "registra la sintesis ejecutiva con la herramienta: framework_score "
+                "(pondera severidad y numero de no conformidades), executive_summary "
+                "(4-6 frases para direccion) y top_3_priorities."
             ),
             messages=[{
                 "role": "user",
                 "content": f"Framework: {req.framework}\nHallazgos:\n{_json.dumps(findings_brief, ensure_ascii=False)}",
             }],
+            tool_name="registrar_sintesis_gap",
+            tool_description="Registra la sintesis ejecutiva del gap analysis",
+            input_schema=_GAP_SYNTH_SCHEMA,
         )
-        tokens_in += synth.usage.input_tokens if synth.usage else 0
-        tokens_out += synth.usage.output_tokens if synth.usage else 0
-        summary = _json.loads(_strip_json(synth.content[0].text))
+        usage = getattr(synth_msg, "usage", None)
+        tokens_in += getattr(usage, "input_tokens", 0) or 0
+        tokens_out += getattr(usage, "output_tokens", 0) or 0
         result = {
             "framework_score": summary.get("framework_score", 0),
             "controls": all_controls,
