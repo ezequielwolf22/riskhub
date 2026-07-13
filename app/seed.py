@@ -806,6 +806,9 @@ def _migrate_columns() -> None:
         ("ALTER TABLE evidence ADD COLUMN ai_reviewed_at DATETIME", "evidence", "ai_reviewed_at"),
         # v6.1.0 — Aprendizaje del agente: lecciones destiladas por organizacion
         ("ALTER TABLE risk_context ADD COLUMN ai_learned_lessons JSON", "risk_context", "ai_learned_lessons"),
+        # v6.6.0 — Modo maxima calidad: el analisis masivo tambien usa el modelo profundo
+        ("ALTER TABLE ai_config ADD COLUMN force_deep_analysis BOOLEAN DEFAULT 0",
+         "ai_config", "force_deep_analysis"),
         # v6.0.0 — registro de migraciones one-shot (pasos de datos que solo corren una vez)
         (
             """CREATE TABLE IF NOT EXISTS app_migrations (

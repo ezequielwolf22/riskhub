@@ -1778,6 +1778,9 @@ class AiConfig(Base):
     api_key_encrypted = Column(Text, nullable=True)        # Fernet-encrypted Anthropic key
     voyage_api_key_encrypted = Column(Text, nullable=True) # Fernet-encrypted Voyage AI key
     model = Column(String(64), default="claude-opus-4-6")
+    # Modo maxima calidad: los analisis masivos (tier fast) tambien usan el
+    # modelo profundo. Multiplica el coste ~5x; para clientes que lo prefieran.
+    force_deep_analysis = Column(Boolean, default=False)
     anonymization_level = Column(Enum(AiAnonymizationLevel), default=AiAnonymizationLevel.MEDIUM)
     setup_completed = Column(Boolean, default=False)
     org_sector = Column(String(128), nullable=True)

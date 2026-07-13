@@ -2544,6 +2544,8 @@ const I18N_EN = {
     settings_model_desc: "All AI features in the platform will use this model. Changes take effect from the next call.",
     settings_active_model: "Active model",
     settings_quick_guide: "Quick guide:",
+    settings_force_deep: "Maximum quality mode for bulk analysis",
+    settings_force_deep_desc: "Bulk asset analysis will also use the powerful model selected above (instead of Haiku, the economical one). Multiplies AI cost ~5x. Critical assets and individual analysis always use the powerful model, with or without this option.",
     settings_save: "Save changes",
     settings_test: "Test connection",
     settings_saving: "Saving...",

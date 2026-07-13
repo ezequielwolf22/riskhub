@@ -23,18 +23,21 @@ def get_model(db: Session, organization_id: int | None, tier: str = "deep") -> s
 
     El override de AiConfig.model (si el admin fijo un modelo concreto)
     tiene prioridad sobre el tier solo para "deep": los analisis fast
-    siguen usando el modelo barato aunque la org haya elegido uno potente.
+    usan el modelo barato salvo que la org active el modo maxima calidad
+    (AiConfig.force_deep_analysis), que fuerza el modelo profundo en todo.
     """
     default = MODEL_TIERS.get(tier, MODEL_TIERS["deep"])
-    if tier == "fast":
-        return default
     try:
         from app.models import AiConfig
         cfg = db.query(AiConfig).filter_by(organization_id=organization_id).first()
-        if cfg and cfg.model:
-            return cfg.model
     except Exception:
-        pass
+        cfg = None
+    if tier == "fast":
+        if cfg and getattr(cfg, "force_deep_analysis", False):
+            return cfg.model or MODEL_TIERS["deep"]
+        return default
+    if cfg and cfg.model:
+        return cfg.model
     return default
 
 

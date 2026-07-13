@@ -41,6 +41,7 @@ class AiConfigIn(BaseModel):
     api_key: str | None = None
     voyage_api_key: str | None = None
     model: str | None = None
+    force_deep_analysis: bool | None = None
     anonymization_level: AiAnonymizationLevel | None = None
     setup_completed: bool | None = None
     org_sector: str | None = None
@@ -83,6 +84,8 @@ def update_config(
         )
     if payload.model is not None:
         cfg.model = payload.model
+    if payload.force_deep_analysis is not None:
+        cfg.force_deep_analysis = payload.force_deep_analysis
     if payload.anonymization_level is not None:
         cfg.anonymization_level = payload.anonymization_level
     if payload.setup_completed is not None:
@@ -174,6 +177,7 @@ def _cfg_out(cfg: AiConfig) -> dict:
 
     return {
         "model": cfg.model or "claude-opus-4-6",
+        "force_deep_analysis": bool(cfg.force_deep_analysis),
         "anonymization_level": (
             cfg.anonymization_level.value if cfg.anonymization_level else "medium"
         ),
@@ -191,6 +195,7 @@ def _cfg_out(cfg: AiConfig) -> dict:
 def _default_out() -> dict:
     return {
         "model": "claude-opus-4-6",
+        "force_deep_analysis": False,
         "anonymization_level": "medium",
         "setup_completed": False,
         "org_sector": None,

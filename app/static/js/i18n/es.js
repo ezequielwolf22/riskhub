@@ -2548,6 +2548,8 @@ const I18N_ES = {
     settings_model_desc: "Todas las funciones IA de la plataforma usarán este modelo. Los cambios se aplican a partir de la siguiente llamada.",
     settings_active_model: "Modelo activo",
     settings_quick_guide: "Guía rápida:",
+    settings_force_deep: "Modo máxima calidad en análisis masivos",
+    settings_force_deep_desc: "Los análisis masivos de activos también usarán el modelo potente seleccionado arriba (en vez de Haiku, el económico). Multiplica el coste de IA ~5x. Los activos críticos y el análisis individual siempre usan el modelo potente, con o sin esta opción.",
     settings_save: "Guardar cambios",
     settings_test: "Probar conexión",
     settings_saving: "Guardando...",

@@ -393,6 +393,14 @@ const ViewAiSettings = {
             <strong>Sonnet 4.6</strong> — rapido y capaz, ideal para uso intensivo.<br>
             <strong>Haiku 4.5</strong> — el mas economico, adecuado para tareas simples y alertas.
           </div>
+          <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="ai-force-deep" ${cfg.force_deep_analysis ? 'checked' : ''}
+                   style="margin-top:2px;">
+            <span>
+              <strong>${t('ai.settings_force_deep')}</strong><br>
+              <span style="color:var(--text-muted);font-size:12px;">${t('ai.settings_force_deep_desc')}</span>
+            </span>
+          </label>
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;">
@@ -406,7 +414,8 @@ const ViewAiSettings = {
       const msg   = document.getElementById('ai-cfg-msg');
       const model = document.getElementById('ai-model').value;
       const key   = (document.getElementById('ai-apikey').value || '').trim();
-      const payload = { model };
+      const forceDeep = document.getElementById('ai-force-deep').checked;
+      const payload = { model, force_deep_analysis: forceDeep };
       if (key) payload.api_key = key;
       msg.textContent = t('ai.settings_saving');
       msg.style.color = 'var(--text-muted)';
