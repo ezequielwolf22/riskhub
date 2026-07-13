@@ -1,0 +1,18 @@
+# Configuracion de lint acorde a las convenciones reales del codebase.
+# Las reglas de CORRECCION (F8xx undefined/redefined, F6xx claves duplicadas,
+# E9 errores de sintaxis) quedan activas: cazan bugs reales (ya han cazado 5).
+# Se silencian las puramente estilisticas que el codigo usa a proposito.
+
+[lint]
+ignore = [
+    "E402",  # imports perezosos tras codigo a nivel de modulo: patron del repo
+    "E401",  # varios imports en una linea
+    "E701",  # sentencia en la misma linea que if/for (one-liners existentes)
+    "E702",  # sentencias separadas por punto y coma
+    "E712",  # `== True` en filtros SQLAlchemy: intencional (genera SQL)
+    "E731",  # lambdas asignadas a nombre
+    "E741",  # nombres de variable de una letra (l, I)
+    "F401",  # imports sin uso: incluye re-exports intencionales (_recalc, etc.)
+    "F541",  # f-strings sin placeholders
+    "F841",  # variables sin uso (p.ej. _msg de structured_message)
+]

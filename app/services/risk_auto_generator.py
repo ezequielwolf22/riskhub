@@ -100,7 +100,7 @@ def _inherit_controls(db: Session, asset: Asset, threat: Threat) -> list:
     segun la categoria de la amenaza, luego ordena por madurez descendente.
     Sin controles por tema especifico cae al top-5 global como fallback.
     """
-    from app.models import ControlStatus, Control
+    from app.models import ControlStatus
     themes = _THREAT_CAT_TO_CONTROL_THEMES.get(threat.category or "", [])
 
     base_q = db.query(ControlImplementation).filter(

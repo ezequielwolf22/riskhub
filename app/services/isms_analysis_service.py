@@ -964,7 +964,7 @@ def _extract_and_link_csv_vulns(db: Session, doc: AiDocument, text_sample: str) 
 
 def _infer_category(
     analysis: dict, original_name: str
-) -> "AiDocumentCategory | None":
+):
     """Infiere la categoria correcta del documento basandose en el analisis IA.
 
     Prioridad:

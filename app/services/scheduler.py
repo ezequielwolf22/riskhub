@@ -1,6 +1,6 @@
 """Programador de tareas periodicas (APScheduler)."""
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -1875,6 +1875,7 @@ def _run_bcp_plan_review_due() -> None:
     finally:
         # Actualizar cobertura BCP en el registro de riesgos (ISO 22301 cl. 8.4 / ISO 27001 A.5.29)
         try:
+            from app.models import Organization
             from app.services.bcp_service import update_risk_bcp_coverage
             orgs = db.query(Organization).filter_by(is_active=True).all()
             for org in orgs:

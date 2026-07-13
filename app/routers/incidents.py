@@ -110,7 +110,10 @@ def create_incident(body: IncidentIn, db: Session = Depends(get_db),
     try:
         asset_ids = inc.affected_asset_ids or []
         if asset_ids:
-            from app.models import Risk, RiskStatus
+            # OJO: no importar Risk aqui — ya esta a nivel de modulo; un import
+            # local lo convierte en variable local y rompe la validacion de
+            # related_risk_ids de arriba con UnboundLocalError
+            from app.models import RiskStatus
             linked_risk_ids = list(inc.related_risk_ids or [])
             active_risks = db.query(Risk).filter(
                 Risk.asset_id.in_(asset_ids),

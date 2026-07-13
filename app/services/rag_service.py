@@ -121,7 +121,7 @@ _ES_TO_EN: dict[str, list[str]] = {
     "respuesta": ["response", "handling", "management"],
     "notificacion": ["notification", "reporting", "alert"],
     "forense": ["forensic", "investigation", "analysis"],
-    "recuperacion": ["recovery", "restore", "restoration"],
+    "recuperacion": ["recovery", "restore", "restoration", "failover"],
     # Continuidad
     "continuidad": ["continuity", "BCP", "BCM", "business continuity"],
     "disponibilidad": ["availability", "uptime", "continuity"],
@@ -129,14 +129,12 @@ _ES_TO_EN: dict[str, list[str]] = {
     "rpo": ["RPO", "recovery point", "objective"],
     "backup": ["backup", "recovery", "restore", "replication"],
     "copia": ["backup", "copy", "replica"],
-    "recuperacion": ["recovery", "restore", "failover"],
     # Cumplimiento y auditoria
     "auditoria": ["audit", "review", "assessment", "inspection"],
-    "auditoria": ["audit", "review", "assessment"],
     "conformidad": ["compliance", "conformity", "adherence"],
     "cumplimiento": ["compliance", "conformance", "conformity"],
     "revision": ["review", "assessment", "evaluation"],
-    "prueba": ["test", "testing", "check", "verification"],
+    "prueba": ["test", "testing", "check", "verification", "QA"],
     "evidencia": ["evidence", "proof", "record", "log"],
     "registro": ["record", "log", "register", "trail"],
     "trazabilidad": ["traceability", "audit trail", "log", "tracking"],
@@ -160,7 +158,6 @@ _ES_TO_EN: dict[str, list[str]] = {
     # Desarrollo seguro
     "desarrollo": ["development", "SDLC", "software development"],
     "codigo": ["code", "software", "application"],
-    "prueba": ["test", "testing", "QA"],
     "despliegue": ["deployment", "release", "production"],
     "parche": ["patch", "update", "hotfix", "fix"],
     "parches": ["patches", "updates", "hotfixes"],
@@ -172,8 +169,7 @@ _ES_TO_EN: dict[str, list[str]] = {
     "privacidad": ["privacy", "data protection", "GDPR"],
     "retencion": ["retention", "storage", "period"],
     "borrado": ["deletion", "erasure", "destruction", "purge"],
-    # Criptografia / PKI
-    "certificado": ["certificate", "digital certificate", "PKI"],
+    # Criptografia / PKI ("certificado" ya definido arriba)
     "autoridad": ["authority", "CA", "certification authority"],
     "clave publica": ["public key", "PKI", "certificate"],
     "clave privada": ["private key", "secret key"],
@@ -184,7 +180,6 @@ _ES_TO_EN: dict[str, list[str]] = {
     "recomendado": ["recommended", "should", "best practice"],
     "prohibido": ["prohibited", "forbidden", "not allowed"],
     "permitido": ["allowed", "permitted", "authorized"],
-    "politica": ["policy", "procedure", "standard"],
 }
 
 

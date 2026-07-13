@@ -2,9 +2,12 @@
 import logging
 import secrets
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from app.models import SurveyCampaign, SurveyResponse  # noqa: F401
 
 logger = logging.getLogger("riskhub.survey")
 

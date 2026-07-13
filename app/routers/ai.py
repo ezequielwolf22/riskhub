@@ -1,5 +1,6 @@
 """Endpoints del agente IA: cuestionario + análisis de riesgos + chat + feedback."""
 import json
+import logging
 import threading
 import uuid
 from collections import defaultdict

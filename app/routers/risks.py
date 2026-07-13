@@ -309,8 +309,7 @@ def risk_trace(
             "ccm_fail": getattr(impl, "ccm_last_status", None) == "FAIL",
         })
 
-    # --- Cálculo combinado ---
-    from app.services.risk_engine import control_reduction
+    # --- Cálculo combinado (control_reduction ya importado arriba) ---
     combined_efficacy = control_reduction(ctrl_dicts_for_engine) if ctrl_dicts_for_engine else 0.0
     inh_lik = r.inherent_likelihood or 0
     inh_con = r.inherent_consequence or 0
