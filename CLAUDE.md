@@ -78,6 +78,7 @@ Multi-usuario con roles.
   - Backups: `services/backup_service.py` (API de backup de sqlite3 + gzip, nocturno 2:30 UTC, retencion 14d, `RISKHUB_BACKUP_DIR`/`RISKHUB_BACKUP_RETENTION_DAYS`); endpoints `/api/admin/backups` (listar/lanzar/descargar, superadmin); runbook `docs/BACKUP_RESTORE_RUNBOOK.md`. Migracion PostgreSQL: solo diseno en `docs/POSTGRES_MIGRATION_PLAN.md` (FTS5->tsvector, INSERT OR IGNORE, PRAGMA, strftime; rollout 5 fases).
   - CI: `.github/workflows/ci.yml` (pytest + ruff + docker build en push/PR a main).
   - Vista Operaciones (`ops.js`, pestana en Configuracion): consumo IA, cola de jobs, errores capturados y backups.
+- [x] Economia del analisis IA (2026-07-13, commits 0258ee0..61592e0): grupos validados cubren a sus miembros (skipped, 0 tokens); tier Haiku en el masivo con Opus para criticos (CIA>=4) e individual; dieta de salida (3-5 escenarios sobre apetito); Message Batches API de Anthropic (50%) para >=25 activos con cancelacion cooperativa; estimador previo `GET /api/assets/analysis-cost-estimate` + confirmacion con coste en la UI; modo maxima calidad por org (`AiConfig.force_deep_analysis`, checkbox en IA->Configuracion). Medido en prod: ~$0.007/activo con Haiku (28x menos que Opus individual). `ruff.toml` con reglas de correccion activas (cazaron 5 bugs latentes: incidents UnboundLocalError, scheduler timedelta/Organization, ai.py logging, claves duplicadas RAG); CI en verde.
 
 ### Frontend
 
