@@ -150,6 +150,7 @@ const Api = {
     analyze: (id) => Api.post('/api/assets/' + id + '/analyze', {}),
     analyzeAll: () => Api.post('/api/assets/analyze-all', {}),
     resetStuck: () => Api.post('/api/assets/reset-stuck', {}),
+    costEstimate: () => Api.get('/api/assets/analysis-cost-estimate'),
     analyzeCiaZero: () => Api.post('/api/assets/analyze-cia-zero', {}),
     analyzeAllForce: () => Api.post('/api/assets/analyze-all-force', {}),
     analysisStatus: () => Api.get('/api/assets/analysis-status'),

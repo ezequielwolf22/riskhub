@@ -137,9 +137,28 @@ const ViewAssets = {
       };
       ViewAssets._setupDrop(main);
 
+      // Confirmacion con coste estimado antes de lanzar un analisis masivo:
+      // cuantos activos van de verdad (los grupos validados cubren miembros),
+      // con que modelos y el coste aproximado en la API de IA.
+      async function _confirmWithCost(prefix) {
+        let est = null;
+        try { est = await Api.assets.costEstimate(); } catch (e) { /* sin estimacion */ }
+        if (!est) return UI.confirm(prefix);
+        const lines = [
+          prefix, '',
+          `Se analizarán ${est.to_analyze} activos` +
+            (est.covered_by_groups ? ` (${est.covered_by_groups} más quedan cubiertos por sus grupos validados)` : ''),
+          `Modelos: ${est.normal} con ${est.model_fast}, ${est.critical} críticos con ${est.model_deep}`,
+          `Coste estimado en la API de IA: ~$${est.estimated_cost_usd} USD` +
+            (est.uses_batch_api ? ' (con descuento del 50% por proceso en lote)' : ''),
+        ];
+        return UI.confirm(lines.join('\n'));
+      }
+
       const btnPending = document.getElementById('btn-analyze-pending');
       if (btnPending) {
         btnPending.onclick = async () => {
+          if (!await _confirmWithCost('¿Analizar los activos pendientes con IA?')) return;
           btnPending.disabled = true;
           btnPending.textContent = 'Lanzando...';
           try {
@@ -193,8 +212,8 @@ const ViewAssets = {
         btnAnalyzeAll.onclick = async () => {
           const status = await Api.assets.analysisStatus().catch(() => null);
           const total = status ? status.total : '?';
-          if (!await UI.confirm(
-            `Re-analizar TODOS los activos (${total}) con IA?\n\nEsto resetea el análisis existente y relanza todos desde cero. Puede tardar varios minutos con inventarios grandes.`
+          if (!await _confirmWithCost(
+            `¿Re-analizar TODOS los activos (${total}) con IA?\n\nEsto resetea el análisis existente y relanza todos desde cero (el coste estimado crecerá en consecuencia).`
           )) return;
           btnAnalyzeAll.disabled = true;
           btnAnalyzeAll.textContent = 'Iniciando...';

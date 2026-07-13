@@ -77,7 +77,7 @@ madurez, calidad de evidencia); suggested_residual_* es solo tu estimacion orien
 
 Entrega el resultado llamando a la herramienta registrar_analisis_activo con:
 - cia: valoracion de las 5 dimensiones
-- risks: un elemento por amenaza aplicable, con rationale de max 300 chars citando el
+- risks: un elemento por amenaza aplicable, con rationale de max 200 chars citando el
   criterio de la escala aplicado y la base (tipo de activo, valor CIA, exposicion, incidentes)
 
 REGLAS:
@@ -109,8 +109,8 @@ _RISK_ITEM_SCHEMA = {
         "applies": {"type": "boolean"},
         "inherent_likelihood": {"type": "integer", "minimum": 0, "maximum": 4},
         "inherent_consequence": {"type": "integer", "minimum": 0, "maximum": 4},
-        "rationale": {"type": "string", "maxLength": 600},
-        "consequence_description": {"type": "string", "maxLength": 400},
+        "rationale": {"type": "string", "maxLength": 250},
+        "consequence_description": {"type": "string", "maxLength": 200},
         "vulnerability_codes": {"type": "array", "items": {"type": "string"}},
         "control_contributions": {
             "type": "array",
@@ -502,14 +502,17 @@ CRITERIOS DE CALIBRACION (puntua contra estos criterios, no contra intuicion):
 - Si un activo trae "senales" (CVEs/hallazgos abiertos, incidentes previos), la amenaza asociada
   es REAL: sube la likelihood en consecuencia y citalo en el rationale.
 
-ESCENARIOS DE RIESGO — para cada activo, las amenazas del catalogo que realmente aplican (tipicamente 3-8):
-- vulnerability_codes: codigos exactos del catalogo de vulnerabilidades que habilitan la amenaza en este activo
+ESCENARIOS DE RIESGO — para cada activo, SOLO las 3-5 amenazas MAS relevantes:
+- Incluye unicamente escenarios cuyo nivel inherente estimado (likelihood+consequence)
+  supere el apetito de riesgo, o que tengan senales reales (CVE/hallazgo/incidente).
+  Los escenarios triviales por debajo del apetito NO los incluyas: ya estan cubiertos
+  por los riesgos automaticos de regla de la plataforma.
+- vulnerability_codes: max 3 codigos exactos del catalogo que habilitan la amenaza en este activo
 - control_contributions: SOLO controles de la lista CONTROLES CANDIDATOS POR AMENAZA, con su impl_id
   exacto y contribution 0.0-1.0 segun cuanto mitiga ese control esta amenaza en este activo concreto
 - El residual lo calcula el motor de la plataforma desde tus contribuciones (tipo P/D/C, madurez,
   evidencia); suggested_residual_* es solo tu estimacion orientativa
-- rationale: max 300 chars citando el criterio de la escala aplicado y la base (tipo de activo,
-  valor CIA, exposicion, incidentes)
+- rationale: max 200 chars, conciso, citando el criterio de la escala aplicado y la base
 - Apetito de riesgo = {appetite}/8
 
 REGLAS CRITICAS:
@@ -652,6 +655,74 @@ def _build_batch_user_prompt(assets: list[Asset]) -> str:
     return f"ACTIVOS A ANALIZAR ({len(assets)}):\n" + "\n".join(assets_lines)
 
 
+def _persist_batch_result(db, result: dict, assets: list, all_threats: list,
+                          impls: list, vulns: list, owner_id: int | None) -> None:
+    """Aplica el resultado estructurado de un lote: CIA, riesgos y estados.
+
+    Compartido por el camino sincrono (_process_batch_isolated) y el de la
+    Batch API asincrona. El caller hace el commit.
+    """
+    threats_by_code = {t.code: t for t in all_threats}
+
+    for ar in result.get("results", []):
+        asset_id = ar.get("asset_id")
+        asset = next((a for a in assets if a.id == asset_id), None)
+        if not asset:
+            continue
+
+        # --- Aplicar valores CIA ENS si el activo los tiene todos a 0 ---
+        cia = ar.get("cia") or {}
+        if cia:
+            _clamp = lambda v: max(0, min(4, int(v or 0)))
+            all_zero = not any([
+                asset.value_confidentiality, asset.value_integrity,
+                asset.value_availability, asset.value_authenticity,
+                asset.value_accountability,
+            ])
+            if all_zero:
+                asset.value_confidentiality = _clamp(cia.get("c", 0))
+                asset.value_integrity       = _clamp(cia.get("i", 0))
+                asset.value_availability    = _clamp(cia.get("a", 0))
+                asset.value_authenticity    = _clamp(cia.get("au", 0))
+                asset.value_accountability  = _clamp(cia.get("ac", 0))
+
+        # Persistencia por el MISMO camino que el analisis individual:
+        # _upsert_risk vincula vulns/controles y delega el residual en el
+        # motor determinista (recalc_risk). Fin de la divergencia batch.
+        vulns_by_code = {v.code: v for v in vulns}
+        impls_by_id = {i.id: i for i in impls}
+        created, updated = 0, 0
+        for item in ar.get("risks", []):
+            if not item.get("applies", True):
+                continue
+            threat = threats_by_code.get(item.get("threat_code", ""))
+            if not threat:
+                continue
+            c, u = _upsert_risk(
+                db, asset, threat, item,
+                vulns_by_code, impls_by_id, owner_id,
+            )
+            created += c
+            updated += u
+
+        appetite_upgrades = _enforce_risk_appetite(db, asset)
+
+        asset.ai_risk_status = "analysed"
+        asset.ai_risk_summary = {
+            "risks_created": created, "risks_updated": updated,
+            "threats_analysed": len(ar.get("risks", [])),
+            "appetite_upgrades": appetite_upgrades,
+            "summary": f"{created} riesgos creados, {updated} actualizados",
+        }
+
+    # Marcar como error los activos que no aparecieron en la respuesta
+    responded_ids = {ar.get("asset_id") for ar in result.get("results", [])}
+    for asset in assets:
+        if asset.id not in responded_ids and asset.ai_risk_status == "analysing":
+            asset.ai_risk_status = "error"
+            asset.ai_risk_summary = {"error": "No incluido en respuesta del lote. Reintenta."}
+
+
 def _process_batch_isolated(
     batch_ids: list[int],
     org_id: int,
@@ -721,66 +792,7 @@ def _process_batch_isolated(
             logger.warning("API credit exhausted — aborting batch analysis (batch=%s)", batch_ids[:3])
             raise
 
-        threats_by_code = {t.code: t for t in all_threats}
-
-        for ar in result.get("results", []):
-            asset_id = ar.get("asset_id")
-            asset = next((a for a in assets if a.id == asset_id), None)
-            if not asset:
-                continue
-
-            # --- Aplicar valores CIA ENS si el activo los tiene todos a 0 ---
-            cia = ar.get("cia") or {}
-            if cia:
-                _clamp = lambda v: max(0, min(4, int(v or 0)))
-                all_zero = not any([
-                    asset.value_confidentiality, asset.value_integrity,
-                    asset.value_availability, asset.value_authenticity,
-                    asset.value_accountability,
-                ])
-                if all_zero:
-                    asset.value_confidentiality = _clamp(cia.get("c", 0))
-                    asset.value_integrity       = _clamp(cia.get("i", 0))
-                    asset.value_availability    = _clamp(cia.get("a", 0))
-                    asset.value_authenticity    = _clamp(cia.get("au", 0))
-                    asset.value_accountability  = _clamp(cia.get("ac", 0))
-
-            # Persistencia por el MISMO camino que el analisis individual:
-            # _upsert_risk vincula vulns/controles y delega el residual en el
-            # motor determinista (recalc_risk). Fin de la divergencia batch.
-            vulns_by_code = {v.code: v for v in vulns}
-            impls_by_id = {i.id: i for i in impls}
-            created, updated = 0, 0
-            for item in ar.get("risks", []):
-                if not item.get("applies", True):
-                    continue
-                threat = threats_by_code.get(item.get("threat_code", ""))
-                if not threat:
-                    continue
-                c, u = _upsert_risk(
-                    db, asset, threat, item,
-                    vulns_by_code, impls_by_id, owner_id,
-                )
-                created += c
-                updated += u
-
-            appetite_upgrades = _enforce_risk_appetite(db, asset)
-
-            asset.ai_risk_status = "analysed"
-            asset.ai_risk_summary = {
-                "risks_created": created, "risks_updated": updated,
-                "threats_analysed": len(ar.get("risks", [])),
-                "appetite_upgrades": appetite_upgrades,
-                "summary": f"{created} riesgos creados, {updated} actualizados",
-            }
-
-        # Marcar como error los activos que no aparecieron en la respuesta
-        responded_ids = {ar.get("asset_id") for ar in result.get("results", [])}
-        for asset in assets:
-            if asset.id not in responded_ids and asset.ai_risk_status == "analysing":
-                asset.ai_risk_status = "error"
-                asset.ai_risk_summary = {"error": "No incluido en respuesta del lote. Reintenta."}
-
+        _persist_batch_result(db, result, assets, all_threats, impls, vulns, owner_id)
         db.commit()
         logger.debug("Batch done: %d assets, org=%d", len(assets), org_id)
 
@@ -804,6 +816,236 @@ def _process_batch_isolated(
         db.close()
 
 
+_BATCH_API_MIN_ASSETS = 25      # umbral: por debajo, camino sincrono (feedback rapido)
+_BATCH_API_POLL_S = 45          # intervalo de polling del estado del batch remoto
+_BATCH_API_MAX_WAIT_S = 6 * 3600
+
+
+def _mark_assets_error(asset_ids: list[int], msg: str) -> None:
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        db.query(Asset).filter(
+            Asset.id.in_(asset_ids), Asset.ai_risk_status == "analysing",
+        ).update(
+            {"ai_risk_status": "error", "ai_risk_summary": {"error": msg[:300]}},
+            synchronize_session=False,
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _run_via_anthropic_batch_api(
+    db: Session, batches: list, org_id: int, api_key: str, appetite: int,
+    all_threats: list, catalog_block: str, owner_id: int | None,
+    cancel_check=None,
+) -> dict:
+    """Ejecuta los lotes via la Message Batches API de Anthropic (50% de coste).
+
+    Procesamiento asincrono: se envian todos los lotes en un batch remoto y se
+    hace polling hasta que termina (tipicamente <1h, maximo 24h). La cancelacion
+    del job cancela tambien el batch remoto. Cada resultado se persiste por el
+    mismo camino que el analisis sincrono (_persist_batch_result).
+    """
+    import time as _time
+    import anthropic
+    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+    from anthropic.types.messages.batch_create_params import Request
+    from app.database import SessionLocal
+    from app.services.claude_client import _log_usage, cached_system
+
+    client = anthropic.Anthropic(api_key=api_key)
+    system = cached_system(_BATCH_SYSTEM_PROMPT.format(appetite=appetite), catalog_block)
+    tools = [{
+        "name": "registrar_analisis_lote",
+        "description": "Registra la valoracion CIA y los riesgos de cada activo del lote",
+        "input_schema": _BATCH_SCHEMA,
+    }]
+
+    requests = []
+    id_map: dict[str, tuple[list[int], str]] = {}
+    for idx, (batch_ids, batch_model) in enumerate(batches):
+        assets = db.query(Asset).filter(Asset.id.in_(batch_ids)).all()
+        if not assets:
+            continue
+        for a in assets:
+            a._signal_summary = _asset_signal_summary(db, a)
+        cid = f"lote-{idx}"
+        id_map[cid] = (batch_ids, batch_model)
+        requests.append(Request(
+            custom_id=cid,
+            params=MessageCreateParamsNonStreaming(
+                model=batch_model,
+                max_tokens=16000,
+                system=system,
+                messages=[{"role": "user", "content": _build_batch_user_prompt(assets)}],
+                tools=tools,
+                tool_choice={"type": "tool", "name": "registrar_analisis_lote"},
+            ),
+        ))
+
+    if not requests:
+        return {"batches_done": 0, "batches_failed": 0}
+
+    mb = client.messages.batches.create(requests=requests)
+    logger.info("Batch API: enviado %s con %d lotes (org=%d)", mb.id, len(requests), org_id)
+
+    t0 = _time.time()
+    while True:
+        if cancel_check and cancel_check():
+            try:
+                client.messages.batches.cancel(mb.id)
+            except Exception:
+                pass
+            logger.warning("Batch API %s cancelado por el usuario (org=%d)", mb.id, org_id)
+            return {"cancelled": True, "batch_api_id": mb.id}
+        try:
+            mb = client.messages.batches.retrieve(mb.id)
+        except Exception as exc:
+            logger.warning("Batch API: error consultando estado (%s), reintento", exc)
+        if getattr(mb, "processing_status", None) == "ended":
+            break
+        if _time.time() - t0 > _BATCH_API_MAX_WAIT_S:
+            all_ids = [i for ids, _m in id_map.values() for i in ids]
+            _mark_assets_error(all_ids, "Batch API: tiempo de espera agotado. Reintenta.")
+            return {"batches_done": 0, "batches_failed": len(id_map),
+                    "batch_api_id": mb.id, "timeout": True}
+        _time.sleep(_BATCH_API_POLL_S)
+
+    done = failed = 0
+    for res in client.messages.batches.results(mb.id):
+        entry = id_map.get(res.custom_id)
+        if not entry:
+            continue
+        batch_ids, batch_model = entry
+        if res.result.type != "succeeded":
+            failed += 1
+            _mark_assets_error(batch_ids, f"Batch API: lote {res.result.type}. Reintenta.")
+            continue
+        msg = res.result.message
+        parsed = None
+        for blk in msg.content or []:
+            if getattr(blk, "type", None) == "tool_use":
+                parsed = dict(blk.input)
+                break
+        if parsed is None:
+            failed += 1
+            _mark_assets_error(batch_ids, "Batch API: respuesta sin tool_use. Reintenta.")
+            continue
+        pdb = SessionLocal()
+        try:
+            assets = pdb.query(Asset).filter(Asset.id.in_(batch_ids)).all()
+            impls = pdb.query(ControlImplementation).filter(
+                ControlImplementation.organization_id == org_id,
+                ControlImplementation.status != ControlStatus.NOT_IMPLEMENTED,
+            ).all()
+            vulns = _vulns_for_threats(pdb, [t.code for t in all_threats])
+            _persist_batch_result(pdb, parsed, assets, all_threats, impls, vulns, owner_id)
+            pdb.commit()
+            done += 1
+        except Exception as exc:
+            logger.error("Batch API: persistencia fallo (ids=%s…): %s", batch_ids[:3], exc)
+            failed += 1
+            _mark_assets_error(batch_ids, f"Error persistiendo resultado: {exc}")
+        finally:
+            pdb.close()
+        _log_usage(msg, org_id=org_id, call_type="asset_risk_analysis",
+                   model=getattr(msg, "model", None) or batch_model)
+
+    logger.info("Batch API %s completado: %d lotes ok, %d fallidos (org=%d)",
+                mb.id, done, failed, org_id)
+    return {"batches_done": done, "batches_failed": failed, "batch_api_id": mb.id}
+
+
+def _validated_group_ids(db: Session, org_id: int) -> list[int]:
+    from app.models import AssetGroup, AssetGroupStatus
+    return [
+        g.id for g in db.query(AssetGroup.id).filter(
+            AssetGroup.organization_id == org_id,
+            AssetGroup.status == AssetGroupStatus.VALIDATED,
+        ).all()
+    ]
+
+
+# Tokens medios por activo para la estimacion de coste (medidos tras la
+# dieta de salida: 3-5 escenarios, rationale 200c, catalogo cacheado)
+_EST_INPUT_TOKENS_PER_ASSET = 2500
+_EST_OUTPUT_TOKENS_PER_ASSET = 1800
+
+
+def analysis_pool_summary(db: Session, org_id: int) -> dict:
+    """Que analizaria hoy el analisis masivo y cuanto costaria (estimacion).
+
+    Refleja el flujo economico real: miembros de grupos validados quedan
+    cubiertos por su representante; los criticos van al modelo profundo y el
+    resto al rapido; con volumen suficiente se usa la Batch API (50%).
+    """
+    from sqlalchemy import or_
+    from app.services.model_registry import estimate_cost_usd, get_model
+
+    _pending = or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error")  # noqa: E711
+    vg_ids = _validated_group_ids(db, org_id)
+    covered = 0
+    if vg_ids:
+        covered = db.query(Asset).filter(
+            Asset.organization_id == org_id,
+            Asset.group_id.in_(vg_ids),
+            Asset.is_group_representative.is_(False),
+            _pending,
+        ).count()
+        pool_q = db.query(Asset.id).filter(
+            Asset.organization_id == org_id, _pending,
+            or_(
+                Asset.is_group_representative.is_(True),
+                Asset.group_id.is_(None),
+                Asset.group_id.notin_(vg_ids),
+            ),
+        )
+    else:
+        pool_q = db.query(Asset.id).filter(
+            Asset.organization_id == org_id,
+            Asset.is_group_representative.is_(False),
+            _pending,
+        )
+    pool_ids = [r[0] for r in pool_q.all()]
+    critical = 0
+    if pool_ids:
+        critical = db.query(Asset).filter(
+            Asset.id.in_(pool_ids),
+            or_(
+                Asset.value_confidentiality >= 4,
+                Asset.value_integrity >= 4,
+                Asset.value_availability >= 4,
+            ),
+        ).count()
+    normal = len(pool_ids) - critical
+
+    model_fast = get_model(db, org_id, tier="fast")
+    model_deep = get_model(db, org_id, tier="deep")
+    cost_fast = estimate_cost_usd(
+        model_fast, normal * _EST_INPUT_TOKENS_PER_ASSET, normal * _EST_OUTPUT_TOKENS_PER_ASSET)
+    cost_deep = estimate_cost_usd(
+        model_deep, critical * _EST_INPUT_TOKENS_PER_ASSET, critical * _EST_OUTPUT_TOKENS_PER_ASSET)
+    total_cost = cost_fast + cost_deep
+    uses_batch_api = len(pool_ids) >= _BATCH_API_MIN_ASSETS
+    if uses_batch_api:
+        total_cost *= 0.5  # descuento de la Message Batches API
+
+    return {
+        "to_analyze": len(pool_ids),
+        "covered_by_groups": covered,
+        "critical": critical,
+        "normal": normal,
+        "model_fast": model_fast,
+        "model_deep": model_deep,
+        "uses_batch_api": uses_batch_api,
+        "estimated_cost_usd": round(total_cost, 2),
+        "note": ("Estimacion techo con ~2.5k tokens de entrada y ~1.8k de salida por activo; "
+                 "el prompt caching puede reducir el coste real de entrada."),
+    }
+
+
 def analyze_all_org_assets(
     db: Session, org_id: int, representatives_only: bool = False,
     cancel_check=None,
@@ -811,19 +1053,75 @@ def analyze_all_org_assets(
     """Analiza en SERIE todos los activos pendientes (null/error) de la org.
 
     Si representatives_only=True analiza solo activos representativos de grupos
-    validados (Opcion B — analisis por grupos). Por defecto analiza activos
-    individuales excluyendo representativos (Opcion A).
+    validados (Opcion B — analisis por grupos). Por defecto (flujo economico):
+    analiza representantes de grupos validados + activos sin grupo validado;
+    los miembros no representativos de un grupo validado quedan cubiertos por
+    el analisis de su representante (se marcan como skipped, no consumen IA).
     """
     import concurrent.futures
+    from datetime import timedelta as _timedelta
     from sqlalchemy import or_
 
-    asset_ids = [
-        a.id for a in db.query(Asset).filter(
+    # Huerfanos de un run interrumpido por reinicio: 'analysing' viejo -> pendiente
+    try:
+        stale_cut = datetime.now(timezone.utc) - _timedelta(minutes=30)
+        n_stale = db.query(Asset).filter(
             Asset.organization_id == org_id,
-            Asset.is_group_representative.is_(representatives_only),
-            or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
-        ).all()
-    ]
+            Asset.ai_risk_status == "analysing",
+            Asset.updated_at < stale_cut,
+        ).update({"ai_risk_status": None}, synchronize_session=False)
+        db.commit()
+        if n_stale:
+            logger.info("Reset de %d activos huerfanos en 'analysing' (org=%d)", n_stale, org_id)
+    except Exception:
+        db.rollback()
+
+    _pending = or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error")  # noqa: E711
+    if representatives_only:
+        q = db.query(Asset.id).filter(
+            Asset.organization_id == org_id,
+            Asset.is_group_representative.is_(True),
+            _pending,
+        )
+    else:
+        vg_ids = _validated_group_ids(db, org_id)
+        if vg_ids:
+            # Miembros no representativos de grupos validados: cubiertos por
+            # el representante — no consumen analisis IA individual
+            covered = (
+                db.query(Asset)
+                .filter(
+                    Asset.organization_id == org_id,
+                    Asset.group_id.in_(vg_ids),
+                    Asset.is_group_representative.is_(False),
+                    _pending,
+                )
+                .update(
+                    {"ai_risk_status": "skipped",
+                     "ai_risk_summary": {"reason": "Cubierto por el analisis del grupo (representante)"}},
+                    synchronize_session=False,
+                )
+            )
+            db.commit()
+            if covered:
+                logger.info("Grupos validados: %d activos cubiertos por su representante (org=%d)",
+                            covered, org_id)
+            q = db.query(Asset.id).filter(
+                Asset.organization_id == org_id,
+                _pending,
+                or_(
+                    Asset.is_group_representative.is_(True),
+                    Asset.group_id.is_(None),
+                    Asset.group_id.notin_(vg_ids),
+                ),
+            )
+        else:
+            q = db.query(Asset.id).filter(
+                Asset.organization_id == org_id,
+                Asset.is_group_representative.is_(False),
+                _pending,
+            )
+    asset_ids = [row[0] for row in q.all()]
     if not asset_ids:
         logger.info("No pending assets for org=%d", org_id)
         return {"total": 0}
@@ -868,7 +1166,23 @@ def analyze_all_org_assets(
         return {"total": 0}
     _analysis_org_lock[org_id] = True
 
-    model = _get_model(db, org_id)
+    # Tier por criticidad (control de coste): los activos criticos (alguna
+    # dimension CIA a 4) van al modelo profundo; el resto al modelo rapido.
+    # El motor determinista calcula el residual en ambos casos, asi que el
+    # LLM barato solo propone entradas guiado por el catalogo amenaza->control.
+    from app.services.model_registry import get_model as _tier_model
+    model_fast = _tier_model(db, org_id, tier="fast")
+    model_deep = _tier_model(db, org_id, tier="deep")
+    critical_ids = {
+        row[0] for row in db.query(Asset.id).filter(
+            Asset.id.in_(asset_ids),
+            or_(
+                Asset.value_confidentiality >= 4,
+                Asset.value_integrity >= 4,
+                Asset.value_availability >= 4,
+            ),
+        ).all()
+    }
 
     active_catalogs = _get_active_catalogs(db, org_id)
     all_threats   = db.query(Threat).filter(Threat.catalog.in_(active_catalogs)).all()
@@ -879,9 +1193,38 @@ def analyze_all_org_assets(
     # Catalogo estable por org (una vez): va al system cacheado de cada lote
     catalog_block = _build_org_catalog_block(db, org_id, all_threats, org_ctx)
 
-    # Dividir en lotes (los controles se cargan por lote en _process_batch_isolated)
-    batches = [asset_ids[i:i + _BATCH_SIZE] for i in range(0, total, _BATCH_SIZE)]
-    logger.info("Lotes: %d (tamano=%d), serial", len(batches), _BATCH_SIZE)
+    # Dividir en lotes homogeneos por tier (los controles se cargan por lote
+    # en _process_batch_isolated)
+    normal_ids = [i for i in asset_ids if i not in critical_ids]
+    crit_list = [i for i in asset_ids if i in critical_ids]
+    batches = (
+        [(normal_ids[i:i + _BATCH_SIZE], model_fast)
+         for i in range(0, len(normal_ids), _BATCH_SIZE)]
+        + [(crit_list[i:i + _BATCH_SIZE], model_deep)
+           for i in range(0, len(crit_list), _BATCH_SIZE)]
+    )
+    logger.info("Lotes: %d (tamano=%d) — %d activos fast (%s), %d criticos deep (%s)",
+                len(batches), _BATCH_SIZE, len(normal_ids), model_fast,
+                len(crit_list), model_deep)
+
+    # Volumen grande -> Message Batches API de Anthropic (50% de coste, asincrono)
+    if total >= _BATCH_API_MIN_ASSETS:
+        try:
+            res = _run_via_anthropic_batch_api(
+                db, batches, org_id, api_key, appetite,
+                all_threats, catalog_block, owner_id, cancel_check,
+            )
+            _analysis_org_lock.pop(org_id, None)
+            if res.get("cancelled"):
+                db.query(Asset).filter(
+                    Asset.id.in_(asset_ids), Asset.ai_risk_status == "analysing",
+                ).update({"ai_risk_status": None}, synchronize_session=False)
+                db.commit()
+                return {"total": total, "cancelled": True, **res}
+            return {"total": total, **res}
+        except Exception as exc:
+            logger.exception("Batch API fallo (%s) — fallback al camino sincrono", exc)
+            _analysis_org_lock[org_id] = True  # se re-adquiere para el camino sincrono
 
     # Ejecutar en paralelo
     was_cancelled = False
@@ -889,10 +1232,10 @@ def analyze_all_org_assets(
         futures = {
             executor.submit(
                 _process_batch_isolated,
-                batch, org_id, api_key, model,
+                batch, org_id, api_key, batch_model,
                 appetite, all_threats, catalog_block, owner_id,
             ): batch
-            for batch in batches
+            for batch, batch_model in batches
         }
         done, failed = 0, 0
         for future in concurrent.futures.as_completed(futures):

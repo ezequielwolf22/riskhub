@@ -73,16 +73,6 @@ def list_assets(
     return [_to_out(a, risk_counts.get(a.id, 0)) for a in assets]
 
 
-@router.get("/{asset_id}", response_model=AssetOut)
-def get_asset(asset_id: int, request: Request, db: Session = Depends(get_db),
-              current_user: User = Depends(get_current_user)):
-    lang = get_lang(request)
-    a = db.get(Asset, asset_id)
-    if not a or not check_org_access(a.organization_id, current_user):
-        raise HTTPException(404, _t("assets.not_found", lang))
-    return _to_out(a)
-
-
 @router.post("/", response_model=AssetOut, status_code=201)
 def create_asset(data: AssetIn, background_tasks: BackgroundTasks,
                  db: Session = Depends(get_db),
@@ -429,6 +419,18 @@ def analyze_asset(
     return {"ok": True, "message": "Analisis de riesgos iniciado en background"}
 
 
+@router.get("/analysis-cost-estimate")
+def analysis_cost_estimate(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Estimacion previa del analisis masivo: cuantos activos se analizarian
+    de verdad (grupos validados cubren a sus miembros), con que modelos y
+    cuanto costaria aproximadamente. Para confirmar ANTES de lanzar."""
+    from app.services.asset_risk_analysis_service import analysis_pool_summary
+    return analysis_pool_summary(db, current_user.organization_id)
+
+
 @router.post("/analyze-all")
 def analyze_all_assets(
     background_tasks: BackgroundTasks,
@@ -436,17 +438,21 @@ def analyze_all_assets(
     current_user: User = Depends(require_analyst),
 ):
     """Lanza el analisis de riesgos solo para activos SIN analizar (null) o con error.
-    No toca activos ya correctamente analizados.
+    No toca activos ya correctamente analizados; los miembros de grupos
+    validados quedan cubiertos por el analisis de su representante.
     """
-    from sqlalchemy import or_
+    from app.services.asset_risk_analysis_service import analysis_pool_summary
     org_id = current_user.organization_id
-    pending = db.query(Asset).filter(
-        Asset.organization_id == org_id,
-        Asset.is_group_representative.is_(False),
-        or_(Asset.ai_risk_status == None, Asset.ai_risk_status == "error"),  # noqa: E711
-    ).count()
+    pool = analysis_pool_summary(db, org_id)
     _enqueue_org_analysis(db, org_id, current_user.id)
-    return {"ok": True, "total": pending, "message": f"Analisis iniciado para {pending} activos pendientes."}
+    return {
+        "ok": True,
+        "total": pool["to_analyze"],
+        "covered_by_groups": pool["covered_by_groups"],
+        "estimated_cost_usd": pool["estimated_cost_usd"],
+        "message": (f"Analisis iniciado para {pool['to_analyze']} activos "
+                    f"({pool['covered_by_groups']} cubiertos por grupos)."),
+    }
 
 
 @router.post("/analyze-cia-zero")
@@ -729,3 +735,16 @@ def rollback_import(
     )
 
     return result
+
+
+# NOTA: esta ruta generica va la ULTIMA del router a proposito. Si se declara
+# antes, captura las rutas GET literales posteriores (/analysis-status,
+# /export/csv, /analysis-cost-estimate...) y las convierte en 422.
+@router.get("/{asset_id}", response_model=AssetOut)
+def get_asset(asset_id: int, request: Request, db: Session = Depends(get_db),
+              current_user: User = Depends(get_current_user)):
+    lang = get_lang(request)
+    a = db.get(Asset, asset_id)
+    if not a or not check_org_access(a.organization_id, current_user):
+        raise HTTPException(404, _t("assets.not_found", lang))
+    return _to_out(a)
