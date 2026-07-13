@@ -1381,6 +1381,9 @@ const ViewGuide = {
     ${this._p('Desglose del mes en curso por tipo de analisis y modelo: llamadas, tokens de entrada/salida y <strong>coste estimado en USD</strong> segun los precios reales por millon de tokens de cada modelo. Incluye la tendencia de los ultimos meses y el presupuesto blando del plan contratado (free/starter/pro/enterprise).')}
     ${this._tip('El presupuesto es <strong>blando</strong>: al superarlo se muestra un aviso y se registra en el log, pero nunca se corta el servicio. El coste mostrado es un techo (no descuenta los descuentos por prompt caching).')}
 
+    ${this._h('Costes de IA por organizacion — refacturacion (superadmin)')}
+    ${this._p('Vision global del consumo IA de <strong>todas</strong> las organizaciones en un mes: llamadas, tokens y coste estimado por tenant, con el detalle por tipo de analisis al hacer clic en cada fila. Cada llamada registra el <strong>origen de la API key</strong>: <em>plataforma</em> (key global del gestor) u <em>propia</em> (key del propio tenant). La columna <strong>Refacturable</strong> suma solo el gasto hecho con la key de plataforma, que es el que procede facturar al cliente; las organizaciones con key propia pagan su API directamente a Anthropic y disponen de su propio panel de consumo. Incluye la fila <em>Plataforma</em> con el gasto sin organizacion (vigilancia normativa y jobs globales).')}
+
     ${this._h('Cola de trabajos (admin)')}
     ${this._p('Los analisis pesados (analisis IA masivo de activos, revision de evidencias, vision de documentos escaneados) se ejecutan como trabajos persistidos en base de datos: sobreviven a reinicios, reintentan con backoff exponencial y dejan rastro. Aqui ves su estado (pendiente, en ejecucion, completado, error) y puedes cancelar los que aun no han empezado.')}
 

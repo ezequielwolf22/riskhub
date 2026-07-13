@@ -2589,6 +2589,18 @@ const I18N_ES = {
       empty: "Sin consumo de IA este mes.",
       trend: "Tendencia",
     },
+    billing: {
+      title: "Costes de IA por organización (refacturación)",
+      hint: "El coste refacturable es el consumido con la key global de la plataforma; las organizaciones con key propia pagan su API directamente. Haz clic en una fila para ver el detalle por tipo de análisis.",
+      unknown_note: "Coste anterior al registro de origen de key (no refacturable automáticamente)",
+      org: "Organización",
+      plan: "Plan",
+      key: "API key",
+      own_key: "propia",
+      vendor_key: "plataforma",
+      total_cost: "Coste total",
+      billable: "Refacturable",
+    },
     jobs: {
       title: "Cola de trabajos",
       type: "Tipo",

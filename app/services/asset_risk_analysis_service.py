@@ -951,7 +951,8 @@ def _run_via_anthropic_batch_api(
         finally:
             pdb.close()
         _log_usage(msg, org_id=org_id, call_type="asset_risk_analysis",
-                   model=getattr(msg, "model", None) or batch_model)
+                   model=getattr(msg, "model", None) or batch_model,
+                   api_key=api_key)
 
     logger.info("Batch API %s completado: %d lotes ok, %d fallidos (org=%d)",
                 mb.id, done, failed, org_id)

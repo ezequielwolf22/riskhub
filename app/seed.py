@@ -809,6 +809,9 @@ def _migrate_columns() -> None:
         # v6.6.0 — Modo maxima calidad: el analisis masivo tambien usa el modelo profundo
         ("ALTER TABLE ai_config ADD COLUMN force_deep_analysis BOOLEAN DEFAULT 0",
          "ai_config", "force_deep_analysis"),
+        # v6.7.0 — Refacturacion: origen de la key en cada llamada IA (vendor|org)
+        ("ALTER TABLE ai_call_logs ADD COLUMN key_source VARCHAR(16)",
+         "ai_call_logs", "key_source"),
         # v6.0.0 — registro de migraciones one-shot (pasos de datos que solo corren una vez)
         (
             """CREATE TABLE IF NOT EXISTS app_migrations (

@@ -38,13 +38,14 @@ const ViewOps = (() => {
         </div>
       </div>
       <div id="ops-usage" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>
+      ${isSuper ? `<div id="ops-billing" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>` : ''}
       <div id="ops-jobs" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>
       ${isSuper ? `<div id="ops-errors" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>` : ''}
       ${isSuper ? `<div id="ops-backups" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>` : ''}
     `;
     _loadUsage();
     _loadJobs();
-    if (isSuper) { _loadErrors(); _loadBackups(); }
+    if (isSuper) { _loadBilling(); _loadErrors(); _loadBackups(); }
   }
 
   // ---------- Consumo IA ----------
@@ -96,6 +97,115 @@ const ViewOps = (() => {
       `;
     } catch (e) {
       box.innerHTML = `<h3 style="margin-top:0;">${t('ops.usage.title')}</h3><div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  }
+
+  // ---------- Refacturacion IA por organizacion (superadmin) ----------
+
+  function _monthOptions() {
+    const opts = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      opts.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+    }
+    return opts;
+  }
+
+  async function _loadBilling(month) {
+    const box = document.getElementById('ops-billing');
+    if (!box) return;
+    try {
+      const q = month ? `?month=${encodeURIComponent(month)}` : '';
+      const d = await Api.get(`/api/ai/usage/global${q}`);
+      const tot = d.totals || {};
+      const rows = (d.organizations || []).map(o => `
+        <tr data-org="${o.organization_id == null ? 0 : o.organization_id}" style="cursor:pointer;">
+          <td>${UI.esc(o.name || '-')}</td>
+          <td>${o.plan ? `<span class="badge badge-info">${UI.esc(o.plan)}</span>` : '<span class="badge badge-muted">plataforma</span>'}</td>
+          <td style="text-align:center;">${o.has_own_key
+            ? `<span class="badge badge-success">${t('ops.billing.own_key')}</span>`
+            : `<span class="badge badge-warning">${t('ops.billing.vendor_key')}</span>`}</td>
+          <td style="text-align:right;">${o.calls}</td>
+          <td style="text-align:right;">${_fmtTokens(o.input_tokens)}</td>
+          <td style="text-align:right;">${_fmtTokens(o.output_tokens)}</td>
+          <td style="text-align:right;">$${(o.estimated_cost_usd || 0).toFixed(2)}</td>
+          <td style="text-align:right;font-weight:600;">$${(o.billable_cost_usd || 0).toFixed(2)}</td>
+        </tr>
+        <tr data-detail="${o.organization_id == null ? 0 : o.organization_id}" style="display:none;">
+          <td colspan="8" style="background:var(--bg-2);"></td>
+        </tr>`).join('');
+      const monthSel = _monthOptions().map(m =>
+        `<option value="${m}" ${m === d.month ? 'selected' : ''}>${m}</option>`).join('');
+      box.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
+          <h3 style="margin:0;">${t('ops.billing.title')}</h3>
+          <div style="display:flex;gap:10px;align-items:baseline;">
+            <select id="ops-billing-month" class="input" style="width:auto;padding:4px 8px;font-size:12px;">${monthSel}</select>
+            <b>${t('ops.billing.billable')}: $${(tot.billable_cost_usd || 0).toFixed(2)}</b>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text-subtle);margin:6px 0 0;">${t('ops.billing.hint')}
+          ${(tot.unknown_cost_usd || 0) > 0 ? ` ${t('ops.billing.unknown_note')}: $${tot.unknown_cost_usd.toFixed(2)}.` : ''}</p>
+        ${rows ? `
+        <div style="overflow-x:auto;margin-top:10px;">
+          <table class="table">
+            <thead><tr>
+              <th>${t('ops.billing.org')}</th><th>${t('ops.billing.plan')}</th>
+              <th style="text-align:center;">${t('ops.billing.key')}</th>
+              <th style="text-align:right;">${t('ops.usage.calls')}</th>
+              <th style="text-align:right;">${t('ops.usage.tokens_in')}</th>
+              <th style="text-align:right;">${t('ops.usage.tokens_out')}</th>
+              <th style="text-align:right;">${t('ops.billing.total_cost')}</th>
+              <th style="text-align:right;">${t('ops.billing.billable')}</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>` : `<p class="text-muted" style="margin-top:10px;">${t('ops.usage.empty')}</p>`}
+      `;
+      const sel = document.getElementById('ops-billing-month');
+      if (sel) sel.onchange = () => _loadBilling(sel.value);
+      box.querySelectorAll('tr[data-org]').forEach(tr => {
+        tr.onclick = () => _toggleBillingDetail(box, tr.dataset.org, d.month);
+      });
+    } catch (e) {
+      box.innerHTML = `<h3 style="margin-top:0;">${t('ops.billing.title')}</h3><div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  }
+
+  async function _toggleBillingDetail(box, orgId, month) {
+    const row = box.querySelector(`tr[data-detail="${orgId}"]`);
+    if (!row) return;
+    if (row.style.display !== 'none') { row.style.display = 'none'; return; }
+    const cell = row.firstElementChild;
+    cell.innerHTML = `<p class="text-muted" style="margin:8px;">${t('common.loading')}</p>`;
+    row.style.display = '';
+    try {
+      const d = await Api.get(`/api/ai/usage/global?month=${encodeURIComponent(month)}&org_id=${orgId}`);
+      const rows = (d.detail || []).map(r => `
+        <tr>
+          <td>${UI.esc(r.call_type || '-')}</td>
+          <td style="font-size:11px;color:var(--text-muted);">${UI.esc(r.model || '-')}</td>
+          <td>${UI.esc(r.key_source)}</td>
+          <td style="text-align:right;">${r.calls}</td>
+          <td style="text-align:right;">${_fmtTokens(r.input_tokens)}</td>
+          <td style="text-align:right;">${_fmtTokens(r.output_tokens)}</td>
+          <td style="text-align:right;">$${(r.estimated_cost_usd || 0).toFixed(3)}</td>
+        </tr>`).join('');
+      cell.innerHTML = rows ? `
+        <table class="table" style="margin:6px 0;">
+          <thead><tr>
+            <th>${t('ops.usage.call_type')}</th><th>${t('ops.usage.model')}</th>
+            <th>${t('ops.billing.key')}</th>
+            <th style="text-align:right;">${t('ops.usage.calls')}</th>
+            <th style="text-align:right;">${t('ops.usage.tokens_in')}</th>
+            <th style="text-align:right;">${t('ops.usage.tokens_out')}</th>
+            <th style="text-align:right;">${t('ops.usage.cost')}</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>` : `<p class="text-muted" style="margin:8px;">${t('ops.usage.empty')}</p>`;
+    } catch (e) {
+      cell.innerHTML = `<div class="notice">${UI.esc(e.message)}</div>`;
     }
   }
 

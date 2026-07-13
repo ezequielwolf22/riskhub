@@ -2585,6 +2585,18 @@ const I18N_EN = {
       empty: "No AI usage this month.",
       trend: "Trend",
     },
+    billing: {
+      title: "AI costs per organization (rebilling)",
+      hint: "Billable cost is what was consumed with the platform's global API key; organizations with their own key pay their API directly. Click a row to see the breakdown by analysis type.",
+      unknown_note: "Cost prior to key-origin tracking (not automatically billable)",
+      org: "Organization",
+      plan: "Plan",
+      key: "API key",
+      own_key: "own",
+      vendor_key: "platform",
+      total_cost: "Total cost",
+      billable: "Billable",
+    },
     jobs: {
       title: "Job queue",
       type: "Type",

@@ -25,9 +25,13 @@ from app.models import (
     TreatmentTask, TaskStatus, TaskPriority,
     User, UserRole,
 )
-from app.security import check_org_access, filter_by_org, get_current_user, require_role
+from app.security import (
+    check_org_access, filter_by_org, get_current_user, require_role,
+    require_superadmin,
+)
 from app.services.ai_service import QUESTIONNAIRE, run_analysis
 from app.services.anonymizer import anonymize, anonymize_messages
+from app.services.claude_client import key_source as _key_source
 from app.services.context_builder import build_context
 from app.services.risk_engine import calc_level
 
@@ -1234,6 +1238,7 @@ def control_gap_detailed(
         prompt_tokens=tokens_in,
         completion_tokens=tokens_out,
         model=f"{model}+{model_synthesis}",
+        key_source=_key_source(api_key),
         anonymized=False,
         response_summary=f"Gap detailed {req.framework}: score={result.get('framework_score', '?')} ({len(all_controls)} controles)",
     )
@@ -1408,6 +1413,7 @@ def architecture_review(
         prompt_tokens=tokens_in,
         completion_tokens=tokens_out,
         model=model,
+        key_source=_key_source(api_key),
         anonymized=False,
         response_summary=f"Architecture review: {len(arch_docs)} docs, {len(result.get('vulnerabilities', []))} vulns",
     )
@@ -2155,6 +2161,7 @@ def chat(
         prompt_tokens=tokens_in,
         completion_tokens=tokens_out,
         model=model,
+        key_source=_key_source(api_key),
         anonymized=(anon_level_val != "low"),
         response_summary=response_text[:200],
     )
@@ -2996,6 +3003,121 @@ def ai_usage(
         "trend": trend,
         "budget": budget_info,
     }
+
+
+@router.get("/usage/global")
+def ai_usage_global(
+    month: str | None = None,
+    org_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superadmin),
+):
+    """Panel de refacturacion del superadmin: consumo y coste IA de TODAS las
+    organizaciones en un mes, separando el gasto con la key global de la
+    plataforma ('vendor', refacturable al cliente) del gasto con la key propia
+    del tenant ('org'). Incluye la fila de plataforma (organization_id NULL:
+    regwatch y jobs globales) y, con ?org_id=N, el detalle por tipo de llamada.
+
+    Las filas historicas sin key_source (anteriores a v6.7.0) se reportan como
+    'unknown': cuentan en el coste total pero no en el refacturable.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import func as _func
+    from app.models import Organization
+    from app.services.model_registry import estimate_cost_usd
+
+    now = datetime.now(timezone.utc)
+    try:
+        month_start = (datetime.strptime(month, "%Y-%m").replace(tzinfo=timezone.utc)
+                       if month else now.replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+    except ValueError:
+        raise HTTPException(400, "month debe tener formato YYYY-MM")
+    month_end = (month_start.replace(year=month_start.year + 1, month=1)
+                 if month_start.month == 12
+                 else month_start.replace(month=month_start.month + 1))
+
+    # Detalle por tipo de llamada de una org concreta (org_id=0 -> plataforma)
+    if org_id is not None:
+        org_filter = (AiCallLog.organization_id.is_(None) if org_id == 0
+                      else AiCallLog.organization_id == org_id)
+        rows = (
+            db.query(
+                AiCallLog.call_type, AiCallLog.model, AiCallLog.key_source,
+                _func.count(),
+                _func.coalesce(_func.sum(AiCallLog.prompt_tokens), 0),
+                _func.coalesce(_func.sum(AiCallLog.completion_tokens), 0),
+            )
+            .filter(org_filter,
+                    AiCallLog.created_at >= month_start,
+                    AiCallLog.created_at < month_end)
+            .group_by(AiCallLog.call_type, AiCallLog.model, AiCallLog.key_source)
+            .all()
+        )
+        detail = [
+            {"call_type": ct, "model": m, "key_source": ks or "unknown",
+             "calls": c, "input_tokens": int(ti), "output_tokens": int(to),
+             "estimated_cost_usd": round(estimate_cost_usd(m, ti, to), 4)}
+            for ct, m, ks, c, ti, to in rows
+        ]
+        detail.sort(key=lambda x: -x["estimated_cost_usd"])
+        return {"month": month_start.strftime("%Y-%m"), "org_id": org_id,
+                "detail": detail}
+
+    rows = (
+        db.query(
+            AiCallLog.organization_id, AiCallLog.model, AiCallLog.key_source,
+            _func.count(),
+            _func.coalesce(_func.sum(AiCallLog.prompt_tokens), 0),
+            _func.coalesce(_func.sum(AiCallLog.completion_tokens), 0),
+        )
+        .filter(AiCallLog.created_at >= month_start,
+                AiCallLog.created_at < month_end)
+        .group_by(AiCallLog.organization_id, AiCallLog.model, AiCallLog.key_source)
+        .all()
+    )
+
+    orgs = {o.id: o for o in db.query(Organization).all()}
+    own_key_ids = {
+        cfg.organization_id
+        for cfg in db.query(AiConfig).filter(AiConfig.api_key_encrypted.isnot(None)).all()
+    }
+
+    by_org: dict = {}
+    for oid, model, ks, calls, tok_in, tok_out in rows:
+        cost = estimate_cost_usd(model, tok_in, tok_out)
+        entry = by_org.setdefault(oid, {
+            "organization_id": oid,
+            "name": (orgs[oid].name if oid in orgs else "Plataforma (regwatch/global)"),
+            "plan": (orgs[oid].plan if oid in orgs else None),
+            "has_own_key": oid in own_key_ids,
+            "calls": 0, "input_tokens": 0, "output_tokens": 0,
+            "estimated_cost_usd": 0.0, "billable_cost_usd": 0.0,
+            "unknown_cost_usd": 0.0,
+        })
+        entry["calls"] += calls
+        entry["input_tokens"] += int(tok_in)
+        entry["output_tokens"] += int(tok_out)
+        entry["estimated_cost_usd"] += cost
+        if (ks or "unknown") == "vendor":
+            entry["billable_cost_usd"] += cost
+        elif not ks:
+            entry["unknown_cost_usd"] += cost
+
+    organizations = sorted(by_org.values(), key=lambda x: -x["estimated_cost_usd"])
+    for e in organizations:
+        for k in ("estimated_cost_usd", "billable_cost_usd", "unknown_cost_usd"):
+            e[k] = round(e[k], 4)
+
+    totals = {
+        "calls": sum(e["calls"] for e in organizations),
+        "input_tokens": sum(e["input_tokens"] for e in organizations),
+        "output_tokens": sum(e["output_tokens"] for e in organizations),
+        "estimated_cost_usd": round(sum(e["estimated_cost_usd"] for e in organizations), 2),
+        "billable_cost_usd": round(sum(e["billable_cost_usd"] for e in organizations), 2),
+        "unknown_cost_usd": round(sum(e["unknown_cost_usd"] for e in organizations), 2),
+    }
+    return {"month": month_start.strftime("%Y-%m"),
+            "organizations": organizations, "totals": totals}
 
 
 # ---------- Aprendizaje del agente y calibracion ----------

@@ -1849,6 +1849,8 @@ class AiCallLog(Base):
     prompt_tokens = Column(Integer, default=0)
     completion_tokens = Column(Integer, default=0)
     model = Column(String(64), nullable=True)
+    # 'vendor' = key global de plataforma (refacturable) | 'org' = key propia del tenant
+    key_source = Column(String(16), nullable=True)
     anonymized = Column(Boolean, default=False)
     response_summary = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

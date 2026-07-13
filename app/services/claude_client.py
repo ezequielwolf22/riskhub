@@ -69,7 +69,17 @@ def cached_system(prompt: str, cached_context: str | None = None) -> list[dict]:
     return blocks
 
 
-def _log_usage(msg, *, org_id: int | None, call_type: str | None, model: str) -> None:
+def key_source(api_key: str | None) -> str:
+    """Origen de la API key: 'vendor' (key global de plataforma, refacturable)
+    u 'org' (key propia del tenant). Base del panel de refacturacion."""
+    from app.config import settings
+    if api_key and settings.anthropic_api_key and api_key == settings.anthropic_api_key:
+        return "vendor"
+    return "org"
+
+
+def _log_usage(msg, *, org_id: int | None, call_type: str | None, model: str,
+               api_key: str | None = None) -> None:
     """Registra tokens en ai_call_logs (best-effort) para el panel de costes.
 
     Reintenta una vez ante contencion de SQLite (p.ej. hilos background que
@@ -91,6 +101,7 @@ def _log_usage(msg, *, org_id: int | None, call_type: str | None, model: str) ->
                     model=model,
                     prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
                     completion_tokens=getattr(usage, "output_tokens", 0) or 0,
+                    key_source=key_source(api_key) if api_key else None,
                 ))
                 db.commit()
                 return
@@ -170,7 +181,8 @@ def create_message(api_key: str, *, model: str, max_tokens: int,
         try:
             with client.messages.stream(**params) as stream:
                 msg = stream.get_final_message()
-            _log_usage(msg, org_id=org_id, call_type=call_type, model=model)
+            _log_usage(msg, org_id=org_id, call_type=call_type, model=model,
+                       api_key=api_key)
             return msg
         except Exception as exc:
             err = str(exc)
