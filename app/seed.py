@@ -1396,8 +1396,46 @@ def init_db() -> None:
         _seed_default_kpis(db, org.id)
         _seed_default_kris(db, org.id)
         _run_one_shot_recalc_v2(db)
+        _run_one_shot_fix_supplier_scores(db)
     finally:
         db.close()
+
+
+def _run_one_shot_fix_supplier_scores(db: Session) -> None:
+    """Redondea a entero los scores TPRM de proveedores que quedaron como float.
+
+    Versiones antiguas del scoring guardaron valores fraccionarios (p.ej. 10.8)
+    en columnas Integer; SQLite no fuerza el tipo, pero la validacion de
+    respuesta de GET /api/suppliers/ exige int y fallaba con esos datos. Corre
+    una vez; queda registrado en app_migrations."""
+    from datetime import datetime, timezone
+    from sqlalchemy import text as _text
+    marker = "fix_supplier_float_scores"
+    try:
+        row = db.execute(
+            _text("SELECT name FROM app_migrations WHERE name = :n"), {"n": marker}
+        ).fetchone()
+        if row:
+            return
+        cols = ("inherent_risk_score", "control_effectiveness", "residual_risk_score",
+                "data_sensitivity", "data_volume", "business_criticality",
+                "geographic_risk", "business_importance", "nth_party_depth", "score")
+        total = 0
+        for col in cols:
+            res = db.execute(_text(
+                f"UPDATE suppliers SET {col} = CAST(ROUND({col}) AS INTEGER) "
+                f"WHERE {col} IS NOT NULL AND {col} <> CAST(ROUND({col}) AS INTEGER)"
+            ))
+            total += res.rowcount or 0
+        db.execute(
+            _text("INSERT INTO app_migrations (name, applied_at) VALUES (:n, :ts)"),
+            {"n": marker, "ts": datetime.now(timezone.utc).isoformat()},
+        )
+        db.commit()
+        print(f"Fix scores proveedores: {total} valores redondeados a entero.")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        print(f"Fix scores proveedores omitido: {exc}")
 
 
 def _run_one_shot_recalc_v2(db: Session) -> None:

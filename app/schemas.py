@@ -1,7 +1,18 @@
 """Esquemas Pydantic para validacion de entrada/salida de la API."""
 from datetime import datetime
 from typing import Literal, Optional, Any
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import (
+    BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator,
+)
+
+
+def _coerce_int(v):
+    """Redondea a int los scores que en BD quedaron como float (SQLite no
+    fuerza el tipo Integer; datos heredados de versiones antiguas del scoring
+    guardaron valores fraccionarios que rompian la validacion de respuesta)."""
+    if isinstance(v, float):
+        return int(round(v))
+    return v
 
 from app.models import (
     AssetType, ThreatOrigin, TreatmentOption,
@@ -797,6 +808,13 @@ class SupplierOut(ORMBase):
     email_extraction_method: Optional[str] = None
     email_needs_review: Optional[bool] = None
 
+    _coerce_scores = field_validator(
+        "score", "inherent_risk_score", "control_effectiveness",
+        "residual_risk_score", "data_sensitivity", "data_volume",
+        "business_criticality", "geographic_risk", "business_importance",
+        "nth_party_depth", mode="before",
+    )(_coerce_int)
+
 
 # ---------- NON-CONFORMITIES ----------
 class NonConformityIn(BaseModel):
@@ -1178,6 +1196,11 @@ class VendorAssessmentOut(ORMBase):
     # v4.1.0 — versionado
     previous_version_id: Optional[int] = None
     is_current: Optional[bool] = True
+
+    _coerce_scores = field_validator(
+        "inherent_risk_score", "control_effectiveness_score",
+        "residual_risk_score", mode="before",
+    )(_coerce_int)
 
 
 class VendorIssueCreate(BaseModel):
