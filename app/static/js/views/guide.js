@@ -1939,8 +1939,9 @@ const ViewGuide = {
     ${this._h('Opciones avanzadas (colapsadas, solo admin)')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
       <li><strong>Email de notificaciones:</strong> por defecto, el del primer admin.</li>
-      <li><strong>Frecuencia del digest:</strong> diaria / semanal (def.) / mensual / nunca.</li>
-      <li><strong>Auto-aplicar a copias:</strong> desactivado por defecto; los cambios sustantivos siempre requieren tu confirmacion.</li>
+      <li><strong>Frecuencia del digest:</strong> diaria / semanal (def.) / mensual / nunca. El digest se envia por los canales de alerta configurados (email, Teams o Power Automate) solo cuando hay cambios pendientes de revision: nunca llegan correos vacios.</li>
+      <li><strong>Auto-aplicar a copias:</strong> desactivado por defecto; los cambios sustantivos siempre requieren tu confirmacion. Al aplicar un cambio, tus <strong>plantillas TPRM clonadas</strong> del framework afectado se marcan para revision; con esta opcion activa ademas se re-sincronizan con la plantilla del sistema de origen anadiendo las preguntas nuevas (tus preguntas editadas o propias nunca se tocan).</li>
+      <li><strong>Version del framework:</strong> al aplicar un cambio, cada requisito de cumplimiento afectado queda sellado con la version normativa contra la que debe re-evaluarse (p. ej. "2022+A1").</li>
     </ul>
     ${this._tip('<strong>No interpreta legalmente las normas ni sustituye a tu consultor o auditor:</strong> detecta y propone cambios sobre documentos publicos. No procesa datos personales de tu organizacion. Desactivar el interruptor no rompe nada y conserva tu configuracion.')}
   `;},

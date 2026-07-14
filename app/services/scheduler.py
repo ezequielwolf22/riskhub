@@ -2028,6 +2028,24 @@ def _run_regwatch_sweep() -> None:
         db.close()
 
 
+def _run_regwatch_digests() -> None:
+    """Digest periodico de cambios normativos pendientes (regwatch §5.4).
+
+    Corre a diario; send_pending_digests decide por org si toca segun su
+    digest_frequency (daily/weekly/monthly/never) y last_digest_sent_at.
+    """
+    from app.database import SessionLocal
+    from app.services import regwatch_service
+
+    db = SessionLocal()
+    try:
+        regwatch_service.send_pending_digests(db)
+    except Exception as exc:
+        logger.exception("Error en regwatch_digests: %s", exc)
+    finally:
+        db.close()
+
+
 def schedule_first_sweep(delay_minutes: int = 5) -> None:
     """Programa un barrido unico de regwatch poco despues de activar el toggle.
 
@@ -2914,6 +2932,16 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         trigger=IntervalTrigger(hours=24),
         id="regwatch_sweep",
         name="Vigilancia normativa — barrido de fuentes",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Regwatch: digest de cambios pendientes por email/Teams/PA (diario 8h UTC;
+    # cada org decide su cadencia real via digest_frequency)
+    _scheduler.add_job(
+        func=_run_regwatch_digests,
+        trigger=CronTrigger(hour=8),
+        id="regwatch_digests",
+        name="Vigilancia normativa — digest de cambios pendientes",
         replace_existing=True,
         misfire_grace_time=3600,
     )

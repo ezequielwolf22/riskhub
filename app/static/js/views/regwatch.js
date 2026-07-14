@@ -368,6 +368,8 @@ const ViewRegwatch = (() => {
       bcp_plans_flagged:                t('regwatch.prop_bcp'),
       supplier_questionnaires_flagged:  t('regwatch.prop_questionnaires'),
       compliance_requirements_flagged:  t('regwatch.prop_compliance'),
+      cloned_templates_flagged:         t('regwatch.prop_templates_flagged'),
+      cloned_templates_updated:         t('regwatch.prop_templates_updated'),
       tasks_created:                    t('regwatch.prop_tasks'),
     };
     const lines = Object.entries(map)

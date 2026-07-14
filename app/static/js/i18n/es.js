@@ -2751,6 +2751,8 @@ const I18N_ES = {
     prop_bcp: "Planes BCP/DRP marcados",
     prop_questionnaires: "Cuestionarios de proveedor marcados",
     prop_compliance: "Requisitos de cumplimiento marcados",
+    prop_templates_flagged: "Plantillas TPRM clonadas marcadas para revisión",
+    prop_templates_updated: "Plantillas TPRM clonadas actualizadas con preguntas nuevas",
     prop_tasks: "Tareas de revisión creadas en el registro de riesgos",
     prop_none: "Sin cambios adicionales (ningún elemento afectado).",
     history_title: "Historial de cambios aplicados",

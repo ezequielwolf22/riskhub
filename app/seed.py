@@ -812,6 +812,14 @@ def _migrate_columns() -> None:
         # v6.7.0 — Refacturacion: origen de la key en cada llamada IA (vendor|org)
         ("ALTER TABLE ai_call_logs ADD COLUMN key_source VARCHAR(16)",
          "ai_call_logs", "key_source"),
+        # v6.7.0 — Regwatch: version del framework sellada al propagar un cambio
+        ("ALTER TABLE compliance_framework_status ADD COLUMN framework_version VARCHAR(64)",
+         "compliance_framework_status", "framework_version"),
+        # v6.7.0 — Regwatch: plantillas TPRM clonadas afectadas por cambio normativo
+        ("ALTER TABLE tprm_templates ADD COLUMN regwatch_review_at DATETIME",
+         "tprm_templates", "regwatch_review_at"),
+        ("ALTER TABLE tprm_templates ADD COLUMN regwatch_pack_id INTEGER",
+         "tprm_templates", "regwatch_pack_id"),
         # v6.0.0 — registro de migraciones one-shot (pasos de datos que solo corren una vez)
         (
             """CREATE TABLE IF NOT EXISTS app_migrations (

@@ -50,6 +50,8 @@ def apply_and_propagate(db: Session, org_id: int, pack: Any, user: Any,
         "bcp_plans_flagged": 0,
         "supplier_questionnaires_flagged": 0,
         "compliance_requirements_flagged": 0,
+        "cloned_templates_flagged": 0,
+        "cloned_templates_updated": 0,
         "tasks_created": 0,
         "catalog_controls_updated": 0,
     }
@@ -168,6 +170,9 @@ def propagate_to_tenant(db: Session, org_id: int, pack: Any, user: Any) -> dict:
 
     # E. Requisitos de cumplimiento
     results["compliance_requirements_flagged"] = _update_compliance_requirements(db, org_id, pack)
+
+    # F. Plantillas TPRM clonadas (migracion segun auto_apply_to_clones)
+    results.update(_migrate_cloned_templates(db, org_id, pack))
 
     return results
 
@@ -624,9 +629,72 @@ def _update_compliance_requirements(db: Session, org_id: int, pack: Any) -> int:
     for req in reqs:
         _set_regwatch_flag(req, now, pack.id)
         req.last_reviewed_at = None  # fuerza re-evaluacion tras cambio normativo
+        # Versionado: sellar contra que version del framework debe re-evaluarse
+        if pack.version_to:
+            try:
+                req.framework_version = pack.version_to
+            except AttributeError:
+                pass  # columna aun no migrada
         flagged += 1
 
     return flagged
+
+
+# ---------- Plantillas TPRM clonadas (migracion, §5.5) ----------
+
+def _migrate_cloned_templates(db: Session, org_id: int, pack: Any) -> dict:
+    """Marca (y opcionalmente actualiza) las plantillas TPRM clonadas del tenant
+    afectadas por el cambio normativo.
+
+    - Siempre: sella regwatch_review_at/pack_id en los clones cuyo framework
+      coincide con el del pack (badge de revision en el editor de plantillas).
+    - Si la org activo auto_apply_to_clones: ademas re-sincroniza el clon con su
+      plantilla del sistema de origen (created_from) anadiendo las preguntas
+      nuevas del sistema que el clon no tenga. Nunca toca ni borra preguntas
+      editadas o anadidas por el cliente (sus cambios son suyos).
+    """
+    from app.models import TenantRegwatchSettings, TPRMTemplate
+    from app.services import regwatch_sources as srcs
+    from app.services import tprm_templates as sys_tpls
+
+    now = _now()
+    fw = srcs.normalize_framework(pack.framework_code) or pack.framework_code
+    settings = db.query(TenantRegwatchSettings).filter(
+        TenantRegwatchSettings.organization_id == org_id
+    ).first()
+    auto_apply = bool(settings and settings.auto_apply_to_clones)
+
+    clones = db.query(TPRMTemplate).filter(
+        TPRMTemplate.organization_id == org_id
+    ).all()
+
+    flagged = updated = 0
+    for tpl in clones:
+        codes = {str(c).upper() for c in (tpl.framework_codes or [])}
+        if fw.upper() not in codes:
+            continue
+        _set_regwatch_flag(tpl, now, pack.id)
+        flagged += 1
+
+        if not (auto_apply and tpl.created_from):
+            continue
+        system = sys_tpls.get_template(tpl.created_from)
+        if not system:
+            continue
+        existing_ids = {q.get("id") for q in (tpl.questions or [])}
+        new_qs = [q for q in system.get("questions", [])
+                  if q.get("id") not in existing_ids]
+        if new_qs:
+            # JSON mutable: reasignar la lista para que SQLAlchemy detecte el cambio
+            tpl.questions = list(tpl.questions or []) + new_qs
+            updated += 1
+            logger.info(
+                "regwatch: plantilla clonada %s (org=%s) re-sincronizada con %s: "
+                "+%d preguntas del sistema",
+                tpl.id, org_id, tpl.created_from, len(new_qs),
+            )
+
+    return {"cloned_templates_flagged": flagged, "cloned_templates_updated": updated}
 
 
 # ---------- Utilidad: compute_impact extendido ----------

@@ -2747,6 +2747,8 @@ const I18N_EN = {
     prop_bcp: "BCP/DRP plans flagged",
     prop_questionnaires: "Supplier questionnaires flagged",
     prop_compliance: "Compliance requirements flagged",
+    prop_templates_flagged: "Cloned TPRM templates flagged for review",
+    prop_templates_updated: "Cloned TPRM templates updated with new questions",
     prop_tasks: "Review tasks created in risk register",
     prop_none: "No additional changes (no elements affected).",
     history_title: "Applied changes history",

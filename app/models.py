@@ -1607,6 +1607,9 @@ class TPRMTemplate(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+    # v6.7.0 — regwatch: plantilla clonada afectada por cambio normativo
+    regwatch_review_at = Column(DateTime, nullable=True)
+    regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
 
 
 # ---------- SUPPLIER DOCUMENTS ----------
@@ -2077,6 +2080,9 @@ class ComplianceFrameworkStatus(Base):
     # v4.0.0 — regwatch: requisito afectado por cambio normativo, requiere revision
     regwatch_review_at = Column(DateTime, nullable=True)
     regwatch_pack_id = Column(Integer, ForeignKey("regwatch_change_packs.id"), nullable=True)
+    # v6.7.0 — regwatch: version del framework contra la que debe evaluarse el
+    # requisito (se sella con pack.version_to al propagar un cambio normativo)
+    framework_version = Column(String(64), nullable=True)
 
     responsible = relationship("User", foreign_keys=[responsible_id])
     __table_args__ = (

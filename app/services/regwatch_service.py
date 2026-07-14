@@ -176,6 +176,141 @@ def update_settings(db: Session, org_id: int, body: dict) -> dict:
     return settings_dict(db, org_id)
 
 
+# ---------- Digest periodico por email (§5.4) ----------
+
+_DIGEST_INTERVALS = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(days=7),
+    "monthly": timedelta(days=30),
+}
+
+_SEV_LABEL = {
+    "breaking": ("CRITICO", "#D65200"),
+    "substantive": ("Relevante", "#59008D"),
+    "clarification": ("Menor", "#6B7280"),
+}
+
+
+def _digest_due(s: TenantRegwatchSettings, now: datetime) -> bool:
+    """True si toca enviar digest segun frecuencia y ultimo envio."""
+    freq = s.digest_frequency or "weekly"
+    interval = _DIGEST_INTERVALS.get(freq)
+    if interval is None:  # 'never' u otro
+        return False
+    last = _aware(s.last_digest_sent_at)
+    if last is None:
+        return True
+    return now - last >= interval
+
+
+def _render_digest_html(org_name: str, items: list[dict], freq: str) -> tuple[str, str]:
+    """Devuelve (asunto, html) del digest a partir de los items del inbox."""
+    n = len(items)
+    subject = f"RiskHub · Vigilancia normativa: {n} cambio(s) pendiente(s) de revision"
+    rows = []
+    for it in items:
+        label, color = _SEV_LABEL.get(it.get("severity"), _SEV_LABEL["substantive"])
+        cc = it.get("change_counts") or {}
+        counts = f"+{cc.get('added', 0)} / ~{cc.get('modified', 0)} / -{cc.get('removed', 0)}"
+        rows.append(
+            f'<tr>'
+            f'<td style="padding:8px;border-bottom:1px solid #eee;">'
+            f'<span style="background:{color};color:#fff;font-size:11px;font-weight:700;'
+            f'padding:2px 8px;border-radius:4px;">{label}</span></td>'
+            f'<td style="padding:8px;border-bottom:1px solid #eee;font-size:13px;">'
+            f'<b>{_esc(it.get("framework") or "")}</b><br>{_esc(it.get("title") or "")}</td>'
+            f'<td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;'
+            f'color:#555;white-space:nowrap;">{counts}</td>'
+            f'</tr>'
+        )
+    html = (
+        f'<div style="font-family:Inter,Arial,sans-serif;max-width:640px;margin:0 auto;">'
+        f'<h2 style="color:#59008D;">Vigilancia normativa — {_esc(org_name)}</h2>'
+        f'<p style="font-size:14px;color:#333;">Hay <b>{n}</b> cambio(s) normativo(s) '
+        f'pendiente(s) de tu revision (digest {_esc(freq)}). '
+        f'Revisa y decide cada uno en <b>RiskHub → Vigilancia normativa</b>.</p>'
+        f'<table style="width:100%;border-collapse:collapse;margin-top:12px;">'
+        f'<thead><tr>'
+        f'<th style="text-align:left;padding:8px;font-size:12px;color:#888;">Impacto</th>'
+        f'<th style="text-align:left;padding:8px;font-size:12px;color:#888;">Marco / cambio</th>'
+        f'<th style="text-align:left;padding:8px;font-size:12px;color:#888;">Controles</th>'
+        f'</tr></thead><tbody>{"".join(rows)}</tbody></table>'
+        f'<p style="font-size:12px;color:#888;margin-top:16px;">Columna Controles: '
+        f'anadidos / modificados / eliminados. Este aviso se enruta por los canales '
+        f'configurados (email, Teams, Power Automate).</p></div>'
+    )
+    return subject, html
+
+
+def _esc(s) -> str:
+    from html import escape
+    return escape(str(s or ""))
+
+
+def send_pending_digests(db: Session) -> dict:
+    """Envia el digest a cada org con vigilancia activa cuya frecuencia venza y
+    tenga items pendientes. Idempotente por dia via last_digest_sent_at (§5.4).
+
+    No envia digests vacios: si no hay pendientes, no molesta al usuario.
+    Devuelve un resumen {sent, skipped_no_items, skipped_not_due, no_channel}.
+    """
+    from app.models import EmailSettings
+    from app.services import notification_channels as nc
+
+    now = _now()
+    summary = {"sent": 0, "skipped_no_items": 0, "skipped_not_due": 0, "no_channel": 0}
+
+    settings_rows = db.query(TenantRegwatchSettings).filter(
+        TenantRegwatchSettings.is_enabled == True  # noqa: E712
+    ).all()
+
+    for s in settings_rows:
+        org_id = s.organization_id
+        if not _digest_due(s, now):
+            summary["skipped_not_due"] += 1
+            continue
+        items = [
+            it for it in list_inbox(db, org_id, include_resolved=False)
+            if it.get("status") == InboxItemStatus.PENDING.value
+        ]
+        if not items:
+            # Nada pendiente: marcamos el envio para respetar la cadencia sin spamear.
+            s.last_digest_sent_at = now
+            db.flush()
+            summary["skipped_no_items"] += 1
+            continue
+
+        cfg = db.query(EmailSettings).filter_by(organization_id=org_id).first()
+        if not nc.has_any_channel(cfg):
+            summary["no_channel"] += 1
+            continue
+
+        org = db.get(Organization, org_id)
+        org_name = org.name if org else f"Org {org_id}"
+        recipient = s.notification_email or _default_notification_email(
+            db, org_id, User(email=None))
+        subject, html = _render_digest_html(org_name, items, s.digest_frequency or "weekly")
+        summary_text = (
+            f"{len(items)} cambio(s) normativo(s) pendiente(s) de revision en "
+            f"{org_name}. Entra en RiskHub -> Vigilancia normativa."
+        )
+        try:
+            nc.dispatch_alert(
+                db, cfg, org_name, recipient, subject, summary_text,
+                html_body=html, event="regwatch_digest",
+                fields={"pendientes": len(items)},
+            )
+            s.last_digest_sent_at = now
+            db.flush()
+            summary["sent"] += 1
+        except Exception as exc:
+            logger.warning("regwatch digest: fallo enviando a org=%s: %s", org_id, exc)
+
+    db.commit()
+    logger.info("regwatch digests: %s", summary)
+    return summary
+
+
 # ---------- Estado de la tarjeta de Setup (§1.1) ----------
 
 def build_status(db: Session, org_id: int) -> dict:
