@@ -83,6 +83,31 @@ def _graph_get(token: str, path: str, params: Optional[dict] = None) -> dict:
     return _graph_get_url(token, url)
 
 
+def resolve_site(token: str, site_url: str) -> dict:
+    """Resuelve un sitio de SharePoint a partir de su URL completa.
+
+    Necesario cuando el permiso de la app esta restringido a un sitio concreto
+    (Sites.Selected): en ese caso /sites?search= devuelve 403 porque requiere
+    acceso de busqueda a nivel de todo el tenant, pero el direccionamiento
+    /sites/{hostname}:{ruta} si funciona porque apunta a un sitio ya autorizado.
+    """
+    url = site_url.strip()
+    if "://" not in url:
+        url = "https://" + url
+    parsed = urllib.parse.urlparse(url)
+    hostname = parsed.netloc
+    path = parsed.path.rstrip("/")
+    if not hostname:
+        raise ValueError("URL de sitio no valida")
+    graph_path = f"/sites/{hostname}:{path}" if path else f"/sites/{hostname}"
+    data = _graph_get(token, graph_path, {"$select": "id,displayName,webUrl,name"})
+    return {
+        "id": data["id"],
+        "name": data.get("displayName") or data.get("name") or data["id"],
+        "url": data.get("webUrl", ""),
+    }
+
+
 def list_sites(token: str, search: str = "*") -> list[dict]:
     """Lista los sitios de SharePoint accesibles."""
     data = _graph_get(token, "/sites", {"search": search, "$select": "id,displayName,webUrl,name"})

@@ -5640,6 +5640,8 @@ const I18N_ES = {
     sp_select_site_first: "Selecciona un sitio primero",
     sp_select_site: "Selecciona un sitio",
     sp_select_library: "Selecciona una biblioteca",
+    sp_site_search_denied_hint: "Esto pasa cuando el permiso de la app está restringido a un sitio concreto (Sites.Selected) en vez de a todo el tenant. Pega la URL directa del sitio para continuar.",
+    sp_site_resolve_btn: "Buscar sitio",
     sp_cat_other: "Categoría: Otro",
     sp_cat_policies: "Políticas",
     sp_cat_normative: "Normativa",

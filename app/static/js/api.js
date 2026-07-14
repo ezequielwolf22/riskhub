@@ -475,6 +475,7 @@ const Api = {
     saveConfig: (d) => Api.put('/api/integrations/sharepoint/config', d),
     test: () => Api.post('/api/integrations/sharepoint/test', {}),
     sites: (search) => Api.get('/api/integrations/sharepoint/sites', search ? { search } : {}),
+    resolveSite: (url) => Api.get('/api/integrations/sharepoint/sites/resolve', { url }),
     drives: (site_id) => Api.get('/api/integrations/sharepoint/drives', { site_id }),
     files: (drive_id, item_id) => Api.get('/api/integrations/sharepoint/files',
       item_id && item_id !== 'root' ? { drive_id, item_id } : { drive_id }),

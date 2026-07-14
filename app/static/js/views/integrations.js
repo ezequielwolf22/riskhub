@@ -740,9 +740,11 @@ const ViewIntegrations = {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
           <div>
             <label style="font-size:12px;">${t('integrations.sp_label_site')}</label>
-            <select id="sp-site" class="input" style="width:100%;" onchange="ViewIntegrations._loadDrives()">
-              <option value="">${t('integrations.sp_loading_sites')}</option>
-            </select>
+            <div id="sp-site-wrap">
+              <select id="sp-site" class="input" style="width:100%;" onchange="ViewIntegrations._loadDrives()">
+                <option value="">${t('integrations.sp_loading_sites')}</option>
+              </select>
+            </div>
           </div>
           <div>
             <label style="font-size:12px;">${t('integrations.sp_label_library')}</label>
@@ -1105,14 +1107,49 @@ const ViewIntegrations = {
   },
 
   async _loadSites() {
-    const sel = document.getElementById('sp-site');
-    if (!sel) return;
-    sel.innerHTML = `<option value="">${t('integrations.loading')}</option>`;
+    const wrap = document.getElementById('sp-site-wrap');
+    if (!wrap) return;
+    wrap.innerHTML = `<select id="sp-site" class="input" style="width:100%;" onchange="ViewIntegrations._loadDrives()">
+      <option value="">${t('integrations.loading')}</option>
+    </select>`;
     try {
       const r = await Api.sharepoint.sites();
+      const sel = document.getElementById('sp-site');
       sel.innerHTML = `<option value="">${t('integrations.sp_select_site')}</option>` +
         r.sites.map(s => `<option value="${UI.esc(s.id)}">${UI.esc(s.name)}</option>`).join('');
-    } catch (e) { sel.innerHTML = `<option value="">Error: ${UI.esc(e.message)}</option>`; }
+    } catch (e) {
+      this._renderSiteUrlFallback(wrap, e.message);
+    }
+  },
+
+  _renderSiteUrlFallback(wrap, errorMsg) {
+    wrap.innerHTML = `
+      <div style="font-size:11px;color:var(--risk-high);margin-bottom:4px;">${UI.esc(errorMsg)}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">${t('integrations.sp_site_search_denied_hint')}</div>
+      <div style="display:flex;gap:4px;">
+        <input id="sp-site-url" class="input" style="flex:1;" placeholder="https://tuempresa.sharepoint.com/sites/NombreDelSitio">
+        <button type="button" class="btn btn-sm" onclick="ViewIntegrations._resolveSiteUrl()">${t('integrations.sp_site_resolve_btn')}</button>
+      </div>
+    `;
+  },
+
+  async _resolveSiteUrl() {
+    const wrap = document.getElementById('sp-site-wrap');
+    const input = document.getElementById('sp-site-url');
+    const url = input?.value.trim();
+    if (!url) return;
+    const btn = wrap.querySelector('button');
+    if (btn) { btn.disabled = true; btn.textContent = t('integrations.loading'); }
+    try {
+      const site = await Api.sharepoint.resolveSite(url);
+      wrap.innerHTML = `<select id="sp-site" class="input" style="width:100%;" onchange="ViewIntegrations._loadDrives()">
+        <option value="${UI.esc(site.id)}" selected>${UI.esc(site.name)}</option>
+      </select>`;
+      this._loadDrives();
+    } catch (e) {
+      UI.toast(e.message, 'error');
+      if (btn) { btn.disabled = false; btn.textContent = t('integrations.sp_site_resolve_btn'); }
+    }
   },
 
   async _loadDrives() {

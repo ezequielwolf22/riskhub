@@ -161,6 +161,24 @@ def list_sites(
         raise HTTPException(400, str(e))
 
 
+@router.get("/sites/resolve")
+def resolve_site(
+    url: str = Query(..., description="URL completa del sitio de SharePoint"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Resuelve un sitio especifico por su URL.
+
+    Alternativa a /sites cuando el permiso de la app esta restringido a un
+    sitio concreto (Sites.Selected) y la busqueda general devuelve 403.
+    """
+    token = _resolve_token(db, current_user.organization_id)
+    try:
+        return sp.resolve_site(token, url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.get("/drives")
 def list_drives(
     site_id: str = Query(..., description="ID del sitio de SharePoint"),

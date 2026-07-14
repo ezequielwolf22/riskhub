@@ -5637,6 +5637,8 @@ const I18N_EN = {
     sp_select_site_first: "Select a site first",
     sp_select_site: "Select a site",
     sp_select_library: "Select a library",
+    sp_site_search_denied_hint: "This happens when the app's permission is restricted to one specific site (Sites.Selected) instead of the whole tenant. Paste the direct site URL to continue.",
+    sp_site_resolve_btn: "Find site",
     sp_cat_other: "Category: Other",
     sp_cat_policies: "Policies",
     sp_cat_normative: "Regulations",
