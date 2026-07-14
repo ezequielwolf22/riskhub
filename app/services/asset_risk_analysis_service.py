@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.database import insert_ignore
 from app.models import (
     AiCallLog, AiConfig, Asset,
     Control, ControlImplementation, ControlStatus,
@@ -1594,10 +1595,9 @@ def _sync_vulns(db: Session, risk: Risk, vuln_codes: list, vulns_by_code: dict) 
         v = vulns_by_code.get(code)
         if v and v.id not in existing_ids:
             try:
-                db.execute(
-                    text("INSERT OR IGNORE INTO risk_vulnerabilities (risk_id, vulnerability_id) VALUES (:r, :v)"),
-                    {"r": risk.id, "v": v.id},
-                )
+                insert_ignore(db, "risk_vulnerabilities",
+                              ["risk_id", "vulnerability_id"],
+                              {"risk_id": risk.id, "vulnerability_id": v.id})
                 existing_ids.add(v.id)
             except Exception:
                 pass
@@ -1612,12 +1612,10 @@ def _sync_controls(db: Session, risk: Risk, ctrl_list: list, impls_by_id: dict) 
         impl = impls_by_id.get(impl_id)
         if impl and impl.id not in existing_impl_ids:
             try:
-                db.execute(
-                    text("INSERT OR IGNORE INTO risk_controls "
-                         "(risk_id, control_implementation_id, contribution) "
-                         "VALUES (:r, :c, :contrib)"),
-                    {"r": risk.id, "c": impl.id, "contrib": contrib},
-                )
+                insert_ignore(db, "risk_controls",
+                              ["risk_id", "control_implementation_id", "contribution"],
+                              {"risk_id": risk.id, "control_implementation_id": impl.id,
+                               "contribution": contrib})
                 existing_impl_ids.add(impl.id)
             except Exception:
                 pass
@@ -1716,11 +1714,9 @@ def link_csv_vulnerabilities_to_assets(
             if vuln:
                 db.flush()
                 try:
-                    db.execute(
-                        text("INSERT OR IGNORE INTO risk_vulnerabilities "
-                             "(risk_id, vulnerability_id) VALUES (:r, :v)"),
-                        {"r": risk.id, "v": vuln.id},
-                    )
+                    insert_ignore(db, "risk_vulnerabilities",
+                                  ["risk_id", "vulnerability_id"],
+                                  {"risk_id": risk.id, "vulnerability_id": vuln.id})
                 except Exception:
                     pass
         linked += 1

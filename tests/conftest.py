@@ -18,12 +18,19 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base, get_db
 from app.main import app
 
-_TEST_DB_URL = "sqlite:///./test_riskhub.db"
+# La suite corre contra SQLite por defecto; si RISKHUB_DATABASE_URL apunta a
+# PostgreSQL (CI con servicio postgres, o validacion local), usa ese motor —
+# asi el mismo conjunto de tests valida la portabilidad del codigo.
+_PG_URL = os.environ.get("RISKHUB_DATABASE_URL")
+_USING_PG = bool(_PG_URL and not _PG_URL.startswith("sqlite"))
 
-_engine = create_engine(
-    _TEST_DB_URL,
-    connect_args={"check_same_thread": False},
-)
+if _USING_PG:
+    _engine = create_engine(_PG_URL, pool_pre_ping=True)
+else:
+    _engine = create_engine(
+        "sqlite:///./test_riskhub.db",
+        connect_args={"check_same_thread": False},
+    )
 _TestSession = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 
@@ -56,7 +63,12 @@ def setup_test_db():
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=_engine)
+    try:
+        Base.metadata.drop_all(bind=_engine)
+    except Exception:
+        # PostgreSQL: el ciclo de FKs conocido puede impedir el DROP ordenado.
+        # No es critico al cerrar la sesion de test (la BD de CI es efimera).
+        pass
     # Liberar handles del engine antes de borrar el fichero (Windows bloquea si sigue abierto)
     _engine.dispose()
     # Limpiar archivo de BD de test (best-effort; en Windows puede seguir bloqueado)

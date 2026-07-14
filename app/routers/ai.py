@@ -2954,18 +2954,22 @@ def ai_usage(
         })
     current_month.sort(key=lambda x: -x["estimated_cost_usd"])
 
-    # Tendencia mensual (ultimos N meses)
+    # Tendencia mensual (ultimos N meses). El mes se extrae con substr(cast(...))
+    # en vez de strftime: portable entre SQLite ("2026-07-14 ..." -> "2026-07")
+    # y PostgreSQL (cast de timestamp a texto empieza igual por "YYYY-MM").
+    from sqlalchemy import String as _String
     months = max(1, min(months, 24))
+    _month = _func.substr(_func.cast(AiCallLog.created_at, _String), 1, 7)
     trend_rows = (
         db.query(
-            _func.strftime("%Y-%m", AiCallLog.created_at),
+            _month,
             _func.coalesce(_func.sum(AiCallLog.prompt_tokens), 0),
             _func.coalesce(_func.sum(AiCallLog.completion_tokens), 0),
             _func.count(),
         )
         .filter(AiCallLog.organization_id == org_id)
-        .group_by(_func.strftime("%Y-%m", AiCallLog.created_at))
-        .order_by(_func.strftime("%Y-%m", AiCallLog.created_at).desc())
+        .group_by(_month)
+        .order_by(_month.desc())
         .limit(months)
         .all()
     )

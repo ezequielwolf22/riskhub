@@ -1,7 +1,37 @@
 # Plan de migración a PostgreSQL
 
-Estado: **documento de diseño — no ejecutado**. SQLite sigue siendo el default
-soportado; PostgreSQL es opcional y este plan describe cómo llegar sin romper nada.
+Estado: **Fase 0 y 1 (groundwork) implementadas — 2026-07-14**. El código es
+portable entre SQLite y PostgreSQL; PostgreSQL está disponible como perfil del
+compose y se valida en CI. SQLite sigue siendo el default en marcha; el
+**cutover de datos en producción** es el único paso pendiente y se ejecuta en
+la ventana de mantenimiento del usuario (Fase 3).
+
+## Hecho (Fase 0-1)
+
+- **Código portable**: `_migrate_columns` usa `sqlalchemy.inspect` en vez de
+  `PRAGMA table_info` (arranca en PG: en una BD PG nueva `create_all` ya tiene
+  todas las columnas, así que cada ALTER incremental se omite). `INSERT OR
+  IGNORE` → helper `database.insert_ignore` (`ON CONFLICT DO NOTHING` en PG).
+  `strftime('%Y-%m', …)` del panel de uso IA → `substr(cast(... as text),1,7)`,
+  idéntico en ambos motores. `database.is_sqlite(db)` centraliza las ramas.
+- **FTS**: las tablas virtuales FTS5 son de SQLite; en PG el RAG de documentos
+  degrada a búsqueda `ILIKE` portable (`_run_fts_like`) y la ruta principal
+  sigue siendo el embedding semántico de Voyage (agnóstico del motor). El índice
+  de entidades (`ai_entity_fts`) devuelve vacío en PG — pendiente tsvector.
+- **Compose**: servicio `db` (postgres:16) bajo el perfil `postgres` con volumen
+  `riskhub-pgdata` y healthcheck; `RISKHUB_DATABASE_URL` se pasa al contenedor
+  (vacío = SQLite). Variables en `.env.example`.
+- **CI**: job `test-postgres` (no bloqueante) corre toda la suite contra un
+  servicio postgres:16; `conftest.py` usa `RISKHUB_DATABASE_URL` si está.
+- **Script de datos**: `scripts/migrate_sqlite_to_postgres.py` (orden topológico
+  de FKs, `session_replication_role=replica` para diferir constraints, sync de
+  secuencias). Omite las tablas FTS virtuales automáticamente.
+
+## Pendiente
+
+- **Fase 1 restante**: índice de entidades y ranking full-text nativo en PG
+  (tsvector + GIN) para paridad con FTS5. Hoy degrada a ILIKE/Voyage.
+- **Fase 3 (cutover producción)**: ventana de mantenimiento del usuario.
 
 ## Cuándo migrar
 

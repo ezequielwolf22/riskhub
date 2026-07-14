@@ -11,6 +11,10 @@ services:
       - RISKHUB_ADMIN_EMAIL=${RISKHUB_ADMIN_EMAIL:-admin@company.internal}
       - RISKHUB_ADMIN_PASSWORD=${RISKHUB_ADMIN_PASSWORD:?Define RISKHUB_ADMIN_PASSWORD en .env}
       - RISKHUB_DB_PATH=/srv/data/riskhub.db
+      # PostgreSQL: define RISKHUB_DATABASE_URL en .env (p.ej.
+      # postgresql+psycopg2://riskhub:...@db:5432/riskhub) y arranca con el
+      # perfil postgres. Vacio = SQLite en el volumen (default actual).
+      - RISKHUB_DATABASE_URL=${RISKHUB_DATABASE_URL:-}
       - RISKHUB_ENV=production
       - RISKHUB_PUBLIC_URL=${RISKHUB_PUBLIC_URL:-}
       - RISKHUB_ANTHROPIC_API_KEY=${RISKHUB_ANTHROPIC_API_KEY:-}
@@ -24,8 +28,33 @@ services:
     networks:
       - internal
 
+  # PostgreSQL opcional (perfil "postgres"). Arranque:
+  #   RISKHUB_DATABASE_URL=postgresql+psycopg2://riskhub:CLAVE@db:5432/riskhub \
+  #     docker compose --profile postgres up -d
+  # El servicio riskhub sigue arrancando sin este perfil usando SQLite.
+  db:
+    image: postgres:16
+    container_name: riskhub-db
+    restart: unless-stopped
+    profiles: ["postgres"]
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-riskhub}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env para el perfil postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-riskhub}
+    volumes:
+      - riskhub-pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-riskhub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   riskhub-data:
+    driver: local
+  riskhub-pgdata:
     driver: local
 
 networks:

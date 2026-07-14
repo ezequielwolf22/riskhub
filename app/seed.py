@@ -830,21 +830,34 @@ def _migrate_columns() -> None:
             "name",
         ),
     ]
+    # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
+    # recien creado, create_all() ya materializo todas las columnas de los
+    # modelos, por lo que cada ALTER se detecta como "ya presente" y se omite;
+    # los ALTER incrementales solo aplican a bases SQLite preexistentes.
+    from sqlalchemy import inspect as _sa_inspect
+    inspector = _sa_inspect(engine)
+    _existing_tables = set(inspector.get_table_names())
+
+    def _columns_of(table: str) -> set:
+        if table not in _existing_tables:
+            return set()
+        try:
+            return {c["name"] for c in inspector.get_columns(table)}
+        except Exception:
+            return set()
+
     with engine.connect() as conn:
         for sql, table, col in migrations:
             try:
-                # Comprobar si la columna ya existe
-                result = conn.execute(
-                    __import__("sqlalchemy").text(f"PRAGMA table_info({table})")
-                )
-                existing_cols = [row[1] for row in result]
-                if col not in existing_cols:
+                if col not in _columns_of(table):
                     conn.execute(__import__("sqlalchemy").text(sql))
                     conn.commit()
             except Exception as e:
                 # A6: registrar errores reales; silenciar solo "tabla no existe aun"
                 err_lower = str(e).lower()
-                if "no such table" not in err_lower and "already exists" not in err_lower:
+                if ("no such table" not in err_lower
+                        and "already exists" not in err_lower
+                        and "does not exist" not in err_lower):
                     logger.error("Migration failed: %s | SQL: %s", e, sql)
 
         # Migrar indice unico de feature_flags: nombre global -> compuesto (name, org_id)

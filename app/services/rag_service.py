@@ -298,13 +298,39 @@ def _fts5_query_variants(query: str) -> list[str]:
     return unique
 
 
+def _run_fts_like(
+    db: Session, terms: str, top_k: int, organization_id: int | None,
+) -> list[tuple]:
+    """Fallback portable (PostgreSQL u otro sin FTS5): busqueda ILIKE sobre el
+    contenido de los chunks. Menos preciso que FTS5/tsvector pero mantiene el
+    RAG de documentos operativo; la ruta principal sigue siendo el embedding
+    semantico de Voyage, agnostico del motor."""
+    like = f"%{(terms or '').strip()}%"
+    base = (
+        "SELECT c.content, d.original_name, d.category FROM ai_document_chunks c "
+        "JOIN ai_documents d ON d.id = c.document_id "
+        "WHERE c.content ILIKE :like "
+    )
+    params = {"like": like, "k": top_k}
+    if organization_id is not None:
+        base += "AND d.organization_id = :org_id "
+        params["org_id"] = organization_id
+    base += "LIMIT :k"
+    return db.execute(text(base), params).fetchall()
+
+
 def _run_fts5(
     db: Session,
     fts_query: str,
     top_k: int,
     organization_id: int | None,
 ) -> list[tuple]:
-    """Ejecuta una query FTS5 y devuelve las filas crudas."""
+    """Ejecuta una query FTS5 y devuelve las filas crudas.
+
+    En motores sin FTS5 (PostgreSQL) delega en el fallback ILIKE portable."""
+    from app.database import is_sqlite
+    if not is_sqlite(db):
+        return _run_fts_like(db, fts_query, top_k, organization_id)
     if organization_id is not None:
         return db.execute(
             text(
@@ -475,8 +501,16 @@ def refresh_entity_index(db: Session) -> int:
 
 def search_entities(db: Session, query: str, top_k: int = 6,
                     organization_id: int | None = None) -> list[dict]:
-    """Busca entidades de negocio relacionadas con la consulta del chat."""
+    """Busca entidades de negocio relacionadas con la consulta del chat.
+
+    El indice de entidades (ai_entity_fts) es una tabla virtual FTS5 exclusiva
+    de SQLite. En PostgreSQL se degrada a vacio: el chat sigue funcionando con
+    el RAG de documentos y el contexto de negocio del context_builder; el indice
+    de entidades tsvector queda como trabajo de Fase 1 (POSTGRES_MIGRATION_PLAN)."""
     if not query or not query.strip():
+        return []
+    from app.database import is_sqlite
+    if not is_sqlite(db):
         return []
     results: list[dict] = []
     seen: set[str] = set()
