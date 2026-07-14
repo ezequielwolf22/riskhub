@@ -793,6 +793,7 @@ const ViewIntegrations = {
       `;
       this._spSelected = [];
       this._spNavStack = [];
+      this._spConfigCache = cfg;
       this._loadSites();
       this._loadAllowedFolders();
       this._loadSyncStatus();
@@ -828,7 +829,8 @@ const ViewIntegrations = {
 
   _editSpConfig() {
     const body = document.getElementById('sp-body');
-    if (body) body.innerHTML = this._spConfigForm({ tenant_id: '(existente)', client_id: '(existente)' });
+    const cfg = this._spConfigCache || {};
+    if (body) body.innerHTML = this._spConfigForm({ tenant_id: cfg.tenant_id || '', client_id: cfg.client_id || '' });
   },
 
   async _saveSpConfig() {
