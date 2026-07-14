@@ -401,7 +401,15 @@ if STATIC_DIR.exists():
     def spa_fallback(full_path: str):
         if full_path.startswith("api/"):
             return JSONResponse({"detail": "Not found"}, status_code=404)
-        target = STATIC_DIR / full_path
-        if target.is_file():
-            return FileResponse(target)
+        # Path traversal guard: resolver el destino y exigir que quede DENTRO de
+        # STATIC_DIR. Sin esto, rutas como /../../../root/.ssh/id_ed25519 salen
+        # del arbol estatico y filtrarian cualquier fichero legible por la app
+        # (BD SQLite, codigo, secretos). Ante duda -> SPA index.
+        static_root = STATIC_DIR.resolve()
+        try:
+            target = (static_root / full_path).resolve()
+            if target.is_file() and target.is_relative_to(static_root):
+                return FileResponse(target)
+        except (OSError, ValueError):
+            pass
         return FileResponse(STATIC_DIR / "index.html", headers=_NO_CACHE)
