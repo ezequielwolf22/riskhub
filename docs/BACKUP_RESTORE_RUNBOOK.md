@@ -66,19 +66,66 @@ Move-Item -Force .\backups\riskhub-YYYYMMDD-HHMMSS.db .\riskhub.db
 Remove-Item -Force .\riskhub.db-wal, .\riskhub.db-shm -ErrorAction SilentlyContinue
 ```
 
-## Copia fuera del servidor (recomendado)
+## Copia fuera del servidor — Hetzner Storage Box (recomendado)
 
 Los backups viven en el mismo disco que la BD: un fallo del servidor pierde
-ambos. Mínimo viable — cron en tu máquina o en otro host:
+ambos. `scripts/backup_offsite.sh` replica los `.db.gz` locales a un **Hetzner
+Storage Box** vía rsync sobre SSH, y `setup_cron.sh` ya lo programa a las
+**02:30** (media hora después del backup local). El script no hace nada si no
+está configurado, así que es seguro desplegarlo antes de tener las credenciales.
+
+### Alta (una sola vez, en el servidor)
+
+Necesitas un Storage Box contratado en Hetzner (producto aparte, se compra en
+el panel: consola.hetzner.com → Storage Box). Anota su usuario
+(`u123456`) y host (`u123456.your-storagebox.de`). Hetzner usa el **puerto 23**
+para SSH/rsync.
 
 ```bash
-# rsync diario de los backups a otra máquina
-rsync -az -e "ssh -i ~/.ssh/id_ed25519" \
-  root@91.99.83.202:"$(ssh root@91.99.83.202 -i ~/.ssh/id_ed25519 docker volume inspect riskhub-data --format '{{.Mountpoint}}')/backups/" \
-  ~/riskhub-backups/
+ssh root@91.99.83.202 -i ~/.ssh/id_ed25519
+
+# 1. Clave SSH dedicada para el Storage Box (sin passphrase, la usa el cron)
+ssh-keygen -t ed25519 -f /root/.ssh/storagebox_ed25519 -N ""
+
+# 2. Autorizar la clave pública en el Storage Box (puerto 23, comando propio de Hetzner)
+cat /root/.ssh/storagebox_ed25519.pub | \
+  ssh -p23 u123456@u123456.your-storagebox.de install-ssh-key
+#    (te pedirá la contraseña del Storage Box una única vez)
+
+# 3. Fichero de configuración (credenciales fuera del repo, solo root)
+mkdir -p /etc/riskhub
+cat > /etc/riskhub/offsite.env <<'ENV'
+STORAGEBOX_USER="u123456"
+STORAGEBOX_HOST="u123456.your-storagebox.de"
+STORAGEBOX_PORT="23"
+STORAGEBOX_SSH_KEY="/root/.ssh/storagebox_ed25519"
+STORAGEBOX_REMOTE_DIR="riskhub-backups"
+OFFSITE_RETENTION_DAYS="30"
+ENV
+chmod 600 /etc/riskhub/offsite.env
+
+# 4. Prueba manual (debe decir "Backup offsite OK")
+bash /opt/riskhub/scripts/backup_offsite.sh
+
+# 5. Reinstalar el cron para que incluya la tarea offsite
+bash /opt/riskhub/scripts/setup_cron.sh
 ```
 
-(O configurar un cron en el servidor que suba a Hetzner Storage Box / S3.)
+Si `/etc/riskhub/offsite.env` no existe o le falta algún dato, el script avisa
+y termina con éxito: nunca rompe el backup local ni el deploy.
+
+### Restaurar desde el Storage Box
+
+```bash
+# Bajar el backup elegido y restaurarlo con el procedimiento de arriba
+rsync -e "ssh -p23 -i /root/.ssh/storagebox_ed25519" \
+  u123456@u123456.your-storagebox.de:riskhub-backups/riskhub-YYYYMMDD-HHMMSS.db.gz \
+  /srv/data/backups/
+```
+
+> Sub-cuentas: para aislar credenciales puedes crear un sub-usuario del Storage
+> Box (`u123456-sub1`) con acceso solo a `riskhub-backups/` y usarlo en
+> `STORAGEBOX_USER`. El resto del procedimiento es idéntico.
 
 ## Qué NO cubre este backup
 

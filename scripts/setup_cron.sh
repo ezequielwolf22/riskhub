@@ -15,6 +15,10 @@ cat > "$CRON_FILE" << 'EOF'
 # Backup diario de la BD a las 02:00
 0 2 * * * root bash /opt/riskhub/scripts/backup.sh >> /srv/data/logs/backup.log 2>&1
 
+# Replica offsite al Hetzner Storage Box a las 02:30 (tras el backup local).
+# No hace nada si /etc/riskhub/offsite.env no esta configurado (degradacion limpia).
+30 2 * * * root bash /opt/riskhub/scripts/backup_offsite.sh >> /srv/data/logs/backup_offsite.log 2>&1
+
 # Rotar logs del backup mensualmente (retener ultimos 3 meses)
 0 3 1 * * root find /srv/data/logs -name "backup.log.*" -mtime +90 -delete 2>/dev/null || true
 EOF
