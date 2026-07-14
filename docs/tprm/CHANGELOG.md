@@ -33,10 +33,32 @@ Registro de cambios del modulo TPRM de RiskHub. Sigue la spec
   (~30) y `tests/test_tprm_api.py` (~31) cubriendo el motor de scoring, las
   plantillas y los endpoints TPRM.
 
-### Pendiente
-- Editor visual de plantillas y versionado; portal externo con subida de
-  evidencias + AV scan; conectores de monitorizacion continua; reporting
-  (PDF/DOCX/XLSX/PPTX); incidentes de terceros y offboarding completo.
+## [v3.8.0] — Cierre del backlog TPRM — 2026-07-14
+
+### Estado del backlog historico
+- **Editor de plantillas**: ya implementado — `vendor-templates.js` (editor
+  visual con clonado, reordenacion y reglas de scoring por tipo de pregunta) +
+  CRUD `/api/tprm/custom-templates`.
+- **Portal externo con evidencias**: ya implementado — `supplier-q.html` +
+  `POST /public/{token}/upload` con whitelist de extensiones, limite de tamanio,
+  validacion de magic bytes (reutiliza el validador de documentos), hash SHA-256
+  y nombre de fichero sin token (sin info leakage).
+- **Conectores de monitorizacion**: cubierto por `supplier_monitoring_service`
+  (disponibilidad web / SSL / DNS semanal, crea `ExternalFinding`). Los
+  conectores de rating externos de pago (BitSight/SecurityScorecard) quedan
+  fuera de alcance por requerir cuentas comerciales del cliente.
+
+### Nuevo
+- **Reporting TPRM dedicado** (`GET /api/reports/tprm`): PDF consolidado con
+  branding — resumen ejecutivo (total/criticos, distribucion por tier),
+  inventario de proveedores ordenado por riesgo residual, evaluaciones vigentes
+  (`is_current`) con recomendacion, hallazgos abiertos con SLA (marca vencidos)
+  y estado de cuestionarios. Boton en la vista Informes; locale fragments
+  `reports_tprm.json` es/en; tests en `tests/test_reports_tprm.py`.
+
+### Pendiente (fuera del alcance actual)
+- Export DOCX/XLSX/PPTX del informe TPRM (el PDF cubre el caso de auditoria).
+- Incidentes de terceros y offboarding completo; conectores de rating de pago.
 
 ## [v3.6.0] — Sprint 1 (Foundations) — 2026-06-13
 

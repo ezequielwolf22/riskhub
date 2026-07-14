@@ -1459,6 +1459,8 @@ const I18N_ES = {
     rr_title: "Risk Register",
     rr_desc: "Listado completo de riesgos ordenados por nivel residual. Activo, amenaza, niveles inherente/residual, estado y decisión de tratamiento. ISO/IEC 27005:2018.",
     soa_desc: "Declaración de aplicabilidad completa: 93 controles ISO 27002:2022 con estado, madurez, razón de inclusión/exclusión, evidencias, fechas de revisión y sección de firma.",
+    tprm_title: "Informe TPRM",
+    tprm_desc: "Riesgo de terceros consolidado: inventario por tier y riesgo, evaluaciones vigentes, hallazgos abiertos con SLA y estado de cuestionarios. ISO 27001 A.5.19-A.5.22.",
     mgmt_review_title: "Revisión por la Dirección",
     mgmt_review_desc: "Informe completo según ISO 27001:2022 cláusula 9.3 y ENS. Incluye todos los apartados normativos con datos reales del sistema — los campos sin datos aparecen marcados [A CUMPLIMENTAR]. Disponible en PDF (para presentar), Excel (para editar) y Word (para personalizar y firmar).",
     bcp_pm_title: "Post-Mortem de Continuidad (BCP)",

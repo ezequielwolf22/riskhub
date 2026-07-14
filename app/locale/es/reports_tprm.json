@@ -1,0 +1,38 @@
+{
+  "reports": {
+    "tprm": {
+      "title": "Informe de Riesgo de Terceros (TPRM)",
+      "subtitle": "ISO/IEC 27001 A.5.19-A.5.22 - ISO/IEC 27005",
+      "organization_label": "Organizacion:",
+      "date_label": "Fecha:",
+      "summary_title": "Resumen ejecutivo",
+      "summary_body": "La organizacion gestiona {total} proveedor(es) de terceros, de los cuales {critical} estan marcados como criticos para la continuidad del negocio.",
+      "by_tier_label": "Distribucion por tier:",
+      "inventory_title": "Inventario de proveedores",
+      "h_code": "Codigo",
+      "h_name": "Proveedor",
+      "h_supplier": "Proveedor",
+      "h_tier": "Tier",
+      "h_critical": "Critico",
+      "h_inherent": "Inherente",
+      "h_residual": "Residual",
+      "h_residual_level": "Nivel residual",
+      "h_next": "Prox. eval.",
+      "h_period": "Periodo",
+      "h_recommendation": "Recomendacion",
+      "h_valid_until": "Valido hasta",
+      "h_issue": "Hallazgo",
+      "h_severity": "Severidad",
+      "h_status": "Estado",
+      "h_due": "Vencimiento",
+      "yes": "Si",
+      "no_suppliers": "No hay proveedores registrados.",
+      "assessments_title": "Evaluaciones de riesgo vigentes",
+      "issues_title": "Hallazgos abiertos y SLA",
+      "no_issues": "No hay hallazgos abiertos.",
+      "overdue": "{date} (VENCIDO)",
+      "questionnaires_title": "Estado de cuestionarios",
+      "questionnaires_body": "Cuestionarios enviados: {total}. Respondidos: {done}. Pendientes: {pending}."
+    }
+  }
+}

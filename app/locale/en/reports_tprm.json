@@ -1,0 +1,38 @@
+{
+  "reports": {
+    "tprm": {
+      "title": "Third-Party Risk Report (TPRM)",
+      "subtitle": "ISO/IEC 27001 A.5.19-A.5.22 - ISO/IEC 27005",
+      "organization_label": "Organization:",
+      "date_label": "Date:",
+      "summary_title": "Executive summary",
+      "summary_body": "The organization manages {total} third-party supplier(s), of which {critical} are flagged as critical to business continuity.",
+      "by_tier_label": "Distribution by tier:",
+      "inventory_title": "Supplier inventory",
+      "h_code": "Code",
+      "h_name": "Supplier",
+      "h_supplier": "Supplier",
+      "h_tier": "Tier",
+      "h_critical": "Critical",
+      "h_inherent": "Inherent",
+      "h_residual": "Residual",
+      "h_residual_level": "Residual level",
+      "h_next": "Next assess.",
+      "h_period": "Period",
+      "h_recommendation": "Recommendation",
+      "h_valid_until": "Valid until",
+      "h_issue": "Finding",
+      "h_severity": "Severity",
+      "h_status": "Status",
+      "h_due": "Due date",
+      "yes": "Yes",
+      "no_suppliers": "No suppliers registered.",
+      "assessments_title": "Current risk assessments",
+      "issues_title": "Open findings and SLA",
+      "no_issues": "No open findings.",
+      "overdue": "{date} (OVERDUE)",
+      "questionnaires_title": "Questionnaire status",
+      "questionnaires_body": "Questionnaires sent: {total}. Answered: {done}. Pending: {pending}."
+    }
+  }
+}

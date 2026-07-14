@@ -953,6 +953,7 @@ const ViewGuide = {
       <li><strong>Risk Register PDF:</strong> listado completo de riesgos ordenados por nivel residual. Incluye activo, amenaza, niveles, estado y decisión de tratamiento.</li>
       <li><strong>Risk Register Excel:</strong> exportación completa en 4 hojas: Riesgos, Activos, Controles y Resumen estadístico. Permite análisis adicional en Excel.</li>
       <li><strong>Statement of Applicability (SoA):</strong> declaración de aplicabilidad de los 93 controles ISO 27002, con estado y madurez. Obligatorio para certificación ISO 27001.</li>
+      <li><strong>Informe TPRM:</strong> riesgo de terceros consolidado en un PDF para dirección y auditoría de la cadena de suministro: inventario de proveedores por tier y nivel de riesgo (inherente/residual), evaluaciones vigentes con recomendación, hallazgos abiertos con su SLA (marcando los vencidos) y estado de los cuestionarios enviados. Alinea con ISO 27001 A.5.19-A.5.22 e ISO 27005.</li>
     </ul>
     ${this._h('Informes generados por IA')}
     ${this._p('Los informes de IA usan Claude para generar contenido narrativo profesional a partir de todos los datos del registro de riesgos. Cada informe es único y contextualizado.')}

@@ -61,6 +61,17 @@ const ViewReports = {
                 </button>
               </div>
             </div>
+            <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px;">
+              <h4 style="margin:0 0 6px;">${t('reports.tprm_title')}</h4>
+              <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;">
+                ${t('reports.tprm_desc')}
+              </p>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary" style="flex:1;" onclick="ViewReports._download('tprm')">
+                  PDF
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -534,6 +545,12 @@ const ViewReports = {
         UI.toast(t('reports.generating'), 'info');
         const today = new Date().toISOString().slice(0,10);
         Api.download('/api/reports/soa', `SOA_${today}.pdf`)
+           .catch(e => UI.toast(e.message, 'error'));
+      },
+      'tprm': () => {
+        UI.toast(t('reports.generating'), 'info');
+        const today = new Date().toISOString().slice(0,10);
+        Api.download('/api/reports/tprm', `informe_tprm_${today}.pdf`)
            .catch(e => UI.toast(e.message, 'error'));
       },
       'mgmt-review-pdf': () => {

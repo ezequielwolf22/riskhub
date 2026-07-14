@@ -1180,6 +1180,183 @@ def _mgmt_review_word(sections, org_name, scope, now_str, lang: str = "es"):
 
 
 # ============================================================
+# Informe TPRM (Third-Party Risk Management)
+# ============================================================
+
+_TPRM_LEVEL_COLORS = {
+    "critical": colors.HexColor("#FCA5A5"),
+    "high": colors.HexColor("#FED7AA"),
+    "medium": colors.HexColor("#FEF9C3"),
+    "low": colors.HexColor("#DCFCE7"),
+}
+
+
+@router.get("/tprm")
+def tprm_report(request: Request, db: Session = Depends(get_db),
+                current_user: User = Depends(get_current_user)):
+    """Informe consolidado de riesgo de terceros (TPRM): inventario por tier y
+    riesgo, evaluaciones vigentes, hallazgos abiertos con SLA y estado de
+    cuestionarios. Un unico PDF para direccion / auditoria de la cadena de
+    suministro (ISO 27001 A.5.19-A.5.22, ISO 27005)."""
+    from app.models import (
+        Supplier, SupplierQuestionnaire, VendorIssue, VendorIssueStatus,
+        VendorRiskAssessment,
+    )
+    lang = get_lang(request)
+    brand = _load_brand(db, current_user.organization_id, "tprm")
+    BRAND_PURPLE = brand.primary
+    BRAND_ORANGE = brand.secondary
+    s = _styles(brand)
+    now = datetime.now(timezone.utc)
+    el = []
+
+    el.append(Paragraph(_t("reports.tprm.title", lang), s["TitleBrand"]))
+    el.append(Paragraph(_t("reports.tprm.subtitle", lang), s["SubBrand"]))
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    org_name = (ctx.organization_name if ctx else None) or "-"
+    el.append(Paragraph(f"<b>{_t('reports.tprm.organization_label', lang)}</b> {_safe(org_name)}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.tprm.date_label', lang)}</b> {now.strftime('%d/%m/%Y')}", s["BodyBrand"]))
+    el.append(Spacer(1, 12))
+
+    suppliers = filter_by_org(db.query(Supplier), Supplier, current_user).all()
+    total = len(suppliers)
+    criticos = sum(1 for x in suppliers if x.is_critical)
+
+    # ── Resumen ejecutivo ────────────────────────────────────────────────
+    el.append(Paragraph(_t("reports.tprm.summary_title", lang), s["H2Brand"]))
+    by_tier: dict[str, int] = {}
+    for sup in suppliers:
+        key = sup.tier.value if sup.tier else "-"
+        by_tier[key] = by_tier.get(key, 0) + 1
+    by_level: dict[str, int] = {}
+    for sup in suppliers:
+        key = (sup.risk_level or "medium").lower()
+        by_level[key] = by_level.get(key, 0) + 1
+    el.append(Paragraph(
+        _t("reports.tprm.summary_body", lang, total=total, critical=criticos),
+        s["BodyBrand"]))
+    tier_txt = ", ".join(f"{k}: {v}" for k, v in sorted(by_tier.items())) or "-"
+    el.append(Paragraph(f"<b>{_t('reports.tprm.by_tier_label', lang)}</b> {tier_txt}", s["BodyBrand"]))
+    el.append(Spacer(1, 12))
+
+    # ── Inventario de proveedores ────────────────────────────────────────
+    el.append(Paragraph(_t("reports.tprm.inventory_title", lang), s["H2Brand"]))
+    data = [[
+        _t("reports.tprm.h_code", lang), _t("reports.tprm.h_name", lang),
+        _t("reports.tprm.h_tier", lang), _t("reports.tprm.h_critical", lang),
+        _t("reports.tprm.h_inherent", lang), _t("reports.tprm.h_residual", lang),
+        _t("reports.tprm.h_next", lang),
+    ]]
+    for sup in sorted(suppliers, key=lambda x: (x.residual_risk_score or 0), reverse=True):
+        data.append([
+            sup.code or "-", _safe(sup.name, 34),
+            sup.tier.value if sup.tier else "-",
+            _t("reports.tprm.yes", lang) if sup.is_critical else "-",
+            str(sup.inherent_risk_score) if sup.inherent_risk_score is not None else "-",
+            str(sup.residual_risk_score) if sup.residual_risk_score is not None else "-",
+            sup.next_assessment_at.strftime("%d/%m/%y") if sup.next_assessment_at else "-",
+        ])
+    if len(data) > 1:
+        tbl = Table(data, repeatRows=1, colWidths=[18*mm, 46*mm, 20*mm, 16*mm, 22*mm, 22*mm, 24*mm])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(tbl)
+    else:
+        el.append(Paragraph(_t("reports.tprm.no_suppliers", lang), s["BodyBrand"]))
+
+    # ── Evaluaciones vigentes ────────────────────────────────────────────
+    assessments = filter_by_org(
+        db.query(VendorRiskAssessment), VendorRiskAssessment, current_user
+    ).filter(VendorRiskAssessment.is_current == True).all()  # noqa: E712
+    if assessments:
+        el.append(Spacer(1, 12))
+        el.append(Paragraph(_t("reports.tprm.assessments_title", lang), s["H2Brand"]))
+        adata = [[
+            _t("reports.tprm.h_code", lang), _t("reports.tprm.h_supplier", lang),
+            _t("reports.tprm.h_period", lang), _t("reports.tprm.h_residual_level", lang),
+            _t("reports.tprm.h_recommendation", lang), _t("reports.tprm.h_valid_until", lang),
+        ]]
+        for a in assessments:
+            adata.append([
+                a.code or "-", _safe(a.supplier_name, 30),
+                a.period_label or "-",
+                (a.residual_risk_level or "-"),
+                a.recommendation.value if a.recommendation else "-",
+                a.valid_until.strftime("%d/%m/%y") if a.valid_until else "-",
+            ])
+        atbl = Table(adata, repeatRows=1, colWidths=[20*mm, 40*mm, 22*mm, 24*mm, 34*mm, 24*mm])
+        atbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(atbl)
+
+    # ── Hallazgos abiertos con SLA ───────────────────────────────────────
+    issues = filter_by_org(db.query(VendorIssue), VendorIssue, current_user).filter(
+        VendorIssue.status != VendorIssueStatus.CLOSED
+    ).order_by(VendorIssue.severity.desc()).all()
+    el.append(Spacer(1, 12))
+    el.append(Paragraph(_t("reports.tprm.issues_title", lang), s["H2Brand"]))
+    if issues:
+        idata = [[
+            _t("reports.tprm.h_code", lang), _t("reports.tprm.h_supplier", lang),
+            _t("reports.tprm.h_issue", lang), _t("reports.tprm.h_severity", lang),
+            _t("reports.tprm.h_status", lang), _t("reports.tprm.h_due", lang),
+        ]]
+        for i in issues:
+            overdue = bool(i.due_date and i.due_date.replace(tzinfo=timezone.utc) < now)
+            due_txt = (i.due_date.strftime("%d/%m/%y") if i.due_date else "-")
+            if overdue:
+                due_txt = _t("reports.tprm.overdue", lang, date=due_txt)
+            idata.append([
+                i.code or "-", _safe(i.supplier_name, 26), _safe(i.title, 40),
+                i.severity.value if i.severity else "-",
+                i.status.value if i.status else "-", due_txt,
+            ])
+        itbl = Table(idata, repeatRows=1, colWidths=[20*mm, 34*mm, 50*mm, 20*mm, 20*mm, 24*mm])
+        itbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_ORANGE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(itbl)
+    else:
+        el.append(Paragraph(_t("reports.tprm.no_issues", lang), s["BodyBrand"]))
+
+    # ── Estado de cuestionarios ──────────────────────────────────────────
+    questionnaires = filter_by_org(
+        db.query(SupplierQuestionnaire), SupplierQuestionnaire, current_user
+    ).all()
+    if questionnaires:
+        pend = sum(1 for q in questionnaires if not q.submitted_at)
+        done = len(questionnaires) - pend
+        el.append(Spacer(1, 12))
+        el.append(Paragraph(_t("reports.tprm.questionnaires_title", lang), s["H2Brand"]))
+        el.append(Paragraph(
+            _t("reports.tprm.questionnaires_body", lang,
+               total=len(questionnaires), done=done, pending=pend),
+            s["BodyBrand"]))
+
+    return _pdf_response(el, "informe_tprm.pdf", brand, lang)
+
+
+# ============================================================
 # Informes generados por IA
 # ============================================================
 
