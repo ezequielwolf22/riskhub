@@ -38,8 +38,12 @@ services:
     restart: unless-stopped
     profiles: ["postgres"]
     environment:
+      # Compose interpola estas variables al parsear el fichero AUNQUE el perfil
+      # postgres este inactivo, asi que no puede usarse `:?` (bloquearia el
+      # deploy SQLite). Si activas el perfil, define POSTGRES_PASSWORD en .env;
+      # postgres:16 aborta con un mensaje claro si queda vacia.
       - POSTGRES_USER=${POSTGRES_USER:-riskhub}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env para el perfil postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
       - POSTGRES_DB=${POSTGRES_DB:-riskhub}
     volumes:
       - riskhub-pgdata:/var/lib/postgresql/data
