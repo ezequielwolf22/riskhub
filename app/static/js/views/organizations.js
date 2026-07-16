@@ -196,20 +196,6 @@ const ViewOrganizations = (() => {
       </div>
     `, { width: '90vw' });
 
-    // Edge hace scrollIntoView a los checkboxes de la tabla de flags al inyectarlos.
-    // Ningun reset puntual funciona porque Edge lo sobreescribe en el ciclo de layout.
-    // Solucion: setInterval a 16ms que fuerza scrollTop=0 en cada frame hasta que
-    // el usuario haga scroll manual (wheel/touch) o pasen 4 segundos.
-    const _m = document.querySelector('#modal-root .modal');
-    if (_m) {
-      let _locked = true;
-      const _iv = setInterval(() => { if (_locked) _m.scrollTop = 0; }, 16);
-      const _release = () => { _locked = false; clearInterval(_iv); };
-      _m.addEventListener('wheel',      _release, { once: true, passive: true });
-      _m.addEventListener('touchstart', _release, { once: true, passive: true });
-      setTimeout(_release, 4000);
-    }
-
     document.getElementById('edit-org-form').onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -283,7 +269,7 @@ const ViewOrganizations = (() => {
                 <td style="color:var(--text-muted);">${UI.esc(f.description || '')}</td>
                 <td style="text-align:center;">
                   ${inPlan
-                    ? `<label class="toggle" title="${f.enabled ? t('organizations.enabled_title') : t('organizations.disabled_title')}">
+                    ? `<label class="toggle-switch" title="${f.enabled ? t('organizations.enabled_title') : t('organizations.disabled_title')}">
                         <input type="checkbox" ${f.enabled ? 'checked' : ''}
                           onchange="ViewOrganizations._toggleOrgFlag('${UI.esc(f.name)}', this.checked, ${orgId})">
                         <span class="toggle-slider"></span>
