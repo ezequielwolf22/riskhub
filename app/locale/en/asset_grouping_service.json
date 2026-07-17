@@ -1,0 +1,11 @@
+{
+  "asset_grouping_service": {
+    "insufficient_credits": "Insufficient Anthropic credit balance. Top up credits.",
+    "group_no_members": "The group has no members",
+    "asset_not_found": "Asset not found",
+    "cannot_move_representative": "A representative asset cannot be moved",
+    "target_group_not_found": "Target group not found",
+    "split_needs_assets": "Select at least one asset for the new group",
+    "propose_summary": "{created} groups proposed covering {grouped}/{total} assets ({batches} batches by type)."
+  }
+}

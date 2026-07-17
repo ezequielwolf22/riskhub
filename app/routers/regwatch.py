@@ -141,7 +141,7 @@ def review(item_id: int, body: ReviewBody, request: Request, db: Session = Depen
            current_user: User = Depends(require_admin)):
     lang = get_lang(request)
     org_id = _org_id(current_user, lang)
-    result = svc.review_inbox_item(db, org_id, item_id, current_user, body.decision)
+    result = svc.review_inbox_item(db, org_id, item_id, current_user, body.decision, lang)
     log_action(db, current_user.id, "review", "regwatch_inbox", str(item_id),
                body.decision, organization_id=org_id)
     db.commit()
@@ -159,7 +159,7 @@ def snooze(item_id: int, request: Request, body: SnoozeBody = None, db: Session 
         body = SnoozeBody()
     lang = get_lang(request)
     org_id = _org_id(current_user, lang)
-    result = svc.snooze_inbox_item(db, org_id, item_id, body.days)
+    result = svc.snooze_inbox_item(db, org_id, item_id, body.days, lang)
     log_action(db, current_user.id, "snooze", "regwatch_inbox", str(item_id),
                {"days": body.days}, organization_id=org_id)
     db.commit()
@@ -177,7 +177,7 @@ def dismiss(item_id: int, request: Request, body: DismissBody = None, db: Sessio
         body = DismissBody()
     lang = get_lang(request)
     org_id = _org_id(current_user, lang)
-    result = svc.dismiss_inbox_item(db, org_id, item_id, body.reason)
+    result = svc.dismiss_inbox_item(db, org_id, item_id, body.reason, lang)
     log_action(db, current_user.id, "dismiss", "regwatch_inbox", str(item_id),
                {"reason": body.reason}, organization_id=org_id)
     db.commit()

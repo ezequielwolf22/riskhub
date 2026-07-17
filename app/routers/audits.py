@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.i18n import get_lang, t as _t
+from app.i18n import ai_lang_directive, get_lang, t as _t
 from app.models import AuditFinding, AuditProgram, AuditStatus, AuditChecklist, User
 from app.schemas import (
     AuditFindingIn, AuditFindingOut,
@@ -280,7 +280,7 @@ def start_audit(
 
     from app.services.audit_checklist_service import generate_checklist_from_soa
     org_id = current_user.organization_id
-    items_created = generate_checklist_from_soa(db, audit_id, org_id)
+    items_created = generate_checklist_from_soa(db, audit_id, org_id, lang)
 
     # Marcar timestamp de generacion en el programa
     a.checklist_generated_at = datetime.now(timezone.utc)  # type: ignore[attr-defined]
@@ -430,7 +430,7 @@ def close_audit_report(
     ).all()
 
     from app.services.audit_checklist_service import generate_audit_report_pdf
-    pdf_bytes = generate_audit_report_pdf(a, items)
+    pdf_bytes = generate_audit_report_pdf(a, items, lang)
     if not pdf_bytes:
         return {"status": "completed", "pdf": False}
 
@@ -467,7 +467,7 @@ async def analyze_audit_report(
             break
         total += len(chunk)
         if total > MAX_SIZE:
-            raise HTTPException(400, "Archivo demasiado grande (max 5MB)")
+            raise HTTPException(400, _t("audits.file_too_large", lang))
         chunks.append(chunk)
     content = b"".join(chunks)
 
@@ -482,7 +482,7 @@ async def analyze_audit_report(
             reader = pypdf.PdfReader(io.BytesIO(content))
             text_content = "\n".join(page.extract_text() or "" for page in reader.pages)
         except Exception:
-            raise HTTPException(400, "No se pudo leer el PDF. Asegurate de que el archivo no esta corrupto o protegido.")
+            raise HTTPException(400, _t("audits.pdf_unreadable", lang))
     elif filename_lower.endswith('.docx'):
         try:
             import io
@@ -490,12 +490,12 @@ async def analyze_audit_report(
             doc = docx.Document(io.BytesIO(content))
             text_content = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
         except Exception:
-            raise HTTPException(400, "No se pudo leer el DOCX. Asegurate de que el archivo no esta corrupto.")
+            raise HTTPException(400, _t("audits.docx_unreadable", lang))
     else:
         text_content = content.decode('utf-8', errors='ignore')
 
     if len(text_content.strip()) < 50:
-        raise HTTPException(400, "No se pudo extraer texto del archivo")
+        raise HTTPException(400, _t("audits.no_text_extracted", lang))
 
     # Truncar a 15000 chars para el prompt
     text_excerpt = text_content[:15000]
@@ -505,9 +505,11 @@ async def analyze_audit_report(
     api_key, model = _resolve_ai_config(db, current_user.organization_id)
 
     if not api_key:
-        raise HTTPException(400, "API key de IA no configurada. Configura el Agente IA primero.")
+        raise HTTPException(400, _t("audits.api_key_missing", lang))
 
-    prompt = f"""Eres un auditor ISO 27001 experto. Analiza el siguiente informe de auditoria (puede estar en cualquier idioma) y extrae TODOS los hallazgos identificados.
+    prompt = f"""{ai_lang_directive(lang)}
+
+Eres un auditor ISO 27001 experto. Analiza el siguiente informe de auditoria (puede estar en cualquier idioma) y extrae TODOS los hallazgos identificados.
 
 Clasifica cada hallazgo en:
 - major_nc: No conformidad mayor (incumplimiento grave de un requisito)
@@ -515,8 +517,6 @@ Clasifica cada hallazgo en:
 - observation: Observacion (area de atencion que no constituye NC)
 - opportunity: Oportunidad de mejora
 - conformity: Punto conforme destacado
-
-Responde SIEMPRE en castellano (espanol), independientemente del idioma del informe.
 
 INFORME:
 {text_excerpt}

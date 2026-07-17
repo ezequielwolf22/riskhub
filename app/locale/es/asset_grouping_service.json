@@ -1,0 +1,11 @@
+{
+  "asset_grouping_service": {
+    "insufficient_credits": "Saldo insuficiente en Anthropic. Recarga creditos.",
+    "group_no_members": "El grupo no tiene miembros",
+    "asset_not_found": "Activo no encontrado",
+    "cannot_move_representative": "No se puede mover un activo representativo",
+    "target_group_not_found": "Grupo destino no encontrado",
+    "split_needs_assets": "Debe seleccionar al menos un activo para el nuevo grupo",
+    "propose_summary": "{created} grupos propuestos cubriendo {grouped}/{total} activos ({batches} lotes por tipo)."
+  }
+}

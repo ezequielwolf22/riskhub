@@ -1,0 +1,30 @@
+{
+  "audit_checklist_service": {
+    "base_q_documented": "Is there a documented procedure for this control?",
+    "base_q_consistent": "Is it applied consistently across the organization?",
+    "base_q_evidence": "Is there up-to-date evidence of the implementation?",
+    "expected_evidence_base": "Documentation, records or screenshots",
+    "expected_evidence_ai": "Specific evidence according to the control",
+    "pdf_title": "INTERNAL AUDIT REPORT",
+    "pdf_subtitle": "ISO/IEC 27001:2022 — Clause 9.2",
+    "pdf_audit_label": "Audit:",
+    "pdf_type_label": "Type:",
+    "pdf_lead_label": "Lead auditor:",
+    "pdf_end_date_label": "End date:",
+    "pdf_generated_label": "Report generated:",
+    "pdf_in_progress": "In progress",
+    "pdf_exec_summary": "EXECUTIVE SUMMARY",
+    "pdf_summary_text": "The audit evaluated {total} checklist items. Result: {conformant} conformant ({pct}%), {nc_total} nonconformities ({minor} minor, {major} major).",
+    "pdf_results_by_item": "RESULTS BY ITEM",
+    "pdf_col_clause": "Clause",
+    "pdf_col_question": "Question",
+    "pdf_col_result": "Result",
+    "pdf_col_notes": "Notes",
+    "pdf_status_conformant": "CONFORMANT",
+    "pdf_status_minor_nc": "MINOR NC",
+    "pdf_status_major_nc": "MAJOR NC",
+    "pdf_status_na": "N/A",
+    "pdf_status_pending": "PENDING",
+    "pdf_conclusion": "CONCLUSION"
+  }
+}

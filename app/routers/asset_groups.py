@@ -87,7 +87,7 @@ def propose(
 ):
     """Llama a la IA para agrupar activos. Reemplaza grupos PROPOSED anteriores."""
     lang = get_lang(request)
-    result = propose_groups(db, current_user.organization_id)
+    result = propose_groups(db, current_user.organization_id, lang)
     if not result.get("ok"):
         raise HTTPException(400, result.get("error", _t("asset_groups.unknown_error", lang)))
     log_action(db, current_user.id, "propose_groups", "asset_group", None,
@@ -195,7 +195,7 @@ def validate(
     if not g or not check_org_access(g.organization_id, current_user):
         raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     try:
-        validate_group(db, g)
+        validate_group(db, g, lang)
     except ValueError as e:
         raise HTTPException(400, str(e))
     log_action(db, current_user.id, "validate", "asset_group", str(group_id), {"name": g.name})
@@ -205,10 +205,12 @@ def validate(
 
 @router.post("/validate-all")
 def validate_all(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
     """Valida todos los grupos en estado PROPOSED."""
+    lang = get_lang(request)
     proposed = db.query(AssetGroup).filter_by(
         organization_id=current_user.organization_id,
         status=AssetGroupStatus.PROPOSED,
@@ -217,7 +219,7 @@ def validate_all(
     errors = []
     for g in proposed:
         try:
-            validate_group(db, g)
+            validate_group(db, g, lang)
             validated += 1
         except Exception as e:
             errors.append({"group": g.name, "error": str(e)})
@@ -230,11 +232,13 @@ def validate_all(
 @router.post("/move-asset")
 def move(
     data: MoveAssetIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
+    lang = get_lang(request)
     try:
-        move_asset(db, data.asset_id, data.target_group_id, current_user.organization_id)
+        move_asset(db, data.asset_id, data.target_group_id, current_user.organization_id, lang)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True}
@@ -290,7 +294,7 @@ def split(
     if not g or not check_org_access(g.organization_id, current_user):
         raise HTTPException(404, _t("asset_groups.group_not_found", lang))
     try:
-        new_grp = split_group(db, g, data.asset_ids, data.new_group_name)
+        new_grp = split_group(db, g, data.asset_ids, data.new_group_name, lang)
     except ValueError as e:
         raise HTTPException(400, str(e))
     log_action(db, current_user.id, "split", "asset_group", str(group_id),

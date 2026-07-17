@@ -324,6 +324,7 @@ def _run_asset_analysis_bg(asset_id: int) -> None:
 
 @router.post("/smart-import")
 async def smart_import_assets(
+    request: Request,
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
@@ -334,9 +335,10 @@ async def smart_import_assets(
     Acepta CSV, XLSX, XLS, JSON, TSV, ODS, etc.
     Claude infiere la correspondencia de columnas y el asset_type automaticamente.
     """
+    lang = get_lang(request)
     content = await file.read()
     if not content:
-        raise HTTPException(400, "El fichero esta vacio.")
+        raise HTTPException(400, _t("smart_import_service.empty_file", lang))
 
     from app.services.smart_import_service import smart_import
     from app.routers.ai_config import resolve_api_key
@@ -365,6 +367,7 @@ async def smart_import_assets(
             db=db,
             api_key=api_key,
             model=model,
+            lang=lang,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -708,6 +711,7 @@ def get_import_health(
 @router.post("/import-rollback/{session_id}")
 def rollback_import(
     session_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_analyst),
 ):
@@ -719,6 +723,7 @@ def rollback_import(
         session_id=session_id,
         org_id=current_user.organization_id,
         user_id=current_user.id,
+        lang=get_lang(request),
     )
 
     if not result.get("ok"):

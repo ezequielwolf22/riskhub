@@ -1,0 +1,8 @@
+{
+  "smart_import_service": {
+    "file_unreadable": "No se pudo leer el fichero '{filename}': {error}",
+    "empty_file": "El fichero está vacío o no contiene datos legibles.",
+    "no_ai_mapping": "Sin informacion de mapeo (modo sin IA)",
+    "session_not_found": "ImportSession {session_id} no encontrada"
+  }
+}

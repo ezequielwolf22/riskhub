@@ -1,0 +1,9 @@
+{
+  "audits": {
+    "file_too_large": "File too large (max 5MB)",
+    "pdf_unreadable": "Could not read the PDF. Make sure the file is not corrupted or protected.",
+    "docx_unreadable": "Could not read the DOCX. Make sure the file is not corrupted.",
+    "no_text_extracted": "Could not extract text from the file",
+    "api_key_missing": "AI API key not configured. Configure the AI Agent first."
+  }
+}

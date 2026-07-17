@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.i18n import ai_lang_directive, t as _t
 from app.models import (
     AiCallLog, AiConfig, Asset, AssetGroup, AssetGroupingConfig,
     AssetGroupStatus, AssetType,
@@ -237,6 +238,7 @@ def _call_grouping_batch(
     model: str,
     db: Session,
     org_id: int | None,
+    lang: str = "es",
 ) -> list[dict]:
     """Llama a la IA con un lote de activos y devuelve la lista de grupos propuestos."""
     import anthropic
@@ -253,7 +255,7 @@ def _call_grouping_batch(
         "Devuelve SOLO: name y asset_ids en cada grupo. Sin description, rationale ni summary."
     )
 
-    system = _GROUPING_SYSTEM_PROMPT.format(criteria_text=criteria_text)
+    system = ai_lang_directive(lang) + "\n\n" + _GROUPING_SYSTEM_PROMPT.format(criteria_text=criteria_text)
     client = anthropic.Anthropic(api_key=api_key)
 
     for attempt in range(4):
@@ -267,7 +269,7 @@ def _call_grouping_batch(
         except anthropic.BadRequestError as exc:
             err = str(exc).lower()
             if "credit balance" in err or "billing" in err:
-                raise ValueError("Saldo insuficiente en Anthropic. Recarga creditos.")
+                raise ValueError(_t("asset_grouping_service.insufficient_credits", lang))
             raise
         except Exception as exc:
             if "429" in str(exc) or "rate_limit" in str(exc).lower():
@@ -304,7 +306,7 @@ def _call_grouping_batch(
     return result.get("groups", [])
 
 
-def propose_groups(db: Session, org_id: int | None) -> dict:
+def propose_groups(db: Session, org_id: int | None, lang: str = "es") -> dict:
     """Agrupa TODOS los activos en lotes por asset_type. Sin limite de activos."""
     api_key = _get_api_key(db, org_id)
     if not api_key:
@@ -347,7 +349,7 @@ def propose_groups(db: Session, org_id: int | None) -> dict:
             batch = type_assets[i:i + _GROUPING_BATCH_SIZE]
             try:
                 groups_from_batch = _call_grouping_batch(
-                    batch, criteria_text, api_key, model, db, org_id
+                    batch, criteria_text, api_key, model, db, org_id, lang
                 )
                 all_groups_data.extend(groups_from_batch)
                 total_batches += 1
@@ -413,17 +415,17 @@ def propose_groups(db: Session, org_id: int | None) -> dict:
         "assets_grouped": grouped_count,
         "assets_ungrouped": ungrouped,
         "batches": total_batches,
-        "summary": f"{created} grupos propuestos cubriendo {grouped_count}/{len(all_assets)} activos ({total_batches} lotes por tipo).",
+        "summary": _t("asset_grouping_service.propose_summary", lang, created=created, grouped=grouped_count, total=len(all_assets), batches=total_batches),
     }
 
 
 # ---------- Operaciones sobre grupos ----------
 
-def validate_group(db: Session, group: AssetGroup) -> Asset:
+def validate_group(db: Session, group: AssetGroup, lang: str = "es") -> Asset:
     """Valida el grupo y crea el activo representativo para el analisis de riesgo."""
     members = db.query(Asset).filter_by(group_id=group.id).all()
     if not members:
-        raise ValueError("El grupo no tiene miembros")
+        raise ValueError(_t("asset_grouping_service.group_no_members", lang))
 
     # CIA: valores maximos entre todos los miembros (criterio conservador ISO 27005)
     vc = max(a.value_confidentiality or 0 for a in members)
@@ -488,18 +490,18 @@ def delete_group(db: Session, group: AssetGroup) -> None:
     db.commit()
 
 
-def move_asset(db: Session, asset_id: int, target_group_id: int | None, org_id: int | None) -> None:
+def move_asset(db: Session, asset_id: int, target_group_id: int | None, org_id: int | None, lang: str = "es") -> None:
     """Mueve un activo a otro grupo (o lo desagrupa si target_group_id es None)."""
     asset = db.get(Asset, asset_id)
     if not asset or asset.organization_id != org_id:
-        raise ValueError("Activo no encontrado")
+        raise ValueError(_t("asset_grouping_service.asset_not_found", lang))
     if asset.is_group_representative:
-        raise ValueError("No se puede mover un activo representativo")
+        raise ValueError(_t("asset_grouping_service.cannot_move_representative", lang))
 
     if target_group_id is not None:
         grp = db.get(AssetGroup, target_group_id)
         if not grp or grp.organization_id != org_id:
-            raise ValueError("Grupo destino no encontrado")
+            raise ValueError(_t("asset_grouping_service.target_group_not_found", lang))
         asset.group_id = target_group_id
     else:
         asset.group_id = None
@@ -512,10 +514,11 @@ def split_group(
     group: AssetGroup,
     asset_ids_for_new: list[int],
     new_name: str,
+    lang: str = "es",
 ) -> AssetGroup:
     """Divide el grupo creando uno nuevo con los activos indicados."""
     if not asset_ids_for_new:
-        raise ValueError("Debe seleccionar al menos un activo para el nuevo grupo")
+        raise ValueError(_t("asset_grouping_service.split_needs_assets", lang))
 
     new_group = AssetGroup(
         organization_id=group.organization_id,

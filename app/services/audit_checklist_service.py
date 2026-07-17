@@ -5,15 +5,18 @@ Usa Claude para generar preguntas adicionales especificas por control.
 """
 import logging
 
+from app.i18n import ai_lang_directive, t as _t
+
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger("riskhub.audit_checklist")
 
-_BASE_QUESTIONS = [
-    "Existe procedimiento documentado para este control?",
-    "Se aplica de forma consistente en toda la organizacion?",
-    "Existen evidencias actualizadas de la implementacion?",
-]
+def _base_questions(lang: str = "es") -> list[str]:
+    return [
+        _t("audit_checklist_service.base_q_documented", lang),
+        _t("audit_checklist_service.base_q_consistent", lang),
+        _t("audit_checklist_service.base_q_evidence", lang),
+    ]
 
 
 def _get_api_key(db: Session, org_id: int) -> str | None:
@@ -45,7 +48,8 @@ def _get_model(db: Session, org_id: int) -> str:
 
 
 def _generate_ai_audit_question(api_key: str, model: str,
-                                 control_name: str, description: str | None) -> str | None:
+                                 control_name: str, description: str | None,
+                                 lang: str = "es") -> str | None:
     """Claude genera una pregunta de auditoria especifica para el control."""
     try:
         import anthropic
@@ -56,6 +60,7 @@ def _generate_ai_audit_question(api_key: str, model: str,
             messages=[{
                 "role": "user",
                 "content": (
+                    f"{ai_lang_directive(lang)}\n\n"
                     f"Control ISO 27002: '{control_name}'. "
                     f"Descripcion: {(description or '')[:200]}. "
                     f"Genera UNA sola pregunta de auditoria interna especifica y tecnica "
@@ -74,7 +79,7 @@ def _generate_ai_audit_question(api_key: str, model: str,
         return None
 
 
-def generate_checklist_from_soa(db: Session, audit_id: int, org_id: int) -> int:
+def generate_checklist_from_soa(db: Session, audit_id: int, org_id: int, lang: str = "es") -> int:
     """Genera AuditChecklist items desde controles implementados en SoA.
 
     Returns: numero de items creados
@@ -106,7 +111,7 @@ def generate_checklist_from_soa(db: Session, audit_id: int, org_id: int) -> int:
         control_desc = ctrl.control.description if ctrl.control else None
 
         # Preguntas base (sin IA) — siempre se crean
-        for q_text in _BASE_QUESTIONS:
+        for q_text in _base_questions(lang):
             q_full = f"[{control_name}] {q_text}"
             item = AuditChecklist(
                 organization_id=org_id,
@@ -114,7 +119,7 @@ def generate_checklist_from_soa(db: Session, audit_id: int, org_id: int) -> int:
                 control_id=ctrl.control_id,
                 iso_clause=iso_clause,
                 question=q_full,
-                expected_evidence="Documentacion, registros o capturas de pantalla",
+                expected_evidence=_t("audit_checklist_service.expected_evidence_base", lang),
                 response="pending",
             )
             db.add(item)
@@ -122,7 +127,7 @@ def generate_checklist_from_soa(db: Session, audit_id: int, org_id: int) -> int:
 
         # Pregunta adicional con IA si hay api_key
         if api_key:
-            ai_q = _generate_ai_audit_question(api_key, model, control_name, control_desc)
+            ai_q = _generate_ai_audit_question(api_key, model, control_name, control_desc, lang)
             if ai_q:
                 db.add(AuditChecklist(
                     organization_id=org_id,
@@ -130,7 +135,7 @@ def generate_checklist_from_soa(db: Session, audit_id: int, org_id: int) -> int:
                     control_id=ctrl.control_id,
                     iso_clause=iso_clause,
                     question=ai_q,
-                    expected_evidence="Evidencia especifica segun el control",
+                    expected_evidence=_t("audit_checklist_service.expected_evidence_ai", lang),
                     response="pending",
                 ))
                 created += 1
@@ -146,7 +151,7 @@ def generate_checklist_from_soa(db: Session, audit_id: int, org_id: int) -> int:
     return created
 
 
-def generate_audit_report_pdf(audit, checklist_items: list) -> bytes:
+def generate_audit_report_pdf(audit, checklist_items: list, lang: str = "es") -> bytes:
     """Genera PDF del informe de auditoria interna."""
     try:
         from reportlab.lib.pagesizes import A4
@@ -176,40 +181,42 @@ def generate_audit_report_pdf(audit, checklist_items: list) -> bytes:
 
         from datetime import datetime
         now_str = datetime.now().strftime("%d/%m/%Y")
-        actual_end = (audit.actual_end.strftime("%d/%m/%Y") if audit.actual_end else "En curso")
+        actual_end = (audit.actual_end.strftime("%d/%m/%Y") if audit.actual_end else _t("audit_checklist_service.pdf_in_progress", lang))
 
         story = [
-            Paragraph("INFORME DE AUDITORIA INTERNA", h1),
-            Paragraph("ISO/IEC 27001:2022 — Clausula 9.2", h2),
+            Paragraph(_t("audit_checklist_service.pdf_title", lang), h1),
+            Paragraph(_t("audit_checklist_service.pdf_subtitle", lang), h2),
             Spacer(1, 0.4*cm),
-            Paragraph(f"<b>Auditoria:</b> {audit.code} — {audit.title}", normal),
-            Paragraph(f"<b>Tipo:</b> {audit.audit_type.value if audit.audit_type else 'Internal'}", normal),
-            Paragraph(f"<b>Auditor lider:</b> {audit.auditor_lead or '-'}", normal),
-            Paragraph(f"<b>Fecha fin:</b> {actual_end}", normal),
-            Paragraph(f"<b>Informe generado:</b> {now_str}", normal),
+            Paragraph(f"<b>{_t('audit_checklist_service.pdf_audit_label', lang)}</b> {audit.code} — {audit.title}", normal),
+            Paragraph(f"<b>{_t('audit_checklist_service.pdf_type_label', lang)}</b> {audit.audit_type.value if audit.audit_type else 'Internal'}", normal),
+            Paragraph(f"<b>{_t('audit_checklist_service.pdf_lead_label', lang)}</b> {audit.auditor_lead or '-'}", normal),
+            Paragraph(f"<b>{_t('audit_checklist_service.pdf_end_date_label', lang)}</b> {actual_end}", normal),
+            Paragraph(f"<b>{_t('audit_checklist_service.pdf_generated_label', lang)}</b> {now_str}", normal),
             Spacer(1, 0.5*cm),
-            Paragraph("RESUMEN EJECUTIVO", h2),
+            Paragraph(_t("audit_checklist_service.pdf_exec_summary", lang), h2),
         ]
 
         pct = round(conformant / max(1, total - counts.get("na", 0)) * 100, 1)
         story.append(Paragraph(
-            f"La auditoria evaluo {total} items de checklist. "
-            f"Resultado: {conformant} conformes ({pct}%), {nc_total} no conformidades "
-            f"({counts.get('minor_nc',0)} menores, {counts.get('major_nc',0)} mayores).",
+            _t("audit_checklist_service.pdf_summary_text", lang, total=total, conformant=conformant, pct=pct,
+               nc_total=nc_total, minor=counts.get('minor_nc', 0), major=counts.get('major_nc', 0)),
             normal,
         ))
         story.append(Spacer(1, 0.5*cm))
 
         # Tabla de resultados
-        story.append(Paragraph("RESULTADO POR ITEM", h2))
-        data = [["Clausula", "Pregunta", "Resultado", "Notas"]]
+        story.append(Paragraph(_t("audit_checklist_service.pdf_results_by_item", lang), h2))
+        data = [[
+            _t("audit_checklist_service.pdf_col_clause", lang), _t("audit_checklist_service.pdf_col_question", lang),
+            _t("audit_checklist_service.pdf_col_result", lang), _t("audit_checklist_service.pdf_col_notes", lang),
+        ]]
         for item in checklist_items[:50]:
             status_map = {
-                "conformant": "CONFORME",
-                "minor_nc": "NC MENOR",
-                "major_nc": "NC MAYOR",
-                "na": "N/A",
-                "pending": "PENDIENTE",
+                "conformant": _t("audit_checklist_service.pdf_status_conformant", lang),
+                "minor_nc": _t("audit_checklist_service.pdf_status_minor_nc", lang),
+                "major_nc": _t("audit_checklist_service.pdf_status_major_nc", lang),
+                "na": _t("audit_checklist_service.pdf_status_na", lang),
+                "pending": _t("audit_checklist_service.pdf_status_pending", lang),
             }
             data.append([
                 item.iso_clause or "-",
@@ -232,7 +239,7 @@ def generate_audit_report_pdf(audit, checklist_items: list) -> bytes:
         story += [t, Spacer(1, 0.5*cm)]
 
         if audit.conclusion:
-            story.append(Paragraph("CONCLUSION", h2))
+            story.append(Paragraph(_t("audit_checklist_service.pdf_conclusion", lang), h2))
             story.append(Paragraph(audit.conclusion, normal))
 
         doc.build(story)

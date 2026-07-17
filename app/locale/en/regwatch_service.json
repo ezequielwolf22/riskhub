@@ -1,0 +1,8 @@
+{
+  "regwatch_service": {
+    "item_not_found": "Item not found",
+    "invalid_status": "Invalid status: {status}",
+    "event_not_found": "Event not found",
+    "event_already_status": "The event is already in status {status}"
+  }
+}

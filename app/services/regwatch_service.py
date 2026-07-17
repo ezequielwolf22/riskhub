@@ -422,8 +422,8 @@ def get_inbox_item(db: Session, org_id: int, item_id: int) -> dict | None:
 
 
 def review_inbox_item(db: Session, org_id: int, item_id: int,
-                      user: User, decision: dict) -> dict:
-    it = _get_item_or_raise(db, org_id, item_id)
+                      user: User, decision: dict, lang: str = "es") -> dict:
+    it = _get_item_or_raise(db, org_id, item_id, lang)
     it.status = InboxItemStatus.REVIEWED
     it.reviewed_by_user_id = user.id
     it.reviewed_at = _now()
@@ -443,30 +443,31 @@ def review_inbox_item(db: Session, org_id: int, item_id: int,
     return {"id": it.id, "status": it.status.value, "propagation": propagation}
 
 
-def snooze_inbox_item(db: Session, org_id: int, item_id: int, days: int = 7) -> dict:
-    it = _get_item_or_raise(db, org_id, item_id)
+def snooze_inbox_item(db: Session, org_id: int, item_id: int, days: int = 7, lang: str = "es") -> dict:
+    it = _get_item_or_raise(db, org_id, item_id, lang)
     it.status = InboxItemStatus.SNOOZED
     it.snoozed_until = _now() + timedelta(days=max(1, min(days, 90)))
     db.flush()
     return {"id": it.id, "status": it.status.value, "snoozed_until": _iso(it.snoozed_until)}
 
 
-def dismiss_inbox_item(db: Session, org_id: int, item_id: int, reason: str = "") -> dict:
-    it = _get_item_or_raise(db, org_id, item_id)
+def dismiss_inbox_item(db: Session, org_id: int, item_id: int, reason: str = "", lang: str = "es") -> dict:
+    it = _get_item_or_raise(db, org_id, item_id, lang)
     it.status = InboxItemStatus.DISMISSED
     it.dismiss_reason = (reason or "")[:500]
     db.flush()
     return {"id": it.id, "status": it.status.value}
 
 
-def _get_item_or_raise(db: Session, org_id: int, item_id: int) -> TenantChangeInboxItem:
+def _get_item_or_raise(db: Session, org_id: int, item_id: int, lang: str = "es") -> TenantChangeInboxItem:
     it = db.query(TenantChangeInboxItem).filter(
         TenantChangeInboxItem.id == item_id,
         TenantChangeInboxItem.organization_id == org_id,
     ).first()
     if not it:
         from fastapi import HTTPException
-        raise HTTPException(404, "Item no encontrado")
+        from app.i18n import t as _t
+        raise HTTPException(404, _t("regwatch_service.item_not_found", lang))
     return it
 
 
@@ -875,7 +876,8 @@ def list_events_for_review(db: Session, status: str | None = None) -> list[dict]
         try:
             q = q.filter(NormativeChangeEvent.status == ChangeEventStatus(status))
         except ValueError:
-            raise HTTPException(400, f"Estado invalido: {status}")
+            from app.i18n import t as _t
+            raise HTTPException(400, _t("regwatch_service.invalid_status", "es", status=status))
     events = q.order_by(NormativeChangeEvent.detected_at.desc()).limit(200).all()
     return [
         {
@@ -940,9 +942,10 @@ def validate_and_publish_event(db: Session, event_id: int, user: User,
     from fastapi import HTTPException
     e = db.query(NormativeChangeEvent).filter(NormativeChangeEvent.id == event_id).first()
     if not e:
-        raise HTTPException(404, "Evento no encontrado")
+        from app.i18n import t as _t
+        raise HTTPException(404, _t("regwatch_service.event_not_found", "es"))
     if e.status in (ChangeEventStatus.PUBLISHED,):
-        raise HTTPException(409, f"El evento ya esta en estado {e.status.value}")
+        raise HTTPException(409, _t("regwatch_service.event_already_status", "es", status=e.status.value))
     if severity:
         try:
             e.severity = ChangeSeverity(severity)

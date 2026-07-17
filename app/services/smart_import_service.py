@@ -14,6 +14,8 @@ Flujo:
 from __future__ import annotations
 
 import json
+
+from app.i18n import ai_lang_directive, t as _t
 import logging
 from io import BytesIO
 from typing import Optional
@@ -90,7 +92,7 @@ def _read_file(content: bytes, filename: str):
             return pd.read_csv(BytesIO(content), dtype=str, sep=None, engine="python")
 
     except Exception as exc:
-        raise ValueError(f"No se pudo leer el fichero '{filename}': {exc}") from exc
+        raise ValueError(_t("smart_import_service.file_unreadable", "es", filename=filename, error=exc)) from exc
 
 
 def _build_mapping_prompt(columns: list[str], sample_rows: list[dict]) -> str:
@@ -270,6 +272,7 @@ def smart_import(
     model: str = "claude-haiku-4-5",
     session_id: Optional[str] = None,  # para audit trail
     source_system: Optional[str] = None,  # leanix|cmdb|custom
+    lang: str = "es",
 ) -> dict:
     """Importa activos desde cualquier formato usando IA para normalizar.
 
@@ -285,7 +288,7 @@ def smart_import(
     # 1. Leer fichero
     df = _read_file(content, filename)
     if df.empty:
-        raise ValueError("El fichero está vacío o no contiene datos legibles.")
+        raise ValueError(_t("smart_import_service.empty_file", lang))
 
     # Limpiar columnas: quitar espacios, NaN en cabeceras
     df.columns = [str(c).strip() for c in df.columns]
@@ -297,13 +300,13 @@ def smart_import(
         for _, row in df.head(5).iterrows()
     ]
 
-    mapping_notes = "Sin informacion de mapeo (modo sin IA)"
+    mapping_notes = _t("smart_import_service.no_ai_mapping", lang)
     normalized_rows = []
 
     # 2. Normalizar con Claude si hay API key
     if api_key:
         try:
-            prompt = _build_mapping_prompt(columns, sample)
+            prompt = ai_lang_directive(lang) + "\n\n" + _build_mapping_prompt(columns, sample)
             mapping = _call_claude(prompt, api_key, model)
             mapping_notes = mapping.get("notes", "Mapeo completado")
             logger.info("Smart import mapping: %s", mapping_notes)
@@ -465,7 +468,7 @@ def smart_import(
     return result
 
 
-def rollback_import_session(db, session_id: str, org_id: int, user_id: int) -> dict:
+def rollback_import_session(db, session_id: str, org_id: int, user_id: int, lang: str = "es") -> dict:
     """Revierte una importación: borra todos los activos creados en esa sesión.
 
     Returns: {"rolled_back_count": N, "errors": [...]}
@@ -482,7 +485,7 @@ def rollback_import_session(db, session_id: str, org_id: int, user_id: int) -> d
             .first()
         )
         if not import_sess:
-            return {"ok": False, "error": f"ImportSession {session_id} no encontrada"}
+            return {"ok": False, "error": _t("smart_import_service.session_not_found", lang, session_id=session_id)}
 
         # Contar activos creados en esta sesión
         assets_to_delete = (
