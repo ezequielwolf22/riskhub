@@ -1,6 +1,6 @@
 {
   "regwatch": {
-    "no_organization": "Usuario sin organizacion asignada",
+    "no_organization": "Usuario sin organización asignada",
     "inbox_item_not_found": "Item no encontrado",
     "source_not_found": "Fuente no encontrada",
     "pdf": {
@@ -18,11 +18,11 @@
     "faq": [
       {
         "q": "¿Que hace la Vigilancia Normativa?",
-        "a": "RiskHub vigila los marcos normativos que ya usas y mantiene tu catalogo al dia automaticamente. Solo te avisa si necesita tu confirmacion."
+        "a": "RiskHub vigila los marcos normativos que ya usas y mantiene tu catalogo al día automáticamente. Solo te avisa si necesita tu confirmación."
       },
       {
         "q": "¿Que tengo que configurar?",
-        "a": "Nada mas alla de activar el interruptor. Los frameworks vigilados se derivan solos de lo que usas en RiskHub."
+        "a": "Nada más alla de activar el interruptor. Los frameworks vigilados se derivan solos de lo que usas en RiskHub."
       },
       {
         "q": "¿Interpreta legalmente las normas?",
@@ -30,11 +30,11 @@
       },
       {
         "q": "¿Que pasa si lo desactivo?",
-        "a": "Dejas de recibir notificaciones y tus copias no se tocan. Puedes reactivarlo cuando quieras sin perder configuracion."
+        "a": "Dejas de recibir notificaciones y tus copias no se tocan. Puedes reactivarlo cuando quieras sin perder configuración."
       },
       {
-        "q": "¿Procesa datos personales de mi organizacion?",
-        "a": "No. Solo analiza documentos normativos publicos mediante IA."
+        "q": "¿Procesa datos personales de mi organización?",
+        "a": "No. Solo analiza documentos normativos públicos mediante IA."
       }
     ]
   }

@@ -3,7 +3,7 @@
     "risk_a_not_found": "Riesgo {risk_id} no encontrado",
     "risk_b_not_found": "Riesgo {risk_id} no encontrado",
     "cannot_correlate_self": "Un riesgo no puede correlacionarse consigo mismo",
-    "already_exists": "Ya existe correlacion entre {code_a} y {code_b}",
-    "correlation_not_found": "Correlacion no encontrada"
+    "already_exists": "Ya existe correlación entre {code_a} y {code_b}",
+    "correlation_not_found": "Correlación no encontrada"
   }
 }

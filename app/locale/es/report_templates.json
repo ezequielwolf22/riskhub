@@ -1,8 +1,8 @@
 {
   "report_templates": {
-    "invalid_report_type": "Tipo de informe no valido: {report_type}",
-    "invalid_primary_color": "primary_color debe ser un color hex valido (#RRGGBB)",
-    "invalid_secondary_color": "secondary_color debe ser un color hex valido (#RRGGBB)",
+    "invalid_report_type": "Tipo de informe no válido: {report_type}",
+    "invalid_primary_color": "primary_color debe ser un color hex válido (#RRGGBB)",
+    "invalid_secondary_color": "secondary_color debe ser un color hex válido (#RRGGBB)",
     "unsupported_font": "Fuente no soportada. Opciones: {valid_fonts}",
     "template_not_found": "Template no encontrado",
     "logo_too_large": "El logo no puede superar 2 MB",

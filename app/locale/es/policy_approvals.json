@@ -1,11 +1,11 @@
 {
   "policy_approvals": {
-    "policy_not_found": "Politica no encontrada",
+    "policy_not_found": "Política no encontrada",
     "access_denied": "Acceso denegado",
     "at_least_one_approver": "Se requiere al menos un aprobador",
     "invalid_mode": "mode debe ser parallel o sequential",
     "request_not_found": "Solicitud no encontrada",
     "only_pending_cancellable": "Solo se pueden cancelar solicitudes pendientes",
-    "invalid_decision": "decision debe ser approved o rejected"
+    "invalid_decision": "decisión debe ser approved o rejected"
   }
 }

@@ -1,8 +1,8 @@
 {
   "audits": {
     "file_too_large": "Archivo demasiado grande (max 5MB)",
-    "pdf_unreadable": "No se pudo leer el PDF. Asegurate de que el archivo no esta corrupto o protegido.",
-    "docx_unreadable": "No se pudo leer el DOCX. Asegurate de que el archivo no esta corrupto.",
+    "pdf_unreadable": "No se pudo leer el PDF. Asegúrate de que el archivo no está corrupto o protegido.",
+    "docx_unreadable": "No se pudo leer el DOCX. Asegúrate de que el archivo no está corrupto.",
     "no_text_extracted": "No se pudo extraer texto del archivo",
     "api_key_missing": "API key de IA no configurada. Configura el Agente IA primero."
   }

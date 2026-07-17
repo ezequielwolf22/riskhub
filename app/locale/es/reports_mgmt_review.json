@@ -2,20 +2,20 @@
   "reports": {
     "mgmt_review": {
       "empty_placeholder": "[A CUMPLIMENTAR]",
-      "docx_not_installed": "python-docx no instalado. Anade 'python-docx' a requirements.txt.",
-      "report_title": "Informe de Revision por la Direccion",
-      "report_subtitle": "ISO/IEC 27001:2022 Clausula 9.3 &mdash; ENS RD 311/2022",
-      "standard_reference": "ISO/IEC 27001:2022 Clausula 9.3 — ENS RD 311/2022",
+      "docx_not_installed": "python-docx no instalado. Añade 'python-docx' a requirements.txt.",
+      "report_title": "Informe de Revisión por la Dirección",
+      "report_subtitle": "ISO/IEC 27001:2022 Cláusula 9.3 &mdash; ENS RD 311/2022",
+      "standard_reference": "ISO/IEC 27001:2022 Cláusula 9.3 — ENS RD 311/2022",
       "standard_reference_word": "Norma de referencia: ISO/IEC 27001:2022 cl. 9.3 / ENS RD 311/2022",
-      "label_organization": "Organizacion:",
+      "label_organization": "Organización:",
       "label_date": "Fecha:",
       "label_scope": "Alcance:",
-      "field_organization": "Organizacion: {org}   |   Fecha: {date}",
+      "field_organization": "Organización: {org}   |   Fecha: {date}",
       "field_scope": "Alcance: {scope}",
-      "excel_sheet_title": "Revision Direccion",
+      "excel_sheet_title": "Revisión Dirección",
       "excel_header_norma": "Norma",
       "excel_content_label": "Contenido",
-      "approval_title": "Aprobacion de la Direccion",
+      "approval_title": "Aprobación de la Dirección",
       "signature_role": "Cargo",
       "signature_name": "Nombre y apellidos",
       "signature_date": "Fecha",
@@ -26,55 +26,55 @@
       "role_auditor": "Auditor Interno",
       "sections": {
         "a_previous_actions": {
-          "title": "a) Estado de acciones de la revision anterior"
+          "title": "a) Estado de acciones de la revisión anterior"
         },
         "b_context_changes": {
-          "title": "b) Cambios en el contexto de la organizacion",
+          "title": "b) Cambios en el contexto de la organización",
           "content": "Alcance del SGSI: {scope}\nFronteras: {boundaries}\nCambios internos/externos relevantes: {empty}"
         },
         "c_stakeholder_needs": {
           "title": "c) Cambios en las necesidades de las partes interesadas"
         },
         "d_risk_management": {
-          "title": "d) Desempeno del SGSI — Gestion de Riesgos",
+          "title": "d) Desempeño del SGSI — Gestion de Riesgos",
           "content": "Total riesgos identificados: {total_risks}\nRiesgos altos (nivel >= 5): {high_risks}\nRiesgos altos sin plan de tratamiento: {untreated}\nControles implementados: {impl_pct}% | Madurez media: {avg_mat}/5"
         },
         "d_incidents": {
-          "title": "d) Desempeno del SGSI — Incidentes de Seguridad",
-          "content": "Incidentes abiertos: {open_inc}\nIncidentes P1/P2 (criticos/altos): {p1p2}\nTotal historico de incidentes: {total_incidents}\nLecciones aprendidas documentadas: {lessons_learned}"
+          "title": "d) Desempeño del SGSI — Incidentes de Seguridad",
+          "content": "Incidentes abiertos: {open_inc}\nIncidentes P1/P2 (críticos/altos): {p1p2}\nTotal histórico de incidentes: {total_incidents}\nLecciones aprendidas documentadas: {lessons_learned}"
         },
         "d_nonconformities": {
-          "title": "d) Desempeno del SGSI — No Conformidades y Acciones Correctivas",
-          "content": "{empty}\n(Ver modulo de No Conformidades en RiskHub para el detalle actualizado)"
+          "title": "d) Desempeño del SGSI — No Conformidades y Acciones Correctivas",
+          "content": "{empty}\n(Ver módulo de No Conformidades en RiskHub para el detalle actualizado)"
         },
         "d_tasks": {
-          "title": "d) Desempeno del SGSI — Tareas de Tratamiento",
+          "title": "d) Desempeño del SGSI — Tareas de Tratamiento",
           "content": "Tareas vencidas sin completar: {tasks_overdue}\nTareas pendientes de inicio: {tasks_pending}\nTotal tareas activas: {total_tasks}"
         },
         "d_audits": {
-          "title": "d) Desempeno del SGSI — Auditorias Internas",
-          "content": "{empty}\n(Ver modulo Auditoria Interna en RiskHub)"
+          "title": "d) Desempeño del SGSI — Auditorías Internas",
+          "content": "{empty}\n(Ver módulo Auditoría Interna en RiskHub)"
         },
         "d_policies": {
-          "title": "d) Desempeno del SGSI — Cumplimiento de Politicas",
-          "content": "Total politicas gestionadas: {total_policies}\nPoliticas con revision vencida: {policies_overdue}\nPoliticas en estado borrador: {policies_draft}"
+          "title": "d) Desempeño del SGSI — Cumplimiento de Políticas",
+          "content": "Total políticas gestionadas: {total_policies}\nPolíticas con revisión vencida: {policies_overdue}\nPolíticas en estado borrador: {policies_draft}"
         },
         "d_suppliers": {
-          "title": "d) Desempeno del SGSI — Proveedores y Cadena de Suministro",
-          "content": "Total proveedores gestionados: {total_suppliers}\nProveedores criticos: {critical_suppliers}\nProveedores sin evaluacion reciente: {suppliers_no_assessment}"
+          "title": "d) Desempeño del SGSI — Proveedores y Cadena de Suministro",
+          "content": "Total proveedores gestionados: {total_suppliers}\nProveedores críticos: {critical_suppliers}\nProveedores sin evaluación reciente: {suppliers_no_assessment}"
         },
         "d_stakeholder_feedback": {
-          "title": "d) Retroalimentacion de partes interesadas"
+          "title": "d) Retroalimentación de partes interesadas"
         },
         "e_risk_results": {
-          "title": "e) Resultados de la evaluacion de riesgos y estado del plan de tratamiento",
+          "title": "e) Resultados de la evaluación de riesgos y estado del plan de tratamiento",
           "content": "Ver detalle en el Risk Register exportado desde RiskHub.\nResumen: {total_risks} riesgos | {high_risks} altos | {accepted_risks} aceptados"
         },
         "f_improvement": {
           "title": "f) Oportunidades de mejora continua"
         },
         "g_objectives": {
-          "title": "g) Objetivos de seguridad para el proximo periodo"
+          "title": "g) Objetivos de seguridad para el próximo periodo"
         },
         "h_decisions": {
           "title": "h) Decisiones y acciones resultantes"
@@ -83,8 +83,8 @@
           "title": "i) Recursos necesarios"
         },
         "j_ens": {
-          "title": "j) ENS — Nivel de seguridad alcanzado y plan de adecuacion",
-          "content": "Cobertura de controles: {impl_pct}% implementados\nNivel de madurez medio: {avg_mat}/5\nPlan de adecuacion ENS: {empty}"
+          "title": "j) ENS — Nivel de seguridad alcanzado y plan de adecuación",
+          "content": "Cobertura de controles: {impl_pct}% implementados\nNivel de madurez medio: {avg_mat}/5\nPlan de adecuación ENS: {empty}"
         }
       }
     }

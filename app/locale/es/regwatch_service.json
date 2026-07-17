@@ -1,8 +1,8 @@
 {
   "regwatch_service": {
     "item_not_found": "Item no encontrado",
-    "invalid_status": "Estado invalido: {status}",
+    "invalid_status": "Estado inválido: {status}",
     "event_not_found": "Evento no encontrado",
-    "event_already_status": "El evento ya esta en estado {status}"
+    "event_already_status": "El evento ya está en estado {status}"
   }
 }

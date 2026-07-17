@@ -1,22 +1,22 @@
 {
   "integrations_forms": {
     "org_required": "Se requiere organization_id",
-    "invalid_token": "Token no valido",
+    "invalid_token": "Token no válido",
     "supplier_not_identified": "No se pudo identificar el proveedor. Incluye el campo 'supplier' en el payload.",
     "unknown_responder": "desconocido",
-    "auto_created_notes": "Alta automatica via MS Forms webhook (Via 1). Respondido por: {responder}.",
+    "auto_created_notes": "Alta automática via MS Forms webhook (Via 1). Respondido por: {responder}.",
     "default_title": "Formulario externo — {supplier}",
     "imported_notes": "Importado via MS Forms / Power Automate. Respondido por: {submitted_by}",
     "missing_credentials": "Faltan credenciales: {missing}",
     "azure_auth_failed": "No se pudo autenticar contra Azure AD — revisa Tenant ID, Client ID y Client Secret",
     "no_questions_found": "No se encontraron preguntas — revisa el Form ID y el permiso Forms.Read.All",
-    "form_id_not_configured": "Form ID no configurado — guarda la configuracion primero",
+    "form_id_not_configured": "Form ID no configurado — guarda la configuración primero",
     "cred_tenant_id": "Tenant ID",
     "cred_client_id": "Client ID",
     "cred_form_id": "Form ID",
     "cred_client_secret": "Client Secret",
     "email_intake_mode_required": "Selecciona un modo de conexion (Microsoft 365 o IMAP) antes de probar la conexion",
-    "email_intake_mode_not_configured": "Modo de conexion no configurado — guarda la configuracion primero",
+    "email_intake_mode_not_configured": "Modo de conexion no configurado — guarda la configuración primero",
     "email_intake_mailbox_not_reachable": "No se pudo acceder al buzon indicado — revisa el mailbox y el permiso Mail.Read",
     "email_intake_imap_failed": "No se pudo conectar por IMAP: {error}"
   }

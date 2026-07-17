@@ -1,10 +1,10 @@
 {
   "feature_flags": {
-    "invalid_name": "Nombre de flag invalido (solo minusculas, numeros y _)",
+    "invalid_name": "Nombre de flag inválido (solo minusculas, números y _)",
     "no_permission": "Sin permisos para modificar feature flags",
-    "plan_module_not_included": "El plan '{plan}' no incluye el modulo '{flag_name}'. Actualiza el plan para habilitarlo.",
+    "plan_module_not_included": "El plan '{plan}' no incluye el módulo '{flag_name}'. Actualiza el plan para habilitarlo.",
     "flag_not_found": "Feature flag '{flag_name}' no encontrado",
-    "override_not_found": "No existe override del flag '{flag_name}' para la organizacion {org_id}",
-    "override_deleted": "Override eliminado. La organizacion hereda el valor global."
+    "override_not_found": "No existe override del flag '{flag_name}' para la organización {org_id}",
+    "override_deleted": "Override eliminado. La organización hereda el valor global."
   }
 }

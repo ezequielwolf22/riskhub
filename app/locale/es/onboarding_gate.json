@@ -9,12 +9,12 @@
     "supplier_not_found": "Proveedor no encontrado",
     "override_type_invalid": "type debe ser bypass, force_controls o clear",
     "bypass_admin_only": "Solo administradores pueden hacer bypass del gate",
-    "justification_required": "Se requiere justificacion para esta accion",
-    "force_controls_disabled": "El forzado de controles esta desactivado en la configuracion",
-    "decision_invalid": "decision debe ser approved, rejected o conditional",
-    "conditional_needs_conditions": "Una decision 'conditional' requiere al menos una condicion",
+    "justification_required": "Se requiere justificación para esta acción",
+    "force_controls_disabled": "El forzado de controles esta desactivado en la configuración",
+    "decision_invalid": "decisión debe ser approved, rejected o conditional",
+    "conditional_needs_conditions": "Una decisión 'conditional' requiere al menos una condición",
     "signoff_not_found": "Item '{id}' no existe en la cadena",
     "signoff_no_bypass": "El item '{id}' no puede ser omitido (bypass_allowed=false)",
-    "skip_justification_required": "Se requiere justificacion para omitir un item"
+    "skip_justification_required": "Se requiere justificación para omitir un item"
   }
 }

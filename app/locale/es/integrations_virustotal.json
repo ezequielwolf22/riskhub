@@ -1,9 +1,9 @@
 {
   "integrations_virustotal": {
-    "api_key_empty": "La API key no puede estar vacia.",
+    "api_key_empty": "La API key no puede estar vacía.",
     "config_saved": "API key de VirusTotal guardada correctamente.",
     "no_api_key_configured": "No hay API key de VirusTotal configurada.",
-    "invalid_api_key": "API key invalida o sin permisos.",
+    "invalid_api_key": "API key inválida o sin permisos.",
     "rate_limit_exceeded": "Rate limit superado. Espera antes de probar.",
     "vt_error_status": "VirusTotal respondio con error {status}.",
     "connection_ok": "Conexion con VirusTotal correcta.",

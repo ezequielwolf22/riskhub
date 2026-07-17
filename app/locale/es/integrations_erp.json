@@ -1,13 +1,13 @@
 {
   "integrations_erp": {
     "secret_too_short": "El webhook_secret debe tener al menos 16 caracteres",
-    "org_header_invalid": "Header X-Org-Id invalido o ausente",
-    "not_configured": "Integracion ERP no configurada para esta organizacion",
-    "source_disabled_sap": "Fuente SAP deshabilitada en la configuracion",
-    "source_disabled_jagger": "Fuente Jagger deshabilitada en la configuracion",
-    "source_disabled_sphera": "Fuente Sphera deshabilitada en la configuracion",
+    "org_header_invalid": "Header X-Org-Id inválido o ausente",
+    "not_configured": "Integración ERP no configurada para esta organización",
+    "source_disabled_sap": "Fuente SAP deshabilitada en la configuración",
+    "source_disabled_jagger": "Fuente Jagger deshabilitada en la configuración",
+    "source_disabled_sphera": "Fuente Sphera deshabilitada en la configuración",
     "signature_required": "Cabecera X-Hub-Signature-256 requerida",
-    "signature_invalid": "Firma HMAC invalida",
-    "body_invalid_json": "Body JSON invalido"
+    "signature_invalid": "Firma HMAC inválida",
+    "body_invalid_json": "Body JSON inválido"
   }
 }

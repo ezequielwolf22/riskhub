@@ -1,11 +1,11 @@
 {
   "cve_analysis_service": {
     "at_least_one_cve": "Se requiere al menos un CVE ID.",
-    "max_cves": "Maximo 20 CVEs por analisis.",
-    "fallback_justification": "Analisis automatico no disponible — revision manual requerida.",
+    "max_cves": "Máximo 20 CVEs por análisis.",
+    "fallback_justification": "Análisis automático no disponible — revisión manual requerida.",
     "fallback_inherent_just": "Estimado desde CVSS {score} ({severity})",
     "fallback_residual_just": "No se pudo evaluar cobertura de controles.",
     "fallback_action": "Revisar manualmente el impacto de esta CVE en el activo.",
-    "fallback_threat": "Explotacion de vulnerabilidad tecnica"
+    "fallback_threat": "Explotación de vulnerabilidad técnica"
   }
 }
