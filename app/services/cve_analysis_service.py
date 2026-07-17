@@ -7,6 +7,8 @@ Workflow por cada par (CVE, Activo):
   4. Devolver: afecta?, riesgo_inherente, cobertura_controles, riesgo_residual, acciones
 """
 import json
+
+from app.i18n import ai_lang_directive, t as _t
 import logging
 import re
 from typing import Optional
@@ -83,6 +85,7 @@ def analyze_cve_asset(
     api_key: str,
     model: str = "claude-haiku-4-5",
     max_tokens: int = 8192,
+    lang: str = "es",
 ) -> dict:
     """Llama a Claude para analizar el impacto de una CVE sobre un activo.
 
@@ -97,14 +100,14 @@ def analyze_cve_asset(
         resp = client.messages.create(
             model=model,
             max_tokens=max_tokens,
-            system=_ANALYSIS_SYSTEM,
+            system=ai_lang_directive(lang) + "\n\n" + _ANALYSIS_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
         text = resp.content[0].text if resp.content else ""
     except Exception as e:
         logger.error("Error llamando a Claude para analisis CVE %s / activo %s: %s",
                      cve.get("id"), asset.get("name"), e)
-        return _fallback_analysis(cve, asset)
+        return _fallback_analysis(cve, asset, lang)
 
     # Parsear JSON de la respuesta
     try:
@@ -117,26 +120,26 @@ def analyze_cve_asset(
             except Exception:
                 pass
     logger.warning("No se pudo parsear JSON de analisis CVE %s", cve.get("id"))
-    return _fallback_analysis(cve, asset)
+    return _fallback_analysis(cve, asset, lang)
 
 
-def _fallback_analysis(cve: dict, asset: dict) -> dict:
+def _fallback_analysis(cve: dict, asset: dict, lang: str = "es") -> dict:
     """Analisis de emergencia basado solo en CVSS cuando la IA no esta disponible."""
     from app.services.cve_service import score_to_risk_level
     level = score_to_risk_level(cve.get("cvss_score", 0))
     return {
         "afecta_activo": None,
         "confianza": "baja",
-        "justificacion_afectacion": "Analisis automatico no disponible — revision manual requerida.",
+        "justificacion_afectacion": _t("cve_analysis_service.fallback_justification", lang),
         "riesgo_inherente": level,
-        "riesgo_inherente_justificacion": f"Estimado desde CVSS {cve.get('cvss_score', 0):.1f} ({cve.get('cvss_severity', '?')})",
+        "riesgo_inherente_justificacion": _t("cve_analysis_service.fallback_inherent_just", lang, score=f"{cve.get('cvss_score', 0):.1f}", severity=cve.get('cvss_severity', '?')),
         "cobertura_controles": "ninguna",
         "controles_relevantes_detectados": [],
         "riesgo_residual": level,
-        "riesgo_residual_justificacion": "No se pudo evaluar cobertura de controles.",
-        "acciones_mitigacion": [{"accion": "Revisar manualmente el impacto de esta CVE en el activo.", "control_iso": "", "prioridad": "alta"}],
+        "riesgo_residual_justificacion": _t("cve_analysis_service.fallback_residual_just", lang),
+        "acciones_mitigacion": [{"accion": _t("cve_analysis_service.fallback_action", lang), "control_iso": "", "prioridad": "alta"}],
         "crear_riesgo_recomendado": level >= 4,
-        "amenaza_sugerida": "Explotacion de vulnerabilidad tecnica",
+        "amenaza_sugerida": _t("cve_analysis_service.fallback_threat", lang),
         "_fallback": True,
     }
 

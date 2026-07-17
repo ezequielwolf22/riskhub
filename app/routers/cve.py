@@ -241,9 +241,9 @@ def analyze_cves(
 
     lang = get_lang(request)
     if not body.cve_ids:
-        raise HTTPException(400, "Se requiere al menos un CVE ID.")
+        raise HTTPException(400, _t("cve_analysis_service.at_least_one_cve", lang))
     if len(body.cve_ids) > 20:
-        raise HTTPException(400, "Maximo 20 CVEs por analisis.")
+        raise HTTPException(400, _t("cve_analysis_service.max_cves", lang))
 
     # Configuracion IA — org-scoped primero, fallback a global
     ai_cfg = db.query(AiConfig).filter_by(organization_id=current_user.organization_id).first()
@@ -331,6 +331,7 @@ def analyze_cves(
                 rag_context=rag_ctx,
                 api_key=ai_api_key,
                 model=(ai_cfg.model if ai_cfg and ai_cfg.model else None) or "claude-haiku-4-5",
+                lang=lang,
             )
 
             results.append({
@@ -516,6 +517,7 @@ def auto_scan_cves(
                 cve=cve, asset=asset_dict, controls=controls_context,
                 rag_context=rag_ctx, api_key=ai_api_key,
                 model=(ai_cfg.model if ai_cfg and ai_cfg.model else None) or "claude-haiku-4-5",
+                lang=lang,
             )
             results.append({
                 "cve_id": cve_id,

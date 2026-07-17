@@ -747,7 +747,7 @@ def analyze_supplier_document(
         raise HTTPException(404, _t("common.not_found", lang))
 
     from app.services.supplier_document_analyzer import analyze_document
-    result = analyze_document(db, s, doc.stored_name, doc.filename)
+    result = analyze_document(db, s, doc.stored_name, doc.filename, lang)
 
     if result.get("ok"):
         log_action(db, current_user.id, "analyze_document_ai", "supplier", str(s.id), {

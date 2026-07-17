@@ -16,7 +16,7 @@ from app.security import check_org_access, filter_by_org, get_current_user, requ
 from app.services.audit_service import log_action
 from app.services.document_service import extract_text
 from app.routers.ai_config import resolve_api_key
-from app.i18n import get_lang, t as _t
+from app.i18n import ai_lang_directive, get_lang, t as _t
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
 
@@ -444,7 +444,7 @@ El documento debe:
 - Tener estructura clara con secciones numeradas (Objeto, Alcance, Responsabilidades, Requisitos, Control de cambios)
 - Ser coherente con el marco normativo indicado
 - Referenciar clausulas ISO 27001/27002 o articulos de la norma aplicable donde corresponda
-- Estar redactado en castellano formal
+- Usar registro formal
 - Tener una longitud adecuada (minimo 600 palabras, maximo 2000 palabras)
 - Adaptarse al nombre y sector de la organizacion si se proporciona
 
@@ -461,6 +461,7 @@ Devuelve UNICAMENTE un objeto JSON valido con esta estructura:
 
 @router.post("/ai-generate-free")
 async def ai_generate_free(
+    request:      Request,
     doc_type:     str = Form(...),
     title:        str = Form(...),
     framework:    str = Form("ISO 27001"),
@@ -530,7 +531,7 @@ async def ai_generate_free(
         response = client.messages.create(
             model=model,
             max_tokens=32768,
-            system=_GENERATE_SYSTEM,
+            system=ai_lang_directive(get_lang(request)) + "\n\n" + _GENERATE_SYSTEM,
             messages=[{"role": "user", "content": user_message}],
         )
         raw = response.content[0].text if response.content else "{}"

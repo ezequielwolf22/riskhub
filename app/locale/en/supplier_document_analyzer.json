@@ -1,0 +1,11 @@
+{
+  "supplier_document_analyzer": {
+    "read_error": "Error reading the document: {error}",
+    "extract_error": "Could not extract text from the document: {error}",
+    "no_text": "The document contains no extractable text (image or unsupported format).",
+    "ai_error": "AI analysis error: {error}",
+    "no_structured": "The AI could not extract structured information from the document.",
+    "db_error": "Error saving data to the database.",
+    "success": "Analysis completed. {count} field(s) updated."
+  }
+}

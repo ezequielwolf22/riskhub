@@ -6,6 +6,8 @@ Solo sobreescribe campos vacios; fusiona SLAs y contactos con los existentes.
 """
 import json
 import logging
+
+from app.i18n import t as _t
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -320,7 +322,7 @@ def _apply_fields(supplier: Supplier, extracted: dict) -> list[str]:
     return updated
 
 
-def analyze_document(db: Session, supplier: Supplier, stored_name: str, filename: str) -> dict:
+def analyze_document(db: Session, supplier: Supplier, stored_name: str, filename: str, lang: str = "es") -> dict:
     """Lee el documento, analiza con IA y actualiza la ficha del proveedor.
 
     Returns dict: ok, message, updated_fields, extracted.
@@ -330,25 +332,25 @@ def analyze_document(db: Session, supplier: Supplier, stored_name: str, filename
     except FileNotFoundError as e:
         return {"ok": False, "message": str(e), "updated_fields": []}
     except Exception as e:
-        return {"ok": False, "message": f"Error leyendo el documento: {str(e)[:200]}", "updated_fields": []}
+        return {"ok": False, "message": _t("supplier_document_analyzer.read_error", lang, error=str(e)[:200]), "updated_fields": []}
 
     try:
         text = _extract_text(raw_bytes, filename)
     except Exception as e:
-        return {"ok": False, "message": f"No se pudo extraer texto del documento: {str(e)[:200]}", "updated_fields": []}
+        return {"ok": False, "message": _t("supplier_document_analyzer.extract_error", lang, error=str(e)[:200]), "updated_fields": []}
 
     if len(text.strip()) < 30:
-        return {"ok": False, "message": "El documento no contiene texto extraible (imagen o formato no soportado).", "updated_fields": []}
+        return {"ok": False, "message": _t("supplier_document_analyzer.no_text", lang), "updated_fields": []}
 
     try:
         raw_response = _call_claude(db, supplier.organization_id, text)
         extracted = _parse_json(raw_response)
     except Exception as e:
         logger.error("supplier_document_analyzer[%s]: Claude error: %s", supplier.code, e)
-        return {"ok": False, "message": f"Error en el analisis IA: {str(e)[:200]}", "updated_fields": []}
+        return {"ok": False, "message": _t("supplier_document_analyzer.ai_error", lang, error=str(e)[:200]), "updated_fields": []}
 
     if not extracted:
-        return {"ok": False, "message": "La IA no pudo extraer informacion estructurada del documento.", "updated_fields": []}
+        return {"ok": False, "message": _t("supplier_document_analyzer.no_structured", lang), "updated_fields": []}
 
     updated_fields = _apply_fields(supplier, extracted)
 
@@ -360,13 +362,13 @@ def analyze_document(db: Session, supplier: Supplier, stored_name: str, filename
     except Exception as e:
         logger.error("supplier_document_analyzer[%s]: save error: %s", supplier.code, e)
         db.rollback()
-        return {"ok": False, "message": "Error al guardar los datos en base de datos.", "updated_fields": []}
+        return {"ok": False, "message": _t("supplier_document_analyzer.db_error", lang), "updated_fields": []}
 
     logger.info("supplier_document_analyzer[%s]: %d campos actualizados desde '%s'",
                 supplier.code, len(updated_fields), filename)
     return {
         "ok": True,
-        "message": f"Analisis completado. {len(updated_fields)} campo(s) actualizado(s).",
+        "message": _t("supplier_document_analyzer.success", lang, count=len(updated_fields)),
         "updated_fields": updated_fields,
         "extracted": extracted,
     }

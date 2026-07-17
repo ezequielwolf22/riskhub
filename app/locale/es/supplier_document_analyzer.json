@@ -1,0 +1,11 @@
+{
+  "supplier_document_analyzer": {
+    "read_error": "Error leyendo el documento: {error}",
+    "extract_error": "No se pudo extraer texto del documento: {error}",
+    "no_text": "El documento no contiene texto extraible (imagen o formato no soportado).",
+    "ai_error": "Error en el analisis IA: {error}",
+    "no_structured": "La IA no pudo extraer informacion estructurada del documento.",
+    "db_error": "Error al guardar los datos en base de datos.",
+    "success": "Analisis completado. {count} campo(s) actualizado(s)."
+  }
+}

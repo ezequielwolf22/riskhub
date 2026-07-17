@@ -19,7 +19,7 @@ from app.models import (
 )
 from app.services import bcm_location_service, bcm_graph_service, bcm_test_engine
 from app.security import get_current_user, require_admin, require_analyst
-from app.i18n import get_lang, t as _t
+from app.i18n import ai_lang_directive, get_lang, t as _t
 from app.services.audit_service import log_action
 
 logger = logging.getLogger("riskhub.bcp")
@@ -3065,8 +3065,9 @@ def bcm_ai_quick(
     ) or "Sin planes definidos."
 
     system_prompt = (
+        f"{ai_lang_directive(lang)}\n\n"
         "Eres el Asistente de Continuidad de Negocio de RiskHub, experto en ISO 22301, BCP/DRP y gestion de la continuidad.\n"
-        "Responde siempre en castellano. SÃ© conciso pero preciso. Usa ** para destacar puntos clave.\n"
+        "SÃ© conciso pero preciso. Usa ** para destacar puntos clave.\n"
         "Cuando detectes riesgos o gaps, mencionalos con recomendaciones accionables.\n\n"
         f"{ctx_block}\n"
         f"Procesos criticos:\n{procs_block}\n\n"
@@ -3237,9 +3238,10 @@ def generate_activation_ai_summary(aid: int, request: Request, db: Session = Dep
     )
 
     prompt = (
+        f"{ai_lang_directive(lang)}\n\n"
         f"Eres un experto en gestion de incidentes de continuidad de negocio (ISO 22301).\n"
         f"Analiza la siguiente informacion de la activacion BCM {act.code} - {act.title} "
-        f"y genera un resumen ejecutivo estructurado en castellano con:\n"
+        f"y genera un resumen ejecutivo estructurado con:\n"
         f"1. Resumen del incidente\n2. Cronologia clave\n3. Estado de la recuperacion\n"
         f"4. Evidencia adjunta relevante\n5. Acciones pendientes\n\n"
         f"TIMELINE DE EVENTOS:\n{log_text or 'Sin eventos'}\n\n"

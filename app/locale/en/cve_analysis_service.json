@@ -1,0 +1,11 @@
+{
+  "cve_analysis_service": {
+    "at_least_one_cve": "At least one CVE ID is required.",
+    "max_cves": "Maximum 20 CVEs per analysis.",
+    "fallback_justification": "Automatic analysis unavailable — manual review required.",
+    "fallback_inherent_just": "Estimated from CVSS {score} ({severity})",
+    "fallback_residual_just": "Control coverage could not be evaluated.",
+    "fallback_action": "Manually review the impact of this CVE on the asset.",
+    "fallback_threat": "Exploitation of technical vulnerability"
+  }
+}
