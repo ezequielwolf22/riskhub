@@ -121,6 +121,8 @@ def control_payload(ci, contribution: float = 1.0, db: Session | None = None) ->
         maturity_adj = max(maturity_adj, round((ci.maturity or 0) * ai_factor, 1))
     return {
         "maturity": maturity_adj,
+        "maturity_raw": ci.maturity or 0,
+        "is_mandatory": ctrl.is_mandatory if ctrl else False,
         "contribution": contribution,
         "nc_penalty_factor": getattr(ci, "nc_penalty_factor", None),
         "ccm_fail": getattr(ci, "ccm_last_status", None) == "FAIL",
@@ -129,15 +131,44 @@ def control_payload(ci, contribution: float = 1.0, db: Session | None = None) ->
     }
 
 
+def residual_from_payloads(
+    risk: Risk, controls: list[dict], matrix,
+) -> tuple[int, int, int, int]:
+    """Calcula (inherent_level, residual_likelihood, residual_consequence,
+    residual_level) a partir de una lista de payloads de control ya construida.
+
+    Funcion PURA: no toca la BD ni escribe en el riesgo. La usa tanto el
+    recalculo real (recalc_risk) como la proyeccion what-if del Plan Director
+    (initiative_projection_service.project_initiative), que simula madurez
+    objetivo sin persistir nada hasta que el motor real la confirme.
+    """
+    inherent_level = calc_level(risk.inherent_consequence, risk.inherent_likelihood, matrix)
+    rl, rc, rlev = calc_residual(
+        risk.inherent_likelihood, risk.inherent_consequence, controls, matrix)
+
+    # Floor por controles obligatorios con madurez insuficiente (ISO 27001 Annex A)
+    # Si algun control IS_MANDATORY tiene maturity < 2, el residual no puede ser
+    # menor que inherent - 1 (los controles deficientes limitan la reduccion alcanzable)
+    mandatory_gap = any(
+        c.get("is_mandatory") and (c.get("maturity_raw") or 0) < 2
+        for c in controls
+    )
+    if mandatory_gap:
+        min_lik = max(0, (risk.inherent_likelihood or 0) - 1)
+        min_con = max(0, (risk.inherent_consequence or 0) - 1)
+        rl = max(rl, min_lik)
+        rc = max(rc, min_con)
+        rlev = calc_level(rc, rl, matrix)
+
+    return inherent_level, rl, rc, rlev
+
+
 def recalc_risk(db: Session, risk: Risk) -> None:
     """Recalcula inherente/residual/tratamiento de un riesgo (in-place, sin commit)."""
     matrix = get_matrix(db, risk.organization_id)
 
     # MAGERIT: si aplica, sobrescribir inherent_consequence antes de calcular
     apply_magerit_consequence(risk, db)
-
-    risk.inherent_level = calc_level(
-        risk.inherent_consequence, risk.inherent_likelihood, matrix)
 
     # Obtener contribution real de la tabla de asociacion (no hardcoded 1.0)
     rows = db.execute(
@@ -150,23 +181,9 @@ def recalc_risk(db: Session, risk: Risk) -> None:
         control_payload(ci, contrib_map.get(ci.id, 1.0), db=db)
         for ci in risk.controls
     ]
-    rl, rc, rlev = calc_residual(
-        risk.inherent_likelihood, risk.inherent_consequence, controls, matrix)
+    inherent_level, rl, rc, rlev = residual_from_payloads(risk, controls, matrix)
 
-    # Floor por controles obligatorios con madurez insuficiente (ISO 27001 Annex A)
-    # Si algun control IS_MANDATORY tiene maturity < 2, el residual no puede ser
-    # menor que inherent - 1 (los controles deficientes limitan la reduccion alcanzable)
-    mandatory_gap = any(
-        (ci.control.is_mandatory if ci.control else False) and (ci.maturity or 0) < 2
-        for ci in risk.controls
-    )
-    if mandatory_gap:
-        min_lik = max(0, (risk.inherent_likelihood or 0) - 1)
-        min_con = max(0, (risk.inherent_consequence or 0) - 1)
-        rl = max(rl, min_lik)
-        rc = max(rc, min_con)
-        rlev = calc_level(rc, rl, matrix)
-
+    risk.inherent_level = inherent_level
     risk.residual_likelihood = rl
     risk.residual_consequence = rc
     risk.residual_level = rlev
@@ -240,4 +257,14 @@ def recalc_risks_for_impls(db: Session, impl_ids: list[int]) -> int:
             logger.exception("recalc_risks_for_impls: fallo en risk id=%s", r.id)
     logger.info("recalc_risks_for_impls: %d riesgos recalculados (%d controles)",
                 len(risks), len(impl_ids))
+
+    # Plan Director: si estos controles son objetivo de alguna iniciativa activa,
+    # su proyeccion what-if queda obsoleta — reproyectar (import diferido: evita
+    # ciclo, initiative_projection_service importa de este mismo modulo).
+    try:
+        from app.services.initiative_projection_service import reproject_for_impls
+        reproject_for_impls(db, impl_ids)
+    except Exception:
+        logger.exception("recalc_risks_for_impls: fallo reproyectando iniciativas")
+
     return len(risks)

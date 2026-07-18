@@ -175,6 +175,132 @@ def list_risks(
     return q.order_by(Risk.residual_level.desc(), Risk.code).all()
 
 
+@router.get("/treatment-board")
+def treatment_board(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Cockpit de Tratamiento: vision operativa unica de todos los planes de
+    tratamiento — KPIs, riesgos agrupados por opcion, progreso, vencimientos,
+    tareas e iniciativas del Plan Director. Un unico endpoint agregado."""
+    from app.models import (
+        InitiativeRiskLink, StrategicInitiative, TaskStatus, TreatmentTask,
+    )
+    from app.services.initiative_projection_service import compute_burndown
+
+    org_id = getattr(current_user, "_active_org_id", None) or current_user.organization_id
+    now = datetime.now(timezone.utc)
+
+    ctx = _get_context(db, org_id)
+    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+
+    risks = filter_by_org(db.query(Risk), Risk, current_user).options(
+        joinedload(Risk.asset), joinedload(Risk.threat), joinedload(Risk.owner),
+    ).filter(Risk.status != RiskStatus.CLOSED).all()
+    risk_ids = [r.id for r in risks]
+
+    # Tareas: un solo query agregado por risk_id (evita N+1)
+    tasks_by_risk: dict[int, list] = {}
+    if risk_ids:
+        for t in db.query(TreatmentTask).filter(TreatmentTask.risk_id.in_(risk_ids)).all():
+            tasks_by_risk.setdefault(t.risk_id, []).append(t)
+
+    # Iniciativas activas vinculadas: un solo query
+    links_by_risk: dict[int, list] = {}
+    if risk_ids:
+        active_links = (
+            db.query(InitiativeRiskLink)
+            .join(StrategicInitiative, InitiativeRiskLink.initiative_id == StrategicInitiative.id)
+            .filter(
+                InitiativeRiskLink.risk_id.in_(risk_ids),
+                StrategicInitiative.status.in_(["approved", "in_progress"]),
+            )
+            .options(joinedload(InitiativeRiskLink.initiative))
+            .all()
+        )
+        for link in active_links:
+            links_by_risk.setdefault(link.risk_id, []).append(link)
+
+    columns: dict[str, list] = {"modification": [], "sharing": [], "avoidance": [], "retention": [], "untreated": []}
+    kpis = {
+        "total_risks": len(risks), "above_appetite": 0, "above_appetite_no_plan": 0,
+        "above_appetite_no_coverage": 0, "overdue_plans": 0, "avg_progress": 0,
+        "pending_acceptance": 0, "tasks_overdue": 0,
+    }
+    progress_values = []
+
+    for r in risks:
+        residual = r.residual_level or 0
+        above = residual > appetite
+        if above:
+            kpis["above_appetite"] += 1
+
+        r_tasks = tasks_by_risk.get(r.id, [])
+        tasks_total = len(r_tasks)
+        tasks_done = sum(1 for t in r_tasks if str(getattr(t.status, "value", t.status)).lower() == "done")
+        tasks_overdue = sum(
+            1 for t in r_tasks
+            if t.due_date and str(getattr(t.status, "value", t.status)).lower() != "done"
+            and t.due_date.replace(tzinfo=timezone.utc) < now
+        )
+        kpis["tasks_overdue"] += tasks_overdue
+
+        due_overdue = bool(
+            r.treatment_due_date and r.treatment_due_date.replace(tzinfo=timezone.utc) < now
+            and r.status not in (RiskStatus.TREATED, RiskStatus.ACCEPTED, RiskStatus.CLOSED)
+        )
+        if due_overdue:
+            kpis["overdue_plans"] += 1
+        if r.status == RiskStatus.PENDING_ACCEPTANCE:
+            kpis["pending_acceptance"] += 1
+
+        initiatives = [
+            {"id": link.initiative.id, "code": link.initiative.code,
+             "title": link.initiative.title, "health": link.initiative.health,
+             "projected_residual_level": link.projected_residual_level}
+            for link in links_by_risk.get(r.id, [])
+        ]
+        has_coverage = bool(initiatives)
+
+        if r.treatment_option:
+            # Progreso medio sobre TODOS los riesgos con opcion de tratamiento
+            # definida (no solo los que superan el apetito)
+            progress_values.append(r.treatment_progress or 0)
+        elif above:
+            kpis["above_appetite_no_plan"] += 1
+            if not has_coverage:
+                kpis["above_appetite_no_coverage"] += 1
+
+        item = {
+            "id": r.id, "code": r.code,
+            "asset_name": r.asset.name if r.asset else None,
+            "threat_name": r.threat.name if r.threat else None,
+            "residual_level": residual, "target_residual_level": r.target_residual_level,
+            "inherent_level": r.inherent_level,
+            "status": r.status.value if r.status else None,
+            "owner_name": r.owner.full_name if r.owner else None,
+            "treatment_progress": r.treatment_progress or 0,
+            "treatment_due_date": r.treatment_due_date.isoformat() if r.treatment_due_date else None,
+            "overdue": due_overdue,
+            "treatment_plan_excerpt": (r.treatment_plan or "")[:160],
+            "tasks": {"total": tasks_total, "done": tasks_done, "overdue": tasks_overdue},
+            "initiatives": initiatives,
+            "analysis_stale": bool(r.analysis_stale),
+            "acceptance": {"pending": r.status == RiskStatus.PENDING_ACCEPTANCE},
+        }
+
+        if r.treatment_option:
+            columns[r.treatment_option.value].append(item)
+        elif above:
+            columns["untreated"].append(item)
+
+    kpis["avg_progress"] = round(sum(progress_values) / len(progress_values)) if progress_values else 0
+
+    for col in columns.values():
+        col.sort(key=lambda it: (not it["overdue"], -it["residual_level"]))
+
+    burndown = compute_burndown(db, org_id)
+
+    return {"appetite": appetite, "kpis": kpis, "burndown": burndown, "columns": columns}
+
+
 @router.get("/methodology")
 def get_methodology(
     request: Request,
@@ -364,6 +490,24 @@ def risk_trace(
             for e in direct_evd
         ],
     }
+
+
+@router.post("/{risk_id}/ai-treatment-plan")
+def risk_ai_treatment_plan(
+    risk_id: int, request: Request, db: Session = Depends(get_db),
+    current_user: User = Depends(require_analyst),
+):
+    """Borrador de plan de tratamiento para el Cockpit de Tratamiento.
+    No persiste nada: el usuario confirma/edita antes de aplicar."""
+    lang = get_lang(request)
+    risk = db.query(Risk).filter(Risk.id == risk_id).first()
+    if not risk or not check_org_access(risk.organization_id, current_user):
+        raise HTTPException(404, _t("risks.not_found", lang))
+    from app.services.initiative_ai_service import draft_treatment_plan
+    try:
+        return draft_treatment_plan(db, risk, lang)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 @router.post("/{risk_id}/ai-explain")
@@ -1014,6 +1158,11 @@ def delete_risk(risk_id: int, request: Request, db: Session = Depends(get_db),
             signal_risk_decision(db, r, "ai_risk_deleted", user_id=current_user.id)
         except Exception:
             pass
+    # Plan Director: limpiar vinculos de iniciativas (SQLite no fuerza la FK
+    # ondelete=CASCADE en tablas ya creadas; en PostgreSQL evitaria el delete)
+    from app.models import InitiativeRiskLink
+    db.query(InitiativeRiskLink).filter(InitiativeRiskLink.risk_id == r.id).delete(
+        synchronize_session=False)
     db.delete(r)
     log_action(db, current_user.id, "delete", "risk", str(risk_id), {"code": code})
     db.commit()

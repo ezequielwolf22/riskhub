@@ -67,10 +67,35 @@ def _update_risk_treatment_progress(db: Session, task) -> None:
     # No commit aquí — update_task ya hará commit después de llamar a esta función
 
 
+def _update_initiative_progress(db: Session, task) -> None:
+    """Si la tarea pertenece a una iniciativa del Plan Director, recalcula su
+    progreso derivado (media de OKRs si tiene, si no tareas DONE/total)."""
+    if not getattr(task, "initiative_id", None):
+        return
+    from app.models import StrategicInitiative
+    initiative = db.get(StrategicInitiative, task.initiative_id)
+    if not initiative:
+        return
+    from app.routers.initiatives import refresh_initiative_progress
+    refresh_initiative_progress(db, initiative)
+    # No commit aquí — el caller hará commit despues
+
+
 def _next_code(db: Session, org_id: int) -> str:
     from sqlalchemy import func as _func
     max_id = db.query(_func.max(TreatmentTask.id)).scalar() or 0
     return f"TSK-{max_id + 1:04d}"
+
+
+def _validate_initiative_org(db: Session, initiative_id, current_user, lang: str = "es") -> None:
+    """Una tarea no puede colgarse de una iniciativa de otra organizacion
+    (sus titulos serian visibles en el detalle de esa iniciativa)."""
+    if initiative_id is None:
+        return
+    from app.models import StrategicInitiative
+    ini = db.get(StrategicInitiative, initiative_id)
+    if not ini or not check_org_access(ini.organization_id, current_user):
+        raise HTTPException(404, _t("initiatives.not_found", lang))
 
 
 @router.get("/", response_model=list[TaskOut])
@@ -129,9 +154,10 @@ def get_task(task_id: int, request: Request, db: Session = Depends(get_db),
 
 
 @router.post("/", response_model=TaskOut)
-def create_task(body: TaskIn, db: Session = Depends(get_db),
+def create_task(body: TaskIn, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     org_id = current_user.organization_id
+    _validate_initiative_org(db, body.initiative_id, current_user, get_lang(request))
     t = TreatmentTask(
         code=_next_code(db, org_id),
         organization_id=org_id,
@@ -144,8 +170,11 @@ def create_task(body: TaskIn, db: Session = Depends(get_db),
         priority=body.priority,
         due_date=body.due_date,
         notes=body.notes,
+        initiative_id=body.initiative_id,
     )
     db.add(t)
+    db.flush()
+    _update_initiative_progress(db, t)
     db.commit()
     db.refresh(t)
     log_action(db, current_user.id, "create", "task", str(t.id), {"code": t.code})
@@ -160,9 +189,21 @@ def update_task(task_id: int, body: TaskUpdate, request: Request,
     t = db.query(TreatmentTask).filter(TreatmentTask.id == task_id).first()
     if not t or not check_org_access(t.organization_id, current_user):
         raise HTTPException(404, _t("tasks.not_found", lang))
-    for field, value in body.model_dump(exclude_none=True).items():
+    was_done = str(getattr(t.status, "value", t.status)).lower() == "done"
+    data = body.model_dump(exclude_none=True)
+    if "initiative_id" in data:
+        _validate_initiative_org(db, data["initiative_id"], current_user, lang)
+    for field, value in data.items():
         setattr(t, field, value)
     _update_risk_treatment_progress(db, t)
+    _update_initiative_progress(db, t)
+    now_done = str(getattr(t.status, "value", t.status)).lower() == "done"
+    if t.initiative_id and now_done and not was_done:
+        try:
+            from app.services.initiative_projection_service import log_system_event
+            log_system_event(db, t.initiative_id, f"Tarea completada: {t.title}")
+        except Exception:
+            pass
     db.commit()
     db.refresh(t)
     log_action(db, current_user.id, "update", "task", str(t.id))

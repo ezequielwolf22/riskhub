@@ -1,0 +1,21 @@
+{
+  "initiatives": {
+    "not_found": "Initiative not found.",
+    "program_not_found": "Program not found.",
+    "owner_not_found": "The specified user does not exist or does not belong to your organization.",
+    "program_has_initiatives": "Cannot delete a program that has initiatives.",
+    "objective_not_found": "Objective (OKR) not found.",
+    "control_not_found": "The specified control does not exist or does not belong to your organization.",
+    "control_target_duplicate": "This control is already a target of the initiative.",
+    "control_target_not_found": "Control target not found.",
+    "risk_not_found": "The specified risk does not exist or does not belong to your organization.",
+    "risk_link_duplicate": "This risk is already linked to the initiative.",
+    "risk_link_not_found": "Risk link not found.",
+    "risk_link_is_auto": "This link is automatic (derived from control targets); remove the corresponding control target to delete it.",
+    "import_file_required": "A file is required to import.",
+    "import_too_large": "The file exceeds the 10 MB limit.",
+    "import_invalid_type": "File type not allowed. Accepted formats: PDF, DOCX, XLSX, TXT.",
+    "import_no_text": "Could not extract enough text from the file.",
+    "ai_import_rationale": "Structured and imported automatically from a document with AI."
+  }
+}

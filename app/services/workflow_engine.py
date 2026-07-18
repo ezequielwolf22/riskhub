@@ -165,6 +165,10 @@ def start_risk_workflow(db: Session, risk: Risk) -> Optional[RiskWorkflow]:
             due_date=now + timedelta(days=t["due_offset_days"]),
         )
         db.add(task)
+        # Con autoflush=False el chequeo de duplicados de _next_task_code no ve
+        # las tareas pendientes de esta misma sesion: sin este flush, N riesgos
+        # auto-generados en lote calculan el mismo codigo TSK y el commit falla
+        db.flush()
 
     try:
         db.commit()

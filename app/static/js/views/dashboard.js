@@ -479,7 +479,7 @@ const ViewDashboard = {
               <div class="hint">${UI.esc(t('dashboard.kpi_overdue_hint'))}</div>
             </div>
             <div class="kpi" style="cursor:pointer;${risks.no_treatment_high > 0 ? 'background:linear-gradient(45deg,#FEF9C3,#FDE68A);border-color:#FCD34D;' : ''}"
-                 onclick="location.hash='#/risks?treatment=__none__&min_level=5'" title="${UI.esc(t('dashboard.kpi_high_no_plan'))}">
+                 onclick="location.hash='#/risk-hub/treatment'" title="${UI.esc(t('dashboard.kpi_high_no_plan'))}">
               <div class="label">${UI.esc(t('dashboard.kpi_high_no_plan'))}</div>
               <div class="value" style="${risks.no_treatment_high > 0 ? 'color:#92400E;' : ''}">${risks.no_treatment_high}</div>
               <div class="hint">${UI.esc(t('dashboard.kpi_high_no_plan_hint'))}</div>

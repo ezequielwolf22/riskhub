@@ -38,7 +38,7 @@ PLAN_MODULE_LIMITS: dict[str, Optional[set[str]]] = {
         "module_compliance", "module_reports",
         "module_suppliers", "module_nonconformities", "module_audits",
         "module_gdpr", "module_ai", "module_cve", "module_alerts",
-        "module_regwatch",
+        "module_regwatch", "module_plan_director",
     },
     "enterprise": None,  # todos los modulos sin restriccion
 }
@@ -134,6 +134,11 @@ _DEFAULT_FLAGS = [
         "name": "module_regwatch",
         "label": "Vigilancia Normativa Automatica",
         "description": "Monitoriza los marcos normativos que usas y mantiene tu catalogo actualizado automaticamente.",
+    },
+    {
+        "name": "module_plan_director",
+        "label": "Plan Director",
+        "description": "Programas e iniciativas estrategicas vinculadas a riesgos, con proyeccion automatica de reduccion de riesgo.",
     },
 ]
 

@@ -2644,6 +2644,51 @@ def _run_sharepoint_sync() -> None:
         logger.error("SharePoint sync scheduler: error inesperado: %s", exc)
 
 
+def _run_initiative_health_check() -> None:
+    """Plan Director: recalcula semanalmente la salud (ok/at_risk/blocked) de las
+    iniciativas activas segun senales objetivas (nunca la marca una persona)."""
+    from app.database import SessionLocal
+    from app.services.initiative_projection_service import refresh_initiative_health
+    db = SessionLocal()
+    try:
+        updated = refresh_initiative_health(db)
+        logger.info("Plan Director: salud recalculada para %d iniciativas", updated)
+    except Exception:
+        logger.exception("Error en _run_initiative_health_check")
+    finally:
+        db.close()
+
+
+def _run_initiative_narratives() -> None:
+    """Plan Director: narrativa mensual de avance por iniciativa activa con
+    actividad reciente (IA tier fast, cap por org, degradacion graceful)."""
+    from app.database import SessionLocal
+    from app.services.initiative_ai_service import run_monthly_narratives
+    db = SessionLocal()
+    try:
+        n = run_monthly_narratives(db)
+        logger.info("Plan Director: %d narrativas mensuales generadas", n)
+    except Exception:
+        logger.exception("Error en _run_initiative_narratives")
+    finally:
+        db.close()
+
+
+def _run_initiative_digest() -> None:
+    """Plan Director: digest mensual al comite (iniciativas en riesgo, reduccion
+    proyectada vs conseguida, riesgos sin cobertura). No envia si no hay nada que decir."""
+    from app.database import SessionLocal
+    from app.services.initiative_projection_service import send_initiative_digest
+    db = SessionLocal()
+    try:
+        summary = send_initiative_digest(db)
+        logger.info("Plan Director: digest enviado a %d organizaciones", summary.get("sent", 0))
+    except Exception:
+        logger.exception("Error en _run_initiative_digest")
+    finally:
+        db.close()
+
+
 def start(interval_hours: int = 1) -> BackgroundScheduler:
     """Inicia el scheduler. Llama una sola vez en startup."""
     global _scheduler
@@ -3064,6 +3109,30 @@ def start(interval_hours: int = 1) -> BackgroundScheduler:
         name="SharePoint — sincronizacion de carpetas permitidas (delta)",
         replace_existing=True,
         misfire_grace_time=1800,
+    )
+    _scheduler.add_job(
+        func=_run_initiative_health_check,
+        trigger=CronTrigger(day_of_week="mon", hour=7, minute=0),
+        id="initiative_health_check",
+        name="Plan Director — salud semanal de iniciativas",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    _scheduler.add_job(
+        func=_run_initiative_narratives,
+        trigger=CronTrigger(day=1, hour=6, minute=0),
+        id="initiative_narratives",
+        name="Plan Director — narrativa mensual de avance",
+        replace_existing=True,
+        misfire_grace_time=7200,
+    )
+    _scheduler.add_job(
+        func=_run_initiative_digest,
+        trigger=CronTrigger(day=1, hour=8, minute=0),
+        id="initiative_digest",
+        name="Plan Director — digest mensual al comite",
+        replace_existing=True,
+        misfire_grace_time=7200,
     )
     _scheduler.start()
     logger.info("Scheduler iniciado — intervalo: %dh.", interval_hours)

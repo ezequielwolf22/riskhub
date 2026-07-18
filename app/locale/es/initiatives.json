@@ -1,0 +1,21 @@
+{
+  "initiatives": {
+    "not_found": "Iniciativa no encontrada.",
+    "program_not_found": "Programa no encontrado.",
+    "owner_not_found": "El usuario indicado no existe o no pertenece a tu organizacion.",
+    "program_has_initiatives": "No se puede eliminar un programa con iniciativas asociadas.",
+    "objective_not_found": "Objetivo (OKR) no encontrado.",
+    "control_not_found": "El control indicado no existe o no pertenece a tu organizacion.",
+    "control_target_duplicate": "Este control ya es objetivo de la iniciativa.",
+    "control_target_not_found": "Control objetivo no encontrado.",
+    "risk_not_found": "El riesgo indicado no existe o no pertenece a tu organizacion.",
+    "risk_link_duplicate": "Este riesgo ya esta vinculado a la iniciativa.",
+    "risk_link_not_found": "Vinculo de riesgo no encontrado.",
+    "risk_link_is_auto": "Este vinculo es automatico (derivado de los controles objetivo); quita el control objetivo correspondiente para eliminarlo.",
+    "import_file_required": "Se requiere un archivo para importar.",
+    "import_too_large": "El archivo supera el limite de 10 MB.",
+    "import_invalid_type": "Tipo de archivo no permitido. Formatos aceptados: PDF, DOCX, XLSX, TXT.",
+    "import_no_text": "No se pudo extraer texto suficiente del archivo.",
+    "ai_import_rationale": "Estructurada e importada automaticamente desde un documento con IA."
+  }
+}

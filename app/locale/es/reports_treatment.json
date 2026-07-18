@@ -1,0 +1,34 @@
+{
+  "reports": {
+    "treatment": {
+      "title": "Plan de Tratamiento de Riesgos y Plan Director",
+      "subtitle": "ISO/IEC 27005 cl. 9 - ISO/IEC 27001 cl. 6.1.3e",
+      "summary_title": "Resumen ejecutivo",
+      "summary_body": "{above} riesgo(s) sobre el apetito de riesgo, de los cuales {no_plan} sin plan de tratamiento definido y {overdue} con plazo vencido. El Plan Director proyecta una reduccion de {projected} puntos, de los cuales {achieved} ya se han conseguido.",
+      "risks_title": "Riesgos sobre el apetito de riesgo",
+      "h_asset": "Activo",
+      "h_owner": "Responsable",
+      "burndown_title": "Evolucion del riesgo residual total",
+      "burndown_note": "Linea continua: historico mensual real. Linea discontinua: proyeccion segun las iniciativas activas del Plan Director.",
+      "h_option": "Tratamiento",
+      "h_progress": "Progreso",
+      "h_due": "Vencimiento",
+      "no_plan": "Sin definir",
+      "no_risks_above": "No hay riesgos por encima del apetito de riesgo.",
+      "plan_director_title": "Plan Director — Programas e iniciativas",
+      "h_program": "Programa",
+      "h_title": "Titulo",
+      "h_health": "Salud",
+      "h_points": "Pts. proyectados",
+      "no_initiatives": "No hay iniciativas del Plan Director registradas.",
+      "verifications_title": "Verificaciones de cierre del periodo",
+      "no_gaps": "sin brechas",
+      "controls_met_label": "controles en madurez objetivo",
+      "risks_met_label": "riesgos en o por debajo del residual proyectado",
+      "accepted_title": "Riesgos aceptados",
+      "h_justification": "Justificacion",
+      "h_review_date": "Proxima revision",
+      "overdue_tasks_title": "Tareas de tratamiento vencidas"
+    }
+  }
+}

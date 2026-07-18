@@ -1,0 +1,34 @@
+{
+  "reports": {
+    "treatment": {
+      "title": "Risk Treatment Plan and Strategic Plan",
+      "subtitle": "ISO/IEC 27005 cl. 9 - ISO/IEC 27001 cl. 6.1.3e",
+      "summary_title": "Executive summary",
+      "summary_body": "{above} risk(s) above risk appetite, of which {no_plan} have no treatment plan defined and {overdue} are past due. The Strategic Plan projects a reduction of {projected} points, of which {achieved} have already been achieved.",
+      "risks_title": "Risks above risk appetite",
+      "h_asset": "Asset",
+      "h_owner": "Owner",
+      "burndown_title": "Total residual risk trend",
+      "burndown_note": "Solid line: actual monthly history. Dashed line: projection based on active Strategic Plan initiatives.",
+      "h_option": "Treatment",
+      "h_progress": "Progress",
+      "h_due": "Due date",
+      "no_plan": "Not defined",
+      "no_risks_above": "There are no risks above risk appetite.",
+      "plan_director_title": "Strategic Plan — Programs and initiatives",
+      "h_program": "Program",
+      "h_title": "Title",
+      "h_health": "Health",
+      "h_points": "Projected pts.",
+      "no_initiatives": "No Strategic Plan initiatives registered.",
+      "verifications_title": "Closure verifications for the period",
+      "no_gaps": "no gaps",
+      "controls_met_label": "controls at target maturity",
+      "risks_met_label": "risks at or below projected residual",
+      "accepted_title": "Accepted risks",
+      "h_justification": "Justification",
+      "h_review_date": "Next review",
+      "overdue_tasks_title": "Overdue treatment tasks"
+    }
+  }
+}

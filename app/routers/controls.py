@@ -1,8 +1,11 @@
 """Catalogo ISO 27002:2022 + implementaciones especificas de la organizacion."""
 import csv
 import io
+import logging
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -364,8 +367,28 @@ def delete_impl(impl_id: int, request: Request, db: Session = Depends(get_db),
             {"cid": impl.id},
         ).fetchall()
     ]
+    # Plan Director: eliminar los control targets de este impl y re-derivar las
+    # iniciativas afectadas (sus vinculos auto y proyeccion dependian del target)
+    from app.models import InitiativeControlTarget, StrategicInitiative
+    affected_initiative_ids = [
+        iid for (iid,) in db.query(InitiativeControlTarget.initiative_id)
+        .filter(InitiativeControlTarget.implementation_id == impl.id).distinct().all()
+    ]
+    db.query(InitiativeControlTarget).filter(
+        InitiativeControlTarget.implementation_id == impl.id
+    ).delete(synchronize_session=False)
     db.delete(impl)
     log_action(db, current_user.id, "delete", "control_impl", str(impl_id), {"name": name})
+    if affected_initiative_ids:
+        try:
+            from app.services.initiative_projection_service import auto_link_risks, project_initiative
+            for ini in db.query(StrategicInitiative).filter(
+                StrategicInitiative.id.in_(affected_initiative_ids)
+            ).all():
+                auto_link_risks(db, ini)
+                project_initiative(db, ini)
+        except Exception:
+            logger.exception("delete_impl: fallo re-derivando iniciativas afectadas")
     db.commit()
     # Recalcular residual de todos los riesgos que usaban este control
     if risk_ids_to_recalc:

@@ -1357,6 +1357,263 @@ def tprm_report(request: Request, db: Session = Depends(get_db),
 
 
 # ============================================================
+# Informe de Plan de Tratamiento y Plan Director
+# ============================================================
+
+@router.get("/treatment-plan")
+def treatment_plan_report(request: Request, db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """Informe consolidado de tratamiento de riesgos y Plan Director — ISO
+    27005 cl. 9 / ISO 27001 cl. 6.1.3e. Resumen ejecutivo, riesgos sobre
+    apetito con su plan, programas e iniciativas con reduccion proyectada vs
+    conseguida, verificaciones de cierre, riesgos aceptados y tareas vencidas."""
+    from app.models import StrategicInitiative, StrategicProgram, TreatmentOption
+
+    lang = get_lang(request)
+    brand = _load_brand(db, current_user.organization_id, "treatment_plan")
+    BRAND_PURPLE = brand.primary
+    BRAND_ORANGE = brand.secondary
+    s = _styles(brand)
+    now = datetime.now(timezone.utc)
+    el = []
+
+    el.append(Paragraph(_t("reports.treatment.title", lang), s["TitleBrand"]))
+    el.append(Paragraph(_t("reports.treatment.subtitle", lang), s["SubBrand"]))
+    ctx = filter_by_org(db.query(RiskContext), RiskContext, current_user).first()
+    org_name = (ctx.organization_name if ctx else None) or "-"
+    appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
+    el.append(Paragraph(f"<b>{_t('reports.tprm.organization_label', lang)}</b> {_safe(org_name)}", s["BodyBrand"]))
+    el.append(Paragraph(f"<b>{_t('reports.tprm.date_label', lang)}</b> {now.strftime('%d/%m/%Y')}", s["BodyBrand"]))
+    el.append(Spacer(1, 12))
+
+    risks = filter_by_org(db.query(Risk), Risk, current_user).filter(Risk.status != RiskStatus.CLOSED).all()
+    above_appetite = [r for r in risks if (r.residual_level or 0) > appetite]
+    no_plan = [r for r in above_appetite if not r.treatment_option]
+    overdue_plans = [
+        r for r in risks if r.treatment_due_date
+        and r.treatment_due_date.replace(tzinfo=timezone.utc) < now
+        and r.status not in (RiskStatus.TREATED, RiskStatus.ACCEPTED, RiskStatus.CLOSED)
+    ]
+    initiatives = filter_by_org(db.query(StrategicInitiative), StrategicInitiative, current_user).all()
+    active_initiatives = [i for i in initiatives if i.status in ("approved", "in_progress")]
+    projected_points = 0
+    achieved_points = 0
+    for i in active_initiatives:
+        for link in i.risk_links:
+            if link.baseline_residual_level is None or link.projected_residual_level is None:
+                continue
+            projected_points += max(0, link.baseline_residual_level - link.projected_residual_level)
+            current = link.risk.residual_level if link.risk else link.baseline_residual_level
+            achieved_points += max(0, link.baseline_residual_level - (current or 0))
+
+    # ── Resumen ejecutivo ────────────────────────────────────────────────
+    el.append(Paragraph(_t("reports.treatment.summary_title", lang), s["H2Brand"]))
+    el.append(Paragraph(
+        _t("reports.treatment.summary_body", lang, above=len(above_appetite), no_plan=len(no_plan),
+           overdue=len(overdue_plans), projected=projected_points, achieved=achieved_points),
+        s["BodyBrand"]))
+    el.append(Spacer(1, 12))
+
+    # ── Burndown: historico real + proyeccion del Plan Director ─────────
+    try:
+        from app.services.initiative_projection_service import compute_burndown
+        bd = compute_burndown(db, current_user.organization_id)
+        points = list(bd.get("history") or []) + list(bd.get("projected") or [])
+        if len(points) >= 2:
+            from reportlab.graphics.shapes import Drawing, Line, PolyLine, String
+            W, H, PAD = 440, 130, 28
+            values = [p.get("total_residual") or 0 for p in points]
+            max_v = max(values) or 1
+            step_x = (W - PAD * 2) / (len(points) - 1)
+
+            def _y(v):
+                return PAD + (v / max_v) * (H - PAD * 2)
+
+            dwg = Drawing(W, H)
+            # Ejes
+            dwg.add(Line(PAD, PAD, W - PAD, PAD, strokeColor=BRAND_GRAY3, strokeWidth=0.5))
+            dwg.add(Line(PAD, PAD, PAD, H - PAD, strokeColor=BRAND_GRAY3, strokeWidth=0.5))
+            hist_n = len(bd.get("history") or [])
+            hist_pts, proj_pts = [], []
+            for idx, p in enumerate(points):
+                x = PAD + idx * step_x
+                y = _y(p.get("total_residual") or 0)
+                if idx < hist_n:
+                    hist_pts.extend([x, y])
+                if idx >= max(0, hist_n - 1):
+                    proj_pts.extend([x, y])
+            if len(hist_pts) >= 4:
+                dwg.add(PolyLine(hist_pts, strokeColor=BRAND_PURPLE, strokeWidth=1.6))
+            if hist_n < len(points) and len(proj_pts) >= 4:
+                dwg.add(PolyLine(proj_pts, strokeColor=BRAND_ORANGE, strokeWidth=1.6,
+                                 strokeDashArray=[4, 3]))
+            # Etiquetas: primer/ultimo mes y max del eje Y
+            dwg.add(String(PAD, PAD - 12, points[0].get("month", ""), fontSize=7,
+                           fillColor=BRAND_GRAY1))
+            dwg.add(String(W - PAD - 30, PAD - 12, points[-1].get("month", ""), fontSize=7,
+                           fillColor=BRAND_GRAY1))
+            dwg.add(String(2, H - PAD - 3, str(max_v), fontSize=7, fillColor=BRAND_GRAY1))
+            el.append(Paragraph(_t("reports.treatment.burndown_title", lang), s["H2Brand"]))
+            el.append(dwg)
+            el.append(Paragraph(_t("reports.treatment.burndown_note", lang), s["BodyBrand"]))
+            el.append(Spacer(1, 12))
+    except Exception:
+        pass  # la grafica es opcional: sin datos suficientes se omite
+
+    # ── Riesgos sobre apetito ────────────────────────────────────────────
+    el.append(Paragraph(_t("reports.treatment.risks_title", lang), s["H2Brand"]))
+    if above_appetite:
+        data = [[
+            _t("reports.tprm.h_code", lang), _t("reports.treatment.h_asset", lang),
+            _t("reports.treatment.h_option", lang), _t("reports.treatment.h_progress", lang),
+            _t("reports.treatment.h_due", lang), _t("reports.treatment.h_owner", lang),
+        ]]
+        for r in sorted(above_appetite, key=lambda x: -(x.residual_level or 0))[:60]:
+            due_txt = r.treatment_due_date.strftime("%d/%m/%y") if r.treatment_due_date else "-"
+            overdue = bool(
+                r.treatment_due_date and r.treatment_due_date.replace(tzinfo=timezone.utc) < now
+                and r.status not in (RiskStatus.TREATED, RiskStatus.ACCEPTED, RiskStatus.CLOSED)
+            )
+            if overdue:
+                due_txt = _t("reports.tprm.overdue", lang, date=due_txt)
+            data.append([
+                r.code, _safe(r.asset.name if r.asset else "-", 32),
+                r.treatment_option.value if r.treatment_option else _t("reports.treatment.no_plan", lang),
+                f"{r.treatment_progress or 0}%", due_txt,
+                _safe(r.owner.full_name if r.owner else "-", 20),
+            ])
+        tbl = Table(data, repeatRows=1, colWidths=[18*mm, 42*mm, 26*mm, 18*mm, 28*mm, 30*mm])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(tbl)
+    else:
+        el.append(Paragraph(_t("reports.treatment.no_risks_above", lang), s["BodyBrand"]))
+
+    # ── Plan Director ─────────────────────────────────────────────────────
+    el.append(Spacer(1, 12))
+    el.append(Paragraph(_t("reports.treatment.plan_director_title", lang), s["H2Brand"]))
+    if initiatives:
+        programs = {p.id: p for p in filter_by_org(
+            db.query(StrategicProgram), StrategicProgram, current_user).all()}
+        idata = [[
+            _t("reports.tprm.h_code", lang), _t("reports.treatment.h_program", lang),
+            _t("reports.treatment.h_title", lang), _t("reports.tprm.h_status", lang),
+            _t("reports.treatment.h_health", lang), _t("reports.treatment.h_progress", lang),
+            _t("reports.treatment.h_points", lang),
+        ]]
+        for i in sorted(initiatives, key=lambda x: x.code):
+            points = sum(
+                max(0, link.baseline_residual_level - link.projected_residual_level)
+                for link in i.risk_links
+                if link.baseline_residual_level is not None and link.projected_residual_level is not None
+            )
+            idata.append([
+                i.code, _safe(programs[i.program_id].name if i.program_id in programs else "-", 22),
+                _safe(i.title, 34), i.status, i.health, f"{i.progress or 0}%", str(points),
+            ])
+        itbl = Table(idata, repeatRows=1, colWidths=[16*mm, 26*mm, 40*mm, 20*mm, 16*mm, 16*mm, 16*mm])
+        itbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_ORANGE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(itbl)
+    else:
+        el.append(Paragraph(_t("reports.treatment.no_initiatives", lang), s["BodyBrand"]))
+
+    # ── Verificaciones de cierre del periodo ────────────────────────────
+    verified = [i for i in initiatives if i.verification]
+    if verified:
+        el.append(Spacer(1, 12))
+        el.append(Paragraph(_t("reports.treatment.verifications_title", lang), s["H2Brand"]))
+        for i in verified[:15]:
+            v = i.verification
+            gaps = v.get("gaps") or []
+            gap_txt = "; ".join(
+                (f"{g.get('code')}: objetivo {g.get('target')}, alcanzado {g.get('achieved')}"
+                 if g.get("type") == "control" else
+                 f"{g.get('code')}: proyectado {g.get('projected')}, alcanzado {g.get('achieved')}")
+                for g in gaps[:5]
+            ) or _t("reports.treatment.no_gaps", lang)
+            el.append(Paragraph(
+                f"<b>{_safe(i.code)} — {_safe(i.title)}</b>: "
+                f"{v.get('controls', {}).get('met', 0)}/{v.get('controls', {}).get('total', 0)} "
+                f"{_t('reports.treatment.controls_met_label', lang)}, "
+                f"{v.get('risks', {}).get('met', 0)}/{v.get('risks', {}).get('total', 0)} "
+                f"{_t('reports.treatment.risks_met_label', lang)}. {_safe(gap_txt, 200)}",
+                s["BodyBrand"]))
+
+    # ── Riesgos aceptados ────────────────────────────────────────────────
+    accepted = [r for r in risks if r.treatment_option == TreatmentOption.RETENTION and r.accepted_at]
+    if accepted:
+        el.append(Spacer(1, 12))
+        el.append(Paragraph(_t("reports.treatment.accepted_title", lang), s["H2Brand"]))
+        adata = [[
+            _t("reports.tprm.h_code", lang), _t("reports.treatment.h_asset", lang),
+            _t("reports.treatment.h_justification", lang), _t("reports.treatment.h_review_date", lang),
+        ]]
+        for r in accepted[:40]:
+            adata.append([
+                r.code, _safe(r.asset.name if r.asset else "-", 24),
+                _safe(r.acceptance_justification or "-", 60),
+                r.acceptance_review_date.strftime("%d/%m/%y") if r.acceptance_review_date else "-",
+            ])
+        atbl = Table(adata, repeatRows=1, colWidths=[18*mm, 30*mm, 80*mm, 24*mm])
+        atbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(atbl)
+
+    # ── Tareas vencidas ──────────────────────────────────────────────────
+    overdue_tasks = filter_by_org(db.query(TreatmentTask), TreatmentTask, current_user).filter(
+        TreatmentTask.due_date.isnot(None), TreatmentTask.due_date < now,
+        TreatmentTask.status != TaskStatus.DONE,
+    ).order_by(TreatmentTask.due_date.asc()).limit(20).all()
+    if overdue_tasks:
+        el.append(Spacer(1, 12))
+        el.append(Paragraph(_t("reports.treatment.overdue_tasks_title", lang), s["H2Brand"]))
+        tdata = [[
+            _t("reports.tprm.h_code", lang), _t("reports.treatment.h_title", lang),
+            _t("reports.treatment.h_due", lang), _t("reports.treatment.h_owner", lang),
+        ]]
+        for tk in overdue_tasks:
+            tdata.append([
+                tk.code, _safe(tk.title, 50), tk.due_date.strftime("%d/%m/%y"),
+                _safe(tk.assigned_to.full_name if tk.assigned_to else "-", 24),
+            ])
+        ttbl = Table(tdata, repeatRows=1, colWidths=[18*mm, 70*mm, 24*mm, 34*mm])
+        ttbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_ORANGE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(ttbl)
+
+    return _pdf_response(el, "plan_tratamiento.pdf", brand, lang)
+
+
+# ============================================================
 # Informes generados por IA
 # ============================================================
 

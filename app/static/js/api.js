@@ -219,6 +219,8 @@ const Api = {
     exportCsv: () => Api.download('/api/risks/export/csv', `riesgos_${new Date().toISOString().slice(0,10)}.csv`),
     importTemplate: () => Api.download('/api/risks/import/template', 'risks_template.csv'),
     importCsv: (file) => Api.postFile('/api/risks/import', file),
+    treatmentBoard: () => Api.get('/api/risks/treatment-board'),
+    aiTreatmentPlan: (id) => Api.post('/api/risks/' + id + '/ai-treatment-plan', {}),
   },
   users: {
     list: () => Api.get('/api/users/'),
@@ -324,6 +326,48 @@ const Api = {
     update: (id, d) => Api.patch('/api/tasks/' + id, d),
     del: (id) => Api.del('/api/tasks/' + id),
     summary: () => Api.get('/api/tasks/stats/summary'),
+  },
+  initiatives: {
+    list: (q) => Api.get('/api/initiatives/', q),
+    get: (id) => Api.get('/api/initiatives/' + id),
+    create: (d) => Api.post('/api/initiatives/', d),
+    update: (id, d) => Api.patch('/api/initiatives/' + id, d),
+    del: (id) => Api.del('/api/initiatives/' + id),
+    stats: () => Api.get('/api/initiatives/stats'),
+    burndown: () => Api.get('/api/initiatives/burndown'),
+    reproject: (id) => Api.post('/api/initiatives/' + id + '/reproject', {}),
+    verify: (id) => Api.post('/api/initiatives/' + id + '/verify', {}),
+    programs: {
+      list: () => Api.get('/api/initiatives/programs'),
+      create: (d) => Api.post('/api/initiatives/programs', d),
+      update: (id, d) => Api.patch('/api/initiatives/programs/' + id, d),
+      del: (id) => Api.del('/api/initiatives/programs/' + id),
+    },
+    objectives: {
+      create: (iniId, d) => Api.post(`/api/initiatives/${iniId}/objectives`, d),
+      update: (iniId, id, d) => Api.patch(`/api/initiatives/${iniId}/objectives/${id}`, d),
+      del: (iniId, id) => Api.del(`/api/initiatives/${iniId}/objectives/${id}`),
+    },
+    controlTargets: {
+      create: (iniId, d) => Api.post(`/api/initiatives/${iniId}/control-targets`, d),
+      del: (iniId, id) => Api.del(`/api/initiatives/${iniId}/control-targets/${id}`),
+    },
+    risks: {
+      link: (iniId, d) => Api.post(`/api/initiatives/${iniId}/risks`, d),
+      unlink: (iniId, riskId) => Api.del(`/api/initiatives/${iniId}/risks/${riskId}`),
+    },
+    log: {
+      add: (iniId, d) => Api.post(`/api/initiatives/${iniId}/log`, d),
+    },
+    import: (file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return Api.req('/api/initiatives/import', { method: 'POST', body: fd });
+    },
+    importConfirm: (d) => Api.post('/api/initiatives/import/confirm', d),
+    draftForRisk: (riskIds) => Api.post('/api/initiatives/draft-for-risk', { risk_ids: riskIds }),
+    draftConfirm: (d) => Api.post('/api/initiatives/draft-for-risk/confirm', d),
+    draftDiscard: (d) => Api.post('/api/initiatives/draft-for-risk/discard', d),
   },
   policies: {
     list: (q) => Api.get('/api/policies/', q),

@@ -931,12 +931,16 @@ const ViewRisks = {
       actions: canEdit ? `
         <button class="btn" id="m-cancel">${t('common.close')}</button>
         ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie de causas y consecuencias">Bow-Tie</button>' : ''}
+        ${id ? `<button class="btn btn-ghost" id="m-treatment" title="${t('hub.risk.treatment')}">${t('hub.risk.treatment')}</button>` : ''}
         ${id ? `<button class="btn btn-ghost" id="m-clone" title="Crear una copia de este riesgo">${t('common.duplicate')}</button>` : ''}
         ${id ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
         <button class="btn btn-primary" id="m-save">${t('common.save')}</button>
       ` : `<button class="btn" id="m-cancel">${t('common.close')}</button>
         ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie">Bow-Tie</button>' : ''}`
     });
+    if (id && document.getElementById('m-treatment')) {
+      document.getElementById('m-treatment').onclick = () => { location.hash = '/risk-hub/treatment'; };
+    }
 
     document.getElementById('m-cancel').onclick = UI.closeModal;
 

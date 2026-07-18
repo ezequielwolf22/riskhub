@@ -31,6 +31,8 @@ const ViewRiskHub = {
       label: t('nav.risks_assets'),
       tabs: [
         { id: 'risks', label: t('hub.risk.risks'), view: ViewRisks, route: 'risks' },
+        { id: 'treatment', label: t('hub.risk.treatment'), view: ViewTreatment, route: 'treatment' },
+        { id: 'plan-director', label: t('hub.risk.plan_director'), view: ViewPlanDirector, route: 'plan-director' },
         { id: 'assets', label: t('hub.risk.assets'), view: ViewAssets, route: 'assets' },
         { id: 'threats', label: t('hub.risk.threats'), view: ViewThreats },
         { id: 'vulnerabilities', label: t('hub.risk.vulnerabilities'), view: ViewVulns },

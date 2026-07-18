@@ -1035,6 +1035,7 @@ class TaskIn(BaseModel):
     priority: TaskPriority = TaskPriority.MEDIUM
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
+    initiative_id: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -1046,6 +1047,7 @@ class TaskUpdate(BaseModel):
     priority: Optional[TaskPriority] = None
     due_date: Optional[datetime] = None
     notes: Optional[str] = None
+    initiative_id: Optional[int] = None
 
 
 class TaskOut(ORMBase):
@@ -1060,10 +1062,273 @@ class TaskOut(ORMBase):
     priority: TaskPriority
     due_date: Optional[datetime]
     notes: Optional[str]
+    initiative_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     risk: Optional["RiskOut"] = None
     assigned_to: Optional["UserOut"] = None
+
+
+# ---------- PLAN DIRECTOR (v6.3.0) ----------
+
+class ProgramIn(BaseModel):
+    name: str
+    description: Optional[str] = None
+    area: Optional[str] = None
+    responsible_id: Optional[int] = None
+    budget: Optional[float] = None
+    budget_approved: Optional[float] = None
+
+
+class ProgramUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    area: Optional[str] = None
+    responsible_id: Optional[int] = None
+    budget: Optional[float] = None
+    budget_approved: Optional[float] = None
+
+
+class ProgramOut(ORMBase):
+    id: int
+    code: str
+    name: str
+    description: Optional[str]
+    area: Optional[str]
+    responsible_id: Optional[int]
+    responsible_name: Optional[str] = None
+    budget: Optional[float]
+    budget_approved: Optional[float]
+    initiatives_count: int = 0
+    derived_status: str = "draft"
+    created_at: datetime
+    updated_at: datetime
+
+
+class ObjectiveIn(BaseModel):
+    definition: str
+    status: Literal["pending", "ongoing", "completed", "cancelled"] = "pending"
+    confidence: Literal["high", "medium", "low"] = "medium"
+    owner_id: Optional[int] = None
+    collaborator: Optional[str] = None
+    target_date: Optional[datetime] = None
+    progress: int = Field(default=0, ge=0, le=100)
+
+
+class ObjectiveUpdate(BaseModel):
+    definition: Optional[str] = None
+    status: Optional[Literal["pending", "ongoing", "completed", "cancelled"]] = None
+    confidence: Optional[Literal["high", "medium", "low"]] = None
+    owner_id: Optional[int] = None
+    collaborator: Optional[str] = None
+    target_date: Optional[datetime] = None
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
+
+
+class ObjectiveOut(ORMBase):
+    id: int
+    code: str
+    initiative_id: int
+    definition: str
+    status: str
+    confidence: str
+    owner_id: Optional[int]
+    collaborator: Optional[str]
+    target_date: Optional[datetime]
+    progress: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ControlTargetIn(BaseModel):
+    implementation_id: int
+    target_maturity: int = Field(ge=0, le=5)
+
+
+class ControlTargetOut(ORMBase):
+    id: int
+    initiative_id: int
+    implementation_id: int
+    control_code: Optional[str] = None
+    control_name: Optional[str] = None
+    baseline_maturity: Optional[int]
+    target_maturity: int
+    achieved_maturity: Optional[int]
+    current_maturity: Optional[int] = None
+    created_at: datetime
+
+
+class RiskLinkIn(BaseModel):
+    risk_id: int
+    rationale: Optional[str] = None
+
+
+class RiskLinkOut(ORMBase):
+    id: int
+    initiative_id: int
+    risk_id: int
+    risk_code: Optional[str] = None
+    asset_name: Optional[str] = None
+    threat_name: Optional[str] = None
+    origin: str
+    baseline_residual_level: Optional[int]
+    projected_residual_level: Optional[int]
+    current_residual_level: Optional[int] = None
+    achieved_residual_level: Optional[int]
+    rationale: Optional[str]
+    ai_confidence: Optional[float]
+    created_at: datetime
+
+
+class LogEntryIn(BaseModel):
+    entry_type: Literal["achievement", "risk", "next_step", "comment"]
+    text: str
+    objective_id: Optional[int] = None
+
+
+class LogEntryOut(ORMBase):
+    id: int
+    initiative_id: int
+    objective_id: Optional[int]
+    entry_type: str
+    text: str
+    author_id: Optional[int]
+    author_name: Optional[str] = None
+    created_at: datetime
+
+
+class InitiativeIn(BaseModel):
+    title: str
+    description: Optional[str] = None
+    program_id: Optional[int] = None
+    status: Literal["draft", "approved", "in_progress", "on_hold", "completed", "cancelled"] = "draft"
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    nist_function: Optional[Literal["govern", "identify", "protect", "detect", "respond", "recover"]] = None
+    owner_id: Optional[int] = None
+    scope: Literal["global", "regional"] = "global"
+    business_units: Optional[list[str]] = None
+    start_date: Optional[datetime] = None
+    target_date: Optional[datetime] = None
+    budget: Optional[float] = None
+    budget_approved: Optional[float] = None
+    expected_risk_reduction: Optional[str] = None
+
+
+class InitiativeUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    program_id: Optional[int] = None
+    status: Optional[Literal["draft", "approved", "in_progress", "on_hold", "completed", "cancelled"]] = None
+    priority: Optional[Literal["low", "medium", "high", "critical"]] = None
+    nist_function: Optional[Literal["govern", "identify", "protect", "detect", "respond", "recover"]] = None
+    owner_id: Optional[int] = None
+    scope: Optional[Literal["global", "regional"]] = None
+    business_units: Optional[list[str]] = None
+    start_date: Optional[datetime] = None
+    target_date: Optional[datetime] = None
+    budget: Optional[float] = None
+    budget_approved: Optional[float] = None
+    expected_risk_reduction: Optional[str] = None
+
+
+class InitiativeOut(ORMBase):
+    id: int
+    code: str
+    title: str
+    description: Optional[str]
+    program_id: Optional[int]
+    program_name: Optional[str] = None
+    status: str
+    health: str
+    health_reasons: Optional[list[str]] = None
+    priority: str
+    nist_function: Optional[str]
+    owner_id: Optional[int]
+    owner_name: Optional[str] = None
+    scope: str
+    business_units: Optional[list[str]]
+    start_date: Optional[datetime]
+    target_date: Optional[datetime]
+    completed_at: Optional[datetime]
+    progress: int
+    budget: Optional[float]
+    budget_approved: Optional[float]
+    expected_risk_reduction: Optional[str]
+    source: str
+    ai_generated: bool
+    ai_rationale: Optional[str]
+    verification: Optional[dict] = None
+    risks_count: int = 0
+    objectives_count: int = 0
+    tasks_total: int = 0
+    tasks_done: int = 0
+    projected_reduction_points: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class InitiativeDetailOut(InitiativeOut):
+    objectives: list[ObjectiveOut] = []
+    control_targets: list[ControlTargetOut] = []
+    risk_links: list[RiskLinkOut] = []
+    log_entries: list[LogEntryOut] = []
+    tasks: list[TaskOut] = []
+
+
+# ---------- Plan Director: import IA (v6.3.0) ----------
+
+class ImportControlTargetIn(BaseModel):
+    implementation_id: int
+    target_maturity: int = Field(ge=0, le=5)
+
+
+class ImportObjectiveIn(BaseModel):
+    definition: str
+    target_date: Optional[datetime] = None
+
+
+class ImportInitiativeIn(BaseModel):
+    title: str
+    description: Optional[str] = None
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    nist_function: Optional[Literal["govern", "identify", "protect", "detect", "respond", "recover"]] = None
+    start_date: Optional[datetime] = None
+    target_date: Optional[datetime] = None
+    budget: Optional[float] = None
+    expected_risk_reduction: Optional[str] = None
+    control_targets: list[ImportControlTargetIn] = []
+    objectives: list[ImportObjectiveIn] = []
+
+
+class ImportProgramIn(BaseModel):
+    name: str
+    area: Optional[str] = None
+    initiatives: list[ImportInitiativeIn] = []
+
+
+class ImportConfirmIn(BaseModel):
+    programs: list[ImportProgramIn]
+
+
+class DraftForRiskIn(BaseModel):
+    risk_ids: list[int]
+
+
+class DraftConfirmIn(BaseModel):
+    """Borrador de iniciativa IA aceptado por el usuario (posiblemente editado)."""
+    title: str
+    description: Optional[str] = None
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    expected_risk_reduction: Optional[str] = None
+    rationale: Optional[str] = None
+    control_targets: list[ImportControlTargetIn] = []
+    risk_ids: list[int] = []
+
+
+class DraftDiscardIn(BaseModel):
+    """Borrador IA descartado: solo registra la senal de aprendizaje."""
+    risk_ids: list[int] = []
+    title: Optional[str] = None
 
 
 # ---------- SUPPLIER QUESTIONNAIRES (M4) ----------

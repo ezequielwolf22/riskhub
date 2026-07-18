@@ -1159,6 +1159,8 @@ class TreatmentTask(Base):
     priority = Column(Enum(TaskPriority), default=TaskPriority.MEDIUM)
     due_date = Column(DateTime, nullable=True)
     notes = Column(Text)
+    # v6.3.0 — Plan Director: tarea operativa de una iniciativa estrategica
+    initiative_id = Column(Integer, ForeignKey("strategic_initiatives.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
@@ -1166,6 +1168,168 @@ class TreatmentTask(Base):
     risk = relationship("Risk")
     assigned_to = relationship("User", foreign_keys=[assigned_to_id])
     created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+# ---------- PLAN DIRECTOR (v6.3.0) ----------
+#
+# Jerarquia: StrategicProgram -> StrategicInitiative -> InitiativeObjective (OKR)
+#            + InitiativeControlTarget (nucleo de la automatizacion: declara que
+#              control mejora y hasta que madurez; el sistema deriva los riesgos
+#              afectados via InitiativeRiskLink y proyecta el residual con el
+#              mismo motor determinista de risk_recalc_service).
+# Principio: este dominio NUNCA escribe residual_level ni maturity reales; solo
+# lee, proyecta (simulacion what-if) y verifica (compara proyectado vs real).
+
+class StrategicProgram(Base):
+    """Programa del plan estrategico de ciberseguridad (agrupa iniciativas)."""
+    __tablename__ = "strategic_programs"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    code = Column(String(32), unique=True, nullable=False)          # PRG-0001
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    area = Column(String(64))                    # GRC | Arquitectura | Operaciones | OT | Personas...
+    responsible_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    budget = Column(Float, nullable=True)
+    budget_approved = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    responsible = relationship("User", foreign_keys=[responsible_id])
+    initiatives = relationship("StrategicInitiative", back_populates="program")
+
+
+class StrategicInitiative(Base):
+    """Iniciativa del plan director. Declara que controles mejora y hasta que
+    madurez; el sistema deriva los riesgos afectados y el residual proyectado.
+    NUNCA modifica el residual real de un riesgo."""
+    __tablename__ = "strategic_initiatives"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    code = Column(String(32), unique=True, nullable=False)          # INI-0001
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    program_id = Column(Integer, ForeignKey("strategic_programs.id"), nullable=True, index=True)
+    status = Column(String(16), default="draft", index=True)        # draft|approved|in_progress|on_hold|completed|cancelled
+    health = Column(String(16), default="ok")                       # ok|at_risk|blocked — computado, no editable via API
+    health_reasons = Column(JSON, nullable=True)                    # ["Fecha objetivo vencida", ...]
+    priority = Column(String(16), default="medium")                 # low|medium|high|critical
+    nist_function = Column(String(16), nullable=True)               # govern|identify|protect|detect|respond|recover
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    scope = Column(String(16), default="global")                    # global|regional
+    business_units = Column(JSON, nullable=True)                    # ["BU Iberia", ...] texto libre
+    start_date = Column(DateTime, nullable=True)
+    target_date = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    progress = Column(Integer, default=0)                           # 0-100 derivado de OKRs/tareas
+    budget = Column(Float, nullable=True)
+    budget_approved = Column(Float, nullable=True)
+    expected_risk_reduction = Column(Text)                          # narrativa
+    source = Column(String(16), default="manual")                   # manual|import|ai_draft
+    source_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
+    ai_generated = Column(Boolean, default=False)
+    ai_rationale = Column(Text, nullable=True)
+    verification = Column(JSON, nullable=True)                      # resultado de verify_initiative al completar
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    program = relationship("StrategicProgram", back_populates="initiatives")
+    owner = relationship("User", foreign_keys=[owner_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    objectives = relationship("InitiativeObjective", back_populates="initiative",
+                              cascade="all, delete-orphan")
+    control_targets = relationship("InitiativeControlTarget", back_populates="initiative",
+                                   cascade="all, delete-orphan")
+    risk_links = relationship("InitiativeRiskLink", back_populates="initiative",
+                              cascade="all, delete-orphan")
+    log_entries = relationship("InitiativeLogEntry", back_populates="initiative",
+                               cascade="all, delete-orphan")
+
+
+class InitiativeObjective(Base):
+    """Objetivo medible (OKR) de una iniciativa del plan director."""
+    __tablename__ = "initiative_objectives"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    initiative_id = Column(Integer, ForeignKey("strategic_initiatives.id"), nullable=False, index=True)
+    code = Column(String(32), nullable=False)                       # OKR-0001
+    definition = Column(Text, nullable=False)
+    status = Column(String(16), default="pending")                  # pending|ongoing|completed|cancelled
+    confidence = Column(String(8), default="medium")                # high|medium|low
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    collaborator = Column(String(128), nullable=True)               # texto libre (puede no ser usuario del sistema)
+    target_date = Column(DateTime, nullable=True)
+    progress = Column(Integer, default=0)                           # 0-100
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    initiative = relationship("StrategicInitiative", back_populates="objectives")
+    owner = relationship("User", foreign_keys=[owner_id])
+
+
+class InitiativeControlTarget(Base):
+    """Control que la iniciativa mejora + madurez objetivo. Nucleo de la
+    automatizacion: de aqui se derivan los riesgos afectados (auto_link_risks)
+    y la proyeccion what-if del residual (project_initiative)."""
+    __tablename__ = "initiative_control_targets"
+    __table_args__ = (UniqueConstraint("initiative_id", "implementation_id",
+                                       name="uq_initiative_impl"),)
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    initiative_id = Column(Integer, ForeignKey("strategic_initiatives.id"), nullable=False, index=True)
+    implementation_id = Column(Integer, ForeignKey("control_implementations.id", ondelete="CASCADE"),
+                               nullable=False, index=True)
+    baseline_maturity = Column(Integer, nullable=True)              # sellada al crear el target
+    target_maturity = Column(Integer, nullable=False)               # 0..5
+    achieved_maturity = Column(Integer, nullable=True)              # sellada por verify_initiative
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    initiative = relationship("StrategicInitiative", back_populates="control_targets")
+    implementation = relationship("ControlImplementation")
+
+
+class InitiativeRiskLink(Base):
+    """Riesgo afectado por una iniciativa. origin='auto' cuando el sistema lo
+    deriva de los control targets (nunca se crea a mano ni se puede borrar a mano)."""
+    __tablename__ = "initiative_risk_links"
+    __table_args__ = (UniqueConstraint("initiative_id", "risk_id", name="uq_initiative_risk"),)
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    initiative_id = Column(Integer, ForeignKey("strategic_initiatives.id"), nullable=False, index=True)
+    risk_id = Column(Integer, ForeignKey("risks.id", ondelete="CASCADE"), nullable=False, index=True)
+    origin = Column(String(16), default="manual")                   # auto|manual|ai_import|ai_draft
+    baseline_residual_level = Column(Integer, nullable=True)        # sellado al vincular
+    projected_residual_level = Column(Integer, nullable=True)       # calculado por project_initiative
+    projected_at = Column(DateTime, nullable=True)
+    achieved_residual_level = Column(Integer, nullable=True)        # sellado por verify_initiative
+    rationale = Column(Text)
+    ai_confidence = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    initiative = relationship("StrategicInitiative", back_populates="risk_links")
+    risk = relationship("Risk")
+
+
+class InitiativeLogEntry(Base):
+    """Bitacora de la iniciativa: eventos del sistema, notas humanas y
+    resumenes de IA. Los empleados no redactan actas de avance manualmente:
+    el sistema las va escribiendo (verificacion, hitos de riesgo, tareas)."""
+    __tablename__ = "initiative_log_entries"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    initiative_id = Column(Integer, ForeignKey("strategic_initiatives.id"), nullable=False, index=True)
+    objective_id = Column(Integer, ForeignKey("initiative_objectives.id"), nullable=True)
+    entry_type = Column(String(16), nullable=False)  # achievement|risk|next_step|comment|system|ai_summary
+    text = Column(Text, nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # NULL = sistema/IA
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    initiative = relationship("StrategicInitiative", back_populates="log_entries")
+    author = relationship("User", foreign_keys=[author_id])
 
 
 # ---------- POLITICAS (M2) ----------

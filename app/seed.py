@@ -829,6 +829,9 @@ def _migrate_columns() -> None:
             "app_migrations",
             "name",
         ),
+        # v6.3.0 — Plan Director: tarea operativa vinculada a una iniciativa estrategica
+        ("ALTER TABLE treatment_tasks ADD COLUMN initiative_id INTEGER REFERENCES strategic_initiatives(id)",
+         "treatment_tasks", "initiative_id"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los

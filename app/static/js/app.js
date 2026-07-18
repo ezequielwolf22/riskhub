@@ -31,6 +31,8 @@ const LegacyRedirects = {
   executive: 'home/executive',
   heatmap: 'home/heatmap',
   risks: 'risk-hub/risks',
+  treatment: 'risk-hub/treatment',
+  'plan-director': 'risk-hub/plan-director',
   assets: 'risk-hub/assets',
   threats: 'risk-hub/threats',
   vulnerabilities: 'risk-hub/vulnerabilities',

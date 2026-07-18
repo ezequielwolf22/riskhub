@@ -12,6 +12,8 @@ const ViewGuide = {
     { id: 'assets', title: 'Inventario de activos', icon: '🗄️' },
     { id: 'threats', title: 'Amenazas y vulnerabilidades', icon: '🔍' },
     { id: 'risks', title: 'Gestion de riesgos', icon: '📊' },
+    { id: 'treatment', title: 'Cockpit de Tratamiento', icon: '🧭' },
+    { id: 'plan-director', title: 'Plan Director', icon: '🗺️' },
     { id: 'kris', title: 'KRIs — Indicadores de riesgo', icon: '📈' },
     { id: 'calendar', title: 'Calendario', icon: '📅' },
     { id: 'controls', title: 'Controles ISO 27002', icon: '🛡️' },
@@ -125,6 +127,8 @@ const ViewGuide = {
       assets: this._cAssets,
       threats: this._cThreats,
       risks: this._cRisks,
+      treatment: this._cTreatment,
+      'plan-director': this._cPlanDirector,
       kris: this._cKris,
       calendar: this._cCalendar,
       controls: this._cControls,
@@ -1868,6 +1872,42 @@ const ViewGuide = {
     ${this._h('Indicadores del tablero')}
     ${this._p('La barra de estadisticas superior muestra: total de tareas, tareas en progreso, tareas bloqueadas y tareas vencidas (fecha limite pasada y no completadas). El badge naranja en el sidebar del menu lateral indica el numero de tareas vencidas activas.')}
     ${this._tip('<strong>Consejo:</strong> vincula cada tarea al riesgo correspondiente para poder tener trazabilidad completa desde el riesgo hasta la accion ejecutada. Esta trazabilidad es requerida en auditorias ISO 27001.')}
+  `;},
+
+  get _cTreatment() { return `
+    ${this._p('El <strong>Cockpit de Tratamiento</strong> (pestana "Tratamiento" del hub Riesgos) es la vision operativa unica de todos los planes de tratamiento de la organizacion — ISO 27005 cl. 9 / ISO 27001 cl. 6.1.3e. Sustituye la necesidad de cruzar el registro de riesgos con el tablero de tareas: agrega KPIs, riesgos, progreso, vencimientos y cobertura del Plan Director en una sola pantalla.')}
+    ${this._h('Indicadores (KPIs)')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Sobre apetito:</strong> riesgos con residual por encima del apetito de riesgo configurado en Contexto.</li>
+      <li><strong>Sin plan:</strong> de los anteriores, cuantos no tienen ninguna opcion de tratamiento definida.</li>
+      <li><strong>Sin cobertura:</strong> sobre apetito, sin plan de tratamiento NI iniciativa activa del Plan Director — el verdadero hueco de gobierno.</li>
+      <li><strong>Planes vencidos:</strong> riesgos con fecha limite de tratamiento pasada y aun no tratados.</li>
+      <li><strong>Progreso medio:</strong> media del progreso de tratamiento (derivado de las tareas completadas) de los riesgos con plan.</li>
+      <li><strong>Pendientes de aceptacion:</strong> riesgos en flujo formal de aceptacion (ISO 27001 cl. 6.1.2e) esperando aprobacion.</li>
+    </ul>
+    ${this._h('Tablero por opcion de tratamiento')}
+    ${this._p('Los riesgos se agrupan en 5 secciones: <strong>Sin tratar</strong> (destacada en rojo — sobre apetito y sin decision tomada), <strong>Mitigar</strong>, <strong>Transferir</strong>, <strong>Evitar</strong> y <strong>Aceptar</strong>. Cada fila muestra el nivel residual actual y, si hay una iniciativa del Plan Director vinculada, el nivel proyectado que esa iniciativa promete alcanzar. Al hacer click en una fila se expande con el plan de tratamiento, sus tareas y accesos directos para crear tareas o editar el tratamiento sin salir de la pantalla.')}
+    ${this._h('Grafica de evolucion (burndown)')}
+    ${this._p('Combina el historico real (snapshots mensuales del riesgo residual total) con la curva proyectada segun las iniciativas activas del Plan Director. Es la misma logica que alimenta la pestana Plan Director, aqui en version compacta.')}
+    ${this._tip('<strong>Consejo:</strong> usa los KPIs como punto de entrada — clicar en "Planes vencidos" filtra el tablero automaticamente. Si "Sin cobertura" no baja de cero, es la senal de que faltan iniciativas estrategicas, no solo tareas operativas.')}
+  `;},
+
+  get _cPlanDirector() { return `
+    ${this._p('El <strong>Plan Director</strong> (pestana del hub Riesgos, disponible en planes Pro/Enterprise) organiza el esfuerzo estrategico de seguridad en <strong>Programas → Iniciativas → Objetivos (OKR)</strong>, y conecta cada iniciativa con los riesgos que reduce de forma <strong>automatica y verificable</strong> — el principio rector es maxima automatizacion, minima carga manual.')}
+    ${this._h('Como funciona la automatizacion')}
+    ${this._steps([
+      'Al crear una iniciativa, declaras que <strong>controles</strong> vas a mejorar y hasta que <strong>madurez objetivo</strong> (0-5).',
+      'El sistema deriva automaticamente que <strong>riesgos</strong> se ven afectados: los que ya usan esos controles como mitigantes, y los que el catalogo amenaza-control senala como candidatos (solo si estan sobre el apetito de riesgo).',
+      'El motor determinista <strong>simula</strong> el residual de cada riesgo asumiendo que el control alcanza la madurez objetivo — el mismo calculo que usa el analisis real, nunca una estimacion manual.',
+      'Cuando la iniciativa se marca <strong>Completada</strong>, el sistema <strong>verifica</strong>: compara la madurez y el residual realmente alcanzados contra lo proyectado, y deja el resultado (incluidos los huecos) visible para siempre.',
+    ])}
+    ${this._h('Reduccion esperada vs conseguida')}
+    ${this._p('Cada riesgo vinculado a una iniciativa muestra tres numeros: <strong>baseline</strong> (residual al vincular), <strong>proyectado</strong> (lo que promete la iniciativa) y <strong>actual</strong> (el residual real de hoy, que solo cambia cuando el motor recalcula tras una mejora real de controles). La diferencia entre proyectado y conseguido nunca se oculta: es la base de la verificacion de cierre.')}
+    ${this._h('Salud de la iniciativa')}
+    ${this._p('El indicador de salud (verde/ambar/rojo) no lo marca una persona: se calcula automaticamente cada semana a partir de senales objetivas (fecha objetivo vencida, sin actividad reciente, tareas u OKRs en riesgo, progreso insuficiente para el plazo consumido). Pasa el cursor sobre el indicador para ver las razones exactas.')}
+    ${this._h('Importar desde archivo')}
+    ${this._p('El boton "Importar desde archivo" permite subir un plan director existente (PDF, Word, Excel o texto). La IA estructura programas, iniciativas y objetivos, y propone que controles ISO 27002 mejora cada iniciativa — pero los <strong>riesgos afectados se derivan siempre de forma determinista</strong> despues de importar, nunca los inventa la IA. Todo queda como borrador editable antes de confirmar.')}
+    ${this._tip('<strong>Consejo:</strong> desde el panel "Riesgos sobre apetito sin cobertura" puedes generar un borrador de iniciativa completo (controles candidatos + proyeccion) para cualquier riesgo huerfano con un solo click.')}
   `;},
 
   get _cGdpr() { return `

@@ -19,6 +19,7 @@ const ViewFeatureFlags = (() => {
     module_alerts:           'alerts',
     module_cve:              'cve',
     module_awareness:        'awareness',
+    module_plan_director:    'plan-director',
   };
 
   let _flags = [];
