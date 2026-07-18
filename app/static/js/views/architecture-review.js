@@ -1,4 +1,4 @@
-/* Vista de revision de arquitectura de seguridad con IA. */
+/* Vista de revisión de arquitectura de seguridad con IA. */
 const ViewArchitectureReview = (() => {
 
   const RISK_COLORS = {

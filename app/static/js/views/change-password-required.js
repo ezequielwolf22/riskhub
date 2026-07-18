@@ -1,39 +1,39 @@
-/* Vista de cambio obligatorio de contrasena (primer login con OTP). */
+/* Vista de cambio obligatorio de contraseña (primer login con OTP). */
 const ViewChangePasswordRequired = {
   async render(main) {
     main.innerHTML = `
       <div style="display:flex;justify-content:center;align-items:flex-start;min-height:60vh;padding:40px 16px;">
         <div class="card" style="width:100%;max-width:460px;">
-          <h2 style="margin-bottom:6px;">Cambio de contrasena requerido</h2>
+          <h2 style="margin-bottom:6px;">Cambio de contraseña requerido</h2>
           <p style="color:var(--text-muted);margin-bottom:24px;font-size:14px;">
-            Tu cuenta fue creada con una contrasena temporal.
-            Debes establecer una nueva contrasena antes de continuar.
+            Tu cuenta fue creada con una contraseña temporal.
+            Debes establecer una nueva contraseña antes de continuar.
           </p>
           <div id="cpr-error" class="login-error" style="display:none;margin-bottom:16px;"></div>
           <div style="display:flex;flex-direction:column;gap:14px;">
             <div>
               <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;">
-                Contrasena actual (temporal) *
+                Contraseña actual (temporal) *
               </label>
               <input type="password" id="cpr-current" class="input" autocomplete="current-password">
             </div>
             <div>
               <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;">
-                Nueva contrasena *
+                Nueva contraseña *
               </label>
               <input type="password" id="cpr-new" class="input" autocomplete="new-password">
               <p style="font-size:11px;color:var(--text-subtle);margin:4px 0 0;">
-                Minimo 8 caracteres, con mayuscula, minuscula, digito y simbolo especial.
+                Mínimo 8 caracteres, con mayuscula, minuscula, digito y simbolo especial.
               </p>
             </div>
             <div>
               <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;">
-                Confirmar nueva contrasena *
+                Confirmar nueva contraseña *
               </label>
               <input type="password" id="cpr-confirm" class="input" autocomplete="new-password">
             </div>
             <button class="btn btn-primary" id="cpr-save" style="margin-top:8px;">
-              Establecer nueva contrasena
+              Establecer nueva contraseña
             </button>
           </div>
         </div>
@@ -74,10 +74,10 @@ const ViewChangePasswordRequired = {
         // Navegar al dashboard
         window.location.hash = '/dashboard';
       } catch (e) {
-        errBox.textContent = e.message || 'Error al cambiar la contrasena.';
+        errBox.textContent = e.message || 'Error al cambiar la contraseña.';
         errBox.style.display = 'block';
         btn.disabled = false;
-        btn.textContent = 'Establecer nueva contrasena';
+        btn.textContent = 'Establecer nueva contraseña';
       }
     };
   },

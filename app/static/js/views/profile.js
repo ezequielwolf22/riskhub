@@ -24,7 +24,7 @@ const ViewProfile = {
       <div id="profile-tab-content"><p class="muted">Cargando...</p></div>
       <div style="margin-top:32px;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-ghost" onclick="Auth.logout()" style="color:var(--text-muted);font-size:13px;">
-          Cerrar sesion
+          Cerrar sesión
         </button>
       </div>
     </div>`;
@@ -70,7 +70,7 @@ const ViewProfile = {
     el.innerHTML = `
       <div style="display:grid;gap:16px;">
         <div class="card" style="padding:20px;">
-          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">Informacion de cuenta</h3>
+          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">Información de cuenta</h3>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
               <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Nombre completo</label>
@@ -85,7 +85,7 @@ const ViewProfile = {
               <div><span class="badge badge-muted">${roleLabels[me.role] || me.role || '-'}</span></div>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Ultimo acceso</label>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Último acceso</label>
               <div style="font-size:14px;color:var(--text-muted);">${me.last_login_at ? new Date(me.last_login_at).toLocaleString('es-ES') : 'Sin datos'}</div>
             </div>
           </div>
@@ -105,7 +105,7 @@ const ViewProfile = {
         { label: 'Ver informes y cumplimiento', ok: true },
         { label: 'Crear o editar registros', ok: false },
         { label: 'Gestionar usuarios', ok: false },
-        { label: 'Configuracion de la organizacion', ok: false },
+        { label: 'Configuración de la organización', ok: false },
       ],
       analyst: [
         { label: 'Ver activos, riesgos y controles', ok: true },
@@ -113,20 +113,20 @@ const ViewProfile = {
         { label: 'Ver informes y cumplimiento', ok: true },
         { label: 'Acceso al agente IA', ok: true },
         { label: 'Gestionar usuarios', ok: false },
-        { label: 'Configuracion de la organizacion', ok: false },
+        { label: 'Configuración de la organización', ok: false },
       ],
       admin: [
-        { label: 'Acceso completo a todos los modulos', ok: true },
-        { label: 'Gestionar usuarios de la organizacion', ok: true },
-        { label: 'Configuracion de la organizacion', ok: true },
-        { label: 'Gestion de integraciones', ok: true },
+        { label: 'Acceso completo a todos los módulos', ok: true },
+        { label: 'Gestionar usuarios de la organización', ok: true },
+        { label: 'Configuración de la organización', ok: true },
+        { label: 'Gestión de integraciones', ok: true },
         { label: 'Crear organizaciones adicionales', ok: false },
       ],
       superadmin: [
-        { label: 'Acceso completo a todos los modulos', ok: true },
+        { label: 'Acceso completo a todos los módulos', ok: true },
         { label: 'Gestionar todas las organizaciones', ok: true },
-        { label: 'Gestion de licencias y planes', ok: true },
-        { label: 'Configuracion global del sistema', ok: true },
+        { label: 'Gestión de licencias y planes', ok: true },
+        { label: 'Configuración global del sistema', ok: true },
       ],
     };
     const list = perms[role] || [{ label: 'Sin permisos definidos', ok: false }];
@@ -150,24 +150,24 @@ const ViewProfile = {
     el.innerHTML = `
       <div style="display:grid;gap:16px;">
         <div class="card" style="padding:20px;">
-          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">Contrasena</h3>
-          <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Cambia tu contrasena de acceso. Debe tener al menos 8 caracteres.</p>
-          <button class="btn btn-secondary" onclick="ViewProfile._showChangePassword()">Cambiar contrasena</button>
+          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">Contraseña</h3>
+          <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Cambia tu contraseña de acceso. Debe tener al menos 8 caracteres.</p>
+          <button class="btn btn-secondary" onclick="ViewProfile._showChangePassword()">Cambiar contraseña</button>
           <div id="change-password-form" style="display:none;margin-top:16px;display:grid;gap:10px;">
             <div>
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Contrasena actual *</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Contraseña actual *</label>
               <input class="input" type="password" id="p-cur" style="max-width:360px;">
             </div>
             <div>
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Nueva contrasena *</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Nueva contraseña *</label>
               <input class="input" type="password" id="p-new" style="max-width:360px;">
             </div>
             <div>
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Repetir nueva contrasena *</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Repetir nueva contraseña *</label>
               <input class="input" type="password" id="p-new2" style="max-width:360px;">
             </div>
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-primary" onclick="ViewProfile._savePassword()">Guardar contrasena</button>
+              <button class="btn btn-primary" onclick="ViewProfile._savePassword()">Guardar contraseña</button>
               <button class="btn btn-ghost" onclick="ViewProfile._hideChangePassword()">Cancelar</button>
             </div>
           </div>
@@ -176,7 +176,7 @@ const ViewProfile = {
         <div class="card" style="padding:20px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
             <div>
-              <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px;">Autenticacion de dos factores (MFA)</h3>
+              <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px;">Autenticación de dos factores (MFA)</h3>
               <p style="font-size:13px;color:var(--text-muted);margin:0;">
                 ${mfaActive
                   ? '<span style="color:var(--success-color,#22c55e);font-weight:600;">&#10003; Activo</span> — Tu cuenta esta protegida con un autenticador.'
@@ -194,7 +194,7 @@ const ViewProfile = {
         </div>
       </div>`;
 
-    // Mostrar el form de contrasena si estaba visible
+    // Mostrar el form de contraseña si estaba visible
     if (ViewProfile._passwordFormVisible) {
       const form = document.getElementById('change-password-form');
       if (form) form.style.display = 'grid';
@@ -227,10 +227,10 @@ const ViewProfile = {
     const nw2 = (document.getElementById('p-new2') || {}).value || '';
     if (!cur || !nw) { UI.toast('Completa todos los campos', 'error'); return; }
     if (nw !== nw2) { UI.toast('Las contrasenas no coinciden', 'error'); return; }
-    if (nw.length < 8) { UI.toast('Minimo 8 caracteres', 'error'); return; }
+    if (nw.length < 8) { UI.toast('Mínimo 8 caracteres', 'error'); return; }
     try {
       await Api.changePassword({ current_password: cur, new_password: nw });
-      UI.toast('Contrasena cambiada correctamente', 'success');
+      UI.toast('Contraseña cambiada correctamente', 'success');
       ViewProfile._passwordFormVisible = false;
       const content = document.getElementById('profile-tab-content');
       if (content) ViewProfile._renderSeguridad(content);
@@ -238,11 +238,11 @@ const ViewProfile = {
   },
 
   async _setupMfa() {
-    // Paso 1: pedir contrasena actual para verificar identidad
+    // Paso 1: pedir contraseña actual para verificar identidad
     UI.modal('Activar MFA — Verificar identidad', `
       <div class="span2">
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Introduce tu contrasena actual para continuar.</p>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Contrasena actual *</label>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Introduce tu contraseña actual para continuar.</p>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Contraseña actual *</label>
         <input class="input" type="password" id="mfa-step1-pass" autocomplete="current-password">
       </div>
     `, {
@@ -251,7 +251,7 @@ const ViewProfile = {
     });
     document.getElementById('mfa-step1-btn').onclick = async () => {
       const pass = document.getElementById('mfa-step1-pass').value;
-      if (!pass) { UI.toast('Introduce tu contrasena', 'error'); return; }
+      if (!pass) { UI.toast('Introduce tu contraseña', 'error'); return; }
       try {
         const res = await Api.mfa.setup(pass);
         // res contiene secret y otpauth_url; generamos QR via API publica de Google Charts o mostramos el secreto manual
@@ -259,15 +259,15 @@ const ViewProfile = {
         const otpauthUrl = res.otpauth_url || '';
         // Generar QR con qrcodejs si disponible, sino mostrar secreto manual
         const qrHtml = `<canvas id="mfa-qr-canvas" style="display:block;margin:0 auto 12px;"></canvas>`;
-        UI.modal('Activar MFA — Escanear codigo', `
+        UI.modal('Activar MFA — Escanear código', `
           <div class="span2" style="text-align:center;">
-            <p style="font-size:13px;margin-bottom:12px;">Escanea con tu app de autenticacion (Google Authenticator, Authy, Microsoft Authenticator).</p>
+            <p style="font-size:13px;margin-bottom:12px;">Escanea con tu app de autenticación (Google Authenticator, Authy, Microsoft Authenticator).</p>
             ${qrHtml}
-            <p style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">O introduce el codigo manualmente en tu app:</p>
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">O introduce el código manualmente en tu app:</p>
             <code style="font-size:13px;font-weight:700;letter-spacing:.1em;background:var(--bg-2);padding:6px 12px;border-radius:6px;display:inline-block;margin-bottom:16px;">${UI.esc(secret)}</code>
           </div>
           <div class="span2">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Codigo de verificacion (6 digitos) *</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Código de verificación (6 digitos) *</label>
             <input class="input" type="text" id="mfa-verify-code" placeholder="123456" maxlength="6" inputmode="numeric" style="max-width:200px;">
           </div>
         `, {
@@ -290,7 +290,7 @@ const ViewProfile = {
         }, 50);
         document.getElementById('mfa-verify-btn').onclick = async () => {
           const code = document.getElementById('mfa-verify-code').value.trim();
-          if (!code || code.length !== 6) { UI.toast('Introduce el codigo de 6 digitos', 'error'); return; }
+          if (!code || code.length !== 6) { UI.toast('Introduce el código de 6 dígitos', 'error'); return; }
           try {
             await Api.mfa.verifySetup({ secret, code });
             UI.toast('MFA activado correctamente', 'success');
@@ -298,7 +298,7 @@ const ViewProfile = {
             ViewProfile._me = await Api.me();
             const content = document.getElementById('profile-tab-content');
             if (content) ViewProfile._renderSeguridad(content);
-          } catch (e) { UI.toast(e.message || 'Codigo incorrecto', 'error'); }
+          } catch (e) { UI.toast(e.message || 'Código incorrecto', 'error'); }
         };
       } catch (e) { UI.toast(e.message, 'error'); }
     };
@@ -313,7 +313,7 @@ const ViewProfile = {
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Idioma de la interfaz</label>
             <select class="input" id="pref-lang" style="max-width:240px;" onchange="ViewProfile._savePrefs()">
-              <option value="es" ${prefs.lang === 'es' ? 'selected' : ''}>Espanol</option>
+              <option value="es" ${prefs.lang === 'es' ? 'selected' : ''}>Español</option>
               <option value="en" ${prefs.lang === 'en' ? 'selected' : ''}>English</option>
             </select>
           </div>

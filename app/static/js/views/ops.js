@@ -100,7 +100,7 @@ const ViewOps = (() => {
     }
   }
 
-  // ---------- Refacturacion IA por organizacion (superadmin) ----------
+  // ---------- Refacturacion IA por organización (superadmin) ----------
 
   function _monthOptions() {
     const opts = [];

@@ -301,7 +301,7 @@ def checkout_policy(policy_id: int, request: Request, db: Session = Depends(get_
                 checked_at = checked_at.replace(tzinfo=timezone.utc)
             if (now - checked_at).total_seconds() < 4 * 3600:
                 user = db.query(User).filter(User.id == p.checked_out_by_id).first()
-                raise HTTPException(409, f"Documento en edicion por {user.email if user else 'otro usuario'}")
+                raise HTTPException(409, f"Documento en edición por {user.email if user else 'otro usuario'}")
 
     p.checked_out_by_id = current_user.id
     p.checked_out_at = now

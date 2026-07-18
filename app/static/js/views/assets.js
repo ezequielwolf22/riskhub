@@ -1,4 +1,4 @@
-/* Vista Activos: CRUD + import/export + analisis IA + agrupacion IA. */
+/* Vista Activos: CRUD + import/export + análisis IA + agrupación IA. */
 const ViewAssets = {
   _sortCol: 'code', _sortAsc: true,
   _pollTimer: null,
@@ -24,7 +24,7 @@ const ViewAssets = {
         <span id="inv-actions">
           <button class="btn" id="btn-export">${t('common.export')} CSV</button>
           <button class="btn" id="btn-template">${t('assets.template_btn')}</button>
-          <label class="btn" id="lbl-import" title="Acepta cualquier formato: CSV, XLSX, JSON, etc. La IA normaliza las columnas automaticamente">
+          <label class="btn" id="lbl-import" title="Acepta cualquier formato: CSV, XLSX, JSON, etc. La IA normaliza las columnas automáticamente">
             ${t('common.import')} (${t('common.all')})
             <input type="file" id="file-import" accept="*" multiple style="display:none;">
           </label>
@@ -137,7 +137,7 @@ const ViewAssets = {
       };
       ViewAssets._setupDrop(main);
 
-      // Confirmacion con coste estimado antes de lanzar un analisis masivo:
+      // Confirmación con coste estimado antes de lanzar un análisis masivo:
       // cuantos activos van de verdad (los grupos validados cubren miembros),
       // con que modelos y el coste aproximado en la API de IA.
       async function _confirmWithCost(prefix) {
@@ -165,11 +165,11 @@ const ViewAssets = {
             // reset-stuck resetea atascados y lanza pendientes en una sola llamada
             const r = await Api.assets.resetStuck();
             if (r.pending === 0 && r.stuck_reset === 0) {
-              UI.toast('Todos los activos ya estan analizados', 'info');
+              UI.toast('Todos los activos ya están analizados', 'info');
             } else {
               const stuckMsg = r.stuck_reset > 0 ? ` (${r.stuck_reset} atascados reseteados)` : '';
               UI.toast(
-                `Analisis iniciado para ${r.pending} activos pendientes${stuckMsg}.`,
+                `Análisis iniciado para ${r.pending} activos pendientes${stuckMsg}.`,
                 'success', 6000
               );
             }
@@ -234,7 +234,7 @@ const ViewAssets = {
 
     ViewAssets._reload();
 
-    // Detener el poll y limpiar la barra de seleccion cuando el usuario navegue fuera de esta seccion
+    // Detener el poll y limpiar la barra de selección cuando el usuario navegue fuera de esta seccion
     const _viewCleanupObserver = new MutationObserver(() => {
       if (!document.getElementById('asset-list')) {
         ViewAssets._stopPoll();
@@ -257,7 +257,7 @@ const ViewAssets = {
       ViewAssets._allAssets = data;
       ViewAssets._page = 1;
       ViewAssets._applyFiltersAndRender();
-      // Mostrar banner si ya hay errores de creditos
+      // Mostrar banner si ya hay errores de créditos
       const hasCredit = data.some(a =>
         a.ai_risk_status === 'error' &&
         (a.ai_risk_summary?.error || '').toLowerCase().includes('credito')
@@ -365,7 +365,7 @@ const ViewAssets = {
           <th style="width:32px;padding:4px 6px;" onclick="event.stopPropagation()">
             <input type="checkbox" id="chk-all" ${allPageSelected ? 'checked' : ''}
                    style="accent-color:var(--brand-purple);cursor:pointer;"
-                   title="Seleccionar todos en esta pagina">
+                   title="Seleccionar todos en esta página">
           </th>
           ${_th('code', t('risks.risk_code'))}${_th('name', t('common.name'))}${_th('type', t('common.type'))}
           <th title="${t('assets.confidentiality')}">C</th>
@@ -492,7 +492,7 @@ const ViewAssets = {
         b.disabled = true; b.textContent = '...';
         try {
           await Api.assets.analyze(id);
-          UI.toast('Analisis IA iniciado', 'success');
+          UI.toast('Análisis IA iniciado', 'success');
           ViewAssets._reload();
           ViewAssets._startPollIfNeeded();
         } catch (err) {
@@ -657,7 +657,7 @@ const ViewAssets = {
     const ids = [...ViewAssets._selectedIds];
     if (!ids.length) return;
     const ok = await UI.confirm(
-      `Eliminar ${ids.length} activo${ids.length !== 1 ? 's' : ''}?\n\nEsta accion no se puede deshacer. Los riesgos vinculados quedaran sin activo asociado.`
+      `Eliminar ${ids.length} activo${ids.length !== 1 ? 's' : ''}?\n\nEsta acción no se puede deshacer. Los riesgos vinculados quedaran sin activo asociado.`
     );
     if (!ok) return;
     const btn = document.getElementById('sel-delete');
@@ -728,7 +728,7 @@ const ViewAssets = {
         if (stillAnalysing === 0) {
           ViewAssets._stopPoll();
           ViewAssets._updateAnalysisBanner();
-          // Detectar errores de creditos al terminar el analisis
+          // Detectar errores de créditos al terminar el análisis
           const creditErrors = data.filter(a =>
             a.ai_risk_status === 'error' &&
             (a.ai_risk_summary?.error || '').toLowerCase().includes('credito')
@@ -760,8 +760,8 @@ const ViewAssets = {
         <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
       </svg>
       <span>
-        <strong>Sin creditos Anthropic:</strong> el analisis se ha detenido.
-        Recarga creditos en
+        <strong>Sin créditos Anthropic:</strong> el análisis se ha detenido.
+        Recarga créditos en
         <a href="https://console.anthropic.com/settings/billing" target="_blank"
            style="color:#92400E;font-weight:700;">console.anthropic.com/settings/billing</a>
         y luego pulsa <em>Analizar pendientes</em>.
@@ -804,11 +804,11 @@ const ViewAssets = {
           <div style="font-size:56px;opacity:.3;margin-bottom:16px;">&#128193;</div>
           <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px;">Sin grupos creados todavia</div>
           <div style="font-size:13px;margin-bottom:24px;">
-            Ve a la pestana "Agrupacion con IA" para analizar y proponer grupos automaticamente.
+            Ve a la pestaña "Agrupación con IA" para analizar y proponer grupos automáticamente.
           </div>
           <button class="btn btn-primary"
                   onclick="document.querySelector('[data-tab=grouping]')?.click()">
-            Ir a Agrupacion con IA
+            Ir a Agrupación con IA
           </button>
         </div>`;
       return;
@@ -850,7 +850,7 @@ const ViewAssets = {
         <span style="font-size:12px;color:var(--text-muted);line-height:1.4;">
           ${validated.length
             ? `Opcion B: el agente analiza ${validated.length} grupos en lugar de los activos individuales. Los riesgos se generan sobre el activo representativo del grupo.`
-            : 'Valida los grupos propuestos para habilitar el analisis de riesgo grupal.'}
+            : 'Valida los grupos propuestos para habilitar el análisis de riesgo grupal.'}
         </span>
       </div>` : ''}
       <div id="group-analysis-banner" style="margin-bottom:12px;"></div>
@@ -858,7 +858,7 @@ const ViewAssets = {
       ${proposed.length ? `
       <h4 style="font-size:11px;color:var(--text-muted);text-transform:uppercase;
                  letter-spacing:.6px;margin:0 0 10px;font-weight:700;">
-        Propuestos — pendientes de validacion (${proposed.length})
+        Propuestos — pendientes de validación (${proposed.length})
       </h4>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;margin-bottom:24px;">
         ${proposed.map(g => ViewAssets._groupResultCard(g, canEdit)).join('')}
@@ -867,7 +867,7 @@ const ViewAssets = {
       ${validated.length ? `
       <h4 style="font-size:11px;color:var(--text-muted);text-transform:uppercase;
                  letter-spacing:.6px;margin:0 0 10px;font-weight:700;">
-        Validados — listos para analisis de riesgo (${validated.length})
+        Validados — listos para análisis de riesgo (${validated.length})
       </h4>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;">
         ${validated.map(g => ViewAssets._groupResultCard(g, canEdit)).join('')}
@@ -905,7 +905,7 @@ const ViewAssets = {
         if (r.ok === false) {
           UI.toast(r.message || 'Sin grupos validados', 'info');
         } else {
-          UI.toast(r.message || 'Analisis de grupos iniciado', 'success', 6000);
+          UI.toast(r.message || 'Análisis de grupos iniciado', 'success', 6000);
           ViewAssets._startGroupPoll();
         }
       } catch (e) {
@@ -1099,7 +1099,7 @@ const ViewAssets = {
         </div>
       </div>
 
-      <!-- Descripcion y justificacion IA -->
+      <!-- Descripción y justificacion IA -->
       ${g.description || g.ai_rationale ? `
       <div style="padding:10px 14px;background:var(--bg-1);border-bottom:1px solid var(--border);font-size:12px;">
         ${g.description ? `<div style="color:var(--text);margin-bottom:4px;">${UI.esc(g.description)}</div>` : ''}
@@ -1107,7 +1107,7 @@ const ViewAssets = {
           Justificacion ISO 27005: ${UI.esc(g.ai_rationale)}</div>` : ''}
       </div>` : ''}
 
-      <!-- Valoracion CIA del grupo -->
+      <!-- Valoración CIA del grupo -->
       <div style="padding:8px 14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;
                   border-bottom:1px solid var(--border);background:var(--bg);">
         <span style="font-size:11px;color:var(--text-muted);font-weight:600;">Valores max.:</span>
@@ -1129,7 +1129,7 @@ const ViewAssets = {
                         title="${UI.esc(tip)}">${labels[s] || s}</span>`;
         })() : `
         <span style="margin-left:auto;font-size:11px;color:#92400E;">
-          Pendiente de validacion
+          Pendiente de validación
         </span>`}
       </div>
 
@@ -1175,12 +1175,12 @@ const ViewAssets = {
     }
   },
 
-  // ---------- TAB AGRUPACION CON IA (configuracion) ----------
+  // ---------- TAB AGRUPACIÓN CON IA (configuración) ----------
 
   async _renderGrouping() {
     const view = document.getElementById('grouping-view');
     if (!view) return;
-    view.innerHTML = '<div class="notice">Cargando configuracion...</div>';
+    view.innerHTML = '<div class="notice">Cargando configuración...</div>';
     try {
       const [cfg, groups] = await Promise.all([
         Api.assetGroups.getConfig(),
@@ -1202,7 +1202,7 @@ const ViewAssets = {
                         padding:12px 0;list-style:none;display:flex;align-items:center;gap:8px;
                         color:var(--brand-purple);">
           <span style="font-size:12px;transition:transform .2s;">&#9654;</span>
-          Criterios de agrupacion
+          Criterios de agrupación
           <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:4px;">
             (${cfg.criteria.filter(c => c.enabled).length} habilitados)
           </span>
@@ -1210,7 +1210,7 @@ const ViewAssets = {
         <div id="criteria-body" style="padding:0 0 16px 20px;">
           <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
             Selecciona los criterios que la IA usara para agrupar los activos.
-            El nivel 1 es el criterio principal; los niveles 2 y 3 refinan la agrupacion.
+            El nivel 1 es el criterio principal; los niveles 2 y 3 refinan la agrupación.
           </p>
           <div id="criteria-list" style="display:flex;flex-direction:column;gap:8px;"></div>
           ${canEdit ? `
@@ -1243,9 +1243,9 @@ const ViewAssets = {
       <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;
                   padding:14px 16px;font-size:13px;color:var(--text-muted);line-height:1.6;">
         <strong style="color:var(--text);">Como funciona:</strong>
-        La IA analiza todos los activos del inventario y los agrupa segun los criterios seleccionados.
-        Los grupos <em>propuestos</em> deben validarse en la pestana <strong>Grupos</strong> antes de
-        usarse en el analisis de riesgos.
+        La IA analiza todos los activos del inventario y los agrupa según los criterios seleccionados.
+        Los grupos <em>propuestos</em> deben validarse en la pestaña <strong>Grupos</strong> antes de
+        usarse en el análisis de riesgos.
         Los grupos <em>validados</em> generan un activo representativo que concentra el calculo de
         riesgos para todo el grupo (ISO 27005 Annex B.3).
       </div>
@@ -1329,8 +1329,8 @@ const ViewAssets = {
     btn.style.opacity = '0.7';
     try {
       const r = await Api.assetGroups.propose();
-      UI.toast(`Agrupacion completada: ${r.groups_created} grupos propuestos para ${r.assets_analyzed} activos`, 'success');
-      // Navegar a la pestana de resultados automaticamente
+      UI.toast(`Agrupación completada: ${r.groups_created} grupos propuestos para ${r.assets_analyzed} activos`, 'success');
+      // Navegar a la pestaña de resultados automáticamente
       document.querySelector('[data-tab=groups-results]')?.click();
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
     finally {
@@ -1350,7 +1350,7 @@ const ViewAssets = {
         <input id="grp-name" value="${UI.esc(g.name)}" style="width:100%;">
       </div>
       <div class="span2">
-        <label>Descripcion (opcional)</label>
+        <label>Descripción (opcional)</label>
         <textarea id="grp-desc" rows="2" style="width:100%;">${UI.esc(g.description || '')}</textarea>
       </div>
     `, {
@@ -1386,7 +1386,7 @@ const ViewAssets = {
     const g = groups.find(x => x.id === gid);
     const n = g ? g.member_count : '?';
     if (!await UI.confirm(
-      `Eliminar el grupo y sus ${n} activos?\n\nEsta accion borra permanentemente todos los activos del grupo del inventario. Los riesgos vinculados quedaran sin activo.`
+      `Eliminar el grupo y sus ${n} activos?\n\nEsta acción borra permanentemente todos los activos del grupo del inventario. Los riesgos vinculados quedaran sin activo.`
     )) return;
     try {
       const r = await Api.assetGroups.deleteWithAssets(gid);
@@ -1540,23 +1540,23 @@ const ViewAssets = {
         <input type="number" min="0" step="1000" id="f-monetary" value="${a.monetary_value || ''}" placeholder="ej. 50000">
       </div>
       <div class="span2">
-        <label>Software instalado <span style="font-weight:400;color:var(--text-muted);">(para correlacion CVE automatica)</span></label>
+        <label>Software instalado <span style="font-weight:400;color:var(--text-muted);">(para correlación CVE automática)</span></label>
         <input id="f-software-tags" class="input"
                value="${UI.esc((a.software_tags||[]).join(', '))}"
                placeholder="apache, nginx, openssl, mysql, windows, python... (separados por comas)">
         <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0;">
           Introduce los nombres de software/plataformas del activo. RiskHub los cruza con los
-          CPE de cada CVE para detectar vulnerabilidades aplicables automaticamente.
+          CPE de cada CVE para detectar vulnerabilidades aplicables automáticamente.
         </p>
       </div>
       <div class="span2">
-        <label>Valoracion de dimensiones de seguridad (0 = sin valor · 4 = critico)</label>
+        <label>Valoración de dimensiones de seguridad (0 = sin valor · 4 = crítico)</label>
         <p style="font-size:11px;color:var(--text-muted);margin:2px 0 10px;">
           MAGERIT v3 define 5 dimensiones: <strong>D</strong> Disponibilidad ·
           <strong>I</strong> Integridad · <strong>C</strong> Confidencialidad ·
           <strong>A</strong> Autenticidad · <strong>T</strong> Trazabilidad.
           ISO 27005 usa C/I/D (CIA). En modo MAGERIT/Combinado, estos valores determinan
-          automaticamente la consecuencia de riesgo.
+          automáticamente la consecuencia de riesgo.
         </p>
         <div id="diacat-preview" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px;">
           ${[
@@ -1672,7 +1672,7 @@ const ViewAssets = {
           UI.modal('Sugerencias de riesgo — IA', `
             <div class="span2">
               <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
-                Basado en el tipo de activo y el catalogo ISO 27005, el sistema identifica los
+                Basado en el tipo de activo y el catálogo ISO 27005, el sistema identifica los
                 escenarios de riesgo mas probables.
               </p>
               <div style="display:flex;flex-direction:column;gap:8px;">
@@ -1810,7 +1810,7 @@ const ViewAssets = {
     modal.innerHTML = `
     <div class="modal" style="max-width:520px;">
       <div class="modal-header">
-        <h2>Importacion completada</h2>
+        <h2>Importación completada</h2>
         <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">x</button>
       </div>
       <div class="modal-body">
@@ -1848,7 +1848,7 @@ const ViewAssets = {
             </button>
           </div>
           <p style="font-size:11px;color:#9D9D9D;margin:8px 0 0;">
-            <strong>Agrupar primero</strong> consolida activos similares y genera analisis de riesgos por grupo.
+            <strong>Agrupar primero</strong> consolida activos similares y genera análisis de riesgos por grupo.
             <strong>Analizar directo</strong> genera riesgos individuales para cada activo.
           </p>
         </div>` : ''}
@@ -1863,11 +1863,11 @@ const ViewAssets = {
       if (btn) btn.click();
       else {
         const r = await Api.assets.analyzeAll();
-        UI.toast(`Analisis IA lanzado para ${r.total} activos`, 'success');
+        UI.toast(`Análisis IA lanzado para ${r.total} activos`, 'success');
         ViewAssets._startPollIfNeeded();
       }
     } catch (e) {
-      UI.toast('Error lanzando analisis: ' + e.message, 'error');
+      UI.toast('Error lanzando análisis: ' + e.message, 'error');
     }
   },
 
@@ -1886,10 +1886,10 @@ const ViewAssets = {
                   box-shadow:0 8px 32px rgba(0,0,0,.2);">
         <div style="font-size:40px;margin-bottom:12px;">&#128193;</div>
         <div style="font-size:18px;font-weight:700;color:var(--brand-purple);">
-          Suelta aqui para importar
+          Suelta aquí para importar
         </div>
         <div style="font-size:13px;color:#9D9D9D;margin-top:6px;">
-          CSV, XLSX, JSON, TSV u otro — la IA normaliza las columnas automaticamente
+          CSV, XLSX, JSON, TSV u otro — la IA normaliza las columnas automáticamente
         </div>
       </div>`;
     document.body.appendChild(overlay);

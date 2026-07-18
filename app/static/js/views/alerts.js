@@ -103,7 +103,7 @@ const ViewAlerts = {
       </div>`;
   },
 
-  // Configuracion de umbral por tipo de evento — solo estos tipos muestran/usan el campo umbral.
+  // Configuración de umbral por tipo de evento — solo estos tipos muestran/usan el campo umbral.
   _THRESHOLD_CONFIG: {
     risk_critical: { min: 1, max: 8, def: 6 },
     risk_high: { min: 1, max: 8, def: 5 },
@@ -117,7 +117,7 @@ const ViewAlerts = {
     supplier_questionnaire: 'alerts.entity_supplier_questionnaire',
   },
 
-  // Ocultar/mostrar campo de umbral y bloque de condiciones segun el tipo de evento
+  // Ocultar/mostrar campo de umbral y bloque de condiciones según el tipo de evento
   _onTypeChange(sel) {
     const cfg = ViewAlerts._THRESHOLD_CONFIG[sel.value];
     const thresholdWrap = document.getElementById('r-threshold-wrap');
@@ -139,7 +139,7 @@ const ViewAlerts = {
     }
   },
 
-  // Actualiza el texto de ayuda de campos disponibles segun la entidad elegida (regla personalizada)
+  // Actualiza el texto de ayuda de campos disponibles según la entidad elegida (regla personalizada)
   _onEntityChange(sel) {
     const hintEl = document.getElementById('r-fields-hint');
     if (!hintEl) return;

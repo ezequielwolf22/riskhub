@@ -1,4 +1,4 @@
-/* Vista de hallazgos de proveedores — gestion completa con SLAs, impacto, causa raiz, acciones. */
+/* Vista de hallazgos de proveedores — gestión completa con SLAs, impacto, causa raiz, acciones. */
 const ViewVendorIssues = (() => {
 
   const SEV_LABELS = {
@@ -260,7 +260,7 @@ const ViewVendorIssues = (() => {
       supplierSlas = sup?.slas || [];
     }
 
-    // Items de accion actuales
+    // Items de acción actuales
     let actionItems = issue?.action_items || [];
 
     UI.modal(issue ? `${t('vendor.issues.edit')} ${issue.code}` : t('vendor.issues.new'), _formHtml(issue, supplierSlas, actionItems), {
@@ -268,7 +268,7 @@ const ViewVendorIssues = (() => {
                 <button class="btn btn-primary" id="vi-save-btn">${issue ? t('common.save_changes') : t('vendor.issues.new')}</button>`,
     });
 
-    // Actualizar SLAs al cambiar proveedor (solo en creacion)
+    // Actualizar SLAs al cambiar proveedor (solo en creación)
     if (!issue) {
       document.getElementById('vi-f-supplier').onchange = async (e) => {
         const sup = _suppliers.find(s => s.id == e.target.value);
@@ -276,11 +276,11 @@ const ViewVendorIssues = (() => {
         _renderSlaBreachwes(supplierSlas, []);
       };
     } else {
-      // En edicion los SLAs ya estan pre-renderizados — cablear checkboxes
+      // En edicion los SLAs ya están pre-renderizados — cablear checkboxes
       _wireSlaCheckboxes();
     }
 
-    // Boton + para añadir item de accion
+    // Boton + para añadir item de acción
     document.getElementById('vi-add-action')?.addEventListener('click', () => {
       const text = document.getElementById('vi-new-action-text')?.value?.trim();
       if (!text) return;
@@ -289,7 +289,7 @@ const ViewVendorIssues = (() => {
       if (document.getElementById('vi-new-action-text')) document.getElementById('vi-new-action-text').value = '';
     });
 
-    // Cablear items de accion ya pre-renderizados
+    // Cablear items de acción ya pre-renderizados
     if (actionItems.length) _wireActionItems(actionItems);
 
     document.getElementById('vi-save-btn').onclick = () => _save(issue?.id, supplierSlas, actionItems);
@@ -303,7 +303,7 @@ const ViewVendorIssues = (() => {
     const slaBreachesHtml = _slaBreachwesHtml(supplierSlas, issue?.sla_breaches || []);
 
     return `<div class="span2 form-grid" style="max-height:70vh;overflow-y:auto;padding-right:4px;">
-      <!-- Proveedor (solo en creacion) -->
+      <!-- Proveedor (solo en creación) -->
       ${!issue ? `
       <div class="span2">
         <label>${t('common.supplier')} *</label>
@@ -313,7 +313,7 @@ const ViewVendorIssues = (() => {
         </select>
       </div>` : `<input type="hidden" id="vi-f-supplier" value="${issue.supplier_id}">`}
 
-      <!-- Titulo y fuente -->
+      <!-- Título y fuente -->
       <div class="span2">
         <label>${t('common.title')} *</label>
         <input id="vi-f-title" class="input" value="${UI.esc(issue?.title||'')}" placeholder="${t('common.placeholder')}">
@@ -352,7 +352,7 @@ const ViewVendorIssues = (() => {
         <input type="date" id="vi-f-due" class="input">
       </div><div></div>`}
 
-      <!-- Descripcion -->
+      <!-- Descripción -->
       <div class="span2">
         <label>${t('common.description')}</label>
         <textarea id="vi-f-desc" class="input" rows="3" placeholder="${t('common.placeholder')}">${UI.esc(issue?.description||'')}</textarea>
@@ -382,7 +382,7 @@ const ViewVendorIssues = (() => {
         <textarea id="vi-f-plan" class="input" rows="3" placeholder="${t('common.placeholder')}">${UI.esc(issue?.remediation_plan||'')}</textarea>
       </div>
 
-      <!-- Items de accion -->
+      <!-- Items de acción -->
       <div class="span2">
         <label style="font-weight:700;">${t('common.actions')}</label>
         <div id="vi-action-items">${_actionItemsHtml(actionItems)}</div>
@@ -519,7 +519,7 @@ const ViewVendorIssues = (() => {
     // Recoger SLA breaches del DOM
     const slaBreaches = _collectSlaBreaches();
 
-    // Evidencias: una por linea
+    // Evidencias: una por línea
     const evidText = document.getElementById('vi-f-evidence')?.value || '';
     const evidenceRefs = evidText.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
       return l.startsWith('http') ? { name: l, url: l } : { name: l, url: null };

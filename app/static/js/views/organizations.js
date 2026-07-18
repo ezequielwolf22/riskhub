@@ -1,4 +1,4 @@
-/* Vista de gestion de organizaciones (solo superadmin). */
+/* Vista de gestión de organizaciones (solo superadmin). */
 const ViewOrganizations = (() => {
 
   let _orgs = [];
@@ -162,7 +162,7 @@ const ViewOrganizations = (() => {
               </div>
               <span style="font-size:13px;font-weight:500;">Requerir MFA para todos los usuarios</span>
             </label>
-            <span style="font-size:12px;color:var(--text-muted);">Los overrides individuales de cada usuario tienen prioridad. Si hay SSO configurado, el SSO es quien gestiona la autenticacion.</span>
+            <span style="font-size:12px;color:var(--text-muted);">Los overrides individuales de cada usuario tienen prioridad. Si hay SSO configurado, el SSO es quien gestiona la autenticación.</span>
           </div>
         </div>
         <div style="grid-column:1/-1;display:flex;gap:12px;justify-content:flex-end;">

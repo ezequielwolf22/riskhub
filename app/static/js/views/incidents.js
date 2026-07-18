@@ -1,4 +1,4 @@
-/* Vista de gestion de incidentes de seguridad (NIS2 / ISO 27001 A.16). */
+/* Vista de gestión de incidentes de seguridad (NIS2 / ISO 27001 A.16). */
 const ViewIncidents = (() => {
 
   const SEVERITY_LABELS = {
@@ -181,7 +181,7 @@ const ViewIncidents = (() => {
         </div>
         <div class="span2"><label>${t('common.description')}</label><textarea id="f-desc" class="input" rows="3">${UI.esc(v.description || '')}</textarea></div>
         <div><label>${t('incidents.detection_date')}</label><input type="datetime-local" id="f-detected" class="input" value="${v.detected_at ? v.detected_at.slice(0,16) : ''}"></div>
-        ${v.nis2_notification_sent_at ? `<div><label>${t('nis2.notification_deadline')}</label><input type="datetime-local" class="input" disabled value="${v.nis2_notification_sent_at.slice(0,16)}" title="Solo editable via endpoint de notificacion NIS2"></div>` : ''}
+        ${v.nis2_notification_sent_at ? `<div><label>${t('nis2.notification_deadline')}</label><input type="datetime-local" class="input" disabled value="${v.nis2_notification_sent_at.slice(0,16)}" title="Solo editable via endpoint de notificación NIS2"></div>` : ''}
         <div class="span2" style="display:flex;align-items:center;gap:8px;">
           <input type="checkbox" id="f-nis2-req" ${v.nis2_notification_required?'checked':''}>
           <label for="f-nis2-req" style="margin:0;cursor:pointer;">${t('incidents.nis2_notification')}</label>

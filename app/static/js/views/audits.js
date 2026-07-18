@@ -1,4 +1,4 @@
-/* Vista Auditoria Interna — ISO 27001 cl. 9.2. */
+/* Vista Auditoría Interna — ISO 27001 cl. 9.2. */
 const ViewAudits = (() => {
 
   function _getTypeLabels() {
@@ -62,7 +62,7 @@ const ViewAudits = (() => {
         </div>
       </div>
 
-      <!-- Zona de importacion colapsable -->
+      <!-- Zona de importación colapsable -->
       <div id="import-panel" style="display:none;margin-bottom:20px;">
         <div style="border:2px dashed var(--brand-purple);border-radius:12px;padding:24px;
                     background:var(--bg-2);text-align:center;cursor:pointer;transition:all .2s;"
@@ -802,10 +802,10 @@ const ViewAudits = (() => {
       if (!auditId) {
         const today = new Date().toISOString().slice(0, 10);
         const newAudit = await Api.audits.create({
-          title: `Analisis IA — ${file.name} (${today})`,
+          title: `Análisis IA — ${file.name} (${today})`,
           audit_type: 'internal',
           status: 'completed',
-          scope: 'Informe analizado automaticamente por el agente IA',
+          scope: 'Informe analizado automáticamente por el agente IA',
         });
         auditId = newAudit.id;
       }
@@ -987,12 +987,12 @@ const ViewAudits = (() => {
       if (isNc) {
         try {
           await Api.tasks.create({
-            title: `[Auditoria] ${finding.title}`,
+            title: `[Auditoría] ${finding.title}`,
             description: finding.recommendation || finding.description || null,
             assigned_to_id: ownerInt,
             due_date: dueDateIso,
             priority: finding.type === 'major_nc' ? 'high' : 'medium',
-            notes: `Generado desde analisis IA de auditoria #${auditId}`,
+            notes: `Generado desde análisis IA de auditoría #${auditId}`,
           });
           created.push(t('audits.ai_created_tasks', { count: 1 }));
         } catch (_) {}
@@ -1003,7 +1003,7 @@ const ViewAudits = (() => {
           const fd = new FormData();
           fd.append('file', opts.evidenceFile);
           fd.append('title', `Evidencia: ${finding.title}`);
-          fd.append('description', `Hallazgo de auditoria #${auditId}`);
+          fd.append('description', `Hallazgo de auditoría #${auditId}`);
           await Api.evidence.upload(fd);
         } catch (_) {}
       }
@@ -1061,12 +1061,12 @@ const ViewAudits = (() => {
 
           try {
             await Api.tasks.create({
-              title: `[Auditoria] ${title}`,
+              title: `[Auditoría] ${title}`,
               description: recommendation || description || null,
               assigned_to_id: ownerInt,
               due_date: dueDateIso,
               priority: f.type === 'major_nc' ? 'high' : 'medium',
-              notes: `Generado desde analisis IA de auditoria #${auditId}`,
+              notes: `Generado desde análisis IA de auditoría #${auditId}`,
             });
             tasksCreated++;
           } catch (_) {}
@@ -1077,7 +1077,7 @@ const ViewAudits = (() => {
             const fd = new FormData();
             fd.append('file', evidenceFile);
             fd.append('title', `Evidencia: ${title}`);
-            fd.append('description', `Hallazgo de auditoria #${auditId}`);
+            fd.append('description', `Hallazgo de auditoría #${auditId}`);
             await Api.evidence.upload(fd);
           } catch (_) {}
         }

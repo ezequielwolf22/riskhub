@@ -180,14 +180,14 @@ const ViewAiChat = (() => {
       create_nonconformity: '[NC]',
       update_task_status: '[tarea]',
       update_incident_status: '[incidente]',
-      create_policy_draft: '[politica]',
+      create_policy_draft: '[política]',
       create_supplier: '[proveedor]',
       register_evidence: '[evidencia]',
       store_uploaded_file: '[archivo]',
       run_ccm: '[CCM]',
       trigger_osint_scan: '[OSINT]',
     };
-    const icon = iconMap[action.action_name] || '[accion]';
+    const icon = iconMap[action.action_name] || '[acción]';
 
     card.innerHTML = `
       <div style="display:flex;align-items:flex-start;gap:8px;">
@@ -255,7 +255,7 @@ const ViewAiChat = (() => {
     if (!file) return;
     const MAX_MB = 20;
     if (file.size > MAX_MB * 1024 * 1024) {
-      UI.toast(`El archivo supera el limite de ${MAX_MB} MB.`, 'error');
+      UI.toast(`El archivo supera el límite de ${MAX_MB} MB.`, 'error');
       return;
     }
     const badge = document.getElementById('chat-file-badge');

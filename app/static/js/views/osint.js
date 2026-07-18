@@ -394,7 +394,7 @@ const ViewOsint = {
         </div>
       </div>
 
-      <!-- Barra de acciones masivas (visible solo con seleccion) -->
+      <!-- Barra de acciones masivas (visible solo con selección) -->
       <div id="osint-bulk-bar" style="display:${selCount > 0 ? 'flex' : 'none'};
            align-items:center;gap:10px;background:var(--brand-purple);color:#fff;
            padding:10px 16px;border-radius:8px;margin-bottom:10px;font-size:13px;flex-wrap:wrap;">
@@ -618,7 +618,7 @@ const ViewOsint = {
     `;
   },
 
-  // ── ESTADISTICAS ──────────────────────────────────────────────────────────
+  // ── ESTADÍSTICAS ──────────────────────────────────────────────────────────
 
   _renderStats(c) {
     const s = this._stats || {};

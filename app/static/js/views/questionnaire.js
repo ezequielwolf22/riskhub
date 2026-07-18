@@ -1,4 +1,4 @@
-/* Vista Agente IA — Cuestionario de contexto + analisis de riesgos ISO 27005 / MAGERIT. */
+/* Vista Agente IA — Cuestionario de contexto + análisis de riesgos ISO 27005 / MAGERIT. */
 const ViewQuestionnaire = {
   _questions: null,
   _answers: {},

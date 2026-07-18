@@ -1,4 +1,4 @@
-/* Vista de Vigilancia Normativa Automatica (regwatch).
+/* Vista de Vigilancia Normativa Automática (regwatch).
    Filosofia "set it and forget it": un toggle grande, un indicador de estado,
    opciones avanzadas colapsadas, inbox de cambios pendientes e historial.
    Spec: RISKHUB_REGULATORY_WATCH_MODULE_SPEC.md */

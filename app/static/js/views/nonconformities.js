@@ -166,7 +166,7 @@ const ViewNonConformities = (() => {
           </select>
         </div>
         <div><label>${t('nonconformities.linked_audit')}</label><input id="f-clause" class="input" value="${UI.esc(v.iso_clause || '')}" placeholder="Ej: 6.1.2, 9.2..."></div>
-        <div><label>${t('common.source')}</label><input id="f-source" class="input" value="${UI.esc(v.source || '')}" placeholder="Auditoria interna, auditoria externa..."></div>
+        <div><label>${t('common.source')}</label><input id="f-source" class="input" value="${UI.esc(v.source || '')}" placeholder="Auditoría interna, auditoría externa..."></div>
         <div class="span2"><label>${t('common.description')}</label><textarea id="f-desc" class="input" rows="3">${UI.esc(v.description || '')}</textarea></div>
         <div class="span2"><label>${t('nonconformities.root_cause')}</label><textarea id="f-root" class="input" rows="2">${UI.esc(v.root_cause || '')}</textarea></div>
         <div class="span2"><label>${t('nonconformities.corrective_action')}</label><textarea id="f-action" class="input" rows="2">${UI.esc(v.corrective_action || '')}</textarea></div>

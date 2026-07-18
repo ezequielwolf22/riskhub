@@ -1,5 +1,5 @@
-/* Vista CVE Monitor — Integracion NVD + analisis de riesgo por IA.
-   Tabs: Configuracion | Monitor CVEs | Analisis IA
+/* Vista CVE Monitor — Integración NVD + análisis de riesgo por IA.
+   Tabs: Configuración | Monitor CVEs | Análisis IA
 */
 const ViewCve = {
 
@@ -49,7 +49,7 @@ const ViewCve = {
     else if (tab === 'analyze') this._renderAnalyze();
   },
 
-  // ---- Configuracion ----
+  // ---- Configuración ----
 
   _renderConfig() {
     const p = document.getElementById('cve-config-panel');
@@ -182,7 +182,7 @@ const ViewCve = {
   },
 
   _addManualCveToAnalysis(cve) {
-    // Añadir el CVE a la lista de seleccionados y navegar a Analisis IA
+    // Añadir el CVE a la lista de seleccionados y navegar a Análisis IA
     this._selectedCves.add(cve.id);
     // Guardar el CVE en la lista local para que aparezca en el análisis
     if (!this._cves.find(c => c.id === cve.id)) {
@@ -230,7 +230,7 @@ const ViewCve = {
         <div id="cve-manual-result" style="margin-top:12px;"></div>
       </div>
 
-      <!-- Busqueda periodica NVD -->
+      <!-- Busqueda periódica NVD -->
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
           <div>
@@ -378,7 +378,7 @@ const ViewCve = {
     }
   },
 
-  // ---- Analisis IA ----
+  // ---- Análisis IA ----
 
   _assetSearchFilter: '',
 
@@ -386,7 +386,7 @@ const ViewCve = {
     const p = document.getElementById('cve-analyze-panel');
     if (!p) return;
 
-    // Cargar activos si no los tenemos (limite alto para tener todo el inventario)
+    // Cargar activos si no los tenemos (límite alto para tener todo el inventario)
     if (!this._assets.length) {
       try {
         this._assets = await Api.assets.list({ limit: 5000 });
@@ -397,7 +397,7 @@ const ViewCve = {
     const selCveIds = [...this._selectedCves];
 
     p.innerHTML = `
-      <!-- Seleccion de activos -->
+      <!-- Selección de activos -->
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
           <h4 style="margin:0;font-size:14px;font-weight:700;">${t('cve.assets_to_evaluate')}</h4>
@@ -424,7 +424,7 @@ const ViewCve = {
         </div>
       </div>
 
-      <!-- Parametros + botones de escaneo -->
+      <!-- Parámetros + botones de escaneo -->
       <div class="card" style="margin-bottom:16px;">
         <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
           <div>
@@ -448,7 +448,7 @@ const ViewCve = {
           </label>
         </div>
 
-        <!-- Boton principal: escaneo automatico -->
+        <!-- Boton principal: escaneo automático -->
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-primary" id="cve-autoscan-btn" onclick="ViewCve._runAutoScan()"
                   style="font-size:14px;padding:10px 22px;font-weight:700;">
@@ -807,7 +807,7 @@ const ViewCve = {
             </div>
           </div>
 
-          <!-- Metricas -->
+          <!-- Métricas -->
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
             <div style="background:var(--bg-2);border-radius:8px;padding:10px 12px;text-align:center;">
               <div style="font-size:11px;color:var(--text-muted);">${t('cve.inherent_risk')}</div>
@@ -835,7 +835,7 @@ const ViewCve = {
             <strong>${t('cve.why_affects')}:</strong> ${UI.esc(a.justificacion_afectacion||'')}
           </div>
 
-          <!-- Acciones de mitigacion -->
+          <!-- Acciones de mitigación -->
           ${actions.length ? `
           <div style="margin-bottom:10px;">
             <div style="font-size:12px;font-weight:600;margin-bottom:6px;">${t('cve.proposed_mitigation_actions')}:</div>

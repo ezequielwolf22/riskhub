@@ -1,4 +1,4 @@
-/* Vista Log de Auditoria — solo administradores. */
+/* Vista Log de Auditoría — solo administradores. */
 const ViewAudit = {
   _page: 0,
   _limit: 100,
@@ -421,7 +421,7 @@ const ViewAudit = {
     if (this._page + 1 < totalPages) { this._page++; this._load(); }
   },
 
-  // ---- Registro de aprobaciones (accesible desde otros modulos) ----
+  // ---- Registro de aprobaciones (accesible desde otros módulos) ----
 
   async showApprovals(opts = {}) {
     const params = { limit: 200 };

@@ -1,4 +1,4 @@
-/* Vista Amenazas — catalogos ISO 27005, MAGERIT v3 y personalizadas. */
+/* Vista Amenazas — catálogos ISO 27005, MAGERIT v3 y personalizadas. */
 const ViewThreats = {
   _sortCol: 'code', _sortAsc: true,
   _activeCatalogs: ['iso27005', 'magerit', 'custom'],  // preferencia org (cargada desde API)
@@ -13,7 +13,7 @@ const ViewThreats = {
         <input type="search" id="t-search" placeholder="${t('threats.search_placeholder')}">
         <select id="t-category"><option value="">${t('threats.all_categories')}</option></select>
 
-        <!-- Multi-select de catalogos -->
+        <!-- Multi-select de catálogos -->
         <div id="catalog-dropdown" style="position:relative;">
           <button class="btn" id="catalog-btn"
                   style="display:flex;align-items:center;gap:6px;min-width:200px;justify-content:space-between;">
@@ -67,7 +67,7 @@ const ViewThreats = {
       <div id="t-list"></div>
     `;
 
-    // Cargar preferencia de catalogos desde API
+    // Cargar preferencia de catálogos desde API
     await ViewThreats._loadActiveCatalogs();
 
     // Toggle del dropdown
@@ -82,7 +82,7 @@ const ViewThreats = {
     }, { once: false });
     document.getElementById('catalog-menu').onclick = e => e.stopPropagation();
 
-    // Cambio en checkboxes de catalogo
+    // Cambio en checkboxes de catálogo
     document.querySelectorAll('.catalog-check').forEach(cb => {
       cb.onchange = () => ViewThreats._onCatalogChange();
     });
@@ -99,7 +99,7 @@ const ViewThreats = {
             ? t('threats.magerit_loaded', {n: r.created})
             : t('threats.magerit_already');
           UI.toast(msg, 'success');
-          // Activar magerit automaticamente si no estaba
+          // Activar magerit automáticamente si no estaba
           if (!ViewThreats._activeCatalogs.includes('magerit')) {
             ViewThreats._activeCatalogs.push('magerit');
             await ViewThreats._saveActiveCatalogs();
@@ -219,7 +219,7 @@ const ViewThreats = {
       const params = {};
       if (q) params.q = q;
       if (cat) params.category = cat;
-      // Filtrar por catalogos activos
+      // Filtrar por catálogos activos
       if (ViewThreats._activeCatalogs.length < 3) {
         params.catalog = ViewThreats._activeCatalogs.join(',');
       }
@@ -227,7 +227,7 @@ const ViewThreats = {
       const data = await Api.threats.list(params);
       const canEdit = Auth.canEdit();
 
-      // Popular filtro de categorias (solo la primera vez)
+      // Popular filtro de categorías (solo la primera vez)
       const catSelect = document.getElementById('t-category');
       if (catSelect.options.length === 1) {
         const cats = [...new Set(data.map(t => t.category).filter(Boolean))].sort();

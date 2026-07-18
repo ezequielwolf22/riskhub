@@ -161,7 +161,7 @@ const ViewContext = {
         </div>` : ''}
       `;
 
-      // Cargar y renderizar configuracion de niveles de riesgo
+      // Cargar y renderizar configuración de niveles de riesgo
       ViewContext._loadRiskLevels(isAdmin);
 
       if (isAdmin) {

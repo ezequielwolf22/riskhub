@@ -157,7 +157,7 @@ const ViewManagementReview = (() => {
           <h3 style="font-size:13px;margin:16px 0 6px;color:var(--brand-purple);">${t('management_review.nc_heading')}</h3>
           <p style="font-size:12px;">${t('management_review.open_nc')}: <strong>${nc.open || 0}</strong> &nbsp;|&nbsp; ${t('management_review.closed_month_nc')}: <strong>${nc.closed_this_month || 0}</strong></p>
 
-          <!-- Resultados de auditorias -->
+          <!-- Resultados de auditorías -->
           ${mr.input_audit_results?.length ? `
             <h3 style="font-size:13px;margin:16px 0 6px;color:var(--brand-purple);">${t('management_review.audit_results_heading')}</h3>
             ${mr.input_audit_results.map(a => `<div class="list-item" style="font-size:12px;">

@@ -65,7 +65,7 @@ const ViewAiDocuments = (() => {
     await _load();
     _renderRoot();
     _startPollIfNeeded();
-    // Mostrar banner si ya hay errores de creditos al entrar
+    // Mostrar banner si ya hay errores de créditos al entrar
     const hasCredit = _docs.some(d =>
       d.isms_status === 'error' &&
       (d.isms_summary_text || '').toLowerCase().includes('credito')
@@ -84,7 +84,7 @@ const ViewAiDocuments = (() => {
       _updateStats();
       if (!_docs.some(d => d.isms_status === 'analysing')) {
         _stopPoll();
-        // Detectar errores de creditos al terminar
+        // Detectar errores de créditos al terminar
         const creditErrors = _docs.filter(d =>
           d.isms_status === 'error' &&
           (d.isms_summary_text || '').toLowerCase().includes('credito')
@@ -111,8 +111,8 @@ const ViewAiDocuments = (() => {
         <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
       </svg>
       <span>
-        <strong>Sin creditos Anthropic:</strong> el analisis de documentos se ha detenido.
-        Recarga creditos en
+        <strong>Sin créditos Anthropic:</strong> el análisis de documentos se ha detenido.
+        Recarga créditos en
         <a href="https://console.anthropic.com/settings/billing" target="_blank"
            style="color:#92400E;font-weight:700;">console.anthropic.com/settings/billing</a>
         y luego pulsa <em>Analizar pendientes</em>.
@@ -172,7 +172,7 @@ const ViewAiDocuments = (() => {
         </div>
       </div>
 
-      <!-- Filtros + botones de accion -->
+      <!-- Filtros + botones de acción -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
         <button class="btn ${_filter === 'all' ? 'btn-primary' : 'btn-ghost'}"
                 style="font-size:12px;" onclick="ViewAiDocuments._setFilter('all')">
@@ -404,9 +404,9 @@ const ViewAiDocuments = (() => {
                 ${isPending ? `
                   <select class="input" style="font-size:11px;padding:3px 6px;height:auto;
                                                min-width:180px;flex-shrink:0;"
-                          title="El agente IA reclasificara automaticamente tras analizar el contenido"
+                          title="El agente IA reclasificara automáticamente tras analizar el contenido"
                           data-qid="${item.id}" onchange="ViewAiDocuments._setQueueCat(${item.id}, this.value)">
-                    <option value="other" ${item.category === 'other' ? 'selected' : ''}>Auto (IA detecta categoria)</option>
+                    <option value="other" ${item.category === 'other' ? 'selected' : ''}>Auto (IA detecta categoría)</option>
                     ${Object.entries(catLabels).filter(([v]) => v !== 'other').map(([v, l]) =>
                       `<option value="${v}" ${item.category === v ? 'selected' : ''}>${l}</option>`
                     ).join('')}
@@ -494,14 +494,14 @@ const ViewAiDocuments = (() => {
     _updateStats();
 
     if (ok > 0 && fail === 0) {
-      UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} correctamente — analisis ISMS iniciado`, 'success');
+      UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} correctamente — análisis ISMS iniciado`, 'success');
     } else if (ok > 0 && fail > 0) {
       UI.toast(`${ok} subidos, ${fail} con error`, 'error');
     } else {
       UI.toast(t('common.error'), 'error');
     }
     _renderQueue();
-    // Iniciar polling si hay documentos en analisis ISMS
+    // Iniciar polling si hay documentos en análisis ISMS
     _startPollIfNeeded();
   }
 
@@ -518,7 +518,7 @@ const ViewAiDocuments = (() => {
       if (statValues[i] !== undefined) el.textContent = statValues[i];
     });
 
-    // Actualizar filtros de categoria
+    // Actualizar filtros de categoría
     const filterBar = document.querySelector('#aid-root > div:nth-child(2)');
     if (filterBar) {
       const catLabels = CATEGORY_LABELS();
@@ -538,14 +538,14 @@ const ViewAiDocuments = (() => {
 
   // ---------- Tabla de documentos ----------
 
-  const _AID_LEVEL_LABELS = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion Tecnica' };
+  const _AID_LEVEL_LABELS = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion Técnica' };
   const _AID_LEVEL_COLORS = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a' };
 
   function _ismsResultCell(d) {
     if (!d.isms_status || d.isms_status === 'analysing') return '<td>-</td>';
     const parts = [];
 
-    // Badge de nivel jerarquico (si el analisis lo determino)
+    // Badge de nivel jerarquico (si el análisis lo determino)
     const docLevel = d.isms_summary && d.isms_summary.document_level;
     if (docLevel) {
       const lvlLabel = _AID_LEVEL_LABELS[docLevel] || t('common.document');
@@ -555,7 +555,7 @@ const ViewAiDocuments = (() => {
 
     if (d.isms_policy_id) {
       parts.push(`<a href="#/policies" style="font-size:11px;color:var(--brand-purple);">
-        Politica creada</a>`);
+        Política creada</a>`);
     }
     if (d.isms_controls_updated > 0) {
       const madurezLink = d.isms_status === 'analysed'
@@ -576,12 +576,12 @@ const ViewAiDocuments = (() => {
     }
     const tooltip = d.isms_summary_text ? UI.esc(d.isms_summary_text.slice(0, 300)) : '';
 
-    // Clausulas ISO extraidas por IA (v2.2)
+    // Cláusulas ISO extraidas por IA (v2.2)
     const clauses = Array.isArray(d.extracted_clauses) ? d.extracted_clauses : [];
     if (clauses.length > 0) {
       parts.push(`<span style="cursor:pointer;font-size:11px;color:var(--brand-purple);"
         onclick="ViewAiDocuments._showClauses(${d.id})" title="${t('ai.extracted_clauses')}">
-        ${clauses.length} clausula${clauses.length !== 1 ? 's' : ''} ISO</span>`);
+        ${clauses.length} cláusula${clauses.length !== 1 ? 's' : ''} ISO</span>`);
     }
 
     return `<td style="font-size:11px;line-height:1.7;" title="${tooltip}">
@@ -681,7 +681,7 @@ const ViewAiDocuments = (() => {
               </div>
             </div>` : (!hasAnalysis ? `
             <div style="font-size:11px;color:var(--text-muted);font-style:italic;margin-top:4px;">
-              Sin analisis de gap disponible para este control. Re-analiza el documento para generarlo.
+              Sin análisis de gap disponible para este control. Re-analiza el documento para generarlo.
             </div>` : '')}
         </div>`;
     }).join('');
@@ -715,7 +715,7 @@ const ViewAiDocuments = (() => {
           <div style="font-size:13px;font-weight:600;color:var(--text-base);">Madurez aportada por este documento</div>
           <div style="font-size:11px;color:var(--text-muted);">
             ${controls.length} control${controls.length !== 1 ? 'es' : ''} en el alcance de este documento
-            &nbsp;&middot;&nbsp; Madurez maxima posible en nivel ${docLevel}: <strong>${levelMaxMaturity}/5</strong>
+            &nbsp;&middot;&nbsp; Madurez máxima posible en nivel ${docLevel}: <strong>${levelMaxMaturity}/5</strong>
             &nbsp;&middot;&nbsp;
             <a href="#/controls" onclick="UI.closeModal();" style="color:var(--brand-purple);">${t('common.view')} ${t('common.all').toLowerCase()} ${t('common.control').toLowerCase()}es</a>
           </div>
@@ -724,7 +724,7 @@ const ViewAiDocuments = (() => {
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;padding:7px 10px;
                   background:rgba(89,0,141,.04);border-radius:5px;border:1px solid rgba(89,0,141,.1);">
         Un documento de nivel ${docLevel} (${docLevelLabel}) puede aportar hasta ${levelMaxMaturity}/5 de madurez.
-        Para llegar a nivel 5 se necesita cubrir toda la cadena: Politica → Norma → Procedimiento → Instruccion Tecnica.
+        Para llegar a nivel 5 se necesita cubrir toda la cadena: Política → Norma → Procedimiento → Instruccion Técnica.
       </div>
       <div style="overflow-y:auto;max-height:56vh;">
         ${rows}
@@ -765,7 +765,7 @@ const ViewAiDocuments = (() => {
         <table style="width:100%;border-collapse:collapse;">
           <thead>
             <tr style="background:var(--bg-2);font-size:11px;text-transform:uppercase;color:var(--text-muted);">
-              <th style="padding:8px 12px;text-align:left;">Clausula</th>
+              <th style="padding:8px 12px;text-align:left;">Cláusula</th>
               <th style="padding:8px 12px;text-align:left;">${t('common.title')}</th>
               <th style="padding:8px 12px;text-align:center;">${t('common.control')}</th>
               <th style="padding:8px 12px;text-align:center;">${t('ai.clause_confidence')}</th>
@@ -800,7 +800,7 @@ const ViewAiDocuments = (() => {
           ${d.auto_categorized ? `<span style="display:inline-block;margin-left:4px;font-size:9px;
             background:var(--brand-purple-4);color:var(--brand-purple);
             border-radius:4px;padding:1px 5px;vertical-align:middle;"
-            title="Categoria detectada automaticamente por el agente IA">IA</span>` : ''}
+            title="Categoría detectada automáticamente por el agente IA">IA</span>` : ''}
         </td>
         <td>
           <span style="font-size:11px;font-weight:600;
@@ -824,7 +824,7 @@ const ViewAiDocuments = (() => {
         <td style="white-space:nowrap;">
           ${d.status === 'indexed' && (!d.isms_status || d.isms_status === 'error' || d.isms_status === 'skipped' || d.isms_status === 'analysing') ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
-                    onclick="ViewAiDocuments._analyze(${d.id})">${d.isms_status === 'analysing' ? 'Reintentar analisis' : t('common.analyze')}</button>` : ''}
+                    onclick="ViewAiDocuments._analyze(${d.id})">${d.isms_status === 'analysing' ? 'Reintentar análisis' : t('common.analyze')}</button>` : ''}
           ${d.status === 'error' || d.status === 'pending' ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
                     onclick="ViewAiDocuments._reprocess(${d.id})">Reprocesar</button>` : ''}

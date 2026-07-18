@@ -365,7 +365,7 @@ const ViewControls = {
             </td>
             <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};" title="${rc} riesgo${rc!==1?'s':''} mitigado${rc!==1?'s':''}">${rc}</td>
             <td style="font-size:12px;">${i.next_review
-              ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISION</span>':''}`
+              ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISIÓN</span>':''}`
               : '-'}</td>
             <td style="white-space:nowrap;" onclick="event.stopPropagation()">
               ${Auth.canEdit() ? `<button class="btn btn-ghost" data-edit="${i.id}">${t('common.edit')}</button>` : ''}
@@ -471,7 +471,7 @@ const ViewControls = {
           </div>
           <div style="font-size:12px;line-height:1.7;color:var(--text-base);white-space:pre-wrap;">${UI.esc(data.notes)}</div>
           <div style="font-size:10px;color:var(--text-muted);margin-top:6px;">
-            Generado automaticamente al analizar el documento fuente. Edita el campo Notas para personalizar.
+            Generado automáticamente al analizar el documento fuente. Edita el campo Notas para personalizar.
           </div>
         </div>
       </div>` : ''}
@@ -481,7 +481,7 @@ const ViewControls = {
       <div><label>${t('controls.inclusion_reason')}</label>
         <select id="f-incl-reason">
           <option value="">— Seleccionar —</option>
-          ${[['legal','Legal / regulatorio'],['contractual','Contractual'],['risk','Gestion de riesgo'],['best_practice','Buena practica']]
+          ${[['legal','Legal / regulatorio'],['contractual','Contractual'],['risk','Gestión de riesgo'],['best_practice','Buena práctica']]
             .map(([v,l]) => `<option value="${v}" ${data.inclusion_reason===v?'selected':''}>${l}</option>`).join('')}
         </select>
       </div>
@@ -492,7 +492,7 @@ const ViewControls = {
         <textarea id="f-excl-just" rows="2">${UI.esc(data.exclusion_justification||'')}</textarea>
       </div>
       <div class="span2"><label>${t('controls.evidence_refs')}</label>
-        <textarea id="f-evid-refs" rows="3" placeholder="Politica de seguridad | https://intranet/...&#10;Evidencia CrowdStrike | /docs/evidencias/...">${
+        <textarea id="f-evid-refs" rows="3" placeholder="Política de seguridad | https://intranet/...&#10;Evidencia CrowdStrike | /docs/evidencias/...">${
           (data.evidence_refs || []).map(r => `${r.title || ''}${r.url ? ' | ' + r.url : ''}`).join('\n')
         }</textarea>
       </div>

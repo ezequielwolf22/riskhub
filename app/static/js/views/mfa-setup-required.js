@@ -1,4 +1,4 @@
-/* Vista de configuracion obligatoria de MFA (politica de la organizacion o forzado por admin). */
+/* Vista de configuración obligatoria de MFA (política de la organización o forzado por admin). */
 const ViewMfaSetupRequired = {
   _step: 'password',
   _secret: '',
@@ -8,10 +8,10 @@ const ViewMfaSetupRequired = {
     main.innerHTML = `
       <div style="display:flex;justify-content:center;align-items:flex-start;min-height:60vh;padding:40px 16px;">
         <div class="card" style="width:100%;max-width:460px;">
-          <h2 style="margin-bottom:6px;">Verificacion en dos pasos requerida</h2>
+          <h2 style="margin-bottom:6px;">Verificación en dos pasos requerida</h2>
           <p style="color:var(--text-muted);margin-bottom:24px;font-size:14px;">
-            Tu administrador exige autenticacion de dos factores (MFA) para acceder a RiskHub.
-            Configura tu app de autenticacion (Google Authenticator, Microsoft Authenticator, Authy)
+            Tu administrador exige autenticación de dos factores (MFA) para acceder a RiskHub.
+            Configura tu app de autenticación (Google Authenticator, Microsoft Authenticator, Authy)
             antes de continuar.
           </p>
           <div id="msr-error" class="login-error" style="display:none;margin-bottom:16px;"></div>
@@ -28,7 +28,7 @@ const ViewMfaSetupRequired = {
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div>
           <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;">
-            Contrasena actual *
+            Contraseña actual *
           </label>
           <input type="password" id="msr-password" class="input" autocomplete="current-password">
         </div>
@@ -36,7 +36,7 @@ const ViewMfaSetupRequired = {
           Continuar
         </button>
         <button class="btn btn-ghost" onclick="Auth.logout()" style="font-size:13px;color:var(--text-muted);">
-          Cerrar sesion
+          Cerrar sesión
         </button>
       </div>`;
 
@@ -45,7 +45,7 @@ const ViewMfaSetupRequired = {
       const errBox = document.getElementById('msr-error');
       errBox.style.display = 'none';
       if (!password) {
-        errBox.textContent = 'Introduce tu contrasena actual.';
+        errBox.textContent = 'Introduce tu contraseña actual.';
         errBox.style.display = 'block';
         return;
       }
@@ -57,7 +57,7 @@ const ViewMfaSetupRequired = {
         ViewMfaSetupRequired._secret = res.secret || '';
         ViewMfaSetupRequired._renderQrStep(res.otpauth_url || '');
       } catch (e) {
-        errBox.textContent = e.message || 'No se pudo iniciar la configuracion de MFA.';
+        errBox.textContent = e.message || 'No se pudo iniciar la configuración de MFA.';
         errBox.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Continuar';
@@ -71,16 +71,16 @@ const ViewMfaSetupRequired = {
     content.innerHTML = `
       <div style="text-align:center;">
         <p style="font-size:13px;margin-bottom:12px;">
-          Escanea este codigo con tu app de autenticacion.
+          Escanea este código con tu app de autenticación.
         </p>
         <canvas id="msr-qr-canvas" style="display:block;margin:0 auto 12px;"></canvas>
-        <p style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">O introduce el codigo manualmente:</p>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">O introduce el código manualmente:</p>
         <code style="font-size:13px;font-weight:700;letter-spacing:.1em;background:var(--bg-2);padding:6px 12px;border-radius:6px;display:inline-block;margin-bottom:16px;">
           ${UI.esc(ViewMfaSetupRequired._secret)}
         </code>
         <div style="text-align:left;margin-top:8px;">
           <label style="display:block;font-size:13px;font-weight:500;margin-bottom:4px;">
-            Codigo de verificacion (6 digitos) *
+            Código de verificación (6 digitos) *
           </label>
           <input type="text" id="msr-code" class="input" placeholder="123456" maxlength="6" inputmode="numeric">
         </div>
@@ -107,7 +107,7 @@ const ViewMfaSetupRequired = {
       const errBox = document.getElementById('msr-error');
       errBox.style.display = 'none';
       if (!code || code.length !== 6) {
-        errBox.textContent = 'Introduce el codigo de 6 digitos.';
+        errBox.textContent = 'Introduce el código de 6 digitos.';
         errBox.style.display = 'block';
         return;
       }
@@ -118,7 +118,7 @@ const ViewMfaSetupRequired = {
         const res = await Api.mfa.verifySetup({ secret: ViewMfaSetupRequired._secret, code });
         ViewMfaSetupRequired._renderBackupCodesStep(res.backup_codes || []);
       } catch (e) {
-        errBox.textContent = e.message || 'Codigo incorrecto.';
+        errBox.textContent = e.message || 'Código incorrecto.';
         errBox.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Verificar y activar';
@@ -135,7 +135,7 @@ const ViewMfaSetupRequired = {
           &#10003; MFA activado correctamente
         </p>
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
-          Guarda estos codigos de recuperacion en un lugar seguro. Cada uno es de un solo uso
+          Guarda estos códigos de recuperación en un lugar seguro. Cada uno es de un solo uso
           y no podras verlos de nuevo.
         </p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--bg-2);padding:12px;border-radius:6px;margin-bottom:16px;">

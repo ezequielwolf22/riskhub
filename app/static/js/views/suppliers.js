@@ -1,4 +1,4 @@
-/* Vista de gestion de proveedores / supply chain risk (NIS2 Art. 21.2.d). */
+/* Vista de gestión de proveedores / supply chain risk (NIS2 Art. 21.2.d). */
 const ViewSuppliers = (() => {
 
   function RISK_LABELS() {
@@ -245,11 +245,11 @@ const ViewSuppliers = (() => {
       if (show('active'))
         cards.push(`<div class="stat-card"><div class="stat-value" style="color:#16a34a;">${s.active ?? s.total}</div><div class="stat-label">Activos</div></div>`);
       if (show('critical'))
-        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.critical_or_high}</div><div class="stat-label">Criticos / Altos</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.critical_or_high}</div><div class="stat-label">Críticos / Altos</div></div>`);
       if (show('overdue'))
-        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.overdue_assessment}</div><div class="stat-label">Evaluacion vencida</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.overdue_assessment}</div><div class="stat-label">Evaluación vencida</div></div>`);
       if (show('score'))
-        cards.push(`<div class="stat-card"><div class="stat-value">${s.avg_score != null ? s.avg_score : '—'}</div><div class="stat-label">Puntuacion media</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value">${s.avg_score != null ? s.avg_score : '—'}</div><div class="stat-label">Puntuación media</div></div>`);
       if (show('pending'))
         cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${s.pending_questionnaires ?? 0}</div><div class="stat-label">Cuest. pendientes</div></div>`);
       wrap.innerHTML = cards.join('')
@@ -337,7 +337,7 @@ const ViewSuppliers = (() => {
       const res = (s.residual_risk_score ?? null) !== null ? s.residual_risk_score : '-';
       const checked = _selectedIds.has(s.id) ? 'checked' : '';
       const critBadge = s.is_critical
-        ? `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;background:#DC2626;color:#fff;">CRITICO</span>`
+        ? `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700;background:#DC2626;color:#fff;">CRÍTICO</span>`
         : `<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:600;background:var(--bg-2);color:var(--text-muted);border:1px solid var(--border);">Normal</span>`;
       return `
         <tr>
@@ -382,8 +382,8 @@ const ViewSuppliers = (() => {
                 style="width:15px;height:15px;cursor:pointer;accent-color:var(--brand-purple);"
                 title="Seleccionar todo">
             </th>
-            <th>Codigo</th><th>Nombre</th><th>Tag</th><th>Tier</th><th>Inherent</th><th>Residual</th>
-            <th>Ult. evaluacion</th><th>Prox. evaluacion</th><th>Acciones</th>
+            <th>Código</th><th>Nombre</th><th>Tag</th><th>Tier</th><th>Inherent</th><th>Residual</th>
+            <th>Ult. evaluación</th><th>Prox. evaluación</th><th>Acciones</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -471,9 +471,9 @@ const ViewSuppliers = (() => {
     return `
       <div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 24px;">
 
-        <!-- Fila 1: identificacion basica -->
+        <!-- Fila 1: identificación básica -->
         <div><label>Nombre *</label><input id="f-name" class="input" value="${UI.esc(v.name || '')}"></div>
-        <div><label>Categoria</label><input id="f-cat" class="input" value="${UI.esc(v.category || '')}" placeholder="Software, Hardware, Servicios..."></div>
+        <div><label>Categoría</label><input id="f-cat" class="input" value="${UI.esc(v.category || '')}" placeholder="Software, Hardware, Servicios..."></div>
         <div><label>Nivel de riesgo</label>
           <select id="f-risk-level" class="input">
             ${_rlBands().map(b => `<option value="${b.code}" ${v.risk_level===b.code?'selected':''}>${UI.esc(b.label)}</option>`).join('')}
@@ -486,11 +486,11 @@ const ViewSuppliers = (() => {
         <div><label>CC alertas y cuestionarios</label><input id="f-cc-email" class="input" type="email" value="${UI.esc(v.cc_email || '')}" placeholder="responsable@empresa.com"></div>
 
         <!-- Fila 3: fechas + contrato -->
-        <div><label>Ultima evaluacion</label><input type="date" id="f-last-assess" class="input" value="${v.last_assessment_at ? v.last_assessment_at.slice(0,10) : ''}"></div>
-        <div><label>Proxima evaluacion</label><input type="date" id="f-next-assess" class="input" value="${v.next_assessment_at ? v.next_assessment_at.slice(0,10) : ''}"></div>
+        <div><label>Última evaluación</label><input type="date" id="f-last-assess" class="input" value="${v.last_assessment_at ? v.last_assessment_at.slice(0,10) : ''}"></div>
+        <div><label>Próxima evaluación</label><input type="date" id="f-next-assess" class="input" value="${v.next_assessment_at ? v.next_assessment_at.slice(0,10) : ''}"></div>
         <div><label>Contrato / referencia</label><input id="f-contract" class="input" value="${UI.esc(v.contract_ref || '')}"></div>
 
-        <!-- Fila 4: clasificacion interna -->
+        <!-- Fila 4: clasificación interna -->
         <div><label>Ubicacion / sede</label><input id="f-location" class="input" value="${UI.esc(v.location || '')}" placeholder="Madrid, ES"></div>
         <div><label>Departamento responsable</label><input id="f-department" class="input" value="${UI.esc(v.department || '')}" placeholder="TI, Legal, Compras..."></div>
         <div><label>Responsable interno</label><select id="f-internal-owner" class="input"><option value="">- Sin asignar -</option></select></div>
@@ -503,7 +503,7 @@ const ViewSuppliers = (() => {
 
         <!-- Fila 5: flags + importancia (inline) -->
         <div style="grid-column:1/-1;display:flex;align-items:center;gap:24px;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--border);margin-top:2px;">
-          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-weight:600;"><input type="checkbox" id="f-critical" ${v.is_critical?'checked':''}> Critico NIS2</label>
+          <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;font-weight:600;"><input type="checkbox" id="f-critical" ${v.is_critical?'checked':''}> Crítico NIS2</label>
           <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-proc" ${v.is_data_processor?'checked':''}> Encargado GDPR</label>
           <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-pii" ${v.processes_personal_data?'checked':''}> Trata datos personales</label>
           <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;"><input type="checkbox" id="f-nis2" ${v.is_nis2?'checked':''}> NIS2</label>
@@ -516,12 +516,12 @@ const ViewSuppliers = (() => {
         </div>
 
         <!-- Notas -->
-        <div style="grid-column:1/-1;"><label>Notas / descripcion</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes || '')}</textarea></div>
+        <div style="grid-column:1/-1;"><label>Notas / descripción</label><textarea id="f-notes" class="input" rows="2">${UI.esc(v.notes || '')}</textarea></div>
 
         <!-- TPRM -->
         <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border);padding-top:8px;">
           <strong style="font-size:13px;color:var(--brand-purple);">TPRM — Perfil de riesgo inherente</strong>
-          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">El tier y el inherent/residual risk se recalculan automaticamente al guardar.</span>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:8px;">El tier y el inherent/residual risk se recalculan automáticamente al guardar.</span>
         </div>
         <div><label>Tipo de proveedor</label>
           <select id="f-vendor-type" class="input">
@@ -544,7 +544,7 @@ const ViewSuppliers = (() => {
         <div style="grid-column:1/-1;margin-top:4px;border-top:1px solid var(--border);padding-top:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <strong style="font-size:13px;color:var(--brand-purple);">Contactos adicionales</strong>
-            <button type="button" id="sup-add-contact" class="btn btn-sm">+ Anadir</button>
+            <button type="button" id="sup-add-contact" class="btn btn-sm">+ Añadir</button>
           </div>
           <div id="sup-contact-list"></div>
         </div>
@@ -553,16 +553,16 @@ const ViewSuppliers = (() => {
         <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <strong style="font-size:13px;color:var(--brand-purple);">SLAs del proveedor</strong>
-            <button type="button" id="sup-add-sla" class="btn btn-sm">+ Anadir SLA</button>
+            <button type="button" id="sup-add-sla" class="btn btn-sm">+ Añadir SLA</button>
           </div>
           <div id="sup-sla-list"></div>
         </div>
 
         ${s ? `
-        <!-- Documentacion adjunta -->
+        <!-- Documentación adjunta -->
         <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <strong style="font-size:13px;color:var(--brand-purple);">Documentacion adjunta</strong>
+            <strong style="font-size:13px;color:var(--brand-purple);">Documentación adjunta</strong>
             <label class="btn btn-sm" style="cursor:pointer;">
               + Adjuntar
               <input type="file" id="sup-doc-upload" style="display:none;"
@@ -571,7 +571,7 @@ const ViewSuppliers = (() => {
           </div>
           <div id="sup-doc-list"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
           <div id="sup-doc-desc-row" style="display:none;gap:6px;align-items:center;margin-top:6px;">
-            <input id="sup-doc-desc" class="input" placeholder="Descripcion del documento (opcional)" style="flex:1;font-size:12px;">
+            <input id="sup-doc-desc" class="input" placeholder="Descripción del documento (opcional)" style="flex:1;font-size:12px;">
             <button id="sup-doc-confirm" class="btn btn-sm btn-primary">Subir</button>
             <button id="sup-doc-cancel-upload" class="btn btn-sm">Cancelar</button>
           </div>
@@ -702,7 +702,7 @@ const ViewSuppliers = (() => {
     _currentSupplierId = supplierId;
     wrap.innerHTML = '<p style="font-size:12px;color:var(--text-muted);">Cargando gate de onboarding...</p>';
 
-    // Cargar evaluacion del gate
+    // Cargar evaluación del gate
     let gate = null;
     try {
       gate = await Api.get('/api/onboarding-gate/' + supplierId + '/evaluate');
@@ -744,11 +744,11 @@ const ViewSuppliers = (() => {
       <div style="margin-top:12px;">
         <div class="alert-box alert-box--warning">
           <strong>Riesgo de concentracion DORA</strong>
-          <p style="font-size:12px;margin:4px 0 8px;">Este proveedor supera el 40% de dependencia en procesos criticos.</p>
+          <p style="font-size:12px;margin:4px 0 8px;">Este proveedor supera el 40% de dependencia en procesos críticos.</p>
           <div style="margin-bottom:6px;">
-            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Notas de mitigacion</label>
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Notas de mitigación</label>
             <textarea id="lc-concentration-notes" class="input" rows="2"
-              placeholder="Notas de mitigacion...">${UI.esc(sup.concentration_risk_notes || '')}</textarea>
+              placeholder="Notas de mitigación...">${UI.esc(sup.concentration_risk_notes || '')}</textarea>
           </div>
           <div style="margin-bottom:8px;">
             <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Estrategia de salida (DORA Art.28(8))</label>
@@ -758,7 +758,7 @@ const ViewSuppliers = (() => {
           ${Auth.canEdit() ? `
           <button class="btn btn-sm btn-primary"
             onclick="ViewSuppliers._saveConcentrationMitigation(${supplierId})">
-            Guardar mitigacion
+            Guardar mitigación
           </button>` : ''}
         </div>
       </div>` : '';
@@ -785,7 +785,7 @@ const ViewSuppliers = (() => {
   }
 
   function _renderGateBlock(supplierId, gate, sup) {
-    const levelLabels = { auto: 'Auto-aprobacion', standard: 'Proceso estandar', manual_review: 'Revision manual CISO' };
+    const levelLabels = { auto: 'Auto-aprobacion', standard: 'Proceso estandar', manual_review: 'Revisión manual CISO' };
     const levelColors = { auto: '#16a34a', standard: '#d97706', manual_review: '#dc2626' };
     const score = gate.score || 0;
     const level = gate.gate_level || 'auto';
@@ -833,7 +833,7 @@ const ViewSuppliers = (() => {
               Bypass justificado
             </button>
             <button class="btn btn-sm" onclick="ViewSuppliers._openForceControlsDialog(${supplierId})"
-              title="Anadir controles extra obligatorios aunque el score sea bajo" style="font-size:11px;">
+              title="Añadir controles extra obligatorios aunque el score sea bajo" style="font-size:11px;">
               Forzar controles
             </button>
           ` : `
@@ -1048,12 +1048,12 @@ const ViewSuppliers = (() => {
       <div class="span2" style="display:flex;flex-direction:column;gap:12px;">
         <div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px;font-size:12px;">
           <strong>Atencion:</strong> El bypass omite los requisitos del gate basados en score.
-          La justificacion quedara registrada en el log de auditoria.
+          La justificacion quedara registrada en el log de auditoría.
         </div>
         <div>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion * (obligatoria)</label>
           <textarea id="bypass-justification" class="input" rows="3"
-            placeholder="Razones de negocio o tecnicas que justifican el bypass..."></textarea>
+            placeholder="Razones de negocio o técnicas que justifican el bypass..."></textarea>
         </div>
       </div>
     `, {
@@ -1070,7 +1070,7 @@ const ViewSuppliers = (() => {
       try {
         await Api.post('/api/onboarding-gate/' + supplierId + '/override', { type: 'bypass', justification });
         UI.closeModal();
-        UI.toast('Bypass aplicado — registrado en auditoria', 'success');
+        UI.toast('Bypass aplicado — registrado en auditoría', 'success');
         _renderLifecycleSection(supplierId, null);
       } catch (e) { UI.toast(e.message || 'Error', 'error'); }
     };
@@ -1085,10 +1085,10 @@ const ViewSuppliers = (() => {
     const candidates = [
       { id: 'nda', label: 'NDA / Confidencialidad' },
       { id: 'dpa', label: 'DPA Art. 28 GDPR' },
-      { id: 'cross_border', label: 'Clausulas transferencia internacional' },
+      { id: 'cross_border', label: 'Cláusulas transferencia internacional' },
       { id: 'nis2_addendum', label: 'Addendum NIS2 Art. 21' },
       { id: 'dora_exit', label: 'Estrategia de salida DORA' },
-      { id: 'ciso_approval', label: 'Aprobacion CISO' },
+      { id: 'ciso_approval', label: 'Aprobación CISO' },
       { id: 'contract', label: 'Contrato principal' },
     ].filter(c => !existingChain.find(i => i.id === c.id && i.applicable));
 
@@ -1104,7 +1104,7 @@ const ViewSuppliers = (() => {
               <input type="checkbox" class="force-ctrl-chk" value="${c.id}">
               ${UI.esc(c.label)}
             </label>`).join('')}
-          ${!candidates.length ? '<p style="font-size:12px;color:var(--text-muted);margin:0;">Todos los items ya estan en la cadena.</p>' : ''}
+          ${!candidates.length ? '<p style="font-size:12px;color:var(--text-muted);margin:0;">Todos los items ya están en la cadena.</p>' : ''}
           <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-top:4px;">
             <input type="checkbox" id="force-ctrl-other-chk" value="__other__">
             Otro (especificar):
@@ -1188,7 +1188,7 @@ const ViewSuppliers = (() => {
           </label>
           <div id="dec-conditions-list"></div>
           <button type="button" class="btn btn-sm" onclick="ViewSuppliers._addDecisionCondition()"
-            style="margin-top:4px;">+ Anadir condicion</button>
+            style="margin-top:4px;">+ Añadir condicion</button>
         </div>
       </div>
     `, {
@@ -1214,7 +1214,7 @@ const ViewSuppliers = (() => {
         due_days: parseInt(row.querySelector('.dec-cond-days')?.value || '30', 10),
       })).filter(c => c.description);
       if (decision === 'conditional' && !conditions.length) {
-        UI.toast('Anade al menos una condicion', 'error'); return;
+        UI.toast('Añade al menos una condicion', 'error'); return;
       }
       try {
         const r = await Api.post('/api/onboarding-gate/' + supplierId + '/decision', { decision, notes, conditions });
@@ -1234,9 +1234,9 @@ const ViewSuppliers = (() => {
     row.className = 'dec-condition-row';
     row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center;';
     row.innerHTML = `
-      <input class="input dec-cond-desc" style="flex:1;font-size:12px;" placeholder="Descripcion de la condicion...">
+      <input class="input dec-cond-desc" style="flex:1;font-size:12px;" placeholder="Descripción de la condicion...">
       <input class="input dec-cond-days" type="number" min="1" max="365" value="30"
-        style="width:60px;font-size:12px;" title="Dias para cumplir">
+        style="width:60px;font-size:12px;" title="Días para cumplir">
       <button type="button" class="btn btn-sm" style="padding:4px 8px;color:#dc2626;"
         onclick="this.parentElement.remove()">X</button>`;
     list.appendChild(row);
@@ -1258,8 +1258,8 @@ const ViewSuppliers = (() => {
     const exitStrategy = document.getElementById('lc-exit-strategy')?.value.trim() || '';
     try {
       await Api.patch('/api/suppliers/' + supplierId + '/concentration-mitigation', { notes, exit_strategy: exitStrategy });
-      UI.toast('Mitigacion de concentracion guardada', 'success');
-    } catch (e) { UI.toast(e.message || 'Error al guardar mitigacion', 'error'); }
+      UI.toast('Mitigación de concentracion guardada', 'success');
+    } catch (e) { UI.toast(e.message || 'Error al guardar mitigación', 'error'); }
   }
 
   // --- Admin: config del gate ---
@@ -1269,7 +1269,7 @@ const ViewSuppliers = (() => {
 
     const chain = cfg.sign_off_chain || [];
 
-    UI.modal('Configuracion del gate de onboarding', `
+    UI.modal('Configuración del gate de onboarding', `
       <div class="span2" style="display:flex;flex-direction:column;gap:16px;">
         <div>
           <strong style="font-size:13px;color:var(--brand-purple);display:block;margin-bottom:8px;">Umbrales de score TPRM</strong>
@@ -1280,7 +1280,7 @@ const ViewSuppliers = (() => {
               <p style="font-size:10px;color:var(--text-muted);margin:2px 0 0;">Score &lt; X: alta directa sin revisor</p>
             </div>
             <div style="flex:1;min-width:140px;">
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Revision manual por encima de</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Revisión manual por encima de</label>
               <input id="gc-manual-above" type="number" min="0" max="100" class="input" value="${cfg.manual_review_above ?? 60}">
               <p style="font-size:10px;color:var(--text-muted);margin:2px 0 0;">Score &gt; X: revisor CISO obligatorio</p>
             </div>
@@ -1288,10 +1288,10 @@ const ViewSuppliers = (() => {
         </div>
 
         <div>
-          <strong style="font-size:13px;color:var(--brand-purple);display:block;margin-bottom:8px;">Politica de bypass y forzado</strong>
+          <strong style="font-size:13px;color:var(--brand-purple);display:block;margin-bottom:8px;">Política de bypass y forzado</strong>
           <div style="display:flex;gap:12px;flex-wrap:wrap;">
             <div style="flex:1;min-width:140px;">
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Rol minimo para bypass</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Rol mínimo para bypass</label>
               <select id="gc-bypass-role" class="input">
                 <option value="admin" ${cfg.bypass_min_role === 'admin' ? 'selected' : ''}>Solo admin</option>
                 <option value="analyst" ${cfg.bypass_min_role === 'analyst' ? 'selected' : ''}>Analyst o superior</option>
@@ -1313,7 +1313,7 @@ const ViewSuppliers = (() => {
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <strong style="font-size:13px;color:var(--brand-purple);">Cadena de firmas</strong>
-            <button type="button" class="btn btn-sm" id="gc-add-item">+ Anadir item</button>
+            <button type="button" class="btn btn-sm" id="gc-add-item">+ Añadir item</button>
           </div>
           <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">
             Define los documentos/aprobaciones en orden. Cada empresa configura la suya.
@@ -1338,7 +1338,7 @@ const ViewSuppliers = (() => {
     `, {
       actions: `
         <button class="btn" onclick="UI.closeModal()">Cancelar</button>
-        <button class="btn btn-primary" id="gc-save">Guardar configuracion</button>`,
+        <button class="btn btn-primary" id="gc-save">Guardar configuración</button>`,
     });
 
     document.getElementById('gc-add-item').onclick = () => {
@@ -1375,7 +1375,7 @@ const ViewSuppliers = (() => {
           sign_off_chain: chainItems,
         });
         UI.closeModal();
-        UI.toast('Configuracion guardada', 'success');
+        UI.toast('Configuración guardada', 'success');
         if (_currentSupplierId) _renderLifecycleSection(_currentSupplierId, null);
       } catch (e) { UI.toast(e.message || 'Error al guardar', 'error'); }
     };
@@ -1385,7 +1385,7 @@ const ViewSuppliers = (() => {
     const reqIfOpts = ['', 'is_data_processor', 'is_nis2', 'is_dora', 'cross_border_transfers', 'is_ens'];
     return `
       <div class="gc-chain-row" style="display:grid;grid-template-columns:120px 1fr 160px 120px 90px auto 32px;gap:8px;align-items:center;margin-bottom:6px;">
-        <input class="input gc-item-id" style="font-size:12px;" placeholder="ID unico" value="${UI.esc(it.id || '')}">
+        <input class="input gc-item-id" style="font-size:12px;" placeholder="ID único" value="${UI.esc(it.id || '')}">
         <input class="input gc-item-label" style="font-size:12px;" placeholder="Etiqueta visible" value="${UI.esc(it.label || '')}">
         <select class="input gc-item-req-if" style="font-size:12px;">
           ${reqIfOpts.map(o => `<option value="${o}" ${it.required_if === o ? 'selected' : ''}>${o || 'siempre'}</option>`).join('')}
@@ -1502,13 +1502,13 @@ const ViewSuppliers = (() => {
     if (sup.processes_personal_data) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Trata datos personales</span>');
     if (sup.cross_border_transfers) flags.push('<span style="font-size:11px;font-weight:700;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;">Transf. internac.</span>');
     if (sup.email_origin) flags.push('<span style="font-size:11px;font-weight:700;background:#E0F2FE;color:#075985;padding:2px 8px;border-radius:999px;">Alta por email</span>');
-    if (sup.email_needs_review) flags.push('<span style="font-size:11px;font-weight:700;background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:999px;">Pendiente de revision</span>');
+    if (sup.email_needs_review) flags.push('<span style="font-size:11px;font-weight:700;background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:999px;">Pendiente de revisión</span>');
     const slas = sup.slas || [];
     const contacts = sup.additional_contacts || [];
     wrap.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;margin-bottom:20px;">
         <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
-          <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Informacion general</div>
+          <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Información general</div>
           <div style="display:grid;gap:12px;">
             ${_infoField('Nombre', UI.esc(sup.name))}
             ${_infoField('Codigo', UI.esc(sup.code))}
@@ -1536,14 +1536,14 @@ const ViewSuppliers = (() => {
             ${_infoField('Nombre', UI.esc(sup.contact_name))}
             ${_infoField('Email', sup.contact_email ? `<a href="mailto:${UI.esc(sup.contact_email)}" style="color:var(--brand-purple);">${UI.esc(sup.contact_email)}</a>` : null)}
             ${_infoField('CC alertas', sup.cc_email ? `<a href="mailto:${UI.esc(sup.cc_email)}" style="color:var(--brand-purple);">${UI.esc(sup.cc_email)}</a>` : null)}
-            ${_infoField('Prox. evaluacion', sup.next_assessment_at ? sup.next_assessment_at.slice(0,10) : null)}
-            ${_infoField('Ult. evaluacion', sup.last_assessment_at ? sup.last_assessment_at.slice(0,10) : null)}
+            ${_infoField('Prox. evaluación', sup.next_assessment_at ? sup.next_assessment_at.slice(0,10) : null)}
+            ${_infoField('Ult. evaluación', sup.last_assessment_at ? sup.last_assessment_at.slice(0,10) : null)}
           </div>
         </div>
       </div>
       ${flags.length ? `
       <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:20px;">
-        <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Regulacion y clasificacion</div>
+        <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Regulacion y clasificación</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">${flags.join('')}</div>
       </div>` : ''}
       <!-- Trust Portal IA -->
@@ -1556,8 +1556,8 @@ const ViewSuppliers = (() => {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
             <a href="${UI.esc(sup.trust_portal_url)}" target="_blank" rel="noopener noreferrer" style="font-size:13px;color:var(--brand-purple);word-break:break-all;">${UI.esc(sup.trust_portal_url)}</a>
           </div>
-          ${sup.trust_portal_last_scraped_at ? `<div style="font-size:11px;color:var(--text-muted);">Ultimo analisis: ${sup.trust_portal_last_scraped_at.slice(0,10)}</div>` : '<div style="font-size:11px;color:var(--text-muted);">Sin analizar todavia. Pulsa "Analizar Trust Portal" para que el agente IA extraiga la informacion.</div>'}
-        ` : `<div style="font-size:12px;color:var(--text-muted);">Configura una URL de Trust Portal en la edicion del proveedor para activar el analisis automatico por IA.</div>`}
+          ${sup.trust_portal_last_scraped_at ? `<div style="font-size:11px;color:var(--text-muted);">Último análisis: ${sup.trust_portal_last_scraped_at.slice(0,10)}</div>` : '<div style="font-size:11px;color:var(--text-muted);">Sin analizar todavia. Pulsa "Analizar Trust Portal" para que el agente IA extraiga la información.</div>'}
+        ` : `<div style="font-size:12px;color:var(--text-muted);">Configura una URL de Trust Portal en la edicion del proveedor para activar el análisis automático por IA.</div>`}
         <div id="tp-scrape-result" style="margin-top:8px;"></div>
       </div>
 
@@ -1584,7 +1584,7 @@ const ViewSuppliers = (() => {
       </div>` : ''}
     `;
 
-    // Boton de analisis IA del trust portal
+    // Boton de análisis IA del trust portal
     const btnScrape = document.getElementById('btn-scrape-tp');
     if (btnScrape) {
       btnScrape.onclick = async () => {
@@ -1598,7 +1598,7 @@ const ViewSuppliers = (() => {
             const fields = (res.updated_fields || []).join(', ');
             if (resultEl) resultEl.innerHTML = `
               <div style="background:#D1FAE5;color:#065F46;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">
-                <strong>Analisis completado.</strong> ${UI.esc(res.message)}<br>
+                <strong>Análisis completado.</strong> ${UI.esc(res.message)}<br>
                 ${fields ? `<span style="opacity:.8;">Campos actualizados: ${UI.esc(fields)}</span>` : ''}
               </div>`;
             // Refrescar la ficha para mostrar los datos nuevos
@@ -1610,12 +1610,12 @@ const ViewSuppliers = (() => {
               } catch (_) {}
             }, 1200);
           } else {
-            if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">${UI.esc(res.message || 'Error en el analisis')}</div>`;
+            if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">${UI.esc(res.message || 'Error en el análisis')}</div>`;
             btnScrape.disabled = false;
             btnScrape.textContent = 'Analizar Trust Portal';
           }
         } catch (err) {
-          if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">Error de conexion: ${UI.esc(String(err))}</div>`;
+          if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">Error de conexión: ${UI.esc(String(err))}</div>`;
           btnScrape.disabled = false;
           btnScrape.textContent = 'Analizar Trust Portal';
         }
@@ -1645,12 +1645,12 @@ const ViewSuppliers = (() => {
       const data = await Api.supplier_questionnaires.list({ supplier_id: sup.id });
       if (!qWrap) return;
       if (!data.length) {
-        qWrap.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px 0;">Sin cuestionarios para este proveedor. Crea uno desde la pestana Cuestionarios del modulo de Proveedores.</p>';
+        qWrap.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px 0;">Sin cuestionarios para este proveedor. Crea uno desde la pestaña Cuestionarios del módulo de Proveedores.</p>';
         return;
       }
       const now = new Date();
       qWrap.innerHTML = `<div class="table-wrap"><table class="data">
-        <thead><tr><th>Codigo</th><th>Titulo</th><th>Tipo</th><th>Puntuacion</th><th>Respondido</th><th>Expira</th><th>Evaluacion IA</th><th></th></tr></thead>
+        <thead><tr><th>Código</th><th>Título</th><th>Tipo</th><th>Puntuación</th><th>Respondido</th><th>Expira</th><th>Evaluación IA</th><th></th></tr></thead>
         <tbody>
           ${data.map(q => {
             const submitted = q.submitted_at ? new Date(q.submitted_at).toLocaleDateString('es-ES') : null;
@@ -1673,7 +1673,7 @@ const ViewSuppliers = (() => {
               aiHtml = `<span style="font-weight:700;color:${ac};">${asc}/100</span>`;
             }
             const rwBadge = q.regwatch_review_at
-              ? `<span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:1px 5px;border-radius:4px;vertical-align:middle;" title="Revision normativa requerida">NORM</span>`
+              ? `<span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:1px 5px;border-radius:4px;vertical-align:middle;" title="Revisión normativa requerida">NORM</span>`
               : '';
             return `<tr style="${expired?'opacity:.6;':''}${q.regwatch_review_at?'border-left:3px solid #F59E0B;':''}">
               <td>${UI.codePill(q.code)}</td>
@@ -1706,7 +1706,7 @@ const ViewSuppliers = (() => {
   async function _renderFileTabDocumentos(wrap, sup) {
     wrap.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-        <strong style="font-size:15px;">Documentacion — ${UI.esc(sup.name)}</strong>
+        <strong style="font-size:15px;">Documentación — ${UI.esc(sup.name)}</strong>
         ${Auth.canEdit() ? `<label class="btn btn-sm btn-primary" style="cursor:pointer;">
           + Adjuntar
           <input type="file" id="file-doc-upload" style="display:none;"
@@ -1714,7 +1714,7 @@ const ViewSuppliers = (() => {
         </label>` : ''}
       </div>
       <div id="file-doc-desc-row" style="display:none;gap:6px;align-items:center;margin-bottom:12px;">
-        <input id="file-doc-desc" class="input" placeholder="Descripcion del documento (opcional)" style="flex:1;font-size:12px;">
+        <input id="file-doc-desc" class="input" placeholder="Descripción del documento (opcional)" style="flex:1;font-size:12px;">
         <button id="file-doc-confirm" class="btn btn-sm btn-primary">Subir</button>
         <button id="file-doc-cancel" class="btn btn-sm">Cancelar</button>
       </div>
@@ -1864,12 +1864,12 @@ const ViewSuppliers = (() => {
     try {
       const result = await Api.suppliers.analyzeDocument(supplierId, docId);
       if (!result.ok) {
-        UI.toast(result.message || 'Error en el analisis', 'error');
+        UI.toast(result.message || 'Error en el análisis', 'error');
         return;
       }
       const fields = result.updated_fields || [];
       if (!fields.length) {
-        UI.toast('El agente no encontro campos nuevos que anadir (todos ya estaban rellenos).', 'info');
+        UI.toast('El agente no encontro campos nuevos que añadir (todos ya estaban rellenos).', 'info');
         return;
       }
       const fieldLabels = {
@@ -1882,7 +1882,7 @@ const ViewSuppliers = (() => {
         certifications: 'Certificaciones', notes: 'Notas',
         is_data_processor: 'Encargado GDPR', processes_personal_data: 'Trata datos personales',
         cross_border_transfers: 'Transferencias internacionales',
-        is_critical: 'Critico NIS2', is_nis2: 'NIS2', is_dora: 'DORA', is_ens: 'ENS',
+        is_critical: 'Crítico NIS2', is_nis2: 'NIS2', is_dora: 'DORA', is_ens: 'ENS',
         data_sensitivity: 'Sensibilidad datos', data_volume: 'Volumen datos',
         system_access_type: 'Acceso a sistemas', business_criticality: 'Criticidad negocio',
         geographic_risk: 'Riesgo geografico', business_importance: 'Importancia negocio',
@@ -1897,7 +1897,7 @@ const ViewSuppliers = (() => {
         UI.closeModal();
         _openForm(freshSup);
       } catch (_) {
-        // Si falla la recarga, al menos los datos ya estan guardados
+        // Si falla la recarga, al menos los datos ya están guardados
       }
     } catch (e) {
       UI.toast(e.message || 'Error analizando el documento', 'error');
@@ -1925,13 +1925,13 @@ const ViewSuppliers = (() => {
         <div style="display:flex;gap:6px;align-items:flex-start;">
           <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
             <input class="input sla-name" data-idx="${i}" placeholder="Nombre SLA *" value="${UI.esc(sla.name||'')}" style="font-size:12px;">
-            <input class="input sla-metric" data-idx="${i}" placeholder="Metrica / objetivo (ej: 99.9%)" value="${UI.esc(sla.metric||'')}" style="font-size:12px;">
+            <input class="input sla-metric" data-idx="${i}" placeholder="Métrica / objetivo (ej: 99.9%)" value="${UI.esc(sla.metric||'')}" style="font-size:12px;">
             <select class="input sla-cat" data-idx="${i}" style="font-size:12px;">
               ${['availability','support','security','performance','recovery','other'].map(c =>
                 `<option value="${c}" ${(sla.category||'other')===c?'selected':''}>${c}</option>`
               ).join('')}
             </select>
-            <input class="input sla-desc" data-idx="${i}" placeholder="Descripcion breve" value="${UI.esc(sla.description||'')}" style="font-size:12px;">
+            <input class="input sla-desc" data-idx="${i}" placeholder="Descripción breve" value="${UI.esc(sla.description||'')}" style="font-size:12px;">
           </div>
           <button type="button" class="btn btn-sm btn-danger sla-del" data-idx="${i}" style="padding:3px 8px;font-size:12px;margin-top:2px;">X</button>
         </div>
@@ -1980,7 +1980,7 @@ const ViewSuppliers = (() => {
           <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
             <input class="input ct-name" data-idx="${i}" placeholder="Nombre *" value="${UI.esc(c.name||'')}" style="font-size:12px;">
             <input class="input ct-email" data-idx="${i}" placeholder="Email *" type="email" value="${UI.esc(c.email||'')}" style="font-size:12px;">
-            <input class="input ct-role" data-idx="${i}" placeholder="Rol (Tecnico, Legal...)" value="${UI.esc(c.role||'')}" style="font-size:12px;">
+            <input class="input ct-role" data-idx="${i}" placeholder="Rol (Técnico, Legal...)" value="${UI.esc(c.role||'')}" style="font-size:12px;">
           </div>
           <button type="button" class="btn btn-sm btn-danger ct-del" data-idx="${i}" style="padding:3px 8px;font-size:12px;margin-top:2px;">X</button>
         </div>
@@ -2070,8 +2070,8 @@ const ViewSuppliers = (() => {
   function _openImport() {
     UI.modal('Importar proveedores', `
       <div class="span2">
-        <p style="font-size:13px;margin-bottom:8px;">Sube un fichero exportado desde Excel u otra herramienta de gestion (OneTrust, ERP, hoja de compras...). Formatos: <strong>CSV, XLSX, XLS, ODS, TSV, JSON</strong>.</p>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Se detectan automaticamente columnas como nombre, categoria, contacto, email, servicios, web, pais y CIF/NIF/VAT (en espanol o ingles). Los proveedores ya existentes (por nombre) se omiten. Se calcula el tier y el riesgo de cada uno tras importar.</p>
+        <p style="font-size:13px;margin-bottom:8px;">Sube un fichero exportado desde Excel u otra herramienta de gestión (OneTrust, ERP, hoja de compras...). Formatos: <strong>CSV, XLSX, XLS, ODS, TSV, JSON</strong>.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Se detectan automáticamente columnas como nombre, categoría, contacto, email, servicios, web, pais y CIF/NIF/VAT (en español o ingles). Los proveedores ya existentes (por nombre) se omiten. Se calcula el tier y el riesgo de cada uno tras importar.</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,.ods,.tsv,.json" class="input">
         <div id="imp-result" style="margin-top:12px;"></div>
       </div>
@@ -2137,7 +2137,7 @@ const ViewSuppliers = (() => {
               <div class="card-title"><i class="ti ti-clipboard-list"></i> Mis tareas asignadas (${tasks.length})</div>
             </div>
             <div class="table-wrap"><table class="data"><thead><tr>
-              <th>Codigo</th><th>Titulo</th><th>Proveedor</th><th>Expira</th><th></th>
+              <th>Código</th><th>Título</th><th>Proveedor</th><th>Expira</th><th></th>
             </tr></thead><tbody>
               ${tasks.map(q => `<tr>
                 <td>${UI.codePill(q.code)}</td>
@@ -2188,7 +2188,7 @@ const ViewSuppliers = (() => {
       const now = new Date();
       wrap.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>Codigo</th><th>Titulo</th><th>Proveedor</th><th style="width:70px;">Tipo</th><th>Puntuacion</th><th>Respondido</th><th>Expira</th><th>Evaluacion IA</th><th></th>
+          <th>Código</th><th>Título</th><th>Proveedor</th><th style="width:70px;">Tipo</th><th>Puntuación</th><th>Respondido</th><th>Expira</th><th>Evaluación IA</th><th></th>
         </tr></thead>
         <tbody>
           ${data.map(q => {
@@ -2202,7 +2202,7 @@ const ViewSuppliers = (() => {
             const assignedUserLabel = isInternal && q.assigned_user_name
               ? `<div style="font-size:10px;color:var(--text-muted);">Asignado: ${UI.esc(q.assigned_user_name)}</div>` : '';
             const regwatchBadge = q.regwatch_review_at
-              ? `<span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:1px 5px;border-radius:4px;vertical-align:middle;" title="Revision normativa requerida desde ${new Date(q.regwatch_review_at).toLocaleDateString('es-ES')}">NORM</span>`
+              ? `<span style="display:inline-block;margin-left:6px;font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border:1px solid #FCD34D;padding:1px 5px;border-radius:4px;vertical-align:middle;" title="Revisión normativa requerida desde ${new Date(q.regwatch_review_at).toLocaleDateString('es-ES')}">NORM</span>`
               : '';
             let scoreHtml = '-';
             if (q.score !== null && q.score !== undefined) {
@@ -2216,7 +2216,7 @@ const ViewSuppliers = (() => {
                 const aiscore = q.ai_review.ai_score;
                 const aicolor = aiscore >= 80 ? '#22C55E' : aiscore >= 60 ? '#F59E0B' : '#EF4444';
                 const reviewedDate = q.ai_reviewed_at ? new Date(q.ai_reviewed_at).toLocaleDateString('es-ES') : '';
-                aiHtml = `<span style="font-weight:700;color:${aicolor};cursor:pointer;" data-id="${q.id}" data-act="view-ai" title="Ver evaluacion IA (${reviewedDate})">${aiscore}/100</span>`;
+                aiHtml = `<span style="font-weight:700;color:${aicolor};cursor:pointer;" data-id="${q.id}" data-act="view-ai" title="Ver evaluación IA (${reviewedDate})">${aiscore}/100</span>`;
                 if (Auth.canEdit()) {
                   aiHtml += ` <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;" data-id="${q.id}" data-act="eval-ai" title="Re-evaluar con IA">Re-evaluar</button>`;
                 }
@@ -2290,7 +2290,7 @@ const ViewSuppliers = (() => {
           btn.disabled = true;
           try {
             const result = await Api.supplier_questionnaires_ai.triggerReview(q.id);
-            UI.toast('Evaluacion IA completada', 'success');
+            UI.toast('Evaluación IA completada', 'success');
             _showAiReviewModal(q.title || q.code, result);
             await _reloadSeq();
           } catch (e) {
@@ -2335,7 +2335,7 @@ const ViewSuppliers = (() => {
       `Asignar cuestionario ${q.code} a usuario interno`,
       `<div style="padding:4px 0;">
         <p style="font-size:13px;margin-bottom:12px;color:var(--text-muted);">
-          El usuario seleccionado podra responder el cuestionario directamente en la plataforma y recibira un email de notificacion.
+          El usuario seleccionado podra responder el cuestionario directamente en la plataforma y recibira un email de notificación.
         </p>
         <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Usuario</label>
         <select id="assign-user-sel" class="input" style="width:100%;">
@@ -2423,7 +2423,7 @@ const ViewSuppliers = (() => {
       try {
         const r = await Api.supplier_questionnaires.internalSubmit(q.id, answers);
         UI.closeModal();
-        UI.toast(`Cuestionario enviado. Puntuacion: ${r.score}/100`, 'success');
+        UI.toast(`Cuestionario enviado. Puntuación: ${r.score}/100`, 'success');
         _reloadSeq();
         // Reload my tasks section
         const tasksWrap = document.getElementById('seq-my-tasks');
@@ -2462,10 +2462,10 @@ const ViewSuppliers = (() => {
   function _showAiReviewModal(title, review) {
     if (!review) return;
     if (review.error) {
-      UI.modal('Evaluacion IA — Error', `
+      UI.modal('Evaluación IA — Error', `
         <div class="span2">
           <div class="notice">${UI.esc(review.error)}</div>
-          <p style="font-size:13px;margin-top:8px;">La evaluacion automatica no pudo completarse. Revisa la configuracion de la API key en IA &gt; Configuracion.</p>
+          <p style="font-size:13px;margin-top:8px;">La evaluación automática no pudo completarse. Revisa la configuración de la API key en IA &gt; Configuración.</p>
         </div>
       `, { actions: '<button class="btn btn-primary" id="m-close-ai">Cerrar</button>' });
       document.getElementById('m-close-ai').onclick = UI.closeModal;
@@ -2490,18 +2490,18 @@ const ViewSuppliers = (() => {
       ? review.follow_up_questions.map(f => `<li style="margin-bottom:4px;">${UI.esc(f)}</li>`).join('')
       : '<li style="color:var(--text-muted);">Sin preguntas adicionales</li>';
 
-    UI.modal(`Evaluacion IA — ${UI.esc(title)}`, `
+    UI.modal(`Evaluación IA — ${UI.esc(title)}`, `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div style="grid-column:1/-1;display:flex;gap:16px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:4px;">
           <div style="text-align:center;">
             <div style="font-size:28px;font-weight:800;color:${scoreColor};">${score}<span style="font-size:14px;">/100</span></div>
-            <div style="font-size:11px;color:var(--text-muted);">Puntuacion IA</div>
+            <div style="font-size:11px;color:var(--text-muted);">Puntuación IA</div>
           </div>
           <div style="text-align:center;">
             <div style="font-size:20px;font-weight:700;color:var(--brand-purple);">${confPct}</div>
             <div style="font-size:11px;color:var(--text-muted);">Confianza</div>
           </div>
-          ${needsManual ? '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#92400E;">Requiere revision manual</div>' : '<div style="background:#ECFDF5;border:1px solid #22C55E;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#065F46;">Sin alerta de revision</div>'}
+          ${needsManual ? '<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#92400E;">Requiere revisión manual</div>' : '<div style="background:#ECFDF5;border:1px solid #22C55E;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#065F46;">Sin alerta de revisión</div>'}
           ${reviewedAt ? `<div style="font-size:11px;color:var(--text-muted);margin-left:auto;">Evaluado: ${reviewedAt}</div>` : ''}
         </div>
 
@@ -2557,13 +2557,13 @@ const ViewSuppliers = (() => {
           </optgroup>` : ''}
         </select>
       </div>
-      <div><label>Titulo *</label>
+      <div><label>Título *</label>
         <input id="sq-title" value="Evaluacion de seguridad NIS2/ISO 27001">
       </div>
-      <div><label>Fecha de expiracion</label>
+      <div><label>Fecha de expiración</label>
         <input type="date" id="sq-expires" value="${new Date(Date.now()+30*86400000).toISOString().slice(0,10)}">
       </div>
-      <div><label>Email de notificacion (cuando el proveedor responde)</label>
+      <div><label>Email de notificación (cuando el proveedor responde)</label>
         <input id="sq-notify-email" type="email" class="input" placeholder="gestor@empresa.com (opcional)">
       </div>
       <div class="span2"><label>Notas internas</label>
@@ -2581,7 +2581,7 @@ const ViewSuppliers = (() => {
       const supId = document.getElementById('sq-sup').value;
       const title = document.getElementById('sq-title').value.trim();
       if (!supId) { UI.toast('Selecciona un proveedor','error'); return; }
-      if (!title) { UI.toast('El titulo es obligatorio','error'); return; }
+      if (!title) { UI.toast('El título es obligatorio','error'); return; }
       const expires = document.getElementById('sq-expires').value;
       const tplVal = document.getElementById('sq-template').value || '';
       const notifyEmail = document.getElementById('sq-notify-email')?.value.trim() || null;
@@ -2652,14 +2652,14 @@ const ViewSuppliers = (() => {
       const INTERVAL_LABELS = { 30:'Mensual', 90:'Trimestral', 180:'Semestral', 365:'Anual' };
       wrap.innerHTML = `<div class="table-wrap"><table class="data">
         <thead><tr>
-          <th>Proveedor</th><th>Titulo (plantilla)</th><th>Frecuencia</th>
-          <th>Proximo envio</th><th>Ultimo envio</th><th>Notificar a</th><th>Estado</th><th></th>
+          <th>Proveedor</th><th>Título (plantilla)</th><th>Frecuencia</th>
+          <th>Próximo envío</th><th>Último envío</th><th>Notificar a</th><th>Estado</th><th></th>
         </tr></thead>
         <tbody>
           ${data.map(sc => {
             const next = sc.next_send_at ? new Date(sc.next_send_at).toLocaleDateString('es-ES') : '-';
             const last = sc.last_sent_at ? new Date(sc.last_sent_at).toLocaleDateString('es-ES') : 'Nunca';
-            const freq = INTERVAL_LABELS[sc.interval_days] || sc.interval_days + ' dias';
+            const freq = INTERVAL_LABELS[sc.interval_days] || sc.interval_days + ' días';
             const status = sc.enabled
               ? `<span style="color:#22C55E;font-weight:600;font-size:12px;">Activa</span>`
               : `<span style="color:var(--text-muted);font-size:12px;">Pausada</span>`;
@@ -2695,17 +2695,17 @@ const ViewSuppliers = (() => {
           if (!sc) return;
           try {
             await Api.questionnaire_schedules.update(sc.id, { enabled: !sc.enabled });
-            UI.toast(sc.enabled ? 'Planificacion pausada' : 'Planificacion activada', 'success');
+            UI.toast(sc.enabled ? 'Planificación pausada' : 'Planificación activada', 'success');
             _reloadSchedules();
           } catch (e) { UI.toast(e.message, 'error'); }
         };
       });
       wrap.querySelectorAll('[data-sc-act="del"]').forEach(btn => {
         btn.onclick = async () => {
-          if (!confirm('Eliminar esta planificacion?')) return;
+          if (!confirm('Eliminar esta planificación?')) return;
           try {
             await Api.questionnaire_schedules.del(btn.dataset.id);
-            UI.toast('Planificacion eliminada', 'success');
+            UI.toast('Planificación eliminada', 'success');
             _reloadSchedules();
           } catch (e) { UI.toast(e.message, 'error'); }
         };
@@ -2720,15 +2720,15 @@ const ViewSuppliers = (() => {
     try { customTpls = await Api.tprm.customTemplates(); } catch (_) {}
     const v = sc || {};
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 16);
-    UI.modal(sc ? 'Editar planificacion' : 'Nueva planificacion periodica', `
+    UI.modal(sc ? 'Editar planificación' : 'Nueva planificación periódica', `
       <div><label>Proveedor *</label>
         <select id="sc-sup">
           <option value="">- Seleccionar -</option>
           ${suppliers.map(s => `<option value="${s.id}" ${v.supplier_id == s.id ? 'selected' : ''}>${UI.esc(s.code)} - ${UI.esc(s.name)}</option>`).join('')}
         </select>
       </div>
-      <div><label>Titulo del cuestionario *</label>
-        <input id="sc-title" class="input" value="${UI.esc(v.title_template || 'Evaluacion de seguridad {year}')}" placeholder="Usa {year} y {month} como variables">
+      <div><label>Título del cuestionario *</label>
+        <input id="sc-title" class="input" value="${UI.esc(v.title_template || 'Evaluación de seguridad {year}')}" placeholder="Usa {year} y {month} como variables">
       </div>
       <div><label>Plantilla</label>
         <select id="sc-template" class="input">
@@ -2741,21 +2741,21 @@ const ViewSuppliers = (() => {
           </optgroup>` : ''}
         </select>
       </div>
-      <div><label>Frecuencia de envio</label>
+      <div><label>Frecuencia de envío</label>
         <select id="sc-interval" class="input">
-          <option value="30" ${v.interval_days==30?'selected':''}>Mensual (30 dias)</option>
-          <option value="90" ${v.interval_days==90?'selected':''}>Trimestral (90 dias)</option>
-          <option value="180" ${v.interval_days==180?'selected':''}>Semestral (180 dias)</option>
-          <option value="365" ${(!v.interval_days||v.interval_days==365)?'selected':''}>Anual (365 dias)</option>
+          <option value="30" ${v.interval_days==30?'selected':''}>Mensual (30 días)</option>
+          <option value="90" ${v.interval_days==90?'selected':''}>Trimestral (90 días)</option>
+          <option value="180" ${v.interval_days==180?'selected':''}>Semestral (180 días)</option>
+          <option value="365" ${(!v.interval_days||v.interval_days==365)?'selected':''}>Anual (365 días)</option>
         </select>
       </div>
-      <div><label>Dias de validez del cuestionario enviado</label>
+      <div><label>Días de validez del cuestionario enviado</label>
         <input type="number" id="sc-expires" class="input" min="7" max="180" value="${v.expires_days || 30}">
       </div>
-      <div><label>Primer/proximo envio</label>
+      <div><label>Primer/próximo envío</label>
         <input type="datetime-local" id="sc-next" class="input" value="${v.next_send_at ? v.next_send_at.slice(0,16) : tomorrow}">
       </div>
-      <div><label>Email de notificacion (al responder el proveedor)</label>
+      <div><label>Email de notificación (al responder el proveedor)</label>
         <input type="email" id="sc-notify" class="input" value="${UI.esc(v.notify_email || '')}" placeholder="responsable@empresa.com">
       </div>
       <div class="span2"><label>Notas internas</label>
@@ -2770,7 +2770,7 @@ const ViewSuppliers = (() => {
       const supId = document.getElementById('sc-sup').value;
       const title = document.getElementById('sc-title').value.trim();
       if (!supId) { UI.toast('Selecciona un proveedor', 'error'); return; }
-      if (!title) { UI.toast('El titulo es obligatorio', 'error'); return; }
+      if (!title) { UI.toast('El título es obligatorio', 'error'); return; }
       const tplVal = document.getElementById('sc-template').value || '';
       const payload = {
         supplier_id: parseInt(supId),
@@ -2786,10 +2786,10 @@ const ViewSuppliers = (() => {
       try {
         if (sc) {
           await Api.questionnaire_schedules.update(sc.id, payload);
-          UI.toast('Planificacion actualizada', 'success');
+          UI.toast('Planificación actualizada', 'success');
         } else {
           await Api.questionnaire_schedules.create(payload);
-          UI.toast('Planificacion creada', 'success');
+          UI.toast('Planificación creada', 'success');
         }
         UI.closeModal();
         _reloadSchedules();
@@ -2803,7 +2803,7 @@ const ViewSuppliers = (() => {
     const wrap = document.getElementById('sup-tab-content');
     wrap.innerHTML = `
       <div class="notice" style="margin-bottom:12px;font-size:13px;">
-        Los flujos permiten encadenar cuestionarios automaticamente segun el resultado de la fase anterior.
+        Los flujos permiten encadenar cuestionarios automáticamente según el resultado de la fase anterior.
         Ejemplo: cuestionario inicial &rarr; si score &lt; 60% enviar cuestionario de riesgo alto, si &ge; 60% enviar uno de riesgo medio.
       </div>
       <div id="flow-list">Cargando...</div>
@@ -2936,11 +2936,11 @@ const ViewSuppliers = (() => {
                 </select>
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text-muted);">Dias de validez</label>
+                <label style="font-size:11px;color:var(--text-muted);">Días de validez</label>
                 <input type="number" class="input fl-step-expires" data-idx="${i}" min="7" max="180" value="${s.expires_days||30}" style="font-size:12px;">
               </div>
               <div>
-                <label style="font-size:11px;color:var(--text-muted);">Condicion de envio</label>
+                <label style="font-size:11px;color:var(--text-muted);">Condicion de envío</label>
                 <select class="input fl-step-cond-type" data-idx="${i}" style="font-size:12px;">
                   <option value="none" ${condType==='none'?'selected':''}>Siempre (paso inicial)</option>
                   <option value="score_lt" ${condType==='score_lt'?'selected':''}>Score anterior &lt; X%</option>
@@ -2955,7 +2955,7 @@ const ViewSuppliers = (() => {
             </div>
           </div>
         `;
-      }).join('') + `<button type="button" id="fl-add-step" class="btn btn-sm" style="margin-top:4px;">+ Anadir paso</button>`;
+      }).join('') + `<button type="button" id="fl-add-step" class="btn btn-sm" style="margin-top:4px;">+ Añadir paso</button>`;
 
       // Set selected template values
       stepsWrap.querySelectorAll('.fl-step-tpl').forEach(sel => {
@@ -3017,9 +3017,9 @@ const ViewSuppliers = (() => {
 
     UI.modal(flow ? `Editar flujo: ${UI.esc(flow.name)}` : 'Nuevo flujo de cuestionarios', `
       <div class="span2"><label>Nombre del flujo *</label>
-        <input id="fl-name" class="input" value="${UI.esc(flow?.name || '')}" placeholder="Ej: Evaluacion proveedores criticos">
+        <input id="fl-name" class="input" value="${UI.esc(flow?.name || '')}" placeholder="Ej: Evaluación proveedores críticos">
       </div>
-      <div class="span2"><label>Descripcion</label>
+      <div class="span2"><label>Descripción</label>
         <textarea id="fl-desc" class="input" rows="2">${UI.esc(flow?.description || '')}</textarea>
       </div>
       <div class="span2">
@@ -3072,7 +3072,7 @@ const ViewSuppliers = (() => {
         </select>
       </div>
       <div class="span2 notice" style="font-size:12px;">
-        Se creara el primer cuestionario del flujo y se enlazara con este proveedor. Los pasos siguientes se envian al recibir respuesta del anterior.
+        Se creara el primer cuestionario del flujo y se enlazara con este proveedor. Los pasos siguientes se envían al recibir respuesta del anterior.
       </div>
     `, {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>

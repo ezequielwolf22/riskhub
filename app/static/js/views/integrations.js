@@ -1,8 +1,8 @@
-/* Vista Integraciones — Catalogo de herramientas con guias de conexion a RiskHub. */
+/* Vista Integraciones — Catálogo de herramientas con guias de conexión a RiskHub. */
 const ViewIntegrations = {
 
   _catalog: [
-    // ---- Gestion de activos ----
+    // ---- Gestión de activos ----
     {
       id: "leanix", category: "Gestión de activos",
       name: "LeanIX Enterprise Architecture",
@@ -80,7 +80,7 @@ const ViewIntegrations = {
       iso_mapping: "ISO 27005 Annex B — Asset types and examples.",
     },
 
-    // ---- Gestion de vulnerabilidades ----
+    // ---- Gestión de vulnerabilidades ----
     {
       id: "qualys", category: "Gestión de vulnerabilidades",
       name: "Qualys VMDR",
@@ -206,7 +206,7 @@ const ViewIntegrations = {
       iso_mapping: "ISO 27005 Annex D.2 — Application and software vulnerabilities.",
     },
 
-    // ---- ERP / Gestion de proveedores ----
+    // ---- ERP / Gestión de proveedores ----
     {
       id: "sap_erp", category: "ERP / Gestión de proveedores",
       name: "SAP ERP / SAP S/4HANA",
@@ -252,22 +252,22 @@ const ViewIntegrations = {
     },
     {
       id: "csv_erp_import", category: "ERP / Gestión de proveedores",
-      name: "Importacion CSV desde cualquier ERP",
-      description: "Metodo universal para importar proveedores desde cualquier sistema ERP (SAP, Oracle, Microsoft Dynamics, Sage, Holded, etc.) mediante exportacion a CSV.",
+      name: "Importación CSV desde cualquier ERP",
+      description: "Metodo universal para importar proveedores desde cualquier sistema ERP (SAP, Oracle, Microsoft Dynamics, Sage, Holded, etc.) mediante exportación a CSV.",
       data: "Listado de proveedores exportado del ERP → Proveedores de RiskHub",
-      api: "Exportacion nativa a CSV/Excel de cualquier ERP",
+      api: "Exportación nativa a CSV/Excel de cualquier ERP",
       auth: "No requiere — proceso offline de transformacion y carga",
       status: "guia",
       steps: [
         "En tu ERP, exporta el maestro de proveedores activos en formato CSV o Excel.",
-        "El fichero debe incluir al menos: nombre, CIF/NIF, pais, categoria de servicio, persona de contacto y email.",
+        "El fichero debe incluir al menos: nombre, CIF/NIF, pais, categoría de servicio, persona de contacto y email.",
         "Abre el fichero en Excel u hoja de calculo y adapta las columnas al formato de RiskHub.",
-        "En RiskHub, ve a Proveedores → boton de importacion (si disponible) o crea los proveedores manualmente para los criticos.",
-        "Prioriza los proveedores que: tienen acceso remoto a sistemas, procesan datos personales, o son criticos para la operacion.",
-        "Para cada proveedor critico importado, completa: nivel de riesgo inherente, categoria (TI/nube/servicios profesionales/instalaciones), SLA y fecha de revision.",
-        "Adjunta el contrato o acuerdo de confidencialidad escaneado en el campo de documentacion del proveedor.",
+        "En RiskHub, ve a Proveedores → boton de importación (si disponible) o crea los proveedores manualmente para los críticos.",
+        "Prioriza los proveedores que: tienen acceso remoto a sistemas, procesan datos personales, o son críticos para la operacion.",
+        "Para cada proveedor crítico importado, completa: nivel de riesgo inherente, categoría (TI/nube/servicios profesionales/instalaciones), SLA y fecha de revisión.",
+        "Adjunta el contrato o acuerdo de confidencialidad escaneado en el campo de documentación del proveedor.",
         "Usa el cuestionario de seguridad de proveedores de RiskHub para evaluar y documentar el nivel de madurez de seguridad de cada proveedor.",
-        "Programa una revision periodica en el calendario de RiskHub para los proveedores de nivel de riesgo alto o critico.",
+        "Programa una revisión periódica en el calendario de RiskHub para los proveedores de nivel de riesgo alto o crítico.",
       ],
       iso_mapping: "ISO 27005 Annex B — Supporting assets: suppliers and partners. ISO 27002:2022 cl. 5.19.",
     },
@@ -857,7 +857,7 @@ const ViewIntegrations = {
     } catch (e) { UI.toast(e.message, 'error'); }
   },
 
-  // ---- Carpetas permitidas + sincronizacion automatica ----
+  // ---- Carpetas permitidas + sincronizacion automática ----
 
   async _loadAllowedFolders() {
     const wrap = document.getElementById('sp-allowed-list');
@@ -1513,7 +1513,7 @@ const ViewIntegrations = {
     }
   },
 
-  // Contenido de ayuda "como hacerlo" por bloque de configuracion de alertas
+  // Contenido de ayuda "como hacerlo" por bloque de configuración de alertas
   _ALERT_HELP: {
     smtp: {
       title: 'Cómo obtener los datos de tu servidor SMTP',
@@ -1581,7 +1581,7 @@ const ViewIntegrations = {
     UI.openModal(modalHtml, { width: '640px' });
   },
 
-  // ── Catalogo ─────────────────────────────────────────────────────────────
+  // ── Catálogo ─────────────────────────────────────────────────────────────
 
   _renderCatalog() {
     const cats = this._categories();
@@ -1897,7 +1897,7 @@ const ViewIntegrations = {
             <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:10px;margin-top:6px;">
               <pre style="font-size:10px;margin:0;white-space:pre-wrap;">{
   "supplier": "Nombre del proveedor",
-  "title": "Titulo del cuestionario (opcional)",
+  "title": "Título del cuestionario (opcional)",
   "answers": { "Pregunta 1": "Si", "Pregunta 2": "No" },
   "submitted_by": "email@externo.com"
 }</pre>
@@ -1938,19 +1938,19 @@ const ViewIntegrations = {
         </div>
         </details>
 
-        <!-- Polling MS Forms: alta automatica de proveedores -->
+        <!-- Polling MS Forms: alta automática de proveedores -->
         <details class="acc-item" style="border:2px solid var(--brand-purple,#59008D);border-radius:10px;margin-bottom:10px;">
         <summary style="cursor:pointer;padding:14px 20px;display:flex;align-items:center;gap:10px;">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--brand-purple,#59008D)" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-          <span style="font-weight:700;font-size:14px;color:var(--brand-purple,#59008D);">Polling MS Forms — alta automatica de proveedores</span>
+          <span style="font-weight:700;font-size:14px;color:var(--brand-purple,#59008D);">Polling MS Forms — alta automática de proveedores</span>
           ${pollBadge}
-          <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Ultimo sync: ${UI.esc(lastPollStr)}</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Último sync: ${UI.esc(lastPollStr)}</span>
         </summary>
         <div style="padding:0 20px 20px;">
         <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px;">
           RiskHub consulta la API de MS Forms cada <b>${cfg.msforms_poll_interval_hours || 4} horas</b>.
-          Por cada respuesta nueva crea automaticamente un proveedor, genera un cuestionario con las respuestas
-          del formulario y lanza el analisis IA. El usuario entra, revisa y decide los pasos siguientes.
+          Por cada respuesta nueva crea automáticamente un proveedor, genera un cuestionario con las respuestas
+          del formulario y lanza el análisis IA. El usuario entra, revisa y decide los pasos siguientes.
         </p>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
@@ -1989,11 +1989,11 @@ const ViewIntegrations = {
           <div style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:4px;">
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
               <input type="checkbox" id="msf-poll-enabled" ${cfg.msforms_poll_enabled ? 'checked' : ''}>
-              Polling automatico habilitado
+              Polling automático habilitado
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:6px;">
               <input type="checkbox" id="msf-auto-ai" ${cfg.msforms_auto_ai_review !== false ? 'checked' : ''}>
-              Analisis IA automatico al crear proveedor
+              Análisis IA automático al crear proveedor
             </label>
           </div>
         </div>
@@ -2012,7 +2012,7 @@ const ViewIntegrations = {
           <div id="msf-discover-result" style="font-size:11px;margin-bottom:8px;"></div>
           ${questionsDatalist}
           <div id="msf-mapping-rows" style="margin-bottom:6px;">${mappingRows}</div>
-          <button class="btn btn-sm" onclick="ViewIntegrations._addMappingRow()">+ Anadir campo</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._addMappingRow()">+ Añadir campo</button>
           <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
             Campos destino: <code>name</code>, <code>description</code>, <code>services</code>,
             <code>category</code>, <code>contact_name</code>, <code>contact_email</code>,
@@ -2027,7 +2027,7 @@ const ViewIntegrations = {
           </div>
           <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
             Cuando el analista registra una decision de seguridad (condicional, aprobado o rechazado)
-            sobre un proveedor que entro via MS Forms, RiskHub envia automaticamente el resultado
+            sobre un proveedor que entró vía MS Forms, RiskHub envía automáticamente el resultado
             a este webhook de Power Automate para notificar al iniciador del proceso.
           </p>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">URL webhook Power Automate (callback de decisiones)</label>
@@ -2060,7 +2060,7 @@ const ViewIntegrations = {
           <div style="background:var(--bg-2,#f5f5f5);border-radius:6px;padding:12px;margin-top:8px;font-size:12px;">
             <ol style="margin:0;padding-left:18px;line-height:1.8;">
               <li>Azure Portal &gt; <b>Azure Active Directory</b> &gt; <b>App Registrations</b> &gt; New registration</li>
-              <li>Nombre: "RiskHub Forms" — Tipo de cuenta: cuentas de tu organizacion</li>
+              <li>Nombre: "RiskHub Forms" — Tipo de cuenta: cuentas de tu organización</li>
               <li>Una vez creada: copia el <b>Application (client) ID</b> y el <b>Directory (tenant) ID</b></li>
               <li><b>Certificates &amp; secrets</b> &gt; New client secret — copia el valor generado</li>
               <li><b>API Permissions</b> &gt; Add permission &gt; Microsoft Graph &gt; Application permissions</li>
@@ -2071,7 +2071,7 @@ const ViewIntegrations = {
         </details>
 
         <div style="display:flex;gap:8px;align-items:center;">
-          <button class="btn btn-primary" id="msf-save">Guardar configuracion</button>
+          <button class="btn btn-primary" id="msf-save">Guardar configuración</button>
           <button class="btn" id="msf-sync-now" ${!cfg.msforms_form_id ? 'disabled title="Configura y guarda el Form ID primero"' : ''}>
             Sincronizar ahora
           </button>
@@ -2080,24 +2080,24 @@ const ViewIntegrations = {
         </div>
         </details>
 
-        <!-- Polling de email: alta automatica de proveedores -->
+        <!-- Polling de email: alta automática de proveedores -->
         <details class="acc-item" style="border:2px solid #0EA5E9;border-radius:10px;margin-bottom:10px;">
         <summary style="cursor:pointer;padding:14px 20px;display:flex;align-items:center;gap:10px;">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0EA5E9" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 6l8 7 8-7"/></svg>
-          <span style="font-weight:700;font-size:14px;color:#0EA5E9;">Polling de email — alta automatica de proveedores</span>
+          <span style="font-weight:700;font-size:14px;color:#0EA5E9;">Polling de email — alta automática de proveedores</span>
           ${emailPollBadge}
-          <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Ultimo sync: ${UI.esc(emailLastPollStr)}</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-muted);">Último sync: ${UI.esc(emailLastPollStr)}</span>
         </summary>
         <div style="padding:0 20px 20px;">
         <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px;">
           RiskHub consulta el buzon configurado cada N horas (nunca recibe conexiones entrantes). Por cada
           mail nuevo revisa los adjuntos (PDF/Word con campos de formulario, o texto libre) y crea
-          automaticamente un proveedor. Si la extraccion fue de baja confianza, el proveedor se marca
-          como "pendiente de revision".
+          automáticamente un proveedor. Si la extraccion fue de baja confianza, el proveedor se marca
+          como "pendiente de revisión".
         </p>
 
         <div style="margin-bottom:12px;">
-          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Tipo de conexion al buzon</label>
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Tipo de conexión al buzon</label>
           <div style="display:flex;gap:16px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
               <input type="radio" name="email-mode" value="graph" id="email-mode-graph" ${cfg.email_intake_mode === 'graph' ? 'checked' : ''}> Microsoft 365 (Graph API)
@@ -2130,7 +2130,7 @@ const ViewIntegrations = {
             <input class="input" id="email-graph-mailbox" placeholder="proveedores@empresa.com" value="${UI.esc(cfg.email_intake_graph_mailbox || '')}">
           </div>
           <div style="grid-column:1 / -1;font-size:10px;color:var(--text-muted);">
-            Requiere permiso de aplicacion <code>Mail.Read</code> concedido con consentimiento de administrador
+            Requiere permiso de aplicación <code>Mail.Read</code> concedido con consentimiento de administrador
             en el mismo App Registration (o uno nuevo) que usa el polling de MS Forms.
           </div>
         </div>
@@ -2150,11 +2150,11 @@ const ViewIntegrations = {
           </div>
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">
-              Contrasena *
+              Contraseña *
               ${cfg.email_intake_imap_password_configured ? '<span style="color:#059669;font-size:10px;font-weight:400;">(configurada — deja en blanco para mantener)</span>' : ''}
             </label>
             <input type="password" class="input" id="email-imap-pass"
-              placeholder="${cfg.email_intake_imap_password_configured ? 'Dejar en blanco para mantener la actual' : 'Contrasena o app password'}">
+              placeholder="${cfg.email_intake_imap_password_configured ? 'Dejar en blanco para mantener la actual' : 'Contraseña o app password'}">
           </div>
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Carpeta</label>
@@ -2166,7 +2166,7 @@ const ViewIntegrations = {
             </label>
           </div>
           <div style="grid-column:1 / -1;font-size:10px;color:var(--text-muted);">
-            Para Gmail: activa el acceso IMAP y genera una "contrasena de aplicacion" en vez de la contrasena principal.
+            Para Gmail: activa el acceso IMAP y genera una "contraseña de aplicación" en vez de la contraseña principal.
           </div>
         </div>
 
@@ -2178,7 +2178,7 @@ const ViewIntegrations = {
             </span>
           </div>
           <div id="email-mapping-rows" style="margin-bottom:6px;">${emailMappingRows}</div>
-          <button class="btn btn-sm" onclick="ViewIntegrations._addEmailMappingRow()">+ Anadir campo</button>
+          <button class="btn btn-sm" onclick="ViewIntegrations._addEmailMappingRow()">+ Añadir campo</button>
           <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
             Si un documento no tiene campos estructurados, RiskHub usa IA para inferir los datos.
           </div>
@@ -2194,13 +2194,13 @@ const ViewIntegrations = {
             <input class="input" id="email-subject-filter" placeholder="ej: Alta proveedor" value="${UI.esc(cfg.email_intake_subject_filter || '')}">
           </div>
           <div style="grid-column:1 / -1;">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Remitentes permitidos (opcional, uno por linea; admite <code>*@dominio.com</code>)</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Remitentes permitidos (opcional, uno por línea; admite <code>*@dominio.com</code>)</label>
             <textarea class="input" id="email-sender-allowlist" rows="3" placeholder="*@proveedor-conocido.com">${UI.esc((cfg.email_intake_sender_allowlist || []).join('\n'))}</textarea>
-            <div style="font-size:10px;color:var(--text-muted);">Dejar vacio para aceptar cualquier remitente.</div>
+            <div style="font-size:10px;color:var(--text-muted);">Dejar vacío para aceptar cualquier remitente.</div>
           </div>
           <div style="display:flex;flex-direction:column;justify-content:flex-end;">
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" id="email-poll-enabled" ${cfg.email_intake_enabled ? 'checked' : ''}> Polling automatico habilitado
+              <input type="checkbox" id="email-poll-enabled" ${cfg.email_intake_enabled ? 'checked' : ''}> Polling automático habilitado
             </label>
             <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-top:6px;">
               <input type="checkbox" id="email-auto-ai" ${cfg.email_intake_auto_ai_review !== false ? 'checked' : ''}> Analisis IA automatico (documentos no estructurados)
@@ -2209,9 +2209,9 @@ const ViewIntegrations = {
         </div>
 
         <div style="display:flex;gap:8px;align-items:center;">
-          <button class="btn btn-primary" id="email-save">Guardar configuracion</button>
-          <button class="btn" id="email-test-connection">Probar conexion</button>
-          <button class="btn" id="email-sync-now" ${!cfg.email_intake_mode ? 'disabled title="Selecciona y guarda un modo de conexion primero"' : ''}>Sincronizar ahora</button>
+          <button class="btn btn-primary" id="email-save">Guardar configuración</button>
+          <button class="btn" id="email-test-connection">Probar conexión</button>
+          <button class="btn" id="email-sync-now" ${!cfg.email_intake_mode ? 'disabled title="Selecciona y guarda un modo de conexión primero"' : ''}>Sincronizar ahora</button>
           <span id="email-sync-result" style="font-size:12px;color:var(--text-muted);"></span>
         </div>
         </div>
@@ -2265,7 +2265,7 @@ const ViewIntegrations = {
         };
         if (secret) payload.msforms_client_secret = secret;
         await Api.integrations_forms.updateConfig(payload);
-        UI.toast('Configuracion MS Forms guardada', 'success');
+        UI.toast('Configuración MS Forms guardada', 'success');
         await this._initForms();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
@@ -2380,7 +2380,7 @@ const ViewIntegrations = {
         if (graphSecret) payload.email_intake_graph_client_secret = graphSecret;
         if (imapPass) payload.email_intake_imap_password = imapPass;
         await Api.integrations_forms.updateConfig(payload);
-        UI.toast('Configuracion de intake por email guardada', 'success');
+        UI.toast('Configuración de intake por email guardada', 'success');
         await this._initForms();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
@@ -2408,9 +2408,9 @@ const ViewIntegrations = {
           if (pass) body.password = pass;
         }
         await Api.integrations_forms.emailIntakeTestConnection(body);
-        info.textContent = 'Conexion correcta.';
+        info.textContent = 'Conexión correcta.';
         info.style.color = 'var(--risk-low,#059669)';
-        UI.toast('Conexion al buzon verificada', 'success');
+        UI.toast('Conexión al buzon verificada', 'success');
       } catch (e) {
         info.textContent = e.message;
         info.style.color = 'var(--risk-high)';
@@ -2465,9 +2465,9 @@ const ViewIntegrations = {
     const opts = [
       ['', '-- Campo destino --'],
       ['name', 'Nombre (name)'],
-      ['description', 'Descripcion (description)'],
+      ['description', 'Descripción (description)'],
       ['services', 'Servicios (services)'],
-      ['category', 'Categoria (category)'],
+      ['category', 'Categoría (category)'],
       ['contact_name', 'Nombre contacto (contact_name)'],
       ['contact_email', 'Email contacto (contact_email)'],
       ['website', 'Sitio web (website)'],

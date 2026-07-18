@@ -351,7 +351,7 @@ const ViewBcp = (() => {
     <div style="display:grid;grid-template-columns:3fr 1fr;gap:16px;">
       <div class="card">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-          <h3 style="margin:0;">Checklist ISO 22301:2019 — ${iso.total} clausulas</h3>
+          <h3 style="margin:0;">Checklist ISO 22301:2019 — ${iso.total} cláusulas</h3>
         </div>
         <div class="card-body" style="padding:0 16px;">
           ${clauses.map(c => `
@@ -383,7 +383,7 @@ const ViewBcp = (() => {
                 <strong>${dash.total_tests ?? 0}</strong>
               </div>
               <div style="display:flex;justify-content:space-between;">
-                <span style="color:var(--text-subtle)">Criticos</span>
+                <span style="color:var(--text-subtle)">Críticos</span>
                 <strong>${dash.critical_processes ?? 0}</strong>
               </div>
               <div style="display:flex;justify-content:space-between;">
@@ -426,7 +426,7 @@ const ViewBcp = (() => {
   function _renderContinuityMap(wrap, procs, deps, plans, tests, dash) {
     if (!procs.length) {
       wrap.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-subtle);font-size:13px;">
-        Registra procesos criticos para ver el mapa de continuidad.
+        Registra procesos críticos para ver el mapa de continuidad.
       </div>`;
       return;
     }
@@ -664,7 +664,7 @@ const ViewBcp = (() => {
       <input class="form-control" id="proc-search" placeholder="${t('bcp.search_by_name_placeholder')}" style="max-width:280px;font-size:13px;">
       <select class="form-control" id="proc-crit-filter" style="max-width:160px;font-size:13px;">
         <option value="">${t('bcp.crit_filter_all')}</option>
-        <option value="critical">Critica</option>
+        <option value="critical">Crítica</option>
         <option value="high">Alta</option>
         <option value="medium">Media</option>
         <option value="low">Baja</option>
@@ -675,10 +675,10 @@ const ViewBcp = (() => {
       <i class="ti ti-sitemap" style="font-size:48px;color:var(--text-muted);"></i>
       <h3 style="margin:16px 0 8px;">${t('bcp.no_processes_title')}</h3>
       <p style="color:var(--text-muted);margin-bottom:20px;max-width:400px;margin-left:auto;margin-right:auto;">
-        ISO 22301 cl. 8.2 requiere identificar las actividades criticas y sus objetivos de recuperacion (RTO/RPO/MTPD).
+        ISO 22301 cl. 8.2 requiere identificar las actividades críticas y sus objetivos de recuperación (RTO/RPO/MTPD).
       </p>
       <button class="btn btn-primary btn-lg" id="btn-new-proc-empty">
-        <i class="ti ti-plus"></i> Crear primer proceso critico
+        <i class="ti ti-plus"></i> Crear primer proceso crítico
       </button>
     </div>`;
 
@@ -822,7 +822,7 @@ const ViewBcp = (() => {
     </div>
     ${bodyHtml}`;
 
-    // listeners siempre DESPUES de asignar innerHTML
+    // listeners siempre DESPUÉS de asignar innerHTML
     document.getElementById('btn-bia-new')?.addEventListener('click', () => _openBiaPicker());
     document.getElementById('btn-bia-new2')?.addEventListener('click', () => _openBiaPicker());
   }
@@ -999,14 +999,14 @@ const ViewBcp = (() => {
 
     el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h3 style="margin:0;">Estrategias de Recuperacion (${_strats.length})</h3>
+      <h3 style="margin:0;">Estrategias de Recuperación (${_strats.length})</h3>
       <button class="btn btn-primary" id="btn-new-strat">
         <i class="ti ti-plus"></i> Nueva estrategia
       </button>
     </div>
     ${bodyHtml}`;
 
-    // Listener DESPUES de asignar innerHTML
+    // Listener DESPUÉS de asignar innerHTML
     document.getElementById('btn-new-strat')?.addEventListener('click', () => _openStratModal());
   }
 
@@ -1177,7 +1177,7 @@ const ViewBcp = (() => {
       <div class="table-container">
         <table class="data-table">
           <thead><tr>
-            <th>Codigo</th><th>Tipo</th><th>Objetivo</th><th>Programado</th>
+            <th>Código</th><th>Tipo</th><th>Objetivo</th><th>Programado</th>
             <th>Realizado</th><th>Resultado</th><th></th>
           </tr></thead>
           <tbody>
@@ -1232,7 +1232,7 @@ const ViewBcp = (() => {
             <th>SLA contrato</th>
             <th>Contingencia</th>
             <th>Alternativo</th>
-            <th>Revision</th>
+            <th>Revisión</th>
             <th></th>
           </tr></thead>
           <tbody>
@@ -1318,7 +1318,7 @@ const ViewBcp = (() => {
           </a>
           <div style="margin-top:12px;">
             <a href="/api/bcp/import/template" class="btn btn-secondary btn-sm" download>
-              <i class="ti ti-file-download"></i> Descargar plantilla vacia
+              <i class="ti ti-file-download"></i> Descargar plantilla vacía
             </a>
           </div>
         </div>
@@ -1460,11 +1460,11 @@ const ViewBcp = (() => {
     ${!hasErrors && preview.summary.processes_found > 0 ? `
     <div style="display:flex;gap:8px;margin-top:16px;">
       <button class="btn btn-primary" id="btn-confirm-import">
-        <i class="ti ti-check"></i> Confirmar importacion (${preview.summary.processes_found} procesos)
+        <i class="ti ti-check"></i> Confirmar importación (${preview.summary.processes_found} procesos)
       </button>
     </div>` : ''}`;
 
-    // Guardar preview y file para la confirmacion
+    // Guardar preview y file para la confirmación
     window._bcpLastPreview = preview;
     document.getElementById('btn-confirm-import')?.addEventListener('click', () => _confirmImport(file));
   }
@@ -1524,9 +1524,9 @@ const ViewBcp = (() => {
       `<option value="${u.id}"${(proc?.recovery_owner_id === u.id) ? ' selected' : ''}>${UI.esc(u.full_name || u.email)}</option>`
     ).join('');
 
-    const IMPACTS = ['0 — Ninguno', '1 — Menor', '2 — Significativo', '3 — Critico'];
+    const IMPACTS = ['0 — Ninguno', '1 — Menor', '2 — Significativo', '3 — Crítico'];
 
-    // Convertir arrays JSON a texto multi-linea (una linea por item)
+    // Convertir arrays JSON a texto multi-linea (una línea por item)
     const arrToLines = (arr) => Array.isArray(arr) ? arr.join('\n') : (arr || '');
 
     const modal = document.createElement('div');
@@ -1539,13 +1539,13 @@ const ViewBcp = (() => {
       </div>
       <div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block;">
 
-        <div class="form-section-divider"><span>INFORMACION BASICA</span></div>
+        <div class="form-section-divider"><span>INFORMACIÓN BÁSICA</span></div>
         <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Nombre <span style="color:var(--danger)">*</span></label>
           <input id="pm-name" class="form-control" value="${UI.esc(proc?.name||'')}" style="font-size:13px;">
         </div>
         <div style="margin-bottom:14px;">
-          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Descripcion</label>
+          <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">Descripción</label>
           <textarea id="pm-desc" class="form-control" rows="2" style="font-size:13px;">${UI.esc(proc?.description||'')}</textarea>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
@@ -1651,7 +1651,7 @@ const ViewBcp = (() => {
           </div>`).join('')}
         </div>
 
-        <div class="form-section-divider"><span>ACTIVACION Y PROCEDIMIENTOS</span></div>
+        <div class="form-section-divider"><span>ACTIVACIÓN Y PROCEDIMIENTOS</span></div>
         <div style="margin-bottom:14px;">
           <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--text-subtle);padding-left:1px;">${t('bcp.field_activation_criteria')} <span style="color:var(--danger)">*</span></label>
           <div style="font-size:11px;color:var(--text-subtle);margin:2px 0 4px;">${t('bcp.proc_activation_hint')}</div>
@@ -1837,7 +1837,7 @@ const ViewBcp = (() => {
 
   async function _saveProc(id) {
     const g = eid => document.getElementById(eid);
-    // Convertir textarea multi-linea a array (filtrar lineas vacias)
+    // Convertir textarea multi-linea a array (filtrar líneas vacias)
     const linesToArr = (val) => {
       const lines = (val || '').split('\n').map(l => l.trim()).filter(Boolean);
       return lines.length ? lines : null;
@@ -1998,7 +1998,7 @@ const ViewBcp = (() => {
             <textarea id="dm-notes" class="form-control" rows="2" style="font-size:13px;">${UI.esc(dep?.notes||'')}</textarea>
           </div>
 
-          <!-- Interconexion tecnica -->
+          <!-- Interconexion técnica -->
           <details style="margin-bottom:4px;border:1px solid var(--border);border-radius:6px;overflow:hidden;" ${dep?.connection_type ? 'open' : ''}>
             <summary style="padding:8px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);cursor:pointer;background:var(--bg-2);user-select:none;">
               <i class="ti ti-git-branch" style="margin-right:4px"></i> ${t('bcp.sec_technical_interconnection')}
@@ -2154,7 +2154,7 @@ const ViewBcp = (() => {
           <textarea id="sm-desc" class="form-control" rows="3" style="font-size:13px;">${UI.esc(strat?.description||'')}</textarea>
         </div>
 
-        <!-- Seccion colapsable: Configuracion tecnica IT -->
+        <!-- Seccion colapsable: Configuración técnica IT -->
         <details style="margin-bottom:14px;border:1px solid var(--border);border-radius:6px;overflow:hidden;" ${strat?.it_config ? 'open' : ''}>
           <summary style="padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);cursor:pointer;background:var(--bg-2);user-select:none;">
             <i class="ti ti-server" style="margin-right:4px"></i> ${t('bcp.strat_it_config')}
@@ -2468,7 +2468,7 @@ const ViewBcp = (() => {
       </button>
     </div>
 
-    <!-- SECCION 4: Procedimientos de recuperacion (DRP/CRP/Cyber) -->
+    <!-- SECCION 4: Procedimientos de recuperación (DRP/CRP/Cyber) -->
     <div id="pl-proc-section" ${showForTypes(['drp','crp','cyber_response'], currType)}>
       <div class="form-section-divider"><span>${t('bcp.sec_recovery_procs')}</span></div>
       ${[
@@ -2595,7 +2595,7 @@ const ViewBcp = (() => {
       </div>
     </div>
 
-    <!-- SECCION POLITICA DE BACKUPS (solo DRP/CRP) -->
+    <!-- SECCION POLÍTICA DE BACKUPS (solo DRP/CRP) -->
     <div id="pl-backup-section" ${showForTypes(['drp','crp'], currType)}>
       <div class="form-section-divider"><span>${t('bcp.sec_backups')}</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
@@ -2691,7 +2691,7 @@ const ViewBcp = (() => {
       </div>
     </div>
 
-    <!-- SECCION 10: Clasificacion y gestion -->
+    <!-- SECCION 10: Clasificación y gestión -->
     <div class="form-section-divider"><span>${t('bcp.sec_classif')}</span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
       <div>${lbl(t('bcp.plan_label_inst_type'))}
@@ -2738,7 +2738,7 @@ const ViewBcp = (() => {
       <i class="ti ti-plus"></i> ${t('bcp.plan_add_authorizer')}
     </button>
 
-    <!-- Documentacion vinculada -->
+    <!-- Documentación vinculada -->
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:8px;letter-spacing:.03em;">${t('bcp.plan_linked_docs')}</div>
     <div class="inline-table-wrap" style="margin-bottom:8px;">
       <table class="inline-table">
@@ -2930,11 +2930,11 @@ const ViewBcp = (() => {
   function _updateRole(i, field, val) { if (window._planRoles?.[i]) window._planRoles[i][field] = val; }
   function _loadDRPRoles() {
     window._planRoles = [
-      {role_name:'Global IT Security Team',responsible:'',actions_notification:'Verificar deteccion y activar protocolo',actions_recovery:'Coordinar recuperacion tecnica'},
-      {role_name:'Hosting/Infrastructure Team',responsible:'',actions_notification:'Evaluar impacto en sistemas',actions_recovery:'Recuperar sistemas segun secuencia'},
+      {role_name:'Global IT Security Team',responsible:'',actions_notification:'Verificar detección y activar protocolo',actions_recovery:'Coordinar recuperación técnica'},
+      {role_name:'Hosting/Infrastructure Team',responsible:'',actions_notification:'Evaluar impacto en sistemas',actions_recovery:'Recuperar sistemas según secuencia'},
       {role_name:'Asset Owner',responsible:'',actions_notification:'Notificar a equipos IT',actions_recovery:'Validar integridad de datos'},
       {role_name:'Business Unit Manager',responsible:'',actions_notification:'Comunicar a stakeholders',actions_recovery:'Activar procedimientos manuales'},
-      {role_name:'Senior Leadership / Sponsor',responsible:'',actions_notification:'Tomar decision de activacion',actions_recovery:'Aprobar vuelta a operacion normal'},
+      {role_name:'Senior Leadership / Sponsor',responsible:'',actions_notification:'Tomar decision de activación',actions_recovery:'Aprobar vuelta a operacion normal'},
     ];
     _rerenderRoles();
   }
@@ -2971,10 +2971,10 @@ const ViewBcp = (() => {
   function _updateKPI(i, field, val) { if (window._planKpis?.[i]) window._planKpis[i][field] = val; }
   function _loadStandardKPIs() {
     window._planKpis = [
-      {metric:'RTO objetivo sistemas criticos cumplido',target:'Si',measure:'% ejercicios donde RTO fue respetado'},
-      {metric:'RPO objetivo sistemas criticos cumplido',target:'Si',measure:'% datos recuperados dentro del RPO'},
+      {metric:'RTO objetivo sistemas críticos cumplido',target:'Si',measure:'% ejercicios donde RTO fue respetado'},
+      {metric:'RPO objetivo sistemas críticos cumplido',target:'Si',measure:'% datos recuperados dentro del RPO'},
       {metric:'Tests anuales completados con resultado "passed"',target:'>= 90%',measure:'n tests passed / n tests planificados'},
-      {metric:'Tiempo real recuperacion vs RTO objetivo',target:'<= 1x RTO',measure:'Tiempo de recuperacion real en ultimo test'},
+      {metric:'Tiempo real recuperación vs RTO objetivo',target:'<= 1x RTO',measure:'Tiempo de recuperación real en último test'},
       {metric:'Escaladas ejecutadas en tiempo',target:'100%',measure:'% contactos notificados en el plazo definido'},
     ];
     _rerenderKPIs();
@@ -3060,7 +3060,7 @@ const ViewBcp = (() => {
       {id:'recovery',     title:'Recuperacion',  content: g('pl-sec-recovery')?.value || ''},
       {id:'reconstitution',title:'Reconstitucion',content: g('pl-sec-reconstitution')?.value || ''},
       {id:'workaround',   title:'Work temporal', content: g('pl-workaround')?.value || ''},
-      {id:'backup',       title:'Recuperacion datos', content: g('pl-backup')?.value || ''},
+      {id:'backup',       title:'Recuperación datos', content: g('pl-backup')?.value || ''},
     ].filter(s => s.content);
 
     const body = {
@@ -3090,7 +3090,7 @@ const ViewBcp = (() => {
         connectivity:         g('pl-drsite-conn')?.value || null,
         infrastructure_notes: g('pl-drsite-notes')?.value || null,
       } : null,
-      // Politica de backups
+      // Política de backups
       backup_policy: g('pl-bkp-321')?.value ? {
         rule_321:         g('pl-bkp-321')?.value    || null,
         encryption:       g('pl-bkp-enc')?.value    || null,
@@ -3106,7 +3106,7 @@ const ViewBcp = (() => {
         template_internal: g('pl-cc-tpl-int')?.value   || null,
         template_external: g('pl-cc-tpl-ext')?.value   || null,
       } : null,
-      // Clasificacion y gestion (Sprint 5)
+      // Clasificación y gestión (Sprint 5)
       installation_type:         g('pl-inst-type')?.value  || null,
       data_classification_level: g('pl-data-class')?.value || null,
       gdpr_data:                 g('pl-gdpr')?.checked || false,
@@ -3293,7 +3293,7 @@ const ViewBcp = (() => {
       _switchTab('tests');
       const newId = resp?.id;
       if (newId && body.plan_id) {
-        // Tiene plan asociado: generar checklist IA automaticamente
+        // Tiene plan asociado: generar checklist IA automáticamente
         UI.toast(t('bcp.test_created_ai'), 'info');
         setTimeout(() => _genAiChecklist(newId), 600);
       } else {
@@ -4293,7 +4293,7 @@ const ViewBcp = (() => {
             'underlay-color': '#ef4444', 'underlay-opacity': 0.35,
             'underlay-padding': '7px', 'underlay-shape': 'ellipse',
           }},
-          // Criticidad critica — halo ambar sutil
+          // Criticidad crítica — halo ambar sutil
           { selector: 'node[criticality="critical"]', style: {
             'underlay-color': '#fbbf24', 'underlay-opacity': 0.18, 'underlay-padding': '5px',
           }},
@@ -4321,7 +4321,7 @@ const ViewBcp = (() => {
             'transition-property': 'line-color width opacity',
             'transition-duration': '0.18s',
           }},
-          // Dependencia critica — rojo con mas grosor
+          // Dependencia crítica — rojo con mas grosor
           { selector: 'edge[?is_critical]', style: {
             'line-color': '#ef4444', 'target-arrow-color': '#ef4444',
             'width': '2.6px', 'opacity': 0.95,
@@ -4332,7 +4332,7 @@ const ViewBcp = (() => {
             'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6',
             'width': '1.6px',
           }},
-          // Dependencia critica externa (supplier critico)
+          // Dependencia crítica externa (supplier crítico)
           { selector: 'edge[?is_critical][?is_external]', style: {
             'line-color': '#f97316', 'target-arrow-color': '#f97316',
             'width': '2.6px',
@@ -4633,8 +4633,8 @@ const ViewBcp = (() => {
       return `<div class="notice notice-info">${t('bcp.no_evidence_notice')}</div>`;
     return `<div class="table-wrap"><table class="data">
       <thead><tr>
-        <th>Tipo</th><th>Titulo</th><th>Localizacion</th>
-        <th>Vinculada a</th><th>Integridad</th><th>Analisis IA</th><th>Fecha</th><th></th>
+        <th>Tipo</th><th>Título</th><th>Localizacion</th>
+        <th>Vinculada a</th><th>Integridad</th><th>Análisis IA</th><th>Fecha</th><th></th>
       </tr></thead>
       <tbody>
         ${evidence.map(e => `<tr>
@@ -5021,7 +5021,7 @@ const ViewBcp = (() => {
       { id:'alertas',       label:t('bcp.tile_alerts'),   icon:'ti-bell-ringing',   color:'#2563EB',          sub:t('bcp.tile_alerts_sub') },
       { id:'activaciones',  label:t('bcp.tile_activate'),         icon:'ti-alert-triangle', color:'#DC2626',          sub:t('bcp.tile_activate_sub') },
     ];
-    // Badge de activacion activa
+    // Badge de activación activa
     const activeAct = await Api.get('/api/bcp/activations').catch(() => []).then(list => list.find(a => !a.closed_at));
     let tilesHtml = '<div class="bcm-tiles-grid" style="grid-template-columns:repeat(5,1fr)">';
     tiles.forEach(t => {
@@ -5255,11 +5255,11 @@ const ViewBcp = (() => {
       btn.disabled = true;
       btn.innerHTML = '<i class="ti ti-loader-2 ti-spin"></i>';
       try {
-        const msg = 'Analiza el estado actual del BCP/BCM de la organizacion. Score ISO 22301: ' + score
+        const msg = 'Analiza el estado actual del BCP/BCM de la organización. Score ISO 22301: ' + score
           + '%. KPIs: procesos con BIA ' + biaDone + '/' + biaTotal
           + ', planes aprobados ' + plansApp + '/' + plansTotal
           + ', tests vencidos ' + testsOvr
-          + '. Identifica los 3 gaps mas criticos y propone acciones concretas y priorizadas.';
+          + '. Identifica los 3 gaps mas críticos y propone acciones concretas y priorizadas.';
         const sedeCtx = _locationFilter ? ', sede: ' + (_locationMap[_locationFilter]?.name || _locationFilter) : '';
         const r = await Api.post('/api/bcp/ai/quick', {
           message: msg,
@@ -5542,10 +5542,10 @@ const ViewBcp = (() => {
       + '<div class="bcm-ai-msg bcm-ai-msg-ai">' + t('bcp.ai_assistant_greeting') + panelMsg + '</div>'
       + '</div>'
       + '<div class="bcm-ai-suggestions" id="bcm-ai-suggestions">'
-      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Analiza el estado actual de mi BCP e identifica los 3 gaps mas criticos\')">' + t('bcp.sug_analyze_status') + '</div>'
-      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Propone un escenario de test tabletop para los procesos mas criticos\')">' + t('bcp.sug_propose_test') + '</div>'
-      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Ayudame a redactar el procedimiento de recuperacion para el proceso mas critico\')">' + t('bcp.sug_draft_drp') + '</div>'
-      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Que gaps tengo frente a ISO 22301 clausula 8?\')">' + t('bcp.sug_gap_iso') + '</div>'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Analiza el estado actual de mi BCP e identifica los 3 gaps mas críticos\')">' + t('bcp.sug_analyze_status') + '</div>'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Propone un escenario de test tabletop para los procesos mas críticos\')">' + t('bcp.sug_propose_test') + '</div>'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Ayudame a redactar el procedimiento de recuperación para el proceso mas crítico\')">' + t('bcp.sug_draft_drp') + '</div>'
+      + '<div class="bcm-ai-sug" onclick="ViewBcp._sendAiMsg(\'Que gaps tengo frente a ISO 22301 cláusula 8?\')">' + t('bcp.sug_gap_iso') + '</div>'
       + '</div>'
       + '<div class="bcm-ai-input-row">'
       + '<textarea id="bcm-ai-input" class="bcm-ai-input" placeholder="' + t('bcp.ai_input_placeholder') + '" rows="1"'
@@ -6460,7 +6460,7 @@ const ViewBcp = (() => {
       });
     });
 
-    // Botones de accion automatica
+    // Botones de acción automática
     modal.querySelectorAll('.btn-exec').forEach(btn => {
       btn.addEventListener('click', async () => {
         const order = parseInt(btn.dataset.order);
@@ -6846,21 +6846,21 @@ const ViewBcp = (() => {
             ${lbl(t('bcp.label_description_objective'))}
             <button id="rb-tpl-btn" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;display:none" onclick="
               document.getElementById('rb-desc').value=
-'FASE 1 — DETECCION Y NOTIFICACION\n' +
+'FASE 1 — DETECCIÓN Y NOTIFICACIÓN\n' +
 'Criterio de entrada: Alerta recibida o incidente detectado.\n' +
-'Acciones: Notificar al responsable titular y al Crisis Lead. Confirmar el alcance del impacto. Abrir el registro de activacion.\n\n' +
-'FASE 2 — ACTIVACION DEL PLAN\n' +
-'Criterio de entrada: Incidente confirmado y aprobacion del Crisis Lead.\n' +
-'Acciones: Declarar activacion formal. Convocar al equipo de recuperacion. Comunicar a stakeholders internos (canal primario). Acceder a la boveda de credenciales.\n\n' +
-'FASE 3 — RECUPERACION TECNICA\n' +
-'Criterio de entrada: Recursos de recuperacion disponibles.\n' +
-'Acciones: Ejecutar procedimientos tecnicos en el orden definido por secuencia de dependencias. Restaurar backups. Verificar integridad de datos. Activar el DR Site si aplica.\n\n' +
-'FASE 4 — RECONSTITUCION Y VALIDACION\n' +
+'Acciones: Notificar al responsable titular y al Crisis Lead. Confirmar el alcance del impacto. Abrir el registro de activación.\n\n' +
+'FASE 2 — ACTIVACIÓN DEL PLAN\n' +
+'Criterio de entrada: Incidente confirmado y aprobación del Crisis Lead.\n' +
+'Acciones: Declarar activación formal. Convocar al equipo de recuperación. Comunicar a stakeholders internos (canal primario). Acceder a la boveda de credenciales.\n\n' +
+'FASE 3 — RECUPERACIÓN TÉCNICA\n' +
+'Criterio de entrada: Recursos de recuperación disponibles.\n' +
+'Acciones: Ejecutar procedimientos técnicos en el orden definido por secuencia de dependencias. Restaurar backups. Verificar integridad de datos. Activar el DR Site si aplica.\n\n' +
+'FASE 4 — RECONSTITUCIÓN Y VALIDACIÓN\n' +
 'Criterio de entrada: Sistemas tecnicamente operativos.\n' +
 'Acciones: Ejecutar pruebas funcionales con usuarios piloto. Verificar criterio de exito documentado. Comunicar reanudacion a stakeholders. Desactivar el DR Site.\n\n' +
-'FASE 5 — CIERRE Y REVISION POST-INCIDENTE\n' +
+'FASE 5 — CIERRE Y REVISIÓN POST-INCIDENTE\n' +
 'Criterio de entrada: Servicio restaurado al nivel MBCO o superior.\n' +
-'Acciones: Declarar cierre formal de la activacion. Documentar RTO real. Registrar lecciones aprendidas. Programar revision de plan en los 30 dias siguientes.';
+'Acciones: Declarar cierre formal de la activación. Documentar RTO real. Registrar lecciones aprendidas. Programar revisión de plan en los 30 días siguientes.';
             "><i class="ti ti-template"></i> ${t('bcp.btn_template_5_phases')}</button>
           </div>
           <textarea id="rb-desc" class="form-control" rows="4" style="font-size:13px;" placeholder="${t('bcp.placeholder_runbook_objective_scope')}"></textarea>
@@ -7067,7 +7067,7 @@ const ViewBcp = (() => {
         icon:'ti-clipboard-x', text:`${t('bcp.alert_overdue_test')} <strong>${tst.name||tst.test_type}</strong>`, sub: t('bcp.label_scheduled_colon') + ' ' + new Date(tst.scheduled_date).toLocaleDateString('es-ES'), action: `ViewBcp._openTestModal(${tst.id})`, actionLabel:t('bcp.btn_view_test'),
       }));
 
-    // Planes sin aprobacion
+    // Planes sin aprobación
     plans.filter(p => p.status === 'draft').forEach(p => alerts.critical.push({
       icon:'ti-file-x', text:`${t('bcp.alert_plan_not_approved')} <strong>${p.code} — ${p.name}</strong>`, sub:t('bcp.sub_plan_draft_status'), action:null,
     }));
@@ -7078,13 +7078,13 @@ const ViewBcp = (() => {
       icon:'ti-sitemap', text:`${t('bcp.alert_process_no_bia')} <strong>${p.name}</strong>`, sub:t('bcp.sub_missing_rto_rpo'), action:`ViewBcp._editProc(${p.id})`, actionLabel:t('common.edit'),
     }));
 
-    // Tests proximos 30 dias
+    // Tests próximos 30 días
     tests.filter(tst => !tst.executed_date && tst.scheduled_date && new Date(tst.scheduled_date) >= now && new Date(tst.scheduled_date) <= new Date(now.getTime() + ms30))
       .forEach(tst => alerts.info.push({
         icon:'ti-calendar-event', text:`${t('bcp.alert_test_upcoming')} <strong>${tst.name||tst.test_type}</strong>`, sub: t('bcp.label_in_days_until', {days: Math.round((new Date(tst.scheduled_date) - now)/86400000)}) + ' · ' + new Date(tst.scheduled_date).toLocaleDateString('es-ES'), action: `ViewBcp._openTestModal(${tst.id})`, actionLabel:t('common.view'),
       }));
 
-    // Planes con revision proxima
+    // Planes con revisión próxima
     plans.filter(p => p.review_date && new Date(p.review_date) >= now && new Date(p.review_date) <= new Date(now.getTime() + ms90))
       .forEach(p => alerts.info.push({
         icon:'ti-calendar-check', text:`${t('bcp.alert_plan_review_upcoming')} <strong>${p.name}</strong>`, sub:t('bcp.label_review_colon') + ' ' + new Date(p.review_date).toLocaleDateString('es-ES'), action:null,
@@ -7461,7 +7461,7 @@ const ViewBcp = (() => {
     document.body.appendChild(modal);
   }
 
-  // ── Activacion: historial consultable completo ───────────────────────────────
+  // ── Activación: historial consultable completo ───────────────────────────────
 
   function _calcBiaImpact() {
     const cph  = parseFloat(document.getElementById('pm-cph')?.value)  || 0;

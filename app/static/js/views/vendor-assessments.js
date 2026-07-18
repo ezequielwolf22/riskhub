@@ -1,6 +1,6 @@
 /* Vista de evaluaciones de proveedor — TPRM v3.9.0.
-   Flujo: nueva evaluacion → seleccionar proveedor → tipo (analisis de riesgo o plantilla directa)
-   → envio automatico por email → proveedor completa portal (2 fases si es risk_analysis)
+   Flujo: nueva evaluación → seleccionar proveedor → tipo (análisis de riesgo o plantilla directa)
+   → envío automático por email → proveedor completa portal (2 fases si es risk_analysis)
    → usuario ve evidencias y toma decision (aprobar / rechazar / etc.)
 */
 const ViewVendorAssessments = (() => {
@@ -462,11 +462,11 @@ const ViewVendorAssessments = (() => {
   // ---- Mensaje de email por defecto ----
   function _defaultEmailMessage(supplierName, contactName, orgName) {
     const to = contactName || supplierName || 'equipo';
-    const org = orgName || 'nuestra organizacion';
-    return `Estimado/a ${to}:\n\nComo parte de nuestro proceso de evaluacion de proveedores en ${org}, le solicitamos que complete el cuestionario de seguridad adjunto.\n\nEl cuestionario es confidencial y sus respuestas seran utilizadas exclusivamente para evaluar el nivel de seguridad en el marco de nuestra relacion contractual.\n\nAnte cualquier duda, puede responder a este correo.\n\nGracias por su colaboracion.`;
+    const org = orgName || 'nuestra organización';
+    return `Estimado/a ${to}:\n\nComo parte de nuestro proceso de evaluación de proveedores en ${org}, le solicitamos que complete el cuestionario de seguridad adjunto.\n\nEl cuestionario es confidencial y sus respuestas serán utilizadas exclusivamente para evaluar el nivel de seguridad en el marco de nuestra relacion contractual.\n\nAnte cualquier duda, puede responder a este correo.\n\nGracias por su colaboracion.`;
   }
 
-  // ---- Form nueva evaluacion ----
+  // ---- Form nueva evaluación ----
   async function _openForm() {
     let suppliers = [], sysTpls = [], customTpls = [], orgName = '';
     try { suppliers = await Api.suppliers.list(); } catch (_) {}

@@ -1,4 +1,4 @@
-/* Vista Vulnerabilidades - catalogo ISO 27005 Annex D. */
+/* Vista Vulnerabilidades - catálogo ISO 27005 Annex D. */
 const ViewVulns = {
   _sortCol: 'code', _sortAsc: true,
 

@@ -156,8 +156,8 @@ const ViewTasks = (() => {
     });
   }
 
-  // OJO: el parametro no puede llamarse "t" — sombrearia la funcion global
-  // de i18n t() y romperia el render (bug historico de la migracion i18n)
+  // OJO: el parámetro no puede llamarse "t" — sombrearia la funcion global
+  // de i18n t() y romperia el render (bug histórico de la migracion i18n)
   function _taskCard(task, now, canEdit) {
     const isOverdue = task.due_date && task.status !== 'done'
       && new Date(task.due_date) < now;

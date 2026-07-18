@@ -1,10 +1,10 @@
-/* Vista KRIs / KPIs — gestion de indicadores clave de riesgo y rendimiento */
+/* Vista KRIs / KPIs — gestión de indicadores clave de riesgo y rendimiento */
 const ViewKRIs = {
   _showHidden: false,
   _category: 'all',
   _statusFilter: 'all',
 
-  // Mapa de categoria -> metric_types que pertenecen a ella
+  // Mapa de categoría -> metric_types que pertenecen a ella
   _CATEGORIES: {
     riesgos: [
       'residual_level', 'inherent_level', 'kri_critical_risks', 'kri_stale_risks',
@@ -162,7 +162,7 @@ const ViewKRIs = {
   },
 
   async _renderList(el, type) {
-    // Actualizar el boton "+ Nuevo" segun la pestana activa
+    // Actualizar el boton "+ Nuevo" según la pestaña activa
     const newBtn = document.getElementById('kri-btn-new');
     if (newBtn) {
       newBtn.textContent = type === 'kpi' ? t('kris.new_btn_kpi') : t('kris.new_btn');
@@ -337,7 +337,7 @@ const ViewKRIs = {
   },
 
   async _openModal(id, defaultType) {
-    // Si no se pasa defaultType, leer la pestana activa
+    // Si no se pasa defaultType, leer la pestaña activa
     if (!defaultType) {
       const activeBtn = document.querySelector('#kri-tabs-wrap .hub-tab.active');
       defaultType = activeBtn && activeBtn.dataset.tab === 'kpis-tab' ? 'kpi' : 'kri';
@@ -358,29 +358,29 @@ const ViewKRIs = {
       { v: 'open_ncs', l: I18n.lang() === 'en' ? 'Open major non-conformities' : 'No conformidades mayores abiertas', tp: 'kri' },
       { v: 'control_maturity', l: I18n.lang() === 'en' ? 'Average control maturity' : 'Madurez media de controles', tp: 'kri' },
       { v: 'overdue_tasks', l: I18n.lang() === 'en' ? 'Overdue treatment tasks' : 'Tareas de tratamiento vencidas', tp: 'kri' },
-      { v: 'kri_critical_risks', l: I18n.lang() === 'en' ? 'Active critical risks (#)' : 'Riesgos criticos activos (#)', tp: 'kri' },
-      { v: 'kri_stale_risks', l: I18n.lang() === 'en' ? 'Risks unreviewed >90 days (#)' : 'Riesgos sin revisar >90 dias (#)', tp: 'kri' },
-      { v: 'kri_critical_cves', l: I18n.lang() === 'en' ? 'Unremediated critical/high CVEs (#)' : 'CVEs criticos/altos sin remediar (#)', tp: 'kri' },
+      { v: 'kri_critical_risks', l: I18n.lang() === 'en' ? 'Active critical risks (#)' : 'Riesgos críticos activos (#)', tp: 'kri' },
+      { v: 'kri_stale_risks', l: I18n.lang() === 'en' ? 'Risks unreviewed >90 days (#)' : 'Riesgos sin revisar >90 días (#)', tp: 'kri' },
+      { v: 'kri_critical_cves', l: I18n.lang() === 'en' ? 'Unremediated critical/high CVEs (#)' : 'CVEs críticos/altos sin remediar (#)', tp: 'kri' },
       { v: 'kri_high_risk_suppliers', l: I18n.lang() === 'en' ? 'Tier-1/2 suppliers with high risk (#)' : 'Proveedores Tier-1/2 con riesgo alto (#)', tp: 'kri' },
       // KPI
       { v: 'kpi_treatment_rate', l: I18n.lang() === 'en' ? 'High risk treatment rate (%)' : 'Tasa de tratamiento riesgos altos (%)', tp: 'kpi' },
-      { v: 'kpi_mttt', l: I18n.lang() === 'en' ? 'Mean time to treat (days)' : 'Tiempo medio de tratamiento (dias)', tp: 'kpi' },
+      { v: 'kpi_mttt', l: I18n.lang() === 'en' ? 'Mean time to treat (days)' : 'Tiempo medio de tratamiento (días)', tp: 'kpi' },
       { v: 'kpi_control_coverage', l: I18n.lang() === 'en' ? 'ISO 27002 control coverage (%)' : 'Cobertura controles ISO 27002 (%)', tp: 'kpi' },
       { v: 'kpi_control_maturity_avg', l: I18n.lang() === 'en' ? 'Average control maturity (0-5)' : 'Madurez media de controles (0-5)', tp: 'kpi' },
-      { v: 'kpi_policy_review', l: I18n.lang() === 'en' ? 'Policy review compliance (%)' : 'Cumplimiento revision politicas (%)', tp: 'kpi' },
+      { v: 'kpi_policy_review', l: I18n.lang() === 'en' ? 'Policy review compliance (%)' : 'Cumplimiento revisión políticas (%)', tp: 'kpi' },
       { v: 'kpi_nc_closure_rate', l: I18n.lang() === 'en' ? 'Non-conformity closure rate (%)' : 'Tasa cierre no conformidades (%)', tp: 'kpi' },
-      { v: 'kpi_risk_reduction_avg', l: I18n.lang() === 'en' ? 'Average risk reduction (%)' : 'Reduccion media del riesgo (%)', tp: 'kpi' },
+      { v: 'kpi_risk_reduction_avg', l: I18n.lang() === 'en' ? 'Average risk reduction (%)' : 'Reducción media del riesgo (%)', tp: 'kpi' },
       { v: 'kpi_appetite_compliance', l: I18n.lang() === 'en' ? 'Risk appetite compliance (%)' : 'Conformidad apetito de riesgo (%)', tp: 'kpi' },
       { v: 'kpi_asset_coverage', l: I18n.lang() === 'en' ? 'Assessed assets coverage (%)' : 'Cobertura activos evaluados (%)', tp: 'kpi' },
       { v: 'kpi_risk_no_owner_rate', l: I18n.lang() === 'en' ? 'Risks without owner (%)' : 'Riesgos sin responsable (%)', tp: 'kpi' },
       { v: 'kpi_high_risks_no_plan', l: I18n.lang() === 'en' ? 'High risks without plan (#)' : 'Riesgos altos sin plan (#)', tp: 'kpi' },
-      { v: 'kpi_nis2_notification_rate', l: I18n.lang() === 'en' ? 'NIS2 notification rate (%)' : 'Tasa notificacion NIS2 (%)', tp: 'kpi' },
+      { v: 'kpi_nis2_notification_rate', l: I18n.lang() === 'en' ? 'NIS2 notification rate (%)' : 'Tasa notificación NIS2 (%)', tp: 'kpi' },
       { v: 'kpi_bcp_coverage', l: I18n.lang() === 'en' ? 'Approved BCP coverage (%)' : 'Cobertura BCP aprobados (%)', tp: 'kpi' },
-      { v: 'kpi_mttr_incidents', l: I18n.lang() === 'en' ? 'Incident MTTR (days)' : 'MTTR incidentes (dias)', tp: 'kpi' },
+      { v: 'kpi_mttr_incidents', l: I18n.lang() === 'en' ? 'Incident MTTR (days)' : 'MTTR incidentes (días)', tp: 'kpi' },
       { v: 'kpi_supplier_coverage', l: I18n.lang() === 'en' ? 'Tier-1 supplier assessment coverage (%)' : 'Cobertura evaluacion proveedores Tier-1 (%)', tp: 'kpi' },
     ];
 
-    // Metrica por defecto: primera que coincide con el tipo activo
+    // Métrica por defecto: primera que coincide con el tipo activo
     const defaultMetric = kri
       ? kri.metric_type
       : (metricOptions.find(o => o.tp === effectiveType) || metricOptions[0]).v;
@@ -478,7 +478,7 @@ const ViewKRIs = {
       }
     );
 
-    // Actualizar categoria al cambiar la metrica
+    // Actualizar categoría al cambiar la métrica
     const metricSel = document.getElementById('kri-f-metric');
     if (metricSel) {
       metricSel.onchange = () => {

@@ -1,4 +1,4 @@
-/* Vista ISMS — Sistema de Gestion de Seguridad de la Informacion — ISO 27001 */
+/* Vista ISMS — Sistema de Gestión de Seguridad de la Información — ISO 27001 */
 const ViewPolicies = (() => {
 
   const STATUS_LABELS = () => ({
@@ -32,7 +32,7 @@ const ViewPolicies = (() => {
     1: 'Politica',
     2: 'Norma / Estandar',
     3: 'Procedimiento',
-    4: 'Instruccion Tecnica',
+    4: 'Instruccion Técnica',
   };
   const DOC_LEVEL_COLORS = {
     1: 'var(--brand-purple)',
@@ -49,7 +49,7 @@ const ViewPolicies = (() => {
     return `<span title="Nivel jerarquico: ${label}" style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;background:${color}18;color:${color};border:1px solid ${color}40;">${l}. ${label}</span>`;
   }
 
-  // Marcos normativos para generacion IA
+  // Marcos normativos para generación IA
   const FRAMEWORKS = [
     { value: 'ISO 27001', label: 'ISO/IEC 27001:2022' },
     { value: 'NIS2',      label: 'NIS2 (Directiva UE 2022/2555)' },
@@ -58,7 +58,7 @@ const ViewPolicies = (() => {
     { value: 'GDPR',      label: 'RGPD / GDPR' },
     { value: 'NIST CSF',  label: 'NIST Cybersecurity Framework' },
     { value: 'PCI DSS',   label: 'PCI DSS v4' },
-    { value: 'libre',     label: 'Sin norma especifica' },
+    { value: 'libre',     label: 'Sin norma específica' },
   ];
 
   let _users      = [];
@@ -248,7 +248,7 @@ const ViewPolicies = (() => {
     const v = p || {};
     const e = extracted || {};
     const title   = e.title   || v.title   || '';
-    const version = e.version || v.version || '1.0';
+    const versión = e.version || v.version || '1.0';
     const category = e.category || v.category || '';
     const scope   = e.scope   || v.scope   || '';
     const content = e.content || v.content || '';
@@ -276,7 +276,7 @@ const ViewPolicies = (() => {
 
         <div>
           <label>${t('policies.hierarchy_level')}
-            <span title="Jerarquia ISO: Politica (alto nivel) > Norma (reglas) > Procedimiento (pasos) > Instruccion Tecnica (configuracion exacta)"
+            <span title="Jerarquia ISO: Política (alto nivel) > Norma (reglas) > Procedimiento (pasos) > Instruccion Técnica (configuración exacta)"
                   style="cursor:help;color:var(--text-muted);font-weight:400;font-size:11px;"> (?)</span>
           </label>
           <select id="f-doc-level" class="input" onchange="ViewPolicies._onLevelChange(this)">
@@ -293,7 +293,7 @@ const ViewPolicies = (() => {
             <option value="">— Ninguno (documento raiz) —</option>
             ${parentOptions}
           </select>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Una Norma referencia su Politica padre; un Procedimiento referencia su Norma padre.</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Una Norma referencia su Política padre; un Procedimiento referencia su Norma padre.</div>
         </div>
 
         <div>
@@ -347,10 +347,10 @@ const ViewPolicies = (() => {
     if (!hint) return;
     const l = parseInt(sel.value) || 1;
     const hints = {
-      1: 'Define la intencion y compromiso organizativo — alto nivel, sin detalles tecnicos.',
-      2: 'Define las reglas de obligado cumplimiento para un area especifica.',
+      1: 'Define la intencion y compromiso organizativo — alto nivel, sin detalles técnicos.',
+      2: 'Define las reglas de obligado cumplimiento para un area específica.',
       3: 'Describe pasos detallados para ejecutar un proceso en una solucion concreta.',
-      4: 'Proporciona configuraciones exactas y medibles para un sistema especifico.',
+      4: 'Proporciona configuraciones exactas y medibles para un sistema específico.',
     };
     hint.textContent = hints[l] || '';
   }
@@ -373,10 +373,10 @@ const ViewPolicies = (() => {
   }
 
   const _POL_DEFAULT_GAP = [
-    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable, establecer metricas y revision periodica.',
-    'Formalizar el proceso: crear documentacion oficial, establecer procedimientos escritos, comunicar a los equipos y medir resultados.',
-    'Estandarizar la aplicacion: garantizar consistencia en todos los casos, implementar controles de calidad y medir la eficacia con KPIs.',
-    'Añadir metricas: establecer KPIs, revisar resultados periodicamente, documentar excepciones y reducir variabilidad del proceso.',
+    'Implementar el control desde cero: definir el proceso, documentarlo, asignar responsable, establecer métricas y revisión periódica.',
+    'Formalizar el proceso: crear documentación oficial, establecer procedimientos escritos, comunicar a los equipos y medir resultados.',
+    'Estandarizar la aplicación: garantizar consistencia en todos los casos, implementar controles de calidad y medir la eficacia con KPIs.',
+    'Añadir métricas: establecer KPIs, revisar resultados periodicamente, documentar excepciones y reducir variabilidad del proceso.',
     'Implementar mejora continua: analizar tendencias, automatizar donde sea posible, revisar benchmarks y documentar optimizaciones.',
     '',
   ];
@@ -435,7 +435,7 @@ const ViewPolicies = (() => {
               </div>` : ''}
             ${(!rationale && !displayGap) ? `
               <span style="font-size:11px;color:var(--text-muted);font-style:italic;">
-                Re-analiza el documento en Agente IA para obtener el analisis personalizado.
+                Re-analiza el documento en Agente IA para obtener el análisis personalizado.
               </span>` : ''}
           </div>
         </div>`;
@@ -448,7 +448,7 @@ const ViewPolicies = (() => {
         <div style="flex:1;">
           <div style="font-size:12px;font-weight:600;">Madurez aportada por este documento</div>
           <div style="font-size:11px;color:var(--text-muted);">
-            ${controls.length} control${controls.length!==1?'es':''} en el alcance especifico de este documento
+            ${controls.length} control${controls.length!==1?'es':''} en el alcance específico de este documento
             &mdash; haz clic en cada uno para ver el gap
           </div>
         </div>
@@ -456,7 +456,7 @@ const ViewPolicies = (() => {
       <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;padding:5px 8px;
                   background:rgba(89,0,141,.04);border-radius:4px;border:1px solid rgba(89,0,141,.1);">
         La madurez global de cada control se calcula agregando las contribuciones de TODOS los documentos del corpus.
-        Este panel muestra solo lo que aporta este documento especifico segun su alcance y nivel.
+        Este panel muestra solo lo que aporta este documento específico según su alcance y nivel.
       </div>
       ${rows}`;
   }
@@ -473,7 +473,7 @@ const ViewPolicies = (() => {
     const nextVer = _bumpVersion(p.version);
     UI.modal(`${t('policies.edit')}`, `
       <p style="margin-bottom:10px;">El documento <strong>${UI.esc(p.code)}</strong> esta actualmente <strong>${STATUS_LABELS[p.status]||p.status}</strong> (v${UI.esc(p.version||'1.0')}).</p>
-      <p style="font-size:13px;color:var(--text-subtle);margin-bottom:4px;">Al continuar se creara una nueva version <strong>v${UI.esc(nextVer)}</strong> en borrador con el mismo contenido. El documento actual permanecera vigente hasta que la nueva version sea aprobada, momento en que pasara automaticamente a estado <em>obsoleta</em>.</p>
+      <p style="font-size:13px;color:var(--text-subtle);margin-bottom:4px;">Al continuar se creara una nueva versión <strong>v${UI.esc(nextVer)}</strong> en borrador con el mismo contenido. El documento actual permanecera vigente hasta que la nueva versión sea aprobada, momento en que pasara automáticamente a estado <em>obsoleta</em>.</p>
     `, {
       actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
                 <button class="btn btn-primary" id="m-confirm-version">${t('policies.create_version')} ${UI.esc(nextVer)}</button>`,
@@ -491,7 +491,7 @@ const ViewPolicies = (() => {
   }
 
   async function _openForm(p, extracted) {
-    // Cargar lista de politicas para el selector de documento padre
+    // Cargar lista de políticas para el selector de documento padre
     let allPolicies = [];
     try { allPolicies = await Api.policies.list({}); } catch (_) {}
 
@@ -541,7 +541,7 @@ const ViewPolicies = (() => {
   }
 
   // ============================================================
-  // Generacion libre con IA — T7
+  // Generación libre con IA — T7
   // ============================================================
 
   async function _generateWithAI() {
@@ -549,16 +549,16 @@ const ViewPolicies = (() => {
       <div style="max-width:600px;">
         <h3 style="margin:0 0 4px;color:var(--brand-purple);font-size:17px;">${t('policies.generate_ai_title')}</h3>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 18px;">
-          El agente IA redactara un borrador adaptado a tu organizacion y al marco normativo elegido.
+          El agente IA redactara un borrador adaptado a tu organización y al marco normativo elegido.
         </p>
 
         <div class="form-grid" style="gap:12px;">
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Tipo de documento *</label>
             <select id="gen-type" class="input" style="width:100%;">
-              <option value="politica">Politica de seguridad</option>
+              <option value="politica">Política de seguridad</option>
               <option value="norma">Norma</option>
-              <option value="instruccion_tecnica">Instruccion tecnica</option>
+              <option value="instruccion_tecnica">Instruccion técnica</option>
             </select>
           </div>
           <div>
@@ -568,17 +568,17 @@ const ViewPolicies = (() => {
             </select>
           </div>
           <div class="span2">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Titulo / asunto *</label>
-            <input id="gen-title" class="input" style="width:100%;" placeholder="Ej: Politica de Gestion de Accesos">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Título / asunto *</label>
+            <input id="gen-title" class="input" style="width:100%;" placeholder="Ej: Política de Gestión de Accesos">
           </div>
           <div class="span2">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Descripcion y alcance</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Descripción y alcance</label>
             <textarea id="gen-desc" class="input" rows="3" style="width:100%;"
-                      placeholder="Describe el objetivo, alcance, departamentos afectados, contexto especifico..."></textarea>
+                      placeholder="Describe el objetivo, alcance, departamentos afectados, contexto específico..."></textarea>
           </div>
           <div class="span2">
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">
-              Documentacion de contexto (opcional)
+              Documentación de contexto (opcional)
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;
                           border:1px dashed var(--border);border-radius:6px;padding:8px 12px;
@@ -599,7 +599,7 @@ const ViewPolicies = (() => {
         <div style="margin-top:16px;background:#fff8e6;border:1px solid #f0c040;border-radius:8px;
                     padding:10px 14px;font-size:12px;color:#7a5800;line-height:1.5;">
           <strong>Aviso importante:</strong> El documento generado por IA es un borrador de apoyo.
-          Debe ser revisado, completado y aprobado por una persona responsable de la organizacion
+          Debe ser revisado, completado y aprobado por una persona responsable de la organización
           antes de su publicacion o uso operativo.
         </div>
 
@@ -685,7 +685,7 @@ const ViewPolicies = (() => {
       content,
       category:    meta.category || null,
       iso_clauses: meta.iso_clauses || [],
-      scope:       'Generado automaticamente con IA — revisar y adaptar',
+      scope:       'Generado automáticamente con IA — revisar y adaptar',
       version:     '1.0',
       status:      'draft',
       review_cycle_months: 12,

@@ -1,6 +1,6 @@
-/* Vista ISMS — Gestion Documental Unificada — ISO 27001 cl. 5.2
-   Combina ViewPolicies (versionado, aprobacion, generador IA) y
-   ViewAiDocuments (subida, indexado, analisis ISMS, madurez, gap). */
+/* Vista ISMS — Gestión Documental Unificada — ISO 27001 cl. 5.2
+   Combina ViewPolicies (versionado, aprobación, generador IA) y
+   ViewAiDocuments (subida, indexado, análisis ISMS, madurez, gap). */
 
 const ViewIsmsDocuments = (() => {
 
@@ -431,7 +431,7 @@ const ViewIsmsDocuments = (() => {
       const effectiveLevel = level;
       const title      = policy ? policy.title : (doc ? doc.original_name : '-');
       const code       = policy ? policy.code  : null;
-      const version    = policy ? policy.version : null;
+      const versión    = policy ? policy.version : null;
       const status     = policy ? policy.status  : null;
       const reviewDate = policy ? policy.review_date : null;
       const reviewOverdue = reviewDate && status !== 'obsolete' && new Date(reviewDate) < now;
@@ -452,7 +452,7 @@ const ViewIsmsDocuments = (() => {
           title="${t(`${NS}.table.no_file_title`)}">${t(`${NS}.table.no_file`)}</span>`;
       }
 
-      // Columna analisis ISMS
+      // Columna análisis ISMS
       let ismsCellHtml;
       if (doc && doc.isms_status) {
         const ic = ISMS_STATUS_COLORS[doc.isms_status] || 'var(--text-muted)';
@@ -529,7 +529,7 @@ const ViewIsmsDocuments = (() => {
             </div>
             ${policy && policy.category ? `<div style="margin-top:3px;">${_typeBadge(policy.category)}</div>` : ''}
           </td>
-          <td style="font-size:12px;font-family:var(--font-mono);">${version ? 'v' + UI.esc(version) : '-'}</td>
+          <td style="font-size:12px;font-family:var(--font-mono);">${versión ? 'v' + UI.esc(versión) : '-'}</td>
           <td>${status ? _statusBadge(status) : '-'}</td>
           <td>${fileCellHtml}</td>
           <td>${ismsCellHtml}</td>
@@ -710,7 +710,7 @@ const ViewIsmsDocuments = (() => {
     _startPollIfNeeded();
   }
 
-  // --- Polling para documentos en analisis ---
+  // --- Polling para documentos en análisis ---
 
   function _startPollIfNeeded() {
     _stopPoll();
@@ -806,7 +806,7 @@ const ViewIsmsDocuments = (() => {
     }
   }
 
-  // --- Formulario de politica ---
+  // --- Formulario de política ---
 
   function _editPolicy(policyId) {
     const policy = _policies.find(p => p.id === policyId);
@@ -866,7 +866,7 @@ const ViewIsmsDocuments = (() => {
     const p = policy || {};
     const e = extracted || {};
     const title    = e.title    || p.title    || '';
-    const version  = e.version  || p.version  || '1.0';
+    const versión  = e.version  || p.version  || '1.0';
     const category = e.category || p.category || '';
     const scope    = e.scope    || p.scope    || '';
     const content  = e.content  || p.content  || '';
@@ -1207,7 +1207,7 @@ const ViewIsmsDocuments = (() => {
     `, { width: '700px' });
   }
 
-  // --- Modal de clausulas ISO ---
+  // --- Modal de cláusulas ISO ---
 
   function _showClauses(docId) {
     const doc = _docs.find(d => d.id === docId);
@@ -1249,7 +1249,7 @@ const ViewIsmsDocuments = (() => {
     `, { width: '680px' });
   }
 
-  // --- Generacion con IA ---
+  // --- Generación con IA ---
 
   async function _generateWithAI() {
     UI.openModal(`
@@ -1387,7 +1387,7 @@ const ViewIsmsDocuments = (() => {
   }
 
   // ============================================================
-  // FASE 1 — Flujo de aprobacion por email
+  // FASE 1 — Flujo de aprobación por email
   // ============================================================
 
   let _smtpConfigured = null;
@@ -1795,7 +1795,7 @@ const ViewIsmsDocuments = (() => {
     if (policy) {
       try { checkoutInfo = await Api.policies.checkout(policy.id); }
       catch (e) {
-        if (e.message && e.message.includes('edicion por')) {
+        if (e.message && e.message.includes('edición por')) {
           UI.toast(t(`${NS}.toast.doc_locked`, { msg: e.message }), 'error'); return;
         }
         // Si el checkout falla por otro motivo lo ignoramos
@@ -1863,7 +1863,7 @@ const ViewIsmsDocuments = (() => {
   }
 
   // _openFormEnhanced reemplaza a _openForm en los sitios de llamada
-  // dentro del modulo; _editPolicy y _openVersioningModal llaman a _openFormEnhanced
+  // dentro del módulo; _editPolicy y _openVersioningModal llaman a _openFormEnhanced
 
   // --- API publica ---
 

@@ -1,4 +1,4 @@
-/* Vista Calendario de tratamiento — fechas limite por mes. */
+/* Vista Calendario de tratamiento — fechas límite por mes. */
 const ViewCalendar = {
   _year: new Date().getFullYear(),
   _month: new Date().getMonth(), // 0-indexed
@@ -32,7 +32,7 @@ const ViewCalendar = {
         risksByDate[d].push(r);
       }
 
-      // Indexar controles por fecha de proxima revision
+      // Indexar controles por fecha de próxima revisión
       const ctrlByDate = {};
       for (const c of impls) {
         if (!c.next_review || c.status === 'not_implemented') continue;

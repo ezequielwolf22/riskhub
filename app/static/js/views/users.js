@@ -261,7 +261,7 @@ const ViewUsers = {
     }
   },
 
-  // defaultOrgId: preselecciona la org cuando superadmin crea desde una seccion especifica
+  // defaultOrgId: preselecciona la org cuando superadmin crea desde una seccion específica
   async _edit(id, defaultOrgId) {
     const isSuperAdmin = Auth.isSuperAdmin();
     if (isSuperAdmin && !ViewUsers._orgs.length) {
@@ -326,15 +326,15 @@ const ViewUsers = {
         </div>`;
     }
 
-    const passNote = id ? '(dejar vacio para no cambiar)' : '(dejar vacio para generar automaticamente)';
+    const passNote = id ? '(dejar vacío para no cambiar)' : '(dejar vacío para generar automáticamente)';
     const passHint = id ? '' : `
       <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">
-        Si dejas el campo vacio, se generara una contrasena temporal segura.
+        Si dejas el campo vacío, se generara una contraseña temporal segura.
         El usuario debera cambiarla en el primer acceso.
       </p>`;
     const otpWarning = (id && u.must_change_password)
       ? `<div class="span2"><div class="notice warn" style="margin-bottom:0;">
-           Este usuario tiene una contrasena temporal activa. Aun no ha realizado el primer login.
+           Este usuario tiene una contraseña temporal activa. Aun no ha realizado el primer login.
          </div></div>`
       : '';
 
@@ -371,7 +371,7 @@ const ViewUsers = {
           </select>
           ${u.mfa_enabled ? `<button type="button" class="btn btn-sm btn-ghost" id="f-mfa-disable-btn" style="color:var(--brand-orange);">Desactivar MFA</button>` : ''}
         </div>
-        <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">El override individual tiene prioridad sobre la politica de la organizacion. Si hay SSO configurado, el SSO gestiona la autenticacion.</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">El override individual tiene prioridad sobre la política de la organización. Si hay SSO configurado, el SSO gestiona la autenticación.</p>
       </div>
       ` : ''}
     `, {
@@ -432,7 +432,7 @@ const ViewUsers = {
           isSuperAdmin ? ViewUsers._reloadSuperAdmin() : ViewUsers._reload();
         } else {
           if (isSuperAdmin && orgEl && !orgEl.value) {
-            UI.toast('Debes seleccionar una organizacion', 'error'); return;
+            UI.toast('Debes seleccionar una organización', 'error'); return;
           }
           const payload = {
             email: document.getElementById('f-email').value,
@@ -447,12 +447,12 @@ const ViewUsers = {
           isSuperAdmin ? ViewUsers._reloadSuperAdmin() : ViewUsers._reload();
           if (created && created.otp_password) {
             const emailInfo = created.otp_email_sent
-              ? 'La contrasena temporal ha sido enviada al email del usuario.'
-              : 'No hay SMTP configurado. Comunica la contrasena manualmente.';
+              ? 'La contraseña temporal ha sido enviada al email del usuario.'
+              : 'No hay SMTP configurado. Comunica la contraseña manualmente.';
             UI.modal(`${t('users.new')} — OTP`, `
               <div class="span2">
                 <p style="margin-bottom:12px;">
-                  El usuario <strong>${UI.esc(created.email)}</strong> ha sido creado con una contrasena temporal.
+                  El usuario <strong>${UI.esc(created.email)}</strong> ha sido creado con una contraseña temporal.
                   Debera cambiarla en el primer acceso.
                 </p>
                 <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--font-mono);font-size:15px;letter-spacing:0.05em;word-break:break-all;text-align:center;margin-bottom:12px;">
@@ -485,7 +485,7 @@ const ViewUsers = {
       panel.innerHTML = `
         <div class="card" style="margin-top:24px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-            <h3 style="margin:0;">Informacion del sistema</h3>
+            <h3 style="margin:0;">Información del sistema</h3>
             <div style="display:flex;gap:8px;">
               ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-vulns">Limpiar vulnerabilidades en riesgos</button>` : ''}
               ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-ctrls">Limpiar controles en riesgos</button>` : ''}
@@ -497,7 +497,7 @@ const ViewUsers = {
             ${ViewUsers._infoChip('Version', s.version)}
             ${ViewUsers._infoChip('Entorno', s.env)}
             ${ViewUsers._infoChip('Motor BD', s.db_engine.toUpperCase())}
-            ${dbSize ? ViewUsers._infoChip('Tamano BD', dbSize) : ''}
+            ${dbSize ? ViewUsers._infoChip('Tamaño BD', dbSize) : ''}
             ${ViewUsers._infoChip('Usuarios', s.total_users)}
             ${ViewUsers._infoChip('Activos', s.total_assets)}
             ${ViewUsers._infoChip('Riesgos', s.total_risks)}
@@ -509,8 +509,8 @@ const ViewUsers = {
       if (btnCleanup) {
         btnCleanup.onclick = async () => {
           if (!await UI.confirm(
-            'Esto reemplazara automaticamente las vulnerabilidades de TODOS los riesgos ' +
-            'con las que corresponden a su amenaza segun el catalogo ISO 27005.\n\n' +
+            'Esto reemplazara automáticamente las vulnerabilidades de TODOS los riesgos ' +
+            'con las que corresponden a su amenaza según el catálogo ISO 27005.\n\n' +
             'Los controles existentes no se modifican. Continuar?'
           )) return;
           btnCleanup.disabled = true;
@@ -534,7 +534,7 @@ const ViewUsers = {
                   Limpieza completada: <span style="color:#059669;">${r.fixed} corregidos</span>
                   de ${r.checked} riesgos revisados
                   ${r.already_correct ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.already_correct} ya eran correctos)</span>` : ''}
-                  ${r.no_catalog_match ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.no_catalog_match} amenazas sin catalogo)</span>` : ''}
+                  ${r.no_catalog_match ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.no_catalog_match} amenazas sin catálogo)</span>` : ''}
                 </div>
                 ${fixedRows ? `
                   <div style="overflow-x:auto;">
@@ -563,8 +563,8 @@ const ViewUsers = {
       if (btnCleanupCtrls) {
         btnCleanupCtrls.onclick = async () => {
           if (!await UI.confirm(
-            'Esto reemplazara automaticamente los controles de TODOS los riesgos ' +
-            'con los que corresponden a su amenaza y vulnerabilidades segun ISO 27002.\n\n' +
+            'Esto reemplazara automáticamente los controles de TODOS los riesgos ' +
+            'con los que corresponden a su amenaza y vulnerabilidades según ISO 27002.\n\n' +
             'Se asignaran los 10 controles mas maduros y relevantes por riesgo. Continuar?'
           )) return;
           btnCleanupCtrls.disabled = true;
@@ -629,7 +629,7 @@ const ViewUsers = {
         };
       }
     } catch (e) {
-      panel.innerHTML = `<div class="notice" style="margin-top:16px;">No se pudo cargar la informacion del sistema: ${UI.esc(e.message)}</div>`;
+      panel.innerHTML = `<div class="notice" style="margin-top:16px;">No se pudo cargar la información del sistema: ${UI.esc(e.message)}</div>`;
     }
   },
 

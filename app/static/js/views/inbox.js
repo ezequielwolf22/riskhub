@@ -1,4 +1,4 @@
-/* Bandeja de revision: items pendientes de decision humana generados
+/* Bandeja de revisión: items pendientes de decision humana generados
    por las automatizaciones (riesgos auto-creados, incidentes, NIS2,
    controles degradados, tareas vencidas, no conformidades). */
 const ViewInbox = {

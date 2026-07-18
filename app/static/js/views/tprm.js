@@ -1,5 +1,5 @@
 /* Vista de dashboard TPRM (Third-Party Risk Management).
-   Portfolio de proveedores: KPIs, tiering, distribucion de riesgo, proximas revisiones. */
+   Portfolio de proveedores: KPIs, tiering, distribucion de riesgo, próximas revisiones. */
 const ViewTprm = (() => {
 
   const TIER_LABELS  = {
@@ -206,10 +206,10 @@ const ViewTprm = (() => {
       </div>
     </div>
 
-    <!-- FILA 3: Proximas revisiones + Distribucion por tier -->
+    <!-- FILA 3: Próximas revisiones + Distribucion por tier -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
 
-      <!-- Proximas revisiones -->
+      <!-- Próximas revisiones -->
       <div class="card">
         <h3 style="margin:0 0 12px;font-size:14px;">${t('tprm.assessment')}</h3>
         ${upcoming.length === 0
@@ -301,7 +301,7 @@ const ViewTprm = (() => {
         <title>${UI.esc(d.code + ' ' + d.name)} — inherent ${d.inherent_risk_score}, residual ${d.residual_risk_score}</title>
       </circle>`;
     }).join('');
-    // Linea de referencia (inherent = residual)
+    // Línea de referencia (inherent = residual)
     const refX1 = pad, refY1 = H - pad, refX2 = W - pad, refY2 = pad;
     wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="max-width:100%;height:auto;">
       <line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="var(--border)" stroke-width="1"/>

@@ -1,8 +1,8 @@
 /* views/onboarding.js - Wizard lineal de setup inicial en 5 pasos.
  *
- * Paso 1: Organizacion      -> /api/context/ + /api/ai/config/
+ * Paso 1: Organización      -> /api/context/ + /api/ai/config/
  * Paso 2: Cuestionario IA   -> /api/ai/questionnaire (troceado en sub-pantallas)
- * Paso 3: Documentos        -> /api/ai/documents/ (drag & drop, vectorizacion automatica)
+ * Paso 3: Documentos        -> /api/ai/documents/ (drag & drop, vectorizacion automática)
  * Paso 4: Revisar propuesta -> /api/ai/analyze/async + polling + /api/ai/import
  * Paso 5: Automatizaciones  -> tarjetas informativas + API key + setup_completed
  *
@@ -80,7 +80,7 @@ const ViewOnboarding = (() => {
   let _docs = [];         // documentos ya subidos
   let _queue = [];        // cola de subida paso 3: {name, size, status, error}
   let _uploading = false;
-  let _result = null;     // resultado del analisis IA
+  let _result = null;     // resultado del análisis IA
   let _importResult = null;
   let _analyzing = false;
   let _busy = false;      // operacion async de navegacion en curso
@@ -328,7 +328,7 @@ const ViewOnboarding = (() => {
   }
 
   // ============================================================
-  // Paso 1 — Organizacion
+  // Paso 1 — Organización
   // ============================================================
 
   function _renderStep1(body) {
@@ -412,7 +412,7 @@ const ViewOnboarding = (() => {
   }
 
   // ============================================================
-  // Paso 2 — Cuestionario IA (sub-pantallas por categoria)
+  // Paso 2 — Cuestionario IA (sub-pantallas por categoría)
   // ============================================================
 
   async function _renderStep2(body) {
@@ -670,7 +670,7 @@ const ViewOnboarding = (() => {
   }
 
   // ============================================================
-  // Paso 3 — Documentos (drag & drop, vectorizacion automatica)
+  // Paso 3 — Documentos (drag & drop, vectorizacion automática)
   // ============================================================
 
   function _renderStep3(body) {
@@ -825,7 +825,7 @@ const ViewOnboarding = (() => {
   }
 
   // ============================================================
-  // Paso 4 — Revisar propuesta (analisis IA + aceptacion)
+  // Paso 4 — Revisar propuesta (análisis IA + aceptacion)
   // ============================================================
 
   function _renderStep4(body) {
