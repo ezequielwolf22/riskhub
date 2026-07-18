@@ -109,9 +109,14 @@ Multi-usuario con roles.
 
 ### Proximas funcionalidades
 - [ ] i18n backend (cola larga de mensajes de routers/servicios a patron X-Lang/get_lang/t(); frontend ya migrado a t() con es/en)
-- [ ] Deploy a produccion del ciclo v6 + SaaS (git push + deploy.sh — decision del usuario; el arranque hara el recalculo one-shot de residuales v2)
 - [ ] Validacion end-to-end de los flujos IA contra la API real (analisis de activo, evidencia con Vision, cuestionario TPRM con evidencia, import de plan director / borrador de iniciativa / plan de tratamiento) — los tests cubren lo determinista con `structured_message` mockeado
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
+- [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
+
+Deploy: prod (91.99.83.202) actualizado a v6.3.0 (commit bd068c2) el 2026-07-18 —
+modulo Plan Director/Tratamiento incluido, tablas nuevas migradas, jobs del
+scheduler registrados. bd068c2 ademas reparo el index.html de 78d54db, que
+referenciaba treatment.js/plan-director.js sin que existieran en el repo.
 
 ## Convenciones
 
