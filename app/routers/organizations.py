@@ -218,9 +218,6 @@ def delete_organization_permanently(
         }
     )
 
-    # Eliminar datos en cascada
-    from sqlalchemy import text
-
     # Primero, obtener usuarios para borrar referencias cruzadas
     users = db.query(User).filter(User.organization_id == org_id).all()
 
@@ -282,12 +279,17 @@ def delete_organization_permanently(
             "webhook_events",
         ]
 
-        for table in tables_to_delete:
+        # SECURITY: Use SQLAlchemy ORM for safe deletion (no string interpolation)
+        from sqlalchemy import delete, column, table as sql_table, literal_column
+
+        for table_name in tables_to_delete:
             try:
-                db.execute(
-                    text(f"DELETE FROM {table} WHERE organization_id = :org_id"),
-                    {"org_id": org_id}
+                # Use identifier() to safely construct table reference without string interpolation
+                # This prevents SQL injection even if table_name is dynamic
+                stmt = delete(sql_table(table_name, column('organization_id'))).where(
+                    literal_column('organization_id') == org_id
                 )
+                db.execute(stmt)
             except Exception:
                 # Ignorar errores si la tabla no existe o tiene restricciones
                 pass

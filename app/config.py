@@ -1,5 +1,6 @@
 """Configuracion de la aplicacion (Pydantic Settings)."""
 from pathlib import Path
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
 
     # General
     env: str = "development"
-    secret_key: str = "change-me-in-production-very-long-random-string"
+    secret_key: str = Field(..., description="Secret key for JWT and Fernet encryption. MUST be 32+ chars.")
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60           # access token (se renueva via refresh)
     jwt_refresh_expires_minutes: int = 12 * 60  # refresh token: sesion maxima 12h
@@ -30,9 +31,9 @@ class Settings(BaseSettings):
     # Si no se configura, el endpoint forgot-password devolvera 503.
     public_url: str = ""
 
-    # Admin inicial
-    admin_email: str = "admin@company.internal"
-    admin_password: str = "ChangeMe123!"
+    # Admin inicial (SECURITY: must be configured in .env, no defaults)
+    admin_email: str = Field(..., description="Initial admin email. MUST be configured in .env")
+    admin_password: str = Field(..., description="Initial admin password. MUST be configured in .env")
 
     # IA (Claude API - opcional)
     anthropic_api_key: str | None = None
@@ -43,6 +44,18 @@ class Settings(BaseSettings):
     leakcheck_api_key: str | None = None              # LeakCheck
     intelx_api_key: str | None = None                 # Intelligence X
     github_api_token: str | None = None               # GitHub
+
+    @field_validator('secret_key', mode='after')
+    def validate_secret_key(cls, v):
+        if len(v) < 32:
+            raise ValueError("RISKHUB_SECRET_KEY debe tener al menos 32 caracteres. Genera uno con: python -c \"import secrets; print(secrets.token_urlsafe(64))\"")
+        return v
+
+    @field_validator('admin_password', mode='after')
+    def validate_admin_password(cls, v):
+        if len(v) < 8:
+            raise ValueError("RISKHUB_ADMIN_PASSWORD debe tener al menos 8 caracteres")
+        return v
 
     @property
     def db_url(self) -> str:

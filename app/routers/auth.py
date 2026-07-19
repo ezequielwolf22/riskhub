@@ -665,11 +665,29 @@ class MfaCompleteIn(BaseModel):
 
 @router.post("/mfa/complete", response_model=TokenOut)
 def mfa_complete(
+    request: Request,
     body: MfaCompleteIn,
     db: Session = Depends(get_db),
 ):
     """Segundo factor: valida el codigo TOTP y devuelve el JWT completo."""
     email = _verify_mfa_token(body.mfa_token)
+
+    # OWASP A07 — el segundo factor (TOTP de 6 digitos) es fuerza-bruteable sin
+    # un limite por cuenta. Aplicar el mismo lockout que el login: por IP y por
+    # cuenta. Se comprueba ANTES de verificar el codigo para no filtrar tiempos.
+    ip = _client_ip(request)
+    lang = get_lang(request)
+    mfa_acct_key = "mfa:" + email.strip().lower()
+    ip_ok = check_login_allowed(ip)
+    acct_ok = check_login_allowed(mfa_acct_key)
+    if not ip_ok or not acct_ok:
+        secs = max(remaining_lockout_seconds(ip), remaining_lockout_seconds(mfa_acct_key))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=_t("auth.account_locked", lang, seconds=secs),
+            headers={"Retry-After": str(secs)},
+        )
+
     user = db.query(User).filter(User.email == email).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Usuario no encontrado o inactivo")
@@ -684,6 +702,9 @@ def mfa_complete(
             raise HTTPException(status_code=400, detail="Codigo TOTP o de recuperacion incorrecto")
         log_action(db, user.id, "update", "user", str(user.id),
                    {"email": user.email, "action": "mfa_backup_code_used"})
+    # Segundo factor superado: resetear contadores de intentos (IP y cuenta)
+    reset_login_counter(ip)
+    reset_login_counter(mfa_acct_key)
     db.commit()
     token = create_access_token(subject=user.email, role=user.role.value)
     return TokenOut(

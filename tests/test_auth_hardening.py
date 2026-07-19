@@ -133,6 +133,33 @@ def test_logout_revokes_refresh_token_too(client):
     assert resp2.status_code == 401
 
 
+def test_mfa_complete_is_rate_limited(client):
+    """El segundo factor (TOTP) debe bloquearse tras varios intentos fallidos,
+    igual que el login, para impedir fuerza bruta del codigo de 6 digitos."""
+    from app.routers.auth import _create_mfa_token
+
+    reset_all_counters()
+    try:
+        # Token MFA valido para un email cualquiera. El chequeo de lockout
+        # ocurre antes de buscar el usuario, asi que el bloqueo se activa
+        # aunque el usuario no exista (los intentos previos devuelven 401).
+        mfa_token = _create_mfa_token("mfavictim@test.internal")
+        saw_429 = False
+        for _ in range(12):
+            resp = client.post(
+                "/api/auth/mfa/complete",
+                json={"mfa_token": mfa_token, "code": "000000"},
+            )
+            assert resp.status_code in (400, 401, 429), resp.text
+            if resp.status_code == 429:
+                saw_429 = True
+                assert "Retry-After" in resp.headers
+                break
+        assert saw_429, "El segundo factor debe bloquearse tras varios intentos fallidos"
+    finally:
+        reset_all_counters()
+
+
 def test_password_policy_rejects_weak_password(client, auth_headers):
     resp = client.patch(
         "/api/auth/me/password",
