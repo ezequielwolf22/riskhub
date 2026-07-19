@@ -31,17 +31,16 @@ La aplicación ya implementa buena parte del hardening esperado:
 
 ## Correcciones aplicadas en esta sesión
 
-### 1. [Real — defensa en profundidad] Credenciales por defecto en el código
+### 1. [Descartado por retrocompatibilidad] Credenciales por defecto en el código
 `app/config.py`
 
-`secret_key`, `admin_email` y `admin_password` tenían valores por defecto en el
-código. `docker-compose.yml` ya exigía `SECRET_KEY` y `ADMIN_PASSWORD` (`:?`), pero
-un arranque fuera de Docker (p.ej. `uvicorn` en local) podía usar el secreto débil.
-
-**Fix:** los tres campos son ahora obligatorios (`Field(...)`) con validadores
-(secreto ≥32 chars, password ≥8). El proceso no arranca con secreto débil, en
-cualquier forma de ejecución. Verificado: los tests siguen pasando (conftest ya
-define las env vars) y la app importa correctamente.
+Se probó a hacer `secret_key`/`admin_email`/`admin_password` obligatorios, pero se
+**revirtió** para no romper a clientes on-prem existentes: `admin_email`/
+`admin_password` son solo de *seed* (`app/seed.py`), así que un cliente en marcha
+puede haberlos quitado de su `.env`; hacerlos obligatorios provocaría un crash al
+arrancar. La garantía de seguridad real —que **producción** no arranque con un
+secreto débil— **ya existe en `app/main.py`** (`sys.exit(1)` en producción si el
+secreto es el default o <32 chars) y se mantiene. `config.py` queda como estaba.
 
 ### 2. [Defensa en profundidad — NO era inyección explotable] Borrado de organización
 `app/routers/organizations.py`
