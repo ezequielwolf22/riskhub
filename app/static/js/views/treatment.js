@@ -1,4 +1,4 @@
-/* Vista Tratamiento — Cockpit unico de planes de tratamiento de riesgos. */
+/* Vista Tratamiento — Cockpit único de planes de tratamiento de riesgos. */
 const ViewTreatment = (() => {
 
   const COLUMNS = [

@@ -1,4 +1,4 @@
-/* Vista SuperAdmin — Gestion de Feature Flags (modulos habilitados por licencia). */
+/* Vista SuperAdmin — Gestión de Feature Flags (módulos habilitados por licencia). */
 const ViewFeatureFlags = (() => {
 
   const MODULE_ROUTES = {
@@ -98,8 +98,8 @@ const ViewFeatureFlags = (() => {
   }
 
   function _publishDisabled(flags) {
-    // Set global consultado por UI.tabs: las pestanas de los hubs declaran
-    // su ruta legacy en `route` y se ocultan si el modulo esta deshabilitado.
+    // Set global consultado por UI.tabs: las pestañas de los hubs declaran
+    // su ruta legacy en `route` y se ocultan si el módulo esta deshabilitado.
     window.RiskHubFlags = window.RiskHubFlags || { disabled: new Set() };
     flags.forEach(f => {
       const route = MODULE_ROUTES[f.name];
@@ -110,7 +110,7 @@ const ViewFeatureFlags = (() => {
   }
 
   function _syncSidebar() {
-    // Ocultar/mostrar enlaces del sidebar segun el estado de los flags
+    // Ocultar/mostrar enlaces del sidebar según el estado de los flags
     _publishDisabled(_flags);
     _flags.forEach(f => {
       const route = MODULE_ROUTES[f.name];

@@ -1,5 +1,5 @@
-/* Vistas hub: agrupan las vistas existentes en hubs con pestanas internas
-   (progressive disclosure). Cada hub delega el render de cada pestana en la
+/* Vistas hub: agrupan las vistas existentes en hubs con pestañas internas
+   (progressive disclosure). Cada hub delega el render de cada pestaña en la
    View original via UI.tabs — las vistas existentes no se modifican. */
 
 /* 1. Inicio */
@@ -60,7 +60,7 @@ const ViewWatchHub = {
   },
 };
 
-/* Vista de monitoreo automatico de proveedores */
+/* Vista de monitoreo automático de proveedores */
 const ViewSupplierMonitor = (() => {
   const STATUS_COLOR = { ok: 'var(--risk-low)', issue: 'var(--risk-critical)', unknown: '#9CA3AF' };
   const TIER_COLOR   = { critical: 'var(--risk-critical)', high: 'var(--risk-high)', medium: 'var(--risk-medium)', low: 'var(--risk-low)', unrated: '#9CA3AF' };
@@ -321,11 +321,11 @@ const ViewAiHub = {
 };
 
 const _AI_MODELS = [
-  { value: 'claude-opus-4-8',   label: 'Opus 4.8  — maximo rendimiento' },
+  { value: 'claude-opus-4-8',   label: 'Opus 4.8  — máximo rendimiento' },
   { value: 'claude-opus-4-7',   label: 'Opus 4.7  — muy potente' },
   { value: 'claude-opus-4-6',   label: 'Opus 4.6  — potente (por defecto)' },
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — equilibrado' },
-  { value: 'claude-haiku-4-5',  label: 'Haiku 4.5  — rapido y economico' },
+  { value: 'claude-haiku-4-5',  label: 'Haiku 4.5  — rápido y economico' },
 ];
 
 const ViewAiSettings = {
@@ -390,9 +390,9 @@ const ViewAiSettings = {
           </div>
           <div style="padding:10px 12px;background:var(--bg-2);border-radius:6px;font-size:12px;color:var(--text-muted);">
             <strong>${t('ai.settings_quick_guide')}</strong><br>
-            <strong>Opus 4.8 / 4.7</strong> — analisis complejos, documentos largos, mayor precision.<br>
+            <strong>Opus 4.8 / 4.7</strong> — análisis complejos, documentos largos, mayor precisión.<br>
             <strong>Opus 4.6</strong> — excelente calidad, buen equilibrio coste/rendimiento.<br>
-            <strong>Sonnet 4.6</strong> — rapido y capaz, ideal para uso intensivo.<br>
+            <strong>Sonnet 4.6</strong> — rápido y capaz, ideal para uso intensivo.<br>
             <strong>Haiku 4.5</strong> — el mas economico, adecuado para tareas simples y alertas.
           </div>
           <label style="display:flex;align-items:flex-start;gap:10px;font-size:13px;cursor:pointer;">
@@ -466,7 +466,7 @@ const ViewSuppliersHub = {
   },
 };
 
-/* 10. Setup — asistente de configuracion inicial */
+/* 10. Setup — asistente de configuración inicial */
 const ViewSetupHub = {
   async render(el) {
     UI.tabs(el, {
@@ -484,7 +484,7 @@ const ViewSetupHub = {
   },
 };
 
-/* 10. Configuracion (solo admin; organizaciones y modulos solo superadmin) */
+/* 10. Configuración (solo admin; organizaciones y módulos solo superadmin) */
 const ViewAdminHub = {
   async render(el) {
     UI.tabs(el, {

@@ -1,6 +1,6 @@
 /* Dashboard - resumen ejecutivo multi-modulo. */
 
-/* --- Catalogo completo de widgets personalizables --- */
+/* --- Catálogo completo de widgets personalizables --- */
 function _getWidgetCatalog() {
   return {
     posture:   { label: t('dashboard.widget.posture'),   module: 'security',    desc: t('dashboard.widget_desc.posture') },
@@ -24,7 +24,7 @@ function _getWidgetCatalog() {
 const DASHBOARD_DEFAULT_LAYOUT = ['inbox','posture','risks','controls','portfolio','incidents','tasks','policies','gdpr','tprm','bcp','top10','actions','coverage'];
 
 /* Esquema de opciones configurables por tipo de widget.
-   Solo se incluyen widgets con al menos una opcion configurable. */
+   Solo se incluyen widgets con al menos una opción configurable. */
 function _getWidgetConfigSchema() {
   return {
     inbox: [
@@ -82,7 +82,7 @@ const ViewDashboard = {
   },
 
   /* Obtiene el layout en formato [{uid, type, config}].
-     Migra automaticamente formatos antiguos (string[]) y layouts sin inbox. */
+     Migra automáticamente formatos antiguos (string[]) y layouts sin inbox. */
   _getLayout() {
     try {
       const saved = localStorage.getItem('riskhub_dashboard_layout');
@@ -117,7 +117,7 @@ const ViewDashboard = {
     }
   },
 
-  /* Sale del modo edicion sin guardar cambios adicionales. */
+  /* Sale del modo edición sin guardar cambios adicionales. */
   _exitEdit() {
     ViewDashboard._editMode = false;
     const panel = document.getElementById('dash-edit-panel');
@@ -138,7 +138,7 @@ const ViewDashboard = {
     if (btn) btn.textContent = t('dashboard.customize_btn');
   },
 
-  /* Entra en modo edicion mostrando el panel de personalizacion con catalogo por modulo. */
+  /* Entra en modo edición mostrando el panel de personalización con catálogo por módulo. */
   _enterEdit() {
     const existingPanel = document.getElementById('dash-edit-panel');
     if (existingPanel) existingPanel.remove();
@@ -299,7 +299,7 @@ const ViewDashboard = {
     });
   },
 
-  /* Activa o desactiva un widget del dashboard desde el catalogo o el boton X. */
+  /* Activa o desactiva un widget del dashboard desde el catálogo o el boton X. */
   _toggleWidget(type) {
     const layout = ViewDashboard._getLayout();
     const idx = layout.findIndex(w => w.type === type);
@@ -316,7 +316,7 @@ const ViewDashboard = {
     }
   },
 
-  /* Abre el modal de configuracion de un widget por su tipo. */
+  /* Abre el modal de configuración de un widget por su tipo. */
   _openConfig(type) {
     const layout = ViewDashboard._getLayout();
     const item = layout.find(w => w.type === type);
@@ -366,7 +366,7 @@ const ViewDashboard = {
     `);
   },
 
-  /* Guarda la configuracion del modal al layout y re-renderiza. */
+  /* Guarda la configuración del modal al layout y re-renderiza. */
   _saveConfig(type) {
     const layout = ViewDashboard._getLayout();
     const item = layout.find(w => w.type === type);
@@ -408,7 +408,7 @@ const ViewDashboard = {
     ViewDashboard._loadRiskGroups();
   },
 
-  /* Genera el HTML del badge de metodologia. */
+  /* Genera el HTML del badge de metodología. */
   _methBadgeHtml(context, meth, methLabels) {
     return `
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
@@ -435,7 +435,7 @@ const ViewDashboard = {
       </div>`;
   },
 
-  /* Construye el HTML de cada widget segun el layout activo. */
+  /* Construye el HTML de cada widget según el layout activo. */
   _buildWidgetHtml(layout, risks, incidents, tasks, policies, gdprData, context, tprmData, bcpData, postureScore) {
     const widgets = {
       posture: () => `
@@ -889,7 +889,7 @@ const ViewDashboard = {
     }
   },
 
-  /* Calcula una puntuacion de postura de seguridad (0-100). */
+  /* Calcula una puntuación de postura de seguridad (0-100). */
   _calcPosture(risks, incidents, tasks, policies, gdpr) {
     let score = 100;
     const r = risks || {};
@@ -921,7 +921,7 @@ const ViewDashboard = {
     return Math.max(0, Math.min(100, score));
   },
 
-  /* Banda de color segun la puntuacion. */
+  /* Banda de color según la puntuación. */
   _postureColor(score) {
     if (score >= 80) return 'var(--risk-low)';
     if (score >= 60) return '#D97706';
@@ -1012,7 +1012,7 @@ const ViewDashboard = {
     `;
   },
 
-  /* Chip de modulo para el panel de postura. */
+  /* Chip de módulo para el panel de postura. */
   _moduleChipHtml(label, value, state, href) {
     const colors = { ok: 'var(--risk-low)', warn: 'var(--risk-medium)', crit: 'var(--risk-high)', neutral: 'var(--brand-purple)' };
     const bg = { ok: 'rgba(16,185,129,.08)', warn: 'rgba(245,158,11,.08)', crit: 'rgba(239,68,68,.08)', neutral: 'rgba(89,0,141,.06)' };
@@ -1096,7 +1096,7 @@ const ViewDashboard = {
     </div>`;
   },
 
-  /* Panel TPRM (gestion de riesgo de terceros) para el dashboard global. */
+  /* Panel TPRM (gestión de riesgo de terceros) para el dashboard global. */
   _tprmPanelHtml(tprm, risks) {
     if (!tprm) return '';
     const totalSup   = tprm.total                           ?? 0;
@@ -1161,7 +1161,7 @@ const ViewDashboard = {
     </div>`;
   },
 
-  /* Linea de stat dentro de una tarjeta de modulo. */
+  /* Línea de stat dentro de una tarjeta de módulo. */
   _moduleStatLine(label, value, color) {
     return `
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);">

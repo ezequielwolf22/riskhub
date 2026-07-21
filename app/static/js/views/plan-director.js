@@ -1,6 +1,6 @@
 /* Vista Plan Director — programas, iniciativas, OKRs, controles objetivo y
-   riesgos afectados. Automatizacion: los riesgos se derivan de los controles
-   objetivo y la reduccion se proyecta con el motor determinista; nunca se
+   riesgos afectados. Automatización: los riesgos se derivan de los controles
+   objetivo y la reducción se proyecta con el motor determinista; nunca se
    estima a mano. */
 const ViewPlanDirector = (() => {
 
@@ -204,7 +204,7 @@ const ViewPlanDirector = (() => {
     document.getElementById('dr-discard').onclick = async () => {
       try {
         await Api.initiatives.draftDiscard({ risk_ids: draft.risk_ids || [riskId], title: draft.title });
-      } catch (_) { /* la senal es best-effort */ }
+      } catch (_) { /* la señal es best-effort */ }
       UI.closeModal();
     };
     document.getElementById('dr-create').onclick = async () => {

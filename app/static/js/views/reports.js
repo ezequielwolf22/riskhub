@@ -86,7 +86,7 @@ const ViewReports = {
           </div>
         </div>
 
-        <!-- Revision por la Direccion -->
+        <!-- Revisión por la Dirección -->
         <div class="card" style="margin-bottom:16px;border:2px solid var(--brand-purple);">
           <h3 style="margin-bottom:4px;">${t('reports.mgmt_review_title')}</h3>
           <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
@@ -329,7 +329,7 @@ const ViewReports = {
           <label style="font-size:13px;font-weight:600;">
             ${t('reports.tpl_subtitle')}
             <input type="text" id="tpl-subtitle" value="${UI.esc(current.cover_subtitle||'')}"
-                   placeholder="Ej: Ejercicio 2025 — Para uso del Comite de Direccion" style="width:100%;margin-top:4px;">
+                   placeholder="Ej: Ejercicio 2025 — Para uso del Comite de Dirección" style="width:100%;margin-top:4px;">
           </label>
 
           <div>

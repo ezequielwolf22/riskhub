@@ -1,4 +1,4 @@
-﻿/* Vista Riesgos - identificación, analisis, evaluación, tratamiento. */
+﻿/* Vista Riesgos - identificación, análisis, evaluación, tratamiento. */
 const ViewRisks = {
   _assets: [], _threats: [], _vulns: [], _impls: [],
   _assetFilter: null,
@@ -10,7 +10,7 @@ const ViewRisks = {
   async render(main) {
     const canEdit = Auth.canEdit();
 
-    // Leer parametros de URL
+    // Leer parámetros de URL
     const assetMatch = location.hash.match(/[?&]asset_id=(\d+)/);
     const threatMatch = location.hash.match(/[?&]threat_id=(\d+)/);
     const vulnMatch = location.hash.match(/[?&]vulnerability_id=(\d+)/);
@@ -241,7 +241,7 @@ const ViewRisks = {
       const supplierOnlyActive = document.getElementById('r-supplier-only')?.checked;
       const summary = await Api.risks.groupSummary();
       if (!summary.length) {
-        view.innerHTML = UI.emptyState(t('common.no_results'), 'Crea y valida grupos desde la seccion Activos → Agrupacion.');
+        view.innerHTML = UI.emptyState(t('common.no_results'), 'Crea y valida grupos desde la sección Activos → Agrupación.');
         return;
       }
       const levelColor = l => window.RiskLevels ? RiskLevels.colorFor(l) : (l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)');
@@ -345,7 +345,7 @@ const ViewRisks = {
       ViewRisks._vulns = v;
       ViewRisks._impls = i;
       ViewRisks._users = u;
-      // Guardar metodologia activa en window para que el formulario la use
+      // Guardar metodología activa en window para que el formulario la use
       window._riskMethodology = meth.methodology || 'iso27005';
       window._mageritFreqLabels = meth.magerit_freq_labels || {};
       window._mageritDimensions = meth.magerit_dimensions || {};
@@ -463,7 +463,7 @@ const ViewRisks = {
           <tr>
             ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
             ${_th('code',t('risks.risk_code'))}${_th('asset',t('common.asset'))}${_th('threat',t('common.threat'))}
-            ${_th('inherent_level',t('risks.inherent_risk'),t('risks.inherent_risk'))}${_th('residual_level',t('risks.residual_risk'),t('risks.residual_risk'))}${_th('reduction','Red.','Reduccion inherente → residual')}
+            ${_th('inherent_level',t('risks.inherent_risk'),t('risks.inherent_risk'))}${_th('residual_level',t('risks.residual_risk'),t('risks.residual_risk'))}${_th('reduction','Red.','Reducción inherente → residual')}
             ${_th('status',t('common.status'))}${_th('treatment',t('risks.treatment'))}${_th('owner',t('common.owner'),'width:110px;')}<th style="font-size:10px;white-space:nowrap;">BCP</th><th></th>
           </tr>
         </thead>
@@ -480,7 +480,7 @@ const ViewRisks = {
               <td>
                 ${UI.codePill(r.code)}
                 ${r.ai_generated ? `<span style="font-size:9px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc(r.ai_rationale||'Generado por el agente IA')}">IA</span>` : ''}
-                ${r.analysis_stale ? `<span style="font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc('Analisis desactualizado: ' + (r.stale_reason || 'el contexto cambio desde el ultimo analisis IA') + '. Re-analiza el activo para refrescarlo.')}">DESACT.</span>` : ''}
+                ${r.analysis_stale ? `<span style="font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc('Análisis desactualizado: ' + (r.stale_reason || 'el contexto cambio desde el último análisis IA') + '. Re-analiza el activo para refrescarlo.')}">DESACT.</span>` : ''}
                 ${r.supplier_id ? `<span style="font-size:9px;font-weight:700;background:#FFF3E0;color:#E65100;border-radius:3px;padding:1px 5px;margin-left:3px;vertical-align:middle;" title="Riesgo de proveedor TPRM${r.supplier_name ? ': ' + r.supplier_name : ''}">TPRM</span>` : ''}
               </td>
               <td><strong>${UI.esc(r.asset?.name||'-')}</strong></td>
@@ -658,7 +658,7 @@ const ViewRisks = {
     const freqLabels = window._mageritFreqLabels || {0:'Muy Baja',1:'Baja',2:'Media',3:'Alta',4:'Muy Alta'};
     const dims = window._mageritDimensions || {D:'Disponibilidad',I:'Integridad',C:'Confidencialidad',A:'Autenticidad',T:'Trazabilidad'};
 
-    // Filtrar vulnerabilidades por amenaza seleccionada usando related_threats del catalogo
+    // Filtrar vulnerabilidades por amenaza seleccionada usando related_threats del catálogo
     const selectedThreat = ViewRisks._threats.find(t => t.id === r.threat_id);
     const threatCode = selectedThreat?.code;
     const relatedVulns = threatCode
@@ -673,8 +673,8 @@ const ViewRisks = {
     // Vulnerabilidades ya guardadas que NO corresponden a la amenaza actual
     const mismatchedVulnIds = new Set(savedVulnIds.filter(vid => !relatedVulnIds.has(vid)));
 
-    // Filtrar controles por categoria de vulnerabilidad + tema de amenaza
-    // Prefijos ISO 27002 relevantes por categoria de vulnerabilidad
+    // Filtrar controles por categoría de vulnerabilidad + tema de amenaza
+    // Prefijos ISO 27002 relevantes por categoría de vulnerabilidad
     const VULN_CAT_CTRL_PREFIXES = {
       network:      ['8.20','8.21','8.22','8.23','8.24','5.14','8.5','5.15','5.16','5.17','8.2','8.3','8.26'],
       software:     ['8.25','8.26','8.27','8.28','8.29','8.30','8.31','8.32','8.7','8.8','8.9','8.19'],
@@ -694,7 +694,7 @@ const ViewRisks = {
       'Compromise of functions':      ['organizational','people'],
     };
 
-    // Obtener prefijos de la union de categorias de vulns relacionadas
+    // Obtener prefijos de la union de categorías de vulns relacionadas
     const activeVulnCats = [...new Set((relatedVulns.length ? relatedVulns : ViewRisks._vulns).map(v => v.category).filter(Boolean))];
     const activePrefixes = activeVulnCats.flatMap(cat => VULN_CAT_CTRL_PREFIXES[cat] || []);
     const activeThemes   = THREAT_CAT_THEMES[selectedThreat?.category || ''] || [];
@@ -703,7 +703,7 @@ const ViewRisks = {
       ? ViewRisks._impls.filter(c => c.control && activePrefixes.some(p => c.control.code?.startsWith(p)))
       : (activeThemes.length ? ViewRisks._impls.filter(c => c.control && activeThemes.includes(c.control.theme)) : []);
     const savedCtrlIds = r.control_implementation_ids || [];
-    // Para nuevo riesgo: pre-seleccionar los sugeridos; para existente: respetar seleccion actual
+    // Para nuevo riesgo: pre-seleccionar los sugeridos; para existente: respetar selección actual
     const effectiveCtrlIds = (isNew && suggestedImpls.length) ? suggestedImpls.map(c => c.id) : savedCtrlIds;
 
     const meta = r.ai_context_meta || null;
@@ -819,7 +819,7 @@ const ViewRisks = {
         </label>
         ${!isNew && mismatchedVulnIds.size > 0
           ? `<div style="font-size:11px;color:#B45309;background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-bottom:6px;">
-              Aviso: ${mismatchedVulnIds.size} vulnerabilidad(es) vinculada(s) no corresponde(n) a la amenaza ${UI.esc(threatCode||'')}. Revisa la seleccion para mayor precision.
+              Aviso: ${mismatchedVulnIds.size} vulnerabilidad(es) vinculada(s) no corresponde(n) a la amenaza ${UI.esc(threatCode||'')}. Revisa la selección para mayor precisión.
              </div>`
           : ''}
         <select id="f-vulns" multiple size="${Math.max(3, Math.min(relatedVulns.length || ViewRisks._vulns.length, 6))}" style="height:auto;" data-threat="${UI.esc(threatCode||'')}">
@@ -888,7 +888,7 @@ const ViewRisks = {
       <div class="span2 notice ${r.residual_level <= 2 ? '' : 'notice-warn'}">
         Nivel inherente actual: <strong>${r.inherent_level}</strong> &nbsp;→&nbsp;
         Nivel residual actual: <strong>${r.residual_level}</strong>
-        ${r.inherent_level > 0 ? `&nbsp;<span style="font-size:12px;color:var(--risk-low);">(-${Math.round((1-r.residual_level/r.inherent_level)*100)}% reduccion)</span>` : ''}
+        ${r.inherent_level > 0 ? `&nbsp;<span style="font-size:12px;color:var(--risk-low);">(-${Math.round((1-r.residual_level/r.inherent_level)*100)}% reducción)</span>` : ''}
         ${r.magerit_dimension ? `<br><span style="font-size:12px;">
           <strong>MAGERIT:</strong> dimensión afectada:
           <span style="background:var(--brand-purple);color:#fff;border-radius:4px;padding:1px 7px;font-size:11px;">${r.magerit_dimension}</span>
@@ -901,7 +901,7 @@ const ViewRisks = {
           return `<br><span style="font-size:12px;">ALE estimado (FAIR): <strong>${aleFmt}</strong> <span style="color:var(--text-muted);">(valor activo × nivel residual/8)</span></span>`;
         })() : ''}
         ${r.accepted_at ? `<br><span style="font-size:12px;">Aceptado el ${new Date(r.accepted_at).toLocaleString('es-ES')}</span>` : ''}
-        ${r.treatment_due_date ? `<br><span style="font-size:12px;">Fecha limite: <strong>${new Date(r.treatment_due_date).toLocaleDateString('es-ES')}</strong></span>` : ''}
+        ${r.treatment_due_date ? `<br><span style="font-size:12px;">Fecha límite: <strong>${new Date(r.treatment_due_date).toLocaleDateString('es-ES')}</strong></span>` : ''}
       </div>
       <!-- Sección trazabilidad / madurez / SOA -->
       <div class="span2">
@@ -1029,7 +1029,7 @@ const ViewRisks = {
       }
     }
 
-    // Enlace "Ver todas las vulnerabilidades" — expande el selector al catalogo completo
+    // Enlace "Ver todas las vulnerabilidades" — expande el selector al catálogo completo
     const vulnShowAll = document.getElementById('vuln-show-all-link');
     if (vulnShowAll) {
       vulnShowAll.addEventListener('click', (e) => {
@@ -1052,7 +1052,7 @@ const ViewRisks = {
       try { await Api.risks.del(id); UI.closeModal(); UI.toast(t('common.success'),'success'); ViewRisks._reload(); }
       catch (e) { UI.toast(e.message, 'error'); }
     };
-    // "Ver todos los controles" — expande al catalogo completo sin filtro
+    // "Ver todos los controles" — expande al catálogo completo sin filtro
     const ctrlShowAll = document.getElementById('ctrl-show-all-link');
     if (ctrlShowAll) {
       ctrlShowAll.addEventListener('click', (e) => {
@@ -1071,7 +1071,7 @@ const ViewRisks = {
       });
     }
 
-    // "Sugerir con IA" — analisis por cadena de ataque y seleccion de controles
+    // "Sugerir con IA" — análisis por cadena de ataque y selección de controles
     const btnSuggest = document.getElementById('btn-suggest-controls');
     if (btnSuggest && id) {
       btnSuggest.addEventListener('click', async () => {
@@ -1204,7 +1204,7 @@ const ViewRisks = {
       }
     }
 
-    // Resaltar campo justificacion cuando se selecciona "accepted"
+    // Resaltar campo justificación cuando se selecciona "accepted"
     const statusSel = document.getElementById('f-status');
     if (statusSel) statusSel.addEventListener('change', () => {
       const wrap = document.getElementById('f-just-wrap');
@@ -1222,15 +1222,15 @@ const ViewRisks = {
       const getMulti = el => Array.from(el.selectedOptions).map(o => parseInt(o.value));
       const status = document.getElementById('f-status').value;
       const just = document.getElementById('f-just').value.trim();
-      // Validar justificacion obligatoria al aceptar
+      // Validar justificación obligatoria al aceptar
       if (status === 'accepted' && !just) {
-        UI.toast('La justificacion de aceptacion es obligatoria al aceptar un riesgo', 'error');
+        UI.toast('La justificación de aceptación es obligatoria al aceptar un riesgo', 'error');
         document.getElementById('f-just').focus();
         return;
       }
       const dueVal = document.getElementById('f-due').value;
       const ownerVal = document.getElementById('f-owner').value;
-      // MAGERIT: leer dimension y degradacion si aplica
+      // MAGERIT: leer dimensión y degradación si aplica
       const mageritDim = document.getElementById('f-magerit-dim')?.value || null;
       const degradPct = document.getElementById('f-degrad') ? parseInt(document.getElementById('f-degrad').value) : null;
       const body = {
@@ -1394,11 +1394,11 @@ const ViewRisks = {
     if (!assetEl || !dimEl || !degradEl) return;
 
     const asset_id     = parseInt(assetEl.value);
-    const dimension    = dimEl.value;
+    const dimensión    = dimEl.value;
     const degradation  = parseInt(degradEl.value);
 
     try {
-      const res = await Api.post('/api/risks/magerit-preview', { asset_id, dimension, degradation_pct: degradation });
+      const res = await Api.post('/api/risks/magerit-preview', { asset_id, dimensión, degradation_pct: degradation });
 
       // Actualizar el valor hidden de consecuencia
       const icHidden = document.getElementById('f-ic');
@@ -1664,7 +1664,7 @@ const ViewRisks = {
         </div>`;
       }).join('');
 
-      // Alineacion normativa (objeto por framework)
+      // Alineación normativa (objeto por framework)
       let normHtml = '';
       if (data.normative_alignment && typeof data.normative_alignment === 'object') {
         const normEntries = Object.entries(data.normative_alignment).map(([fw, info]) => {
@@ -1709,7 +1709,7 @@ const ViewRisks = {
       result.innerHTML = `
         <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <strong style="font-size:13px;">Analisis experto IA</strong>
+            <strong style="font-size:13px;">Análisis experto IA</strong>
             <span style="background:${confBg};color:${confColor};border-radius:4px;padding:2px 10px;font-size:11px;font-weight:700;">
               Confianza: ${(data.confidence || '').toUpperCase()}
             </span>
@@ -1734,7 +1734,7 @@ const ViewRisks = {
 
           ${data.evidence_quality_assessment ? `
           <div style="margin-bottom:12px;padding:8px;background:var(--bg-alt);border-radius:6px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Evaluacion de calidad de evidencia</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Evaluación de calidad de evidencia</div>
             <p style="font-size:11px;color:var(--text-base);margin:0;">${UI.esc(data.evidence_quality_assessment)}</p>
           </div>` : ''}
 
@@ -1752,7 +1752,7 @@ const ViewRisks = {
 
           ${normHtml ? `
           <div style="margin-bottom:8px;">
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Alineacion normativa</div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Alineación normativa</div>
             ${normHtml}
           </div>` : ''}
 
@@ -1764,7 +1764,7 @@ const ViewRisks = {
       if (btn) { btn.textContent = 'Regenerar'; btn.disabled = false; }
     } catch (e) {
       if (result) result.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
-      if (btn) { btn.textContent = 'Analisis IA'; btn.disabled = false; }
+      if (btn) { btn.textContent = 'Análisis IA'; btn.disabled = false; }
     }
   },
 
@@ -1773,7 +1773,7 @@ const ViewRisks = {
   _renderAiTabs(riskId, root) {
     if (!root) return;
     const tabs = [
-      { id: 'explain',  label: 'Analisis IA' },
+      { id: 'explain',  label: 'Análisis IA' },
       { id: 'scenario', label: 'Escenario MITRE' },
       { id: 'whatif',   label: 'What-If' },
       { id: 'var',      label: 'VaR' },
@@ -1789,7 +1789,7 @@ const ViewRisks = {
     root.innerHTML = `
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:12px;overflow-x:auto;">
         ${tabs.map((t, i) => _tabBtn(t, i === 0)).join('')}
-        <button id="btn-ai-explain-refresh" title="Regenerar analisis IA"
+        <button id="btn-ai-explain-refresh" title="Regenerar análisis IA"
           style="margin-left:auto;padding:4px 12px;border:1px solid var(--border);border-radius:6px;
                  background:none;cursor:pointer;font-size:12px;color:var(--brand-purple);white-space:nowrap;align-self:center;">
           Regenerar
@@ -1856,7 +1856,7 @@ const ViewRisks = {
       const stepsHtml = (data.steps || []).map((s, i) => {
         const phaseColor = {'Reconnaissance':'#7C3AED','Resource Development':'#6D28D9',
           'Initial Access':'#1D4ED8','Execution':'#0369A1','Persistence':'#0F766E',
-          'Privilege Escalation':'#B45309','Defense Evasion':'#92400E','Credential Access':'#9A3412',
+          'Privilege Escalation':'#B45309','Defense Evasión':'#92400E','Credential Access':'#9A3412',
           'Discovery':'#166534','Lateral Movement':'#065F46','Collection':'#1E3A5F',
           'Command and Control':'#4C1D95','Exfiltration':'#831843','Impact':'#991B1B'}[s.tactic] || '#374151';
         return `<div style="display:flex;gap:10px;margin-bottom:10px;">
@@ -1884,7 +1884,7 @@ const ViewRisks = {
           </div>
           ${data.scenario_summary ? `<p style="font-size:13px;line-height:1.6;margin-bottom:12px;">${UI.esc(data.scenario_summary)}</p>` : ''}
           <div style="margin-bottom:12px;">${stepsHtml}</div>
-          ${critGapsHtml ? `<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;margin-bottom:6px;">Brechas criticas</div><ul style="margin:0;padding-left:14px;">${critGapsHtml}</ul></div>` : ''}
+          ${critGapsHtml ? `<div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:var(--danger);text-transform:uppercase;margin-bottom:6px;">Brechas críticas</div><ul style="margin:0;padding-left:14px;">${critGapsHtml}</ul></div>` : ''}
           ${mitigationsHtml ? `<div><div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px;">Mitigaciones prioritarias</div><ul style="margin:0;padding-left:14px;">${mitigationsHtml}</ul></div>` : ''}
         </div>`;
     } catch (e) {
@@ -1899,7 +1899,7 @@ const ViewRisks = {
     container.innerHTML = `
       <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
         <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
-          Simula como cambia el nivel residual si modificas los parametros del riesgo (sin persistir cambios).
+          Simula como cambia el nivel residual si modificas los parámetros del riesgo (sin persistir cambios).
         </p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
           <div>
@@ -2027,7 +2027,7 @@ const ViewRisks = {
       const data = await Api.get(`/api/risks/${riskId}/history`);
       const snaps = Array.isArray(data) ? data : (data.snapshots || []);
       if (!snaps.length) {
-        container.innerHTML = '<div class="notice notice-info">Sin snapshots mensuales todavia. Se generan automaticamente el dia 1 de cada mes.</div>';
+        container.innerHTML = '<div class="notice notice-info">Sin snapshots mensuales todavia. Se generan automáticamente el día 1 de cada mes.</div>';
         return;
       }
       // Mini sparkline SVG
@@ -2059,7 +2059,7 @@ const ViewRisks = {
       container.innerHTML = `
         <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <strong style="font-size:13px;">Evolucion del nivel de riesgo</strong>
+            <strong style="font-size:13px;">Evolución del nivel de riesgo</strong>
             <div style="display:flex;gap:12px;font-size:11px;color:var(--text-muted);">
               <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:3px;background:#94A3B8;border-radius:2px;"></span>Inherente</span>
               <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:3px;background:var(--brand-purple);border-radius:2px;"></span>Residual</span>
@@ -2086,7 +2086,7 @@ const ViewRisks = {
         container.innerHTML = `
           <div class="notice notice-info" style="margin-bottom:12px;">Sin KRIs vinculados a este riesgo.</div>
           <button class="btn btn-ghost btn-sm" onclick="window.location.hash='kris'">
-            Ir al modulo de KRIs
+            Ir al módulo de KRIs
           </button>`;
         return;
       }
@@ -2105,7 +2105,7 @@ const ViewRisks = {
               <div style="font-size:18px;font-weight:800;color:${statusColor(k.status)};margin-top:2px;">${k.current_value ?? '-'}</div>
             </div>
           </div>
-          ${k.last_evaluated_at ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Ultima evaluacion: ${new Date(k.last_evaluated_at).toLocaleString('es-ES')}</div>` : ''}
+          ${k.last_evaluated_at ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Última evaluación: ${new Date(k.last_evaluated_at).toLocaleString('es-ES')}</div>` : ''}
         </div>`).join('');
       container.innerHTML = `
         <div style="background:var(--bg-2);border-radius:10px;padding:14px;">
