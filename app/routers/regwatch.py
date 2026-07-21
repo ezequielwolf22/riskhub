@@ -384,3 +384,17 @@ def admin_validate_event(event_id: int, body: ValidateEventBody = ValidateEventB
     log_action(db, current_user.id, "validate", "regwatch_event", str(event_id), result)
     db.commit()
     return result
+
+
+class RejectEventBody(BaseModel):
+    reason: str = ""
+
+
+@router.post("/admin/events/{event_id}/reject")
+def admin_reject_event(event_id: int, body: RejectEventBody = RejectEventBody(),
+                       db: Session = Depends(get_db),
+                       current_user: User = Depends(require_superadmin)):
+    result = svc.reject_event(db, event_id, current_user, body.reason)
+    log_action(db, current_user.id, "reject", "regwatch_event", str(event_id), result)
+    db.commit()
+    return result

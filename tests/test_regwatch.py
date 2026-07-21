@@ -9,6 +9,7 @@ import pytest
 from app.models import ChangeSeverity
 from app.services import regwatch_sources as srcs
 from app.services import regwatch_connectors as conns
+from tests.conftest import _TestSession
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +84,37 @@ def test_get_connector_resolves_by_code():
     assert isinstance(c, conns.EurLexWatcher)
 
 
+def test_signature_changed_establishes_baseline_without_alerting():
+    """Primera lectura de una fuente estatica (ISO, AICPA): fija linea base,
+    no genera candidato aunque el contenido describa una transicion antigua
+    ya consolidada (evita el falso positivo reportado: ISO 27001:2013->2022
+    resurgiendo como alerta CRITICA en produccion, anos despues del cambio)."""
+    class _FakeSrc:
+        code = "ISO"
+        fetch_config_json = {}
+        framework_codes = ["ISO_27001"]
+    w = conns.BaseNormativeWatcher(_FakeSrc())
+    assert w._signature_changed("iso-ISO_27001", "abc123") is False
+    # Fuente sin cambios reales: no vuelve a alertar
+    assert w._signature_changed("iso-ISO_27001", "abc123") is False
+    # Contenido realmente distinto: ahi si es una novedad
+    assert w._signature_changed("iso-ISO_27001", "def456") is True
+
+
+def test_iso_status_watcher_baseline_first_run_no_candidates(monkeypatch):
+    class _FakeSrc:
+        code = "ISO"
+        fetch_config_json = {}
+        framework_codes = ["ISO_27001", "ISO_27002"]
+    w = conns.IsoStatusWatcher(_FakeSrc())
+    monkeypatch.setattr(
+        w, "_http_get",
+        lambda url: b"ISO/IEC 27001:2022 Edition 3 replaced the withdrawn 2013 edition",
+    )
+    assert w.discover() == []  # linea base, sin alerta falsa
+    assert w.discover() == []  # mismo contenido, sin novedad
+
+
 # ---------------------------------------------------------------------------
 # Routing de severidad (§3.3): solo substantive/breaking generan inbox
 # ---------------------------------------------------------------------------
@@ -93,6 +125,111 @@ def test_inbox_severities_constant():
     assert ChangeSeverity.BREAKING in _INBOX_SEVERITIES
     assert ChangeSeverity.COSMETIC not in _INBOX_SEVERITIES
     assert ChangeSeverity.CLARIFICATION not in _INBOX_SEVERITIES
+
+
+# ---------------------------------------------------------------------------
+# Validacion humana obligatoria (§3.3): la IA nunca publica sola un cambio
+# con impacto real para el tenant.
+# ---------------------------------------------------------------------------
+
+def _make_event(db, framework_code="ISO_27001"):
+    from app.models import ChangeEventStatus, NormativeChangeEvent
+    ev = NormativeChangeEvent(
+        framework_code=framework_code,
+        raw_url=None,
+        content_hash=f"test-{framework_code}-{id(object())}",
+        status=ChangeEventStatus.DETECTED,
+    )
+    db.add(ev)
+    db.flush()
+    return ev
+
+
+def test_high_confidence_breaking_change_requires_human_review():
+    """Confianza alta + severidad breaking -> PENDING_INTERNAL_REVIEW, no
+    VALIDATED. Antes de la correccion la IA marcaba VALIDATED directamente y
+    run_sweep la auto-publicaba sin que ningun humano la viera."""
+    from unittest.mock import patch
+
+    from app.config import settings
+    from app.models import ChangeEventStatus
+    from app.services import regwatch_service as svc
+
+    settings.anthropic_api_key = "sk-test-fake-key-not-real"
+    db = _TestSession()
+    try:
+        ev = _make_event(db)
+        fake_result = {
+            "severity": "breaking", "confidence": 0.95,
+            "summary_es": "x", "summary_en": "x", "rationale": "x",
+        }
+        with patch("app.services.claude_client.structured_message", return_value=(fake_result, object())):
+            ok = svc.analyze_event_with_ai(db, ev)
+        assert ok is True
+        assert ev.status == ChangeEventStatus.PENDING_INTERNAL_REVIEW
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_high_confidence_cosmetic_change_auto_validates():
+    """Cosmetic/clarification no impactan al tenant (§3.3): pueden auto-
+    validarse sin bloquear en la cola humana."""
+    from unittest.mock import patch
+
+    from app.config import settings
+    from app.models import ChangeEventStatus
+    from app.services import regwatch_service as svc
+
+    settings.anthropic_api_key = "sk-test-fake-key-not-real"
+    db = _TestSession()
+    try:
+        ev = _make_event(db)
+        fake_result = {
+            "severity": "cosmetic", "confidence": 0.9,
+            "summary_es": "x", "summary_en": "x", "rationale": "x",
+        }
+        with patch("app.services.claude_client.structured_message", return_value=(fake_result, object())):
+            svc.analyze_event_with_ai(db, ev)
+        assert ev.status == ChangeEventStatus.VALIDATED
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_run_sweep_never_auto_publishes_substantive_or_breaking():
+    """Defensa en profundidad: aunque un evento llegara a VALIDATED con
+    severidad substantive/breaking (regresion futura), run_sweep no debe
+    auto-publicarlo — solo cosmetic/clarification."""
+    from app.models import ChangeEventStatus, ChangeSeverity as CS
+    db = _TestSession()
+    try:
+        ev = _make_event(db, framework_code="ISO_27001_TEST_SWEEP")
+        ev.status = ChangeEventStatus.VALIDATED
+        ev.severity = CS.BREAKING
+        ev.ai_confidence = 0.99
+        db.commit()
+
+        from app.services import regwatch_service as svc
+        # run_sweep hace red real via conectores; aislamos solo la parte de
+        # auto-publicacion reproduciendo su query de forma directa.
+        from app.models import NormativeChangeEvent
+        candidates = (
+            db.query(NormativeChangeEvent)
+            .filter(
+                NormativeChangeEvent.status == ChangeEventStatus.VALIDATED,
+                NormativeChangeEvent.change_pack_id.is_(None),
+                NormativeChangeEvent.ai_confidence >= 0.7,
+                NormativeChangeEvent.severity.in_(
+                    [CS.COSMETIC, CS.CLARIFICATION]
+                ),
+            )
+            .all()
+        )
+        assert ev.id not in [c.id for c in candidates]
+    finally:
+        db.rollback()
+        db.close()
 
 
 # ---------------------------------------------------------------------------

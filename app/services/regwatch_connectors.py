@@ -104,6 +104,27 @@ class BaseNormativeWatcher:
         data = body if isinstance(body, bytes) else str(body).encode("utf-8")
         return hashlib.sha256(data).hexdigest()
 
+    def _signature_changed(self, key: str, signature: str) -> bool:
+        """True solo si `signature` difiere de la ultima vista para `key`.
+
+        Pensado para fuentes sin fechas fiables (paginas de producto/estado
+        estaticas): comparar solo presencia de palabras clave siempre
+        verdaderas generaba una alerta falsa la primera vez que se
+        consultaba, aunque el contenido describiera una transicion ya
+        vigente desde hace anos. La primera ejecucion fija la linea base sin
+        generar candidato; solo se alerta cuando el contenido cambia de
+        verdad respecto a esa base. Persiste en fetch_config_json.
+        """
+        if self.source is None:
+            return True
+        cfg = dict(self.source.fetch_config_json or {})
+        known = dict(cfg.get("known_signatures") or {})
+        prev = known.get(key)
+        known[key] = signature
+        cfg["known_signatures"] = known
+        self.source.fetch_config_json = cfg
+        return prev is not None and prev != signature
+
 
 # ---------- Utilidades de parseo RSS/XML (sin lxml ni beautifulsoup) ----------
 
@@ -440,7 +461,18 @@ class EsasWatcher(BaseNormativeWatcher):
 
 
 class IsoStatusWatcher(BaseNormativeWatcher):
-    """ISO: monitoriza el estado de revision de ISO 27001:2022 y 27002:2022."""
+    """ISO: monitoriza el estado de revision de ISO 27001:2022 y 27002:2022.
+
+    La pagina de producto de ISO siempre contiene texto describiendo la
+    transicion de edicion ya consolidada (p.ej. "new edition... published...
+    withdrawn" sobre la 27001:2013->2022, vigente desde 2022): comparar solo
+    presencia de esas palabras disparaba una alerta falsa "cambio critico" la
+    primera vez que se consultaba la fuente, aunque no hubiera nada nuevo.
+    Ahora se compara una firma del contenido contra la ultima vista
+    (`_signature_changed`): la primera consulta fija la linea base sin
+    alertar, solo se genera un candidato cuando el contenido cambia de
+    verdad.
+    """
 
     source_code = "ISO"
 
@@ -454,17 +486,14 @@ class IsoStatusWatcher(BaseNormativeWatcher):
         for url, fw, label in standards:
             try:
                 body = self._http_get(url)
-                body_str = body.decode("utf-8", errors="replace")
-                # Buscar indicadores de nueva revision (texto en la pagina)
-                if any(kw in body_str.lower() for kw in (
-                    "under revision", "new edition", "published", "withdrawn"
-                )):
+                signature = self._sha256(body)
+                if self._signature_changed(f"iso-{fw}", signature):
                     cand = ChangeCandidate(
                         source_code=self.source_code,
                         framework_code=fw,
                         title=f"Actualizacion de estado: {label}",
                         url=url,
-                        raw_ref=f"iso-status-{fw}",
+                        raw_ref=f"iso-status-{fw}-{signature[:16]}",
                     )
                     candidates.append(cand)
             except Exception:
@@ -473,24 +502,32 @@ class IsoStatusWatcher(BaseNormativeWatcher):
 
 
 class AicpaWatcher(BaseNormativeWatcher):
-    """AICPA: SOC 2 / Trust Services Criteria (TSC)."""
+    """AICPA: SOC 2 / Trust Services Criteria (TSC).
+
+    Mismo problema estructural que `IsoStatusWatcher`: pagina estatica sin
+    fechas fiables, y el chequeo anterior buscaba anos hardcodeados
+    ("2024", "2025") que quedan obsoletos con el tiempo y ademas coinciden
+    con casi cualquier version de la pagina. Se sustituye por comparacion de
+    firma de contenido contra la ultima vista (linea base en la primera
+    ejecucion, sin alertar).
+    """
 
     source_code = "AICPA"
+
+    _URL = "https://www.aicpa-cima.com/resources/landing/soc2-cybersecurity"
 
     def discover(self) -> list[ChangeCandidate]:
         candidates: list[ChangeCandidate] = []
         try:
-            body = self._http_get(
-                "https://www.aicpa-cima.com/resources/landing/soc2-cybersecurity"
-            )
-            body_str = body.decode("utf-8", errors="replace")
-            if any(k in body_str.lower() for k in ("updated", "new release", "2024", "2025")):
+            body = self._http_get(self._URL)
+            signature = self._sha256(body)
+            if self._signature_changed("aicpa-soc2", signature):
                 cand = ChangeCandidate(
                     source_code=self.source_code,
                     framework_code="SOC2",
-                    title="AICPA SOC 2 Trust Services Criteria — verificacion de actualizaciones",
-                    url="https://www.aicpa-cima.com/resources/landing/soc2-cybersecurity",
-                    raw_ref="aicpa-soc2-status",
+                    title="AICPA SOC 2 Trust Services Criteria — actualizacion detectada",
+                    url=self._URL,
+                    raw_ref=f"aicpa-soc2-status-{signature[:16]}",
                 )
                 candidates.append(cand)
         except Exception:

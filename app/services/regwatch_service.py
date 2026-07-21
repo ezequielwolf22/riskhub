@@ -506,20 +506,25 @@ def list_history(db: Session, org_id: int, framework: str | None = None,
 # ---------- Publicacion y barrido (§5.2, §7) ----------
 
 def publish_change_pack(db: Session, pack: ChangePack) -> int:
-    """Publica un change_pack: lo marca publicado/aplicado y materializa inbox
-    items para los tenants afectados con severidad >= substantive (§7.7, §5.2).
+    """Publica un change_pack: lo marca publicado y materializa inbox items
+    para los tenants afectados con severidad >= substantive (§7.7, §5.2).
 
-    Devuelve el numero de inbox items creados. Cosmetic/clarification solo van
-    al historial (no generan inbox).
+    Devuelve el numero de inbox items creados. Cosmetic/clarification no
+    generan inbox: se aplican directamente al catalogo central (§5.5) y solo
+    quedan en el historial. Substantive/breaking NO tocan el catalogo aqui —
+    solo lo hacen cuando un humano del tenant elige "aplicar" en el wizard
+    (`regwatch_propagation.apply_and_propagate` -> `apply_to_catalog`), que es
+    quien marca `applied_to_catalog_at` de verdad.
     """
     now = _now()
     if not pack.published_at:
         pack.published_at = now
-    if not pack.applied_to_catalog_at:
-        pack.applied_to_catalog_at = now
     db.flush()
 
     if pack.severity not in _INBOX_SEVERITIES:
+        from app.services import regwatch_propagation as prop
+        prop.apply_to_catalog(db, pack)
+        db.flush()
         return 0  # cosmetic / clarification -> solo historial
 
     created = 0
@@ -646,12 +651,20 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
     clasifica la severidad (cosmetic/clarification/substantive/breaking) y
     genera resumenes ES/EN. Si la primera pasada (tier fast) da severidad
     alta o confianza < 0.7, una segunda pasada con el modelo potente emite
-    el juicio final antes de la auto-publicacion.
+    el juicio final.
     Confianza < 0.7 -> event.status queda DETECTED (cola manual).
+    Confianza >= 0.7 y severidad cosmetic/clarification -> VALIDATED (sin
+    impacto para el tenant, se auto-aplica al catalogo central en el sweep).
+    Confianza >= 0.7 y severidad substantive/breaking -> PENDING_INTERNAL_REVIEW:
+    un humano del equipo RiskHub debe confirmar (`validate_and_publish_event`)
+    antes de que llegue al inbox de ningun tenant (§3.3). La IA nunca publica
+    por si sola un cambio con impacto real.
     Devuelve True si el analisis fue exitoso.
     """
+    today_str = _now().strftime("%Y-%m-%d")
     body = _fetch_change_body(event.raw_url)
     raw_text = (
+        f"Fecha de hoy: {today_str}\n"
         f"Framework: {event.framework_code}\n"
         f"URL: {event.raw_url or 'N/A'}\n"
         f"Resumen previo del conector: {event.summary_es or 'Sin resumen previo'}\n\n"
@@ -693,7 +706,16 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
         "- substantive: cambio real en requisitos existentes o nuevo requisito que requiere accion.\n"
         "- breaking: cambio mayor de version (ej. nueva edicion ISO), eliminacion de controles, "
         "plazo de cumplimiento nuevo.\n\n"
-        "controls_affected_hint: codigos ISO 27002 (ej. 5.1, 8.24) que el cambio afecta."
+        "controls_affected_hint: codigos ISO 27002 (ej. 5.1, 8.24) que el cambio afecta.\n\n"
+        "RELEVANCIA TEMPORAL (critico, usa la 'Fecha de hoy' del mensaje): solo es un cambio "
+        "normativo real y accionable si describe algo ocurrido recientemente (ultimos ~12 meses) "
+        "o que va a entrar en vigor en el futuro. Muchas fuentes son paginas de producto/estado "
+        "estaticas que simplemente describen la version ya vigente desde hace anos (p.ej. 'la "
+        "edicion X reemplazo a la edicion Y', publicada hace varios anos) — eso NO es una "
+        "novedad, es informacion historica ya consolidada. Si la fecha de publicacion o entrada "
+        "en vigor del cambio descrito es anterior a hace 12 meses, clasifica como 'cosmetic' con "
+        "confianza alta (>=0.8) y explica en 'rationale' que es historico, no una novedad. Nunca "
+        "clasifiques como 'substantive' o 'breaking' un cambio cuya fecha real sea antigua."
     )
 
     try:
@@ -740,7 +762,12 @@ def analyze_event_with_ai(db: Session, event: NormativeChangeEvent) -> bool:
         event.ai_analysis_json = result
 
         if event.ai_confidence >= 0.7:
-            event.status = ChangeEventStatus.VALIDATED
+            if event.severity in (ChangeSeverity.SUBSTANTIVE, ChangeSeverity.BREAKING):
+                # Impacto real para el tenant: exige validacion humana interna
+                # antes de publicar (§3.3). Nunca se auto-publica.
+                event.status = ChangeEventStatus.PENDING_INTERNAL_REVIEW
+            else:
+                event.status = ChangeEventStatus.VALIDATED
         # <0.7 queda en DETECTED para cola de revision manual
 
         return True
@@ -788,7 +815,10 @@ def run_sweep(db: Session) -> dict:
 
     1. Ejecuta cada conector (degrada si no hay red).
     2. Para cada evento nuevo, dispara pipeline de IA (Claude Haiku).
-    3. Eventos validados con alta confianza se auto-publican como change_packs.
+    3. Solo los eventos cosmetic/clarification (sin impacto para el tenant)
+       se auto-publican. Substantive/breaking quedan en PENDING_INTERNAL_REVIEW
+       a la espera de que un humano del equipo RiskHub los valide (§3.3) —
+       ver `analyze_event_with_ai` y `validate_and_publish_event`.
     4. Actualiza last_sweep_at de tenants activos.
     """
     from app.services import regwatch_connectors as conns
@@ -823,14 +853,19 @@ def run_sweep(db: Session) -> dict:
         if ai_ok > 0:
             db.commit()
 
-        # Auto-publicar eventos validados por IA (confianza alta)
+        # Auto-publicar SOLO eventos sin impacto para el tenant (cosmetic/
+        # clarification). Substantive/breaking nunca llegan aqui con status
+        # VALIDATED: analyze_event_with_ai los deja en PENDING_INTERNAL_REVIEW,
+        # a la espera de un humano (defensa en profundidad ante regresiones).
         validated = (
             db.query(NormativeChangeEvent)
             .filter(
                 NormativeChangeEvent.status == ChangeEventStatus.VALIDATED,
                 NormativeChangeEvent.change_pack_id.is_(None),
                 NormativeChangeEvent.ai_confidence >= 0.7,
-                NormativeChangeEvent.severity.isnot(None),
+                NormativeChangeEvent.severity.in_(
+                    [ChangeSeverity.COSMETIC, ChangeSeverity.CLARIFICATION]
+                ),
             )
             .limit(10)
             .all()
@@ -963,6 +998,31 @@ def validate_and_publish_event(db: Session, event_id: int, user: User,
         e.status = ChangeEventStatus.PUBLISHED
     db.commit()
     return {"event_id": e.id, "status": e.status.value, "inbox_items_created": inbox_created}
+
+
+def reject_event(db: Session, event_id: int, user: User, reason: str = "") -> dict:
+    """Descarta un evento tras revision interna: nunca se publica (§3.3).
+
+    Usado cuando un humano determina que la clasificacion de la IA es
+    incorrecta o que el cambio no es accionable (p.ej. informacion historica
+    ya vigente re-detectada por error, como una pagina de estado estatica).
+    """
+    from fastapi import HTTPException
+    e = db.query(NormativeChangeEvent).filter(NormativeChangeEvent.id == event_id).first()
+    if not e:
+        from app.i18n import t as _t
+        raise HTTPException(404, _t("regwatch_service.event_not_found", "es"))
+    if e.status == ChangeEventStatus.PUBLISHED:
+        from app.i18n import t as _t
+        raise HTTPException(409, _t("regwatch_service.event_already_status", "es", status=e.status.value))
+    e.status = ChangeEventStatus.REJECTED
+    e.validated_by_user_id = user.id
+    e.validated_at = _now()
+    meta = dict(e.ai_analysis_json or {})
+    meta["review_reason"] = (reason or "")[:500]
+    e.ai_analysis_json = meta
+    db.commit()
+    return {"event_id": e.id, "status": e.status.value}
 
 
 # ---------- Seed de fuentes ----------

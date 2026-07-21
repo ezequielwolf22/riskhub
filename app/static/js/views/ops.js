@@ -42,10 +42,11 @@ const ViewOps = (() => {
       <div id="ops-jobs" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>
       ${isSuper ? `<div id="ops-errors" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>` : ''}
       ${isSuper ? `<div id="ops-backups" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>` : ''}
+      ${isSuper ? `<div id="ops-regwatch" class="card" style="margin-bottom:16px;"><p class="text-muted">${t('common.loading')}</p></div>` : ''}
     `;
     _loadUsage();
     _loadJobs();
-    if (isSuper) { _loadBilling(); _loadErrors(); _loadBackups(); }
+    if (isSuper) { _loadBilling(); _loadErrors(); _loadBackups(); _loadRegwatchQueue(); }
   }
 
   // ---------- Consumo IA ----------
@@ -358,6 +359,94 @@ const ViewOps = (() => {
     } catch (e) {
       box.innerHTML = `<h3 style="margin-top:0;">${t('ops.backups.title')}</h3><div class="notice">${UI.esc(e.message)}</div>`;
     }
+  }
+
+  // ---------- Vigilancia normativa: cola de validacion interna (superadmin) ----------
+
+  const _RW_SEV_BADGE = {
+    cosmetic: 'badge-muted', clarification: 'badge-muted',
+    substantive: 'badge-warning', breaking: 'badge-danger',
+  };
+  const _RW_REVIEW_STATUSES = ['pending_internal_review', 'detected', 'validated'];
+
+  async function _loadRegwatchQueue() {
+    const box = document.getElementById('ops-regwatch');
+    if (!box) return;
+    try {
+      const all = await Promise.all(_RW_REVIEW_STATUSES.map(s => Api.regwatch.adminEvents(s)));
+      // 'validated' con severidad cosmetic/clarification se auto-publica solo
+      // (sin impacto para el tenant, §5.5) y no necesita revision aqui.
+      const rows = all.flat()
+        .filter(e => e.status !== 'validated' || (e.severity !== 'cosmetic' && e.severity !== 'clarification'))
+        .map(e => `
+        <tr data-event="${e.id}">
+          <td>${UI.esc(e.framework_code || '-')}</td>
+          <td><span class="badge ${_RW_SEV_BADGE[e.severity] || 'badge-muted'}">${UI.esc(e.severity || '-')}</span></td>
+          <td>${UI.esc(t('ops.regwatch.status_' + e.status))}</td>
+          <td style="text-align:right;">${e.ai_confidence != null ? Math.round(e.ai_confidence * 100) + '%' : '-'}</td>
+          <td style="font-size:12px;max-width:360px;">${UI.esc(e.summary_es || '')}</td>
+          <td style="font-size:11px;">${_fmtDate(e.detected_at)}</td>
+          <td>${e.raw_url ? `<a href="${UI.esc(e.raw_url)}" target="_blank" rel="noopener">↗</a>` : ''}</td>
+          <td style="white-space:nowrap;">
+            <button class="btn btn-primary btn-sm" data-rw-approve="${e.id}">${t('ops.regwatch.approve')}</button>
+            <button class="btn btn-ghost btn-sm" data-rw-reject="${e.id}">${t('ops.regwatch.reject')}</button>
+          </td>
+        </tr>`).join('');
+      box.innerHTML = `
+        <h3 style="margin:0 0 4px;">${t('ops.regwatch.title')}</h3>
+        <p style="font-size:11px;color:var(--text-subtle);margin:0 0 10px;">${t('ops.regwatch.hint')}</p>
+        ${rows ? `
+        <div style="overflow-x:auto;">
+          <table class="table">
+            <thead><tr>
+              <th>${t('ops.regwatch.framework')}</th><th>${t('ops.regwatch.severity')}</th>
+              <th>${t('common.status')}</th>
+              <th style="text-align:right;">${t('ops.regwatch.confidence')}</th>
+              <th>${t('ops.regwatch.summary')}</th><th>${t('ops.regwatch.detected')}</th>
+              <th>${t('ops.regwatch.source')}</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>` : `<p class="text-muted">${t('ops.regwatch.empty')}</p>`}
+      `;
+      box.querySelectorAll('[data-rw-approve]').forEach(btn => {
+        btn.onclick = async () => {
+          btn.disabled = true;
+          try {
+            await Api.regwatch.adminValidateEvent(btn.dataset.rwApprove);
+            UI.toast(t('ops.regwatch.approved'), 'success');
+            _loadRegwatchQueue();
+          } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
+        };
+      });
+      box.querySelectorAll('[data-rw-reject]').forEach(btn => {
+        btn.onclick = () => _openRejectModal(btn.dataset.rwReject);
+      });
+    } catch (e) {
+      box.innerHTML = `<h3 style="margin-top:0;">${t('ops.regwatch.title')}</h3><div class="notice">${UI.esc(e.message)}</div>`;
+    }
+  }
+
+  function _openRejectModal(eventId) {
+    UI.modal(t('ops.regwatch.reject'), `
+      <p style="font-size:13px;">${t('ops.regwatch.reject_prompt')}</p>
+      <textarea id="rw-reject-reason" rows="3" style="width:100%;" maxlength="500"></textarea>
+    `, {
+      actions: `<button class="btn" id="rw-reject-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="rw-reject-confirm">${t('ops.regwatch.reject')}</button>`,
+    });
+    document.getElementById('rw-reject-cancel').onclick = UI.closeModal;
+    document.getElementById('rw-reject-confirm').onclick = async () => {
+      const btn = document.getElementById('rw-reject-confirm');
+      btn.disabled = true;
+      const reason = document.getElementById('rw-reject-reason').value || '';
+      try {
+        await Api.regwatch.adminRejectEvent(eventId, reason);
+        UI.toast(t('ops.regwatch.rejected'), 'info');
+        UI.closeModal();
+        _loadRegwatchQueue();
+      } catch (e) { UI.toast(e.message, 'error'); btn.disabled = false; }
+    };
   }
 
   return { render };

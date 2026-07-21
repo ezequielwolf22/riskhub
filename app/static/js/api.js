@@ -467,6 +467,9 @@ const Api = {
     history: (framework) => Api.get('/api/regwatch/history' + (framework ? '?framework=' + encodeURIComponent(framework) : '')),
     historyPdf: () => Api.download('/api/regwatch/history.pdf', 'regwatch_history.pdf'),
     faq: () => Api.get('/api/regwatch/faq'),
+    adminEvents: (status) => Api.get('/api/regwatch/admin/events' + (status ? '?status=' + encodeURIComponent(status) : '')),
+    adminValidateEvent: (id, severity) => Api.post('/api/regwatch/admin/events/' + id + '/validate', severity ? { severity } : {}),
+    adminRejectEvent: (id, reason) => Api.post('/api/regwatch/admin/events/' + id + '/reject', { reason: reason || '' }),
   },
   vendor_assessments: {
     list: (q) => Api.get('/api/vendor-assessments/', q),
