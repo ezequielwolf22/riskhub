@@ -1,0 +1,12 @@
+{
+  "strategic_plans": {
+    "not_found": "Plan director no encontrado.",
+    "control_not_found": "El control indicado no existe en el catálogo.",
+    "approval_not_found": "Solicitud de aprobación no encontrada.",
+    "no_candidates": "No se han recibido iniciativas candidatas que crear.",
+    "must_be_approved": "El plan debe estar aprobado por la dirección antes de ponerse en ejecución.",
+    "already_resolved": "Esta aprobación ya fue resuelta.",
+    "expired": "La solicitud de aprobación ha caducado.",
+    "signature_needs_approver": "El modo de firma exige al menos un aprobador con email."
+  }
+}
