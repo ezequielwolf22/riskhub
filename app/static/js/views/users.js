@@ -545,7 +545,7 @@ const ViewUsers = {
                       </tr></thead>
                       <tbody>${fixedRows}</tbody>
                     </table>
-                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">${t('ui_views.usr_all_vulns_ok')}</div>'}
+                  </div>` : `<div style="color:var(--text-muted);font-size:13px;">${t('ui_views.usr_all_vulns_ok')}</div>`}
               </div>`;
             UI.toast(t('ui_views.usr_risks_fixed', {n: r.fixed}), r.fixed > 0 ? 'success' : 'info');
           } catch (e) {
@@ -598,7 +598,7 @@ const ViewUsers = {
                       </tr></thead>
                       <tbody>${fixedRows}</tbody>
                     </table>
-                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">${t('ui_views.usr_all_ctrls_ok')}</div>'}
+                  </div>` : `<div style="color:var(--text-muted);font-size:13px;">${t('ui_views.usr_all_ctrls_ok')}</div>`}
               </div>`;
             UI.toast(t('ui_views.usr_risks_ctrls_fixed', {n: r.fixed}), r.fixed > 0 ? 'success' : 'info');
           } catch (e) {
