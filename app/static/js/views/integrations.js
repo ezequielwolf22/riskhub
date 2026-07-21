@@ -1867,7 +1867,7 @@ const ViewIntegrations = {
     const emailMappingEntries = Object.entries(cfg.email_intake_field_mapping || {});
     const emailMappingRows = emailMappingEntries.map(([k, v]) =>
       `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
-        <input class="input" style="flex:1;font-size:12px;" placeholder="Nombre del campo PDF / tag Word" value="${UI.esc(k)}" data-email-map-key>
+        <input class="input" style="flex:1;font-size:12px;" placeholder="${t('integrations.ph_pdf_field_name')}" value="${UI.esc(k)}" data-email-map-key>
         <span style="color:var(--text-muted);">→</span>
         <select class="input" style="width:160px;font-size:12px;" data-email-map-val>
           ${ViewIntegrations._mapFieldOptions(v)}
@@ -1972,12 +1972,12 @@ const ViewIntegrations = {
               ${cfg.msforms_secret_configured ? '<span style="color:#059669;font-size:10px;font-weight:400;">(configurado — deja en blanco para mantener)</span>' : ''}
             </label>
             <input type="password" class="input" id="msf-secret"
-              placeholder="${cfg.msforms_secret_configured ? 'Dejar en blanco para mantener el actual' : 'Secreto del cliente Azure AD'}">
+              placeholder="${cfg.msforms_secret_configured ? t('integrations.ph_keep_current_m') : t('integrations.ph_azure_secret')}">
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">App Registrations > tu app > Certificates &amp; secrets</div>
           </div>
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Form ID *</label>
-            <input class="input" id="msf-formid" placeholder="Identificador del formulario MS Forms"
+            <input class="input" id="msf-formid" placeholder="${t('integrations.ph_msforms_id')}"
               value="${UI.esc(cfg.msforms_form_id || '')}">
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">URL del formulario: ...forms.office.com/...?id=<b>FORM_ID</b></div>
           </div>
@@ -2072,7 +2072,7 @@ const ViewIntegrations = {
 
         <div style="display:flex;gap:8px;align-items:center;">
           <button class="btn btn-primary" id="msf-save">Guardar configuración</button>
-          <button class="btn" id="msf-sync-now" ${!cfg.msforms_form_id ? 'disabled title="Configura y guarda el Form ID primero"' : ''}>
+          <button class="btn" id="msf-sync-now" ${!cfg.msforms_form_id ? `disabled title="${t('integrations.hint_config_formid_first')}"` : ''}>
             Sincronizar ahora
           </button>
           <span id="msf-sync-result" style="font-size:12px;color:var(--text-muted);"></span>
@@ -2090,10 +2090,7 @@ const ViewIntegrations = {
         </summary>
         <div style="padding:0 20px 20px;">
         <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px;">
-          RiskHub consulta el buzon configurado cada N horas (nunca recibe conexiones entrantes). Por cada
-          mail nuevo revisa los adjuntos (PDF/Word con campos de formulario, o texto libre) y crea
-          automáticamente un proveedor. Si la extraccion fue de baja confianza, el proveedor se marca
-          como "pendiente de revisión".
+          ${t('integrations.intake_desc')}
         </p>
 
         <div style="margin-bottom:12px;">
@@ -2123,7 +2120,7 @@ const ViewIntegrations = {
               ${cfg.email_intake_graph_secret_configured ? '<span style="color:#059669;font-size:10px;font-weight:400;">(configurado — deja en blanco para mantener)</span>' : ''}
             </label>
             <input type="password" class="input" id="email-graph-secret"
-              placeholder="${cfg.email_intake_graph_secret_configured ? 'Dejar en blanco para mantener el actual' : 'Secreto del cliente Azure AD'}">
+              placeholder="${cfg.email_intake_graph_secret_configured ? t('integrations.ph_keep_current_m') : t('integrations.ph_azure_secret')}">
           </div>
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Buzon (mailbox UPN) *</label>
@@ -2154,7 +2151,7 @@ const ViewIntegrations = {
               ${cfg.email_intake_imap_password_configured ? '<span style="color:#059669;font-size:10px;font-weight:400;">(configurada — deja en blanco para mantener)</span>' : ''}
             </label>
             <input type="password" class="input" id="email-imap-pass"
-              placeholder="${cfg.email_intake_imap_password_configured ? 'Dejar en blanco para mantener la actual' : 'Contraseña o app password'}">
+              placeholder="${cfg.email_intake_imap_password_configured ? t('integrations.ph_keep_current_f') : t('integrations.ph_imap_password')}">
           </div>
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Carpeta</label>
@@ -2166,7 +2163,7 @@ const ViewIntegrations = {
             </label>
           </div>
           <div style="grid-column:1 / -1;font-size:10px;color:var(--text-muted);">
-            Para Gmail: activa el acceso IMAP y genera una "contraseña de aplicación" en vez de la contraseña principal.
+            ${t('integrations.hint_gmail_imap')}
           </div>
         </div>
 
@@ -2211,7 +2208,7 @@ const ViewIntegrations = {
         <div style="display:flex;gap:8px;align-items:center;">
           <button class="btn btn-primary" id="email-save">Guardar configuración</button>
           <button class="btn" id="email-test-connection">Probar conexión</button>
-          <button class="btn" id="email-sync-now" ${!cfg.email_intake_mode ? 'disabled title="Selecciona y guarda un modo de conexión primero"' : ''}>Sincronizar ahora</button>
+          <button class="btn" id="email-sync-now" ${!cfg.email_intake_mode ? `disabled title="${t('integrations.hint_select_mode_first')}"` : ''}>${t('integrations.sync_now')}</button>
           <span id="email-sync-result" style="font-size:12px;color:var(--text-muted);"></span>
         </div>
         </div>
@@ -2278,7 +2275,7 @@ const ViewIntegrations = {
       const client_secret = document.getElementById('msf-secret')?.value.trim();
       const form_id = document.getElementById('msf-formid')?.value.trim();
       if (!tenant_id || !client_id || !form_id) {
-        info.textContent = 'Completa Tenant ID, Client ID y Form ID antes de descubrir preguntas.';
+        info.textContent = t('integrations.complete_before_discover');
         info.style.color = 'var(--risk-high)';
         return;
       }
@@ -2290,7 +2287,7 @@ const ViewIntegrations = {
         if (client_secret) body.client_secret = client_secret;
         const res = await Api.integrations_forms.discoverQuestions(body);
         ViewIntegrations._msfQuestions = res.questions || [];
-        info.textContent = `${res.questions.length} pregunta(s) encontradas en el formulario.`;
+        info.textContent = t('integrations.questions_found', {n: res.questions.length});
         info.style.color = 'var(--risk-low,#059669)';
 
         const datalist = document.getElementById('msf-questions-datalist');
@@ -2334,7 +2331,7 @@ const ViewIntegrations = {
         UI.toast(e.message, 'error');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Sincronizar ahora';
+        btn.textContent = t('integrations.sync_now');
       }
     };
 
@@ -2408,7 +2405,7 @@ const ViewIntegrations = {
           if (pass) body.password = pass;
         }
         await Api.integrations_forms.emailIntakeTestConnection(body);
-        info.textContent = 'Conexión correcta.';
+        info.textContent = t('integrations.connection_ok');
         info.style.color = 'var(--risk-low,#059669)';
         UI.toast('Conexión al buzon verificada', 'success');
       } catch (e) {
@@ -2440,7 +2437,7 @@ const ViewIntegrations = {
         UI.toast(e.message, 'error');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Sincronizar ahora';
+        btn.textContent = t('integrations.sync_now');
       }
     };
   },
@@ -2451,7 +2448,7 @@ const ViewIntegrations = {
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:4px;';
     div.innerHTML = `
-      <input class="input" style="flex:1;font-size:12px;" placeholder="Nombre del campo PDF / tag Word" value="${UI.esc(prefillKey || '')}" data-email-map-key>
+      <input class="input" style="flex:1;font-size:12px;" placeholder="${t('integrations.ph_pdf_field_name')}" value="${UI.esc(prefillKey || '')}" data-email-map-key>
       <span style="color:var(--text-muted);">→</span>
       <select class="input" style="width:160px;font-size:12px;" data-email-map-val>
         ${this._mapFieldOptions('')}
@@ -2463,15 +2460,15 @@ const ViewIntegrations = {
 
   _mapFieldOptions(selected) {
     const opts = [
-      ['', '-- Campo destino --'],
-      ['name', 'Nombre (name)'],
-      ['description', 'Descripción (description)'],
-      ['services', 'Servicios (services)'],
-      ['category', 'Categoría (category)'],
-      ['contact_name', 'Nombre contacto (contact_name)'],
-      ['contact_email', 'Email contacto (contact_email)'],
-      ['website', 'Sitio web (website)'],
-      ['contract_ref', 'Ref. contrato (contract_ref)'],
+      ['', t('integrations.map_target_field')],
+      ['name', t('integrations.map_name')],
+      ['description', t('integrations.map_description')],
+      ['services', t('integrations.map_services')],
+      ['category', t('integrations.map_category')],
+      ['contact_name', t('integrations.map_contact_name')],
+      ['contact_email', t('integrations.map_contact_email')],
+      ['website', t('integrations.map_website')],
+      ['contract_ref', t('integrations.map_contract_ref')],
     ];
     return opts.map(([v, l]) =>
       `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`

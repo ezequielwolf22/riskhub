@@ -1524,7 +1524,7 @@ const ViewBcp = (() => {
       `<option value="${u.id}"${(proc?.recovery_owner_id === u.id) ? ' selected' : ''}>${UI.esc(u.full_name || u.email)}</option>`
     ).join('');
 
-    const IMPACTS = ['0 — Ninguno', '1 — Menor', '2 — Significativo', '3 — Crítico'];
+    const IMPACTS = [t('bcp.imp_0_none'), t('bcp.imp_1_minor'), t('bcp.imp_2_significant'), t('bcp.imp_3_critical')];
 
     // Convertir arrays JSON a texto multi-linea (una línea por item)
     const arrToLines = (arr) => Array.isArray(arr) ? arr.join('\n') : (arr || '');
@@ -4654,7 +4654,7 @@ const ViewBcp = (() => {
           <td style="white-space:nowrap">${_renderEvidenceAiBadge(e)}</td>
           <td style="font-size:12px">${e.created_at ? e.created_at.slice(0, 10) : '—'}</td>
           <td>
-            <a href="/api/bcp/evidence/${e.id}/download" class="btn btn-ghost btn-sm" title="Descargar" target="_blank">
+            <a href="/api/bcp/evidence/${e.id}/download" class="btn btn-ghost btn-sm" title="${t('bcp.download')}" target="_blank">
               <i class="ti ti-download"></i>
             </a>
           </td>
@@ -5297,7 +5297,7 @@ const ViewBcp = (() => {
           options:[t('bcp.wiz_risk_cyberattack'),t('bcp.wiz_risk_fire_flood'),t('bcp.wiz_risk_cloud_provider_failure'),t('bcp.wiz_risk_power_outage'),t('bcp.wiz_risk_pandemic'),t('bcp.wiz_risk_connectivity_failure'),t('bcp.wiz_risk_natural_disaster'),t('bcp.wiz_risk_it_supplier_failure')] },
         { id:'regulations', label:t('bcp.wizard_regulations'), type:'checkboxes',
           options:[t('bcp.wiz_reg_iso22301'),t('bcp.wiz_reg_nis2'),t('bcp.wiz_reg_dora'),t('bcp.wiz_reg_gdpr'),t('bcp.wiz_reg_ens'),t('bcp.wiz_reg_pcidss'),t('bcp.wiz_reg_soc2'),t('bcp.wiz_reg_other')] },
-        { id:'incident_history', label:t('bcp.wizard_incident_history'), type:'textarea', placeholder:'p.ej. En 2023 sufrimos un ransomware que afecto 4h al ERP.' },
+        { id:'incident_history', label:t('bcp.wizard_incident_history'), type:'textarea', placeholder:t('bcp.ph_incident_history') },
       ]},
       { n:4, title:t('bcp.wizard_step4'), fields:[
         { id:'rto_target', label:t('bcp.wizard_rto_target'), type:'select', options:[t('bcp.wiz_time_15min'),t('bcp.wiz_time_30min'),t('bcp.wiz_time_1h'),t('bcp.wiz_time_2h'),t('bcp.wiz_time_4h'),t('bcp.wiz_time_8h'),t('bcp.wiz_time_24h'),t('bcp.wiz_time_48h'),t('bcp.wiz_time_72h')] },
