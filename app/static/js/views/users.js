@@ -219,7 +219,7 @@ const ViewUsers = {
               <td style="font-size:12px;">${u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '-'}</td>
               <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;">
                 ${rc > 0
-                  ? `<a href="#/risks?owner=${u.id}" style="color:${rcColor};text-decoration:none;" title="Ver riesgos">${rc}</a>`
+                  ? `<a href="#/risks?owner=${u.id}" style="color:${rcColor};text-decoration:none;" title="${t('users.hint_view_risks')}">${rc}</a>`
                   : `<span style="color:${rcColor};">0</span>`}
               </td>
               <td>${mfaBadge}</td>
@@ -326,7 +326,7 @@ const ViewUsers = {
         </div>`;
     }
 
-    const passNote = id ? '(dejar vacío para no cambiar)' : '(dejar vacío para generar automáticamente)';
+    const passNote = id ? t('users.ph_keep_password') : t('users.ph_auto_password');
     const passHint = id ? '' : `
       <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">
         Si dejas el campo vacío, se generara una contraseña temporal segura.
@@ -494,10 +494,10 @@ const ViewUsers = {
           </div>
           <div id="cleanup-result" style="display:none;margin-bottom:12px;"></div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">
-            ${ViewUsers._infoChip('Version', s.version)}
+            ${ViewUsers._infoChip(t('users.fld_version'), s.version)}
             ${ViewUsers._infoChip('Entorno', s.env)}
             ${ViewUsers._infoChip('Motor BD', s.db_engine.toUpperCase())}
-            ${dbSize ? ViewUsers._infoChip('Tamaño BD', dbSize) : ''}
+            ${dbSize ? ViewUsers._infoChip(t('users.fld_db_size'), dbSize) : ''}
             ${ViewUsers._infoChip('Usuarios', s.total_users)}
             ${ViewUsers._infoChip('Activos', s.total_assets)}
             ${ViewUsers._infoChip('Riesgos', s.total_risks)}
@@ -620,7 +620,7 @@ const ViewUsers = {
           } catch (e) {
             UI.toast('Error al descargar backup: ' + e.message, 'error');
           } finally {
-            btnBackup.disabled = false; btnBackup.textContent = 'Descargar backup DB';
+            btnBackup.disabled = false; btnBackup.textContent = t('users.download_db_backup');
           }
         };
       }

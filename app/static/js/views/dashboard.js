@@ -251,7 +251,7 @@ const ViewDashboard = {
       if (!el.querySelector('.dash-widget-config') && SCHEMA[type]) {
         const cfg = document.createElement('button');
         cfg.className = 'dash-widget-config';
-        cfg.title = 'Configurar widget';
+        cfg.title = t('dashboard.configure_widget');
         cfg.innerHTML = '&#9881;';
         cfg.style.cssText = 'position:absolute;top:6px;right:32px;width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--brand-purple);z-index:5;padding:0;';
         cfg.onclick = (e) => { e.stopPropagation(); ViewDashboard._openConfig(type); };

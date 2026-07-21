@@ -321,11 +321,11 @@ const ViewAiHub = {
 };
 
 const _AI_MODELS = [
-  { value: 'claude-opus-4-8',   label: 'Opus 4.8  — máximo rendimiento' },
+  { value: 'claude-opus-4-8',   label: t('hub.model_opus') },
   { value: 'claude-opus-4-7',   label: 'Opus 4.7  — muy potente' },
   { value: 'claude-opus-4-6',   label: 'Opus 4.6  — potente (por defecto)' },
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — equilibrado' },
-  { value: 'claude-haiku-4-5',  label: 'Haiku 4.5  — rápido y economico' },
+  { value: 'claude-haiku-4-5',  label: t('hub.model_haiku') },
 ];
 
 const ViewAiSettings = {

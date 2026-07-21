@@ -45,7 +45,7 @@ const ViewMfaSetupRequired = {
       const errBox = document.getElementById('msr-error');
       errBox.style.display = 'none';
       if (!password) {
-        errBox.textContent = 'Introduce tu contraseña actual.';
+        errBox.textContent = t('mfa.err_current_password');
         errBox.style.display = 'block';
         return;
       }
@@ -57,7 +57,7 @@ const ViewMfaSetupRequired = {
         ViewMfaSetupRequired._secret = res.secret || '';
         ViewMfaSetupRequired._renderQrStep(res.otpauth_url || '');
       } catch (e) {
-        errBox.textContent = e.message || 'No se pudo iniciar la configuración de MFA.';
+        errBox.textContent = e.message || t('mfa.err_start_mfa');
         errBox.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Continuar';
@@ -107,7 +107,7 @@ const ViewMfaSetupRequired = {
       const errBox = document.getElementById('msr-error');
       errBox.style.display = 'none';
       if (!code || code.length !== 6) {
-        errBox.textContent = 'Introduce el código de 6 digitos.';
+        errBox.textContent = t('mfa.err_code_6');
         errBox.style.display = 'block';
         return;
       }
@@ -118,7 +118,7 @@ const ViewMfaSetupRequired = {
         const res = await Api.mfa.verifySetup({ secret: ViewMfaSetupRequired._secret, code });
         ViewMfaSetupRequired._renderBackupCodesStep(res.backup_codes || []);
       } catch (e) {
-        errBox.textContent = e.message || 'Código incorrecto.';
+        errBox.textContent = e.message || t('mfa.err_wrong_code');
         errBox.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Verificar y activar';

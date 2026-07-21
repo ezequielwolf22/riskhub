@@ -47,12 +47,12 @@ const ViewChangePasswordRequired = {
       errBox.style.display = 'none';
 
       if (!current || !newPwd || !confirm) {
-        errBox.textContent = 'Completa todos los campos.';
+        errBox.textContent = t('change_password.err_all_fields');
         errBox.style.display = 'block';
         return;
       }
       if (newPwd !== confirm) {
-        errBox.textContent = 'Las contrasenas nuevas no coinciden.';
+        errBox.textContent = t('change_password.err_mismatch');
         errBox.style.display = 'block';
         return;
       }
@@ -74,10 +74,10 @@ const ViewChangePasswordRequired = {
         // Navegar al dashboard
         window.location.hash = '/dashboard';
       } catch (e) {
-        errBox.textContent = e.message || 'Error al cambiar la contraseña.';
+        errBox.textContent = e.message || t('change_password.err_change');
         errBox.style.display = 'block';
         btn.disabled = false;
-        btn.textContent = 'Establecer nueva contraseña';
+        btn.textContent = t('change_password.btn_set_password');
       }
     };
   },

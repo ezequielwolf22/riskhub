@@ -329,7 +329,7 @@ const ViewReports = {
           <label style="font-size:13px;font-weight:600;">
             ${t('reports.tpl_subtitle')}
             <input type="text" id="tpl-subtitle" value="${UI.esc(current.cover_subtitle||'')}"
-                   placeholder="Ej: Ejercicio 2025 — Para uso del Comite de Dirección" style="width:100%;margin-top:4px;">
+                   placeholder="${t('reports.ph_template_footer')}" style="width:100%;margin-top:4px;">
           </label>
 
           <div>
@@ -469,7 +469,7 @@ const ViewReports = {
   },
 
   async _deleteTemplateFile(reportType) {
-    if (!confirm('Eliminar el fichero de plantilla base. Los informes usaran la plantilla por defecto de RiskHub.')) return;
+    if (!confirm(t('reports.confirm_delete_template'))) return;
     try {
       await Api.del(`/api/report-templates/${reportType}/template-file`);
       UI.toast(t('common.success'), 'success');

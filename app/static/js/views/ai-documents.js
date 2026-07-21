@@ -538,7 +538,7 @@ const ViewAiDocuments = (() => {
 
   // ---------- Tabla de documentos ----------
 
-  const _AID_LEVEL_LABELS = { 1: 'Politica', 2: 'Norma', 3: 'Procedimiento', 4: 'Instruccion Técnica' };
+  const _AID_LEVEL_LABELS = { 1: t('ui_views.lvl_policy'), 2: t('ui_views.lvl_standard'), 3: t('ui_views.lvl_procedure'), 4: t('ui_views.lvl_instruction') };
   const _AID_LEVEL_COLORS = { 1: 'var(--brand-purple)', 2: 'var(--brand-orange)', 3: '#0891b2', 4: '#16a34a' };
 
   function _ismsResultCell(d) {
@@ -800,7 +800,7 @@ const ViewAiDocuments = (() => {
           ${d.auto_categorized ? `<span style="display:inline-block;margin-left:4px;font-size:9px;
             background:var(--brand-purple-4);color:var(--brand-purple);
             border-radius:4px;padding:1px 5px;vertical-align:middle;"
-            title="Categoría detectada automáticamente por el agente IA">IA</span>` : ''}
+            title="${t('ui_views.hint_ai_category')}">IA</span>` : ''}
         </td>
         <td>
           <span style="font-size:11px;font-weight:600;
@@ -824,7 +824,7 @@ const ViewAiDocuments = (() => {
         <td style="white-space:nowrap;">
           ${d.status === 'indexed' && (!d.isms_status || d.isms_status === 'error' || d.isms_status === 'skipped' || d.isms_status === 'analysing') ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
-                    onclick="ViewAiDocuments._analyze(${d.id})">${d.isms_status === 'analysing' ? 'Reintentar análisis' : t('common.analyze')}</button>` : ''}
+                    onclick="ViewAiDocuments._analyze(${d.id})">${d.isms_status === 'analysing' ? t('ui_views.retry_analysis') : t('common.analyze')}</button>` : ''}
           ${d.status === 'error' || d.status === 'pending' ? `
             <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
                     onclick="ViewAiDocuments._reprocess(${d.id})">Reprocesar</button>` : ''}

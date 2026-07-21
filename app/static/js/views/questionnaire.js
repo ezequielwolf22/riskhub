@@ -25,7 +25,7 @@ const ViewQuestionnaire = {
         this._prefillForm(this._answers);
       }
     } catch (e) {
-      c.innerHTML = UI.notice('Error al cargar el cuestionario: ' + UI.esc(e.message), 'error');
+      c.innerHTML = UI.notice(t('questionnaire.err_load', {msg: UI.esc(e.message)}), 'error');
     }
   },
 
