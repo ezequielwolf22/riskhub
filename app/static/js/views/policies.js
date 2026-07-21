@@ -248,7 +248,7 @@ const ViewPolicies = (() => {
     const v = p || {};
     const e = extracted || {};
     const title   = e.title   || v.title   || '';
-    const versión = e.version || v.version || '1.0';
+    const version = e.version || v.version || '1.0';
     const category = e.category || v.category || '';
     const scope   = e.scope   || v.scope   || '';
     const content = e.content || v.content || '';

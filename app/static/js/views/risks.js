@@ -1394,11 +1394,11 @@ const ViewRisks = {
     if (!assetEl || !dimEl || !degradEl) return;
 
     const asset_id     = parseInt(assetEl.value);
-    const dimensión    = dimEl.value;
+    const dimension    = dimEl.value;
     const degradation  = parseInt(degradEl.value);
 
     try {
-      const res = await Api.post('/api/risks/magerit-preview', { asset_id, dimensión, degradation_pct: degradation });
+      const res = await Api.post('/api/risks/magerit-preview', { asset_id, dimension, degradation_pct: degradation });
 
       // Actualizar el valor hidden de consecuencia
       const icHidden = document.getElementById('f-ic');

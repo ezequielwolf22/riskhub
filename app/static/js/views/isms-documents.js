@@ -431,7 +431,7 @@ const ViewIsmsDocuments = (() => {
       const effectiveLevel = level;
       const title      = policy ? policy.title : (doc ? doc.original_name : '-');
       const code       = policy ? policy.code  : null;
-      const versión    = policy ? policy.version : null;
+      const version    = policy ? policy.version : null;
       const status     = policy ? policy.status  : null;
       const reviewDate = policy ? policy.review_date : null;
       const reviewOverdue = reviewDate && status !== 'obsolete' && new Date(reviewDate) < now;
@@ -529,7 +529,7 @@ const ViewIsmsDocuments = (() => {
             </div>
             ${policy && policy.category ? `<div style="margin-top:3px;">${_typeBadge(policy.category)}</div>` : ''}
           </td>
-          <td style="font-size:12px;font-family:var(--font-mono);">${versión ? 'v' + UI.esc(versión) : '-'}</td>
+          <td style="font-size:12px;font-family:var(--font-mono);">${version ? 'v' + UI.esc(version) : '-'}</td>
           <td>${status ? _statusBadge(status) : '-'}</td>
           <td>${fileCellHtml}</td>
           <td>${ismsCellHtml}</td>
@@ -866,7 +866,7 @@ const ViewIsmsDocuments = (() => {
     const p = policy || {};
     const e = extracted || {};
     const title    = e.title    || p.title    || '';
-    const versión  = e.version  || p.version  || '1.0';
+    const version  = e.version  || p.version  || '1.0';
     const category = e.category || p.category || '';
     const scope    = e.scope    || p.scope    || '';
     const content  = e.content  || p.content  || '';
