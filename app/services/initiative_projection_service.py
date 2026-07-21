@@ -34,6 +34,184 @@ from app.services.threat_knowledge import controls_for_threat
 logger = logging.getLogger(__name__)
 
 
+# ---------- Priorizacion determinista (INCIBE fase 4) ----------
+#
+# INCIBE prioriza los proyectos del Plan Director por el esfuerzo que exigen
+# (humano, economico, temporal) frente a la mejora de seguridad que producen, y
+# destaca los "quick wins": minimo esfuerzo, mejora sustancial. Aqui eso se
+# CALCULA a partir de la reduccion que ya proyecta el motor determinista, en vez
+# de dejar que alguien elija una prioridad en un desplegable.
+
+_HORIZON_SHORT_DAYS = 183     # ~6 meses
+_HORIZON_MEDIUM_DAYS = 548    # ~18 meses
+
+
+def _percentile(sorted_values: list[float], pct: float) -> float:
+    """Percentil por interpolacion lineal. Lista vacia -> 0."""
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    pos = (len(sorted_values) - 1) * pct
+    low = int(pos)
+    high = min(low + 1, len(sorted_values) - 1)
+    return sorted_values[low] + (sorted_values[high] - sorted_values[low]) * (pos - low)
+
+
+def initiative_horizon(initiative: StrategicInitiative, now: datetime | None = None) -> str | None:
+    """corto | medio | largo segun la fecha objetivo (INCIBE fase 4)."""
+    target = _aware(initiative.target_date)
+    if not target:
+        return None
+    now = now or datetime.now(timezone.utc)
+    days = (target - now).days
+    if days <= _HORIZON_SHORT_DAYS:
+        return "corto"
+    if days <= _HORIZON_MEDIUM_DAYS:
+        return "medio"
+    return "largo"
+
+
+def initiative_effort(initiative: StrategicInitiative) -> float | None:
+    """Esfuerzo combinado (economico + humano) en unidades comparables.
+
+    Se toma el presupuesto solicitado y se le suma el coste implicito de los
+    dias-persona. Sin ninguno de los dos, el esfuerzo es desconocido (None) y la
+    iniciativa no puede rankearse por eficiencia: se dice, no se inventa.
+    """
+    budget = initiative.budget
+    human = initiative.effort_human
+    if budget is None and human is None:
+        return None
+    # 1 dia-persona ~ 400 u.m. — factor de conversion unico y explicito para que
+    # esfuerzo humano y economico sean sumables. No pretende ser un coste real.
+    return (budget or 0.0) + (human or 0.0) * 400.0
+
+
+def initiative_budget_health(initiative: StrategicInitiative) -> dict | None:
+    """El presupuesto aprobado deberia seguir al progreso: requerido x % avance.
+
+    Si una iniciativa va al 60% pero solo tiene aprobado el 20% de lo que pidio,
+    esta infrafinanciada y el avance se va a detener. Idea tomada del cuadro de
+    mando real del usuario ("Approved budget follows progress").
+    """
+    budget = initiative.budget
+    if not budget:
+        return None
+    approved = initiative.budget_approved or 0.0
+    progress = max(0, min(100, initiative.progress or 0))
+    expected = budget * progress / 100.0
+    gap = budget - approved
+    return {
+        "required": round(budget, 2),
+        "approved": round(approved, 2),
+        "spent": round(initiative.spent, 2) if initiative.spent is not None else None,
+        "expected_approved": round(expected, 2),
+        "funding_gap": round(gap, 2),
+        "underfunded": approved + 1e-9 < expected,
+    }
+
+
+def compute_portfolio_priorities(initiatives: list[StrategicInitiative]) -> dict[int, dict]:
+    """Prioridad sugerida, quick wins y eficiencia de toda una cartera.
+
+    Devuelve {initiative_id: {...}}. Los umbrales son PERCENTILES de la propia
+    cartera, no numeros inventados: "poco esfuerzo" y "mucha reduccion"
+    significan poco y mucho respecto a lo que esta organizacion tiene sobre la
+    mesa. Con una sola iniciativa no hay cartera con la que comparar y no se
+    marca quick win.
+    """
+    now = datetime.now(timezone.utc)
+
+    reductions: dict[int, int] = {}
+    efforts: dict[int, float | None] = {}
+    for ini in initiatives:
+        points = sum(
+            (link.baseline_residual_level - link.projected_residual_level)
+            for link in ini.risk_links
+            if link.baseline_residual_level is not None
+            and link.projected_residual_level is not None
+        )
+        reductions[ini.id] = max(0, points)
+        efforts[ini.id] = initiative_effort(ini)
+
+    known_efforts = sorted(e for e in efforts.values() if e is not None and e > 0)
+    positive_reductions = sorted(v for v in reductions.values() if v > 0)
+    effort_median = _percentile(known_efforts, 0.5)
+    reduction_median = _percentile(positive_reductions, 0.5)
+
+    # Eficiencia = puntos de riesgo eliminados por cada 1.000 u.m. de esfuerzo.
+    # Hace falta ANTES de decidir los quick wins: sin ella, una iniciativa cara y
+    # mediocre puede colarse solo por quedar en el centro de la cartera.
+    def _score_of(points: int, effort: float | None) -> float | None:
+        if points > 0 and effort is not None and effort > 0:
+            return round(points / (effort / 1000.0), 3)
+        return None
+
+    all_scores = sorted(
+        s for s in (_score_of(reductions[i.id], efforts[i.id]) for i in initiatives)
+        if s is not None
+    )
+    # Tercio superior de eficiencia: umbral relativo a la cartera, no inventado
+    efficiency_top = _percentile(all_scores, 0.66)
+
+    out: dict[int, dict] = {}
+    for ini in initiatives:
+        points = reductions[ini.id]
+        effort = efforts[ini.id]
+        factors: dict = {
+            "reduction_points": points,
+            "effort": round(effort, 2) if effort is not None else None,
+            "effort_known": effort is not None,
+        }
+
+        score = _score_of(points, effort)
+        cost_per_point = round(effort / points, 2) if score is not None else None
+        if points > 0 and (effort is None or effort == 0):
+            factors["note"] = "sin esfuerzo declarado"
+
+        # Quick win (INCIBE): minimo esfuerzo y mejora sustancial. Exige las dos
+        # cosas Y estar en el tercio mas eficiente: sin este ultimo filtro, la
+        # iniciativa mas cara por punto de riesgo puede acabar marcada como quick
+        # win solo por caer en la mediana de ambos ejes.
+        quick_win = bool(
+            len(initiatives) > 1
+            and points > 0
+            and effort is not None and effort > 0
+            and effort <= effort_median
+            and score is not None and score >= efficiency_top
+        )
+        factors["quick_win_thresholds"] = {
+            "reduction_median": round(reduction_median, 2),
+            "effort_median": round(effort_median, 2),
+            "efficiency_top_third": round(efficiency_top, 3),
+        }
+
+        # Prioridad sugerida: los quick wins suben, y a mas reduccion mas alta.
+        # Un riesgo que no reduce nada nunca es critico por si solo.
+        if points <= 0:
+            suggested = "low"
+        elif quick_win:
+            suggested = "critical" if points >= reduction_median else "high"
+        elif points >= _percentile(positive_reductions, 0.75):
+            suggested = "critical"
+        elif points >= reduction_median:
+            suggested = "high"
+        else:
+            suggested = "medium"
+
+        out[ini.id] = {
+            "priority_suggested": suggested,
+            "priority_score": score,
+            "priority_factors": factors,
+            "quick_win": quick_win,
+            "cost_per_point": cost_per_point,
+            "horizon": initiative_horizon(ini, now),
+            "budget_health": initiative_budget_health(ini),
+        }
+    return out
+
+
 def log_system_event(db: Session, initiative_id: int, text: str) -> None:
     """Crea una entrada de bitacora sin autor (sistema/IA). No hace commit."""
     initiative = db.get(StrategicInitiative, initiative_id)

@@ -832,6 +832,42 @@ def _migrate_columns() -> None:
         # v6.3.0 — Plan Director: tarea operativa vinculada a una iniciativa estrategica
         ("ALTER TABLE treatment_tasks ADD COLUMN initiative_id INTEGER REFERENCES strategic_initiatives(id)",
          "treatment_tasks", "initiative_id"),
+        # v6.4.0 — Plan Director: entidad Plan (periodo, linea base, version) y
+        # taxonomia de priorizacion INCIBE + reporte ejecutivo
+        ("ALTER TABLE strategic_programs ADD COLUMN plan_id INTEGER REFERENCES strategic_plans(id)",
+         "strategic_programs", "plan_id"),
+        ("ALTER TABLE strategic_programs ADD COLUMN env VARCHAR(8)", "strategic_programs", "env"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN env VARCHAR(8)",
+         "strategic_initiatives", "env"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN origin VARCHAR(16)",
+         "strategic_initiatives", "origin"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN action_type VARCHAR(16)",
+         "strategic_initiatives", "action_type"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN effort_human REAL",
+         "strategic_initiatives", "effort_human"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN spent REAL",
+         "strategic_initiatives", "spent"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN last_achievements TEXT",
+         "strategic_initiatives", "last_achievements"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN next_steps TEXT",
+         "strategic_initiatives", "next_steps"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN blockers TEXT",
+         "strategic_initiatives", "blockers"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN blocked_by JSON",
+         "strategic_initiatives", "blocked_by"),
+        ("ALTER TABLE strategic_initiatives ADD COLUMN priority_override_reason TEXT",
+         "strategic_initiatives", "priority_override_reason"),
+        ("ALTER TABLE initiative_objectives ADD COLUMN scope VARCHAR(16)",
+         "initiative_objectives", "scope"),
+        ("ALTER TABLE initiative_objectives ADD COLUMN business_units JSON",
+         "initiative_objectives", "business_units"),
+        ("ALTER TABLE initiative_objectives ADD COLUMN attachments JSON",
+         "initiative_objectives", "attachments"),
+        ("ALTER TABLE initiative_objectives ADD COLUMN comments TEXT",
+         "initiative_objectives", "comments"),
+        # Modo de aprobacion del Plan Director por organizacion (ISO 6.1.3f)
+        ("ALTER TABLE risk_context ADD COLUMN plan_approval_mode VARCHAR(16)",
+         "risk_context", "plan_approval_mode"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los

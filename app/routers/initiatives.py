@@ -88,7 +88,7 @@ def _program_out(db: Session, p: StrategicProgram) -> dict:
     }
 
 
-def _initiative_out(db: Session, ini: StrategicInitiative) -> dict:
+def _initiative_out(db: Session, ini: StrategicInitiative, priorities: dict | None = None) -> dict:
     risks_count = len(ini.risk_links)
     objectives_count = len(ini.objectives)
     tasks = db.query(TreatmentTask).filter(TreatmentTask.initiative_id == ini.id).all()
@@ -98,7 +98,7 @@ def _initiative_out(db: Session, ini: StrategicInitiative) -> dict:
         for link in ini.risk_links
         if link.baseline_residual_level is not None and link.projected_residual_level is not None
     )
-    return {
+    out = {
         "id": ini.id, "code": ini.code, "title": ini.title, "description": ini.description,
         "program_id": ini.program_id, "program_name": ini.program.name if ini.program else None,
         "status": ini.status, "health": ini.health, "health_reasons": ini.health_reasons,
@@ -114,8 +114,20 @@ def _initiative_out(db: Session, ini: StrategicInitiative) -> dict:
         "risks_count": risks_count, "objectives_count": objectives_count,
         "tasks_total": len(tasks), "tasks_done": tasks_done,
         "projected_reduction_points": max(0, projected_points),
+        # Taxonomia INCIBE + reporte ejecutivo
+        "env": ini.env, "origin": ini.origin, "action_type": ini.action_type,
+        "effort_human": ini.effort_human, "spent": ini.spent,
+        "last_achievements": ini.last_achievements, "next_steps": ini.next_steps,
+        "blockers": ini.blockers, "blocked_by": ini.blocked_by,
         "created_at": ini.created_at, "updated_at": ini.updated_at,
     }
+    # Priorizacion determinista: si no se pasa la cartera ya calculada, se
+    # calcula para esta sola (sin quick wins: no hay con quien compararla).
+    if priorities is None:
+        from app.services.initiative_projection_service import compute_portfolio_priorities
+        priorities = compute_portfolio_priorities([ini])
+    out.update(priorities.get(ini.id, {}))
+    return out
 
 
 def _control_target_out(ct: InitiativeControlTarget, evidence_by_impl: dict | None = None) -> dict:
@@ -439,6 +451,99 @@ def initiatives_stats(db: Session = Depends(get_db), current_user: User = Depend
     }
 
 
+# ---------- Cartera priorizada (INCIBE fase 4, ANTES de /{id}) ----------
+
+@router.get("/portfolio")
+def initiatives_portfolio(db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """Cartera priorizada: ranking por eficiencia, quick wins y reparto por
+    horizonte/origen/tipo/dominio (INCIBE fase 4 — clasificacion y priorizacion).
+
+    Todo calculado: la reduccion la proyecta el motor determinista y los
+    umbrales de "quick win" son percentiles de la propia cartera.
+    """
+    from app.services.initiative_projection_service import compute_portfolio_priorities
+
+    initiatives = filter_by_org(
+        db.query(StrategicInitiative), StrategicInitiative, current_user
+    ).options(
+        joinedload(StrategicInitiative.risk_links), joinedload(StrategicInitiative.program),
+        joinedload(StrategicInitiative.owner),
+    ).all()
+    priorities = compute_portfolio_priorities(initiatives)
+
+    rows = []
+    for ini in initiatives:
+        p = priorities.get(ini.id, {})
+        rows.append({
+            "id": ini.id, "code": ini.code, "title": ini.title,
+            "status": ini.status, "health": ini.health,
+            "program_name": ini.program.name if ini.program else None,
+            "owner_name": ini.owner.full_name if ini.owner else None,
+            "priority": ini.priority, "priority_suggested": p.get("priority_suggested"),
+            "priority_score": p.get("priority_score"),
+            "quick_win": p.get("quick_win", False),
+            "cost_per_point": p.get("cost_per_point"),
+            "horizon": p.get("horizon"), "origin": ini.origin,
+            "action_type": ini.action_type, "env": ini.env,
+            "nist_function": ini.nist_function,
+            "projected_reduction_points": p.get("priority_factors", {}).get("reduction_points", 0),
+            "budget": ini.budget, "budget_approved": ini.budget_approved,
+            "spent": ini.spent, "budget_health": p.get("budget_health"),
+            "target_date": ini.target_date,
+            "business_units": ini.business_units,
+            # Divergencia entre lo que sugiere el motor y lo que decidio una
+            # persona: es informacion de gobierno, no un error.
+            "priority_overridden": bool(
+                p.get("priority_suggested") and ini.priority != p.get("priority_suggested")
+            ),
+        })
+    # Ordena por EFICIENCIA (puntos de riesgo por unidad de esfuerzo) y, a
+    # igualdad, por reduccion absoluta. El quick win es una etiqueta que se
+    # muestra, no un criterio que adelante a una iniciativa mas eficiente.
+    rows.sort(key=lambda r: (
+        -(r["priority_score"] or 0), -r["projected_reduction_points"], r["code"],
+    ))
+
+    def _tally(field):
+        counts: dict[str, int] = {}
+        for r in rows:
+            key = r.get(field) or "sin_definir"
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    active = [r for r in rows if r["status"] in ("approved", "in_progress")]
+
+    return {
+        "initiatives": rows,
+        "quick_wins": [r["code"] for r in rows if r["quick_win"]],
+        "by_horizon": _tally("horizon"),
+        "by_origin": _tally("origin"),
+        "by_action_type": _tally("action_type"),
+        "by_env": _tally("env"),
+        "by_nist_function": _tally("nist_function"),
+        "budget": {
+            "requested": sum(r["budget"] or 0 for r in rows),
+            "approved": sum(r["budget_approved"] or 0 for r in rows),
+            "spent": sum(r["spent"] or 0 for r in rows),
+            "requested_active": sum(r["budget"] or 0 for r in active),
+            "underfunded": [
+                r["code"] for r in rows
+                if (r.get("budget_health") or {}).get("underfunded")
+            ],
+            "largest_gaps": sorted(
+                [
+                    {"code": r["code"], "title": r["title"],
+                     "gap": (r.get("budget_health") or {}).get("funding_gap", 0)}
+                    for r in rows if (r.get("budget_health") or {}).get("funding_gap")
+                ],
+                key=lambda x: -x["gap"],
+            )[:10],
+        },
+        "priority_overrides": [r["code"] for r in rows if r["priority_overridden"]],
+    }
+
+
 # ---------- IA: import de plan y borradores (declarar ANTES de /{id}) ----------
 
 _IMPORT_MAX_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -675,7 +780,14 @@ def list_initiatives(
         health_order.get(i.health, 1),
         i.target_date or datetime.max.replace(tzinfo=None),
     ))
-    return [_initiative_out(db, i) for i in initiatives]
+    # La prioridad sugerida y los quick wins solo tienen sentido comparando la
+    # cartera COMPLETA de la org, no el subconjunto filtrado que se lista.
+    from app.services.initiative_projection_service import compute_portfolio_priorities
+    all_of_org = filter_by_org(
+        db.query(StrategicInitiative), StrategicInitiative, current_user
+    ).options(joinedload(StrategicInitiative.risk_links)).all()
+    priorities = compute_portfolio_priorities(all_of_org)
+    return [_initiative_out(db, i, priorities) for i in initiatives]
 
 
 @router.post("/", response_model=InitiativeOut)
@@ -692,6 +804,11 @@ def create_initiative(body: InitiativeIn, request: Request, db: Session = Depend
         owner_id=body.owner_id, scope=body.scope, business_units=body.business_units,
         start_date=body.start_date, target_date=body.target_date, budget=body.budget,
         budget_approved=body.budget_approved, expected_risk_reduction=body.expected_risk_reduction,
+        # Taxonomia INCIBE + reporte ejecutivo
+        env=body.env, origin=body.origin, action_type=body.action_type,
+        effort_human=body.effort_human, spent=body.spent,
+        last_achievements=body.last_achievements, next_steps=body.next_steps,
+        blockers=body.blockers, blocked_by=body.blocked_by,
         source="manual", created_by_id=current_user.id,
     )
     if ini.status == "completed":
