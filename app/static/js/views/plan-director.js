@@ -20,7 +20,18 @@ const ViewPlanDirector = (() => {
   let _programs = [];
   let _users = [];
   let _impls = [];
+  let _roadmap = null;
+  let _portfolio = null;
   let _filters = { status: '', program: '', q: '' };
+  let _roadFilters = { area: '', env: '', bu: '' };
+  let _ganttScale = 'month';
+
+  const SECTIONS = [
+    ['summary', 'plandirector.tab_summary'],
+    ['plan', 'plandirector.tab_plan'],
+    ['roadmap', 'plandirector.tab_roadmap'],
+    ['portfolio', 'plandirector.tab_portfolio'],
+  ];
 
   /* Un control objetivo se identifica por su implementacion si la org ya la
      tiene, o por el control del catalogo si aun no existe (el backend la crea
@@ -42,16 +53,16 @@ const ViewPlanDirector = (() => {
           <h1 class="page-title">${t('hub.risk.plan_director')}</h1>
           <p class="page-sub">${t('plandirector.subtitle')}</p>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn" id="pd-seg-summary">${t('plandirector.tab_summary')}</button>
-          <button class="btn" id="pd-seg-plan">${t('plandirector.tab_plan')}</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${SECTIONS.map(([id, key]) => `<button class="btn" id="pd-seg-${id}">${t(key)}</button>`).join('')}
           <button class="btn btn-primary" id="pd-new-initiative">+ ${t('plandirector.new_initiative')}</button>
         </div>
       </div>
       <div id="pd-body"></div>
     `;
-    document.getElementById('pd-seg-summary').onclick = () => { _section = 'summary'; _renderBody(); };
-    document.getElementById('pd-seg-plan').onclick = () => { _section = 'plan'; _renderBody(); };
+    SECTIONS.forEach(([id]) => {
+      document.getElementById(`pd-seg-${id}`).onclick = () => { _section = id; _renderBody(); };
+    });
     document.getElementById('pd-new-initiative').onclick = () => _openInitiativeWizard();
 
     await _loadAll();
@@ -69,14 +80,18 @@ const ViewPlanDirector = (() => {
       Api.initiatives.programs.list(),
       Api.listUsers(),
       Api.initiatives.controlCatalog(),
+      Api.initiatives.roadmap(),
+      Api.initiatives.portfolio(),
     ]);
-    const [stats, burndown, initiatives, programs, users, catalog] = results;
+    const [stats, burndown, initiatives, programs, users, catalog, roadmap, portfolio] = results;
     _stats = stats.status === 'fulfilled' ? stats.value : null;
     _burndown = burndown.status === 'fulfilled' ? burndown.value : null;
     _initiatives = initiatives.status === 'fulfilled' ? initiatives.value : [];
     _programs = programs.status === 'fulfilled' ? programs.value : [];
     _users = users.status === 'fulfilled' ? users.value : [];
     _impls = catalog.status === 'fulfilled' ? catalog.value : [];
+    _roadmap = roadmap.status === 'fulfilled' ? roadmap.value : null;
+    _portfolio = portfolio.status === 'fulfilled' ? portfolio.value : null;
 
     const failed = results.filter(r => r.status === 'rejected');
     if (failed.length) {
@@ -87,12 +102,298 @@ const ViewPlanDirector = (() => {
   function _renderBody() {
     const body = document.getElementById('pd-body');
     if (!body) return;
-    document.getElementById('pd-seg-summary').classList.toggle('btn-primary', _section === 'summary');
-    document.getElementById('pd-seg-plan').classList.toggle('btn-primary', _section === 'plan');
-    body.innerHTML = _section === 'summary' ? _summaryHtml() : _planHtml();
-    if (_section === 'summary') _wireSummary();
-    else _wirePlan();
+    SECTIONS.forEach(([id]) => {
+      document.getElementById(`pd-seg-${id}`).classList.toggle('btn-primary', _section === id);
+    });
+    if (_section === 'summary') { body.innerHTML = _summaryHtml(); _wireSummary(); }
+    else if (_section === 'plan') { body.innerHTML = _planHtml(); _wirePlan(); }
+    else if (_section === 'roadmap') { body.innerHTML = _roadmapHtml(); _wireRoadmap(); }
+    else { body.innerHTML = _portfolioHtml(); _wirePortfolio(); }
   }
+
+  // ---------- Roadmap: Gantt, dependencias y camino critico ----------
+
+  function _roadFiltered() {
+    const bars = (_roadmap && _roadmap.bars) || [];
+    return bars.filter(b => {
+      if (_roadFilters.area && b.area !== _roadFilters.area) return false;
+      if (_roadFilters.env && b.env !== _roadFilters.env) return false;
+      if (_roadFilters.bu && !(b.business_units || []).includes(_roadFilters.bu)) return false;
+      return true;
+    });
+  }
+
+  function _roadmapHtml() {
+    if (!_roadmap) return `<div class="card"><p class="text-muted" style="padding:16px;">${t('common.no_data')}</p></div>`;
+    const c = _roadmap.counters || {};
+    const cycles = (_roadmap.critical_path && _roadmap.critical_path.cycles) || [];
+    return `
+      <div class="stats-row" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${c.overdue || 0}</div><div class="stat-label">${t('plandirector.counter_overdue')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-medium);">${c.due_soon || 0}</div><div class="stat-label">${t('plandirector.counter_due_soon')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${c.on_track || 0}</div><div class="stat-label">${t('plandirector.counter_on_track')}</div></div>
+        <div class="stat-card"><div class="stat-value">${c.completed || 0}</div><div class="stat-label">${t('plandirector.status.completed')}</div></div>
+      </div>
+      ${cycles.length ? `<div class="notice" style="margin-bottom:12px;border-left:3px solid var(--risk-critical);">
+        <strong>${t('plandirector.cycle_warning')}</strong> ${cycles.map(cy => UI.esc(cy.join(' → '))).join('; ')}
+      </div>` : ''}
+      <div class="card" style="margin-bottom:14px;padding:12px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <select id="rd-area" class="input" style="width:160px;">
+            <option value="">${t('plandirector.all_areas')}</option>
+            ${(_roadmap.areas || []).map(a => `<option value="${UI.esc(a)}" ${_roadFilters.area === a ? 'selected' : ''}>${UI.esc(a)}</option>`).join('')}
+          </select>
+          <select id="rd-env" class="input" style="width:140px;">
+            <option value="">${t('plandirector.all_envs')}</option>
+            ${['IT', 'OT', 'IoT', 'AI'].map(e => `<option value="${e}" ${_roadFilters.env === e ? 'selected' : ''}>${e}</option>`).join('')}
+          </select>
+          <select id="rd-bu" class="input" style="width:170px;">
+            <option value="">${t('plandirector.all_bus')}</option>
+            ${(_roadmap.business_units || []).map(b => `<option value="${UI.esc(b)}" ${_roadFilters.bu === b ? 'selected' : ''}>${UI.esc(b)}</option>`).join('')}
+          </select>
+          <select id="rd-scale" class="input" style="width:140px;">
+            <option value="month" ${_ganttScale === 'month' ? 'selected' : ''}>${t('plandirector.scale_month')}</option>
+            <option value="quarter" ${_ganttScale === 'quarter' ? 'selected' : ''}>${t('plandirector.scale_quarter')}</option>
+          </select>
+        </div>
+      </div>
+      <div class="card" style="padding:12px;overflow-x:auto;">
+        <h3 style="margin:0 0 8px;font-size:13px;">${t('plandirector.gantt_title')}</h3>
+        ${_ganttSvg(_roadFiltered())}
+      </div>
+      ${_criticalPathHtml()}
+      ${_buMatrixHtml()}
+    `;
+  }
+
+  function _ganttSvg(bars) {
+    const withDates = bars.filter(b => b.start_date && b.target_date);
+    if (!withDates.length) {
+      return `<p class="text-muted" style="font-size:12px;">${t('plandirector.gantt_no_dates')}</p>`;
+    }
+    const starts = withDates.map(b => new Date(b.start_date).getTime());
+    const ends = withDates.map(b => new Date(b.target_date).getTime());
+    const min = new Date(Math.min(...starts));
+    const max = new Date(Math.max(...ends));
+    // Redondear a inicio/fin de mes para que el eje encaje con las etiquetas
+    const t0 = new Date(min.getFullYear(), min.getMonth(), 1).getTime();
+    const t1 = new Date(max.getFullYear(), max.getMonth() + 1, 0).getTime();
+    const span = Math.max(1, t1 - t0);
+
+    const LABEL_W = 230, ROW_H = 26, HEAD_H = 34, PAD = 8;
+    const CHART_W = _ganttScale === 'quarter' ? 620 : 900;
+    const W = LABEL_W + CHART_W + PAD * 2;
+    const H = HEAD_H + withDates.length * ROW_H + PAD * 2;
+    const x = ms => LABEL_W + PAD + ((ms - t0) / span) * CHART_W;
+
+    // Eje temporal
+    const ticks = [];
+    const cursor = new Date(t0);
+    while (cursor.getTime() <= t1) {
+      const isQuarter = cursor.getMonth() % 3 === 0;
+      if (_ganttScale === 'month' || isQuarter) {
+        ticks.push({
+          ms: cursor.getTime(),
+          label: _ganttScale === 'quarter'
+            ? `Q${Math.floor(cursor.getMonth() / 3) + 1} ${String(cursor.getFullYear()).slice(2)}`
+            : cursor.toLocaleDateString(undefined, { month: 'short' }) + (cursor.getMonth() === 0 ? ` ${String(cursor.getFullYear()).slice(2)}` : ''),
+        });
+      }
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const now = Date.now();
+    const nowX = now >= t0 && now <= t1 ? x(now) : null;
+    const healthColor = h => HEALTH_COLOR[h] || 'var(--text-muted)';
+
+    const rows = withDates.map((b, i) => {
+      const y = HEAD_H + i * ROW_H + PAD;
+      const bx = x(new Date(b.start_date).getTime());
+      const bw = Math.max(3, x(new Date(b.target_date).getTime()) - bx);
+      const pct = Math.max(0, Math.min(100, b.progress || 0));
+      const title = `${b.code} · ${b.title}${b.health_reasons && b.health_reasons.length ? ' — ' + b.health_reasons.join('; ') : ''}`;
+      return `
+        <g>
+          <title>${UI.esc(title)}</title>
+          <text x="${PAD}" y="${y + 15}" font-size="11" fill="var(--text)" >
+            ${b.on_critical_path ? '▶ ' : ''}${UI.esc((b.code + ' ' + b.title).slice(0, 34))}
+          </text>
+          <rect x="${bx}" y="${y + 5}" width="${bw}" height="14" rx="3"
+                fill="${healthColor(b.health)}" opacity="0.28"
+                stroke="${b.on_critical_path ? 'var(--brand-orange)' : 'none'}" stroke-width="1.5"/>
+          <rect x="${bx}" y="${y + 5}" width="${bw * pct / 100}" height="14" rx="3"
+                fill="${healthColor(b.health)}"/>
+          ${b.quick_win ? `<text x="${bx + bw + 4}" y="${y + 16}" font-size="9" fill="var(--risk-low)">★</text>` : ''}
+        </g>`;
+    }).join('');
+
+    return `
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${W}px;height:${H}px;">
+        ${ticks.map(tk => `
+          <line x1="${x(tk.ms)}" y1="${HEAD_H - 6}" x2="${x(tk.ms)}" y2="${H - PAD}"
+                stroke="var(--border)" stroke-width="1"/>
+          <text x="${x(tk.ms) + 3}" y="${HEAD_H - 12}" font-size="10" fill="var(--text-muted)">${tk.label}</text>
+        `).join('')}
+        ${nowX !== null ? `<line x1="${nowX}" y1="${HEAD_H - 6}" x2="${nowX}" y2="${H - PAD}"
+              stroke="var(--brand-orange)" stroke-width="1.5" stroke-dasharray="4,3"/>
+              <text x="${nowX + 3}" y="${H - PAD}" font-size="9" fill="var(--brand-orange)">${t('plandirector.today')}</text>` : ''}
+        ${rows}
+      </svg>
+      <div style="display:flex;gap:14px;font-size:11px;color:var(--text-muted);margin-top:6px;flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:9px;height:9px;background:var(--risk-low);border-radius:2px;"></span> ${t('plandirector.health_ok')}</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:var(--risk-medium);border-radius:2px;"></span> ${t('plandirector.health_at_risk')}</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:var(--risk-critical);border-radius:2px;"></span> ${t('plandirector.health_blocked')}</span>
+        <span>▶ ${t('plandirector.critical_path')}</span>
+        <span>★ ${t('plandirector.quick_win')}</span>
+      </div>`;
+  }
+
+  function _criticalPathHtml() {
+    const cp = _roadmap.critical_path || {};
+    if (!cp.path || !cp.path.length) return '';
+    return `
+      <div class="card" style="margin-top:14px;padding:12px 16px;">
+        <h3 style="margin:0 0 6px;font-size:13px;">${t('plandirector.critical_path')}
+          <span class="text-muted" style="font-weight:400;font-size:11px;">
+            — ${t('plandirector.critical_path_hint', { days: cp.total_days })}</span>
+        </h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
+          ${cp.path.map((p, i) => `
+            ${i ? '<span style="color:var(--text-muted);">→</span>' : ''}
+            <span class="badge" title="${UI.esc(p.title)}">${UI.esc(p.code)} (${p.duration_days}d)</span>
+          `).join('')}
+        </div>
+      </div>`;
+  }
+
+  function _buMatrixHtml() {
+    const bus = _roadmap.business_units || [];
+    const bars = _roadFiltered().filter(b => (b.business_units || []).length);
+    if (!bus.length || !bars.length) return '';
+    return `
+      <div class="card" style="margin-top:14px;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);">
+          <strong style="font-size:13px;">${t('plandirector.bu_deployment')}</strong>
+          <span class="text-muted" style="font-size:11px;"> — ${t('plandirector.bu_deployment_hint')}</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="width:100%;font-size:12px;">
+            <thead><tr><th>${t('common.code')}</th><th>${t('common.title')}</th>
+              ${bus.map(b => `<th style="text-align:center;">${UI.esc(b)}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${bars.map(bar => `
+                <tr>
+                  <td>${UI.codePill(bar.code)}</td>
+                  <td>${UI.esc(bar.title.slice(0, 40))}</td>
+                  ${bus.map(bu => `<td style="text-align:center;">${
+                    (bar.business_units || []).includes(bu)
+                      ? `<span style="color:${HEALTH_COLOR[bar.health] || 'var(--text-muted)'};">●</span>` : '·'
+                  }</td>`).join('')}
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  function _wireRoadmap() {
+    const bind = (id, key) => {
+      const el = document.getElementById(id);
+      if (el) el.onchange = (e) => { _roadFilters[key] = e.target.value; _renderBody(); };
+    };
+    bind('rd-area', 'area');
+    bind('rd-env', 'env');
+    bind('rd-bu', 'bu');
+    const scale = document.getElementById('rd-scale');
+    if (scale) scale.onchange = (e) => { _ganttScale = e.target.value; _renderBody(); };
+  }
+
+  // ---------- Cartera priorizada y presupuesto ----------
+
+  function _portfolioHtml() {
+    if (!_portfolio) return `<div class="card"><p class="text-muted" style="padding:16px;">${t('common.no_data')}</p></div>`;
+    const p = _portfolio;
+    const b = p.budget || {};
+    const fmt = n => (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    return `
+      <div class="stats-row" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value">${fmt(b.requested)}</div><div class="stat-label">${t('plandirector.budget_requested')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${fmt(b.approved)}</div><div class="stat-label">${t('plandirector.budget_approved_label')}</div></div>
+        <div class="stat-card"><div class="stat-value">${fmt(b.spent)}</div><div class="stat-label">${t('plandirector.budget_spent')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:${(b.underfunded || []).length ? 'var(--risk-high)' : ''};">${(b.underfunded || []).length}</div><div class="stat-label">${t('plandirector.underfunded')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${(p.quick_wins || []).length}</div><div class="stat-label">${t('plandirector.quick_wins')}</div></div>
+      </div>
+
+      ${(b.largest_gaps || []).length ? `
+      <div class="card" style="margin-bottom:14px;padding:12px 16px;">
+        <h3 style="margin:0 0 8px;font-size:13px;">${t('plandirector.funding_gap')}
+          <span class="text-muted" style="font-weight:400;font-size:11px;"> — ${t('plandirector.funding_gap_hint')}</span></h3>
+        ${b.largest_gaps.slice(0, 6).map(g => {
+          const max = b.largest_gaps[0].gap || 1;
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">
+            <span style="width:90px;">${UI.esc(g.code)}</span>
+            <div style="flex:1;background:var(--bg-3);border-radius:3px;height:12px;overflow:hidden;">
+              <div style="background:var(--brand-orange);height:100%;width:${(g.gap / max) * 100}%;"></div>
+            </div>
+            <span style="width:110px;text-align:right;">${fmt(g.gap)}</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      <div class="card">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);">
+          <strong style="font-size:13px;">${t('plandirector.portfolio_ranking')}</strong>
+          <span class="text-muted" style="font-size:11px;"> — ${t('plandirector.portfolio_hint')}</span>
+        </div>
+        <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%;font-size:12px;">
+          <thead><tr>
+            <th>${t('common.code')}</th><th>${t('common.title')}</th>
+            <th>${t('plandirector.reduction_points')}</th>
+            <th>${t('plandirector.efficiency')}</th>
+            <th>${t('plandirector.cost_per_point')}</th>
+            <th>${t('plandirector.horizon')}</th>
+            <th>${t('plandirector.origin_col')}</th>
+            <th>${t('common.priority')}</th>
+          </tr></thead>
+          <tbody>
+            ${p.initiatives.map(r => `
+              <tr>
+                <td>${UI.codePill(r.code)}${r.quick_win ? ` <span class="badge" style="background:var(--risk-low);color:#fff;">${t('plandirector.quick_win')}</span>` : ''}</td>
+                <td>${UI.esc(r.title)}</td>
+                <td>${r.projected_reduction_points}</td>
+                <td>${r.priority_score !== null && r.priority_score !== undefined ? r.priority_score : '—'}</td>
+                <td>${r.cost_per_point !== null && r.cost_per_point !== undefined ? r.cost_per_point.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</td>
+                <td>${r.horizon ? t('plandirector.horizon_' + r.horizon) : '—'}</td>
+                <td>${r.origin ? UI.esc(r.origin) : '—'}</td>
+                <td>
+                  <span class="badge" style="background:${PRIORITY_COLORS[r.priority] || '#888'};color:#fff;">${UI.esc(r.priority)}</span>
+                  ${r.priority_overridden && r.priority_suggested
+                    ? `<br><small class="text-muted" title="${t('plandirector.suggested_hint')}">${t('plandirector.suggested')}: ${UI.esc(r.priority_suggested)}</small>` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;padding:12px 16px;">
+        <h3 style="margin:0 0 8px;font-size:13px;">${t('plandirector.distribution')}</h3>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px;">
+          ${[['by_horizon', 'plandirector.horizon'], ['by_origin', 'plandirector.origin_col'],
+             ['by_action_type', 'plandirector.action_type'], ['by_env', 'plandirector.env'],
+             ['by_nist_function', 'NIST']].map(([key, label]) => `
+            <div>
+              <strong>${label.includes('.') ? t(label) : label}</strong>
+              <ul style="margin:4px 0;padding-left:16px;">
+                ${Object.entries(p[key] || {}).map(([k, v]) => `<li>${UI.esc(k)}: ${v}</li>`).join('') || '<li>—</li>'}
+              </ul>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  function _wirePortfolio() { /* solo lectura por ahora */ }
 
   // ---------- Resumen ----------
 

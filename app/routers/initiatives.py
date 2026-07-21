@@ -544,6 +544,82 @@ def initiatives_portfolio(db: Session = Depends(get_db),
     }
 
 
+# ---------- Roadmap: Gantt y camino critico (ANTES de /{id}) ----------
+
+@router.get("/roadmap")
+def initiatives_roadmap(db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """Cronograma del plan: barras por iniciativa, dependencias y camino critico.
+
+    Un plan director sin calendario no es un plan: INCIBE exige clasificar los
+    proyectos en corto, medio y largo plazo.
+    """
+    from app.services.initiative_projection_service import (
+        compute_critical_path, compute_portfolio_priorities, initiative_horizon,
+    )
+
+    initiatives = filter_by_org(
+        db.query(StrategicInitiative), StrategicInitiative, current_user
+    ).options(
+        joinedload(StrategicInitiative.program), joinedload(StrategicInitiative.owner),
+        joinedload(StrategicInitiative.risk_links),
+    ).all()
+    priorities = compute_portfolio_priorities(initiatives)
+    critical = compute_critical_path(initiatives)
+    critical_ids = {p["id"] for p in critical["path"]}
+
+    bars = []
+    for ini in initiatives:
+        if ini.status == "cancelled":
+            continue
+        bars.append({
+            "id": ini.id, "code": ini.code, "title": ini.title,
+            "program_id": ini.program_id,
+            "program_name": ini.program.name if ini.program else None,
+            "area": ini.program.area if ini.program else None,
+            "env": ini.env, "status": ini.status, "health": ini.health,
+            "health_reasons": ini.health_reasons,
+            "priority": ini.priority, "progress": ini.progress or 0,
+            "owner_name": ini.owner.full_name if ini.owner else None,
+            "start_date": ini.start_date, "target_date": ini.target_date,
+            "completed_at": ini.completed_at,
+            "horizon": initiative_horizon(ini),
+            "blocked_by": ini.blocked_by or [],
+            "on_critical_path": ini.id in critical_ids,
+            "business_units": ini.business_units,
+            "quick_win": priorities.get(ini.id, {}).get("quick_win", False),
+        })
+    bars.sort(key=lambda b: (b["start_date"] or datetime.max.replace(tzinfo=None), b["code"]))
+
+    now = datetime.now(timezone.utc)
+
+    def _overdue(b):
+        return bool(b["target_date"] and b["status"] != "completed"
+                    and b["target_date"].replace(tzinfo=timezone.utc) < now)
+
+    def _due_soon(b):
+        if not b["target_date"] or b["status"] == "completed":
+            return False
+        delta = (b["target_date"].replace(tzinfo=timezone.utc) - now).days
+        return 0 <= delta <= 30
+
+    return {
+        "bars": bars,
+        "critical_path": critical,
+        "counters": {
+            "overdue": sum(1 for b in bars if _overdue(b)),
+            "due_soon": sum(1 for b in bars if _due_soon(b)),
+            "on_track": sum(1 for b in bars
+                            if not _overdue(b) and not _due_soon(b) and b["status"] != "completed"),
+            "completed": sum(1 for b in bars if b["status"] == "completed"),
+        },
+        "business_units": sorted({
+            bu for b in bars for bu in (b["business_units"] or [])
+        }),
+        "areas": sorted({b["area"] for b in bars if b["area"]}),
+    }
+
+
 # ---------- IA: import de plan y borradores (declarar ANTES de /{id}) ----------
 
 _IMPORT_MAX_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -1105,6 +1181,58 @@ def reproject(initiative_id: int, request: Request, db: Session = Depends(get_db
     result = project_initiative(db, ini)
     db.commit()
     return result
+
+
+@router.post("/{initiative_id}/generate-tasks")
+def generate_tasks_from_targets(initiative_id: int, request: Request,
+                                db: Session = Depends(get_db),
+                                current_user: User = Depends(require_analyst)):
+    """Crea una tarea operativa por control objetivo pendiente.
+
+    Puente entre lo estrategico y el kanban: la iniciativa declara que controles
+    sube y hasta que madurez; esto lo convierte en trabajo asignable. Idempotente
+    — no duplica tareas de controles que ya la tienen.
+    """
+    from app.models import TaskStatus
+    from app.routers.tasks import _next_code as _next_task_code
+
+    lang = get_lang(request)
+    ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
+
+    existing = {
+        t.title for t in db.query(TreatmentTask).filter(
+            TreatmentTask.initiative_id == ini.id).all()
+    }
+    created = []
+    for ct in ini.control_targets:
+        impl = ct.implementation
+        ctrl = impl.control if impl else None
+        if not ctrl:
+            continue
+        current = impl.maturity or 0
+        if current >= ct.target_maturity:
+            continue    # ya cumplido: no genera trabajo
+        title = f"{ctrl.code} — elevar madurez a {ct.target_maturity}/5"
+        if title in existing:
+            continue
+        task = TreatmentTask(
+            organization_id=ini.organization_id, initiative_id=ini.id,
+            code=_next_task_code(db, ini.organization_id), title=title,
+            description=(f"Control: {ctrl.name}\nMadurez actual {current}/5, "
+                         f"objetivo {ct.target_maturity}/5."),
+            status=TaskStatus.PENDING,
+            assigned_to_id=ini.owner_id,
+            due_date=ini.target_date,
+        )
+        db.add(task)
+        # Flush por tarea: el codigo se deriva de max(id) y sin flush todas las
+        # de este lote saldrian con el mismo codigo (la restriccion es unica).
+        db.flush()
+        created.append(title)
+    db.commit()
+    log_action(db, current_user.id, "generate_tasks", "strategic_initiative", str(ini.id),
+               {"created": len(created)})
+    return {"created": len(created), "titles": created}
 
 
 @router.post("/{initiative_id}/verify")

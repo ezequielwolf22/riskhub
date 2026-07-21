@@ -212,6 +212,94 @@ def compute_portfolio_priorities(initiatives: list[StrategicInitiative]) -> dict
     return out
 
 
+# ---------- Dependencias y camino critico ----------
+
+def _dependency_graph(initiatives: list[StrategicInitiative]) -> dict[int, list[int]]:
+    """blocked_by depurado: solo ids que existen en la cartera y sin auto-ciclos."""
+    valid = {i.id for i in initiatives}
+    graph: dict[int, list[int]] = {}
+    for ini in initiatives:
+        deps = ini.blocked_by or []
+        graph[ini.id] = [d for d in deps if d in valid and d != ini.id]
+    return graph
+
+
+def detect_dependency_cycles(initiatives: list[StrategicInitiative]) -> list[list[int]]:
+    """Ciclos en las dependencias. Un ciclo hace que el plan sea inejecutable,
+    asi que se detecta y se muestra en vez de colgar el calculo del camino."""
+    graph = _dependency_graph(initiatives)
+    cycles: list[list[int]] = []
+    WHITE, GREY, BLACK = 0, 1, 2
+    colour = dict.fromkeys(graph, WHITE)
+
+    def visit(node: int, stack: list[int]) -> None:
+        colour[node] = GREY
+        stack.append(node)
+        for dep in graph.get(node, []):
+            if colour.get(dep) == GREY:
+                cycles.append(stack[stack.index(dep):] + [dep])
+            elif colour.get(dep) == WHITE:
+                visit(dep, stack)
+        stack.pop()
+        colour[node] = BLACK
+
+    for node in list(graph):
+        if colour[node] == WHITE:
+            visit(node, [])
+    return cycles
+
+
+def compute_critical_path(initiatives: list[StrategicInitiative]) -> dict:
+    """Cadena de dependencias mas larga en duracion (camino critico).
+
+    La duracion de cada iniciativa sale de sus fechas; sin fechas se asume 0 y
+    la iniciativa no alarga el camino: no se inventan plazos.
+    """
+    graph = _dependency_graph(initiatives)
+    by_id = {i.id: i for i in initiatives}
+    cycles = detect_dependency_cycles(initiatives)
+    in_cycle = {node for cycle in cycles for node in cycle}
+
+    def duration(ini_id: int) -> float:
+        ini = by_id.get(ini_id)
+        start, target = _aware(ini.start_date) if ini else None, _aware(ini.target_date) if ini else None
+        if not start or not target or target < start:
+            return 0.0
+        return (target - start).days
+
+    memo: dict[int, tuple[float, list[int]]] = {}
+
+    def longest(ini_id: int, seen: frozenset) -> tuple[float, list[int]]:
+        if ini_id in memo:
+            return memo[ini_id]
+        if ini_id in seen or ini_id in in_cycle:
+            return 0.0, []          # no se recorre un ciclo
+        best_len, best_path = 0.0, []
+        for dep in graph.get(ini_id, []):
+            length, path = longest(dep, seen | {ini_id})
+            if length > best_len:
+                best_len, best_path = length, path
+        result = (best_len + duration(ini_id), best_path + [ini_id])
+        memo[ini_id] = result
+        return result
+
+    best_total, best_chain = 0.0, []
+    for ini in initiatives:
+        total, chain = longest(ini.id, frozenset())
+        if total > best_total:
+            best_total, best_chain = total, chain
+
+    return {
+        "path": [
+            {"id": i, "code": by_id[i].code, "title": by_id[i].title,
+             "duration_days": duration(i)}
+            for i in best_chain if i in by_id
+        ],
+        "total_days": round(best_total),
+        "cycles": [[by_id[n].code for n in cycle if n in by_id] for cycle in cycles],
+    }
+
+
 def log_system_event(db: Session, initiative_id: int, text: str) -> None:
     """Crea una entrada de bitacora sin autor (sistema/IA). No hace commit."""
     initiative = db.get(StrategicInitiative, initiative_id)
@@ -573,6 +661,7 @@ def refresh_initiative_health(db: Session, org_id: int | None = None) -> int:
     initiatives = query.all()
 
     updated = 0
+    pending_inheritance: list[StrategicInitiative] = []
     for ini in initiatives:
         reasons: list[str] = []
 
@@ -626,6 +715,7 @@ def refresh_initiative_health(db: Session, org_id: int | None = None) -> int:
         ini.health = new_health
         ini.health_reasons = reasons or None
         updated += 1
+        pending_inheritance.append(ini)
 
         if _health_rank(new_health) > _health_rank(old_health):
             log_system_event(
@@ -649,8 +739,57 @@ def refresh_initiative_health(db: Session, org_id: int | None = None) -> int:
             except Exception:
                 logger.exception("refresh_initiative_health: fallo alerta org=%s", ini.organization_id)
 
+    # Salud heredada: una iniciativa cuya dependencia esta bloqueada tampoco
+    # puede avanzar, por muy bien que vayan sus propios indicadores. Se propaga
+    # despues de calcular la salud propia de todas, y se marca como heredada
+    # para que el motivo sea explicable y no parezca un fallo suyo.
+    _propagate_blocked_health(db, pending_inheritance)
+
     db.commit()
     return updated
+
+
+def _propagate_blocked_health(db: Session, initiatives: list[StrategicInitiative]) -> None:
+    if not initiatives:
+        return
+    by_id = {i.id: i for i in initiatives}
+    graph = _dependency_graph(initiatives)
+    in_cycle = {n for cycle in detect_dependency_cycles(initiatives) for n in cycle}
+
+    # Varias pasadas: la herencia se encadena (A bloquea B, B bloquea C)
+    for _ in range(len(initiatives)):
+        changed = False
+        for ini in initiatives:
+            if ini.id in in_cycle:
+                continue
+            blockers = [
+                by_id[d] for d in graph.get(ini.id, [])
+                if d in by_id and by_id[d].health == "blocked"
+            ]
+            if not blockers or ini.health == "blocked":
+                continue
+            reasons = list(ini.health_reasons or [])
+            codes = ", ".join(b.code for b in blockers)
+            reason = f"Bloqueada por dependencia: {codes}"
+            if reason not in reasons:
+                reasons.append(reason)
+            ini.health = "blocked"
+            ini.health_reasons = reasons
+            changed = True
+        if not changed:
+            break
+
+    for cycle in detect_dependency_cycles(initiatives):
+        for node in cycle:
+            ini = by_id.get(node)
+            if not ini:
+                continue
+            reasons = list(ini.health_reasons or [])
+            reason = "Ciclo de dependencias: el plan no es ejecutable tal cual"
+            if reason not in reasons:
+                reasons.append(reason)
+                ini.health_reasons = reasons
+    db.flush()
 
 
 def send_initiative_digest(db: Session) -> dict:

@@ -374,6 +374,8 @@ const Api = {
     draftConfirm: (d) => Api.post('/api/initiatives/draft-for-risk/confirm', d),
     draftDiscard: (d) => Api.post('/api/initiatives/draft-for-risk/discard', d),
     portfolio: () => Api.get('/api/initiatives/portfolio'),
+    roadmap: () => Api.get('/api/initiatives/roadmap'),
+    generateTasks: (id) => Api.post(`/api/initiatives/${id}/generate-tasks`, {}),
   },
   // Plan Director (es) / Security Strategic Plan (en) — v6.4.0
   strategicPlans: {
