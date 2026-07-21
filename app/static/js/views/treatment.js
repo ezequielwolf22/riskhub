@@ -204,6 +204,15 @@ const ViewTreatment = (() => {
     wrap.querySelectorAll('[data-action="open-risk"]').forEach(btn => {
       btn.onclick = (e) => { e.stopPropagation(); location.hash = '/risk-hub/risks'; };
     });
+    wrap.querySelectorAll('[data-action="request-acceptance"]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); _openRequestAcceptance(parseInt(btn.dataset.riskId)); };
+    });
+    wrap.querySelectorAll('[data-action="approve-acceptance"]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); _openApproveAcceptance(parseInt(btn.dataset.riskId)); };
+    });
+    wrap.querySelectorAll('[data-action="reject-acceptance"]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); _openRejectAcceptance(parseInt(btn.dataset.riskId)); };
+    });
   }
 
   function _findItem(riskId) {
@@ -278,6 +287,10 @@ const ViewTreatment = (() => {
               <button class="btn btn-sm" data-action="new-task" data-risk-id="${it.id}">+ ${t('treatment.new_task')}</button>
               <button class="btn btn-sm" data-action="edit-treatment" data-risk-id="${it.id}">${t('treatment.edit_treatment')}</button>
               <button class="btn btn-sm" data-action="ai-plan" data-risk-id="${it.id}">${t('treatment.generate_ai_plan')}</button>
+              ${it.acceptance && it.acceptance.pending
+                ? `<button class="btn btn-sm btn-primary" data-action="approve-acceptance" data-risk-id="${it.id}">${t('treatment.approve_acceptance')}</button>
+                   <button class="btn btn-sm" data-action="reject-acceptance" data-risk-id="${it.id}">${t('treatment.reject_acceptance')}</button>`
+                : `<button class="btn btn-sm" data-action="request-acceptance" data-risk-id="${it.id}">${t('treatment.request_acceptance')}</button>`}
               <button class="btn btn-sm btn-ghost" data-action="open-risk" data-risk-id="${it.id}">${t('treatment.open_risk')}</button>
             </div>
           </td>
@@ -356,6 +369,110 @@ const ViewTreatment = (() => {
           treatment_due_date: document.getElementById('et-due').value || null,
           treatment_plan: document.getElementById('et-plan').value.trim(),
         });
+        UI.toast(t('common.success'), 'success');
+        UI.closeModal();
+        await _load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  /* Aceptacion formal del riesgo residual — ISO/IEC 27001 cl. 6.1.3f.
+     La norma exige que el propietario del riesgo acepte por escrito el residual;
+     la No Conformidad Mayor tipica es el riesgo alto dado por aceptado sin que
+     conste quien lo aprobo. Estos endpoints ya existian sin estar expuestos. */
+
+  function _openRequestAcceptance(riskId) {
+    const item = _findItem(riskId);
+    if (!item) return;
+    UI.modal(`${t('treatment.request_acceptance')} — ${item.code}`, `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">
+        ${t('treatment.acceptance_hint')}
+      </div>
+      <div class="form-grid">
+        <div class="span2">
+          <label>${t('treatment.acceptance_justification')} *</label>
+          <textarea id="ra-justification" class="input" rows="4"
+                    placeholder="${t('treatment.acceptance_justification_ph')}">${UI.esc((item.acceptance && item.acceptance.justification) || '')}</textarea>
+        </div>
+        <div>
+          <label>${t('treatment.acceptance_review_date')}</label>
+          <input type="date" id="ra-review" class="input"
+                 value="${item.acceptance && item.acceptance.review_date ? item.acceptance.review_date.slice(0, 10) : ''}">
+        </div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.send')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const justification = document.getElementById('ra-justification').value.trim();
+      if (!justification) { UI.toast(t('common.required'), 'error'); return; }
+      try {
+        await Api.risks.requestAcceptance(riskId, {
+          justification,
+          review_date: document.getElementById('ra-review').value || null,
+        });
+        UI.toast(t('common.success'), 'success');
+        UI.closeModal();
+        await _load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  function _openApproveAcceptance(riskId) {
+    const item = _findItem(riskId);
+    if (!item) return;
+    UI.modal(`${t('treatment.approve_acceptance')} — ${item.code}`, `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">
+        ${t('treatment.approve_acceptance_hint')}
+      </div>
+      <p style="font-size:13px;"><strong>${t('treatment.th_residual')}:</strong> ${item.residual_level}</p>
+      ${item.acceptance && item.acceptance.justification
+        ? `<p style="font-size:12px;"><em>${UI.esc(item.acceptance.justification)}</em></p>` : ''}
+      <div class="form-grid">
+        <div><label>${t('treatment.acceptance_review_date')}</label>
+          <input type="date" id="aa-review" class="input"
+                 value="${item.acceptance && item.acceptance.review_date ? item.acceptance.review_date.slice(0, 10) : ''}"></div>
+        <div class="span2"><label>${t('common.notes')}</label>
+          <textarea id="aa-notes" class="input" rows="2"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('treatment.approve_acceptance')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      try {
+        await Api.risks.accept(riskId, {
+          review_date: document.getElementById('aa-review').value || null,
+          notes: document.getElementById('aa-notes').value.trim() || null,
+        });
+        UI.toast(t('common.success'), 'success');
+        UI.closeModal();
+        await _load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  function _openRejectAcceptance(riskId) {
+    const item = _findItem(riskId);
+    if (!item) return;
+    UI.modal(`${t('treatment.reject_acceptance')} — ${item.code}`, `
+      <div class="form-grid">
+        <div class="span2"><label>${t('treatment.reject_reason')} *</label>
+          <textarea id="rj-reason" class="input" rows="3"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('treatment.reject_acceptance')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const reason = document.getElementById('rj-reason').value.trim();
+      if (!reason) { UI.toast(t('common.required'), 'error'); return; }
+      try {
+        await Api.risks.rejectAcceptance(riskId, { reason });
         UI.toast(t('common.success'), 'success');
         UI.closeModal();
         await _load();

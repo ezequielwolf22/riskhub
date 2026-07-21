@@ -221,6 +221,10 @@ const Api = {
     importCsv: (file) => Api.postFile('/api/risks/import', file),
     treatmentBoard: () => Api.get('/api/risks/treatment-board'),
     aiTreatmentPlan: (id) => Api.post('/api/risks/' + id + '/ai-treatment-plan', {}),
+    // Aceptacion formal del riesgo residual (ISO 27001 cl. 6.1.3f)
+    requestAcceptance: (id, d) => Api.put('/api/risks/' + id + '/request-acceptance', d),
+    accept: (id, d) => Api.put('/api/risks/' + id + '/accept', d || {}),
+    rejectAcceptance: (id, d) => Api.put('/api/risks/' + id + '/reject-acceptance', d || {}),
   },
   users: {
     list: () => Api.get('/api/users/'),
@@ -369,6 +373,27 @@ const Api = {
     draftForRisk: (riskIds) => Api.post('/api/initiatives/draft-for-risk', { risk_ids: riskIds }),
     draftConfirm: (d) => Api.post('/api/initiatives/draft-for-risk/confirm', d),
     draftDiscard: (d) => Api.post('/api/initiatives/draft-for-risk/discard', d),
+    portfolio: () => Api.get('/api/initiatives/portfolio'),
+  },
+  // Plan Director (es) / Security Strategic Plan (en) — v6.4.0
+  strategicPlans: {
+    list: (q) => Api.get('/api/strategic-plans/', q),
+    get: (id) => Api.get('/api/strategic-plans/' + id),
+    create: (d) => Api.post('/api/strategic-plans/', d),
+    update: (id, d) => Api.patch('/api/strategic-plans/' + id, d),
+    del: (id) => Api.del('/api/strategic-plans/' + id),
+    currentProfile: (id) => Api.get(`/api/strategic-plans/${id}/current-profile`),
+    progress: (id) => Api.get(`/api/strategic-plans/${id}/progress`),
+    targets: (id) => Api.get(`/api/strategic-plans/${id}/targets`),
+    setTargets: (id, d) => Api.put(`/api/strategic-plans/${id}/targets`, d),
+    gap: (id) => Api.get(`/api/strategic-plans/${id}/gap`),
+    generateInitiatives: (id) => Api.post(`/api/strategic-plans/${id}/generate-initiatives`, {}),
+    confirmInitiatives: (id, d) => Api.post(`/api/strategic-plans/${id}/generate-initiatives/confirm`, d),
+    approvals: (id) => Api.get(`/api/strategic-plans/${id}/approvals`),
+    requestApproval: (id, d) => Api.post(`/api/strategic-plans/${id}/request-approval`, d || {}),
+    decideApproval: (approvalId, d) => Api.post(`/api/strategic-plans/approvals/${approvalId}/decide`, d),
+    activate: (id) => Api.post(`/api/strategic-plans/${id}/activate`, {}),
+    close: (id) => Api.post(`/api/strategic-plans/${id}/close`, {}),
   },
   policies: {
     list: (q) => Api.get('/api/policies/', q),
