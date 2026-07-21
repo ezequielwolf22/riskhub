@@ -464,9 +464,8 @@ import threading as _threading
 _api_rate_lock  = _threading.Lock()
 _api_last_call  = [0.0]  # mutable para uso en closure
 
-# Circuit breaker: evita reintentos masivos cuando la API key no tiene créditos.
-# Se resetea cuando el proceso reinicia (flag en memoria).
-_credit_exhausted: dict[str, bool] = {}  # api_key_hash → True si sin créditos
+# El circuit breaker de créditos vive en claude_client (_breaker_open): unica
+# fuente de verdad, con TTL para que el servicio se recupere tras una recarga.
 _analysis_org_lock: dict[int, bool] = {}  # org_id → True si ya hay análisis en curso
 
 _CREDIT_ERROR_MSG = (
@@ -789,7 +788,7 @@ def _process_batch_isolated(
                 org_id=org_id, call_type="asset_risk_analysis",
             )
         except CreditsExhausted:
-            _credit_exhausted[api_key[:16]] = True
+            # claude_client ya abrio el breaker al detectar el error de creditos
             logger.warning("API credit exhausted — aborting batch analysis (batch=%s)", batch_ids[:3])
             raise
 
@@ -1150,7 +1149,8 @@ def analyze_all_org_assets(
         return {"total": 0}
 
     # Circuit breaker: si ya sabemos que no hay créditos, marcar pendientes como error
-    if _credit_exhausted.get(api_key[:16]):
+    from app.services.claude_client import _breaker_open
+    if _breaker_open(api_key):
         logger.warning("Credit exhausted circuit breaker active — marking assets as error org=%d", org_id)
         db.query(Asset).filter(
             Asset.id.in_(asset_ids),
