@@ -16,10 +16,10 @@ const ViewSuppliers = (() => {
 
   function _rlBands() {
     return window.RiskLevels ? RiskLevels.all() : [
-      { code: 'low',      label: 'Bajo',    color: 'var(--risk-low)'      },
-      { code: 'medium',   label: 'Medio',   color: 'var(--risk-medium)'   },
-      { code: 'high',     label: 'Alto',    color: 'var(--risk-high)'     },
-      { code: 'critical', label: 'Critico', color: 'var(--risk-critical)' },
+      { code: 'low',      label: t('common.low'),    color: 'var(--risk-low)'      },
+      { code: 'medium',   label: t('common.medium'),   color: 'var(--risk-medium)'   },
+      { code: 'high',     label: t('common.high'),    color: 'var(--risk-high)'     },
+      { code: 'critical', label: t('common.critical'), color: 'var(--risk-critical)' },
     ];
   }
   function _rlLabel(code) {
@@ -241,15 +241,15 @@ const ViewSuppliers = (() => {
       const show = (id) => _isWidgetVisible(prefs, _SUP_WIDGETS().find(w => w.id === id));
       const cards = [];
       if (show('total'))
-        cards.push(`<div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">Total proveedores</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value">${s.total}</div><div class="stat-label">${t('suppliers.widget_total')}</div></div>`);
       if (show('active'))
-        cards.push(`<div class="stat-card"><div class="stat-value" style="color:#16a34a;">${s.active ?? s.total}</div><div class="stat-label">Activos</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:#16a34a;">${s.active ?? s.total}</div><div class="stat-label">${t('suppliers.widget_active')}</div></div>`);
       if (show('critical'))
-        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.critical_or_high}</div><div class="stat-label">Críticos / Altos</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${s.critical_or_high}</div><div class="stat-label">${t('suppliers.widget_critical')}</div></div>`);
       if (show('overdue'))
-        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.overdue_assessment}</div><div class="stat-label">Evaluación vencida</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-orange);">${s.overdue_assessment}</div><div class="stat-label">${t('suppliers.widget_overdue')}</div></div>`);
       if (show('score'))
-        cards.push(`<div class="stat-card"><div class="stat-value">${s.avg_score != null ? s.avg_score : '—'}</div><div class="stat-label">Puntuación media</div></div>`);
+        cards.push(`<div class="stat-card"><div class="stat-value">${s.avg_score != null ? s.avg_score : '—'}</div><div class="stat-label">${t('suppliers.widget_score')}</div></div>`);
       if (show('pending'))
         cards.push(`<div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${s.pending_questionnaires ?? 0}</div><div class="stat-label">Cuest. pendientes</div></div>`);
       wrap.innerHTML = cards.join('')
@@ -304,7 +304,7 @@ const ViewSuppliers = (() => {
     if (!ids.length) return;
     try {
       const r = await Api.suppliers.bulkRecompute(ids);
-      UI.toast(`${r.recomputed} proveedores recalculados`, 'success');
+      UI.toast(t('suppliers.suppliers_recalculated', {n: r.recomputed}), 'success');
       _selectedIds.clear();
       await _refresh();
     } catch (e) { UI.toast(e.message, 'error'); }
@@ -313,10 +313,10 @@ const ViewSuppliers = (() => {
   async function _bulkDelete() {
     const ids = [..._selectedIds];
     if (!ids.length) return;
-    if (!confirm(`Eliminar ${ids.length} proveedor${ids.length !== 1 ? 'es' : ''}?`)) return;
+    if (!confirm(t('suppliers.confirm_delete_n', {n: ids.length}))) return;
     try {
       const r = await Api.suppliers.bulkDelete(ids);
-      UI.toast(`${r.deleted} proveedores eliminados`, 'success');
+      UI.toast(t('suppliers.suppliers_deleted', {n: r.deleted}), 'success');
       _selectedIds.clear();
       await _loadStats();
       await _refresh();
@@ -325,7 +325,7 @@ const ViewSuppliers = (() => {
 
   function _renderTable(wrap, data) {
     if (!data.length) {
-      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">No se encontraron proveedores.</p>';
+      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">${t('suppliers.no_suppliers_found')}</p>';
       return;
     }
     const canEdit = Auth.canEdit();
@@ -357,7 +357,7 @@ const ViewSuppliers = (() => {
             ${canEdit ? `<button class="btn btn-sm" data-id="${s.id}" data-action="recompute" title="Recalcular tier y riesgo">Recalcular</button>` : ''}
             <button class="btn btn-sm" data-id="${s.id}" data-action="edit">Editar</button>
             <button class="btn btn-sm" data-id="${s.id}" data-name="${UI.esc(s.name)}" data-action="history" title="Historial de cambios">Historial</button>
-            ${canEdit ? `<button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">Eliminar</button>` : ''}
+            ${canEdit ? `<button class="btn btn-sm btn-danger" data-id="${s.id}" data-action="del">${t('common.delete')}</button>` : ''}
           </td>
         </tr>
       `;
@@ -446,10 +446,10 @@ const ViewSuppliers = (() => {
     });
     wrap.querySelectorAll('[data-action="del"]').forEach(btn => {
       btn.onclick = async () => {
-        if (!confirm('Eliminar proveedor?')) return;
+        if (!confirm(t('suppliers.confirm_delete_supplier'))) return;
         try {
           await Api.suppliers.del(btn.dataset.id);
-          UI.toast('Proveedor eliminado', 'success');
+          UI.toast(t('suppliers.supplier_deleted'), 'success');
           _selectedIds.delete(parseInt(btn.dataset.id));
           await _loadStats();
           await _refresh();
@@ -571,7 +571,7 @@ const ViewSuppliers = (() => {
           </div>
           <div id="sup-doc-list"><p style="font-size:12px;color:var(--text-muted);">Cargando...</p></div>
           <div id="sup-doc-desc-row" style="display:none;gap:6px;align-items:center;margin-top:6px;">
-            <input id="sup-doc-desc" class="input" placeholder="Descripción del documento (opcional)" style="flex:1;font-size:12px;">
+            <input id="sup-doc-desc" class="input" placeholder="${t('suppliers.doc_desc_placeholder')}" style="flex:1;font-size:12px;">
             <button id="sup-doc-confirm" class="btn btn-sm btn-primary">Subir</button>
             <button id="sup-doc-cancel-upload" class="btn btn-sm">Cancelar</button>
           </div>
@@ -597,7 +597,7 @@ const ViewSuppliers = (() => {
     _currentEditedSupplier = s || null;
     _currentSlas = s?.slas ? JSON.parse(JSON.stringify(s.slas)) : [];
     _currentContacts = s?.additional_contacts ? JSON.parse(JSON.stringify(s.additional_contacts)) : [];
-    UI.modal(s ? `Editar ${s.code}` : 'Nuevo proveedor', _formHtml(s), {
+    UI.modal(s ? t('suppliers.edit_code', {code: s.code}) : t('suppliers.new_supplier'), _formHtml(s), {
       actions: `<button class="btn" id="m-cancel">Cancelar</button>
                 <button class="btn btn-primary" id="m-save">Guardar</button>`,
       width: 'min(98vw, 1200px)',
@@ -833,7 +833,7 @@ const ViewSuppliers = (() => {
               Bypass justificado
             </button>
             <button class="btn btn-sm" onclick="ViewSuppliers._openForceControlsDialog(${supplierId})"
-              title="Añadir controles extra obligatorios aunque el score sea bajo" style="font-size:11px;">
+              title="${t('suppliers.force_controls_hint')}" style="font-size:11px;">
               Forzar controles
             </button>
           ` : `
@@ -917,7 +917,7 @@ const ViewSuppliers = (() => {
           ${itemsHtml}
         </div>`;
     } else {
-      chainHtml = `<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Sin items de firma configurados para este proveedor.</p>`;
+      chainHtml = `<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">${t('suppliers.no_signoff_items')}</p>`;
     }
 
     // Decision formal
@@ -1219,7 +1219,7 @@ const ViewSuppliers = (() => {
       try {
         const r = await Api.post('/api/onboarding-gate/' + supplierId + '/decision', { decision, notes, conditions });
         UI.closeModal();
-        UI.toast('Decision registrada' + (r.auto_promoted ? ' — proveedor promovido a Activo' : ''), 'success');
+        UI.toast(t('suppliers.decision_registered') + (r.auto_promoted ? t('suppliers.promoted_to_active') : ''), 'success');
         _renderLifecycleSection(supplierId, null);
       } catch (e) { UI.toast(e.message || 'Error', 'error'); }
     };
@@ -1234,7 +1234,7 @@ const ViewSuppliers = (() => {
     row.className = 'dec-condition-row';
     row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center;';
     row.innerHTML = `
-      <input class="input dec-cond-desc" style="flex:1;font-size:12px;" placeholder="Descripción de la condicion...">
+      <input class="input dec-cond-desc" style="flex:1;font-size:12px;" placeholder="${t('suppliers.condition_desc_placeholder')}">
       <input class="input dec-cond-days" type="number" min="1" max="365" value="30"
         style="width:60px;font-size:12px;" title="Días para cumplir">
       <button type="button" class="btn btn-sm" style="padding:4px 8px;color:#dc2626;"
@@ -1401,7 +1401,7 @@ const ViewSuppliers = (() => {
           </label>
         </div>
         <button type="button" style="font-size:12px;background:none;border:none;color:#dc2626;cursor:pointer;padding:0;line-height:1;"
-          onclick="this.closest('.gc-chain-row').remove()" title="Eliminar item">X</button>
+          onclick="this.closest('.gc-chain-row').remove()" title="${t('suppliers.remove_item')}">X</button>
       </div>`;
   }
 
@@ -1714,7 +1714,7 @@ const ViewSuppliers = (() => {
         </label>` : ''}
       </div>
       <div id="file-doc-desc-row" style="display:none;gap:6px;align-items:center;margin-bottom:12px;">
-        <input id="file-doc-desc" class="input" placeholder="Descripción del documento (opcional)" style="flex:1;font-size:12px;">
+        <input id="file-doc-desc" class="input" placeholder="${t('suppliers.doc_desc_placeholder')}" style="flex:1;font-size:12px;">
         <button id="file-doc-confirm" class="btn btn-sm btn-primary">Subir</button>
         <button id="file-doc-cancel" class="btn btn-sm">Cancelar</button>
       </div>
@@ -1844,7 +1844,7 @@ const ViewSuppliers = (() => {
       });
       wrap.querySelectorAll('.sup-doc-del').forEach(btn => {
         btn.onclick = async () => {
-          if (!confirm('Eliminar este documento?')) return;
+          if (!confirm(t('suppliers.confirm_delete_document'))) return;
           try {
             await Api.suppliers.deleteDocument(supplierId, btn.dataset.docId);
             UI.toast('Documento eliminado', 'success');
@@ -1869,24 +1869,24 @@ const ViewSuppliers = (() => {
       }
       const fields = result.updated_fields || [];
       if (!fields.length) {
-        UI.toast('El agente no encontro campos nuevos que añadir (todos ya estaban rellenos).', 'info');
+        UI.toast(t('suppliers.agent_no_new_fields'), 'info');
         return;
       }
       const fieldLabels = {
-        name: 'Nombre', description: 'Descripcion', services: 'Servicios',
-        category: 'Categoria', vendor_type: 'Tipo de proveedor',
-        contact_name: 'Contacto principal', contact_email: 'Email principal',
-        cc_email: 'Email CC', website: 'Web', country_code: 'Pais',
-        contract_ref: 'Referencia contrato', contract_expiry: 'Vencimiento contrato',
-        location: 'Ubicacion', department: 'Departamento',
-        certifications: 'Certificaciones', notes: 'Notas',
-        is_data_processor: 'Encargado GDPR', processes_personal_data: 'Trata datos personales',
-        cross_border_transfers: 'Transferencias internacionales',
-        is_critical: 'Crítico NIS2', is_nis2: 'NIS2', is_dora: 'DORA', is_ens: 'ENS',
-        data_sensitivity: 'Sensibilidad datos', data_volume: 'Volumen datos',
-        system_access_type: 'Acceso a sistemas', business_criticality: 'Criticidad negocio',
-        geographic_risk: 'Riesgo geografico', business_importance: 'Importancia negocio',
-        slas: 'SLAs', additional_contacts: 'Contactos adicionales',
+        name: t('suppliers.field_name'), description: t('suppliers.field_description'), services: t('suppliers.field_services'),
+        category: t('suppliers.field_category'), vendor_type: t('suppliers.field_vendor_type'),
+        contact_name: t('suppliers.field_contact_name'), contact_email: t('suppliers.field_contact_email'),
+        cc_email: t('suppliers.field_cc_email'), website: t('suppliers.field_website'), country_code: t('suppliers.field_country_code'),
+        contract_ref: t('suppliers.field_contract_ref'), contract_expiry: t('suppliers.field_contract_expiry'),
+        location: t('suppliers.field_location'), department: t('suppliers.field_department'),
+        certifications: t('suppliers.field_certifications'), notes: t('suppliers.field_notes'),
+        is_data_processor: t('suppliers.field_is_data_processor'), processes_personal_data: t('suppliers.field_processes_personal_data'),
+        cross_border_transfers: t('suppliers.field_cross_border_transfers'),
+        is_critical: t('suppliers.field_is_critical'), is_nis2: 'NIS2', is_dora: 'DORA', is_ens: 'ENS',
+        data_sensitivity: t('suppliers.field_data_sensitivity'), data_volume: t('suppliers.field_data_volume'),
+        system_access_type: t('suppliers.field_system_access_type'), business_criticality: t('suppliers.field_business_criticality'),
+        geographic_risk: t('suppliers.field_geographic_risk'), business_importance: t('suppliers.field_business_importance'),
+        slas: 'SLAs', additional_contacts: t('suppliers.field_additional_contacts'),
       };
       const fieldList = fields.map(f => fieldLabels[f] || f).join(', ');
       UI.toast(`${fields.length} campo(s) actualizados: ${fieldList}`, 'success');
@@ -1931,7 +1931,7 @@ const ViewSuppliers = (() => {
                 `<option value="${c}" ${(sla.category||'other')===c?'selected':''}>${c}</option>`
               ).join('')}
             </select>
-            <input class="input sla-desc" data-idx="${i}" placeholder="Descripción breve" value="${UI.esc(sla.description||'')}" style="font-size:12px;">
+            <input class="input sla-desc" data-idx="${i}" placeholder="${t('suppliers.short_desc_placeholder')}" value="${UI.esc(sla.description||'')}" style="font-size:12px;">
           </div>
           <button type="button" class="btn btn-sm btn-danger sla-del" data-idx="${i}" style="padding:3px 8px;font-size:12px;margin-top:2px;">X</button>
         </div>
@@ -2056,10 +2056,10 @@ const ViewSuppliers = (() => {
     try {
       if (s) {
         await Api.suppliers.update(s.id, payload);
-        UI.toast('Proveedor actualizado', 'success');
+        UI.toast(t('suppliers.supplier_updated'), 'success');
       } else {
         await Api.suppliers.create(payload);
-        UI.toast('Proveedor creado', 'success');
+        UI.toast(t('suppliers.supplier_created'), 'success');
       }
       UI.closeModal();
       await _loadStats();
@@ -2068,10 +2068,10 @@ const ViewSuppliers = (() => {
   }
 
   function _openImport() {
-    UI.modal('Importar proveedores', `
+    UI.modal(t('suppliers.import_suppliers'), `
       <div class="span2">
         <p style="font-size:13px;margin-bottom:8px;">Sube un fichero exportado desde Excel u otra herramienta de gestión (OneTrust, ERP, hoja de compras...). Formatos: <strong>CSV, XLSX, XLS, ODS, TSV, JSON</strong>.</p>
-        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Se detectan automáticamente columnas como nombre, categoría, contacto, email, servicios, web, pais y CIF/NIF/VAT (en español o ingles). Los proveedores ya existentes (por nombre) se omiten. Se calcula el tier y el riesgo de cada uno tras importar.</p>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">${t('suppliers.import_autodetect')}</p>
         <input type="file" id="imp-file" accept=".csv,.xlsx,.xls,.ods,.tsv,.json" class="input">
         <div id="imp-result" style="margin-top:12px;"></div>
       </div>
@@ -2093,11 +2093,11 @@ const ViewSuppliers = (() => {
         const cols = Object.entries(r.detected_columns || {}).map(([k, v]) => `${k} &larr; "${UI.esc(v)}"`).join(', ');
         resWrap.innerHTML = `
           <div class="notice" style="border-color:var(--risk-low);">
-            <strong>${r.created}</strong> proveedores creados, <strong>${r.skipped}</strong> omitidos (de ${r.total} filas).
+            ${t('suppliers.import_result_detail', {created: r.created, skipped: r.skipped, total: r.total})}
             ${cols ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Columnas detectadas: ${cols}</div>` : ''}
             ${(r.errors && r.errors.length) ? `<div style="font-size:11px;color:var(--risk-high);margin-top:6px;">Errores: ${r.errors.map(UI.esc).join('; ')}</div>` : ''}
           </div>`;
-        UI.toast(`${r.created} proveedores importados`, 'success');
+        UI.toast(t('suppliers.suppliers_imported', {n: r.created}), 'success');
         await _loadStats();
         await _refresh();
       } catch (e) {
@@ -2116,7 +2116,7 @@ const ViewSuppliers = (() => {
       <div id="seq-my-tasks"></div>
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
         <select id="seq-sup-filter" class="input" style="width:220px;">
-          <option value="">Todos los proveedores</option>
+          <option value="">${t('suppliers.all_suppliers_opt')}</option>
         </select>
         <select id="seq-type-filter" class="input" style="width:180px;">
           <option value="">Todos los tipos</option>
@@ -2182,7 +2182,7 @@ const ViewSuppliers = (() => {
       let data = await Api.supplier_questionnaires.list(params);
       if (typeFilter) data = data.filter(q => (q.assignment_type || 'external') === typeFilter);
       if (!data.length) {
-        wrap.innerHTML = '<p style="color:var(--text-muted);margin-top:24px;text-align:center;">Sin cuestionarios enviados. Crea uno para enviar el enlace publico al proveedor.</p>';
+        wrap.innerHTML = '<p style="color:var(--text-muted);margin-top:24px;text-align:center;">${t('suppliers.no_questionnaires')}</p>';
         return;
       }
       const now = new Date();
@@ -2238,7 +2238,7 @@ const ViewSuppliers = (() => {
                 ${Auth.canEdit() && !q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-id="${q.id}" data-act="link" title="Copiar enlace publico">Enlace</button>` : ''}
                 ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm" data-id="${q.id}" data-act="assign" title="Asignar a usuario interno">Asignar</button>` : ''}
                 ${isInternal && !q.submitted_at ? `<button class="btn btn-sm btn-primary" data-id="${q.id}" data-act="fill-internal" title="Responder internamente">Responder</button>` : ''}
-                ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm btn-danger" data-id="${q.id}" data-act="del">Eliminar</button>` : ''}
+                ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm btn-danger" data-id="${q.id}" data-act="del">${t('common.delete')}</button>` : ''}
               </td>
             </tr>`;
           }).join('')}
@@ -2263,7 +2263,7 @@ const ViewSuppliers = (() => {
       });
       wrap.querySelectorAll('[data-act="del"]').forEach(btn => {
         btn.onclick = async () => {
-          if (!await UI.confirm('Eliminar este cuestionario?')) return;
+          if (!await UI.confirm(t('suppliers.confirm_delete_questionnaire'))) return;
           try { await Api.supplier_questionnaires.del(btn.dataset.id); UI.toast('Eliminado','success'); _reloadSeq(); }
           catch (e) { UI.toast(e.message,'error'); }
         };
@@ -2271,7 +2271,7 @@ const ViewSuppliers = (() => {
       wrap.querySelectorAll('[data-act="send"]').forEach(btn => {
         btn.onclick = async () => {
           btn.disabled = true;
-          UI.toast('Enviando email al proveedor...', 'info');
+          UI.toast(t('suppliers.sending_email'), 'info');
           try {
             const r = await Api.supplier_questionnaires.send(btn.dataset.id);
             UI.toast('Cuestionario enviado a ' + r.recipient, 'success');
@@ -2539,7 +2539,7 @@ const ViewSuppliers = (() => {
     try { suppliers = await Api.suppliers.list(); } catch (_) {}
     try { templates = await Api.tprm.templates(); } catch (_) {}
     try { customTpls = await Api.tprm.customTemplates(); } catch (_) {}
-    UI.modal('Nuevo cuestionario de seguridad', `
+    UI.modal(t('suppliers.new_security_questionnaire'), `
       <div><label>Proveedor *</label>
         <select id="sq-sup">
           <option value="">- Seleccionar -</option>
@@ -2580,7 +2580,7 @@ const ViewSuppliers = (() => {
     document.getElementById('m-save').onclick = async () => {
       const supId = document.getElementById('sq-sup').value;
       const title = document.getElementById('sq-title').value.trim();
-      if (!supId) { UI.toast('Selecciona un proveedor','error'); return; }
+      if (!supId) { UI.toast(t('suppliers.select_supplier'),'error'); return; }
       if (!title) { UI.toast('El título es obligatorio','error'); return; }
       const expires = document.getElementById('sq-expires').value;
       const tplVal = document.getElementById('sq-template').value || '';
@@ -2620,7 +2620,7 @@ const ViewSuppliers = (() => {
     wrap.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
         <select id="sched-sup-filter" class="input" style="width:220px;">
-          <option value="">Todos los proveedores</option>
+          <option value="">${t('suppliers.all_suppliers_opt')}</option>
         </select>
       </div>
       <div id="sched-list">Cargando...</div>
@@ -2675,7 +2675,7 @@ const ViewSuppliers = (() => {
                 ${Auth.canEdit() ? `
                   <button class="btn btn-sm" data-id="${sc.id}" data-sc-act="edit">Editar</button>
                   <button class="btn btn-sm" data-id="${sc.id}" data-sc-act="toggle">${sc.enabled ? 'Pausar' : 'Activar'}</button>
-                  <button class="btn btn-sm btn-danger" data-id="${sc.id}" data-sc-act="del">Eliminar</button>
+                  <button class="btn btn-sm btn-danger" data-id="${sc.id}" data-sc-act="del">${t('common.delete')}</button>
                 ` : ''}
               </td>
             </tr>`;
@@ -2702,7 +2702,7 @@ const ViewSuppliers = (() => {
       });
       wrap.querySelectorAll('[data-sc-act="del"]').forEach(btn => {
         btn.onclick = async () => {
-          if (!confirm('Eliminar esta planificación?')) return;
+          if (!confirm(t('suppliers.confirm_delete_schedule'))) return;
           try {
             await Api.questionnaire_schedules.del(btn.dataset.id);
             UI.toast('Planificación eliminada', 'success');
@@ -2720,7 +2720,7 @@ const ViewSuppliers = (() => {
     try { customTpls = await Api.tprm.customTemplates(); } catch (_) {}
     const v = sc || {};
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 16);
-    UI.modal(sc ? 'Editar planificación' : 'Nueva planificación periódica', `
+    UI.modal(sc ? t('suppliers.edit_schedule') : t('suppliers.new_periodic_schedule'), `
       <div><label>Proveedor *</label>
         <select id="sc-sup">
           <option value="">- Seleccionar -</option>
@@ -2769,7 +2769,7 @@ const ViewSuppliers = (() => {
     document.getElementById('m-save').onclick = async () => {
       const supId = document.getElementById('sc-sup').value;
       const title = document.getElementById('sc-title').value.trim();
-      if (!supId) { UI.toast('Selecciona un proveedor', 'error'); return; }
+      if (!supId) { UI.toast(t('suppliers.select_supplier'), 'error'); return; }
       if (!title) { UI.toast('El título es obligatorio', 'error'); return; }
       const tplVal = document.getElementById('sc-template').value || '';
       const payload = {
@@ -2853,7 +2853,7 @@ const ViewSuppliers = (() => {
                 ${Auth.canEdit() ? `
                   <button class="btn btn-sm" data-id="${f.id}" data-fl-act="edit">Editar flujo</button>
                   <button class="btn btn-sm btn-primary" data-id="${f.id}" data-fl-act="apply">Aplicar a proveedor</button>
-                  <button class="btn btn-sm btn-danger" data-id="${f.id}" data-fl-act="del">Eliminar</button>
+                  <button class="btn btn-sm btn-danger" data-id="${f.id}" data-fl-act="del">${t('common.delete')}</button>
                 ` : ''}
               </div>
             </div>
@@ -2875,7 +2875,7 @@ const ViewSuppliers = (() => {
       });
       wrap.querySelectorAll('[data-fl-act="del"]').forEach(btn => {
         btn.onclick = async () => {
-          if (!confirm('Eliminar este flujo?')) return;
+          if (!confirm(t('suppliers.confirm_delete_flow'))) return;
           try {
             await Api.questionnaire_flows.del(btn.dataset.id);
             UI.toast('Flujo eliminado', 'success');
@@ -3015,9 +3015,9 @@ const ViewSuppliers = (() => {
       }
     }
 
-    UI.modal(flow ? `Editar flujo: ${UI.esc(flow.name)}` : 'Nuevo flujo de cuestionarios', `
+    UI.modal(flow ? t('suppliers.edit_flow', {name: UI.esc(flow.name)}) : t('suppliers.new_questionnaire_flow'), `
       <div class="span2"><label>Nombre del flujo *</label>
-        <input id="fl-name" class="input" value="${UI.esc(flow?.name || '')}" placeholder="Ej: Evaluación proveedores críticos">
+        <input id="fl-name" class="input" value="${UI.esc(flow?.name || '')}" placeholder="${t('suppliers.flow_name_placeholder')}">
       </div>
       <div class="span2"><label>Descripción</label>
         <textarea id="fl-desc" class="input" rows="2">${UI.esc(flow?.description || '')}</textarea>
@@ -3081,7 +3081,7 @@ const ViewSuppliers = (() => {
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-apply').onclick = async () => {
       const supId = document.getElementById('apply-sup').value;
-      if (!supId) { UI.toast('Selecciona un proveedor', 'error'); return; }
+      if (!supId) { UI.toast(t('suppliers.select_supplier'), 'error'); return; }
       try {
         const r = await Api.questionnaire_flows.apply(flow.id, supId);
         UI.closeModal();
