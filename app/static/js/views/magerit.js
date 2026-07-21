@@ -140,7 +140,7 @@ const ViewMagerit = (() => {
     const el = document.getElementById('magerit-threats-body');
     if (!threats.length) {
       el.innerHTML = `<div style="text-align:center;padding:32px;color:#9d9d9d;">
-        No hay amenazas cargadas. Pulsa "Cargar amenazas MAGERIT".</div>`;
+        ${t('ui_views.mag_no_threats')}</div>`;
       return;
     }
     const groups = {};

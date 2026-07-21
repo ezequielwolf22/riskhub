@@ -30,7 +30,7 @@ const ViewAiDocuments = (() => {
   // ISMS analysis status (v1.7.4)
   const ISMS_LABELS = () => ({
     analysing: t('ai.analyzing'),
-    analysed:  t('isms_documents.status.analyzed') || 'Analizado',
+    analysed:  t('isms_documents.status.analyzed') || t('ui_views.aidoc_analyzed'),
     skipped:   t('isms_documents.status_skipped'),
     error:     t('common.error') + ' IA',
   });
@@ -198,7 +198,7 @@ const ViewAiDocuments = (() => {
           </button>
 ` : ''}
           <label class="btn btn-primary" style="cursor:pointer;font-size:13px;"
-                 title="Selecciona uno o varios archivos (PDF, DOCX, TXT, CSV, JPG, PNG)">
+                 title="${t('ui_views.aidoc_select_files')}">
             + ${t('ai.upload_document')}
             <input type="file" id="aid-file-input"
                    accept=".pdf,.docx,.txt,.csv,.jpg,.jpeg,.png" multiple style="display:none;">
@@ -234,7 +234,7 @@ const ViewAiDocuments = (() => {
             <tr>
               <th>${t('common.document')}</th>
               <th>${t('common.category')}</th>
-              <th>${t('isms_documents.status.analyzed') || 'Estado indexado'}</th>
+              <th>${t('isms_documents.status.analyzed') || t('ui_views.aidoc_indexed_status')}</th>
               <th>${t('ai.analyze_document')}</th>
               <th>${t('common.result')}</th>
               <th>Fragmentos</th>
@@ -404,7 +404,7 @@ const ViewAiDocuments = (() => {
                 ${isPending ? `
                   <select class="input" style="font-size:11px;padding:3px 6px;height:auto;
                                                min-width:180px;flex-shrink:0;"
-                          title="El agente IA reclasificara automáticamente tras analizar el contenido"
+                          title="${t('ui_views.aidoc_reclassify_hint')}"
                           data-qid="${item.id}" onchange="ViewAiDocuments._setQueueCat(${item.id}, this.value)">
                     <option value="other" ${item.category === 'other' ? 'selected' : ''}>Auto (IA detecta categoría)</option>
                     ${Object.entries(catLabels).filter(([v]) => v !== 'other').map(([v, l]) =>
@@ -494,7 +494,7 @@ const ViewAiDocuments = (() => {
     _updateStats();
 
     if (ok > 0 && fail === 0) {
-      UI.toast(`${ok} documento${ok !== 1 ? 's' : ''} subido${ok !== 1 ? 's' : ''} correctamente — análisis ISMS iniciado`, 'success');
+      UI.toast(t('ui_views.aidoc_uploaded_ok', {n: ok}), 'success');
     } else if (ok > 0 && fail > 0) {
       UI.toast(`${ok} subidos, ${fail} con error`, 'error');
     } else {
@@ -561,11 +561,11 @@ const ViewAiDocuments = (() => {
       const madurezLink = d.isms_status === 'analysed'
         ? `&nbsp;<span onclick="ViewAiDocuments._showMaturityModal(${d.id})"
               style="cursor:pointer;font-size:11px;color:var(--brand-purple);text-decoration:underline;"
-              title="Ver nivel de madurez y gap analysis por control">Ver madurez</span>`
+              title="${t('ui_views.aidoc_view_maturity')}">Ver madurez</span>`
         : '';
       parts.push(`<span>
         <a href="#/controls" style="font-size:11px;color:var(--risk-low);"
-           title="Ver controles actualizados por este documento">
+           title="${t('ui_views.aidoc_view_updated')}">
           ${d.isms_controls_updated} control${d.isms_controls_updated !== 1 ? 'es' : ''} actualizados
         </a>${madurezLink}
       </span>`);
@@ -641,7 +641,7 @@ const ViewAiDocuments = (() => {
     }
 
     if (!controls.length) {
-      UI.toast('No se encontraron controles vinculados a este documento. Re-analiza para generar el gap analysis.', 'info');
+      UI.toast(t('ui_views.aidoc_no_controls'), 'info');
       return;
     }
 
@@ -913,7 +913,7 @@ const ViewAiDocuments = (() => {
     } catch (e) {
       UI.toast(t('common.error') + ': ' + e.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = `Re-analizar todos`; }
+      if (btn) { btn.disabled = false; btn.textContent = t('ui_views.aidoc_reanalyze_all'); }
     }
   }
 

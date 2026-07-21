@@ -447,8 +447,8 @@ const ViewUsers = {
           isSuperAdmin ? ViewUsers._reloadSuperAdmin() : ViewUsers._reload();
           if (created && created.otp_password) {
             const emailInfo = created.otp_email_sent
-              ? 'La contraseña temporal ha sido enviada al email del usuario.'
-              : 'No hay SMTP configurado. Comunica la contraseña manualmente.';
+              ? t('ui_views.usr_pass_emailed')
+              : t('ui_views.usr_no_smtp');
             UI.modal(`${t('users.new')} — OTP`, `
               <div class="span2">
                 <p style="margin-bottom:12px;">
@@ -487,8 +487,8 @@ const ViewUsers = {
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
             <h3 style="margin:0;">Información del sistema</h3>
             <div style="display:flex;gap:8px;">
-              ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-vulns">Limpiar vulnerabilidades en riesgos</button>` : ''}
-              ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-ctrls">Limpiar controles en riesgos</button>` : ''}
+              ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-vulns">${t('ui_views.usr_cleanup_vulns')}</button>` : ''}
+              ${Auth.isAdmin() ? `<button class="btn btn-secondary" id="btn-cleanup-ctrls">${t('ui_views.usr_cleanup_ctrls')}</button>` : ''}
               ${Auth.isSuperAdmin() ? `<button class="btn btn-ghost" id="btn-backup">Descargar backup DB</button>` : ''}
             </div>
           </div>
@@ -509,9 +509,7 @@ const ViewUsers = {
       if (btnCleanup) {
         btnCleanup.onclick = async () => {
           if (!await UI.confirm(
-            'Esto reemplazara automáticamente las vulnerabilidades de TODOS los riesgos ' +
-            'con las que corresponden a su amenaza según el catálogo ISO 27005.\n\n' +
-            'Los controles existentes no se modifican. Continuar?'
+            t('ui_views.usr_confirm_vulns')
           )) return;
           btnCleanup.disabled = true;
           btnCleanup.textContent = 'Procesando...';
@@ -533,8 +531,8 @@ const ViewUsers = {
                 <div style="font-weight:600;margin-bottom:10px;">
                   Limpieza completada: <span style="color:#059669;">${r.fixed} corregidos</span>
                   de ${r.checked} riesgos revisados
-                  ${r.already_correct ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.already_correct} ya eran correctos)</span>` : ''}
-                  ${r.no_catalog_match ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">(${r.no_catalog_match} amenazas sin catálogo)</span>` : ''}
+                  ${r.already_correct ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">${t('ui_views.usr_already_correct', {n: r.already_correct})}</span>` : ''}
+                  ${r.no_catalog_match ? `<span style="color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px;">${t('ui_views.usr_no_catalog_match', {n: r.no_catalog_match})}</span>` : ''}
                 </div>
                 ${fixedRows ? `
                   <div style="overflow-x:auto;">
@@ -547,14 +545,14 @@ const ViewUsers = {
                       </tr></thead>
                       <tbody>${fixedRows}</tbody>
                     </table>
-                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">Todos los riesgos ya tenian las vulnerabilidades correctas.</div>'}
+                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">${t('ui_views.usr_all_vulns_ok')}</div>'}
               </div>`;
-            UI.toast(`${r.fixed} riesgos corregidos`, r.fixed > 0 ? 'success' : 'info');
+            UI.toast(t('ui_views.usr_risks_fixed', {n: r.fixed}), r.fixed > 0 ? 'success' : 'info');
           } catch (e) {
             UI.toast('Error en limpieza: ' + e.message, 'error');
           } finally {
             btnCleanup.disabled = false;
-            btnCleanup.textContent = 'Limpiar vulnerabilidades en riesgos';
+            btnCleanup.textContent = t('ui_views.usr_cleanup_vulns');
           }
         };
       }
@@ -563,9 +561,7 @@ const ViewUsers = {
       if (btnCleanupCtrls) {
         btnCleanupCtrls.onclick = async () => {
           if (!await UI.confirm(
-            'Esto reemplazara automáticamente los controles de TODOS los riesgos ' +
-            'con los que corresponden a su amenaza y vulnerabilidades según ISO 27002.\n\n' +
-            'Se asignaran los 10 controles mas maduros y relevantes por riesgo. Continuar?'
+            t('ui_views.usr_confirm_ctrls')
           )) return;
           btnCleanupCtrls.disabled = true;
           btnCleanupCtrls.textContent = 'Procesando...';
@@ -602,14 +598,14 @@ const ViewUsers = {
                       </tr></thead>
                       <tbody>${fixedRows}</tbody>
                     </table>
-                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">Todos los riesgos ya tenian los controles correctos.</div>'}
+                  </div>` : '<div style="color:var(--text-muted);font-size:13px;">${t('ui_views.usr_all_ctrls_ok')}</div>'}
               </div>`;
-            UI.toast(`${r.fixed} riesgos con controles corregidos`, r.fixed > 0 ? 'success' : 'info');
+            UI.toast(t('ui_views.usr_risks_ctrls_fixed', {n: r.fixed}), r.fixed > 0 ? 'success' : 'info');
           } catch (e) {
-            UI.toast('Error en limpieza de controles: ' + e.message, 'error');
+            UI.toast(t('ui_views.usr_cleanup_ctrls_err', {msg: e.message}), 'error');
           } finally {
             btnCleanupCtrls.disabled = false;
-            btnCleanupCtrls.textContent = 'Limpiar controles en riesgos';
+            btnCleanupCtrls.textContent = t('ui_views.usr_cleanup_ctrls');
           }
         };
       }
@@ -620,7 +616,7 @@ const ViewUsers = {
           btnBackup.disabled = true; btnBackup.textContent = 'Descargando...';
           try {
             await Api.admin.backupDb();
-            UI.toast('Backup descargado correctamente', 'success');
+            UI.toast(t('ui_views.usr_backup_downloaded'), 'success');
           } catch (e) {
             UI.toast('Error al descargar backup: ' + e.message, 'error');
           } finally {

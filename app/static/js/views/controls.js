@@ -108,11 +108,11 @@ const ViewControls = {
   _FRAMEWORK_GROUPS: {
     iso27001: null,
     ens: [
-      { id: 'identificacion', label: 'Identificación — Marco organizativo y gestión de riesgos', keywords: ['organizational', 'risk', 'governance', 'policy'] },
-      { id: 'proteccion',     label: 'Protección — Medidas técnicas y organizativas (Anexo II)',  keywords: ['access', 'cryptography', 'physical', 'network', 'human', 'asset'] },
-      { id: 'deteccion',      label: 'Detección — Monitorización y detección de incidentes',      keywords: ['monitoring', 'detection', 'audit', 'log'] },
-      { id: 'respuesta',      label: 'Respuesta — Gestión de incidentes y comunicación',           keywords: ['incident', 'response', 'communication'] },
-      { id: 'recuperacion',   label: 'Recuperación — Continuidad y recuperación',                 keywords: ['recovery', 'continuity', 'backup', 'resilience'] },
+      { id: 'identificacion', label: t('ui_views.ens_identification'), keywords: ['organizational', 'risk', 'governance', 'policy'] },
+      { id: 'proteccion',     label: t('ui_views.ens_protection'),  keywords: ['access', 'cryptography', 'physical', 'network', 'human', 'asset'] },
+      { id: 'deteccion',      label: t('ui_views.ens_detection'),      keywords: ['monitoring', 'detection', 'audit', 'log'] },
+      { id: 'respuesta',      label: t('ui_views.ens_response'),           keywords: ['incident', 'response', 'communication'] },
+      { id: 'recuperacion',   label: t('ui_views.ens_recovery'),                 keywords: ['recovery', 'continuity', 'backup', 'resilience'] },
     ],
     nist_csf: [
       { id: 'GOVERN',   label: 'GV — Govern',   concepts: ['govern'] },
@@ -361,9 +361,9 @@ const ViewControls = {
             <td>${UI.controlStatusLabel(i.status)}</td>
             <td>
               ${ViewControls._maturityBar(i.maturity)}
-              ${i.notes && i.notes.includes('nivel') ? `<div style="font-size:10px;color:var(--brand-purple);margin-top:2px;" title="${UI.esc(i.notes.slice(0,300))}">Gap IA disponible</div>` : ''}
+              ${i.notes && i.notes.includes('nivel') ? `<div style="font-size:10px;color:var(--brand-purple);margin-top:2px;" title="${UI.esc(i.notes.slice(0,300))}">${t('ui_views.ctrl_gap_ai_available')}</div>` : ''}
             </td>
-            <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};" title="${rc} riesgo${rc!==1?'s':''} mitigado${rc!==1?'s':''}">${rc}</td>
+            <td style="text-align:center;font-weight:700;font-family:var(--font-mono);font-size:13px;color:${rcColor};" title="${t('ui_views.ctrl_risks_mitigated', {n: rc})}">${rc}</td>
             <td style="font-size:12px;">${i.next_review
               ? `<span style="color:${reviewOverdue?'var(--risk-high)':'inherit'};font-weight:${reviewOverdue?'700':'400'};">${new Date(i.next_review).toLocaleDateString()}</span>${reviewOverdue?' <span style="font-size:10px;background:#FEF9C3;color:#92400E;border-radius:3px;padding:1px 4px;">REVISIÓN</span>':''}`
               : '-'}</td>
@@ -403,10 +403,10 @@ const ViewControls = {
     try {
       const r = await Api.impls.propagate(id);
       const msg = [
-        r.step1_recalculated ? `${r.step1_recalculated} riesgos vinculados recalculados` : null,
-        r.step2_candidates_evaluated ? `${r.step2_candidates_evaluated} candidatos evaluados` : null,
-        r.step2_linked ? `${r.step2_linked} nuevos vinculos creados` : null,
-      ].filter(Boolean).join(' · ') || r.message || 'Propagacion completada';
+        r.step1_recalculated ? t('ui_views.ctrl_recalc_risks', {n: r.step1_recalculated}) : null,
+        r.step2_candidates_evaluated ? t('ui_views.ctrl_candidates_eval', {n: r.step2_candidates_evaluated}) : null,
+        r.step2_linked ? t('ui_views.ctrl_new_links', {n: r.step2_linked}) : null,
+      ].filter(Boolean).join(' · ') || r.message || t('ui_views.ctrl_propagation_done');
       UI.toast(msg, 'success');
       ViewControls._renderImpls();
     } catch (e) {
@@ -480,8 +480,8 @@ const ViewControls = {
       </div>
       <div><label>${t('controls.inclusion_reason')}</label>
         <select id="f-incl-reason">
-          <option value="">— Seleccionar —</option>
-          ${[['legal','Legal / regulatorio'],['contractual','Contractual'],['risk','Gestión de riesgo'],['best_practice','Buena práctica']]
+          <option value="">${t('ui_views.reason_select')}</option>
+          ${[['legal',t('ui_views.reason_legal')],['contractual',t('ui_views.reason_contractual')],['risk',t('ui_views.reason_risk')],['best_practice',t('ui_views.reason_best_practice')]]
             .map(([v,l]) => `<option value="${v}" ${data.inclusion_reason===v?'selected':''}>${l}</option>`).join('')}
         </select>
       </div>
