@@ -29,15 +29,15 @@ const ViewAssets = {
             <input type="file" id="file-import" accept="*" multiple style="display:none;">
           </label>
           <button class="btn btn-ghost" id="btn-analyze-pending"
-                  title="Analiza activos sin analizar y los que tuvieron error (no toca los ya analizados)">
+                  title="${t('assets.hint_analyze_pending')}">
             ${t('assets.analyze_pending')}
           </button>
           <button class="btn btn-ghost" id="btn-analyze-cia"
-                  title="Re-analiza solo los activos con todas las dimensiones ENS a 0 para que la IA las estime">
+                  title="${t('assets.hint_analyze_ens')}">
             ${t('assets.estimate_ens')}
           </button>
           <button class="btn btn-ghost" id="btn-analyze-all"
-                  title="Fuerza el re-analisis de TODOS los activos con IA">
+                  title="${t('assets.hint_analyze_all')}">
             ${t('assets.reanalyze_all')}
           </button>
           <button class="btn btn-primary" id="btn-new">+ ${t('assets.new')}</button>
@@ -146,7 +146,7 @@ const ViewAssets = {
         if (!est) return UI.confirm(prefix);
         const lines = [
           prefix, '',
-          `Se analizarán ${est.to_analyze} activos` +
+          t('assets.will_analyze_n', {n: est.to_analyze}) +
             (est.covered_by_groups ? ` (${est.covered_by_groups} más quedan cubiertos por sus grupos validados)` : ''),
           `Modelos: ${est.normal} con ${est.model_fast}, ${est.critical} críticos con ${est.model_deep}`,
           `Coste estimado en la API de IA: ~$${est.estimated_cost_usd} USD` +
@@ -158,18 +158,18 @@ const ViewAssets = {
       const btnPending = document.getElementById('btn-analyze-pending');
       if (btnPending) {
         btnPending.onclick = async () => {
-          if (!await _confirmWithCost('¿Analizar los activos pendientes con IA?')) return;
+          if (!await _confirmWithCost(t('assets.confirm_analyze_pending'))) return;
           btnPending.disabled = true;
           btnPending.textContent = 'Lanzando...';
           try {
             // reset-stuck resetea atascados y lanza pendientes en una sola llamada
             const r = await Api.assets.resetStuck();
             if (r.pending === 0 && r.stuck_reset === 0) {
-              UI.toast('Todos los activos ya están analizados', 'info');
+              UI.toast(t('assets.all_analyzed'), 'info');
             } else {
               const stuckMsg = r.stuck_reset > 0 ? ` (${r.stuck_reset} atascados reseteados)` : '';
               UI.toast(
-                `Análisis iniciado para ${r.pending} activos pendientes${stuckMsg}.`,
+                t('assets.analysis_started', {n: r.pending, extra: stuckMsg}),
                 'success', 6000
               );
             }
@@ -179,7 +179,7 @@ const ViewAssets = {
             UI.toast('Error: ' + e.message, 'error');
           } finally {
             btnPending.disabled = false;
-            btnPending.textContent = 'Analizar pendientes';
+            btnPending.textContent = t('assets.btn_analyze_pending');
           }
         };
       }
@@ -192,7 +192,7 @@ const ViewAssets = {
           try {
             const r = await Api.assets.analyzeCiaZero();
             if (r.total === 0) {
-              UI.toast('Todos los activos ya tienen dimensiones ENS valoradas', 'info');
+              UI.toast(t('assets.all_ens_valued'), 'info');
             } else {
               UI.toast(`${r.total} activos con dimensiones ENS a 0 — análisis lanzado. La IA estimará C, I, D, Autenticidad y Trazabilidad.`, 'success', 6000);
               ViewAssets._reload();
@@ -219,14 +219,14 @@ const ViewAssets = {
           btnAnalyzeAll.textContent = 'Iniciando...';
           try {
             const r = await Api.assets.analyzeAllForce();
-            UI.toast(`Re-análisis forzado iniciado para ${r.total} activos`, 'success');
+            UI.toast(t('assets.forced_analysis_started', {n: r.total}), 'success');
             ViewAssets._reload();
             ViewAssets._startPollIfNeeded();
           } catch (e) {
             UI.toast('Error: ' + e.message, 'error');
           } finally {
             btnAnalyzeAll.disabled = false;
-            btnAnalyzeAll.textContent = 'Re-analizar todos';
+            btnAnalyzeAll.textContent = t('assets.btn_reanalyze_all');
           }
         };
       }
@@ -251,7 +251,7 @@ const ViewAssets = {
   async _reload() {
     const list = document.getElementById('asset-list');
     if (!list) return;
-    list.innerHTML = '<div class="notice">Cargando...</div>';
+    list.innerHTML = `<div class="notice">${t('common.loading')}</div>`;
     try {
       const data = await Api.assets.list({ limit: 10000 });
       ViewAssets._allAssets = data;
@@ -309,8 +309,8 @@ const ViewAssets = {
     const countEl = document.getElementById('asset-count');
     if (countEl) {
       countEl.textContent = total > ps
-        ? `${start + 1}–${Math.min(start + ps, total)} de ${total} activos`
-        : `${total} activos`;
+        ? t('assets.range_of_assets', {from: start + 1, to: Math.min(start + ps, total), total: total})
+        : t('assets.n_assets', {n: total});
     }
 
     // Banner de estado de análisis IA
@@ -340,10 +340,10 @@ const ViewAssets = {
       const s = a.ai_risk_status;
       if (!s) return `<span style="font-size:10px;color:var(--text-subtle);">-</span>`;
       const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)', skipped: 'var(--text-muted)' };
-      const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error', skipped: 'Sin IA' };
+      const labels = { analysing: t('assets.st_analysing'), analysed: t('assets.st_analysed'), error: 'Error', skipped: t('assets.st_no_ai') };
       const sum = a.ai_risk_summary || {};
       const tip = s === 'analysed'
-        ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
+        ? t('assets.created_updated', {c: sum.risks_created || 0, u: sum.risks_updated || 0})
         : (sum.error || sum.reason || '');
       return `<span style="font-size:10px;font-weight:600;color:${colors[s] || 'var(--text-muted)'};"
                     title="${UI.esc(tip)}">${labels[s] || s}</span>`;
@@ -353,7 +353,7 @@ const ViewAssets = {
       if (!a.group_id) return '';
       return `<span style="font-size:10px;background:var(--brand-purple);color:#fff;
                            padding:2px 6px;border-radius:10px;font-weight:600;"
-                    title="Pertenece a un grupo de activos">GRP</span> `;
+                    title="${t('assets.belongs_to_group')}">GRP</span> `;
     };
 
     const allPageIds = pageData.map(a => a.id);
@@ -365,7 +365,7 @@ const ViewAssets = {
           <th style="width:32px;padding:4px 6px;" onclick="event.stopPropagation()">
             <input type="checkbox" id="chk-all" ${allPageSelected ? 'checked' : ''}
                    style="accent-color:var(--brand-purple);cursor:pointer;"
-                   title="Seleccionar todos en esta página">
+                   title="${t('assets.select_all_page')}">
           </th>
           ${_th('code', t('risks.risk_code'))}${_th('name', t('common.name'))}${_th('type', t('common.type'))}
           <th title="${t('assets.confidentiality')}">C</th>
@@ -403,7 +403,7 @@ const ViewAssets = {
             <td>${UI.riskPill(a.value_max * 2)}</td>
             <td>${UI.esc(a.category || '-')}</td>
             <td style="text-align:center;">
-              <a href="#/risks?asset_id=${a.id}" title="Ver riesgos de este activo"
+              <a href="#/risks?asset_id=${a.id}" title="${t('assets.view_asset_risks')}"
                  style="font-weight:700;font-family:var(--font-mono);font-size:13px;
                         color:${rcColor};text-decoration:none;">${rc}</a>
             </td>
@@ -415,7 +415,7 @@ const ViewAssets = {
               ${Auth.canEdit() && (!a.ai_risk_status || a.ai_risk_status === 'error' || a.ai_risk_status === 'skipped')
                 ? `<button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;"
                            data-analyze="${a.id}"
-                           title="Analizar riesgos con IA para este activo">&#9881; IA</button>`
+                           title="${t('assets.analyze_asset_ai')}">&#9881; IA</button>`
                 : ''}
             </td>
           </tr>`;
@@ -588,7 +588,7 @@ const ViewAssets = {
             <span style="color:#166534;">
               <strong>${s.analysed}</strong>/${s.total} analizados (${pct}%)
               ${hasError ? `&nbsp;·&nbsp;<span style="color:#dc2626;">${s.error} con error</span>` : ''}
-              ${(s.total - s.analysed - s.skipped - s.error) > 0 ? `&nbsp;·&nbsp;<span style="color:#92400E;">${s.total - s.analysed - s.skipped - s.error} sin analizar</span>` : ''}
+              ${(s.total - s.analysed - s.skipped - s.error) > 0 ? `&nbsp;·&nbsp;<span style="color:#92400E;">${t('assets.unanalyzed_count', {n: s.total - s.analysed - s.skipped - s.error})}</span>` : ''}
             </span>
             <button class="btn btn-ghost" id="banner-analyze-pending"
                     style="font-size:12px;padding:3px 10px;margin-left:auto;"
@@ -657,19 +657,19 @@ const ViewAssets = {
     const ids = [...ViewAssets._selectedIds];
     if (!ids.length) return;
     const ok = await UI.confirm(
-      `Eliminar ${ids.length} activo${ids.length !== 1 ? 's' : ''}?\n\nEsta acción no se puede deshacer. Los riesgos vinculados quedaran sin activo asociado.`
+      t('assets.confirm_delete_assets', {n: ids.length})
     );
     if (!ok) return;
     const btn = document.getElementById('sel-delete');
     if (btn) { btn.disabled = true; btn.textContent = 'Eliminando...'; }
     try {
       const r = await Api.assets.bulkDelete(ids);
-      UI.toast(`${r.deleted} activo${r.deleted !== 1 ? 's' : ''} eliminado${r.deleted !== 1 ? 's' : ''}`, 'success');
+      UI.toast(t('assets.assets_deleted', {n: r.deleted}), 'success');
       ViewAssets._selectedIds.clear();
       await ViewAssets._reload();
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
-      if (btn) { btn.disabled = false; btn.textContent = `Eliminar ${ids.length} activos`; }
+      if (btn) { btn.disabled = false; btn.textContent = t('assets.btn_delete_n_assets', {n: ids.length}); }
     }
   },
 
@@ -704,7 +704,7 @@ const ViewAssets = {
           const s   = a.ai_risk_status;
           const sum = a.ai_risk_summary || {};
           const tip = s === 'analysed'
-            ? `${sum.risks_created || 0} creados, ${sum.risks_updated || 0} actualizados`
+            ? t('assets.created_updated', {c: sum.risks_created || 0, u: sum.risks_updated || 0})
             : (sum.error || sum.reason || '');
           aiCell.innerHTML = `<span style="font-size:10px;font-weight:600;color:${colors[s] || 'var(--text-muted)'};"
                                     title="${UI.esc(tip)}">${labels[s] || s || '-'}</span>`;
@@ -716,7 +716,7 @@ const ViewAssets = {
         if (countEl) {
           if (stillAnalysing > 0) {
             const done = data.filter(a => a.ai_risk_status === 'analysed').length;
-            countEl.textContent = `Analizando... ${done}/${data.length} completados`;
+            countEl.textContent = t('assets.analyzing_progress', {done: done, total: data.length});
             countEl.style.color = 'var(--brand-orange)';
           } else {
             countEl.style.color = '';
@@ -783,7 +783,7 @@ const ViewAssets = {
   async _renderGroupsResults() {
     const view = document.getElementById('tab-groups-results');
     if (!view) return;
-    view.innerHTML = '<div class="notice">Cargando grupos...</div>';
+    view.innerHTML = `<div class="notice">${t('assets.loading_groups')}</div>`;
     try {
       const groups = await Api.assetGroups.list();
       ViewAssets._drawGroupsResults(view, groups);
@@ -844,13 +844,13 @@ const ViewAssets = {
         ${validated.length ? `
         <button class="btn btn-primary" id="btn-analyze-groups"
                 style="background:var(--brand-purple);"
-                title="Opcion B: analiza los ${validated.length} grupos validados con IA en lugar de analizar activos uno a uno">
+                title="${t('assets.hint_analyze_groups', {n: validated.length})}">
           Analizar grupos con IA (${validated.length})
         </button>` : ''}
         <span style="font-size:12px;color:var(--text-muted);line-height:1.4;">
           ${validated.length
             ? `Opcion B: el agente analiza ${validated.length} grupos en lugar de los activos individuales. Los riesgos se generan sobre el activo representativo del grupo.`
-            : 'Valida los grupos propuestos para habilitar el análisis de riesgo grupal.'}
+            : t('assets.validate_groups_hint')}
         </span>
       </div>` : ''}
       <div id="group-analysis-banner" style="margin-bottom:12px;"></div>
@@ -911,7 +911,7 @@ const ViewAssets = {
       } catch (e) {
         UI.toast('Error: ' + e.message, 'error');
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = `Analizar grupos con IA (${validated.length})`; }
+        if (btn) { btn.disabled = false; btn.textContent = t('assets.btn_analyze_groups', {n: validated.length}); }
       }
     });
 
@@ -1087,12 +1087,12 @@ const ViewAssets = {
                     style="font-size:11px;padding:3px 10px;">Dividir</button>` : ''}
             <button class="btn btn-danger" data-result-action="delete-group" data-gid="${g.id}"
                     style="font-size:11px;padding:3px 10px;"
-                    title="Elimina el grupo pero deja los activos en el inventario">
+                    title="${t('assets.hint_del_group_keep')}">
               Eliminar grupo
             </button>
             <button class="btn btn-danger" data-result-action="delete-with-assets" data-gid="${g.id}"
                     style="font-size:11px;padding:3px 10px;opacity:.8;"
-                    title="Elimina el grupo Y todos sus activos del inventario">
+                    title="${t('assets.hint_del_group_assets')}">
               Eliminar todo
             </button>
           </div>` : ''}
@@ -1118,12 +1118,12 @@ const ViewAssets = {
         </span>
         ${g.status === 'validated' ? (() => {
           const s = g.rep_ai_status;
-          if (!s) return `<span style="margin-left:auto;font-size:11px;color:#92400E;font-weight:600;">Sin analizar — usa "Analizar grupos con IA"</span>`;
+          if (!s) return `<span style="margin-left:auto;font-size:11px;color:#92400E;font-weight:600;">${t('assets.group_unanalyzed')}"Analizar grupos con IA"</span>`;
           const colors = { analysing: 'var(--brand-orange)', analysed: 'var(--risk-low)', error: 'var(--risk-critical)' };
-          const labels = { analysing: 'Analizando...', analysed: 'Analizado', error: 'Error' };
+          const labels = { analysing: t('assets.st_analysing'), analysed: t('assets.st_analysed'), error: 'Error' };
           const sum = g.rep_ai_summary || {};
           const tip = s === 'analysed'
-            ? `${sum.risks_created || 0} riesgos creados, ${sum.risks_updated || 0} actualizados`
+            ? t('assets.risks_created_updated', {c: sum.risks_created || 0, u: sum.risks_updated || 0})
             : (sum.error || '');
           return `<span style="margin-left:auto;font-size:11px;font-weight:700;color:${colors[s] || 'var(--text-muted)'};"
                         title="${UI.esc(tip)}">${labels[s] || s}</span>`;
@@ -1147,7 +1147,7 @@ const ViewAssets = {
           </span>` : ''}
         </summary>
         <div style="max-height:220px;overflow-y:auto;padding:4px 14px 10px;">
-          ${memberRows || '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">Sin activos en este grupo</div>'}
+          ${memberRows || ('<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">' + t('assets.no_assets_in_group') + '</div>')}
         </div>
       </details>
     </div>`;
@@ -1157,7 +1157,7 @@ const ViewAssets = {
     if (btn) { btn.disabled = true; btn.textContent = 'Validando...'; }
     try {
       await Api.assetGroups.validate(gid);
-      UI.toast('Grupo validado. Activo representativo creado.', 'success');
+      UI.toast(t('assets.group_validated'), 'success');
       await ViewAssets._renderGroupsResults();
     } catch (e) {
       UI.toast('Error: ' + e.message, 'error');
@@ -1180,7 +1180,7 @@ const ViewAssets = {
   async _renderGrouping() {
     const view = document.getElementById('grouping-view');
     if (!view) return;
-    view.innerHTML = '<div class="notice">Cargando configuración...</div>';
+    view.innerHTML = `<div class="notice">${t('assets.loading_config')}</div>`;
     try {
       const [cfg, groups] = await Promise.all([
         Api.assetGroups.getConfig(),
@@ -1230,7 +1230,7 @@ const ViewAssets = {
         </button>
         <span style="font-size:13px;color:var(--text-muted);">
           ${totalGrouped > 0
-            ? `${groups.length} grupos &middot; ${totalGrouped} activos agrupados`
+            ? t('assets.groups_assets_summary', {g: groups.length, a: totalGrouped})
             : 'Sin grupos todavia'}
         </span>
         ${groups.length > 0 ? `
@@ -1318,23 +1318,23 @@ const ViewAssets = {
       await Api.assetGroups.saveConfig({ criteria: list._criteria });
       UI.toast('Criterios guardados', 'success');
     } catch (e) { UI.toast(e.message, 'error'); }
-    finally { btn.disabled = false; btn.textContent = 'Guardar criterios'; }
+    finally { btn.disabled = false; btn.textContent = t('assets.btn_save_criteria'); }
   },
 
   async _propose() {
     const btn = document.getElementById('btn-propose');
     if (!btn) return;
     btn.disabled = true;
-    btn.textContent = 'Analizando activos con IA...';
+    btn.textContent = t('assets.analyzing_with_ai');
     btn.style.opacity = '0.7';
     try {
       const r = await Api.assetGroups.propose();
-      UI.toast(`Agrupación completada: ${r.groups_created} grupos propuestos para ${r.assets_analyzed} activos`, 'success');
+      UI.toast(t('assets.grouping_done', {g: r.groups_created, a: r.assets_analyzed}), 'success');
       // Navegar a la pestaña de resultados automáticamente
       document.querySelector('[data-tab=groups-results]')?.click();
     } catch (e) { UI.toast('Error: ' + e.message, 'error'); }
     finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Analizar y proponer grupos con IA'; btn.style.opacity = ''; }
+      if (btn) { btn.disabled = false; btn.textContent = t('assets.btn_propose_groups'); btn.style.opacity = ''; }
     }
   },
 
@@ -1362,21 +1362,21 @@ const ViewAssets = {
     document.getElementById('m-save').onclick = async () => {
       const name = document.getElementById('grp-name').value.trim();
       const desc = document.getElementById('grp-desc').value.trim();
-      if (!name) { UI.toast('El nombre es obligatorio', 'error'); return; }
+      if (!name) { UI.toast(t('assets.name_required'), 'error'); return; }
       try {
         await Api.assetGroups.update(gid, { name, description: desc || undefined });
         UI.closeModal();
-        UI.toast('Grupo actualizado', 'success');
+        UI.toast(t('assets.group_updated'), 'success');
         await ViewAssets._refreshGroupViews();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
   },
 
   async _deleteGroup(gid) {
-    if (!await UI.confirm('Eliminar el grupo? Los activos quedaran desagrupados y seguiran en el inventario.')) return;
+    if (!await UI.confirm(t('assets.confirm_delete_group'))) return;
     try {
       await Api.assetGroups.del(gid);
-      UI.toast('Grupo eliminado', 'success');
+      UI.toast(t('assets.group_deleted'), 'success');
       await ViewAssets._refreshGroupViews();
     } catch (e) { UI.toast(e.message, 'error'); }
   },
@@ -1390,7 +1390,7 @@ const ViewAssets = {
     )) return;
     try {
       const r = await Api.assetGroups.deleteWithAssets(gid);
-      UI.toast(`Grupo eliminado junto con ${r.deleted_assets} activos`, 'success');
+      UI.toast(t('assets.group_deleted_with', {n: r.deleted_assets}), 'success');
       ViewAssets._allAssets = [];
       await ViewAssets._reload();
       await ViewAssets._refreshGroupViews();
@@ -1401,7 +1401,7 @@ const ViewAssets = {
     const groups    = await Api.assetGroups.list();
     const thisGroup = groups.find(g => g.id === gid);
     if (!thisGroup || !thisGroup.members.length) {
-      UI.toast('El grupo no tiene activos para mover', 'error'); return;
+      UI.toast(t('assets.group_no_assets_move'), 'error'); return;
     }
     const otherGroups = groups.filter(g => g.id !== gid);
     UI.modal('Mover activo a otro grupo', `
@@ -1418,7 +1418,7 @@ const ViewAssets = {
         <select id="move-target-sel" style="width:100%;">
           <option value="">-- Desagrupar (sin grupo) --</option>
           ${otherGroups.map(g =>
-            `<option value="${g.id}">${UI.esc(g.name)} (${g.member_count} activos)</option>`
+            `<option value="${g.id}">${t('assets.group_opt_members', {name: UI.esc(g.name), n: g.member_count})}</option>`
           ).join('')}
         </select>
       </div>
@@ -1445,7 +1445,7 @@ const ViewAssets = {
     const groups    = await Api.assetGroups.list();
     const thisGroup = groups.find(g => g.id === gid);
     if (!thisGroup || thisGroup.members.length < 2) {
-      UI.toast('Se necesitan al menos 2 activos para dividir el grupo', 'error'); return;
+      UI.toast(t('assets.need_2_assets'), 'error'); return;
     }
     UI.modal('Dividir grupo', `
       <div class="span2">
@@ -1473,9 +1473,9 @@ const ViewAssets = {
     document.getElementById('m-cancel').onclick = UI.closeModal;
     document.getElementById('m-save').onclick = async () => {
       const newName = document.getElementById('split-name').value.trim();
-      if (!newName) { UI.toast('Nombre obligatorio', 'error'); return; }
+      if (!newName) { UI.toast(t('assets.name_required_short'), 'error'); return; }
       const checked = [...document.querySelectorAll('.split-cb:checked')].map(cb => parseInt(cb.value));
-      if (!checked.length) { UI.toast('Selecciona al menos un activo', 'error'); return; }
+      if (!checked.length) { UI.toast(t('assets.select_one_asset'), 'error'); return; }
       if (checked.length >= thisGroup.members.length) {
         UI.toast('Deja al menos un activo en el grupo original', 'error'); return;
       }
@@ -1660,16 +1660,16 @@ const ViewAssets = {
     if (id) {
       const aiBtn = document.getElementById('m-ai-suggest');
       if (aiBtn) aiBtn.onclick = async () => {
-        aiBtn.disabled = true; aiBtn.textContent = 'Analizando...';
+        aiBtn.disabled = true; aiBtn.textContent = t('assets.st_analysing');
         try {
           const result      = await Api.ai.riskSuggest({ asset_id: id });
           const suggestions = result.suggestions || result.risks || result || [];
           if (!suggestions.length) {
-            UI.toast('No se encontraron sugerencias de riesgo para este activo.', 'info');
-            aiBtn.disabled = false; aiBtn.textContent = 'IA: Sugerir riesgos';
+            UI.toast(t('assets.no_risk_suggestions'), 'info');
+            aiBtn.disabled = false; aiBtn.textContent = t('assets.btn_ai_suggest_risks');
             return;
           }
-          UI.modal('Sugerencias de riesgo — IA', `
+          UI.modal(t('assets.modal_risk_suggestions'), `
             <div class="span2">
               <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">
                 Basado en el tipo de activo y el catálogo ISO 27005, el sistema identifica los
@@ -1691,7 +1691,7 @@ const ViewAssets = {
           document.getElementById('m-close-ai').onclick = UI.closeModal;
         } catch (e) {
           UI.toast('Error al consultar IA: ' + e.message, 'error');
-          aiBtn.disabled = false; aiBtn.textContent = 'IA: Sugerir riesgos';
+          aiBtn.disabled = false; aiBtn.textContent = t('assets.btn_ai_suggest_risks');
         }
       };
     }
@@ -1716,7 +1716,7 @@ const ViewAssets = {
       try {
         if (id) await Api.assets.update(id, body);
         else    await Api.assets.create(body);
-        UI.closeModal(); UI.toast('Guardado', 'success');
+        UI.closeModal(); UI.toast(t('assets.saved'), 'success');
         await ViewAssets._reload();
       } catch (e) { UI.toast(e.message, 'error'); }
     };
@@ -1863,7 +1863,7 @@ const ViewAssets = {
       if (btn) btn.click();
       else {
         const r = await Api.assets.analyzeAll();
-        UI.toast(`Análisis IA lanzado para ${r.total} activos`, 'success');
+        UI.toast(t('assets.ai_analysis_launched', {n: r.total}), 'success');
         ViewAssets._startPollIfNeeded();
       }
     } catch (e) {

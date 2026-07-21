@@ -325,7 +325,7 @@ const ViewSuppliers = (() => {
 
   function _renderTable(wrap, data) {
     if (!data.length) {
-      wrap.innerHTML = '<p class="text-muted" style="margin-top:24px;text-align:center;">${t('suppliers.no_suppliers_found')}</p>';
+      wrap.innerHTML = `<p class="text-muted" style="margin-top:24px;text-align:center;">${t('suppliers.no_suppliers_found')}</p>`;
       return;
     }
     const canEdit = Auth.canEdit();
@@ -2182,7 +2182,7 @@ const ViewSuppliers = (() => {
       let data = await Api.supplier_questionnaires.list(params);
       if (typeFilter) data = data.filter(q => (q.assignment_type || 'external') === typeFilter);
       if (!data.length) {
-        wrap.innerHTML = '<p style="color:var(--text-muted);margin-top:24px;text-align:center;">${t('suppliers.no_questionnaires')}</p>';
+        wrap.innerHTML = `<p style="color:var(--text-muted);margin-top:24px;text-align:center;">${t('suppliers.no_questionnaires')}</p>`;
         return;
       }
       const now = new Date();
