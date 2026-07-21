@@ -241,7 +241,7 @@ const ViewRisks = {
       const supplierOnlyActive = document.getElementById('r-supplier-only')?.checked;
       const summary = await Api.risks.groupSummary();
       if (!summary.length) {
-        view.innerHTML = UI.emptyState(t('common.no_results'), 'Crea y valida grupos desde la sección Activos → Agrupación.');
+        view.innerHTML = UI.emptyState(t('common.no_results'), t('risks.empty_groups_hint'));
         return;
       }
       const levelColor = l => window.RiskLevels ? RiskLevels.colorFor(l) : (l >= 7 ? 'var(--risk-critical)' : l >= 5 ? 'var(--risk-high)' : l >= 3 ? 'var(--risk-medium)' : 'var(--risk-low)');
@@ -463,7 +463,7 @@ const ViewRisks = {
           <tr>
             ${canEdit ? '<th style="width:28px;"><input type="checkbox" id="r-chk-all" title="Seleccionar todos"></th>' : ''}
             ${_th('code',t('risks.risk_code'))}${_th('asset',t('common.asset'))}${_th('threat',t('common.threat'))}
-            ${_th('inherent_level',t('risks.inherent_risk'),t('risks.inherent_risk'))}${_th('residual_level',t('risks.residual_risk'),t('risks.residual_risk'))}${_th('reduction','Red.','Reducción inherente → residual')}
+            ${_th('inherent_level',t('risks.inherent_risk'),t('risks.inherent_risk'))}${_th('residual_level',t('risks.residual_risk'),t('risks.residual_risk'))}${_th('reduction','Red.',t('risks.reduction_tooltip'))}
             ${_th('status',t('common.status'))}${_th('treatment',t('risks.treatment'))}${_th('owner',t('common.owner'),'width:110px;')}<th style="font-size:10px;white-space:nowrap;">BCP</th><th></th>
           </tr>
         </thead>
@@ -479,8 +479,8 @@ const ViewRisks = {
               ${canEdit ? `<td onclick="event.stopPropagation()"><input type="checkbox" class="r-chk" data-id="${r.id}"></td>` : ''}
               <td>
                 ${UI.codePill(r.code)}
-                ${r.ai_generated ? `<span style="font-size:9px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc(r.ai_rationale||'Generado por el agente IA')}">IA</span>` : ''}
-                ${r.analysis_stale ? `<span style="font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc('Análisis desactualizado: ' + (r.stale_reason || 'el contexto cambio desde el último análisis IA') + '. Re-analiza el activo para refrescarlo.')}">DESACT.</span>` : ''}
+                ${r.ai_generated ? `<span style="font-size:9px;font-weight:700;background:var(--brand-purple-4);color:var(--brand-purple);border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc(r.ai_rationale||t('risks.ai_generated_badge'))}">IA</span>` : ''}
+                ${r.analysis_stale ? `<span style="font-size:9px;font-weight:700;background:#FEF3C7;color:#92400E;border-radius:3px;padding:1px 4px;margin-left:3px;vertical-align:middle;" title="${UI.esc(t('risks.stale_tooltip', {reason: r.stale_reason || t('risks.stale_default_reason_ai')}))}">DESACT.</span>` : ''}
                 ${r.supplier_id ? `<span style="font-size:9px;font-weight:700;background:#FFF3E0;color:#E65100;border-radius:3px;padding:1px 5px;margin-left:3px;vertical-align:middle;" title="Riesgo de proveedor TPRM${r.supplier_name ? ': ' + r.supplier_name : ''}">TPRM</span>` : ''}
               </td>
               <td><strong>${UI.esc(r.asset?.name||'-')}</strong></td>
@@ -930,13 +930,13 @@ const ViewRisks = {
     `, {
       actions: canEdit ? `
         <button class="btn" id="m-cancel">${t('common.close')}</button>
-        ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie de causas y consecuencias">Bow-Tie</button>' : ''}
+        ${id ? `<button class="btn btn-ghost" id="m-bowtie" title="${t('risks.hint_bowtie_full')}">Bow-Tie</button>` : ''}
         ${id ? `<button class="btn btn-ghost" id="m-treatment" title="${t('hub.risk.treatment')}">${t('hub.risk.treatment')}</button>` : ''}
-        ${id ? `<button class="btn btn-ghost" id="m-clone" title="Crear una copia de este riesgo">${t('common.duplicate')}</button>` : ''}
+        ${id ? `<button class="btn btn-ghost" id="m-clone" title="${t('risks.hint_clone')}">${t('common.duplicate')}</button>` : ''}
         ${id ? `<button class="btn btn-danger" id="m-del">${t('common.delete')}</button>` : ''}
         <button class="btn btn-primary" id="m-save">${t('common.save')}</button>
       ` : `<button class="btn" id="m-cancel">${t('common.close')}</button>
-        ${id ? '<button class="btn btn-ghost" id="m-bowtie" title="Ver diagrama Bow-Tie">Bow-Tie</button>' : ''}`
+        ${id ? `<button class="btn btn-ghost" id="m-bowtie" title="${t('risks.hint_bowtie')}">Bow-Tie</button>` : ''}`
     });
     if (id && document.getElementById('m-treatment')) {
       document.getElementById('m-treatment').onclick = () => { location.hash = '/risk-hub/treatment'; };
@@ -1197,7 +1197,7 @@ const ViewRisks = {
           const showAllLink = document.getElementById('vuln-show-all-link');
           if (showAllLink) {
             const total = ViewRisks._vulns.length;
-            showAllLink.textContent = filtered.length < total ? `Ver todas (${total})` : '';
+            showAllLink.textContent = filtered.length < total ? t('risks.view_all_n', {n: total}) : '';
             showAllLink.style.pointerEvents = filtered.length < total ? '' : 'none';
           }
         });
@@ -1263,7 +1263,7 @@ const ViewRisks = {
 
   _bowtie(r) {
     const threatName   = r.threat?.name || 'Amenaza';
-    const assetName    = r.asset?.name  || 'Activo';
+    const assetName    = r.asset?.name  || t('risks.asset_fallback');
     const vulns        = r.vulnerabilities || [];
     const controls     = r.controls || [];
     const consequence  = r.consequence_description || r.description || 'Consecuencia potencial';
@@ -1522,7 +1522,7 @@ const ViewRisks = {
                     Estado: <strong>${c.status}</strong> ·
                     Eficacia: <strong style="color:${col};">${c.efficacy_pct}%</strong>
                     <span style="color:var(--text-muted);"> = (${c.maturity}/5 madurez) × (${Math.round(c.contribution*100)}% contribución)</span>
-                    ${c.inclusion_reason ? ` · Razón SOA: <em>${UI.esc(c.inclusion_reason)}</em>` : ''}
+                    ${c.inclusion_reason ? ' · ' + t('risks.soa_reason', {reason: UI.esc(c.inclusion_reason)}) : ''}
                     ${c.soa_reviewed_at ? ` · Revisado SOA: ${new Date(c.soa_reviewed_at).toLocaleDateString('es-ES')}` : ''}
                   </div>
                   <!-- Explicación de madurez -->
@@ -1764,7 +1764,7 @@ const ViewRisks = {
       if (btn) { btn.textContent = 'Regenerar'; btn.disabled = false; }
     } catch (e) {
       if (result) result.innerHTML = `<div class="notice notice-error">${UI.esc(e.message)}</div>`;
-      if (btn) { btn.textContent = 'Análisis IA'; btn.disabled = false; }
+      if (btn) { btn.textContent = t('risks.ai_analysis'); btn.disabled = false; }
     }
   },
 
@@ -1773,7 +1773,7 @@ const ViewRisks = {
   _renderAiTabs(riskId, root) {
     if (!root) return;
     const tabs = [
-      { id: 'explain',  label: 'Análisis IA' },
+      { id: 'explain',  label: t('risks.ai_analysis') },
       { id: 'scenario', label: 'Escenario MITRE' },
       { id: 'whatif',   label: 'What-If' },
       { id: 'var',      label: 'VaR' },
@@ -1789,7 +1789,7 @@ const ViewRisks = {
     root.innerHTML = `
       <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:12px;overflow-x:auto;">
         ${tabs.map((t, i) => _tabBtn(t, i === 0)).join('')}
-        <button id="btn-ai-explain-refresh" title="Regenerar análisis IA"
+        <button id="btn-ai-explain-refresh" title="${t('risks.hint_regen_ai')}"
           style="margin-left:auto;padding:4px 12px;border:1px solid var(--border);border-radius:6px;
                  background:none;cursor:pointer;font-size:12px;color:var(--brand-purple);white-space:nowrap;align-self:center;">
           Regenerar
@@ -1856,7 +1856,7 @@ const ViewRisks = {
       const stepsHtml = (data.steps || []).map((s, i) => {
         const phaseColor = {'Reconnaissance':'#7C3AED','Resource Development':'#6D28D9',
           'Initial Access':'#1D4ED8','Execution':'#0369A1','Persistence':'#0F766E',
-          'Privilege Escalation':'#B45309','Defense Evasión':'#92400E','Credential Access':'#9A3412',
+          'Privilege Escalation':'#B45309','Defense Evasion':'#92400E','Credential Access':'#9A3412',
           'Discovery':'#166534','Lateral Movement':'#065F46','Collection':'#1E3A5F',
           'Command and Control':'#4C1D95','Exfiltration':'#831843','Impact':'#991B1B'}[s.tactic] || '#374151';
         return `<div style="display:flex;gap:10px;margin-bottom:10px;">
@@ -1958,7 +1958,7 @@ const ViewRisks = {
               </div>
             </div>
             ${data.meets_target !== undefined ? `<div style="padding:6px 10px;background:${data.meets_target ? '#F0FDF4' : '#FEF3C7'};border-radius:6px;font-size:12px;color:${data.meets_target ? '#166534' : '#92400E'};">
-              ${data.meets_target ? 'El escenario simulado alcanza el objetivo residual.' : `No alcanza el objetivo. Brecha: ${data.gap_to_target || 0} puntos.`}
+              ${data.meets_target ? t('risks.sim_meets_target') : t('risks.sim_gap', {n: data.gap_to_target || 0})}
             </div>` : ''}
             ${data.control_reduction_pct !== undefined ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">${t('risks.control_reduction', {pct: data.control_reduction_pct})}</div>` : ''}
             ${data.recommendation ? `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-base);">${UI.esc(data.recommendation)}</div>` : ''}
@@ -2225,7 +2225,7 @@ const ViewRisks = {
                 </div>
               </div>
               <div style="display:flex;gap:4px;">
-                <button class="btn btn-ghost btn-sm" data-survey-results="${c.id}" title="Ver resultados">
+                <button class="btn btn-ghost btn-sm" data-survey-results="${c.id}" title="${t('risks.hint_view_results')}">
                   Resultados
                 </button>
                 ${applyBtn}
@@ -2328,7 +2328,7 @@ const ViewRisks = {
       countLabel.textContent = `(${respondents.length})`;
       respondentsList.innerHTML = respondents.map((r, i) => `
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
-          <input type="text" placeholder="Nombre" value="${UI.esc(r.name)}" data-ri="${i}" data-field="name"
+          <input type="text" placeholder="${t('risks.ph_name')}" value="${UI.esc(r.name)}" data-ri="${i}" data-field="name"
                  class="form-control srv-r-field" style="flex:2;min-width:120px;">
           <input type="email" placeholder="Email" value="${UI.esc(r.email)}" data-ri="${i}" data-field="email"
                  class="form-control srv-r-field" style="flex:2;min-width:140px;">
@@ -2382,8 +2382,8 @@ const ViewRisks = {
         window.dispatchEvent(new Event('risks-updated'));
       } catch (e) {
         sendBtn.disabled = false;
-        sendBtn.textContent = 'Enviar encuesta';
-        alert('Error: ' + (e.message || 'No se pudo crear la encuesta.'));
+        sendBtn.textContent = t('risks.send_survey');
+        alert('Error: ' + (e.message || t('risks.err_create_survey')));
       }
     };
   },

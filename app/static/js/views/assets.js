@@ -147,10 +147,10 @@ const ViewAssets = {
         const lines = [
           prefix, '',
           t('assets.will_analyze_n', {n: est.to_analyze}) +
-            (est.covered_by_groups ? ` (${est.covered_by_groups} más quedan cubiertos por sus grupos validados)` : ''),
-          `Modelos: ${est.normal} con ${est.model_fast}, ${est.critical} críticos con ${est.model_deep}`,
-          `Coste estimado en la API de IA: ~$${est.estimated_cost_usd} USD` +
-            (est.uses_batch_api ? ' (con descuento del 50% por proceso en lote)' : ''),
+            (est.covered_by_groups ? t('assets.est_covered_by_groups', {n: est.covered_by_groups}) : ''),
+          t('assets.est_models', {normal: est.normal, model_fast: est.model_fast, critical: est.critical, model_deep: est.model_deep}),
+          t('assets.est_cost', {cost: est.estimated_cost_usd}) +
+            (est.uses_batch_api ? t('assets.est_batch_discount') : ''),
         ];
         return UI.confirm(lines.join('\n'));
       }
@@ -213,7 +213,7 @@ const ViewAssets = {
           const status = await Api.assets.analysisStatus().catch(() => null);
           const total = status ? status.total : '?';
           if (!await _confirmWithCost(
-            `¿Re-analizar TODOS los activos (${total}) con IA?\n\nEsto resetea el análisis existente y relanza todos desde cero (el coste estimado crecerá en consecuencia).`
+            t('assets.confirm_reanalyze_all', {n: total})
           )) return;
           btnAnalyzeAll.disabled = true;
           btnAnalyzeAll.textContent = 'Iniciando...';
@@ -802,9 +802,9 @@ const ViewAssets = {
       view.innerHTML = `
         <div style="text-align:center;padding:60px 20px;color:var(--text-muted);">
           <div style="font-size:56px;opacity:.3;margin-bottom:16px;">&#128193;</div>
-          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px;">Sin grupos creados todavia</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px;">${t('assets.no_groups_yet')}</div>
           <div style="font-size:13px;margin-bottom:24px;">
-            Ve a la pestaña "Agrupación con IA" para analizar y proponer grupos automáticamente.
+            ${t('assets.no_groups_hint')}
           </div>
           <button class="btn btn-primary"
                   onclick="document.querySelector('[data-tab=grouping]')?.click()">
@@ -849,7 +849,7 @@ const ViewAssets = {
         </button>` : ''}
         <span style="font-size:12px;color:var(--text-muted);line-height:1.4;">
           ${validated.length
-            ? `Opcion B: el agente analiza ${validated.length} grupos en lugar de los activos individuales. Los riesgos se generan sobre el activo representativo del grupo.`
+            ? t('assets.hint_group_option_b', {n: validated.length})
             : t('assets.validate_groups_hint')}
         </span>
       </div>` : ''}
@@ -905,7 +905,7 @@ const ViewAssets = {
         if (r.ok === false) {
           UI.toast(r.message || 'Sin grupos validados', 'info');
         } else {
-          UI.toast(r.message || 'Análisis de grupos iniciado', 'success', 6000);
+          UI.toast(r.message || t('assets.group_analysis_started'), 'success', 6000);
           ViewAssets._startGroupPoll();
         }
       } catch (e) {
@@ -1009,9 +1009,9 @@ const ViewAssets = {
 
   _groupResultCard(g, canEdit) {
     const statusColors = { proposed: 'var(--brand-orange)', validated: 'var(--risk-low)', rejected: 'var(--risk-critical)' };
-    const statusLabels = { proposed: 'Propuesto', validated: 'Validado', rejected: 'Rechazado' };
+    const statusLabels = { proposed: t('assets.st_proposed'), validated: t('assets.st_validated'), rejected: t('assets.st_rejected') };
     const typeLabels   = {
-      primary_process: 'Proceso', primary_information: 'Informacion',
+      primary_process: t('assets.ty_process'), primary_information: t('assets.ty_information'),
       support_hardware: 'Hardware', support_software: 'Software',
       support_network: 'Red', support_personnel: 'Personal',
       support_site: 'Instalacion', support_organization: 'Organizacion',

@@ -32,7 +32,7 @@ const ViewPolicies = (() => {
     1: 'Politica',
     2: 'Norma / Estandar',
     3: 'Procedimiento',
-    4: 'Instruccion Técnica',
+    4: t('policies.type_tech_instruction'),
   };
   const DOC_LEVEL_COLORS = {
     1: 'var(--brand-purple)',
@@ -58,7 +58,7 @@ const ViewPolicies = (() => {
     { value: 'GDPR',      label: 'RGPD / GDPR' },
     { value: 'NIST CSF',  label: 'NIST Cybersecurity Framework' },
     { value: 'PCI DSS',   label: 'PCI DSS v4' },
-    { value: 'libre',     label: 'Sin norma específica' },
+    { value: 'libre',     label: t('policies.no_specific_standard') },
   ];
 
   let _users      = [];
@@ -276,7 +276,7 @@ const ViewPolicies = (() => {
 
         <div>
           <label>${t('policies.hierarchy_level')}
-            <span title="Jerarquia ISO: Política (alto nivel) > Norma (reglas) > Procedimiento (pasos) > Instruccion Técnica (configuración exacta)"
+            <span title="${t('policies.iso_hierarchy_hint')}"
                   style="cursor:help;color:var(--text-muted);font-weight:400;font-size:11px;"> (?)</span>
           </label>
           <select id="f-doc-level" class="input" onchange="ViewPolicies._onLevelChange(this)">
@@ -347,10 +347,10 @@ const ViewPolicies = (() => {
     if (!hint) return;
     const l = parseInt(sel.value) || 1;
     const hints = {
-      1: 'Define la intencion y compromiso organizativo — alto nivel, sin detalles técnicos.',
-      2: 'Define las reglas de obligado cumplimiento para un area específica.',
-      3: 'Describe pasos detallados para ejecutar un proceso en una solucion concreta.',
-      4: 'Proporciona configuraciones exactas y medibles para un sistema específico.',
+      1: t('policies.desc_policy'),
+      2: t('policies.desc_standard'),
+      3: t('policies.desc_procedure'),
+      4: t('policies.desc_instruction'),
     };
     hint.textContent = hints[l] || '';
   }
@@ -569,12 +569,12 @@ const ViewPolicies = (() => {
           </div>
           <div class="span2">
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Título / asunto *</label>
-            <input id="gen-title" class="input" style="width:100%;" placeholder="Ej: Política de Gestión de Accesos">
+            <input id="gen-title" class="input" style="width:100%;" placeholder="${t('policies.ph_policy_name')}">
           </div>
           <div class="span2">
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Descripción y alcance</label>
             <textarea id="gen-desc" class="input" rows="3" style="width:100%;"
-                      placeholder="Describe el objetivo, alcance, departamentos afectados, contexto específico..."></textarea>
+                      placeholder="${t('policies.ph_policy_context')}"></textarea>
           </div>
           <div class="span2">
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">

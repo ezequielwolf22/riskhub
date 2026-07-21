@@ -651,7 +651,7 @@ const ViewSuppliers = (() => {
             UI.toast(e.message, 'error');
           } finally {
             confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Subir';
+            confirmBtn.textContent = t('common.upload');
           }
         };
       }
@@ -748,7 +748,7 @@ const ViewSuppliers = (() => {
           <div style="margin-bottom:6px;">
             <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Notas de mitigación</label>
             <textarea id="lc-concentration-notes" class="input" rows="2"
-              placeholder="Notas de mitigación...">${UI.esc(sup.concentration_risk_notes || '')}</textarea>
+              placeholder="${t('suppliers.ph_mitigation_notes')}">${UI.esc(sup.concentration_risk_notes || '')}</textarea>
           </div>
           <div style="margin-bottom:8px;">
             <label style="font-size:11px;font-weight:600;display:block;margin-bottom:3px;">Estrategia de salida (DORA Art.28(8))</label>
@@ -785,7 +785,7 @@ const ViewSuppliers = (() => {
   }
 
   function _renderGateBlock(supplierId, gate, sup) {
-    const levelLabels = { auto: 'Auto-aprobacion', standard: 'Proceso estandar', manual_review: 'Revisión manual CISO' };
+    const levelLabels = { auto: t('suppliers.gate_auto'), standard: t('suppliers.gate_standard'), manual_review: t('suppliers.gate_manual_review') };
     const levelColors = { auto: '#16a34a', standard: '#d97706', manual_review: '#dc2626' };
     const score = gate.score || 0;
     const level = gate.gate_level || 'auto';
@@ -829,7 +829,7 @@ const ViewSuppliers = (() => {
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
           ${!gate.override ? `
             <button class="btn btn-sm" onclick="ViewSuppliers._openBypassDialog(${supplierId})"
-              title="Saltarse el gate con justificacion auditada" style="font-size:11px;">
+              title="${t('suppliers.hint_bypass_gate')}" style="font-size:11px;">
               Bypass justificado
             </button>
             <button class="btn btn-sm" onclick="ViewSuppliers._openForceControlsDialog(${supplierId})"
@@ -861,7 +861,7 @@ const ViewSuppliers = (() => {
         const isDone = it.signed || it.skipped;
         const isBlocked = !!it.blocked_by;
         const dotColor = it.skipped ? '#9ca3af' : (it.signed ? '#16a34a' : (it.required ? '#dc2626' : '#d97706'));
-        const dotLabel = it.skipped ? 'Omitido' : (it.signed ? 'Firmado' : (isBlocked ? 'Bloqueado' : (it.required ? 'Pendiente' : 'Opcional')));
+        const dotLabel = it.skipped ? t('suppliers.st_skipped') : (it.signed ? t('suppliers.st_signed') : (isBlocked ? t('suppliers.st_blocked') : (it.required ? t('suppliers.st_pending') : t('suppliers.st_optional'))));
         const signedDate = it.signed_at ? new Date(it.signed_at).toLocaleDateString('es-ES') : null;
         const forcedBadge = it.forced ? `<span style="font-size:9px;background:#ede9fe;color:#5b21b6;padding:1px 5px;border-radius:999px;margin-left:4px;font-weight:700;">FORZADO</span>` : '';
         const gateBadge = it.score_gate ? `<span style="font-size:9px;background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:999px;margin-left:4px;">Score&gt;${it.score_gate}</span>` : '';
@@ -925,7 +925,7 @@ const ViewSuppliers = (() => {
     let decisionHtml = '';
     if (decision) {
       const decColors = { approved: '#16a34a', rejected: '#dc2626', conditional: '#d97706' };
-      const decLabels = { approved: 'Aprobado', rejected: 'Rechazado', conditional: 'Condicional' };
+      const decLabels = { approved: t('suppliers.dec_approved'), rejected: t('suppliers.dec_rejected'), conditional: t('suppliers.dec_conditional') };
       decisionHtml = `
         <div style="background:${decColors[decision.status] || '#9ca3af'}10;border:1.5px solid ${decColors[decision.status] || '#9ca3af'};border-radius:6px;padding:8px 10px;margin-bottom:10px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
@@ -994,13 +994,13 @@ const ViewSuppliers = (() => {
         ${!skipMode ? `
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Firmado por</label>
-            <input id="so-signed-by" class="input" placeholder="Nombre del firmante o responsable">
+            <input id="so-signed-by" class="input" placeholder="${t('suppliers.ph_signer_name')}">
           </div>` : ''}
         ${skipMode ? `
           <div>
             <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion para omitir *</label>
             <textarea id="so-skip-justification" class="input" rows="3"
-              placeholder="Indica por que se omite este requisito..."></textarea>
+              placeholder="${t('suppliers.ph_skip_reason')}"></textarea>
           </div>` : ''}
         ${!skipMode ? `
           <div>
@@ -1044,7 +1044,7 @@ const ViewSuppliers = (() => {
 
   // --- Bypass dialog ---
   function _openBypassDialog(supplierId) {
-    UI.modal('Bypass del gate de seguridad', `
+    UI.modal(t('suppliers.modal_gate_bypass'), `
       <div class="span2" style="display:flex;flex-direction:column;gap:12px;">
         <div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:10px;font-size:12px;">
           <strong>Atencion:</strong> El bypass omite los requisitos del gate basados en score.
@@ -1053,7 +1053,7 @@ const ViewSuppliers = (() => {
         <div>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion * (obligatoria)</label>
           <textarea id="bypass-justification" class="input" rows="3"
-            placeholder="Razones de negocio o técnicas que justifican el bypass..."></textarea>
+            placeholder="${t('suppliers.ph_bypass_reason')}"></textarea>
         </div>
       </div>
     `, {
@@ -1085,10 +1085,10 @@ const ViewSuppliers = (() => {
     const candidates = [
       { id: 'nda', label: 'NDA / Confidencialidad' },
       { id: 'dpa', label: 'DPA Art. 28 GDPR' },
-      { id: 'cross_border', label: 'Cláusulas transferencia internacional' },
+      { id: 'cross_border', label: t('suppliers.gc_cross_border') },
       { id: 'nis2_addendum', label: 'Addendum NIS2 Art. 21' },
       { id: 'dora_exit', label: 'Estrategia de salida DORA' },
-      { id: 'ciso_approval', label: 'Aprobación CISO' },
+      { id: 'ciso_approval', label: t('suppliers.gc_ciso_approval') },
       { id: 'contract', label: 'Contrato principal' },
     ].filter(c => !existingChain.find(i => i.id === c.id && i.applicable));
 
@@ -1109,7 +1109,7 @@ const ViewSuppliers = (() => {
             <input type="checkbox" id="force-ctrl-other-chk" value="__other__">
             Otro (especificar):
             <input id="force-ctrl-other-text" class="input" style="flex:1;font-size:12px;"
-              placeholder="Nombre del control personalizado..."
+              placeholder="${t('suppliers.ph_custom_control_name')}"
               onclick="event.stopPropagation()"
               oninput="document.getElementById('force-ctrl-other-chk').checked = this.value.trim().length > 0">
           </label>
@@ -1117,7 +1117,7 @@ const ViewSuppliers = (() => {
         <div>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Justificacion</label>
           <textarea id="force-justification" class="input" rows="2"
-            placeholder="Razon para forzar estos controles..."></textarea>
+            placeholder="${t('suppliers.ph_force_controls_reason')}"></textarea>
         </div>
       </div>
     `, {
@@ -1148,7 +1148,7 @@ const ViewSuppliers = (() => {
 
   // --- Clear override ---
   async function _clearOverride(supplierId) {
-    if (!confirm('Quitar el override del gate?')) return;
+    if (!confirm(t('suppliers.confirm_remove_override'))) return;
     try {
       await Api.post('/api/onboarding-gate/' + supplierId + '/override', { type: 'clear' });
       UI.toast('Override eliminado', 'success');
@@ -1180,7 +1180,7 @@ const ViewSuppliers = (() => {
         <div>
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Notas / razonamiento</label>
           <textarea id="dec-notes" class="input" rows="3"
-            placeholder="Fundamentos de la decision, hallazgos relevantes..."></textarea>
+            placeholder="${t('suppliers.ph_decision_basis')}"></textarea>
         </div>
         <div id="dec-conditions-wrap" style="display:none;">
           <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">
@@ -1236,7 +1236,7 @@ const ViewSuppliers = (() => {
     row.innerHTML = `
       <input class="input dec-cond-desc" style="flex:1;font-size:12px;" placeholder="${t('suppliers.condition_desc_placeholder')}">
       <input class="input dec-cond-days" type="number" min="1" max="365" value="30"
-        style="width:60px;font-size:12px;" title="Días para cumplir">
+        style="width:60px;font-size:12px;" title="${t('suppliers.hint_days_to_comply')}">
       <button type="button" class="btn btn-sm" style="padding:4px 8px;color:#dc2626;"
         onclick="this.parentElement.remove()">X</button>`;
     list.appendChild(row);
@@ -1259,7 +1259,7 @@ const ViewSuppliers = (() => {
     try {
       await Api.patch('/api/suppliers/' + supplierId + '/concentration-mitigation', { notes, exit_strategy: exitStrategy });
       UI.toast('Mitigación de concentracion guardada', 'success');
-    } catch (e) { UI.toast(e.message || 'Error al guardar mitigación', 'error'); }
+    } catch (e) { UI.toast(e.message || t('suppliers.err_save_mitigation'), 'error'); }
   }
 
   // --- Admin: config del gate ---
@@ -1269,7 +1269,7 @@ const ViewSuppliers = (() => {
 
     const chain = cfg.sign_off_chain || [];
 
-    UI.modal('Configuración del gate de onboarding', `
+    UI.modal(t('suppliers.modal_gate_config'), `
       <div class="span2" style="display:flex;flex-direction:column;gap:16px;">
         <div>
           <strong style="font-size:13px;color:var(--brand-purple);display:block;margin-bottom:8px;">Umbrales de score TPRM</strong>
@@ -1385,7 +1385,7 @@ const ViewSuppliers = (() => {
     const reqIfOpts = ['', 'is_data_processor', 'is_nis2', 'is_dora', 'cross_border_transfers', 'is_ens'];
     return `
       <div class="gc-chain-row" style="display:grid;grid-template-columns:120px 1fr 160px 120px 90px auto 32px;gap:8px;align-items:center;margin-bottom:6px;">
-        <input class="input gc-item-id" style="font-size:12px;" placeholder="ID único" value="${UI.esc(it.id || '')}">
+        <input class="input gc-item-id" style="font-size:12px;" placeholder="${t('suppliers.ph_unique_id')}" value="${UI.esc(it.id || '')}">
         <input class="input gc-item-label" style="font-size:12px;" placeholder="Etiqueta visible" value="${UI.esc(it.label || '')}">
         <select class="input gc-item-req-if" style="font-size:12px;">
           ${reqIfOpts.map(o => `<option value="${o}" ${it.required_if === o ? 'selected' : ''}>${o || 'siempre'}</option>`).join('')}
@@ -1396,7 +1396,7 @@ const ViewSuppliers = (() => {
           <label title="Obligatorio siempre" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
             <input type="checkbox" class="gc-item-required" ${it.required ? 'checked' : ''}> Obligatorio
           </label>
-          <label title="Se puede omitir con justificacion" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
+          <label title="${t('suppliers.hint_skippable')}" style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;">
             <input type="checkbox" class="gc-item-bypass" ${it.bypass_allowed !== false ? 'checked' : ''}> Omitible
           </label>
         </div>
@@ -1439,7 +1439,7 @@ const ViewSuppliers = (() => {
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;">
           ${Auth.canEdit() ? `<button class="btn btn-sm btn-primary" onclick="ViewSuppliers._openFormFromFile()">${window.t('suppliers.edit_data_btn')}</button>` : ''}
-          <button onclick="ViewSuppliers._closeSupplierFile()" class="btn btn-sm" style="font-size:18px;line-height:1;padding:4px 12px;" title="Cerrar">&times;</button>
+          <button onclick="ViewSuppliers._closeSupplierFile()" class="btn btn-sm" style="font-size:18px;line-height:1;padding:4px 12px;" title="${t('common.close')}">&times;</button>
         </div>
       </div>
       <div style="flex-shrink:0;display:flex;border-bottom:1px solid var(--border);background:var(--bg-2);padding:0 20px;overflow-x:auto;">
@@ -1510,10 +1510,10 @@ const ViewSuppliers = (() => {
         <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
           <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Información general</div>
           <div style="display:grid;gap:12px;">
-            ${_infoField('Nombre', UI.esc(sup.name))}
+            ${_infoField(t('suppliers.fld_name'), UI.esc(sup.name))}
             ${_infoField('Codigo', UI.esc(sup.code))}
             ${_infoField('Categoria', UI.esc(sup.category))}
-            ${_infoField('Tipo', UI.esc(sup.vendor_type))}
+            ${_infoField(t('suppliers.fld_type'), UI.esc(sup.vendor_type))}
             ${_infoField('Ubicacion', UI.esc(sup.location))}
             ${_infoField('Departamento', UI.esc(sup.department))}
             ${_infoField('Referencia contrato', UI.esc(sup.contract_ref))}
@@ -1533,11 +1533,11 @@ const ViewSuppliers = (() => {
         <div style="background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:20px;">
           <div style="font-size:11px;font-weight:700;color:var(--brand-purple);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px;">Contacto principal</div>
           <div style="display:grid;gap:12px;">
-            ${_infoField('Nombre', UI.esc(sup.contact_name))}
+            ${_infoField(t('suppliers.fld_name'), UI.esc(sup.contact_name))}
             ${_infoField('Email', sup.contact_email ? `<a href="mailto:${UI.esc(sup.contact_email)}" style="color:var(--brand-purple);">${UI.esc(sup.contact_email)}</a>` : null)}
             ${_infoField('CC alertas', sup.cc_email ? `<a href="mailto:${UI.esc(sup.cc_email)}" style="color:var(--brand-purple);">${UI.esc(sup.cc_email)}</a>` : null)}
-            ${_infoField('Prox. evaluación', sup.next_assessment_at ? sup.next_assessment_at.slice(0,10) : null)}
-            ${_infoField('Ult. evaluación', sup.last_assessment_at ? sup.last_assessment_at.slice(0,10) : null)}
+            ${_infoField(t('suppliers.fld_next_assessment'), sup.next_assessment_at ? sup.next_assessment_at.slice(0,10) : null)}
+            ${_infoField(t('suppliers.fld_last_assessment'), sup.last_assessment_at ? sup.last_assessment_at.slice(0,10) : null)}
           </div>
         </div>
       </div>
@@ -1610,7 +1610,7 @@ const ViewSuppliers = (() => {
               } catch (_) {}
             }, 1200);
           } else {
-            if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">${UI.esc(res.message || 'Error en el análisis')}</div>`;
+            if (resultEl) resultEl.innerHTML = `<div style="background:#FEE2E2;color:#991B1B;border-radius:6px;padding:10px 14px;font-size:12px;margin-top:4px;">${UI.esc(res.message || t('suppliers.err_analysis'))}</div>`;
             btnScrape.disabled = false;
             btnScrape.textContent = 'Analizar Trust Portal';
           }
@@ -1743,7 +1743,7 @@ const ViewSuppliers = (() => {
           if (descRow) descRow.style.display = 'none';
           _loadDocuments(sup.id);
         } catch (e) { UI.toast(e.message, 'error'); }
-        finally { confirmBtn.disabled = false; confirmBtn.textContent = 'Subir'; }
+        finally { confirmBtn.disabled = false; confirmBtn.textContent = t('common.upload'); }
       };
     }
     const cancelBtn = document.getElementById('file-doc-cancel');
@@ -1833,9 +1833,9 @@ const ViewSuppliers = (() => {
           </div>
           ${canEdit && isAnalyzable ? `<button class="btn btn-sm sup-doc-analyze" data-doc-id="${d.id}" data-doc-name="${UI.esc(d.filename)}"
             style="background:var(--brand-purple);color:#fff;border-color:var(--brand-purple);white-space:nowrap;"
-            title="Analizar con IA y autocompletar campos vacios de la ficha">Analizar con IA</button>` : ''}
-          <a href="${Api.suppliers.downloadDocumentUrl(supplierId, d.id)}" target="_blank" class="btn btn-sm" title="Descargar">Descargar</a>
-          ${canEdit ? `<button class="btn btn-sm btn-danger sup-doc-del" data-doc-id="${d.id}" title="Eliminar">X</button>` : ''}
+            title="${t('suppliers.hint_ai_autofill')}">Analizar con IA</button>` : ''}
+          <a href="${Api.suppliers.downloadDocumentUrl(supplierId, d.id)}" target="_blank" class="btn btn-sm" title="${t('common.download')}">${t('common.download')}</a>
+          ${canEdit ? `<button class="btn btn-sm btn-danger sup-doc-del" data-doc-id="${d.id}" title="${t('common.delete')}">X</button>` : ''}
         </div>`;
       }).join('');
 
@@ -1864,7 +1864,7 @@ const ViewSuppliers = (() => {
     try {
       const result = await Api.suppliers.analyzeDocument(supplierId, docId);
       if (!result.ok) {
-        UI.toast(result.message || 'Error en el análisis', 'error');
+        UI.toast(result.message || t('suppliers.err_analysis'), 'error');
         return;
       }
       const fields = result.updated_fields || [];
@@ -1924,8 +1924,8 @@ const ViewSuppliers = (() => {
       <div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--bg-2);">
         <div style="display:flex;gap:6px;align-items:flex-start;">
           <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-            <input class="input sla-name" data-idx="${i}" placeholder="Nombre SLA *" value="${UI.esc(sla.name||'')}" style="font-size:12px;">
-            <input class="input sla-metric" data-idx="${i}" placeholder="Métrica / objetivo (ej: 99.9%)" value="${UI.esc(sla.metric||'')}" style="font-size:12px;">
+            <input class="input sla-name" data-idx="${i}" placeholder="${t('suppliers.ph_sla_name')}" value="${UI.esc(sla.name||'')}" style="font-size:12px;">
+            <input class="input sla-metric" data-idx="${i}" placeholder="${t('suppliers.ph_sla_metric')}" value="${UI.esc(sla.metric||'')}" style="font-size:12px;">
             <select class="input sla-cat" data-idx="${i}" style="font-size:12px;">
               ${['availability','support','security','performance','recovery','other'].map(c =>
                 `<option value="${c}" ${(sla.category||'other')===c?'selected':''}>${c}</option>`
@@ -1978,9 +1978,9 @@ const ViewSuppliers = (() => {
       <div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--bg-2);">
         <div style="display:flex;gap:6px;align-items:flex-start;">
           <div style="flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">
-            <input class="input ct-name" data-idx="${i}" placeholder="Nombre *" value="${UI.esc(c.name||'')}" style="font-size:12px;">
+            <input class="input ct-name" data-idx="${i}" placeholder="${t('suppliers.ph_contact_name')}" value="${UI.esc(c.name||'')}" style="font-size:12px;">
             <input class="input ct-email" data-idx="${i}" placeholder="Email *" type="email" value="${UI.esc(c.email||'')}" style="font-size:12px;">
-            <input class="input ct-role" data-idx="${i}" placeholder="Rol (Técnico, Legal...)" value="${UI.esc(c.role||'')}" style="font-size:12px;">
+            <input class="input ct-role" data-idx="${i}" placeholder="${t('suppliers.ph_contact_role')}" value="${UI.esc(c.role||'')}" style="font-size:12px;">
           </div>
           <button type="button" class="btn btn-sm btn-danger ct-del" data-idx="${i}" style="padding:3px 8px;font-size:12px;margin-top:2px;">X</button>
         </div>
@@ -2216,7 +2216,7 @@ const ViewSuppliers = (() => {
                 const aiscore = q.ai_review.ai_score;
                 const aicolor = aiscore >= 80 ? '#22C55E' : aiscore >= 60 ? '#F59E0B' : '#EF4444';
                 const reviewedDate = q.ai_reviewed_at ? new Date(q.ai_reviewed_at).toLocaleDateString('es-ES') : '';
-                aiHtml = `<span style="font-weight:700;color:${aicolor};cursor:pointer;" data-id="${q.id}" data-act="view-ai" title="Ver evaluación IA (${reviewedDate})">${aiscore}/100</span>`;
+                aiHtml = `<span style="font-weight:700;color:${aicolor};cursor:pointer;" data-id="${q.id}" data-act="view-ai" title="${t('suppliers.hint_view_ai_review', {date: reviewedDate})}">${aiscore}/100</span>`;
                 if (Auth.canEdit()) {
                   aiHtml += ` <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;" data-id="${q.id}" data-act="eval-ai" title="Re-evaluar con IA">Re-evaluar</button>`;
                 }
@@ -2234,8 +2234,8 @@ const ViewSuppliers = (() => {
               <td style="font-size:12px;">${expires}</td>
               <td style="font-size:12px;">${aiHtml}</td>
               <td>
-                ${Auth.canEdit() && !q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-id="${q.id}" data-act="send" title="Enviar por email al contacto del proveedor">Enviar</button>` : ''}
-                ${Auth.canEdit() && !q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-id="${q.id}" data-act="link" title="Copiar enlace publico">Enlace</button>` : ''}
+                ${Auth.canEdit() && !q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-id="${q.id}" data-act="send" title="${t('suppliers.hint_send_email_contact')}">Enviar</button>` : ''}
+                ${Auth.canEdit() && !q.submitted_at && !isInternal ? `<button class="btn btn-sm" data-id="${q.id}" data-act="link" title="${t('suppliers.hint_copy_public_link')}">Enlace</button>` : ''}
                 ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm" data-id="${q.id}" data-act="assign" title="Asignar a usuario interno">Asignar</button>` : ''}
                 ${isInternal && !q.submitted_at ? `<button class="btn btn-sm btn-primary" data-id="${q.id}" data-act="fill-internal" title="Responder internamente">Responder</button>` : ''}
                 ${Auth.canEdit() && !q.submitted_at ? `<button class="btn btn-sm btn-danger" data-id="${q.id}" data-act="del">${t('common.delete')}</button>` : ''}
@@ -2462,7 +2462,7 @@ const ViewSuppliers = (() => {
   function _showAiReviewModal(title, review) {
     if (!review) return;
     if (review.error) {
-      UI.modal('Evaluación IA — Error', `
+      UI.modal(t('suppliers.modal_ai_review_error'), `
         <div class="span2">
           <div class="notice">${UI.esc(review.error)}</div>
           <p style="font-size:13px;margin-top:8px;">La evaluación automática no pudo completarse. Revisa la configuración de la API key en IA &gt; Configuración.</p>
@@ -2490,7 +2490,7 @@ const ViewSuppliers = (() => {
       ? review.follow_up_questions.map(f => `<li style="margin-bottom:4px;">${UI.esc(f)}</li>`).join('')
       : '<li style="color:var(--text-muted);">Sin preguntas adicionales</li>';
 
-    UI.modal(`Evaluación IA — ${UI.esc(title)}`, `
+    UI.modal(t('suppliers.modal_ai_review', {title: UI.esc(title)}), `
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div style="grid-column:1/-1;display:flex;gap:16px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:4px;">
           <div style="text-align:center;">
@@ -2659,7 +2659,7 @@ const ViewSuppliers = (() => {
           ${data.map(sc => {
             const next = sc.next_send_at ? new Date(sc.next_send_at).toLocaleDateString('es-ES') : '-';
             const last = sc.last_sent_at ? new Date(sc.last_sent_at).toLocaleDateString('es-ES') : 'Nunca';
-            const freq = INTERVAL_LABELS[sc.interval_days] || sc.interval_days + ' días';
+            const freq = INTERVAL_LABELS[sc.interval_days] || t('suppliers.n_days', {n: sc.interval_days});
             const status = sc.enabled
               ? `<span style="color:#22C55E;font-weight:600;font-size:12px;">Activa</span>`
               : `<span style="color:var(--text-muted);font-size:12px;">Pausada</span>`;
@@ -2695,7 +2695,7 @@ const ViewSuppliers = (() => {
           if (!sc) return;
           try {
             await Api.questionnaire_schedules.update(sc.id, { enabled: !sc.enabled });
-            UI.toast(sc.enabled ? 'Planificación pausada' : 'Planificación activada', 'success');
+            UI.toast(sc.enabled ? t('suppliers.schedule_paused') : t('suppliers.schedule_enabled'), 'success');
             _reloadSchedules();
           } catch (e) { UI.toast(e.message, 'error'); }
         };
@@ -2925,7 +2925,7 @@ const ViewSuppliers = (() => {
           <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;background:var(--bg-2);">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
               <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--brand-purple);color:#fff;font-size:11px;font-weight:700;">${i+1}</span>
-              <input class="input fl-step-name" data-idx="${i}" placeholder="Nombre del paso" value="${UI.esc(s.name||'')}" style="flex:1;font-size:12px;">
+              <input class="input fl-step-name" data-idx="${i}" placeholder="${t('suppliers.ph_step_name')}" value="${UI.esc(s.name||'')}" style="flex:1;font-size:12px;">
               ${_flowSteps.length > 1 ? `<button type="button" class="btn btn-sm btn-danger fl-step-del" data-idx="${i}" style="padding:2px 8px;font-size:11px;">X</button>` : ''}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
@@ -3063,7 +3063,7 @@ const ViewSuppliers = (() => {
   async function _openApplyFlowModal(flow) {
     let suppliers = [];
     try { suppliers = await Api.suppliers.list(); } catch (_) {}
-    UI.modal(`Aplicar flujo: ${UI.esc(flow.name)}`, `
+    UI.modal(t('suppliers.modal_apply_flow', {name: UI.esc(flow.name)}), `
       <div>
         <label>Selecciona el proveedor al que iniciar el flujo</label>
         <select id="apply-sup" class="input">

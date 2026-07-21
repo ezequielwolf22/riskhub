@@ -179,7 +179,7 @@ const ViewControls = {
         <td style="font-size:11px;font-family:var(--font-mono);">${(c.properties||[]).map(p => p[0].toUpperCase()).join(' ')}</td>
         <td style="text-align:center;">
           ${canEdit
-            ? `<label title="Marcar como control obligatorio (piso residual)" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+            ? `<label title="${t('controls.mandatory_control_hint')}" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
                 <input type="checkbox" data-mandatory-id="${c.id}" ${c.is_mandatory ? 'checked' : ''}>
                 ${c.is_mandatory ? `<span style="font-size:10px;font-weight:700;color:var(--danger);">OBLIGATORIO</span>` : ''}
                </label>`

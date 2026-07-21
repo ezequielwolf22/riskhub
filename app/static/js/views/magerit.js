@@ -38,12 +38,12 @@ const ViewMagerit = (() => {
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
             <div style="flex:1;">
               <strong style="font-size:14px;color:${isActive?'var(--brand-purple)':'var(--text-muted)'};">
-                ${isActive ? '✓ MAGERIT v3 activo como metodología de análisis' : 'MAGERIT v3 no está activo como metodología principal'}
+                ${isActive ? t('magerit.active_banner') : t('magerit.inactive_banner')}
               </strong>
               <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">
                 ${isActive
-                  ? 'Al crear riesgos, la consecuencia se calcula automáticamente desde las dimensiones D/I/C/A/T del activo × degradación.'
-                  : 'Esta sección muestra el análisis dimensional de tus activos. Para usar MAGERIT como metodología de cálculo, actívala en Contexto organizacional.'}
+                  ? t('magerit.active_hint')
+                  : t('magerit.inactive_hint')}
               </p>
             </div>
             ${!isActive ? `
@@ -90,7 +90,7 @@ const ViewMagerit = (() => {
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                 <span style="min-width:24px;font-size:13px;font-weight:700;color:var(--brand-purple);">${n}</span>
                 <span style="font-size:12px;color:#555;">
-                  ${n<=2?'Muy bajo — impacto mínimo':n<=4?'Bajo/Medio — daño leve':n<=6?'Alto — daño grave':n<=8?'Muy alto — daño catastrófico':'Extremo — viabilidad comprometida'}
+                  ${n<=2?t('magerit.deg_very_low'):n<=4?t('magerit.deg_low_med'):n<=6?t('magerit.deg_high'):n<=8?t('magerit.deg_very_high'):t('magerit.deg_extreme')}
                 </span>
               </div>`).join('')}
           </div>
