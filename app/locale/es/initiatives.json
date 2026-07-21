@@ -16,6 +16,7 @@
     "import_too_large": "El archivo supera el límite de 10 MB.",
     "import_invalid_type": "Tipo de archivo no permitido. Formatos aceptados: PDF, DOCX, XLSX, TXT.",
     "import_no_text": "No se pudo extraer texto suficiente del archivo.",
-    "ai_import_rationale": "Estructurada e importada automáticamente desde un documento con IA."
+    "ai_import_rationale": "Estructurada e importada automáticamente desde un documento con IA.",
+    "impl_autocreated": "Implementación creada automáticamente al declararse como control objetivo del Plan Director."
   }
 }

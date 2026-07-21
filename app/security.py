@@ -233,6 +233,22 @@ def filter_by_org(query, model, user: User):
     return query.filter(model.organization_id == user.organization_id)
 
 
+def resolve_org_id(user: User):
+    """Organizacion en la que se debe ESCRIBIR un registro nuevo.
+
+    Contrapartida de filter_by_org: si un superadmin ha enfocado una org via
+    X-Active-Org, lo que cree debe pertenecer a ESA org. Usar
+    user.organization_id directamente escribe el dato en la org del superadmin
+    y luego filter_by_org no lo encuentra — el registro se guarda pero
+    desaparece de la lista.
+    """
+    if user.role == UserRole.SUPERADMIN:
+        active_org = getattr(user, "_active_org_id", None)
+        if active_org:
+            return active_org
+    return user.organization_id
+
+
 def check_org_access(record_org_id, user: User) -> bool:
     """Devuelve True si el usuario tiene acceso al registro dado su organization_id."""
     if user.role == UserRole.SUPERADMIN:

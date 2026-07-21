@@ -22,6 +22,19 @@ const ViewPlanDirector = (() => {
   let _impls = [];
   let _filters = { status: '', program: '', q: '' };
 
+  /* Un control objetivo se identifica por su implementacion si la org ya la
+     tiene, o por el control del catalogo si aun no existe (el backend la crea
+     al guardar). Estas dos funciones traducen entre ambas formas. */
+  function _ctrlKey(c) {
+    return c.implementation_id ? `i:${c.implementation_id}` : `c:${c.control_id}`;
+  }
+
+  function _ctrlFromKey(key) {
+    const [kind, rawId] = key.split(':');
+    const id = parseInt(rawId);
+    return kind === 'i' ? { implementation_id: id } : { control_id: id };
+  }
+
   async function render(el) {
     el.innerHTML = `
       <div class="page-header">
@@ -46,19 +59,28 @@ const ViewPlanDirector = (() => {
   }
 
   async function _loadAll() {
-    try {
-      const [stats, burndown, initiatives, programs, users, impls] = await Promise.all([
-        Api.initiatives.stats(),
-        Api.initiatives.burndown(),
-        Api.initiatives.list({}),
-        Api.initiatives.programs.list(),
-        Api.listUsers().catch(() => []),
-        Api.impls.list().catch(() => []),
-      ]);
-      _stats = stats; _burndown = burndown; _initiatives = initiatives;
-      _programs = programs; _users = users; _impls = impls;
-    } catch (e) {
-      UI.toast(t('common.error') + ': ' + e.message, 'error');
+    // Cada fuente se resuelve por separado: si una falla (p.ej. stats), el
+    // resto de la pantalla sigue funcionando. Antes un unico fallo dejaba
+    // programas e iniciativas vacios y parecia que no se hubieran guardado.
+    const results = await Promise.allSettled([
+      Api.initiatives.stats(),
+      Api.initiatives.burndown(),
+      Api.initiatives.list({}),
+      Api.initiatives.programs.list(),
+      Api.listUsers(),
+      Api.initiatives.controlCatalog(),
+    ]);
+    const [stats, burndown, initiatives, programs, users, catalog] = results;
+    _stats = stats.status === 'fulfilled' ? stats.value : null;
+    _burndown = burndown.status === 'fulfilled' ? burndown.value : null;
+    _initiatives = initiatives.status === 'fulfilled' ? initiatives.value : [];
+    _programs = programs.status === 'fulfilled' ? programs.value : [];
+    _users = users.status === 'fulfilled' ? users.value : [];
+    _impls = catalog.status === 'fulfilled' ? catalog.value : [];
+
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length) {
+      UI.toast(t('common.error') + ': ' + (failed[0].reason?.message || ''), 'error');
     }
   }
 
@@ -170,7 +192,7 @@ const ViewPlanDirector = (() => {
       return;
     }
     const targetsById = new Map(draft.control_targets.map(ct => [ct.implementation_id, ct]));
-    const targetImpls = _impls.filter(i => targetsById.has(i.id));
+    const targetImpls = _impls.filter(c => c.implementation_id && targetsById.has(c.implementation_id));
     UI.modal(`${t('plandirector.generate_draft')} — ${riskCode}`, `
       <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.ai_generated_banner')}: ${UI.esc(draft.rationale || '')}</div>
       <div class="form-grid">
@@ -185,12 +207,12 @@ const ViewPlanDirector = (() => {
       </div>
       <h4 style="font-size:12px;margin:12px 0 6px;">${t('plandirector.control_targets_title')} (${targetImpls.length})</h4>
       <div>
-        ${targetImpls.map(impl => {
-          const ct = targetsById.get(impl.id);
+        ${targetImpls.map(c => {
+          const ct = targetsById.get(c.implementation_id);
           return `<label style="display:block;font-size:12px;margin-bottom:4px;">
-            <input type="checkbox" data-dr-target="${impl.id}" checked>
-            ${UI.esc(impl.control?.code || '')} — ${UI.esc(impl.control?.name || impl.name)}
-            (${impl.maturity}/5 → <strong>${ct.target_maturity}/5</strong>)
+            <input type="checkbox" data-dr-target="${c.implementation_id}" checked>
+            ${UI.esc(c.code || '')} — ${UI.esc(c.name || '')}
+            (${c.maturity}/5 → <strong>${ct.target_maturity}/5</strong>)
           </label>`;
         }).join('') || `<p class="text-muted" style="font-size:12px;">${t('common.no_data')}</p>`}
       </div>
@@ -535,45 +557,79 @@ const ViewPlanDirector = (() => {
             <div class="span2"><label>${t('plandirector.expected_reduction')}</label><textarea id="wi-reduction" class="input" rows="2"></textarea></div>
           </div>`;
       }
-      // step 2: control targets
+      // step 2: controles objetivo (catalogo ISO 27002 completo)
+      if (!_impls.length) {
+        return `<p class="text-muted" style="font-size:13px;">${t('plandirector.catalog_unavailable')}</p>`;
+      }
       return `
-        <p class="text-muted" style="font-size:12px;margin-bottom:10px;">${t('plandirector.control_targets_hint')}</p>
+        <p class="text-muted" style="font-size:12px;margin-bottom:8px;">${t('plandirector.control_targets_hint')}</p>
+        <input type="text" id="wi-ctrl-search" class="input" style="margin-bottom:8px;"
+               placeholder="${t('common.search')}..." value="${UI.esc(state.ctrlQuery || '')}">
+        <div id="wi-ctrl-selected" style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">
+          ${t('plandirector.controls_selected', { n: state.targets.length })}
+        </div>
         <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:6px;">
           <table class="data-table" style="width:100%;">
             <thead><tr><th></th><th>${t('common.code')}</th><th>${t('common.name')}</th><th>${t('plandirector.current_maturity')}</th><th>${t('plandirector.target_maturity')}</th></tr></thead>
-            <tbody>
-              ${_impls.map(impl => {
-                const selected = state.targets.find(x => x.implementation_id === impl.id);
-                return `<tr>
-                  <td><input type="checkbox" data-target-check="${impl.id}" ${selected ? 'checked' : ''}></td>
-                  <td>${UI.esc(impl.control?.code || '')}</td>
-                  <td>${UI.esc(impl.control?.name || impl.name)}</td>
-                  <td>${impl.maturity}/5</td>
-                  <td><input type="number" min="0" max="5" data-target-value="${impl.id}" class="input" style="width:60px;" value="${selected ? selected.target_maturity : Math.min(5, (impl.maturity || 0) + 2)}"></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
+            <tbody id="wi-ctrl-rows">${_controlRowsHtml(state)}</tbody>
           </table>
         </div>`;
     }
 
+    function _controlRowsHtml(state) {
+      const q = (state.ctrlQuery || '').toLowerCase();
+      const rows = _impls.filter(c => !q || `${c.code} ${c.name}`.toLowerCase().includes(q));
+      if (!rows.length) return `<tr><td colspan="5" class="text-muted" style="font-size:12px;">${t('common.no_data')}</td></tr>`;
+      return rows.map(c => {
+        const key = _ctrlKey(c);
+        const selected = state.targets.find(x => _ctrlKey(x) === key);
+        return `<tr>
+          <td><input type="checkbox" data-target-check="${key}" ${selected ? 'checked' : ''}></td>
+          <td>${UI.esc(c.code || '')}</td>
+          <td>${UI.esc(c.name || '')}${c.implemented ? '' : ` <small class="text-muted">${t('plandirector.not_implemented_yet')}</small>`}</td>
+          <td>${c.maturity}/5</td>
+          <td><input type="number" min="0" max="5" data-target-value="${key}" class="input" style="width:60px;"
+                     value="${selected ? selected.target_maturity : Math.min(5, (c.maturity || 0) + 2)}"></td>
+        </tr>`;
+      }).join('');
+    }
+
     function wire() {
       if (step !== 2) return;
+      const search = document.getElementById('wi-ctrl-search');
+      if (search) {
+        search.oninput = (e) => {
+          state.ctrlQuery = e.target.value.trim();
+          // Solo se repintan las filas: el foco del buscador se conserva.
+          document.getElementById('wi-ctrl-rows').innerHTML = _controlRowsHtml(state);
+          wireRows();
+        };
+      }
+      wireRows();
+    }
+
+    function wireRows() {
+      const counter = document.getElementById('wi-ctrl-selected');
+      const refreshCounter = () => {
+        if (counter) counter.textContent = t('plandirector.controls_selected', { n: state.targets.length });
+      };
       document.querySelectorAll('[data-target-check]').forEach(cb => {
         cb.onchange = () => {
-          const implId = parseInt(cb.dataset.targetCheck);
+          const key = cb.dataset.targetCheck;
           if (cb.checked) {
-            const valInput = document.querySelector(`[data-target-value="${implId}"]`);
-            state.targets.push({ implementation_id: implId, target_maturity: parseInt(valInput.value) });
+            const valInput = document.querySelector(`[data-target-value="${key}"]`);
+            const entry = _ctrlFromKey(key);
+            entry.target_maturity = parseInt(valInput.value);
+            state.targets.push(entry);
           } else {
-            state.targets = state.targets.filter(x => x.implementation_id !== implId);
+            state.targets = state.targets.filter(x => _ctrlKey(x) !== key);
           }
+          refreshCounter();
         };
       });
       document.querySelectorAll('[data-target-value]').forEach(inp => {
         inp.onchange = () => {
-          const implId = parseInt(inp.dataset.targetValue);
-          const entry = state.targets.find(x => x.implementation_id === implId);
+          const entry = state.targets.find(x => _ctrlKey(x) === inp.dataset.targetValue);
           if (entry) entry.target_maturity = parseInt(inp.value);
         };
       });
@@ -667,13 +723,16 @@ const ViewPlanDirector = (() => {
 
       <h4 style="font-size:12px;margin:14px 0 6px;">${t('plandirector.control_targets_title')} (${d.control_targets.length})</h4>
       <table class="data-table" style="width:100%;font-size:12px;">
-        <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th><th>Baseline → ${t('plandirector.current_maturity')} → ${t('plandirector.target_maturity')}</th><th></th></tr></thead>
+        <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th><th>Baseline → ${t('plandirector.current_maturity')} → ${t('plandirector.target_maturity')}</th><th>${t('treatment.evidence_col')}</th><th></th></tr></thead>
         <tbody>
           ${d.control_targets.map(ct => `
             <tr>
               <td>${UI.esc(ct.control_code || '')}</td>
               <td>${UI.esc(ct.control_name || '')}</td>
               <td>${ct.baseline_maturity ?? '—'} → ${ct.current_maturity ?? '—'} → <strong>${ct.target_maturity}</strong></td>
+              <td>${(ct.evidence || []).length
+                    ? (ct.evidence || []).map(ev => `<span class="badge" title="${UI.esc(ev.title)}" style="background:${ev.expired ? 'var(--risk-high)' : 'var(--bg-3)'};color:${ev.expired ? '#fff' : 'var(--text)'};margin-right:3px;">${UI.esc(ev.code)}${ev.quality_level ? ` · ${UI.esc(ev.quality_level)}` : ''}</span>`).join('')
+                    : `<span style="color:var(--risk-medium);">${t('plandirector.no_evidence')}</span>`}</td>
               <td><button class="btn btn-sm btn-ghost" data-del-target="${ct.id}">${t('common.delete')}</button></td>
             </tr>`).join('')}
         </tbody>

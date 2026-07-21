@@ -132,8 +132,18 @@ def project_initiative(db: Session, initiative: StrategicInitiative) -> dict:
     """Simula el residual de cada riesgo vinculado asumiendo que los controles
     objetivo alcanzan su madurez objetivo. Usa el mismo motor que el residual
     real (residual_from_payloads); NUNCA escribe en el riesgo, solo en el link."""
-    matrix = get_matrix(db, initiative.organization_id)
+    org_id = initiative.organization_id
+    matrix = get_matrix(db, org_id)
     target_by_impl = {ct.implementation_id: ct.target_maturity for ct in initiative.control_targets}
+
+    # Implementaciones objetivo con su codigo de control: hacen falta para
+    # poder proyectar sobre riesgos que aun no tienen el control vinculado.
+    target_impls = {}
+    if target_by_impl:
+        for ci in db.query(ControlImplementation).filter(
+            ControlImplementation.id.in_(list(target_by_impl.keys()))
+        ).all():
+            target_impls[ci.id] = ci
 
     results = []
     total_points = 0
@@ -150,6 +160,7 @@ def project_initiative(db: Session, initiative: StrategicInitiative) -> dict:
         contrib_map = {row[0]: (row[1] if row[1] is not None else 1.0) for row in rows}
 
         controls = []
+        linked_impl_ids = {ci.id for ci in risk.controls}
         for ci in risk.controls:
             payload = control_payload(ci, contrib_map.get(ci.id, 1.0), db=db)
             target = target_by_impl.get(ci.id)
@@ -162,6 +173,35 @@ def project_initiative(db: Session, initiative: StrategicInitiative) -> dict:
             # empeora un control: si el objetivo no supera lo ya alcanzado,
             # el payload queda intacto.
             if target is not None and target > payload["maturity_raw"]:
+                payload["maturity_raw"] = target
+                payload["maturity"] = float(target)
+            controls.append(payload)
+
+        # Controles objetivo que el riesgo aun NO tiene vinculados. Sin esto la
+        # proyeccion de los riesgos derivados por catalogo salia siempre igual
+        # al baseline (reduccion 0): el control que la iniciativa promete
+        # implantar no entraba en el calculo. Solo se admiten los que el
+        # catalogo amenaza->control reconoce como mitigadores de esa amenaza, y
+        # la contribucion es su relevancia — nunca se inventa una reduccion.
+        candidate_relevance = {}
+        threat = risk.threat
+        if threat and threat.code:
+            candidate_relevance = {
+                c["code"]: float(c.get("relevance") or 0.5)
+                for c in controls_for_threat(db, org_id, threat.code)
+            }
+        for impl_id, target in target_by_impl.items():
+            if impl_id in linked_impl_ids:
+                continue
+            ci = target_impls.get(impl_id)
+            ctrl = ci.control if ci else None
+            if not ctrl or not ctrl.code:
+                continue
+            relevance = candidate_relevance.get(ctrl.code.strip().lstrip("A.").strip())
+            if relevance is None:
+                continue  # el catalogo no lo reconoce como mitigador: no proyecta
+            payload = control_payload(ci, relevance, db=db)
+            if target > payload["maturity_raw"]:
                 payload["maturity_raw"] = target
                 payload["maturity"] = float(target)
             controls.append(payload)

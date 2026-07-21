@@ -18,7 +18,9 @@ from app.models import (
     Threat, TreatmentOption, User, Vulnerability, risk_control_table,
 )
 from app.schemas import RiskIn, RiskOut, RiskUpdate
-from app.security import check_org_access, filter_by_org, get_current_user, require_analyst
+from app.security import (
+    check_org_access, filter_by_org, get_current_user, require_analyst, resolve_org_id,
+)
 from app.services.audit_service import log_action, diff_objects
 from app.services.risk_engine import calc_level, calc_residual
 from app.i18n import ai_lang_directive, get_lang, t as _t
@@ -185,7 +187,9 @@ def treatment_board(db: Session = Depends(get_db), current_user: User = Depends(
     )
     from app.services.initiative_projection_service import compute_burndown
 
-    org_id = getattr(current_user, "_active_org_id", None) or current_user.organization_id
+    from app.models import Evidence
+
+    org_id = resolve_org_id(current_user)
     now = datetime.now(timezone.utc)
 
     ctx = _get_context(db, org_id)
@@ -193,6 +197,7 @@ def treatment_board(db: Session = Depends(get_db), current_user: User = Depends(
 
     risks = filter_by_org(db.query(Risk), Risk, current_user).options(
         joinedload(Risk.asset), joinedload(Risk.threat), joinedload(Risk.owner),
+        joinedload(Risk.controls).joinedload(ControlImplementation.control),
     ).filter(Risk.status != RiskStatus.CLOSED).all()
     risk_ids = [r.id for r in risks]
 
@@ -201,6 +206,32 @@ def treatment_board(db: Session = Depends(get_db), current_user: User = Depends(
     if risk_ids:
         for t in db.query(TreatmentTask).filter(TreatmentTask.risk_id.in_(risk_ids)).all():
             tasks_by_risk.setdefault(t.risk_id, []).append(t)
+
+    # Evidencia documental: la subida directamente al riesgo y la que respalda
+    # sus controles mitigadores. Un plan de tratamiento sin evidencia detras no
+    # es defendible en auditoria, asi que el cockpit la muestra siempre.
+    impl_ids = {ci.id for r in risks for ci in r.controls}
+    evidence_by_risk: dict[int, list] = {}
+    evidence_by_impl: dict[int, list] = {}
+    if risk_ids or impl_ids:
+        ev_rows = db.query(Evidence).filter(
+            Evidence.organization_id == org_id,
+            Evidence.is_current.is_(True),
+            (Evidence.risk_id.in_(risk_ids or [-1]))
+            | (Evidence.control_implementation_id.in_(impl_ids or [-1])),
+        ).all()
+        for ev in ev_rows:
+            item = {
+                "id": ev.id, "code": ev.code, "title": ev.title,
+                "evidence_type": ev.evidence_type.value if hasattr(ev.evidence_type, "value") else ev.evidence_type,
+                "expires_at": ev.expires_at.isoformat() if ev.expires_at else None,
+                "expired": bool(ev.expires_at and ev.expires_at.replace(tzinfo=timezone.utc) < now),
+                "quality_level": (ev.ai_review or {}).get("quality_level") if isinstance(ev.ai_review, dict) else None,
+            }
+            if ev.risk_id:
+                evidence_by_risk.setdefault(ev.risk_id, []).append(item)
+            if ev.control_implementation_id:
+                evidence_by_impl.setdefault(ev.control_implementation_id, []).append(item)
 
     # Iniciativas activas vinculadas: un solo query
     links_by_risk: dict[int, list] = {}
@@ -223,6 +254,9 @@ def treatment_board(db: Session = Depends(get_db), current_user: User = Depends(
         "total_risks": len(risks), "above_appetite": 0, "above_appetite_no_plan": 0,
         "above_appetite_no_coverage": 0, "overdue_plans": 0, "avg_progress": 0,
         "pending_acceptance": 0, "tasks_overdue": 0,
+        # Riesgos con plan de tratamiento pero sin una sola evidencia detras:
+        # el hallazgo tipico de auditoria sobre un plan que "esta hecho".
+        "treated_without_evidence": 0,
     }
     progress_values = []
 
@@ -268,6 +302,25 @@ def treatment_board(db: Session = Depends(get_db), current_user: User = Depends(
             if not has_coverage:
                 kpis["above_appetite_no_coverage"] += 1
 
+        # Controles mitigadores con la evidencia que los respalda
+        controls = []
+        risk_evidence = list(evidence_by_risk.get(r.id, []))
+        for ci in r.controls:
+            ci_evidence = evidence_by_impl.get(ci.id, [])
+            controls.append({
+                "implementation_id": ci.id,
+                "code": ci.control.code if ci.control else None,
+                "name": ci.control.name if ci.control else ci.name,
+                "maturity": ci.maturity,
+                "status": ci.status.value if hasattr(ci.status, "value") else ci.status,
+                "evidence_count": len(ci_evidence),
+            })
+            risk_evidence.extend(ci_evidence)
+        # Dedupe: una misma evidencia puede respaldar varios controles del riesgo
+        seen_ev: set[int] = set()
+        evidence = [e for e in risk_evidence
+                    if not (e["id"] in seen_ev or seen_ev.add(e["id"]))]
+
         item = {
             "id": r.id, "code": r.code,
             "asset_name": r.asset.name if r.asset else None,
@@ -276,18 +329,33 @@ def treatment_board(db: Session = Depends(get_db), current_user: User = Depends(
             "inherent_level": r.inherent_level,
             "status": r.status.value if r.status else None,
             "owner_name": r.owner.full_name if r.owner else None,
+            "owner_id": r.owner_id,
+            # El formulario de edicion necesita los valores actuales COMPLETOS:
+            # con solo un extracto, guardar truncaba el plan existente.
+            "treatment_option": r.treatment_option.value if r.treatment_option else None,
+            "treatment_plan": r.treatment_plan or "",
             "treatment_progress": r.treatment_progress or 0,
             "treatment_due_date": r.treatment_due_date.isoformat() if r.treatment_due_date else None,
             "overdue": due_overdue,
             "treatment_plan_excerpt": (r.treatment_plan or "")[:160],
             "tasks": {"total": tasks_total, "done": tasks_done, "overdue": tasks_overdue},
             "initiatives": initiatives,
+            "controls": controls,
+            "evidence": evidence,
+            "evidence_count": len(evidence),
             "analysis_stale": bool(r.analysis_stale),
-            "acceptance": {"pending": r.status == RiskStatus.PENDING_ACCEPTANCE},
+            "stale_reason": r.stale_reason,
+            "acceptance": {
+                "pending": r.status == RiskStatus.PENDING_ACCEPTANCE,
+                "justification": r.acceptance_justification,
+                "review_date": r.acceptance_review_date.isoformat() if r.acceptance_review_date else None,
+            },
         }
 
         if r.treatment_option:
             columns[r.treatment_option.value].append(item)
+            if not evidence:
+                kpis["treated_without_evidence"] += 1
         elif above:
             columns["untreated"].append(item)
 

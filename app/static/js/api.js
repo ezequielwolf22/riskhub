@@ -335,6 +335,7 @@ const Api = {
     del: (id) => Api.del('/api/initiatives/' + id),
     stats: () => Api.get('/api/initiatives/stats'),
     burndown: () => Api.get('/api/initiatives/burndown'),
+    controlCatalog: () => Api.get('/api/initiatives/control-catalog'),
     reproject: (id) => Api.post('/api/initiatives/' + id + '/reproject', {}),
     verify: (id) => Api.post('/api/initiatives/' + id + '/verify', {}),
     programs: {

@@ -1141,8 +1141,23 @@ class ObjectiveOut(ORMBase):
 
 
 class ControlTargetIn(BaseModel):
-    implementation_id: int
+    """Control objetivo de una iniciativa.
+
+    Se acepta implementation_id (implementacion ya existente en la org) o
+    control_id (control del catalogo ISO 27002). Con control_id, si la org aun
+    no tiene implementacion de ese control se crea automaticamente en estado
+    'no implementado' — el Plan Director no puede depender de que alguien haya
+    dado de alta antes las implementaciones a mano.
+    """
+    implementation_id: Optional[int] = None
+    control_id: Optional[int] = None
     target_maturity: int = Field(ge=0, le=5)
+
+    @model_validator(mode="after")
+    def _require_one(self):
+        if self.implementation_id is None and self.control_id is None:
+            raise ValueError("implementation_id o control_id es obligatorio")
+        return self
 
 
 class ControlTargetOut(ORMBase):
@@ -1155,6 +1170,9 @@ class ControlTargetOut(ORMBase):
     target_maturity: int
     achieved_maturity: Optional[int]
     current_maturity: Optional[int] = None
+    # Evidencia que respalda la madurez declarada del control
+    evidence: list[dict] = []
+    evidence_count: int = 0
     created_at: datetime
 
 

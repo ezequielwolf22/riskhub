@@ -93,6 +93,7 @@ const ViewTreatment = (() => {
       card(k.overdue_plans, t('treatment.kpi_overdue'), k.overdue_plans > 0 ? 'var(--risk-high)' : null, 'overdue'),
       card(k.avg_progress + '%', t('treatment.kpi_progress'), 'var(--brand-purple)'),
       card(k.pending_acceptance, t('treatment.kpi_pending_acceptance'), k.pending_acceptance > 0 ? 'var(--brand-orange)' : null),
+      card(k.treated_without_evidence, `${t('treatment.kpi_no_evidence')} <small style="display:block;font-weight:400;">${t('treatment.kpi_no_evidence_hint')}</small>`, k.treated_without_evidence > 0 ? 'var(--risk-medium)' : null),
     ].join('');
 
     const overdueCard = wrap.querySelector('[data-kpi-filter="overdue"]');
@@ -239,12 +240,40 @@ const ViewTreatment = (() => {
       </tr>`;
 
     if (expanded) {
+      const controlsHtml = (it.controls || []).length
+        ? `<table class="data-table" style="width:100%;font-size:12px;margin-bottom:10px;">
+             <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th><th>${t('plandirector.current_maturity')}</th><th>${t('treatment.evidence_col')}</th></tr></thead>
+             <tbody>${it.controls.map(c => `
+               <tr>
+                 <td>${UI.esc(c.code || '')}</td>
+                 <td>${UI.esc(c.name || '')}</td>
+                 <td>${c.maturity}/5</td>
+                 <td>${c.evidence_count ? c.evidence_count : `<span style="color:var(--risk-medium);">0</span>`}</td>
+               </tr>`).join('')}</tbody>
+           </table>`
+        : `<p class="text-muted" style="font-size:12px;">${t('treatment.no_controls')}</p>`;
+
+      const evidenceHtml = (it.evidence || []).length
+        ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${it.evidence.map(ev => `
+             <span class="badge" title="${UI.esc(ev.title)}" style="background:${ev.expired ? 'var(--risk-high)' : 'var(--bg-3)'};color:${ev.expired ? '#fff' : 'var(--text)'};">
+               ${UI.esc(ev.code)}${ev.quality_level ? ` · ${UI.esc(ev.quality_level)}` : ''}${ev.expired ? ' · ' + t('treatment.evidence_expired') : ''}
+             </span>`).join('')}</div>`
+        : `<p style="font-size:12px;color:var(--risk-medium);">${t('treatment.no_evidence')}</p>`;
+
       rows += `
         <tr>
           <td colspan="8" style="background:var(--bg-2);padding:14px;">
-            <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted);">
-              ${it.treatment_plan_excerpt ? UI.esc(it.treatment_plan_excerpt) : t('common.no_data')}
+            <h5 style="font-size:12px;margin:0 0 4px;">${t('risks.treatment_plan')}</h5>
+            <div style="margin-bottom:10px;font-size:12px;white-space:pre-wrap;">
+              ${it.treatment_plan ? UI.esc(it.treatment_plan) : t('common.no_data')}
             </div>
+            ${it.acceptance && it.acceptance.justification ? `
+              <h5 style="font-size:12px;margin:0 0 4px;">${t('treatment.acceptance_justification')}</h5>
+              <div style="margin-bottom:10px;font-size:12px;">${UI.esc(it.acceptance.justification)}</div>` : ''}
+            <h5 style="font-size:12px;margin:0 0 4px;">${t('treatment.controls_title')}</h5>
+            ${controlsHtml}
+            <h5 style="font-size:12px;margin:0 0 4px;">${t('treatment.evidence_title')}</h5>
+            <div style="margin-bottom:10px;">${evidenceHtml}</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button class="btn btn-sm" data-action="new-task" data-risk-id="${it.id}">+ ${t('treatment.new_task')}</button>
               <button class="btn btn-sm" data-action="edit-treatment" data-risk-id="${it.id}">${t('treatment.edit_treatment')}</button>
@@ -301,16 +330,19 @@ const ViewTreatment = (() => {
       ['avoidance', t('risks.treatment_decision.avoid')],
       ['sharing', t('risks.treatment_decision.transfer')],
     ];
+    // El formulario se abre SIEMPRE con los valores actuales del riesgo: si se
+    // abre vacio, guardar borra el plan y la fecha que ya existian.
+    const dueValue = item.treatment_due_date ? item.treatment_due_date.slice(0, 10) : '';
     UI.modal(t('treatment.edit_treatment') + ' — ' + item.code, `
       <div class="form-grid">
         <div>
           <label>${t('risks.treatment')}</label>
           <select id="et-option" class="input">
-            ${options.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+            ${options.map(([v, l]) => `<option value="${v}" ${v === item.treatment_option ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div><label>${t('common.due_date')}</label><input type="date" id="et-due" class="input"></div>
-        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="et-plan" class="input" rows="4"></textarea></div>
+        <div><label>${t('common.due_date')}</label><input type="date" id="et-due" class="input" value="${dueValue}"></div>
+        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="et-plan" class="input" rows="8">${UI.esc(item.treatment_plan || '')}</textarea></div>
       </div>
     `, {
       actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
@@ -357,8 +389,13 @@ const ViewTreatment = (() => {
             ${Object.entries(optionLabels).map(([v, l]) => `<option value="${v}" ${v === draft.treatment_option ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="ap-plan" class="input" rows="5">${UI.esc(draft.plan || '')}</textarea></div>
+        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="ap-plan" class="input" rows="6">${UI.esc(draft.plan || '')}</textarea></div>
       </div>
+      ${item.treatment_plan ? `
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">${t('treatment.previous_plan')}</summary>
+          <pre style="white-space:pre-wrap;font-size:12px;background:var(--bg-2);padding:8px;border-radius:6px;margin-top:6px;">${UI.esc(item.treatment_plan)}</pre>
+        </details>` : ''}
       <h4 style="font-size:12px;margin:12px 0 6px;">${t('treatment.new_task')}</h4>
       <div>
         ${draft.tasks.map((tk, i) => `

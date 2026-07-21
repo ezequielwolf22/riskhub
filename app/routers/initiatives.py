@@ -28,7 +28,8 @@ from app.schemas import (
     RiskLinkIn, RiskLinkOut, TaskOut,
 )
 from app.security import (
-    check_org_access, filter_by_org, get_current_user, require_analyst, require_role,
+    check_org_access, filter_by_org, get_current_user, require_analyst,
+    require_role, resolve_org_id,
 )
 from app.services.audit_service import log_action
 
@@ -117,8 +118,9 @@ def _initiative_out(db: Session, ini: StrategicInitiative) -> dict:
     }
 
 
-def _control_target_out(ct: InitiativeControlTarget) -> dict:
+def _control_target_out(ct: InitiativeControlTarget, evidence_by_impl: dict | None = None) -> dict:
     ctrl = ct.implementation.control if ct.implementation else None
+    evidence = (evidence_by_impl or {}).get(ct.implementation_id, [])
     return {
         "id": ct.id, "initiative_id": ct.initiative_id,
         "implementation_id": ct.implementation_id,
@@ -127,8 +129,35 @@ def _control_target_out(ct: InitiativeControlTarget) -> dict:
         "baseline_maturity": ct.baseline_maturity, "target_maturity": ct.target_maturity,
         "achieved_maturity": ct.achieved_maturity,
         "current_maturity": ct.implementation.maturity if ct.implementation else None,
+        # Evidencia que respalda la madurez declarada del control
+        "evidence": evidence, "evidence_count": len(evidence),
         "created_at": ct.created_at,
     }
+
+
+def _evidence_for_impls(db: Session, org_id, impl_ids: list[int]) -> dict:
+    """Evidencia vigente por implementacion de control. Sin evidencia, una
+    madurez declarada es una afirmacion sin respaldo: el detalle lo muestra."""
+    from app.models import Evidence
+
+    if not impl_ids:
+        return {}
+    now = datetime.now(timezone.utc)
+    rows = db.query(Evidence).filter(
+        Evidence.organization_id == org_id,
+        Evidence.is_current.is_(True),
+        Evidence.control_implementation_id.in_(impl_ids),
+    ).all()
+    out: dict[int, list] = {}
+    for ev in rows:
+        out.setdefault(ev.control_implementation_id, []).append({
+            "id": ev.id, "code": ev.code, "title": ev.title,
+            "evidence_type": ev.evidence_type.value if hasattr(ev.evidence_type, "value") else ev.evidence_type,
+            "expires_at": ev.expires_at.isoformat() if ev.expires_at else None,
+            "expired": bool(ev.expires_at and ev.expires_at.replace(tzinfo=timezone.utc) < now),
+            "quality_level": (ev.ai_review or {}).get("quality_level") if isinstance(ev.ai_review, dict) else None,
+        })
+    return out
 
 
 def _risk_link_out(link: InitiativeRiskLink) -> dict:
@@ -168,6 +197,43 @@ def _get_initiative_or_404(db: Session, initiative_id: int, current_user: User, 
     return ini
 
 
+def resolve_implementation(db: Session, org_id: int, target, lang: str):
+    """Devuelve la ControlImplementation de un ControlTargetIn.
+
+    Si viene control_id y la org no tiene todavia implementacion de ese control
+    del catalogo, la crea en estado 'no implementado' (madurez 0). Asi el
+    wizard puede ofrecer los 93 controles ISO 27002 sin exigir que el cliente
+    los haya dado de alta uno a uno antes de poder planificar.
+    """
+    from app.models import Control, ControlImplementation, ControlStatus
+
+    impl_id = getattr(target, "implementation_id", None)
+    if impl_id is not None:
+        impl = db.get(ControlImplementation, impl_id)
+        if not impl or impl.organization_id != org_id:
+            raise HTTPException(404, _t("initiatives.control_not_found", lang))
+        return impl
+
+    control = db.get(Control, getattr(target, "control_id", None))
+    if not control:
+        raise HTTPException(404, _t("initiatives.control_not_found", lang))
+    impl = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == org_id,
+        ControlImplementation.control_id == control.id,
+    ).order_by(ControlImplementation.id.asc()).first()
+    if impl:
+        return impl
+    impl = ControlImplementation(
+        organization_id=org_id, control_id=control.id,
+        name=control.name, status=ControlStatus.NOT_IMPLEMENTED, maturity=0,
+        inclusion_reason="risk",
+        notes=_t("initiatives.impl_autocreated", lang),
+    )
+    db.add(impl)
+    db.flush()
+    return impl
+
+
 def _validate_program_org(db: Session, program_id, current_user: User, lang: str) -> None:
     """Un program_id de otra organizacion expondria su nombre via program_name."""
     if program_id is None:
@@ -198,7 +264,7 @@ def list_programs(db: Session = Depends(get_db), current_user: User = Depends(ge
 @router.post("/programs", response_model=ProgramOut)
 def create_program(body: ProgramIn, db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     p = StrategicProgram(
         code=_next_code(db, StrategicProgram, "PRG"), organization_id=org_id,
         name=body.name, description=body.description, area=body.area,
@@ -243,12 +309,48 @@ def delete_program(program_id: int, request: Request, db: Session = Depends(get_
     db.commit()
 
 
+# ---------- Catalogo de controles para el wizard (ANTES de /{id}) ----------
+
+@router.get("/control-catalog")
+def control_catalog(db: Session = Depends(get_db),
+                    current_user: User = Depends(get_current_user)):
+    """Catalogo ISO 27002 completo con la implementacion de la org si existe.
+
+    El wizard necesita SIEMPRE algo que mostrar: una org recien creada tiene
+    los 93 controles del catalogo pero cero implementaciones. Se devuelven los
+    controles del catalogo enriquecidos con madurez/estado real cuando ya hay
+    implementacion, y implementation_id=None cuando no la hay (se creara al
+    guardar el control objetivo).
+    """
+    from app.models import Control, ControlImplementation
+
+    org_id = resolve_org_id(current_user)
+    impls = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == org_id
+    ).order_by(ControlImplementation.id.asc()).all()
+    impl_by_control: dict[int, ControlImplementation] = {}
+    for impl in impls:
+        impl_by_control.setdefault(impl.control_id, impl)
+
+    out = []
+    for c in db.query(Control).order_by(Control.code.asc()).all():
+        impl = impl_by_control.get(c.id)
+        out.append({
+            "control_id": c.id, "code": c.code, "name": c.name, "theme": c.theme,
+            "implementation_id": impl.id if impl else None,
+            "maturity": impl.maturity if impl else 0,
+            "status": (impl.status.value if hasattr(impl.status, "value") else impl.status) if impl else None,
+            "implemented": impl is not None,
+        })
+    return out
+
+
 # ---------- Burndown y Stats (declarar ANTES de /{id}) ----------
 
 @router.get("/burndown")
 def initiatives_burndown(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.services.initiative_projection_service import compute_burndown
-    org_id = getattr(current_user, "_active_org_id", None) or current_user.organization_id
+    org_id = resolve_org_id(current_user)
     return compute_burndown(db, org_id)
 
 
@@ -279,7 +381,7 @@ def initiatives_stats(db: Session = Depends(get_db), current_user: User = Depend
     risks_covered = len({link.risk_id for link in active_links})
 
     ctx = db.query(RiskContext).filter(
-        RiskContext.organization_id == current_user.organization_id
+        RiskContext.organization_id == resolve_org_id(current_user)
     ).first()
     appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
 
@@ -365,7 +467,7 @@ async def import_plan_document(request: Request, db: Session = Depends(get_db),
     if len(text.strip()) < 100:
         raise HTTPException(422, _t("initiatives.import_no_text", lang))
 
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     try:
         preview = parse_plan_document(db, org_id, text, lang)
     except ValueError as e:
@@ -379,7 +481,7 @@ async def import_plan_document(request: Request, db: Session = Depends(get_db),
 def confirm_plan_import(body: ImportConfirmIn, db: Session = Depends(get_db),
                         current_user: User = Depends(require_analyst)):
     from app.services.initiative_projection_service import auto_link_risks, project_initiative
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
 
     created_programs = 0
     created_initiatives = 0
@@ -416,16 +518,16 @@ def confirm_plan_import(body: ImportConfirmIn, db: Session = Depends(get_db),
 
             seen_impl_ids: set[int] = set()
             for ct in ini_in.control_targets:
-                if ct.implementation_id in seen_impl_ids:
+                try:
+                    impl = resolve_implementation(db, org_id, ct, "es")
+                except HTTPException:
+                    continue  # control que no existe en el catalogo: se omite
+                if impl.id in seen_impl_ids:
                     continue  # la IA puede repetir un control: dedupe (uq_initiative_impl)
-                from app.models import ControlImplementation
-                impl = db.get(ControlImplementation, ct.implementation_id)
-                if not impl or impl.organization_id != org_id:
-                    continue
-                seen_impl_ids.add(ct.implementation_id)
+                seen_impl_ids.add(impl.id)
                 db.add(InitiativeControlTarget(
                     organization_id=org_id, initiative_id=initiative.id,
-                    implementation_id=ct.implementation_id,
+                    implementation_id=impl.id,
                     baseline_maturity=impl.maturity, target_maturity=ct.target_maturity,
                 ))
             for okr in ini_in.objectives:
@@ -457,7 +559,7 @@ def draft_initiative_for_risk(body: DraftForRiskIn, request: Request, db: Sessio
     lang = get_lang(request)
     from app.services.initiative_ai_service import draft_initiative_for_risks
     try:
-        draft = draft_initiative_for_risks(db, current_user.organization_id, body.risk_ids, lang)
+        draft = draft_initiative_for_risks(db, resolve_org_id(current_user), body.risk_ids, lang)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return draft
@@ -473,7 +575,7 @@ def confirm_initiative_draft(body: DraftConfirmIn, db: Session = Depends(get_db)
     from app.services.ai_learning_service import record_signal
     from app.services.initiative_projection_service import auto_link_risks, project_initiative
 
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     ini = StrategicInitiative(
         code=_next_code(db, StrategicInitiative, "INI"), organization_id=org_id,
         title=body.title, description=body.description, priority=body.priority,
@@ -486,15 +588,16 @@ def confirm_initiative_draft(body: DraftConfirmIn, db: Session = Depends(get_db)
 
     seen_impl_ids: set[int] = set()
     for ct in body.control_targets:
-        if ct.implementation_id in seen_impl_ids:
+        try:
+            impl = resolve_implementation(db, org_id, ct, "es")
+        except HTTPException:
             continue
-        impl = db.get(ControlImplementation, ct.implementation_id)
-        if not impl or impl.organization_id != org_id:
+        if impl.id in seen_impl_ids:
             continue
-        seen_impl_ids.add(ct.implementation_id)
+        seen_impl_ids.add(impl.id)
         db.add(InitiativeControlTarget(
             organization_id=org_id, initiative_id=ini.id,
-            implementation_id=ct.implementation_id,
+            implementation_id=impl.id,
             baseline_maturity=impl.maturity, target_maturity=ct.target_maturity,
         ))
     db.flush()
@@ -529,7 +632,7 @@ def discard_initiative_draft(body: DraftDiscardIn, db: Session = Depends(get_db)
                              current_user: User = Depends(require_analyst)):
     """Registra el rechazo de un borrador IA (senal de aprendizaje). No persiste nada mas."""
     from app.services.ai_learning_service import record_signal
-    record_signal(db, current_user.organization_id, "initiative_draft_rejected",
+    record_signal(db, resolve_org_id(current_user), "initiative_draft_rejected",
                   {"title": (body.title or "")[:120], "risk_ids": body.risk_ids[:20]},
                   user_id=current_user.id, commit=True)
 
@@ -579,7 +682,7 @@ def list_initiatives(
 def create_initiative(body: InitiativeIn, request: Request, db: Session = Depends(get_db),
                       current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     _validate_program_org(db, body.program_id, current_user, lang)
     _validate_owner_org(db, body.owner_id, current_user, lang)
     ini = StrategicInitiative(
@@ -624,7 +727,9 @@ def get_initiative(initiative_id: int, request: Request, db: Session = Depends(g
         }
         for o in ini.objectives
     ]
-    out["control_targets"] = [_control_target_out(ct) for ct in ini.control_targets]
+    evidence_by_impl = _evidence_for_impls(
+        db, ini.organization_id, [ct.implementation_id for ct in ini.control_targets])
+    out["control_targets"] = [_control_target_out(ct, evidence_by_impl) for ct in ini.control_targets]
     out["risk_links"] = [_risk_link_out(link) for link in ini.risk_links]
     out["log_entries"] = [_log_entry_out(e) for e in log_entries]
     out["tasks"] = tasks
@@ -747,21 +852,16 @@ def create_control_target(initiative_id: int, body: ControlTargetIn, request: Re
                           db: Session = Depends(get_db), current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
     ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
-    from app.models import ControlImplementation
-    impl = db.query(ControlImplementation).filter(
-        ControlImplementation.id == body.implementation_id
-    ).first()
-    if not impl or not check_org_access(impl.organization_id, current_user):
-        raise HTTPException(404, _t("initiatives.control_not_found", lang))
+    impl = resolve_implementation(db, ini.organization_id, body, lang)
     existing = db.query(InitiativeControlTarget).filter(
         InitiativeControlTarget.initiative_id == ini.id,
-        InitiativeControlTarget.implementation_id == body.implementation_id,
+        InitiativeControlTarget.implementation_id == impl.id,
     ).first()
     if existing:
         raise HTTPException(409, _t("initiatives.control_target_duplicate", lang))
     ct = InitiativeControlTarget(
         organization_id=ini.organization_id, initiative_id=ini.id,
-        implementation_id=body.implementation_id,
+        implementation_id=impl.id,
         baseline_maturity=impl.maturity, target_maturity=body.target_maturity,
     )
     db.add(ct)
