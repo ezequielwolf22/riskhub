@@ -74,7 +74,7 @@ const ViewRisks = {
           <button class="btn btn-ghost" id="r-export-csv" title="${t('common.export')}" style="margin-left:auto;">${t('risks.export_excel')}</button>
           ${canEdit ? `
           <button class="btn btn-ghost" id="r-import-tpl" title="${t('risks.template_csv')}">${t('risks.template_csv')}</button>
-          <label class="btn btn-ghost" style="cursor:pointer;margin:0;" title="Importar riesgos desde CSV">
+          <label class="btn btn-ghost" style="cursor:pointer;margin:0;" title="${t('risks.import_csv_title')}">
             ${t('risks.import_csv')}
             <input type="file" id="r-import-file" accept=".csv" style="display:none;">
           </label>` : ''}
@@ -456,7 +456,7 @@ const ViewRisks = {
           </span>
           <button class="btn btn-sm" id="r-next" ${ViewRisks._page >= totalPages - 1 ? 'disabled' : ''}}>${t('common.next')} →</button>
           <span style="font-size:12px;color:var(--text-muted);">${ViewRisks._page + 1} / ${totalPages}</span>
-        </div>` : `<div style="padding:6px 0;font-size:12px;color:var(--text-muted);">${total} riesgo${total !== 1 ? 's' : ''}</div>`;
+        </div>` : `<div style="padding:6px 0;font-size:12px;color:var(--text-muted);">${t('risks.n_risks', {n: total})}</div>`;
 
       list.innerHTML = pagerHtml + `<div class="table-wrap"><table class="data" id="r-table">
         <thead>
@@ -721,7 +721,7 @@ const ViewRisks = {
             <div>Controles con revisión normativa: <strong>${srcs.regwatch_flags ?? 0}</strong></div>
           ` : '<div>Sin desglose de fuentes (análisis anterior a v6)</div>'}
           ${meta.suggested_residual_likelihood != null ? `<div class="span2" style="grid-column:1/-1;">Residual sugerido por el modelo: P${meta.suggested_residual_likelihood}/C${meta.suggested_residual_consequence} — el valor final lo calcula el motor determinista desde los controles vinculados.</div>` : ''}
-          ${r.analysis_stale ? `<div style="grid-column:1/-1;color:#92400E;font-weight:600;">Desactualizado: ${UI.esc(r.stale_reason || 'el contexto cambió desde el último análisis')}</div>` : ''}
+          ${r.analysis_stale ? `<div style="grid-column:1/-1;color:#92400E;font-weight:600;">${t('risks.stale_label', {reason: UI.esc(r.stale_reason || t('risks.stale_default_reason'))})}</div>` : ''}
         </div>
       </details>` : '';
 
@@ -788,7 +788,7 @@ const ViewRisks = {
       </div>
       <input type="hidden" id="f-ic" value="${r.inherent_consequence}">
       <div>
-        <label>${methodology === 'magerit' ? 'Frecuencia de la amenaza (0-4)' : 'Probabilidad inherente (0-4)'}</label>
+        <label>${methodology === 'magerit' ? t('risks.magerit_frequency') : t('risks.inherent_likelihood_lbl')}</label>
         <select id="f-il">
           ${[0,1,2,3,4].map(i => `<option value="${i}" ${r.inherent_likelihood===i?'selected':''}>${i} — ${freqLabels[i]||i}</option>`).join('')}
         </select>
@@ -812,7 +812,7 @@ const ViewRisks = {
           Vulnerabilidades asociadas
           ${relatedVulns.length < ViewRisks._vulns.length
             ? `<span style="font-size:11px;font-weight:400;color:var(--text-muted);">
-                ${isNew ? 'Auto-seleccionadas:' : 'Relevantes para amenaza:'} ${relatedVulns.length} de ${ViewRisks._vulns.length}
+                ${isNew ? t('risks.auto_selected') : t('risks.relevant_for_threat')} ${relatedVulns.length} de ${ViewRisks._vulns.length}
                 <a href="#" id="vuln-show-all-link" style="margin-left:6px;color:var(--brand-purple);">Ver todas</a>
                </span>`
             : ''}
@@ -826,7 +826,7 @@ const ViewRisks = {
           ${(relatedVulns.length ? relatedVulns : ViewRisks._vulns).map(v => `<option value="${v.id}" ${effectiveVulnIds.includes(v.id)?'selected':''}>${UI.esc(v.code)} - ${UI.esc(v.name)}</option>`).join('')}
           ${!isNew && mismatchedVulnIds.size > 0
             ? ViewRisks._vulns.filter(v => mismatchedVulnIds.has(v.id))
-                .map(v => `<option value="${v.id}" selected>${UI.esc(v.code)} - ${UI.esc(v.name)} [fuera de amenaza]</option>`).join('')
+                .map(v => `<option value="${v.id}" selected>${UI.esc(v.code)} - ${UI.esc(v.name)} ${t('risks.out_of_threat')}</option>`).join('')
             : ''}
         </select>
       </div>
@@ -835,7 +835,7 @@ const ViewRisks = {
           Controles implementados que mitigan
           ${suggestedImpls.length < ViewRisks._impls.length
             ? `<span style="font-size:11px;font-weight:400;color:var(--text-muted);">
-                ${isNew ? 'Pre-seleccionados:' : 'Relevantes para amenaza+vulns:'} ${suggestedImpls.length} de ${ViewRisks._impls.length}
+                ${isNew ? t('risks.pre_selected') : t('risks.relevant_threat_vulns')} ${suggestedImpls.length} de ${ViewRisks._impls.length}
                 <a href="#" id="ctrl-show-all-link" style="margin-left:6px;color:var(--brand-purple);">Ver todos</a>
                </span>`
             : ''}
@@ -844,7 +844,7 @@ const ViewRisks = {
         <select id="f-impls" multiple size="${Math.max(3, Math.min(suggestedImpls.length || ViewRisks._impls.length, 7))}" style="height:auto;">
           ${(suggestedImpls.length ? suggestedImpls : ViewRisks._impls).map(c => {
             const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
-            return `<option value="${c.id}" ${effectiveCtrlIds.includes(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+            return `<option value="${c.id}" ${effectiveCtrlIds.includes(c.id)?'selected':''}>${code}${UI.esc(c.name)} (${t('risks.ctrl_opt_maturity', {m: c.maturity, status: UI.controlStatusLabel(c.status)})})</option>`;
           }).join('')}
         </select>
       </div>
@@ -982,7 +982,7 @@ const ViewRisks = {
           if (!traceDetails.open) return;
           const body = document.getElementById('risk-trace-body');
           if (body && body.children.length === 0) {
-            body.innerHTML = '<div class="notice">Cargando trazabilidad...</div>';
+            body.innerHTML = `<div class="notice">${t('risks.loading_traceability')}</div>`;
             await ViewRisks._loadTrace(id, body);
           }
         }, { once: true });
@@ -1062,7 +1062,7 @@ const ViewRisks = {
         const currentSelected = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
         sel.innerHTML = ViewRisks._impls.map(c => {
           const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
-          return `<option value="${c.id}" ${currentSelected.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+          return `<option value="${c.id}" ${currentSelected.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (${t('risks.ctrl_opt_maturity', {m: c.maturity, status: UI.controlStatusLabel(c.status)})})</option>`;
         }).join('');
         sel.size = Math.min(ViewRisks._impls.length, 9);
         ctrlShowAll.textContent = `(mostrando todos — ${ViewRisks._impls.length})`;
@@ -1090,7 +1090,7 @@ const ViewRisks = {
           if (suggestedControls.length) {
             sel.innerHTML = suggestedControls.map(c => {
               const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
-              return `<option value="${c.id}" selected>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+              return `<option value="${c.id}" selected>${code}${UI.esc(c.name)} (${t('risks.ctrl_opt_maturity', {m: c.maturity, status: UI.controlStatusLabel(c.status)})})</option>`;
             }).join('');
             sel.size = Math.max(3, Math.min(suggestedControls.length, 8));
             const lbl = sel.closest('.span2')?.querySelector('label span');
@@ -1102,14 +1102,14 @@ const ViewRisks = {
                 const cur = new Set(Array.from(sel.selectedOptions).map(o => parseInt(o.value)));
                 sel.innerHTML = ViewRisks._impls.map(c => {
                   const code = c.control?.code ? `[${UI.esc(c.control.code)}] ` : '';
-                  return `<option value="${c.id}" ${cur.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (madurez ${c.maturity}/5, ${UI.controlStatusLabel(c.status)})</option>`;
+                  return `<option value="${c.id}" ${cur.has(c.id)?'selected':''}>${code}${UI.esc(c.name)} (${t('risks.ctrl_opt_maturity', {m: c.maturity, status: UI.controlStatusLabel(c.status)})})</option>`;
                 }).join('');
                 sel.size = Math.min(ViewRisks._impls.length, 9);
                 newShowAll.remove();
               });
             }
           } else {
-            UI.toast('La IA no identifico controles especificos para este riesgo', 'info');
+            UI.toast(t('risks.ai_no_controls'), 'info');
           }
 
           // Panel de razonamiento IA debajo del boton
@@ -1169,7 +1169,7 @@ const ViewRisks = {
           `;
           btnSuggest.insertAdjacentElement('afterend', panel);
 
-          if (suggestedControls.length) UI.toast(`${suggestedControls.length} controles asignados por IA. Puedes ajustar antes de guardar.`, 'success');
+          if (suggestedControls.length) UI.toast(t('risks.ai_controls_assigned', {n: suggestedControls.length}), 'success');
         } catch (e) {
           UI.toast('Error en sugerencia IA: ' + e.message, 'error');
         } finally {
@@ -1224,7 +1224,7 @@ const ViewRisks = {
       const just = document.getElementById('f-just').value.trim();
       // Validar justificación obligatoria al aceptar
       if (status === 'accepted' && !just) {
-        UI.toast('La justificación de aceptación es obligatoria al aceptar un riesgo', 'error');
+        UI.toast(t('risks.acceptance_justification_required'), 'error');
         document.getElementById('f-just').focus();
         return;
       }
@@ -1453,7 +1453,7 @@ const ViewRisks = {
             <div>
               <div style="font-size:22px;font-weight:800;color:${calcColor};">${t.combined_efficacy_pct}%</div>
               <div style="font-size:11px;color:var(--text-muted);">Eficacia combinada de controles</div>
-              <div style="font-size:11px;color:var(--text-muted);">${t.controls.length} control${t.controls.length !== 1 ? 'es' : ''} vinculado${t.controls.length !== 1 ? 's' : ''}</div>
+              <div style="font-size:11px;color:var(--text-muted);">${window.t('risks.n_controls_linked', {n: t.controls.length})}</div>
             </div>
             <div>
               <div style="font-size:22px;font-weight:800;">${UI.riskPill(t.residual_level)}</div>
@@ -1612,7 +1612,7 @@ const ViewRisks = {
           : step.coverage_quality === 'media' ? 'Parcial' : 'Sin cobertura';
         const gapHtml = step.gap ? `<div style="margin-top:3px;font-size:10px;color:var(--danger);font-style:italic;">Brecha: ${UI.esc(step.gap)}</div>` : '';
         const ctrlsHtml = (step.controls_covering || []).length
-          ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Controles: ${step.controls_covering.map(c => UI.esc(c)).join(', ')}</div>` : '';
+          ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${t('risks.controls_label', {list: step.controls_covering.map(c => UI.esc(c)).join(', ')})}</div>` : '';
         return `<div style="display:flex;gap:10px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border-light);">
           <div style="min-width:20px;display:flex;flex-direction:column;align-items:center;">
             <div style="width:20px;height:20px;border-radius:50%;background:${coverageColor};display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700;flex-shrink:0;">${i+1}</div>
@@ -1960,7 +1960,7 @@ const ViewRisks = {
             ${data.meets_target !== undefined ? `<div style="padding:6px 10px;background:${data.meets_target ? '#F0FDF4' : '#FEF3C7'};border-radius:6px;font-size:12px;color:${data.meets_target ? '#166534' : '#92400E'};">
               ${data.meets_target ? 'El escenario simulado alcanza el objetivo residual.' : `No alcanza el objetivo. Brecha: ${data.gap_to_target || 0} puntos.`}
             </div>` : ''}
-            ${data.control_reduction_pct !== undefined ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Reduccion de controles: <strong>${data.control_reduction_pct}%</strong></div>` : ''}
+            ${data.control_reduction_pct !== undefined ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">${t('risks.control_reduction', {pct: data.control_reduction_pct})}</div>` : ''}
             ${data.recommendation ? `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-base);">${UI.esc(data.recommendation)}</div>` : ''}
           </div>`;
       } catch (e) {
@@ -2022,7 +2022,7 @@ const ViewRisks = {
   async _loadSnapshotHistory(riskId) {
     const container = document.getElementById('ai-tab-content-history');
     if (!container) return;
-    container.innerHTML = '<div class="notice">Cargando historial de niveles...</div>';
+    container.innerHTML = `<div class="notice">${t('risks.loading_level_history')}</div>`;
     try {
       const data = await Api.get(`/api/risks/${riskId}/history`);
       const snaps = Array.isArray(data) ? data : (data.snapshots || []);
@@ -2079,7 +2079,7 @@ const ViewRisks = {
   async _loadRiskKRIs(riskId) {
     const container = document.getElementById('ai-tab-content-kris');
     if (!container) return;
-    container.innerHTML = '<div class="notice">Cargando KRIs vinculados...</div>';
+    container.innerHTML = `<div class="notice">${t('risks.loading_linked_kris')}</div>`;
     try {
       const kris = await Api.get(`/api/kris?risk_id=${riskId}`);
       if (!kris.length) {
@@ -2202,14 +2202,14 @@ const ViewRisks = {
 
     const campaignsHtml = related.length === 0
       ? `<div class="notice notice-info" style="font-size:13px;">
-           Sin encuestas enviadas para este riesgo. Pulsa "Nueva encuesta" para solicitar la valoración de los responsables de área.
+           ${t('risks.no_surveys_hint')} de área.
          </div>`
       : related.map(c => {
           const statusBadge = c.status === 'active' ? 'badge-purple'
             : c.status === 'closed' ? 'badge-low' : 'badge-muted';
           const applyBtn = (c.status === 'closed' && c.completed_responses > 0 && canEdit)
             ? `<button class="btn btn-ghost btn-sm" style="color:var(--success)"
-                       data-apply-campaign="${c.id}" title="Aplicar al registro de riesgos">
+                       data-apply-campaign="${c.id}" title="${t('risks.apply_to_register')}">
                  Aplicar
                </button>` : '';
           return `<div class="card" style="padding:14px;margin-bottom:8px;">
@@ -2242,7 +2242,7 @@ const ViewRisks = {
             Encuestas enviadas a responsables de área sobre este riesgo
           </p>
         </div>
-        ${canEdit ? `<button class="btn btn-primary btn-sm" id="btn-new-survey-risk">Nueva encuesta</button>` : ''}
+        ${canEdit ? `<button class="btn btn-primary btn-sm" id="btn-new-survey-risk">${t('risks.new_survey')}</button>` : ''}
       </div>
       ${campaignsHtml}
       ${surveySummary}
@@ -2355,7 +2355,7 @@ const ViewRisks = {
       const deadlineVal = modal.querySelector('#srv-deadline').value;
       const intro = modal.querySelector('#srv-intro').value.trim();
 
-      if (!title) { alert('El título es obligatorio.'); return; }
+      if (!title) { alert(t('risks.title_required')); return; }
       const validRespondents = respondents.filter(r => r.name && r.email);
       if (validRespondents.length === 0) { alert('Añade al menos un destinatario con nombre y email.'); return; }
 
@@ -2378,7 +2378,7 @@ const ViewRisks = {
         });
         const result = await Api.post(`/api/surveys/campaigns/${campaign.id}/send`, {});
         close();
-        UI.toast(`Encuesta creada y ${result.sent || 0} email(s) enviado(s).`, 'success');
+        UI.toast(t('risks.survey_created', {n: result.sent || 0}), 'success');
         window.dispatchEvent(new Event('risks-updated'));
       } catch (e) {
         sendBtn.disabled = false;
@@ -2466,14 +2466,14 @@ const ViewRisks = {
     catch (e) { alert('Error al aplicar: ' + (e.message || '')); return; }
 
     if (!result.changes || result.changes.length === 0) {
-      alert('No hay cambios a aplicar (ya aplicados o sin respuestas nuevas).'); return;
+      alert(t('risks.no_changes_apply')); return;
     }
     const msg = result.changes.map(c =>
       `- ${c.risk_code}: Probabilidad ${c.likelihood_before} → ${c.likelihood_after}, Impacto ${c.impact_before} → ${c.impact_after}`
     ).join('\n');
     const n = result.changes[0]?.responses_count || 0;
-    if (confirm(`Se aplicarán los siguientes cambios basados en ${n} respuesta(s):\n\n${msg}\n\n¿Confirmar?`)) {
-      UI.toast('Valoraciones aplicadas al registro de riesgos.', 'success');
+    if (confirm(t('risks.confirm_apply_changes', {n: n, msg: msg}))) {
+      UI.toast(t('risks.assessments_applied'), 'success');
       window.dispatchEvent(new Event('risks-updated'));
     }
   },
