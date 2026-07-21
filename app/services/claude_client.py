@@ -23,8 +23,23 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 3
 _BASE_WAIT_S = 10
 
-# api_key[:16] -> True si la key agoto creditos (se resetea al reiniciar)
-_credit_exhausted: dict[str, bool] = {}
+# Ventana del circuit breaker de creditos. Pasado este tiempo se deja pasar
+# una llamada de sondeo: si el cliente ha recargado, el servicio se recupera
+# solo (antes exigia reiniciar el contenedor para volver a funcionar).
+_CREDIT_BREAKER_TTL_S = 15 * 60
+
+# api_key[:16] -> monotonic() del momento en que se agotaron los creditos
+_credit_exhausted: dict[str, float] = {}
+
+
+def _breaker_open(api_key: str) -> bool:
+    since = _credit_exhausted.get(api_key[:16])
+    if since is None:
+        return False
+    if time.monotonic() - since >= _CREDIT_BREAKER_TTL_S:
+        _credit_exhausted.pop(api_key[:16], None)
+        return False
+    return True
 
 
 class CreditsExhausted(RuntimeError):
@@ -167,7 +182,7 @@ def create_message(api_key: str, *, model: str, max_tokens: int,
     """
     import anthropic
 
-    if _credit_exhausted.get(api_key[:16]):
+    if _breaker_open(api_key):
         raise CreditsExhausted("API key sin creditos (circuit breaker activo)")
 
     client = anthropic.Anthropic(api_key=api_key)
@@ -187,8 +202,11 @@ def create_message(api_key: str, *, model: str, max_tokens: int,
         except Exception as exc:
             err = str(exc)
             if _is_credit_error(err):
-                _credit_exhausted[api_key[:16]] = True
-                logger.warning("claude_client: creditos agotados — circuit breaker ON")
+                _credit_exhausted[api_key[:16]] = time.monotonic()
+                logger.warning(
+                    "claude_client: creditos agotados — circuit breaker ON %d min",
+                    _CREDIT_BREAKER_TTL_S // 60,
+                )
                 raise CreditsExhausted(err) from exc
             if _is_retryable(err) and attempt < retries:
                 wait = _BASE_WAIT_S * (2 ** attempt)

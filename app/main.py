@@ -90,6 +90,23 @@ async def observability_middleware(request, call_next):
         response = await call_next(request)
     except Exception as exc:
         duration_ms = round((_time.monotonic() - t0) * 1000)
+        # Sin creditos en la API key no es un fallo de la app: el usuario tiene
+        # que recargar. Devolvemos 402 con mensaje accionable en vez del 500
+        # generico con referencia, que no dice nada a quien lo sufre.
+        from app.services.claude_client import CreditsExhausted
+        if isinstance(exc, CreditsExhausted):
+            from fastapi.responses import JSONResponse
+
+            from app.i18n import get_lang, t as _t
+            logger.warning(
+                "request_id=%s %s %s -> 402 (%dms): %s",
+                request_id, request.method, request.url.path, duration_ms, exc,
+            )
+            return JSONResponse(
+                status_code=402,
+                content={"detail": _t("common.ai_no_credits", get_lang(request))},
+                headers={"X-Request-ID": request_id},
+            )
         _METRICS["errors_total"] += 1
         logger.exception(
             "request_id=%s %s %s -> 500 (%dms): %s",

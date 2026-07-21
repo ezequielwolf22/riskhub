@@ -6,7 +6,8 @@
     "bad_request": "Solicitud inválida.",
     "conflict": "Ya existe un registro con los mismos datos.",
     "server_error": "Error interno del servidor.",
-    "validation_error": "Error de validación."
+    "validation_error": "Error de validación.",
+    "ai_no_credits": "El servicio de IA no esta disponible: la clave de Anthropic se ha quedado sin credito. Recarga en console.anthropic.com/settings/billing y vuelve a intentarlo."
   },
   "auth": {
     "invalid_credentials": "Credenciales no válidas.",

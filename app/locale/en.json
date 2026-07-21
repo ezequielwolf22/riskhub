@@ -6,7 +6,8 @@
     "bad_request": "Invalid request.",
     "conflict": "A record with the same data already exists.",
     "server_error": "Internal server error.",
-    "validation_error": "Validation error."
+    "validation_error": "Validation error.",
+    "ai_no_credits": "The AI service is unavailable: the Anthropic API key has run out of credit. Top up at console.anthropic.com/settings/billing and try again."
   },
   "auth": {
     "invalid_credentials": "Invalid credentials.",
