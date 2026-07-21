@@ -8,7 +8,7 @@ const ViewProfile = {
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;">
         <div style="width:56px;height:56px;border-radius:50%;background:var(--brand-purple);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;flex-shrink:0;" id="profile-avatar">?</div>
         <div>
-          <h1 style="font-size:20px;font-weight:700;margin:0;" id="profile-title">Mi perfil</h1>
+          <h1 style="font-size:20px;font-weight:700;margin:0;" id="profile-title">${t('profile.my_profile')}</h1>
           <p style="font-size:13px;color:var(--text-muted);margin:2px 0 0;" id="profile-subtitle"></p>
         </div>
       </div>
@@ -17,14 +17,14 @@ const ViewProfile = {
           <button id="tab-${tab}" onclick="ViewProfile._setTab('${tab}')"
             style="padding:10px 20px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;
                    border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-secondary);">
-            ${{ cuenta: 'Cuenta', seguridad: 'Seguridad', preferencias: 'Preferencias' }[tab]}
+            ${{ cuenta: t('profile.tab_account'), seguridad: t('profile.tab_security'), preferencias: t('profile.tab_preferences') }[tab]}
           </button>
         `).join('')}
       </div>
-      <div id="profile-tab-content"><p class="muted">Cargando...</p></div>
+      <div id="profile-tab-content"><p class="muted">${t('profile.loading')}</p></div>
       <div style="margin-top:32px;padding-top:16px;border-top:1px solid var(--border);">
         <button class="btn btn-ghost" onclick="Auth.logout()" style="color:var(--text-muted);font-size:13px;">
-          Cerrar sesión
+          ${t('profile.logout')}
         </button>
       </div>
     </div>`;
@@ -44,7 +44,7 @@ const ViewProfile = {
     const av = document.getElementById('profile-avatar');
     if (av) av.textContent = initials;
     const ti = document.getElementById('profile-title');
-    if (ti) ti.textContent = me.full_name || me.email || 'Mi perfil';
+    if (ti) ti.textContent = me.full_name || me.email || t('profile.my_profile');
     const su = document.getElementById('profile-subtitle');
     if (su) su.textContent = `${me.email || ''} · ${me.role || ''}${me.organization_id ? ' · Org #' + me.organization_id : ''}`;
   },
@@ -66,33 +66,33 @@ const ViewProfile = {
 
   _renderCuenta(el) {
     const me = ViewProfile._me || {};
-    const roleLabels = { admin: 'Administrador', analyst: 'Analista', viewer: 'Visor', superadmin: 'Superadmin' };
+    const roleLabels = { admin: t('profile.role_admin'), analyst: t('profile.role_analyst'), viewer: t('profile.role_viewer'), superadmin: t('profile.role_superadmin') };
     el.innerHTML = `
       <div style="display:grid;gap:16px;">
         <div class="card" style="padding:20px;">
-          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">Información de cuenta</h3>
+          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">${t('profile.account_info')}</h3>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
-              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Nombre completo</label>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">${t('profile.full_name')}</label>
               <div style="font-size:14px;">${UI.esc(me.full_name || '-')}</div>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Email</label>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">${t('profile.email')}</label>
               <div style="font-size:14px;">${UI.esc(me.email || '-')}</div>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Rol</label>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">${t('profile.role')}</label>
               <div><span class="badge badge-muted">${roleLabels[me.role] || me.role || '-'}</span></div>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">Último acceso</label>
-              <div style="font-size:14px;color:var(--text-muted);">${me.last_login_at ? new Date(me.last_login_at).toLocaleString('es-ES') : 'Sin datos'}</div>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;display:block;margin-bottom:4px;">${t('profile.last_access')}</label>
+              <div style="font-size:14px;color:var(--text-muted);">${me.last_login_at ? new Date(me.last_login_at).toLocaleString(I18n.lang() === 'en' ? 'en-GB' : 'es-ES') : t('profile.no_data')}</div>
             </div>
           </div>
         </div>
 
         <div class="card" style="padding:20px;">
-          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;">Permisos del rol</h3>
+          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;">${t('profile.role_permissions')}</h3>
           ${ViewProfile._rolePermissions(me.role)}
         </div>
       </div>`;
@@ -101,35 +101,35 @@ const ViewProfile = {
   _rolePermissions(role) {
     const perms = {
       viewer: [
-        { label: 'Ver activos, riesgos y controles', ok: true },
-        { label: 'Ver informes y cumplimiento', ok: true },
-        { label: 'Crear o editar registros', ok: false },
-        { label: 'Gestionar usuarios', ok: false },
-        { label: 'Configuración de la organización', ok: false },
+        { label: t('profile.perm_view_arc'), ok: true },
+        { label: t('profile.perm_view_reports'), ok: true },
+        { label: t('profile.perm_create_edit'), ok: false },
+        { label: t('profile.perm_manage_users'), ok: false },
+        { label: t('profile.perm_org_config'), ok: false },
       ],
       analyst: [
-        { label: 'Ver activos, riesgos y controles', ok: true },
-        { label: 'Crear y editar riesgos, controles, incidentes', ok: true },
-        { label: 'Ver informes y cumplimiento', ok: true },
-        { label: 'Acceso al agente IA', ok: true },
-        { label: 'Gestionar usuarios', ok: false },
-        { label: 'Configuración de la organización', ok: false },
+        { label: t('profile.perm_view_arc'), ok: true },
+        { label: t('profile.perm_create_rce'), ok: true },
+        { label: t('profile.perm_view_reports'), ok: true },
+        { label: t('profile.perm_ai_agent'), ok: true },
+        { label: t('profile.perm_manage_users'), ok: false },
+        { label: t('profile.perm_org_config'), ok: false },
       ],
       admin: [
-        { label: 'Acceso completo a todos los módulos', ok: true },
-        { label: 'Gestionar usuarios de la organización', ok: true },
-        { label: 'Configuración de la organización', ok: true },
-        { label: 'Gestión de integraciones', ok: true },
-        { label: 'Crear organizaciones adicionales', ok: false },
+        { label: t('profile.perm_full_access'), ok: true },
+        { label: t('profile.perm_manage_org_users'), ok: true },
+        { label: t('profile.perm_org_config'), ok: true },
+        { label: t('profile.perm_manage_integrations'), ok: true },
+        { label: t('profile.perm_create_orgs'), ok: false },
       ],
       superadmin: [
-        { label: 'Acceso completo a todos los módulos', ok: true },
-        { label: 'Gestionar todas las organizaciones', ok: true },
-        { label: 'Gestión de licencias y planes', ok: true },
-        { label: 'Configuración global del sistema', ok: true },
+        { label: t('profile.perm_full_access'), ok: true },
+        { label: t('profile.perm_manage_all_orgs'), ok: true },
+        { label: t('profile.perm_licenses'), ok: true },
+        { label: t('profile.perm_global_config'), ok: true },
       ],
     };
-    const list = perms[role] || [{ label: 'Sin permisos definidos', ok: false }];
+    const list = perms[role] || [{ label: t('profile.perm_none'), ok: false }];
     return `<ul style="list-style:none;padding:0;margin:0;display:grid;gap:8px;">
       ${list.map(p => `
         <li style="display:flex;align-items:center;gap:8px;font-size:13px;">
@@ -150,25 +150,25 @@ const ViewProfile = {
     el.innerHTML = `
       <div style="display:grid;gap:16px;">
         <div class="card" style="padding:20px;">
-          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">Contraseña</h3>
-          <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Cambia tu contraseña de acceso. Debe tener al menos 8 caracteres.</p>
-          <button class="btn btn-secondary" onclick="ViewProfile._showChangePassword()">Cambiar contraseña</button>
+          <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">${t('profile.password')}</h3>
+          <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('profile.password_hint')}</p>
+          <button class="btn btn-secondary" onclick="ViewProfile._showChangePassword()">${t('profile.change_password')}</button>
           <div id="change-password-form" style="display:none;margin-top:16px;display:grid;gap:10px;">
             <div>
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Contraseña actual *</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('profile.current_password')}</label>
               <input class="input" type="password" id="p-cur" style="max-width:360px;">
             </div>
             <div>
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Nueva contraseña *</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('profile.new_password')}</label>
               <input class="input" type="password" id="p-new" style="max-width:360px;">
             </div>
             <div>
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Repetir nueva contraseña *</label>
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('profile.repeat_password')}</label>
               <input class="input" type="password" id="p-new2" style="max-width:360px;">
             </div>
             <div style="display:flex;gap:8px;">
-              <button class="btn btn-primary" onclick="ViewProfile._savePassword()">Guardar contraseña</button>
-              <button class="btn btn-ghost" onclick="ViewProfile._hideChangePassword()">Cancelar</button>
+              <button class="btn btn-primary" onclick="ViewProfile._savePassword()">${t('profile.save_password')}</button>
+              <button class="btn btn-ghost" onclick="ViewProfile._hideChangePassword()">${t('profile.cancel')}</button>
             </div>
           </div>
         </div>
@@ -176,19 +176,19 @@ const ViewProfile = {
         <div class="card" style="padding:20px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
             <div>
-              <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px;">Autenticación de dos factores (MFA)</h3>
+              <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px;">${t('profile.mfa_title')}</h3>
               <p style="font-size:13px;color:var(--text-muted);margin:0;">
                 ${mfaActive
-                  ? '<span style="color:var(--success-color,#22c55e);font-weight:600;">&#10003; Activo</span> — Tu cuenta esta protegida con un autenticador.'
-                  : 'No configurado. Activa MFA para mayor seguridad usando una app como Google Authenticator o Authy.'}
+                  ? `<span style="color:var(--success-color,#22c55e);font-weight:600;">${t('profile.mfa_active')}</span> — ${t('profile.mfa_active_desc')}`
+                  : t('profile.mfa_inactive')}
               </p>
-              ${me.mfa_override === true ? '<p style="font-size:11px;color:var(--brand-orange);margin:4px 0 0;">Tu administrador ha requerido MFA para tu cuenta.</p>' : ''}
-              ${me.mfa_override === false ? '<p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">Tu administrador te ha eximido del MFA.</p>' : ''}
+              ${me.mfa_override === true ? `<p style="font-size:11px;color:var(--brand-orange);margin:4px 0 0;">${t('profile.mfa_required_admin')}</p>` : ''}
+              ${me.mfa_override === false ? `<p style="font-size:11px;color:var(--text-muted);margin:4px 0 0;">${t('profile.mfa_exempt')}</p>` : ''}
             </div>
             <div style="flex-shrink:0;">
               ${mfaActive
-                ? `<span style="font-size:12px;color:var(--text-muted);">Solo un administrador puede desactivar el MFA.</span>`
-                : `<button class="btn btn-primary" onclick="ViewProfile._setupMfa()">Activar MFA</button>`}
+                ? `<span style="font-size:12px;color:var(--text-muted);">${t('profile.mfa_only_admin_off')}</span>`
+                : `<button class="btn btn-primary" onclick="ViewProfile._setupMfa()">${t('profile.mfa_enable')}</button>`}
             </div>
           </div>
         </div>
@@ -225,12 +225,12 @@ const ViewProfile = {
     const cur = (document.getElementById('p-cur') || {}).value || '';
     const nw = (document.getElementById('p-new') || {}).value || '';
     const nw2 = (document.getElementById('p-new2') || {}).value || '';
-    if (!cur || !nw) { UI.toast('Completa todos los campos', 'error'); return; }
-    if (nw !== nw2) { UI.toast('Las contrasenas no coinciden', 'error'); return; }
-    if (nw.length < 8) { UI.toast('Mínimo 8 caracteres', 'error'); return; }
+    if (!cur || !nw) { UI.toast(t('profile.toast_complete_fields'), 'error'); return; }
+    if (nw !== nw2) { UI.toast(t('profile.toast_pass_mismatch'), 'error'); return; }
+    if (nw.length < 8) { UI.toast(t('profile.toast_min_chars'), 'error'); return; }
     try {
       await Api.changePassword({ current_password: cur, new_password: nw });
-      UI.toast('Contraseña cambiada correctamente', 'success');
+      UI.toast(t('profile.toast_pass_changed'), 'success');
       ViewProfile._passwordFormVisible = false;
       const content = document.getElementById('profile-tab-content');
       if (content) ViewProfile._renderSeguridad(content);
@@ -239,19 +239,19 @@ const ViewProfile = {
 
   async _setupMfa() {
     // Paso 1: pedir contraseña actual para verificar identidad
-    UI.modal('Activar MFA — Verificar identidad', `
+    UI.modal(t('profile.mfa_verify_identity'), `
       <div class="span2">
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">Introduce tu contraseña actual para continuar.</p>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Contraseña actual *</label>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;">${t('profile.mfa_enter_current')}</p>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('profile.current_password')}</label>
         <input class="input" type="password" id="mfa-step1-pass" autocomplete="current-password">
       </div>
     `, {
-      actions: `<button class="btn" onclick="UI.closeModal()">Cancelar</button>
-                <button class="btn btn-primary" id="mfa-step1-btn">Continuar</button>`
+      actions: `<button class="btn" onclick="UI.closeModal()">${t('profile.cancel')}</button>
+                <button class="btn btn-primary" id="mfa-step1-btn">${t('profile.continue')}</button>`
     });
     document.getElementById('mfa-step1-btn').onclick = async () => {
       const pass = document.getElementById('mfa-step1-pass').value;
-      if (!pass) { UI.toast('Introduce tu contraseña', 'error'); return; }
+      if (!pass) { UI.toast(t('profile.toast_enter_password'), 'error'); return; }
       try {
         const res = await Api.mfa.setup(pass);
         // res contiene secret y otpauth_url; generamos QR via API publica de Google Charts o mostramos el secreto manual
@@ -259,20 +259,20 @@ const ViewProfile = {
         const otpauthUrl = res.otpauth_url || '';
         // Generar QR con qrcodejs si disponible, sino mostrar secreto manual
         const qrHtml = `<canvas id="mfa-qr-canvas" style="display:block;margin:0 auto 12px;"></canvas>`;
-        UI.modal('Activar MFA — Escanear código', `
+        UI.modal(t('profile.mfa_scan_code'), `
           <div class="span2" style="text-align:center;">
-            <p style="font-size:13px;margin-bottom:12px;">Escanea con tu app de autenticación (Google Authenticator, Authy, Microsoft Authenticator).</p>
+            <p style="font-size:13px;margin-bottom:12px;">${t('profile.mfa_scan_desc')}</p>
             ${qrHtml}
-            <p style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">O introduce el código manualmente en tu app:</p>
+            <p style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">${t('profile.mfa_manual_code')}</p>
             <code style="font-size:13px;font-weight:700;letter-spacing:.1em;background:var(--bg-2);padding:6px 12px;border-radius:6px;display:inline-block;margin-bottom:16px;">${UI.esc(secret)}</code>
           </div>
           <div class="span2">
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Código de verificación (6 digitos) *</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">${t('profile.mfa_verify_code')}</label>
             <input class="input" type="text" id="mfa-verify-code" placeholder="123456" maxlength="6" inputmode="numeric" style="max-width:200px;">
           </div>
         `, {
-          actions: `<button class="btn" onclick="UI.closeModal()">Cancelar</button>
-                    <button class="btn btn-primary" id="mfa-verify-btn">Verificar y activar</button>`
+          actions: `<button class="btn" onclick="UI.closeModal()">${t('profile.cancel')}</button>
+                    <button class="btn btn-primary" id="mfa-verify-btn">${t('profile.mfa_verify_enable')}</button>`
         });
         // Generar QR con la libreria si esta cargada, sino usar data URL via canvas
         setTimeout(() => {
@@ -284,21 +284,21 @@ const ViewProfile = {
             canvas.style.display = 'none';
             const p = document.createElement('p');
             p.style.cssText = 'font-size:10px;color:var(--text-muted);word-break:break-all;margin-bottom:12px;';
-            p.textContent = 'URL para app: ' + otpauthUrl;
+            p.textContent = t('profile.mfa_url_for_app') + otpauthUrl;
             canvas.parentNode.insertBefore(p, canvas);
           }
         }, 50);
         document.getElementById('mfa-verify-btn').onclick = async () => {
           const code = document.getElementById('mfa-verify-code').value.trim();
-          if (!code || code.length !== 6) { UI.toast('Introduce el código de 6 dígitos', 'error'); return; }
+          if (!code || code.length !== 6) { UI.toast(t('profile.toast_enter_6digits'), 'error'); return; }
           try {
             await Api.mfa.verifySetup({ secret, code });
-            UI.toast('MFA activado correctamente', 'success');
+            UI.toast(t('profile.toast_mfa_enabled'), 'success');
             UI.closeModal();
             ViewProfile._me = await Api.me();
             const content = document.getElementById('profile-tab-content');
             if (content) ViewProfile._renderSeguridad(content);
-          } catch (e) { UI.toast(e.message || 'Código incorrecto', 'error'); }
+          } catch (e) { UI.toast(e.message || t('profile.toast_wrong_code'), 'error'); }
         };
       } catch (e) { UI.toast(e.message, 'error'); }
     };
@@ -308,31 +308,31 @@ const ViewProfile = {
     const prefs = ViewProfile._loadPrefs();
     el.innerHTML = `
       <div class="card" style="padding:20px;">
-        <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">Preferencias de interfaz</h3>
+        <h3 style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 16px;">${t('profile.prefs_ui')}</h3>
         <div style="display:grid;gap:16px;">
           <div>
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Idioma de la interfaz</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">${t('profile.prefs_lang')}</label>
             <select class="input" id="pref-lang" style="max-width:240px;" onchange="ViewProfile._savePrefs()">
               <option value="es" ${prefs.lang === 'es' ? 'selected' : ''}>Español</option>
               <option value="en" ${prefs.lang === 'en' ? 'selected' : ''}>English</option>
             </select>
           </div>
           <div>
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Densidad de tablas</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">${t('profile.prefs_density')}</label>
             <select class="input" id="pref-density" style="max-width:240px;" onchange="ViewProfile._savePrefs()">
-              <option value="normal" ${prefs.density === 'normal' ? 'selected' : ''}>Normal</option>
-              <option value="compact" ${prefs.density === 'compact' ? 'selected' : ''}>Compacta</option>
+              <option value="normal" ${prefs.density === 'normal' ? 'selected' : ''}>${t('profile.density_normal')}</option>
+              <option value="compact" ${prefs.density === 'compact' ? 'selected' : ''}>${t('profile.density_compact')}</option>
             </select>
           </div>
           <div>
-            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">Notificaciones en pantalla</label>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:6px;">${t('profile.prefs_toasts')}</label>
             <select class="input" id="pref-toasts" style="max-width:240px;" onchange="ViewProfile._savePrefs()">
-              <option value="all" ${prefs.toasts === 'all' ? 'selected' : ''}>Todas</option>
-              <option value="errors" ${prefs.toasts === 'errors' ? 'selected' : ''}>Solo errores</option>
+              <option value="all" ${prefs.toasts === 'all' ? 'selected' : ''}>${t('profile.toasts_all')}</option>
+              <option value="errors" ${prefs.toasts === 'errors' ? 'selected' : ''}>${t('profile.toasts_errors')}</option>
             </select>
           </div>
         </div>
-        <p style="font-size:11px;color:var(--text-muted);margin-top:12px;">Las preferencias se guardan en este navegador.</p>
+        <p style="font-size:11px;color:var(--text-muted);margin-top:12px;">${t('profile.prefs_saved_note')}</p>
       </div>`;
   },
 
@@ -346,8 +346,8 @@ const ViewProfile = {
     const toasts = (document.getElementById('pref-toasts') || {}).value || 'all';
     const prefs = { lang, density, toasts };
     localStorage.setItem('riskhub_prefs', JSON.stringify(prefs));
-    // Aplicar idioma si existe el sistema i18n
-    if (window.i18n && typeof window.i18n.setLang === 'function') window.i18n.setLang(lang);
-    UI.toast('Preferencias guardadas', 'success');
+    // Aplicar idioma si cambia (usa el sistema i18n real)
+    if (lang !== I18n.lang() && typeof I18n.setLang === 'function') { I18n.setLang(lang); return; }
+    UI.toast(t('profile.toast_prefs_saved'), 'success');
   },
 };
