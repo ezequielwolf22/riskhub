@@ -3323,6 +3323,10 @@ class BIACriteria(Base):
     bands           = Column(JSON, nullable=True)
     # [{key, label, min, max}] — bandas del impacto ponderado
     aggregation     = Column(String(16), default="max")   # max|avg — impacto entre dimensiones
+    combination     = Column(String(16), default="product")
+    # Como se combina el impacto con el RTO: "product" (impacto x factor) o
+    # "sum" (impacto + valor numerico del RTO). No es un detalle: el metodo de
+    # cada cliente usa una u otra y la cifra resultante cambia por completo.
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 

@@ -945,6 +945,9 @@ def _migrate_columns() -> None:
          "bcp_supplier_links", "source"),
         ("ALTER TABLE bcp_supplier_links ADD COLUMN import_batch_id INTEGER REFERENCES ingest_batches(id)",
          "bcp_supplier_links", "import_batch_id"),
+        # v6.5.0 — como combina el cliente el impacto con el RTO (producto o suma)
+        ("ALTER TABLE bia_criteria ADD COLUMN combination VARCHAR(16)",
+         "bia_criteria", "combination"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los

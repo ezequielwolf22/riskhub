@@ -51,6 +51,7 @@ const ViewGuide = {
     { id: 'osint', title: 'OSINT - Huella Digital', icon: '🕵️' },
     { id: 'external-findings', title: 'Hallazgos Externos', icon: '🔗' },
     { id: 'bcp', title: 'Continuidad de Negocio (BCP)', icon: '♻️' },
+    { id: 'ingest', title: 'Ingesta cognitiva de documentos', icon: '🧩' },
     { id: 'webhooks', title: 'Webhooks y Integraciones', icon: '🪝' },
     { id: 'feature-flags', title: 'Feature Flags (Planes)', icon: '🚩' },
     { id: 'awareness', title: 'Awareness (Infografias)', icon: '🎨' },
@@ -166,6 +167,7 @@ const ViewGuide = {
       osint: this._cOsint,
       'external-findings': this._cExternalFindings,
       bcp: this._cBcp,
+      ingest: this._cIngest,
       webhooks: this._cWebhooks,
       'feature-flags': this._cFeatureFlags,
       awareness: this._cAwareness,
@@ -2992,6 +2994,53 @@ const ViewGuide = {
     <h4>Vinculación NIS2</h4>
     <p>Si el tipo del plan es <code>cyber_response</code> o <code>cyber_recovery</code> y se aprueba, el sistema actualiza automáticamente el estado del control NIS2 Art.21(2)(c) a "Implementado".</p>
   `;},
+
+  get _cIngest() { return `
+    ${this._p('La pestaña <strong>BCP / BCM → Ingesta cognitiva</strong> resuelve el arranque de un cliente nuevo: en vez de teclear su BIA a mano, sueltas el pack documental que ya tiene (BIA en Excel, políticas y planes en Word, informes en PDF, en varios idiomas) y un agente lo lee, deduce cómo trabaja esa organización, decide cómo descomponer cada documento y vuelca las filas en la plataforma.')}
+    ${this._warn('El agente <strong>propone</strong>: qué unidades hay en cada documento y qué filas salen de ellas. Lo que <strong>calcula</strong> (impacto ponderado, banda, cobertura) lo sigue haciendo el motor determinista con el baremo del cliente. Un LLM nunca escribe una cifra derivada.')}
+
+    ${this._h('1. Subir el pack')}
+    ${this._steps([
+      'Arrastra todos los documentos de golpe (hasta 40 ficheros, 25 MB cada uno). Formatos soportados: .xlsx, .xlsm, .xls, .docx, .pdf, .csv, .txt, .md.',
+      'Pulsa <em>Ver qué hay en el pack</em>: esta lectura previa <strong>no llama a la IA</strong>, solo cuenta hojas, tablas, secciones y caracteres, y te dice cuánto costaría comprenderlo.',
+      'Revisa los <strong>ficheros no soportados</strong>: se muestran aparte y se ignorarían en la ingesta. Conviértelos si su contenido importa.',
+      'Elige la profundidad: <strong>profunda</strong> (mejor lectura) o <strong>rápida</strong> (más barata, para packs sencillos).',
+      'Deja marcado <em>Deducir el perfil de la organización</em> salvo que ya lo tengas revisado, y confirma.',
+    ])}
+    ${this._tip('El coste aparece <em>antes</em> de gastar, igual que en el análisis masivo de activos. La ingesta se ejecuta como trabajo en segundo plano: puedes salir de la pantalla, el lote aparecerá al terminar.')}
+
+    ${this._h('2. Por qué el perfil va primero')}
+    ${this._p('Antes de extraer una sola fila, el agente lee el pack entero para deducir el <strong>perfil de la organización</strong>: sus sedes, sus unidades de negocio, el método con el que valora el impacto (dimensiones, horizontes, escala de RTO, bandas) y su vocabulario propio. Sin ese marco cada documento se interpretaría por su cuenta y el resultado sería un mosaico incoherente: tres nombres distintos para la misma sede y tres baremos incompatibles.')}
+    ${this._p('El perfil es editable en la propia vista (tabla de sedes, unidades de negocio, narrativa y el método en bruto). Un badge indica si viene <strong>de los documentos</strong>, <strong>declarado por una persona</strong> o de <strong>ambos</strong>.')}
+
+    ${this._h('3. "Cómo lo entendí" — el mapa de volcado')}
+    ${this._p('Es la pieza central de la vista y lo que hace auditable la comprensión del agente. Por cada documento se declara:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>El razonamiento</strong>: por qué leyó ese documento como lo leyó.</li>
+      <li><strong>Las unidades detectadas</strong>, y por cada una su <strong>clave de descomposición en lenguaje natural</strong>: <em>"hoja Escenarios-Ranking: 5 bloques de 7 filas, clave = nombre del escenario en la columna B, cada bloque → 1 valoración BIA"</em>. Si esa frase no describe tu documento, las filas tampoco serán correctas: ahí es donde se detecta el error, no revisando 200 filas.</li>
+      <li><strong>La entidad destino</strong> y cuántas filas generó, con una fila de ejemplo desplegable.</li>
+      <li><strong>Lo que estaba ambiguo</strong>: la duda, qué eligió y por qué. Ante dos lecturas posibles el agente elige la más conservadora y lo anota aquí.</li>
+    </ul>
+
+    ${this._h('4. Revisión: solo lo dudoso')}
+    ${this._p('Cada fila creada lleva su <strong>confianza</strong>. Lo dudoso se crea igualmente, marcado para revisión: es mejor una fila marcada que una fila perdida. La sección de revisión muestra <strong>solo esas</strong>, con qué cambió (valor anterior → nuevo) y un botón para revertir ese registro suelto sin tocar el resto del lote.')}
+
+    ${this._h('5. Conflictos entre documentos')}
+    ${this._p('Cuando dos documentos discrepan sobre el mismo campo — el BIA dice RTO 4 h y el DRP dice 6 h — la <strong>política declarada campo a campo</strong> decide: en un RTO gana el más exigente, en una criticidad la más alta, en un texto descriptivo el documento más reciente. El candidato descartado <strong>no se pierde</strong>: queda registrado con su documento de origen, su referencia y su huella SHA-256. Puedes elegir otro valor o escribir uno propio.')}
+
+    ${this._h('6. Valores forzados: la última palabra es tuya')}
+    ${this._warn('Un campo forzado <strong>nunca</strong> lo sobrescribe una reimportación posterior. Si vuelves a subir el pack (o una versión nueva del documento) y este insiste en el valor antiguo, el valor que fijaste se mantiene y el candidato descartado se registra. La sección <em>Valores forzados</em> lista todos los que hay, con su motivo, y permite retirar la protección cuando quieras que ese campo vuelva a actualizarse solo.')}
+
+    ${this._h('7. Huecos: qué falta para cerrar la norma')}
+    ${this._p('Importar no es escribir filas y callarse. Al terminar, el motor recalcula lo determinista y declara los huecos que quedan, separados por motivo porque cada uno exige una acción distinta: <strong>sin valoración BIA</strong>, <strong>sin estrategia de continuidad</strong>, <strong>sin plan que lo cubra</strong> y <strong>sin ejercicio en los últimos 12 meses</strong>. También se listan los avisos y las filas que el motor descartó, con el motivo.')}
+
+    ${this._h('8. Deshacer')}
+    ${this._steps([
+      '<strong>Deshacer el lote entero</strong> (solo admin): revierte todos los registros escritos por esa importación en orden inverso al de creación; lo que ya existía antes recupera su valor anterior.',
+      '<strong>Revertir un registro suelto</strong>: desde la sección de revisión, sin tocar el resto del lote.',
+    ])}
+    ${this._tip('Un lote deshecho conserva su historial y su mapa de volcado: sigue siendo consultable para entender qué pasó, aunque sus filas ya no estén.')}
+  `; },
 
   get _cSetup() { return `
     <div style="background:linear-gradient(135deg,var(--brand-purple-4),var(--brand-orange-4));border-radius:12px;padding:20px 24px;margin-bottom:20px;">

@@ -314,3 +314,118 @@ def test_la_matriz_no_cruza_organizaciones(db):
     assert len(matrix["locations"]) == 1
     assert matrix["locations"][0]["name"] == "Madrid"
     assert matrix["applicable_total"] == 17
+
+
+# ── Combinacion impacto x RTO ────────────────────────────────────────────────
+
+def test_la_combinacion_suma_es_configurable():
+    """Hay metodos que suman el RTO al impacto en vez de multiplicarlo.
+
+    "RTO (numerico) + Criterio de impacto = Impacto total" es una formula real
+    de procedimiento de cliente. Con producto y con suma la cifra no se parece,
+    asi que la eleccion se declara en el baremo y no se da por supuesta.
+    """
+    base = dict(DEFAULT_CRITERIA)
+    impacts = {"operational": {">6h": 5}}          # nivel 5 -> score 4
+
+    producto = weighted_impact(impacts, {**base, "combination": "product"},
+                               rto_label="No puede interrumpirse nunca")
+    assert producto["weighted_impact"] == 6.0      # 4 x 1.5
+
+    suma = weighted_impact(impacts, {**base, "combination": "sum"},
+                           rto_label="No puede interrumpirse nunca")
+    assert suma["weighted_impact"] == 5.5          # 4 + 1.5
+    assert suma["combination"] == "sum"
+
+
+def test_la_suma_no_inventa_impacto_donde_no_lo_hay():
+    """Sumar el factor a un impacto vacio daria por severo lo no valorado."""
+    criteria = {**DEFAULT_CRITERIA, "combination": "sum"}
+    res = weighted_impact(None, criteria, rto_label="No puede interrumpirse nunca")
+    assert res["weighted_impact"] == 0.0
+    assert res["band"] == "none"
+
+
+def test_reproduce_los_valores_del_procedimiento_del_cliente():
+    """Contraste contra la tabla de un procedimiento real (formula de suma).
+
+    Se comprueban las filas cuya aritmetica cuadra en el documento original.
+    Dos de las diecisiete no cuadran alli (1,5+4,00 aparece como 5,05 y
+    0,9+3 como 3,09): son erratas del documento, no del motor, y por eso no
+    se fijan aqui como comportamiento esperado.
+    """
+    criteria = {**DEFAULT_CRITERIA, "combination": "sum"}
+    casos = [
+        # (etiqueta RTO, criterio de impacto, impacto total esperado)
+        ("4 horas",          0.2, 0.8),
+        ("6 horas",          0.8, 1.5),
+        ("Mas de 1 semana",  0.3, 1.5),
+        ("1 hora",           3.0, 3.5),
+        ("4 horas",          2.7, 3.3),
+        ("1 hora",           2.7, 3.2),
+        ("12 horas",         0.9, 1.7),
+        ("24 horas",         0.3, 1.2),
+        ("Mas de 1 semana",  1.2, 2.4),
+    ]
+    for rto_label, criterio, esperado in casos:
+        factor = rto_factor(criteria, label=rto_label)
+        assert round(criterio + factor, 2) == esperado, rto_label
+
+
+def test_los_criterios_de_la_organizacion_declaran_la_combinacion(db):
+    db.add(BIACriteria(organization_id=ORG, combination="sum"))
+    db.commit()
+    assert get_criteria(db, ORG)["combination"] == "sum"
+
+
+# ── Catalogo del sistema ─────────────────────────────────────────────────────
+
+def test_el_catalogo_del_sistema_trae_17_escenarios_en_4_familias(db):
+    from app.services.bcm_scenario_catalog import ISO22301_17, seed_catalog
+
+    assert len(ISO22301_17) == 17
+    familias = {}
+    for item in ISO22301_17:
+        familias[item["family"]] = familias.get(item["family"], 0) + 1
+    assert familias == {"personnel": 4, "systems_comms": 4,
+                        "third_party": 5, "facilities": 4}
+
+    out = seed_catalog(db, ORG)
+    assert out["scenarios_created"] == 17
+    creados = db.query(BCMScenario).filter_by(organization_id=ORG).all()
+    assert all(s.source == "system" for s in creados)
+
+
+def test_sembrar_dos_veces_no_duplica(db):
+    from app.services.bcm_scenario_catalog import seed_catalog
+    seed_catalog(db, ORG)
+    out = seed_catalog(db, ORG)
+    assert out["scenarios_created"] == 0
+    assert out["scenarios_skipped"] == 17
+    assert db.query(BCMScenario).filter_by(organization_id=ORG).count() == 17
+
+
+def test_el_baremo_propio_de_la_organizacion_manda_sobre_el_del_sistema(db):
+    from app.services.bcm_scenario_catalog import seed_catalog
+    db.add(BIACriteria(organization_id=ORG, combination="sum",
+                       horizons=["0h", ">72h"]))
+    db.commit()
+
+    out = seed_catalog(db, ORG, baremo_code="producto")
+    assert out["baremo_applied"] is None
+    criteria = get_criteria(db, ORG)
+    assert criteria["combination"] == "sum"
+    assert criteria["horizons"] == ["0h", ">72h"]
+
+
+def test_sembrar_el_baremo_en_una_organizacion_sin_metodo(db):
+    from app.services.bcm_scenario_catalog import seed_catalog
+    out = seed_catalog(db, ORG, baremo_code="suma")
+    assert out["baremo_applied"] == "suma"
+    assert get_criteria(db, ORG)["combination"] == "sum"
+
+
+def test_catalogo_desconocido_se_rechaza(db):
+    from app.services.bcm_scenario_catalog import seed_catalog
+    with pytest.raises(ValueError):
+        seed_catalog(db, ORG, catalog_code="no_existe")

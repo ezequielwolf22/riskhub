@@ -76,6 +76,11 @@ DEFAULT_CRITERIA: dict = {
     "aggregation": "max",
     # Agregacion entre horizontes: el peor horizonte manda.
     "horizon_aggregation": "max",
+    # Como se combina el impacto con el RTO. "product" pondera el impacto por
+    # el factor del RTO; "sum" los suma, que es lo que hacen los metodos que
+    # tratan el RTO como un sumando mas ("RTO + Criterio de impacto = Impacto
+    # total"). La eleccion cambia la cifra por completo, asi que se declara.
+    "combination": "product",
 }
 
 
@@ -102,8 +107,10 @@ def get_criteria(db: Session, org_id: Optional[int]) -> dict:
         value = getattr(row, field, None)
         if value:
             criteria[field] = value
-    if getattr(row, "aggregation", None):
-        criteria["aggregation"] = row.aggregation
+    for field in ("aggregation", "combination"):
+        value = getattr(row, field, None)
+        if value:
+            criteria[field] = value
     return criteria
 
 
@@ -183,11 +190,13 @@ def weighted_impact(impacts: Optional[dict], criteria: dict,
     entre dimensiones dentro de cada horizonte, luego entre horizontes, y el
     resultado se pondera por el factor del RTO.
 
-    Devuelve {weighted_impact, band, base_impact, rto_factor, per_horizon}.
+    Devuelve {weighted_impact, band, base_impact, rto_factor, combination,
+    per_horizon}.
     """
     horizons = criteria.get("horizons") or DEFAULT_CRITERIA["horizons"]
     agg = (criteria.get("aggregation") or "max").lower()
     horizon_agg = (criteria.get("horizon_aggregation") or "max").lower()
+    combination = (criteria.get("combination") or "product").lower()
     factor = rto_factor(criteria, rto_label, rto_hours)
 
     per_horizon: dict[str, float] = {}
@@ -211,12 +220,21 @@ def weighted_impact(impacts: Optional[dict], criteria: dict,
     else:
         base = 0.0
 
-    weighted = round(base * factor, 3)
+    # Sin impacto declarado no se inventa una cifra a partir del RTO: sumar el
+    # factor a un impacto cero daria por severo un escenario sin valorar.
+    if combination == "sum" and per_horizon:
+        weighted = round(base + factor, 3)
+    elif combination == "sum":
+        weighted = 0.0
+    else:
+        weighted = round(base * factor, 3)
+
     return {
         "weighted_impact": weighted,
         "band": band_for(weighted, criteria),
         "base_impact": round(base, 3),
         "rto_factor": factor,
+        "combination": combination,
         "per_horizon": {k: round(v, 3) for k, v in per_horizon.items()},
     }
 

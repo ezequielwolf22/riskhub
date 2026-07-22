@@ -54,6 +54,7 @@ const LegacyRedirects = {
   incidents: 'events-hub/incidents',
   nonconformities: 'compliance-hub/nonconformities',
   bcp: 'bcp-hub/bcp',
+  ingest: 'bcp-hub/ingest',
   'nis2-dashboard': 'compliance-hub/legal',
   gdpr: 'compliance-hub/legal',
   suppliers: 'suppliers-hub/suppliers',

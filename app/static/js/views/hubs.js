@@ -271,6 +271,8 @@ const ViewBcpHub = {
       label: t('nav.bcp'),
       tabs: [
         { id: 'bcp', label: t('hub.bcp.bcp'), view: ViewBcp },
+        { id: 'ingest', label: t('hub.bcp.ingest'), view: ViewIngest,
+          visible: () => Auth.canEdit() },
       ],
     });
   },

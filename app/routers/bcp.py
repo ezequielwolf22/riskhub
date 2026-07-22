@@ -3751,6 +3751,36 @@ def scenarios_gaps(db: Session = Depends(get_db), u: User = Depends(get_current_
     return coverage_gaps(db, _org(u))
 
 
+@router.get("/scenarios/catalog")
+def list_system_catalog(db: Session = Depends(get_db),
+                        u: User = Depends(get_current_user)):
+    """Catalogos y baremos del sistema disponibles para clonar."""
+    from app.services import bcm_scenario_catalog as cat
+    return {"catalogs": cat.list_catalogs(), "baremos": cat.list_baremos()}
+
+
+@router.post("/scenarios/seed", status_code=201)
+def seed_scenarios(body: dict = None, request: Request = None,
+                   db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    """Clona un catalogo del sistema en la organizacion.
+
+    Idempotente: no duplica lo que ya exista ni pisa el baremo propio de la
+    organizacion. El metodo del cliente manda sobre el de referencia.
+    """
+    from app.services import bcm_scenario_catalog as cat
+    lang = get_lang(request)
+    body = body or {}
+    try:
+        result = cat.seed_catalog(db, _org(u, lang),
+                                  catalog_code=body.get("catalog", "iso22301_17"),
+                                  baremo_code=body.get("baremo"))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    log_action(db, u.id, "seed", "bcm_scenario_catalog", body.get("catalog", ""),
+               result)
+    return result
+
+
 @router.post("/scenarios", status_code=201)
 def create_scenario(body: ScenarioIn, request: Request, db: Session = Depends(get_db),
                     u: User = Depends(require_analyst)):
