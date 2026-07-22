@@ -4094,6 +4094,1087 @@ const ViewBcp = (() => {
     }
   }
 
+  // ── Escenarios de indisponibilidad (ISO 22301 cl. 8.2) ───────────────────────
+  //
+  // El BIA canonico gira sobre procesos, pero muchas organizaciones lo construyen
+  // sobre escenarios de indisponibilidad valorados en cada sede. Regla de
+  // producto que la UI debe transmitir: la aplicabilidad NO es un atributo del
+  // escenario, es una regla de la organizacion. Sin reglas, TODOS los escenarios
+  // aplican a TODAS las sedes — estado normal y correcto, no un vacio que
+  // rellenar. Una regla solo puede QUITAR escenarios.
+  // El impacto ponderado y la banda los calcula SIEMPRE el servidor: aqui son de
+  // solo lectura y nunca se envian en el POST/PATCH.
+
+  const SCEN_FAMILIES     = ['personnel', 'systems_comms', 'third_party', 'facilities'];
+  const SCEN_RULE_FIELDS  = ['site_type', 'country', 'city', 'staffing_model', 'business_unit'];
+  const SCEN_BAND_PALETTE = ['#6B7280', '#16a34a', '#ca8a04', '#EA580C', '#DC2626'];
+  const SCEN_GAP_REASONS  = ['no_assessment', 'no_strategy', 'no_plan', 'not_tested_12m'];
+  const SCEN_REASON_COLOR = {
+    no_assessment: '#DC2626', no_strategy: '#EA580C',
+    no_plan: '#ca8a04', not_tested_12m: '#2563EB',
+  };
+
+  let _scenSection = 'matrix';
+  let _scenCriteriaCache = null;   // ultimo baremo conocido (matriz o /bia-criteria)
+  let _scenCatalogCache = [];      // catalogo cacheado para selectores y confirmaciones
+
+  function _scenT(prefix, value) {
+    const raw = String(value == null ? '' : value);
+    const key = 'bcp.' + prefix + raw;
+    const label = t(key);
+    return label === key ? raw : label;
+  }
+
+  function _scenFamilyLabel(fam)  { return _scenT('scen_family_', fam); }
+  function _scenReasonLabel(r)    { return _scenT('scen_reason_', r); }
+  function _scenSourceLabel(s)    { return _scenT('scen_source_', s); }
+  function _scenRuleFieldLabel(f) { return _scenT('scen_rf_', f); }
+
+  function _scenSourceBadge(source) {
+    const cls = source === 'imported' ? 'badge-orange'
+      : source === 'system' ? 'badge-muted' : 'badge-purple';
+    return '<span class="badge ' + cls + '" style="font-size:10px">'
+      + UI.esc(_scenSourceLabel(source || 'manual')) + '</span>';
+  }
+
+  // Color de banda derivado del baremo real de la organizacion (no hardcodeado):
+  // se ordenan las bandas declaradas por su minimo y se reparte la paleta.
+  function _scenBandMap(criteria) {
+    const bands = (criteria && criteria.bands) || [];
+    const ordered = bands.slice().sort((a, b) => (Number(a.min) || 0) - (Number(b.min) || 0));
+    const map = {};
+    ordered.forEach((b, i) => {
+      const idx = ordered.length > 1
+        ? Math.round(i / (ordered.length - 1) * (SCEN_BAND_PALETTE.length - 1))
+        : SCEN_BAND_PALETTE.length - 1;
+      map[b.key] = { color: SCEN_BAND_PALETTE[idx], label: b.label || b.key };
+    });
+    return map;
+  }
+
+  function _scenBandInfo(criteria, key) {
+    const map = _scenBandMap(criteria);
+    return map[key] || { color: '#6B7280', label: key || '—' };
+  }
+
+  async function _scenEnsureCatalog() {
+    if (_scenCatalogCache.length) return _scenCatalogCache;
+    _scenCatalogCache = await Api.get('/api/bcp/scenarios?include_inactive=true').catch(() => []);
+    return _scenCatalogCache;
+  }
+
+  async function _scenEnsureCriteria() {
+    if (_scenCriteriaCache) return _scenCriteriaCache;
+    _scenCriteriaCache = await Api.get('/api/bcp/bia-criteria').catch(() => null);
+    return _scenCriteriaCache;
+  }
+
+  // ── Subpestana Escenarios ────────────────────────────────────────────────────
+
+  async function _tabScenarios(container) {
+    const sections = [
+      { id: 'matrix',   label: t('bcp.scen_sec_matrix'),   icon: 'ti-layout-grid' },
+      { id: 'catalog',  label: t('bcp.scen_sec_catalog'),  icon: 'ti-list-details' },
+      { id: 'rules',    label: t('bcp.scen_sec_rules'),    icon: 'ti-filter-cog' },
+      { id: 'criteria', label: t('bcp.scen_sec_criteria'), icon: 'ti-ruler-measure' },
+      { id: 'gaps',     label: t('bcp.scen_sec_gaps'),     icon: 'ti-alert-hexagon' },
+    ];
+    let navHtml = '<div class="bcm-subtabs" style="margin-bottom:14px">';
+    sections.forEach(s => {
+      navHtml += '<button class="bcm-subtab' + (_scenSection === s.id ? ' active' : '') + '"'
+        + ' onclick="ViewBcp._setScenSection(\'' + s.id + '\')">'
+        + '<i class="ti ' + s.icon + '"></i> ' + UI.esc(s.label) + '</button>';
+    });
+    navHtml += '</div>';
+
+    container.innerHTML =
+      '<div style="margin-bottom:14px">'
+      + '<h3 style="margin:0;font-size:16px">' + UI.esc(t('bcp.scen_title')) + '</h3>'
+      + '<p style="margin:4px 0 0;font-size:12px;color:var(--text-subtle)">'
+      + UI.esc(t('bcp.scen_subtitle')) + '</p></div>'
+      + navHtml
+      + '<div id="scen-body"><div style="padding:20px;color:var(--text-subtle)">'
+      + '<i class="ti ti-loader-2 ti-spin"></i> ' + UI.esc(t('common.loading')) + '</div></div>';
+
+    const body = container.querySelector('#scen-body');
+    try {
+      if (_scenSection === 'catalog')       await _scenSectionCatalog(body);
+      else if (_scenSection === 'rules')    await _scenSectionRules(body);
+      else if (_scenSection === 'criteria') await _scenSectionCriteria(body);
+      else if (_scenSection === 'gaps')     await _scenSectionGaps(body);
+      else                                  await _scenSectionMatrix(body);
+    } catch (e) {
+      body.innerHTML = '<div class="notice notice-error">'
+        + UI.esc(t('bcp.error_prefix') + (e.message || e)) + '</div>';
+    }
+  }
+
+  function _setScenSection(id) {
+    _scenSection = id;
+    _currentSubTabs[2] = 'escenarios';
+    _renderContent();
+  }
+
+  // ── Seccion: matriz de cobertura escenario x sede ────────────────────────────
+
+  async function _scenSectionMatrix(body) {
+    const matrix = await Api.get('/api/bcp/scenarios/matrix' + _locParam());
+    _scenCriteriaCache = matrix.criteria || _scenCriteriaCache;
+    const bandMap = _scenBandMap(matrix.criteria);
+    const scenarios = matrix.scenarios || [];
+    const locations = matrix.locations || [];
+    const rulesActive = matrix.rules_active || 0;
+    const cellIndex = {};
+    (matrix.cells || []).forEach(c => { cellIndex[c.scenario_id + ':' + c.location_id] = c; });
+
+    const cov = matrix.coverage_pct || 0;
+    const covColor = cov >= 80 ? 'var(--risk-low)' : cov >= 40 ? 'var(--brand-orange)' : 'var(--risk-critical)';
+
+    let html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">'
+      + '<div class="stat-card"><div class="stat-value" style="color:' + covColor + '">' + cov + '%</div>'
+      + '<div class="stat-label">' + UI.esc(t('bcp.scen_kpi_coverage')) + '</div></div>'
+      + '<div class="stat-card"><div class="stat-value">' + (matrix.applicable_total || 0) + '</div>'
+      + '<div class="stat-label">' + UI.esc(t('bcp.scen_kpi_applicable')) + '</div></div>'
+      + '<div class="stat-card"><div class="stat-value">' + (matrix.assessed_total || 0) + '</div>'
+      + '<div class="stat-label">' + UI.esc(t('bcp.scen_kpi_assessed')) + '</div></div>'
+      + '<div class="stat-card"><div class="stat-value">' + rulesActive + '</div>'
+      + '<div class="stat-label">' + UI.esc(t('bcp.scen_kpi_rules')) + '</div></div>'
+      + '</div>';
+
+    // La lista de reglas vacia se explica, nunca se presenta como "sin datos".
+    if (rulesActive === 0) {
+      html += '<div class="notice" style="margin-bottom:14px">'
+        + UI.esc(t('bcp.scen_no_rules_notice', { scenarios: scenarios.length, locations: locations.length }))
+        + '</div>';
+    } else {
+      html += '<div class="notice notice-warn" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+        + '<span style="flex:1;min-width:240px">' + UI.esc(t('bcp.scen_rules_active_notice', { count: rulesActive })) + '</span>'
+        + '<button class="btn btn-sm" onclick="ViewBcp._setScenSection(\'rules\')">'
+        + '<i class="ti ti-filter-cog"></i> ' + UI.esc(t('bcp.scen_go_rules')) + '</button></div>';
+    }
+
+    if (!scenarios.length) {
+      html += '<div class="notice notice-info" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+        + '<span style="flex:1;min-width:240px">' + UI.esc(t('bcp.scen_matrix_no_scenarios')) + '</span>'
+        + '<button class="btn btn-primary btn-sm" onclick="ViewBcp._setScenSection(\'catalog\')">'
+        + '<i class="ti ti-list-details"></i> ' + UI.esc(t('bcp.scen_go_catalog')) + '</button></div>';
+      body.innerHTML = html;
+      return;
+    }
+    if (!locations.length) {
+      html += '<div class="notice notice-info">' + UI.esc(t('bcp.scen_matrix_no_locations')) + '</div>';
+      body.innerHTML = html;
+      return;
+    }
+
+    // Leyenda: distinguir "no aplica" de "sin valorar" es lo que evita el error
+    // de lectura mas grave de esta matriz.
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:11px;color:var(--text-subtle)">'
+      + '<span style="display:flex;align-items:center;gap:6px">'
+      + '<span style="width:16px;height:16px;border-radius:3px;background:var(--risk-low);display:inline-block"></span>'
+      + UI.esc(t('bcp.scen_legend_assessed')) + '</span>'
+      + '<span style="display:flex;align-items:center;gap:6px">'
+      + '<span style="width:16px;height:16px;border-radius:3px;border:1px dashed var(--brand-orange);display:inline-block"></span>'
+      + UI.esc(t('bcp.scen_legend_missing')) + '</span>'
+      + '<span style="display:flex;align-items:center;gap:6px">'
+      + '<span style="width:16px;height:16px;border-radius:3px;display:inline-block;background:repeating-linear-gradient(45deg,var(--bg-3),var(--bg-3) 3px,transparent 3px,transparent 6px);border:1px solid var(--border)"></span>'
+      + UI.esc(t('bcp.scen_legend_na')) + '</span>'
+      + '</div>';
+
+    const colCount = locations.length + 1;
+    let table = '<div style="overflow-x:auto;border:0.5px solid var(--border);border-radius:var(--radius)">'
+      + '<table class="data-table" style="font-size:12px;border-collapse:collapse;width:100%">'
+      + '<thead><tr>'
+      + '<th style="text-align:left;min-width:230px;position:sticky;left:0;background:var(--bg-card);z-index:1">'
+      + UI.esc(t('bcp.scen_col_scenario')) + '</th>';
+    locations.forEach(loc => {
+      const sub = [loc.code, loc.city || loc.country].filter(Boolean).join(' · ');
+      table += '<th style="text-align:center;min-width:112px">'
+        + '<div style="font-size:12px">' + UI.esc(loc.name) + '</div>'
+        + (sub ? '<div style="font-size:10px;font-weight:400;color:var(--text-subtle)">' + UI.esc(sub) + '</div>' : '')
+        + '</th>';
+    });
+    table += '</tr></thead><tbody>';
+
+    SCEN_FAMILIES.concat(
+      // familias desconocidas que puedan venir de una importacion
+      scenarios.map(s => s.family).filter(f => f && SCEN_FAMILIES.indexOf(f) === -1)
+    ).filter((f, i, arr) => arr.indexOf(f) === i).forEach(fam => {
+      const group = scenarios.filter(s => s.family === fam);
+      if (!group.length) return;
+      table += '<tr><td colspan="' + colCount + '" style="background:var(--bg-2);font-size:11px;'
+        + 'font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-subtle);padding:6px 10px">'
+        + UI.esc(_scenFamilyLabel(fam)) + ' <span style="font-weight:400">(' + group.length + ')</span></td></tr>';
+      group.forEach(sc => {
+        table += '<tr><td style="position:sticky;left:0;background:var(--bg-card);z-index:1">'
+          + (sc.code ? UI.codePill(sc.code) + ' ' : '')
+          + '<strong>' + UI.esc(sc.name) + '</strong></td>';
+        locations.forEach(loc => {
+          table += _scenCellHtml(cellIndex[sc.id + ':' + loc.id], bandMap);
+        });
+        table += '</tr>';
+      });
+    });
+    table += '</tbody></table></div>';
+
+    body.innerHTML = html + table;
+  }
+
+  function _scenCellHtml(cell, bandMap) {
+    if (!cell) {
+      return '<td style="text-align:center;color:var(--text-subtle)">—</td>';
+    }
+    if (cell.status === 'not_applicable') {
+      return '<td onclick="ViewBcp._scenExplainNA()" title="' + UI.esc(t('bcp.scen_status_na')) + '"'
+        + ' style="text-align:center;cursor:help;color:var(--text-subtle);'
+        + 'background:repeating-linear-gradient(45deg,var(--bg-3),var(--bg-3) 3px,transparent 3px,transparent 6px)">'
+        + '<i class="ti ti-ban" style="font-size:13px"></i>'
+        + '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">'
+        + UI.esc(t('bcp.scen_status_na_short')) + '</div></td>';
+    }
+    const openCall = 'ViewBcp._openScenAssessment(' + cell.scenario_id + ',' + (cell.location_id || 0)
+      + ',' + (cell.assessment_id || 0) + ')';
+    if (cell.status === 'missing') {
+      return '<td onclick="' + openCall + '" title="' + UI.esc(t('bcp.scen_status_missing')) + '"'
+        + ' style="text-align:center;cursor:pointer;color:var(--brand-orange);'
+        + 'border:1px dashed var(--brand-orange);border-radius:4px">'
+        + '<i class="ti ti-plus" style="font-size:13px"></i>'
+        + '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px">'
+        + UI.esc(t('bcp.scen_status_missing_short')) + '</div></td>';
+    }
+    const band = bandMap[cell.impact_band] || { color: '#6B7280', label: cell.impact_band || '—' };
+    const review = cell.needs_review
+      ? '<i class="ti ti-flag" title="' + UI.esc(t('bcp.scen_needs_review')) + '" style="font-size:10px;margin-left:3px"></i>'
+      : '';
+    return '<td onclick="' + openCall + '" title="' + UI.esc(t('bcp.scen_status_assessed')) + '"'
+      + ' style="text-align:center;cursor:pointer;background:' + band.color + '1f;'
+      + 'border-left:3px solid ' + band.color + '">'
+      + '<div style="font-size:11px;font-weight:700;color:' + band.color + '">'
+      + UI.esc(band.label) + review + '</div>'
+      + '<div style="font-size:10px;color:var(--text-subtle)">'
+      + (cell.weighted_impact != null ? UI.esc(cell.weighted_impact) : '—') + '</div></td>';
+  }
+
+  function _scenExplainNA() {
+    UI.toast(t('bcp.scen_na_explained'), 'info');
+  }
+
+  // ── Seccion: catalogo de escenarios ──────────────────────────────────────────
+
+  async function _scenSectionCatalog(body) {
+    const list = await Api.get('/api/bcp/scenarios?include_inactive=true');
+    _scenCatalogCache = list || [];
+    const canEdit = Auth.canEdit();
+
+    let html = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+      + '<p style="margin:0;font-size:12px;color:var(--text-subtle);flex:1;min-width:240px">'
+      + UI.esc(t('bcp.scen_catalog_hint')) + '</p>'
+      + (canEdit ? '<button class="btn btn-primary btn-sm" onclick="ViewBcp._scenNewScenario()">'
+        + '<i class="ti ti-plus"></i> ' + UI.esc(t('bcp.scen_new')) + '</button>' : '')
+      + '</div>';
+
+    if (!_scenCatalogCache.length) {
+      html += '<div class="notice notice-info">' + UI.esc(t('bcp.scen_catalog_empty')) + '</div>';
+      body.innerHTML = html;
+      return;
+    }
+
+    const families = SCEN_FAMILIES.concat(
+      _scenCatalogCache.map(s => s.family).filter(f => f && SCEN_FAMILIES.indexOf(f) === -1)
+    ).filter((f, i, arr) => arr.indexOf(f) === i);
+
+    families.forEach(fam => {
+      const group = _scenCatalogCache.filter(s => s.family === fam);
+      if (!group.length) return;
+      html += '<div class="card" style="padding:0;margin-bottom:14px;overflow:hidden">'
+        + '<div style="padding:8px 12px;background:var(--bg-2);font-size:11px;font-weight:700;'
+        + 'text-transform:uppercase;letter-spacing:.5px;color:var(--text-subtle)">'
+        + UI.esc(_scenFamilyLabel(fam)) + ' <span style="font-weight:400">(' + group.length + ')</span></div>'
+        + '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>'
+        + '<th style="width:90px">' + UI.esc(t('common.code')) + '</th>'
+        + '<th>' + UI.esc(t('common.name')) + '</th>'
+        + '<th style="width:150px">' + UI.esc(t('bcp.scen_col_area')) + '</th>'
+        + '<th style="width:90px">' + UI.esc(t('bcp.scen_col_source')) + '</th>'
+        + '<th style="width:90px">' + UI.esc(t('common.status')) + '</th>'
+        + '<th style="width:110px"></th></tr></thead><tbody>';
+      group.forEach(sc => {
+        html += '<tr' + (sc.is_active === false ? ' style="opacity:.55"' : '') + '>'
+          + '<td>' + (sc.code ? UI.codePill(sc.code) : '—') + '</td>'
+          + '<td><strong>' + UI.esc(sc.name) + '</strong>'
+          + (sc.description ? '<div style="font-size:11px;color:var(--text-subtle)">' + UI.esc(sc.description) + '</div>' : '')
+          + '</td>'
+          + '<td>' + UI.esc(sc.responsible_area || '—') + '</td>'
+          + '<td>' + _scenSourceBadge(sc.source) + '</td>'
+          + '<td>' + (sc.is_active === false
+            ? '<span class="badge badge-muted" style="font-size:10px">' + UI.esc(t('common.inactive')) + '</span>'
+            : '<span class="badge badge-low" style="font-size:10px">' + UI.esc(t('common.active')) + '</span>') + '</td>'
+          + '<td style="text-align:right">'
+          + (canEdit
+            ? '<button class="btn btn-ghost btn-sm" title="' + UI.esc(t('common.edit')) + '" onclick="ViewBcp._scenEditScenario(' + sc.id + ')"><i class="ti ti-edit" style="font-size:13px"></i></button>'
+              + '<button class="btn btn-ghost btn-sm" title="' + UI.esc(sc.is_active === false ? t('bcp.scen_activate') : t('bcp.scen_deactivate')) + '" onclick="ViewBcp._scenToggleScenario(' + sc.id + ')"><i class="ti ' + (sc.is_active === false ? 'ti-eye' : 'ti-eye-off') + '" style="font-size:13px"></i></button>'
+              + '<button class="btn btn-ghost btn-sm" title="' + UI.esc(t('common.delete')) + '" onclick="ViewBcp._scenDeleteScenario(' + sc.id + ')"><i class="ti ti-trash" style="font-size:13px"></i></button>'
+            : '')
+          + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+
+    body.innerHTML = html;
+  }
+
+  function _scenNewScenario() { _scenModalScenario(null); }
+
+  function _scenEditScenario(id) {
+    const sc = _scenCatalogCache.find(s => s.id === id);
+    if (!sc) { UI.toast(t('bcp.scen_not_found'), 'error'); return; }
+    _scenModalScenario(sc);
+  }
+
+  function _scenModalScenario(sc) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    const lbl = 'font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)';
+    modal.innerHTML = '<div class="modal" style="max-width:560px;max-height:92vh;display:flex;flex-direction:column">'
+      + '<div class="modal-header" style="flex-shrink:0"><h2>'
+      + UI.esc(sc ? t('bcp.scen_modal_edit', { name: sc.name }) : t('bcp.scen_modal_new')) + '</h2>'
+      + '<button class="modal-close" onclick="this.closest(\'.modal-bg\').remove()">&#xd7;</button></div>'
+      + '<div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">'
+      + '<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px">'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('common.name')) + ' *</label>'
+      + '<input id="scenm-name" class="form-control" style="font-size:13px" value="' + UI.esc(sc?.name || '') + '"></div>'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('common.code')) + '</label>'
+      + '<input id="scenm-code" class="form-control" style="font-size:13px" value="' + UI.esc(sc?.code || '') + '" placeholder="ESC-001">'
+      + '<div style="font-size:10px;color:var(--text-subtle);margin-top:3px">' + UI.esc(t('bcp.scen_code_hint')) + '</div></div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_field_family')) + ' *</label>'
+      + '<select id="scenm-family" class="form-control" style="font-size:13px">'
+      + SCEN_FAMILIES.map(f => '<option value="' + f + '"' + (sc?.family === f ? ' selected' : '') + '>'
+        + UI.esc(_scenFamilyLabel(f)) + '</option>').join('')
+      + '</select></div>'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_col_area')) + '</label>'
+      + '<input id="scenm-area" class="form-control" style="font-size:13px" value="' + UI.esc(sc?.responsible_area || '') + '"></div>'
+      + '</div>'
+      + '<div style="margin-bottom:14px"><label style="' + lbl + '">' + UI.esc(t('common.description')) + '</label>'
+      + '<textarea id="scenm-desc" class="form-control" rows="2" style="font-size:13px">' + UI.esc(sc?.description || '') + '</textarea></div>'
+      + '<div style="margin-bottom:14px"><label style="' + lbl + '">' + UI.esc(t('bcp.scen_field_procedure')) + '</label>'
+      + '<textarea id="scenm-proc" class="form-control" rows="3" style="font-size:13px">' + UI.esc(sc?.procedure_notes || '') + '</textarea></div>'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<input id="scenm-active" type="checkbox" style="width:16px;height:16px"' + (!sc || sc.is_active !== false ? ' checked' : '') + '>'
+      + '<label for="scenm-active" style="margin:0;font-size:13px;cursor:pointer">' + UI.esc(t('common.active')) + '</label></div>'
+      + '</div>'
+      + '<div class="modal-footer-sticky"><div style="display:flex;gap:8px;margin-left:auto">'
+      + '<button class="btn btn-sm" onclick="this.closest(\'.modal-bg\').remove()">' + UI.esc(t('common.cancel')) + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="scenm-save"><i class="ti ti-check"></i> ' + UI.esc(t('common.save')) + '</button>'
+      + '</div></div></div>';
+    document.body.appendChild(modal);
+
+    modal.querySelector('#scenm-save').onclick = async () => {
+      const name = modal.querySelector('#scenm-name').value.trim();
+      if (!name) return UI.toast(t('bcp.scen_name_required'), 'error');
+      const payload = {
+        name,
+        family: modal.querySelector('#scenm-family').value,
+        description: modal.querySelector('#scenm-desc').value.trim() || null,
+        procedure_notes: modal.querySelector('#scenm-proc').value.trim() || null,
+        responsible_area: modal.querySelector('#scenm-area').value.trim() || null,
+        is_active: modal.querySelector('#scenm-active').checked,
+      };
+      const code = modal.querySelector('#scenm-code').value.trim();
+      if (code) payload.code = code;
+      try {
+        if (sc) await Api.patch('/api/bcp/scenarios/' + sc.id, payload);
+        else await Api.post('/api/bcp/scenarios', payload);
+        UI.toast(t('bcp.scen_saved'), 'success');
+        modal.remove();
+        _scenCatalogCache = [];
+        _renderContent();
+      } catch (e) { UI.toast(t('bcp.error_prefix') + (e.message || e), 'error'); }
+    };
+  }
+
+  async function _scenToggleScenario(id) {
+    const sc = _scenCatalogCache.find(s => s.id === id);
+    if (!sc) return;
+    try {
+      await Api.patch('/api/bcp/scenarios/' + id, { is_active: sc.is_active === false });
+      UI.toast(sc.is_active === false ? t('bcp.scen_activated') : t('bcp.scen_deactivated'), 'success');
+      _scenCatalogCache = [];
+      _renderContent();
+    } catch (e) { UI.toast(t('bcp.error_prefix') + (e.message || e), 'error'); }
+  }
+
+  async function _scenDeleteScenario(id) {
+    const sc = _scenCatalogCache.find(s => s.id === id);
+    if (!confirm(t('bcp.scen_confirm_delete', { name: sc ? sc.name : '#' + id }))) return;
+    try {
+      await Api.del('/api/bcp/scenarios/' + id);
+      UI.toast(t('bcp.scen_deleted'), 'success');
+      _scenCatalogCache = [];
+      _renderContent();
+    } catch (e) {
+      // 422 = el escenario sostiene valoraciones. El backend explica por que;
+      // se muestra su mensaje tal cual y se ofrece la salida correcta.
+      if (e.status === 422) {
+        if (!confirm((e.message || '') + '\n\n' + t('bcp.scen_delete_blocked_offer'))) return;
+        try {
+          await Api.patch('/api/bcp/scenarios/' + id, { is_active: false });
+          UI.toast(t('bcp.scen_deactivated'), 'success');
+          _scenCatalogCache = [];
+          _renderContent();
+        } catch (e2) { UI.toast(t('bcp.error_prefix') + (e2.message || e2), 'error'); }
+        return;
+      }
+      UI.toast(t('bcp.error_prefix') + (e.message || e), 'error');
+    }
+  }
+
+  // ── Seccion: reglas de aplicabilidad ─────────────────────────────────────────
+
+  async function _scenSectionRules(body) {
+    const [rules, scenarios] = await Promise.all([
+      Api.get('/api/bcp/applicability-rules'),
+      Api.get('/api/bcp/scenarios?include_inactive=true').catch(() => []),
+    ]);
+    _scenCatalogCache = scenarios || [];
+    const canEdit = Auth.canEdit();
+    const list = rules || [];
+
+    let html = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+      + '<p style="margin:0;font-size:12px;color:var(--text-subtle);flex:1;min-width:240px">'
+      + UI.esc(t('bcp.scen_rules_only_subtract')) + '</p>'
+      + (canEdit ? '<button class="btn btn-primary btn-sm" onclick="ViewBcp._scenNewRule()">'
+        + '<i class="ti ti-plus"></i> ' + UI.esc(t('bcp.scen_rule_new')) + '</button>' : '')
+      + '</div>';
+
+    if (!list.length) {
+      // Lista vacia = todos los escenarios aplican a todas las sedes. Se explica,
+      // no se presenta como "sin datos".
+      html += '<div class="notice" style="padding:18px">'
+        + '<div style="font-size:14px;font-weight:700;margin-bottom:6px">'
+        + '<i class="ti ti-circle-check"></i> ' + UI.esc(t('bcp.scen_rules_empty_title')) + '</div>'
+        + '<div style="font-size:13px;line-height:1.5">' + UI.esc(t('bcp.scen_rules_empty_body')) + '</div></div>';
+      body.innerHTML = html;
+      return;
+    }
+
+    list.slice().sort((a, b) => (a.priority || 100) - (b.priority || 100)).forEach(rule => {
+      const when = rule.when || {};
+      const then = rule.then || {};
+      const whenChips = Object.keys(when).map(k => {
+        const v = when[k];
+        const val = Array.isArray(v) ? v.join(', ') : String(v);
+        return '<span class="badge badge-muted" style="font-size:11px;margin:2px">'
+          + UI.esc(_scenRuleFieldLabel(k)) + ': <strong>' + UI.esc(val) + '</strong></span>';
+      }).join('') || '<span style="font-size:11px;color:var(--text-subtle)">—</span>';
+
+      let thenChips = '';
+      (then.include_only_families || []).forEach(f => {
+        thenChips += '<span class="badge badge-purple" style="font-size:11px;margin:2px">'
+          + UI.esc(t('bcp.scen_rule_effect_include_only', { family: _scenFamilyLabel(f) })) + '</span>';
+      });
+      (then.exclude_families || []).forEach(f => {
+        thenChips += '<span class="badge badge-orange" style="font-size:11px;margin:2px">'
+          + UI.esc(t('bcp.scen_rule_effect_exclude_family', { family: _scenFamilyLabel(f) })) + '</span>';
+      });
+      (then.exclude_scenarios || []).forEach(c => {
+        thenChips += '<span class="badge badge-orange" style="font-size:11px;margin:2px">'
+          + UI.esc(t('bcp.scen_rule_effect_exclude_scenario', { code: c })) + '</span>';
+      });
+      if (!thenChips) thenChips = '<span style="font-size:11px;color:var(--text-subtle)">—</span>';
+
+      html += '<div class="card" style="padding:14px;margin-bottom:12px;' + (rule.is_active === false ? 'opacity:.55' : '') + '">'
+        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+        + '<strong style="font-size:14px">' + UI.esc(rule.name || ('#' + rule.id)) + '</strong>'
+        + _scenSourceBadge(rule.source)
+        + '<span class="badge badge-muted" style="font-size:10px">' + UI.esc(t('bcp.scen_rule_priority')) + ' ' + (rule.priority != null ? rule.priority : 100) + '</span>'
+        + (rule.is_active === false
+          ? '<span class="badge badge-muted" style="font-size:10px">' + UI.esc(t('common.inactive')) + '</span>'
+          : '<span class="badge badge-low" style="font-size:10px">' + UI.esc(t('common.active')) + '</span>')
+        + '<span style="margin-left:auto;display:flex;gap:4px">'
+        + (canEdit
+          ? '<button class="btn btn-ghost btn-sm" title="' + UI.esc(t('common.edit')) + '" onclick="ViewBcp._scenEditRule(' + rule.id + ')"><i class="ti ti-edit" style="font-size:13px"></i></button>'
+            + '<button class="btn btn-ghost btn-sm" title="' + UI.esc(rule.is_active === false ? t('bcp.scen_activate') : t('bcp.scen_deactivate')) + '" onclick="ViewBcp._scenToggleRule(' + rule.id + ')"><i class="ti ' + (rule.is_active === false ? 'ti-eye' : 'ti-eye-off') + '" style="font-size:13px"></i></button>'
+            + '<button class="btn btn-ghost btn-sm" title="' + UI.esc(t('common.delete')) + '" onclick="ViewBcp._scenDeleteRule(' + rule.id + ')"><i class="ti ti-trash" style="font-size:13px"></i></button>'
+          : '')
+        + '</span></div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px">'
+        + '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:4px">'
+        + UI.esc(t('bcp.scen_rule_when')) + '</div>' + whenChips + '</div>'
+        + '<div><div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:4px">'
+        + UI.esc(t('bcp.scen_rule_then')) + '</div>' + thenChips + '</div>'
+        + '</div>'
+        + '<div style="border-left:3px solid var(--brand-orange);padding:8px 12px;background:var(--bg-2);border-radius:4px">'
+        + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-subtle);margin-bottom:3px">'
+        + UI.esc(t('bcp.scen_rule_rationale')) + '</div>'
+        + '<div style="font-size:13px' + (rule.rationale ? '' : ';color:var(--text-subtle);font-style:italic') + '">'
+        + UI.esc(rule.rationale || t('bcp.scen_rule_no_rationale')) + '</div></div>'
+        + '</div>';
+    });
+
+    body.innerHTML = html;
+  }
+
+  let _scenRulesCache = [];
+
+  function _scenNewRule() { _scenModalRule(null); }
+
+  async function _scenEditRule(id) {
+    const rules = await Api.get('/api/bcp/applicability-rules').catch(() => []);
+    _scenRulesCache = rules || [];
+    const rule = _scenRulesCache.find(r => r.id === id);
+    if (!rule) { UI.toast(t('bcp.scen_rule_not_found'), 'error'); return; }
+    _scenModalRule(rule);
+  }
+
+  async function _scenToggleRule(id) {
+    const rules = await Api.get('/api/bcp/applicability-rules').catch(() => []);
+    const rule = (rules || []).find(r => r.id === id);
+    if (!rule) return;
+    try {
+      await Api.patch('/api/bcp/applicability-rules/' + id, { is_active: rule.is_active === false });
+      UI.toast(t('bcp.scen_rule_saved'), 'success');
+      _renderContent();
+    } catch (e) { UI.toast(t('bcp.error_prefix') + (e.message || e), 'error'); }
+  }
+
+  async function _scenDeleteRule(id) {
+    if (!confirm(t('bcp.scen_rule_confirm_delete'))) return;
+    try {
+      await Api.del('/api/bcp/applicability-rules/' + id);
+      UI.toast(t('bcp.scen_rule_deleted'), 'success');
+      _renderContent();
+    } catch (e) { UI.toast(t('bcp.error_prefix') + (e.message || e), 'error'); }
+  }
+
+  function _scenRuleCondRow(field, value) {
+    return '<div class="scen-cond-row" style="display:grid;grid-template-columns:1fr 1fr 32px;gap:8px;margin-bottom:6px">'
+      + '<select class="form-control" data-cond-field style="font-size:12px">'
+      + SCEN_RULE_FIELDS.map(f => '<option value="' + f + '"' + (field === f ? ' selected' : '') + '>'
+        + UI.esc(_scenRuleFieldLabel(f)) + '</option>').join('')
+      + '</select>'
+      + '<input class="form-control" data-cond-value style="font-size:12px" value="' + UI.esc(value || '') + '">'
+      + '<button class="btn btn-ghost btn-sm" onclick="this.closest(\'.scen-cond-row\').remove()">'
+      + '<i class="ti ti-x" style="font-size:12px"></i></button></div>';
+  }
+
+  function _scenModalRule(rule) {
+    const when = (rule && rule.when) || {};
+    const then = (rule && rule.then) || {};
+    const lbl = 'font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)';
+    const condRows = Object.keys(when).map(k => {
+      const v = when[k];
+      return _scenRuleCondRow(k, Array.isArray(v) ? v.join(', ') : String(v));
+    }).join('') || _scenRuleCondRow(SCEN_RULE_FIELDS[0], '');
+
+    const famBoxes = (name, selected) => SCEN_FAMILIES.map(f =>
+      '<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:3px 0;cursor:pointer">'
+      + '<input type="checkbox" data-' + name + '="' + f + '" style="width:15px;height:15px"'
+      + ((selected || []).indexOf(f) !== -1 ? ' checked' : '') + '>'
+      + UI.esc(_scenFamilyLabel(f)) + '</label>').join('');
+
+    const activeScenarios = _scenCatalogCache.filter(s => s.is_active !== false);
+    const excluded = then.exclude_scenarios || [];
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = '<div class="modal" style="max-width:640px;max-height:92vh;display:flex;flex-direction:column">'
+      + '<div class="modal-header" style="flex-shrink:0"><h2>'
+      + UI.esc(rule ? t('bcp.scen_rule_edit') : t('bcp.scen_rule_new')) + '</h2>'
+      + '<button class="modal-close" onclick="this.closest(\'.modal-bg\').remove()">&#xd7;</button></div>'
+      + '<div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">'
+      + '<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px">'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_rule_name')) + '</label>'
+      + '<input id="rulem-name" class="form-control" style="font-size:13px" value="' + UI.esc(rule?.name || '') + '"></div>'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_rule_priority')) + '</label>'
+      + '<input id="rulem-prio" type="number" class="form-control" style="font-size:13px" value="' + (rule?.priority != null ? rule.priority : 100) + '"></div>'
+      + '</div>'
+      + '<div style="margin-bottom:14px">'
+      + '<label style="' + lbl + '">' + UI.esc(t('bcp.scen_rule_when')) + '</label>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:6px">' + UI.esc(t('bcp.scen_rule_value_hint')) + '</div>'
+      + '<div id="rulem-conds">' + condRows + '</div>'
+      + '<button class="btn btn-sm" id="rulem-addcond"><i class="ti ti-plus"></i> ' + UI.esc(t('bcp.scen_rule_add_cond')) + '</button>'
+      + '</div>'
+      + '<div style="margin-bottom:14px;border-top:0.5px solid var(--border);padding-top:12px">'
+      + '<label style="' + lbl + '">' + UI.esc(t('bcp.scen_rule_then')) + '</label>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px">'
+      + '<div><div style="font-size:11px;font-weight:600;margin-bottom:4px">' + UI.esc(t('bcp.scen_rule_exclude_families')) + '</div>'
+      + famBoxes('exfam', then.exclude_families) + '</div>'
+      + '<div><div style="font-size:11px;font-weight:600;margin-bottom:4px">' + UI.esc(t('bcp.scen_rule_include_only')) + '</div>'
+      + famBoxes('onlyfam', then.include_only_families) + '</div>'
+      + '</div>'
+      + '<div style="margin-top:12px"><div style="font-size:11px;font-weight:600;margin-bottom:4px">'
+      + UI.esc(t('bcp.scen_rule_exclude_scenarios')) + '</div>'
+      + (activeScenarios.length
+        ? '<div style="max-height:150px;overflow-y:auto;border:0.5px solid var(--border);border-radius:4px;padding:6px">'
+          + activeScenarios.map(s => '<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:2px 0;cursor:pointer">'
+            + '<input type="checkbox" data-exscen="' + UI.esc(s.code || '') + '" style="width:15px;height:15px"'
+            + (excluded.indexOf(s.code) !== -1 ? ' checked' : '') + (s.code ? '' : ' disabled') + '>'
+            + (s.code ? UI.codePill(s.code) + ' ' : '') + UI.esc(s.name) + '</label>').join('')
+          + '</div>'
+        : '<div style="font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_catalog_empty_short')) + '</div>')
+      + '</div></div>'
+      + '<div style="margin-bottom:14px;border-top:0.5px solid var(--border);padding-top:12px">'
+      + '<label style="' + lbl + '">' + UI.esc(t('bcp.scen_rule_rationale')) + '</label>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:4px">' + UI.esc(t('bcp.scen_rule_rationale_hint')) + '</div>'
+      + '<textarea id="rulem-rationale" class="form-control" rows="3" style="font-size:13px">' + UI.esc(rule?.rationale || '') + '</textarea></div>'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<input id="rulem-active" type="checkbox" style="width:16px;height:16px"' + (!rule || rule.is_active !== false ? ' checked' : '') + '>'
+      + '<label for="rulem-active" style="margin:0;font-size:13px;cursor:pointer">' + UI.esc(t('common.active')) + '</label></div>'
+      + '</div>'
+      + '<div class="modal-footer-sticky"><div style="display:flex;gap:8px;margin-left:auto">'
+      + '<button class="btn btn-sm" onclick="this.closest(\'.modal-bg\').remove()">' + UI.esc(t('common.cancel')) + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="rulem-save"><i class="ti ti-check"></i> ' + UI.esc(t('common.save')) + '</button>'
+      + '</div></div></div>';
+    document.body.appendChild(modal);
+
+    modal.querySelector('#rulem-addcond').onclick = () => {
+      const wrap = modal.querySelector('#rulem-conds');
+      wrap.insertAdjacentHTML('beforeend', _scenRuleCondRow(SCEN_RULE_FIELDS[0], ''));
+    };
+
+    modal.querySelector('#rulem-save').onclick = async () => {
+      const whenOut = {};
+      modal.querySelectorAll('.scen-cond-row').forEach(row => {
+        const field = row.querySelector('[data-cond-field]').value;
+        const raw = row.querySelector('[data-cond-value]').value.trim();
+        if (!field || !raw) return;
+        const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+        const prev = whenOut[field];
+        const merged = (prev == null ? [] : (Array.isArray(prev) ? prev : [prev])).concat(parts);
+        whenOut[field] = merged.length > 1 ? merged : merged[0];
+      });
+      if (!Object.keys(whenOut).length) return UI.toast(t('bcp.scen_rule_when_required'), 'error');
+
+      const thenOut = {};
+      const collect = attr => Array.from(modal.querySelectorAll('[data-' + attr + ']'))
+        .filter(el => el.checked).map(el => el.getAttribute('data-' + attr)).filter(Boolean);
+      const exFam = collect('exfam');
+      const onlyFam = collect('onlyfam');
+      const exScen = collect('exscen');
+      if (exFam.length) thenOut.exclude_families = exFam;
+      if (onlyFam.length) thenOut.include_only_families = onlyFam;
+      if (exScen.length) thenOut.exclude_scenarios = exScen;
+      if (!Object.keys(thenOut).length) return UI.toast(t('bcp.scen_rule_then_required'), 'error');
+
+      const payload = {
+        name: modal.querySelector('#rulem-name').value.trim() || null,
+        when: whenOut,
+        then: thenOut,
+        rationale: modal.querySelector('#rulem-rationale').value.trim() || null,
+        priority: parseInt(modal.querySelector('#rulem-prio').value, 10) || 100,
+        is_active: modal.querySelector('#rulem-active').checked,
+      };
+      try {
+        if (rule) await Api.patch('/api/bcp/applicability-rules/' + rule.id, payload);
+        else await Api.post('/api/bcp/applicability-rules', payload);
+        UI.toast(t('bcp.scen_rule_saved'), 'success');
+        modal.remove();
+        _renderContent();
+      } catch (e) {
+        // El backend explica exactamente que campo es invalido: se muestra tal cual.
+        UI.toast(e.message || t('common.error'), 'error');
+      }
+    };
+  }
+
+  // ── Seccion: baremos del BIA ─────────────────────────────────────────────────
+
+  function _scenCritRowHtml(cols, row, canEdit) {
+    let html = '<tr>';
+    cols.forEach(c => {
+      const v = row && row[c.key] != null ? row[c.key] : '';
+      html += '<td style="padding:3px"><input class="form-control" data-f="' + c.key + '"'
+        + ' type="' + (c.type === 'number' ? 'number' : 'text') + '"'
+        + (c.type === 'number' ? ' step="any"' : '')
+        + ' style="font-size:12px;padding:4px 6px" value="' + UI.esc(v) + '"'
+        + (canEdit ? '' : ' disabled') + '></td>';
+    });
+    html += '<td style="padding:3px;width:34px;text-align:right">'
+      + (canEdit ? '<button class="btn btn-ghost btn-sm" onclick="this.closest(\'tr\').remove()">'
+        + '<i class="ti ti-x" style="font-size:12px"></i></button>' : '')
+      + '</td></tr>';
+    return html;
+  }
+
+  function _scenCritEditorHtml(id, title, hint, cols, rows, canEdit) {
+    let html = '<div class="card" style="padding:12px;margin-bottom:12px">'
+      + '<div style="font-size:12px;font-weight:700;margin-bottom:2px">' + UI.esc(title) + '</div>'
+      + (hint ? '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">' + UI.esc(hint) + '</div>' : '')
+      + '<table id="' + id + '" style="width:100%;border-collapse:collapse"><thead><tr>'
+      + cols.map(c => '<th style="text-align:left;font-size:10px;text-transform:uppercase;'
+        + 'color:var(--text-subtle);padding:2px 4px">' + UI.esc(c.label) + '</th>').join('')
+      + '<th></th></tr></thead><tbody>'
+      + (rows || []).map(r => _scenCritRowHtml(cols, r, canEdit)).join('')
+      + '</tbody></table>'
+      + (canEdit ? '<button class="btn btn-sm" style="margin-top:6px" data-scen-add="' + id + '">'
+        + '<i class="ti ti-plus"></i> ' + UI.esc(t('bcp.scen_crit_add_row')) + '</button>' : '')
+      + '</div>';
+    return html;
+  }
+
+  function _scenCritReadRows(root, id, cols) {
+    const out = [];
+    const tbody = root.querySelector('#' + id + ' tbody');
+    if (!tbody) return out;
+    tbody.querySelectorAll('tr').forEach(tr => {
+      const obj = {};
+      let any = false;
+      cols.forEach(c => {
+        const inp = tr.querySelector('[data-f="' + c.key + '"]');
+        if (!inp) return;
+        const raw = String(inp.value || '').trim();
+        if (raw === '') return;
+        any = true;
+        obj[c.key] = c.type === 'number' ? Number(raw) : raw;
+      });
+      if (any) out.push(obj);
+    });
+    return out;
+  }
+
+  async function _scenSectionCriteria(body) {
+    const crit = await Api.get('/api/bcp/bia-criteria');
+    _scenCriteriaCache = crit;
+    const canEdit = Auth.canEdit();
+
+    const colsDim   = [{ key: 'key', label: t('bcp.scen_crit_col_key'), type: 'text' },
+                       { key: 'label', label: t('bcp.scen_crit_col_label'), type: 'text' }];
+    const colsHor   = [{ key: 'label', label: t('bcp.scen_crit_col_horizon'), type: 'text' }];
+    const colsLvl   = [{ key: 'value', label: t('bcp.scen_crit_col_value'), type: 'number' },
+                       { key: 'score', label: t('bcp.scen_crit_col_score'), type: 'number' },
+                       { key: 'label', label: t('bcp.scen_crit_col_label'), type: 'text' }];
+    const colsRto   = [{ key: 'label', label: t('bcp.scen_crit_col_label'), type: 'text' },
+                       { key: 'hours', label: t('bcp.scen_crit_col_hours'), type: 'number' },
+                       { key: 'factor', label: t('bcp.scen_crit_col_factor'), type: 'number' }];
+    const colsBand  = [{ key: 'key', label: t('bcp.scen_crit_col_key'), type: 'text' },
+                       { key: 'label', label: t('bcp.scen_crit_col_label'), type: 'text' },
+                       { key: 'min', label: t('bcp.scen_crit_col_min'), type: 'number' },
+                       { key: 'max', label: t('bcp.scen_crit_col_max'), type: 'number' }];
+
+    const agg = (crit.aggregation || 'max').toLowerCase();
+    let html = '';
+    html += crit.is_default
+      ? '<div class="notice notice-warn" style="margin-bottom:14px">' + UI.esc(t('bcp.scen_crit_default_notice')) + '</div>'
+      : '<div class="notice" style="margin-bottom:14px">' + UI.esc(t('bcp.scen_crit_own_notice')) + '</div>';
+    html += '<p style="font-size:12px;color:var(--text-subtle);margin:0 0 14px">' + UI.esc(t('bcp.scen_crit_hint')) + '</p>';
+
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+      + '<div>'
+      + _scenCritEditorHtml('scen-crit-dims', t('bcp.scen_crit_dimensions'), t('bcp.scen_crit_dimensions_hint'), colsDim, crit.dimensions, canEdit)
+      + _scenCritEditorHtml('scen-crit-hors', t('bcp.scen_crit_horizons'), t('bcp.scen_crit_horizons_hint'),
+          colsHor, (crit.horizons || []).map(h => ({ label: h })), canEdit)
+      + _scenCritEditorHtml('scen-crit-lvls', t('bcp.scen_crit_levels'), t('bcp.scen_crit_levels_hint'), colsLvl, crit.levels, canEdit)
+      + '</div><div>'
+      + _scenCritEditorHtml('scen-crit-rto', t('bcp.scen_crit_rto_scale'), t('bcp.scen_crit_rto_hint'), colsRto, crit.rto_scale, canEdit)
+      + _scenCritEditorHtml('scen-crit-bands', t('bcp.scen_crit_bands'), t('bcp.scen_crit_bands_hint'), colsBand, crit.bands, canEdit)
+      + '<div class="card" style="padding:12px;margin-bottom:12px">'
+      + '<div style="font-size:12px;font-weight:700;margin-bottom:6px">' + UI.esc(t('bcp.scen_crit_aggregation')) + '</div>'
+      + '<select id="scen-crit-agg" class="form-control" style="font-size:12px"' + (canEdit ? '' : ' disabled') + '>'
+      + '<option value="max"' + (agg === 'max' ? ' selected' : '') + '>' + UI.esc(t('bcp.scen_crit_agg_max')) + '</option>'
+      + '<option value="avg"' + (agg !== 'max' ? ' selected' : '') + '>' + UI.esc(t('bcp.scen_crit_agg_avg')) + '</option>'
+      + '</select></div>'
+      + '</div></div>';
+
+    if (canEdit) {
+      html += '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">'
+        + '<button class="btn btn-primary btn-sm" id="scen-crit-save"><i class="ti ti-check"></i> '
+        + UI.esc(t('common.save')) + '</button></div>';
+    }
+
+    body.innerHTML = html;
+
+    const editors = {
+      'scen-crit-dims': colsDim, 'scen-crit-hors': colsHor, 'scen-crit-lvls': colsLvl,
+      'scen-crit-rto': colsRto, 'scen-crit-bands': colsBand,
+    };
+    body.querySelectorAll('[data-scen-add]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-scen-add');
+        const tbody = body.querySelector('#' + id + ' tbody');
+        if (tbody) tbody.insertAdjacentHTML('beforeend', _scenCritRowHtml(editors[id], null, true));
+      });
+    });
+
+    const saveBtn = body.querySelector('#scen-crit-save');
+    if (!saveBtn) return;
+    saveBtn.onclick = async () => {
+      const dimensions = _scenCritReadRows(body, 'scen-crit-dims', colsDim);
+      const horizons   = _scenCritReadRows(body, 'scen-crit-hors', colsHor).map(r => r.label);
+      const levels     = _scenCritReadRows(body, 'scen-crit-lvls', colsLvl);
+      const rtoScale   = _scenCritReadRows(body, 'scen-crit-rto', colsRto);
+      const bands      = _scenCritReadRows(body, 'scen-crit-bands', colsBand);
+      if (!dimensions.length || !horizons.length || !levels.length || !bands.length) {
+        return UI.toast(t('bcp.scen_crit_empty_list'), 'error');
+      }
+      // Cambiar el baremo recalcula TODO el BIA: se avisa antes de tocarlo.
+      if (!confirm(t('bcp.scen_crit_confirm'))) return;
+      const payload = {
+        dimensions, horizons, levels, bands,
+        aggregation: body.querySelector('#scen-crit-agg').value,
+      };
+      if (rtoScale.length) payload.rto_scale = rtoScale;
+      try {
+        const res = await Api.put('/api/bcp/bia-criteria', payload);
+        _scenCriteriaCache = res;
+        UI.toast(t('bcp.scen_crit_saved', { count: res.recalculated != null ? res.recalculated : 0 }), 'success');
+        _renderContent();
+      } catch (e) { UI.toast(e.message || t('common.error'), 'error'); }
+    };
+  }
+
+  // ── Seccion: huecos del SGCN ─────────────────────────────────────────────────
+
+  async function _scenSectionGaps(body) {
+    const gaps = await Api.get('/api/bcp/scenarios/gaps') || [];
+    if (!gaps.length) {
+      body.innerHTML = '<div class="notice">' + UI.esc(t('bcp.scen_gaps_empty')) + '</div>';
+      return;
+    }
+
+    const counts = {};
+    SCEN_GAP_REASONS.forEach(r => { counts[r] = 0; });
+    gaps.forEach(g => (g.reasons || []).forEach(r => {
+      counts[r] = (counts[r] || 0) + 1;
+    }));
+
+    const byScenario = {};
+    gaps.forEach(g => {
+      if (!byScenario[g.scenario_id]) {
+        byScenario[g.scenario_id] = {
+          code: g.scenario_code, name: g.scenario_name, family: g.family, rows: [],
+        };
+      }
+      byScenario[g.scenario_id].rows.push(g);
+    });
+    const scenarioIds = Object.keys(byScenario);
+
+    let html = '<p style="font-size:12px;color:var(--text-subtle);margin:0 0 12px">'
+      + UI.esc(t('bcp.scen_gaps_intro')) + '</p>'
+      + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">'
+      + SCEN_GAP_REASONS.map(r => '<div class="stat-card">'
+        + '<div class="stat-value" style="color:' + SCEN_REASON_COLOR[r] + '">' + (counts[r] || 0) + '</div>'
+        + '<div class="stat-label">' + UI.esc(_scenReasonLabel(r)) + '</div></div>').join('')
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--text-subtle);margin-bottom:10px">'
+      + UI.esc(t('bcp.scen_gaps_total', { count: gaps.length, scenarios: scenarioIds.length })) + '</div>';
+
+    scenarioIds.forEach(sid => {
+      const entry = byScenario[sid];
+      html += '<div class="card" style="padding:12px;margin-bottom:10px">'
+        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+        + (entry.code ? UI.codePill(entry.code) : '')
+        + '<strong style="font-size:13px">' + UI.esc(entry.name || '') + '</strong>'
+        + '<span class="badge badge-muted" style="font-size:10px">' + UI.esc(_scenFamilyLabel(entry.family)) + '</span>'
+        + '</div>'
+        + '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>'
+        + '<th style="width:220px">' + UI.esc(t('bcp.scen_gaps_locations')) + '</th>'
+        + '<th>' + UI.esc(t('bcp.scen_gaps_reasons')) + '</th></tr></thead><tbody>'
+        + entry.rows.map(row => '<tr><td>' + UI.esc(row.location_name || '—') + '</td><td>'
+          + (row.reasons || []).map(r => '<span class="badge" style="font-size:10px;margin:2px;'
+            + 'background:' + SCEN_REASON_COLOR[r] + '1f;color:' + SCEN_REASON_COLOR[r] + '">'
+            + UI.esc(_scenReasonLabel(r)) + '</span>').join('')
+          + '</td></tr>').join('')
+        + '</tbody></table></div>';
+    });
+
+    body.innerHTML = html;
+  }
+
+  // ── Editor de valoracion (impacts x horizontes) ──────────────────────────────
+
+  async function _openScenAssessment(scenarioId, locationId, assessmentId) {
+    const locId = locationId || null;
+    const [criteria, catalog] = await Promise.all([
+      _scenEnsureCriteria(), _scenEnsureCatalog(),
+    ]);
+    if (!criteria) { UI.toast(t('bcp.scen_ass_no_criteria'), 'error'); return; }
+
+    let assessment = null;
+    if (assessmentId) {
+      const q = '?scenario_id=' + scenarioId + (locId ? '&location_id=' + locId : '');
+      const list = await Api.get('/api/bcp/scenario-assessments' + q).catch(() => []);
+      assessment = (list || []).find(a => a.id === assessmentId) || (list || [])[0] || null;
+    }
+    const scenario = (catalog || []).find(s => s.id === scenarioId);
+    const users = await Api.get('/api/users/').catch(() => []);
+
+    const dims = criteria.dimensions || [];
+    const horizons = criteria.horizons || [];
+    const levels = criteria.levels || [];
+    const rtoScale = criteria.rto_scale || [];
+    const impacts = (assessment && assessment.impacts) || {};
+    const lbl = 'font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-subtle)';
+
+    let grid = '<div style="overflow-x:auto;border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:14px">'
+      + '<table class="data-table" style="font-size:12px;width:100%"><thead><tr>'
+      + '<th style="text-align:left;min-width:130px">' + UI.esc(t('bcp.scen_ass_dimension')) + '</th>'
+      + horizons.map(h => '<th style="text-align:center">' + UI.esc(h) + '</th>').join('')
+      + '</tr></thead><tbody>';
+    dims.forEach(d => {
+      grid += '<tr><td><strong>' + UI.esc(d.label || d.key) + '</strong></td>';
+      horizons.forEach(h => {
+        const cur = (impacts[d.key] || {})[h];
+        grid += '<td style="text-align:center"><select class="form-control" style="font-size:12px;padding:3px 4px"'
+          + ' data-imp-dim="' + UI.esc(d.key) + '" data-imp-h="' + UI.esc(h) + '">'
+          + '<option value="">' + UI.esc(t('bcp.scen_ass_level_none')) + '</option>'
+          + levels.map(l => '<option value="' + UI.esc(l.value) + '"'
+            + (String(cur) === String(l.value) ? ' selected' : '') + '>'
+            + UI.esc(l.value + ' — ' + (l.label || '')) + '</option>').join('')
+          + '</select></td>';
+      });
+      grid += '</tr>';
+    });
+    grid += '</tbody></table></div>';
+
+    const rtoOptions = sel => '<option value="">' + UI.esc(t('bcp.scen_ass_level_none')) + '</option>'
+      + rtoScale.map(r => '<option value="' + UI.esc(r.label) + '" data-hours="' + UI.esc(r.hours != null ? r.hours : '') + '"'
+        + (sel === r.label ? ' selected' : '') + '>' + UI.esc(r.label) + '</option>').join('');
+
+    const band = _scenBandInfo(criteria, assessment && assessment.impact_band);
+    const computedHtml = assessment
+      ? '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">'
+        + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_weighted')) + '</div>'
+        + '<div style="font-size:18px;font-weight:700">' + UI.esc(assessment.weighted_impact != null ? assessment.weighted_impact : '—') + '</div></div>'
+        + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_band')) + '</div>'
+        + '<div style="font-size:14px;font-weight:700;color:' + band.color + '">' + UI.esc(band.label) + '</div></div>'
+        + '</div>'
+      : '<div style="font-size:12px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_not_computed')) + '</div>';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = '<div class="modal" style="max-width:760px;max-height:92vh;display:flex;flex-direction:column">'
+      + '<div class="modal-header" style="flex-shrink:0"><h2>'
+      + UI.esc(t('bcp.scen_ass_title', { scenario: scenario ? scenario.name : '#' + scenarioId })) + '</h2>'
+      + '<button class="modal-close" onclick="this.closest(\'.modal-bg\').remove()">&#xd7;</button></div>'
+      + '<div class="modal-body" style="overflow-y:auto;flex:1;padding:20px 24px;display:block">'
+      + '<div style="font-size:12px;color:var(--text-subtle);margin-bottom:12px">'
+      + '<i class="ti ti-map-pin" style="font-size:12px"></i> ' + UI.esc(t('bcp.scen_ass_location')) + ': <strong>'
+      + UI.esc(locId ? (_locationMap[locId]?.name || ('#' + locId)) : t('bcp.scen_ass_corporate')) + '</strong></div>'
+      + '<div style="' + lbl + ';margin-bottom:2px">' + UI.esc(t('bcp.scen_ass_grid_title')) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">' + UI.esc(t('bcp.scen_ass_grid_hint')) + '</div>'
+      + grid
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_ass_mtpd')) + '</label>'
+      + '<input id="assm-mtpd" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(assessment?.mtpd_hours != null ? assessment.mtpd_hours : '') + '"></div>'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_ass_rto_label')) + '</label>'
+      + '<select id="assm-rto-label" class="form-control" style="font-size:13px">' + rtoOptions(assessment?.rto_label) + '</select></div>'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_ass_rto_hours')) + '</label>'
+      + '<input id="assm-rto-hours" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(assessment?.rto_hours != null ? assessment.rto_hours : '') + '"></div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_ass_rpo_label')) + '</label>'
+      + '<select id="assm-rpo-label" class="form-control" style="font-size:13px">' + rtoOptions(assessment?.rpo_label) + '</select></div>'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_ass_rpo_hours')) + '</label>'
+      + '<input id="assm-rpo-hours" type="number" step="any" class="form-control" style="font-size:13px" value="' + UI.esc(assessment?.rpo_hours != null ? assessment.rpo_hours : '') + '"></div>'
+      + '<div><label style="' + lbl + '">' + UI.esc(t('bcp.scen_ass_responsible')) + '</label>'
+      + '<select id="assm-resp" class="form-control" style="font-size:13px">'
+      + '<option value="">' + UI.esc(t('common.not_assigned')) + '</option>'
+      + (users || []).map(u => '<option value="' + u.id + '"' + (assessment?.responsible_id === u.id ? ' selected' : '') + '>'
+        + UI.esc(u.full_name || u.email) + '</option>').join('')
+      + '</select></div>'
+      + '</div>'
+      + '<div style="margin-bottom:14px"><label style="' + lbl + '">' + UI.esc(t('bcp.scen_ass_deps')) + '</label>'
+      + '<textarea id="assm-deps" class="form-control" rows="3" style="font-size:13px">' + UI.esc(assessment?.dependencies_note || '') + '</textarea></div>'
+      + (assessment ? '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
+        + '<input id="assm-review" type="checkbox" style="width:16px;height:16px"' + (assessment.needs_review ? ' checked' : '') + '>'
+        + '<label for="assm-review" style="margin:0;font-size:13px;cursor:pointer">' + UI.esc(t('bcp.scen_ass_needs_review')) + '</label></div>' : '')
+      + '<div class="card" style="padding:12px;border-left:3px solid var(--brand-purple)">'
+      + '<div style="' + lbl + ';margin-bottom:2px">' + UI.esc(t('bcp.scen_ass_computed')) + '</div>'
+      + '<div style="font-size:11px;color:var(--text-subtle);margin-bottom:8px">' + UI.esc(t('bcp.scen_ass_computed_hint')) + '</div>'
+      + '<div id="assm-computed">' + computedHtml + '</div></div>'
+      + '</div>'
+      + '<div class="modal-footer-sticky">'
+      + (assessment ? '<button class="btn btn-danger btn-sm" id="assm-del"><i class="ti ti-trash"></i> ' + UI.esc(t('common.delete')) + '</button>' : '')
+      + '<div style="display:flex;gap:8px;margin-left:auto">'
+      + '<button class="btn btn-sm" onclick="this.closest(\'.modal-bg\').remove()">' + UI.esc(t('common.cancel')) + '</button>'
+      + '<button class="btn btn-primary btn-sm" id="assm-save"><i class="ti ti-check"></i> ' + UI.esc(t('common.save')) + '</button>'
+      + '</div></div></div>';
+    document.body.appendChild(modal);
+
+    // La etiqueta de RTO/RPO rellena las horas del baremo declarado; el usuario
+    // puede afinarlas despues.
+    ['rto', 'rpo'].forEach(kind => {
+      const sel = modal.querySelector('#assm-' + kind + '-label');
+      const hours = modal.querySelector('#assm-' + kind + '-hours');
+      sel.addEventListener('change', () => {
+        const opt = sel.options[sel.selectedIndex];
+        const h = opt ? opt.getAttribute('data-hours') : '';
+        if (h !== null && h !== undefined && h !== '') hours.value = h;
+      });
+    });
+
+    const readPayload = () => {
+      const impactsOut = {};
+      modal.querySelectorAll('[data-imp-dim]').forEach(sel => {
+        if (!sel.value) return;
+        const d = sel.getAttribute('data-imp-dim');
+        const h = sel.getAttribute('data-imp-h');
+        if (!impactsOut[d]) impactsOut[d] = {};
+        impactsOut[d][h] = Number(sel.value);
+      });
+      const num = id => {
+        const raw = String(modal.querySelector(id).value || '').trim();
+        return raw === '' ? null : Number(raw);
+      };
+      // weighted_impact e impact_band NUNCA se envian: los calcula el servidor.
+      return {
+        mtpd_hours: num('#assm-mtpd'),
+        rto_label: modal.querySelector('#assm-rto-label').value || null,
+        rto_hours: num('#assm-rto-hours'),
+        rpo_label: modal.querySelector('#assm-rpo-label').value || null,
+        rpo_hours: num('#assm-rpo-hours'),
+        impacts: impactsOut,
+        dependencies_note: modal.querySelector('#assm-deps').value.trim() || null,
+        responsible_id: parseInt(modal.querySelector('#assm-resp').value, 10) || null,
+      };
+    };
+
+    modal.querySelector('#assm-save').onclick = async () => {
+      const payload = readPayload();
+      try {
+        let saved;
+        if (assessment) {
+          const reviewEl = modal.querySelector('#assm-review');
+          if (reviewEl) payload.needs_review = reviewEl.checked;
+          saved = await Api.patch('/api/bcp/scenario-assessments/' + assessment.id, payload);
+        } else {
+          payload.scenario_id = scenarioId;
+          if (locId) payload.location_id = locId;
+          saved = await Api.post('/api/bcp/scenario-assessments', payload);
+        }
+        const savedBand = _scenBandInfo(criteria, saved && saved.impact_band);
+        const panel = modal.querySelector('#assm-computed');
+        if (panel && saved) {
+          panel.innerHTML = '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">'
+            + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_weighted')) + '</div>'
+            + '<div style="font-size:18px;font-weight:700">' + UI.esc(saved.weighted_impact != null ? saved.weighted_impact : '—') + '</div></div>'
+            + '<div><div style="font-size:10px;color:var(--text-subtle)">' + UI.esc(t('bcp.scen_ass_band')) + '</div>'
+            + '<div style="font-size:14px;font-weight:700;color:' + savedBand.color + '">' + UI.esc(savedBand.label) + '</div></div>'
+            + '</div>';
+        }
+        UI.toast(t('bcp.scen_ass_saved'), 'success');
+        setTimeout(() => { modal.remove(); _renderContent(); }, 900);
+      } catch (e) {
+        // 409 = ya existe valoracion de ese escenario en esa sede.
+        UI.toast(e.message || t('common.error'), 'error');
+      }
+    };
+
+    const delBtn = modal.querySelector('#assm-del');
+    if (delBtn) {
+      delBtn.onclick = async () => {
+        if (!confirm(t('bcp.scen_ass_confirm_delete'))) return;
+        try {
+          await Api.del('/api/bcp/scenario-assessments/' + assessment.id);
+          UI.toast(t('bcp.scen_ass_deleted'), 'success');
+          modal.remove();
+          _renderContent();
+        } catch (e) { UI.toast(t('bcp.error_prefix') + (e.message || e), 'error'); }
+      };
+    }
+  }
+
   // ── Tab Grafo de dependencias ─────────────────────────────────────────────────
 
   async function _ensureCytoscape() {
@@ -5077,9 +6158,11 @@ const ViewBcp = (() => {
     const tabs = [
       { id:'procesos', label:t('bcp.processes_title'), icon:'ti-sitemap' },
       { id:'bia',      label:t('bcp.tab_bia_analysis'),      icon:'ti-chart-dots' },
+      { id:'escenarios', label:t('bcp.scen_tab'),            icon:'ti-layout-grid' },
     ];
     _buildSubTabs(2, tabs, body, async (subBody, active) => {
       if (active === 'procesos') await _tabProcesses(subBody);
+      else if (active === 'escenarios') await _tabScenarios(subBody);
       else await _tabBIA(subBody);
     });
   }
@@ -7531,6 +8614,9 @@ const ViewBcp = (() => {
     _setImportMode, _onFileSelect, _renderImportPreview, _confirmImport,
     _runBcpAiAnalysis,
     _toggleLocChildren, _setLocFilter, _editLocation, _modalLocation,
+    _setScenSection, _scenExplainNA, _openScenAssessment,
+    _scenNewScenario, _scenEditScenario, _scenToggleScenario, _scenDeleteScenario,
+    _scenNewRule, _scenEditRule, _scenToggleRule, _scenDeleteRule,
     _openTestModal,
     _modalActivacion, _closeActModal, _confirmActivacion, _logActivacion, _closeActivacion,
     _newRunbook, _editRunbook, _genAiRunbook,

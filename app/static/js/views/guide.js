@@ -2780,6 +2780,28 @@ const ViewGuide = {
     ${this._p('Vista de tarjetas con el estado BIA de cada proceso: métricas RTO/RPO/MTPD/MBCO, badges de impacto por dimensión y barra de completitud. El color indica estado: verde >= 80%, naranja >= 50%, rojo < 50%. Un proceso con BIA >= 80% contribuye al cumplimiento de ISO 22301 cl. 8.2 y ENS op.cont.1.')}
     ${this._tip('Para facilitar la auditoría, ISO 22301 cl. 8.2 requiere que al menos el 80% de los procesos críticos (criticidad "critica" o "alta") tengan BIA completo.')}
 
+    ${this._h('Tab Escenarios (BIA por escenario y sede)')}
+    ${this._p('El BIA canónico de ISO 22301 gira sobre <em>procesos</em>, pero muchas organizaciones lo construyen sobre <strong>escenarios de indisponibilidad valorados en cada sede</strong>. Ambos modelos conviven en la plataforma: el tab Escenarios (dentro del paso "Procesos y BIA" del modo Configurar) es la entrada a ese segundo modelo. Hay cuatro familias de escenario: <strong>personal</strong>, <strong>sistemas y comunicaciones</strong>, <strong>terceros</strong> e <strong>instalaciones</strong>.')}
+    ${this._warn('<strong>Principio del módulo:</strong> el impacto ponderado y la banda los calcula SIEMPRE el motor determinista del servidor con el baremo declarado por la organización. No son editables desde la interfaz y nunca los propone un LLM.')}
+    <p style="font-size:13px;margin:0 0 8px;">El tab se divide en cinco secciones:</p>
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Matriz de cobertura:</strong> la pieza principal. Cruza escenarios (filas, agrupadas por familia) con sedes (columnas). Cabecera con cobertura %, celdas aplicables, valoradas y reglas activas. Cada celda tiene tres estados y no deben confundirse:
+        <ul style="margin:4px 0 0;">
+          <li><em>Valorado</em> (color de banda): hay valoración; muestra banda e impacto ponderado calculados.</li>
+          <li><em>Falta</em> (borde naranja discontinuo): el escenario aplica a esa sede y no está valorado. Es un hueco a cerrar.</li>
+          <li><em>No aplica</em> (trama gris): una regla de aplicabilidad lo excluye de esa sede. <strong>No es un hueco</strong> y no penaliza la cobertura.</li>
+        </ul>
+        Clic en una celda valorada o "falta" abre el editor de valoración.
+      </li>
+      <li><strong>Catálogo:</strong> alta, edición y activación/desactivación de escenarios, agrupados por familia. El badge de origen distingue <em>manual</em>, <em>importado</em> y <em>sistema</em>. Si intentas borrar un escenario que ya sostiene valoraciones, el servidor lo impide (422) y la interfaz ofrece desactivarlo en su lugar: así deja de aparecer en la matriz sin perder el histórico.</li>
+      <li><strong>Reglas de aplicabilidad:</strong> la aplicabilidad de un escenario a una sede <strong>no es un atributo del escenario, es una regla de la organización</strong>. Sin reglas, todos los escenarios aplican a todas las sedes: es el estado por defecto y el correcto, no un vacío que rellenar. Una regla solo puede QUITAR escenarios, nunca añadirlos, y si la sede no tiene informado el atributo del que depende la regla, la regla no dispara.</li>
+      <li><strong>Baremos del BIA:</strong> el método es del cliente. Se declaran dimensiones de impacto, horizontes temporales, niveles, escala de RTO (cada etiqueta lleva su factor multiplicador) y bandas del impacto ponderado. Si aparece el aviso de baremo por defecto significa que la organización aún no ha declarado el suyo y se está usando el de referencia.</li>
+      <li><strong>Huecos:</strong> lista accionable de lo que falta por escenario y sede, con cuatro motivos separados porque cada uno exige una acción distinta: sin valoración BIA, sin estrategia de recuperación, sin plan que lo cubra y sin ejercicio en los últimos 12 meses.</li>
+    </ul>
+    ${this._p('El <strong>editor de valoración</strong> (modal) presenta una rejilla de dimensiones x horizontes tomada del baremo real de la organización, más MTPD, RTO y RPO (por etiqueta del baremo, que autocompleta las horas), responsable y notas de dependencias. Al guardar, el servidor devuelve el impacto ponderado y la banda, que se muestran como resultado calculado en el propio modal.')}
+    ${this._warn('<strong>Cambiar el baremo recalcula TODO el BIA por escenarios.</strong> La interfaz pide confirmación antes de guardar y luego informa de cuántas valoraciones se recalcularon. El dato que introdujo el usuario no se toca; la cifra derivada sí cambia.')}
+    ${this._tip('Una regla sin justificación es una regla que nadie sabrá explicar en la próxima auditoría. El campo Justificación se muestra destacado en cada tarjeta de regla precisamente por eso: es lo que responde "¿por qué a esta sede le faltan escenarios?".')}
+
     ${this._h('Tab Dependencias')}
     ${this._p('Dividido en dos secciones:')}
     <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
