@@ -16,7 +16,7 @@ from app.models import (
     AiCallLog, Organization, User, UserRole,
 )
 from app.schemas import OrganizationIn, OrganizationOut, OrganizationUpdate
-from app.security import get_current_user, require_admin, require_superadmin
+from app.security import get_current_user, real_org_id, require_admin, require_superadmin
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/api/organizations", tags=["organizations"])
@@ -163,8 +163,10 @@ def delete_organization(
     org = db.get(Organization, org_id)
     if not org:
         raise HTTPException(404, "Organizacion no encontrada")
-    # Seguridad: no eliminar la org del superadmin
-    if org.id == current_user.organization_id:
+    # Seguridad: no eliminar la org del superadmin. Se compara con la org REAL,
+    # no con la que tenga enfocada: si no, enfocando la de un cliente no podria
+    # borrar precisamente esa, que es justo lo que quiere hacer.
+    if org.id == real_org_id(current_user):
         raise HTTPException(400, "No puedes eliminar tu propia organizacion")
     log_action(db, current_user.id, "delete", "organization", str(org_id),
                {"name": org.name})
@@ -195,8 +197,8 @@ def delete_organization_permanently(
     if not org:
         raise HTTPException(404, "Organizacion no encontrada")
 
-    # Seguridad: no permitir eliminar la org del superadmin
-    if org.id == current_user.organization_id:
+    # Seguridad: no permitir eliminar la org del superadmin (la real, no la enfocada)
+    if org.id == real_org_id(current_user):
         raise HTTPException(400, "No puedes eliminar tu propia organizacion")
 
     # Verificar texto de confirmación

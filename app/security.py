@@ -14,6 +14,7 @@ import jwt
 from jwt.exceptions import InvalidTokenError as JWTError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.config import settings
 from app.database import get_db
@@ -171,6 +172,21 @@ def get_current_user(
     if user.role == UserRole.SUPERADMIN:
         raw = request.headers.get("X-Active-Org", "").strip()
         user._active_org_id = int(raw) if raw.isdigit() else None
+        # La organizacion propia del superadmin, por si algun endpoint necesita
+        # distinguirla de la que esta enfocando (p.ej. gestion de organizaciones).
+        user._real_organization_id = user.organization_id
+        if user._active_org_id:
+            # Durante esta peticion, la organizacion "del usuario" ES la que
+            # tiene enfocada. Sin esto, cualquier endpoint que escriba con
+            # current_user.organization_id guarda el registro en la org del
+            # superadmin: devuelve 200 y el dato desaparece de la vista del
+            # cliente. Eran 365 lecturas repartidas por los routers, y cada
+            # endpoint nuevo podia reintroducir el fallo.
+            #
+            # set_committed_value cambia el valor en memoria SIN marcar el
+            # objeto como sucio, asi que un commit posterior nunca escribe esta
+            # organizacion en la fila del usuario.
+            set_committed_value(user, "organization_id", user._active_org_id)
     return user
 
 
@@ -231,6 +247,18 @@ def filter_by_org(query, model, user: User):
             return query.filter(model.organization_id == active_org)
         return query
     return query.filter(model.organization_id == user.organization_id)
+
+
+def real_org_id(user: User):
+    """Organizacion a la que PERTENECE el usuario, ignorando la que enfoque.
+
+    Para casi todo hay que usar la organizacion enfocada (que es lo que devuelve
+    `user.organization_id` durante la peticion). Esto solo hace falta en los
+    pocos sitios que protegen la organizacion de origen del superadmin — por
+    ejemplo, impedir que borre la suya: enfocando la de un cliente, comparar con
+    la enfocada le impediria borrar precisamente esa, que es lo que quiere.
+    """
+    return getattr(user, "_real_organization_id", None) or user.organization_id
 
 
 def resolve_org_id(user: User):
