@@ -2804,6 +2804,11 @@ class BusinessProcess(Base):
     bia_version = Column(String(16), nullable=True)        # Version del BIA (ej. "v1.0")
     bia_review_date = Column(DateTime, nullable=True)      # Proxima revision del BIA
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    # Trazabilidad de import documental
+    source            = Column(String(16), default="manual")
+    import_batch_id   = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    needs_review      = Column(Boolean, default=False)
+    import_confidence = Column(Float, nullable=True)
 
     owner = relationship("User", foreign_keys=[owner_id])
     recovery_owner = relationship("User", foreign_keys=[recovery_owner_id])
@@ -2835,6 +2840,13 @@ class BCPTest(Base):
     rpo_achieved_hours = Column(Integer, nullable=True)    # RPO real conseguido en el test
     location_id = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # Escenarios ejercitados + trazabilidad de import documental
+    scenario_ids      = Column(JSON, nullable=True)
+    source            = Column(String(16), default="manual")
+    import_batch_id   = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    needs_review      = Column(Boolean, default=False)
+    import_confidence = Column(Float, nullable=True)
+    source_sha256     = Column(String(64), nullable=True)
 
     facilitator = relationship("User", foreign_keys=[facilitator_id])
 
@@ -2871,6 +2883,9 @@ class BCPDependency(Base):
     protocol            = Column(String(32), nullable=True)  # HTTPS|SQL|SMB|SFTP|AMQP|...
     data_direction      = Column(String(8),  nullable=True)  # in|out|both
     data_classification = Column(String(32), nullable=True)  # public|internal|confidential|strictly_confidential
+    # Trazabilidad de import documental
+    source              = Column(String(16), default="manual")
+    import_batch_id     = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
 
 
 class BCPStrategy(Base):
@@ -2897,6 +2912,13 @@ class BCPStrategy(Base):
     monitoring_config  = Column(JSON, nullable=True)
     # {monitoring_tool, threshold_cpu_pct, threshold_mem_pct, alert_email,
     #  maintenance_window, security_patch_days, feature_update_days}
+    # Escenario de indisponibilidad que esta estrategia mitiga (alternativa ALT.xx)
+    scenario_id        = Column(Integer, ForeignKey("bcm_scenarios.id"), nullable=True)
+    requirements       = Column(Text, nullable=True)   # Requisitos previos de la alternativa
+    resources          = Column(Text, nullable=True)   # Recursos necesarios
+    location_id        = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    source             = Column(String(16), default="manual")
+    import_batch_id    = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
 
 
 class BCPPlan(Base):
@@ -2971,6 +2993,14 @@ class BCPPlan(Base):
     # (ISO 22301 cl. 8.4): {score, covered, missing, summary, reviewed_at}
     ai_content_review = Column(JSON, nullable=True)
 
+    # Escenarios de indisponibilidad que cubre este plan + trazabilidad de import
+    scenario_ids      = Column(JSON, nullable=True)
+    source            = Column(String(16), default="manual")
+    import_batch_id   = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    needs_review      = Column(Boolean, default=False)
+    import_confidence = Column(Float, nullable=True)
+    source_sha256     = Column(String(64), nullable=True)   # idempotencia por archivo
+
     approved_by = relationship("User", foreign_keys=[approved_by_id])
 
 
@@ -3005,6 +3035,10 @@ class BCPSupplierLink(Base):
     contract_sla_hours = Column(Integer, nullable=True)
     notes = Column(Text, nullable=True)
     last_review_date = Column(DateTime, nullable=True)
+    # Escenarios en los que este proveedor es punto unico de fallo + trazabilidad
+    scenario_ids    = Column(JSON, nullable=True)
+    source          = Column(String(16), default="manual")
+    import_batch_id = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
 
     supplier = relationship("Supplier", foreign_keys=[supplier_id])
     alternative_supplier = relationship("Supplier", foreign_keys=[alternative_supplier_id])
@@ -3036,6 +3070,12 @@ class BCMLocation(Base):
     is_active             = Column(Boolean, default=True)
     capacity_details      = Column(JSON, nullable=True)
     # {servers, ram_gb, storage_tb, networking, pre_installed_systems, notes}
+    city                  = Column(String(128), nullable=True)
+    site_type             = Column(String(16), nullable=True)
+    # office|remote|hybrid — determina que escenarios de indisponibilidad aplican
+    staffing_model        = Column(String(16), nullable=True)
+    # internal|external|both — plantilla propia, subcontratada o ambas
+    business_unit         = Column(String(128), nullable=True)
     created_at            = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at            = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
@@ -3171,6 +3211,268 @@ class BCMActivation(Base):
     updated_at          = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
 
     activated_by = relationship("User", foreign_keys=[activated_by_id])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BCM ESCENARIOS DE INDISPONIBILIDAD — BIA por escenario x localizacion
+#
+# El BIA canonico de ISO 22301 cl. 8.2 se construye sobre procesos, pero la
+# practica real de muchas organizaciones lo organiza por ESCENARIO de
+# indisponibilidad (personal, sistemas, terceros, instalaciones) valorado en
+# cada sede. Ambos modelos conviven: BusinessProcess sigue siendo el proceso,
+# y BCMScenarioAssessment es la valoracion del escenario en una localizacion.
+# ══════════════════════════════════════════════════════════════════════════════
+
+class BCMScenario(Base):
+    """Escenario de indisponibilidad del catalogo de la organizacion."""
+    __tablename__ = "bcm_scenarios"
+    id                    = Column(Integer, primary_key=True)
+    organization_id       = Column(Integer, ForeignKey("organizations.id"), index=True)
+    code                  = Column(String(16))       # ALT.01, IP_01...
+    name                  = Column(String(255), nullable=False)
+    family                = Column(String(32), nullable=False)
+    # personnel|systems_comms|third_party|facilities
+    description           = Column(Text, nullable=True)
+    procedure_notes       = Column(Text, nullable=True)
+    responsible_area      = Column(String(255), nullable=True)
+    source                = Column(String(16), default="manual")  # system|imported|manual
+    import_batch_id       = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    is_active             = Column(Boolean, default=True)
+    created_at            = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at            = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
+class BCMApplicabilityRule(Base):
+    """Regla declarativa de aplicabilidad de escenarios a sedes.
+
+    La aplicabilidad NO es un atributo del escenario: es politica de cada
+    organizacion. Sin reglas activas, TODOS los escenarios aplican a TODAS las
+    sedes — nunca se oculta un escenario por omision. Que una sede 100% remota
+    solo sufra escenarios de personal es la politica de un cliente concreto, no
+    una regla del producto: se declara aqui y se puede editar o desactivar.
+    """
+    __tablename__ = "bcm_applicability_rules"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    name            = Column(String(255), nullable=True)
+    when            = Column(JSON, nullable=True)
+    # Condiciones sobre atributos de la sede. Todas deben cumplirse (AND); el
+    # valor puede ser escalar o lista (pertenencia). Ej:
+    # {"site_type": ["remote"], "country": ["Bolivia"]}
+    then            = Column(JSON, nullable=True)
+    # Efecto sobre el catalogo. Ej: {"exclude_families": ["facilities"]}
+    # Claves admitidas: exclude_families | exclude_scenarios | include_only_families
+    rationale       = Column(Text, nullable=True)   # por que existe esta regla
+    source          = Column(String(16), default="manual")  # proposed|manual|imported
+    is_active       = Column(Boolean, default=True)
+    priority        = Column(Integer, default=100)  # menor = se evalua antes
+    import_batch_id = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
+class BCMScenarioAssessment(Base):
+    """Valoracion BIA de un escenario en una localizacion (la fila del BIA).
+
+    weighted_impact e impact_band los calcula SIEMPRE el motor determinista
+    (bcm_scenario_engine), nunca la IA ni el usuario.
+    """
+    __tablename__ = "bcm_scenario_assessments"
+    id                = Column(Integer, primary_key=True)
+    organization_id   = Column(Integer, ForeignKey("organizations.id"), index=True)
+    scenario_id       = Column(Integer, ForeignKey("bcm_scenarios.id"), nullable=False)
+    location_id       = Column(Integer, ForeignKey("bcm_locations.id"), nullable=True)
+    process_id        = Column(Integer, ForeignKey("business_processes.id"), nullable=True)
+    mtpd_hours        = Column(Float, nullable=True)
+    rto_label         = Column(String(64), nullable=True)   # "No puede interrumpirse nunca"
+    rto_hours         = Column(Float, nullable=True)
+    rpo_label         = Column(String(64), nullable=True)
+    rpo_hours         = Column(Float, nullable=True)
+    impacts           = Column(JSON, nullable=True)
+    # {dimension: {horizonte: 1-5}} — dimensiones y horizontes segun BIACriteria
+    weighted_impact   = Column(Float, nullable=True)        # calculado
+    impact_band       = Column(String(32), nullable=True)   # calculado
+    dependencies_note = Column(Text, nullable=True)
+    responsible_id    = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assessed_at       = Column(DateTime, nullable=True)
+    needs_review      = Column(Boolean, default=False)
+    import_confidence = Column(Float, nullable=True)
+    import_batch_id   = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    source            = Column(String(16), default="manual")
+    created_at        = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at        = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    scenario     = relationship("BCMScenario", foreign_keys=[scenario_id])
+    responsible  = relationship("User", foreign_keys=[responsible_id])
+
+
+class BIACriteria(Base):
+    """Baremos del BIA de la organizacion — dimensiones, horizontes y escalas.
+
+    Cada cliente valora el impacto a su manera: aqui se declara su metodo y el
+    motor calcula con el. Una fila por organizacion.
+    """
+    __tablename__ = "bia_criteria"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, unique=True)
+    dimensions      = Column(JSON, nullable=True)
+    # [{key, label, levels: {"1": "Sin impacto", ..., "5": "..."}}]
+    horizons        = Column(JSON, nullable=True)   # ["0h", ">1h", ">4h", ">6h"]
+    rto_scale       = Column(JSON, nullable=True)
+    # [{label, hours, factor}] — factor multiplicador del impacto segun el RTO
+    bands           = Column(JSON, nullable=True)
+    # [{key, label, min, max}] — bandas del impacto ponderado
+    aggregation     = Column(String(16), default="max")   # max|avg — impacto entre dimensiones
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INGESTA COGNITIVA — motor generico documento -> filas
+#
+# Nucleo agnostico al modulo: cada modulo declara sus entidades destino
+# (app/services/ingest/contracts.py) y el motor se encarga de comprender los
+# documentos, descomponerlos, reconciliar contra lo existente, resolver
+# contradicciones y dejar todo reversible. BCP es su primer consumidor.
+# ══════════════════════════════════════════════════════════════════════════════
+
+class OrganizationProfile(Base):
+    """Modelo del mundo del cliente: su estructura, su metodo y su vocabulario.
+
+    Se deduce del pack documental, se completa con el cuestionario adaptativo, o
+    ambos. Es el marco contra el que se interpreta cada documento posterior.
+    """
+    __tablename__ = "organization_profiles"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, unique=True)
+    structure       = Column(JSON, nullable=True)
+    # {locations: [{name, country, city, site_type, staffing_model, business_unit}],
+    #  business_units: [...], headcount_ranges: {...}}
+    method          = Column(JSON, nullable=True)
+    # Metodo por modulo. Ej: {"bcm": {"bia_style": "scenario_x_location", ...}}
+    vocabulary      = Column(JSON, nullable=True)
+    # Terminos propios del cliente -> termino canonico de RiskHub
+    narrative       = Column(Text, nullable=True)      # resumen legible del perfil
+    derived_from    = Column(String(16), default="manual")  # documents|questionnaire|hybrid
+    confidence      = Column(Float, nullable=True)
+    sources         = Column(JSON, nullable=True)      # documentos que lo sustentan
+    confirmed_at    = Column(DateTime, nullable=True)
+    confirmed_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+
+class IngestBatch(Base):
+    """Lote de ingesta de un pack documental — trazabilidad y deshacer."""
+    __tablename__ = "ingest_batches"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    module          = Column(String(32), default="bcm")   # modulo destino principal
+    job_id          = Column(Integer, nullable=True)
+    files           = Column(JSON, nullable=True)
+    # [{filename, sha256, size, doc_kind, confidence, status, error}]
+    summary         = Column(JSON, nullable=True)
+    # {created: {entidad: n}, linked: {entidad: n}, needs_review: n, conflicts: n}
+    profile_diff    = Column(JSON, nullable=True)   # cambios propuestos al perfil
+    status          = Column(String(20), default="running")
+    # running|awaiting_confirmation|completed|failed|undone
+    estimated_cost_usd = Column(Float, nullable=True)
+    created_by_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    completed_at    = Column(DateTime, nullable=True)
+    undone_at       = Column(DateTime, nullable=True)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class IngestSourceMap(Base):
+    """El "como lo entendi": plan de volcado de un documento, antes de escribir.
+
+    Declara explicitamente que unidades contiene el documento, con que clave se
+    descomponen y cuantas filas de que entidad genera cada una. Es lo que hace
+    auditable y discutible la comprension del agente.
+    """
+    __tablename__ = "ingest_source_maps"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    batch_id        = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    document_id     = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
+    filename        = Column(String(255), nullable=True)
+    sha256          = Column(String(64), nullable=True, index=True)
+    doc_kind        = Column(String(32), nullable=True)
+    units_detected  = Column(JSON, nullable=True)
+    # [{label, source_ref, decomposition_key, unit_count, target_entity,
+    #   field_mapping: {campo: origen}, sample: {...}, confidence}]
+    ambiguities     = Column(JSON, nullable=True)   # [{question, options, chosen, why}]
+    rationale       = Column(Text, nullable=True)
+    confidence      = Column(Float, nullable=True)
+    status          = Column(String(20), default="proposed")
+    # proposed|confirmed|executed|rejected|superseded
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class IngestRecordTrace(Base):
+    """Rastro por registro tocado: permite revertir uno solo, no solo el lote."""
+    __tablename__ = "ingest_record_traces"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    batch_id        = Column(Integer, ForeignKey("ingest_batches.id"), index=True)
+    source_map_id   = Column(Integer, ForeignKey("ingest_source_maps.id"), nullable=True)
+    entity          = Column(String(64), nullable=False)   # clave del EntitySpec
+    table_name      = Column(String(64), nullable=False)
+    record_id       = Column(Integer, nullable=False)
+    action          = Column(String(16), nullable=False)   # created|updated|linked
+    before          = Column(JSON, nullable=True)   # estado previo (null si created)
+    after           = Column(JSON, nullable=True)
+    confidence      = Column(Float, nullable=True)
+    needs_review    = Column(Boolean, default=False)
+    reverted_at     = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class IngestFieldOverride(Base):
+    """Campo que el usuario corrigio a mano: ninguna reimportacion lo pisa.
+
+    Es la garantia de "puedo forzar cambios y no se pierden". Ademas alimenta a
+    ai_learning_service para que el agente aprenda el criterio del cliente.
+    """
+    __tablename__ = "ingest_field_overrides"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    table_name      = Column(String(64), nullable=False)
+    record_id       = Column(Integer, nullable=False)
+    field_name      = Column(String(64), nullable=False)
+    value           = Column(JSON, nullable=True)      # valor forzado por el usuario
+    previous_value  = Column(JSON, nullable=True)      # lo que habia puesto el agente
+    reason          = Column(Text, nullable=True)
+    user_id         = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class IngestConflict(Base):
+    """Contradiccion entre documentos sobre el mismo campo.
+
+    Politica por defecto: gana el valor mas restrictivo (en continuidad,
+    equivocarse por prudencia es lo correcto). El valor descartado NUNCA se
+    pierde: queda aqui con su documento de origen citado.
+    """
+    __tablename__ = "ingest_conflicts"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    batch_id        = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    entity          = Column(String(64), nullable=True)
+    table_name      = Column(String(64), nullable=True)
+    record_id       = Column(Integer, nullable=True)
+    field_name      = Column(String(64), nullable=True)
+    candidates      = Column(JSON, nullable=True)
+    # [{value, source_filename, source_ref, sha256, confidence}]
+    policy          = Column(String(16), nullable=True)   # min|max|latest|manual
+    resolved_value  = Column(JSON, nullable=True)
+    status          = Column(String(20), default="auto_resolved")
+    # auto_resolved|pending|user_resolved
+    resolved_by_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    resolved_at     = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 # ---------- BCM CONTEXT (Wizard contexto para Agente IA) ----------

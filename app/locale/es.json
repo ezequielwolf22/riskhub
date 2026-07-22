@@ -230,6 +230,16 @@
     "sweep_failed": "Error durante el barrido normativo: {detail}."
   },
   "bcp": {
+    "scenario_not_found": "Escenario de indisponibilidad no encontrado.",
+    "invalid_scenario_family": "Familia de escenario no válida. Valores admitidos: {valid}.",
+    "scenario_has_assessments": "El escenario sostiene {n} valoraciones del BIA. Desactívalo en lugar de borrarlo para conservar el histórico.",
+    "applicability_rule_not_found": "Regla de aplicabilidad no encontrada.",
+    "rule_when_required": "La regla necesita al menos una condición en 'when'; una regla sin condiciones se aplicaría a todas las sedes.",
+    "rule_when_invalid_field": "Campo de condición '{field}' no válido. Campos admitidos: {valid}.",
+    "rule_then_required": "La regla necesita un efecto en 'then'.",
+    "rule_then_invalid": "El efecto de la regla debe incluir alguna de estas claves: {valid}.",
+    "assessment_already_exists": "Ya existe una valoración para ese escenario en esa sede.",
+    "assessment_not_found": "Valoración de escenario no encontrada.",
     "plan_not_found": "Plan de continuidad no encontrado.",
     "process_not_found": "Proceso crítico no encontrado.",
     "cannot_delete_active": "No se puede eliminar un plan activo.",

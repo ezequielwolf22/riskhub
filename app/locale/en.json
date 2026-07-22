@@ -230,6 +230,16 @@
     "sweep_failed": "Error during regulatory sweep: {detail}."
   },
   "bcp": {
+    "scenario_not_found": "Disruption scenario not found.",
+    "invalid_scenario_family": "Invalid scenario family. Allowed values: {valid}.",
+    "scenario_has_assessments": "This scenario backs {n} BIA assessments. Deactivate it instead of deleting it to preserve the history.",
+    "applicability_rule_not_found": "Applicability rule not found.",
+    "rule_when_required": "The rule needs at least one condition in 'when'; a rule without conditions would apply to every site.",
+    "rule_when_invalid_field": "Invalid condition field '{field}'. Allowed fields: {valid}.",
+    "rule_then_required": "The rule needs an effect in 'then'.",
+    "rule_then_invalid": "The rule effect must include one of these keys: {valid}.",
+    "assessment_already_exists": "An assessment already exists for that scenario at that site.",
+    "assessment_not_found": "Scenario assessment not found.",
     "plan_not_found": "Business continuity plan not found.",
     "process_not_found": "Critical process not found.",
     "cannot_delete_active": "Cannot delete an active plan.",

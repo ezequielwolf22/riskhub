@@ -3563,3 +3563,428 @@ async def link_risks_to_bcp(
     plan.risk_ids = risk_ids
     db.commit()
     return {"plan_id": pid, "risk_ids": risk_ids}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ESCENARIOS DE INDISPONIBILIDAD — catalogo, reglas, valoraciones y baremos
+#
+# El BIA canonico de ISO 22301 gira sobre procesos, pero muchas organizaciones
+# lo construyen sobre escenarios de indisponibilidad valorados en cada sede.
+# Ambos conviven. Todo lo que sea calculo (impacto ponderado, banda,
+# aplicabilidad) lo hace bcm_scenario_engine, nunca el cliente ni la IA.
+# ══════════════════════════════════════════════════════════════════════════════
+
+VALID_SCENARIO_FAMILIES = ("personnel", "systems_comms", "third_party", "facilities")
+_RULE_WHEN_FIELDS = ("site_type", "country", "city", "staffing_model", "business_unit")
+_RULE_THEN_KEYS = ("exclude_families", "exclude_scenarios", "include_only_families")
+
+
+class ScenarioIn(BaseModel):
+    code: Optional[str] = None
+    name: str
+    family: str
+    description: Optional[str] = None
+    procedure_notes: Optional[str] = None
+    responsible_area: Optional[str] = None
+    is_active: Optional[bool] = True
+
+
+class ScenarioUpdate(BaseModel):
+    code: Optional[str] = None
+    name: Optional[str] = None
+    family: Optional[str] = None
+    description: Optional[str] = None
+    procedure_notes: Optional[str] = None
+    responsible_area: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ApplicabilityRuleIn(BaseModel):
+    name: Optional[str] = None
+    when: dict
+    then: dict
+    rationale: Optional[str] = None
+    priority: Optional[int] = 100
+    is_active: Optional[bool] = True
+
+
+class ApplicabilityRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    when: Optional[dict] = None
+    then: Optional[dict] = None
+    rationale: Optional[str] = None
+    priority: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class AssessmentIn(BaseModel):
+    scenario_id: int
+    location_id: Optional[int] = None
+    process_id: Optional[int] = None
+    mtpd_hours: Optional[float] = None
+    rto_label: Optional[str] = None
+    rto_hours: Optional[float] = None
+    rpo_label: Optional[str] = None
+    rpo_hours: Optional[float] = None
+    impacts: Optional[dict] = None
+    dependencies_note: Optional[str] = None
+    responsible_id: Optional[int] = None
+
+
+class AssessmentUpdate(BaseModel):
+    location_id: Optional[int] = None
+    process_id: Optional[int] = None
+    mtpd_hours: Optional[float] = None
+    rto_label: Optional[str] = None
+    rto_hours: Optional[float] = None
+    rpo_label: Optional[str] = None
+    rpo_hours: Optional[float] = None
+    impacts: Optional[dict] = None
+    dependencies_note: Optional[str] = None
+    responsible_id: Optional[int] = None
+    needs_review: Optional[bool] = None
+
+
+class BIACriteriaIn(BaseModel):
+    dimensions: Optional[list] = None
+    horizons: Optional[list] = None
+    levels: Optional[list] = None
+    rto_scale: Optional[list] = None
+    bands: Optional[list] = None
+    aggregation: Optional[str] = None
+
+
+def _scenario_d(s) -> dict:
+    return {
+        "id": s.id, "code": s.code, "name": s.name, "family": s.family,
+        "description": s.description, "procedure_notes": s.procedure_notes,
+        "responsible_area": s.responsible_area, "source": s.source,
+        "is_active": s.is_active, "import_batch_id": s.import_batch_id,
+    }
+
+
+def _rule_d(r) -> dict:
+    return {
+        "id": r.id, "name": r.name, "when": r.when, "then": r.then,
+        "rationale": r.rationale, "source": r.source, "priority": r.priority,
+        "is_active": r.is_active,
+    }
+
+
+def _assessment_d(a) -> dict:
+    return {
+        "id": a.id, "scenario_id": a.scenario_id, "location_id": a.location_id,
+        "process_id": a.process_id, "mtpd_hours": a.mtpd_hours,
+        "rto_label": a.rto_label, "rto_hours": a.rto_hours,
+        "rpo_label": a.rpo_label, "rpo_hours": a.rpo_hours,
+        "impacts": a.impacts,
+        "weighted_impact": a.weighted_impact, "impact_band": a.impact_band,
+        "dependencies_note": a.dependencies_note,
+        "responsible_id": a.responsible_id,
+        "needs_review": a.needs_review, "import_confidence": a.import_confidence,
+        "source": a.source, "import_batch_id": a.import_batch_id,
+        "assessed_at": a.assessed_at.isoformat() if a.assessed_at else None,
+    }
+
+
+def _chk_scenario(db, sid, org_id, lang="es"):
+    from app.models import BCMScenario
+    sc = db.get(BCMScenario, sid)
+    if not sc or sc.organization_id != org_id:
+        raise HTTPException(404, _t("bcp.scenario_not_found", lang))
+    return sc
+
+
+def _next_scenario_code(db, org_id: int) -> str:
+    from app.models import BCMScenario
+    n = db.query(BCMScenario).filter_by(organization_id=org_id).count()
+    return f"ESC-{n + 1:03d}"
+
+
+def _validate_rule(when: Optional[dict], then: Optional[dict], lang: str) -> None:
+    """Una regla mal formada silenciaria escenarios sin que nadie se entere."""
+    if not when or not isinstance(when, dict):
+        raise HTTPException(422, _t("bcp.rule_when_required", lang))
+    for key in when:
+        if key not in _RULE_WHEN_FIELDS:
+            raise HTTPException(422, _t("bcp.rule_when_invalid_field", lang, field=key,
+                                        valid=", ".join(_RULE_WHEN_FIELDS)))
+    if not then or not isinstance(then, dict):
+        raise HTTPException(422, _t("bcp.rule_then_required", lang))
+    if not any(k in then for k in _RULE_THEN_KEYS):
+        raise HTTPException(422, _t("bcp.rule_then_invalid", lang,
+                                    valid=", ".join(_RULE_THEN_KEYS)))
+    for key in ("exclude_families", "include_only_families"):
+        for fam in (then.get(key) or []):
+            if fam not in VALID_SCENARIO_FAMILIES:
+                raise HTTPException(422, _t("bcp.invalid_scenario_family", lang,
+                                            valid=", ".join(VALID_SCENARIO_FAMILIES)))
+
+
+# ── Catalogo de escenarios ────────────────────────────────────────────────────
+
+@router.get("/scenarios")
+def list_scenarios(include_inactive: bool = False, db: Session = Depends(get_db),
+                   u: User = Depends(get_current_user)):
+    from app.models import BCMScenario
+    q = db.query(BCMScenario).filter_by(organization_id=_org(u))
+    if not include_inactive:
+        q = q.filter(BCMScenario.is_active.is_(True))
+    rows = q.order_by(BCMScenario.family, BCMScenario.code).all()
+    return [_scenario_d(s) for s in rows]
+
+
+@router.get("/scenarios/matrix")
+def scenarios_matrix(location_id: Optional[int] = None, db: Session = Depends(get_db),
+                     u: User = Depends(get_current_user)):
+    """Matriz escenario x sede: que aplica, que esta valorado y que falta."""
+    from app.services.bcm_scenario_engine import scenario_matrix
+    return scenario_matrix(db, _org(u), location_id)
+
+
+@router.get("/scenarios/gaps")
+def scenarios_gaps(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Huecos accionables: sin valorar, sin estrategia, sin plan o sin ejercitar."""
+    from app.services.bcm_scenario_engine import coverage_gaps
+    return coverage_gaps(db, _org(u))
+
+
+@router.post("/scenarios", status_code=201)
+def create_scenario(body: ScenarioIn, request: Request, db: Session = Depends(get_db),
+                    u: User = Depends(require_analyst)):
+    from app.models import BCMScenario
+    lang = get_lang(request)
+    org = _org(u, lang)
+    if body.family not in VALID_SCENARIO_FAMILIES:
+        raise HTTPException(422, _t("bcp.invalid_scenario_family", lang,
+                                    valid=", ".join(VALID_SCENARIO_FAMILIES)))
+    sc = BCMScenario(
+        organization_id=org,
+        code=(body.code or _next_scenario_code(db, org)),
+        name=body.name, family=body.family,
+        description=body.description, procedure_notes=body.procedure_notes,
+        responsible_area=body.responsible_area,
+        is_active=True if body.is_active is None else body.is_active,
+        source="manual",
+    )
+    db.add(sc)
+    db.commit()
+    db.refresh(sc)
+    log_action(db, u.id, "create", "bcm_scenario", str(sc.id),
+               {"code": sc.code, "name": sc.name})
+    return _scenario_d(sc)
+
+
+@router.patch("/scenarios/{sid}")
+def update_scenario(sid: int, body: ScenarioUpdate, request: Request,
+                    db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    lang = get_lang(request)
+    sc = _chk_scenario(db, sid, _org(u, lang), lang)
+    data = body.model_dump(exclude_none=True)
+    if "family" in data and data["family"] not in VALID_SCENARIO_FAMILIES:
+        raise HTTPException(422, _t("bcp.invalid_scenario_family", lang,
+                                    valid=", ".join(VALID_SCENARIO_FAMILIES)))
+    for k, v in data.items():
+        setattr(sc, k, v)
+    db.commit()
+    return _scenario_d(sc)
+
+
+@router.delete("/scenarios/{sid}", status_code=204)
+def delete_scenario(sid: int, request: Request, db: Session = Depends(get_db),
+                    u: User = Depends(require_admin)):
+    from app.models import BCMScenarioAssessment
+    lang = get_lang(request)
+    org = _org(u, lang)
+    sc = _chk_scenario(db, sid, org, lang)
+    n = db.query(BCMScenarioAssessment).filter_by(
+        organization_id=org, scenario_id=sid).count()
+    if n:
+        # No se borra en silencio lo que sostiene valoraciones del BIA: se
+        # desactiva, que conserva la trazabilidad historica.
+        raise HTTPException(422, _t("bcp.scenario_has_assessments", lang, n=n))
+    db.delete(sc)
+    db.commit()
+
+
+# ── Reglas de aplicabilidad ───────────────────────────────────────────────────
+
+@router.get("/applicability-rules")
+def list_applicability_rules(db: Session = Depends(get_db),
+                             u: User = Depends(get_current_user)):
+    """Reglas que restringen que escenarios aplican a que sedes.
+
+    Lista vacia es el estado normal y correcto: sin reglas, todos los escenarios
+    aplican a todas las sedes.
+    """
+    from app.models import BCMApplicabilityRule
+    rows = db.query(BCMApplicabilityRule).filter_by(
+        organization_id=_org(u)
+    ).order_by(BCMApplicabilityRule.priority).all()
+    return [_rule_d(r) for r in rows]
+
+
+@router.post("/applicability-rules", status_code=201)
+def create_applicability_rule(body: ApplicabilityRuleIn, request: Request,
+                              db: Session = Depends(get_db),
+                              u: User = Depends(require_analyst)):
+    from app.models import BCMApplicabilityRule
+    lang = get_lang(request)
+    _validate_rule(body.when, body.then, lang)
+    rule = BCMApplicabilityRule(
+        organization_id=_org(u, lang),
+        name=body.name, when=body.when, then=body.then,
+        rationale=body.rationale,
+        priority=body.priority if body.priority is not None else 100,
+        is_active=True if body.is_active is None else body.is_active,
+        source="manual",
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    log_action(db, u.id, "create", "bcm_applicability_rule", str(rule.id),
+               {"when": rule.when, "then": rule.then})
+    return _rule_d(rule)
+
+
+@router.patch("/applicability-rules/{rid}")
+def update_applicability_rule(rid: int, body: ApplicabilityRuleUpdate, request: Request,
+                              db: Session = Depends(get_db),
+                              u: User = Depends(require_analyst)):
+    from app.models import BCMApplicabilityRule
+    lang = get_lang(request)
+    rule = db.get(BCMApplicabilityRule, rid)
+    if not rule or rule.organization_id != _org(u, lang):
+        raise HTTPException(404, _t("bcp.applicability_rule_not_found", lang))
+    data = body.model_dump(exclude_none=True)
+    _validate_rule(data.get("when", rule.when), data.get("then", rule.then), lang)
+    for k, v in data.items():
+        setattr(rule, k, v)
+    db.commit()
+    return _rule_d(rule)
+
+
+@router.delete("/applicability-rules/{rid}", status_code=204)
+def delete_applicability_rule(rid: int, request: Request, db: Session = Depends(get_db),
+                              u: User = Depends(require_analyst)):
+    from app.models import BCMApplicabilityRule
+    lang = get_lang(request)
+    rule = db.get(BCMApplicabilityRule, rid)
+    if not rule or rule.organization_id != _org(u, lang):
+        raise HTTPException(404, _t("bcp.applicability_rule_not_found", lang))
+    db.delete(rule)
+    db.commit()
+
+
+# ── Valoraciones BIA por escenario ────────────────────────────────────────────
+
+@router.get("/scenario-assessments")
+def list_assessments(scenario_id: Optional[int] = None, location_id: Optional[int] = None,
+                     db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    from app.models import BCMScenarioAssessment
+    q = db.query(BCMScenarioAssessment).filter_by(organization_id=_org(u))
+    if scenario_id:
+        q = q.filter(BCMScenarioAssessment.scenario_id == scenario_id)
+    if location_id:
+        q = q.filter(BCMScenarioAssessment.location_id == location_id)
+    return [_assessment_d(a) for a in q.all()]
+
+
+@router.post("/scenario-assessments", status_code=201)
+def create_assessment(body: AssessmentIn, request: Request, db: Session = Depends(get_db),
+                      u: User = Depends(require_analyst)):
+    from app.models import BCMScenarioAssessment
+    from app.services.bcm_scenario_engine import get_criteria, recompute_assessment
+    lang = get_lang(request)
+    org = _org(u, lang)
+    _chk_scenario(db, body.scenario_id, org, lang)
+    if body.location_id:
+        _chk_loc(db, body.location_id, org, lang)
+
+    existing = db.query(BCMScenarioAssessment).filter_by(
+        organization_id=org, scenario_id=body.scenario_id,
+        location_id=body.location_id,
+    ).first()
+    if existing:
+        raise HTTPException(409, _t("bcp.assessment_already_exists", lang))
+
+    a = BCMScenarioAssessment(
+        organization_id=org, source="manual",
+        assessed_at=datetime.now(timezone.utc),
+        **body.model_dump(exclude_none=True),
+    )
+    # El impacto ponderado y la banda son SIEMPRE calculados, nunca de entrada
+    recompute_assessment(a, get_criteria(db, org))
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    log_action(db, u.id, "create", "bcm_scenario_assessment", str(a.id),
+               {"scenario_id": a.scenario_id, "location_id": a.location_id})
+    return _assessment_d(a)
+
+
+@router.patch("/scenario-assessments/{aid}")
+def update_assessment(aid: int, body: AssessmentUpdate, request: Request,
+                      db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    from app.models import BCMScenarioAssessment
+    from app.services.bcm_scenario_engine import get_criteria, recompute_assessment
+    lang = get_lang(request)
+    org = _org(u, lang)
+    a = db.get(BCMScenarioAssessment, aid)
+    if not a or a.organization_id != org:
+        raise HTTPException(404, _t("bcp.assessment_not_found", lang))
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(a, k, v)
+    a.assessed_at = datetime.now(timezone.utc)
+    recompute_assessment(a, get_criteria(db, org))
+    db.commit()
+    return _assessment_d(a)
+
+
+@router.delete("/scenario-assessments/{aid}", status_code=204)
+def delete_assessment(aid: int, request: Request, db: Session = Depends(get_db),
+                      u: User = Depends(require_analyst)):
+    from app.models import BCMScenarioAssessment
+    lang = get_lang(request)
+    a = db.get(BCMScenarioAssessment, aid)
+    if not a or a.organization_id != _org(u, lang):
+        raise HTTPException(404, _t("bcp.assessment_not_found", lang))
+    db.delete(a)
+    db.commit()
+
+
+# ── Baremos del BIA ───────────────────────────────────────────────────────────
+
+@router.get("/bia-criteria")
+def get_bia_criteria(db: Session = Depends(get_db), u: User = Depends(get_current_user)):
+    """Metodo de valoracion de la organizacion.
+
+    Devuelve siempre un baremo utilizable: si la organizacion no ha declarado el
+    suyo, se sirve el de referencia con `is_default` a true.
+    """
+    from app.models import BIACriteria
+    from app.services.bcm_scenario_engine import get_criteria
+    org = _org(u)
+    row = db.query(BIACriteria).filter_by(organization_id=org).first()
+    return {**get_criteria(db, org), "is_default": row is None}
+
+
+@router.put("/bia-criteria")
+def put_bia_criteria(body: BIACriteriaIn, request: Request, db: Session = Depends(get_db),
+                     u: User = Depends(require_analyst)):
+    """Cambia el metodo y recalcula el BIA entero. El dato no se toca, la cifra si."""
+    from app.models import BIACriteria
+    from app.services.bcm_scenario_engine import get_criteria, recompute_org
+    lang = get_lang(request)
+    org = _org(u, lang)
+    row = db.query(BIACriteria).filter_by(organization_id=org).first()
+    if not row:
+        row = BIACriteria(organization_id=org)
+        db.add(row)
+    for k, v in body.model_dump(exclude_none=True).items():
+        setattr(row, k, v)
+    db.commit()
+    recalculated = recompute_org(db, org)
+    log_action(db, u.id, "update", "bia_criteria", str(row.id),
+               {"recalculated": recalculated})
+    return {**get_criteria(db, org), "is_default": False, "recalculated": recalculated}
