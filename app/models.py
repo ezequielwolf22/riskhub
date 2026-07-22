@@ -3473,6 +3473,10 @@ class TenantChangeInboxItem(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     status = Column(Enum(InboxItemStatus), default=InboxItemStatus.PENDING, index=True)
     snoozed_until = Column(DateTime, nullable=True)
+    # Ultima vez que este item concreto salio en un digest. El digest solo avisa
+    # de lo que el tenant aun no ha visto: sin esto, un item pendiente se
+    # reenviaba identico cada semana hasta que alguien lo resolvia (§5.4).
+    notified_at = Column(DateTime, nullable=True)
     reviewed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     impact_summary_json = Column(JSON, nullable=True)   # plantillas/politicas/risks afectados

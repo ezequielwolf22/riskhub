@@ -203,10 +203,47 @@ def _digest_due(s: TenantRegwatchSettings, now: datetime) -> bool:
     return now - last >= interval
 
 
-def _render_digest_html(org_name: str, items: list[dict], freq: str) -> tuple[str, str]:
+def _collect_digest_items(db: Session, org_id: int, now: datetime) -> tuple[list, int]:
+    """Selecciona que items del inbox merecen un aviso ahora (§5.4).
+
+    Solo se avisa de lo que el tenant aun no ha visto:
+     - items PENDING que nunca han salido en un digest (notified_at nulo);
+     - items SNOOZED cuyo aplazamiento ha vencido: vuelven a PENDING y se
+       vuelven a avisar, que es lo que promete el boton "recordarme luego".
+
+    Devuelve (items_a_avisar, pendientes_ya_avisados). El segundo valor es el
+    recordatorio de fondo: se menciona como cifra, nunca vuelve a enviarse
+    entero. Sin esto un item pendiente se reenviaba identico cada semana.
+    """
+    rows = db.query(TenantChangeInboxItem).filter(
+        TenantChangeInboxItem.organization_id == org_id,
+        TenantChangeInboxItem.status.in_(
+            [InboxItemStatus.PENDING, InboxItemStatus.SNOOZED]
+        ),
+    ).order_by(TenantChangeInboxItem.created_at.desc()).all()
+
+    to_notify, backlog = [], 0
+    for it in rows:
+        if it.status == InboxItemStatus.SNOOZED:
+            until = _aware(it.snoozed_until)
+            if until is None or until > now:
+                continue  # sigue aplazado: silencio deliberado del usuario
+            # Aplazamiento vencido: vuelve a la cola y se avisa de nuevo.
+            it.status = InboxItemStatus.PENDING
+            it.snoozed_until = None
+            it.notified_at = None
+        if it.notified_at is None:
+            to_notify.append(it)
+        else:
+            backlog += 1
+    return to_notify, backlog
+
+
+def _render_digest_html(org_name: str, items: list[dict], freq: str,
+                        backlog: int = 0) -> tuple[str, str]:
     """Devuelve (asunto, html) del digest a partir de los items del inbox."""
     n = len(items)
-    subject = f"RiskHub · Vigilancia normativa: {n} cambio(s) pendiente(s) de revision"
+    subject = f"RiskHub · Vigilancia normativa: {n} cambio(s) nuevo(s) de revision"
     rows = []
     for it in items:
         label, color = _SEV_LABEL.get(it.get("severity"), _SEV_LABEL["substantive"])
@@ -227,8 +264,13 @@ def _render_digest_html(org_name: str, items: list[dict], freq: str) -> tuple[st
         f'<div style="font-family:Inter,Arial,sans-serif;max-width:640px;margin:0 auto;">'
         f'<h2 style="color:#59008D;">Vigilancia normativa — {_esc(org_name)}</h2>'
         f'<p style="font-size:14px;color:#333;">Hay <b>{n}</b> cambio(s) normativo(s) '
-        f'pendiente(s) de tu revision (digest {_esc(freq)}). '
+        f'<b>nuevo(s)</b> desde el ultimo aviso (digest {_esc(freq)}). '
         f'Revisa y decide cada uno en <b>RiskHub → Vigilancia normativa</b>.</p>'
+        + (
+            f'<p style="font-size:13px;color:#666;">Ademas siguen pendientes '
+            f'<b>{backlog}</b> cambio(s) de avisos anteriores, que no se repiten aqui.</p>'
+            if backlog else ''
+        ) +
         f'<table style="width:100%;border-collapse:collapse;margin-top:12px;">'
         f'<thead><tr>'
         f'<th style="text-align:left;padding:8px;font-size:12px;color:#888;">Impacto</th>'
@@ -249,9 +291,11 @@ def _esc(s) -> str:
 
 def send_pending_digests(db: Session) -> dict:
     """Envia el digest a cada org con vigilancia activa cuya frecuencia venza y
-    tenga items pendientes. Idempotente por dia via last_digest_sent_at (§5.4).
+    tenga cambios NUEVOS. Idempotente por dia via last_digest_sent_at (§5.4).
 
-    No envia digests vacios: si no hay pendientes, no molesta al usuario.
+    No envia digests vacios ni repetidos: un item que ya salio en un aviso no
+    vuelve a enviarse aunque siga pendiente (solo cuenta como recordatorio de
+    fondo). Ver `_collect_digest_items`.
     Devuelve un resumen {sent, skipped_no_items, skipped_not_due, no_channel}.
     """
     from app.models import EmailSettings
@@ -269,16 +313,14 @@ def send_pending_digests(db: Session) -> dict:
         if not _digest_due(s, now):
             summary["skipped_not_due"] += 1
             continue
-        items = [
-            it for it in list_inbox(db, org_id, include_resolved=False)
-            if it.get("status") == InboxItemStatus.PENDING.value
-        ]
-        if not items:
-            # Nada pendiente: marcamos el envio para respetar la cadencia sin spamear.
+        rows, backlog = _collect_digest_items(db, org_id, now)
+        if not rows:
+            # Nada nuevo: marcamos el envio para respetar la cadencia sin spamear.
             s.last_digest_sent_at = now
             db.flush()
             summary["skipped_no_items"] += 1
             continue
+        items = [_inbox_item_dict(db, it) for it in rows]
 
         cfg = db.query(EmailSettings).filter_by(organization_id=org_id).first()
         if not nc.has_any_channel(cfg):
@@ -289,17 +331,20 @@ def send_pending_digests(db: Session) -> dict:
         org_name = org.name if org else f"Org {org_id}"
         recipient = s.notification_email or _default_notification_email(
             db, org_id, User(email=None))
-        subject, html = _render_digest_html(org_name, items, s.digest_frequency or "weekly")
+        subject, html = _render_digest_html(
+            org_name, items, s.digest_frequency or "weekly", backlog)
         summary_text = (
-            f"{len(items)} cambio(s) normativo(s) pendiente(s) de revision en "
+            f"{len(items)} cambio(s) normativo(s) nuevo(s) de revision en "
             f"{org_name}. Entra en RiskHub -> Vigilancia normativa."
         )
         try:
             nc.dispatch_alert(
                 db, cfg, org_name, recipient, subject, summary_text,
                 html_body=html, event="regwatch_digest",
-                fields={"pendientes": len(items)},
+                fields={"nuevos": len(items), "pendientes_previos": backlog},
             )
+            for it in rows:
+                it.notified_at = now
             s.last_digest_sent_at = now
             db.flush()
             summary["sent"] += 1

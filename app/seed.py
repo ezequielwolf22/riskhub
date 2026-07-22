@@ -876,6 +876,10 @@ def _migrate_columns() -> None:
          "threats", "organization_id"),
         ("ALTER TABLE vulnerabilities ADD COLUMN organization_id INTEGER REFERENCES organizations(id)",
          "vulnerabilities", "organization_id"),
+        # v6.4.2 — Regwatch: sello de aviso por item para que el digest solo
+        # notifique lo nuevo y no repita cada semana lo ya avisado.
+        ("ALTER TABLE regwatch_inbox_items ADD COLUMN notified_at DATETIME",
+         "regwatch_inbox_items", "notified_at"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los
@@ -1444,8 +1448,42 @@ def init_db() -> None:
         _seed_default_kris(db, org.id)
         _run_one_shot_recalc_v2(db)
         _run_one_shot_fix_supplier_scores(db)
+        _run_one_shot_seal_regwatch_notified(db)
     finally:
         db.close()
+
+
+def _run_one_shot_seal_regwatch_notified(db: Session) -> None:
+    """Sella como ya avisados los items de inbox de regwatch anteriores al fix.
+
+    Hasta ahora el digest reenviaba cada semana todos los items pendientes, asi
+    que los que existen al desplegar esto ya se han notificado (de sobra). Sin
+    este sello volverian a salir una vez mas en el primer digest nuevo.
+    """
+    from datetime import datetime, timezone
+    from sqlalchemy import text as _text
+    marker = "regwatch_seal_notified_at"
+    try:
+        row = db.execute(
+            _text("SELECT name FROM app_migrations WHERE name = :n"), {"n": marker}
+        ).fetchone()
+        if row:
+            return
+        now = datetime.now(timezone.utc)
+        res = db.execute(
+            _text("UPDATE regwatch_inbox_items SET notified_at = :ts "
+                  "WHERE notified_at IS NULL"),
+            {"ts": now},
+        )
+        db.execute(
+            _text("INSERT INTO app_migrations (name, applied_at) VALUES (:n, :ts)"),
+            {"n": marker, "ts": now.isoformat()},
+        )
+        db.commit()
+        print(f"Regwatch digest: {res.rowcount or 0} items sellados como ya avisados.")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        print(f"Sello de avisos regwatch omitido: {exc}")
 
 
 def _run_one_shot_fix_supplier_scores(db: Session) -> None:
