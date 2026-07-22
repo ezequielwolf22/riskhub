@@ -196,3 +196,30 @@ def test_escenario_de_otra_organizacion_no_es_accesible(client, auth_headers):
                         json={"name": "x"}).status_code == 404
     assert client.get("/api/bcp/scenario-assessments", headers=auth_headers,
                       params={"scenario_id": 99999999}).json() == []
+
+
+# ── Generacion sin documentacion (cableado del router) ────────────────────────
+
+def test_el_cuestionario_solo_pregunta_lo_que_no_puede_deducir(client, auth_headers):
+    resp = client.get("/api/bcp/generate/questions", headers=auth_headers)
+    assert resp.status_code == 200
+    questions = resp.json()["questions"]
+    assert isinstance(questions, list)
+    # Cada pregunta justifica por que se hace y que desbloquea
+    for q in questions:
+        assert q["question"] and q["why"] and q["unlocks"]
+
+
+def test_el_contexto_de_generacion_es_consultable(client, auth_headers):
+    resp = client.get("/api/bcp/generate/context", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    for key in ("locations", "scenarios", "processes", "assets", "suppliers"):
+        assert key in body
+
+
+def test_objetivo_de_generacion_invalido_se_rechaza(client, auth_headers):
+    resp = client.post("/api/bcp/generate/loquesea", headers=auth_headers, json={})
+    assert resp.status_code == 422
+    # El mensaje dice cuales son validos, no solo que esta mal
+    assert "scenarios" in resp.text
