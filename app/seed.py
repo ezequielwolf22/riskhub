@@ -868,6 +868,14 @@ def _migrate_columns() -> None:
         # Modo de aprobacion del Plan Director por organizacion (ISO 6.1.3f)
         ("ALTER TABLE risk_context ADD COLUMN plan_approval_mode VARCHAR(16)",
          "risk_context", "plan_approval_mode"),
+        # v6.4.1 — amenazas y vulnerabilidades personalizadas por organizacion.
+        # NULL = catalogo global (ISO 27005 / MAGERIT); con valor = personalizada
+        # y exclusiva de esa org. Varias partes del codigo ya filtraban por esta
+        # columna dando por hecho que existia.
+        ("ALTER TABLE threats ADD COLUMN organization_id INTEGER REFERENCES organizations(id)",
+         "threats", "organization_id"),
+        ("ALTER TABLE vulnerabilities ADD COLUMN organization_id INTEGER REFERENCES organizations(id)",
+         "vulnerabilities", "organization_id"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los

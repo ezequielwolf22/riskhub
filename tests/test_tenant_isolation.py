@@ -277,3 +277,101 @@ def test_isolation_holds_for_treatment_cockpit(client):
     assert not any(it["id"] == risk_id for it in items), \
         "el cockpit de un cliente muestra riesgos de otro"
     assert "confidencial" not in str(board), "se filtra contenido de otro cliente"
+
+
+# ---------- 5. Catalogos personalizados: 100% de la organizacion ----------
+
+def _custom_threat(client, headers, name):
+    return client.post("/api/threats/", json={
+        "name": name, "origin": "D", "description": "Escenario interno",
+    }, headers=headers)
+
+
+def test_custom_threat_can_be_created(client, auth_headers):
+    """Regresion: create_threat pasaba `catalog` dos veces (venia en el schema y
+    se forzaba en la llamada), asi que crear una amenaza personalizada lanzaba
+    TypeError y devolvia 500 SIEMPRE."""
+    resp = _custom_threat(client, auth_headers, f"Amenaza propia {_uid()}")
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["is_custom"] is True
+    assert body["catalog"] == "custom"
+
+
+def test_custom_threat_is_private_to_its_organization(client):
+    """El nombre de una amenaza personalizada puede describir un escenario
+    interno o nombrar a un tercero: ninguna otra organizacion debe verlo."""
+    a = _make_tenant(client, "Cliente A")
+    b = _make_tenant(client, "Cliente B")
+    nombre = f"Fuga del contrato con ACME {_uid()}"
+
+    creada = _custom_threat(client, a["headers"], nombre)
+    assert creada.status_code == 201, creada.text
+    tid = creada.json()["id"]
+
+    # A la ve
+    propias = client.get("/api/threats/", headers=a["headers"]).json()
+    assert any(t["id"] == tid for t in propias)
+
+    # B no
+    ajenas = client.get("/api/threats/", headers=b["headers"]).json()
+    assert not any(t["id"] == tid for t in ajenas), \
+        "una amenaza personalizada es visible para otra organizacion"
+    assert not any("ACME" in (t.get("name") or "") for t in ajenas)
+
+
+def test_custom_threat_cannot_be_modified_by_another_organization(client):
+    a = _make_tenant(client, "Cliente A")
+    b = _make_tenant(client, "Cliente B")
+    tid = _custom_threat(client, a["headers"], f"Amenaza A {_uid()}").json()["id"]
+
+    upd = client.put(f"/api/threats/{tid}",
+                     json={"name": "Secuestrada", "origin": "D"}, headers=b["headers"])
+    assert upd.status_code in (403, 404), f"modificacion cruzada devolvio {upd.status_code}"
+
+    dele = client.delete(f"/api/threats/{tid}", headers=b["headers"])
+    assert dele.status_code in (403, 404), f"borrado cruzado devolvio {dele.status_code}"
+
+    # Sigue intacta para su dueno
+    propias = client.get("/api/threats/", headers=a["headers"]).json()
+    assert any(t["id"] == tid and t["name"].startswith("Amenaza A") for t in propias)
+
+
+def test_global_catalogue_stays_visible_to_everyone(client):
+    """El catalogo ISO 27005 / MAGERIT es comun: no puede quedar oculto."""
+    a = _make_tenant(client, "Cliente A")
+    b = _make_tenant(client, "Cliente B")
+    para_a = client.get("/api/threats/", headers=a["headers"]).json()
+    para_b = client.get("/api/threats/", headers=b["headers"]).json()
+
+    globales_a = {t["code"] for t in para_a if not t.get("is_custom")}
+    globales_b = {t["code"] for t in para_b if not t.get("is_custom")}
+    assert globales_a and globales_a == globales_b, \
+        "el catalogo global no llega igual a todas las organizaciones"
+
+
+def test_custom_vulnerability_is_private_to_its_organization(client):
+    a = _make_tenant(client, "Cliente A")
+    b = _make_tenant(client, "Cliente B")
+    creada = client.post("/api/vulnerabilities/", json={
+        "name": f"Vulnerabilidad interna {_uid()}", "category": "organization",
+    }, headers=a["headers"])
+    assert creada.status_code == 201, creada.text
+    vid = creada.json()["id"]
+
+    assert any(v["id"] == vid for v in client.get("/api/vulnerabilities/",
+                                                  headers=a["headers"]).json())
+    assert not any(v["id"] == vid for v in client.get("/api/vulnerabilities/",
+                                                      headers=b["headers"]).json()), \
+        "una vulnerabilidad personalizada es visible para otra organizacion"
+
+
+def test_superadmin_sees_custom_threats_of_the_focused_tenant(client):
+    a = _make_tenant(client, "Cliente A")
+    sa = _make_superadmin(client)
+    tid = _custom_threat(client, a["headers"], f"Amenaza A {_uid()}").json()["id"]
+
+    focused = dict(sa["headers"], **{"X-Active-Org": str(a["org_id"])})
+    vistas = client.get("/api/threats/", headers=focused).json()
+    assert any(t["id"] == tid for t in vistas), \
+        "el superadmin no ve las amenazas propias del cliente que administra"

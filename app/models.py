@@ -376,9 +376,16 @@ class Asset(Base):
 # ---------- AMENAZAS / VULNERABILIDADES (catalogo + instancias) ----------
 
 class Threat(Base):
-    """Catalogo de amenazas - ISO 27005 Annex C + MAGERIT v3."""
+    """Catalogo de amenazas - ISO 27005 Annex C + MAGERIT v3.
+
+    organization_id NULL = catalogo global (ISO 27005 / MAGERIT), visible para
+    todas las organizaciones. Con valor = amenaza personalizada, que pertenece
+    en exclusiva a esa organizacion y no debe verla ninguna otra: su nombre
+    puede describir un escenario interno o nombrar a un tercero.
+    """
     __tablename__ = "threats"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)
@@ -392,9 +399,14 @@ class Threat(Base):
 
 
 class Vulnerability(Base):
-    """Catalogo de vulnerabilidades - ISO 27005 Annex D."""
+    """Catalogo de vulnerabilidades - ISO 27005 Annex D.
+
+    Mismo criterio que Threat: NULL = catalogo global; con valor = vulnerabilidad
+    personalizada, exclusiva de esa organizacion.
+    """
     __tablename__ = "vulnerabilities"
     id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
     description = Column(Text)

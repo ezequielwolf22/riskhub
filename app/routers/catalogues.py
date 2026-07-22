@@ -10,11 +10,28 @@ from app.i18n import get_lang, t as _t
 from app.database import get_db
 from app.models import Risk, Threat, Vulnerability, User, risk_vulnerability_table
 from app.schemas import ThreatIn, ThreatOut, VulnerabilityIn, VulnerabilityOut
-from app.security import get_current_user, require_analyst
+from app.security import check_org_access, get_current_user, require_analyst, resolve_org_id
 from app.services.audit_service import log_action
 
 threats_router = APIRouter(prefix="/api/threats", tags=["threats"])
 vulns_router = APIRouter(prefix="/api/vulnerabilities", tags=["vulnerabilities"])
+
+
+def _visible_to(query, model, current_user):
+    """Catalogo global (organization_id NULL) + lo personalizado de la propia org.
+
+    Una amenaza o vulnerabilidad personalizada describe un escenario interno y
+    puede nombrar a terceros: no debe verla ninguna otra organizacion. El
+    superadmin sin organizacion enfocada las ve todas (vista de plataforma).
+    """
+    from app.models import UserRole
+
+    if current_user.role == UserRole.SUPERADMIN and not getattr(current_user, "_active_org_id", None):
+        return query
+    org_id = resolve_org_id(current_user)
+    return query.filter(
+        (model.organization_id.is_(None)) | (model.organization_id == org_id)
+    )
 
 
 # ---------- THREATS ----------
@@ -58,12 +75,12 @@ def set_active_catalogs(
 @threats_router.get("/", response_model=list[ThreatOut])
 def list_threats(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     q: Optional[str] = None,
     category: Optional[str] = None,
     catalog: Optional[str] = None,
 ):
-    query = db.query(Threat)
+    query = _visible_to(db.query(Threat), Threat, current_user)
     if q:
         like = f"%{q}%"
         query = query.filter((Threat.name.ilike(like)) | (Threat.code.ilike(like)))
@@ -101,7 +118,11 @@ def create_threat(request: Request, data: ThreatIn, db: Session = Depends(get_db
     code = data.code or _next_code(db, Threat, "T.CUS")
     if db.query(Threat).filter(Threat.code == code).first():
         raise HTTPException(400, _t("common.conflict", lang))
-    t = Threat(**data.model_dump(exclude={"code"}), code=code, is_custom=True, catalog="custom")
+    # exclude catalog: viene en el schema y se fuerza aqui — pasarlo dos veces
+    # lanzaba TypeError y hacia imposible crear una amenaza personalizada.
+    t = Threat(**data.model_dump(exclude={"code", "catalog"}), code=code,
+               is_custom=True, catalog="custom",
+               organization_id=resolve_org_id(current_user))
     db.add(t)
     log_action(db, current_user.id, "create", "threat", None,
                {"code": code, "name": data.name})
@@ -114,11 +135,11 @@ def update_threat(tid: int, request: Request, data: ThreatIn, db: Session = Depe
                   current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
     t = db.get(Threat, tid)
-    if not t:
+    if not t or not check_org_access(t.organization_id, current_user):
         raise HTTPException(404, _t("common.not_found", lang))
     if not t.is_custom:
         raise HTTPException(400, _t("common.forbidden", lang))
-    for k, v in data.model_dump(exclude={"code"}).items():
+    for k, v in data.model_dump(exclude={"code", "catalog"}).items():
         setattr(t, k, v)
     log_action(db, current_user.id, "update", "threat", str(tid),
                {"code": t.code, "name": t.name})
@@ -131,7 +152,7 @@ def delete_threat(tid: int, request: Request, db: Session = Depends(get_db),
                   current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
     t = db.get(Threat, tid)
-    if not t:
+    if not t or not check_org_access(t.organization_id, current_user):
         raise HTTPException(404, _t("common.not_found", lang))
     # Permitir borrar amenazas personalizadas Y amenazas MAGERIT (code MAGERIT-*)
     is_magerit = t.code.startswith("MAGERIT-")
@@ -152,11 +173,11 @@ def delete_threat(tid: int, request: Request, db: Session = Depends(get_db),
 @vulns_router.get("/", response_model=list[VulnerabilityOut])
 def list_vulns(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     q: Optional[str] = None,
     category: Optional[str] = None,
 ):
-    query = db.query(Vulnerability)
+    query = _visible_to(db.query(Vulnerability), Vulnerability, current_user)
     if q:
         like = f"%{q}%"
         query = query.filter((Vulnerability.name.ilike(like)) | (Vulnerability.code.ilike(like)))
@@ -191,7 +212,8 @@ def create_vuln(request: Request, data: VulnerabilityIn, db: Session = Depends(g
     code = data.code or _next_code(db, Vulnerability, "V.CUS")
     if db.query(Vulnerability).filter(Vulnerability.code == code).first():
         raise HTTPException(400, _t("common.conflict", lang))
-    v = Vulnerability(**data.model_dump(exclude={"code"}), code=code, is_custom=True)
+    v = Vulnerability(**data.model_dump(exclude={"code"}), code=code, is_custom=True,
+                      organization_id=resolve_org_id(current_user))
     db.add(v)
     log_action(db, current_user.id, "create", "vulnerability", None,
                {"code": code, "name": data.name})
@@ -204,7 +226,7 @@ def update_vuln(vid: int, request: Request, data: VulnerabilityIn, db: Session =
                 current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
     v = db.get(Vulnerability, vid)
-    if not v:
+    if not v or not check_org_access(v.organization_id, current_user):
         raise HTTPException(404, _t("common.not_found", lang))
     if not v.is_custom:
         raise HTTPException(400, _t("common.forbidden", lang))
@@ -221,7 +243,9 @@ def delete_vuln(vid: int, request: Request, db: Session = Depends(get_db),
                 current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
     v = db.get(Vulnerability, vid)
-    if not v or not v.is_custom:
+    if not v or not check_org_access(v.organization_id, current_user):
+        raise HTTPException(404, _t("common.not_found", lang))
+    if not v.is_custom:
         raise HTTPException(400, _t("common.forbidden", lang))
     log_action(db, current_user.id, "delete", "vulnerability", str(vid),
                {"code": v.code, "name": v.name})
@@ -229,5 +253,10 @@ def delete_vuln(vid: int, request: Request, db: Session = Depends(get_db),
 
 
 def _next_code(db: Session, model, prefix: str) -> str:
+    """Siguiente codigo libre. El codigo es unico GLOBALMENTE (no por org), asi
+    que contar no basta: dos organizaciones pueden converger en el mismo numero.
+    Se avanza hasta encontrar uno libre."""
     n = db.query(model).filter(model.code.like(f"{prefix}%")).count() + 1
+    while db.query(model.id).filter(model.code == f"{prefix}.{n:03d}").first():
+        n += 1
     return f"{prefix}.{n:03d}"

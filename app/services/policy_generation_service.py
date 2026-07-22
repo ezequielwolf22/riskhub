@@ -230,7 +230,7 @@ async def generate_policy_with_ai(
 
     # Top amenazas
     top_threats = db.query(Threat).filter(
-        Threat.organization_id == org_id,
+        (Threat.organization_id == org_id) | (Threat.organization_id.is_(None)),
     ).limit(5).all()
     threat_names = [t.name for t in top_threats]
 

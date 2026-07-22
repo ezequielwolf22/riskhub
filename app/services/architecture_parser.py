@@ -294,14 +294,16 @@ def create_assets_from_nodes(
             ).first()
 
             if not existing_threat:
+                # Threat no tiene likelihood ni consequence (eso vive en el
+                # riesgo, no en el catalogo): pasarlos lanzaba TypeError.
                 existing_threat = Threat(
                     organization_id=org_id,
                     code=threat_code,
                     name=threat_name,
                     description=f"Amenaza STRIDE para {asset_type.value}: {threat_name}",
                     origin=origin,
-                    likelihood=likelihood,
-                    consequence=consequence,
+                    is_custom=True,
+                    catalog="custom",
                 )
                 db.add(existing_threat)
                 db.flush()

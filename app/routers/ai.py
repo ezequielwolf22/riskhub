@@ -2503,7 +2503,7 @@ def _exec_create_risk(db: Session, inp: dict, org_id, user_id: int) -> dict:
     threat_id = None
     if inp.get("threat_name"):
         t = db.query(Threat).filter(
-            Threat.organization_id == org_id,
+            (Threat.organization_id == org_id) | (Threat.organization_id.is_(None)),
             Threat.name.ilike(f"%{inp['threat_name']}%"),
         ).first()
         if t:

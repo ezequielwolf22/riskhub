@@ -228,7 +228,7 @@ def get_magerit_analysis(db: Session, org_id: int, lang: str = "es") -> dict:
     """
     assets = db.query(Asset).filter(Asset.organization_id == org_id).all()
     magerit_threats = [t for t in db.query(Threat).filter(
-        Threat.organization_id == org_id,
+        (Threat.organization_id == org_id) | (Threat.organization_id.is_(None)),
         Threat.code.like("MAGERIT-%"),
     ).all()]
 
