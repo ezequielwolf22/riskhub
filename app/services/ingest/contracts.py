@@ -137,6 +137,49 @@ def ordered_keys() -> list[str]:
     return resolved
 
 
+def describe_for_prompt(keys: Optional[tuple] = None) -> str:
+    """Catalogo de entidades destino, legible por el modelo.
+
+    Se genera del registro y no a mano: si manana un campo cambia de tipo o de
+    vocabulario, el prompt se entera solo. Un catalogo escrito aparte se
+    desincroniza en la segunda semana y el modelo empieza a proponer campos que
+    el motor descarta en silencio.
+    """
+    _ensure_loaded()
+    lines: list[str] = []
+    for key in ordered_keys():
+        if keys and key not in keys:
+            continue
+        spec = _REGISTRY[key]
+        lines.append(f"\n### {key}  ({spec.label})")
+        if spec.natural_keys:
+            ident = " o ".join("+".join(k) for k in spec.natural_keys)
+            lines.append(f"  se identifica por: {ident}")
+        for ref_field, (target, target_key) in (spec.references or {}).items():
+            lines.append(
+                f"  referencia: usa \"_ref_{ref_field}\" con el {target_key} "
+                f"del {target} correspondiente (nunca un id numerico)"
+            )
+        for f in spec.writable_fields():
+            if f.name in (spec.references or {}):
+                continue   # se rellena por _ref_, no directamente
+            bits = [f.type]
+            if f.choices:
+                bits.append("uno de: " + "|".join(str(c) for c in f.choices))
+            if f.max_length:
+                bits.append(f"max {f.max_length}")
+            lines.append(f"  - {f.name} ({', '.join(bits)})")
+        computed = [f.name for f in spec.fields if f.computed]
+        if computed:
+            lines.append(f"  NO extraigas (los calcula el motor): {', '.join(computed)}")
+    return "\n".join(lines)
+
+
+def entity_keys() -> list[str]:
+    _ensure_loaded()
+    return list(_REGISTRY)
+
+
 _loaded = False
 
 

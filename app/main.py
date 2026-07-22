@@ -22,7 +22,7 @@ from app.routers import bootstrap as bootstrap_router
 from app.routers import (
     admin, ai, ai_config, alerts, architecture, asset_groups, assets, audit, audits,
     auth, awareness, bcp, catalogues, ccm, change_requests, compliance, context, controls,
-    cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents, jobs,
+    cve, documents, evidence, executive, external_findings, feature_flags, gdpr, inbox, incidents, ingest, jobs,
     initiatives, integrations_erp, integrations_forms, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, onboarding_gate, organizations,
     osint, policies, portal, predictive, questionnaire_flows, questionnaire_schedules, regwatch, report_schedules,
     report_templates, reports, risk_level_config, risks, search, sharepoint,
@@ -354,6 +354,7 @@ app.include_router(change_requests.router)
 app.include_router(report_schedules.router)
 app.include_router(report_templates.router)
 app.include_router(bcp.router)
+app.include_router(ingest.router)
 app.include_router(regwatch.router)
 from app.routers import license_crypto
 app.include_router(license_crypto.router)

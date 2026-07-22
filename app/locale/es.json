@@ -229,6 +229,21 @@
     "not_enabled": "La vigilancia normativa no está activada para este tenant.",
     "sweep_failed": "Error durante el barrido normativo: {detail}."
   },
+  "ingest": {
+    "batch_not_found": "Lote de ingesta no encontrado.",
+    "conflict_not_found": "Conflicto no encontrado.",
+    "field_not_editable": "El campo '{field}' no se puede modificar.",
+    "file_too_large": "El documento '{name}' supera el limite de {mb} MB.",
+    "no_files": "No se ha recibido ningun documento legible.",
+    "override_not_found": "Valor forzado no encontrado.",
+    "queued": "Pack en cola: {n} documentos. El agente los esta leyendo.",
+    "record_already_reverted": "Ese registro ya se habia revertido.",
+    "record_not_found": "Registro no encontrado.",
+    "too_many_files": "Demasiados documentos en un solo pack (maximo {max}).",
+    "unknown_field": "Campo desconocido: {field}.",
+    "unknown_table": "Tabla desconocida: {table}.",
+    "user_no_org": "Tu usuario no tiene organizacion asignada."
+  },
   "bcp": {
     "scenario_not_found": "Escenario de indisponibilidad no encontrado.",
     "invalid_scenario_family": "Familia de escenario no válida. Valores admitidos: {valid}.",

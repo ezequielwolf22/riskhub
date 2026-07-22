@@ -83,10 +83,46 @@ def _handle_document_vision_isms(payload: dict) -> dict:
     return {"doc_id": doc_id, "transcribed": transcribed}
 
 
+def _handle_ingest_pack(payload: dict) -> dict:
+    """Comprension y volcado de un pack documental.
+
+    Los bytes no viajan en el payload: el router los dejo en un area de paso y
+    aqui se leen y se borran al terminar, pase lo que pase.
+    """
+    from pathlib import Path
+
+    from app.database import SessionLocal
+    from app.routers.ingest import cleanup_staging
+    from app.services.ingest.pipeline import run_pack
+
+    job_id = payload.get("_job_id")
+    cancel_check = (lambda: is_cancelled(job_id)) if job_id else None
+
+    files = []
+    for entry in payload.get("paths") or []:
+        path = Path(entry["path"])
+        if path.exists():
+            files.append((entry["filename"], path.read_bytes()))
+
+    db = SessionLocal()
+    try:
+        return run_pack(
+            db, payload["org_id"], files,
+            user_id=payload.get("user_id"), job_id=job_id,
+            tier=payload.get("tier", "deep"), lang=payload.get("lang", "es"),
+            apply_profile=bool(payload.get("apply_profile", True)),
+            cancel_check=cancel_check,
+        )
+    finally:
+        db.close()
+        cleanup_staging(payload.get("staging_dir"))
+
+
 _HANDLERS: dict[str, Callable[[dict], dict]] = {
     "asset_analysis_all": _handle_asset_analysis_all,
     "evidence_analysis": _handle_evidence_analysis,
     "document_vision_isms": _handle_document_vision_isms,
+    "ingest_pack": _handle_ingest_pack,
 }
 
 

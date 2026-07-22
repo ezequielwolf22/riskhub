@@ -229,6 +229,21 @@
     "not_enabled": "Regulatory watch is not enabled for this tenant.",
     "sweep_failed": "Error during regulatory sweep: {detail}."
   },
+  "ingest": {
+    "batch_not_found": "Ingest batch not found.",
+    "conflict_not_found": "Conflict not found.",
+    "field_not_editable": "Field '{field}' cannot be modified.",
+    "file_too_large": "Document '{name}' exceeds the {mb} MB limit.",
+    "no_files": "No readable document was received.",
+    "override_not_found": "Forced value not found.",
+    "queued": "Pack queued: {n} documents. The agent is reading them.",
+    "record_already_reverted": "That record has already been reverted.",
+    "record_not_found": "Record not found.",
+    "too_many_files": "Too many documents in a single pack (maximum {max}).",
+    "unknown_field": "Unknown field: {field}.",
+    "unknown_table": "Unknown table: {table}.",
+    "user_no_org": "Your user has no organization assigned."
+  },
   "bcp": {
     "scenario_not_found": "Disruption scenario not found.",
     "invalid_scenario_family": "Invalid scenario family. Allowed values: {valid}.",
