@@ -3397,10 +3397,12 @@ def context_autofill(request: Request, db: Session = Depends(get_db), u: User = 
     lang = get_lang(request)
     org = _org(u, lang)
 
-    # Sistemas criticos desde activos con criticality >= high
+    # Sistemas criticos por DISPONIBILIDAD, que es la dimension que importa en
+    # continuidad. Antes se filtraba por `Asset.criticality`, columna que no
+    # existe en el modelo: el endpoint devolvia 500 en cuanto se llamaba.
     assets = db.query(Asset).filter_by(organization_id=org).filter(
-        Asset.criticality.in_(["critical", "high"])
-    ).limit(30).all()
+        Asset.value_availability >= 4
+    ).order_by(Asset.value_availability.desc()).limit(30).all()
     critical_systems = [
         f"{a.name} ({a.asset_type or _t('bcp.asset_type_fallback', lang)})" for a in assets
     ]
@@ -3988,3 +3990,51 @@ def put_bia_criteria(body: BIACriteriaIn, request: Request, db: Session = Depend
     log_action(db, u.id, "update", "bia_criteria", str(row.id),
                {"recalculated": recalculated})
     return {**get_criteria(db, org), "is_default": False, "recalculated": recalculated}
+
+
+# ── Generacion sin documentacion ──────────────────────────────────────────────
+#
+# La mitad de los clientes llega con un pack documental y la otra mitad con
+# nada. Estas rutas cubren el segundo caso por el mismo camino que la ingesta:
+# lo propuesto se materializa en un lote reversible y hereda sus garantias.
+
+@router.get("/generate/questions")
+def generation_questions(db: Session = Depends(get_db),
+                         u: User = Depends(get_current_user)):
+    """Lo que hace falta saber y no se puede deducir de lo ya cargado.
+
+    Sustituye al cuestionario fijo: preguntar por el sector cuando ya hay
+    cuarenta activos cargados es hacerle perder el tiempo al cliente.
+    """
+    from app.services.ingest.generation import pending_questions
+    return {"questions": pending_questions(db, _org(u))}
+
+
+@router.get("/generate/context")
+def generation_context(db: Session = Depends(get_db),
+                       u: User = Depends(get_current_user)):
+    """Lo que el agente usaria para proponer. Util para ver por que propone."""
+    from app.services.ingest.generation import gather_context
+    return gather_context(db, _org(u))
+
+
+@router.post("/generate/{target}", status_code=201)
+def generate_bcm(target: str, body: dict = None, request: Request = None,
+                 db: Session = Depends(get_db), u: User = Depends(require_analyst)):
+    """Genera un borrador (escenarios, BIA, plan o estrategias) desde el contexto."""
+    from app.services.ingest.generation import TARGETS, generate
+    lang = get_lang(request)
+    org = _org(u, lang)
+    if target not in TARGETS:
+        raise HTTPException(422, _t("bcp.invalid_generation_target", lang,
+                                    valid=", ".join(TARGETS)))
+    body = body or {}
+    try:
+        result = generate(db, org, target, user_id=u.id, lang=lang,
+                          plan_type=body.get("plan_type", "bcp"),
+                          scope=body.get("scope"))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    log_action(db, u.id, "generate", "bcm_" + target,
+               str(result.get("batch_id")), {"status": result.get("status")})
+    return result

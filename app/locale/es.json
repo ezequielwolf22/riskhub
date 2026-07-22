@@ -245,6 +245,7 @@
     "user_no_org": "Tu usuario no tiene organizacion asignada."
   },
   "bcp": {
+    "invalid_generation_target": "Objetivo de generacion no valido. Valores admitidos: {valid}.",
     "scenario_not_found": "Escenario de indisponibilidad no encontrado.",
     "invalid_scenario_family": "Familia de escenario no válida. Valores admitidos: {valid}.",
     "scenario_has_assessments": "El escenario sostiene {n} valoraciones del BIA. Desactívalo en lugar de borrarlo para conservar el histórico.",

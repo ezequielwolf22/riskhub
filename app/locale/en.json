@@ -245,6 +245,7 @@
     "user_no_org": "Your user has no organization assigned."
   },
   "bcp": {
+    "invalid_generation_target": "Invalid generation target. Allowed values: {valid}.",
     "scenario_not_found": "Disruption scenario not found.",
     "invalid_scenario_family": "Invalid scenario family. Allowed values: {valid}.",
     "scenario_has_assessments": "This scenario backs {n} BIA assessments. Deactivate it instead of deleting it to preserve the history.",
