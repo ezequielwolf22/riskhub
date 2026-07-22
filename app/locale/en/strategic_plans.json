@@ -1,0 +1,12 @@
+{
+  "strategic_plans": {
+    "not_found": "Strategic plan not found.",
+    "control_not_found": "The specified control does not exist in the catalogue.",
+    "approval_not_found": "Approval request not found.",
+    "no_candidates": "No candidate initiatives were provided.",
+    "must_be_approved": "The plan must be approved by management before it can be activated.",
+    "already_resolved": "This approval has already been resolved.",
+    "expired": "The approval request has expired.",
+    "signature_needs_approver": "Signature mode requires at least one approver with an email address."
+  }
+}

@@ -1071,10 +1071,109 @@ class TaskOut(ORMBase):
 
 # ---------- PLAN DIRECTOR (v6.3.0) ----------
 
+# Plan Director (es) / Security Strategic Plan (en) — v6.4.0
+
+class StrategicPlanIn(BaseModel):
+    name: str
+    description: Optional[str] = None
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+    framework_code: str = "iso27001"
+    scope_statement: Optional[str] = None
+    strategy_notes: Optional[str] = None
+    investment_capacity: Optional[float] = None
+
+
+class StrategicPlanUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    period_start: Optional[datetime] = None
+    period_end: Optional[datetime] = None
+    framework_code: Optional[str] = None
+    scope_statement: Optional[str] = None
+    strategy_notes: Optional[str] = None
+    investment_capacity: Optional[float] = None
+    # `status` no se acepta aqui: solo lo mueve el flujo de aprobacion (6.1.3f)
+
+
+class StrategicPlanOut(ORMBase):
+    id: int
+    code: str
+    name: str
+    description: Optional[str]
+    period_start: Optional[datetime]
+    period_end: Optional[datetime]
+    framework_code: Optional[str]
+    status: str
+    version: int
+    scope_statement: Optional[str]
+    strategy_notes: Optional[str]
+    investment_capacity: Optional[float]
+    baseline_sealed_at: Optional[datetime]
+    approved_at: Optional[datetime]
+    approved_by_id: Optional[int]
+    approved_by_name: Optional[str] = None
+    programs_count: int = 0
+    initiatives_count: int = 0
+    targets_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class MaturityTargetIn(BaseModel):
+    """Objetivo de madurez sobre un control ISO 27002 o un requisito de framework."""
+    control_id: Optional[int] = None
+    framework_code: Optional[str] = None
+    requirement_id: Optional[str] = None
+    target_maturity: int = Field(ge=0, le=5)
+    rationale: Optional[str] = None
+    mandatory_by: Optional[Literal["legal", "contractual", "riesgo", "estrategia"]] = None
+
+    @model_validator(mode="after")
+    def _require_target(self):
+        if self.control_id is None and not (self.framework_code and self.requirement_id):
+            raise ValueError("control_id, o framework_code + requirement_id, es obligatorio")
+        return self
+
+
+class MaturityTargetsIn(BaseModel):
+    targets: list[MaturityTargetIn]
+    replace: bool = False   # True = sustituye el perfil objetivo completo
+
+
+class PlanApprovalIn(BaseModel):
+    """Solicitud de aprobacion. En modo signature se exige al menos un aprobador."""
+    mode: Optional[Literal["signature", "internal_seal"]] = None   # None = usa el de la org
+    approvers: list[dict] = []          # [{email, name, order_index}]
+    notes: Optional[str] = None
+
+
+class PlanApprovalDecisionIn(BaseModel):
+    decision: Literal["approved", "rejected"]
+    notes: Optional[str] = None
+
+
+class PlanApprovalOut(ORMBase):
+    id: int
+    plan_id: int
+    plan_version: int
+    mode: str
+    status: str
+    approver_email: Optional[str]
+    approver_name: Optional[str]
+    requested_at: Optional[datetime]
+    responded_at: Optional[datetime]
+    response_notes: Optional[str]
+    expires_at: Optional[datetime]
+    order_index: int
+
+
 class ProgramIn(BaseModel):
     name: str
     description: Optional[str] = None
     area: Optional[str] = None
+    env: Optional[Literal["IT", "OT", "IoT", "AI"]] = None
+    plan_id: Optional[int] = None
     responsible_id: Optional[int] = None
     budget: Optional[float] = None
     budget_approved: Optional[float] = None
@@ -1084,6 +1183,8 @@ class ProgramUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     area: Optional[str] = None
+    env: Optional[Literal["IT", "OT", "IoT", "AI"]] = None
+    plan_id: Optional[int] = None
     responsible_id: Optional[int] = None
     budget: Optional[float] = None
     budget_approved: Optional[float] = None
@@ -1095,6 +1196,8 @@ class ProgramOut(ORMBase):
     name: str
     description: Optional[str]
     area: Optional[str]
+    env: Optional[str] = None
+    plan_id: Optional[int] = None
     responsible_id: Optional[int]
     responsible_name: Optional[str] = None
     budget: Optional[float]
@@ -1113,6 +1216,9 @@ class ObjectiveIn(BaseModel):
     collaborator: Optional[str] = None
     target_date: Optional[datetime] = None
     progress: int = Field(default=0, ge=0, le=100)
+    scope: Literal["global", "regional"] = "global"
+    business_units: Optional[list[str]] = None
+    comments: Optional[str] = None
 
 
 class ObjectiveUpdate(BaseModel):
@@ -1123,6 +1229,9 @@ class ObjectiveUpdate(BaseModel):
     collaborator: Optional[str] = None
     target_date: Optional[datetime] = None
     progress: Optional[int] = Field(default=None, ge=0, le=100)
+    scope: Optional[Literal["global", "regional"]] = None
+    business_units: Optional[list[str]] = None
+    comments: Optional[str] = None
 
 
 class ObjectiveOut(ORMBase):
@@ -1136,13 +1245,32 @@ class ObjectiveOut(ORMBase):
     collaborator: Optional[str]
     target_date: Optional[datetime]
     progress: int
+    scope: Optional[str] = None
+    business_units: Optional[list[str]] = None
+    attachments: Optional[list[dict]] = None
+    comments: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
 
 class ControlTargetIn(BaseModel):
-    implementation_id: int
+    """Control objetivo de una iniciativa.
+
+    Se acepta implementation_id (implementacion ya existente en la org) o
+    control_id (control del catalogo ISO 27002). Con control_id, si la org aun
+    no tiene implementacion de ese control se crea automaticamente en estado
+    'no implementado' — el Plan Director no puede depender de que alguien haya
+    dado de alta antes las implementaciones a mano.
+    """
+    implementation_id: Optional[int] = None
+    control_id: Optional[int] = None
     target_maturity: int = Field(ge=0, le=5)
+
+    @model_validator(mode="after")
+    def _require_one(self):
+        if self.implementation_id is None and self.control_id is None:
+            raise ValueError("implementation_id o control_id es obligatorio")
+        return self
 
 
 class ControlTargetOut(ORMBase):
@@ -1155,6 +1283,9 @@ class ControlTargetOut(ORMBase):
     target_maturity: int
     achieved_maturity: Optional[int]
     current_maturity: Optional[int] = None
+    # Evidencia que respalda la madurez declarada del control
+    evidence: list[dict] = []
+    evidence_count: int = 0
     created_at: datetime
 
 
@@ -1207,6 +1338,15 @@ class InitiativeIn(BaseModel):
     owner_id: Optional[int] = None
     scope: Literal["global", "regional"] = "global"
     business_units: Optional[list[str]] = None
+    env: Optional[Literal["IT", "OT", "IoT", "AI"]] = None
+    origin: Optional[Literal["legal", "tecnico", "riesgo", "estrategia"]] = None
+    action_type: Optional[Literal["tecnica", "organizativa", "normativa"]] = None
+    effort_human: Optional[float] = None
+    spent: Optional[float] = None
+    last_achievements: Optional[str] = None
+    next_steps: Optional[str] = None
+    blockers: Optional[str] = None
+    blocked_by: Optional[list[int]] = None
     start_date: Optional[datetime] = None
     target_date: Optional[datetime] = None
     budget: Optional[float] = None
@@ -1224,6 +1364,16 @@ class InitiativeUpdate(BaseModel):
     owner_id: Optional[int] = None
     scope: Optional[Literal["global", "regional"]] = None
     business_units: Optional[list[str]] = None
+    env: Optional[Literal["IT", "OT", "IoT", "AI"]] = None
+    origin: Optional[Literal["legal", "tecnico", "riesgo", "estrategia"]] = None
+    action_type: Optional[Literal["tecnica", "organizativa", "normativa"]] = None
+    effort_human: Optional[float] = None
+    spent: Optional[float] = None
+    last_achievements: Optional[str] = None
+    next_steps: Optional[str] = None
+    blockers: Optional[str] = None
+    blocked_by: Optional[list[int]] = None
+    priority_override_reason: Optional[str] = None
     start_date: Optional[datetime] = None
     target_date: Optional[datetime] = None
     budget: Optional[float] = None
@@ -1247,12 +1397,21 @@ class InitiativeOut(ORMBase):
     owner_name: Optional[str] = None
     scope: str
     business_units: Optional[list[str]]
+    env: Optional[str] = None
+    origin: Optional[str] = None
+    action_type: Optional[str] = None
+    effort_human: Optional[float] = None
+    last_achievements: Optional[str] = None
+    next_steps: Optional[str] = None
+    blockers: Optional[str] = None
+    blocked_by: Optional[list[int]] = None
     start_date: Optional[datetime]
     target_date: Optional[datetime]
     completed_at: Optional[datetime]
     progress: int
     budget: Optional[float]
     budget_approved: Optional[float]
+    spent: Optional[float] = None
     expected_risk_reduction: Optional[str]
     source: str
     ai_generated: bool
@@ -1263,6 +1422,14 @@ class InitiativeOut(ORMBase):
     tasks_total: int = 0
     tasks_done: int = 0
     projected_reduction_points: int = 0
+    # Priorizacion determinista (INCIBE fase 4) — calculada, no tecleada
+    priority_suggested: Optional[str] = None
+    priority_score: Optional[float] = None
+    priority_factors: Optional[dict] = None
+    quick_win: bool = False
+    cost_per_point: Optional[float] = None
+    horizon: Optional[str] = None
+    budget_health: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

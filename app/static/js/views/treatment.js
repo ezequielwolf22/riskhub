@@ -93,6 +93,7 @@ const ViewTreatment = (() => {
       card(k.overdue_plans, t('treatment.kpi_overdue'), k.overdue_plans > 0 ? 'var(--risk-high)' : null, 'overdue'),
       card(k.avg_progress + '%', t('treatment.kpi_progress'), 'var(--brand-purple)'),
       card(k.pending_acceptance, t('treatment.kpi_pending_acceptance'), k.pending_acceptance > 0 ? 'var(--brand-orange)' : null),
+      card(k.treated_without_evidence, `${t('treatment.kpi_no_evidence')} <small style="display:block;font-weight:400;">${t('treatment.kpi_no_evidence_hint')}</small>`, k.treated_without_evidence > 0 ? 'var(--risk-medium)' : null),
     ].join('');
 
     const overdueCard = wrap.querySelector('[data-kpi-filter="overdue"]');
@@ -203,6 +204,15 @@ const ViewTreatment = (() => {
     wrap.querySelectorAll('[data-action="open-risk"]').forEach(btn => {
       btn.onclick = (e) => { e.stopPropagation(); location.hash = '/risk-hub/risks'; };
     });
+    wrap.querySelectorAll('[data-action="request-acceptance"]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); _openRequestAcceptance(parseInt(btn.dataset.riskId)); };
+    });
+    wrap.querySelectorAll('[data-action="approve-acceptance"]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); _openApproveAcceptance(parseInt(btn.dataset.riskId)); };
+    });
+    wrap.querySelectorAll('[data-action="reject-acceptance"]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); _openRejectAcceptance(parseInt(btn.dataset.riskId)); };
+    });
   }
 
   function _findItem(riskId) {
@@ -239,16 +249,48 @@ const ViewTreatment = (() => {
       </tr>`;
 
     if (expanded) {
+      const controlsHtml = (it.controls || []).length
+        ? `<table class="data-table" style="width:100%;font-size:12px;margin-bottom:10px;">
+             <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th><th>${t('plandirector.current_maturity')}</th><th>${t('treatment.evidence_col')}</th></tr></thead>
+             <tbody>${it.controls.map(c => `
+               <tr>
+                 <td>${UI.esc(c.code || '')}</td>
+                 <td>${UI.esc(c.name || '')}</td>
+                 <td>${c.maturity}/5</td>
+                 <td>${c.evidence_count ? c.evidence_count : `<span style="color:var(--risk-medium);">0</span>`}</td>
+               </tr>`).join('')}</tbody>
+           </table>`
+        : `<p class="text-muted" style="font-size:12px;">${t('treatment.no_controls')}</p>`;
+
+      const evidenceHtml = (it.evidence || []).length
+        ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${it.evidence.map(ev => `
+             <span class="badge" title="${UI.esc(ev.title)}" style="background:${ev.expired ? 'var(--risk-high)' : 'var(--bg-3)'};color:${ev.expired ? '#fff' : 'var(--text)'};">
+               ${UI.esc(ev.code)}${ev.quality_level ? ` · ${UI.esc(ev.quality_level)}` : ''}${ev.expired ? ' · ' + t('treatment.evidence_expired') : ''}
+             </span>`).join('')}</div>`
+        : `<p style="font-size:12px;color:var(--risk-medium);">${t('treatment.no_evidence')}</p>`;
+
       rows += `
         <tr>
           <td colspan="8" style="background:var(--bg-2);padding:14px;">
-            <div style="margin-bottom:8px;font-size:12px;color:var(--text-muted);">
-              ${it.treatment_plan_excerpt ? UI.esc(it.treatment_plan_excerpt) : t('common.no_data')}
+            <h5 style="font-size:12px;margin:0 0 4px;">${t('risks.treatment_plan')}</h5>
+            <div style="margin-bottom:10px;font-size:12px;white-space:pre-wrap;">
+              ${it.treatment_plan ? UI.esc(it.treatment_plan) : t('common.no_data')}
             </div>
+            ${it.acceptance && it.acceptance.justification ? `
+              <h5 style="font-size:12px;margin:0 0 4px;">${t('treatment.acceptance_justification')}</h5>
+              <div style="margin-bottom:10px;font-size:12px;">${UI.esc(it.acceptance.justification)}</div>` : ''}
+            <h5 style="font-size:12px;margin:0 0 4px;">${t('treatment.controls_title')}</h5>
+            ${controlsHtml}
+            <h5 style="font-size:12px;margin:0 0 4px;">${t('treatment.evidence_title')}</h5>
+            <div style="margin-bottom:10px;">${evidenceHtml}</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button class="btn btn-sm" data-action="new-task" data-risk-id="${it.id}">+ ${t('treatment.new_task')}</button>
               <button class="btn btn-sm" data-action="edit-treatment" data-risk-id="${it.id}">${t('treatment.edit_treatment')}</button>
               <button class="btn btn-sm" data-action="ai-plan" data-risk-id="${it.id}">${t('treatment.generate_ai_plan')}</button>
+              ${it.acceptance && it.acceptance.pending
+                ? `<button class="btn btn-sm btn-primary" data-action="approve-acceptance" data-risk-id="${it.id}">${t('treatment.approve_acceptance')}</button>
+                   <button class="btn btn-sm" data-action="reject-acceptance" data-risk-id="${it.id}">${t('treatment.reject_acceptance')}</button>`
+                : `<button class="btn btn-sm" data-action="request-acceptance" data-risk-id="${it.id}">${t('treatment.request_acceptance')}</button>`}
               <button class="btn btn-sm btn-ghost" data-action="open-risk" data-risk-id="${it.id}">${t('treatment.open_risk')}</button>
             </div>
           </td>
@@ -301,16 +343,19 @@ const ViewTreatment = (() => {
       ['avoidance', t('risks.treatment_decision.avoid')],
       ['sharing', t('risks.treatment_decision.transfer')],
     ];
+    // El formulario se abre SIEMPRE con los valores actuales del riesgo: si se
+    // abre vacio, guardar borra el plan y la fecha que ya existian.
+    const dueValue = item.treatment_due_date ? item.treatment_due_date.slice(0, 10) : '';
     UI.modal(t('treatment.edit_treatment') + ' — ' + item.code, `
       <div class="form-grid">
         <div>
           <label>${t('risks.treatment')}</label>
           <select id="et-option" class="input">
-            ${options.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+            ${options.map(([v, l]) => `<option value="${v}" ${v === item.treatment_option ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div><label>${t('common.due_date')}</label><input type="date" id="et-due" class="input"></div>
-        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="et-plan" class="input" rows="4"></textarea></div>
+        <div><label>${t('common.due_date')}</label><input type="date" id="et-due" class="input" value="${dueValue}"></div>
+        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="et-plan" class="input" rows="8">${UI.esc(item.treatment_plan || '')}</textarea></div>
       </div>
     `, {
       actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
@@ -324,6 +369,110 @@ const ViewTreatment = (() => {
           treatment_due_date: document.getElementById('et-due').value || null,
           treatment_plan: document.getElementById('et-plan').value.trim(),
         });
+        UI.toast(t('common.success'), 'success');
+        UI.closeModal();
+        await _load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  /* Aceptacion formal del riesgo residual — ISO/IEC 27001 cl. 6.1.3f.
+     La norma exige que el propietario del riesgo acepte por escrito el residual;
+     la No Conformidad Mayor tipica es el riesgo alto dado por aceptado sin que
+     conste quien lo aprobo. Estos endpoints ya existian sin estar expuestos. */
+
+  function _openRequestAcceptance(riskId) {
+    const item = _findItem(riskId);
+    if (!item) return;
+    UI.modal(`${t('treatment.request_acceptance')} — ${item.code}`, `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">
+        ${t('treatment.acceptance_hint')}
+      </div>
+      <div class="form-grid">
+        <div class="span2">
+          <label>${t('treatment.acceptance_justification')} *</label>
+          <textarea id="ra-justification" class="input" rows="4"
+                    placeholder="${t('treatment.acceptance_justification_ph')}">${UI.esc((item.acceptance && item.acceptance.justification) || '')}</textarea>
+        </div>
+        <div>
+          <label>${t('treatment.acceptance_review_date')}</label>
+          <input type="date" id="ra-review" class="input"
+                 value="${item.acceptance && item.acceptance.review_date ? item.acceptance.review_date.slice(0, 10) : ''}">
+        </div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.send')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const justification = document.getElementById('ra-justification').value.trim();
+      if (!justification) { UI.toast(t('common.required'), 'error'); return; }
+      try {
+        await Api.risks.requestAcceptance(riskId, {
+          justification,
+          review_date: document.getElementById('ra-review').value || null,
+        });
+        UI.toast(t('common.success'), 'success');
+        UI.closeModal();
+        await _load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  function _openApproveAcceptance(riskId) {
+    const item = _findItem(riskId);
+    if (!item) return;
+    UI.modal(`${t('treatment.approve_acceptance')} — ${item.code}`, `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">
+        ${t('treatment.approve_acceptance_hint')}
+      </div>
+      <p style="font-size:13px;"><strong>${t('treatment.th_residual')}:</strong> ${item.residual_level}</p>
+      ${item.acceptance && item.acceptance.justification
+        ? `<p style="font-size:12px;"><em>${UI.esc(item.acceptance.justification)}</em></p>` : ''}
+      <div class="form-grid">
+        <div><label>${t('treatment.acceptance_review_date')}</label>
+          <input type="date" id="aa-review" class="input"
+                 value="${item.acceptance && item.acceptance.review_date ? item.acceptance.review_date.slice(0, 10) : ''}"></div>
+        <div class="span2"><label>${t('common.notes')}</label>
+          <textarea id="aa-notes" class="input" rows="2"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('treatment.approve_acceptance')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      try {
+        await Api.risks.accept(riskId, {
+          review_date: document.getElementById('aa-review').value || null,
+          notes: document.getElementById('aa-notes').value.trim() || null,
+        });
+        UI.toast(t('common.success'), 'success');
+        UI.closeModal();
+        await _load();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  function _openRejectAcceptance(riskId) {
+    const item = _findItem(riskId);
+    if (!item) return;
+    UI.modal(`${t('treatment.reject_acceptance')} — ${item.code}`, `
+      <div class="form-grid">
+        <div class="span2"><label>${t('treatment.reject_reason')} *</label>
+          <textarea id="rj-reason" class="input" rows="3"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('treatment.reject_acceptance')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const reason = document.getElementById('rj-reason').value.trim();
+      if (!reason) { UI.toast(t('common.required'), 'error'); return; }
+      try {
+        await Api.risks.rejectAcceptance(riskId, { reason });
         UI.toast(t('common.success'), 'success');
         UI.closeModal();
         await _load();
@@ -357,8 +506,13 @@ const ViewTreatment = (() => {
             ${Object.entries(optionLabels).map(([v, l]) => `<option value="${v}" ${v === draft.treatment_option ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </div>
-        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="ap-plan" class="input" rows="5">${UI.esc(draft.plan || '')}</textarea></div>
+        <div class="span2"><label>${t('risks.treatment_plan')}</label><textarea id="ap-plan" class="input" rows="6">${UI.esc(draft.plan || '')}</textarea></div>
       </div>
+      ${item.treatment_plan ? `
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">${t('treatment.previous_plan')}</summary>
+          <pre style="white-space:pre-wrap;font-size:12px;background:var(--bg-2);padding:8px;border-radius:6px;margin-top:6px;">${UI.esc(item.treatment_plan)}</pre>
+        </details>` : ''}
       <h4 style="font-size:12px;margin:12px 0 6px;">${t('treatment.new_task')}</h4>
       <div>
         ${draft.tasks.map((tk, i) => `

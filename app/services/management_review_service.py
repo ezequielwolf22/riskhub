@@ -53,8 +53,67 @@ def get_kpis(db: Session, org_id: int) -> dict:
         "open_incidents": sum(1 for i in incidents if i.status.value != "closed"),
         "closed_incidents_month": closed_incidents_month,
         "policies_overdue_review": overdue_policies,
+        # Estado del Plan Director: ISO 27001 cl. 9.3.2 exige revisar el avance
+        # de las acciones decididas, y esas acciones viven en el plan.
+        "strategic_plan": get_strategic_plan_status(db, org_id),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def get_strategic_plan_status(db: Session, org_id: int) -> dict:
+    """Resumen del Plan Director para la revision por la direccion (9.3.2).
+
+    Sin plan aprobado se dice explicitamente: que no exista es en si mismo una
+    entrada relevante para el comite.
+    """
+    from app.models import StrategicInitiative, StrategicPlan, StrategicProgram
+
+    plan = db.query(StrategicPlan).filter(
+        StrategicPlan.organization_id == org_id,
+        StrategicPlan.status.in_(["approved", "active"]),
+    ).order_by(StrategicPlan.approved_at.desc()).first()
+
+    initiatives = db.query(StrategicInitiative).filter(
+        StrategicInitiative.organization_id == org_id,
+        StrategicInitiative.status.in_(["approved", "in_progress"]),
+    ).all()
+
+    projected = achieved = 0
+    for ini in initiatives:
+        for link in ini.risk_links:
+            if link.baseline_residual_level is None or link.projected_residual_level is None:
+                continue
+            projected += max(0, link.baseline_residual_level - link.projected_residual_level)
+            current = link.risk.residual_level if link.risk else link.baseline_residual_level
+            achieved += max(0, link.baseline_residual_level - (current or 0))
+
+    out = {
+        "has_approved_plan": plan is not None,
+        "plan_code": plan.code if plan else None,
+        "plan_name": plan.name if plan else None,
+        "plan_status": plan.status if plan else None,
+        "approved_at": plan.approved_at.isoformat() if plan and plan.approved_at else None,
+        "initiatives_active": len(initiatives),
+        "initiatives_at_risk": sum(1 for i in initiatives if i.health in ("at_risk", "blocked")),
+        "avg_progress": (round(sum(i.progress or 0 for i in initiatives) / len(initiatives))
+                         if initiatives else 0),
+        "projected_reduction_points": projected,
+        "achieved_reduction_points": achieved,
+    }
+    if plan:
+        try:
+            from app.services.plan_approval_service import approval_integrity
+            from app.services.strategic_profile_service import plan_progress
+            out.update({
+                "maturity_progress": plan_progress(db, plan),
+                "approval": approval_integrity(db, plan),
+            })
+        except Exception:
+            logger.exception("management_review: fallo el resumen del plan org=%s", org_id)
+    programs = db.query(StrategicProgram).filter(
+        StrategicProgram.organization_id == org_id).count()
+    out["programs"] = programs
+    return out
 
 
 def get_top_risks(db: Session, org_id: int, limit: int = 10) -> list:

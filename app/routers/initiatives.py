@@ -28,7 +28,8 @@ from app.schemas import (
     RiskLinkIn, RiskLinkOut, TaskOut,
 )
 from app.security import (
-    check_org_access, filter_by_org, get_current_user, require_analyst, require_role,
+    check_org_access, filter_by_org, get_current_user, require_analyst,
+    require_role, resolve_org_id,
 )
 from app.services.audit_service import log_action
 
@@ -87,7 +88,7 @@ def _program_out(db: Session, p: StrategicProgram) -> dict:
     }
 
 
-def _initiative_out(db: Session, ini: StrategicInitiative) -> dict:
+def _initiative_out(db: Session, ini: StrategicInitiative, priorities: dict | None = None) -> dict:
     risks_count = len(ini.risk_links)
     objectives_count = len(ini.objectives)
     tasks = db.query(TreatmentTask).filter(TreatmentTask.initiative_id == ini.id).all()
@@ -97,7 +98,7 @@ def _initiative_out(db: Session, ini: StrategicInitiative) -> dict:
         for link in ini.risk_links
         if link.baseline_residual_level is not None and link.projected_residual_level is not None
     )
-    return {
+    out = {
         "id": ini.id, "code": ini.code, "title": ini.title, "description": ini.description,
         "program_id": ini.program_id, "program_name": ini.program.name if ini.program else None,
         "status": ini.status, "health": ini.health, "health_reasons": ini.health_reasons,
@@ -113,12 +114,25 @@ def _initiative_out(db: Session, ini: StrategicInitiative) -> dict:
         "risks_count": risks_count, "objectives_count": objectives_count,
         "tasks_total": len(tasks), "tasks_done": tasks_done,
         "projected_reduction_points": max(0, projected_points),
+        # Taxonomia INCIBE + reporte ejecutivo
+        "env": ini.env, "origin": ini.origin, "action_type": ini.action_type,
+        "effort_human": ini.effort_human, "spent": ini.spent,
+        "last_achievements": ini.last_achievements, "next_steps": ini.next_steps,
+        "blockers": ini.blockers, "blocked_by": ini.blocked_by,
         "created_at": ini.created_at, "updated_at": ini.updated_at,
     }
+    # Priorizacion determinista: si no se pasa la cartera ya calculada, se
+    # calcula para esta sola (sin quick wins: no hay con quien compararla).
+    if priorities is None:
+        from app.services.initiative_projection_service import compute_portfolio_priorities
+        priorities = compute_portfolio_priorities([ini])
+    out.update(priorities.get(ini.id, {}))
+    return out
 
 
-def _control_target_out(ct: InitiativeControlTarget) -> dict:
+def _control_target_out(ct: InitiativeControlTarget, evidence_by_impl: dict | None = None) -> dict:
     ctrl = ct.implementation.control if ct.implementation else None
+    evidence = (evidence_by_impl or {}).get(ct.implementation_id, [])
     return {
         "id": ct.id, "initiative_id": ct.initiative_id,
         "implementation_id": ct.implementation_id,
@@ -127,8 +141,35 @@ def _control_target_out(ct: InitiativeControlTarget) -> dict:
         "baseline_maturity": ct.baseline_maturity, "target_maturity": ct.target_maturity,
         "achieved_maturity": ct.achieved_maturity,
         "current_maturity": ct.implementation.maturity if ct.implementation else None,
+        # Evidencia que respalda la madurez declarada del control
+        "evidence": evidence, "evidence_count": len(evidence),
         "created_at": ct.created_at,
     }
+
+
+def _evidence_for_impls(db: Session, org_id, impl_ids: list[int]) -> dict:
+    """Evidencia vigente por implementacion de control. Sin evidencia, una
+    madurez declarada es una afirmacion sin respaldo: el detalle lo muestra."""
+    from app.models import Evidence
+
+    if not impl_ids:
+        return {}
+    now = datetime.now(timezone.utc)
+    rows = db.query(Evidence).filter(
+        Evidence.organization_id == org_id,
+        Evidence.is_current.is_(True),
+        Evidence.control_implementation_id.in_(impl_ids),
+    ).all()
+    out: dict[int, list] = {}
+    for ev in rows:
+        out.setdefault(ev.control_implementation_id, []).append({
+            "id": ev.id, "code": ev.code, "title": ev.title,
+            "evidence_type": ev.evidence_type.value if hasattr(ev.evidence_type, "value") else ev.evidence_type,
+            "expires_at": ev.expires_at.isoformat() if ev.expires_at else None,
+            "expired": bool(ev.expires_at and ev.expires_at.replace(tzinfo=timezone.utc) < now),
+            "quality_level": (ev.ai_review or {}).get("quality_level") if isinstance(ev.ai_review, dict) else None,
+        })
+    return out
 
 
 def _risk_link_out(link: InitiativeRiskLink) -> dict:
@@ -168,6 +209,43 @@ def _get_initiative_or_404(db: Session, initiative_id: int, current_user: User, 
     return ini
 
 
+def resolve_implementation(db: Session, org_id: int, target, lang: str):
+    """Devuelve la ControlImplementation de un ControlTargetIn.
+
+    Si viene control_id y la org no tiene todavia implementacion de ese control
+    del catalogo, la crea en estado 'no implementado' (madurez 0). Asi el
+    wizard puede ofrecer los 93 controles ISO 27002 sin exigir que el cliente
+    los haya dado de alta uno a uno antes de poder planificar.
+    """
+    from app.models import Control, ControlImplementation, ControlStatus
+
+    impl_id = getattr(target, "implementation_id", None)
+    if impl_id is not None:
+        impl = db.get(ControlImplementation, impl_id)
+        if not impl or impl.organization_id != org_id:
+            raise HTTPException(404, _t("initiatives.control_not_found", lang))
+        return impl
+
+    control = db.get(Control, getattr(target, "control_id", None))
+    if not control:
+        raise HTTPException(404, _t("initiatives.control_not_found", lang))
+    impl = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == org_id,
+        ControlImplementation.control_id == control.id,
+    ).order_by(ControlImplementation.id.asc()).first()
+    if impl:
+        return impl
+    impl = ControlImplementation(
+        organization_id=org_id, control_id=control.id,
+        name=control.name, status=ControlStatus.NOT_IMPLEMENTED, maturity=0,
+        inclusion_reason="risk",
+        notes=_t("initiatives.impl_autocreated", lang),
+    )
+    db.add(impl)
+    db.flush()
+    return impl
+
+
 def _validate_program_org(db: Session, program_id, current_user: User, lang: str) -> None:
     """Un program_id de otra organizacion expondria su nombre via program_name."""
     if program_id is None:
@@ -198,7 +276,7 @@ def list_programs(db: Session = Depends(get_db), current_user: User = Depends(ge
 @router.post("/programs", response_model=ProgramOut)
 def create_program(body: ProgramIn, db: Session = Depends(get_db),
                    current_user: User = Depends(require_analyst)):
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     p = StrategicProgram(
         code=_next_code(db, StrategicProgram, "PRG"), organization_id=org_id,
         name=body.name, description=body.description, area=body.area,
@@ -243,12 +321,48 @@ def delete_program(program_id: int, request: Request, db: Session = Depends(get_
     db.commit()
 
 
+# ---------- Catalogo de controles para el wizard (ANTES de /{id}) ----------
+
+@router.get("/control-catalog")
+def control_catalog(db: Session = Depends(get_db),
+                    current_user: User = Depends(get_current_user)):
+    """Catalogo ISO 27002 completo con la implementacion de la org si existe.
+
+    El wizard necesita SIEMPRE algo que mostrar: una org recien creada tiene
+    los 93 controles del catalogo pero cero implementaciones. Se devuelven los
+    controles del catalogo enriquecidos con madurez/estado real cuando ya hay
+    implementacion, y implementation_id=None cuando no la hay (se creara al
+    guardar el control objetivo).
+    """
+    from app.models import Control, ControlImplementation
+
+    org_id = resolve_org_id(current_user)
+    impls = db.query(ControlImplementation).filter(
+        ControlImplementation.organization_id == org_id
+    ).order_by(ControlImplementation.id.asc()).all()
+    impl_by_control: dict[int, ControlImplementation] = {}
+    for impl in impls:
+        impl_by_control.setdefault(impl.control_id, impl)
+
+    out = []
+    for c in db.query(Control).order_by(Control.code.asc()).all():
+        impl = impl_by_control.get(c.id)
+        out.append({
+            "control_id": c.id, "code": c.code, "name": c.name, "theme": c.theme,
+            "implementation_id": impl.id if impl else None,
+            "maturity": impl.maturity if impl else 0,
+            "status": (impl.status.value if hasattr(impl.status, "value") else impl.status) if impl else None,
+            "implemented": impl is not None,
+        })
+    return out
+
+
 # ---------- Burndown y Stats (declarar ANTES de /{id}) ----------
 
 @router.get("/burndown")
 def initiatives_burndown(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     from app.services.initiative_projection_service import compute_burndown
-    org_id = getattr(current_user, "_active_org_id", None) or current_user.organization_id
+    org_id = resolve_org_id(current_user)
     return compute_burndown(db, org_id)
 
 
@@ -279,7 +393,7 @@ def initiatives_stats(db: Session = Depends(get_db), current_user: User = Depend
     risks_covered = len({link.risk_id for link in active_links})
 
     ctx = db.query(RiskContext).filter(
-        RiskContext.organization_id == current_user.organization_id
+        RiskContext.organization_id == resolve_org_id(current_user)
     ).first()
     appetite = ctx.risk_appetite if ctx and ctx.risk_appetite is not None else 3
 
@@ -337,6 +451,175 @@ def initiatives_stats(db: Session = Depends(get_db), current_user: User = Depend
     }
 
 
+# ---------- Cartera priorizada (INCIBE fase 4, ANTES de /{id}) ----------
+
+@router.get("/portfolio")
+def initiatives_portfolio(db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """Cartera priorizada: ranking por eficiencia, quick wins y reparto por
+    horizonte/origen/tipo/dominio (INCIBE fase 4 — clasificacion y priorizacion).
+
+    Todo calculado: la reduccion la proyecta el motor determinista y los
+    umbrales de "quick win" son percentiles de la propia cartera.
+    """
+    from app.services.initiative_projection_service import compute_portfolio_priorities
+
+    initiatives = filter_by_org(
+        db.query(StrategicInitiative), StrategicInitiative, current_user
+    ).options(
+        joinedload(StrategicInitiative.risk_links), joinedload(StrategicInitiative.program),
+        joinedload(StrategicInitiative.owner),
+    ).all()
+    priorities = compute_portfolio_priorities(initiatives)
+
+    rows = []
+    for ini in initiatives:
+        p = priorities.get(ini.id, {})
+        rows.append({
+            "id": ini.id, "code": ini.code, "title": ini.title,
+            "status": ini.status, "health": ini.health,
+            "program_name": ini.program.name if ini.program else None,
+            "owner_name": ini.owner.full_name if ini.owner else None,
+            "priority": ini.priority, "priority_suggested": p.get("priority_suggested"),
+            "priority_score": p.get("priority_score"),
+            "quick_win": p.get("quick_win", False),
+            "cost_per_point": p.get("cost_per_point"),
+            "horizon": p.get("horizon"), "origin": ini.origin,
+            "action_type": ini.action_type, "env": ini.env,
+            "nist_function": ini.nist_function,
+            "projected_reduction_points": p.get("priority_factors", {}).get("reduction_points", 0),
+            "budget": ini.budget, "budget_approved": ini.budget_approved,
+            "spent": ini.spent, "budget_health": p.get("budget_health"),
+            "target_date": ini.target_date,
+            "business_units": ini.business_units,
+            # Divergencia entre lo que sugiere el motor y lo que decidio una
+            # persona: es informacion de gobierno, no un error.
+            "priority_overridden": bool(
+                p.get("priority_suggested") and ini.priority != p.get("priority_suggested")
+            ),
+        })
+    # Ordena por EFICIENCIA (puntos de riesgo por unidad de esfuerzo) y, a
+    # igualdad, por reduccion absoluta. El quick win es una etiqueta que se
+    # muestra, no un criterio que adelante a una iniciativa mas eficiente.
+    rows.sort(key=lambda r: (
+        -(r["priority_score"] or 0), -r["projected_reduction_points"], r["code"],
+    ))
+
+    def _tally(field):
+        counts: dict[str, int] = {}
+        for r in rows:
+            key = r.get(field) or "sin_definir"
+            counts[key] = counts.get(key, 0) + 1
+        return counts
+
+    active = [r for r in rows if r["status"] in ("approved", "in_progress")]
+
+    return {
+        "initiatives": rows,
+        "quick_wins": [r["code"] for r in rows if r["quick_win"]],
+        "by_horizon": _tally("horizon"),
+        "by_origin": _tally("origin"),
+        "by_action_type": _tally("action_type"),
+        "by_env": _tally("env"),
+        "by_nist_function": _tally("nist_function"),
+        "budget": {
+            "requested": sum(r["budget"] or 0 for r in rows),
+            "approved": sum(r["budget_approved"] or 0 for r in rows),
+            "spent": sum(r["spent"] or 0 for r in rows),
+            "requested_active": sum(r["budget"] or 0 for r in active),
+            "underfunded": [
+                r["code"] for r in rows
+                if (r.get("budget_health") or {}).get("underfunded")
+            ],
+            "largest_gaps": sorted(
+                [
+                    {"code": r["code"], "title": r["title"],
+                     "gap": (r.get("budget_health") or {}).get("funding_gap", 0)}
+                    for r in rows if (r.get("budget_health") or {}).get("funding_gap")
+                ],
+                key=lambda x: -x["gap"],
+            )[:10],
+        },
+        "priority_overrides": [r["code"] for r in rows if r["priority_overridden"]],
+    }
+
+
+# ---------- Roadmap: Gantt y camino critico (ANTES de /{id}) ----------
+
+@router.get("/roadmap")
+def initiatives_roadmap(db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """Cronograma del plan: barras por iniciativa, dependencias y camino critico.
+
+    Un plan director sin calendario no es un plan: INCIBE exige clasificar los
+    proyectos en corto, medio y largo plazo.
+    """
+    from app.services.initiative_projection_service import (
+        compute_critical_path, compute_portfolio_priorities, initiative_horizon,
+    )
+
+    initiatives = filter_by_org(
+        db.query(StrategicInitiative), StrategicInitiative, current_user
+    ).options(
+        joinedload(StrategicInitiative.program), joinedload(StrategicInitiative.owner),
+        joinedload(StrategicInitiative.risk_links),
+    ).all()
+    priorities = compute_portfolio_priorities(initiatives)
+    critical = compute_critical_path(initiatives)
+    critical_ids = {p["id"] for p in critical["path"]}
+
+    bars = []
+    for ini in initiatives:
+        if ini.status == "cancelled":
+            continue
+        bars.append({
+            "id": ini.id, "code": ini.code, "title": ini.title,
+            "program_id": ini.program_id,
+            "program_name": ini.program.name if ini.program else None,
+            "area": ini.program.area if ini.program else None,
+            "env": ini.env, "status": ini.status, "health": ini.health,
+            "health_reasons": ini.health_reasons,
+            "priority": ini.priority, "progress": ini.progress or 0,
+            "owner_name": ini.owner.full_name if ini.owner else None,
+            "start_date": ini.start_date, "target_date": ini.target_date,
+            "completed_at": ini.completed_at,
+            "horizon": initiative_horizon(ini),
+            "blocked_by": ini.blocked_by or [],
+            "on_critical_path": ini.id in critical_ids,
+            "business_units": ini.business_units,
+            "quick_win": priorities.get(ini.id, {}).get("quick_win", False),
+        })
+    bars.sort(key=lambda b: (b["start_date"] or datetime.max.replace(tzinfo=None), b["code"]))
+
+    now = datetime.now(timezone.utc)
+
+    def _overdue(b):
+        return bool(b["target_date"] and b["status"] != "completed"
+                    and b["target_date"].replace(tzinfo=timezone.utc) < now)
+
+    def _due_soon(b):
+        if not b["target_date"] or b["status"] == "completed":
+            return False
+        delta = (b["target_date"].replace(tzinfo=timezone.utc) - now).days
+        return 0 <= delta <= 30
+
+    return {
+        "bars": bars,
+        "critical_path": critical,
+        "counters": {
+            "overdue": sum(1 for b in bars if _overdue(b)),
+            "due_soon": sum(1 for b in bars if _due_soon(b)),
+            "on_track": sum(1 for b in bars
+                            if not _overdue(b) and not _due_soon(b) and b["status"] != "completed"),
+            "completed": sum(1 for b in bars if b["status"] == "completed"),
+        },
+        "business_units": sorted({
+            bu for b in bars for bu in (b["business_units"] or [])
+        }),
+        "areas": sorted({b["area"] for b in bars if b["area"]}),
+    }
+
+
 # ---------- IA: import de plan y borradores (declarar ANTES de /{id}) ----------
 
 _IMPORT_MAX_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -365,7 +648,7 @@ async def import_plan_document(request: Request, db: Session = Depends(get_db),
     if len(text.strip()) < 100:
         raise HTTPException(422, _t("initiatives.import_no_text", lang))
 
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     try:
         preview = parse_plan_document(db, org_id, text, lang)
     except ValueError as e:
@@ -379,7 +662,7 @@ async def import_plan_document(request: Request, db: Session = Depends(get_db),
 def confirm_plan_import(body: ImportConfirmIn, db: Session = Depends(get_db),
                         current_user: User = Depends(require_analyst)):
     from app.services.initiative_projection_service import auto_link_risks, project_initiative
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
 
     created_programs = 0
     created_initiatives = 0
@@ -416,16 +699,16 @@ def confirm_plan_import(body: ImportConfirmIn, db: Session = Depends(get_db),
 
             seen_impl_ids: set[int] = set()
             for ct in ini_in.control_targets:
-                if ct.implementation_id in seen_impl_ids:
+                try:
+                    impl = resolve_implementation(db, org_id, ct, "es")
+                except HTTPException:
+                    continue  # control que no existe en el catalogo: se omite
+                if impl.id in seen_impl_ids:
                     continue  # la IA puede repetir un control: dedupe (uq_initiative_impl)
-                from app.models import ControlImplementation
-                impl = db.get(ControlImplementation, ct.implementation_id)
-                if not impl or impl.organization_id != org_id:
-                    continue
-                seen_impl_ids.add(ct.implementation_id)
+                seen_impl_ids.add(impl.id)
                 db.add(InitiativeControlTarget(
                     organization_id=org_id, initiative_id=initiative.id,
-                    implementation_id=ct.implementation_id,
+                    implementation_id=impl.id,
                     baseline_maturity=impl.maturity, target_maturity=ct.target_maturity,
                 ))
             for okr in ini_in.objectives:
@@ -457,7 +740,7 @@ def draft_initiative_for_risk(body: DraftForRiskIn, request: Request, db: Sessio
     lang = get_lang(request)
     from app.services.initiative_ai_service import draft_initiative_for_risks
     try:
-        draft = draft_initiative_for_risks(db, current_user.organization_id, body.risk_ids, lang)
+        draft = draft_initiative_for_risks(db, resolve_org_id(current_user), body.risk_ids, lang)
     except ValueError as e:
         raise HTTPException(422, str(e))
     return draft
@@ -473,7 +756,7 @@ def confirm_initiative_draft(body: DraftConfirmIn, db: Session = Depends(get_db)
     from app.services.ai_learning_service import record_signal
     from app.services.initiative_projection_service import auto_link_risks, project_initiative
 
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     ini = StrategicInitiative(
         code=_next_code(db, StrategicInitiative, "INI"), organization_id=org_id,
         title=body.title, description=body.description, priority=body.priority,
@@ -486,15 +769,16 @@ def confirm_initiative_draft(body: DraftConfirmIn, db: Session = Depends(get_db)
 
     seen_impl_ids: set[int] = set()
     for ct in body.control_targets:
-        if ct.implementation_id in seen_impl_ids:
+        try:
+            impl = resolve_implementation(db, org_id, ct, "es")
+        except HTTPException:
             continue
-        impl = db.get(ControlImplementation, ct.implementation_id)
-        if not impl or impl.organization_id != org_id:
+        if impl.id in seen_impl_ids:
             continue
-        seen_impl_ids.add(ct.implementation_id)
+        seen_impl_ids.add(impl.id)
         db.add(InitiativeControlTarget(
             organization_id=org_id, initiative_id=ini.id,
-            implementation_id=ct.implementation_id,
+            implementation_id=impl.id,
             baseline_maturity=impl.maturity, target_maturity=ct.target_maturity,
         ))
     db.flush()
@@ -529,7 +813,7 @@ def discard_initiative_draft(body: DraftDiscardIn, db: Session = Depends(get_db)
                              current_user: User = Depends(require_analyst)):
     """Registra el rechazo de un borrador IA (senal de aprendizaje). No persiste nada mas."""
     from app.services.ai_learning_service import record_signal
-    record_signal(db, current_user.organization_id, "initiative_draft_rejected",
+    record_signal(db, resolve_org_id(current_user), "initiative_draft_rejected",
                   {"title": (body.title or "")[:120], "risk_ids": body.risk_ids[:20]},
                   user_id=current_user.id, commit=True)
 
@@ -572,14 +856,21 @@ def list_initiatives(
         health_order.get(i.health, 1),
         i.target_date or datetime.max.replace(tzinfo=None),
     ))
-    return [_initiative_out(db, i) for i in initiatives]
+    # La prioridad sugerida y los quick wins solo tienen sentido comparando la
+    # cartera COMPLETA de la org, no el subconjunto filtrado que se lista.
+    from app.services.initiative_projection_service import compute_portfolio_priorities
+    all_of_org = filter_by_org(
+        db.query(StrategicInitiative), StrategicInitiative, current_user
+    ).options(joinedload(StrategicInitiative.risk_links)).all()
+    priorities = compute_portfolio_priorities(all_of_org)
+    return [_initiative_out(db, i, priorities) for i in initiatives]
 
 
 @router.post("/", response_model=InitiativeOut)
 def create_initiative(body: InitiativeIn, request: Request, db: Session = Depends(get_db),
                       current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
-    org_id = current_user.organization_id
+    org_id = resolve_org_id(current_user)
     _validate_program_org(db, body.program_id, current_user, lang)
     _validate_owner_org(db, body.owner_id, current_user, lang)
     ini = StrategicInitiative(
@@ -589,6 +880,11 @@ def create_initiative(body: InitiativeIn, request: Request, db: Session = Depend
         owner_id=body.owner_id, scope=body.scope, business_units=body.business_units,
         start_date=body.start_date, target_date=body.target_date, budget=body.budget,
         budget_approved=body.budget_approved, expected_risk_reduction=body.expected_risk_reduction,
+        # Taxonomia INCIBE + reporte ejecutivo
+        env=body.env, origin=body.origin, action_type=body.action_type,
+        effort_human=body.effort_human, spent=body.spent,
+        last_achievements=body.last_achievements, next_steps=body.next_steps,
+        blockers=body.blockers, blocked_by=body.blocked_by,
         source="manual", created_by_id=current_user.id,
     )
     if ini.status == "completed":
@@ -620,11 +916,15 @@ def get_initiative(initiative_id: int, request: Request, db: Session = Depends(g
             "definition": o.definition, "status": o.status, "confidence": o.confidence,
             "owner_id": o.owner_id, "collaborator": o.collaborator,
             "target_date": o.target_date, "progress": o.progress,
+            "scope": o.scope, "business_units": o.business_units,
+            "attachments": o.attachments, "comments": o.comments,
             "created_at": o.created_at, "updated_at": o.updated_at,
         }
         for o in ini.objectives
     ]
-    out["control_targets"] = [_control_target_out(ct) for ct in ini.control_targets]
+    evidence_by_impl = _evidence_for_impls(
+        db, ini.organization_id, [ct.implementation_id for ct in ini.control_targets])
+    out["control_targets"] = [_control_target_out(ct, evidence_by_impl) for ct in ini.control_targets]
     out["risk_links"] = [_risk_link_out(link) for link in ini.risk_links]
     out["log_entries"] = [_log_entry_out(e) for e in log_entries]
     out["tasks"] = tasks
@@ -691,6 +991,7 @@ def create_objective(initiative_id: int, body: ObjectiveIn, request: Request,
         definition=body.definition, status=body.status, confidence=body.confidence,
         owner_id=body.owner_id, collaborator=body.collaborator,
         target_date=body.target_date, progress=body.progress,
+        scope=body.scope, business_units=body.business_units, comments=body.comments,
     )
     db.add(obj)
     db.flush()
@@ -723,6 +1024,78 @@ def update_objective(initiative_id: int, objective_id: int, body: ObjectiveUpdat
     return obj
 
 
+@router.post("/{initiative_id}/objectives/{objective_id}/attachments")
+def attach_to_objective(initiative_id: int, objective_id: int, body: dict, request: Request,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(require_analyst)):
+    """Enlaza evidencia o documentos ya subidos a un objetivo del plan.
+
+    El OKR es donde ocurre el trabajo, asi que es donde debe colgar su prueba.
+    No se sube fichero aqui: se referencia lo que ya vive en Evidencias o en
+    Documentos IA, para no duplicar ficheros ni saltarse sus controles de
+    validacion (magic bytes, hash, caducidad).
+    """
+    from app.models import AiDocument, Evidence
+
+    lang = get_lang(request)
+    ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
+    obj = db.query(InitiativeObjective).filter(
+        InitiativeObjective.id == objective_id,
+        InitiativeObjective.initiative_id == ini.id,
+    ).first()
+    if not obj:
+        raise HTTPException(404, _t("initiatives.objective_not_found", lang))
+
+    evidence_id = body.get("evidence_id")
+    document_id = body.get("document_id")
+    attachment = None
+    if evidence_id:
+        ev = db.get(Evidence, evidence_id)
+        if not ev or not check_org_access(ev.organization_id, current_user):
+            raise HTTPException(404, _t("initiatives.attachment_not_found", lang))
+        attachment = {"type": "evidence", "evidence_id": ev.id, "code": ev.code,
+                      "name": ev.title}
+    elif document_id:
+        doc = db.get(AiDocument, document_id)
+        if not doc or not check_org_access(doc.organization_id, current_user):
+            raise HTTPException(404, _t("initiatives.attachment_not_found", lang))
+        attachment = {"type": "document", "document_id": doc.id,
+                      "name": doc.filename or doc.title}
+    else:
+        raise HTTPException(422, _t("initiatives.attachment_required", lang))
+
+    attachment["attached_at"] = datetime.now(timezone.utc).isoformat()
+    current = list(obj.attachments or [])
+    key = ("evidence_id" if evidence_id else "document_id")
+    if any(a.get(key) == attachment[key] for a in current):
+        raise HTTPException(409, _t("initiatives.attachment_duplicate", lang))
+    current.append(attachment)
+    obj.attachments = current
+    db.commit()
+    log_action(db, current_user.id, "attach", "initiative_objective", str(obj.id))
+    return {"attachments": obj.attachments}
+
+
+@router.delete("/{initiative_id}/objectives/{objective_id}/attachments/{index}", status_code=204)
+def detach_from_objective(initiative_id: int, objective_id: int, index: int, request: Request,
+                          db: Session = Depends(get_db),
+                          current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
+    ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
+    obj = db.query(InitiativeObjective).filter(
+        InitiativeObjective.id == objective_id,
+        InitiativeObjective.initiative_id == ini.id,
+    ).first()
+    if not obj:
+        raise HTTPException(404, _t("initiatives.objective_not_found", lang))
+    current = list(obj.attachments or [])
+    if index < 0 or index >= len(current):
+        raise HTTPException(404, _t("initiatives.attachment_not_found", lang))
+    current.pop(index)
+    obj.attachments = current
+    db.commit()
+
+
 @router.delete("/{initiative_id}/objectives/{objective_id}", status_code=204)
 def delete_objective(initiative_id: int, objective_id: int, request: Request,
                      db: Session = Depends(get_db), current_user: User = Depends(require_analyst)):
@@ -747,21 +1120,16 @@ def create_control_target(initiative_id: int, body: ControlTargetIn, request: Re
                           db: Session = Depends(get_db), current_user: User = Depends(require_analyst)):
     lang = get_lang(request)
     ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
-    from app.models import ControlImplementation
-    impl = db.query(ControlImplementation).filter(
-        ControlImplementation.id == body.implementation_id
-    ).first()
-    if not impl or not check_org_access(impl.organization_id, current_user):
-        raise HTTPException(404, _t("initiatives.control_not_found", lang))
+    impl = resolve_implementation(db, ini.organization_id, body, lang)
     existing = db.query(InitiativeControlTarget).filter(
         InitiativeControlTarget.initiative_id == ini.id,
-        InitiativeControlTarget.implementation_id == body.implementation_id,
+        InitiativeControlTarget.implementation_id == impl.id,
     ).first()
     if existing:
         raise HTTPException(409, _t("initiatives.control_target_duplicate", lang))
     ct = InitiativeControlTarget(
         organization_id=ini.organization_id, initiative_id=ini.id,
-        implementation_id=body.implementation_id,
+        implementation_id=impl.id,
         baseline_maturity=impl.maturity, target_maturity=body.target_maturity,
     )
     db.add(ct)
@@ -888,6 +1256,58 @@ def reproject(initiative_id: int, request: Request, db: Session = Depends(get_db
     result = project_initiative(db, ini)
     db.commit()
     return result
+
+
+@router.post("/{initiative_id}/generate-tasks")
+def generate_tasks_from_targets(initiative_id: int, request: Request,
+                                db: Session = Depends(get_db),
+                                current_user: User = Depends(require_analyst)):
+    """Crea una tarea operativa por control objetivo pendiente.
+
+    Puente entre lo estrategico y el kanban: la iniciativa declara que controles
+    sube y hasta que madurez; esto lo convierte en trabajo asignable. Idempotente
+    — no duplica tareas de controles que ya la tienen.
+    """
+    from app.models import TaskStatus
+    from app.routers.tasks import _next_code as _next_task_code
+
+    lang = get_lang(request)
+    ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
+
+    existing = {
+        t.title for t in db.query(TreatmentTask).filter(
+            TreatmentTask.initiative_id == ini.id).all()
+    }
+    created = []
+    for ct in ini.control_targets:
+        impl = ct.implementation
+        ctrl = impl.control if impl else None
+        if not ctrl:
+            continue
+        current = impl.maturity or 0
+        if current >= ct.target_maturity:
+            continue    # ya cumplido: no genera trabajo
+        title = f"{ctrl.code} — elevar madurez a {ct.target_maturity}/5"
+        if title in existing:
+            continue
+        task = TreatmentTask(
+            organization_id=ini.organization_id, initiative_id=ini.id,
+            code=_next_task_code(db, ini.organization_id), title=title,
+            description=(f"Control: {ctrl.name}\nMadurez actual {current}/5, "
+                         f"objetivo {ct.target_maturity}/5."),
+            status=TaskStatus.PENDING,
+            assigned_to_id=ini.owner_id,
+            due_date=ini.target_date,
+        )
+        db.add(task)
+        # Flush por tarea: el codigo se deriva de max(id) y sin flush todas las
+        # de este lote saldrian con el mismo codigo (la restriccion es unica).
+        db.flush()
+        created.append(title)
+    db.commit()
+    log_action(db, current_user.id, "generate_tasks", "strategic_initiative", str(ini.id),
+               {"created": len(created)})
+    return {"created": len(created), "titles": created}
 
 
 @router.post("/{initiative_id}/verify")

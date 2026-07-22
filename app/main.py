@@ -26,7 +26,7 @@ from app.routers import (
     initiatives, integrations_erp, integrations_forms, integrations_virustotal, itsm, licenses, management_review, magerit, nis2, nonconformities, onboarding_gate, organizations,
     osint, policies, portal, predictive, questionnaire_flows, questionnaire_schedules, regwatch, report_schedules,
     report_templates, reports, risk_level_config, risks, search, sharepoint,
-    soa_versions, sso, supplier_questionnaires, suppliers, surveys, tasks, tprm,
+    soa_versions, sso, strategic_plans, supplier_questionnaires, suppliers, surveys, tasks, tprm,
     vendor_assessments, vendor_issues, users, webhooks,
 )
 from app.routers import kris, risk_correlations
@@ -314,6 +314,7 @@ app.include_router(risk_correlations.router)
 app.include_router(nonconformities.router)
 app.include_router(tasks.router)
 app.include_router(initiatives.router)
+app.include_router(strategic_plans.router)
 app.include_router(policies.router)
 app.include_router(audits.router)
 app.include_router(supplier_questionnaires.router)

@@ -20,7 +20,37 @@ const ViewPlanDirector = (() => {
   let _programs = [];
   let _users = [];
   let _impls = [];
+  let _roadmap = null;
+  let _portfolio = null;
   let _filters = { status: '', program: '', q: '' };
+  let _roadFilters = { area: '', env: '', bu: '' };
+  let _ganttScale = 'month';
+
+  const SECTIONS = [
+    ['summary', 'plandirector.tab_summary'],
+    ['method', 'plandirector.tab_method'],
+    ['plan', 'plandirector.tab_plan'],
+    ['roadmap', 'plandirector.tab_roadmap'],
+    ['portfolio', 'plandirector.tab_portfolio'],
+  ];
+
+  let _plans = [];
+  let _plan = null;          // plan seleccionado
+  let _gap = null;
+  let _planProgress = null;
+
+  /* Un control objetivo se identifica por su implementacion si la org ya la
+     tiene, o por el control del catalogo si aun no existe (el backend la crea
+     al guardar). Estas dos funciones traducen entre ambas formas. */
+  function _ctrlKey(c) {
+    return c.implementation_id ? `i:${c.implementation_id}` : `c:${c.control_id}`;
+  }
+
+  function _ctrlFromKey(key) {
+    const [kind, rawId] = key.split(':');
+    const id = parseInt(rawId);
+    return kind === 'i' ? { implementation_id: id } : { control_id: id };
+  }
 
   async function render(el) {
     el.innerHTML = `
@@ -29,16 +59,16 @@ const ViewPlanDirector = (() => {
           <h1 class="page-title">${t('hub.risk.plan_director')}</h1>
           <p class="page-sub">${t('plandirector.subtitle')}</p>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn" id="pd-seg-summary">${t('plandirector.tab_summary')}</button>
-          <button class="btn" id="pd-seg-plan">${t('plandirector.tab_plan')}</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${SECTIONS.map(([id, key]) => `<button class="btn" id="pd-seg-${id}">${t(key)}</button>`).join('')}
           <button class="btn btn-primary" id="pd-new-initiative">+ ${t('plandirector.new_initiative')}</button>
         </div>
       </div>
       <div id="pd-body"></div>
     `;
-    document.getElementById('pd-seg-summary').onclick = () => { _section = 'summary'; _renderBody(); };
-    document.getElementById('pd-seg-plan').onclick = () => { _section = 'plan'; _renderBody(); };
+    SECTIONS.forEach(([id]) => {
+      document.getElementById(`pd-seg-${id}`).onclick = () => { _section = id; _renderBody(); };
+    });
     document.getElementById('pd-new-initiative').onclick = () => _openInitiativeWizard();
 
     await _loadAll();
@@ -46,31 +76,695 @@ const ViewPlanDirector = (() => {
   }
 
   async function _loadAll() {
-    try {
-      const [stats, burndown, initiatives, programs, users, impls] = await Promise.all([
-        Api.initiatives.stats(),
-        Api.initiatives.burndown(),
-        Api.initiatives.list({}),
-        Api.initiatives.programs.list(),
-        Api.listUsers().catch(() => []),
-        Api.impls.list().catch(() => []),
-      ]);
-      _stats = stats; _burndown = burndown; _initiatives = initiatives;
-      _programs = programs; _users = users; _impls = impls;
-    } catch (e) {
-      UI.toast(t('common.error') + ': ' + e.message, 'error');
+    // Cada fuente se resuelve por separado: si una falla (p.ej. stats), el
+    // resto de la pantalla sigue funcionando. Antes un unico fallo dejaba
+    // programas e iniciativas vacios y parecia que no se hubieran guardado.
+    const results = await Promise.allSettled([
+      Api.initiatives.stats(),
+      Api.initiatives.burndown(),
+      Api.initiatives.list({}),
+      Api.initiatives.programs.list(),
+      Api.listUsers(),
+      Api.initiatives.controlCatalog(),
+      Api.initiatives.roadmap(),
+      Api.initiatives.portfolio(),
+      Api.strategicPlans.list(),
+    ]);
+    const [stats, burndown, initiatives, programs, users, catalog, roadmap, portfolio, plans] = results;
+    _plans = plans.status === 'fulfilled' ? plans.value : [];
+    if (_plans.length && !_plan) await _loadPlanDetail(_plans[0].id);
+    _stats = stats.status === 'fulfilled' ? stats.value : null;
+    _burndown = burndown.status === 'fulfilled' ? burndown.value : null;
+    _initiatives = initiatives.status === 'fulfilled' ? initiatives.value : [];
+    _programs = programs.status === 'fulfilled' ? programs.value : [];
+    _users = users.status === 'fulfilled' ? users.value : [];
+    _impls = catalog.status === 'fulfilled' ? catalog.value : [];
+    _roadmap = roadmap.status === 'fulfilled' ? roadmap.value : null;
+    _portfolio = portfolio.status === 'fulfilled' ? portfolio.value : null;
+
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length) {
+      UI.toast(t('common.error') + ': ' + (failed[0].reason?.message || ''), 'error');
     }
   }
 
   function _renderBody() {
     const body = document.getElementById('pd-body');
     if (!body) return;
-    document.getElementById('pd-seg-summary').classList.toggle('btn-primary', _section === 'summary');
-    document.getElementById('pd-seg-plan').classList.toggle('btn-primary', _section === 'plan');
-    body.innerHTML = _section === 'summary' ? _summaryHtml() : _planHtml();
-    if (_section === 'summary') _wireSummary();
-    else _wirePlan();
+    SECTIONS.forEach(([id]) => {
+      document.getElementById(`pd-seg-${id}`).classList.toggle('btn-primary', _section === id);
+    });
+    if (_section === 'summary') { body.innerHTML = _summaryHtml(); _wireSummary(); }
+    else if (_section === 'method') { body.innerHTML = _methodHtml(); _wireMethod(); }
+    else if (_section === 'plan') { body.innerHTML = _planHtml(); _wirePlan(); }
+    else if (_section === 'roadmap') { body.innerHTML = _roadmapHtml(); _wireRoadmap(); }
+    else { body.innerHTML = _portfolioHtml(); _wirePortfolio(); }
   }
+
+  /* ---------- Diagnostico: situacion actual, objetivo, brecha y aprobacion.
+     Es el metodo que INCIBE llama fases 1-5 y NIST CSF llama Current Profile ->
+     Target Profile -> gap -> plan de accion. Sin esto el plan empieza en blanco
+     y alguien tiene que inventarse las iniciativas. ---------- */
+
+  function _methodHtml() {
+    if (!_plans.length) {
+      return `
+        <div class="card" style="padding:20px;">
+          <h3 style="margin:0 0 6px;font-size:14px;">${t('plandirector.no_plan_title')}</h3>
+          <p class="text-muted" style="font-size:13px;max-width:640px;">${t('plandirector.no_plan_hint')}</p>
+          <button class="btn btn-primary" id="pm-new-plan">+ ${t('plandirector.new_plan')}</button>
+        </div>`;
+    }
+    const p = _plan;
+    const pr = _planProgress || {};
+    const ap = pr.approval || {};
+    const statusColor = { draft: 'var(--text-muted)', pending_approval: 'var(--brand-orange)',
+      approved: 'var(--risk-low)', active: 'var(--brand-purple)', closed: 'var(--text-subtle)' };
+    return `
+      <div class="card" style="margin-bottom:14px;padding:12px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <select id="pm-plan" class="input" style="min-width:260px;">
+            ${_plans.map(x => `<option value="${x.id}" ${p && x.id === p.id ? 'selected' : ''}>${UI.esc(x.code)} — ${UI.esc(x.name)}</option>`).join('')}
+          </select>
+          <span class="badge" style="background:${statusColor[p.status] || '#888'};color:#fff;">${t('plandirector.plan_status.' + p.status)}</span>
+          <span class="text-muted" style="font-size:12px;">v${p.version}</span>
+          ${ap.drifted ? `<span class="badge" style="background:var(--risk-high);color:#fff;" title="${t('plandirector.drift_hint')}">${t('plandirector.drifted')}</span>` : ''}
+          <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="pm-new-plan">+ ${t('plandirector.new_plan')}</button>
+            <button class="btn" id="pm-report">${t('plandirector.download_report')}</button>
+            ${p.status === 'draft' ? `<button class="btn btn-primary" id="pm-request-approval">${t('plandirector.request_approval')}</button>` : ''}
+            ${p.status === 'pending_approval' ? `<button class="btn btn-primary" id="pm-decide">${t('plandirector.decide_approval')}</button>` : ''}
+            ${p.status === 'approved' ? `<button class="btn btn-primary" id="pm-activate">${t('plandirector.activate')}</button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-row" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value">${pr.baseline_sealed ? pr.baseline_average_maturity : '—'}</div><div class="stat-label">${t('plandirector.baseline_maturity')}</div></div>
+        <div class="stat-card"><div class="stat-value">${pr.current_average_maturity ?? '—'}</div><div class="stat-label">${t('plandirector.current_maturity_avg')}</div></div>
+        <div class="stat-card"><div class="stat-value">${_gap ? _gap.gap_count : '—'}</div><div class="stat-label">${t('plandirector.controls_below_target')}</div></div>
+        <div class="stat-card"><div class="stat-value">${_gap ? _gap.total_effort_days : '—'}</div><div class="stat-label">${t('plandirector.effort_days')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${pr.progress_pct ?? 0}%</div><div class="stat-label">${t('plandirector.plan_progress')}</div></div>
+      </div>
+
+      ${!p.baseline_sealed_at ? `<div class="notice" style="margin-bottom:12px;font-size:12px;">${t('plandirector.baseline_not_sealed')}</div>` : ''}
+
+      <div class="card" style="margin-bottom:14px;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <strong style="font-size:13px;">${t('plandirector.gap_title')}</strong>
+          <span class="text-muted" style="font-size:11px;">${t('plandirector.gap_hint')}</span>
+          <div style="margin-left:auto;display:flex;gap:6px;">
+            <button class="btn btn-sm" id="pm-targets">${t('plandirector.set_targets')}</button>
+            <button class="btn btn-sm btn-primary" id="pm-generate" ${!_gap || !_gap.gap_count ? 'disabled' : ''}>${t('plandirector.generate_initiatives')}</button>
+          </div>
+        </div>
+        ${_gap && _gap.unresolved_targets && _gap.unresolved_targets.length ? `
+          <div class="notice" style="margin:10px 14px;font-size:12px;border-left:3px solid var(--risk-medium);">
+            ${t('plandirector.unresolved_targets')}:
+            ${_gap.unresolved_targets.map(u => `<code>${UI.esc(u.framework_code || '')}:${UI.esc(u.requirement_id || '')}</code>`).join(', ')}
+          </div>` : ''}
+        ${_gap && _gap.gaps.length ? `
+        <div style="max-height:420px;overflow:auto;">
+          <table class="data-table" style="width:100%;font-size:12px;">
+            <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th>
+              <th>${t('plandirector.current_maturity')}</th><th>${t('plandirector.target_maturity')}</th>
+              <th>${t('plandirector.gap_col')}</th><th>${t('plandirector.mandatory_by')}</th></tr></thead>
+            <tbody>
+              ${_gap.gaps.map(g => `
+                <tr>
+                  <td>${UI.esc(g.code)}</td>
+                  <td>${UI.esc(g.name)}</td>
+                  <td>${g.current_maturity}</td>
+                  <td><strong>${g.target_maturity}</strong></td>
+                  <td style="color:var(--brand-orange);font-weight:600;">+${g.gap}</td>
+                  <td>${g.mandatory_by ? `<span class="badge" style="background:${g.mandatory_by === 'legal' ? 'var(--risk-critical)' : 'var(--bg-3)'};color:${g.mandatory_by === 'legal' ? '#fff' : 'var(--text)'};">${UI.esc(g.mandatory_by)}</span>` : '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : `<p class="text-muted" style="padding:14px;font-size:12px;">${t('plandirector.no_gap')}</p>`}
+      </div>`;
+  }
+
+  async function _loadPlanDetail(planId) {
+    _plan = _plans.find(x => x.id === planId) || _plans[0] || null;
+    if (!_plan) { _gap = null; _planProgress = null; return; }
+    const [gap, progress] = await Promise.allSettled([
+      Api.strategicPlans.gap(_plan.id),
+      Api.strategicPlans.progress(_plan.id),
+    ]);
+    _gap = gap.status === 'fulfilled' ? gap.value : null;
+    _planProgress = progress.status === 'fulfilled' ? progress.value : null;
+  }
+
+  function _wireMethod() {
+    const np = document.getElementById('pm-new-plan');
+    if (np) np.onclick = () => _openPlanModal();
+    if (!_plan) return;
+
+    document.getElementById('pm-plan').onchange = async (e) => {
+      await _loadPlanDetail(parseInt(e.target.value));
+      _renderBody();
+    };
+    const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+    bind('pm-report', () => {
+      UI.toast(t('reports.generating'), 'info');
+      Api.download(`/api/reports/strategic-plan/${_plan.id}`, `plan_director_${_plan.code}.pdf`)
+        .catch(e => UI.toast(e.message, 'error'));
+    });
+    bind('pm-targets', () => _openTargetsModal());
+    bind('pm-generate', () => _openGenerateModal());
+    bind('pm-request-approval', () => _openApprovalModal());
+    bind('pm-decide', () => _openDecideModal());
+    bind('pm-activate', async () => {
+      try {
+        await Api.strategicPlans.activate(_plan.id);
+        UI.toast(t('common.success'), 'success');
+        await _reloadPlans();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    });
+  }
+
+  async function _reloadPlans() {
+    try {
+      _plans = await Api.strategicPlans.list();
+      await _loadPlanDetail(_plan ? _plan.id : (_plans[0] || {}).id);
+    } catch (e) { UI.toast(e.message, 'error'); }
+    _renderBody();
+  }
+
+  function _openPlanModal() {
+    UI.modal(t('plandirector.new_plan'), `
+      <div class="form-grid">
+        <div class="span2"><label>${t('common.name')} *</label><input id="np-name" class="input"></div>
+        <div><label>${t('plandirector.period_start')}</label><input type="date" id="np-start" class="input"></div>
+        <div><label>${t('plandirector.period_end')}</label><input type="date" id="np-end" class="input"></div>
+        <div>
+          <label>${t('plandirector.framework')}</label>
+          <select id="np-fw" class="input">
+            <option value="iso27001">ISO/IEC 27001</option>
+            <option value="nist_csf">NIST CSF 2.0</option>
+            <option value="ens">ENS</option>
+          </select>
+        </div>
+        <div><label>${t('plandirector.investment_capacity')}</label><input type="number" id="np-cap" class="input"></div>
+        <div class="span2"><label>${t('plandirector.scope_statement')}</label><textarea id="np-scope" class="input" rows="2"></textarea></div>
+        <div class="span2"><label>${t('plandirector.strategy_notes')}</label><textarea id="np-strategy" class="input" rows="3"></textarea></div>
+      </div>
+    `, {
+      width: 'min(760px,95vw)',
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const name = document.getElementById('np-name').value.trim();
+      if (!name) { UI.toast(t('common.required'), 'error'); return; }
+      const cap = document.getElementById('np-cap').value;
+      try {
+        const created = await Api.strategicPlans.create({
+          name,
+          period_start: document.getElementById('np-start').value || null,
+          period_end: document.getElementById('np-end').value || null,
+          framework_code: document.getElementById('np-fw').value,
+          investment_capacity: cap ? parseFloat(cap) : null,
+          scope_statement: document.getElementById('np-scope').value.trim() || null,
+          strategy_notes: document.getElementById('np-strategy').value.trim() || null,
+        });
+        UI.closeModal();
+        _plans = await Api.strategicPlans.list();
+        await _loadPlanDetail(created.id);
+        _renderBody();
+        UI.toast(t('common.success'), 'success');
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  async function _openTargetsModal() {
+    let current = { resolved: [], declared: [] };
+    try { current = await Api.strategicPlans.targets(_plan.id); } catch (_) { /* plan nuevo */ }
+    const byControl = new Map(current.declared.filter(d => d.control_id).map(d => [d.control_id, d]));
+    UI.modal(t('plandirector.set_targets'), `
+      <p class="text-muted" style="font-size:12px;margin-bottom:8px;">${t('plandirector.targets_hint')}</p>
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="tg-search" class="input" style="flex:1;min-width:180px;" placeholder="${t('common.search')}...">
+        <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
+          ${t('plandirector.bulk_target')}
+          <input type="number" id="tg-bulk" class="input" min="0" max="5" value="3" style="width:60px;">
+        </label>
+        <button class="btn btn-sm" id="tg-apply-all">${t('plandirector.apply_to_visible')}</button>
+      </div>
+      <div style="max-height:400px;overflow:auto;border:1px solid var(--border);border-radius:6px;">
+        <table class="data-table" style="width:100%;font-size:12px;">
+          <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th>
+            <th>${t('plandirector.current_maturity')}</th><th>${t('plandirector.target_maturity')}</th></tr></thead>
+          <tbody id="tg-rows"></tbody>
+        </table>
+      </div>
+    `, {
+      width: 'min(920px,95vw)',
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`,
+    });
+
+    const rowsHtml = (q) => _impls
+      .filter(c => !q || `${c.code} ${c.name}`.toLowerCase().includes(q))
+      .map(c => {
+        const d = byControl.get(c.control_id);
+        return `<tr>
+          <td>${UI.esc(c.code)}</td><td>${UI.esc(c.name)}</td>
+          <td>${c.maturity}/5</td>
+          <td><input type="number" min="0" max="5" class="input" style="width:64px;"
+                     data-tg="${c.control_id}" value="${d ? d.target_maturity : ''}"
+                     placeholder="—"></td>
+        </tr>`;
+      }).join('');
+    document.getElementById('tg-rows').innerHTML = rowsHtml('');
+    document.getElementById('tg-search').oninput = (e) => {
+      document.getElementById('tg-rows').innerHTML = rowsHtml(e.target.value.trim().toLowerCase());
+    };
+    document.getElementById('tg-apply-all').onclick = () => {
+      const v = document.getElementById('tg-bulk').value;
+      document.querySelectorAll('[data-tg]').forEach(i => { i.value = v; });
+    };
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const targets = [];
+      document.querySelectorAll('[data-tg]').forEach(i => {
+        if (i.value !== '') {
+          targets.push({ control_id: parseInt(i.dataset.tg), target_maturity: parseInt(i.value) });
+        }
+      });
+      try {
+        await Api.strategicPlans.setTargets(_plan.id, { targets, replace: true });
+        UI.closeModal();
+        await _loadPlanDetail(_plan.id);
+        _renderBody();
+        UI.toast(t('common.success'), 'success');
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  async function _openGenerateModal() {
+    UI.modal(t('plandirector.generate_initiatives'),
+      `<p class="text-muted" style="font-size:12px;">${t('plandirector.generating')}</p>`,
+      { width: 'min(860px,95vw)' });
+    let data;
+    try { data = await Api.strategicPlans.generateInitiatives(_plan.id); }
+    catch (e) { UI.toast(e.message, 'error'); UI.closeModal(); return; }
+
+    UI.modal(t('plandirector.generate_initiatives'), `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.generate_hint')}</div>
+      ${data.candidates.map((c, i) => `
+        <div class="card" style="margin-bottom:8px;padding:10px;">
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;">
+            <input type="checkbox" data-cand="${i}" checked>
+            <span>
+              <strong>${UI.esc(c.title)}</strong>
+              ${c.mandatory ? `<span class="badge" style="background:var(--risk-critical);color:#fff;">${t('plandirector.mandatory')}</span>` : ''}
+              <br><small class="text-muted">${c.control_targets.length} ${t('plandirector.control_targets_title').toLowerCase()} ·
+              ${t('plandirector.gap_col')} +${c.gap_points} · ${c.effort_human} ${t('plandirector.effort_days').toLowerCase()}</small>
+            </span>
+          </label>
+        </div>`).join('') || `<p class="text-muted">${t('plandirector.nothing_to_generate')}</p>`}
+    `, {
+      width: 'min(860px,95vw)',
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('plandirector.create_selected')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const chosen = data.candidates.filter((_, i) => document.querySelector(`[data-cand="${i}"]`)?.checked);
+      if (!chosen.length) { UI.toast(t('common.required'), 'error'); return; }
+      try {
+        const res = await Api.strategicPlans.confirmInitiatives(_plan.id, { candidates: chosen });
+        UI.closeModal();
+        UI.toast(t('plandirector.generated_ok', { n: res.created, points: res.total_projected_points }), 'success');
+        await _loadAll();
+        await _loadPlanDetail(_plan.id);
+        _renderBody();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  function _openApprovalModal() {
+    UI.modal(t('plandirector.request_approval'), `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.approval_hint')}</div>
+      <div class="form-grid">
+        <div class="span2">
+          <label>${t('plandirector.approval_mode')}</label>
+          <select id="ap-mode" class="input">
+            <option value="">${t('plandirector.mode_org_default')}</option>
+            <option value="internal_seal">${t('plandirector.mode_seal')}</option>
+            <option value="signature">${t('plandirector.mode_signature')}</option>
+          </select>
+        </div>
+        <div class="span2" id="ap-approvers-wrap" style="display:none;">
+          <label>${t('plandirector.approvers')}</label>
+          <input type="text" id="ap-emails" class="input" placeholder="ciso@empresa.com, ceo@empresa.com">
+          <small class="text-muted">${t('plandirector.approvers_hint')}</small>
+        </div>
+        <div class="span2"><label>${t('common.notes')}</label><textarea id="ap-notes" class="input" rows="2"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.send')}</button>`,
+    });
+    document.getElementById('ap-mode').onchange = (e) => {
+      document.getElementById('ap-approvers-wrap').style.display =
+        e.target.value === 'signature' ? '' : 'none';
+    };
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const mode = document.getElementById('ap-mode').value || null;
+      const emails = document.getElementById('ap-emails').value.split(',')
+        .map(x => x.trim()).filter(Boolean);
+      try {
+        await Api.strategicPlans.requestApproval(_plan.id, {
+          mode,
+          approvers: emails.map((email, i) => ({ email, order_index: i + 1 })),
+          notes: document.getElementById('ap-notes').value.trim() || null,
+        });
+        UI.closeModal();
+        UI.toast(t('common.success'), 'success');
+        await _reloadPlans();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  async function _openDecideModal() {
+    let approvals = [];
+    try { approvals = await Api.strategicPlans.approvals(_plan.id); } catch (_) { /* sin rondas */ }
+    const pending = approvals.filter(a => a.status === 'pending' && a.mode === 'internal_seal');
+    if (!pending.length) { UI.toast(t('plandirector.no_internal_pending'), 'error'); return; }
+    const ap = pending[0];
+    UI.modal(t('plandirector.decide_approval'), `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.decide_hint')}</div>
+      <div class="form-grid">
+        <div class="span2"><label>${t('common.notes')}</label><textarea id="dc-notes" class="input" rows="3"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn" id="m-reject">${t('plandirector.reject')}</button>
+                <button class="btn btn-primary" id="m-approve">${t('plandirector.approve')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    const decide = async (decision) => {
+      try {
+        await Api.strategicPlans.decideApproval(ap.id, {
+          decision, notes: document.getElementById('dc-notes').value.trim() || null,
+        });
+        UI.closeModal();
+        UI.toast(t('common.success'), 'success');
+        await _reloadPlans();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+    document.getElementById('m-approve').onclick = () => decide('approved');
+    document.getElementById('m-reject').onclick = () => decide('rejected');
+  }
+
+  // ---------- Roadmap: Gantt, dependencias y camino critico ----------
+
+  function _roadFiltered() {
+    const bars = (_roadmap && _roadmap.bars) || [];
+    return bars.filter(b => {
+      if (_roadFilters.area && b.area !== _roadFilters.area) return false;
+      if (_roadFilters.env && b.env !== _roadFilters.env) return false;
+      if (_roadFilters.bu && !(b.business_units || []).includes(_roadFilters.bu)) return false;
+      return true;
+    });
+  }
+
+  function _roadmapHtml() {
+    if (!_roadmap) return `<div class="card"><p class="text-muted" style="padding:16px;">${t('common.no_data')}</p></div>`;
+    const c = _roadmap.counters || {};
+    const cycles = (_roadmap.critical_path && _roadmap.critical_path.cycles) || [];
+    return `
+      <div class="stats-row" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-critical);">${c.overdue || 0}</div><div class="stat-label">${t('plandirector.counter_overdue')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-medium);">${c.due_soon || 0}</div><div class="stat-label">${t('plandirector.counter_due_soon')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${c.on_track || 0}</div><div class="stat-label">${t('plandirector.counter_on_track')}</div></div>
+        <div class="stat-card"><div class="stat-value">${c.completed || 0}</div><div class="stat-label">${t('plandirector.status.completed')}</div></div>
+      </div>
+      ${cycles.length ? `<div class="notice" style="margin-bottom:12px;border-left:3px solid var(--risk-critical);">
+        <strong>${t('plandirector.cycle_warning')}</strong> ${cycles.map(cy => UI.esc(cy.join(' → '))).join('; ')}
+      </div>` : ''}
+      <div class="card" style="margin-bottom:14px;padding:12px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <select id="rd-area" class="input" style="width:160px;">
+            <option value="">${t('plandirector.all_areas')}</option>
+            ${(_roadmap.areas || []).map(a => `<option value="${UI.esc(a)}" ${_roadFilters.area === a ? 'selected' : ''}>${UI.esc(a)}</option>`).join('')}
+          </select>
+          <select id="rd-env" class="input" style="width:140px;">
+            <option value="">${t('plandirector.all_envs')}</option>
+            ${['IT', 'OT', 'IoT', 'AI'].map(e => `<option value="${e}" ${_roadFilters.env === e ? 'selected' : ''}>${e}</option>`).join('')}
+          </select>
+          <select id="rd-bu" class="input" style="width:170px;">
+            <option value="">${t('plandirector.all_bus')}</option>
+            ${(_roadmap.business_units || []).map(b => `<option value="${UI.esc(b)}" ${_roadFilters.bu === b ? 'selected' : ''}>${UI.esc(b)}</option>`).join('')}
+          </select>
+          <select id="rd-scale" class="input" style="width:140px;">
+            <option value="month" ${_ganttScale === 'month' ? 'selected' : ''}>${t('plandirector.scale_month')}</option>
+            <option value="quarter" ${_ganttScale === 'quarter' ? 'selected' : ''}>${t('plandirector.scale_quarter')}</option>
+          </select>
+        </div>
+      </div>
+      <div class="card" style="padding:12px;overflow-x:auto;">
+        <h3 style="margin:0 0 8px;font-size:13px;">${t('plandirector.gantt_title')}</h3>
+        ${_ganttSvg(_roadFiltered())}
+      </div>
+      ${_criticalPathHtml()}
+      ${_buMatrixHtml()}
+    `;
+  }
+
+  function _ganttSvg(bars) {
+    const withDates = bars.filter(b => b.start_date && b.target_date);
+    if (!withDates.length) {
+      return `<p class="text-muted" style="font-size:12px;">${t('plandirector.gantt_no_dates')}</p>`;
+    }
+    const starts = withDates.map(b => new Date(b.start_date).getTime());
+    const ends = withDates.map(b => new Date(b.target_date).getTime());
+    const min = new Date(Math.min(...starts));
+    const max = new Date(Math.max(...ends));
+    // Redondear a inicio/fin de mes para que el eje encaje con las etiquetas
+    const t0 = new Date(min.getFullYear(), min.getMonth(), 1).getTime();
+    const t1 = new Date(max.getFullYear(), max.getMonth() + 1, 0).getTime();
+    const span = Math.max(1, t1 - t0);
+
+    const LABEL_W = 230, ROW_H = 26, HEAD_H = 34, PAD = 8;
+    const CHART_W = _ganttScale === 'quarter' ? 620 : 900;
+    const W = LABEL_W + CHART_W + PAD * 2;
+    const H = HEAD_H + withDates.length * ROW_H + PAD * 2;
+    const x = ms => LABEL_W + PAD + ((ms - t0) / span) * CHART_W;
+
+    // Eje temporal
+    const ticks = [];
+    const cursor = new Date(t0);
+    while (cursor.getTime() <= t1) {
+      const isQuarter = cursor.getMonth() % 3 === 0;
+      if (_ganttScale === 'month' || isQuarter) {
+        ticks.push({
+          ms: cursor.getTime(),
+          label: _ganttScale === 'quarter'
+            ? `Q${Math.floor(cursor.getMonth() / 3) + 1} ${String(cursor.getFullYear()).slice(2)}`
+            : cursor.toLocaleDateString(undefined, { month: 'short' }) + (cursor.getMonth() === 0 ? ` ${String(cursor.getFullYear()).slice(2)}` : ''),
+        });
+      }
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const now = Date.now();
+    const nowX = now >= t0 && now <= t1 ? x(now) : null;
+    const healthColor = h => HEALTH_COLOR[h] || 'var(--text-muted)';
+
+    const rows = withDates.map((b, i) => {
+      const y = HEAD_H + i * ROW_H + PAD;
+      const bx = x(new Date(b.start_date).getTime());
+      const bw = Math.max(3, x(new Date(b.target_date).getTime()) - bx);
+      const pct = Math.max(0, Math.min(100, b.progress || 0));
+      const title = `${b.code} · ${b.title}${b.health_reasons && b.health_reasons.length ? ' — ' + b.health_reasons.join('; ') : ''}`;
+      return `
+        <g>
+          <title>${UI.esc(title)}</title>
+          <text x="${PAD}" y="${y + 15}" font-size="11" fill="var(--text)" >
+            ${b.on_critical_path ? '▶ ' : ''}${UI.esc((b.code + ' ' + b.title).slice(0, 34))}
+          </text>
+          <rect x="${bx}" y="${y + 5}" width="${bw}" height="14" rx="3"
+                fill="${healthColor(b.health)}" opacity="0.28"
+                stroke="${b.on_critical_path ? 'var(--brand-orange)' : 'none'}" stroke-width="1.5"/>
+          <rect x="${bx}" y="${y + 5}" width="${bw * pct / 100}" height="14" rx="3"
+                fill="${healthColor(b.health)}"/>
+          ${b.quick_win ? `<text x="${bx + bw + 4}" y="${y + 16}" font-size="9" fill="var(--risk-low)">★</text>` : ''}
+        </g>`;
+    }).join('');
+
+    return `
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${W}px;height:${H}px;">
+        ${ticks.map(tk => `
+          <line x1="${x(tk.ms)}" y1="${HEAD_H - 6}" x2="${x(tk.ms)}" y2="${H - PAD}"
+                stroke="var(--border)" stroke-width="1"/>
+          <text x="${x(tk.ms) + 3}" y="${HEAD_H - 12}" font-size="10" fill="var(--text-muted)">${tk.label}</text>
+        `).join('')}
+        ${nowX !== null ? `<line x1="${nowX}" y1="${HEAD_H - 6}" x2="${nowX}" y2="${H - PAD}"
+              stroke="var(--brand-orange)" stroke-width="1.5" stroke-dasharray="4,3"/>
+              <text x="${nowX + 3}" y="${H - PAD}" font-size="9" fill="var(--brand-orange)">${t('plandirector.today')}</text>` : ''}
+        ${rows}
+      </svg>
+      <div style="display:flex;gap:14px;font-size:11px;color:var(--text-muted);margin-top:6px;flex-wrap:wrap;">
+        <span><span style="display:inline-block;width:9px;height:9px;background:var(--risk-low);border-radius:2px;"></span> ${t('plandirector.health_ok')}</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:var(--risk-medium);border-radius:2px;"></span> ${t('plandirector.health_at_risk')}</span>
+        <span><span style="display:inline-block;width:9px;height:9px;background:var(--risk-critical);border-radius:2px;"></span> ${t('plandirector.health_blocked')}</span>
+        <span>▶ ${t('plandirector.critical_path')}</span>
+        <span>★ ${t('plandirector.quick_win')}</span>
+      </div>`;
+  }
+
+  function _criticalPathHtml() {
+    const cp = _roadmap.critical_path || {};
+    if (!cp.path || !cp.path.length) return '';
+    return `
+      <div class="card" style="margin-top:14px;padding:12px 16px;">
+        <h3 style="margin:0 0 6px;font-size:13px;">${t('plandirector.critical_path')}
+          <span class="text-muted" style="font-weight:400;font-size:11px;">
+            — ${t('plandirector.critical_path_hint', { days: cp.total_days })}</span>
+        </h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;">
+          ${cp.path.map((p, i) => `
+            ${i ? '<span style="color:var(--text-muted);">→</span>' : ''}
+            <span class="badge" title="${UI.esc(p.title)}">${UI.esc(p.code)} (${p.duration_days}d)</span>
+          `).join('')}
+        </div>
+      </div>`;
+  }
+
+  function _buMatrixHtml() {
+    const bus = _roadmap.business_units || [];
+    const bars = _roadFiltered().filter(b => (b.business_units || []).length);
+    if (!bus.length || !bars.length) return '';
+    return `
+      <div class="card" style="margin-top:14px;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);">
+          <strong style="font-size:13px;">${t('plandirector.bu_deployment')}</strong>
+          <span class="text-muted" style="font-size:11px;"> — ${t('plandirector.bu_deployment_hint')}</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" style="width:100%;font-size:12px;">
+            <thead><tr><th>${t('common.code')}</th><th>${t('common.title')}</th>
+              ${bus.map(b => `<th style="text-align:center;">${UI.esc(b)}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${bars.map(bar => `
+                <tr>
+                  <td>${UI.codePill(bar.code)}</td>
+                  <td>${UI.esc(bar.title.slice(0, 40))}</td>
+                  ${bus.map(bu => `<td style="text-align:center;">${
+                    (bar.business_units || []).includes(bu)
+                      ? `<span style="color:${HEALTH_COLOR[bar.health] || 'var(--text-muted)'};">●</span>` : '·'
+                  }</td>`).join('')}
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  function _wireRoadmap() {
+    const bind = (id, key) => {
+      const el = document.getElementById(id);
+      if (el) el.onchange = (e) => { _roadFilters[key] = e.target.value; _renderBody(); };
+    };
+    bind('rd-area', 'area');
+    bind('rd-env', 'env');
+    bind('rd-bu', 'bu');
+    const scale = document.getElementById('rd-scale');
+    if (scale) scale.onchange = (e) => { _ganttScale = e.target.value; _renderBody(); };
+  }
+
+  // ---------- Cartera priorizada y presupuesto ----------
+
+  function _portfolioHtml() {
+    if (!_portfolio) return `<div class="card"><p class="text-muted" style="padding:16px;">${t('common.no_data')}</p></div>`;
+    const p = _portfolio;
+    const b = p.budget || {};
+    const fmt = n => (n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+    return `
+      <div class="stats-row" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value">${fmt(b.requested)}</div><div class="stat-label">${t('plandirector.budget_requested')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${fmt(b.approved)}</div><div class="stat-label">${t('plandirector.budget_approved_label')}</div></div>
+        <div class="stat-card"><div class="stat-value">${fmt(b.spent)}</div><div class="stat-label">${t('plandirector.budget_spent')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:${(b.underfunded || []).length ? 'var(--risk-high)' : ''};">${(b.underfunded || []).length}</div><div class="stat-label">${t('plandirector.underfunded')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--risk-low);">${(p.quick_wins || []).length}</div><div class="stat-label">${t('plandirector.quick_wins')}</div></div>
+      </div>
+
+      ${(b.largest_gaps || []).length ? `
+      <div class="card" style="margin-bottom:14px;padding:12px 16px;">
+        <h3 style="margin:0 0 8px;font-size:13px;">${t('plandirector.funding_gap')}
+          <span class="text-muted" style="font-weight:400;font-size:11px;"> — ${t('plandirector.funding_gap_hint')}</span></h3>
+        ${b.largest_gaps.slice(0, 6).map(g => {
+          const max = b.largest_gaps[0].gap || 1;
+          return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">
+            <span style="width:90px;">${UI.esc(g.code)}</span>
+            <div style="flex:1;background:var(--bg-3);border-radius:3px;height:12px;overflow:hidden;">
+              <div style="background:var(--brand-orange);height:100%;width:${(g.gap / max) * 100}%;"></div>
+            </div>
+            <span style="width:110px;text-align:right;">${fmt(g.gap)}</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+
+      <div class="card">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);">
+          <strong style="font-size:13px;">${t('plandirector.portfolio_ranking')}</strong>
+          <span class="text-muted" style="font-size:11px;"> — ${t('plandirector.portfolio_hint')}</span>
+        </div>
+        <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%;font-size:12px;">
+          <thead><tr>
+            <th>${t('common.code')}</th><th>${t('common.title')}</th>
+            <th>${t('plandirector.reduction_points')}</th>
+            <th>${t('plandirector.efficiency')}</th>
+            <th>${t('plandirector.cost_per_point')}</th>
+            <th>${t('plandirector.horizon')}</th>
+            <th>${t('plandirector.origin_col')}</th>
+            <th>${t('common.priority')}</th>
+          </tr></thead>
+          <tbody>
+            ${p.initiatives.map(r => `
+              <tr>
+                <td>${UI.codePill(r.code)}${r.quick_win ? ` <span class="badge" style="background:var(--risk-low);color:#fff;">${t('plandirector.quick_win')}</span>` : ''}</td>
+                <td>${UI.esc(r.title)}</td>
+                <td>${r.projected_reduction_points}</td>
+                <td>${r.priority_score !== null && r.priority_score !== undefined ? r.priority_score : '—'}</td>
+                <td>${r.cost_per_point !== null && r.cost_per_point !== undefined ? r.cost_per_point.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</td>
+                <td>${r.horizon ? t('plandirector.horizon_' + r.horizon) : '—'}</td>
+                <td>${r.origin ? UI.esc(r.origin) : '—'}</td>
+                <td>
+                  <span class="badge" style="background:${PRIORITY_COLORS[r.priority] || '#888'};color:#fff;">${UI.esc(r.priority)}</span>
+                  ${r.priority_overridden && r.priority_suggested
+                    ? `<br><small class="text-muted" title="${t('plandirector.suggested_hint')}">${t('plandirector.suggested')}: ${UI.esc(r.priority_suggested)}</small>` : ''}
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px;padding:12px 16px;">
+        <h3 style="margin:0 0 8px;font-size:13px;">${t('plandirector.distribution')}</h3>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:12px;">
+          ${[['by_horizon', 'plandirector.horizon'], ['by_origin', 'plandirector.origin_col'],
+             ['by_action_type', 'plandirector.action_type'], ['by_env', 'plandirector.env'],
+             ['by_nist_function', 'NIST']].map(([key, label]) => `
+            <div>
+              <strong>${label.includes('.') ? t(label) : label}</strong>
+              <ul style="margin:4px 0;padding-left:16px;">
+                ${Object.entries(p[key] || {}).map(([k, v]) => `<li>${UI.esc(k)}: ${v}</li>`).join('') || '<li>—</li>'}
+              </ul>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  function _wirePortfolio() { /* solo lectura por ahora */ }
 
   // ---------- Resumen ----------
 
@@ -170,7 +864,7 @@ const ViewPlanDirector = (() => {
       return;
     }
     const targetsById = new Map(draft.control_targets.map(ct => [ct.implementation_id, ct]));
-    const targetImpls = _impls.filter(i => targetsById.has(i.id));
+    const targetImpls = _impls.filter(c => c.implementation_id && targetsById.has(c.implementation_id));
     UI.modal(`${t('plandirector.generate_draft')} — ${riskCode}`, `
       <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.ai_generated_banner')}: ${UI.esc(draft.rationale || '')}</div>
       <div class="form-grid">
@@ -185,12 +879,12 @@ const ViewPlanDirector = (() => {
       </div>
       <h4 style="font-size:12px;margin:12px 0 6px;">${t('plandirector.control_targets_title')} (${targetImpls.length})</h4>
       <div>
-        ${targetImpls.map(impl => {
-          const ct = targetsById.get(impl.id);
+        ${targetImpls.map(c => {
+          const ct = targetsById.get(c.implementation_id);
           return `<label style="display:block;font-size:12px;margin-bottom:4px;">
-            <input type="checkbox" data-dr-target="${impl.id}" checked>
-            ${UI.esc(impl.control?.code || '')} — ${UI.esc(impl.control?.name || impl.name)}
-            (${impl.maturity}/5 → <strong>${ct.target_maturity}/5</strong>)
+            <input type="checkbox" data-dr-target="${c.implementation_id}" checked>
+            ${UI.esc(c.code || '')} — ${UI.esc(c.name || '')}
+            (${c.maturity}/5 → <strong>${ct.target_maturity}/5</strong>)
           </label>`;
         }).join('') || `<p class="text-muted" style="font-size:12px;">${t('common.no_data')}</p>`}
       </div>
@@ -535,45 +1229,79 @@ const ViewPlanDirector = (() => {
             <div class="span2"><label>${t('plandirector.expected_reduction')}</label><textarea id="wi-reduction" class="input" rows="2"></textarea></div>
           </div>`;
       }
-      // step 2: control targets
+      // step 2: controles objetivo (catalogo ISO 27002 completo)
+      if (!_impls.length) {
+        return `<p class="text-muted" style="font-size:13px;">${t('plandirector.catalog_unavailable')}</p>`;
+      }
       return `
-        <p class="text-muted" style="font-size:12px;margin-bottom:10px;">${t('plandirector.control_targets_hint')}</p>
+        <p class="text-muted" style="font-size:12px;margin-bottom:8px;">${t('plandirector.control_targets_hint')}</p>
+        <input type="text" id="wi-ctrl-search" class="input" style="margin-bottom:8px;"
+               placeholder="${t('common.search')}..." value="${UI.esc(state.ctrlQuery || '')}">
+        <div id="wi-ctrl-selected" style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">
+          ${t('plandirector.controls_selected', { n: state.targets.length })}
+        </div>
         <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:6px;">
           <table class="data-table" style="width:100%;">
             <thead><tr><th></th><th>${t('common.code')}</th><th>${t('common.name')}</th><th>${t('plandirector.current_maturity')}</th><th>${t('plandirector.target_maturity')}</th></tr></thead>
-            <tbody>
-              ${_impls.map(impl => {
-                const selected = state.targets.find(x => x.implementation_id === impl.id);
-                return `<tr>
-                  <td><input type="checkbox" data-target-check="${impl.id}" ${selected ? 'checked' : ''}></td>
-                  <td>${UI.esc(impl.control?.code || '')}</td>
-                  <td>${UI.esc(impl.control?.name || impl.name)}</td>
-                  <td>${impl.maturity}/5</td>
-                  <td><input type="number" min="0" max="5" data-target-value="${impl.id}" class="input" style="width:60px;" value="${selected ? selected.target_maturity : Math.min(5, (impl.maturity || 0) + 2)}"></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
+            <tbody id="wi-ctrl-rows">${_controlRowsHtml(state)}</tbody>
           </table>
         </div>`;
     }
 
+    function _controlRowsHtml(state) {
+      const q = (state.ctrlQuery || '').toLowerCase();
+      const rows = _impls.filter(c => !q || `${c.code} ${c.name}`.toLowerCase().includes(q));
+      if (!rows.length) return `<tr><td colspan="5" class="text-muted" style="font-size:12px;">${t('common.no_data')}</td></tr>`;
+      return rows.map(c => {
+        const key = _ctrlKey(c);
+        const selected = state.targets.find(x => _ctrlKey(x) === key);
+        return `<tr>
+          <td><input type="checkbox" data-target-check="${key}" ${selected ? 'checked' : ''}></td>
+          <td>${UI.esc(c.code || '')}</td>
+          <td>${UI.esc(c.name || '')}${c.implemented ? '' : ` <small class="text-muted">${t('plandirector.not_implemented_yet')}</small>`}</td>
+          <td>${c.maturity}/5</td>
+          <td><input type="number" min="0" max="5" data-target-value="${key}" class="input" style="width:60px;"
+                     value="${selected ? selected.target_maturity : Math.min(5, (c.maturity || 0) + 2)}"></td>
+        </tr>`;
+      }).join('');
+    }
+
     function wire() {
       if (step !== 2) return;
+      const search = document.getElementById('wi-ctrl-search');
+      if (search) {
+        search.oninput = (e) => {
+          state.ctrlQuery = e.target.value.trim();
+          // Solo se repintan las filas: el foco del buscador se conserva.
+          document.getElementById('wi-ctrl-rows').innerHTML = _controlRowsHtml(state);
+          wireRows();
+        };
+      }
+      wireRows();
+    }
+
+    function wireRows() {
+      const counter = document.getElementById('wi-ctrl-selected');
+      const refreshCounter = () => {
+        if (counter) counter.textContent = t('plandirector.controls_selected', { n: state.targets.length });
+      };
       document.querySelectorAll('[data-target-check]').forEach(cb => {
         cb.onchange = () => {
-          const implId = parseInt(cb.dataset.targetCheck);
+          const key = cb.dataset.targetCheck;
           if (cb.checked) {
-            const valInput = document.querySelector(`[data-target-value="${implId}"]`);
-            state.targets.push({ implementation_id: implId, target_maturity: parseInt(valInput.value) });
+            const valInput = document.querySelector(`[data-target-value="${key}"]`);
+            const entry = _ctrlFromKey(key);
+            entry.target_maturity = parseInt(valInput.value);
+            state.targets.push(entry);
           } else {
-            state.targets = state.targets.filter(x => x.implementation_id !== implId);
+            state.targets = state.targets.filter(x => _ctrlKey(x) !== key);
           }
+          refreshCounter();
         };
       });
       document.querySelectorAll('[data-target-value]').forEach(inp => {
         inp.onchange = () => {
-          const implId = parseInt(inp.dataset.targetValue);
-          const entry = state.targets.find(x => x.implementation_id === implId);
+          const entry = state.targets.find(x => _ctrlKey(x) === inp.dataset.targetValue);
           if (entry) entry.target_maturity = parseInt(inp.value);
         };
       });
@@ -667,13 +1395,16 @@ const ViewPlanDirector = (() => {
 
       <h4 style="font-size:12px;margin:14px 0 6px;">${t('plandirector.control_targets_title')} (${d.control_targets.length})</h4>
       <table class="data-table" style="width:100%;font-size:12px;">
-        <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th><th>Baseline → ${t('plandirector.current_maturity')} → ${t('plandirector.target_maturity')}</th><th></th></tr></thead>
+        <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th><th>Baseline → ${t('plandirector.current_maturity')} → ${t('plandirector.target_maturity')}</th><th>${t('treatment.evidence_col')}</th><th></th></tr></thead>
         <tbody>
           ${d.control_targets.map(ct => `
             <tr>
               <td>${UI.esc(ct.control_code || '')}</td>
               <td>${UI.esc(ct.control_name || '')}</td>
               <td>${ct.baseline_maturity ?? '—'} → ${ct.current_maturity ?? '—'} → <strong>${ct.target_maturity}</strong></td>
+              <td>${(ct.evidence || []).length
+                    ? (ct.evidence || []).map(ev => `<span class="badge" title="${UI.esc(ev.title)}" style="background:${ev.expired ? 'var(--risk-high)' : 'var(--bg-3)'};color:${ev.expired ? '#fff' : 'var(--text)'};margin-right:3px;">${UI.esc(ev.code)}${ev.quality_level ? ` · ${UI.esc(ev.quality_level)}` : ''}</span>`).join('')
+                    : `<span style="color:var(--risk-medium);">${t('plandirector.no_evidence')}</span>`}</td>
               <td><button class="btn btn-sm btn-ghost" data-del-target="${ct.id}">${t('common.delete')}</button></td>
             </tr>`).join('')}
         </tbody>

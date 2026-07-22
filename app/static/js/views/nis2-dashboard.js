@@ -1,4 +1,4 @@
-/* NIS2 Dashboard — Wizard de notificacion Art. 23 */
+/* NIS2 Dashboard — Wizard de notificación Art. 23 */
 const ViewNis2Dashboard = (() => {
 
   let _countdownInterval = null;

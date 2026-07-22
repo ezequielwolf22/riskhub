@@ -248,6 +248,9 @@ class RiskContext(Base):
     risk_appetite = Column(Integer, default=3)  # nivel 0..8 maximo aceptable
     ai_gap_cache = Column(JSON, nullable=True)   # cache gap analysis detallado (v1.8)
     ai_learned_lessons = Column(JSON, nullable=True)  # lecciones destiladas de senales (v6.1)
+    # Modo de aprobacion del Plan Director (ISO 27001 cl. 6.1.3f)
+    # "internal_seal" (default) | "signature"
+    plan_approval_mode = Column(String(16), default="internal_seal")
     # Normativas activas seleccionadas en el cuestionario IA
     active_frameworks = Column(JSON, nullable=True)  # ["iso27001","nis2","gdpr","ens",...]
     ens_level = Column(String(16), nullable=True)    # "basico" | "medio" | "alto"
@@ -1180,15 +1183,93 @@ class TreatmentTask(Base):
 # Principio: este dominio NUNCA escribe residual_level ni maturity reales; solo
 # lee, proyecta (simulacion what-if) y verifica (compara proyectado vs real).
 
+class StrategicPlan(Base):
+    """Plan Director de Seguridad (es) / Security Strategic Plan (en).
+
+    El documento con periodo, alcance, linea base y version. Sin esta entidad no
+    se puede versionar, aprobar ni re-baselinar un plan plurianual: los programas
+    quedaban sueltos sin nada que representase "el plan" ante un auditor.
+
+    Metodologia: INCIBE fase 1-2 (situacion actual + estrategia) y NIST CSF 2.0
+    (Current Profile -> Target Profile). ISO 27001 cl. 6.1.3.
+    """
+    __tablename__ = "strategic_plans"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    code = Column(String(32), unique=True, nullable=False)          # PLN-0001
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    # Periodo del plan (un PDS suele ser plurianual: 2026-2028)
+    period_start = Column(DateTime, nullable=True)
+    period_end = Column(DateTime, nullable=True)
+    # Framework en cuyo lenguaje se fija el objetivo (iso27001|nist_csf|ens|...)
+    framework_code = Column(String(64), default="iso27001")
+    status = Column(String(24), default="draft", index=True)
+    # draft|pending_approval|approved|active|closed
+    version = Column(Integer, default=1)
+    scope_statement = Column(Text)                                   # alcance (ISO 27001 cl. 4.3)
+    strategy_notes = Column(Text)                                    # INCIBE fase 2
+    # Perfil de madurez sellado al aprobar: {control_code: maturity}. La linea
+    # base no se recalcula nunca, para que el avance se mida contra algo fijo.
+    baseline_profile = Column(JSON, nullable=True)
+    baseline_sealed_at = Column(DateTime, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # Capacidad de inversion del periodo (INCIBE: criterio de priorizacion)
+    investment_capacity = Column(Float, nullable=True)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    programs = relationship("StrategicProgram", back_populates="plan")
+    targets = relationship("MaturityTarget", back_populates="plan",
+                           cascade="all, delete-orphan")
+
+
+class MaturityTarget(Base):
+    """Perfil objetivo del plan (NIST CSF Target Profile / INCIBE fase 2).
+
+    El objetivo se puede fijar sobre un control ISO 27002 concreto o sobre un
+    requisito de otro framework (CSF, ENS...); en ese caso el crossmap
+    (`app/data/frameworks/control_crossmap.json`) lo traduce a controles ISO,
+    que es el sustrato que entiende el motor de riesgo.
+    """
+    __tablename__ = "maturity_targets"
+    __table_args__ = (
+        UniqueConstraint("plan_id", "control_id", "framework_code", "requirement_id",
+                         name="uq_plan_target"),
+    )
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    plan_id = Column(Integer, ForeignKey("strategic_plans.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    control_id = Column(Integer, ForeignKey("controls.id"), nullable=True, index=True)
+    framework_code = Column(String(64), nullable=True)               # si el objetivo es por framework
+    requirement_id = Column(String(64), nullable=True)               # "GV.OC", "org.1"...
+    target_maturity = Column(Integer, nullable=False)                # 0..5 (escala CMM INCIBE)
+    rationale = Column(Text)
+    # Por que es obligatorio alcanzarlo (INCIBE: origen del proyecto)
+    mandatory_by = Column(String(24), nullable=True)   # legal|contractual|riesgo|estrategia
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    plan = relationship("StrategicPlan", back_populates="targets")
+    control = relationship("Control")
+
+
 class StrategicProgram(Base):
     """Programa del plan estrategico de ciberseguridad (agrupa iniciativas)."""
     __tablename__ = "strategic_programs"
     id = Column(Integer, primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    plan_id = Column(Integer, ForeignKey("strategic_plans.id"), nullable=True, index=True)
     code = Column(String(32), unique=True, nullable=False)          # PRG-0001
     name = Column(String(255), nullable=False)
     description = Column(Text)
     area = Column(String(64))                    # GRC | Arquitectura | Operaciones | OT | Personas...
+    env = Column(String(8), nullable=True)       # IT | OT | IoT | AI — dominio tecnologico
     responsible_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     budget = Column(Float, nullable=True)
     budget_approved = Column(Float, nullable=True)
@@ -1196,6 +1277,7 @@ class StrategicProgram(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
+    plan = relationship("StrategicPlan", back_populates="programs")
     responsible = relationship("User", foreign_keys=[responsible_id])
     initiatives = relationship("StrategicInitiative", back_populates="program")
 
@@ -1215,17 +1297,31 @@ class StrategicInitiative(Base):
     health = Column(String(16), default="ok")                       # ok|at_risk|blocked — computado, no editable via API
     health_reasons = Column(JSON, nullable=True)                    # ["Fecha objetivo vencida", ...]
     priority = Column(String(16), default="medium")                 # low|medium|high|critical
+    # Justificacion cuando se sobreescribe la prioridad sugerida por el motor
+    priority_override_reason = Column(Text, nullable=True)
     nist_function = Column(String(16), nullable=True)               # govern|identify|protect|detect|respond|recover
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     scope = Column(String(16), default="global")                    # global|regional
     business_units = Column(JSON, nullable=True)                    # ["BU Iberia", ...] texto libre
+    env = Column(String(8), nullable=True)                          # IT | OT | IoT | AI
+    # Taxonomia INCIBE (fase 4: clasificacion y priorizacion)
+    origin = Column(String(16), nullable=True)      # legal|tecnico|riesgo|estrategia
+    action_type = Column(String(16), nullable=True)  # tecnica|organizativa|normativa
+    effort_human = Column(Float, nullable=True)     # dias-persona estimados
     start_date = Column(DateTime, nullable=True)
     target_date = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     progress = Column(Integer, default=0)                           # 0-100 derivado de OKRs/tareas
     budget = Column(Float, nullable=True)
     budget_approved = Column(Float, nullable=True)
+    spent = Column(Float, nullable=True)                            # gasto real acumulado
     expected_risk_reduction = Column(Text)                          # narrativa
+    # Reporte ejecutivo al comite (campos fijos, no enterrados en la bitacora)
+    last_achievements = Column(Text, nullable=True)
+    next_steps = Column(Text, nullable=True)
+    blockers = Column(Text, nullable=True)
+    # Dependencias: ids de iniciativas que deben completarse antes que esta
+    blocked_by = Column(JSON, nullable=True)                        # [12, 34]
     source = Column(String(16), default="manual")                   # manual|import|ai_draft
     source_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True)
     ai_generated = Column(Boolean, default=False)
@@ -1263,12 +1359,58 @@ class InitiativeObjective(Base):
     collaborator = Column(String(128), nullable=True)               # texto libre (puede no ser usuario del sistema)
     target_date = Column(DateTime, nullable=True)
     progress = Column(Integer, default=0)                           # 0-100
+    scope = Column(String(16), default="global")                    # global|regional
+    business_units = Column(JSON, nullable=True)
+    # Documentacion y colaboracion al nivel donde ocurre el trabajo
+    attachments = Column(JSON, nullable=True)   # [{evidence_id|document_id, name, uploaded_at, size}]
+    comments = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
 
     initiative = relationship("StrategicInitiative", back_populates="objectives")
     owner = relationship("User", foreign_keys=[owner_id])
+
+
+class PlanApproval(Base):
+    """Aprobacion formal del Plan Director — ISO 27001 cl. 6.1.3f.
+
+    Tabla propia: reutiliza el SERVICIO de tokens de aprobacion pero no el
+    modelo de politicas, que esta en produccion y no debe tocarse.
+
+    Dos modos segun configuracion de la organizacion:
+      - signature:     firma por token/email, con IP y caducidad (no repudio).
+      - internal_seal: sello interno con usuario, fecha, version y hash.
+
+    El sello es inmutable: cualquier cambio de alcance posterior obliga a una
+    version nueva del plan y a repetir la aprobacion.
+    """
+    __tablename__ = "plan_approvals"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    plan_id = Column(Integer, ForeignKey("strategic_plans.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    plan_version = Column(Integer, nullable=False)      # version aprobada (sellada)
+    mode = Column(String(16), default="internal_seal")  # signature | internal_seal
+    status = Column(String(16), default="pending")      # pending|approved|rejected|cancelled
+    requested_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    requested_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # Firma por token (modo signature)
+    approver_email = Column(String(255), nullable=True)
+    approver_name = Column(String(255), nullable=True)
+    token = Column(String(64), unique=True, nullable=True, index=True)
+    expires_at = Column(DateTime, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    # Sello interno (modo internal_seal)
+    approved_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    responded_at = Column(DateTime, nullable=True)
+    response_notes = Column(Text, nullable=True)
+    content_hash = Column(String(64), nullable=True)    # SHA-256 de lo aprobado
+    order_index = Column(Integer, default=1)            # ronda secuencial
+
+    plan = relationship("StrategicPlan")
+    requested_by = relationship("User", foreign_keys=[requested_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
 
 
 class InitiativeControlTarget(Base):
