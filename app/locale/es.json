@@ -229,6 +229,13 @@
     "not_enabled": "La vigilancia normativa no está activada para este tenant.",
     "sweep_failed": "Error durante el barrido normativo: {detail}."
   },
+  "method": {
+    "cannot_apply": "No se pudo aplicar la declaracion.",
+    "finding_not_found": "Hallazgo no encontrado.",
+    "parameter_not_found": "Parametro de metodo no encontrado: {key}.",
+    "statement_not_found": "Declaracion de metodo no encontrada.",
+    "user_no_org": "Tu usuario no tiene organizacion asignada."
+  },
   "ingest": {
     "batch_not_found": "Lote de ingesta no encontrado.",
     "conflict_not_found": "Conflicto no encontrado.",

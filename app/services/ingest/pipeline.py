@@ -123,6 +123,11 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
             _materialize_profile(db, org_id, bat, profile_data, result, warnings)
             _save_profile(db, org_id, profile_data)
 
+        # El METODO del cliente, no solo sus datos: como calcula, con que
+        # umbrales, cada cuanto prueba. Va aqui porque necesita el pack entero,
+        # igual que el perfil.
+        method_summary = _extract_method(db, org_id, documents, bat, lang, warnings)
+
         # ── Pasada 2 y 3: mapa por documento y volcado ───────────────────
         file_reports = []
         for doc in documents:
@@ -157,7 +162,7 @@ def run_pack(db, org_id: Optional[int], files: list[tuple[str, bytes]], *,
             "created": result.created, "updated": result.updated,
             "linked": result.linked, "needs_review": result.needs_review,
             "conflicts": result.conflicts, "skipped": result.skipped[:50],
-            "gaps": gaps,
+            "gaps": gaps, "method": method_summary,
         })
         bat.files = file_reports
         warnings.extend(result.warnings)
@@ -186,6 +191,40 @@ def _finish(db, bat, summary: dict, warnings: list, status: str) -> dict:
 
 
 # ── Perfil ───────────────────────────────────────────────────────────────────
+
+def _extract_method(db, org_id, documents, bat, lang, warnings) -> dict:
+    """Extrae y guarda el metodo declarado en la documentacion del cliente.
+
+    Best-effort: que no se pueda deducir el metodo no puede impedir que se
+    vuelquen los datos. Lo que si queda es constancia en los avisos.
+    """
+    empty = {"created": 0, "applied": 0, "proposed": 0, "unmodelled": 0}
+    if not org_id:
+        return empty
+    try:
+        from app.services.method.conformance import refresh
+        from app.services.method.extraction import extract_method, persist
+
+        statements = extract_method(db, org_id, documents, lang=lang)
+        if not statements:
+            return empty
+        out = persist(db, org_id, statements, batch_id=bat.id)
+        if out["proposed"]:
+            warnings.append(
+                f"{out['proposed']} reglas de tu metodo estan propuestas y sin "
+                f"aplicar: cambiarian cifras que ya existen, asi que las aplica "
+                f"una persona.")
+        if out["unmodelled"]:
+            warnings.append(
+                f"{out['unmodelled']} reglas de tu politica no se pueden aplicar "
+                f"todavia: quedan registradas con su cita para que se vean.")
+        refresh(db, org_id)
+        return out
+    except Exception as exc:
+        logger.warning("ingest: no se pudo extraer el metodo: %s", exc, exc_info=True)
+        warnings.append(f"No se pudo deducir el metodo de calculo: {exc}")
+        return empty
+
 
 def _get_profile(db, org_id: Optional[int]):
     from app.models import OrganizationProfile

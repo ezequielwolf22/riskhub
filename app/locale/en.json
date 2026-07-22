@@ -229,6 +229,13 @@
     "not_enabled": "Regulatory watch is not enabled for this tenant.",
     "sweep_failed": "Error during regulatory sweep: {detail}."
   },
+  "method": {
+    "cannot_apply": "The statement could not be applied.",
+    "finding_not_found": "Finding not found.",
+    "parameter_not_found": "Method parameter not found: {key}.",
+    "statement_not_found": "Method statement not found.",
+    "user_no_org": "Your user has no organization assigned."
+  },
   "ingest": {
     "batch_not_found": "Ingest batch not found.",
     "conflict_not_found": "Conflict not found.",

@@ -1,0 +1,23 @@
+{
+  "_comment": "Minimos que exige la norma para parametros de metodo. Sirven SOLO para contrastar: cuando el metodo del cliente es mas laxo se sigue calculando con el suyo y se levanta un hallazgo. Como calculo y si cumplo son dos preguntas distintas.",
+  "minima": [
+    {
+      "parameter_key": "bcm.test.frequency_months",
+      "comparison": "max",
+      "value": 12,
+      "unit": "meses",
+      "normative_ref": "ISO 22301:2019 cl. 8.5",
+      "statement": "Los ejercicios y pruebas de continuidad deben realizarse a intervalos planificados y, en la practica auditable, al menos una vez al ano.",
+      "severity": "high"
+    },
+    {
+      "parameter_key": "tprm.reassessment.months",
+      "comparison": "max_by_key",
+      "value": {"critical": 12, "high": 12},
+      "unit": "meses",
+      "normative_ref": "DORA art. 28 / NIS2 art. 21.2(d)",
+      "statement": "Los proveedores criticos y de alto riesgo deben reevaluarse al menos anualmente.",
+      "severity": "medium"
+    }
+  ]
+}
