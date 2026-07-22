@@ -1908,6 +1908,29 @@ const ViewGuide = {
     ${this._h('Importar desde archivo')}
     ${this._p('El boton "Importar desde archivo" permite subir un plan director existente (PDF, Word, Excel o texto). La IA estructura programas, iniciativas y objetivos, y propone que controles ISO 27002 mejora cada iniciativa — pero los <strong>riesgos afectados se derivan siempre de forma determinista</strong> después de importar, nunca los inventa la IA. Todo queda como borrador editable antes de confirmar.')}
     ${this._tip('<strong>Consejo:</strong> desde el panel "Riesgos sobre apetito sin cobertura" puedes generar un borrador de iniciativa completo (controles candidatos + proyección) para cualquier riesgo huerfano con un solo click.')}
+
+    ${this._h('Diagnóstico: de dónde sale el plan (pestaña "Diagnóstico")')}
+    ${this._p('Un Plan Director no empieza en una hoja en blanco. Sigue la metodología de INCIBE (y el ciclo <em>Current Profile → Target Profile</em> de NIST CSF 2.0): primero se conoce la <strong>situación actual</strong>, luego se fija el <strong>objetivo</strong>, y la diferencia entre ambos es lo que se convierte en proyectos.')}
+    ${this._steps([
+      '<strong>Situación actual:</strong> el perfil de madurez se lee de los controles reales de tu organización (ya ajustada por la calidad de la evidencia). Un control que no existe cuenta como 0 y aparece en la lista: que falte es justamente el dato relevante.',
+      '<strong>Objetivo:</strong> fijas la madurez que quieres alcanzar. Puedes hacerlo control a control sobre ISO 27002, o en el lenguaje de tu marco (una categoría de NIST CSF, un requisito del ENS): el sistema lo traduce a controles ISO con el mapeo cruzado. Si algún objetivo no tiene control equivalente en el catálogo, se te dice — no se descarta en silencio.',
+      '<strong>Brecha:</strong> solo aparecen los controles por debajo del objetivo, con lo obligatorio por ley primero y el esfuerzo estimado en días-persona.',
+      '<strong>Iniciativas:</strong> el botón "Generar iniciativas" agrupa la brecha por ámbito y propone los proyectos con sus controles objetivo ya puestos. Es determinista: mismo diagnóstico, misma propuesta. Al confirmar, los riesgos y la reducción proyectada los deriva el motor de siempre.',
+    ])}
+
+    ${this._h('Aprobación de la dirección (ISO/IEC 27001 cl. 6.1.3f)')}
+    ${this._p('La norma exige que el plan de tratamiento y la aceptación del riesgo residual los aprueben los propietarios del riesgo. La no conformidad mayor más habitual en auditoría es la <strong>aceptación no autorizada</strong>: un riesgo alto dado por bueno sin que conste quién lo aprobó. Por eso el estado "Aprobado" <strong>no se puede poner a mano</strong>: solo se alcanza cerrando una ronda de aprobación.')}
+    ${this._steps([
+      'Elige el modo: <strong>sello interno</strong> (queda registrado el usuario, la fecha, la versión y una huella del contenido) o <strong>firma por correo</strong> con enlace único, IP y caducidad, cuando necesitas no repudio o que firme alguien de fuera del sistema.',
+      'Al aprobarse, la <strong>línea base se congela</strong>: a partir de ahí el avance se mide contra algo fijo y no se mueve solo porque cambie el mundo.',
+      'Si el plan cambia después de aprobarse, se marca como <strong>modificado tras aprobar</strong> y el informe lo dice. No se oculta: es exactamente lo que un auditor quiere ver.',
+      'Cambiar el alcance o el periodo de un plan aprobado <strong>sube la versión</strong> y exige volver a aprobarlo.',
+    ])}
+
+    ${this._h('Cronograma y cartera')}
+    ${this._p('La pestaña <strong>Cronograma</strong> muestra el Gantt del plan (por meses o trimestres), con la línea de hoy, el color según la salud calculada, las dependencias entre iniciativas y el <strong>camino crítico</strong> — la cadena más larga, que marca la duración real del plan. Si hay un ciclo de dependencias se avisa: el plan no sería ejecutable tal cual. Debajo, la matriz de despliegue por unidad de negocio.')}
+    ${this._p('La pestaña <strong>Cartera</strong> ordena las iniciativas por <strong>eficiencia</strong> (puntos de riesgo eliminados por unidad de esfuerzo) y marca los <strong>quick wins</strong> siguiendo el criterio de INCIBE: mínimo esfuerzo y mejora sustancial. La prioridad se sugiere calculada; si alguien la cambia a mano, se muestra la divergencia. También verás la salud presupuestaria: el presupuesto aprobado debería seguir al avance, y quien no lo cumpla aparece como infrafinanciada.')}
+    ${this._tip('<strong>Informe:</strong> el botón "Descargar informe" genera el documento del Plan Director con la estructura de INCIBE (situación actual, estrategia, brecha, proyectos priorizados, presupuesto y hoja de aprobación con las firmas). Es el entregable para el comité y para el auditor.')}
   `;},
 
   get _cGdpr() { return `

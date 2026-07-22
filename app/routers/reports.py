@@ -1613,6 +1613,211 @@ def treatment_plan_report(request: Request, db: Session = Depends(get_db),
     return _pdf_response(el, "plan_tratamiento.pdf", brand, lang)
 
 
+@router.get("/strategic-plan/{plan_id}")
+def strategic_plan_report(plan_id: int, request: Request, db: Session = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """Plan Director de Seguridad — el documento entregable.
+
+    Sigue la estructura de la metodologia INCIBE: situacion actual, estrategia y
+    objetivo, brecha, proyectos priorizados con su clasificacion, cronograma,
+    presupuesto y hoja de aprobacion de la direccion (ISO 27001 cl. 6.1.3f).
+    """
+    from app.models import StrategicInitiative, StrategicPlan, StrategicProgram
+    from app.security import check_org_access
+    from app.services.initiative_projection_service import compute_portfolio_priorities
+    from app.services.plan_approval_service import approval_integrity
+    from app.services.strategic_profile_service import compute_gap, plan_progress
+
+    lang = get_lang(request)
+    plan = db.get(StrategicPlan, plan_id)
+    if not plan or not check_org_access(plan.organization_id, current_user):
+        raise HTTPException(404, _t("strategic_plans.not_found", lang))
+
+    brand = _load_brand(db, plan.organization_id, "strategic_plan")
+    s = _styles(brand)
+    now = datetime.now(timezone.utc)
+    el = []
+
+    def _fmt_date(d):
+        return d.strftime("%d/%m/%Y") if d else "-"
+
+    # ── Portada ──────────────────────────────────────────────────────────
+    el.append(Paragraph(_t("reports.strategic_plan.title", lang), s["TitleBrand"]))
+    el.append(Paragraph(_safe(plan.name), s["SubBrand"]))
+    ctx = db.query(RiskContext).filter(RiskContext.organization_id == plan.organization_id).first()
+    org_name = (ctx.organization_name if ctx else None) or "-"
+    el.append(Paragraph(f"<b>{_t('reports.tprm.organization_label', lang)}</b> {_safe(org_name)}", s["BodyBrand"]))
+    el.append(Paragraph(
+        f"<b>{_t('reports.strategic_plan.period', lang)}</b> "
+        f"{_fmt_date(plan.period_start)} — {_fmt_date(plan.period_end)}", s["BodyBrand"]))
+    el.append(Paragraph(
+        f"<b>{_t('reports.strategic_plan.version', lang)}</b> {plan.version} · "
+        f"<b>{_t('reports.strategic_plan.status', lang)}</b> {_safe(plan.status)}", s["BodyBrand"]))
+    el.append(Spacer(1, 10))
+
+    if plan.scope_statement:
+        el.append(Paragraph(_t("reports.strategic_plan.scope_title", lang), s["H2Brand"]))
+        el.append(Paragraph(_safe(plan.scope_statement, 1200), s["BodyBrand"]))
+        el.append(Spacer(1, 8))
+
+    # ── 1. Situacion actual (INCIBE fase 1) ─────────────────────────────
+    progress = plan_progress(db, plan)
+    el.append(Paragraph(_t("reports.strategic_plan.current_title", lang), s["H2Brand"]))
+    el.append(_kpi_table([
+        (_t("reports.strategic_plan.kpi_baseline", lang),
+         str(progress.get("baseline_average_maturity") if progress.get("baseline_sealed") else "-")),
+        (_t("reports.strategic_plan.kpi_current", lang), str(progress.get("current_average_maturity"))),
+        (_t("reports.strategic_plan.kpi_target_points", lang), str(progress.get("target_points"))),
+        (_t("reports.strategic_plan.kpi_achieved_points", lang), str(progress.get("achieved_points"))),
+        (_t("reports.strategic_plan.kpi_progress", lang), f"{progress.get('progress_pct')}%"),
+    ], s, brand, lang))
+    el.append(Spacer(1, 10))
+
+    # ── 2. Estrategia (INCIBE fase 2) ───────────────────────────────────
+    if plan.strategy_notes:
+        el.append(Paragraph(_t("reports.strategic_plan.strategy_title", lang), s["H2Brand"]))
+        el.append(Paragraph(_safe(plan.strategy_notes, 2000), s["BodyBrand"]))
+        el.append(Spacer(1, 8))
+
+    # ── 3. Brecha (INCIBE fase 3) ───────────────────────────────────────
+    gap = compute_gap(db, plan)
+    el.append(Paragraph(_t("reports.strategic_plan.gap_title", lang), s["H2Brand"]))
+    el.append(Paragraph(
+        _t("reports.strategic_plan.gap_body", lang, count=gap["gap_count"],
+           points=gap["total_gap_points"], days=gap["total_effort_days"]), s["BodyBrand"]))
+    if gap["gaps"]:
+        gdata = [[
+            _t("reports.tprm.h_code", lang), _t("reports.strategic_plan.h_control", lang),
+            _t("reports.strategic_plan.h_current", lang), _t("reports.strategic_plan.h_target", lang),
+            _t("reports.strategic_plan.h_mandatory", lang),
+        ]]
+        for g in gap["gaps"][:40]:
+            gdata.append([
+                _safe(g["code"], 10), _safe(g["name"], 52), str(g["current_maturity"]),
+                str(g["target_maturity"]), _safe(g.get("mandatory_by") or "-", 14),
+            ])
+        gt = Table(gdata, repeatRows=1, colWidths=[16*mm, 86*mm, 18*mm, 18*mm, 24*mm])
+        gt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(gt)
+    # Objetivos sin equivalencia: se declaran, no se ocultan
+    if gap.get("unresolved_targets"):
+        el.append(Spacer(1, 6))
+        el.append(Paragraph(
+            _t("reports.strategic_plan.unresolved", lang,
+               items=", ".join(
+                   f"{u.get('framework_code')}:{u.get('requirement_id')}"
+                   for u in gap["unresolved_targets"])), s["BodyBrand"]))
+    el.append(Spacer(1, 10))
+
+    # ── 4. Proyectos priorizados (INCIBE fase 4) ────────────────────────
+    programs = db.query(StrategicProgram).filter(StrategicProgram.plan_id == plan.id).all()
+    initiatives = []
+    if programs:
+        initiatives = db.query(StrategicInitiative).filter(
+            StrategicInitiative.program_id.in_([p.id for p in programs])
+        ).all()
+    priorities = compute_portfolio_priorities(initiatives)
+
+    el.append(Paragraph(_t("reports.strategic_plan.projects_title", lang), s["H2Brand"]))
+    if initiatives:
+        ranked = sorted(
+            initiatives,
+            key=lambda i: -(priorities.get(i.id, {}).get("priority_score") or 0))
+        pdata = [[
+            _t("reports.tprm.h_code", lang), _t("reports.strategic_plan.h_project", lang),
+            _t("reports.strategic_plan.h_horizon", lang), _t("reports.strategic_plan.h_origin", lang),
+            _t("reports.strategic_plan.h_points", lang), _t("reports.strategic_plan.h_budget", lang),
+        ]]
+        for ini in ranked[:40]:
+            p = priorities.get(ini.id, {})
+            title = _safe(ini.title, 44)
+            if p.get("quick_win"):
+                title += " *"
+            pdata.append([
+                _safe(ini.code, 10), title,
+                _safe(p.get("horizon") or "-", 10), _safe(ini.origin or "-", 12),
+                str(p.get("priority_factors", {}).get("reduction_points", 0)),
+                f"{ini.budget:,.0f}" if ini.budget else "-",
+            ])
+        pt = Table(pdata, repeatRows=1, colWidths=[16*mm, 74*mm, 18*mm, 22*mm, 16*mm, 26*mm])
+        pt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_ORANGE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BRAND_GRAY5]),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(pt)
+        el.append(Paragraph(_t("reports.strategic_plan.quick_win_note", lang), s["BodyBrand"]))
+
+        # Presupuesto
+        el.append(Spacer(1, 8))
+        requested = sum(i.budget or 0 for i in initiatives)
+        approved = sum(i.budget_approved or 0 for i in initiatives)
+        spent = sum(i.spent or 0 for i in initiatives)
+        el.append(Paragraph(_t("reports.strategic_plan.budget_title", lang), s["H2Brand"]))
+        el.append(_kpi_table([
+            (_t("reports.strategic_plan.kpi_requested", lang), f"{requested:,.0f}"),
+            (_t("reports.strategic_plan.kpi_approved", lang), f"{approved:,.0f}"),
+            (_t("reports.strategic_plan.kpi_spent", lang), f"{spent:,.0f}"),
+            (_t("reports.strategic_plan.kpi_capacity", lang),
+             f"{plan.investment_capacity:,.0f}" if plan.investment_capacity else "-"),
+        ], s, brand, lang))
+    else:
+        el.append(Paragraph(_t("reports.strategic_plan.no_projects", lang), s["BodyBrand"]))
+    el.append(Spacer(1, 12))
+
+    # ── 5. Aprobacion de la direccion (ISO 27001 cl. 6.1.3f) ────────────
+    el.append(Paragraph(_t("reports.strategic_plan.approval_title", lang), s["H2Brand"]))
+    integrity = approval_integrity(db, plan)
+    if integrity.get("approved"):
+        adata = [[
+            _t("reports.strategic_plan.h_approver", lang),
+            _t("reports.strategic_plan.h_mode", lang),
+            _t("reports.strategic_plan.h_date", lang),
+        ]]
+        for a in integrity.get("approvers", []):
+            adata.append([
+                _safe(a.get("name") or a.get("email") or "-", 44),
+                _safe(a.get("mode") or "-", 16),
+                (a.get("responded_at") or "")[:10] or "-",
+            ])
+        at = Table(adata, repeatRows=1, colWidths=[90*mm, 40*mm, 40*mm])
+        at.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), BRAND_PURPLE),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.25, BRAND_GRAY3),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(at)
+        if integrity.get("drifted"):
+            # Que el plan haya cambiado tras aprobarse es justo lo que un auditor
+            # quiere ver: se dice, no se disimula.
+            el.append(Spacer(1, 6))
+            el.append(Paragraph(_t("reports.strategic_plan.drift_warning", lang), s["BodyBrand"]))
+    else:
+        el.append(Paragraph(_t("reports.strategic_plan.not_approved", lang), s["BodyBrand"]))
+
+    el.append(Spacer(1, 10))
+    el.append(Paragraph(
+        _t("reports.strategic_plan.generated", lang, date=now.strftime("%d/%m/%Y %H:%M")),
+        s["BodyBrand"]))
+
+    return _pdf_response(el, f"plan_director_{plan.code}.pdf", brand, lang)
+
+
 # ============================================================
 # Informes generados por IA
 # ============================================================

@@ -28,10 +28,16 @@ const ViewPlanDirector = (() => {
 
   const SECTIONS = [
     ['summary', 'plandirector.tab_summary'],
+    ['method', 'plandirector.tab_method'],
     ['plan', 'plandirector.tab_plan'],
     ['roadmap', 'plandirector.tab_roadmap'],
     ['portfolio', 'plandirector.tab_portfolio'],
   ];
+
+  let _plans = [];
+  let _plan = null;          // plan seleccionado
+  let _gap = null;
+  let _planProgress = null;
 
   /* Un control objetivo se identifica por su implementacion si la org ya la
      tiene, o por el control del catalogo si aun no existe (el backend la crea
@@ -82,8 +88,11 @@ const ViewPlanDirector = (() => {
       Api.initiatives.controlCatalog(),
       Api.initiatives.roadmap(),
       Api.initiatives.portfolio(),
+      Api.strategicPlans.list(),
     ]);
-    const [stats, burndown, initiatives, programs, users, catalog, roadmap, portfolio] = results;
+    const [stats, burndown, initiatives, programs, users, catalog, roadmap, portfolio, plans] = results;
+    _plans = plans.status === 'fulfilled' ? plans.value : [];
+    if (_plans.length && !_plan) await _loadPlanDetail(_plans[0].id);
     _stats = stats.status === 'fulfilled' ? stats.value : null;
     _burndown = burndown.status === 'fulfilled' ? burndown.value : null;
     _initiatives = initiatives.status === 'fulfilled' ? initiatives.value : [];
@@ -106,9 +115,371 @@ const ViewPlanDirector = (() => {
       document.getElementById(`pd-seg-${id}`).classList.toggle('btn-primary', _section === id);
     });
     if (_section === 'summary') { body.innerHTML = _summaryHtml(); _wireSummary(); }
+    else if (_section === 'method') { body.innerHTML = _methodHtml(); _wireMethod(); }
     else if (_section === 'plan') { body.innerHTML = _planHtml(); _wirePlan(); }
     else if (_section === 'roadmap') { body.innerHTML = _roadmapHtml(); _wireRoadmap(); }
     else { body.innerHTML = _portfolioHtml(); _wirePortfolio(); }
+  }
+
+  /* ---------- Diagnostico: situacion actual, objetivo, brecha y aprobacion.
+     Es el metodo que INCIBE llama fases 1-5 y NIST CSF llama Current Profile ->
+     Target Profile -> gap -> plan de accion. Sin esto el plan empieza en blanco
+     y alguien tiene que inventarse las iniciativas. ---------- */
+
+  function _methodHtml() {
+    if (!_plans.length) {
+      return `
+        <div class="card" style="padding:20px;">
+          <h3 style="margin:0 0 6px;font-size:14px;">${t('plandirector.no_plan_title')}</h3>
+          <p class="text-muted" style="font-size:13px;max-width:640px;">${t('plandirector.no_plan_hint')}</p>
+          <button class="btn btn-primary" id="pm-new-plan">+ ${t('plandirector.new_plan')}</button>
+        </div>`;
+    }
+    const p = _plan;
+    const pr = _planProgress || {};
+    const ap = pr.approval || {};
+    const statusColor = { draft: 'var(--text-muted)', pending_approval: 'var(--brand-orange)',
+      approved: 'var(--risk-low)', active: 'var(--brand-purple)', closed: 'var(--text-subtle)' };
+    return `
+      <div class="card" style="margin-bottom:14px;padding:12px 16px;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <select id="pm-plan" class="input" style="min-width:260px;">
+            ${_plans.map(x => `<option value="${x.id}" ${p && x.id === p.id ? 'selected' : ''}>${UI.esc(x.code)} — ${UI.esc(x.name)}</option>`).join('')}
+          </select>
+          <span class="badge" style="background:${statusColor[p.status] || '#888'};color:#fff;">${t('plandirector.plan_status.' + p.status)}</span>
+          <span class="text-muted" style="font-size:12px;">v${p.version}</span>
+          ${ap.drifted ? `<span class="badge" style="background:var(--risk-high);color:#fff;" title="${t('plandirector.drift_hint')}">${t('plandirector.drifted')}</span>` : ''}
+          <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-ghost" id="pm-new-plan">+ ${t('plandirector.new_plan')}</button>
+            <button class="btn" id="pm-report">${t('plandirector.download_report')}</button>
+            ${p.status === 'draft' ? `<button class="btn btn-primary" id="pm-request-approval">${t('plandirector.request_approval')}</button>` : ''}
+            ${p.status === 'pending_approval' ? `<button class="btn btn-primary" id="pm-decide">${t('plandirector.decide_approval')}</button>` : ''}
+            ${p.status === 'approved' ? `<button class="btn btn-primary" id="pm-activate">${t('plandirector.activate')}</button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-row" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value">${pr.baseline_sealed ? pr.baseline_average_maturity : '—'}</div><div class="stat-label">${t('plandirector.baseline_maturity')}</div></div>
+        <div class="stat-card"><div class="stat-value">${pr.current_average_maturity ?? '—'}</div><div class="stat-label">${t('plandirector.current_maturity_avg')}</div></div>
+        <div class="stat-card"><div class="stat-value">${_gap ? _gap.gap_count : '—'}</div><div class="stat-label">${t('plandirector.controls_below_target')}</div></div>
+        <div class="stat-card"><div class="stat-value">${_gap ? _gap.total_effort_days : '—'}</div><div class="stat-label">${t('plandirector.effort_days')}</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:var(--brand-purple);">${pr.progress_pct ?? 0}%</div><div class="stat-label">${t('plandirector.plan_progress')}</div></div>
+      </div>
+
+      ${!p.baseline_sealed_at ? `<div class="notice" style="margin-bottom:12px;font-size:12px;">${t('plandirector.baseline_not_sealed')}</div>` : ''}
+
+      <div class="card" style="margin-bottom:14px;">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <strong style="font-size:13px;">${t('plandirector.gap_title')}</strong>
+          <span class="text-muted" style="font-size:11px;">${t('plandirector.gap_hint')}</span>
+          <div style="margin-left:auto;display:flex;gap:6px;">
+            <button class="btn btn-sm" id="pm-targets">${t('plandirector.set_targets')}</button>
+            <button class="btn btn-sm btn-primary" id="pm-generate" ${!_gap || !_gap.gap_count ? 'disabled' : ''}>${t('plandirector.generate_initiatives')}</button>
+          </div>
+        </div>
+        ${_gap && _gap.unresolved_targets && _gap.unresolved_targets.length ? `
+          <div class="notice" style="margin:10px 14px;font-size:12px;border-left:3px solid var(--risk-medium);">
+            ${t('plandirector.unresolved_targets')}:
+            ${_gap.unresolved_targets.map(u => `<code>${UI.esc(u.framework_code || '')}:${UI.esc(u.requirement_id || '')}</code>`).join(', ')}
+          </div>` : ''}
+        ${_gap && _gap.gaps.length ? `
+        <div style="max-height:420px;overflow:auto;">
+          <table class="data-table" style="width:100%;font-size:12px;">
+            <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th>
+              <th>${t('plandirector.current_maturity')}</th><th>${t('plandirector.target_maturity')}</th>
+              <th>${t('plandirector.gap_col')}</th><th>${t('plandirector.mandatory_by')}</th></tr></thead>
+            <tbody>
+              ${_gap.gaps.map(g => `
+                <tr>
+                  <td>${UI.esc(g.code)}</td>
+                  <td>${UI.esc(g.name)}</td>
+                  <td>${g.current_maturity}</td>
+                  <td><strong>${g.target_maturity}</strong></td>
+                  <td style="color:var(--brand-orange);font-weight:600;">+${g.gap}</td>
+                  <td>${g.mandatory_by ? `<span class="badge" style="background:${g.mandatory_by === 'legal' ? 'var(--risk-critical)' : 'var(--bg-3)'};color:${g.mandatory_by === 'legal' ? '#fff' : 'var(--text)'};">${UI.esc(g.mandatory_by)}</span>` : '—'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : `<p class="text-muted" style="padding:14px;font-size:12px;">${t('plandirector.no_gap')}</p>`}
+      </div>`;
+  }
+
+  async function _loadPlanDetail(planId) {
+    _plan = _plans.find(x => x.id === planId) || _plans[0] || null;
+    if (!_plan) { _gap = null; _planProgress = null; return; }
+    const [gap, progress] = await Promise.allSettled([
+      Api.strategicPlans.gap(_plan.id),
+      Api.strategicPlans.progress(_plan.id),
+    ]);
+    _gap = gap.status === 'fulfilled' ? gap.value : null;
+    _planProgress = progress.status === 'fulfilled' ? progress.value : null;
+  }
+
+  function _wireMethod() {
+    const np = document.getElementById('pm-new-plan');
+    if (np) np.onclick = () => _openPlanModal();
+    if (!_plan) return;
+
+    document.getElementById('pm-plan').onchange = async (e) => {
+      await _loadPlanDetail(parseInt(e.target.value));
+      _renderBody();
+    };
+    const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+    bind('pm-report', () => {
+      UI.toast(t('reports.generating'), 'info');
+      Api.download(`/api/reports/strategic-plan/${_plan.id}`, `plan_director_${_plan.code}.pdf`)
+        .catch(e => UI.toast(e.message, 'error'));
+    });
+    bind('pm-targets', () => _openTargetsModal());
+    bind('pm-generate', () => _openGenerateModal());
+    bind('pm-request-approval', () => _openApprovalModal());
+    bind('pm-decide', () => _openDecideModal());
+    bind('pm-activate', async () => {
+      try {
+        await Api.strategicPlans.activate(_plan.id);
+        UI.toast(t('common.success'), 'success');
+        await _reloadPlans();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    });
+  }
+
+  async function _reloadPlans() {
+    try {
+      _plans = await Api.strategicPlans.list();
+      await _loadPlanDetail(_plan ? _plan.id : (_plans[0] || {}).id);
+    } catch (e) { UI.toast(e.message, 'error'); }
+    _renderBody();
+  }
+
+  function _openPlanModal() {
+    UI.modal(t('plandirector.new_plan'), `
+      <div class="form-grid">
+        <div class="span2"><label>${t('common.name')} *</label><input id="np-name" class="input"></div>
+        <div><label>${t('plandirector.period_start')}</label><input type="date" id="np-start" class="input"></div>
+        <div><label>${t('plandirector.period_end')}</label><input type="date" id="np-end" class="input"></div>
+        <div>
+          <label>${t('plandirector.framework')}</label>
+          <select id="np-fw" class="input">
+            <option value="iso27001">ISO/IEC 27001</option>
+            <option value="nist_csf">NIST CSF 2.0</option>
+            <option value="ens">ENS</option>
+          </select>
+        </div>
+        <div><label>${t('plandirector.investment_capacity')}</label><input type="number" id="np-cap" class="input"></div>
+        <div class="span2"><label>${t('plandirector.scope_statement')}</label><textarea id="np-scope" class="input" rows="2"></textarea></div>
+        <div class="span2"><label>${t('plandirector.strategy_notes')}</label><textarea id="np-strategy" class="input" rows="3"></textarea></div>
+      </div>
+    `, {
+      width: 'min(760px,95vw)',
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const name = document.getElementById('np-name').value.trim();
+      if (!name) { UI.toast(t('common.required'), 'error'); return; }
+      const cap = document.getElementById('np-cap').value;
+      try {
+        const created = await Api.strategicPlans.create({
+          name,
+          period_start: document.getElementById('np-start').value || null,
+          period_end: document.getElementById('np-end').value || null,
+          framework_code: document.getElementById('np-fw').value,
+          investment_capacity: cap ? parseFloat(cap) : null,
+          scope_statement: document.getElementById('np-scope').value.trim() || null,
+          strategy_notes: document.getElementById('np-strategy').value.trim() || null,
+        });
+        UI.closeModal();
+        _plans = await Api.strategicPlans.list();
+        await _loadPlanDetail(created.id);
+        _renderBody();
+        UI.toast(t('common.success'), 'success');
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  async function _openTargetsModal() {
+    let current = { resolved: [], declared: [] };
+    try { current = await Api.strategicPlans.targets(_plan.id); } catch (_) { /* plan nuevo */ }
+    const byControl = new Map(current.declared.filter(d => d.control_id).map(d => [d.control_id, d]));
+    UI.modal(t('plandirector.set_targets'), `
+      <p class="text-muted" style="font-size:12px;margin-bottom:8px;">${t('plandirector.targets_hint')}</p>
+      <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="tg-search" class="input" style="flex:1;min-width:180px;" placeholder="${t('common.search')}...">
+        <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
+          ${t('plandirector.bulk_target')}
+          <input type="number" id="tg-bulk" class="input" min="0" max="5" value="3" style="width:60px;">
+        </label>
+        <button class="btn btn-sm" id="tg-apply-all">${t('plandirector.apply_to_visible')}</button>
+      </div>
+      <div style="max-height:400px;overflow:auto;border:1px solid var(--border);border-radius:6px;">
+        <table class="data-table" style="width:100%;font-size:12px;">
+          <thead><tr><th>${t('common.code')}</th><th>${t('common.name')}</th>
+            <th>${t('plandirector.current_maturity')}</th><th>${t('plandirector.target_maturity')}</th></tr></thead>
+          <tbody id="tg-rows"></tbody>
+        </table>
+      </div>
+    `, {
+      width: 'min(920px,95vw)',
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.save')}</button>`,
+    });
+
+    const rowsHtml = (q) => _impls
+      .filter(c => !q || `${c.code} ${c.name}`.toLowerCase().includes(q))
+      .map(c => {
+        const d = byControl.get(c.control_id);
+        return `<tr>
+          <td>${UI.esc(c.code)}</td><td>${UI.esc(c.name)}</td>
+          <td>${c.maturity}/5</td>
+          <td><input type="number" min="0" max="5" class="input" style="width:64px;"
+                     data-tg="${c.control_id}" value="${d ? d.target_maturity : ''}"
+                     placeholder="—"></td>
+        </tr>`;
+      }).join('');
+    document.getElementById('tg-rows').innerHTML = rowsHtml('');
+    document.getElementById('tg-search').oninput = (e) => {
+      document.getElementById('tg-rows').innerHTML = rowsHtml(e.target.value.trim().toLowerCase());
+    };
+    document.getElementById('tg-apply-all').onclick = () => {
+      const v = document.getElementById('tg-bulk').value;
+      document.querySelectorAll('[data-tg]').forEach(i => { i.value = v; });
+    };
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const targets = [];
+      document.querySelectorAll('[data-tg]').forEach(i => {
+        if (i.value !== '') {
+          targets.push({ control_id: parseInt(i.dataset.tg), target_maturity: parseInt(i.value) });
+        }
+      });
+      try {
+        await Api.strategicPlans.setTargets(_plan.id, { targets, replace: true });
+        UI.closeModal();
+        await _loadPlanDetail(_plan.id);
+        _renderBody();
+        UI.toast(t('common.success'), 'success');
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  async function _openGenerateModal() {
+    UI.modal(t('plandirector.generate_initiatives'),
+      `<p class="text-muted" style="font-size:12px;">${t('plandirector.generating')}</p>`,
+      { width: 'min(860px,95vw)' });
+    let data;
+    try { data = await Api.strategicPlans.generateInitiatives(_plan.id); }
+    catch (e) { UI.toast(e.message, 'error'); UI.closeModal(); return; }
+
+    UI.modal(t('plandirector.generate_initiatives'), `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.generate_hint')}</div>
+      ${data.candidates.map((c, i) => `
+        <div class="card" style="margin-bottom:8px;padding:10px;">
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;">
+            <input type="checkbox" data-cand="${i}" checked>
+            <span>
+              <strong>${UI.esc(c.title)}</strong>
+              ${c.mandatory ? `<span class="badge" style="background:var(--risk-critical);color:#fff;">${t('plandirector.mandatory')}</span>` : ''}
+              <br><small class="text-muted">${c.control_targets.length} ${t('plandirector.control_targets_title').toLowerCase()} ·
+              ${t('plandirector.gap_col')} +${c.gap_points} · ${c.effort_human} ${t('plandirector.effort_days').toLowerCase()}</small>
+            </span>
+          </label>
+        </div>`).join('') || `<p class="text-muted">${t('plandirector.nothing_to_generate')}</p>`}
+    `, {
+      width: 'min(860px,95vw)',
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('plandirector.create_selected')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const chosen = data.candidates.filter((_, i) => document.querySelector(`[data-cand="${i}"]`)?.checked);
+      if (!chosen.length) { UI.toast(t('common.required'), 'error'); return; }
+      try {
+        const res = await Api.strategicPlans.confirmInitiatives(_plan.id, { candidates: chosen });
+        UI.closeModal();
+        UI.toast(t('plandirector.generated_ok', { n: res.created, points: res.total_projected_points }), 'success');
+        await _loadAll();
+        await _loadPlanDetail(_plan.id);
+        _renderBody();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  function _openApprovalModal() {
+    UI.modal(t('plandirector.request_approval'), `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.approval_hint')}</div>
+      <div class="form-grid">
+        <div class="span2">
+          <label>${t('plandirector.approval_mode')}</label>
+          <select id="ap-mode" class="input">
+            <option value="">${t('plandirector.mode_org_default')}</option>
+            <option value="internal_seal">${t('plandirector.mode_seal')}</option>
+            <option value="signature">${t('plandirector.mode_signature')}</option>
+          </select>
+        </div>
+        <div class="span2" id="ap-approvers-wrap" style="display:none;">
+          <label>${t('plandirector.approvers')}</label>
+          <input type="text" id="ap-emails" class="input" placeholder="ciso@empresa.com, ceo@empresa.com">
+          <small class="text-muted">${t('plandirector.approvers_hint')}</small>
+        </div>
+        <div class="span2"><label>${t('common.notes')}</label><textarea id="ap-notes" class="input" rows="2"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn btn-primary" id="m-save">${t('common.send')}</button>`,
+    });
+    document.getElementById('ap-mode').onchange = (e) => {
+      document.getElementById('ap-approvers-wrap').style.display =
+        e.target.value === 'signature' ? '' : 'none';
+    };
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    document.getElementById('m-save').onclick = async () => {
+      const mode = document.getElementById('ap-mode').value || null;
+      const emails = document.getElementById('ap-emails').value.split(',')
+        .map(x => x.trim()).filter(Boolean);
+      try {
+        await Api.strategicPlans.requestApproval(_plan.id, {
+          mode,
+          approvers: emails.map((email, i) => ({ email, order_index: i + 1 })),
+          notes: document.getElementById('ap-notes').value.trim() || null,
+        });
+        UI.closeModal();
+        UI.toast(t('common.success'), 'success');
+        await _reloadPlans();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+  }
+
+  async function _openDecideModal() {
+    let approvals = [];
+    try { approvals = await Api.strategicPlans.approvals(_plan.id); } catch (_) { /* sin rondas */ }
+    const pending = approvals.filter(a => a.status === 'pending' && a.mode === 'internal_seal');
+    if (!pending.length) { UI.toast(t('plandirector.no_internal_pending'), 'error'); return; }
+    const ap = pending[0];
+    UI.modal(t('plandirector.decide_approval'), `
+      <div class="notice" style="margin-bottom:10px;font-size:12px;">${t('plandirector.decide_hint')}</div>
+      <div class="form-grid">
+        <div class="span2"><label>${t('common.notes')}</label><textarea id="dc-notes" class="input" rows="3"></textarea></div>
+      </div>
+    `, {
+      actions: `<button class="btn" id="m-cancel">${t('common.cancel')}</button>
+                <button class="btn" id="m-reject">${t('plandirector.reject')}</button>
+                <button class="btn btn-primary" id="m-approve">${t('plandirector.approve')}</button>`,
+    });
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    const decide = async (decision) => {
+      try {
+        await Api.strategicPlans.decideApproval(ap.id, {
+          decision, notes: document.getElementById('dc-notes').value.trim() || null,
+        });
+        UI.closeModal();
+        UI.toast(t('common.success'), 'success');
+        await _reloadPlans();
+      } catch (e) { UI.toast(e.message, 'error'); }
+    };
+    document.getElementById('m-approve').onclick = () => decide('approved');
+    document.getElementById('m-reject').onclick = () => decide('rejected');
   }
 
   // ---------- Roadmap: Gantt, dependencias y camino critico ----------

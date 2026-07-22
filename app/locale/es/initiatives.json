@@ -17,6 +17,9 @@
     "import_invalid_type": "Tipo de archivo no permitido. Formatos aceptados: PDF, DOCX, XLSX, TXT.",
     "import_no_text": "No se pudo extraer texto suficiente del archivo.",
     "ai_import_rationale": "Estructurada e importada automáticamente desde un documento con IA.",
-    "impl_autocreated": "Implementación creada automáticamente al declararse como control objetivo del Plan Director."
+    "impl_autocreated": "Implementación creada automáticamente al declararse como control objetivo del Plan Director.",
+    "attachment_not_found": "El adjunto indicado no existe o no pertenece a tu organización.",
+    "attachment_required": "Debes indicar una evidencia o un documento.",
+    "attachment_duplicate": "Ese documento ya está adjunto a este objetivo."
   }
 }

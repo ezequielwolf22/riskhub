@@ -916,6 +916,8 @@ def get_initiative(initiative_id: int, request: Request, db: Session = Depends(g
             "definition": o.definition, "status": o.status, "confidence": o.confidence,
             "owner_id": o.owner_id, "collaborator": o.collaborator,
             "target_date": o.target_date, "progress": o.progress,
+            "scope": o.scope, "business_units": o.business_units,
+            "attachments": o.attachments, "comments": o.comments,
             "created_at": o.created_at, "updated_at": o.updated_at,
         }
         for o in ini.objectives
@@ -989,6 +991,7 @@ def create_objective(initiative_id: int, body: ObjectiveIn, request: Request,
         definition=body.definition, status=body.status, confidence=body.confidence,
         owner_id=body.owner_id, collaborator=body.collaborator,
         target_date=body.target_date, progress=body.progress,
+        scope=body.scope, business_units=body.business_units, comments=body.comments,
     )
     db.add(obj)
     db.flush()
@@ -1019,6 +1022,78 @@ def update_objective(initiative_id: int, objective_id: int, body: ObjectiveUpdat
     db.refresh(obj)
     log_action(db, current_user.id, "update", "initiative_objective", str(obj.id))
     return obj
+
+
+@router.post("/{initiative_id}/objectives/{objective_id}/attachments")
+def attach_to_objective(initiative_id: int, objective_id: int, body: dict, request: Request,
+                        db: Session = Depends(get_db),
+                        current_user: User = Depends(require_analyst)):
+    """Enlaza evidencia o documentos ya subidos a un objetivo del plan.
+
+    El OKR es donde ocurre el trabajo, asi que es donde debe colgar su prueba.
+    No se sube fichero aqui: se referencia lo que ya vive en Evidencias o en
+    Documentos IA, para no duplicar ficheros ni saltarse sus controles de
+    validacion (magic bytes, hash, caducidad).
+    """
+    from app.models import AiDocument, Evidence
+
+    lang = get_lang(request)
+    ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
+    obj = db.query(InitiativeObjective).filter(
+        InitiativeObjective.id == objective_id,
+        InitiativeObjective.initiative_id == ini.id,
+    ).first()
+    if not obj:
+        raise HTTPException(404, _t("initiatives.objective_not_found", lang))
+
+    evidence_id = body.get("evidence_id")
+    document_id = body.get("document_id")
+    attachment = None
+    if evidence_id:
+        ev = db.get(Evidence, evidence_id)
+        if not ev or not check_org_access(ev.organization_id, current_user):
+            raise HTTPException(404, _t("initiatives.attachment_not_found", lang))
+        attachment = {"type": "evidence", "evidence_id": ev.id, "code": ev.code,
+                      "name": ev.title}
+    elif document_id:
+        doc = db.get(AiDocument, document_id)
+        if not doc or not check_org_access(doc.organization_id, current_user):
+            raise HTTPException(404, _t("initiatives.attachment_not_found", lang))
+        attachment = {"type": "document", "document_id": doc.id,
+                      "name": doc.filename or doc.title}
+    else:
+        raise HTTPException(422, _t("initiatives.attachment_required", lang))
+
+    attachment["attached_at"] = datetime.now(timezone.utc).isoformat()
+    current = list(obj.attachments or [])
+    key = ("evidence_id" if evidence_id else "document_id")
+    if any(a.get(key) == attachment[key] for a in current):
+        raise HTTPException(409, _t("initiatives.attachment_duplicate", lang))
+    current.append(attachment)
+    obj.attachments = current
+    db.commit()
+    log_action(db, current_user.id, "attach", "initiative_objective", str(obj.id))
+    return {"attachments": obj.attachments}
+
+
+@router.delete("/{initiative_id}/objectives/{objective_id}/attachments/{index}", status_code=204)
+def detach_from_objective(initiative_id: int, objective_id: int, index: int, request: Request,
+                          db: Session = Depends(get_db),
+                          current_user: User = Depends(require_analyst)):
+    lang = get_lang(request)
+    ini = _get_initiative_or_404(db, initiative_id, current_user, lang)
+    obj = db.query(InitiativeObjective).filter(
+        InitiativeObjective.id == objective_id,
+        InitiativeObjective.initiative_id == ini.id,
+    ).first()
+    if not obj:
+        raise HTTPException(404, _t("initiatives.objective_not_found", lang))
+    current = list(obj.attachments or [])
+    if index < 0 or index >= len(current):
+        raise HTTPException(404, _t("initiatives.attachment_not_found", lang))
+    current.pop(index)
+    obj.attachments = current
+    db.commit()
 
 
 @router.delete("/{initiative_id}/objectives/{objective_id}", status_code=204)

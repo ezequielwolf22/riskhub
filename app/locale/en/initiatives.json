@@ -17,6 +17,9 @@
     "import_invalid_type": "File type not allowed. Accepted formats: PDF, DOCX, XLSX, TXT.",
     "import_no_text": "Could not extract enough text from the file.",
     "ai_import_rationale": "Structured and imported automatically from a document with AI.",
-    "impl_autocreated": "Implementation created automatically when declared as a Plan Director control target."
+    "impl_autocreated": "Implementation created automatically when declared as a Plan Director control target.",
+    "attachment_not_found": "The specified attachment does not exist or does not belong to your organisation.",
+    "attachment_required": "You must provide an evidence or a document reference.",
+    "attachment_duplicate": "That document is already attached to this objective."
   }
 }
