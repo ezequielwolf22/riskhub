@@ -32,7 +32,8 @@ MAX_BLOCKS = 400
 MAX_CELL_CHARS = 2000
 MAX_TEXT_CHARS = 20000
 
-_SUPPORTED = (".xlsx", ".xlsm", ".xls", ".docx", ".pdf", ".txt", ".csv", ".md")
+_SUPPORTED = (".xlsx", ".xlsm", ".xls", ".docx", ".pdf", ".txt", ".csv", ".md",
+              ".pptx")
 
 
 class UnsupportedDocument(ValueError):
@@ -59,6 +60,8 @@ def read_document(data: bytes, filename: str) -> dict:
         fmt, blocks, truncated = "docx", *_read_docx(data)
     elif name.endswith(".pdf"):
         fmt, blocks, truncated = "pdf", *_read_pdf(data)
+    elif name.endswith(".pptx"):
+        fmt, blocks, truncated = "pptx", *_read_pptx(data)
     elif name.endswith(".csv"):
         fmt, blocks, truncated = "csv", *_read_csv(data)
     elif name.endswith((".txt", ".md")):
@@ -260,6 +263,50 @@ def _read_pdf(data: bytes) -> tuple[list[dict], bool]:
     if not blocks:
         blocks.append({"type": "scanned", "ref": "page:1",
                        "text": "", "needs_vision": True})
+    return blocks, False
+
+
+# ── PPTX ─────────────────────────────────────────────────────────────────────
+
+def _read_pptx(data: bytes) -> tuple[list[dict], bool]:
+    """Diapositivas como bloques.
+
+    Los packs de continuidad suelen traer el flujo de gestion de crisis como
+    presentacion. De un diagrama se extraen pocas filas limpias, pero el texto
+    de las formas si dice quien decide que y en que orden, y eso alimenta el
+    perfil y los roles del plan.
+    """
+    from pptx import Presentation
+
+    prs = Presentation(io.BytesIO(data))
+    blocks: list[dict] = []
+    for i, slide in enumerate(prs.slides, 1):
+        texts: list[str] = []
+        title = None
+        for shape in slide.shapes:
+            if shape.has_table:
+                rows = [[c.text.strip()[:MAX_CELL_CHARS] for c in row.cells]
+                        for row in shape.table.rows[:MAX_SHEET_ROWS]]
+                if rows:
+                    blocks.append({"type": "table", "ref": f"slide:{i}#table",
+                                   "section": title, "header": rows[0],
+                                   "rows": rows[1:]})
+                continue
+            if not getattr(shape, "has_text_frame", False):
+                continue
+            text = shape.text_frame.text.strip()
+            if not text:
+                continue
+            if title is None:
+                title = text[:200]
+            else:
+                texts.append(text)
+        if title or texts:
+            blocks.append({
+                "type": "section", "ref": f"slide:{i}", "level": 2,
+                "title": title or f"Diapositiva {i}",
+                "text": "\n".join(texts)[:MAX_TEXT_CHARS],
+            })
     return blocks, False
 
 

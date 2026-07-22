@@ -87,9 +87,29 @@ def test_los_errores_de_formula_no_son_datos():
 
 
 def test_formato_no_soportado_se_declara_en_vez_de_romper():
-    assert reader.is_supported("plan.pptx") is False
+    assert reader.is_supported("diagrama.vsdx") is False
     with pytest.raises(reader.UnsupportedDocument):
-        reader.read_document(b"x", "plan.pptx")
+        reader.read_document(b"x", "diagrama.vsdx")
+
+
+def test_lee_presentaciones():
+    """Los packs de continuidad traen el flujo de crisis como presentacion."""
+    import io as _io
+
+    from pptx import Presentation
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "WorkFlow Indisponibilidad de personas"
+    slide.placeholders[1].text = "Activar el Plan de Comunicacion de crisis"
+    buf = _io.BytesIO()
+    prs.save(buf)
+
+    doc = reader.read_document(buf.getvalue(), "workflow.pptx")
+    assert doc["format"] == "pptx"
+    rendered = reader.render_for_llm(doc)
+    assert "slide:1" in rendered
+    assert "WorkFlow Indisponibilidad de personas" in rendered
+    assert "Plan de Comunicacion de crisis" in rendered
 
 
 def test_el_catalogo_del_prompt_sale_del_registro():
@@ -323,8 +343,8 @@ def test_si_la_ia_falla_el_lote_lo_registra_sin_reventar(db):
 
 def test_la_estimacion_no_llama_a_la_ia_y_declara_lo_no_soportado():
     data = _xlsx({"H": [["A", "B"], ["1", "2"]]})
-    est = pipeline.estimate_pack([("BIA.xlsx", data), ("diagrama.pptx", b"x")])
+    est = pipeline.estimate_pack([("BIA.xlsx", data), ("diagrama.vsdx", b"x")])
     assert est["documents_total"] == 1
-    assert est["unsupported"] == ["diagrama.pptx"]
+    assert est["unsupported"] == ["diagrama.vsdx"]
     assert est["total_chars"] > 0
     assert est["estimated_cost_usd"] >= 0
