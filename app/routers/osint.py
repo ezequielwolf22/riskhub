@@ -631,7 +631,7 @@ def create_risk_from_osint_finding(
 ):
     """Genera un riesgo en el registro de riesgos a partir de un hallazgo OSINT."""
     from app.models import Risk, RiskStatus, Asset, Threat
-    from app.services.risk_engine import calc_level
+    from app.services.risk_engine import calc_level_for_org
     from app.routers.risks import _next_code as _risk_next_code
     from app.security import check_org_access
 
@@ -691,8 +691,8 @@ def create_risk_from_osint_finding(
     if max_cia > 0:
         imp = min(imp, max_cia)
 
-    # calc_level(consequence=impact, likelihood)
-    inherent_level = calc_level(imp, lh)
+    # calc_level(consequence=impact, likelihood), con la matriz de la organizacion
+    inherent_level = calc_level_for_org(db, current_user.organization_id, imp, lh)
 
     risk = Risk(
         code=_risk_next_code(db),

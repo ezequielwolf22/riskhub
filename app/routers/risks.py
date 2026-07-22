@@ -22,7 +22,7 @@ from app.security import (
     check_org_access, filter_by_org, get_current_user, require_analyst, resolve_org_id,
 )
 from app.services.audit_service import log_action, diff_objects
-from app.services.risk_engine import calc_level, calc_residual
+from app.services.risk_engine import calc_level, calc_residual, org_matrix
 from app.i18n import ai_lang_directive, get_lang, t as _t
 
 router = APIRouter(prefix="/api/risks", tags=["risks"])
@@ -1335,6 +1335,8 @@ async def import_risks_csv(
 
     created, skipped = [], []
 
+    # Matriz de la organizacion, resuelta una vez para todo el fichero
+    _matrix = org_matrix(db, current_user.organization_id)
     for row in reader:
         asset_key = (row.get("Activo_Codigo") or "").strip()
         threat_key = (row.get("Amenaza_Codigo") or "").strip()
@@ -1393,10 +1395,10 @@ async def import_risks_csv(
             description=(row.get("Descripcion") or "").strip(),
             inherent_likelihood=il,
             inherent_consequence=ic,
-            inherent_level=calc_level(ic, il),
+            inherent_level=calc_level(ic, il, _matrix),
             residual_likelihood=rl,
             residual_consequence=rc,
-            residual_level=calc_level(rc, rl),
+            residual_level=calc_level(rc, rl, _matrix),
             status=status,
             treatment_option=treatment,
             treatment_plan=(row.get("Plan_Tratamiento") or "").strip(),

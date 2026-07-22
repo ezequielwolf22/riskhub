@@ -3453,6 +3453,89 @@ class IngestFieldOverride(Base):
     created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class MethodStatement(Base):
+    """Una declaracion de metodo encontrada en la documentacion del cliente.
+
+    Es el registro que garantiza que nada se pierde: si el agente lee en un
+    procedimiento "el impacto total es RTO + criterio de impacto", eso queda
+    aqui con su CITA LITERAL, tanto si la plataforma sabe modelarlo (`bound`)
+    como si no (`unmodelled`). Las no modelables son el modo de fallo honesto y
+    a la vez la lista priorizada de que parametrizar despues.
+    """
+    __tablename__ = "method_statements"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    parameter_key   = Column(String(64), nullable=True, index=True)
+    # Cita: sin esto, un valor "porque lo dice su politica" no es defendible
+    source_document = Column(String(255), nullable=True)
+    source_section  = Column(String(255), nullable=True)
+    source_sha256   = Column(String(64), nullable=True)
+    quote           = Column(Text, nullable=True)      # texto literal del documento
+    interpretation  = Column(Text, nullable=True)      # como lo ha entendido el agente
+    proposed_value  = Column(JSON, nullable=True)
+    confidence      = Column(Float, nullable=True)
+    status          = Column(String(20), default="unmodelled")
+    # bound | proposed | unmodelled | rejected
+    batch_id        = Column(Integer, ForeignKey("ingest_batches.id"), nullable=True)
+    reviewed_by_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at     = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class MethodBinding(Base):
+    """El valor efectivo de un parametro de metodo para una organizacion.
+
+    Precedencia al resolver: manual > politica del cliente > defecto de la
+    plataforma. Un valor puesto a mano no lo pisa una reimportacion, igual que
+    en IngestFieldOverride.
+    """
+    __tablename__ = "method_bindings"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    parameter_key   = Column(String(64), nullable=False, index=True)
+    value           = Column(JSON, nullable=True)
+    source          = Column(String(16), default="manual")   # policy|manual
+    statement_id    = Column(Integer, ForeignKey("method_statements.id"), nullable=True)
+    confidence      = Column(Float, nullable=True)
+    is_active       = Column(Boolean, default=True)
+    notes           = Column(Text, nullable=True)
+    applied_by_id   = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at      = Column(DateTime, onupdate=lambda: datetime.now(timezone.utc))
+
+    statement = relationship("MethodStatement", foreign_keys=[statement_id])
+
+
+class MethodFinding(Base):
+    """Divergencia entre lo que la plataforma calcula y lo que el cliente dijo.
+
+    Cuatro tipos, y el ultimo es el importante: si el metodo del cliente es mas
+    laxo que el minimo normativo, se sigue calculando CON EL SUYO — es su
+    politica aprobada — y se levanta el hallazgo citando ambas fuentes. Como
+    calculo y si cumplo son dos preguntas distintas.
+    """
+    __tablename__ = "method_findings"
+    id              = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True)
+    parameter_key   = Column(String(64), nullable=True, index=True)
+    kind            = Column(String(40), nullable=False)
+    # default_used_despite_policy | manual_override_diverges_from_policy |
+    # unmodelled_rule | policy_below_norm
+    severity        = Column(String(16), default="medium")
+    summary         = Column(Text, nullable=True)
+    statement_id    = Column(Integer, ForeignKey("method_statements.id"), nullable=True)
+    effective_value = Column(JSON, nullable=True)   # lo que usa el motor
+    policy_value    = Column(JSON, nullable=True)   # lo que dice su politica
+    normative_ref   = Column(String(128), nullable=True)
+    normative_value = Column(JSON, nullable=True)
+    status          = Column(String(20), default="open")   # open|accepted|resolved
+    resolved_by_id  = Column(Integer, ForeignKey("users.id"), nullable=True)
+    resolved_at     = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    statement = relationship("MethodStatement", foreign_keys=[statement_id])
+
+
 class IngestConflict(Base):
     """Contradiccion entre documentos sobre el mismo campo.
 

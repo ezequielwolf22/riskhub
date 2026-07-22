@@ -100,9 +100,11 @@ def get_criteria(db: Session, org_id: Optional[int]) -> dict:
         row = db.query(BIACriteria).filter_by(organization_id=org_id).first()
     except Exception:
         logger.debug("bcm_scenario: no se pudo leer BIACriteria", exc_info=True)
-        return criteria
+        row = None
     if not row:
-        return criteria
+        # Sin BIACriteria propia todavia puede haber metodo declarado desde su
+        # politica: no se puede salir antes de mirarlo.
+        return _apply_method_bindings(db, org_id, criteria)
     for field in ("dimensions", "horizons", "levels", "rto_scale", "bands"):
         value = getattr(row, field, None)
         if value:
@@ -111,6 +113,51 @@ def get_criteria(db: Session, org_id: Optional[int]) -> dict:
         value = getattr(row, field, None)
         if value:
             criteria[field] = value
+    return _apply_method_bindings(db, org_id, criteria)
+
+
+# Parametros del registro de metodo que alimentan el baremo. `BIACriteria` es
+# la via directa (editable en la vista de BCP); el registro es la via por la
+# que llega lo extraido de la politica del cliente, y manda sobre el defecto.
+_METHOD_KEYS = {
+    "dimensions": "bcm.impact.dimensions",
+    "levels": "bcm.impact.levels",
+    "horizons": "bcm.impact.horizons",
+    "rto_scale": "bcm.rto.scale",
+    "bands": "bcm.impact.bands",
+    "aggregation": "bcm.impact.aggregation",
+    "combination": "bcm.impact.combination",
+    "formula": "bcm.impact.formula",
+}
+
+
+def _apply_method_bindings(db: Session, org_id: Optional[int], criteria: dict) -> dict:
+    """Superpone lo que la organizacion haya declarado como su metodo.
+
+    Solo pisa lo que venga explicitamente declarado. Si no hay nada, el baremo
+    queda tal cual, asi que una organizacion que no ha tocado nada calcula
+    exactamente igual que antes de existir este mecanismo.
+    """
+    if not org_id:
+        return criteria
+    try:
+        from app.services.method.bindings import resolve
+    except Exception:  # pragma: no cover - defensivo
+        return criteria
+
+    sources: dict[str, str] = {}
+    for field, key in _METHOD_KEYS.items():
+        try:
+            resolved = resolve(db, org_id, key)
+        except Exception:
+            logger.debug("bcm_scenario: no se pudo resolver %s", key, exc_info=True)
+            continue
+        if resolved.is_default or resolved.value in (None, "", [], {}):
+            continue
+        criteria[field] = resolved.value
+        sources[field] = resolved.explain()
+    if sources:
+        criteria["_sources"] = sources
     return criteria
 
 
@@ -220,9 +267,21 @@ def weighted_impact(impacts: Optional[dict], criteria: dict,
     else:
         base = 0.0
 
+    # Formula propia del cliente: cuando su metodo no se deja expresar con
+    # agregacion y combinacion. Se evalua con el evaluador acotado, nunca eval,
+    # y con defecto para que una formula rota no tumbe un recalculo entero.
+    formula = criteria.get("formula")
+    if formula and per_horizon:
+        from app.services.method.formula import evaluate
+        dim_values = [v for v in per_horizon.values()]
+        weighted = round(evaluate(formula, {
+            "impact": base, "rto": factor,
+            "dimensions_max": max(dim_values) if dim_values else 0.0,
+            "dimensions_avg": (sum(dim_values) / len(dim_values)) if dim_values else 0.0,
+        }, default=base * factor), 3)
     # Sin impacto declarado no se inventa una cifra a partir del RTO: sumar el
     # factor a un impacto cero daria por severo un escenario sin valorar.
-    if combination == "sum" and per_horizon:
+    elif combination == "sum" and per_horizon:
         weighted = round(base + factor, 3)
     elif combination == "sum":
         weighted = 0.0
@@ -234,7 +293,8 @@ def weighted_impact(impacts: Optional[dict], criteria: dict,
         "band": band_for(weighted, criteria),
         "base_impact": round(base, 3),
         "rto_factor": factor,
-        "combination": combination,
+        "combination": "formula" if (formula and per_horizon) else combination,
+        "sources": criteria.get("_sources") or {},
         "per_horizon": {k: round(v, 3) for k, v in per_horizon.items()},
     }
 

@@ -8,9 +8,12 @@ Mapeo de bandas finales (configurable en RiskContext):
     0-2 Low / 3-5 Medium / 6-8 High
 """
 from __future__ import annotations
+import logging
 from typing import Iterable, Optional
 
 from app.i18n import t as _t
+
+logger = logging.getLogger("riskhub.risk_engine")
 
 # Matriz por defecto (Tabla E.2 de ISO 27005:2018, p. 48)
 # Filas = impacto 0..4 (very low -> very high)
@@ -60,6 +63,43 @@ def calc_level(consequence: int, likelihood: int, matrix=None) -> int:
     """Devuelve nivel 0..8 dado consequence/likelihood 0..4."""
     m = matrix or DEFAULT_MATRIX
     return m[clamp(consequence)][clamp(likelihood)]
+
+
+def org_matrix(db, org_id=None):
+    """Matriz de riesgo de la organizacion, o None si usa la de referencia.
+
+    Punto unico para resolverla. Antes cada llamador decidia por su cuenta si
+    la pasaba o no a `calc_level`, y varios no la pasaban: un cliente con
+    matriz propia obtenia un nivel distinto segun que camino hubiera creado el
+    riesgo (un CVE, un hallazgo OSINT o un recalculo). Ahora todos preguntan
+    aqui.
+
+    Precedencia: el binding de metodo `risk.matrix` si esta declarado, y si no
+    la matriz del contexto de riesgo, que es donde vivia hasta ahora.
+    """
+    if not org_id:
+        return None
+    try:
+        from app.services.method.bindings import resolve
+        resolved = resolve(db, org_id, "risk.matrix")
+        if not resolved.is_default and resolved.value:
+            return resolved.value
+    except Exception:
+        logger.debug("risk_engine: no se pudo resolver risk.matrix", exc_info=True)
+    try:
+        from app.models import RiskContext
+        ctx = db.query(RiskContext).filter(
+            RiskContext.organization_id == org_id).first()
+        return ctx.risk_matrix if ctx and ctx.risk_matrix else None
+    except Exception:
+        logger.debug("risk_engine: no se pudo leer el contexto de riesgo",
+                     exc_info=True)
+        return None
+
+
+def calc_level_for_org(db, org_id, consequence: int, likelihood: int) -> int:
+    """`calc_level` respetando la matriz de la organizacion. Usar siempre esta."""
+    return calc_level(consequence, likelihood, org_matrix(db, org_id))
 
 
 def band_for(level: int) -> str:

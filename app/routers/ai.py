@@ -33,7 +33,7 @@ from app.services.ai_service import QUESTIONNAIRE, run_analysis
 from app.services.anonymizer import anonymize, anonymize_messages
 from app.services.claude_client import key_source as _key_source
 from app.services.context_builder import build_context
-from app.services.risk_engine import calc_level
+from app.services.risk_engine import calc_level, org_matrix
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -816,17 +816,21 @@ def risk_suggest(
     # Estimar likelihood basado en origen de amenaza y valoracion del activo
     asset_value = asset.value_max or 2
     suggestions = []
+    # Matriz de la organizacion: sin esto, la sugerencia daria un nivel
+    # distinto al que dara el recalculo posterior del mismo riesgo.
+    _matrix = org_matrix(db, current_user.organization_id)
     for threat in relevant_threats[:20]:
         if threat.id in existing_threat_ids:
             continue
         # Likelihood base por origen: D=probable, A=posible, E=improbable
+        # (_matrix se resuelve una vez fuera del bucle)
         origin_lik = {"D": 3, "A": 2, "E": 1}.get(threat.origin.value if threat.origin else "A", 2)
         # Ajuste por valor del activo (mas valioso = mas atractivo para atacante)
         lik = min(4, origin_lik + (1 if asset_value >= 3 else 0))
         # Consecuencia basada en que dimensiones afecta y valor del activo
         affected_dims = len(threat.affects or [])
         cons = min(4, max(1, asset_value - 1 + (1 if affected_dims >= 3 else 0)))
-        level = calc_level(cons, lik)
+        level = calc_level(cons, lik, _matrix)
         suggestions.append({
             "threat_id": threat.id,
             "threat_code": threat.code,
@@ -2485,11 +2489,11 @@ def _exec_update_asset_cia(db: Session, inp: dict, org_id) -> dict:
 
 
 def _exec_create_risk(db: Session, inp: dict, org_id, user_id: int) -> dict:
-    from app.services.risk_engine import calc_level
+    from app.services.risk_engine import calc_level_for_org
     _clamp = lambda v: max(0, min(4, int(v))) if v is not None else 2
     consequence = _clamp(inp.get("consequence"))
     likelihood = _clamp(inp.get("likelihood"))
-    inherent_level = calc_level(consequence, likelihood)
+    inherent_level = calc_level_for_org(db, org_id, consequence, likelihood)
     # Resolver activo por nombre
     asset_id = None
     if inp.get("asset_name"):

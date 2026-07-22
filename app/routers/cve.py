@@ -610,7 +610,7 @@ def create_risk_from_cve(
 ):
     """Crea un Riesgo en RiskHub a partir del analisis de una CVE."""
     from app.models import Risk, RiskStatus, TreatmentOption, Threat, Vulnerability
-    from app.services.risk_engine import calc_level, clamp
+    from app.services.risk_engine import calc_level, clamp, org_matrix
     from app.routers.risks import _next_code
 
     asset = filter_by_org(db.query(Asset).filter(Asset.id == body.asset_id), Asset, current_user).first()
@@ -686,6 +686,7 @@ def create_risk_from_cve(
     )
 
     # --- Crear el riesgo (residual lo fija el motor via recalc_risk) ---
+    _matrix = org_matrix(db, current_user.organization_id)
     risk = Risk(
         code=_next_code(db, current_user.organization_id),
         asset_id=asset.id,
@@ -693,11 +694,12 @@ def create_risk_from_cve(
         description=description[:2000],
         inherent_likelihood=inh_lik,
         inherent_consequence=inh_con,
-        inherent_level=calc_level(inh_con, inh_lik),
+        inherent_level=calc_level(inh_con, inh_lik, _matrix),
         residual_likelihood=inh_lik,
         residual_consequence=inh_con,
-        residual_level=calc_level(inh_con, inh_lik),
-        treatment_option=TreatmentOption.MODIFICATION if calc_level(inh_con, inh_lik) >= 3 else None,
+        residual_level=calc_level(inh_con, inh_lik, _matrix),
+        treatment_option=(TreatmentOption.MODIFICATION
+                          if calc_level(inh_con, inh_lik, _matrix) >= 3 else None),
         status=RiskStatus.IDENTIFIED,
         owner_id=current_user.id,
         organization_id=current_user.organization_id,

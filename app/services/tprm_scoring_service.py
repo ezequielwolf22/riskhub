@@ -85,31 +85,66 @@ def _regulatory_scope_score(supplier: Supplier) -> float:
     return float(min(100, score))
 
 
-def compute_inherent_risk(supplier: Supplier) -> int:
-    """Calcula el inherent risk (0-100, mayor = mas riesgo) — §4.2."""
-    data_sensitivity = _scale_1_5(supplier.data_sensitivity)
-    data_volume = _scale_1_5(supplier.data_volume)
-    system_access = SYSTEM_ACCESS_SCORE.get(
-        (supplier.system_access_type or "none").lower(), 40
-    )
-    business_criticality = _scale_1_5(supplier.business_criticality)
-    regulatory = _regulatory_scope_score(supplier)
-    geographic = _scale_1_5(supplier.geographic_risk)
+def compute_inherent_risk(supplier: Supplier, db=None) -> int:
+    """Calcula el inherent risk (0-100, mayor = mas riesgo) — §4.2.
 
-    total = (
-        INHERENT_WEIGHTS["data_sensitivity"] * data_sensitivity
-        + INHERENT_WEIGHTS["data_volume"] * data_volume
-        + INHERENT_WEIGHTS["system_access"] * system_access
-        + INHERENT_WEIGHTS["business_criticality"] * business_criticality
-        + INHERENT_WEIGHTS["regulatory_scope"] * regulatory
-        + INHERENT_WEIGHTS["geographic_risk"] * geographic
-    )
+    Con `db`, los pesos salen del metodo declarado por la organizacion en vez
+    de los de referencia, y si ha declarado una formula propia se usa esa. Sin
+    `db` se comporta exactamente como antes, asi que ningun llamador se rompe.
+    """
+    factors = {
+        "data_sensitivity": _scale_1_5(supplier.data_sensitivity),
+        "data_volume": _scale_1_5(supplier.data_volume),
+        "system_access": SYSTEM_ACCESS_SCORE.get(
+            (supplier.system_access_type or "none").lower(), 40),
+        "business_criticality": _scale_1_5(supplier.business_criticality),
+        "regulatory_scope": _regulatory_scope_score(supplier),
+        "geographic_risk": _scale_1_5(supplier.geographic_risk),
+    }
+
+    weights = INHERENT_WEIGHTS
+    formula = None
+    if db is not None:
+        org_id = getattr(supplier, "organization_id", None)
+        try:
+            from app.services.method.bindings import resolve
+            formula = resolve(db, org_id, "tprm.inherent.formula").value
+            declared = resolve(db, org_id, "tprm.inherent.weights").value
+            if isinstance(declared, dict) and declared:
+                weights = declared
+        except Exception:
+            logger.debug("tprm: no se pudo resolver el metodo de la organizacion",
+                         exc_info=True)
+
+    if formula:
+        from app.services.method.formula import evaluate
+        # Con defecto: una formula rota no puede tumbar el recalculo de toda
+        # la cartera de proveedores.
+        total = evaluate(formula, factors, default=0.0)
+    else:
+        total = sum(float(weights.get(name, 0)) * value
+                    for name, value in factors.items())
+
     return int(round(max(0, min(100, total))))
 
 
-def derive_tier(inherent_risk: int) -> SupplierTier:
-    """Deriva el tier por umbrales (§4.3)."""
-    for threshold, tier in TIER_THRESHOLDS:
+def derive_tier(inherent_risk: int, db=None, org_id=None) -> SupplierTier:
+    """Deriva el tier por umbrales (§4.3), respetando los del cliente si los hay."""
+    thresholds = TIER_THRESHOLDS
+    if db is not None:
+        try:
+            from app.services.method.bindings import resolve
+            declared = resolve(db, org_id, "tprm.tier.thresholds").value
+            if declared:
+                thresholds = [(t[0], SupplierTier(t[1])
+                               if not isinstance(t[1], SupplierTier) else t[1])
+                              for t in declared]
+        except Exception:
+            logger.debug("tprm: umbrales de tier no validos; se usan los de "
+                         "referencia", exc_info=True)
+            thresholds = TIER_THRESHOLDS
+
+    for threshold, tier in thresholds:
         if inherent_risk >= threshold:
             return tier
     return SupplierTier.LOW
@@ -158,8 +193,10 @@ def recompute_supplier(db: Session, supplier: Supplier, commit: bool = True) -> 
     El control_effectiveness se deriva de la postura existente (supplier.score)
     si no se ha fijado uno explicito. Devuelve el desglose.
     """
-    inherent = compute_inherent_risk(supplier)
-    tier = derive_tier(inherent)
+    # Con db, el scoring usa el metodo declarado por la organizacion
+    inherent = compute_inherent_risk(supplier, db=db)
+    tier = derive_tier(inherent, db=db,
+                       org_id=getattr(supplier, "organization_id", None))
 
     # control_effectiveness: si no esta fijado, usar la postura (score 0-100, mayor=mejor)
     control_eff = supplier.control_effectiveness
