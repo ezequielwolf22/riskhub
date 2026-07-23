@@ -58,6 +58,7 @@ const ViewGuide = {
     { id: 'organizations', title: 'Organizaciones (multi-tenant)', icon: '🏢' },
     { id: 'audit', title: 'Log de Auditoría', icon: '📋' },
     { id: 'ops', title: 'Operaciones (IA, jobs, backups)', icon: '🧰' },
+    { id: 'method', title: 'Método de la organización', icon: '📐' },
     { id: 'admin', title: 'Administracion', icon: '👥' },
     { id: 'security', title: 'Seguridad y privacidad', icon: '🔐' },
     { id: 'methodology', title: 'Metodología ISO 27005', icon: '📐' },
@@ -174,6 +175,7 @@ const ViewGuide = {
       organizations: this._cOrganizations,
       audit: this._cAudit,
       ops: this._cOps,
+      method: this._cMethod,
       admin: this._cAdmin,
       security: this._cSecurity,
       methodology: this._cMethodology,
@@ -1400,6 +1402,24 @@ const ViewGuide = {
     ${this._h('Copias de seguridad (superadmin)')}
     ${this._p('Backup automático nocturno (02:30 UTC) de la base de datos con compresión gzip y retención de 14 días, guardado dentro del volumen de datos del servidor. Desde aquí puedes lanzar un backup inmediato (por ejemplo antes de un cambio grande) y descargar cualquiera de los existentes.')}
     ${this._warn('El backup no incluye el fichero <code>.env</code> del servidor. Sin el <code>SECRET_KEY</code> original no se pueden descifrar las API keys ni el resto de secretos cifrados: guardalo en un gestor de secretos aparte. Procedimiento completo de restauración en <code>docs/BACKUP_RESTORE_RUNBOOK.md</code>.')}
+  `; },
+
+  get _cMethod() { return `
+    ${this._p('La pestaña <strong>Configuración → Método de la organización</strong> hace visible y editable <em>cómo</em> calcula la plataforma para esta organización. Cada empresa tiene su propio método —escalas de impacto, umbrales, pesos, cadencias de prueba, fórmulas— y aquí se ve de dónde sale cada parámetro que usa el motor.')}
+    ${this._warn('Principio del módulo: <strong>tu método gobierna tus cifras; la norma gobierna el veredicto de cumplimiento</strong>. Son dos preguntas distintas. Si tu procedimiento es más laxo que la norma (p. ej. pruebas cada 3 años frente al mínimo anual de ISO 22301), la plataforma <strong>sigue calculando con el tuyo</strong> y levanta un hallazgo citando ambas fuentes: no te da cifras que no son tuyas, pero tampoco te oculta el incumplimiento.')}
+
+    ${this._h('Procedencia de cada parámetro')}
+    ${this._p('Cada parámetro muestra su valor y su <strong>origen</strong>: <em>tu política</em> (extraído de tus documentos, con la cita literal del párrafo), <em>manual</em> (alguien lo fijó a mano) o <em>por defecto</em> (el valor de referencia de la plataforma). La procedencia se enseña junto al valor porque es lo que hace defendible una cifra en una auditoría. La precedencia al resolver es: manual > tu política > defecto.')}
+    ${this._tip('Un parámetro puede aparecer marcado como <strong>“declarado, aún no aplicado”</strong>: existe en el catálogo pero su motor todavía no lo consume. Se dice en vez de ocultarlo — es la lista de lo que queda por cablear.')}
+
+    ${this._h('Lo que leímos en tu política')}
+    ${this._p('El agente extrae de tus documentos las frases que fijan método (fórmulas, baremos, umbrales, cadencias) <strong>con su cita literal</strong>, y las propone vinculadas a un parámetro. Lo que no encaja en ningún parámetro no se descarta: queda como <em>“regla que aún no aplicamos”</em>, con su cita, para que sepas que hay algo tuyo que la herramienta todavía no respeta. Una declaración que cambiaría cifras ya calculadas no se aplica sola: la revisas y la aplicas tú.')}
+
+    ${this._h('Fórmulas propias')}
+    ${this._p('Cuando tu método no se puede expresar con parámetros sueltos, puedes declarar una fórmula (por ejemplo <code>0.4*financial + 0.6*operational</code>) sobre las variables disponibles. El editor la valida en vivo y muestra el número que produce. <strong>No se puede escribir código</strong>: solo números, operadores y un puñado de funciones matemáticas; cualquier otra cosa se rechaza.')}
+
+    ${this._h('Conformidad con tu método')}
+    ${this._p('Contrasta lo que el motor usa contra lo que dice tu política y genera cuatro tipos de hallazgo: se usa el defecto pese a haber política, un valor manual difiere de tu política, una regla tuya que no sabemos aplicar, y tu método más laxo que la norma. Cada hallazgo se puede aceptar (dar por bueno) para que no vuelva a aparecer.')}
   `; },
 
   get _cAdmin() { return `

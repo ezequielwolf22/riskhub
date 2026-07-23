@@ -77,6 +77,7 @@ const LegacyRedirects = {
   organizations: 'admin-hub/organizations',
   'feature-flags': 'admin-hub/feature-flags',
   ops: 'admin-hub/ops',
+  method: 'admin-hub/method',
 };
 
 function currentRoute() {
