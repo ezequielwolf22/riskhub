@@ -312,12 +312,108 @@ def _try_embed_document(db: Session, doc_id: int, organization_id: int | None) -
         logging.getLogger("riskhub.doc").warning("Embedding falló para doc %d: %s", doc_id, e)
 
 
-def delete_document(db: Session, doc: AiDocument) -> None:
-    """Elimina documento, sus chunks de BD y FTS5, y el archivo del disco."""
-    _delete_fts_for_doc(db, doc.id)
-    db.query(AiDocumentChunk).filter_by(document_id=doc.id).delete()
+# Entidades que referencian a un documento. El borrado nunca las destruye:
+# son registros del SGSI con vida propia (una politica tiene codigo, version y
+# aprobacion; un plan BCP tiene su ciclo). Se desvinculan y se informa de ello.
+# (tabla, campo, clave i18n del tipo para el resumen)
+_DOC_REFERENCES: list[tuple[str, str, str]] = [
+    ("Policy", "source_document_id", "policies"),
+    ("BCPPlan", "document_id", "bcp_plans"),
+    ("Supplier", "dpa_document_id", "suppliers"),
+    ("Supplier", "nda_document_id", "suppliers"),
+    ("Supplier", "contract_document_id", "suppliers"),
+    ("StrategicInitiative", "source_document_id", "initiatives"),
+    ("IngestSourceMap", "document_id", "ingest_maps"),
+]
+
+
+def _reference_queries(db: Session, doc_id: int):
+    """Genera (kind, query) por cada referencia viva al documento."""
+    import app.models as models
+    for model_name, field, kind in _DOC_REFERENCES:
+        model = getattr(models, model_name, None)
+        if model is None:
+            continue
+        column = getattr(model, field, None)
+        if column is None:
+            continue
+        yield kind, field, db.query(model).filter(column == doc_id)
+
+
+def document_references(db: Session, doc_id: int) -> dict[str, int]:
+    """Cuenta que registros quedarian desvinculados si se borra el documento.
+
+    Se usa para el preview del borrado y para el resumen que devuelve la API.
+    """
+    counts: dict[str, int] = {}
+    for kind, _field, query in _reference_queries(db, doc_id):
+        n = query.count()
+        if n:
+            counts[kind] = counts.get(kind, 0) + n
+    return counts
+
+
+def delete_document(db: Session, doc: AiDocument) -> dict[str, int]:
+    """Elimina documento, sus chunks de BD y FTS5, y el archivo del disco.
+
+    Antes de borrar desvincula las referencias de otras entidades. Sin esto el
+    DELETE fallaba con IntegrityError (PRAGMA foreign_keys=ON) en cuanto el
+    analisis ISMS habia derivado una Policy del documento — es decir, casi
+    siempre. Devuelve el recuento de lo desvinculado.
+    """
+    doc_id = doc.id
+    detached = document_references(db, doc_id)
+
+    for _kind, field, query in _reference_queries(db, doc_id):
+        query.update({field: None}, synchronize_session=False)
+
+    # Evidencia derivada del documento (F3): la auto-generada por la ingesta se
+    # elimina con el documento (no tiene vida propia); la que un humano vinculo a
+    # mano se conserva desvinculada. Se recalcula el riesgo de los controles cuya
+    # evidencia desaparece, para que el residual vuelva a subir sin ella.
+    ev_detached, ev_impl_ids = _detach_document_evidence(db, doc_id)
+    if ev_detached:
+        detached["evidence"] = ev_detached
+
+    _delete_fts_for_doc(db, doc_id)
+    db.query(AiDocumentChunk).filter_by(document_id=doc_id).delete()
     p = doc_path(doc.filename)
     if p.exists():
         p.unlink(missing_ok=True)
     db.delete(doc)
     db.commit()
+
+    # Recalcular el riesgo de los controles que perdieron evidencia auto-generada.
+    if ev_impl_ids:
+        try:
+            from app.services.risk_recalc_service import recalc_risks_for_impls
+            recalc_risks_for_impls(db, list(ev_impl_ids))
+        except Exception:
+            pass
+    return detached
+
+
+def _detach_document_evidence(db: Session, doc_id: int) -> tuple[int, set[int]]:
+    """Elimina la evidencia auto-generada del documento y desvincula la manual.
+
+    Devuelve (numero de evidencias afectadas, ids de ControlImplementation cuyo
+    riesgo conviene recalcular porque perdieron evidencia).
+    """
+    from app.models import Evidence
+    src_col = getattr(Evidence, "source_document_id", None)
+    if src_col is None:      # esquema antiguo sin la columna: nada que hacer
+        return 0, set()
+    rows = db.query(Evidence).filter(src_col == doc_id).all()
+    if not rows:
+        return 0, set()
+    impl_ids: set[int] = set()
+    affected = 0
+    for ev in rows:
+        if ev.control_implementation_id:
+            impl_ids.add(ev.control_implementation_id)
+        if getattr(ev, "auto_generated", False):
+            db.delete(ev)
+        else:
+            ev.source_document_id = None
+        affected += 1
+    return affected, impl_ids

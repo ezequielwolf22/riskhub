@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.i18n import get_lang, t as _t
@@ -12,7 +13,7 @@ from app.database import get_db, SessionLocal
 from app.models import AiDocument, AiDocumentCategory, AiDocumentStatus, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_role
 from app.services.document_service import (
-    delete_document, doc_path, process_document, save_document_file,
+    delete_document, doc_path, document_references, process_document, save_document_file,
 )
 
 router = APIRouter(prefix="/api/ai/documents", tags=["ai-documents"])
@@ -96,6 +97,10 @@ def _doc_out(d: AiDocument) -> dict:
         # Auto-categorizacion IA (v1.7.8)
         "auto_categorized": bool(getattr(d, "auto_categorized", False) or summary.get("auto_categorized", False)),
         "detected_category": getattr(d, "detected_category", None) or summary.get("detected_category"),
+        # Eje de clasificacion documental (F2): normative/record/reference/unclassified
+        "doc_class": getattr(d, "doc_class", None),
+        "doc_class_confidence": getattr(d, "doc_class_confidence", None),
+        "analysed_at": d.analysed_at.isoformat() if getattr(d, "analysed_at", None) else None,
         # Clausulas ISO extraidas por IA (v2.2)
         "extracted_clauses": getattr(d, "extracted_clauses", None) or [],
     }
@@ -230,8 +235,118 @@ def remove_document(
     # Solo el propietario o un administrador pueden eliminar el documento
     if doc.uploaded_by_id != current_user.id and current_user.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
         raise HTTPException(403, _t("common.forbidden", lang))
-    delete_document(db, doc)
-    return {"ok": True}
+    detached = delete_document(db, doc)
+    return {"ok": True, "detached": detached}
+
+
+@router.get("/{doc_id}/references")
+def get_document_references(
+    doc_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Registros que quedarian desvinculados al borrar el documento.
+
+    Alimenta el aviso previo al borrado: el documento se va, pero la politica o
+    el plan que se derivaron de el se conservan sin su archivo de origen.
+    """
+    lang = get_lang(request)
+    doc = db.query(AiDocument).filter_by(id=doc_id).first()
+    if not doc or not check_org_access(doc.organization_id, current_user):
+        raise HTTPException(404, _t("documents.not_found", lang))
+    return {"doc_id": doc_id, "detached": document_references(db, doc_id)}
+
+
+class BulkActionIn(BaseModel):
+    doc_ids: list[int]
+    action: str                      # delete | analyze | recategorize
+    category: str | None = None      # solo para recategorize
+    dry_run: bool = False            # solo para delete: calcula impacto sin borrar
+
+
+_BULK_MAX = 500
+
+
+@router.post("/bulk")
+def bulk_documents(
+    body: BulkActionIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """Operaciones masivas sobre documentos: borrar, reanalizar o recategorizar.
+
+    Solo actua sobre documentos de la organizacion activa. Los que el usuario no
+    puede tocar se devuelven en `skipped` en vez de abortar el lote entero.
+    """
+    lang = get_lang(request)
+    from app.models import UserRole
+
+    if body.action not in ("delete", "analyze", "recategorize"):
+        raise HTTPException(400, _t("common.bad_request", lang))
+    ids = list(dict.fromkeys(body.doc_ids))       # dedupe conservando orden
+    if not ids:
+        raise HTTPException(400, _t("common.bad_request", lang))
+    if len(ids) > _BULK_MAX:
+        raise HTTPException(400, f"Maximo {_BULK_MAX} documentos por lote")
+
+    docs = filter_by_org(
+        db.query(AiDocument).filter(AiDocument.id.in_(ids)), AiDocument, current_user
+    ).all()
+    found = {d.id for d in docs}
+    result: dict = {
+        "action": body.action,
+        "requested": len(ids),
+        "affected": 0,
+        "skipped": {"not_found": [i for i in ids if i not in found]},
+    }
+
+    if body.action == "delete":
+        is_admin = current_user.role in (UserRole.ADMIN, UserRole.SUPERADMIN)
+        forbidden, detached = [], {}
+        for doc in docs:
+            if not is_admin and doc.uploaded_by_id != current_user.id:
+                forbidden.append(doc.id)
+                continue
+            if body.dry_run:
+                refs = document_references(db, doc.id)
+            else:
+                refs = delete_document(db, doc)
+            for kind, n in refs.items():
+                detached[kind] = detached.get(kind, 0) + n
+            result["affected"] += 1
+        result["skipped"]["forbidden"] = forbidden
+        result["detached"] = detached
+        result["dry_run"] = body.dry_run
+        return result
+
+    if body.action == "recategorize":
+        try:
+            cat = AiDocumentCategory(body.category or "")
+        except ValueError:
+            raise HTTPException(400, f"Categoria invalida: {body.category}")
+        for doc in docs:
+            doc.category = cat
+            doc.auto_categorized = False   # decision humana: la IA no la pisa
+            result["affected"] += 1
+        db.commit()
+        return result
+
+    # analyze: solo tiene sentido sobre documentos ya indexados
+    not_indexed = []
+    for doc in docs:
+        if doc.status != AiDocumentStatus.INDEXED:
+            not_indexed.append(doc.id)
+            continue
+        doc.isms_status = "analysing"
+        doc.isms_summary = None
+        background_tasks.add_task(_run_isms_analysis_bg, doc.id)
+        result["affected"] += 1
+    db.commit()
+    result["skipped"]["not_indexed"] = not_indexed
+    return result
 
 
 @router.post("/{doc_id}/reprocess")

@@ -37,6 +37,27 @@ def _load_crossmap() -> dict:
     return _CROSSMAP
 
 
+def _find_impl_id(db: Session, org_id: int, control_code: str) -> Optional[int]:
+    """Id de la ControlImplementation de la org para un codigo ISO 27002.
+
+    Acepta el codigo con o sin prefijo 'A.' (mismo criterio que _update_controls).
+    Devuelve None si el control no esta en el catalogo o no tiene implementacion.
+    """
+    from app.models import Control, ControlImplementation
+    code = (control_code or "").strip()
+    if not code:
+        return None
+    control = db.query(Control).filter_by(code=code).first()
+    if not control:
+        control = db.query(Control).filter_by(code=code.lstrip("A.").strip()).first()
+    if not control:
+        return None
+    impl = db.query(ControlImplementation).filter_by(
+        organization_id=org_id, control_id=control.id,
+    ).first()
+    return impl.id if impl else None
+
+
 def _next_evidence_code(db: Session, org_id: int) -> str:
     from app.models import Evidence
     count = db.query(Evidence).filter(Evidence.organization_id == org_id).count()
@@ -82,6 +103,12 @@ def infer_compliance_from_document(
         control_code = control.get("code", "").strip()
         coverage = control.get("coverage", "partial")
         maturity = control.get("maturity_current", 2)
+
+        # F3: la Evidence derivada debe engancharse a la ControlImplementation
+        # real. Sin este id, _ai_evidence_factor (risk_recalc_service) nunca
+        # encuentra la evidencia y el factor de calidad E1-E5 no llega al motor
+        # de riesgo — la cadena documento->control->madurez->residual quedaba rota.
+        impl_id = _find_impl_id(db, org_id, control_code)
 
         # Determinar status según coverage y maturity
         if coverage == "full" and maturity >= 4:
@@ -173,6 +200,9 @@ def infer_compliance_from_document(
                         fw_code=fw_code.upper(),
                     ),
                     evidence_type=EvidenceType.POLICY if doc.category == "policy" else EvidenceType.PROCEDURE,
+                    control_implementation_id=impl_id,
+                    source_document_id=doc.id,
+                    auto_generated=True,
                     compliance_framework=fw_code,
                     compliance_requirement=req_id,
                     created_by_id=None,
@@ -182,6 +212,12 @@ def infer_compliance_from_document(
                 db.add(ev)
                 db.flush()
                 evidence_created += 1
+            elif impl_id and existing_ev.control_implementation_id is None:
+                # Evidencia legacy de este documento sin enganchar: completar el
+                # vinculo para que entre en el calculo de riesgo.
+                existing_ev.control_implementation_id = impl_id
+                if existing_ev.source_document_id is None:
+                    existing_ev.source_document_id = doc.id
 
     try:
         db.commit()

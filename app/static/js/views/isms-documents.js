@@ -71,6 +71,16 @@ const ViewIsmsDocuments = (() => {
   };
   const ACCEPTED_EXTS = ['pdf', 'docx', 'txt', 'csv', 'jpg', 'jpeg', 'png'];
 
+  // Eje de clasificacion documental (F2): separa normativa de evidencias
+  const DOC_CLASS_LABELS = {
+    normative: t(`${NS}.doc_class.normative`), record: t(`${NS}.doc_class.record`),
+    reference: t(`${NS}.doc_class.reference`), unclassified: t(`${NS}.doc_class.unclassified`),
+  };
+  const DOC_CLASS_COLORS = {
+    normative: 'var(--brand-purple)', record: '#0891b2',
+    reference: '#6b7280', unclassified: 'var(--brand-orange)',
+  };
+
   // Niveles de madurez CMM
   const MATURITY_LABELS = [0, 1, 2, 3, 4, 5].map(n => t(`${NS}.maturity_level.${n}`));
 
@@ -83,10 +93,12 @@ const ViewIsmsDocuments = (() => {
   let _filter   = 'all';
   let _searchQ  = '';
   let _statusFilter = '';
+  let _classFilter  = '';   // filtro por doc_class (normative/record/reference/unclassified)
   let _queue    = [];
   let _queueId  = 0;
   let _uploading = false;
   let _pollTimer = null;
+  const _selected = new Set();   // ids de AiDocument marcados para acciones masivas
 
   // --- Helpers visuales ---
 
@@ -108,6 +120,16 @@ const ViewIsmsDocuments = (() => {
     const label = ISMS_TYPES[cat] || UI.esc(cat);
     const color = ISMS_TYPE_COLORS[cat] || '#888';
     return `<span style="display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:700;background:${color}20;color:${color};border:1px solid ${color}40;">${label}</span>`;
+  }
+
+  function _docClassBadge(cls) {
+    if (!cls) return '';
+    const label = DOC_CLASS_LABELS[cls] || cls;
+    const color = DOC_CLASS_COLORS[cls] || '#888';
+    const title = t(`${NS}.doc_class.${cls}_title`);
+    return `<span title="${title}" style="display:inline-block;padding:1px 6px;border-radius:999px;
+      font-size:9px;font-weight:700;background:${color}18;color:${color};border:1px solid ${color}40;
+      text-transform:uppercase;letter-spacing:.03em;">${label}</span>`;
   }
 
   function _maturityColor(v) {
@@ -174,6 +196,10 @@ const ViewIsmsDocuments = (() => {
 
     if (_statusFilter) {
       rows = rows.filter(r => r.policy && r.policy.status === _statusFilter);
+    }
+
+    if (_classFilter) {
+      rows = rows.filter(r => r.doc && r.doc.doc_class === _classFilter);
     }
 
     return rows;
@@ -349,6 +375,12 @@ const ViewIsmsDocuments = (() => {
             `<option value="${k}" ${_statusFilter === k ? 'selected' : ''}>${l}</option>`
           ).join('')}
         </select>
+        <select id="isms-class-filter" class="input" style="width:160px;">
+          <option value="">${t(`${NS}.doc_class.filter_all`)}</option>
+          ${Object.entries(DOC_CLASS_LABELS).map(([k, l]) =>
+            `<option value="${k}" ${_classFilter === k ? 'selected' : ''}>${l}</option>`
+          ).join('')}
+        </select>
       </div>
 
       <!-- Tabla unificada -->
@@ -363,6 +395,7 @@ const ViewIsmsDocuments = (() => {
     // Busqueda y estado
     root.querySelector('#isms-search').oninput   = (e) => { _searchQ = e.target.value; _renderTable(); };
     root.querySelector('#isms-status-filter').onchange = (e) => { _statusFilter = e.target.value; _renderTable(); };
+    root.querySelector('#isms-class-filter').onchange = (e) => { _classFilter = e.target.value; _renderTable(); };
 
     // Upload file input
     const fileInput = document.getElementById('isms-file-input');
@@ -421,7 +454,8 @@ const ViewIsmsDocuments = (() => {
     const rows = _filteredMerged();
 
     if (!rows.length) {
-      wrap.innerHTML = `<p class="text-muted" style="text-align:center;margin-top:24px;">${t(`${NS}.table.no_docs_found`)}</p>`;
+      wrap.innerHTML = `${_bulkBarHtml()}
+        <p class="text-muted" style="text-align:center;margin-top:24px;">${t(`${NS}.table.no_docs_found`)}</p>`;
       return;
     }
 
@@ -444,8 +478,9 @@ const ViewIsmsDocuments = (() => {
         const fl = FILE_STATUS_LABELS[doc.status] || doc.status;
         fileCellHtml = `<span style="font-size:11px;font-weight:600;color:${fc};">${fl}</span>`;
         if (doc.error_message) {
-          fileCellHtml += `<br><span style="font-size:10px;color:var(--risk-critical);"
-            title="${UI.esc(doc.error_message)}">${t(`${NS}.table.view_error`)}</span>`;
+          fileCellHtml += `<br><span onclick="ViewIsmsDocuments._showError(${doc.id})"
+            style="font-size:10px;color:var(--risk-critical);cursor:pointer;text-decoration:underline;"
+            title="${t(`${NS}.table.view_error_title`)}">${t(`${NS}.table.view_error`)}</span>`;
         }
       } else {
         fileCellHtml = `<span style="font-size:11px;color:var(--text-muted);"
@@ -458,7 +493,13 @@ const ViewIsmsDocuments = (() => {
         const ic = ISMS_STATUS_COLORS[doc.isms_status] || 'var(--text-muted)';
         const il = ISMS_STATUS_LABELS[doc.isms_status] || doc.isms_status;
         const tooltip = doc.isms_summary_text ? ` title="${UI.esc(doc.isms_summary_text.slice(0, 200))}"` : '';
-        ismsCellHtml = `<span style="font-size:11px;font-weight:600;color:${ic};"${tooltip}>${il}</span>`;
+        if (doc.isms_status === 'error') {
+          ismsCellHtml = `<span onclick="ViewIsmsDocuments._showError(${doc.id})"
+            style="font-size:11px;font-weight:600;color:${ic};cursor:pointer;text-decoration:underline;"
+            title="${t(`${NS}.table.view_error_title`)}">${il}</span>`;
+        } else {
+          ismsCellHtml = `<span style="font-size:11px;font-weight:600;color:${ic};"${tooltip}>${il}</span>`;
+        }
         if (doc.isms_status === 'analysing') {
           ismsCellHtml += ' <span style="font-size:10px;color:var(--text-muted);">&#8635;</span>';
         }
@@ -519,15 +560,28 @@ const ViewIsmsDocuments = (() => {
 
       const rowStyle = reviewOverdue ? 'background:rgba(254,226,226,0.3);' : '';
 
+      // Checkbox de seleccion: solo filas con documento (las acciones masivas
+      // operan sobre AiDocument; una fila policy_only no tiene archivo).
+      const selectCell = doc
+        ? `<td onclick="event.stopPropagation()" style="text-align:center;">
+             <input type="checkbox" class="isms-row-check" data-id="${doc.id}"
+                    ${_selected.has(doc.id) ? 'checked' : ''}>
+           </td>`
+        : '<td></td>';
+
       return `
         <tr style="${rowStyle}">
+          ${selectCell}
           <td>${effectiveLevel ? _levelBadge(effectiveLevel) : '<span style="font-size:11px;color:var(--text-muted);">-</span>'}</td>
           <td style="max-width:320px;">
             ${code ? `<div style="font-size:10px;font-family:var(--font-mono);color:var(--brand-purple);font-weight:700;margin-bottom:2px;">${UI.esc(code)}</div>` : ''}
             <div style="font-size:13px;font-weight:600;">
               ${UI.esc(title)}${typeTag}
             </div>
-            ${policy && policy.category ? `<div style="margin-top:3px;">${_typeBadge(policy.category)}</div>` : ''}
+            <div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+              ${doc && doc.doc_class ? _docClassBadge(doc.doc_class) : ''}
+              ${policy && policy.category ? _typeBadge(policy.category) : ''}
+            </div>
           </td>
           <td style="font-size:12px;font-family:var(--font-mono);">${version ? 'v' + UI.esc(version) : '-'}</td>
           <td>${status ? _statusBadge(status) : '-'}</td>
@@ -547,11 +601,20 @@ const ViewIsmsDocuments = (() => {
         </tr>`;
     }).join('');
 
+    // Ids de documento visibles con el filtro actual (para "seleccionar todo")
+    const visibleDocIds = rows.filter(r => r.doc).map(r => r.doc.id);
+    const allChecked = visibleDocIds.length > 0 && visibleDocIds.every(id => _selected.has(id));
+
     wrap.innerHTML = `
-      <div class="card" style="padding:0;overflow:hidden;">
-        <table class="data">
+      ${_bulkBarHtml()}
+      <div class="card" style="padding:0;overflow-x:auto;">
+        <table class="data" style="min-width:920px;">
           <thead>
             <tr>
+              <th style="width:34px;text-align:center;">
+                <input type="checkbox" id="isms-check-all" title="${t(`${NS}.table.col_select_title`)}"
+                       ${allChecked ? 'checked' : ''}>
+              </th>
               <th>${t(`${NS}.table.col_level`)}</th>
               <th>${t(`${NS}.table.col_code_title`)}</th>
               <th>${t(`${NS}.table.col_version`)}</th>
@@ -566,6 +629,58 @@ const ViewIsmsDocuments = (() => {
           <tbody>${tableRows}</tbody>
         </table>
       </div>`;
+
+    // Cablear checkboxes de fila
+    wrap.querySelectorAll('.isms-row-check').forEach(cb => {
+      cb.onchange = () => {
+        const id = parseInt(cb.dataset.id);
+        if (cb.checked) _selected.add(id); else _selected.delete(id);
+        _renderBulkBar();
+        const head = document.getElementById('isms-check-all');
+        if (head) head.checked = visibleDocIds.length > 0 && visibleDocIds.every(i => _selected.has(i));
+      };
+    });
+
+    // Seleccionar / deseleccionar todos los visibles
+    const checkAll = document.getElementById('isms-check-all');
+    if (checkAll) {
+      checkAll.onchange = () => {
+        if (checkAll.checked) visibleDocIds.forEach(id => _selected.add(id));
+        else visibleDocIds.forEach(id => _selected.delete(id));
+        _renderTable();
+      };
+    }
+  }
+
+  // --- Barra de acciones masivas ---
+
+  function _bulkBarHtml() {
+    if (_selected.size === 0) return '';
+    return `
+      <div id="isms-bulk-bar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+           margin-bottom:10px;padding:10px 12px;border-radius:8px;
+           background:var(--brand-purple-4, rgba(89,0,141,0.06));border:1px solid var(--border);">
+        <strong style="font-size:13px;color:var(--brand-purple);">
+          ${t(`${NS}.bulk.selected`, { n: _selected.size })}
+        </strong>
+        <button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._bulkClear()">${t(`${NS}.bulk.clear`)}</button>
+        <span style="flex:1;"></span>
+        <button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._bulkAnalyze()">${t(`${NS}.bulk.analyze`)}</button>
+        <button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._bulkRecategorize()">${t(`${NS}.bulk.recategorize`)}</button>
+        <button class="btn btn-sm btn-danger" onclick="ViewIsmsDocuments._bulkDelete()">${t(`${NS}.bulk.delete`)}</button>
+      </div>`;
+  }
+
+  function _renderBulkBar() {
+    const wrap = document.getElementById('isms-table-wrap');
+    if (!wrap) return;
+    const existing = document.getElementById('isms-bulk-bar');
+    const html = _bulkBarHtml();
+    if (existing) {
+      if (html) existing.outerHTML = html; else existing.remove();
+    } else if (html) {
+      wrap.insertAdjacentHTML('afterbegin', html);
+    }
   }
 
   // --- Cola de subida ---
@@ -804,6 +919,95 @@ const ViewIsmsDocuments = (() => {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = t(`${NS}.upload.btn_reanalyze_all_reset`); }
     }
+  }
+
+  // --- Acciones masivas ---
+
+  function _bulkClear() {
+    _selected.clear();
+    _renderTable();
+  }
+
+  async function _bulkDelete() {
+    if (_selected.size === 0) return;
+    const ids = Array.from(_selected);
+    // Preview: cuenta que se desvincularia sin borrar nada.
+    let detail = '';
+    try {
+      const preview = await Api.aiDocuments.bulk({ action: 'delete', doc_ids: ids, dry_run: true });
+      const det = preview.detached || {};
+      const parts = Object.entries(det).filter(([, n]) => n > 0)
+        .map(([k, n]) => `${n} ${k}`);
+      if (parts.length) detail = t(`${NS}.bulk.detail_detached`, { items: parts.join(', ') });
+    } catch (_) { /* si el preview falla, se pide confirmacion igual */ }
+
+    if (!confirm(t(`${NS}.bulk.confirm_delete`, { docs: ids.length, detail }))) return;
+    try {
+      const res = await Api.aiDocuments.bulk({ action: 'delete', doc_ids: ids });
+      _selected.clear();
+      await _load(); _renderRoot();
+      _bulkToast('delete', res);
+    } catch (e) { UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error'); }
+  }
+
+  async function _bulkAnalyze() {
+    if (_selected.size === 0) return;
+    const ids = Array.from(_selected);
+    try {
+      const res = await Api.aiDocuments.bulk({ action: 'analyze', doc_ids: ids });
+      _selected.clear();
+      await _load(); _renderRoot();
+      _bulkToast('analyze', res);
+      _startPollIfNeeded();
+    } catch (e) { UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error'); }
+  }
+
+  async function _bulkRecategorize() {
+    if (_selected.size === 0) return;
+    const opts = Object.entries(CATEGORY_LABELS).map(([k, l]) => `${k} = ${l}`).join('\n');
+    const cat = prompt(`${t(`${NS}.bulk.recategorize_prompt`)}\n\n${opts}`, 'policies');
+    if (!cat || !CATEGORY_LABELS[cat]) return;
+    const ids = Array.from(_selected);
+    try {
+      const res = await Api.aiDocuments.bulk({ action: 'recategorize', doc_ids: ids, category: cat });
+      _selected.clear();
+      await _load(); _renderRoot();
+      _bulkToast('recategorize', res);
+    } catch (e) { UI.toast(t(`${NS}.toast.generic_error`, { error: e.message }), 'error'); }
+  }
+
+  function _bulkToast(action, res) {
+    const skipped = res.skipped || {};
+    const skipCount = Object.values(skipped).reduce((a, v) => a + (Array.isArray(v) ? v.length : 0), 0);
+    UI.toast(t(`${NS}.bulk.done`, { action, ok: res.affected || 0, skip: skipCount }), 'success');
+  }
+
+  // --- Modal de detalle de error ---
+  // El cliente pedia poder ver el error real: antes solo habia un badge rojo mudo.
+
+  function _showError(docId) {
+    const doc = _docs.find(d => d.id === docId);
+    if (!doc) return;
+    const msg = (doc.isms_summary && (doc.isms_summary.error || doc.isms_summary.reason))
+      || doc.error_message || doc.isms_summary_text || '-';
+    const canRetry = doc.status === 'indexed';
+    UI.modal(
+      t(`${NS}.error_modal.title`),
+      `<div style="font-family:var(--font-mono);font-size:12px;white-space:pre-wrap;
+            background:var(--bg-subtle,#f6f6f8);border:1px solid var(--border);
+            border-radius:6px;padding:12px;max-height:40vh;overflow:auto;color:var(--risk-critical);">
+         ${UI.esc(String(msg))}
+       </div>
+       <p style="font-size:12px;color:var(--text-muted);margin-top:10px;">${t(`${NS}.error_modal.hint`)}</p>`,
+      {
+        width: 'min(640px, 95vw)',
+        actions: `<button class="btn" id="m-cancel">${t(`${NS}.error_modal.close`)}</button>
+                  ${canRetry ? `<button class="btn btn-primary" id="m-retry">${t(`${NS}.error_modal.retry`)}</button>` : ''}`,
+      }
+    );
+    document.getElementById('m-cancel').onclick = UI.closeModal;
+    const retry = document.getElementById('m-retry');
+    if (retry) retry.onclick = () => { UI.closeModal(); _analyze(docId); };
   }
 
   // --- Formulario de política ---
@@ -1872,6 +2076,8 @@ const ViewIsmsDocuments = (() => {
     _setQueueCat, _removeFromQueue,
     _analyze, _reprocess, _deleteDoc, _deletePolicy,
     _analyzePending, _analyzeAll,
+    // F0: acciones masivas y detalle de error
+    _bulkClear, _bulkDelete, _bulkAnalyze, _bulkRecategorize, _showError,
     _editPolicy,
     _showMaturityModal, _showClauses,
     _generateWithAI, _onGenFileChange, _submitGenerate, _saveGenerated,

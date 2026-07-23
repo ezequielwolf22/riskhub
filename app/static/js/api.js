@@ -322,6 +322,8 @@ const Api = {
     analyzePending: () => Api.post('/api/ai/documents/analyze-pending', {}),
     analyzeAll: () => Api.post('/api/ai/documents/analyze-all', {}),
     controls: (id) => Api.get('/api/ai/documents/' + id + '/controls'),
+    references: (id) => Api.get('/api/ai/documents/' + id + '/references'),
+    bulk: (payload) => Api.post('/api/ai/documents/bulk', payload),
   },
   tasks: {
     list: (q) => Api.get('/api/tasks/', q),

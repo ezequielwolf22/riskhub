@@ -10,7 +10,6 @@ la respuesta HTTP de subida de documento.
 """
 from __future__ import annotations
 
-import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
@@ -19,7 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import (
-    AiCallLog, AiConfig, AiDocument, AiDocumentStatus,
+    AiDocument, AiDocumentStatus,
     Asset,
     Control, ControlImplementation, ControlStatus,
     Policy, PolicyStatus,
@@ -37,7 +36,24 @@ _ISMS_EXECUTOR = ThreadPoolExecutor(max_workers=3, thread_name_prefix="isms-bg")
 
 _ISMS_SYSTEM_PROMPT = """Eres un experto senior en seguridad de la informacion (ISO/IEC 27001/27002/27005).
 
-JERARQUIA DOCUMENTAL ISO — CRITICO PARA EL ANALISIS:
+EJE PRIMARIO — QUE CLASE DE DOCUMENTO ES (doc_class):
+Antes que nada decide a que clase pertenece. Es distinto de su nivel jerarquico.
+  normative  = documento que ESTABLECE reglas: politica, norma, procedimiento,
+               instruccion tecnica. Dice "lo que se debe hacer".
+  record     = EVIDENCIA o REGISTRO que demuestra que algo se hizo: acta de
+               comite, certificado (ISO, SOC 2), informe de pentest/auditoria,
+               registro de formacion, log de backup, revision de accesos,
+               resultado de campana de phishing. NO establece reglas: las evidencia.
+  reference  = documento EXTERNO de referencia: texto legal o de norma
+               (ISO 27002, RGPD, ENS), contrato o documentacion de un proveedor.
+  unclassified = no encaja con confianza en ninguna de las anteriores.
+REGLA CLAVE: un informe SOC 2 Type 2, un certificado o un pentest son `record`,
+NUNCA `normative`. El nivel jerarquico (1-4) SOLO aplica si doc_class=normative;
+para el resto, document_level puede ser null.
+Un `record` NO crea una politica y NO fija madurez por si mismo: aporta EVIDENCIA
+del control que respalda (indicalo en controls_covered con evidence_note).
+
+JERARQUIA DOCUMENTAL ISO — SOLO PARA doc_class=normative:
 Los documentos del SGSI tienen niveles jerarquicos con responsabilidades y alcance distintos:
 
   Nivel 1 — POLITICA: Define la intencion y compromiso organizativo. Alto nivel, sin detalles tecnicos.
@@ -71,10 +87,13 @@ ESCALA CMM:
   4 = Gestionado/medido — procedimiento especifico con evidencia de aplicacion
   5 = Optimizado/continuo — instruccion tecnica + metricas + mejora continua
 
-Devuelve SOLO este JSON valido (sin markdown, sin texto antes ni despues):
+Entrega el resultado llamando a la herramienta `isms_document_analysis`, cuyos
+campos son:
 
 {
-  "document_level": <1|2|3|4>,
+  "doc_class": "<normative|record|reference|unclassified>",
+  "doc_class_confidence": <0.0-1.0>,
+  "document_level": <1|2|3|4 o null si no es normative>,
   "document_level_label": "<Politica|Norma|Procedimiento|Instruccion Tecnica>",
   "document_category": "<architecture|normative|policies|assets_inventory|risk_assessments|critical_suppliers|incidents_lessons|other>",
   "is_policy": <true|false>,
@@ -104,7 +123,6 @@ Devuelve SOLO este JSON valido (sin markdown, sin texto antes ni despues):
 }
 
 REGLAS CRITICAS:
-- Devuelve SOLO el JSON valido. Sin texto ni markdown antes ni despues.
 - document_level: clasifica el documento honestamente segun su nivel real en la jerarquia.
 - document_category: clasifica en UNA categoria:
     architecture, normative, policies, assets_inventory, risk_assessments, critical_suppliers, incidents_lessons, other
@@ -118,26 +136,89 @@ REGLAS CRITICAS:
 """
 
 
+# Schema formal de la salida. Con tool use forzado la API valida los argumentos
+# contra este schema, asi que el JSON malformado deja de existir como clase de
+# error: era la causa de los isms_status='error' que el cliente veia en la tabla.
+_DOC_CATEGORIES = [
+    "architecture", "normative", "policies", "assets_inventory",
+    "risk_assessments", "critical_suppliers", "incidents_lessons", "other",
+]
+
+_ISMS_ANALYSIS_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "doc_class": {
+            "type": "string",
+            "enum": ["normative", "record", "reference", "unclassified"],
+            "description": "Clase primaria: normativa, registro/evidencia, referencia externa o sin clasificar",
+        },
+        "doc_class_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "document_level": {
+            "type": ["integer", "null"], "minimum": 1, "maximum": 4,
+            "description": "1=Politica, 2=Norma, 3=Procedimiento, 4=Instruccion. null si doc_class != normative",
+        },
+        "document_level_label": {"type": "string"},
+        "document_category": {"type": "string", "enum": _DOC_CATEGORIES},
+        "is_policy": {
+            "type": "boolean",
+            "description": "True solo si es una politica de seguridad interna de la organizacion",
+        },
+        "policy": {
+            "type": "object",
+            "description": "Datos de la politica. Omitir si is_policy es false.",
+            "properties": {
+                "title": {"type": "string"},
+                "category": {"type": "string"},
+                "version": {"type": "string"},
+                "scope": {"type": "string"},
+                "content": {"type": "string"},
+                "review_date": {"type": ["string", "null"], "description": "YYYY-MM-DD o null"},
+                "review_cycle_months": {"type": "integer"},
+                "iso_clauses": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title"],
+        },
+        "controls_covered": {
+            "type": "array",
+            "description": "Solo controles del tema principal del documento. Prefiere 3-8 muy relevantes a 20 vagos.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Codigo ISO 27002:2022, ej: 5.17"},
+                    "name": {"type": "string"},
+                    "coverage": {"type": "string", "enum": ["full", "partial"]},
+                    "maturity_current": {
+                        "type": "integer", "minimum": 0, "maximum": 5,
+                        "description": "Respeta el maximo por nivel: N1->2, N2->3, N3->4, N4->5",
+                    },
+                    "maturity_rationale": {"type": "string"},
+                    "gap_to_5": {"type": "string"},
+                    "evidence_note": {"type": "string"},
+                },
+                "required": ["code", "coverage", "maturity_current"],
+            },
+        },
+        "threat_categories_addressed": {"type": "array", "items": {"type": "string"}},
+        "overall_summary": {"type": "string", "description": "Resumen ejecutivo, max 200 palabras"},
+    },
+    "required": ["doc_class", "document_category", "is_policy", "overall_summary"],
+}
+
+
 # ---------- Helpers ----------
 
+# Compatibilidad: policy_generation_service, risk_auto_generator y bcp.py
+# importan estos dos helpers desde aqui. Delegan en model_registry, que es la
+# fuente unica de modelo y credencial; se mantienen para no tocar sus llamantes.
+
 def _get_api_key(db: Session, organization_id: int | None) -> str | None:
-    """Obtiene la API key del agente IA para la organizacion dada."""
-    cfg = db.query(AiConfig).filter_by(organization_id=organization_id).first()
-    if cfg and cfg.api_key_encrypted:
-        try:
-            from cryptography.fernet import Fernet
-            from app.services.document_service import _fernet_key
-            return Fernet(_fernet_key()).decrypt(cfg.api_key_encrypted.encode()).decode()
-        except Exception:
-            pass
-    # Fallback: variable de entorno global
-    from app.config import settings
-    return settings.anthropic_api_key or None
+    from app.services.model_registry import get_api_key
+    return get_api_key(db, organization_id)
 
 
 def _get_model(db: Session, organization_id: int | None) -> str:
-    cfg = db.query(AiConfig).filter_by(organization_id=organization_id).first()
-    return cfg.model if cfg and cfg.model else "claude-opus-4-6"
+    from app.services.model_registry import get_model
+    return get_model(db, organization_id, tier="deep")
 
 
 def _org_owner(db: Session, organization_id: int | None) -> int | None:
@@ -146,18 +227,6 @@ def _org_owner(db: Session, organization_id: int | None) -> int | None:
         organization_id=organization_id, is_active=True
     ).order_by(User.id).first()
     return user.id if user else None
-
-
-def _strip_fence(raw: str) -> str:
-    """Elimina code fences Markdown si el modelo las anade."""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        parts = raw.split("```", 2)
-        inner = parts[1] if len(parts) > 1 else raw
-        if inner.startswith("json"):
-            inner = inner[4:]
-        raw = inner.rsplit("```", 1)[0].strip()
-    return raw
 
 
 # ---------- Punto de entrada ----------
@@ -175,7 +244,8 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
     db.commit()
 
     try:
-        api_key = _get_api_key(db, doc.organization_id)
+        from app.services.model_registry import get_api_key, get_model
+        api_key = get_api_key(db, doc.organization_id)
         if not api_key:
             doc.isms_status = "skipped"
             doc.isms_summary = {"reason": "No hay API key configurada para el agente IA"}
@@ -211,24 +281,26 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
                 f"ISO 27002 que sean relevantes para estos frameworks."
             )
 
-        # Llamar al agente IA
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        model = _get_model(db, doc.organization_id)
+        # Llamar al agente IA con salida estructurada (tool use forzado): la
+        # API valida contra el schema, no hay JSON que reparar a posteriori.
+        from app.services.claude_client import structured_message
+        model = get_model(db, doc.organization_id, tier="deep")
 
-        with client.messages.stream(
+        analysis, message = structured_message(
+            api_key,
             model=model,
-            max_tokens=64000,
+            max_tokens=16000,
             system=_ISMS_SYSTEM_PROMPT + fw_hint,
             messages=[{
                 "role": "user",
                 "content": f"Nombre del documento: {doc.original_name}\n\nContenido:\n{text_sample}",
             }],
-        ) as stream:
-            message = stream.get_final_message()
-        raw_json = _strip_fence(message.content[0].text)
-
-        analysis = json.loads(raw_json)
+            tool_name="isms_document_analysis",
+            input_schema=_ISMS_ANALYSIS_SCHEMA,
+            tool_description="Entrega el analisis ISMS estructurado del documento",
+            org_id=doc.organization_id,
+            call_type="isms_analysis",
+        )
         owner_id = _org_owner(db, doc.organization_id)
 
         result = {
@@ -238,8 +310,25 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             "summary": analysis.get("overall_summary", ""),
         }
 
-        # Nivel jerarquico del documento (1=Politica, 2=Norma, 3=Procedimiento, 4=Instruccion)
-        doc_level = max(1, min(4, int(analysis.get("document_level") or 1)))
+        # Eje primario de clasificacion (F2): normative / record / reference /
+        # unclassified. Separa la normativa de las evidencias que la soportan.
+        doc_class = str(analysis.get("doc_class") or "unclassified").lower()
+        if doc_class not in ("normative", "record", "reference", "unclassified"):
+            doc_class = "unclassified"
+        doc_class_conf = analysis.get("doc_class_confidence")
+        doc.doc_class = doc_class
+        doc.doc_class_confidence = (
+            float(doc_class_conf) if isinstance(doc_class_conf, (int, float)) else None
+        )
+        result["doc_class"] = doc_class
+        result["doc_class_confidence"] = doc.doc_class_confidence
+
+        # Nivel jerarquico: solo aplica a documentos normativos. Un registro o una
+        # referencia no tienen nivel de politica; se guarda 1 como piso tecnico
+        # para el calculo de madurez pero no se le trata como politica.
+        is_normative = doc_class == "normative"
+        raw_level = analysis.get("document_level")
+        doc_level = max(1, min(4, int(raw_level))) if raw_level else 1
         result["document_level"] = doc_level
         result["document_level_label"] = analysis.get("document_level_label", "Politica")
 
@@ -247,8 +336,11 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
         controls = analysis.get("controls_covered") or []
         intended = [c.get("code") for c in controls if c.get("code")]
 
+        # Solo un documento NORMATIVO puede materializarse como Policy. Un `record`
+        # (SOC 2, certificado, pentest) evidencia controles pero no es una politica,
+        # aunque el modelo marque is_policy por error.
         superseded_doc_id = None
-        if analysis.get("is_policy") and analysis.get("policy"):
+        if is_normative and analysis.get("is_policy") and analysis.get("policy"):
             try:
                 result["policy_id"], superseded_doc_id = _create_or_update_policy(
                     db, doc, analysis["policy"], owner_id,
@@ -326,6 +418,7 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             result["detected_category"] = doc.category.value if doc.category else None
 
         doc.isms_status = "analysed"
+        doc.analysed_at = datetime.now(timezone.utc)
         doc.isms_summary = result
         db.commit()   # commit del status — separado del call_log para no mezclar fallos
         logger.info(
@@ -334,31 +427,14 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             result.get("detected_category", "-"),
         )
 
-        # Registrar uso de tokens (no critico — fallo aqui no debe afectar el status)
-        try:
-            call_log = AiCallLog(
-                organization_id=doc.organization_id,
-                call_type="isms_analysis",
-                prompt_tokens=message.usage.input_tokens,
-                completion_tokens=message.usage.output_tokens,
-                model=model,
-                anonymized=False,
-                response_summary=f"ISMS analysis for doc {doc_id}: {doc.original_name[:60]}",
-            )
-            db.add(call_log)
-            db.commit()
-        except Exception as _cl:
-            logger.warning("Call log failed doc=%d: %s", doc_id, _cl)
-            try:
-                db.rollback()
-            except Exception:
-                pass
+        # El uso de tokens lo registra claude_client._log_usage con key_source
+        # (refacturacion vendor/org), que el bloque manual anterior no ponia.
 
-        # Mapear categoria del documento a requisitos de compliance (v3.0)
-        try:
-            _update_compliance_from_doc_category(db, doc, doc.organization_id)
-        except Exception as _ce:
-            logger.warning("Doc-compliance mapping failed doc=%d: %s", doc_id, _ce)
+        # F4: se ELIMINO _update_compliance_from_doc_category. Marcaba requisitos
+        # como PARTIAL 30% por la CATEGORIA del desplegable de subida, antes de
+        # que la IA leyera el contenido — pintaba verdes que no reflejaban nada.
+        # El cumplimiento ahora se deriva solo del contenido (evidence_inference)
+        # y de los controles implementados con evidencia verificada.
 
         # Nota: el re-análisis automático de activos se desactivó para evitar
         # consumo masivo de tokens de IA. Usar el botón "Analizar con IA" manual.
@@ -433,64 +509,6 @@ def analyze_document_for_isms(db: Session, doc_id: int) -> None:
             db.commit()
         except Exception:
             pass
-
-
-# ---------- Mapeo categoria de documento → requisitos compliance ----------
-
-# Usa los valores reales del enum AiDocumentCategory del modelo
-_DOC_CATEGORY_COMPLIANCE_MAP: dict[str, list[tuple[str, str]]] = {
-    "policies": [
-        ("iso27001", "A.5.1"),
-        ("iso27001", "5.2"),
-    ],
-    "critical_suppliers": [
-        ("iso27001", "A.5.19"),
-        ("iso27001", "A.5.20"),
-        ("nis2", "Art.21.2c"),
-    ],
-    "incidents_lessons": [
-        ("iso27001", "A.5.24"),
-        ("nis2", "Art.21.2a"),
-    ],
-    "risk_assessments": [
-        ("iso27001", "6.1.2"),
-        ("iso27001", "8.2"),
-        ("nist_csf", "ID.RA"),
-    ],
-}
-
-
-def _update_compliance_from_doc_category(db: Session, doc, org_id: int) -> None:
-    """Actualiza ComplianceFrameworkStatus cuando se analiza un documento de categoria conocida.
-
-    Incrementa a PARTIAL (30%) los requisitos que mapean a la categoria del documento,
-    siempre que el estado actual sea PLANNED.
-    """
-    from app.models import ComplianceFrameworkStatus, ComplianceRequirementStatus
-    cat = doc.category.value if doc.category else None
-    mappings = _DOC_CATEGORY_COMPLIANCE_MAP.get(cat, [])
-    if not mappings:
-        return
-
-    changed = False
-    for framework_code, req_id in mappings:
-        existing = db.query(ComplianceFrameworkStatus).filter_by(
-            organization_id=org_id,
-            framework_code=framework_code,
-            requirement_id=req_id,
-        ).first()
-        if existing and existing.status == ComplianceRequirementStatus.PLANNED:
-            existing.status = ComplianceRequirementStatus.PARTIAL
-            existing.completion_pct = max(existing.completion_pct or 0, 30)
-            existing.last_reviewed_at = datetime.now(timezone.utc)
-            changed = True
-
-    if changed:
-        db.commit()
-        logger.info(
-            "Doc-compliance mapping: doc=%d cat=%s → %d requisitos actualizados",
-            doc.id, cat, len(mappings),
-        )
 
 
 # ---------- Re-analisis de activos en cadena ----------

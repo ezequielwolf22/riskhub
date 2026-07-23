@@ -948,6 +948,17 @@ def _migrate_columns() -> None:
         # v6.5.0 — como combina el cliente el impacto con el RTO (producto o suma)
         ("ALTER TABLE bia_criteria ADD COLUMN combination VARCHAR(16)",
          "bia_criteria", "combination"),
+        # v6.7.0 — F2/F3 modulo ISMS Docs: eje de clasificacion y trazabilidad
+        ("ALTER TABLE ai_documents ADD COLUMN doc_class VARCHAR(16)", "ai_documents", "doc_class"),
+        ("ALTER TABLE ai_documents ADD COLUMN doc_class_confidence REAL", "ai_documents", "doc_class_confidence"),
+        ("ALTER TABLE ai_documents ADD COLUMN analysed_at DATETIME", "ai_documents", "analysed_at"),
+        ("ALTER TABLE evidence ADD COLUMN source_document_id INTEGER REFERENCES ai_documents(id)", "evidence", "source_document_id"),
+        ("ALTER TABLE evidence ADD COLUMN auto_generated BOOLEAN DEFAULT 0", "evidence", "auto_generated"),
+        # F4 — autoridad unica de cumplimiento: procedencia del estado
+        ("ALTER TABLE compliance_framework_status ADD COLUMN source VARCHAR(24)", "compliance_framework_status", "source"),
+        ("ALTER TABLE compliance_framework_status ADD COLUMN source_ref VARCHAR(128)", "compliance_framework_status", "source_ref"),
+        ("ALTER TABLE compliance_framework_status ADD COLUMN rationale TEXT", "compliance_framework_status", "rationale"),
+        ("ALTER TABLE compliance_framework_status ADD COLUMN computed_at DATETIME", "compliance_framework_status", "computed_at"),
     ]
     # Inspeccion de columnas portable (SQLite y PostgreSQL): en un PostgreSQL
     # recien creado, create_all() ya materializo todas las columnas de los

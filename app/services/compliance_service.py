@@ -325,6 +325,19 @@ def get_multi_framework_dashboard(db: Session, org_id: int, lang: str = "es") ->
     }
 
 
+def _evidence_qualifies(auto_generated, ai_review) -> bool:
+    """True si una evidencia respalda de verdad un requisito de cumplimiento (F4).
+
+    La evidencia manual/humana (auto_generated falso o nulo) siempre cuenta. La
+    auto-generada por la ingesta solo cuenta si su CONTENIDO fue verificado por
+    IA y resulto relevante (ai_review.relevant == True) — asi una ficha creada
+    automaticamente sin leer el documento deja de forzar el 100% de cumplimiento.
+    """
+    if not auto_generated:
+        return True
+    return bool(isinstance(ai_review, dict) and ai_review.get("relevant") is True)
+
+
 def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
     """Actualiza estado de compliance basado en controles implementados Y evidencias.
 
@@ -366,23 +379,31 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
                 code = (ci.control.code or "").lower()
                 code_to_cis.setdefault(code, []).append(ci)
 
-        # Cache de evidencias por CI id para evitar N queries en el bucle
+        # Cache de evidencias por CI id para evitar N queries en el bucle.
+        # F4: solo cuenta la evidencia que REALMENTE respalda el requisito —
+        # manual/humana siempre, y auto-generada por la ingesta solo si su
+        # contenido fue verificado por IA (ai_review.relevant == True). Asi una
+        # ficha vacia deja de forzar el salto a IMPLEMENTED 100%. El filtro por
+        # JSON no es portable (SQLite/PG), asi que se resuelve en Python.
         ci_ids = [ci.id for ci in implemented_controls]
+        ci_evidence_counts: dict[int, int] = {}
         if ci_ids:
-            from sqlalchemy import func as _func
             evd_rows = (
-                db.query(_Evidence.control_implementation_id, _func.count(_Evidence.id))
+                db.query(
+                    _Evidence.control_implementation_id,
+                    _Evidence.auto_generated,
+                    _Evidence.ai_review,
+                )
                 .filter(
                     _Evidence.control_implementation_id.in_(ci_ids),
                     _Evidence.organization_id == org_id,
                     _Evidence.is_current == True,
                 )
-                .group_by(_Evidence.control_implementation_id)
                 .all()
             )
-            ci_evidence_counts: dict[int, int] = {row[0]: row[1] for row in evd_rows}
-        else:
-            ci_evidence_counts = {}
+            for ci_id, auto_gen, ai_review in evd_rows:
+                if _evidence_qualifies(auto_gen, ai_review):
+                    ci_evidence_counts[ci_id] = ci_evidence_counts.get(ci_id, 0) + 1
 
         for req in framework.get("requirements", []):
             req_controls = [c.lower() for c in req.get("controls", [])]
@@ -423,12 +444,19 @@ def auto_update_compliance_from_controls(db: Session, org_id: int) -> int:
                     for ci in code_to_cis.get(rc, [])
                 )
                 # (b) vinculadas directamente al requisito por framework+requirement_id
-                direct_evidence = db.query(_Evidence).filter(
+                #     — mismo filtro de calidad F4 (contenido verificado o manual)
+                direct_rows = db.query(
+                    _Evidence.auto_generated, _Evidence.ai_review,
+                ).filter(
                     _Evidence.organization_id == org_id,
                     _Evidence.compliance_framework == framework_code,
                     _Evidence.compliance_requirement == req["id"],
                     _Evidence.is_current == True,
-                ).count()
+                ).all()
+                direct_evidence = sum(
+                    1 for auto_gen, ai_review in direct_rows
+                    if _evidence_qualifies(auto_gen, ai_review)
+                )
                 total_evidence = ctrl_evidence + direct_evidence
                 existing.evidence_count = total_evidence
 

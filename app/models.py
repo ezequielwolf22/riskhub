@@ -2136,6 +2136,17 @@ class AiDocument(Base):
     detected_category = Column(String(64), nullable=True)
     # Clausulas ISO extraidas automaticamente por IA (v2.2)
     extracted_clauses = Column(JSON, nullable=True)  # [{ref, title, control_id, confidence}]
+    # Eje de clasificacion documental (v6.7.0 — F2 modulo ISMS Docs):
+    # separa la normativa de las evidencias que la soportan. El nivel jerarquico
+    # (Politica/Norma/Procedimiento/IT) solo aplica dentro de 'normative'.
+    #   normative    = politica, norma, procedimiento, instruccion tecnica
+    #   record       = evidencia/registro (acta, cert, pentest, log, formacion)
+    #   reference    = norma externa, contrato, doc de proveedor
+    #   unclassified = confianza insuficiente -> bandeja de revision humana
+    doc_class = Column(String(16), nullable=True)
+    doc_class_confidence = Column(Float, nullable=True)   # 0..1
+    analysed_at = Column(DateTime, nullable=True)
+
     # Origen del documento y trazabilidad para sincronizacion (SharePoint)
     source = Column(String(32), default="upload")   # upload | sharepoint
     source_site_id = Column(String(128), nullable=True)
@@ -2401,6 +2412,13 @@ class ComplianceFrameworkStatus(Base):
     # v6.7.0 — regwatch: version del framework contra la que debe evaluarse el
     # requisito (se sella con pack.version_to al propagar un cambio normativo)
     framework_version = Column(String(64), nullable=True)
+    # v6.7.0 — F4 modulo ISMS Docs: procedencia del estado, para responder a un
+    # auditor "por que esta en verde". Precedencia (de mayor a menor autoridad):
+    #   human_audit > human_manual > ai_content > controls_derived > heuristic
+    source = Column(String(24), nullable=True)      # origen del ultimo cambio
+    source_ref = Column(String(128), nullable=True)  # doc/control/evidencia que lo sustenta
+    rationale = Column(Text, nullable=True)          # explicacion legible
+    computed_at = Column(DateTime, nullable=True)
 
     responsible = relationship("User", foreign_keys=[responsible_id])
     __table_args__ = (
@@ -2460,6 +2478,13 @@ class Evidence(Base):
     # v6.0.0 — revision IA del contenido (evidence understanding)
     ai_review = Column(JSON, nullable=True)       # {relevant, quality_level, summary, key_facts...}
     ai_reviewed_at = Column(DateTime, nullable=True)
+
+    # v6.7.0 — F3 modulo ISMS Docs: evidencia derivada de un documento del SGSI.
+    # auto_generated=True la marca como producida por la ingesta (no manual): al
+    # borrar el documento se elimina, y solo cuenta para cumplimiento si su
+    # contenido fue verificado (ai_review.relevant == True).
+    source_document_id = Column(Integer, ForeignKey("ai_documents.id"), nullable=True, index=True)
+    auto_generated = Column(Boolean, default=False)
 
     created_by = relationship("User", foreign_keys=[created_by_id])
     previous_version = relationship("Evidence", remote_side=[id], foreign_keys=[previous_version_id])
