@@ -1539,6 +1539,10 @@ const I18N_ES = {
       unclassified_title: "Clasificacion con confianza insuficiente — requiere revision humana",
       filter_all: "Toda clase",
     },
+    view: {
+      table: "Tabla",
+      tree: "Por clase",
+    },
     toast: {
       extract_complete: "Extracción completada. Revisa los campos.",
       extract_error: "Error al extraer: {error}",
@@ -1576,6 +1580,8 @@ const I18N_ES = {
       hierarchy_load_error: "Error cargando jerarquia",
       doc_locked: "Documento bloqueado: {msg}",
       unknown_error: "Error desconocido",
+      confirm_duplicate: "Este documento ya esta subido como \"{name}\". Subir una copia de todas formas?",
+      duplicate_skipped: "Omitido: documento duplicado",
     },
     form: {
       title_label: "Título *",

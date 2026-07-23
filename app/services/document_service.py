@@ -69,6 +69,29 @@ def save_document_file(data: bytes, filename: str) -> None:
     dest.write_bytes(encrypt_doc(data))
 
 
+def compute_sha256(data: bytes) -> str:
+    """Hash SHA-256 del contenido en claro (para deduplicacion, F6)."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def find_duplicate_document(db: Session, organization_id, sha256: str):
+    """Documento vivo de la misma organizacion con identico contenido, si existe.
+
+    Solo considera documentos no borrados en origen: un re-subida tras borrar el
+    anterior es legitima y no debe bloquearse. Devuelve el AiDocument o None.
+    """
+    if not sha256:
+        return None
+    q = db.query(AiDocument).filter(
+        AiDocument.organization_id == organization_id,
+        AiDocument.sha256 == sha256,
+    )
+    src_deleted = getattr(AiDocument, "source_deleted", None)
+    if src_deleted is not None:
+        q = q.filter((src_deleted == False) | (src_deleted.is_(None)))  # noqa: E712
+    return q.first()
+
+
 # ---------- helpers ----------
 
 def doc_path(filename: str) -> Path:

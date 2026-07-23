@@ -2146,6 +2146,9 @@ class AiDocument(Base):
     doc_class = Column(String(16), nullable=True)
     doc_class_confidence = Column(Float, nullable=True)   # 0..1
     analysed_at = Column(DateTime, nullable=True)
+    # F6 — deduplicacion: hash SHA-256 del contenido subido. Evita que el mismo
+    # PDF subido varias veces infle la madurez del control cinco veces.
+    sha256 = Column(String(64), nullable=True, index=True)
 
     # Origen del documento y trazabilidad para sincronizacion (SharePoint)
     source = Column(String(32), default="upload")   # upload | sharepoint

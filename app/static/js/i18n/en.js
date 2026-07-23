@@ -1539,6 +1539,10 @@ const I18N_EN = {
       unclassified_title: "Classification with insufficient confidence — needs human review",
       filter_all: "Any class",
     },
+    view: {
+      table: "Table",
+      tree: "By class",
+    },
     toast: {
       extract_complete: "Extraction complete. Review the fields.",
       extract_error: "Error extracting: {error}",
@@ -1576,6 +1580,8 @@ const I18N_EN = {
       hierarchy_load_error: "Error loading hierarchy",
       doc_locked: "Document locked: {msg}",
       unknown_error: "Unknown error",
+      confirm_duplicate: "This document is already uploaded as \"{name}\". Upload a copy anyway?",
+      duplicate_skipped: "Skipped: duplicate document",
     },
     form: {
       title_label: "Title *",

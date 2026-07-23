@@ -13,7 +13,8 @@ from app.database import get_db, SessionLocal
 from app.models import AiDocument, AiDocumentCategory, AiDocumentStatus, User
 from app.security import check_org_access, filter_by_org, get_current_user, require_role
 from app.services.document_service import (
-    delete_document, doc_path, document_references, process_document, save_document_file,
+    compute_sha256, delete_document, doc_path, document_references,
+    find_duplicate_document, process_document, save_document_file,
 )
 
 router = APIRouter(prefix="/api/ai/documents", tags=["ai-documents"])
@@ -141,6 +142,7 @@ def upload_document(
     request: Request,
     file: UploadFile = File(...),
     category: str = Form(...),
+    force: bool = Form(False),
     background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("analyst")),
@@ -163,6 +165,20 @@ def upload_document(
     except ValueError:
         raise HTTPException(400, f"Categoria invalida: {category}")
 
+    # F6 — deduplicacion: el mismo contenido subido de nuevo inflaba la madurez
+    # del control. Se rechaza con 409 (el cliente puede reintentar con force=true
+    # si de verdad quiere una copia), salvo que el original se haya borrado.
+    sha256 = compute_sha256(data)
+    if not force:
+        dup = find_duplicate_document(db, current_user.organization_id, sha256)
+        if dup:
+            raise HTTPException(409, detail={
+                "error": "duplicate",
+                "message": _t("documents.duplicate", lang, name=dup.original_name),
+                "existing_id": dup.id,
+                "existing_name": dup.original_name,
+            })
+
     # Sanitizar el filename para evitar path traversal
     safe_filename = re.sub(r"[^\w.\-]", "_", Path(file.filename or "file").name)[:80]
     unique_name = f"{uuid.uuid4().hex}_{safe_filename}"
@@ -176,6 +192,7 @@ def upload_document(
         status=AiDocumentStatus.PENDING,
         file_size=len(data),
         mime_type=mime,
+        sha256=sha256,
         uploaded_by_id=current_user.id,
         organization_id=current_user.organization_id,
     )

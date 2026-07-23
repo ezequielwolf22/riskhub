@@ -94,6 +94,7 @@ const ViewIsmsDocuments = (() => {
   let _searchQ  = '';
   let _statusFilter = '';
   let _classFilter  = '';   // filtro por doc_class (normative/record/reference/unclassified)
+  let _viewMode     = 'table';   // 'table' | 'tree' (F6: agrupacion por clase documental)
   let _queue    = [];
   let _queueId  = 0;
   let _uploading = false;
@@ -381,6 +382,12 @@ const ViewIsmsDocuments = (() => {
             `<option value="${k}" ${_classFilter === k ? 'selected' : ''}>${l}</option>`
           ).join('')}
         </select>
+        <div style="margin-left:auto;display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+          <button class="btn btn-sm ${_viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}" id="isms-view-table"
+                  style="border:none;border-radius:0;">${t(`${NS}.view.table`)}</button>
+          <button class="btn btn-sm ${_viewMode === 'tree' ? 'btn-primary' : 'btn-ghost'}" id="isms-view-tree"
+                  style="border:none;border-radius:0;">${t(`${NS}.view.tree`)}</button>
+        </div>
       </div>
 
       <!-- Tabla unificada -->
@@ -396,6 +403,10 @@ const ViewIsmsDocuments = (() => {
     root.querySelector('#isms-search').oninput   = (e) => { _searchQ = e.target.value; _renderTable(); };
     root.querySelector('#isms-status-filter').onchange = (e) => { _statusFilter = e.target.value; _renderTable(); };
     root.querySelector('#isms-class-filter').onchange = (e) => { _classFilter = e.target.value; _renderTable(); };
+    const vt = root.querySelector('#isms-view-table');
+    const vr = root.querySelector('#isms-view-tree');
+    if (vt) vt.onclick = () => { if (_viewMode !== 'table') { _viewMode = 'table'; _renderRoot(); } };
+    if (vr) vr.onclick = () => { if (_viewMode !== 'tree')  { _viewMode = 'tree';  _renderRoot(); } };
 
     // Upload file input
     const fileInput = document.getElementById('isms-file-input');
@@ -448,7 +459,109 @@ const ViewIsmsDocuments = (() => {
 
   // --- Tabla unificada ---
 
+  // F6 — agrupacion por clase documental. Funcion PURA (testeable con datos
+  // mock): separa la normativa de las evidencias que la soportan y del resto.
+  // Dentro de normativa, ordena por nivel jerarquico (Politica<Norma<Proc<IT).
+  const _CLASS_ORDER = ['normative', 'record', 'reference', 'unclassified'];
+
+  function _buildDocClassGroups(rows) {
+    const groups = { normative: [], record: [], reference: [], unclassified: [] };
+    for (const r of rows) {
+      // Una fila policy_only (politica sin archivo) es normativa por definicion.
+      let cls = r.doc ? (r.doc.doc_class || 'unclassified') : 'normative';
+      if (!groups[cls]) cls = 'unclassified';
+      groups[cls].push(r);
+    }
+    // Orden interno: normativa por nivel; el resto por titulo.
+    groups.normative.sort((a, b) => (a.level || 9) - (b.level || 9));
+    for (const k of ['record', 'reference', 'unclassified']) {
+      groups[k].sort((a, b) => {
+        const ta = (a.policy && a.policy.title) || (a.doc && a.doc.original_name) || '';
+        const tb = (b.policy && b.policy.title) || (b.doc && b.doc.original_name) || '';
+        return ta.localeCompare(tb);
+      });
+    }
+    return groups;
+  }
+
+  function _renderTree() {
+    const wrap = document.getElementById('isms-table-wrap');
+    if (!wrap) return;
+    const rows = _filteredMerged();
+    const groups = _buildDocClassGroups(rows);
+    const total = rows.length;
+
+    if (!total) {
+      wrap.innerHTML = `${_bulkBarHtml()}
+        <p class="text-muted" style="text-align:center;margin-top:24px;">${t(`${NS}.table.no_docs_found`)}</p>`;
+      return;
+    }
+
+    const sections = _CLASS_ORDER.filter(cls => groups[cls].length).map(cls => {
+      const color = DOC_CLASS_COLORS[cls] || '#888';
+      const label = DOC_CLASS_LABELS[cls] || cls;
+      const items = groups[cls].map(r => _treeRowHtml(r)).join('');
+      return `
+        <div class="card" style="padding:0;margin-bottom:12px;overflow:hidden;">
+          <div style="padding:8px 12px;background:${color}12;border-bottom:1px solid var(--border);
+               display:flex;align-items:center;gap:8px;">
+            ${_docClassBadge(cls)}
+            <strong style="font-size:13px;color:${color};">${label}</strong>
+            <span style="font-size:12px;color:var(--text-muted);">(${groups[cls].length})</span>
+          </div>
+          <div>${items}</div>
+        </div>`;
+    }).join('');
+
+    wrap.innerHTML = `${_bulkBarHtml()}${sections}`;
+    _wireTreeChecks();
+  }
+
+  function _treeRowHtml(r) {
+    const { doc, policy, level } = r;
+    const title = policy ? policy.title : (doc ? doc.original_name : '-');
+    const code  = policy ? policy.code : null;
+    const indent = level ? (level - 1) * 16 : 0;
+    const check = doc
+      ? `<input type="checkbox" class="isms-tree-check" data-id="${doc.id}"
+             ${_selected.has(doc.id) ? 'checked' : ''} onclick="event.stopPropagation()">`
+      : '<span style="width:13px;display:inline-block;"></span>';
+    const ctrlBadge = (doc && doc.isms_controls_updated > 0)
+      ? `<span style="font-size:10px;color:var(--brand-purple);">${t(`${NS}.table.n_ctrl`, { n: doc.isms_controls_updated })}</span>`
+      : '';
+    const errBadge = (doc && doc.isms_status === 'error')
+      ? `<span onclick="ViewIsmsDocuments._showError(${doc.id})"
+           style="font-size:10px;color:var(--risk-critical);cursor:pointer;text-decoration:underline;">${t(`${NS}.table.view_error`)}</span>`
+      : '';
+    const actions = policy
+      ? `<button class="btn btn-sm btn-ghost" onclick="ViewIsmsDocuments._editPolicy(${policy.id})">${t(`${NS}.table.btn_edit`)}</button>`
+      : (doc ? `<button class="btn btn-sm btn-danger" onclick="ViewIsmsDocuments._deleteDoc(${doc.id})">${t(`${NS}.table.btn_delete`)}</button>` : '');
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;padding-left:${12 + indent}px;
+           border-bottom:1px solid var(--border-subtle,rgba(0,0,0,0.04));font-size:12px;">
+        ${check}
+        ${level ? _levelBadge(level) : ''}
+        <div style="flex:1;min-width:0;">
+          ${code ? `<span style="font-family:var(--font-mono);color:var(--brand-purple);font-weight:700;font-size:10px;">${UI.esc(code)}</span> ` : ''}
+          <span style="font-weight:500;">${UI.esc(title)}</span>
+        </div>
+        ${ctrlBadge}${errBadge}
+        <div style="display:flex;gap:3px;">${actions}</div>
+      </div>`;
+  }
+
+  function _wireTreeChecks() {
+    document.querySelectorAll('.isms-tree-check').forEach(cb => {
+      cb.onchange = () => {
+        const id = parseInt(cb.dataset.id);
+        if (cb.checked) _selected.add(id); else _selected.delete(id);
+        _renderBulkBar();
+      };
+    });
+  }
+
   function _renderTable() {
+    if (_viewMode === 'tree') { _renderTree(); return; }
     const wrap = document.getElementById('isms-table-wrap');
     if (!wrap) return;
     const rows = _filteredMerged();
@@ -806,7 +919,20 @@ const ViewIsmsDocuments = (() => {
         await Api.aiDocuments.upload(item.file, item.category);
         item.status = 'done'; ok++;
       } catch (e) {
-        item.status = 'error'; item.error = e.message || t(`${NS}.toast.unknown_error`); fail++;
+        // F6 — duplicado (409): preguntar si se sube de todas formas.
+        const dup = e && e.status === 409 && e.data && e.data.detail;
+        if (dup && confirm(t(`${NS}.toast.confirm_duplicate`, { name: dup.existing_name || '' }))) {
+          try {
+            await Api.aiDocuments.upload(item.file, item.category, true);
+            item.status = 'done'; ok++;
+          } catch (e2) {
+            item.status = 'error'; item.error = e2.message || t(`${NS}.toast.unknown_error`); fail++;
+          }
+        } else if (dup) {
+          item.status = 'error'; item.error = t(`${NS}.toast.duplicate_skipped`); fail++;
+        } else {
+          item.status = 'error'; item.error = e.message || t(`${NS}.toast.unknown_error`); fail++;
+        }
       }
       _renderQueue();
     }
@@ -2078,6 +2204,8 @@ const ViewIsmsDocuments = (() => {
     _analyzePending, _analyzeAll,
     // F0: acciones masivas y detalle de error
     _bulkClear, _bulkDelete, _bulkAnalyze, _bulkRecategorize, _showError,
+    // F6: agrupacion por clase documental (pura, para verificacion)
+    _buildDocClassGroups,
     _editPolicy,
     _showMaturityModal, _showClauses,
     _generateWithAI, _onGenFileChange, _submitGenerate, _saveGenerated,

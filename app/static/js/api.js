@@ -310,10 +310,11 @@ const Api = {
   },
   aiDocuments: {
     list: () => Api.get('/api/ai/documents/'),
-    upload: (file, category) => {
+    upload: (file, category, force) => {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('category', category);
+      if (force) fd.append('force', 'true');
       return Api.req('/api/ai/documents/', { method: 'POST', body: fd });
     },
     del: (id) => Api.del('/api/ai/documents/' + id),

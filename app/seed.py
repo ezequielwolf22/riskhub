@@ -952,6 +952,7 @@ def _migrate_columns() -> None:
         ("ALTER TABLE ai_documents ADD COLUMN doc_class VARCHAR(16)", "ai_documents", "doc_class"),
         ("ALTER TABLE ai_documents ADD COLUMN doc_class_confidence REAL", "ai_documents", "doc_class_confidence"),
         ("ALTER TABLE ai_documents ADD COLUMN analysed_at DATETIME", "ai_documents", "analysed_at"),
+        ("ALTER TABLE ai_documents ADD COLUMN sha256 VARCHAR(64)", "ai_documents", "sha256"),
         ("ALTER TABLE evidence ADD COLUMN source_document_id INTEGER REFERENCES ai_documents(id)", "evidence", "source_document_id"),
         ("ALTER TABLE evidence ADD COLUMN auto_generated BOOLEAN DEFAULT 0", "evidence", "auto_generated"),
         # F4 — autoridad unica de cumplimiento: procedencia del estado

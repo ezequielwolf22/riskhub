@@ -103,7 +103,8 @@
     "not_found": "Document not found.",
     "upload_failed": "Error uploading document.",
     "invalid_type": "File type not allowed. Accepted formats: {formats}.",
-    "too_large": "File exceeds the maximum allowed size ({max_mb} MB)."
+    "too_large": "File exceeds the maximum allowed size ({max_mb} MB).",
+    "duplicate": "This document is already uploaded as: {name}"
   },
   "reports": {
     "not_found": "Report not found.",
