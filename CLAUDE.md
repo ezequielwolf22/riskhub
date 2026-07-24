@@ -140,10 +140,16 @@ Multi-usuario con roles.
 - [ ] Pruebas end-to-end manuales de las vistas nuevas con usuario real
 - [ ] Backlog del modulo Plan Director/Tratamiento: priorizado en `RISKHUB_TREATMENT_MODULE_SPEC.md` (seccion "Backlog de mejoras") — no construir hasta validar con uso real
 
-Deploy: prod (91.99.83.202) actualizado a v6.3.0 (commit bd068c2) el 2026-07-18 —
-modulo Plan Director/Tratamiento incluido, tablas nuevas migradas, jobs del
-scheduler registrados. bd068c2 ademas reparo el index.html de 78d54db, que
-referenciaba treatment.js/plan-director.js sin que existieran en el repo.
+Deploy: prod (91.99.83.202) actualizado a commit d63bde5 el 2026-07-24 — ingesta
+cognitiva BCP (escenarios/BIA por sede, motor de ingesta, comprension IA,
+generacion sin documentos), modulo Metodo de la organizacion (registro,
+formulas acotadas, extraccion con cita, conformidad) y diagnostico SharePoint.
+Las 11 tablas nuevas migradas y verificadas en prod, routers /api/method,
+/api/ingest y /api/bcp/scenarios respondiendo, cero errores de arranque. Backup
+pre-deploy verificado; rollback: `bash scripts/rollback.sh riskhub:20260724_093130`.
+**Pendiente**: validacion end-to-end contra la API real con el pack de OFA en
+una org de prueba aislada (credito de API ya recargado). Deploy previo estable
+en v6.3.0/bd068c2 (2026-07-18, Plan Director/Tratamiento).
 
 ## Convenciones
 
