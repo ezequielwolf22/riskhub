@@ -30,6 +30,7 @@ from app.routers import (
     vendor_assessments, vendor_issues, users, webhooks,
 )
 from app.routers import kris, risk_correlations
+from app.routers import notification_settings as notification_settings_router
 from app.routers.audit_log import router as audit_log_router
 from app.routers.surveys import public_router as survey_public_router
 from app.routers.policy_approvals import router as policy_approvals_router, public_router as approvals_public_router
@@ -300,6 +301,7 @@ app.include_router(risk_level_config.router)
 app.include_router(risks.router)
 app.include_router(reports.router)
 app.include_router(alerts.router)
+app.include_router(notification_settings_router.router)
 app.include_router(audit.router)
 app.include_router(ai.router)
 app.include_router(search.router)

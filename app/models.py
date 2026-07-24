@@ -774,6 +774,40 @@ class AlertRule(Base):
     entity_type = Column(String(32), nullable=True)  # risk|supplier|supplier_questionnaire
 
 
+class NotificationSetting(Base):
+    """Control por-organizacion de cada notificacion automatica que emite el sistema.
+
+    Antes cada job del scheduler llamaba a email_service.send_email a pelo, sin
+    on/off, sin elegir destinatario ni frecuencia: cualquier admin activo recibia
+    todo por defecto (opt-out inexistente). Esta tabla es el punto unico de control:
+    una fila por (organizacion, alert_key). Si no existe fila, se aplica el
+    comportamiento por defecto del registro (notification_registry.ALERT_CATALOG).
+    """
+    __tablename__ = "notification_settings"
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    alert_key = Column(String(64), nullable=False, index=True)  # clave del catalogo (notification_registry)
+    enabled = Column(Boolean, default=True)
+    # admins = todos los admins activos de la org (comportamiento legacy);
+    # custom = solo las direcciones en `recipients`
+    recipient_mode = Column(String(16), default="admins")   # admins | custom
+    recipients = Column(Text, nullable=True)                # JSON list de emails cuando recipient_mode=custom
+    channel = Column(String(16), default="email")           # email | teams | power_automate | all
+    # Anti-flood: no reenviar la misma alerta hasta que pasen `cooldown_days`.
+    # None = usa el default del catalogo. 0 = sin cooldown.
+    cooldown_days = Column(Integer, nullable=True)
+    last_sent_at = Column(DateTime, nullable=True)          # ultimo envio efectivo (para el cooldown)
+    # Umbral configurable donde aplique (p.ej. score CCM por debajo del cual alerta).
+    # None = usa el default del catalogo.
+    threshold = Column(Float, nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "alert_key", name="uq_notif_org_key"),
+    )
+
+
 # ---------- KRI — KEY RISK INDICATORS (v5.3.0) ----------
 
 class KRIMetricType(str, PyEnum):
@@ -852,6 +886,9 @@ class KRI(Base):
     description = Column(Text, nullable=True)                   # descripcion o referencia normativa
     is_system = Column(Boolean, default=False)                  # True = seed del sistema, no borrable
     direction = Column(String(20), default="lower_is_better")  # 'higher_is_better' | 'lower_is_better'
+    # Edge-trigger robusto: ultima vez que se envio alerta de breach para este indicador.
+    # Evita el reenvio en cada ciclo aunque el commit del estado se pierda por una excepcion.
+    last_alert_at = Column(DateTime, nullable=True)
 
 
 # ---------- INCIDENTES DE SEGURIDAD (NIS2 Art. 23) ----------

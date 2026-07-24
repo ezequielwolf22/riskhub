@@ -5,6 +5,7 @@ const ViewAlerts = {
   _settings: null,
   _rules: [],
   _users: [],
+  _notif: null,   // catalogo de notificaciones automaticas + config de la org
 
   async render(main) {
     main.innerHTML = UI.sectionHeader(
@@ -17,12 +18,14 @@ const ViewAlerts = {
   async _load() {
     const c = document.getElementById('alerts-content');
     try {
-      const [settings, rules] = await Promise.all([
+      const [settings, rules, notif] = await Promise.all([
         Api.get('/api/alerts/settings'),
         Api.get('/api/alerts/rules'),
+        Api.get('/api/notification-settings').catch(() => null),
       ]);
       this._settings = settings;
       this._rules = rules || [];
+      this._notif = notif;
       this._render(c);
     } catch (e) {
       c.innerHTML = UI.notice(t('common.error') + ': ' + UI.esc(e.message), 'error');
@@ -54,6 +57,8 @@ const ViewAlerts = {
         </button>
         ${smtpOk ? `<button class="btn btn-sm" onclick="ViewAlerts._testEmail()">${t('alerts.send_test')}</button>` : ''}
       </div>
+
+      ${this._notifSection()}
 
       <!-- Reglas -->
       <div class="card" style="margin-bottom:16px;">
@@ -101,6 +106,166 @@ const ViewAlerts = {
           <button class="btn btn-primary" onclick="ViewAlerts._sendManual()">${t('alerts.manual_send')}</button>
         </div>
       </div>`;
+  },
+
+  // ---------- Notificaciones automaticas (control total por alerta) ----------
+
+  _notifSection() {
+    const u = Auth.user();
+    const isAdmin = u && (u.role === 'admin' || u.role === 'superadmin');
+    if (!isAdmin) return '';
+    const data = this._notif;
+    if (!data) {
+      return `<div class="card" style="margin-bottom:16px;">
+        <h3 style="margin:0 0 6px;">Notificaciones automáticas</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin:0;">No se pudo cargar el panel de notificaciones.</p>
+      </div>`;
+    }
+    const items = data.settings || [];
+    // Agrupar por categoria
+    const groups = {};
+    items.forEach(it => { (groups[it.category] = groups[it.category] || []).push(it); });
+
+    const chWarn = [];
+    if (!data.email_channel_ready) chWarn.push('Email (SMTP) no configurado');
+    if (data.admin_emails && data.admin_emails.length === 0) chWarn.push('la organización no tiene administradores con email');
+
+    const rows = Object.keys(groups).map(cat => `
+      <tr><td colspan="6" style="background:var(--bg-subtle,#f7f7f9);font-weight:600;font-size:12px;
+            text-transform:uppercase;letter-spacing:.03em;color:var(--text-muted);padding:8px 10px;">${UI.esc(cat)}</td></tr>
+      ${groups[cat].map(it => this._notifRow(it, data)).join('')}
+    `).join('');
+
+    return `
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
+          <div>
+            <h3 style="margin:0 0 4px;">Notificaciones automáticas</h3>
+            <p style="font-size:13px;color:var(--text-muted);margin:0;max-width:640px;">
+              Control total de los correos que el sistema envía solo. Activa o apaga cada uno, decide
+              quién lo recibe, por qué canal, cada cuánto como máximo (anti-repetición) y el umbral
+              cuando aplica. Los cambios se guardan al instante.
+            </p>
+          </div>
+          <button class="btn btn-sm" style="white-space:nowrap;border-color:#dc2626;color:#dc2626;"
+                  onclick="ViewAlerts._notifSilenceAll()">Silenciar todo</button>
+        </div>
+        ${chWarn.length ? UI.notice('Aviso: ' + chWarn.join('; ') + '. Las alertas por email no saldrán hasta resolverlo.', 'warn') : ''}
+        <div style="overflow-x:auto;">
+          <table class="data" style="font-size:13px;">
+            <thead><tr>
+              <th style="min-width:220px;">Alerta</th>
+              <th style="width:70px;">Activa</th>
+              <th style="width:130px;">Canal</th>
+              <th style="min-width:200px;">Quién recibe</th>
+              <th style="width:110px;">Máx. cada</th>
+              <th style="width:110px;">Umbral</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  },
+
+  _notifRow(it, data) {
+    const k = it.key;
+    const chOpt = (v, label) => `<option value="${v}" ${it.channel === v ? 'selected' : ''}>${label}</option>`;
+    const custom = it.recipient_mode === 'custom';
+    const recList = (it.recipients || []).join(', ');
+    const adminsHint = (data.admin_emails || []).length
+      ? `${data.admin_emails.length} admin(s)` : 'sin admins';
+    return `
+      <tr data-nf="${k}">
+        <td>
+          <div style="font-weight:600;">${UI.esc(it.label)}</div>
+          <div style="font-size:11.5px;color:var(--text-muted);">${UI.esc(it.description)}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">Frecuencia: ${UI.esc(it.frequency_human)}</div>
+        </td>
+        <td style="text-align:center;">
+          <label class="switch" style="cursor:pointer;">
+            <input type="checkbox" id="nf-en-${k}" ${it.enabled ? 'checked' : ''}
+                   onchange="ViewAlerts._notifSave('${k}')">
+          </label>
+        </td>
+        <td>
+          <select id="nf-ch-${k}" class="input" style="padding:3px 6px;font-size:12px;"
+                  onchange="ViewAlerts._notifSave('${k}')">
+            ${chOpt('email', 'Email')}
+            ${chOpt('teams', 'Teams')}
+            ${chOpt('power_automate', 'Power Automate')}
+            ${chOpt('all', 'Todos')}
+          </select>
+        </td>
+        <td>
+          <select id="nf-rm-${k}" class="input" style="padding:3px 6px;font-size:12px;margin-bottom:4px;"
+                  onchange="ViewAlerts._notifModeChange('${k}')">
+            <option value="admins" ${!custom ? 'selected' : ''}>Administradores (${UI.esc(adminsHint)})</option>
+            <option value="custom" ${custom ? 'selected' : ''}>Personalizado</option>
+          </select>
+          <input type="text" id="nf-rc-${k}" class="input" placeholder="email1@x.com, email2@x.com"
+                 value="${UI.esc(recList)}" style="padding:3px 6px;font-size:12px;display:${custom ? 'block' : 'none'};"
+                 onchange="ViewAlerts._notifSave('${k}')">
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input type="number" min="0" max="365" id="nf-cd-${k}" value="${it.cooldown_days}"
+                   class="input" style="width:52px;padding:3px 6px;font-size:12px;"
+                   onchange="ViewAlerts._notifSave('${k}')">
+            <span style="font-size:11px;color:var(--text-muted);">días</span>
+          </div>
+        </td>
+        <td>
+          ${it.supports_threshold
+            ? `<input type="number" step="0.1" id="nf-th-${k}" value="${it.threshold != null ? it.threshold : ''}"
+                     class="input" style="width:64px;padding:3px 6px;font-size:12px;"
+                     title="${UI.esc(it.threshold_label || '')}"
+                     onchange="ViewAlerts._notifSave('${k}')">`
+            : '<span style="font-size:11px;color:var(--text-muted);">—</span>'}
+        </td>
+      </tr>`;
+  },
+
+  _notifModeChange(k) {
+    const rc = document.getElementById('nf-rc-' + k);
+    const rm = document.getElementById('nf-rm-' + k);
+    if (rc && rm) rc.style.display = (rm.value === 'custom') ? 'block' : 'none';
+    this._notifSave(k);
+  },
+
+  async _notifSave(k) {
+    const en = document.getElementById('nf-en-' + k);
+    const ch = document.getElementById('nf-ch-' + k);
+    const rm = document.getElementById('nf-rm-' + k);
+    const rc = document.getElementById('nf-rc-' + k);
+    const cd = document.getElementById('nf-cd-' + k);
+    const th = document.getElementById('nf-th-' + k);
+    const body = {
+      enabled: en ? en.checked : undefined,
+      channel: ch ? ch.value : undefined,
+      recipient_mode: rm ? rm.value : undefined,
+      cooldown_days: cd && cd.value !== '' ? parseInt(cd.value, 10) : undefined,
+    };
+    if (rm && rm.value === 'custom' && rc) {
+      body.recipients = rc.value.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (th && th.value !== '') body.threshold = parseFloat(th.value);
+    try {
+      await Api.put('/api/notification-settings/' + encodeURIComponent(k), body);
+      UI.toast('Notificación actualizada', 'success');
+    } catch (e) {
+      UI.toast('Error: ' + (e.message || 'no se pudo guardar'), 'error');
+    }
+  },
+
+  async _notifSilenceAll() {
+    if (!confirm('Vas a desactivar TODAS las notificaciones automáticas de esta organización. ¿Continuar?')) return;
+    try {
+      const r = await Api.post('/api/notification-settings/silence-all', {});
+      UI.toast('Silenciadas ' + (r.silenced || 0) + ' notificaciones', 'success');
+      await this._load();
+    } catch (e) {
+      UI.toast('Error: ' + (e.message || 'no se pudo silenciar'), 'error');
+    }
   },
 
   // Configuración de umbral por tipo de evento — solo estos tipos muestran/usan el campo umbral.

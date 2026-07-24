@@ -331,7 +331,21 @@ Reglas que no se negocian:
 - Pon "confidence" bajo en las filas de las que dudes. Se guardaran igual,
   marcadas para revision: es mejor que descartarlas.
 - Si una fila se puede leer de dos formas, elige la mas conservadora y anotalo
-  en "ambiguities"."""
+  en "ambiguities".
+
+Reglas especificas del BIA (bcm_scenario_assessment) — son las que mas fallan:
+- CADA valoracion debe llevar A LA VEZ, en la MISMA fila: la sede
+  ("_ref_location_id"), el escenario ("_ref_scenario_id") y los impactos
+  ("impacts"). NO partas una valoracion en dos filas (una con sede sin impactos
+  y otra con impactos sin sede): eso deja la matriz vacia y es el error mas
+  comun. Si el documento da los impactos por escenario y la sede aparece en una
+  columna, cabecera o titulo ("Localizacion: Madrid"), usa esa sede en cada fila.
+- Si el BIA valora un escenario para VARIAS sedes, genera una fila por sede,
+  todas con sus impactos.
+- Extrae TODOS los procesos y TODAS las valoraciones de la plantilla, no una
+  muestra. Si una hoja tiene doce procesos, saca los doce.
+- "impacts" tiene la forma {dimension: {horizonte: nivel}} usando las dimensiones
+  y horizontes del metodo del cliente que aparecen en el perfil."""
 
 
 def build_source_map(db, org_id: Optional[int], document: dict,

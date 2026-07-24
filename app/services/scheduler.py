@@ -6,6 +6,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.services import notification_settings as ns
+
 logger = logging.getLogger("riskhub.scheduler")
 
 _scheduler: BackgroundScheduler | None = None
@@ -318,9 +320,12 @@ def _run_risk_reviews() -> None:
                         subject = f"RiskHub — Revision vencida: {risk.code} ({org})"
                         body = f"La revision del riesgo <b>{risk.code}</b> estaba programada para {risk.next_review.strftime('%d/%m/%Y')} y no ha sido completada."
                         try:
-                            email_service.send_email(cfg, owner.email, subject,
-                                email_service._wrap_html(subject, body, org))
-                            sent_this_risk = True
+                            if ns.send_notification(
+                                db, risk.organization_id, "risk_review_due", cfg, subject,
+                                email_service._wrap_html(subject, body, org),
+                                summary_text=subject, recipients=[owner.email],
+                            ):
+                                sent_this_risk = True
                         except Exception:
                             pass
                 continue
@@ -333,9 +338,12 @@ def _run_risk_reviews() -> None:
                         body = (f"El riesgo <b>{risk.code}</b> ({risk.asset.name if risk.asset else '-'}) "
                                 f"tiene programada su revision para el {risk.next_review.strftime('%d/%m/%Y')} ({label}).")
                         try:
-                            email_service.send_email(cfg, owner.email, subject,
-                                email_service._wrap_html(subject, body, org))
-                            sent_this_risk = True
+                            if ns.send_notification(
+                                db, risk.organization_id, "risk_review_due", cfg, subject,
+                                email_service._wrap_html(subject, body, org),
+                                summary_text=subject, recipients=[owner.email],
+                            ):
+                                sent_this_risk = True
                         except Exception:
                             pass
                     break
@@ -481,9 +489,11 @@ def _run_policy_review_reminders() -> None:
                 """
                 from app.services.approval_service import _wrap_html
                 try:
-                    email_service.send_email(
-                        cfg, pol.owner.email, subject,
+                    ns.send_notification(
+                        db, oid, "policy_review", cfg, subject,
                         _wrap_html(f"Recordatorio de revision: {pol.code}", body, "RiskHub"),
+                        summary_text=f"Revision de {pol.code} en {days_left} dias",
+                        recipients=[pol.owner.email],
                     )
                 except Exception:
                     pass
@@ -785,6 +795,7 @@ def _run_kri_evaluation() -> None:
 
     db = SessionLocal()
     try:
+        from app.models import KRIStatus
         orgs = db.query(Organization).filter(Organization.is_active.is_(True)).all()
         total = 0
         breaches = 0
@@ -794,14 +805,19 @@ def _run_kri_evaluation() -> None:
                 KRI.is_active == True,
             ).all()
             for kri in kris:
-                from app.models import KRIStatus
-                status = evaluate_kri(db, kri, org.id)
-                total += 1
-                if status == KRIStatus.BREACH:
-                    breaches += 1
-        if total:
-            db.commit()
-            logger.info("KRI evaluation: %d evaluados, %d en breach", total, breaches)
+                # Commit por-indicador: si un KRI lanza, el estado 'ya avisado' de
+                # los anteriores ya esta persistido y no se reenvia en el proximo
+                # ciclo. Antes habia un unico commit al final que se perdia entero.
+                try:
+                    status = evaluate_kri(db, kri, org.id)
+                    db.commit()
+                    total += 1
+                    if status == KRIStatus.BREACH:
+                        breaches += 1
+                except Exception as exc:
+                    db.rollback()
+                    logger.warning("KRI %s evaluacion fallo: %s", getattr(kri, "id", "?"), exc)
+        logger.info("KRI evaluation: %d evaluados, %d en breach", total, breaches)
     except Exception as exc:
         logger.exception("Error en _run_kri_evaluation: %s", exc)
     finally:
@@ -1013,24 +1029,18 @@ def _run_monthly_report() -> None:
 </body>
 </html>"""
 
-            # Enviar a todos los admins activos de la org
-            admins = db.query(User).filter(
-                User.organization_id == org_id,
-                User.role == UserRole.ADMIN,
-                User.is_active == True,  # noqa: E712
-                User.email.isnot(None),
-            ).all()
-
-            for admin in admins:
-                try:
-                    email_service.send_email(
-                        cfg, admin.email,
-                        f"RiskHub &mdash; Informe mensual {month_str} ({org_name})",
-                        html,
-                    )
-                    logger.info("Monthly report sent to %s org=%s", admin.email, org_name)
-                except Exception as exc:
-                    logger.warning("Monthly report email failed to %s: %s", admin.email, exc)
+            # Enviar a los destinatarios configurados (por defecto, admins de la org)
+            try:
+                ns.send_notification(
+                    db, org_id, "monthly_report", cfg,
+                    f"RiskHub &mdash; Informe mensual {month_str} ({org_name})",
+                    html,
+                    summary_text=f"Informe mensual de seguridad {month_str}",
+                    org_name=org_name,
+                )
+                logger.info("Monthly report procesado org=%s", org_name)
+            except Exception as exc:
+                logger.warning("Monthly report email failed org=%s: %s", org_name, exc)
     except Exception as exc:
         logger.exception("Error en monthly_report: %s", exc)
     finally:
@@ -1125,8 +1135,9 @@ def _run_evidence_expiry_check() -> None:
     """Alerta sobre evidencias proximas a vencer (30 dias) o vencidas."""
     from datetime import timedelta
     from app.database import SessionLocal
-    from app.models import Evidence, User, UserRole
+    from app.models import Evidence
     from app.services import email_service
+    from app.services import notification_settings as ns
 
     db = SessionLocal()
     try:
@@ -1152,22 +1163,17 @@ def _run_evidence_expiry_check() -> None:
 
             try:
                 cfg = email_service.get_settings_for_org(db, ev.organization_id)
-                if cfg and cfg.smtp_host:
-                    admins = db.query(User).filter(
-                        User.organization_id == ev.organization_id,
-                        User.role == UserRole.ADMIN,
-                        User.is_active == True,
-                        User.email.isnot(None),
-                    ).all()
-                    for admin in admins:
-                        subject = f"[RiskHub] Evidencia {ev.code} vence en {days_left} días"
-                        body = (
-                            f"<p>La evidencia <strong>{ev.code} — {ev.title}</strong> "
-                            f"vence en <strong>{days_left} días</strong> "
-                            f"({ev.expires_at.strftime('%d/%m/%Y')}).</p>"
-                            f"<p>Accede a RiskHub para renovarla o subir una nueva versión.</p>"
-                        )
-                        email_service.send_email(cfg, admin.email, subject, body)
+                subject = f"[RiskHub] Evidencia {ev.code} vence en {days_left} días"
+                body = (
+                    f"<p>La evidencia <strong>{ev.code} — {ev.title}</strong> "
+                    f"vence en <strong>{days_left} días</strong> "
+                    f"({ev.expires_at.strftime('%d/%m/%Y')}).</p>"
+                    f"<p>Accede a RiskHub para renovarla o subir una nueva versión.</p>"
+                )
+                ns.send_notification(
+                    db, ev.organization_id, "evidence_expiry", cfg, subject, body,
+                    summary_text=f"Evidencia {ev.code} vence en {days_left} dias",
+                )
             except Exception as exc:
                 logger.debug("Error enviando alerta evidencia: %s", exc)
 
@@ -1213,38 +1219,34 @@ def _run_ccm_tests() -> None:
                 score = results.get("score", 0)
                 logger.info("CCM org=%d: score=%s FAIL=%d", org.id, score, len(fails))
 
-                # Alertar si score < 70 o hay FAILs críticos
-                if fails and score < 70:
+                # Alertar si score < umbral configurable (default 70) y hay FAILs.
+                # Sistema unificado: on/off, umbral, destinatarios, canal y cooldown
+                # (default 7 dias) los controla Configuracion -> Alertas (alert_key='ccm_fail').
+                from app.services import notification_settings as ns
+                threshold = ns.get_threshold(db, org.id, "ccm_fail", 70.0)
+                if fails and score < threshold and ns.should_notify(db, org.id, "ccm_fail"):
                     cfg = email_service.get_settings_for_org(db, org.id)
-                    if cfg and cfg.smtp_host:
-                        from app.models import User, UserRole
-                        admins = db.query(User).filter(
-                            User.organization_id == org.id,
-                            User.role == UserRole.ADMIN,
-                            User.is_active == True,
-                            User.email.isnot(None),
-                        ).all()
-                        ctx = db.query(RiskContext).filter(
-                            RiskContext.organization_id == org.id
-                        ).first()
-                        org_name = ctx.organization_name if ctx else org.name if hasattr(org, "name") else f"Org {org.id}"
-                        fail_items = "".join(
-                            f"<li><strong>{r['control_code']}</strong>: {r['name']} — {r['detail']}<br>"
-                            f"<em>{r.get('recommendation','')}</em></li>"
-                            for r in fails[:8]
-                        )
-                        html = (
-                            f"<p><strong>{org_name}</strong> — CCM Score: <strong>{score}/100</strong></p>"
-                            f"<p>Se han detectado {len(fails)} control(es) fallando:</p>"
-                            f"<ul>{fail_items}</ul>"
-                            f"<p>Accede a RiskHub → CCM para ver el detalle completo.</p>"
-                        )
-                        for admin in admins:
-                            email_service.send_email(
-                                cfg, admin.email,
-                                f"[RiskHub] CCM Alert: {len(fails)} controles FAIL — Score {score}/100",
-                                html
-                            )
+                    ctx = db.query(RiskContext).filter(
+                        RiskContext.organization_id == org.id
+                    ).first()
+                    org_name = ctx.organization_name if ctx else org.name if hasattr(org, "name") else f"Org {org.id}"
+                    fail_items = "".join(
+                        f"<li><strong>{r['control_code']}</strong>: {r['name']} — {r['detail']}<br>"
+                        f"<em>{r.get('recommendation','')}</em></li>"
+                        for r in fails[:8]
+                    )
+                    html = (
+                        f"<p><strong>{org_name}</strong> — CCM Score: <strong>{score}/100</strong></p>"
+                        f"<p>Se han detectado {len(fails)} control(es) fallando:</p>"
+                        f"<ul>{fail_items}</ul>"
+                        f"<p>Accede a RiskHub → CCM para ver el detalle completo.</p>"
+                    )
+                    subject = f"[RiskHub] CCM Alert: {len(fails)} controles FAIL — Score {score}/100"
+                    ns.send_notification(
+                        db, org.id, "ccm_fail", cfg, subject, html,
+                        summary_text=f"CCM {org_name}: score {score}/100, {len(fails)} controles FAIL",
+                        org_name=org_name,
+                    )
             except Exception as exc:
                 logger.exception("Error en CCM tests para org %d: %s", org.id, exc)
     except Exception as exc:
@@ -1487,10 +1489,14 @@ def _run_compliance_review_reminders() -> None:
                 f"<p style='margin-top:16px;'>Accede a RiskHub &rarr; Cumplimiento Normativo para revisar y actualizar su estado.</p>"
             )
             try:
-                email_service.send_email(cfg, admin.email, subject, body_html)
+                ns.send_notification(
+                    db, org.id, "compliance_review", cfg, subject, body_html,
+                    summary_text=f"{len(stale)} requisitos de compliance sin revision en {org.name}",
+                    org_name=org.name,
+                )
                 logger.info(
-                    "Compliance reminders enviados a %s org=%d (%d requisitos)",
-                    admin.email, org.id, len(stale),
+                    "Compliance reminders procesados org=%d (%d requisitos)",
+                    org.id, len(stale),
                 )
             except Exception as exc2:
                 logger.debug("Error enviando compliance reminder org=%d: %s", org.id, exc2)
@@ -1557,6 +1563,8 @@ def _run_scheduled_reports() -> None:
                     organization_id=schedule.organization_id
                 ).first()
                 if not cfg or not cfg.smtp_host:
+                    continue
+                if not ns.should_notify(db, schedule.organization_id, "scheduled_reports"):
                     continue
 
                 try:
@@ -1651,22 +1659,17 @@ def _run_soa_review_check() -> None:
 
             if needs_alert:
                 cfg = db.query(EmailSettings).filter_by(organization_id=org.id).first()
-                if cfg and cfg.smtp_host:
-                    admins = db.query(User).filter_by(
-                        organization_id=org.id, role=UserRole.ADMIN, is_active=True
-                    ).all()
-                    for admin in admins:
-                        if admin.email:
-                            subject = f"[RiskHub] SoA pendiente de revision — {org.name}"
-                            body = (
-                                f"<p><strong>ISO 27001 cl. 6.1.3</strong> requiere revisar y aprobar la SoA anualmente.</p>"
-                                f"<p>{msg}.</p>"
-                                f"<p>Accede a RiskHub &rarr; SoA para crear una nueva version.</p>"
-                            )
-                            try:
-                                email_service.send_email(cfg, admin.email, subject, body)
-                            except Exception as exc2:
-                                logger.debug("Error enviando alerta SoA: %s", exc2)
+                subject = f"[RiskHub] SoA pendiente de revision — {org.name}"
+                body = (
+                    f"<p><strong>ISO 27001 cl. 6.1.3</strong> requiere revisar y aprobar la SoA anualmente.</p>"
+                    f"<p>{msg}.</p>"
+                    f"<p>Accede a RiskHub &rarr; SoA para crear una nueva version.</p>"
+                )
+                try:
+                    ns.send_notification(db, org.id, "soa_review", cfg, subject, body,
+                                         summary_text=msg, org_name=org.name)
+                except Exception as exc2:
+                    logger.debug("Error enviando alerta SoA: %s", exc2)
     except Exception as exc:
         logger.exception("Error en soa_review_check: %s", exc)
     finally:
@@ -1787,8 +1790,10 @@ def _run_bcp_test_overdue() -> None:
                         f"<a href='#/bcp'>Ir al modulo BCP</a></p>"
                     )
                     try:
-                        email_service.send_email(cfg, admin.email, subject,
-                                                  email_service._wrap_html(subject, body_html, ""))
+                        ns.send_notification(
+                            db, org_id, "bcp_test_overdue", cfg, subject,
+                            email_service._wrap_html(subject, body_html, ""),
+                            summary_text=f"{len(procs_list)} procesos BCM sin test de continuidad")
                     except Exception:
                         pass
 
@@ -1866,8 +1871,9 @@ def _run_bcp_plan_review_due() -> None:
                 f"<a href='#/bcp'>Ir al modulo BCP</a></p>"
             )
             try:
-                email_service.send_email(cfg, admin.email, subject,
-                                         email_service._wrap_html(subject, body_html, ""))
+                ns.send_notification(db, org_id, "bcp_plan_review", cfg, subject,
+                                     email_service._wrap_html(subject, body_html, ""),
+                                     summary_text=f"{len(plans)} planes de continuidad pendientes de revision")
             except Exception:
                 pass
     except Exception as exc:
@@ -1951,8 +1957,9 @@ def _run_bcp_bia_gap_check() -> None:
                 f"<a href='#/bcp'>Completar en modulo BCP</a></p>"
             )
             try:
-                email_service.send_email(cfg, admin.email, subject,
-                                         email_service._wrap_html(subject, body_html, ""))
+                ns.send_notification(db, org_id, "bcp_bia_gap", cfg, subject,
+                                     email_service._wrap_html(subject, body_html, ""),
+                                     summary_text=f"{len(gaps)} procesos con BIA incompleto")
             except Exception:
                 pass
     except Exception as exc:
@@ -2147,7 +2154,7 @@ def _run_questionnaire_schedules() -> None:
                         .filter(EmailSettings.organization_id == sched.organization_id)
                         .first()
                     )
-                    if cfg and cfg.smtp_host:
+                    if cfg and cfg.smtp_host and ns.should_notify(db, sched.organization_id, "questionnaire_lifecycle"):
                         from app.services import email_service
                         link = f"http://localhost/supplier-q?token={q.token}"
                         expires_str = expires.strftime("%d/%m/%Y")
@@ -2229,6 +2236,8 @@ def _notify_questionnaire_submitted(questionnaire_id: int, org_id: int) -> None:
 
         cfg = db.query(EmailSettings).filter(EmailSettings.organization_id == org_id).first()
         if not cfg or not cfg.smtp_host:
+            return
+        if not ns.should_notify(db, org_id, "questionnaire_lifecycle"):
             return
 
         supplier_name = supplier.name if supplier else "proveedor"

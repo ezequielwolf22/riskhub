@@ -1,5 +1,5 @@
 """KRI/KPI — Key Risk Indicators y Key Performance Indicators (v5.4.0)."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -566,11 +566,23 @@ def evaluate_kri(db: Session, kri: KRI, org_id: int) -> KRIStatus:
     prev_status = kri.status  # guardar antes de modificar
     kri.status = new_status.value
 
-    if kri.alert_on_breach and new_status == KRIStatus.BREACH and prev_status != KRIStatus.BREACH.value:
-        try:
-            _send_kri_alert(db, kri, value, org_id)
-        except Exception:
-            pass
+    if kri.alert_on_breach and new_status == KRIStatus.BREACH:
+        is_new_breach = prev_status != KRIStatus.BREACH.value
+        # Red de seguridad: aunque el commit del estado se pierda por una excepcion
+        # en el job (lo que reabria el flood), last_alert_at evita reenviar mas de
+        # una vez cada 24 h para el mismo indicador.
+        recently_alerted = False
+        if kri.last_alert_at is not None:
+            last = kri.last_alert_at
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            recently_alerted = (now - last) < timedelta(hours=24)
+        if is_new_breach and not recently_alerted:
+            try:
+                if _send_kri_alert(db, kri, value, org_id):
+                    kri.last_alert_at = now
+            except Exception:
+                pass
 
     # Bucle cerrado bidireccional: sincronizar estado KRI con riesgo vinculado
     _sync_kri_breach_to_risk(db, kri, str(prev_status), new_status.value)
@@ -578,25 +590,15 @@ def evaluate_kri(db: Session, kri: KRI, org_id: int) -> KRIStatus:
     return new_status
 
 
-def _send_kri_alert(db: Session, kri: KRI, value: float, org_id: int) -> None:
-    from app.models import User, UserRole
+def _send_kri_alert(db: Session, kri: KRI, value: float, org_id: int) -> bool:
+    """Envia la alerta de breach del indicador por el sistema unificado de
+    notificaciones (alert_key='kri_breach'): respeta el on/off global, el canal y
+    los destinatarios configurados en Configuracion -> Alertas. Si el indicador
+    tiene recipient_email propio, ese prevalece. Devuelve True si se envio."""
     from app.services import email_service
+    from app.services import notification_settings as ns
 
     cfg = email_service.get_settings_for_org(db, org_id)
-    if not cfg or not cfg.smtp_host:
-        return
-
-    recipients = []
-    if kri.recipient_email:
-        recipients.append(kri.recipient_email)
-    else:
-        admins = db.query(User).filter(
-            User.organization_id == org_id,
-            User.role == UserRole.ADMIN,
-            User.is_active == True,
-            User.email.isnot(None),
-        ).all()
-        recipients = [a.email for a in admins]
 
     import html as _html
     safe_name = _html.escape(str(kri.name))
@@ -607,12 +609,13 @@ def _send_kri_alert(db: Session, kri: KRI, value: float, org_id: int) -> None:
         f"<p>Valor actual: <strong>{value}</strong> (umbral: {kri.breach_threshold})</p>"
         f"<p>Revisa el estado en RiskHub para tomar accion correctiva.</p>"
     )
-    for email in recipients:
-        try:
-            email_service.send_email(cfg, email, subject,
-                                     email_service._wrap_html(subject, body, ""))
-        except Exception:
-            pass
+    html_full = email_service._wrap_html(subject, body, "")
+    recipients_override = [kri.recipient_email] if kri.recipient_email else None
+    return ns.send_notification(
+        db, org_id, "kri_breach", cfg, subject, html_full,
+        summary_text=f"{label} '{kri.name}' en breach (valor {value}, umbral {kri.breach_threshold})",
+        recipients=recipients_override,
+    )
 
 
 @router.get("", response_model=list[KRIOut])

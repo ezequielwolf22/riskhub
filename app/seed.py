@@ -609,6 +609,8 @@ def _migrate_columns() -> None:
         ("ALTER TABLE kris ADD COLUMN description TEXT", "kris", "description"),
         ("ALTER TABLE kris ADD COLUMN is_system BOOLEAN DEFAULT 0", "kris", "is_system"),
         ("ALTER TABLE kris ADD COLUMN direction VARCHAR(20) DEFAULT 'lower_is_better'", "kris", "direction"),
+        # v6.7.0 — edge-trigger robusto de alertas de indicador
+        ("ALTER TABLE kris ADD COLUMN last_alert_at DATETIME", "kris", "last_alert_at"),
         # v5.5.0 — Supplier: lifecycle, onboarding, firma legal, DORA, concentracion
         ("ALTER TABLE suppliers ADD COLUMN lifecycle_stage VARCHAR(32) DEFAULT 'active'", "suppliers", "lifecycle_stage"),
         ("ALTER TABLE suppliers ADD COLUMN lifecycle_changed_at DATETIME", "suppliers", "lifecycle_changed_at"),

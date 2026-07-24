@@ -978,6 +978,18 @@ const ViewGuide = {
 
   get _cAlerts() { return `
     ${this._p('El sistema de alertas de RiskHub notifica automáticamente a los responsables cuando se detectan riesgos u otros eventos que requieren atención inmediata. Cada alerta se puede enviar por <strong>email (SMTP)</strong>, por un canal de <strong>Microsoft Teams</strong> y/o por un flujo de <strong>Power Automate</strong> — de forma independiente y combinable.')}
+    ${this._h('Notificaciones automáticas — control total')}
+    ${this._p('La tarjeta <strong>"Notificaciones automáticas"</strong> (arriba en esta misma vista) es el panel de control de todos los correos que el sistema envía por su cuenta desde el planificador: KPI/KRI en breach, monitorización continua de controles (CCM), revisiones de riesgo y de políticas, evidencias por caducar, cumplimiento y SoA sin revisar, continuidad de negocio (tests, planes y BIA), informes y cuestionarios de proveedor.')}
+    ${this._p('Para cada alerta decides, y se guarda al instante:')}
+    <ul style="font-size:13px;padding-left:20px;margin:0 0 14px;">
+      <li><strong>Activa / apagada:</strong> interruptor por alerta. Cada organización decide qué recibe.</li>
+      <li><strong>Quién recibe:</strong> "Administradores" (todos los admins activos, por defecto) o "Personalizado" (una lista concreta de correos).</li>
+      <li><strong>Canal:</strong> Email, Teams, Power Automate o todos a la vez.</li>
+      <li><strong>Máx. cada N días:</strong> anti-repetición. Evita el bombardeo del mismo aviso (p. ej. CCM una vez por semana como mucho).</li>
+      <li><strong>Umbral:</strong> donde aplica, p. ej. el score de CCM por debajo del cual se avisa.</li>
+      <li><strong>"Silenciar todo":</strong> botón de pánico que desactiva de golpe todas las notificaciones automáticas de la organización.</li>
+    </ul>
+    ${this._p('Por defecto todas vienen activas y con destinatario "administradores", que es el comportamiento histórico. Los indicadores (KPI/KRI) además solo avisan al cruzar el umbral y como máximo una vez cada 24 h por indicador, para no repetir. Nota: las alertas de proveedor por hallazgo (contrato, monitoreo web/SSL/DNS) se gestionan como reglas <em>vendor_issue_*</em> más abajo, y los digest de vigilancia normativa y Plan Director desde su propio módulo.')}
     ${this._h('Configuración SMTP')}
     ${this._p('Los canales de envío (SMTP, Teams, Power Automate) se configuran desde el menú <strong>Integraciones</strong>, en el desplegable <em>"Integraciones para alertas"</em> — no desde Alertas, que solo gestiona las reglas. Cada bloque de configuración tiene un boton <strong>"?"</strong> junto al título con una guia paso a paso de como obtener los datos necesarios.')}
     ${this._steps([

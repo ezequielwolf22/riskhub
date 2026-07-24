@@ -392,6 +392,14 @@ def _verify(db, org_id: Optional[int], warnings: list) -> dict:
     """
     from app.services.bcm_scenario_engine import coverage_gaps, recompute_org
     out = {"recalculated": 0, "by_reason": {}, "total": 0}
+    # Cerrar los enlaces de dependencias (proveedor/activo) para que el mapa
+    # de dependencias tenga relaciones y no salga con nodos sueltos.
+    try:
+        from app.services.ingest.linker import link_dependencies
+        out["links"] = link_dependencies(db, org_id)
+        db.commit()
+    except Exception as exc:
+        warnings.append(f"No se pudieron enlazar las dependencias: {exc}")
     try:
         out["recalculated"] = recompute_org(db, org_id)
     except Exception as exc:
