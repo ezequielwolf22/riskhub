@@ -164,7 +164,14 @@ def find_match(db, spec, org_id: Optional[int], values: dict,
             if _normalize_for(spec, getattr(row, fname, None)) == target:
                 return MatchResult(row, 1.0, "natural_key")
 
-    # -- 2. Similitud ------------------------------------------------------
+    # -- 2. Parecido, PERO nunca se fusiona solo -------------------------------
+    # Un nombre parecido no es prueba de que sea el mismo registro: "Caida de
+    # los sistemas de producto" y "Caida de la infraestructura AWS" se parecen
+    # y son escenarios distintos. Antes esto auto-actualizaba el registro
+    # parecido y aplastaba datos. Ahora se devuelve como POSIBLE DUPLICADO: el
+    # materializador crea uno nuevo y lo marca para que una persona decida si
+    # de verdad son el mismo. La ultima palabra es del usuario, nunca del
+    # parecido de dos cadenas.
     wanted = values.get(name_field)
     if not wanted or not hasattr(model, name_field):
         return MatchResult()
@@ -181,18 +188,11 @@ def find_match(db, spec, org_id: Optional[int], values: dict,
         return MatchResult()
 
     scored.sort(key=lambda t: t[0], reverse=True)
-    best_score, best_row = scored[0]
     candidates = [{"id": getattr(r, "id", None),
                    "name": getattr(r, name_field, None), "score": round(s, 3)}
                   for s, r in scored[:5]]
-
-    if len(scored) > 1 and (best_score - scored[1][0]) < AMBIGUITY_MARGIN:
-        # Dos candidatos casi igual de buenos: no se adivina.
-        logger.info("reconciler: coincidencia ambigua para %r (%s)", wanted, candidates)
-        return MatchResult(None, best_score, "similarity", ambiguous=True,
-                           candidates=candidates)
-
-    return MatchResult(best_row, best_score, "similarity", candidates=candidates)
+    return MatchResult(None, scored[0][0], "possible_duplicate",
+                       candidates=candidates)
 
 
 def _normalize_for(spec, value) -> str:

@@ -112,7 +112,9 @@ register(EntitySpec(
     key="bcm_scenario",
     model="BCMScenario",
     label="Escenario de indisponibilidad",
-    natural_keys=(("code",), ("name",)),
+    # Identidad por CODIGO. El nombre es descriptivo y varios escenarios pueden
+    # compartirlo: identificar por nombre los colapsaba en uno solo.
+    natural_keys=(("code",),),
     before_write=_code_setter("ESC", "BCMScenario", 3),
     provided_by_hook=("code",),
     fields=(
@@ -130,6 +132,9 @@ register(EntitySpec(
     key="bcm_scenario_assessment",
     model="BCMScenarioAssessment",
     label="Valoracion BIA de escenario",
+    # Una valoracion por escenario y sede: al reimportar se actualiza la misma,
+    # no se duplica. Es clave exacta por ids, sin riesgo de fusion indebida.
+    natural_keys=(("scenario_id", "location_id"),),
     depends_on=("bcm_scenario", "bcm_location"),
     references={"scenario_id": ("bcm_scenario", "code"),
                 "location_id": ("bcm_location", "name")},
@@ -223,7 +228,9 @@ register(EntitySpec(
     references={"scenario_id": ("bcm_scenario", "code"),
                 "process_id": ("business_process", "name"),
                 "location_id": ("bcm_location", "name")},
-    natural_keys=(("name",),),
+    # Identidad por escenario + nombre: dos estrategias con el mismo nombre bajo
+    # escenarios distintos son distintas y no deben pisarse.
+    natural_keys=(("scenario_id", "name"),),
     fields=(
         FieldSpec("name", max_length=255, conflict_policy="first"),
         FieldSpec("strategy_type", max_length=32, choices=STRATEGY_TYPES),

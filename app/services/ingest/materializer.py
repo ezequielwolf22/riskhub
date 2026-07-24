@@ -105,14 +105,12 @@ def materialize(db, org_id: Optional[int], batch, entity_key: str,
                 continue
 
             match = reconciler.find_match(db, spec, org_id, values)
-            if match.ambiguous:
-                # Enlazar con el registro equivocado es peor que duplicar: se
-                # crea uno nuevo y se marca para que una persona lo decida.
-                result.warnings.append(
-                    f"{spec.label}: '{values.get('name')}' se parece a varios "
-                    f"registros existentes; se crea uno nuevo para revisar."
-                )
-                confidence = min(confidence, 0.5)
+            possible_dup = None
+            if match.how == "possible_duplicate":
+                # Se parece a algo que ya existe, pero no es identico: se crea
+                # aparte y se marca. Nunca se aplasta un registro por parecido.
+                possible_dup = match.candidates
+                confidence = min(confidence, 0.6)
 
             if match.matched:
                 _update(db, org_id, batch, spec, model, match.record, values,
@@ -120,7 +118,8 @@ def materialize(db, org_id: Optional[int], batch, entity_key: str,
                         document_date, source_map_id, result, entity_key)
             else:
                 _create(db, org_id, batch, spec, model, values, confidence,
-                        source_map_id, result, entity_key)
+                        source_map_id, result, entity_key,
+                        possible_duplicate=possible_dup)
             savepoint.commit()
         except Exception as exc:
             try:
@@ -160,8 +159,8 @@ def _missing_required(model, spec, values: dict, org_id) -> list[str]:
 # ── Alta ─────────────────────────────────────────────────────────────────────
 
 def _create(db, org_id, batch, spec, model, values, confidence,
-            source_map_id, result, entity_key) -> None:
-    needs_review = confidence < REVIEW_THRESHOLD
+            source_map_id, result, entity_key, possible_duplicate=None) -> None:
+    needs_review = confidence < REVIEW_THRESHOLD or bool(possible_duplicate)
     payload = dict(spec.defaults or {})
     payload.update(values)
     if hasattr(model, "organization_id"):
@@ -188,11 +187,28 @@ def _create(db, org_id, batch, spec, model, values, confidence,
         spec.after_write(db, record)
         db.flush()
 
-    batch_mod.trace(db, batch, entity_key, model.__tablename__, record.id,
-                    "created", before=None,
-                    after=batch_mod.snapshot(record, spec),
-                    confidence=confidence, needs_review=needs_review,
-                    source_map_id=source_map_id)
+    tr = batch_mod.trace(db, batch, entity_key, model.__tablename__, record.id,
+                         "created", before=None,
+                         after=batch_mod.snapshot(record, spec),
+                         confidence=confidence, needs_review=needs_review,
+                         source_map_id=source_map_id)
+    if possible_duplicate:
+        # Se anota a quien se parece para que el usuario pueda fusionarlo si
+        # de verdad es el mismo. No se decide por el: solo se le avisa.
+        try:
+            nm = values.get("name") or values.get("code") or "(sin nombre)"
+            parecidos = ", ".join(
+                f"#{c.get('id')} {c.get('name')}" for c in possible_duplicate[:3])
+            result.warnings.append(
+                f"{spec.label}: '{nm}' se parece a {parecidos}. Se ha creado "
+                f"aparte por si son distintos; revisa si es el mismo.")
+            if tr is not None:
+                after = dict(tr.after or {})
+                after["_possible_duplicate"] = possible_duplicate[:5]
+                tr.after = after
+        except Exception:
+            logger.debug("ingest: no se pudo anotar el posible duplicado",
+                         exc_info=True)
     result._bump(result.created, entity_key)
     if needs_review:
         result.needs_review += 1

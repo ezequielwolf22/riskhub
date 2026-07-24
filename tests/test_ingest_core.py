@@ -128,17 +128,32 @@ def test_la_reconciliacion_no_cruza_organizaciones(db, bat):
     assert db.query(Supplier).filter_by(organization_id=OTHER_ORG).count() == 1
 
 
-def test_coincidencia_ambigua_no_adivina(db, bat):
-    """Enlazar con el proveedor equivocado es peor que duplicar."""
+def test_un_parecido_nunca_se_fusiona_solo(db, bat):
+    """Un nombre parecido no es prueba de ser el mismo registro.
+
+    Antes, un parecido >= 0.88 auto-actualizaba el registro existente y
+    aplastaba datos. Ahora nunca se fusiona por parecido: se marca como posible
+    duplicado y la decision es del usuario.
+    """
     db.add_all([Supplier(organization_id=ORG, code="SUP-0003", name="Grupo Solana"),
                 Supplier(organization_id=ORG, code="SUP-0004", name="Grupo Solano")])
     db.commit()
 
     spec = contracts.get("supplier")
     match = find_match(db, spec, ORG, {"name": "Grupo Solane"})
-    assert match.ambiguous is True
-    assert match.matched is False
-    assert len(match.candidates) >= 2
+    assert match.how == "possible_duplicate"
+    assert match.matched is False           # no se enlaza a ciegas
+    assert len(match.candidates) >= 1
+
+
+def test_un_nombre_identico_normalizado_si_enlaza(db, bat):
+    """El caso legitimo: 'AMAZON WEB SERVICES, INC.' == 'Amazon Web Services'."""
+    db.add(Supplier(organization_id=ORG, code="SUP-0009", name="Amazon Web Services"))
+    db.commit()
+    match = find_match(db, contracts.get("supplier"), ORG,
+                       {"name": "AMAZON WEB SERVICES, INC."})
+    assert match.matched is True
+    assert match.how == "natural_key"
 
 
 def test_referencias_por_clave_natural_se_resuelven_dentro_del_lote(db, bat):
